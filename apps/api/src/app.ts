@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { Gauge, Registry } from 'prom-client'
 
 import { issueTicket, type WsAuthContext, type WsDeps } from './ws.js'
 
@@ -9,10 +10,25 @@ export interface AuthStub {
   ctx: WsAuthContext
 }
 
-export function createApp(deps: WsDeps, auth: AuthStub): Hono {
+export interface ApiProm {
+  registry: Registry
+  setWsClients: (n: number) => void
+}
+
+export function createApiProm(): ApiProm {
+  const registry = new Registry()
+  const g = new Gauge({ name: 'ws_clients', help: 'live WS connections', registers: [registry] })
+  return { registry, setWsClients: (n) => g.set(n) }
+}
+
+export function createApp(deps: WsDeps, auth: AuthStub, prom?: ApiProm): Hono {
   const app = new Hono()
 
   app.get('/healthz', (c) => c.text('ok'))
+
+  if (prom) {
+    app.get('/metrics', async (c) => c.text(await prom.registry.metrics()))
+  }
 
   // §6.6: GET /v1/ws-ticket (auth'd) → single-use ticket for wss://…/v1/stream?ticket=
   app.get('/v1/ws-ticket', async (c) => {

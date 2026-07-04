@@ -51,3 +51,6 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `INGEST_TCP_PORT` | apps/ingest | Teltonika TCP listener port, default `5027` |
 | `INGEST_MAX_CONN` | apps/ingest | Total concurrent connection cap, default `20000` |
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
+| `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
+| `API_PORT` | apps/api | HTTP+WS port, default `3010` |
+| `STUB_AUTH_TOKEN` | apps/api | TEMPORARY single-user auth token (deleted by E03-1) |

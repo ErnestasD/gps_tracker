@@ -7,3 +7,15 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ['localhost:9090']
+  # app targets (E02-5; frozen metric names per Appendix A). host.docker.internal
+  # reaches apps running on the host during local dev; staging runs apps in-compose.
+  - job_name: ingest
+    static_configs:
+      - targets: ['host.docker.internal:9101']
+  - job_name: worker
+    static_configs:
+      - targets: ['host.docker.internal:9102']
+  - job_name: api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['host.docker.internal:3010']
