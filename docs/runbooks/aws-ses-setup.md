@@ -1,41 +1,73 @@
 # AWS SES setup (E00-2, human runbook)
 
-SES sends our notification e-mails (W5, E05-4). New accounts start in **sandbox**
-(can only mail verified addresses) — the production-access request is human-reviewed
-and takes 1–3 days, hence "submit early".
+SES sends Orbetra's notification e-mails (W5, E05-4: geofence/offline/panic/low-battery
+alerts + password resets). New accounts start in **sandbox** (mail only to verified
+addresses); the production-access request is human-reviewed (1–3 days) — submit early.
 
-**Prerequisite: the product domain must exist** (E00-5 — Orbetra domain not bought yet?
-buy it first; SES verifies a DOMAIN).
+Region for EVERYTHING below: **Europe (Frankfurt) — eu-central-1** (EU data residency).
 
-## Steps
+---
 
-1. **AWS account**: https://aws.amazon.com → Create account (card required; SES cost
-   is ~€0.10 per 1000 mails — effectively zero for us).
-2. Console top-right **region: Europe (Frankfurt) eu-central-1** — do everything there.
-3. **Verify the domain**: Amazon SES → Verified identities → Create identity →
-   *Domain* → enter `<yourdomain>` → keep "Easy DKIM" (RSA_2048) on → SES shows
-   **3 CNAME records** → add them at your DNS provider → wait for "Verified" (minutes
-   to hours).
-4. **Verify your own e-mail too** (Create identity → Email address) — lets you test
-   while still in sandbox.
-5. **Custom MAIL FROM** (recommended, SPF alignment): identity → Advanced →
-   MAIL FROM domain `mail.<yourdomain>` → add the MX + TXT records SES shows.
-6. **Request production access**: SES → Account dashboard → *Request production
-   access*. Fill:
-   - Mail type: **Transactional**
-   - Website URL: your domain
-   - Use-case description (paste, adjust):
+## 0. Prerequisites
+- The product **domain** must exist (you have it now). SES verifies a domain.
+- Access to the domain's **DNS** (where you add CNAME/TXT/MX records).
+
+## 1. Create the AWS account
+1. https://aws.amazon.com → **Create an AWS Account** (email, card — SES is ~€0.10 /1000
+   mails, effectively €0 for us).
+2. Sign in to the **Console**. Top-right region selector → **Europe (Frankfurt)
+   eu-central-1**. Keep it there for every step.
+
+## 2. Verify the domain (DKIM)
+1. Console search → **Amazon SES** → left menu **Verified identities** → **Create identity**.
+2. Choose **Domain**. Enter your domain (e.g. `yourdomain.com` — no https, no www).
+3. Leave **Easy DKIM** on, key type **RSA_2048**. Leave "Publish DNS records to Route 53"
+   OFF unless your DNS is in Route 53.
+4. Click **Create identity**. SES shows **3 CNAME records** (names look like
+   `xxxx._domainkey.yourdomain.com`).
+5. Go to your DNS provider and add all **3 CNAME records** exactly as shown (name → value).
+6. Back in SES the identity flips **Verified** in minutes–hours (DKIM status "Successful").
+
+## 3. Verify your own e-mail (for sandbox testing)
+Create identity → **Email address** → your personal email → confirm the link AWS mails you.
+Lets you send test mail while still in sandbox.
+
+## 4. Custom MAIL FROM (recommended — SPF alignment, better deliverability)
+1. Open the domain identity → tab **Custom MAIL FROM domain** → **Edit**.
+2. Subdomain: `mail` (→ `mail.yourdomain.com`). Behavior on failure: **Use default MAIL FROM**.
+3. Save → SES shows **1 MX** and **1 TXT** record → add both at your DNS.
+
+## 5. Request production access (the important one)
+1. SES → **Account dashboard** → **Request production access** (top banner).
+2. Fill in:
+   - **Mail type:** Transactional
+   - **Website URL:** your domain
+   - **Use case description** (paste, adjust the domain/company):
      > Orbetra is a B2B GPS fleet-tracking platform. SES sends transactional
      > notifications only: geofence entry/exit alerts, device-offline warnings,
-     > panic-button alerts and password resets, exclusively to registered platform
-     > users who configured these notifications. Expected volume < 10,000/month
-     > initially. Bounces and complaints are consumed via SES notifications and
-     > offending addresses are disabled automatically. No marketing e-mail is sent.
-   - Expected volume: 10,000/mo · Compliance answers: yes to honoring bounces/complaints.
-7. Wait for approval mail (24–72 h; they occasionally ask a follow-up question).
-8. **Credentials for the app**: SES → SMTP settings → *Create SMTP credentials*
-   (creates an IAM user) → save SMTP endpoint (`email-smtp.eu-central-1.amazonaws.com:587`),
-   username and password → these become `SMTP_URL` + `MAIL_FROM=alerts@<yourdomain>`
-   in staging `.env` (§6.7). Store them in a password manager, never in the repo.
+     > panic-button alerts, low-battery warnings and password-reset e-mails —
+     > exclusively to registered platform users who explicitly configured these
+     > notifications. Expected volume < 10,000/month initially. We consume SES
+     > bounce and complaint notifications and automatically disable offending
+     > recipients. No marketing or bulk e-mail is sent.
+   - **Additional contacts / compliance:** confirm you handle bounces & complaints.
+3. Submit → approval e-mail usually in 24–72 h (they may ask one follow-up question).
 
-Done — E05-4 will consume the creds; nothing else needed until W5.
+## 6. Create SMTP credentials (after approval, or now for sandbox testing)
+1. SES → **SMTP settings** → **Create SMTP credentials** → creates an IAM user →
+   **Download** the username + password (shown once).
+2. Note the SMTP endpoint: `email-smtp.eu-central-1.amazonaws.com`, port **587** (STARTTLS).
+3. These map to staging `.env` (PROJECT_PLAN §6.7):
+   - `SMTP_URL=smtp://<SMTP_USERNAME>:<SMTP_PASSWORD>@email-smtp.eu-central-1.amazonaws.com:587`
+   - `MAIL_FROM=alerts@yourdomain.com`
+   Store in a password manager. NEVER commit to the repo (rule 12).
+
+Done — nothing else needed until W5 (E05-4) consumes the creds. Hand the SMTP username +
+password + MAIL_FROM to the build when W5 starts; they go into the staging secrets, not git.
+
+## Quick sanity checklist
+- [ ] Region = eu-central-1 everywhere
+- [ ] Domain identity **Verified** (DKIM Successful)
+- [ ] Custom MAIL FROM records added (MX + TXT)
+- [ ] Production access **approved** (out of sandbox)
+- [ ] SMTP credentials saved in a password manager
