@@ -41,5 +41,9 @@ in the commit message, and any staged `TODO(VERIFY-WIKI)` marker blocks the comm
 
 ## Environment variables
 
-None yet. Every new variable must be added to the table here AND `.env` contract
+Every new variable must be added to the table here AND match the `.env` contract
 (PROJECT_PLAN §6.7).
+
+| Variable | Used by | Purpose |
+|---|---|---|
+| `DATABASE_URL` | packages/db (`make migrate`, Prisma, raw SQL pool) | PostgreSQL 16 + TimescaleDB + PostGIS connection string |

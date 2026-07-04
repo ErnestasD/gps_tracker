@@ -1,0 +1,337 @@
+// Orbetra relational schema (E01-3). PROJECT_PLAN §6.3.
+// `positions` is deliberately NOT here — hypertable lives in packages/db/sql/ and is
+// raw-SQL-only territory (CLAUDE.md rule 1, ADR-003 boundary).
+// Column design derived from spec references; see docs/epics/E01-3-plan.md ambiguity note.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+enum Role {
+  platform_admin
+  tsp_admin
+  account_manager
+  viewer
+}
+
+enum CommandStatus {
+  queued
+  sent
+  acked
+  failed
+  expired
+}
+
+enum TripStatus {
+  open
+  closed
+}
+
+enum GeofenceKind {
+  polygon
+  circle
+}
+
+enum RuleKind {
+  geofence
+  overspeed
+  ignition
+  din_change
+  power_cut
+  low_battery
+  panic
+  device_offline
+}
+
+enum OdometerSource {
+  auto
+  device
+  gps
+}
+
+model Tenant {
+  id                     String   @id @default(uuid()) @db.Uuid
+  name                   String
+  /// white-label: { logoUrl, primary, accent, productName, supportEmail } (E03-5)
+  branding               Json     @default("{}")
+  /// set once from pilot-lead ref, immutable afterwards (§6.9)
+  referredByAffiliateId  String?  @db.Uuid
+  createdAt              DateTime @default(now()) @db.Timestamptz()
+
+  accounts Account[]
+  users    User[]
+  domains  TenantDomain[]
+
+  @@map("tenants")
+}
+
+model TenantDomain {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  domain    String   @unique
+  /// true after the DNS TXT verification job; Caddy ask endpoint checks this (E03-5)
+  verified  Boolean  @default(false)
+  txtToken  String
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("tenant_domains")
+}
+
+model Account {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  /// IANA zone; ALL rendering converts from UTC with this (CLAUDE.md rule 7)
+  timezone  String   @default("UTC")
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users   User[]
+  devices Device[]
+
+  @@index([tenantId])
+  @@map("accounts")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  /// null ⇒ tenant-level user (tsp_admin); set ⇒ scoped to one account
+  accountId    String?  @db.Uuid
+  email        String
+  passwordHash String
+  role         Role
+  locale       String   @default("en")
+  createdAt    DateTime @default(now()) @db.Timestamptz()
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, email])
+  @@index([accountId])
+  @@map("users")
+}
+
+model DeviceProfile {
+  id             String @id @default(uuid()) @db.Uuid
+  /// seed keys: fmb1xx, fmc, fmb6xx-stub, tat-asset (E03-3)
+  key            String @unique
+  name           String
+  /// trip/presence thresholds (§6.4); offline sweeper reads these (§6.5)
+  presenceRules  Json   @default("{}")
+  commandPresets Json   @default("[]")
+  /// ingest read-idle timeout, minutes (§6.1 top)
+  readIdleMin    Int    @default(40)
+
+  devices Device[]
+
+  @@map("device_profiles")
+}
+
+model Device {
+  id             BigInt          @id @default(autoincrement())
+  tenantId       String          @db.Uuid
+  accountId      String          @db.Uuid
+  profileId      String          @db.Uuid
+  /// 15-digit string — leading zeros preserved (E03-3 edge case)
+  imei           String          @unique
+  name           String
+  plate          String?
+  groupName      String?
+  odometerSource OdometerSource  @default(auto)
+  retiredAt      DateTime?       @db.Timestamptz()
+  createdAt      DateTime        @default(now()) @db.Timestamptz()
+
+  account Account       @relation(fields: [accountId], references: [id])
+  profile DeviceProfile @relation(fields: [profileId], references: [id])
+
+  @@index([tenantId, accountId])
+  @@map("devices")
+}
+
+model RawReject {
+  id        BigInt   @id @default(autoincrement())
+  imei      String?
+  reason    String
+  payload   Bytes?
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@index([createdAt])
+  @@map("raw_rejects")
+}
+
+model Trip {
+  id             BigInt     @id @default(autoincrement())
+  tenantId       String     @db.Uuid
+  accountId      String     @db.Uuid
+  deviceId       BigInt
+  status         TripStatus
+  startTime      DateTime   @db.Timestamptz()
+  endTime        DateTime?  @db.Timestamptz()
+  startLat       Float?
+  startLon       Float?
+  endLat         Float?
+  endLon         Float?
+  distanceM      Int        @default(0)
+  /// 'odometer' | 'gps' — surfaced in UI/reports (E04-5)
+  distanceSource String     @default("gps")
+  maxSpeed       Int        @default(0)
+  idleS          Int        @default(0)
+  createdAt      DateTime   @default(now()) @db.Timestamptz()
+
+  @@index([deviceId, startTime])
+  @@index([tenantId, accountId, startTime])
+  @@map("trips")
+}
+
+model Geofence {
+  id        String       @id @default(uuid()) @db.Uuid
+  tenantId  String       @db.Uuid
+  /// null ⇒ visible to all accounts of the tenant (E05-1 accounts scope)
+  accountId String?      @db.Uuid
+  name      String
+  color     String       @default("#4DA3FF")
+  kind      GeofenceKind
+  /// raw accessors only (ST_GeomFromGeoJSON etc, E05-1); area guard ≤ 10,000 km²
+  geom      Unsupported("geography(Polygon,4326)")
+  createdAt DateTime     @default(now()) @db.Timestamptz()
+
+  @@index([tenantId, accountId])
+  @@map("geofences")
+}
+
+model Rule {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  accountId String   @db.Uuid
+  kind      RuleKind
+  name      String
+  /// kind-specific config: thresholds, geofenceId, …
+  config    Json     @default("{}")
+  /// device/group scope selector (E05-3)
+  scope     Json     @default("{}")
+  /// notification channels: email/telegram/webhook refs (E05-4)
+  channels  Json     @default("[]")
+  cooldownS Int      @default(300)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@index([tenantId, accountId, enabled])
+  @@map("rules")
+}
+
+model Event {
+  id             BigInt    @id @default(autoincrement())
+  tenantId       String    @db.Uuid
+  accountId      String    @db.Uuid
+  deviceId       BigInt
+  ruleId         String?   @db.Uuid
+  kind           String
+  at             DateTime  @db.Timestamptz()
+  lat            Float?
+  lon            Float?
+  payload        Json      @default("{}")
+  acknowledgedAt DateTime? @db.Timestamptz()
+  createdAt      DateTime  @default(now()) @db.Timestamptz()
+
+  @@index([tenantId, accountId, at])
+  @@index([deviceId, at])
+  @@map("events")
+}
+
+model Command {
+  id        String        @id @default(uuid()) @db.Uuid
+  tenantId  String        @db.Uuid
+  accountId String        @db.Uuid
+  deviceId  BigInt
+  text      String
+  status    CommandStatus @default(queued)
+  response  String?
+  createdAt DateTime      @default(now()) @db.Timestamptz()
+  sentAt    DateTime?     @db.Timestamptz()
+  /// §3.5: expire after 24 h
+  expiresAt DateTime      @db.Timestamptz()
+
+  @@index([deviceId, status])
+  @@index([tenantId, accountId, createdAt])
+  @@map("commands")
+}
+
+model ApiKey {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  accountId  String?   @db.Uuid
+  name       String
+  /// orb_live_<8 chars> shown in UI; full key never stored (E06-3)
+  prefix     String
+  /// SHA-256 of the full key
+  hash       String    @unique
+  scopes     String[]  @default(["read"])
+  lastUsedAt DateTime? @db.Timestamptz()
+  revokedAt  DateTime? @db.Timestamptz()
+  createdAt  DateTime  @default(now()) @db.Timestamptz()
+
+  @@index([tenantId])
+  @@map("api_keys")
+}
+
+model Webhook {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  accountId String?  @db.Uuid
+  url       String
+  /// HMAC-SHA256 signing secret (§6.5); rotation = new row + 24 h dual-sign (E06-4)
+  secret    String
+  events    String[] @default([])
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@index([tenantId, enabled])
+  @@map("webhooks")
+}
+
+model UsageDaily {
+  tenantId  String   @db.Uuid
+  accountId String   @db.Uuid
+  deviceId  BigInt
+  day       DateTime @db.Date
+  active    Boolean  @default(true)
+
+  @@id([deviceId, day])
+  @@index([tenantId, day])
+  @@map("usage_daily")
+}
+
+model AuditLog {
+  id       BigInt   @id @default(autoincrement())
+  tenantId String?  @db.Uuid
+  userId   String?  @db.Uuid
+  action   String
+  entity   String
+  entityId String
+  before   Json?
+  after    Json?
+  at       DateTime @default(now()) @db.Timestamptz()
+
+  @@index([tenantId, at])
+  @@map("audit_log")
+}
+
+model GeocodeCache {
+  /// geohash7 ≈ 150 m cell (§6.3)
+  gridKey    String   @id
+  address    String
+  resolvedAt DateTime @default(now()) @db.Timestamptz()
+
+  @@map("geocode_cache")
+}
