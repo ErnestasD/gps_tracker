@@ -31,3 +31,14 @@
 - Photon Vilnius reverse-geocode — in smoke.sh (warmup-tolerant)
 - port 5027 reachable — ansible ufw role; verified at staging time
 - `CONFIG GET maxmemory-policy` = noeviction asserted — in smoke.sh
+
+## Staging provisioned (2026-07-04)
+vpsnet Cloud VPS KVM-3 (4 vCPU / 15 GB / 97 GB, Ubuntu 24.04, KVM), IP 185.80.129.33.
+Base (chrony, unattended-upgrades) + Docker 29 + UFW (22/80/443/5027) + core stack up;
+smoke passed (redis noeviction/appendfsync, TS+PostGIS, caddy healthz). Photon warming.
+**Security finding & fix:** Docker publishes ports via iptables rules that BYPASS UFW —
+Grafana/Prometheus/Postgres/Redis were briefly internet-reachable with dev passwords.
+Fixed by binding all internal services to 127.0.0.1 (this commit); verified externally
+that only Caddy 80/443 + ingest 5027 are public. Access Grafana/etc via SSH tunnel:
+`ssh -L 3000:127.0.0.1:3000 root@185.80.129.33`.
+Still pending (needs domain/TLS): Caddy reverse-proxy + basic auth for Grafana, GlitchTip.

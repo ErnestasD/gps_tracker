@@ -1,5 +1,7 @@
 # Orbetra local/staging stack (E01-2, PROJECT_PLAN §5 infra + §2 links).
 # `make up` boots this; staging adds docker-compose.staging.yml overrides.
+# SECURITY: Docker publishes ports by inserting iptables rules that BYPASS UFW, so
+# every internal service binds 127.0.0.1 (reach via SSH tunnel). Only Caddy is public.
 name: orbetra
 
 services:
@@ -9,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${PG_PASSWORD:-orbetra_dev}
       POSTGRES_DB: orbetra
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - pg_data:/home/postgres/pgdata
     healthcheck:
@@ -23,7 +25,7 @@ services:
     # BullMQ hard requirement: noeviction (PROJECT_PLAN §5 queue split; eviction corrupts queues)
     command: redis-server --appendonly yes --appendfsync everysec --maxmemory-policy noeviction
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -39,7 +41,7 @@ services:
       # DE/LV/EE added when tenants demand — bigger disk)
       COUNTRY_CODE: pl
     ports:
-      - '2322:2322'
+      - '127.0.0.1:2322:2322'
     volumes:
       - photon_data:/photon/photon_data
     healthcheck:
@@ -53,7 +55,7 @@ services:
   uptime-kuma:
     image: louislam/uptime-kuma:1
     ports:
-      - '3001:3001'
+      - '127.0.0.1:3001:3001'
     volumes:
       - kuma_data:/app/data
 
@@ -63,7 +65,7 @@ services:
       - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prom_data:/prometheus
     ports:
-      - '9090:9090'
+      - '127.0.0.1:9090:9090'
 
   grafana:
     image: grafana/grafana-oss:latest
@@ -73,7 +75,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
 
   loki:
     image: grafana/loki:3.4.1
@@ -81,7 +83,7 @@ services:
     volumes:
       - loki_data:/loki
     ports:
-      - '3100:3100'
+      - '127.0.0.1:3100:3100'
 
   caddy:
     image: caddy:2-alpine
