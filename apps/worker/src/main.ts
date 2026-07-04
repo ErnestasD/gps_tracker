@@ -22,11 +22,22 @@ async function main(): Promise<void> {
   const hasher = await xxhash()
   const hash = (data: Uint8Array): bigint => hasher.h64Raw(data)
 
-  const leaser = new ShardLeaser(redis, workerId)
+  const consumersByShard = new Map<number, ShardConsumer>()
+  const leaser = new ShardLeaser(redis, workerId, 30_000, (shard) => {
+    // lease lost (stall/partition): stop the consumer NOW — another worker owns the
+    // shard and concurrent processing would violate I2 (adversarial review, E02-3)
+    console.error(`lease lost for shard ${shard} — stopping its consumer`)
+    void consumersByShard.get(shard)?.stop()
+    consumersByShard.delete(shard)
+  })
   const shards = await leaser.claimAll()
   console.log(`${workerId} owns shards: ${[...shards].join(',') || '(none)'}`)
 
-  const consumers = [...shards].map((s) => new ShardConsumer(s, { redis, pool, hash, workerId }))
+  const consumers = [...shards].map((s) => {
+    const c = new ShardConsumer(s, { redis, pool, hash, workerId })
+    consumersByShard.set(s, c)
+    return c
+  })
   for (const c of consumers) {
     await c.ensureGroup()
     c.start()

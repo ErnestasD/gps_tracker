@@ -15,8 +15,10 @@ export interface ConsumerDeps {
   pool: Pool
   hash: HashFn
   workerId: string
-  /** Downstream handoff (live state → rules → trips; stubs until E02-4+). MUST receive
-   * records sorted by fixTime per device (Appendix A / audit R4 — pinned to E02-3). */
+  /** Downstream handoff (live state → rules → trips; stubs until E02-4+). Records are
+   * fixTime-sorted WITHIN each batch; a late buffered batch can still carry older
+   * fixTimes than an earlier batch — cross-batch disorder is reconciled by E04-2
+   * recompute, and liveState must be order-tolerant (max-wins on fix_time, E02-4). */
   onBatch?: (records: NormalizedRecord[]) => void
   batchSize?: number
   blockMs?: number

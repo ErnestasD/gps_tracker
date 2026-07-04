@@ -16,8 +16,7 @@ I1 (acked==stream==rows) ✓ · I2 (flood+live → fixTime-ordered handoff) ✓ 
 chaos crash-before-XACK → XAUTOCLAIM recovery, zero loss/dupes ✓ · SIGTERM <5s ✓ · rec_hash >2^63−1 signed ✓ ·
 malformed CBOR → raw:dead ✓ · lease exclusivity ✓.
 **Throughput pre-gate (1500 rec/s × 60 s)**: deferred to a PERF=1-gated run before E07-3 —
-recorded here as an open AC item, not silently dropped. Documented "one stream=one shard=
-many devices; serial per shard satisfies per-device order" (consumer.ts header).
+recorded here as an open AC item, not silently dropped. Ordering honesty (review): serial-per-shard gives per-device ARRIVAL order; fixTime sort is per-batch only — cross-batch late records are reconciled by E04-2 recompute and liveState is max-wins (E02-4). Lease loss now stops the shard consumer (split-brain guard).
 
 ## NOT here
 liveState (E02-4 — onBatch hook ready), rules/trips, metrics endpoint (E02-5).

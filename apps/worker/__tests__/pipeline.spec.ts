@@ -195,6 +195,20 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     expect(await redis.exists(`shards:lease:${SHARD}`)).toBe(0)
   }, 60_000)
 
+  it('lease loss fires onLost so the owner can stop its consumer (split-brain guard)', async () => {
+    const lost: number[] = []
+    const short = new ShardLeaser(redis, 'w-stall', 400, (s) => lost.push(s))
+    await short.claimAll()
+    // simulate: leases expire during a stall, another worker takes shard 0
+    await new Promise((r) => setTimeout(r, 500))
+    await redis.set('shards:lease:0', 'w-thief', 'PX', 10_000)
+    await new Promise((r) => setTimeout(r, 400)) // next renew tick discovers the theft
+    expect(lost).toContain(0)
+    expect(short.owned.has(0)).toBe(false)
+    await short.release()
+    await redis.del('shards:lease:0')
+  }, 30_000)
+
   it('shard leases are exclusive: second worker cannot claim an owned shard', async () => {
     const l1 = new ShardLeaser(redis, 'w-one', 10_000)
     const l2 = new ShardLeaser(redis, 'w-two', 10_000)

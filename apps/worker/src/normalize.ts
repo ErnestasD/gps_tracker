@@ -37,7 +37,10 @@ export function normalize(
     else if (id === AVL_TOTAL_ODOMETER && typeof v === 'bigint') odometerM = v
     else {
       const name = dict.get(id)?.name
-      const key = name ?? `io_${id}`
+      // §3.7 never-dropped: dictionary names are NOT unique across ids (e.g. two
+      // "Battery Voltage" rows) — on collision the later id keeps its io_<id> key
+      let key = name ?? `io_${id}`
+      if (key in attrs) key = `io_${id}`
       attrs[key] =
         typeof v === 'bigint'
           ? v <= BigInt(Number.MAX_SAFE_INTEGER)

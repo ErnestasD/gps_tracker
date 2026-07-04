@@ -76,6 +76,25 @@ describe('normalize (E02-3)', () => {
     expect(normalize({ ...basePayload, angle: 275 }, hash).course).toBe(275)
   })
 
+  it('duplicate dictionary names do not overwrite each other (§3.7 never-dropped)', async () => {
+    const { loadDictionary } = await import('@orbetra/codec')
+    const dict = loadDictionary('fmb1xx')
+    const byName = new Map<string, number[]>()
+    for (const [id, e] of dict) {
+      const ids = byName.get(e.name) ?? []
+      ids.push(id)
+      byName.set(e.name, ids)
+    }
+    const dup = [...byName.values()].find((ids) => ids.length >= 2)
+    expect(dup, 'fmb1xx has at least one duplicated name').toBeDefined()
+    const [id1, id2] = dup!
+    const rec = normalize({ ...basePayload, io: [[id1!, 1n], [id2!, 2n]] }, hash)
+    const values = Object.values(rec.attrs)
+    expect(values).toContain(1)
+    expect(values).toContain(2) // both survive — second under io_<id>
+    expect(rec.attrs[`io_${id2}`]).toBe(2)
+  })
+
   it('malformed payload throws (consumer dead-letters it)', () => {
     expect(() => normalize({ nonsense: true }, hash)).toThrow()
   })

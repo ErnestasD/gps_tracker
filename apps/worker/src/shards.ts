@@ -15,6 +15,9 @@ export class ShardLeaser {
     private readonly redis: Redis,
     private readonly workerId: string,
     private readonly leaseTtlMs = 30_000,
+    /** Fired when a lease is discovered lost (GC pause/partition) — the owner MUST
+     * stop that shard's consumer immediately or I2 exclusivity is violated. */
+    private readonly onLost?: (shard: number) => void,
   ) {}
 
   async claimAll(): Promise<Set<number>> {
@@ -42,6 +45,7 @@ export class ShardLeaser {
             await this.redis.pexpire(`shards:lease:${shard}`, this.leaseTtlMs)
           } else {
             this.owned.delete(shard) // lost the lease — stop touching that shard
+            this.onLost?.(shard)
           }
         }
       })().catch(() => undefined)
