@@ -166,6 +166,36 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     expect(ingest!.metrics.pausedSockets).toBe(0)
   }, 30_000)
 
+  it('sanity-rejected record still ACKed (durable in rejects stream) - no eternal resend loop', async () => {
+    const port = await startIngest()
+    // craft a liveDrive-style run whose middle record has an insane timestamp:
+    // encode 3 records into one packet manually via the codec
+    const { encodeAvlPacket } = await import('@orbetra/codec')
+    const { driveRecords } = await import('@orbetra/simulator')
+    const [a, b, c] = driveRecords({ seed: 5, count: 3, startMs: base.startMs })
+    const badB = { ...b!, tsMs: Date.UTC(2010, 0, 1) } // < 2020 sanity floor (§3.6 cold boot)
+    const pkt = encodeAvlPacket(8, [a!, badB, c!])
+    const scenario = { name: 'oneBadClock', *packets() { yield pkt } }
+    const res = await runScenario(scenario, { ...base, count: 3, host: '127.0.0.1', port })
+    // ACK must equal NumberOfData (3) - the server took responsibility for all records
+    expect(res.ackedRecords).toBe(3)
+    expect(res.underAckedPackets).toBe(0)
+    expect(await redis.xlen(`raw:${SHARD}`)).toBe(2)
+    expect(await redis.xlen('rejects')).toBe(1)
+    expect(ingest!.metrics.sanityRejectsTotal).toBe(1)
+  }, 30_000)
+
+  it('handshake rate limit: connects beyond the per-minute budget are destroyed pre-Redis', async () => {
+    const port = await startIngest({ maxHandshakesPerIpPerMin: 3 })
+    for (let i = 0; i < 3; i++) {
+      const res = await runScenario(liveDrive, { ...base, count: 1, host: '127.0.0.1', port })
+      expect(res.ackedRecords).toBe(1)
+    }
+    const fourth = await runScenario(liveDrive, { ...base, count: 1, host: '127.0.0.1', port })
+    expect(fourth.socketClosedByServer).toBe(true)
+    expect(fourth.ackedRecords).toBe(0)
+  }, 30_000)
+
   it('duplicate IMEI: newest connection wins, old socket is closed', async () => {
     const port = await startIngest()
     const first = runScenario(slowLoris, { ...base, count: 1, host: '127.0.0.1', port, byteDelayMs: 50 })

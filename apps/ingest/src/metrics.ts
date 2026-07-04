@@ -10,4 +10,5 @@ export class IngestMetrics {
   rejectedImeiTotal = 0
   sanityRejectsTotal = 0
   pausedSockets = 0 // gauge: sockets currently paused by backpressure
+  sessionErrorsTotal = 0
 }

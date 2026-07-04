@@ -21,10 +21,11 @@ export class DeviceRegistry {
     const results = await this.redis
       .multi()
       .zadd('quarantine:imei', nowMs, imei)
+      .zremrangebyrank('quarantine:imei', 0, -10_001) // keep newest 10k — spoof-flood cap
       .incr(key)
       .expire(key, 3600, 'NX')
       .exec()
-    const count = results?.[1]?.[1]
+    const count = results?.[2]?.[1]
     return typeof count === 'number' ? count : Number(count ?? 1)
   }
 }

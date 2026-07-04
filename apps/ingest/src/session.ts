@@ -52,6 +52,7 @@ export class Session {
   private deviceId: bigint | null = null
   private shard = 0
   private paused = false
+  private pendingChunks = 0
   private timer: NodeJS.Timeout | null = null
   private readonly now: () => number
   private processing: Promise<void> = Promise.resolve()
@@ -65,10 +66,28 @@ export class Session {
     socket.setKeepAlive(true, 60_000) // §6.1 SO_KEEPALIVE
     this.armTimer(deps.config.handshakeTimeoutMs)
     socket.on('data', (chunk) => {
-      // serialize async packet handling per socket — per-device ordering (rule 5)
+      // serialize async packet handling per socket — per-device ordering (rule 5).
+      // Socket is paused while work is in flight so a fast sender + slow Redis can
+      // never grow an unbounded chunk backlog (§10 failure #11).
+      this.pendingChunks++
+      socket.pause()
       this.processing = this.processing
         .then(() => this.onData(chunk))
-        .catch(() => this.destroy())
+        .catch((err: unknown) => {
+          // never a silent catch (CLAUDE.md §9.6): surface, then drop the socket
+          this.deps.metrics.sessionErrorsTotal++
+          console.error('ingest session error', {
+            imei: this.imei,
+            err: err instanceof Error ? err.message : String(err),
+          })
+          this.destroy()
+        })
+        .finally(() => {
+          this.pendingChunks--
+          if (this.pendingChunks === 0 && !this.paused && !this.socket.destroyed) {
+            this.socket.resume()
+          }
+        })
     })
     socket.on('error', () => this.destroy())
     socket.on('close', () => this.clearTimer())
@@ -81,6 +100,10 @@ export class Session {
   /** Old socket of the same IMEI is closed when a new one authenticates. */
   destroy(): void {
     this.clearTimer()
+    if (this.paused) {
+      this.paused = false
+      this.deps.metrics.pausedSockets--
+    }
     this.socket.destroy()
   }
 
@@ -141,6 +164,8 @@ export class Session {
     this.deviceId = deviceId
     this.shard = Number(BigInt(parsed.imei) % BigInt(SHARD_COUNT)) // rule 5: imei % 16
     this.state = 'STREAMING'
+    // NOTE (review LOW): old-session in-flight XADDs may interleave with this socket
+    // for ~one batch during handover; I2 (fix_time ordering) + I3 (dedupe) absorb it.
     this.deps.onAuthenticated(parsed.imei, this)
     this.socket.write(this.codec.encodeImeiReply(true))
     this.armTimer(this.deps.config.readIdleTimeoutMs)
@@ -165,27 +190,50 @@ export class Session {
 
     if (parsed.kind === 'cmdResponse') {
       // Codec 12/13/14 responses: captured for the command dispatcher (E08-2)
-      await this.deps.redis.rpush(
-        `cmd:resp:${this.deviceId}`,
-        JSON.stringify({ codec: parsed.codec, text: parsed.text, nack: parsed.nack ?? false }),
-      )
+      const key = `cmd:resp:${this.deviceId}`
+      await this.deps.redis
+        .multi()
+        .rpush(key, JSON.stringify({ codec: parsed.codec, text: parsed.text, nack: parsed.nack ?? false }))
+        .ltrim(key, -1000, -1)
+        .expire(key, 24 * 3600)
+        .exec()
       return
     }
     if (parsed.kind !== 'avl') return
 
     const good: AvlRecord[] = []
+    const insane: AvlRecord[] = []
     for (const rec of parsed.records) {
       if (this.sane(rec)) good.push(rec)
-      else await this.rejectRecord(rec)
+      else insane.push(rec)
     }
 
-    // persist to the device's shard stream, THEN ack the persisted count (rule 4 / I1)
-    if (good.length > 0) {
+    // persist to the device's shard stream, THEN ack (rule 4 / I1). Sanity-rejected
+    // records are written durably to the 'rejects' stream IN THE SAME pipeline and
+    // COUNT toward the ACK — §3.2 resend is whole-packet, so under-ACKing a record
+    // we have already taken responsibility for would wedge the device in an eternal
+    // resend loop (adversarial review finding, E01-5).
+    if (good.length > 0 || insane.length > 0) {
       const pipeline = this.deps.redis.pipeline()
       const serverTimeMs = this.now()
+      for (const rec of insane) {
+        this.deps.metrics.sanityRejectsTotal++
+        pipeline.xadd(
+          'rejects',
+          'MAXLEN',
+          '~',
+          100_000,
+          '*',
+          'p',
+          cbor.encode({ imei: this.imei, tsMs: rec.tsMs, raw: rec.raw, reason: 'sanity' }),
+        )
+      }
       for (const rec of good) {
         pipeline.xadd(
           `raw:${this.shard}`,
+          'MAXLEN',
+          '~',
+          100_000, // §5 R8-4 hard cap per shard
           '*',
           'p',
           cbor.encode({
@@ -223,17 +271,6 @@ export class Session {
     if (rec.tsMs < cfg.minTsMs || rec.tsMs > this.now() + cfg.maxFutureMs) return false
     if (Math.abs(rec.lat) > 90 || Math.abs(rec.lon) > 180) return false
     return true
-  }
-
-  private async rejectRecord(rec: AvlRecord): Promise<void> {
-    this.deps.metrics.sanityRejectsTotal++
-    // fire-and-forget worker queue `rejects` (§6.1) — worker writes raw_rejects rows
-    await this.deps.redis.xadd(
-      'rejects',
-      '*',
-      'p',
-      cbor.encode({ imei: this.imei, tsMs: rec.tsMs, raw: rec.raw, reason: 'sanity' }),
-    )
   }
 
   private async maybeBackpressure(): Promise<void> {

@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:net'
 import type { Redis } from 'ioredis'
 
-import { IpLimiter } from './limits.js'
+import { HandshakeRateLimiter, IpLimiter } from './limits.js'
 import { IngestMetrics } from './metrics.js'
 import { DeviceRegistry } from './registry.js'
 import { Session, type SessionConfig } from './session.js'
@@ -9,11 +9,14 @@ import { Session, type SessionConfig } from './session.js'
 export interface IngestConfig extends SessionConfig {
   maxConn: number
   maxConnPerIp: number
+  /** New-connection handshakes allowed per IP per minute (spoof-churn guard). */
+  maxHandshakesPerIpPerMin: number
 }
 
 export const DEFAULT_CONFIG: IngestConfig = {
   maxConn: 20_000, // §6.7 INGEST_MAX_CONN
   maxConnPerIp: 200, // §6.7 INGEST_MAX_CONN_PER_IP
+  maxHandshakesPerIpPerMin: 600, // generous for NAT'd fleets; blocks per-connect spoof churn
   pauseAboveDepth: 50_000, // I4
   handshakeTimeoutMs: 10_000, // §6.1
   readIdleTimeoutMs: 40 * 60_000, // §6.1 default profile
@@ -34,13 +37,14 @@ export function createIngestServer(
   const metrics = new IngestMetrics()
   const registry = new DeviceRegistry(redis)
   const limiter = new IpLimiter(config.maxConnPerIp)
+  const handshakes = new HandshakeRateLimiter(config.maxHandshakesPerIpPerMin)
   const liveByImei = new Map<string, Session>()
   let connections = 0
 
   const server = createServer((socket) => {
     const ip = socket.remoteAddress ?? 'unknown'
-    if (connections >= config.maxConn || !limiter.tryAcquire(ip)) {
-      socket.destroy() // cap reached — refuse outright (§6.1 anti-abuse)
+    if (connections >= config.maxConn || !handshakes.allow(ip) || !limiter.tryAcquire(ip)) {
+      socket.destroy() // cap/rate reached — refuse before any Redis work (§6.1 anti-abuse)
       return
     }
     connections++
