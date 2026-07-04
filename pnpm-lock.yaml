@@ -82,6 +82,10 @@ importers:
         version: 3.2.6(@types/node@22.20.0)
 
   packages/codec:
+    dependencies:
+      complete-teltonika-parser:
+        specifier: 0.3.6
+        version: 0.3.6
     devDependencies:
       eslint:
         specifier: ^9.30.0
@@ -707,6 +711,9 @@ packages:
 
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
+
+  complete-teltonika-parser@0.3.6:
+    resolution: {integrity: sha512-R+4BAoJSRj+fE4hvfJtH1fzQKzrRBqW7uhvHuD3kdTsjMnbNQ1T3uHI/2bKmdhQy6ymzogkLL9fI7cSvuJIAqA==}
 
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
@@ -1616,6 +1623,8 @@ snapshots:
       color-name: 1.1.4
 
   color-name@1.1.4: {}
+
+  complete-teltonika-parser@0.3.6: {}
 
   concat-map@0.0.1: {}
 
