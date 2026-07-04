@@ -35,7 +35,8 @@ async function main(): Promise<void> {
   const shards = await leaser.claimAll()
   console.log(`${workerId} owns shards: ${[...shards].join(',') || '(none)'}`)
 
-  const prom = startWorkerProm(redis, Number(process.env['PROMETHEUS_PORT'] ?? 9102))
+  // dedicated connection: scrape XLENs must not queue behind consumers' blocking reads
+  const prom = startWorkerProm(redis.duplicate(), Number(process.env['PROMETHEUS_PORT'] ?? 9102))
   const liveState = new LiveState(redis)
   const consumers = [...shards].map((s) => {
     const c = new ShardConsumer(s, {

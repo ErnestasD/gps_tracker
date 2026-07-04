@@ -9,7 +9,7 @@
   session (t0 at frame arrival → after ACK write).
 - `apps/worker/src/prom.ts` — stream_depth{shard} (XLEN on scrape), pipeline_lag_ms
   (now − max fixTime per batch; Grafana derives p95), pipeline_batch_rows histogram.
-- `apps/api` — ws_clients gauge (wss.clients.size on connect/close) + /metrics route.
+- `apps/api` — ws_clients gauge + /metrics route + minimal main.ts entrypoint (:3010, STUB_AUTH_TOKEN env until E03-1) so the scrape job is real.
 - `infra/grafana/dashboards/ingest.json` — 8 panels covering every frozen metric;
   `infra/prometheus/prometheus.yml` — ingest/worker/api scrape jobs.
 

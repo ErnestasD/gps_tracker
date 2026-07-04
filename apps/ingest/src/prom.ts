@@ -58,6 +58,10 @@ export function startIngestProm(metrics: IngestMetrics, port: number): IngestPro
       })
       .catch(() => res.writeHead(500).end())
   })
+  server.on('error', (err) => {
+    // metrics must NEVER take down the data plane (e.g. EADDRINUSE on co-located workers)
+    console.error('metrics listener failed', err)
+  })
   server.listen(port)
   return { registry, ackLatencyMs, server }
 }

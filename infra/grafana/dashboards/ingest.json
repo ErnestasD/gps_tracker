@@ -114,8 +114,14 @@
       },
       "targets": [
         {
-          "expr": "rate(ingest_parse_fail_total[5m]) or rate(ingest_frame_violations_total[5m])",
-          "refId": "A"
+          "expr": "rate(ingest_parse_fail_total[5m])",
+          "refId": "A",
+          "legendFormat": "parse fail"
+        },
+        {
+          "expr": "rate(ingest_frame_violations_total[5m])",
+          "refId": "B",
+          "legendFormat": "frame violations"
         }
       ]
     },

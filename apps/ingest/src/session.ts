@@ -186,6 +186,7 @@ export class Session {
         // corrupt packet: ACK the count actually persisted — zero (rule 4; device re-sends)
         this.deps.metrics.parseFailTotal++
         this.socket.write(this.codec.encodeAck(0))
+        this.deps.observeAckLatencyMs?.(this.now() - t0) // error-ACKs count too
         return
       }
       throw err
