@@ -42,11 +42,8 @@
 5. **CI:** Node 22 + corepack pnpm, install with lockfile, `turbo run typecheck lint test`
    (affected graph vs base on PRs via `--filter=...[origin/main]`, full run on main pushes).
    Greps the diff for `TODO(VERIFY-WIKI)` and fails on hit (mirrors the local gate —
-   CLAUDE.md rule 8 CI-block). **Host: see open question 1** — the backlog assumed GitHub
-   Actions (`.github/workflows/ci.yml`), but the actual remote is Bitbucket
-   (`bitbucket.org/ErnestasD/gps_tracker`), whose native CI is Bitbucket Pipelines
-   (`bitbucket-pipelines.yml`, free tier ~50 build-min/month — likely too little for
-   monorepo CI on every PR).
+   CLAUDE.md rule 8 CI-block). Host: GitHub Actions (`.github/workflows/ci.yml`) —
+   origin is github.com/ErnestasD/gps_tracker (see Resolved below).
 6. **Tests:** `scripts/__tests__/hooks.spec.sh` (plain sh assertions): gate no-ops on
    `docs/x.md`; gate maps `packages/shared/src/index.ts` → `@trackcore/shared`; commit-gate
    blocks on a staged `TODO(VERIFY-WIKI)`; commit-gate blocks fixture change without trailer
@@ -68,14 +65,8 @@ Single branch `feat/E01-1-scaffold`, one PR. After merge, Appendix D allows the 
 parallel lanes: E01-2 (infra) ∥ E01-4 (codec). Adversarial review pass on the diff before
 merge per CLAUDE.md workflow step 6.
 
-## Open questions for founders (answer before or during implementation)
-1. **CI host.** Remote is Bitbucket (created 2026-07-04), but the whole hand-off package
-   (E01-1 files list, CC_PLAYBOOK §8, PROJECT_PLAN §5 "GitHub Actions CD") assumes GitHub.
-   Options: (a) move/mirror the repo to GitHub and keep the plan as written (free tier:
-   2,000 CI-min/mo private); (b) stay on Bitbucket and rewrite the CI story around
-   Bitbucket Pipelines (free tier ~50 min/mo — would need a paid plan or a self-hosted
-   runner); (c) Bitbucket as origin + GitHub mirror only for CI. Decision gates the CI
-   half of E01-1.
-
 ## Resolved during planning
+- **CI host:** founder decision 2026-07-04 — `origin` = github.com/ErnestasD/gps_tracker
+  (GitHub Actions CI as the backlog assumes); bitbucket.org/ErnestasD/gps_tracker kept as
+  `bitbucket` mirror remote. E00-2's "GitHub org" satisfied by the personal repo for now.
 - pnpm version: pin current stable (10.x) via `packageManager`; bump deliberately later.
