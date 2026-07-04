@@ -52,8 +52,16 @@ export async function runScenario(
   }
 
   const result = { ...base }
+  const byteDelayMs = (scenario as { byteDelayMs?: number }).byteDelayMs ?? opts.byteDelayMs ?? 0
   for await (const pkt of scenario.packets(opts)) {
-    socket.write(pkt)
+    if (byteDelayMs > 0) {
+      for (const byte of pkt) {
+        socket.write(Buffer.from([byte]))
+        await sleep(byteDelayMs)
+      }
+    } else {
+      socket.write(pkt)
+    }
     result.sentPackets++
     const ack = await reader.read(4)
     if (ack === null) {
