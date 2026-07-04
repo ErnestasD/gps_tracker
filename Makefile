@@ -5,7 +5,8 @@ up:
 	@echo "E01-2 not implemented yet: docker compose stack lands there"
 
 migrate:
-	@echo "E01-3 not implemented yet: prisma migrate + sql migrator land there"
+	cd packages/db && pnpm exec prisma migrate deploy
+	pnpm exec tsx packages/db/sql/migrate.ts
 
 # Run all quality gates (the commit gate re-verifies staged packages via turbo cache)
 gates:
