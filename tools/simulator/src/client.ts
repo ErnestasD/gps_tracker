@@ -32,7 +32,17 @@ export async function runScenario(
   const hello = Buffer.alloc(2 + imeiAscii.length)
   hello.writeUInt16BE(imeiAscii.length, 0)
   imeiAscii.copy(hello, 2)
-  socket.write(hello)
+  const helloDelayMs = opts.byteDelayMs ?? (scenario as { byteDelayMs?: number }).byteDelayMs ?? 0
+  if (helloDelayMs > 0) {
+    // true slow-loris trickles from the first byte — the handshake timeout must kill us
+    for (const byte of hello) {
+      if (socket.destroyed) break
+      socket.write(Buffer.from([byte]))
+      await sleep(helloDelayMs)
+    }
+  } else {
+    socket.write(hello)
+  }
 
   const base: RunResult = {
     sentPackets: 0,
@@ -52,10 +62,11 @@ export async function runScenario(
   }
 
   const result = { ...base }
-  const byteDelayMs = (scenario as { byteDelayMs?: number }).byteDelayMs ?? opts.byteDelayMs ?? 0
+  const byteDelayMs = helloDelayMs
   for await (const pkt of scenario.packets(opts)) {
     if (byteDelayMs > 0) {
       for (const byte of pkt) {
+        if (socket.destroyed) break
         socket.write(Buffer.from([byte]))
         await sleep(byteDelayMs)
       }
