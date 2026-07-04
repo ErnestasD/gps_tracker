@@ -107,14 +107,25 @@ describe('E02-4 ws-ticket + live gateway', () => {
     await expect(connect(ticket)).rejects.toThrow(/401/)
   })
 
+  it('cross-TENANT isolation: t2 subscriber never receives live:t1 messages (§6.2)', async () => {
+    const t2 = await connect(await issueTicket(deps, { userId: 'u9', tenantId: 't2' }))
+    const t1 = await connect(await issueTicket(deps, CTX_TENANT))
+    await new Promise((r) => setTimeout(r, 100))
+    await redis.publish('live:t1', JSON.stringify({ deviceId: '42', accountId: null, lat: 1, lon: 1 }))
+    await waitForCount(t1, 1)
+    await new Promise((r) => setTimeout(r, 400))
+    expect(t2.inbox).toHaveLength(0)
+    t1.ws.close()
+    t2.ws.close()
+  })
+
   it('account scope: user of account A never receives account B device events', async () => {
-    await redis.hset('device:account', '100', 'acc-a', '200', 'acc-b')
     const a = await connect(await issueTicket(deps, CTX_A))
     const tenant = await connect(await issueTicket(deps, CTX_TENANT))
     await new Promise((r) => setTimeout(r, 100))
 
-    await redis.publish('live:t1', JSON.stringify({ deviceId: '200', lat: 1, lon: 1 }))
-    await redis.publish('live:t1', JSON.stringify({ deviceId: '100', lat: 2, lon: 2 }))
+    await redis.publish('live:t1', JSON.stringify({ deviceId: '200', accountId: 'acc-b', lat: 1, lon: 1 }))
+    await redis.publish('live:t1', JSON.stringify({ deviceId: '100', accountId: 'acc-a', lat: 2, lon: 2 }))
 
     // tenant-wide user sees both; account-A user must see ONLY device 100
     const both = await waitForCount(tenant, 2)

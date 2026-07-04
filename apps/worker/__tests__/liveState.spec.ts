@@ -83,6 +83,27 @@ describe('LiveState (E02-4)', () => {
     expect(stored).toBe('3000')
   })
 
+  it('CONCURRENT applies cannot regress the marker (review HIGH race)', async () => {
+    const live = new LiveState(redis)
+    // fire both without awaiting the first — per-device chaining must serialize them
+    const pNew = live.apply([rec(9_000, 60.0)])
+    const pOld = live.apply([rec(8_000, 59.0)])
+    await Promise.all([pNew, pOld])
+    expect(await redis.hget('device:42:last', 'fixTimeMs')).toBe('9000')
+  })
+
+  it('published payload carries accountId for in-memory WS filtering', async () => {
+    await redis.hset('device:tenant', '42', 't1')
+    await redis.hset('device:account', '42', 'acc-x')
+    const got = new Promise<string>((resolve) => {
+      void sub.subscribe('live:t1')
+      sub.once('message', (_ch, msg) => resolve(msg))
+    })
+    await new LiveState(redis).apply([rec(7_777)])
+    const published = JSON.parse(await got) as { accountId: string | null }
+    expect(published.accountId).toBe('acc-x')
+  })
+
   it('no tenant mapping → state stored, publish skipped (no channel yet)', async () => {
     await new LiveState(redis).apply([rec(5_000)])
     expect(await redis.hget('device:42:last', 'fixTimeMs')).toBe('5000')

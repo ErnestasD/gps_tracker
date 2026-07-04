@@ -19,7 +19,7 @@ export interface ConsumerDeps {
    * fixTime-sorted WITHIN each batch; a late buffered batch can still carry older
    * fixTimes than an earlier batch — cross-batch disorder is reconciled by E04-2
    * recompute, and liveState must be order-tolerant (max-wins on fix_time, E02-4). */
-  onBatch?: (records: NormalizedRecord[]) => void
+  onBatch?: (records: NormalizedRecord[]) => void | Promise<void>
   batchSize?: number
   blockMs?: number
   /** XAUTOCLAIM min-idle (§6.1: 60 s; tests shrink it). */
@@ -170,7 +170,10 @@ export class ShardConsumer {
     this.stats.inserted += inserted
     this.stats.processed += records.length
 
-    this.deps.onBatch?.(records)
+    // awaited BEFORE XACK: shard serialization then serializes downstream applies per
+    // device (review HIGH: fire-and-forget allowed two applies to race and regress the
+    // live marker); crash before XACK replays the batch — apply is idempotent max-wins
+    await this.deps.onBatch?.(records)
 
     // ACK only after durable insert (crash before this line ⇒ XAUTOCLAIM replays,
     // ON CONFLICT dedupes — zero loss, zero dupes)

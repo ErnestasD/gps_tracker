@@ -37,26 +37,35 @@ export async function issueTicket(deps: WsDeps, ctx: WsAuthContext): Promise<str
 export function attachWsGateway(server: Server, deps: WsDeps): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
   const subscribers = new Map<string, Set<{ ws: WebSocket; ctx: WsAuthContext }>>()
-  let subscribed = false
+  let subPromise: Promise<void> | null = null
 
-  const ensureSubscription = async (): Promise<void> => {
-    if (subscribed) return
-    subscribed = true
-    await deps.redisSub.psubscribe('live:*')
-    deps.redisSub.on('pmessage', (_pattern, channel, message) => {
-      const tenantId = channel.slice('live:'.length)
-      const conns = subscribers.get(tenantId)
-      if (!conns || conns.size === 0) return
-      void (async () => {
-        const parsed = JSON.parse(message) as { deviceId: string }
-        // account scope filter — resolved once per message, not per socket
-        const deviceAccount = await deps.redis.hget('device:account', parsed.deviceId)
-        for (const { ws, ctx } of conns) {
-          if (ctx.accountId !== undefined && deviceAccount !== ctx.accountId) continue
-          if (ws.readyState === ws.OPEN) ws.send(message)
+  const ensureSubscription = (): Promise<void> => {
+    // promise (not flag): a second concurrent upgrade awaits the ACTUAL subscription
+    subPromise ??= (async () => {
+      await deps.redisSub.psubscribe('live:*')
+      deps.redisSub.on('pmessage', (_pattern, channel, message) => {
+        const tenantId = channel.slice('live:'.length)
+        const conns = subscribers.get(tenantId)
+        if (!conns || conns.size === 0) return
+        let accountId: string | null = null
+        try {
+          accountId = (JSON.parse(message) as { accountId?: string | null }).accountId ?? null
+        } catch {
+          return // crafted/broken publish — drop
         }
-      })().catch(() => undefined)
-    })
+        for (const { ws, ctx } of conns) {
+          // in-memory scope filter: accountId travels in the payload (LiveState);
+          // unmapped device (null) fails CLOSED for account-scoped users
+          if (ctx.accountId !== undefined && accountId !== ctx.accountId) continue
+          try {
+            if (ws.readyState === ws.OPEN) ws.send(message)
+          } catch {
+            // one closing socket must not starve the rest of the fanout
+          }
+        }
+      })
+    })()
+    return subPromise
   }
 
   server.on('upgrade', (req: IncomingMessage, socket, head) => {
@@ -82,6 +91,7 @@ export function attachWsGateway(server: Server, deps: WsDeps): WebSocketServer {
         subscribers.set(ctx.tenantId, set)
         ws.on('close', () => {
           set.delete(entry)
+          if (set.size === 0) subscribers.delete(ctx.tenantId)
         })
       })
     })().catch(() => socket.destroy())

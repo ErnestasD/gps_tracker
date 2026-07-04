@@ -41,7 +41,13 @@ async function main(): Promise<void> {
       pool,
       hash,
       workerId,
-      onBatch: (records) => void liveState.apply(records).catch((err: unknown) => console.error('liveState', err)),
+      onBatch: async (records) => {
+        try {
+          await liveState.apply(records) // live is best-effort: log, never stall the shard
+        } catch (err) {
+          console.error('liveState', err)
+        }
+      },
     })
     consumersByShard.set(s, c)
     return c
