@@ -1,0 +1,9 @@
+# base: deploy user, unattended upgrades, chrony (R13: GPS platform needs sane clocks)
+- name: Create deploy user
+  ansible.builtin.user: { name: deploy, groups: [sudo, docker], shell: /bin/bash, append: true }
+- name: Unattended upgrades
+  ansible.builtin.apt: { name: unattended-upgrades, state: present, update_cache: true }
+- name: Chrony time sync
+  ansible.builtin.apt: { name: chrony, state: present }
+- name: Chrony enabled
+  ansible.builtin.service: { name: chrony, state: started, enabled: true }

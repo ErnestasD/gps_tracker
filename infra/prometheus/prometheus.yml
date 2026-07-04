@@ -1,0 +1,9 @@
+# Prometheus scrape config (E01-2). App metric targets (ingest/worker/api) register
+# in E02-5 when the metrics endpoints exist; names are frozen in Appendix A.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

@@ -1,0 +1,10 @@
+# Staging/prod host provisioning (E01-2). Run: ansible-playbook -i inventory site.yml
+# Roles keep to PROJECT_PLAN §5: UFW (22/80/443/5027), unattended-upgrades, Docker,
+# deploy user, chrony (R13 minor: time sync matters for a GPS platform).
+- hosts: orbetra
+  become: true
+  roles:
+    - base
+    - docker
+    - ufw
+    - caddy
