@@ -1,0 +1,15 @@
+# Orbetra reverse proxy (E01-2). Tenant custom domains (on-demand TLS) arrive in E03-5;
+# until then the ask endpoint is a deny-all stub, so no cert is ever minted for
+# an unverified domain.
+{
+	on_demand_tls {
+		ask http://api:3010/v1/internal/caddy-ask # E03-5 implements; unreachable = deny
+	}
+}
+
+# Local/dev default: plain HTTP on :80 with health endpoint.
+:80 {
+	respond /healthz "ok" 200
+	# app routes are wired in E02+ stories (api, web); keep 404 for everything else
+	respond 404
+}

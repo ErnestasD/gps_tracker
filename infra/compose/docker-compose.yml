@@ -1,0 +1,105 @@
+# Orbetra local/staging stack (E01-2, PROJECT_PLAN §5 infra + §2 links).
+# `make up` boots this; staging adds docker-compose.staging.yml overrides.
+name: orbetra
+
+services:
+  pg:
+    image: timescale/timescaledb-ha:pg16 # timescaledb + postgis in one image
+    environment:
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-orbetra_dev}
+      POSTGRES_DB: orbetra
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg_data:/home/postgres/pgdata
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d orbetra']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    # BullMQ hard requirement: noeviction (PROJECT_PLAN §5 queue split; eviction corrupts queues)
+    command: redis-server --appendonly yes --appendfsync everysec --maxmemory-policy noeviction
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  photon:
+    image: rtuszik/photon-docker:latest
+    environment:
+      # GraphHopper prebuilt country extracts (PROJECT_PLAN §2/§5: PL+LT at launch;
+      # DE/LV/EE added when tenants demand — bigger disk)
+      COUNTRY_CODE: pl
+    ports:
+      - '2322:2322'
+    volumes:
+      - photon_data:/photon/photon_data
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:2322/status || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      # first boot downloads GBs of index — tolerate a long warmup (E01-2 edge case)
+      start_period: 15m
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    ports:
+      - '3001:3001'
+    volumes:
+      - kuma_data:/app/data
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    ports:
+      - '9090:9090'
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-orbetra_dev}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - '3000:3000'
+
+  loki:
+    image: grafana/loki:3.4.1
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    ports:
+      - '3100:3100'
+
+  caddy:
+    image: caddy:2-alpine
+    volumes:
+      - ../Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    ports:
+      # local default avoids clashing with a host webserver on :80 (macOS Apache);
+      # staging override pins 80/443
+      - '${CADDY_HTTP_PORT:-8088}:80'
+      - '${CADDY_HTTPS_PORT:-8449}:443'
+
+volumes:
+  pg_data:
+  redis_data:
+  photon_data:
+  kuma_data:
+  prom_data:
+  grafana_data:
+  loki_data:
+  caddy_data:

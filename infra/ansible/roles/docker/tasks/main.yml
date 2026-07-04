@@ -1,0 +1,4 @@
+- name: Docker install (official convenience script is avoided; use distro packages)
+  ansible.builtin.apt: { name: [docker.io, docker-compose-v2], state: present, update_cache: true }
+- name: Docker service
+  ansible.builtin.service: { name: docker, state: started, enabled: true }

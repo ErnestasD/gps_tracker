@@ -2,7 +2,13 @@
 .PHONY: up migrate gates hooks
 
 up:
-	@echo "E01-2 not implemented yet: docker compose stack lands there"
+	docker compose -f infra/compose/docker-compose.yml up -d
+
+smoke:
+	sh infra/smoke.sh
+
+down:
+	docker compose -f infra/compose/docker-compose.yml down
 
 migrate:
 	@echo "E01-3 not implemented yet: prisma migrate + sql migrator land there"

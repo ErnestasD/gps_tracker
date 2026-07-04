@@ -1,0 +1,31 @@
+# Staging overrides (Hetzner CPX31 per PROJECT_PLAN §5): TLS via Caddy, GlitchTip on,
+# services bound to localhost where Caddy fronts them.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+services:
+  pg:
+    ports: [] # not exposed publicly on staging
+
+  redis:
+    ports: []
+
+  glitchtip:
+    image: glitchtip/glitchtip:latest
+    environment:
+      DATABASE_URL: postgresql://postgres:${PG_PASSWORD}@pg:5432/glitchtip
+      REDIS_URL: redis://redis:6379/1
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
+      EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-consolemail://}
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN}
+    depends_on:
+      pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  caddy:
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ../Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data

@@ -1,0 +1,6 @@
+# Caddy runs inside compose; this role only ensures the compose stack is deployed
+# and running (systemd unit invoking docker compose in the app directory).
+- name: Compose systemd unit
+  ansible.builtin.template: { src: orbetra-compose.service.j2, dest: /etc/systemd/system/orbetra-compose.service }
+- name: Enable compose stack
+  ansible.builtin.systemd: { name: orbetra-compose, enabled: true, daemon_reload: true }
