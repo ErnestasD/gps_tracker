@@ -53,9 +53,26 @@ describe('simulator TCP client (device-side wiki flow)', () => {
     expect(res).toEqual({
       sentPackets: 5,
       ackedRecords: 5,
+      underAckedPackets: 0,
       rejectedByImei: false,
       socketClosedByServer: false,
     })
+  })
+
+  it('partial ACK (server persists fewer records) → underAckedPackets counted', async () => {
+    server = createServer((socket) => {
+      const framer = new StreamFramer()
+      socket.on('data', (chunk) => {
+        for (const frame of framer.feed(chunk)) {
+          if (frame.kind === 'imei') socket.write(Buffer.from([0x01]))
+          else socket.write(Buffer.alloc(4)) // ACK 0 of 1 — corrupt-CRC server behaviour
+        }
+      })
+    })
+    const port = await listen(server)
+    const res = await runScenario(liveDrive, { ...OPTS, count: 3, host: '127.0.0.1', port })
+    expect(res.underAckedPackets).toBe(3)
+    expect(res.ackedRecords).toBe(0)
   })
 
   it('unknown IMEI → 0x00 reply → rejectedByImei', async () => {

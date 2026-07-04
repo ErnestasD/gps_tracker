@@ -5,6 +5,9 @@ import type { Scenario, ScenarioOpts } from './scenarios/types.js'
 export interface RunResult {
   sentPackets: number
   ackedRecords: number
+  /** Packets whose 4-byte ACK reported fewer records than sent (§3.2: real devices resend these — resend modelling arrives with bufferedFlood/chaos in E02-2). */
+  underAckedPackets: number
+  /** True only on an explicit 0x00 reject; connection drop before the verdict sets socketClosedByServer instead. */
   rejectedByImei: boolean
   socketClosedByServer: boolean
 }
@@ -31,27 +34,41 @@ export async function runScenario(
   imeiAscii.copy(hello, 2)
   socket.write(hello)
 
+  const base: RunResult = {
+    sentPackets: 0,
+    ackedRecords: 0,
+    underAckedPackets: 0,
+    rejectedByImei: false,
+    socketClosedByServer: false,
+  }
   const verdict = await reader.read(1)
-  if (verdict === null || verdict[0] !== 0x01) {
+  if (verdict === null) {
     socket.destroy()
-    return { sentPackets: 0, ackedRecords: 0, rejectedByImei: true, socketClosedByServer: false }
+    return { ...base, socketClosedByServer: true }
+  }
+  if (verdict[0] !== 0x01) {
+    socket.destroy()
+    return { ...base, rejectedByImei: true }
   }
 
-  let sentPackets = 0
-  let ackedRecords = 0
+  const result = { ...base }
   for await (const pkt of scenario.packets(opts)) {
     socket.write(pkt)
-    sentPackets++
+    result.sentPackets++
     const ack = await reader.read(4)
     if (ack === null) {
       // server closed on us (expected for oversize/slow-loris style scenarios)
-      return { sentPackets, ackedRecords, rejectedByImei: false, socketClosedByServer: true }
+      return { ...result, socketClosedByServer: true }
     }
-    ackedRecords += ack.readUInt32BE(0)
+    const acked = ack.readUInt32BE(0)
+    result.ackedRecords += acked
+    // per-packet verification (§3.2): NumberOfData1 is what we claimed to send
+    const sentRecords = pkt.length >= 10 && pkt.readUInt32BE(0) === 0 ? pkt[9]! : 0
+    if (acked < sentRecords) result.underAckedPackets++
     if (opts.hz > 0) await sleep(1000 / opts.hz)
   }
   socket.end()
-  return { sentPackets, ackedRecords, rejectedByImei: false, socketClosedByServer: false }
+  return result
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))

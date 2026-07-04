@@ -15,8 +15,5 @@
   },
   "dependencies": {
     "@orbetra/codec": "workspace:*"
-  },
-  "bin": {
-    "sim": "./src/main.ts"
   }
 }

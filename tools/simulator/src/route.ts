@@ -39,7 +39,13 @@ export class Route {
 
   constructor(geojsonPath: string) {
     const feature = JSON.parse(readFileSync(geojsonPath, 'utf8')) as LineStringFeature
+    if (feature.geometry?.type !== 'LineString' || !Array.isArray(feature.geometry.coordinates)) {
+      throw new Error(`${geojsonPath}: expected a GeoJSON LineString feature`)
+    }
     this.coords = feature.geometry.coordinates
+    if (this.coords.length < 2) {
+      throw new Error(`${geojsonPath}: route needs at least 2 coordinates`)
+    }
     this.cumulative = [0]
     for (let i = 1; i < this.coords.length; i++) {
       const [aLon, aLat] = this.coords[i - 1]!
@@ -47,6 +53,7 @@ export class Route {
       this.cumulative.push(this.cumulative[i - 1]! + haversineM(aLat, aLon, bLat, bLon))
     }
     this.totalM = this.cumulative[this.cumulative.length - 1]!
+    if (this.totalM <= 0) throw new Error(geojsonPath + ': route has zero length')
   }
 
   at(distanceM: number): RoutePoint {

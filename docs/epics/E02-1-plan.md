@@ -23,3 +23,13 @@
 
 ## NOT here
 bufferedFlood/invalidFix/panic/slowLoris (E02-2); any server-side code.
+
+## Review notes (2026-07-04 adversarial pass — findings applied)
+- Per-packet ACK verification added (`underAckedPackets` in RunResult); RESEND modelling
+  deliberately deferred to E02-2 bufferedFlood/chaos where E01-5/E02-3 tests need it.
+- Story text said "speed from segment geometry"; implementation intentionally inverts:
+  seeded speed drives distance along the route (simpler, still geometry-anchored bearing
+  and positions). Recorded here as a decision, not drift.
+- Route constructor validates LineString shape, >=2 points, non-zero length.
+- `bin` entry dropped (raw TS has no shebang); the CLI path is `pnpm sim ...` via tsx.
+- Explicit 0x00 reject now distinct from connection-drop-before-verdict.
