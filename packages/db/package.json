@@ -20,5 +20,15 @@
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "pg": "^8.22.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./sql/migrate.js": {
+      "types": "./sql/migrate.ts",
+      "default": "./sql/migrate.ts"
+    }
   }
 }

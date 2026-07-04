@@ -89,10 +89,44 @@ importers:
         version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0)
 
   apps/worker:
+    dependencies:
+      '@orbetra/codec':
+        specifier: workspace:*
+        version: link:../../packages/codec
+      '@orbetra/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@orbetra/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      cbor-x:
+        specifier: ^1.6.4
+        version: 1.6.4
+      ioredis:
+        specifier: ^5.11.1
+        version: 5.11.1
+      pg:
+        specifier: ^8.22.0
+        version: 8.22.0
+      xxhash-wasm:
+        specifier: ^1.1.0
+        version: 1.1.0
     devDependencies:
+      '@orbetra/ingest':
+        specifier: workspace:*
+        version: link:../ingest
+      '@orbetra/simulator':
+        specifier: workspace:*
+        version: link:../../tools/simulator
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
       eslint:
         specifier: ^9.30.0
         version: 9.39.4(jiti@2.7.0)
+      testcontainers:
+        specifier: ^12.0.4
+        version: 12.0.4
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -148,6 +182,10 @@ importers:
         version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0)
 
   packages/shared:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       eslint:
         specifier: ^9.30.0
@@ -2071,6 +2109,9 @@ packages:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
     engines: {node: '>=0.4'}
 
+  xxhash-wasm@1.1.0:
+    resolution: {integrity: sha512-147y/6YNh+tlp6nd/2pWq38i9h6mz/EuQ6njIrmW8D1BS5nCqs0P6DG+m6zTGnNz5I+uhZ0SHxBs9BsPrwcKDA==}
+
   y18n@5.0.8:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
     engines: {node: '>=10'}
@@ -2095,6 +2136,9 @@ packages:
   zip-stream@6.0.1:
     resolution: {integrity: sha512-zK7YHHz4ZXpW89AHXUPbQVGKI7uvkd3hzusTdotCg1UxyaVtg0zFJSTfW/Dq5f7OBBVnq6cZIaC8Ti4hb6dtCA==}
     engines: {node: '>= 14'}
+
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
 snapshots:
 
@@ -3966,6 +4010,8 @@ snapshots:
 
   xtend@4.0.2: {}
 
+  xxhash-wasm@1.1.0: {}
+
   y18n@5.0.8: {}
 
   yaml@2.9.0: {}
@@ -3989,3 +4035,5 @@ snapshots:
       archiver-utils: 5.0.2
       compress-commons: 6.0.2
       readable-stream: 4.7.0
+
+  zod@4.4.3: {}
