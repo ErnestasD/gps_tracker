@@ -35,6 +35,8 @@ interface SessionDeps {
   redis: Redis
   registry: DeviceRegistry
   metrics: IngestMetrics
+  /** prom histogram hook (E02-5); undefined in unit tests */
+  observeAckLatencyMs?: (ms: number) => void
   config: SessionConfig
   /** newest-wins duplicate-IMEI policy — server tracks live sessions per IMEI */
   onAuthenticated: (imei: string, session: Session) => void
@@ -174,6 +176,7 @@ export class Session {
   private async handleStreamFrame(
     frame: ReturnType<TeltonikaCodec['feed']>[number],
   ): Promise<void> {
+    const t0 = this.now()
     this.deps.metrics.msgsTotal++
     let parsed
     try {
@@ -261,6 +264,7 @@ export class Session {
     } else {
       this.socket.write(this.codec.encodeAck(0))
     }
+    this.deps.observeAckLatencyMs?.(this.now() - t0)
 
     // depth check AFTER ack (§6.1 order: persist → ACK → depth-check → maybe pause)
     await this.maybeBackpressure()

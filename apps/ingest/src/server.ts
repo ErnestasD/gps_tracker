@@ -33,6 +33,7 @@ export interface IngestServer {
 export function createIngestServer(
   redis: Redis,
   config: IngestConfig = DEFAULT_CONFIG,
+  observeAckLatencyMs?: (ms: number) => void,
 ): IngestServer {
   const metrics = new IngestMetrics()
   const registry = new DeviceRegistry(redis)
@@ -57,6 +58,7 @@ export function createIngestServer(
       redis,
       registry,
       metrics,
+      observeAckLatencyMs,
       config,
       onAuthenticated: (imei, s) => {
         // duplicate IMEI: newest wins, old socket closed (E01-5 edge case —

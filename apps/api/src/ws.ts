@@ -34,7 +34,11 @@ export async function issueTicket(deps: WsDeps, ctx: WsAuthContext): Promise<str
  * devices of their account (server-side filter via `device:account` hash, synced by
  * E03-3 device CRUD; unknown mapping ⇒ NOT delivered to account-scoped users).
  */
-export function attachWsGateway(server: Server, deps: WsDeps): WebSocketServer {
+export function attachWsGateway(
+  server: Server,
+  deps: WsDeps,
+  onClientCountChange?: (n: number) => void,
+): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
   const subscribers = new Map<string, Set<{ ws: WebSocket; ctx: WsAuthContext }>>()
   let subPromise: Promise<void> | null = null
@@ -89,9 +93,11 @@ export function attachWsGateway(server: Server, deps: WsDeps): WebSocketServer {
         const set = subscribers.get(ctx.tenantId) ?? new Set()
         set.add(entry)
         subscribers.set(ctx.tenantId, set)
+        onClientCountChange?.(wss.clients.size)
         ws.on('close', () => {
           set.delete(entry)
           if (set.size === 0) subscribers.delete(ctx.tenantId)
+          onClientCountChange?.(wss.clients.size)
         })
       })
     })().catch(() => socket.destroy())

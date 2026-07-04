@@ -18,7 +18,8 @@
   "dependencies": {
     "@orbetra/codec": "workspace:*",
     "cbor-x": "^1.6.4",
-    "ioredis": "^5.11.1"
+    "ioredis": "^5.11.1",
+    "prom-client": "^15.1.3"
   },
   "exports": {
     ".": {

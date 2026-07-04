@@ -1,5 +1,6 @@
 import { Redis } from 'ioredis'
 
+import { startIngestProm } from './prom.js'
 import { createIngestServer, DEFAULT_CONFIG } from './server.js'
 
 // Env contract per PROJECT_PLAN §6.7 — new vars only there + README table.
@@ -7,11 +8,19 @@ const port = Number(process.env['INGEST_TCP_PORT'] ?? 5027)
 const redisUrl = process.env['REDIS_URL'] ?? 'redis://127.0.0.1:6379'
 
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
-const { server, metrics } = createIngestServer(redis, {
-  ...DEFAULT_CONFIG,
-  maxConn: Number(process.env['INGEST_MAX_CONN'] ?? DEFAULT_CONFIG.maxConn),
-  maxConnPerIp: Number(process.env['INGEST_MAX_CONN_PER_IP'] ?? DEFAULT_CONFIG.maxConnPerIp),
-})
+const promPort = Number(process.env['PROMETHEUS_PORT'] ?? 9101) // §6.7
+const preMetricsHolder: { hist?: (ms: number) => void } = {}
+const { server, metrics } = createIngestServer(
+  redis,
+  {
+    ...DEFAULT_CONFIG,
+    maxConn: Number(process.env['INGEST_MAX_CONN'] ?? DEFAULT_CONFIG.maxConn),
+    maxConnPerIp: Number(process.env['INGEST_MAX_CONN_PER_IP'] ?? DEFAULT_CONFIG.maxConnPerIp),
+  },
+  (ms) => preMetricsHolder.hist?.(ms),
+)
+const prom = startIngestProm(metrics, promPort)
+preMetricsHolder.hist = (ms) => prom.ackLatencyMs.observe(ms)
 
 server.listen(port, () => {
   console.log(`orbetra ingest listening on :${port}`)

@@ -6,6 +6,7 @@ import { createPool } from '@orbetra/db'
 
 import { ShardConsumer } from './consumer.js'
 import { LiveState } from './liveState.js'
+import { startWorkerProm } from './prom.js'
 import { ShardLeaser } from './shards.js'
 
 // Env contract per PROJECT_PLAN §6.7.
@@ -34,6 +35,7 @@ async function main(): Promise<void> {
   const shards = await leaser.claimAll()
   console.log(`${workerId} owns shards: ${[...shards].join(',') || '(none)'}`)
 
+  const prom = startWorkerProm(redis, Number(process.env['PROMETHEUS_PORT'] ?? 9102))
   const liveState = new LiveState(redis)
   const consumers = [...shards].map((s) => {
     const c = new ShardConsumer(s, {
@@ -42,6 +44,9 @@ async function main(): Promise<void> {
       hash,
       workerId,
       onBatch: async (records) => {
+        prom.batchRows.observe(records.length)
+        const newestMs = records[records.length - 1]?.fixTime.getTime()
+        if (newestMs !== undefined) prom.setLagMs(Math.max(0, Date.now() - newestMs))
         try {
           await liveState.apply(records) // live is best-effort: log, never stall the shard
         } catch (err) {
