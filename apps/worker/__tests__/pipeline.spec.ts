@@ -103,7 +103,9 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
 
     const seen: number[] = []
     const c = consumerFor('w1', {
-      onBatch: (records) => seen.push(...records.map((r) => r.fixTime.getTime())),
+      onBatch: (records) => {
+        seen.push(...records.map((r) => r.fixTime.getTime()))
+      },
     })
     await c.ensureGroup()
     while ((await c.tick()) > 0) void 0
