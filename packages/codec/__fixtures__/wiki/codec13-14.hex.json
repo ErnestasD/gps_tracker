@@ -1,0 +1,35 @@
+{
+  "source_url": "https://wiki.teltonika-gps.com/view/Codec#Codec_13",
+  "snapshot_url": "https://web.archive.org/web/20260112035544/https://wiki.teltonika-gps.com/view/Codec",
+  "retrieved_at": "2026-07-04",
+  "attribution": "All hex verbatim from the Teltonika wiki Codec page (via Wayback snapshot above).",
+  "cases": [
+    {
+      "name": "codec13-sms-response",
+      "direction": "device->server",
+      "hex": "000000000000001D0D01060000001564E8328168656C6C6F206C65747320746573740D0A0100003548",
+      "expect": {
+        "kind": "cmdResponse",
+        "codec": 13,
+        "text": "hello lets test\r\n"
+      }
+    },
+    {
+      "name": "codec14-getver-response",
+      "direction": "device->server",
+      "hex": "00000000000000AB0E0106000000A303520930814522515665723A30332E31382E31345F3034204750533A41584E5F352E31305F333333332048773A464D42313230204D6F643A313520494D45493A33353230393330383134353232353120496E69743A323031382D31312D323220373A313320557074696D653A3137323334204D41433A363042444430303136323631205350433A312830292041584C3A30204F42443A3020424C3A312E362042543A340100007AAE",
+      "expect": {
+        "kind": "cmdResponse",
+        "codec": 14,
+        "text": "Ver:03.18.14_04 GPS:AXN_5.10_3333 Hw:FMB120 Mod:15 IMEI:352093081452251 Init:2018-11-22 7:13 Uptime:17234 MAC:60BDD0016261 SPC:1(0) AXL:0 OBD:0 BL:1.6 BT:4"
+      }
+    },
+    {
+      "name": "codec14-nack-wiki-inconsistent-crc",
+      "direction": "device->server",
+      "hex": "00000000000000100E011100000008035209308145246801000032AC",
+      "note": "NEGATIVE fixture — the wiki page's own example carries a stale CRC (0x32AC matches the request example's IMEI ...2251, but this packet says ...2468; correct CRC for the published bytes is 0x635E). See docs/adr/011. Hex kept verbatim; parser must reject it.",
+      "expectError": "CrcError"
+    }
+  ]
+}

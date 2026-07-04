@@ -1,0 +1,14 @@
+{
+  "source_url": "https://wiki.teltonika-gps.com/view/Codec#Codec_16",
+  "snapshot_url": "https://web.archive.org/web/20260112035544/https://wiki.teltonika-gps.com/view/Codec",
+  "retrieved_at": "2026-07-04",
+  "attribution": "Hex verbatim from the Teltonika wiki Codec page (via Wayback snapshot above). v1 contract: Codec 16 parses to raw-fallback (PROJECT_PLAN §3.1); CRC and framing must still verify.",
+  "cases": [
+    {
+      "name": "example-16-two-records",
+      "direction": "device->server",
+      "hex": "000000000000005F10020000016BDBC7833000000000000000000000000000000000000B05040200010000030002000B00270042563A00000000016BDBC7871800000000000000000000000000000000000B05040200010000030002000B00260042563A00000200005FB3",
+      "expect": { "kind": "avl", "codec": 16, "rawFallback": true }
+    }
+  ]
+}

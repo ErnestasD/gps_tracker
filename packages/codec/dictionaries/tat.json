@@ -1,0 +1,1510 @@
+{
+  "family": "tat",
+  "source_url": "https://wiki.teltonika-gps.com/view/TAT100_AVL_ID_List",
+  "snapshot_url": "https://web.archive.org/web/20241011122227/https://wiki.teltonika-gps.com/view/TAT100_AVL_ID_List",
+  "retrieved_at": "2026-07-04",
+  "note": "TAT100 asset tracker AVL list. Generated from the wiki table; do not hand-edit values.",
+  "elements": {
+    "1": {
+      "name": "Digital Input 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "2": {
+      "name": "Digital Input 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "3": {
+      "name": "Digital Input 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "6": {
+      "name": "Analog Input 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "V",
+      "description": "Voltage"
+    },
+    "9": {
+      "name": "Analog Input 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "V",
+      "description": "Voltage"
+    },
+    "11": {
+      "name": "ICCID1",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Value of SIM ICCID, MSB"
+    },
+    "14": {
+      "name": "ICCID2",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Value of SIM ICCID, MSB"
+    },
+    "15": {
+      "name": "Eco Score",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.01",
+      "description": "Average amount of events on some distance"
+    },
+    "16": {
+      "name": "Total Odometer",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Total Odometer value"
+    },
+    "17": {
+      "name": "Axis X",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.001",
+      "units": "G",
+      "description": "X axis value"
+    },
+    "18": {
+      "name": "Axis Y",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.001",
+      "units": "G",
+      "description": "Y axis value"
+    },
+    "19": {
+      "name": "Axis Z",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.001",
+      "units": "G",
+      "description": "Z axis value"
+    },
+    "20": {
+      "name": "BLE Battery #2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery level of sensor #2"
+    },
+    "21": {
+      "name": "GSM Signal",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Value in scale 1-5"
+    },
+    "22": {
+      "name": "BLE Battery #3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery level of sensor #3"
+    },
+    "23": {
+      "name": "BLE Battery #4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery level of sensor #4"
+    },
+    "24": {
+      "name": "Speed",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "km/h",
+      "description": "Value"
+    },
+    "25": {
+      "name": "BLE Temperature #1",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Degrees ( °C ), -40 - +125; Error code: 32767 - sensor not found"
+    },
+    "26": {
+      "name": "BLE Temperature #2",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Degrees ( °C ), -40 - +125; Error code: 32767 - sensor not found"
+    },
+    "27": {
+      "name": "BLE Temperature #3",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Degrees ( °C ), -40 - +125; Error code: 32767 - sensor not found"
+    },
+    "28": {
+      "name": "BLE Temperature #4",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Degrees ( °C ), -40 - +125; Error code: 32767 - sensor not found"
+    },
+    "29": {
+      "name": "BLE Battery #1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery level of sensor #1"
+    },
+    "61": {
+      "name": "Geofence zone 06",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "62": {
+      "name": "Geofence zone 07",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "63": {
+      "name": "Geofence zone 08",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "64": {
+      "name": "Geofence zone 09",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "65": {
+      "name": "Geofence zone 10",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "66": {
+      "name": "External Voltage",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "V",
+      "description": "IO element is used to measure External Voltage, when External Voltage is < 65V."
+    },
+    "67": {
+      "name": "Battery Voltage",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "V",
+      "description": "Voltage"
+    },
+    "68": {
+      "name": "Battery Current",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "A",
+      "description": "Current"
+    },
+    "69": {
+      "name": "GNSS Status",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - GNSS OFF 1 – GNSS ON with fix 2 - GNSS ON without fix 3 - GNSS sleep 4 - GNSS OFF, no fix in Static Navigation"
+    },
+    "70": {
+      "name": "Geofence zone 11",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "71": {
+      "name": "Dallas Temperature ID 4",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Dallas sensor ID"
+    },
+    "72": {
+      "name": "Dallas Temperature 1",
+      "bytes": "4",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Degrees ( °C ), -55 - +115,if 850 – Sensor not ready if 2000 – Value read error if 3000 – Not connected if 4000 – ID failed if 5000 – same as 850"
+    },
+    "73": {
+      "name": "Dallas Temperature 2",
+      "bytes": "4",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Degrees ( °C ), -55 - +115, if 850 – Sensor not ready if 2000 – Value read error if 3000 – Not connected if 4000 – ID failed if 5000 – same as 850"
+    },
+    "74": {
+      "name": "Dallas Temperature 3",
+      "bytes": "4",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Degrees ( °C ), -55 - +115, if 850 – Sensor not ready if 2000 – Value read error if 3000 – Not connected if 4000 – ID failed if 5000 – same as 850"
+    },
+    "75": {
+      "name": "Dallas Temperature 4",
+      "bytes": "4",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Degrees ( °C ), -55 - +115, if 850 – Sensor not ready if 2000 – Value read error if 3000 – Not connected if 4000 – ID failed if 5000 – same as 850"
+    },
+    "76": {
+      "name": "Dallas Temperature ID 1",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Dallas sensor ID"
+    },
+    "77": {
+      "name": "Dallas Temperature ID 2",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Dallas sensor ID"
+    },
+    "78": {
+      "name": "iButton",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "iButton ID"
+    },
+    "79": {
+      "name": "Dallas Temperature ID 3",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Dallas sensor ID"
+    },
+    "80": {
+      "name": "Data Mode",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Home On Stop 1 – Home On Moving 2 – Roaming On Stop 3 – Roaming On Moving 4 – Unknown On Stop 5 – Unknown On Moving"
+    },
+    "86": {
+      "name": "BLE Humidity #1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "%RH",
+      "description": "Humidity Error code: 32767 - sensor not found"
+    },
+    "88": {
+      "name": "Geofence zone 12",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "91": {
+      "name": "Geofence zone 13",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "92": {
+      "name": "Geofence zone 14",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "93": {
+      "name": "Geofence zone 15",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "94": {
+      "name": "Geofence zone 16",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "95": {
+      "name": "Geofence zone 17",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "96": {
+      "name": "Geofence zone 18",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "97": {
+      "name": "Geofence zone 19",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "98": {
+      "name": "Geofence zone 20",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "99": {
+      "name": "Geofence zone 21",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "104": {
+      "name": "BLE Humidity #2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "%RH",
+      "description": "Humidity Error code: 32767 - sensor not found"
+    },
+    "106": {
+      "name": "BLE Humidity #3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "%RH",
+      "description": "Humidity Error code: 32767 - sensor not found"
+    },
+    "108": {
+      "name": "BLE Humidity #4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "%RH",
+      "description": "Humidity Error code: 32767 - sensor not found"
+    },
+    "113": {
+      "name": "Battery Level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery capacity level"
+    },
+    "116": {
+      "name": "Charger Connected",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - charger is not connected 1 - charger is connected"
+    },
+    "153": {
+      "name": "Geofence zone 22",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "154": {
+      "name": "Geofence zone 23",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "155": {
+      "name": "Geofence zone 01",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "156": {
+      "name": "Geofence zone 02",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "157": {
+      "name": "Geofence zone 03",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "158": {
+      "name": "Geofence zone 04",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "159": {
+      "name": "Geofence zone 05",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "175": {
+      "name": "Auto Geofence",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone"
+    },
+    "179": {
+      "name": "Digital Output 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "180": {
+      "name": "Digital Output 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic 0/1"
+    },
+    "181": {
+      "name": "GNSS PDOP",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "description": "Probability"
+    },
+    "182": {
+      "name": "GNSS HDOP",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "description": "Probability"
+    },
+    "190": {
+      "name": "Geofence zone 24",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "191": {
+      "name": "Geofence zone 25",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "192": {
+      "name": "Geofence zone 26",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "193": {
+      "name": "Geofence zone 27",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "194": {
+      "name": "Geofence zone 28",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "195": {
+      "name": "Geofence zone 29",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "196": {
+      "name": "Geofence zone 30",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "197": {
+      "name": "Geofence zone 31",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "198": {
+      "name": "Geofence zone 32",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "199": {
+      "name": "Trip Odometer",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Trip Odometer value"
+    },
+    "200": {
+      "name": "Sleep Mode",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Sleep modes disabled 1 – GNSS sleep 2 – Deep sleep 3 – Online deep sleep 4 - Ultra deep sleep"
+    },
+    "205": {
+      "name": "GSM Cell ID",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "GSM base station ID"
+    },
+    "206": {
+      "name": "GSM Area Code",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area code (LAC), it depends on GSM operator. It provides unique number which assigned to a set of base GSM stations."
+    },
+    "208": {
+      "name": "Geofence zone 33",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "209": {
+      "name": "Geofence zone 34",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "216": {
+      "name": "Geofence zone 35",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "217": {
+      "name": "Geofence zone 36",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "218": {
+      "name": "Geofence zone 37",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "219": {
+      "name": "Geofence zone 38",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "220": {
+      "name": "Geofence zone 39",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "221": {
+      "name": "Geofence zone 40",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "222": {
+      "name": "Geofence zone 41",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "223": {
+      "name": "Geofence zone 42",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "224": {
+      "name": "Geofence zone 43",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "225": {
+      "name": "Geofence zone 44",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "226": {
+      "name": "Geofence zone 45",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "227": {
+      "name": "Geofence zone 46",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "228": {
+      "name": "Geofence zone 47",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "229": {
+      "name": "Geofence zone 48",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "230": {
+      "name": "Geofence zone 49",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "231": {
+      "name": "Geofence zone 50",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "236": {
+      "name": "Alarm",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Reserved 1 – Alarm event occurred"
+    },
+    "239": {
+      "name": "Ignition",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Ignition Off 1 – Ignition On"
+    },
+    "240": {
+      "name": "Movement",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Movement Off 1 – Movement On"
+    },
+    "241": {
+      "name": "Active GSM Operator",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Currently used GSM Operator code"
+    },
+    "242": {
+      "name": "ManDown/FallDown",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – ManDown/FallDown deactivated 1 – ManDown/FalDown is active"
+    },
+    "243": {
+      "name": "Green driving event duration",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "ms",
+      "description": "Duration of event that did generate Green driving"
+    },
+    "246": {
+      "name": "Towing",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – steady 1 – towing"
+    },
+    "247": {
+      "name": "Crash detection",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "1 – crash 2 – limited crash trace (device not calibrated) 3 - limited crash trace (device is calibrated) 4 - full crash trace (device not calibrated) 5 - full crash trace (device is calibrated) 6 - cr"
+    },
+    "248": {
+      "name": "Immobilizer",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – iButton not connected 1 – iButton connected (Immobilizer) 2 – iButton connected (Authorized Driving)"
+    },
+    "249": {
+      "name": "Jamming",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – jamming stop 1 – jamming start"
+    },
+    "250": {
+      "name": "Trip",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – trip stop1 – trip start"
+    },
+    "251": {
+      "name": "Idling",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – moving 1 – idling"
+    },
+    "252": {
+      "name": "Unplug",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – battery present 1 – battery unplug"
+    },
+    "253": {
+      "name": "Green driving type",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "1 – harsh acceleration 2 – harsh braking 3 – harsh cornering"
+    },
+    "254": {
+      "name": "Green Driving Value",
+      "bytes": "1",
+      "type": "Unsigned",
+      "multiplier": "0.01",
+      "units": "G|rad",
+      "description": "Depending on green driving type: if harsh acceleration or braking – g*100 (value 123 -> 1.23g), if harsh cornering – degrees (value in radians)"
+    },
+    "255": {
+      "name": "Overspeeding Event",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "km/h",
+      "description": "At over speeding start km/h, at over speeding end km/h"
+    },
+    "257": {
+      "name": "Crash trace data",
+      "bytes": "Variable",
+      "type": "HEX",
+      "description": "Crash trace data"
+    },
+    "262": {
+      "name": "Digital Input 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "286": {
+      "name": "GSM Signal RX 0",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "GSM Signal of the Cell 0"
+    },
+    "287": {
+      "name": "GSM Cell LAC 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area Code of the Cell 1"
+    },
+    "288": {
+      "name": "GSM Cell ID 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Unique ID of the Cell 1"
+    },
+    "289": {
+      "name": "GSM Signal RX 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "GSM Signal of the Cell 1"
+    },
+    "290": {
+      "name": "GSM Cell LAC 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area Code of the Cell 2"
+    },
+    "291": {
+      "name": "GSM Cell ID 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Unique ID of the Cell 2"
+    },
+    "292": {
+      "name": "GSM Signal RX 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "GSM Signal of the Cell 2"
+    },
+    "293": {
+      "name": "GSM Cell LAC 3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area Code of the Cell 3"
+    },
+    "294": {
+      "name": "GSM Cell ID 3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Unique ID of the Cell 3"
+    },
+    "295": {
+      "name": "GSM Signal RX 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "GSM Signal of the Cell 3"
+    },
+    "296": {
+      "name": "GSM Cell LAC 4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area Code of the Cell 4"
+    },
+    "297": {
+      "name": "GSM Cell ID 4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Unique ID of the Cell 4"
+    },
+    "298": {
+      "name": "GSM Signal RX 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "GSM Signal of the Cell 4"
+    },
+    "303": {
+      "name": "Instant Movement",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1 returns movement value"
+    },
+    "310": {
+      "name": "Movement Event",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Movement event occurred 1 - No Movement event occured"
+    },
+    "331": {
+      "name": "BLE 1 Custom #1",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "332": {
+      "name": "BLE 2 Custom #1",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "333": {
+      "name": "BLE 3 Custom #1",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "334": {
+      "name": "BLE 4 Custom #1",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "386": {
+      "name": "Last Known Position",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "s",
+      "description": "Time in seconds has passed since last GNSS fix"
+    },
+    "387": {
+      "name": "ISO6709 Coordinates",
+      "bytes": "34",
+      "type": "HEX",
+      "description": "ISO6709 Coordinates Latitude, Longitude (in Degrees, Minutes and Seconds) and Altitude: IO value format: ±DDMMSS.SSSS±DDDMMSS.SSSS±AAA.AAA/"
+    },
+    "389": {
+      "name": "Button Click",
+      "bytes": "HEX",
+      "type": "Unsigned",
+      "description": "Button ID (X) and Action (Y) Value 0xXYX - button ID: 1 - alarm button2 - power button3 - button 14 - button 25 - button 3Y - action: 1 - 1 click2 - 2 clicks3 - long click"
+    },
+    "390": {
+      "name": "Power Event",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "1 - Device turned OFF0 - Device turned ON"
+    },
+    "399": {
+      "name": "Time To First Fix",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "s",
+      "description": "Amount of time it took to get first GNSS fix"
+    },
+    "400": {
+      "name": "Amber Alert state",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Turned Off 1 - Turned On, count down timer started 2 - Amber Alert On button pressed to restart active timer 3 - Alarm 4 - Amber Alert turned On when timer is set to 0 seconds"
+    },
+    "401": {
+      "name": "Amber Alert timer value",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "s",
+      "description": "Sends Amber Alert time-out configured value"
+    },
+    "403": {
+      "name": "Heart Rate Alert",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "BPM",
+      "description": "Sends heart rate (BPM) from Xiaomi Mi Band 2"
+    },
+    "449": {
+      "name": "Ignition On Counter value",
+      "bytes": "",
+      "type": "Unsigned",
+      "units": "s",
+      "description": "Current value of the counter"
+    },
+    "463": {
+      "name": "BLE1 EYE sensor lost alarm",
+      "bytes": "2",
+      "type": "HEX",
+      "description": "BEEF - BLE1 EYE sensor lost alarm"
+    },
+    "464": {
+      "name": "BLE 1 Custom #3",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "465": {
+      "name": "BLE 1 Custom #4",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "467": {
+      "name": "BLE2 EYE sensor lost alarm",
+      "bytes": "2",
+      "type": "HEX",
+      "description": "BEEF - BLE2 EYE sensor lost alarm"
+    },
+    "468": {
+      "name": "BLE 2 Custom #3",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "469": {
+      "name": "BLE 2 Custom #4",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "471": {
+      "name": "BLE3 EYE sensor lost alarm",
+      "bytes": "2",
+      "type": "HEX",
+      "description": "BEEF - BLE3 EYE sensor lost alarm"
+    },
+    "472": {
+      "name": "BLE 3 Custom #3",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "473": {
+      "name": "BLE 3 Custom #4",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "475": {
+      "name": "BLE4 EYE sensor lost alarm",
+      "bytes": "2",
+      "type": "HEX",
+      "description": "BEEF - BLE4 EYE sensor lost alarm"
+    },
+    "476": {
+      "name": "BLE 4 Custom #3",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "477": {
+      "name": "BLE 4 Custom #4",
+      "bytes": "256",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "520": {
+      "name": "Tamper detection Event",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Tamper restore1 - Tamper alarm"
+    },
+    "636": {
+      "name": "LTE Cell ID",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "LTE Cell ID"
+    },
+    "800": {
+      "name": "Extended External Voltage",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "V",
+      "description": "IO element is used to measure External Voltage, when External Voltage is > 65 V."
+    },
+    "839": {
+      "name": "Extended Analog Input 1",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "V",
+      "description": "Extended Analog Input 1 IO element is used to measure Analog Input 1 voltage, when Analog Input 1 voltage is > 65 V."
+    },
+    "840": {
+      "name": "Extended Analog Input 2",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "V",
+      "description": "Extended Analog Input 2 IO element is used to measure Analog Input 2 voltage, when Analog Input 1 voltage is > 65 V."
+    },
+    "841": {
+      "name": "DOUT 1 Overcurrent",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "DOUT 1 Overcurrent IO element is used to indicate overcurrent on Digital Output 1. When Digital Output 1 overcurrent happens, it means that current level is > 300 mA, value is set to 1. Value 1 holds "
+    },
+    "842": {
+      "name": "DOUT2 Overcurrent",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "DOUT 2 Overcurrent IO element is used to indicate overcurrent on Digital Output 2. When Digital Output 2 overcurrent happens, it means that current level is > 300 mA, value is set to 1. Value 1 holds "
+    },
+    "854": {
+      "name": "User ID",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "This parameter allows to send custom number as AVL ID parameter. Configurable in Features section."
+    },
+    "1200": {
+      "name": "GSM Cell MNC 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Mobile Network Code of the Cell 1"
+    },
+    "1201": {
+      "name": "GSM Cell MNC 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Mobile Network Code of the Cell 2"
+    },
+    "1202": {
+      "name": "GSM Cell MNC 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Mobile Network Code of the Cell 3"
+    },
+    "1203": {
+      "name": "GSM Cell MNC 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Mobile Network Code of the Cell 4"
+    },
+    "10800": {
+      "name": "EYE Temperature 1",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01",
+      "units": "°C",
+      "description": "Temperature measured by EYE Sensor 1"
+    },
+    "10801": {
+      "name": "EYE Temperature 2",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01",
+      "units": "°C",
+      "description": "Temperature measured by EYE Sensor 2"
+    },
+    "10802": {
+      "name": "EYE Temperature 3",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01",
+      "units": "°C",
+      "description": "Temperature measured by EYE Sensor 3"
+    },
+    "10803": {
+      "name": "EYE Temperature 4",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01",
+      "units": "°C",
+      "description": "Temperature measured by EYE Sensor 4"
+    },
+    "10804": {
+      "name": "EYE Humidity 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Humidity measured by EYE Sensor 1"
+    },
+    "10805": {
+      "name": "EYE Humidity 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Humidity measured by EYE Sensor 2"
+    },
+    "10806": {
+      "name": "EYE Humidity 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Humidity measured by EYE Sensor 3"
+    },
+    "10807": {
+      "name": "EYE Humidity 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Humidity measured by EYE Sensor 4"
+    },
+    "10808": {
+      "name": "EYE Magnet 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Magnet measured by EYE Sensor by EYE Sensor 1"
+    },
+    "10809": {
+      "name": "EYE Magnet 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Magnet measured by EYE Sensor by EYE Sensor 2"
+    },
+    "10810": {
+      "name": "EYE Magnet 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Magnet measured by EYE Sensor by EYE Sensor 3"
+    },
+    "10811": {
+      "name": "EYE Magnet 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Magnet measured by EYE Sensor by EYE Sensor 4"
+    },
+    "10812": {
+      "name": "EYE Movement 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement state measure by EYE Sensor 1"
+    },
+    "10813": {
+      "name": "EYE Movement 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement state measure by EYE Sensor 2"
+    },
+    "10814": {
+      "name": "EYE Movement 3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement state measure by EYE Sensor 3"
+    },
+    "10815": {
+      "name": "EYE Movement 4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement state measure by EYE Sensor 4"
+    },
+    "10816": {
+      "name": "EYE Pitch 1",
+      "bytes": "1",
+      "type": "Signed",
+      "description": "Pitch angle measured by EYE Sensor 1"
+    },
+    "10817": {
+      "name": "EYE Pitch 2",
+      "bytes": "1",
+      "type": "Signed",
+      "description": "Pitch angle measured by EYE Sensor 2"
+    },
+    "10818": {
+      "name": "EYE Pitch 3",
+      "bytes": "1",
+      "type": "Signed",
+      "description": "Pitch angle measured by EYE Sensor 3"
+    },
+    "10819": {
+      "name": "EYE Pitch 4",
+      "bytes": "1",
+      "type": "Signed",
+      "description": "Pitch angle measured by EYE Sensor 4"
+    },
+    "10820": {
+      "name": "EYE Low Battery 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Low Battery indication for EYE Sensor 1"
+    },
+    "10821": {
+      "name": "EYE Low Battery 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Low Battery indication for EYE Sensor 2"
+    },
+    "10822": {
+      "name": "EYE Low Battery 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Low Battery indication for EYE Sensor 3"
+    },
+    "10823": {
+      "name": "EYE Low Battery 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Low Battery indication for EYE Sensor 4"
+    },
+    "10824": {
+      "name": "EYE Battery Voltage 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Battery Voltage of EYE Sensor 1"
+    },
+    "10825": {
+      "name": "EYE Battery Voltage 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Battery Voltage of EYE Sensor 2"
+    },
+    "10826": {
+      "name": "EYE Battery Voltage 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Battery Voltage of EYE Sensor 3"
+    },
+    "10827": {
+      "name": "EYE Battery Voltage 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Battery Voltage of EYE Sensor 4"
+    },
+    "10832": {
+      "name": "EYE Roll 1",
+      "bytes": "2",
+      "type": "Signed",
+      "description": "Roll angle measured by EYE Sensor 1"
+    },
+    "10833": {
+      "name": "EYE Roll 2",
+      "bytes": "2",
+      "type": "Signed",
+      "description": "Roll angle measured by EYE Sensor 2"
+    },
+    "10834": {
+      "name": "EYE Roll 3",
+      "bytes": "2",
+      "type": "Signed",
+      "description": "Roll angle measured by EYE Sensor 3"
+    },
+    "10835": {
+      "name": "EYE Roll 4",
+      "bytes": "2",
+      "type": "Signed",
+      "description": "Roll angle measured by EYE Sensor 4"
+    },
+    "10836": {
+      "name": "EYE Movement count 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement count measure by EYE Sensor 1"
+    },
+    "10837": {
+      "name": "EYE Movement count 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement count measure by EYE Sensor 2"
+    },
+    "10838": {
+      "name": "EYE Movement count 3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement count measure by EYE Sensor 3"
+    },
+    "10839": {
+      "name": "EYE Movement count 4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement count measure by EYE Sensor 4"
+    },
+    "10840": {
+      "name": "EYE Magnet count 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Magnet trigger count measure by EYE Sensor 1"
+    },
+    "10841": {
+      "name": "EYE Magnet count 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Magnet trigger count measure by EYE Sensor 2"
+    },
+    "10842": {
+      "name": "EYE Magnet count 3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Magnet trigger count measure by EYE Sensor 3"
+    },
+    "10843": {
+      "name": "EYE Magnet count 4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Magnet trigger count measure by EYE Sensor 4"
+    },
+    "11317": {
+      "name": "EYE Sensor List",
+      "bytes": "variable length",
+      "type": "HEX",
+      "description": "EYE Sensor List"
+    },
+    "20012": {
+      "name": "Recovery mode alarm",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Reserved 1 – Reserved 2 – Recovery alarm event occurred"
+    },
+    "20014": {
+      "name": "BLE Lost Beacon",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Reserved 1 – Reserved 2 – Reserved 3 – BLE Lost Beacon"
+    },
+    "20015": {
+      "name": "Modem Uptime",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "s",
+      "description": "Modem Uptime since the last wake up"
+    },
+    "20016": {
+      "name": "LTE RSRP",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "dBm",
+      "description": "Reference Signals Received Power"
+    },
+    "20017": {
+      "name": "LTE RSRQ",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "dB",
+      "description": "Reference Signals Received Quality"
+    },
+    "20019": {
+      "name": "Tamper record event",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "0 – Holder is removed 1 – Central is attached 2 – Attached to metal surface 3 – Removed from metal surface"
+    },
+    "25015": {
+      "name": "Modem Uptime",
+      "bytes": "8",
+      "type": "Unsigned",
+      "units": "s",
+      "description": "Modem Uptime since the last wake up (from FW X.4.10.Rev.00)"
+    },
+    "25016": {
+      "name": "LTE RSRP",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "dBm",
+      "description": "Reference Signals Received Power (from FW X.4.10.Rev.00)"
+    },
+    "25017": {
+      "name": "LTE RSRQ",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "dB",
+      "description": "Reference Signals Received Quality (from FW X.4.10.Rev.00)"
+    },
+    "25019": {
+      "name": "LTE Signal RX 0",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "LTE Signal of the Cell 0"
+    },
+    "25020": {
+      "name": "LTE Cell LAC 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area Code of the LTE Cell 1"
+    },
+    "25021": {
+      "name": "LTE Cell ID 1",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Unique ID of the LTE Cell 1"
+    },
+    "25022": {
+      "name": "LTE Signal RX 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "LTE Signal of the Cell 1"
+    },
+    "25023": {
+      "name": "LTE Cell LAC 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area Code of the LTE Cell 2"
+    },
+    "25024": {
+      "name": "LTE Cell ID 2",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Unique ID of the LTE Cell 2"
+    },
+    "25025": {
+      "name": "LTE Signal RX 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "LTE Signal of the Cell 2"
+    },
+    "25026": {
+      "name": "LTE Cell LAC 3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area Code of the LTE Cell 3"
+    },
+    "25027": {
+      "name": "LTE Cell ID 3",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Unique ID of the LTE Cell 3"
+    },
+    "25028": {
+      "name": "LTE Signal RX 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "LTE Signal of the Cell 3"
+    },
+    "25029": {
+      "name": "LTE Cell LAC 4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area Code of the LTE Cell 4"
+    },
+    "25030": {
+      "name": "LTE Cell ID 4",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Unique ID of the LTE Cell 4"
+    },
+    "25031": {
+      "name": "LTE Signal RX 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "LTE Signal of the Cell 4"
+    },
+    "25032": {
+      "name": "LTE Cell MNC 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "LTE Mobile Network Code of the Cell 1"
+    },
+    "25033": {
+      "name": "LTE Cell MNC 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "LTE Mobile Network Code of the Cell 2"
+    },
+    "25034": {
+      "name": "LTE Cell MNC 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "LTE Mobile Network Code of the Cell 3"
+    },
+    "25035": {
+      "name": "LTE Cell MNC 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "LTE Mobile Network Code of the Cell 4"
+    }
+  }
+}

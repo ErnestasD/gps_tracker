@@ -1,0 +1,36 @@
+{
+  "source_url": "https://wiki.teltonika-gps.com/view/Codec#Codec_8_Extended",
+  "snapshot_url": "https://web.archive.org/web/20260112035544/https://wiki.teltonika-gps.com/view/Codec",
+  "retrieved_at": "2026-07-04",
+  "attribution": "All hex verbatim from the Teltonika wiki Codec page (via Wayback snapshot above). ICCID values from the page's decode table.",
+  "cases": [
+    {
+      "name": "example-8e-iccid",
+      "direction": "device->server",
+      "hex": "000000000000004A8E010000016B412CEE000100000000000000000000000000000000010005000100010100010011001D00010010015E2C880002000B000000003544C87A000E000000001DD7E06A00000100002994",
+      "expect": {
+        "kind": "avl",
+        "codec": 142,
+        "recordCount": 1,
+        "records": [
+          {
+            "tsMs": 1560166592000,
+            "priority": 1,
+            "lat": 0,
+            "lon": 0,
+            "satellites": 0,
+            "speed": 0,
+            "eventIoId": 1,
+            "io": {
+              "1": "1",
+              "17": "29",
+              "16": "22949000",
+              "11": "893700218",
+              "14": "500686954"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

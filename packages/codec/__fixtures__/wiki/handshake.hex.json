@@ -1,0 +1,20 @@
+{
+  "source_url": "https://wiki.teltonika-gps.com/view/Codec#Communication_with_server",
+  "snapshot_url": "https://web.archive.org/web/20260112035544/https://wiki.teltonika-gps.com/view/Codec",
+  "retrieved_at": "2026-07-04",
+  "attribution": "Hex verbatim from the Teltonika wiki Codec page (via Wayback snapshot above).",
+  "cases": [
+    {
+      "name": "imei-handshake",
+      "direction": "device->server",
+      "hex": "000F333536333037303432343431303133",
+      "expect": { "kind": "imei", "imei": "356307042441013" }
+    }
+  ],
+  "encode": {
+    "imeiAccept": "01",
+    "imeiReject": "00",
+    "ackOneRecord": "00000001",
+    "ackTwoRecords": "00000002"
+  }
+}
