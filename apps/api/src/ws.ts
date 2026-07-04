@@ -1,0 +1,91 @@
+import { randomBytes } from 'node:crypto'
+import type { IncomingMessage, Server } from 'node:http'
+import { Redis } from 'ioredis'
+import { WebSocketServer, type WebSocket } from 'ws'
+
+export interface WsAuthContext {
+  userId: string
+  tenantId: string
+  /** undefined ⇒ tenant-wide visibility (tsp_admin); set ⇒ single-account scope */
+  accountId?: string
+}
+
+export interface WsDeps {
+  redis: Redis
+  /** Separate connection: a subscribed ioredis client cannot run other commands. */
+  redisSub: Redis
+  ticketTtlS?: number // §6.7 WS_TICKET_TTL=30
+}
+
+/**
+ * Single-use ws-ticket auth (PROJECT_PLAN §5 realtime, R8-6): `GET /v1/ws-ticket`
+ * stores a random 32 B token via SETEX 30 s; the WS upgrade consumes it with GETDEL —
+ * reuse or expiry ⇒ refused. Never a raw JWT in a query string (§10 failure #10).
+ */
+export async function issueTicket(deps: WsDeps, ctx: WsAuthContext): Promise<string> {
+  const ticket = randomBytes(32).toString('hex')
+  await deps.redis.setex(`ticket:${ticket}`, deps.ticketTtlS ?? 30, JSON.stringify(ctx))
+  return ticket
+}
+
+/**
+ * WS gateway (E02-4): upgrade `GET /v1/stream?ticket=…`, subscribe the socket to its
+ * tenant's `live:{tenantId}` channel; account-scoped users only receive messages for
+ * devices of their account (server-side filter via `device:account` hash, synced by
+ * E03-3 device CRUD; unknown mapping ⇒ NOT delivered to account-scoped users).
+ */
+export function attachWsGateway(server: Server, deps: WsDeps): WebSocketServer {
+  const wss = new WebSocketServer({ noServer: true })
+  const subscribers = new Map<string, Set<{ ws: WebSocket; ctx: WsAuthContext }>>()
+  let subscribed = false
+
+  const ensureSubscription = async (): Promise<void> => {
+    if (subscribed) return
+    subscribed = true
+    await deps.redisSub.psubscribe('live:*')
+    deps.redisSub.on('pmessage', (_pattern, channel, message) => {
+      const tenantId = channel.slice('live:'.length)
+      const conns = subscribers.get(tenantId)
+      if (!conns || conns.size === 0) return
+      void (async () => {
+        const parsed = JSON.parse(message) as { deviceId: string }
+        // account scope filter — resolved once per message, not per socket
+        const deviceAccount = await deps.redis.hget('device:account', parsed.deviceId)
+        for (const { ws, ctx } of conns) {
+          if (ctx.accountId !== undefined && deviceAccount !== ctx.accountId) continue
+          if (ws.readyState === ws.OPEN) ws.send(message)
+        }
+      })().catch(() => undefined)
+    })
+  }
+
+  server.on('upgrade', (req: IncomingMessage, socket, head) => {
+    void (async () => {
+      const url = new URL(req.url ?? '/', 'http://localhost')
+      if (url.pathname !== '/v1/stream') {
+        socket.destroy()
+        return
+      }
+      const ticket = url.searchParams.get('ticket')
+      const raw = ticket ? await deps.redis.getdel(`ticket:${ticket}`) : null // single-use
+      if (raw === null) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+        socket.destroy()
+        return
+      }
+      const ctx = JSON.parse(raw) as WsAuthContext
+      await ensureSubscription()
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        const entry = { ws, ctx }
+        const set = subscribers.get(ctx.tenantId) ?? new Set()
+        set.add(entry)
+        subscribers.set(ctx.tenantId, set)
+        ws.on('close', () => {
+          set.delete(entry)
+        })
+      })
+    })().catch(() => socket.destroy())
+  })
+
+  return wss
+}

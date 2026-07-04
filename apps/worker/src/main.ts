@@ -5,6 +5,7 @@ import xxhash from 'xxhash-wasm'
 import { createPool } from '@orbetra/db'
 
 import { ShardConsumer } from './consumer.js'
+import { LiveState } from './liveState.js'
 import { ShardLeaser } from './shards.js'
 
 // Env contract per PROJECT_PLAN §6.7.
@@ -33,8 +34,15 @@ async function main(): Promise<void> {
   const shards = await leaser.claimAll()
   console.log(`${workerId} owns shards: ${[...shards].join(',') || '(none)'}`)
 
+  const liveState = new LiveState(redis)
   const consumers = [...shards].map((s) => {
-    const c = new ShardConsumer(s, { redis, pool, hash, workerId })
+    const c = new ShardConsumer(s, {
+      redis,
+      pool,
+      hash,
+      workerId,
+      onBatch: (records) => void liveState.apply(records).catch((err: unknown) => console.error('liveState', err)),
+    })
     consumersByShard.set(s, c)
     return c
   })
