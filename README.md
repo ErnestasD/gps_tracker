@@ -1,4 +1,4 @@
-# TrackCore
+# Orbetra
 
 Multi-tenant, white-label GPS tracking platform for Teltonika devices.
 Normative spec: [PROJECT_PLAN.md](PROJECT_PLAN.md) · backlog: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) · operating rules: [CLAUDE.md](CLAUDE.md).

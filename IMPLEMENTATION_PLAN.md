@@ -14,7 +14,7 @@
 - **E00-2** Infra accounts: Hetzner AX42 **or equivalent KVM VDS (e.g., vpsnet VDS 8vCPU/32GB/300GB NVMe — must be KVM, not paravirt VPS, for Docker); final placement decided by E07-3 load gate** + staging cloud instance + Storage Box/S3-compatible offsite; domain; GitHub org; **AWS SES eu-central-1 production access request (takes days — submit day 1)**; Cloudflare R2 bucket.
 - **E00-3** Channel numbers from friend: monthly device flow from platform-less buyers, DE/PL/Baltics split, top-5 models in that flow, 2–3 named pilot candidates.
 - **E00-4** Telegram bot via BotFather; token to secrets store. Decide bot display name (white-label-neutral).
-- **E00-5** Product name decision: TrackCore is a CODENAME — check trademark (EUIPO quick search), domain availability, and PL/DE pronunciation before the public site ships. Blocking for E09-4, not for code.
+- **E00-5** Product name decision: Orbetra is a CODENAME — check trademark (EUIPO quick search), domain availability, and PL/DE pronunciation before the public site ships. Blocking for E09-4, not for code.
 
 ---
 
@@ -295,7 +295,7 @@
 
 ### E06-3 · Public REST API v1 (M)
 **Files:** `apps/api/src/{public/*,middleware/{apiKey.ts,rateLimit.ts}}`, OpenAPI page (Scalar) at `/docs`.
-**Approach:** keys: `tk_live_` prefix, SHA-256 stored, scopes {read, commands, admin}; token bucket 600/min/key in Redis; every route zod-validated → OpenAPI generated; RFC7807 error shape everywhere (shared helper).
+**Approach:** keys: `orb_live_` prefix, SHA-256 stored, scopes {read, commands, admin}; token bucket 600/min/key in Redis; every route zod-validated → OpenAPI generated; RFC7807 error shape everywhere (shared helper).
 **AC:** [ ] the exact PROJECT_PLAN §6.6 route list exists & documented (route-manifest diff test) · [ ] rate limit returns 429 + Retry-After · [ ] revoked key → 401 <5 s (cache invalidation) · [ ] external demo script `examples/pull-trips.ts` committed and run in CI against seeded data.
 **Depends:** E03-2, E04-3, E06-1.
 

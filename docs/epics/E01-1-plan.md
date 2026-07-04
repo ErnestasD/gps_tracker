@@ -43,7 +43,7 @@
    - `@typescript-eslint/no-floating-promises`: error (PROJECT_PLAN §9.6);
    - typescript-eslint recommended-type-checked baseline.
 3. **Package stubs** per §5 map: `apps/{ingest,worker,api,web}`, `packages/{codec,db,shared}`,
-   `tools/{simulator,replay,redact}` — each: `package.json` (name `@trackcore/*`, scripts
+   `tools/{simulator,replay,redact}` — each: `package.json` (name `@orbetra/*`, scripts
    typecheck/lint/test), `tsconfig.json` extending base, `src/index.ts` placeholder, one
    trivial vitest spec so the test task is exercised end-to-end. `apps/web` stub stays a plain
    TS package for now (Vite scaffold arrives in E02-6 — smallest-diff rule).
@@ -64,7 +64,7 @@
    CLAUDE.md rule 8 CI-block). Host: GitHub Actions (`.github/workflows/ci.yml`) —
    origin is github.com/ErnestasD/gps_tracker (see Resolved below).
 6. **Tests:** `scripts/__tests__/hooks.spec.sh` (plain sh assertions): gate no-ops on
-   `docs/x.md`; gate maps `packages/shared/src/index.ts` → `@trackcore/shared`; commit-gate
+   `docs/x.md`; gate maps `packages/shared/src/index.ts` → `@orbetra/shared`; commit-gate
    blocks on a staged `TODO(VERIFY-WIKI)`; commit-gate blocks fixture change without trailer
    and passes with it.
 

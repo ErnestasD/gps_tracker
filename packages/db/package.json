@@ -1,5 +1,5 @@
 {
-  "name": "@trackcore/db",
+  "name": "@orbetra/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",

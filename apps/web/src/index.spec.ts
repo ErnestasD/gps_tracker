@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { packageName } from './index.js'
 
-describe('@trackcore/web stub', () => {
+describe('@orbetra/web stub', () => {
   it('exports its package name', () => {
-    expect(packageName).toBe('@trackcore/web')
+    expect(packageName).toBe('@orbetra/web')
   })
 })

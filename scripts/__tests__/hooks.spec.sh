@@ -15,8 +15,8 @@ echo "hook-gate.sh"
 
 out=$(CLAUDE_FILE_PATHS="$ROOT/packages/shared/src/index.ts" DRY_RUN=1 sh "$ROOT/scripts/hook-gate.sh" </dev/null)
 case "$out" in
-  *"--filter=...@trackcore/shared"*) ok "maps package path to dependents-inclusive filter" ;;
-  *) ko "expected ...@trackcore/shared filter, got: $out" ;;
+  *"--filter=...@orbetra/shared"*) ok "maps package path to dependents-inclusive filter" ;;
+  *) ko "expected ...@orbetra/shared filter, got: $out" ;;
 esac
 
 out=$(CLAUDE_FILE_PATHS="$ROOT/docs/x.md $ROOT/README.md" DRY_RUN=1 sh "$ROOT/scripts/hook-gate.sh" </dev/null)
@@ -24,8 +24,8 @@ if [ -z "$out" ]; then ok "no-ops on non-package paths"; else ko "expected no-op
 
 out=$(CLAUDE_FILE_PATHS="$ROOT/apps/api/src/index.ts $ROOT/apps/api/tsconfig.json" DRY_RUN=1 sh "$ROOT/scripts/hook-gate.sh" </dev/null)
 case "$out" in
-  *"--filter=...@trackcore/api --filter="*) ko "duplicate filter not deduped: $out" ;;
-  *"--filter=...@trackcore/api"*) ok "dedupes filters for same package" ;;
+  *"--filter=...@orbetra/api --filter="*) ko "duplicate filter not deduped: $out" ;;
+  *"--filter=...@orbetra/api"*) ok "dedupes filters for same package" ;;
   *) ko "expected api filter, got: $out" ;;
 esac
 
@@ -39,7 +39,7 @@ trap 'rm -rf "$TMP"' EXIT
   git config user.email t@t && git config user.name t
   mkdir -p scripts packages/codec/__fixtures__ packages/shared/src docs
   cp "$ROOT/scripts/hook-commit-gate.sh" scripts/
-  printf '{\n  "name": "@trackcore/shared"\n}\n' > packages/shared/package.json
+  printf '{\n  "name": "@orbetra/shared"\n}\n' > packages/shared/package.json
   git add -A && git commit -qm init
 ) || ko "throwaway repo setup"
 
@@ -51,7 +51,7 @@ trap 'rm -rf "$TMP"' EXIT
   git add packages/shared/src/a.ts
   out=$(DRY_RUN=1 sh scripts/hook-commit-gate.sh staged)
   case "$out" in
-    *"--filter=...@trackcore/shared"*) exit 0 ;;
+    *"--filter=...@orbetra/shared"*) exit 0 ;;
     *) exit 1 ;;
   esac
 ) && ok "computes dependents-inclusive turbo filter for staged package" || ko "staged package should produce turbo filter"

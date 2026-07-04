@@ -6,7 +6,7 @@
 ---
 ## COPY-PASTE PROMPT FOR LOVABLE (everything between the lines)
 ---
-Build a production-quality marketing website for **TrackCore** — a white-label GPS tracking platform built specifically for Teltonika devices, sold to telematics service providers (TSPs) and fleet resellers in Poland, Germany and the Baltics.
+Build a production-quality marketing website for **Orbetra** — a white-label GPS tracking platform built specifically for Teltonika devices, sold to telematics service providers (TSPs) and fleet resellers in Poland, Germany and the Baltics.
 
 **Tech constraints (hard):**
 - Vite + React 18 + TypeScript + Tailwind + shadcn/ui. NO Next.js, NO CSS-in-JS, NO component libraries beyond shadcn. Allowed extra runtime deps (the ONLY two): **framer-motion** (scroll-driven animation) and **cobe** (lightweight WebGL dotted globe, MIT) — nothing else without asking.
@@ -23,7 +23,7 @@ Build a production-quality marketing website for **TrackCore** — a white-label
 - Section label pattern everywhere: 24px blue dash + uppercase tracking-[0.2em] muted label (e.g. "— THE PLATFORM"), then an ALL-CAPS two-line display headline where the second line (or key phrase) is blue/gradient. Display font-weight 800, tight tracking.
 - Buttons: rounded-full pills — primary = light-blue filled (`#4DA3FF` bg, ink text), secondary = violet filled, ghost = 1px border. Round icon-buttons for carousel arrows.
 - Cards: translucent dark surface `rgba(20,28,54,.7)` + 1px `#22304C` border + 16px radius; industry/feature cards get a gradient header band (each vertical its own hue: fleet blue, logistics violet, construction amber, agri green, cold-chain cyan) with a white line-icon chip.
-- Device mockups: laptop/phone frames containing REAL dashboard screenshots (placeholder slots — we'll paste actual TrackCore dark-UI shots); ghosted duplicate laptops parallax-floating behind the active one, like the reference.
+- Device mockups: laptop/phone frames containing REAL dashboard screenshots (placeholder slots — we'll paste actual Orbetra dark-UI shots); ghosted duplicate laptops parallax-floating behind the active one, like the reference.
 - Floating hardware illustrations: simple original SVG line-art of a GPS tracker puck, antenna gateway, SIM, cloud, database — scattered at section edges with slow parallax (no photos of real Teltonika products, no manufacturer logos).
 
 **Motion & interactivity spec (the soul of this design — implement all, but never hijack native scroll):**

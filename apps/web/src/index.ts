@@ -1,2 +1,2 @@
-// @trackcore/web — stub (E01-1). Real implementation lands in its own story.
-export const packageName = '@trackcore/web'
+// @orbetra/web — stub (E01-1). Real implementation lands in its own story.
+export const packageName = '@orbetra/web'

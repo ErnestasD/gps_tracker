@@ -1,6 +1,6 @@
 # CLAUDE.md — Operating Rules for This Repository
 
-You are building TrackCore: a multi-tenant, white-label GPS tracking platform for Teltonika devices.
+You are building Orbetra: a multi-tenant, white-label GPS tracking platform for Teltonika devices.
 The full specification is `PROJECT_PLAN.md` (v2.0). It is normative. When this file and the plan
 conflict, the plan wins. When the plan and the Teltonika wiki conflict, **the wiki wins** — flag the
 discrepancy in `docs/adr/` and tell the human.
