@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history: turbo affected-graph filter needs the merge base
+
+      - name: Block TODO(VERIFY-WIKI) markers (CLAUDE.md rule 8)
+        if: github.event_name == 'pull_request'
+        run: |
+          # same exclusions as scripts/hook-commit-gate.sh (docs + enforcement tooling self-match)
+          if git diff "origin/${{ github.base_ref }}...HEAD" -- . ':(exclude)*.md' ':(exclude)**/*.md' \
+            ':(exclude)scripts/hook-commit-gate.sh' ':(exclude)scripts/__tests__/hooks.spec.sh' \
+            ':(exclude).github/workflows/ci.yml' | grep -n '^+.*TODO(VERIFY-WIKI)'; then
+            echo "::error::TODO(VERIFY-WIKI) marker added in this diff — resolve the citation first"
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4 # version comes from package.json "packageManager"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Gates (affected graph on PRs)
+        if: github.event_name == 'pull_request'
+        run: pnpm turbo run typecheck lint test --filter="...[origin/${{ github.base_ref }}]"
+
+      - name: Gates (full on main)
+        if: github.event_name != 'pull_request'
+        run: pnpm turbo run typecheck lint test
+
+      - name: Hook script tests
+        run: sh scripts/__tests__/hooks.spec.sh

@@ -1,4 +1,4 @@
-# CC_PLAYBOOK.md — Running Claude Code on TrackCore Without Drift
+# CC_PLAYBOOK.md — Running Claude Code on Orbetra Without Drift
 Companion to CLAUDE.md (hard rules) and IMPLEMENTATION_PLAN.md (backlog). This file is HOW; those are WHAT.
 Sources: Anthropic Claude Code docs (worktrees, subagents, hooks), community best-practice compilations
 (github.com/hesreallyhim/awesome-claude-code, github.com/shanraisshan/claude-code-best-practice,
