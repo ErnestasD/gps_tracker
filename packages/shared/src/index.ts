@@ -1,2 +1,2 @@
-// @orbetra/shared — stub (E01-1). Real implementation lands in its own story.
-export const packageName = '@orbetra/shared'
+// @orbetra/shared — zod schemas, the single source of types (PROJECT_PLAN §5).
+export * from './records.js'
