@@ -39,7 +39,8 @@ export function parseFrame(frame: Frame): ParsedPacket {
     case 0x8e:
       return parseAvl(bytes, dataLen, codecId)
     case 0x10:
-      // v1 contract: Codec 16 = raw fallback after CRC/framing verify (PROJECT_PLAN §3.1)
+      // v1 contract: Codec 16 = raw fallback after CRC/framing verify (PROJECT_PLAN §3.1).
+      // Callers needing the payload read frame.bytes; full 16 decode arrives with FMB6xx support.
       return { kind: 'avl', codec: 16, records: [], rawFallback: true }
     case 0x0c:
     case 0x0d:

@@ -395,10 +395,10 @@ export interface TeltonikaCodec {
   encodeCodec12(cmd: string): Buffer;
   decodeCodec12(frame: Frame): string;
 }
-export type ParsedPacket =
+export type ParsedPacket =        // extended per docs/adr/013 (additive fields only)
   | { kind: 'imei'; imei: string }
-  | { kind: 'avl'; codec: 8|0x8e|16; records: AvlRecord[] }
-  | { kind: 'cmdResponse'; text: string };
+  | { kind: 'avl'; codec: 8|0x8e|16; records: AvlRecord[]; rawFallback?: boolean }
+  | { kind: 'cmdResponse'; codec: 12|13|14; text: string; nack?: boolean };
 export interface AvlRecord { tsMs: number; priority: 0|1|2; lat: number; lon: number;
   altitude: number; angle: number; satellites: number; speed: number;
   eventIoId: number; io: Map<number, bigint|Buffer>; raw: Buffer }

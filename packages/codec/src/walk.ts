@@ -33,15 +33,18 @@ export function walkRecords(data: Buffer, extended: boolean): Buffer[] {
     need(8 + 1 + 15)
     off += 8 + 1 + 15
     readCount() // event IO id
-    readCount() // N — total element count (validated implicitly by group scan)
+    const nTotal = readCount()
+    let elements = 0
     for (const valueSize of [1, 2, 4, 8]) {
       const cnt = readCount()
+      elements += cnt
       need(cnt * (idSize + valueSize))
       off += cnt * (idSize + valueSize)
     }
     if (extended) {
       // NX group: variable-length elements (BLE/EYE payloads)
       const cnt = readCount()
+      elements += cnt
       for (let i = 0; i < cnt; i++) {
         need(2 + 2)
         const len = data.readUInt16BE(off + 2)
@@ -49,6 +52,11 @@ export function walkRecords(data: Buffer, extended: boolean): Buffer[] {
         need(len)
         off += len
       }
+    }
+    // N counts ALL elements incl. the 8E NX group — wiki 8E worked example (N=5, groups
+    // 1+1+1+2+0) and cross-checked on 11 real Traccar records (N == fixed + NX in every one)
+    if (elements !== nTotal) {
+      throw new FrameError(`record N=${nTotal} but groups carry ${elements} elements`, data)
     }
     records.push(data.subarray(start, off))
   }

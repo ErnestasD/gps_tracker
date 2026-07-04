@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { crc16ibm } from '../src/crc16.js'
+import { encodeAvlPacket } from '../src/encode.js'
 import { FrameError } from '../src/errors.js'
 import { StreamFramer } from '../src/frame.js'
 import { parseFrame } from '../src/parse.js'
@@ -43,6 +44,32 @@ describe('protocol edge cases (synthetic mutations of wiki-spec packets)', () =>
     expect(() =>
       parseFrame(frameOf(buildCodec8Packet([buildCodec8Record({ priority: 5 })]))),
     ).toThrow(FrameError)
+  })
+
+  it('record N disagreeing with group counts → FrameError (walker cross-check)', () => {
+    const pkt = buildCodec8Packet([buildCodec8Record({})])
+    pkt[35] = 3 // N byte of the (element-less) record: claim 3 elements
+    const dataLen = pkt.readUInt32BE(4)
+    pkt.writeUInt32BE(crc16ibm(pkt.subarray(8, 8 + dataLen)), 8 + dataLen)
+    expect(() => parseFrame(frameOf(pkt))).toThrow(/groups carry/)
+  })
+
+  it('encoder refuses >255 records (1-byte NumberOfData) and oversize NX payloads', () => {
+    const rec = {
+      tsMs: 1700000000000,
+      priority: 0 as const,
+      lat: 0,
+      lon: 0,
+      altitude: 0,
+      angle: 0,
+      satellites: 0,
+      speed: 0,
+      eventIoId: 0,
+      io: new Map<number, bigint | Buffer>(),
+    }
+    expect(() => encodeAvlPacket(8, Array.from({ length: 256 }, () => rec))).toThrow(/one byte/)
+    const big = { ...rec, io: new Map<number, bigint | Buffer>([[10, Buffer.alloc(0x10000)]]) }
+    expect(() => encodeAvlPacket(0x8e, [big])).toThrow(/exceeds 2-byte/)
   })
 
   it('unknown codec id → FrameError', () => {

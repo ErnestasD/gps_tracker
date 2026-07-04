@@ -21,6 +21,9 @@ export interface EncodableRecord {
 }
 
 export function encodeAvlPacket(codec: 8 | 0x8e, records: EncodableRecord[]): Buffer {
+  if (records.length > 0xff) {
+    throw new FrameError(`NumberOfData is one byte — cannot encode ${records.length} records`)
+  }
   const extended = codec === 0x8e
   const body = Buffer.concat(records.map((r) => encodeRecord(r, extended)))
   const data = Buffer.concat([
@@ -60,7 +63,9 @@ function encodeRecord(r: EncodableRecord, extended: boolean): Buffer {
   }
 
   const parts: Buffer[] = [head, writeId(r.eventIoId, idSize)]
-  const totalCount = groups[1].length + groups[2].length + groups[4].length + groups[8].length
+  // N counts ALL elements incl. NX (wiki 8E example + 11 real Traccar records agree)
+  const totalCount =
+    groups[1].length + groups[2].length + groups[4].length + groups[8].length + nx.length
   parts.push(writeId(totalCount, idSize))
   for (const size of [1, 2, 4, 8] as const) {
     parts.push(writeId(groups[size].length, idSize))
@@ -76,6 +81,9 @@ function encodeRecord(r: EncodableRecord, extended: boolean): Buffer {
     cnt.writeUInt16BE(nx.length)
     parts.push(cnt)
     for (const [id, buf] of nx) {
+      if (buf.length > 0xffff) {
+        throw new FrameError(`NX element ${id} payload ${buf.length} B exceeds 2-byte length field`)
+      }
       const hdr = Buffer.alloc(4)
       hdr.writeUInt16BE(id, 0)
       hdr.writeUInt16BE(buf.length, 2)
