@@ -15,5 +15,11 @@
   },
   "dependencies": {
     "@orbetra/codec": "workspace:*"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
   }
 }
