@@ -1,7 +1,26 @@
 # E01-1 Plan — Monorepo scaffold & CI (M)
 
 **Story:** IMPLEMENTATION_PLAN.md E01-1 · **Implements:** PROJECT_PLAN §5 map, §9.4 hooks
-**Status:** awaiting founder approval
+**Status:** review pass done (findings applied below), ready to implement
+
+## Review findings applied (2026-07-04 pass)
+1. **Gate scope:** CLAUDE.md Commands section mandates `typecheck lint test` after every
+   edit; CC_PLAYBOOK §5 example ran only `typecheck test`. CLAUDE.md (hard rules) wins —
+   hook-gate runs all three. Formatting (prettier) stays commit-gate-only per playbook
+   anti-pattern note.
+2. **Vitest:** `vitest.workspace.ts` is deprecated in current Vitest (3.x) — use root
+   `vitest.config.ts` with `projects` instead. Story file list predates this; same
+   capability, supported API.
+3. **Hook matcher reality-check:** playbook's `"matcher": "Bash(git commit*)"` is not how
+   Claude Code hook matchers work (matcher matches the TOOL name). Correct wiring:
+   PreToolUse matcher `Bash` + the hook script inspects the command JSON and no-ops unless
+   it is a `git commit`.
+4. **Stronger guarantee:** commit-gate additionally installed as a native git pre-commit
+   hook (`core.hooksPath=scripts/githooks`) so the gate binds ANY committer (founder
+   terminal included), not just my tool calls. Claude PreToolUse hook stays as early
+   feedback; git hook is the enforcement.
+5. **CI detail:** affected-graph filter `--filter=...[origin/main]` requires
+   `fetch-depth: 0` in checkout — noted so CI doesn't silently run zero packages.
 
 ## Environment prerequisites (found during planning)
 - Local machine runs **Node v25.6.1**; the plan mandates **Node 22 LTS**. Action: pin
