@@ -6,7 +6,9 @@
     "node": ">=22"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "scripts": {
     "prepare": "git config core.hooksPath scripts/githooks || true",
@@ -14,13 +16,15 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "gates": "turbo run typecheck lint test"
+    "gates": "turbo run typecheck lint test",
+    "sim": "tsx tools/simulator/src/main.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
     "@types/node": "^22.10.0",
     "eslint": "^9.30.0",
     "prettier": "^3.5.0",
+    "tsx": "^4.23.0",
     "turbo": "^2.5.0",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.35.0",

@@ -16,5 +16,11 @@
   },
   "dependencies": {
     "complete-teltonika-parser": "0.3.6"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
   }
 }
