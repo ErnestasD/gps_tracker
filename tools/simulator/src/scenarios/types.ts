@@ -6,6 +6,8 @@ export interface ScenarioOpts {
   count: number
   /** Fixed base timestamp (ms) for deterministic runs; CLI defaults to Date.now(). */
   startMs: number
+  /** Optional per-byte write delay (slow-loris style trickling). */
+  byteDelayMs?: number
 }
 
 export interface Scenario {

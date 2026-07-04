@@ -1,5 +1,9 @@
 import { runScenario } from './client.js'
+import { bufferedFlood } from './scenarios/bufferedFlood.js'
 import { corruptCrc } from './scenarios/corruptCrc.js'
+import { invalidFix } from './scenarios/invalidFix.js'
+import { panic } from './scenarios/panic.js'
+import { slowLoris } from './scenarios/slowLoris.js'
 import { liveDrive } from './scenarios/liveDrive.js'
 import { oversize } from './scenarios/oversize.js'
 import type { Scenario } from './scenarios/types.js'
@@ -8,6 +12,10 @@ const SCENARIOS: Record<string, Scenario> = {
   liveDrive,
   corruptCrc,
   oversize,
+  bufferedFlood,
+  invalidFix,
+  panic,
+  slowLoris,
 }
 
 function arg(name: string, fallback?: string): string {
