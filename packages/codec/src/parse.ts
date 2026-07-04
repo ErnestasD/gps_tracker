@@ -2,7 +2,7 @@ import { ProtocolParser } from 'complete-teltonika-parser'
 
 import { crc16ibm } from './crc16.js'
 import { CrcError, FrameError } from './errors.js'
-import { walkRecords } from './walk.js'
+import { extractNx8e, walkRecords } from './walk.js'
 import type { AvlRecord, Frame, ParsedPacket } from './types.js'
 
 /**
@@ -72,6 +72,14 @@ function parseAvl(bytes: Buffer, dataLen: number, codecId: 0x08 | 0x8e): ParsedP
     const priority = raw[8]!
     if (priority > 2) throw new FrameError(`priority ${priority} outside 0..2`, bytes)
     const idSize = codecId === 0x8e ? 2 : 1
+    const io = ioPerRecord[i]!
+    if (codecId === 0x8e) {
+      // NX-group elements: our raw extraction is authoritative (lib returns NaN for these)
+      for (const [id, buf] of extractNx8e(raw)) io.set(id, buf)
+    }
+    for (const [id, v] of io) {
+      if (v === null) throw new FrameError(`undecodable IO value for AVL id ${id}`, bytes)
+    }
     return {
       tsMs,
       priority: priority as 0 | 1 | 2,
@@ -83,7 +91,7 @@ function parseAvl(bytes: Buffer, dataLen: number, codecId: 0x08 | 0x8e): ParsedP
       satellites: raw[21]!,
       speed: raw.readUInt16BE(22),
       eventIoId: idSize === 2 ? raw.readUInt16BE(24) : raw[24]!,
-      io: ioPerRecord[i]!,
+      io: io as Map<number, bigint | Buffer>,
       raw: Buffer.from(raw), // detached copy: framer buffers get reused
     }
   })
@@ -95,8 +103,15 @@ interface LibAvlData {
   IOelement?: { Elements?: Record<string, unknown> }
 }
 
-/** Field decode via the wrapped parser (ADR-010); values normalized to bigint|Buffer. */
-function decodeIoWithLib(bytes: Buffer, expectedCount: number): Map<number, bigint | Buffer>[] {
+/**
+ * Field decode via the wrapped parser (ADR-010); values normalized to bigint|Buffer.
+ * `null` marks values the lib could not decode (NaN) — 8E NX extraction overrides them,
+ * and any survivor null fails the parse loudly (never silently dropped).
+ */
+function decodeIoWithLib(
+  bytes: Buffer,
+  expectedCount: number,
+): Map<number, bigint | Buffer | null>[] {
   let parsed: InstanceType<typeof ProtocolParser>
   try {
     parsed = new ProtocolParser(bytes.toString('hex'))
@@ -114,7 +129,7 @@ function decodeIoWithLib(bytes: Buffer, expectedCount: number): Map<number, bigi
     )
   }
   return (rawDatas as LibAvlData[]).map((d) => {
-    const io = new Map<number, bigint | Buffer>()
+    const io = new Map<number, bigint | Buffer | null>()
     const elements = d.IOelement?.Elements ?? {}
     for (const [id, value] of Object.entries(elements)) {
       io.set(Number(id), normalizeIoValue(value))
@@ -123,12 +138,13 @@ function decodeIoWithLib(bytes: Buffer, expectedCount: number): Map<number, bigi
   })
 }
 
-function normalizeIoValue(value: unknown): bigint | Buffer {
+/** Exported for direct unit-testing of all normalization branches. */
+export function normalizeIoValue(value: unknown): bigint | Buffer | null {
   switch (typeof value) {
     case 'bigint':
       return value
     case 'number':
-      return BigInt(value)
+      return Number.isSafeInteger(value) ? BigInt(value) : null
     case 'boolean':
       return value ? 1n : 0n
     case 'string':

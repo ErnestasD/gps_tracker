@@ -32,7 +32,8 @@ export interface FixtureCase {
 
 export interface FixtureFile {
   source_url: string
-  snapshot_url: string
+  snapshot_url?: string
+  license?: string
   retrieved_at: string
   attribution: string
   cases: FixtureCase[]

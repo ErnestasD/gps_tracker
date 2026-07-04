@@ -1,0 +1,7 @@
+{
+  "family": "fmb6xx",
+  "source_url": "https://wiki.teltonika-gps.com/view/FMB640_Teltonika_Data_Sending_Parameters_ID",
+  "retrieved_at": "2026-07-04",
+  "note": "STUB - FMB640 pro range has a diverging AVL table (tachograph/CAN/LLS ranges). Populate from the wiki table in the story that first needs FMB6xx support; loader treats stub as empty (unknown IDs pass through as io_<id>).",
+  "elements": {}
+}

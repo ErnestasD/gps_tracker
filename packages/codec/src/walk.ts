@@ -54,3 +54,30 @@ export function walkRecords(data: Buffer, extended: boolean): Buffer[] {
   }
   return records
 }
+
+/**
+ * Extract the Codec 8E NX-group (variable-length) elements of ONE record.
+ * These carry BLE/EYE/ASCII payloads and are surfaced as raw Buffers —
+ * the wrapped parser mangles them (returns NaN), so we are authoritative here.
+ */
+export function extractNx8e(record: Buffer): Map<number, Buffer> {
+  let off = 24 + 2 // ts+prio+gps, 2B event id
+  const total = record.readUInt16BE(off)
+  void total
+  off += 2
+  for (const valueSize of [1, 2, 4, 8]) {
+    const cnt = record.readUInt16BE(off)
+    off += 2 + cnt * (2 + valueSize)
+  }
+  const out = new Map<number, Buffer>()
+  const cnt = record.readUInt16BE(off)
+  off += 2
+  for (let i = 0; i < cnt; i++) {
+    const id = record.readUInt16BE(off)
+    const len = record.readUInt16BE(off + 2)
+    off += 4
+    out.set(id, Buffer.from(record.subarray(off, off + len)))
+    off += len
+  }
+  return out
+}

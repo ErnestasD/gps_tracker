@@ -1,0 +1,4048 @@
+{
+  "family": "fmc",
+  "source_url": "https://wiki.teltonika-gps.com/view/FMC130_Teltonika_Data_Sending_Parameters_ID",
+  "snapshot_url": "https://web.archive.org/web/20260308032221/https://wiki.teltonika-gps.com/view/FMC130_Teltonika_Data_Sending_Parameters_ID",
+  "retrieved_at": "2026-07-04",
+  "note": "FMC family shares the FMB AVL template per wiki Template:FMB_AVL_ID_FMM_FMC; extracted from the FMC130 page directly.",
+  "elements": {
+    "1": {
+      "name": "Digital Input 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "2": {
+      "name": "Digital Input 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "3": {
+      "name": "Digital Input 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "4": {
+      "name": "Pulse Counter Din1",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Counts pulses, count is reset when records are saved"
+    },
+    "5": {
+      "name": "Pulse Counter Din2",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Counts pulses, count is reset when records are saved"
+    },
+    "6": {
+      "name": "Analog Input 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "V",
+      "description": "Voltage"
+    },
+    "9": {
+      "name": "Analog Input 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "V",
+      "description": "Voltage"
+    },
+    "10": {
+      "name": "SD Status",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - not present 1 - present"
+    },
+    "11": {
+      "name": "ICCID1",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Value of SIM ICCID, MSB"
+    },
+    "12": {
+      "name": "Fuel Used GPS",
+      "bytes": "4",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "l",
+      "description": "Fuel Used"
+    },
+    "13": {
+      "name": "Fuel Rate GPS",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.01",
+      "units": "l/100km",
+      "description": "Average Fuel Use"
+    },
+    "14": {
+      "name": "ICCID2",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Value of SIM ICCID, LSB"
+    },
+    "15": {
+      "name": "Eco Score",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.01",
+      "description": "Average amount of events on some distance"
+    },
+    "16": {
+      "name": "Total Odometer",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Total Odometer value in meters"
+    },
+    "17": {
+      "name": "Axis X",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "mG",
+      "description": "X axis value"
+    },
+    "18": {
+      "name": "Axis Y",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "mG",
+      "description": "Y axis value"
+    },
+    "19": {
+      "name": "Axis Z",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "mG",
+      "description": "Z axis value"
+    },
+    "20": {
+      "name": "BLE Battery #2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery level of sensor #2"
+    },
+    "21": {
+      "name": "GSM Signal",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Value in range 1-5 Explanation"
+    },
+    "22": {
+      "name": "BLE Battery #3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery level of sensor #3"
+    },
+    "23": {
+      "name": "BLE Battery #4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery level of sensor #4"
+    },
+    "24": {
+      "name": "Speed",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "km/h",
+      "description": "GNSS Speed"
+    },
+    "25": {
+      "name": "BLE Temperature #1",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01*",
+      "units": "°C",
+      "description": "Degrees ( °C ), -40 - +125; Error codes: 4000 - abnormal sensor state 3000 - sensor not found 2000 - failed sensor data parsing From firmware version 03.28.00 and up: 32767 - sensor not found 32766 - "
+    },
+    "26": {
+      "name": "BLE Temperature #2",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01*",
+      "units": "°C",
+      "description": "Degrees ( °C ), -40 - +125; Error codes: 4000 - abnormal sensor state 3000 - sensor not found 2000 - failed sensor data parsing From firmware version 03.28.00 and up: 32767 - sensor not found 32766 - "
+    },
+    "27": {
+      "name": "BLE Temperature #3",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01*",
+      "units": "°C",
+      "description": "Degrees ( °C ), -40 - +125; Error codes: 4000 - abnormal sensor state 3000 - sensor not found 2000 - failed sensor data parsing From firmware version 03.28.00 and up: 32767 - sensor not found 32766 - "
+    },
+    "28": {
+      "name": "BLE Temperature #4",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01*",
+      "units": "°C",
+      "description": "Degrees ( °C ), -40 - +125; Error codes: 4000 - abnormal sensor state 3000 - sensor not found 2000 - failed sensor data parsing From firmware version 03.28.00 and up: 32767 - sensor not found 32766 - "
+    },
+    "29": {
+      "name": "BLE Battery #1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery level of sensor #1"
+    },
+    "30": {
+      "name": "Number of DTC",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Number of DTC"
+    },
+    "31": {
+      "name": "Engine Load",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Calculated engine load value"
+    },
+    "32": {
+      "name": "Coolant Temperature",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Engine coolant temperature"
+    },
+    "33": {
+      "name": "Short Fuel Trim",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "%",
+      "description": "Short term fuel trim 1"
+    },
+    "34": {
+      "name": "Fuel pressure",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "kPa",
+      "description": "Fuel pressure"
+    },
+    "35": {
+      "name": "Intake MAP",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "kPa",
+      "description": "Intake manifold absolute pressure"
+    },
+    "36": {
+      "name": "Engine RPM",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "rpm",
+      "description": "Engine RPM"
+    },
+    "37": {
+      "name": "Vehicle Speed",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "km/h",
+      "description": "Vehicle speed"
+    },
+    "38": {
+      "name": "Timing Advance",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "°",
+      "description": "Timing advance"
+    },
+    "39": {
+      "name": "Intake Air Temperature",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Intake air temperature"
+    },
+    "40": {
+      "name": "MAF",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.01",
+      "units": "g/sec",
+      "description": "MAF air flow rate"
+    },
+    "41": {
+      "name": "Throttle Position",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Throttle position"
+    },
+    "42": {
+      "name": "Runtime since engine start",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "s",
+      "description": "Runtime since engine start"
+    },
+    "43": {
+      "name": "Distance Traveled MIL On",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Distance ormattin MIL on"
+    },
+    "44": {
+      "name": "Relative Fuel Rail Pressure",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "units": "kPa",
+      "description": "Relative fuel rail pressure"
+    },
+    "45": {
+      "name": "Direct Fuel Rail Pressure",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "10",
+      "units": "kPa",
+      "description": "Direct Fuel Rail Pressure"
+    },
+    "46": {
+      "name": "Commanded EGR",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Commanded EGR"
+    },
+    "47": {
+      "name": "EGR Error",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "%",
+      "description": "EGR error"
+    },
+    "48": {
+      "name": "Fuel Level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Fuel level"
+    },
+    "49": {
+      "name": "Distance Since Codes Clear",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Distance traveled since codes cleared"
+    },
+    "50": {
+      "name": "Barometic Pressure",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "kPa",
+      "description": "Barometic pressure"
+    },
+    "51": {
+      "name": "Control Module Voltage",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "V",
+      "description": "Control module voltage"
+    },
+    "52": {
+      "name": "Absolute Load Value",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Absolute load value"
+    },
+    "53": {
+      "name": "Ambient Air Temperature",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Ambient air temperature"
+    },
+    "54": {
+      "name": "Time Run With MIL On",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min",
+      "description": "Time run with MIL on"
+    },
+    "55": {
+      "name": "Time Since Codes Cleared",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min",
+      "description": "Time since codes cleared"
+    },
+    "56": {
+      "name": "Absolute Fuel Rail Pressure",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "10",
+      "units": "kPa",
+      "description": "Absolute fuel rail pressure"
+    },
+    "57": {
+      "name": "Hybrid battery pack life",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Hybrid battery pack remaining life"
+    },
+    "58": {
+      "name": "Engine Oil Temperature",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "°C",
+      "description": "Engine oil temperature"
+    },
+    "59": {
+      "name": "Fuel injection timing",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01",
+      "units": "°",
+      "description": "Fuel injection timing"
+    },
+    "60": {
+      "name": "Fuel Rate",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.01",
+      "units": "L/h",
+      "description": "Engine fuel rate, L/h*100"
+    },
+    "61": {
+      "name": "Geofence zone 06",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "62": {
+      "name": "Geofence zone 07",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "63": {
+      "name": "Geofence zone 08",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "64": {
+      "name": "Geofence zone 09",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "65": {
+      "name": "Geofence zone 10",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "66": {
+      "name": "External Voltage",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "V",
+      "description": "Voltage"
+    },
+    "67": {
+      "name": "Battery Voltage",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "V",
+      "description": "Voltage"
+    },
+    "68": {
+      "name": "Battery Current",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.001",
+      "units": "A",
+      "description": "Current"
+    },
+    "69": {
+      "name": "GNSS Status",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - GNSS OFF 1 – GNSS ON with fix 2 - GNSS ON without fix 3 - GNSS sleep 4 - GNSS ON with fix, invalid data"
+    },
+    "70": {
+      "name": "Geofence zone 11",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "71": {
+      "name": "Dallas Temperature ID 4",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Dallas sensor ID"
+    },
+    "72": {
+      "name": "Dallas Temperature 1",
+      "bytes": "4",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Degrees ( °C ), -55 - +115, if 850 – Sensor not ready if 2000 – Value read error if 3000 – Not connected if 4000 – ID failed if 5000 – same as 850"
+    },
+    "73": {
+      "name": "Dallas Temperature 2",
+      "bytes": "4",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Degrees ( °C ), -55 - +115, if 850 – Sensor not ready if 2000 – Value read error if 3000 – Not connected if 4000 – ID failed if 5000 – same as 850"
+    },
+    "74": {
+      "name": "Dallas Temperature 3",
+      "bytes": "4",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Degrees ( °C ), -55 - +115, if 850 – Sensor not ready if 2000 – Value read error if 3000 – Not connected if 4000 – ID failed if 5000 – same as 850"
+    },
+    "75": {
+      "name": "Dallas Temperature 4",
+      "bytes": "4",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Degrees ( °C ), -55 - +115, if 850 – Sensor not ready if 2000 – Value read error if 3000 – Not connected if 4000 – ID failed if 5000 – same as 850"
+    },
+    "76": {
+      "name": "Dallas Temperature ID 1",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Dallas sensor ID"
+    },
+    "77": {
+      "name": "Dallas Temperature ID 2",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Dallas sensor ID"
+    },
+    "78": {
+      "name": "iButton",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "iButton ID"
+    },
+    "79": {
+      "name": "Dallas Temperature ID 3",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Dallas sensor ID"
+    },
+    "80": {
+      "name": "Data Mode",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Home On Stop 1 – Home On Moving 2 – Roaming On Stop 3 – Roaming On Moving 4 – Unknown On Stop 5 – Unknown On Moving"
+    },
+    "81": {
+      "name": "Vehicle Speed",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "km/h",
+      "description": "Vehicle Speed"
+    },
+    "82": {
+      "name": "Accelerator Pedal Position",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Value in percentages"
+    },
+    "83": {
+      "name": "Fuel Consumed",
+      "bytes": "4",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "units": "l",
+      "description": "Value in liters"
+    },
+    "84": {
+      "name": "Fuel Level",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "units": "l",
+      "description": "Value in liters"
+    },
+    "85": {
+      "name": "Engine RPM",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "rpm",
+      "description": "Value in rounds per minute"
+    },
+    "86": {
+      "name": "BLE Humidity #1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1*",
+      "units": "%RH",
+      "description": "Humidity From firmware version 03.28.00 and up: 65535 - sensor not found 65534 - failed sensor data parsing 65533 - abnormal sensor state"
+    },
+    "87": {
+      "name": "Total Mileage",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Value in meters"
+    },
+    "88": {
+      "name": "Geofence zone 12",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "89": {
+      "name": "Fuel level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Value in percentages"
+    },
+    "90": {
+      "name": "Door Status",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Door status value: Min – 0, Max – 16128 Door status is represented as bitmask converted to decimal value. Possible values: 0 – all doors closed 0x100 (256) – front left door is opened 0x200 (512) – fr"
+    },
+    "91": {
+      "name": "Geofence zone 13",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "92": {
+      "name": "Geofence zone 14",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "93": {
+      "name": "Geofence zone 15",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "94": {
+      "name": "Geofence zone 16",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "95": {
+      "name": "Geofence zone 17",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "96": {
+      "name": "Geofence zone 18",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "97": {
+      "name": "Geofence zone 19",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "98": {
+      "name": "Geofence zone 20",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "99": {
+      "name": "Geofence zone 21",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "100": {
+      "name": "Program Number",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Value: Min – 0, Max – 99999"
+    },
+    "101": {
+      "name": "Module ID 8B",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Module ID 8 Bytes"
+    },
+    "102": {
+      "name": "Engine Worktime",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "min",
+      "description": "Engine work time"
+    },
+    "103": {
+      "name": "Engine Worktime (counted)",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "min",
+      "description": "Total engine work time"
+    },
+    "104": {
+      "name": "BLE Humidity #2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1*",
+      "units": "%RH",
+      "description": "Humidity From firmware version 03.28.00 and up: 65535 - sensor not found 65534 - failed sensor data parsing 65533 - abnormal sensor state"
+    },
+    "105": {
+      "name": "Total Mileage (counted)",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Total Vehicle Mileage"
+    },
+    "106": {
+      "name": "BLE Humidity #3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1*",
+      "units": "%RH",
+      "description": "Humidity From firmware version 03.28.00 and up: 65535 - sensor not found 65534 - failed sensor data parsing 65533 - abnormal sensor state"
+    },
+    "107": {
+      "name": "Fuel Consumed (counted)",
+      "bytes": "4",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "units": "l",
+      "description": "Total Fuel Consumed"
+    },
+    "108": {
+      "name": "BLE Humidity #4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1*",
+      "units": "%RH",
+      "description": "Humidity From firmware version 03.28.00 and up: 65535 - sensor not found 65534 - failed sensor data parsing 65533 - abnormal sensor state"
+    },
+    "110": {
+      "name": "Fuel Rate",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "units": "l/h",
+      "description": "Fuel rate"
+    },
+    "111": {
+      "name": "AdBlue Level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "AdBlue"
+    },
+    "112": {
+      "name": "AdBlue Level",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "units": "l",
+      "description": "AdBlue level"
+    },
+    "113": {
+      "name": "Battery Level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery capacity level"
+    },
+    "114": {
+      "name": "Engine Load",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Engine Load"
+    },
+    "115": {
+      "name": "Engine Temperature",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Engine Temperature"
+    },
+    "118": {
+      "name": "Axle 1 Load",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Axle 1 load"
+    },
+    "119": {
+      "name": "Axle 2 Load",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Axle 2 load"
+    },
+    "120": {
+      "name": "Axle 3 Load",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Axle 3 load"
+    },
+    "121": {
+      "name": "Axle 4 Load",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Axle 4 load"
+    },
+    "122": {
+      "name": "Axle 5 Load",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Axle 5 load"
+    },
+    "123": {
+      "name": "Control State Flags",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Control state flags"
+    },
+    "124": {
+      "name": "Agricultural Machinery Flags",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Agricultural machinery flags"
+    },
+    "125": {
+      "name": "Harvesting Time",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "min",
+      "description": "Harvesting time"
+    },
+    "126": {
+      "name": "Area of Harvest",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m2",
+      "description": "Area of harvest in square meters"
+    },
+    "127": {
+      "name": "Mowing Efficiency",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m2/h",
+      "description": "Mowing efficiency"
+    },
+    "128": {
+      "name": "Grain Mown Volume",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Mown volume"
+    },
+    "129": {
+      "name": "Grain Moisture",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Grain moisture"
+    },
+    "130": {
+      "name": "Harvesting Drum RPM",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "rpm",
+      "description": "Harvesting drum rpm"
+    },
+    "131": {
+      "name": "Gap Under Harvesting Drum",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "mm",
+      "description": "Gap under harvesting drum"
+    },
+    "132": {
+      "name": "Security State Flags",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Security state flags"
+    },
+    "133": {
+      "name": "Tachograph Total Vehicle Distance",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Tacho Total Vehicle Distance"
+    },
+    "134": {
+      "name": "Trip Distance",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Trip distance"
+    },
+    "135": {
+      "name": "Tachograph Vehicle Speed",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "km/h",
+      "description": "Tacho vehicle speed"
+    },
+    "136": {
+      "name": "Tacho Driver Card Presence",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Tacho Driver Card Presence"
+    },
+    "137": {
+      "name": "Driver 1 States",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Driver 1 States"
+    },
+    "138": {
+      "name": "Driver 2 States",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Driver 2 States"
+    },
+    "139": {
+      "name": "Driver 1 Continuous Driving Time",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min.",
+      "description": "Driver 1 Continuous Driving Time, minutes"
+    },
+    "140": {
+      "name": "Driver 2 Continuous Driving Time",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min.",
+      "description": "Driver 2 Continuous Driving Time, minutes"
+    },
+    "141": {
+      "name": "Driver 1 Cumulative Break Time",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min.",
+      "description": "Driver 1 Cumulative Break Time, minutes"
+    },
+    "142": {
+      "name": "Driver 2 Cumulative Break Time",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min.",
+      "description": "Driver 2 Cumulative Break Time, minutes"
+    },
+    "143": {
+      "name": "Driver 1 Selected Activity Duration",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min.",
+      "description": "Driver 1 Duration Of Selected Activity, minutes"
+    },
+    "144": {
+      "name": "Driver 2 Selected Activity Duration",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min.",
+      "description": "Driver 2 Duration Of Selected Activity, minutes"
+    },
+    "145": {
+      "name": "Driver 1 Cumulative Driving Time",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min.",
+      "description": "Driver 1 Cumulative Driving Time, minutes"
+    },
+    "146": {
+      "name": "Driver 2 Cumulative Driving Time",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "min.",
+      "description": "Driver 2 Cumulative Driving Time, minutes"
+    },
+    "147": {
+      "name": "Driver 1 ID High",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Driver 1 ID High"
+    },
+    "148": {
+      "name": "Driver 1 ID Low",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Driver 1 ID Low"
+    },
+    "149": {
+      "name": "Driver 2 ID High",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Driver 2 ID High"
+    },
+    "150": {
+      "name": "Driver 2 ID Low",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Driver 2 ID Low"
+    },
+    "151": {
+      "name": "Battery Temperature",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Battery temperature in Celsius"
+    },
+    "152": {
+      "name": "HV Battery Level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery level in percent"
+    },
+    "153": {
+      "name": "Geofence zone 22",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "154": {
+      "name": "Geofence zone 23",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "155": {
+      "name": "Geofence zone 01",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "156": {
+      "name": "Geofence zone 02",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "157": {
+      "name": "Geofence zone 03",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "158": {
+      "name": "Geofence zone 04",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "159": {
+      "name": "Geofence zone 05",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "160": {
+      "name": "DTC Faults",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "DTC faults Count"
+    },
+    "161": {
+      "name": "Slope of Arm",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "Degrees °",
+      "description": "Slope Of Arm"
+    },
+    "162": {
+      "name": "Rotation of Arm",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "Degrees °",
+      "description": "Rotation Of Arm"
+    },
+    "163": {
+      "name": "Eject of Arm",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Eject of arm"
+    },
+    "164": {
+      "name": "Horizontal Distance Arm Vehicle",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Horizontal Distance Arm Vehicle"
+    },
+    "165": {
+      "name": "Height Arm Above Ground",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Height Arm Above Ground"
+    },
+    "166": {
+      "name": "Drill RPM",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "rpm",
+      "description": "Drill RPM"
+    },
+    "167": {
+      "name": "Amount Of Spread Salt Square Meter",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "g/m2",
+      "description": "Amount Of Spread Salt Square Meter"
+    },
+    "168": {
+      "name": "Battery Voltage",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "V",
+      "description": "Battery Voltage"
+    },
+    "169": {
+      "name": "Amount Of Spread Fine Grained Salt",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "T",
+      "description": "Amount Of Spread Fine Grained Salt"
+    },
+    "170": {
+      "name": "Amount Of Coarse Grained Salt",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "T",
+      "description": "Amount Of Coarse Grained Salt"
+    },
+    "171": {
+      "name": "Amount Of Spread DiMix",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "T",
+      "description": "Amount Of Spread DiMix"
+    },
+    "172": {
+      "name": "Amount Of Spread Coarse Grained Calcium",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m3",
+      "description": "Amount Of Spread Coarse Grained Calcium"
+    },
+    "173": {
+      "name": "Amount Of Spread Calcium Chloride",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m3",
+      "description": "Amount Of Spread Calcium Chloride"
+    },
+    "174": {
+      "name": "Amount Of Spread Sodium Chloride",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m3",
+      "description": "Amount Of Spread Sodium Chloride"
+    },
+    "175": {
+      "name": "Auto Geofence",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone"
+    },
+    "176": {
+      "name": "Amount Of Spread Magnesium Chloride",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m3",
+      "description": "Amount Of Spread Magnesium Chloride"
+    },
+    "177": {
+      "name": "Amount Of Spread Gravel",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "T",
+      "description": "Amount Of Spread Gravel"
+    },
+    "178": {
+      "name": "Amount Of Spread Sand",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "T",
+      "description": "Amount Of Spread Sand"
+    },
+    "179": {
+      "name": "Digital Output 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "180": {
+      "name": "Digital Output 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic 0/1"
+    },
+    "181": {
+      "name": "GNSS PDOP",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "description": "Coefficient, calculation formula"
+    },
+    "182": {
+      "name": "GNSS HDOP",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "description": "Coefficient, calculation formula"
+    },
+    "183": {
+      "name": "Width Pouring Left",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Width Pouring Left"
+    },
+    "184": {
+      "name": "Width Pouring Right",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Width Pouring Right"
+    },
+    "185": {
+      "name": "Salt Spreader Working Hours",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "h",
+      "description": "Salt Spreader Working Hours"
+    },
+    "186": {
+      "name": "Distance During Salting",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Distance During Salting"
+    },
+    "187": {
+      "name": "Load Weight",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Load Weight"
+    },
+    "188": {
+      "name": "Retarder Load",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Retarded Load in percent"
+    },
+    "189": {
+      "name": "Cruise Time",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "min",
+      "description": "Cruise time in minutes"
+    },
+    "190": {
+      "name": "Geofence zone 24",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "191": {
+      "name": "Geofence zone 25",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "192": {
+      "name": "Geofence zone 26",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "193": {
+      "name": "Geofence zone 27",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "194": {
+      "name": "Geofence zone 28",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "195": {
+      "name": "Geofence zone 29",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "196": {
+      "name": "Geofence zone 30",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "197": {
+      "name": "Geofence zone 31",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "198": {
+      "name": "Geofence zone 32",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "199": {
+      "name": "Trip Odometer",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Trip Odometer value"
+    },
+    "200": {
+      "name": "Sleep Mode",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No Sleep 1 – GPS Sleep 2 – Deep Sleep 3 – Online Sleep 4 - Ultra Sleep"
+    },
+    "201": {
+      "name": "LLS 1 Fuel Level",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "kvants or ltr",
+      "description": "Fuel level measured by LLS sensor via RS232/RS485"
+    },
+    "202": {
+      "name": "LLS 1 Temperature",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Fuel temperature measured by LLS via RS232/RS485"
+    },
+    "203": {
+      "name": "LLS 2 Fuel Level",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "kvants or ltr",
+      "description": "Fuel level measured by LLS sensor via RS485"
+    },
+    "204": {
+      "name": "LLS 2 Temperature",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Fuel temperature measured by LLS via RS485"
+    },
+    "205": {
+      "name": "GSM Cell ID",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "GSM base station ID"
+    },
+    "206": {
+      "name": "GSM Area Code",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Location Area code (LAC), it depends on GSM operator. It provides unique number which assigned to a set of base GSM stations."
+    },
+    "207": {
+      "name": "RFID",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "RFID ID"
+    },
+    "208": {
+      "name": "Geofence zone 33",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "209": {
+      "name": "Geofence zone 34",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "210": {
+      "name": "LLS 3 Fuel Level",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "kvants or ltr",
+      "description": "Fuel level measured by LLS sensor via RS485"
+    },
+    "211": {
+      "name": "LLS 3 Temperature",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Fuel temperature measured by LLS via RS485"
+    },
+    "212": {
+      "name": "LLS 4 Fuel Level",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "kvants or ltr",
+      "description": "Fuel level measured by LLS sensor via RS485"
+    },
+    "213": {
+      "name": "LLS 4 Temperature",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Fuel temperature measured by LLS via RS485"
+    },
+    "214": {
+      "name": "LLS 5 Fuel Level",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "kvants or ltr",
+      "description": "Fuel level measured by LLS sensor via RS485"
+    },
+    "215": {
+      "name": "LLS 5 Temperature",
+      "bytes": "1",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Fuel temperature measured by LLS via RS485"
+    },
+    "216": {
+      "name": "Geofence zone 35",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "217": {
+      "name": "Geofence zone 36",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "218": {
+      "name": "Geofence zone 37",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "219": {
+      "name": "Geofence zone 38",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "220": {
+      "name": "Geofence zone 39",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "221": {
+      "name": "Geofence zone 40",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "222": {
+      "name": "Geofence zone 41",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "223": {
+      "name": "Geofence zone 42",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "224": {
+      "name": "Geofence zone 43",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "225": {
+      "name": "Geofence zone 44",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "226": {
+      "name": "Geofence zone 45",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "227": {
+      "name": "Geofence zone 46",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "228": {
+      "name": "Geofence zone 47",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "229": {
+      "name": "Geofence zone 48",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "230": {
+      "name": "Geofence zone 49",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "231": {
+      "name": "Geofence zone 50",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – target left zone 1 – target entered zone 2 – over speeding end 3 – over speeding start"
+    },
+    "232": {
+      "name": "CNG Status",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "CNG Status"
+    },
+    "233": {
+      "name": "CNG Used",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "CNG used"
+    },
+    "234": {
+      "name": "CNG Level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "CNG Level"
+    },
+    "235": {
+      "name": "Oil Level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Engine Oil Level Indicator Status"
+    },
+    "236": {
+      "name": "Alarm",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Reserved 1 – Alarm event occured"
+    },
+    "237": {
+      "name": "Network Type",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - 3G 1 - GSM 2 - 4G 3 - LTE CAT M1 4 - LTE CAT NB1 99 - Unknown"
+    },
+    "238": {
+      "name": "User ID",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "MAC address of NMEA receiver device connected via Bluetooth"
+    },
+    "239": {
+      "name": "Ignition",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Ignition Off 1 – Ignition On"
+    },
+    "240": {
+      "name": "Movement",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – Movement Off 1 – Movement On"
+    },
+    "241": {
+      "name": "Active GSM Operator",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Currently used GSM Operator code"
+    },
+    "243": {
+      "name": "Green driving event duration",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "ms",
+      "description": "Duration of event that did generate Green driving"
+    },
+    "246": {
+      "name": "Towing",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – steady 1 – towing"
+    },
+    "247": {
+      "name": "Crash detection",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "1 – real crash detected (device is calibrated) 2 – limited crash trace (device not calibrated) 3 - limited crash trace (device is calibrated) 4 - full crash trace (device not calibrated) 5 - full cras"
+    },
+    "248": {
+      "name": "Immobilizer",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – iButton not connected 1 – iButton connected (Immobilizer) 2 – iButton connected (Authorized Driving)"
+    },
+    "249": {
+      "name": "Jamming",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – jamming stop 1 – jamming start"
+    },
+    "250": {
+      "name": "Trip",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – trip stop 1 – trip start From 01.00.24 fw version available with BT app new values: 2 – Business Status 3 – Private Status 4-9 – Custom Statuses"
+    },
+    "251": {
+      "name": "Idling",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – moving 1 – idling"
+    },
+    "252": {
+      "name": "Unplug",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 – battery present 1 – battery unplugged"
+    },
+    "253": {
+      "name": "Green driving type",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "1 – harsh acceleration 2 – harsh braking 3 – harsh cornering"
+    },
+    "254": {
+      "name": "Green Driving Value",
+      "bytes": "1",
+      "type": "Unsigned",
+      "multiplier": "acc and braking: 0.01",
+      "units": "G or rad",
+      "description": "Depending on green driving type: if harsh acceleration or braking – g*100 (value 123 -> 1.23g). If Green driving source is „GPS“ – harsh cornering value is rad/s*100. If source is „Accelerometer“ – g*"
+    },
+    "255": {
+      "name": "Over Speeding",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "km/h",
+      "description": "At over speeding start km/h, at over speeding end km/h"
+    },
+    "256": {
+      "name": "VIN",
+      "bytes": "17",
+      "type": "ASCII",
+      "description": "VIN number"
+    },
+    "257": {
+      "name": "Crash trace data",
+      "bytes": "Variable",
+      "type": "HEX",
+      "description": "Crash trace data"
+    },
+    "258": {
+      "name": "EcoMaximum",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Element stores maximum accelerometer values in mg on all axis during Eco driving event 8 Bytes: 2B Zeros 2B - X axis 2B - Y axis 2B - Z axis"
+    },
+    "259": {
+      "name": "EcoAverage",
+      "bytes": "8",
+      "type": "Unsigned",
+      "description": "Element stores average accelerometer values in mg on all axis during Eco driving event 8 Bytes: 2B Zeros 2B - X axis 2B - Y axis 2B - Z axis"
+    },
+    "260": {
+      "name": "EcoDuration",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "ms",
+      "description": "Duration of Eco driving event in miliseconds"
+    },
+    "263": {
+      "name": "BT Status",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - BT is disabled 1 - BT Enabled, not device connected 2 - Device connected, BTv3 Only 3 - Device connected, BLE only 4 - Device connected, BLE + BT"
+    },
+    "264": {
+      "name": "Barcode ID",
+      "bytes": "Variable",
+      "type": "ASCII",
+      "description": "Barcode ID"
+    },
+    "270": {
+      "name": "BLE Fuel Level #1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Fuel Level"
+    },
+    "273": {
+      "name": "BLE Fuel Level #2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Fuel Level"
+    },
+    "276": {
+      "name": "BLE Fuel Level #3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Fuel Level"
+    },
+    "279": {
+      "name": "BLE Fuel Level #4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Fuel Level"
+    },
+    "281": {
+      "name": "Fault Codes",
+      "bytes": "variable",
+      "type": "ASCII",
+      "description": "Fault Codes (values separated via \",\")"
+    },
+    "282": {
+      "name": "Fault Codes",
+      "bytes": "Variable",
+      "type": "-",
+      "description": "DTC Fault codes"
+    },
+    "283": {
+      "name": "Driving State",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "1 - Ignition ON 2 - Driving 3 - Ignition OFF"
+    },
+    "284": {
+      "name": "Driving Records",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Number of Records between Ignition ON and Ignition OFF"
+    },
+    "285": {
+      "name": "Blood alcohol content",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Alcohol content in blood in perlims and mode. First 14 bits from MSB are perlims multiplied by 1000 and last to bits are 0 - Passive test, 1 Active test, 2 and 3 are reserved."
+    },
+    "303": {
+      "name": "Instant Movement",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1 returns movement value"
+    },
+    "304": {
+      "name": "Vehicles Range On Battery",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Vehicle Range on Battery"
+    },
+    "305": {
+      "name": "Vehicles Range On Additional Fuel",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "m",
+      "description": "Vehicle Range On Additional Fuel"
+    },
+    "306": {
+      "name": "BLE Fuel Frequency #1",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Frequency value of BLE fuel sensor #1"
+    },
+    "307": {
+      "name": "BLE Fuel Frequency #2",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Frequency value of BLE fuel sensor #2"
+    },
+    "308": {
+      "name": "BLE Fuel Frequency #3",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Frequency value of BLE fuel sensor #3"
+    },
+    "309": {
+      "name": "BLE Fuel Frequency #4",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Frequency value of BLE fuel sensor #4"
+    },
+    "317": {
+      "name": "Crash event counter",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Connects trace with specific eventual crash record"
+    },
+    "318": {
+      "name": "GNSS Jamming",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "GNSS Jamming state: 0 - GPS jamming ended/healthy state 1 - GPS jamming warning state 2 - GPS jamming critical state"
+    },
+    "325": {
+      "name": "VIN",
+      "bytes": "17",
+      "type": "ASCII",
+      "description": "VIN number"
+    },
+    "327": {
+      "name": "UL202-02 Sensor Fuel level",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "mm",
+      "description": "UL202-02 Sensor Fuel level"
+    },
+    "329": {
+      "name": "AIN Speed",
+      "bytes": "2",
+      "type": "Unsigned"
+    },
+    "331": {
+      "name": "BLE 1 Custom #1",
+      "bytes": "Variable",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "332": {
+      "name": "BLE 2 Custom #1",
+      "bytes": "Variable",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "333": {
+      "name": "BLE 3 Custom #1",
+      "bytes": "Variable",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "334": {
+      "name": "BLE 4 Custom #1",
+      "bytes": "Variable",
+      "type": "HEX",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "335": {
+      "name": "BLE Luminosity #1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "lx",
+      "description": "Luminosity value of BLE sensor"
+    },
+    "336": {
+      "name": "BLE Luminosity #2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "lx",
+      "description": "Luminosity value of BLE sensor"
+    },
+    "337": {
+      "name": "BLE Luminosity #3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "lx",
+      "description": "Luminosity value of BLE sensor"
+    },
+    "338": {
+      "name": "BLE Luminosity #4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "lx",
+      "description": "Luminosity value of BLE sensor"
+    },
+    "380": {
+      "name": "Digital output 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "381": {
+      "name": "Ground Sense",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Logic: 0/1"
+    },
+    "383": {
+      "name": "AXL Calibration Status",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Shows calibration status: 0- no calibration, 1- calibrated, 2- not configured, 3- fully calibrated"
+    },
+    "385": {
+      "name": "Beacon",
+      "bytes": "Variable",
+      "type": "HEX",
+      "description": "List of Beacon IDs"
+    },
+    "387": {
+      "name": "ISO6709 Coordinates",
+      "bytes": "34",
+      "type": "HEX",
+      "description": "ISO6709 Coordinates Latitude, Longitude (in Degrees, Minutes and Seconds) and Altitude: IO value format: ±DDMMSS.SSSS±DDDMMSS.SSSS±AAA.AAA/"
+    },
+    "388": {
+      "name": "Module ID 17B",
+      "bytes": "17",
+      "type": "HEX",
+      "description": "Module ID 17 Bytes"
+    },
+    "389": {
+      "name": "OBD OEM Total Mileage",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Total mileage received by requesting vehicle specific PID"
+    },
+    "390": {
+      "name": "OBD OEM Fuel Level",
+      "bytes": "4",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "units": "l",
+      "description": "Fuel level in litres received by requesting vehicle specific PID"
+    },
+    "391": {
+      "name": "Private mode",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Private mode state: 0 - Private mode off 1 - Private mode on"
+    },
+    "400": {
+      "name": "Distance to Next Service",
+      "bytes": "4",
+      "type": "Unsigned"
+    },
+    "402": {
+      "name": "OEM Distance Until Service",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Distance till next service received by requesting vehicle specific PID"
+    },
+    "403": {
+      "name": "Driver Name",
+      "bytes": "35",
+      "type": "Unsigned",
+      "description": "Driver name extracted from card, displayed without delimiters ($ signs)"
+    },
+    "404": {
+      "name": "Driver card license type",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "None - 0 B.1 license type - 1 B.2 license type - 2 B.3 license type - 3 B.4 license type - 4 T.1 license type - 5 T.2 license type - 6 T.3 license type - 7 T.4 license type - 8"
+    },
+    "405": {
+      "name": "Driver Gender",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "None - 0 Male - 1 Female - 2"
+    },
+    "406": {
+      "name": "Driver Card ID",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "None - 0 Male - 1 Female - 2"
+    },
+    "407": {
+      "name": "Driver card expiration date",
+      "bytes": "1",
+      "type": "Unsigned"
+    },
+    "408": {
+      "name": "Driver Card place of issue",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Extracted from card"
+    },
+    "409": {
+      "name": "Driver Status Event",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Registered - 0 Deregistered - 1 Swapping - 2"
+    },
+    "411": {
+      "name": "OEM Battery charge level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Represents battery charged level"
+    },
+    "449": {
+      "name": "Ignition On Counter",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "s",
+      "description": "Duration in seconds which is counted while Ignition state is On"
+    },
+    "450": {
+      "name": "CNG Level Kg",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "10",
+      "units": "Kg",
+      "description": "CNG Level Kg (appears only if CNG level percentage is not available)"
+    },
+    "451": {
+      "name": "BLE RFID #1",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "BLE NBL-T RFID ID for Connetionless mode #1 slot"
+    },
+    "452": {
+      "name": "BLE RFID #2",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "BLE NBL-T RFID ID for Connetionless mode #2 slot"
+    },
+    "453": {
+      "name": "BLE RFID #3",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "BLE NBL-T RFID ID for Connetionless mode #3 slot"
+    },
+    "454": {
+      "name": "BLE RFID #4",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "BLE NBL-T RFID ID for Connetionless mode #4 slot"
+    },
+    "455": {
+      "name": "BLE Button 1 state #1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "BLE NBL-T Button 1 status for Connetionless mode #1 slot"
+    },
+    "456": {
+      "name": "BLE Button 1 state #2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "BLE NBL-T Button 1 status for Connetionless mode #2 slot"
+    },
+    "457": {
+      "name": "BLE Button 1 state #3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "BLE NBL-T Button 1 status for Connetionless mode #3 slot"
+    },
+    "458": {
+      "name": "BLE Button 1 state #4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "BLE NBL-T Button 1 status for Connetionless mode #4 slot"
+    },
+    "459": {
+      "name": "BLE Button 2 state #1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "BLE NBL-T Button 2 status for Connetionless mode #1 slot"
+    },
+    "460": {
+      "name": "BLE Button 2 state #2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "BLE NBL-T Button 2 status for Connetionless mode #2 slot"
+    },
+    "461": {
+      "name": "BLE Button 2 state #3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "BLE NBL-T Button 2 status for Connetionless mode #3 slot"
+    },
+    "462": {
+      "name": "BLE Button 2 state #4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "BLE NBL-T Button 2 status for Connetionless mode #4 slot"
+    },
+    "463": {
+      "name": "BLE 1 Custom #2",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "464": {
+      "name": "BLE 1 Custom #3",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "465": {
+      "name": "BLE 1 Custom #4",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "466": {
+      "name": "BLE 1 Custom #5",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "467": {
+      "name": "BLE 2 Custom #2",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "468": {
+      "name": "BLE 2 Custom #3",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "469": {
+      "name": "BLE 2 Custom #4",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "470": {
+      "name": "BLE 2 Custom #5",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "471": {
+      "name": "BLE 3 Custom #2",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "472": {
+      "name": "BLE 3 Custom #3",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "473": {
+      "name": "BLE 3 Custom #4",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "474": {
+      "name": "BLE 3 Custom #5",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "475": {
+      "name": "BLE 4 Custom #2",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "476": {
+      "name": "BLE 4 Custom #3",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "477": {
+      "name": "BLE 4 Custom #4",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "478": {
+      "name": "BLE 4 Custom #5",
+      "bytes": "4",
+      "type": "UNSIGNED LONG INT",
+      "description": "Custom IO element for BLE sensor"
+    },
+    "483": {
+      "name": "UL202-02 Sensor Status",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "UL202-02 sensor status codes"
+    },
+    "500": {
+      "name": "MSP500 vendor name",
+      "bytes": "40",
+      "type": "ASCII",
+      "description": "Name of the integrator who installed the device"
+    },
+    "501": {
+      "name": "MSP500 vehicle number",
+      "bytes": "40",
+      "type": "ASCII",
+      "description": "Vehicle number on which the device is installed"
+    },
+    "502": {
+      "name": "MSP500 speed sensor",
+      "bytes": "1",
+      "type": "unsigned",
+      "description": "Status of the speed sensor"
+    },
+    "517": {
+      "name": "Security State Flags P4",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "Security state flags protocol 4, more information click here Flags"
+    },
+    "518": {
+      "name": "Control State Flags P4",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "Control state flags protocol 4, more information click here Flags"
+    },
+    "519": {
+      "name": "Indicator State Flags P4",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "Indicator state flags protocol 4, more information click here Flags"
+    },
+    "520": {
+      "name": "Agricultural State Flags P4",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "Agricultural state flags protocol 4, more information click here Flags"
+    },
+    "521": {
+      "name": "Utility State Flags P4",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "Utility state flags protocol 4, more information click here Flags"
+    },
+    "522": {
+      "name": "Cistern State Flags P4",
+      "bytes": "8",
+      "type": "HEX",
+      "description": "Cistern state flags protocol 4, more information click here Flags"
+    },
+    "540": {
+      "name": "Throttle position group",
+      "bytes": "1",
+      "type": "Unsigned",
+      "multiplier": "–",
+      "units": "%",
+      "description": "Throttle Position Value From PID Group"
+    },
+    "541": {
+      "name": "Commanded Equivalence R",
+      "bytes": "1",
+      "type": "Unsigned",
+      "multiplier": "0.01",
+      "description": "Fuel-Air Commanded Equivalence Ratio"
+    },
+    "542": {
+      "name": "Intake MAP 2 bytes",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "kPa",
+      "description": "Intake Manifold Absolute Pressure"
+    },
+    "543": {
+      "name": "Hybrid System Voltage",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "V",
+      "description": "Hybrid vehicle system voltage"
+    },
+    "544": {
+      "name": "Hybrid System Current",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "A",
+      "description": "Hybrid vehicle system current"
+    },
+    "548": {
+      "name": "Advanced BLE Beacon data",
+      "bytes": "1024",
+      "type": "HEX",
+      "description": "List of Beacon Ids and their data when advanced Beacon mode is selected"
+    },
+    "622": {
+      "name": "Frequency DIN1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "units": "Hz",
+      "description": "Frequency of input signal present on DIN1"
+    },
+    "623": {
+      "name": "Frequency DIN2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "multiplier": "0.1",
+      "units": "Hz",
+      "description": "Frequency of input signal present on DIN2"
+    },
+    "636": {
+      "name": "UMTS/LTE Cell ID",
+      "bytes": "4",
+      "type": "Unsigned"
+    },
+    "637": {
+      "name": "Wake Reason",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "True if device was woken by RTC alarm"
+    },
+    "652": {
+      "name": "SSF KeyInIgnitionLock",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No key in lock 1 - Key in lock"
+    },
+    "653": {
+      "name": "SSF Handbrake Is Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Handbrake inactive 1 - Handbrake active"
+    },
+    "654": {
+      "name": "SSF Front Left Door Open",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "655": {
+      "name": "SSF Front Right Door Open",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "656": {
+      "name": "SSF Rear Left Door Open",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "657": {
+      "name": "SSF Rear Right Door Open",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "658": {
+      "name": "SSF Trunk Door Open",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "659": {
+      "name": "SSF Neutral Gear Active (automatic gear box)",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "660": {
+      "name": "SSF Parking Gear Active (automatic gear box)",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "661": {
+      "name": "SSF Reverse Gear Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "662": {
+      "name": "SSF Car Is Closed",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Open 1 - Closed"
+    },
+    "755": {
+      "name": "OEM Remaining distance",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Remaining distance until fuel tank empty or battery (EV) depleted"
+    },
+    "759": {
+      "name": "Fuel Type",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 Not available 1 Gasoline 2 Methanol 3 Ethanol 4 Diesel 5 LPG 6 CNG 7 Propane 8 Electric 9 Bifuel running Gasoline 10 Bifuel running Methanol 11 Bifuel running Ethanol 12 Bifuel running LPG 13 Bifuel"
+    },
+    "855": {
+      "name": "LNG Used",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Total LNG used in kilograms"
+    },
+    "856": {
+      "name": "LNG Used (counted)",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Total LNG used counted in kg"
+    },
+    "857": {
+      "name": "LNG Level",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "LNG level in proc"
+    },
+    "858": {
+      "name": "LNG Level",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "LNG level in kg"
+    },
+    "859": {
+      "name": "Distance from need of service",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Service - distance elapsed since the occurrence of the need for servicing"
+    },
+    "860": {
+      "name": "Distance from last service",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Service - distance from the last service"
+    },
+    "861": {
+      "name": "Time to next service",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "day",
+      "description": "Service - time to next service"
+    },
+    "862": {
+      "name": "Time from need of service",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "day",
+      "description": "Service - time exceeded since the occurrence of the need for servicing"
+    },
+    "863": {
+      "name": "Time from last serivce",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "day",
+      "description": "Service - time elapsed since the last service"
+    },
+    "864": {
+      "name": "Distance to next oil service",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Service - distance to next oil service"
+    },
+    "865": {
+      "name": "Time to next oil service",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "day",
+      "description": "Service - time to next oil service"
+    },
+    "866": {
+      "name": "LVCAN Vehicle Range",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "km",
+      "description": "Information about vehicle range"
+    },
+    "867": {
+      "name": "LVCAN Total CNG counted",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "kg",
+      "description": "Information about Total CNG used in counted mode"
+    },
+    "898": {
+      "name": "SSF Ignition",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "899": {
+      "name": "SSF Webasto",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "900": {
+      "name": "SSF Engine Working",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "901": {
+      "name": "SSF Standalone Engine",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "902": {
+      "name": "SSF Ready To Drive",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "903": {
+      "name": "SSF Engine Working On CNG",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "904": {
+      "name": "SSF Work Mode",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Private 1 - Company"
+    },
+    "905": {
+      "name": "SSF Operator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not present 1 - Present"
+    },
+    "906": {
+      "name": "SSF Interlock",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "907": {
+      "name": "SSF Engine Lock Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "908": {
+      "name": "SSF Request To Lock Engine",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "909": {
+      "name": "SSF Roof Open",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "910": {
+      "name": "SSF Footbrake Is Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Footbrake inactive 1 - Footbrake active"
+    },
+    "911": {
+      "name": "SSF Clutch Pushed",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Clutch is pushed 1 - Clutch is not pushed"
+    },
+    "912": {
+      "name": "SSF Hazard Warning Lights",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Hazard warning lights on 1 - Hazard warning lights off"
+    },
+    "913": {
+      "name": "SSF Engine Cover Open",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "914": {
+      "name": "SSF Charging Wire Plugged",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Unplugged 1 - Plugged"
+    },
+    "915": {
+      "name": "SSF Batttery Charging",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not charging 1 - Charging"
+    },
+    "916": {
+      "name": "SSF Electric Engine State",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "917": {
+      "name": "SSF Car Closed Factory Remote",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Open 1 - Closed"
+    },
+    "918": {
+      "name": "SSF Factory Alarm Actuated",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not actuated 1 - Actuated"
+    },
+    "919": {
+      "name": "SSF Factory Alarm Emulated",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not emulated 1 - Emulated"
+    },
+    "920": {
+      "name": "SSF Signal Close Factory Remote",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "921": {
+      "name": "SSF Signal Open Factory Remote",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "922": {
+      "name": "SSF Rearming Signal",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "923": {
+      "name": "SSF Trunk Door Opened Factory Remote",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Open"
+    },
+    "924": {
+      "name": "SSF CAN Module In Sleep",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not in sleep 1 - In sleep"
+    },
+    "925": {
+      "name": "SSF Factory Remote 3x",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "926": {
+      "name": "SSF Factory Armed",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not armed 1 - Armed"
+    },
+    "927": {
+      "name": "SSF Drive Is Active (automatic gear box)",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "928": {
+      "name": "CSF Parking Lights",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "929": {
+      "name": "CSF Dipped Head lights",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "930": {
+      "name": "CSF Full Beam Headlights",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "931": {
+      "name": "CSF Rear Fog Lights",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "932": {
+      "name": "CSF Front Fog Lights",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "933": {
+      "name": "CSF Additional Front Lights",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "934": {
+      "name": "CSF Additional Rear Lights",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "935": {
+      "name": "CSF Light Signal",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "936": {
+      "name": "CSF Air Conditioning",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "937": {
+      "name": "CSF Cruise Control",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "938": {
+      "name": "CSF Automatic Retarder",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "939": {
+      "name": "CSF Manual Retarder",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "940": {
+      "name": "CSF Driver's Seatbelt Fastened",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not fastened 1 - Fastened"
+    },
+    "941": {
+      "name": "CSF Front Driver's Seatbelt Fastened",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not fastened 1 - Fastened"
+    },
+    "942": {
+      "name": "CSF Left Driver's Seatbelt Fastened",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not fastened 1 - Fastened"
+    },
+    "943": {
+      "name": "CSF Right Driver's Seatbelt Fastened",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not fastened 1 - Fastened"
+    },
+    "944": {
+      "name": "CSF Centre Driver's Seatbelt Fastened",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not fastened 1 - Fastened"
+    },
+    "945": {
+      "name": "CSF Front Passenger Present",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not present 1 - Present"
+    },
+    "946": {
+      "name": "CSF PTO",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "947": {
+      "name": "CSF Front Differential Locked",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Unlocked 1 - Locked"
+    },
+    "948": {
+      "name": "CSF Rear Differential Locked",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Unlocked 1 - Locked"
+    },
+    "949": {
+      "name": "CSF Central Differential 4HI Locked",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Unlocked 1 - Locked"
+    },
+    "950": {
+      "name": "CSF Central Differential 4LO Locked",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Unlocked 1 - Locked"
+    },
+    "951": {
+      "name": "CSF Trailer Axle 1 Lift Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "952": {
+      "name": "CSF Trailer Axle 2 Lift Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "953": {
+      "name": "ISF Check Engine Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "954": {
+      "name": "ISF ABS Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "955": {
+      "name": "ISF ESP Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "956": {
+      "name": "ISF ESP Turned Off",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "957": {
+      "name": "ISF Stop Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "958": {
+      "name": "ISF Oil Level Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "959": {
+      "name": "ISF Coolant liquid level",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "960": {
+      "name": "ISF Battery Not Charging Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "961": {
+      "name": "ISF Handbrake System Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "962": {
+      "name": "ISF AIRBAG Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "963": {
+      "name": "ISF EPS Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "964": {
+      "name": "ISF Warning Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "965": {
+      "name": "ISF Lights Failure Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "966": {
+      "name": "ISF Low Tire Pressure Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "967": {
+      "name": "ISF Wear Of Brake Pads Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "968": {
+      "name": "ISF Low Fuel Level Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "969": {
+      "name": "ISF Maintenence required Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "970": {
+      "name": "ISF Glow Plug Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "971": {
+      "name": "ISF FAP Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "972": {
+      "name": "ISF EPC (Electronic Power Control) Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "973": {
+      "name": "ISF Clogged Engine Oil Filter Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "974": {
+      "name": "ISF Low Engine Oil Pressure Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "975": {
+      "name": "ISF Too High Engine Oil Temperature Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "976": {
+      "name": "ISF Low Coolant Level Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "977": {
+      "name": "ISF Clogged Hydraulic System Oil filter Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "978": {
+      "name": "ISF Hydraulic System Low Pressure Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "979": {
+      "name": "ISF Hydraulic Oil Low Level Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "980": {
+      "name": "ISF Hydraulic System High Temperature Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "981": {
+      "name": "ISF Oil Overflow In Hydraulic Chamber Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "982": {
+      "name": "ISF Clogged Air Filter Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "983": {
+      "name": "ISF Clogged Fuel Filter Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "984": {
+      "name": "ISF Water in Fuel Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "985": {
+      "name": "ISF Clogged Brake System Filter Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "986": {
+      "name": "ISF Low Washer Fluid Level Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "987": {
+      "name": "ISF Low AdBlue Level Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "988": {
+      "name": "ISF Low Trailer Tyre Pressure Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "989": {
+      "name": "ISF Wear Of Trailer Brake Lining Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "990": {
+      "name": "ISF High Trailer Brake Temperature Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "991": {
+      "name": "ISF Incorrect Trailer Pneumatic Supply Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "992": {
+      "name": "ISF Low CNG Level Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "993": {
+      "name": "ASF Right Joystick Moved Right Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "994": {
+      "name": "ASF Right Joystick Moved Left Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "995": {
+      "name": "ASF Right Joystick Moved Forward Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "996": {
+      "name": "ASF Right Joystick Moved Back Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "997": {
+      "name": "ASF Left Joystick Moved Right Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "998": {
+      "name": "ASF Left Joystick Moved Left Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "999": {
+      "name": "ASF Left Joystick Moved Forward Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "1000": {
+      "name": "ASF Left Joystick Moved Back Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "1001": {
+      "name": "ASF First Rear hydraulic",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1002": {
+      "name": "ASF Second Rear hydraulic",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1003": {
+      "name": "ASF Third Rear hydraulic",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1004": {
+      "name": "ASF Fourth Rear hydraulic",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1005": {
+      "name": "ASF First Front hydraulic",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1006": {
+      "name": "ASF Second Front hydraulic",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1007": {
+      "name": "ASF Third Front hydraulic",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1008": {
+      "name": "ASF Fourth Front hydraulic",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1009": {
+      "name": "ASF Front Three-point Hitch",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1010": {
+      "name": "ASF Rear Three-point Hitch",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1011": {
+      "name": "ASF Front Power Take-off",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1012": {
+      "name": "ASF Rear Power Take-off",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1013": {
+      "name": "ASF Mowing Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "1014": {
+      "name": "ASF Threshing Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Inactive 1 - Active"
+    },
+    "1015": {
+      "name": "ASF Grain Release From Hopper",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1016": {
+      "name": "ASF Grain Tank Is 100% Full",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1017": {
+      "name": "ASF Grain Tank Is 70% Full",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1018": {
+      "name": "ASF Grain Tank Is Opened",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Closed 1 - Opened"
+    },
+    "1019": {
+      "name": "ASF Unloader Drive",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1020": {
+      "name": "ASF Cleaning Fan Control Turned Off",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1021": {
+      "name": "ASF Threshing Drum Control Turned Off",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1022": {
+      "name": "ASF Straw Walker Is Clogged",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1023": {
+      "name": "ASF Excessive Clearance Under The Threshing Drum",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1024": {
+      "name": "ASF Low Temperature Of Drive System Hydraulics Less Than 5 Grades",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1025": {
+      "name": "ASF High Temperature Of Drive System Hydraulics Greater Than 86 Grades",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1026": {
+      "name": "ASF Ear Auger Speed Below The Norm",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1027": {
+      "name": "ASF Grain Auger Speed Below The Norm",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1028": {
+      "name": "ASF Straw Chooper Speed Below The Norm",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1029": {
+      "name": "ASF Straw Shaker Speed Below The Norm",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1030": {
+      "name": "ASF Feeder Speed Below The Norm",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1031": {
+      "name": "ASF Straw Chopper Switched On",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1032": {
+      "name": "ASF Corn Header Connected",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1033": {
+      "name": "ASF Grain Header Connected",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1034": {
+      "name": "ASF Feeder Reverse Switched On",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1035": {
+      "name": "ASF The Pressure Filter Of The Hydraulic Pump Is Clogged",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1036": {
+      "name": "USF Spreading",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1037": {
+      "name": "USF Pouring Chemicals",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1038": {
+      "name": "USF Conveyor Belt",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1039": {
+      "name": "USF Salt Spreader's Drive Wheel",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1040": {
+      "name": "USF Brushes",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1041": {
+      "name": "USF Vacuum Cleaner",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1042": {
+      "name": "USF Water Supply",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1043": {
+      "name": "USF KarcherOn",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1044": {
+      "name": "USF Liquid pump",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1045": {
+      "name": "USF Unloading From The Hopper",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1046": {
+      "name": "USF Low Salt (Sand) Level In Container Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1047": {
+      "name": "USF Low Water Level in Container Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1048": {
+      "name": "USF Chemicals",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1049": {
+      "name": "USF Compressor",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1050": {
+      "name": "USF Water Valve Is Opened",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1051": {
+      "name": "USF Cabin Moved Up Status Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1052": {
+      "name": "USF Cabin Moved Down Status Active",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1053": {
+      "name": "CiSF Section 1 Presence Of Fluid In The Downpipe",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No presence 1 - Present"
+    },
+    "1054": {
+      "name": "CiSF Section 1 Filled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1055": {
+      "name": "CiSF Section 1 Overfilled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1056": {
+      "name": "CiSF Section 2 Presence Of Fluid In The Downpipe",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No presence 1 - Present"
+    },
+    "1057": {
+      "name": "CiSF Section 2 Filled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1058": {
+      "name": "CiSF Section 2 Overfilled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1059": {
+      "name": "CiSF Section 3 Presence Of Fluid In The Downpipe",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No presence 1 - Present"
+    },
+    "1060": {
+      "name": "CiSF Section 3 Filled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1061": {
+      "name": "CiSF Section 3 Overfilled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1062": {
+      "name": "CiSF Section 4 Presence Of Fluid In The Downpipe",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No presence 1 - Present"
+    },
+    "1063": {
+      "name": "CiSF Section 4 Filled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1064": {
+      "name": "CiSF Section 4 Overfilled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1065": {
+      "name": "CiSF Section 5 Presence Of Fluid In The Downpipe",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No presence 1 - Present"
+    },
+    "1066": {
+      "name": "CiSF Section 5 Filled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1067": {
+      "name": "CiSF Section 5 Overfilled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1068": {
+      "name": "CiSF Section 6 Presence Of Fluid In The Downpipe",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No presence 1 - Present"
+    },
+    "1069": {
+      "name": "CiSF Section 6 Filled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1070": {
+      "name": "CiSF Section 6 Overfilled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1071": {
+      "name": "CiSF Section 7 Presence Of Fluid In The Downpipe",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No presence 1 - Present"
+    },
+    "1072": {
+      "name": "CiSF Section 7 Filled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1073": {
+      "name": "CiSF Section 7 Overfilled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1074": {
+      "name": "CiSF Section 8 Presence Of Fluid In The Downpipe",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No presence 1 - Present"
+    },
+    "1075": {
+      "name": "CiSF Section 8 Filled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1076": {
+      "name": "CiSF Section 8 Overfilled",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1079": {
+      "name": "Total Bale Count",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Total Bale Count"
+    },
+    "1080": {
+      "name": "Bale Count",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Bale Count"
+    },
+    "1081": {
+      "name": "Cut Bale Count",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Cut Bale Count"
+    },
+    "1082": {
+      "name": "Bale Slices",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Bale Slices"
+    },
+    "1083": {
+      "name": "SSF Engine Working On Dual Fuel",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not working 1 - Working"
+    },
+    "1084": {
+      "name": "SSF Engine Working On LPG",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Not working 1 - Working"
+    },
+    "1085": {
+      "name": "CSF Trailer Connected",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Disconnected 1 - Connected"
+    },
+    "1086": {
+      "name": "CSF Start Stop System Inactive",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - No 1 - Yes"
+    },
+    "1087": {
+      "name": "ASF Adapter Pressure Filter Sensor",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1088": {
+      "name": "ASF Service 2 Required Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1089": {
+      "name": "ASF Drain Filter Clogged Indicator",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1090": {
+      "name": "ASF Section 1 Spraying",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1091": {
+      "name": "ASF Section 2 Spraying",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1092": {
+      "name": "ASF Section 3 Spraying",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1093": {
+      "name": "ASF Section 4 Spraying",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1094": {
+      "name": "ASF Section 5 Spraying",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1095": {
+      "name": "ASF Section 6 Spraying",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1096": {
+      "name": "ASF Section 7 Spraying",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1097": {
+      "name": "ASF Section 8 Spraying",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1098": {
+      "name": "ASF Section 9 Spraying",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1099": {
+      "name": "USF Hydraulics Work Not Permitted",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "0 - Off 1 - On"
+    },
+    "1100": {
+      "name": "Total LPG Used",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "l",
+      "description": "Total LPG used in liters"
+    },
+    "1101": {
+      "name": "Total LPG Used Counted",
+      "bytes": "4",
+      "type": "Unsigned",
+      "units": "l",
+      "description": "Total LPG used counted in liters"
+    },
+    "1102": {
+      "name": "LPG Level Proc",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "LPG level in proc"
+    },
+    "1103": {
+      "name": "LPG Level Liters",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "l",
+      "description": "LPG level in liters"
+    },
+    "1116": {
+      "name": "LVCAN MaxRoadSpeed",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "km/h",
+      "description": "Maximum speed from road signs"
+    },
+    "1117": {
+      "name": "LVCAN ExceededRoadSpeed",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "km/h",
+      "description": "Exceeded speed from road signs"
+    },
+    "1148": {
+      "name": "Connectivity quality",
+      "bytes": "4",
+      "type": "Unsigned",
+      "description": "Connectivity Quality element which provides detailed signal quality information in LTE (only RSSI), eMTC and NB-IoT modes. https://wiki.teltonika-gps.com/view/Mobile_Signal_Strength_Recommendations#4G"
+    },
+    "1151": {
+      "name": "OEM Battery State Of Health",
+      "bytes": "2",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Battery State of Health"
+    },
+    "1152": {
+      "name": "OEM Battery Temperature",
+      "bytes": "2",
+      "type": "Signed",
+      "units": "°C",
+      "description": "Battery pack temperature"
+    },
+    "1205": {
+      "name": "LVCAN RSF SpeedLimitSign",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Information if road sign \"Speed limit with value\" is recognized/canceled"
+    },
+    "1206": {
+      "name": "LVCAN RSF EndOfSpeedLimitSign",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Information if road sign \"End of speed limit with value\" is recognized/canceled"
+    },
+    "1207": {
+      "name": "LVCAN RSF SpeedExceeded",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Information if speed is exceeded indicated by road sign \"Speed limit with value\""
+    },
+    "1208": {
+      "name": "LVCAN RSF TimeSpeedLimitSign",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Information if road sign \"Conditional time-specific speed limit with value\" is recognized/canceled"
+    },
+    "1209": {
+      "name": "LVCAN RSF WthrSpeedLimitSign",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Information if road sign \"Speed limit with value due to weather conditions\" is recognized/cancelled"
+    },
+    "1412": {
+      "name": "Motorcycle Fall Detection",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Fall detection event which is generated when all conditions are met"
+    },
+    "10800": {
+      "name": "EYE Temperature 1",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01",
+      "units": "°C",
+      "description": "Temperature measured by EYE Sensor 1"
+    },
+    "10801": {
+      "name": "EYE Temperature 2",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01",
+      "units": "°C",
+      "description": "Temperature measured by EYE Sensor 2"
+    },
+    "10802": {
+      "name": "EYE Temperature 3",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01",
+      "units": "°C",
+      "description": "Temperature measured by EYE Sensor 3"
+    },
+    "10803": {
+      "name": "EYE Temperature 4",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.01",
+      "units": "°C",
+      "description": "Temperature measured by EYE Sensor 4"
+    },
+    "10804": {
+      "name": "EYE Humidity 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Humidity measured by EYE Sensor 1"
+    },
+    "10805": {
+      "name": "EYE Humidity 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Humidity measured by EYE Sensor 2"
+    },
+    "10806": {
+      "name": "EYE Humidity 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Humidity measured by EYE Sensor 3"
+    },
+    "10807": {
+      "name": "EYE Humidity 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "units": "%",
+      "description": "Humidity measured by EYE Sensor 4"
+    },
+    "10808": {
+      "name": "EYE Magnet 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Magnet measured by EYE Sensor by EYE Sensor 1"
+    },
+    "10809": {
+      "name": "EYE Magnet 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Magnet measured by EYE Sensor by EYE Sensor 2"
+    },
+    "10810": {
+      "name": "EYE Magnet 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Magnet measured by EYE Sensor by EYE Sensor 3"
+    },
+    "10811": {
+      "name": "EYE Magnet 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Magnet measured by EYE Sensor by EYE Sensor 4"
+    },
+    "10812": {
+      "name": "EYE Movement 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Movement state measure by EYE Sensor 1"
+    },
+    "10813": {
+      "name": "EYE Movement 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Movement state measure by EYE Sensor 2"
+    },
+    "10814": {
+      "name": "EYE Movement 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Movement state measure by EYE Sensor 3"
+    },
+    "10815": {
+      "name": "EYE Movement 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Movement state measure by EYE Sensor 4"
+    },
+    "10816": {
+      "name": "EYE Pitch 1",
+      "bytes": "1",
+      "type": "Signed",
+      "description": "Pitch angle measured by EYE Sensor 1"
+    },
+    "10817": {
+      "name": "EYE Pitch 2",
+      "bytes": "1",
+      "type": "Signed",
+      "description": "Pitch angle measured by EYE Sensor 2"
+    },
+    "10818": {
+      "name": "EYE Pitch 3",
+      "bytes": "1",
+      "type": "Signed",
+      "description": "Pitch angle measured by EYE Sensor 3"
+    },
+    "10819": {
+      "name": "EYE Pitch 4",
+      "bytes": "1",
+      "type": "Signed",
+      "description": "Pitch angle measured by EYE Sensor 4"
+    },
+    "10820": {
+      "name": "EYE Low Battery 1",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Low Battery indication for EYE Sensor 1"
+    },
+    "10821": {
+      "name": "EYE Low Battery 2",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Low Battery indication for EYE Sensor 2"
+    },
+    "10822": {
+      "name": "EYE Low Battery 3",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Low Battery indication for EYE Sensor 3"
+    },
+    "10823": {
+      "name": "EYE Low Battery 4",
+      "bytes": "1",
+      "type": "Unsigned",
+      "description": "Low Battery indication for EYE Sensor 4"
+    },
+    "10824": {
+      "name": "EYE Battery Voltage 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Battery Voltage of EYE Sensor 1"
+    },
+    "10825": {
+      "name": "EYE Battery Voltage 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Battery Voltage of EYE Sensor 2"
+    },
+    "10826": {
+      "name": "EYE Battery Voltage 3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Battery Voltage of EYE Sensor 3"
+    },
+    "10827": {
+      "name": "EYE Battery Voltage 4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Battery Voltage of EYE Sensor 4"
+    },
+    "10832": {
+      "name": "EYE Roll 1",
+      "bytes": "2",
+      "type": "Signed",
+      "description": "Roll angle measured by EYE Sensor 1"
+    },
+    "10833": {
+      "name": "EYE Roll 2",
+      "bytes": "2",
+      "type": "Signed",
+      "description": "Roll angle measured by EYE Sensor 2"
+    },
+    "10834": {
+      "name": "EYE Roll 3",
+      "bytes": "2",
+      "type": "Signed",
+      "description": "Roll angle measured by EYE Sensor 3"
+    },
+    "10835": {
+      "name": "EYE Roll 4",
+      "bytes": "2",
+      "type": "Signed",
+      "description": "Roll angle measured by EYE Sensor 4"
+    },
+    "10836": {
+      "name": "EYE Movement count 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement count measure by EYE Sensor 1"
+    },
+    "10837": {
+      "name": "EYE Movement count 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement count measure by EYE Sensor 2"
+    },
+    "10838": {
+      "name": "EYE Movement count 3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement count measure by EYE Sensor 3"
+    },
+    "10839": {
+      "name": "EYE Movement count 4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Movement count measure by EYE Sensor 4"
+    },
+    "10840": {
+      "name": "EYE Magnet count 1",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Magnet trigger count measure by EYE Sensor 1"
+    },
+    "10841": {
+      "name": "EYE Magnet count 2",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Magnet trigger count measure by EYE Sensor 2"
+    },
+    "10842": {
+      "name": "EYE Magnet count 3",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Magnet trigger count measure by EYE Sensor 3"
+    },
+    "10843": {
+      "name": "EYE Magnet count 4",
+      "bytes": "2",
+      "type": "Unsigned",
+      "description": "Magnet trigger count measure by EYE Sensor 4"
+    },
+    "13201": {
+      "name": "PCB Temperature",
+      "bytes": "2",
+      "type": "Signed",
+      "multiplier": "0.1",
+      "units": "°C",
+      "description": "Degrees (°C)"
+    }
+  }
+}
