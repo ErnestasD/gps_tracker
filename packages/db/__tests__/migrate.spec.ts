@@ -78,6 +78,21 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
       `SELECT view_name FROM timescaledb_information.continuous_aggregates`,
     )
     expect(caggs.map((c) => c.view_name)).toContain('daily_device_stats')
+
+    // §6.3 values, not just existence — R8-2/R8-3/ADR-007 hinge on these exact numbers
+    const cfg = await q<{ proc_name: string; config: Record<string, string> }>(
+      `SELECT proc_name, config FROM timescaledb_information.jobs WHERE proc_name LIKE 'policy_%'`,
+    )
+    const byProc = Object.fromEntries(cfg.map((j) => [j.proc_name, j.config]))
+    expect(byProc['policy_compression']?.['compress_after']).toMatch(/14 day/)
+    expect(byProc['policy_retention']?.['drop_after']).toMatch(/1 year 1 mon|13 mon/) // PG renders interval '13 months' as '1 year 1 mon'
+    expect(byProc['policy_refresh_continuous_aggregate']?.['start_offset']).toMatch(/3 day/)
+    expect(byProc['policy_refresh_continuous_aggregate']?.['end_offset']).toMatch(/01:00:00/)
+
+    const dim = await q<{ time_interval: string }>(
+      `SELECT time_interval::text FROM timescaledb_information.dimensions WHERE hypertable_name='positions'`,
+    )
+    expect(dim[0]?.time_interval).toMatch(/1 day/)
   }, 120_000)
 
   it('is idempotent: second run applies nothing, zero diff', async () => {

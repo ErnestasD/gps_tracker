@@ -30,7 +30,7 @@ export async function migrate(databaseUrl: string, dir: string = SQL_DIR): Promi
 
     const files = readdirSync(dir)
       .filter((f) => /^\d+_.+\.sql$/.test(f))
-      .sort()
+      .sort((a, b) => parseInt(a, 10) - parseInt(b, 10) || a.localeCompare(b))
 
     for (const file of files) {
       const sql = readFileSync(path.join(dir, file), 'utf8')
@@ -51,6 +51,10 @@ export async function migrate(databaseUrl: string, dir: string = SQL_DIR): Promi
 
       const noTx = sql.includes('-- migrate:no-transaction')
       if (noTx) {
+        // RECOVERY NOTE: a crash between the DDL and the bookkeeping INSERT leaves the
+        // object created but unrecorded; the rerun then fails on "already exists".
+        // Manual fix: verify the object matches the file, then INSERT the row into
+        // schema_migrations by hand. Kept simple deliberately — only caggs live here.
         await client.query(sql)
         await client.query('INSERT INTO schema_migrations (name, checksum) VALUES ($1, $2)', [
           file,
