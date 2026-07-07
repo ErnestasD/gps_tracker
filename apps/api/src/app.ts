@@ -39,6 +39,7 @@ export function createApp(deps: WsDeps, auth: AuthStub, prom?: ApiProm): Hono {
       return c.json({ title: 'Unauthorized', status: 401 }, 401) // RFC 7807 shape
     }
     const ticket = await issueTicket(deps, auth.ctx)
+    c.header('Cache-Control', 'no-store') // single-use credential: never cacheable
     return c.json({ ticket, expiresInS: deps.ticketTtlS ?? 30 })
   })
 
@@ -52,15 +53,9 @@ export function createApp(deps: WsDeps, auth: AuthStub, prom?: ApiProm): Hono {
       return c.json({ title: 'Unauthorized', status: 401 }, 401)
     }
     const tenantMap = await deps.redis.hgetall('device:tenant')
-    let deviceIds = Object.keys(tenantMap)
+    const deviceIds = Object.keys(tenantMap)
       .filter((id) => tenantMap[id] === auth.ctx.tenantId)
       .sort()
-    if (auth.ctx.accountId !== undefined && deviceIds.length > 0) {
-      // same semantics as the WS fanout filter (ws.ts): account-scoped users see only
-      // their account's devices; unmapped (null) fails CLOSED
-      const accounts = await deps.redis.hmget('device:account', ...deviceIds)
-      deviceIds = deviceIds.filter((_, i) => accounts[i] === auth.ctx.accountId)
-    }
     const jsons = await Promise.all(
       deviceIds.map((id) => deps.redis.hget(`device:${id}:last`, 'json')),
     )
@@ -69,11 +64,18 @@ export function createApp(deps: WsDeps, auth: AuthStub, prom?: ApiProm): Hono {
       if (raw === null) continue // mapped but never reported
       try {
         const parsed = liveEventSchema.safeParse(JSON.parse(raw))
-        if (parsed.success) devices.push(parsed.data) // malformed state is skipped, not fatal
+        if (!parsed.success) continue // malformed state is skipped, not fatal
+        // account filter on the PAYLOAD accountId — the same field ws.ts filters the
+        // fanout on (review MED: a hash re-read could disagree with the stored payload
+        // and make devices flicker between snapshot and first WS frame); unmapped
+        // (null) fails CLOSED for account-scoped users
+        if (auth.ctx.accountId !== undefined && parsed.data.accountId !== auth.ctx.accountId) continue
+        devices.push(parsed.data)
       } catch {
         // broken JSON in the hash — skip
       }
     }
+    c.header('Cache-Control', 'no-store') // tenant-scoped positions: never cacheable
     return c.json({ devices })
   })
 

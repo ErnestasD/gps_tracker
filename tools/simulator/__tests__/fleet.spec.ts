@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { driveRecords } from '../src/drive.js'
-import { planFleet } from '../src/fleet.js'
+import { planFleet, runFleet } from '../src/fleet.js'
+import { liveDrive } from '../src/scenarios/liveDrive.js'
 import { seedEntries } from '../src/seed.js'
 import type { ScenarioOpts } from '../src/scenarios/types.js'
 
@@ -32,6 +33,16 @@ describe('planFleet', () => {
   })
 })
 
+describe('runFleet resilience', () => {
+  it('one connect failure cannot abort the fleet: unreachable port → counted, not thrown', async () => {
+    // no listener on this port — every session throws ECONNREFUSED at connect
+    const result = await runFleet(liveDrive, { ...BASE, count: 1, host: '127.0.0.1', port: 1 }, { devices: 3, rampMs: 0 })
+    expect(result.devices).toBe(3)
+    expect(result.failed).toBe(3)
+    expect(result.sentPackets).toBe(0)
+  })
+})
+
 describe('driveRecords startDistanceM', () => {
   it('spread devices start at distinct positions (same seed, different offset)', () => {
     const a = driveRecords({ seed: 1, count: 1, startMs: BASE.startMs })
@@ -47,10 +58,12 @@ describe('driveRecords startDistanceM', () => {
 })
 
 describe('seedEntries', () => {
-  it('matches planFleet imei derivation and dev-<imei> deviceId convention', () => {
+  it('matches planFleet imei derivation; deviceId is the NUMERIC imei (pipeline bigint)', () => {
     const entries = seedEntries(BASE.imei, 3)
     const plans = planFleet(BASE, { devices: 3 })
     expect(entries.map((e) => e.imei)).toEqual(plans.map((p) => p.imei))
-    expect(entries[1]).toEqual({ imei: '356307042441014', deviceId: 'dev-356307042441014' })
+    expect(entries[1]).toEqual({ imei: '356307042441014', deviceId: '356307042441014' })
+    // ingest converts deviceId with BigInt() — a non-numeric id kills the session
+    for (const e of entries) expect(() => BigInt(e.deviceId)).not.toThrow()
   })
 })

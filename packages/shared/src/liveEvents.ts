@@ -7,7 +7,7 @@ import { z } from 'zod'
  * is apps/worker/src/liveState.ts — its `compact` object must match this schema
  * (drift tripwire: packages/shared/__tests__/liveEvents.spec.ts).
  */
-export const liveEventSchema = z.object({
+export const liveEventSchema = z.strictObject({
   deviceId: z.string(),
   /** null ⇒ device not mapped to an account; account-scoped consumers fail closed. */
   accountId: z.string().nullable(),

@@ -1,3 +1,6 @@
+import { realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { Redis } from 'ioredis'
 
 /**
@@ -5,8 +8,10 @@ import { Redis } from 'ioredis'
  * pipeline reads — `registry:imei` (imei → deviceId, checked by ingest handshake)
  * and `device:tenant` (deviceId → tenantId, read by LiveState before publishing).
  * TEMPORARY tooling until E03-3 device CRUD owns these hashes (then this script
- * seeds via the API instead). deviceId convention: `dev-<imei>` — collision-free
- * and self-describing in Redis inspection.
+ * seeds via the API instead). deviceId convention: the numeric IMEI itself —
+ * deviceId is a bigint through the whole pipeline (rawStreamPayloadSchema /
+ * NormalizedRecord), so it MUST be numeric; proven live: `dev-<imei>` made
+ * ingest throw "Cannot convert dev-… to a BigInt" and close every session.
  *
  * Usage: pnpm sim:seed -- --devices 500 [--imei 356307042441013] [--tenant stub-tenant]
  *        [--account <id>] [--redis-url redis://127.0.0.1:6379]
@@ -28,12 +33,17 @@ export function seedEntries(baseImei: string, devices: number): SeedEntry[] {
   const base = BigInt(baseImei)
   return Array.from({ length: devices }, (_, i) => {
     const imei = (base + BigInt(i)).toString()
-    return { imei, deviceId: `dev-${imei}` }
+    return { imei, deviceId: imei }
   })
 }
 
 async function main(): Promise<void> {
   const devices = Number(arg('devices', '1'))
+  if (!Number.isInteger(devices) || devices < 1) {
+    // review MED: 0/NaN crashed the summary log, negative threw at Array.from
+    console.error(`--devices must be a positive integer, got '${arg('devices', '1')}'`)
+    process.exit(2)
+  }
   const baseImei = arg('imei', '356307042441013')
   const tenant = arg('tenant', 'stub-tenant')
   const account = arg('account', '')
@@ -53,8 +63,17 @@ async function main(): Promise<void> {
   )
 }
 
-// import.meta guard: file doubles as a module (seedEntries is unit-tested)
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()!)) {
+// entrypoint guard: file doubles as a module (seedEntries is unit-tested);
+// full-path comparison (review LOW: basename endsWith was fragile)
+const isEntrypoint = (): boolean => {
+  if (!process.argv[1]) return false
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])
+  } catch {
+    return false
+  }
+}
+if (isEntrypoint()) {
   main().catch((err: unknown) => {
     console.error(err)
     process.exit(1)

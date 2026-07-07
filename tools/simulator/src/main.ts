@@ -27,6 +27,16 @@ function arg(name: string, fallback?: string): string {
   process.exit(2)
 }
 
+/** Numeric flag with garbage-in guard (review LOW: NaN silently became NaN coords). */
+function numArg(name: string, fallback: string): number {
+  const n = Number(arg(name, fallback))
+  if (!Number.isFinite(n)) {
+    console.error(`--${name} must be a number, got '${arg(name, fallback)}'`)
+    process.exit(2)
+  }
+  return n
+}
+
 async function main(): Promise<void> {
   const scenarioName = arg('scenario')
   const scenario = SCENARIOS[scenarioName]
@@ -37,20 +47,24 @@ async function main(): Promise<void> {
   const opts = {
     imei: arg('imei', '356307042441013'),
     host: arg('host', '127.0.0.1'),
-    port: Number(arg('port', '5027')),
-    hz: Number(arg('hz', '1')),
-    seed: Number(arg('seed', '1')),
-    count: Number(arg('count', '60')),
-    startMs: Number(arg('start-ms', String(Date.now()))),
+    port: numArg('port', '5027'),
+    hz: numArg('hz', '1'),
+    seed: numArg('seed', '1'),
+    count: numArg('count', '60'),
+    startMs: numArg('start-ms', String(Date.now())),
   }
-  const devices = Number(arg('devices', '1'))
+  const devices = numArg('devices', '1')
+  if (!Number.isInteger(devices) || devices < 1) {
+    console.error(`--devices must be a positive integer, got '${devices}'`)
+    process.exit(2)
+  }
   if (devices > 1) {
     // fleet mode (E02-6): N concurrent sessions, imei/seed/route-offset derived per device
-    const fleetOpts = { devices, rampMs: Number(arg('ramp-ms', '20')), spreadM: Number(arg('spread-m', '60')) }
+    const fleetOpts = { devices, rampMs: numArg('ramp-ms', '20'), spreadM: numArg('spread-m', '60') }
     console.log(`sim ${scenario.name} → ${opts.host}:${opts.port} devices=${devices} baseImei=${opts.imei} seed=${opts.seed} count=${opts.count}/device`)
     const fleet = await runFleet(scenario, opts, fleetOpts)
     console.log(JSON.stringify(fleet))
-    if (fleet.rejected > 0) process.exit(1)
+    if (fleet.rejected > 0 || fleet.failed > 0) process.exit(1)
     return
   }
   console.log(`sim ${scenario.name} → ${opts.host}:${opts.port} imei=${opts.imei} seed=${opts.seed} count=${opts.count}`)

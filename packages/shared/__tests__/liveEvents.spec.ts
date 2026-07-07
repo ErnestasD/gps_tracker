@@ -34,6 +34,10 @@ describe('liveEventSchema', () => {
     expect(liveEventSchema.parse(invalidFix)).toEqual(invalidFix)
   })
 
+  it('rejects unknown fields (strict — additive producer drift must fail loudly)', () => {
+    expect(liveEventSchema.safeParse({ ...compact, altitude: 120 }).success).toBe(false)
+  })
+
   it('rejects unknown priority and missing fields', () => {
     expect(liveEventSchema.safeParse({ ...compact, priority: 3 }).success).toBe(false)
     const missing: Partial<typeof compact> = { ...compact }

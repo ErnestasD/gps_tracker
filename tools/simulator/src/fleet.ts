@@ -21,6 +21,8 @@ export interface FleetResult {
   devices: number
   rejected: number
   socketClosed: number
+  /** Sessions that threw before producing a result (e.g. ECONNREFUSED). */
+  failed: number
   sentPackets: number
   ackedRecords: number
   underAckedPackets: number
@@ -63,16 +65,22 @@ export async function runFleet(
       startDistanceM: plan.startDistanceM,
     })
   })
-  const results = await Promise.all(runs)
+  // allSettled (review HIGH): one connect error (e.g. per-IP cap RST) must not
+  // abort the fleet and discard every other session's result
+  const results = await Promise.allSettled(runs)
   return results.reduce<FleetResult>(
-    (acc, r) => ({
-      devices: acc.devices + 1,
-      rejected: acc.rejected + (r.rejectedByImei ? 1 : 0),
-      socketClosed: acc.socketClosed + (r.socketClosedByServer ? 1 : 0),
-      sentPackets: acc.sentPackets + r.sentPackets,
-      ackedRecords: acc.ackedRecords + r.ackedRecords,
-      underAckedPackets: acc.underAckedPackets + r.underAckedPackets,
-    }),
-    { devices: 0, rejected: 0, socketClosed: 0, sentPackets: 0, ackedRecords: 0, underAckedPackets: 0 },
+    (acc, r) => {
+      if (r.status === 'rejected') return { ...acc, devices: acc.devices + 1, failed: acc.failed + 1 }
+      return {
+        devices: acc.devices + 1,
+        rejected: acc.rejected + (r.value.rejectedByImei ? 1 : 0),
+        socketClosed: acc.socketClosed + (r.value.socketClosedByServer ? 1 : 0),
+        failed: acc.failed,
+        sentPackets: acc.sentPackets + r.value.sentPackets,
+        ackedRecords: acc.ackedRecords + r.value.ackedRecords,
+        underAckedPackets: acc.underAckedPackets + r.value.underAckedPackets,
+      }
+    },
+    { devices: 0, rejected: 0, socketClosed: 0, failed: 0, sentPackets: 0, ackedRecords: 0, underAckedPackets: 0 },
   )
 }
