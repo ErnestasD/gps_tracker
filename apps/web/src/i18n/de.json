@@ -1,0 +1,64 @@
+{
+  "login": {
+    "title": "Bei Orbetra anmelden",
+    "tokenLabel": "Zugangstoken",
+    "tokenHint": "Vorläufige Stub-Anmeldung — vollständige Konten kommen mit E03-1.",
+    "submit": "Anmelden",
+    "invalidToken": "Token abgelehnt. Bitte prüfen und erneut versuchen.",
+    "networkError": "Server nicht erreichbar. Läuft die API?"
+  },
+  "shell": {
+    "live": "Live",
+    "map": "Karte",
+    "fleet": "Flotte",
+    "devices": "Geräte",
+    "trips": "Fahrten",
+    "history": "Verlauf",
+    "automation": "Automatisierung",
+    "geofences": "Geozonen",
+    "rules": "Regeln",
+    "events": "Ereignisse",
+    "insights": "Auswertungen",
+    "reports": "Berichte",
+    "ops": "Betrieb",
+    "commands": "Befehle",
+    "admin": "Verwaltung",
+    "users": "Benutzer",
+    "branding": "Branding",
+    "soon": "Demnächst",
+    "collapse": "Menü einklappen",
+    "expand": "Menü ausklappen",
+    "logout": "Abmelden"
+  },
+  "deviceList": {
+    "title": "Geräte",
+    "search": "Geräte suchen…",
+    "empty": "Noch keine Geräte — sie erscheinen, sobald sie melden.",
+    "noMatch": "Keine Treffer.",
+    "count": "{{shown}} von {{total}}"
+  },
+  "info": {
+    "speed": "Geschwindigkeit",
+    "ignition": "Zündung",
+    "on": "An",
+    "off": "Aus",
+    "satellites": "Satelliten",
+    "invalidFix": "Kein GPS-Fix",
+    "follow": "Folgen",
+    "trail": "Spur",
+    "close": "Schließen"
+  },
+  "status": {
+    "online": "Online",
+    "stale": "Veraltet",
+    "offline": "Offline"
+  },
+  "map": {
+    "connecting": "Verbinden…",
+    "reconnecting": "Neu verbinden…",
+    "live": "Live"
+  },
+  "units": {
+    "kmh": "km/h"
+  }
+}

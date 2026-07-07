@@ -1,0 +1,64 @@
+{
+  "login": {
+    "title": "Prisijunkite prie Orbetra",
+    "tokenLabel": "Prieigos raktas",
+    "tokenHint": "Laikinas stub prisijungimas — pilnos paskyros atvyks su E03-1.",
+    "submit": "Prisijungti",
+    "invalidToken": "Raktas atmestas. Patikrinkite ir bandykite dar kartą.",
+    "networkError": "Nepavyko pasiekti serverio. Ar API veikia?"
+  },
+  "shell": {
+    "live": "Gyvai",
+    "map": "Žemėlapis",
+    "fleet": "Parkas",
+    "devices": "Įrenginiai",
+    "trips": "Kelionės",
+    "history": "Istorija",
+    "automation": "Automatika",
+    "geofences": "Geozonos",
+    "rules": "Taisyklės",
+    "events": "Įvykiai",
+    "insights": "Įžvalgos",
+    "reports": "Ataskaitos",
+    "ops": "Operacijos",
+    "commands": "Komandos",
+    "admin": "Administravimas",
+    "users": "Naudotojai",
+    "branding": "Prekės ženklas",
+    "soon": "Netrukus",
+    "collapse": "Suskleisti meniu",
+    "expand": "Išskleisti meniu",
+    "logout": "Atsijungti"
+  },
+  "deviceList": {
+    "title": "Įrenginiai",
+    "search": "Ieškoti įrenginių…",
+    "empty": "Įrenginių dar nėra — jie atsiras, kai atsiųs duomenis.",
+    "noMatch": "Paieška nieko nerado.",
+    "count": "{{shown}} iš {{total}}"
+  },
+  "info": {
+    "speed": "Greitis",
+    "ignition": "Degimas",
+    "on": "Įjungtas",
+    "off": "Išjungtas",
+    "satellites": "Palydovai",
+    "invalidFix": "Nėra GPS fiksacijos",
+    "follow": "Sekti",
+    "trail": "Pėdsakas",
+    "close": "Uždaryti"
+  },
+  "status": {
+    "online": "Prisijungęs",
+    "stale": "Pasenęs",
+    "offline": "Atsijungęs"
+  },
+  "map": {
+    "connecting": "Jungiamasi…",
+    "reconnecting": "Jungiamasi iš naujo…",
+    "live": "Gyvai"
+  },
+  "units": {
+    "kmh": "km/val"
+  }
+}

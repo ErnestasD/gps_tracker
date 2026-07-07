@@ -1,0 +1,64 @@
+{
+  "login": {
+    "title": "Sign in to Orbetra",
+    "tokenLabel": "Access token",
+    "tokenHint": "Temporary stub sign-in — full accounts arrive with E03-1.",
+    "submit": "Sign in",
+    "invalidToken": "That token was rejected. Check it and try again.",
+    "networkError": "Could not reach the server. Is the API running?"
+  },
+  "shell": {
+    "live": "Live",
+    "map": "Map",
+    "fleet": "Fleet",
+    "devices": "Devices",
+    "trips": "Trips",
+    "history": "History",
+    "automation": "Automation",
+    "geofences": "Geofences",
+    "rules": "Rules",
+    "events": "Events",
+    "insights": "Insights",
+    "reports": "Reports",
+    "ops": "Ops",
+    "commands": "Commands",
+    "admin": "Admin",
+    "users": "Users",
+    "branding": "Branding",
+    "soon": "Coming soon",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "logout": "Log out"
+  },
+  "deviceList": {
+    "title": "Devices",
+    "search": "Search devices…",
+    "empty": "No devices yet — they appear as they report.",
+    "noMatch": "Nothing matches the search.",
+    "count": "{{shown}} of {{total}}"
+  },
+  "info": {
+    "speed": "Speed",
+    "ignition": "Ignition",
+    "on": "On",
+    "off": "Off",
+    "satellites": "Satellites",
+    "invalidFix": "No GPS fix",
+    "follow": "Follow",
+    "trail": "Trail",
+    "close": "Close"
+  },
+  "status": {
+    "online": "Online",
+    "stale": "Stale",
+    "offline": "Offline"
+  },
+  "map": {
+    "connecting": "Connecting…",
+    "reconnecting": "Reconnecting…",
+    "live": "Live"
+  },
+  "units": {
+    "kmh": "km/h"
+  }
+}

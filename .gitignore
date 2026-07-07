@@ -17,3 +17,7 @@ coverage/
 # misc
 *.log
 .DS_Store
+
+# playwright artifacts
+apps/web/playwright-report/
+apps/web/test-results/
