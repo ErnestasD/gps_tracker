@@ -1,11 +1,14 @@
 {
   "login": {
     "title": "Bei Orbetra anmelden",
-    "tokenLabel": "Zugangstoken",
-    "tokenHint": "Vorläufige Stub-Anmeldung — vollständige Konten kommen mit E03-1.",
+    "emailLabel": "E-Mail",
+    "passwordLabel": "Passwort",
     "submit": "Anmelden",
-    "invalidToken": "Token abgelehnt. Bitte prüfen und erneut versuchen.",
-    "networkError": "Server nicht erreichbar. Läuft die API?"
+    "invalidCredentials": "Falsche E-Mail oder falsches Passwort.",
+    "tooManyAttempts": "Zu viele Versuche — bitte in einigen Minuten erneut versuchen.",
+    "ambiguousIdentity": "Ihr Konto ist über Organisationen hinweg mehrdeutig — wenden Sie sich an Ihren Administrator.",
+    "networkError": "Server nicht erreichbar. Läuft die API?",
+    "forgotHint": "Passwort vergessen? In v1 setzt der Administrator es zurück."
   },
   "shell": {
     "live": "Live",

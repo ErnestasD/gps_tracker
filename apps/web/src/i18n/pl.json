@@ -1,11 +1,14 @@
 {
   "login": {
     "title": "Zaloguj się do Orbetra",
-    "tokenLabel": "Token dostępu",
-    "tokenHint": "Tymczasowe logowanie zastępcze — pełne konta pojawią się z E03-1.",
+    "emailLabel": "E-mail",
+    "passwordLabel": "Hasło",
     "submit": "Zaloguj się",
-    "invalidToken": "Token odrzucony. Sprawdź i spróbuj ponownie.",
-    "networkError": "Nie można połączyć się z serwerem. Czy API działa?"
+    "invalidCredentials": "Błędny e-mail lub hasło.",
+    "tooManyAttempts": "Zbyt wiele prób — spróbuj za kilka minut.",
+    "ambiguousIdentity": "Twoje konto jest niejednoznaczne między organizacjami — skontaktuj się z administratorem.",
+    "networkError": "Nie można połączyć się z serwerem. Czy API działa?",
+    "forgotHint": "Zapomniałeś hasła? W v1 reset wykonuje administrator."
   },
   "shell": {
     "live": "Na żywo",

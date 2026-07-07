@@ -1,26 +1,23 @@
 import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
 
-import { clearToken, getToken } from './auth'
+import { clearSession, getAccessToken, refreshSession } from './auth'
+import { API_BASE, ApiError } from './http'
+
+export { ApiError } from './http'
 
 /**
- * Same-origin by default: dev uses the Vite /v1 proxy, prod serves web+api behind
- * one Caddy origin. VITE_API_URL overrides for split deployments (README env table).
+ * Authenticated fetch (E03-1): bearer = in-memory access JWT; on 401 refresh the
+ * session ONCE (single-flight inside refreshSession) and retry — a second 401
+ * means the refresh family is gone, so clear and let the router bounce to /login.
  */
-const API_BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
-
-export class ApiError extends Error {
-  constructor(readonly status: number) {
-    super(`API ${status}`)
-  }
-}
-
-async function apiFetch(path: string): Promise<Response> {
-  const token = getToken()
+async function apiFetch(path: string, retried = false): Promise<Response> {
+  const token = getAccessToken()
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: token ? { authorization: `Bearer ${token}` } : {},
+    headers: token !== null ? { authorization: `Bearer ${token}` } : {},
   })
   if (res.status === 401) {
-    clearToken() // token revoked/wrong — router guard bounces to /login on next nav
+    if (!retried && (await refreshSession())) return apiFetch(path, true)
+    clearSession()
     throw new ApiError(401)
   }
   if (!res.ok) throw new ApiError(res.status)
@@ -33,7 +30,7 @@ export async function getWsTicket(): Promise<string> {
   return body.ticket
 }
 
-/** Initial map/list snapshot (PR-A endpoint) — WS itself sends no backfill. */
+/** Initial map/list snapshot — WS itself sends no backfill. */
 export async function getLastPositions(): Promise<LiveEvent[]> {
   const res = await apiFetch('/v1/devices/last')
   const body = (await res.json()) as { devices: unknown }

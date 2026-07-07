@@ -1,15 +1,23 @@
 import { Hono } from 'hono'
 import { Gauge, Registry } from 'prom-client'
 
+import type { AuthDb } from '@orbetra/db'
 import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
 
-import { issueTicket, type WsAuthContext, type WsDeps } from './ws.js'
+import { createAuthRoutes } from './auth/login.js'
+import { authMiddleware, type AuthEnv } from './auth/middleware.js'
+import { issueTicket, type WsDeps } from './ws.js'
 
-export interface AuthStub {
-  /** TEMPORARY until E03-1 (story-sanctioned stub): Bearer token → fixed test user.
-   * E03-1 replaces this with argon2id + JWT middleware and MUST delete this type. */
-  token: string
-  ctx: WsAuthContext
+export interface ApiDeps extends WsDeps {
+  db: AuthDb
+  jwtSecret: string
+  jwtTtlS: number
+  refreshTtlS: number
+  lockout: { maxFails: number; windowS: number }
+  secureCookies: boolean
+  trustProxy: boolean
+  /** Remote socket address resolver (Node server adapter specific; tests inject). */
+  getRemoteAddr?: (c: unknown) => string
 }
 
 export interface ApiProm {
@@ -23,8 +31,8 @@ export function createApiProm(): ApiProm {
   return { registry, setWsClients: (n) => g.set(n) }
 }
 
-export function createApp(deps: WsDeps, auth: AuthStub, prom?: ApiProm): Hono {
-  const app = new Hono()
+export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
+  const app = new Hono<AuthEnv>()
 
   app.get('/healthz', (c) => c.text('ok'))
 
@@ -32,13 +40,18 @@ export function createApp(deps: WsDeps, auth: AuthStub, prom?: ApiProm): Hono {
     app.get('/metrics', async (c) => c.text(await prom.registry.metrics()))
   }
 
-  // §6.6: GET /v1/ws-ticket (auth'd) → single-use ticket for wss://…/v1/stream?ticket=
+  // §6.6 auth routes (login/refresh/logout public; /me guards itself)
+  app.route('/v1/auth', createAuthRoutes(deps, deps.getRemoteAddr ?? (() => '0.0.0.0')))
+
+  // everything below /v1/* requires a valid access JWT (registration order — Hono
+  // middleware applies only to handlers registered after it)
+  app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret }))
+
+  // §6.6: GET /v1/ws-ticket → single-use ticket for wss://…/v1/stream?ticket=
+  // (any authenticated role — live map is viewer-accessible)
   app.get('/v1/ws-ticket', async (c) => {
-    const header = c.req.header('authorization')
-    if (header !== `Bearer ${auth.token}`) {
-      return c.json({ title: 'Unauthorized', status: 401 }, 401) // RFC 7807 shape
-    }
-    const ticket = await issueTicket(deps, auth.ctx)
+    const auth = c.get('auth')
+    const ticket = await issueTicket(deps, auth)
     c.header('Cache-Control', 'no-store') // single-use credential: never cacheable
     return c.json({ ticket, expiresInS: deps.ticketTtlS ?? 30 })
   })
@@ -48,13 +61,10 @@ export function createApp(deps: WsDeps, auth: AuthStub, prom?: ApiProm): Hono {
   // maintains; E03-3 replaces this with a scoped repository in packages/db and deletes
   // the direct hash walk (HGETALL is fine at stub scale, not at 5k devices).
   app.get('/v1/devices/last', async (c) => {
-    const header = c.req.header('authorization')
-    if (header !== `Bearer ${auth.token}`) {
-      return c.json({ title: 'Unauthorized', status: 401 }, 401)
-    }
+    const auth = c.get('auth')
     const tenantMap = await deps.redis.hgetall('device:tenant')
     const deviceIds = Object.keys(tenantMap)
-      .filter((id) => tenantMap[id] === auth.ctx.tenantId)
+      .filter((id) => tenantMap[id] === auth.tenantId)
       .sort()
     const jsons = await Promise.all(
       deviceIds.map((id) => deps.redis.hget(`device:${id}:last`, 'json')),
@@ -66,10 +76,8 @@ export function createApp(deps: WsDeps, auth: AuthStub, prom?: ApiProm): Hono {
         const parsed = liveEventSchema.safeParse(JSON.parse(raw))
         if (!parsed.success) continue // malformed state is skipped, not fatal
         // account filter on the PAYLOAD accountId — the same field ws.ts filters the
-        // fanout on (review MED: a hash re-read could disagree with the stored payload
-        // and make devices flicker between snapshot and first WS frame); unmapped
-        // (null) fails CLOSED for account-scoped users
-        if (auth.ctx.accountId !== undefined && parsed.data.accountId !== auth.ctx.accountId) continue
+        // fanout on; unmapped (null) fails CLOSED for account-scoped users
+        if (auth.accountId !== undefined && parsed.data.accountId !== auth.accountId) continue
         devices.push(parsed.data)
       } catch {
         // broken JSON in the hash — skip

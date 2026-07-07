@@ -53,7 +53,13 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
 | `API_PORT` | apps/api | HTTP+WS port, default `3010` |
-| `STUB_AUTH_TOKEN` | apps/api | TEMPORARY single-user auth token (deleted by E03-1) |
+| `JWT_SECRET` | apps/api | HS256 access-token secret, **required**, min 32 chars |
+| `JWT_TTL` | apps/api | Access-token TTL seconds, default `900` (15 min) |
+| `REFRESH_TTL` | apps/api | Refresh-token TTL seconds (sliding), default `1209600` (14 d) |
+| `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout (§6.1), defaults `5` / `900` |
+| `COOKIE_SECURE` | apps/api | `0` disables the Secure cookie flag (dev/e2e over http ONLY) |
+| `TRUST_PROXY` | apps/api | `1` = trust X-Forwarded-For for lockout IPs (behind Caddy) |
+| `DATABASE_URL` | apps/api (E03-1+) | required — auth reads users/refresh tokens via @orbetra/db |
 | `VITE_TILES_STYLE_URL` | apps/web (build-time) | MapLibre style URL, default OpenFreeMap `liberty` (`TILES_STYLE_URL` web counterpart, §6.7) |
 | `VITE_API_URL` | apps/web (build-time) | API origin override; unset = same-origin (dev proxy / prod Caddy) |
 | `API_PROXY_TARGET` | apps/web vite dev/preview server | Where the `/v1` proxy forwards (http+ws), default `http://localhost:3010` |
@@ -61,7 +67,10 @@ Every new variable must be added to the table here AND match the `.env` contract
 ## Web app (E02-6)
 
 - Dev: `turbo run dev --filter=@orbetra/web` (Vite on :5173, `/v1` proxied to :3010).
-- Login (stub era): the value of the api's `STUB_AUTH_TOKEN`. E03-1 replaces this.
+- Login (E03-1): email + password. Create a dev user first:
+  `pnpm db:seed:user -- --email you@dev.test --password 'pick-one' --role tsp_admin --tenant-name "Dev Tenant"`
+  (prints `{tenantId,…}` — pass that tenantId to `pnpm sim:seed -- --tenant <id>` so
+  simulated devices land in your tenant). Password reset is manual in v1.
 - **500-device demo (AC E02-6):** `make up`, run migrations, start ingest
   (`INGEST_MAX_CONN_PER_IP=1000` — the fleet is one IP), worker, api, then:
   `pnpm sim:seed -- --devices 500 && pnpm sim -- --scenario liveDrive --devices 500 --count 600 --hz 1`

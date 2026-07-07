@@ -114,12 +114,36 @@ model User {
   locale       String   @default("en")
   createdAt    DateTime @default(now()) @db.Timestamptz()
 
-  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account       Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  refreshTokens RefreshToken[]
 
   @@unique([tenantId, email])
   @@index([accountId])
   @@map("users")
+}
+
+/// Rotating refresh-token families (E03-1, §6.6): raw token = 32B CSPRNG, only its
+/// sha256 stored (deterministic unique lookup; 256-bit entropy makes offline brute
+/// force moot — same rationale as ApiKey.hash). familyId = id of the family's first
+/// token; reuse of a rotated token revokes the whole family.
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  familyId  String    @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz()
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+  /// set when consumed to mint a successor (rotation)
+  rotatedAt DateTime? @db.Timestamptz()
+  /// set by logout / family revocation on reuse detection
+  revokedAt DateTime? @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 model DeviceProfile {

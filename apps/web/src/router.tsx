@@ -7,9 +7,14 @@ import {
 } from '@tanstack/react-router'
 
 import { AppShell } from '@/components/AppShell'
-import { getToken } from '@/lib/auth'
+import { getAccessToken, refreshSession } from '@/lib/auth'
 import { LoginPage } from '@/routes/login'
 import { MapPage } from '@/routes/app/map'
+
+/** Reload survival: the access token is memory-only, but the httpOnly refresh
+ * cookie is not — try a refresh before deciding the user is logged out. */
+const hasSession = async (): Promise<boolean> =>
+  getAccessToken() !== null || (await refreshSession())
 
 // Code-based route tree (no codegen plugin — nothing generated for typed eslint
 // to choke on). /app/* is guarded: no stub token ⇒ bounce to /login (E03-1 swaps
@@ -19,9 +24,9 @@ const rootRoute = createRootRoute({ component: Outlet })
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  beforeLoad: () => {
+  beforeLoad: async () => {
     // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
-    throw redirect({ to: getToken() !== null ? '/app/map' : '/login' })
+    throw redirect({ to: (await hasSession()) ? '/app/map' : '/login' })
   },
 })
 
@@ -40,8 +45,8 @@ const loginRoute = createRoute({
 const appRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/app',
-  beforeLoad: ({ location }) => {
-    if (getToken() === null) {
+  beforeLoad: async ({ location }) => {
+    if (!(await hasSession())) {
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }

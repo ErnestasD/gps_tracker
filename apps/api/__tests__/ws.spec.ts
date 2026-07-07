@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 
 import { attachWsGateway, createApp, issueTicket, type WsDeps } from '../src/index.js'
+import { mintTestToken, testApiDeps } from './helpers/auth.js'
 
 let container: StartedTestContainer
 let redis: Redis
@@ -14,9 +15,8 @@ let deps: WsDeps
 let port: number
 let httpServer: ReturnType<typeof createServer>
 
-const TOKEN = 'stub-test-token'
-const CTX_A = { userId: 'u1', tenantId: 't1', accountId: 'acc-a' }
-const CTX_TENANT = { userId: 'u2', tenantId: 't1' } // tenant-wide (tsp_admin)
+const CTX_A = { userId: 'u1', tenantId: 't1', accountId: 'acc-a', role: 'account_manager' as const }
+const CTX_TENANT = { userId: 'u2', tenantId: 't1', role: 'tsp_admin' as const } // tenant-wide
 
 beforeAll(async () => {
   container = await new GenericContainer('redis:7-alpine')
@@ -28,7 +28,7 @@ beforeAll(async () => {
   redisSub = new Redis(container.getMappedPort(6379), container.getHost(), opts)
   deps = { redis, redisSub, ticketTtlS: 30 }
 
-  const app = createApp(deps, { token: TOKEN, ctx: CTX_A })
+  const app = createApp(testApiDeps(deps))
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   attachWsGateway(httpServer, deps)
   port = await new Promise<number>((resolve) => {
@@ -69,11 +69,15 @@ async function waitForCount(c: Client, n: number, timeoutMs = 3_000): Promise<st
 }
 
 describe('E02-4 ws-ticket + live gateway', () => {
-  it('ws-ticket endpoint requires auth and issues a ticket', async () => {
+  it('ws-ticket endpoint requires auth (JWT) and issues a ticket', async () => {
     const denied = await fetch(`http://127.0.0.1:${port}/v1/ws-ticket`)
     expect(denied.status).toBe(401)
+    const garbage = await fetch(`http://127.0.0.1:${port}/v1/ws-ticket`, {
+      headers: { authorization: 'Bearer not-a-jwt' },
+    })
+    expect(garbage.status).toBe(401)
     const ok = await fetch(`http://127.0.0.1:${port}/v1/ws-ticket`, {
-      headers: { authorization: `Bearer ${TOKEN}` },
+      headers: { authorization: `Bearer ${await mintTestToken(CTX_TENANT)}` },
     })
     expect(ok.status).toBe(200)
     const body = (await ok.json()) as { ticket: string }
@@ -108,7 +112,7 @@ describe('E02-4 ws-ticket + live gateway', () => {
   })
 
   it('cross-TENANT isolation: t2 subscriber never receives live:t1 messages (§6.2)', async () => {
-    const t2 = await connect(await issueTicket(deps, { userId: 'u9', tenantId: 't2' }))
+    const t2 = await connect(await issueTicket(deps, { userId: 'u9', tenantId: 't2', role: 'tsp_admin' }))
     const t1 = await connect(await issueTicket(deps, CTX_TENANT))
     await new Promise((r) => setTimeout(r, 100))
     await redis.publish('live:t1', JSON.stringify({ deviceId: '42', accountId: null, lat: 1, lon: 1 }))

@@ -12,7 +12,9 @@ export const TSX_BIN = join(REPO_ROOT, 'node_modules', '.bin', 'tsx')
 export const INGEST_PORT = 5127
 export const API_PORT = 3110
 export const WEB_PORT = 4173
-export const STUB_TOKEN = 'e2e-token'
+export const E2E_EMAIL = 'e2e@orbetra.test'
+export const E2E_PASSWORD = 'e2e-correct-horse-battery'
+export const E2E_JWT_SECRET = 'e2e-jwt-secret-e2e-jwt-secret-e2e!' // ≥32 chars
 export const BASE_IMEI = '356307042441013'
 export const DEVICES = 3
 /** Extra device reserved for the invalid-fix trail test (seeded, outside the fleet). */
@@ -83,6 +85,17 @@ export function runToExit(cmd: string, args: string[], env: Record<string, strin
   return new Promise((res, rej) => {
     const child = spawn(cmd, args, { cwd: REPO_ROOT, env: { ...process.env, ...env }, stdio: 'inherit' })
     child.on('exit', (code) => res(code ?? 1))
+    child.on('error', rej)
+  })
+}
+
+/** Like runToExit but captures stdout (seed scripts print result JSON). */
+export function runCapture(cmd: string, args: string[], env: Record<string, string>): Promise<{ code: number; stdout: string }> {
+  return new Promise((res, rej) => {
+    const child = spawn(cmd, args, { cwd: REPO_ROOT, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'inherit'] })
+    const chunks: string[] = []
+    child.stdout.on('data', (d: Buffer) => chunks.push(d.toString()))
+    child.on('exit', (code) => res({ code: code ?? 1, stdout: chunks.join('') }))
     child.on('error', rej)
   })
 }

@@ -7,16 +7,17 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { LiveEvent } from '@orbetra/shared'
 
 import { createApp, type WsDeps } from '../src/index.js'
+import { mintTestToken, testApiDeps } from './helpers/auth.js'
 
 let container: StartedTestContainer
 let redis: Redis
 let redisSub: Redis
 let deps: WsDeps
 
-const TOKEN_TENANT = 'stub-tenant-token'
-const TOKEN_ACC = 'stub-account-token'
-const CTX_TENANT = { userId: 'u1', tenantId: 't1' } // tenant-wide
-const CTX_ACC = { userId: 'u2', tenantId: 't1', accountId: 'acc-a' }
+const CTX_TENANT = { userId: 'u1', tenantId: 't1', role: 'tsp_admin' as const } // tenant-wide
+const CTX_ACC = { userId: 'u2', tenantId: 't1', accountId: 'acc-a', role: 'account_manager' as const }
+let TOKEN_TENANT: string
+let TOKEN_ACC: string
 
 let tenantPort: number
 let accPort: number
@@ -46,8 +47,8 @@ async function seedDevice(deviceId: string, tenant: string, account: string | nu
   })
 }
 
-async function startApp(token: string, ctx: typeof CTX_TENANT | typeof CTX_ACC): Promise<number> {
-  const app = createApp(deps, { token, ctx })
+async function startApp(): Promise<number> {
+  const app = createApp(testApiDeps(deps))
   const server = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   servers.push(server)
   return new Promise<number>((resolve) => {
@@ -69,8 +70,10 @@ beforeAll(async () => {
   redis = new Redis(container.getMappedPort(6379), container.getHost(), opts)
   redisSub = new Redis(container.getMappedPort(6379), container.getHost(), opts)
   deps = { redis, redisSub, ticketTtlS: 30 }
-  tenantPort = await startApp(TOKEN_TENANT, CTX_TENANT)
-  accPort = await startApp(TOKEN_ACC, CTX_ACC)
+  TOKEN_TENANT = await mintTestToken(CTX_TENANT)
+  TOKEN_ACC = await mintTestToken(CTX_ACC)
+  tenantPort = await startApp()
+  accPort = tenantPort // one app — identity now travels in the JWT, not app config
 }, 120_000)
 
 afterAll(async () => {

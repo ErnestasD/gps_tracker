@@ -1,11 +1,14 @@
 {
   "login": {
     "title": "Sign in to Orbetra",
-    "tokenLabel": "Access token",
-    "tokenHint": "Temporary stub sign-in — full accounts arrive with E03-1.",
+    "emailLabel": "Email",
+    "passwordLabel": "Password",
     "submit": "Sign in",
-    "invalidToken": "That token was rejected. Check it and try again.",
-    "networkError": "Could not reach the server. Is the API running?"
+    "invalidCredentials": "Wrong email or password.",
+    "tooManyAttempts": "Too many attempts — try again in a few minutes.",
+    "ambiguousIdentity": "Your account is ambiguous across organizations — contact your administrator.",
+    "networkError": "Could not reach the server. Is the API running?",
+    "forgotHint": "Forgot your password? Password reset is handled by your administrator in v1."
   },
   "shell": {
     "live": "Live",
