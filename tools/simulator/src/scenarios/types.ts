@@ -8,6 +8,8 @@ export interface ScenarioOpts {
   startMs: number
   /** Optional per-byte write delay (slow-loris style trickling). */
   byteDelayMs?: number
+  /** Route start offset in metres (fleet mode spreads devices; liveDrive only). */
+  startDistanceM?: number
 }
 
 export interface Scenario {

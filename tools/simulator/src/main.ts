@@ -1,4 +1,5 @@
 import { runScenario } from './client.js'
+import { runFleet } from './fleet.js'
 import { bufferedFlood } from './scenarios/bufferedFlood.js'
 import { corruptCrc } from './scenarios/corruptCrc.js'
 import { invalidFix } from './scenarios/invalidFix.js'
@@ -41,6 +42,16 @@ async function main(): Promise<void> {
     seed: Number(arg('seed', '1')),
     count: Number(arg('count', '60')),
     startMs: Number(arg('start-ms', String(Date.now()))),
+  }
+  const devices = Number(arg('devices', '1'))
+  if (devices > 1) {
+    // fleet mode (E02-6): N concurrent sessions, imei/seed/route-offset derived per device
+    const fleetOpts = { devices, rampMs: Number(arg('ramp-ms', '20')), spreadM: Number(arg('spread-m', '60')) }
+    console.log(`sim ${scenario.name} → ${opts.host}:${opts.port} devices=${devices} baseImei=${opts.imei} seed=${opts.seed} count=${opts.count}/device`)
+    const fleet = await runFleet(scenario, opts, fleetOpts)
+    console.log(JSON.stringify(fleet))
+    if (fleet.rejected > 0) process.exit(1)
+    return
   }
   console.log(`sim ${scenario.name} → ${opts.host}:${opts.port} imei=${opts.imei} seed=${opts.seed} count=${opts.count}`)
   const result = await runScenario(scenario, opts)

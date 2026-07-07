@@ -13,6 +13,9 @@ export interface DriveOpts {
   startMs: number
   /** Seconds between consecutive records (default 1). */
   stepS?: number
+  /** Start this far along the route (default 0). Route.at() wraps modulo route
+   * length, so any offset is safe — fleet mode spreads devices with this. */
+  startDistanceM?: number
 }
 
 /**
@@ -25,7 +28,7 @@ export function driveRecords(opts: DriveOpts): EncodableRecord[] {
   const route = new Route(ROUTE_PATH)
   const stepS = opts.stepS ?? 1
   const out: EncodableRecord[] = []
-  let distanceM = 0
+  let distanceM = opts.startDistanceM ?? 0
   for (let i = 0; i < opts.count; i++) {
     const speedKmh = Math.round(30 + rnd() * 40)
     distanceM += (speedKmh / 3.6) * stepS
