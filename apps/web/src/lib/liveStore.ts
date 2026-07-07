@@ -40,6 +40,54 @@ const TRAIL_CAP = 3_600 // ≈1 h at 1 Hz; ring buffer, oldest dropped
 const statusOf = (ageMs: number): DeviceStatus =>
   ageMs <= ONLINE_MS ? 'online' : ageMs <= STALE_MS ? 'stale' : 'offline'
 
+const lineFeature = (coordinates: [number, number][], gap: boolean): GeoJSON.Feature => ({
+  type: 'Feature',
+  geometry: { type: 'LineString', coordinates },
+  properties: { gap },
+})
+
+/**
+ * I5 trail segmentation (E02-7, spec §4 "Invalid-fix gap = dashed"): runs of
+ * consecutive VALID points become solid segments (gap=false); two valid runs
+ * separated by ≥1 invalid point are joined by a dashed connector (gap=true).
+ * Invalid points' own coordinates are never rendered — per §3.4 they merely
+ * repeat the last valid position while the device has no fix.
+ */
+export function buildTrailFeatures(points: readonly TrailPoint[]): GeoJSON.Feature[] {
+  // split into runs of consecutive valid points — runs are separated by ≥1
+  // invalid point by construction
+  const runs: TrailPoint[][] = []
+  let run: TrailPoint[] = []
+  for (const p of points) {
+    if (p.fixValid) {
+      run.push(p)
+    } else if (run.length > 0) {
+      runs.push(run)
+      run = []
+    }
+  }
+  if (run.length > 0) runs.push(run)
+
+  const features: GeoJSON.Feature[] = []
+  for (let i = 0; i < runs.length; i++) {
+    const current = runs[i]!
+    if (i > 0) {
+      // dashed connector across the no-fix stretch (skip zero-length: the device
+      // may resume exactly where it lost the fix)
+      const prev = runs[i - 1]!
+      const from = prev[prev.length - 1]!
+      const to = current[0]!
+      if (from.lon !== to.lon || from.lat !== to.lat) {
+        features.push(lineFeature([[from.lon, from.lat], [to.lon, to.lat]], true))
+      }
+    }
+    if (current.length >= 2) {
+      features.push(lineFeature(current.map((p) => [p.lon, p.lat]), false))
+    }
+  }
+  return features
+}
+
 /**
  * The perf keystone (E02-6 AC: 500 devices, no jank). WS messages only mutate a
  * Map between flushes — zero React/MapLibre work per message. A 1 Hz flush rebuilds
@@ -178,19 +226,7 @@ export class LiveStore {
     }))
     const trail: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
-      features:
-        this.trailPoints.length >= 2
-          ? [
-              {
-                type: 'Feature',
-                geometry: {
-                  type: 'LineString',
-                  coordinates: this.trailPoints.map((p) => [p.lon, p.lat]),
-                },
-                properties: {},
-              },
-            ]
-          : [],
+      features: buildTrailFeatures(this.trailPoints),
     }
     const selected = selectedId !== null ? (this.byId.get(selectedId)?.ev ?? null) : null
     this.mapSink({ devices: { type: 'FeatureCollection', features }, trail, selected, follow })

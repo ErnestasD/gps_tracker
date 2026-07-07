@@ -6,6 +6,7 @@ import { createPool } from '@orbetra/db'
 
 import { ShardConsumer } from './consumer.js'
 import { LiveState } from './liveState.js'
+import { MotionFeed } from './motion.js'
 import { startWorkerProm } from './prom.js'
 import { ShardLeaser } from './shards.js'
 
@@ -38,6 +39,7 @@ async function main(): Promise<void> {
   // dedicated connection: scrape XLENs must not queue behind consumers' blocking reads
   const prom = startWorkerProm(redis.duplicate(), Number(process.env['PROMETHEUS_PORT'] ?? 9102))
   const liveState = new LiveState(redis)
+  const motionFeed = new MotionFeed() // I5 seam (E02-7): trip/geofence stubs until E04-1/E05-x
   const consumerConns: Redis[] = []
   const consumers = [...shards].map((s) => {
     // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued
@@ -61,6 +63,11 @@ async function main(): Promise<void> {
           await liveState.apply(records) // live is best-effort: log, never stall the shard
         } catch (err) {
           console.error('liveState', err)
+        }
+        try {
+          motionFeed.feed(records) // I5-filtered inside; presence path above is NOT
+        } catch (err) {
+          console.error('motionFeed', err)
         }
       },
     })

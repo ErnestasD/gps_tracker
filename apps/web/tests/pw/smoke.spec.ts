@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { BASE_IMEI, DEVICES, INGEST_PORT, STUB_TOKEN, TSX_BIN, runToExit } from './stack'
+import { BASE_IMEI, DEVICES, INGEST_PORT, STUB_TOKEN, TRAIL_IMEI, TSX_BIN, runToExit } from './stack'
 
 /**
  * E02-6 smoke (story AC + the full-chain <2 s assertion E02-4 deferred here):
@@ -56,6 +56,61 @@ test('login → map: OSM attribution visible, WS live, simulator devices appear'
   await page.getByTestId('follow-toggle').click()
 
   await page.screenshot({ path: 'test-results/map-live.png' }) // PR visual artifact (spec §7)
+})
+
+test('invalid-fix: no-fix stretch renders a dashed trail gap (I5, E02-7 AC[2])', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('token-input').fill(STUB_TOKEN)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+  await expect(page.getByTestId('conn-badge')).toHaveText(/Live/i, { timeout: 15_000 })
+
+  // make the trail device exist in the panel (one clean liveDrive record)
+  expect(
+    await runToExit(
+      TSX_BIN,
+      ['tools/simulator/src/main.ts', '--scenario', 'liveDrive', '--count', '1', '--hz', '4', '--port', String(INGEST_PORT), '--imei', TRAIL_IMEI],
+      {},
+    ),
+  ).toBe(0)
+  await page.getByTestId(`device-row-${TRAIL_IMEI}`).click({ timeout: 30_000 })
+
+  // trail accumulates from the WS stream from selection time — enable BEFORE the drive
+  await page.getByTestId('trail-toggle').click()
+  await page.getByTestId('follow-toggle').click() // keeps the gap inside the viewport
+
+  // every 3rd record is a §3.4 invalid fix (last valid coords, sat=0)
+  expect(
+    await runToExit(
+      TSX_BIN,
+      ['tools/simulator/src/main.ts', '--scenario', 'invalidFix', '--count', '12', '--hz', '4', '--port', String(INGEST_PORT), '--imei', TRAIL_IMEI],
+      {},
+    ),
+  ).toBe(0)
+
+  // assert on RENDERED features via the map handle — not canvas pixels
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[data-testid="live-map"]') as
+            | (HTMLDivElement & { __map?: { queryRenderedFeatures: (o: { layers: string[] }) => unknown[] } })
+            | null
+          return el?.__map?.queryRenderedFeatures({ layers: ['trail-gap'] }).length ?? 0
+        }),
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(0)
+
+  // zoom in so the PR artifact actually shows the dashed stretch
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="live-map"]') as
+      | (HTMLDivElement & { __map?: { easeTo: (o: { zoom: number; duration: number }) => void } })
+      | null
+    el?.__map?.easeTo({ zoom: 16.5, duration: 300 })
+  })
+  await page.waitForTimeout(1_000)
+  await page.screenshot({ path: 'test-results/trail-gap.png' }) // PR visual artifact
 })
 
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
