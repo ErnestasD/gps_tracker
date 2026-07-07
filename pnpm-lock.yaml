@@ -328,6 +328,39 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
 
+  tests/isolation:
+    devDependencies:
+      '@hono/node-server':
+        specifier: ^2.0.8
+        version: 2.0.8(hono@4.12.27)
+      '@node-rs/argon2':
+        specifier: ^2.0.2
+        version: 2.0.2
+      '@orbetra/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@orbetra/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@orbetra/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      eslint:
+        specifier: ^9.30.0
+        version: 9.39.4(jiti@2.7.0)
+      ioredis:
+        specifier: ^5.11.1
+        version: 5.11.1
+      testcontainers:
+        specifier: ^12.0.4
+        version: 12.0.4
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
+
   tools/redact:
     devDependencies:
       eslint:

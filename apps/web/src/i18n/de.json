@@ -31,7 +31,8 @@
     "soon": "Demnächst",
     "collapse": "Menü einklappen",
     "expand": "Menü ausklappen",
-    "logout": "Abmelden"
+    "logout": "Abmelden",
+    "settings": "Einstellungen"
   },
   "deviceList": {
     "title": "Geräte",
@@ -63,5 +64,27 @@
   },
   "units": {
     "kmh": "km/h"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "profile": "Profil",
+    "email": "E-Mail",
+    "role": "Rolle",
+    "appearance": "Darstellung",
+    "locale": "Sprache",
+    "theme": "Thema",
+    "themeOption": {
+      "dark": "Dunkel",
+      "light": "Hell"
+    },
+    "password": {
+      "title": "Passwort ändern",
+      "current": "Aktuelles Passwort",
+      "new": "Neues Passwort",
+      "submit": "Passwort aktualisieren",
+      "changed": "Passwort aktualisiert.",
+      "wrongCurrent": "Aktuelles Passwort ist falsch.",
+      "error": "Passwort konnte nicht geändert werden."
+    }
   }
 }

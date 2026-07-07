@@ -31,7 +31,8 @@
     "soon": "Wkrótce",
     "collapse": "Zwiń menu",
     "expand": "Rozwiń menu",
-    "logout": "Wyloguj się"
+    "logout": "Wyloguj się",
+    "settings": "Ustawienia"
   },
   "deviceList": {
     "title": "Urządzenia",
@@ -63,5 +64,27 @@
   },
   "units": {
     "kmh": "km/h"
+  },
+  "settings": {
+    "title": "Ustawienia",
+    "profile": "Profil",
+    "email": "E-mail",
+    "role": "Rola",
+    "appearance": "Wygląd",
+    "locale": "Język",
+    "theme": "Motyw",
+    "themeOption": {
+      "dark": "Ciemny",
+      "light": "Jasny"
+    },
+    "password": {
+      "title": "Zmień hasło",
+      "current": "Obecne hasło",
+      "new": "Nowe hasło",
+      "submit": "Zaktualizuj hasło",
+      "changed": "Hasło zaktualizowane.",
+      "wrongCurrent": "Obecne hasło jest błędne.",
+      "error": "Nie udało się zmienić hasła."
+    }
   }
 }

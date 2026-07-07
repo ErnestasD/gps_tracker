@@ -8,6 +8,7 @@ import {
   LogOut,
   Map as MapIcon,
   Radio,
+  Settings,
   Settings2,
   TerminalSquare,
 } from 'lucide-react'
@@ -23,17 +24,18 @@ import { cn } from '@/lib/utils'
 interface NavItem {
   key: string
   icon: typeof MapIcon
-  active?: boolean
+  /** Set ⇒ real page (clickable); absent ⇒ disabled placeholder. */
+  to?: string
 }
 interface NavSection {
   key: string
   items: NavItem[]
 }
 
-// Spec §2 sidebar sections. Only Live→Map is a real page in E02-6; the rest are
-// disabled placeholders their stories light up (E03-3, E04-x, E05-x, E06-1, E08-2).
+// Spec §2 sidebar sections. Live→Map and Admin→Settings are real pages; the rest
+// are disabled placeholders their stories light up (E03-3, E04-x, E05-x, E06-1, E08-2).
 const SECTIONS: NavSection[] = [
-  { key: 'shell.live', items: [{ key: 'shell.map', icon: MapIcon, active: true }] },
+  { key: 'shell.live', items: [{ key: 'shell.map', icon: MapIcon, to: '/app/map' }] },
   {
     key: 'shell.fleet',
     items: [
@@ -44,6 +46,7 @@ const SECTIONS: NavSection[] = [
   },
   { key: 'shell.automation', items: [{ key: 'shell.geofences', icon: Hexagon }, { key: 'shell.rules', icon: Settings2 }] },
   { key: 'shell.ops', items: [{ key: 'shell.commands', icon: TerminalSquare }] },
+  { key: 'shell.admin', items: [{ key: 'shell.settings', icon: Settings, to: '/app/settings' }] },
 ]
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -84,25 +87,29 @@ export function AppShell({ children }: { children: ReactNode }) {
                 )}
                 {section.items.map((item) => {
                   const Icon = item.icon
+                  const enabled = item.to !== undefined
+                  const rowClass = cn(
+                    'relative mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-card px-2 py-2 text-left text-sm',
+                    collapsed && 'justify-center',
+                    enabled
+                      ? 'text-text hover:bg-surface-2 before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded before:bg-accent'
+                      : 'cursor-not-allowed text-muted/60',
+                  )
+                  if (enabled) {
+                    return (
+                      <button key={item.key} type="button" className={rowClass} onClick={() => void navigate({ to: item.to! })}>
+                        <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                        {!collapsed && <span>{t(item.key)}</span>}
+                      </button>
+                    )
+                  }
                   const row = (
-                    <div
-                      key={item.key}
-                      aria-disabled={!item.active}
-                      className={cn(
-                        'relative mx-2 flex items-center gap-3 rounded-card px-2 py-2 text-sm',
-                        collapsed && 'justify-center',
-                        item.active
-                          ? 'bg-surface-2 text-text before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded before:bg-accent'
-                          : 'cursor-not-allowed text-muted/60',
-                      )}
-                    >
+                    <div key={item.key} aria-disabled className={rowClass}>
                       <Icon className="h-4 w-4 shrink-0" aria-hidden />
                       {!collapsed && <span>{t(item.key)}</span>}
                     </div>
                   )
-                  return item.active ? (
-                    row
-                  ) : (
+                  return (
                     <Tooltip key={item.key}>
                       <TooltipTrigger asChild>{row}</TooltipTrigger>
                       <TooltipContent side="right">{t('shell.soon')}</TooltipContent>

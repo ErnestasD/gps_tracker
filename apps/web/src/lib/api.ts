@@ -38,6 +38,18 @@ export async function getLastPositions(): Promise<LiveEvent[]> {
   return parsed.success ? parsed.data : []
 }
 
+/** POST /v1/auth/password (Settings/Profile, E03-2). Throws ApiError(401) when the
+ * current password is wrong. */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const token = getAccessToken()
+  const res = await fetch(`${API_BASE}/v1/auth/password`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(token !== null ? { authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+  if (!res.ok) throw new ApiError(res.status)
+}
+
 export function wsUrl(ticket: string): string {
   if (API_BASE !== '') {
     const u = new URL(API_BASE)

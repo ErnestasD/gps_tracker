@@ -1,4 +1,4 @@
-import type { AuthDb, AuthUserRow } from '@orbetra/db'
+import type { AuthUserRow, Db } from '@orbetra/db'
 import type { Role } from '@orbetra/shared'
 
 import type { ApiDeps } from '../../src/app.js'
@@ -26,19 +26,34 @@ export function mintTestToken(claims: {
   )
 }
 
-/** Inert AuthDb for redis-only specs (ws/devicesLast never touch Postgres). */
-export function fakeAuthDb(users: AuthUserRow[] = []): AuthDb {
+const notImpl = (): never => {
+  throw new Error('repo not available in redis-only fake Db')
+}
+
+/** Inert Db for redis-only specs (ws/devicesLast use only auth + redis). */
+export function fakeDb(users: AuthUserRow[] = []): Db {
+  const repo = { list: notImpl, get: notImpl, create: notImpl, update: notImpl, remove: notImpl }
   return {
-    users: {
-      findByEmailAllTenants: (email) => Promise.resolve(users.filter((u) => u.email === email)),
-      findByIdForAuth: (id) => Promise.resolve(users.find((u) => u.id === id) ?? null),
+    auth: {
+      users: {
+        findByEmailAllTenants: (email: string) => Promise.resolve(users.filter((u) => u.email === email)),
+        findByIdForAuth: (id: string) => Promise.resolve(users.find((u) => u.id === id) ?? null),
+        setPassword: () => Promise.resolve(),
+      },
+      refreshTokens: {
+        create: () => Promise.resolve(),
+        claimForRotation: () => Promise.resolve(null),
+        findByTokenHash: () => Promise.resolve(null),
+        revokeFamily: () => Promise.resolve(),
+      },
     },
-    refreshTokens: {
-      create: () => Promise.resolve(),
-      claimForRotation: () => Promise.resolve(null),
-      findByTokenHash: () => Promise.resolve(null),
-      revokeFamily: () => Promise.resolve(),
-    },
+    tenants: { list: notImpl, get: notImpl, create: notImpl, update: notImpl, remove: notImpl },
+    accounts: repo,
+    users: repo,
+    rules: repo,
+    webhooks: repo,
+    events: { list: notImpl, get: notImpl },
+    audit: { record: () => Promise.resolve() },
     $disconnect: () => Promise.resolve(),
   }
 }
@@ -47,7 +62,7 @@ export function fakeAuthDb(users: AuthUserRow[] = []): AuthDb {
 export function testApiDeps(ws: WsDeps, over: Partial<ApiDeps> = {}): ApiDeps {
   return {
     ...ws,
-    db: fakeAuthDb(),
+    db: fakeDb(),
     jwtSecret: TEST_JWT_SECRET,
     jwtTtlS: 900,
     refreshTtlS: 1_209_600,

@@ -1,15 +1,17 @@
 import { Hono } from 'hono'
 import { Gauge, Registry } from 'prom-client'
 
-import type { AuthDb } from '@orbetra/db'
+import type { Db } from '@orbetra/db'
 import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
 
 import { createAuthRoutes } from './auth/login.js'
 import { authMiddleware, type AuthEnv } from './auth/middleware.js'
+import { buildRoutes } from './routes/crud.js'
+import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { issueTicket, type WsDeps } from './ws.js'
 
 export interface ApiDeps extends WsDeps {
-  db: AuthDb
+  db: Db
   jwtSecret: string
   jwtTtlS: number
   refreshTtlS: number
@@ -31,6 +33,16 @@ export function createApiProm(): ApiProm {
   return { registry, setWsClients: (n) => g.set(n) }
 }
 
+/**
+ * The scoped-CRUD route manifest (E03-2) — exported for the isolation suite to
+ * iterate cross-boundary. Built without deps (handlers are irrelevant to the
+ * contract). If a /v1 data route is registered without a manifest entry, the
+ * suite's meta-test fails.
+ */
+export function apiManifest(): ManifestEntry[] {
+  return toManifest(buildRoutes({ db: undefined as never }))
+}
+
 export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // defense-in-depth (review LOW): the 32-char floor was only in main.ts; any
   // embedder/test with a weak HS256 secret is offline-brute-forceable
@@ -43,12 +55,16 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     app.get('/metrics', async (c) => c.text(await prom.registry.metrics()))
   }
 
-  // §6.6 auth routes (login/refresh/logout public; /me guards itself)
-  app.route('/v1/auth', createAuthRoutes(deps, deps.getRemoteAddr ?? (() => '0.0.0.0')))
+  // §6.6 auth routes (login/refresh/logout public; /me + /password guard themselves)
+  app.route('/v1/auth', createAuthRoutes({ ...deps, db: deps.db.auth }, deps.getRemoteAddr ?? (() => '0.0.0.0')))
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)
   app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret }))
+
+  // manifest-driven scoped CRUD (E03-2) — mounted from buildRoutes so the exported
+  // manifest and the live routes cannot drift (isolation suite meta-test)
+  mountRoutes(app, buildRoutes({ db: deps.db }))
 
   // §6.6: GET /v1/ws-ticket → single-use ticket for wss://…/v1/stream?ticket=
   // (any authenticated role — live map is viewer-accessible)

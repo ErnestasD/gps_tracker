@@ -7,7 +7,7 @@ import { Redis } from 'ioredis'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { createAuthDb, type AuthDb } from '@orbetra/db'
+import { createDb, type Db } from '@orbetra/db'
 import { ROLES, type AuthSession, type Role } from '@orbetra/shared'
 
 import { seedUser } from '../../../packages/db/seed/users.js'
@@ -25,7 +25,7 @@ let pg: StartedTestContainer
 let redisC: StartedTestContainer
 let redis: Redis
 let redisSub: Redis
-let db: AuthDb
+let db: Db
 let databaseUrl: string
 let port: number
 let httpServer: ReturnType<typeof createServer>
@@ -75,7 +75,7 @@ beforeAll(async () => {
   const opts = { maxRetriesPerRequest: null }
   redis = new Redis(redisC.getMappedPort(6379), redisC.getHost(), opts)
   redisSub = new Redis(redisC.getMappedPort(6379), redisC.getHost(), opts)
-  db = createAuthDb(databaseUrl)
+  db = createDb(databaseUrl)
 
   // one user per role in one tenant; account-scoped roles get an account
   for (const role of ROLES) {
@@ -142,7 +142,7 @@ describe('E03-1 AC[3]: argon2id params pinned', () => {
   })
 
   it('seed script produces the same PHC params (single source)', async () => {
-    const u = await db.users.findByEmailAllTenants(seeded.viewer.email)
+    const u = await db.auth.users.findByEmailAllTenants(seeded.viewer.email)
     expect(u[0]!.passwordHash).toMatch(/^\$argon2id\$v=19\$m=65536,t=3,p=4\$/)
   })
 })

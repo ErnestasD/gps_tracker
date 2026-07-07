@@ -10,6 +10,7 @@ import { AppShell } from '@/components/AppShell'
 import { getAccessToken, refreshSession } from '@/lib/auth'
 import { LoginPage } from '@/routes/login'
 import { MapPage } from '@/routes/app/map'
+import { SettingsPage } from '@/routes/app/settings'
 
 /** Reload survival: the access token is memory-only, but the httpOnly refresh
  * cookie is not — try a refresh before deciding the user is logged out. */
@@ -64,7 +65,13 @@ const mapRoute = createRoute({
   component: MapPage,
 })
 
-const routeTree = rootRoute.addChildren([indexRoute, loginRoute, appRoute.addChildren([mapRoute])])
+const settingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/settings',
+  component: SettingsPage,
+})
+
+const routeTree = rootRoute.addChildren([indexRoute, loginRoute, appRoute.addChildren([mapRoute, settingsRoute])])
 
 export const router = createRouter({ routeTree })
 
