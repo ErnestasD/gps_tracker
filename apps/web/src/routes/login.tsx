@@ -27,6 +27,7 @@ export function LoginPage() {
     setBusy(true)
     setError(null)
     setToken(token.trim())
+    liveStore.reset() // defense-in-depth vs stale prior-session devices (review HIGH)
     getLastPositions()
       .then((events) => {
         liveStore.seed(events)

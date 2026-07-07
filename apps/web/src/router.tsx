@@ -28,8 +28,12 @@ const indexRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
-  validateSearch: (search: Record<string, unknown>): { redirect?: string } =>
-    typeof search['redirect'] === 'string' ? { redirect: search['redirect'] } : {},
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+    const r = search['redirect']
+    // internal paths only (review LOW): TanStack navigate can't leave the origin
+    // today, but E03-1's real auth must not inherit an unvalidated redirect
+    return typeof r === 'string' && r.startsWith('/') && !r.startsWith('//') ? { redirect: r } : {}
+  },
   component: LoginPage,
 })
 

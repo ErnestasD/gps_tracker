@@ -143,6 +143,7 @@ export function LiveMap() {
         const source = map.getSource<maplibregl.GeoJSONSource>('devices')
         if (clusterId === undefined || !source) return
         void source.getClusterExpansionZoom(clusterId).then((zoom: number) => {
+          if (disposed) return // promise may outlive map.remove()
           if (feature?.geometry.type === 'Point') {
             map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom })
           }

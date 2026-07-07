@@ -77,6 +77,9 @@ export class LiveStore {
     this.ingest(parsed.data)
   }
 
+  // Trust boundary note: byId grows one entry per distinct deviceId the tenant's
+  // WS channel emits — bounded by the seeded registry today. No client-side cap;
+  // E03-3 device CRUD becomes the authoritative bound.
   ingest(ev: LiveEvent): void {
     const current = this.byId.get(ev.deviceId)
     if (current && current.ev.fixTimeMs >= ev.fixTimeMs) return // max-wins

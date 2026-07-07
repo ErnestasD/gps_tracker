@@ -48,6 +48,7 @@ jobs:
   # simulator fleet → built web app in chromium. Runs in parallel with gates.
   web-e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 30 # image pulls / installs can hang; never run to the 6 h default
     steps:
       - uses: actions/checkout@v4
 

@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { clearToken } from '@/lib/auth'
+import { liveStore } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
@@ -52,6 +53,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const logout = () => {
     clearToken()
+    // review HIGH: without this, tenant A's markers survive into tenant B's session
+    // (byId never evicts) — a client-side cross-tenant position leak
+    liveStore.reset()
     void navigate({ to: '/login' })
   }
 

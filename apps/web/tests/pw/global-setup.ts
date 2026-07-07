@@ -19,6 +19,17 @@ import {
 const PG_IMAGE = 'timescale/timescaledb-ha:pg16' // same pin as packages/db tests
 
 export default async function globalSetup(): Promise<void> {
+  try {
+    await setup()
+  } catch (err) {
+    // Playwright does NOT run globalTeardown when globalSetup throws (review MED):
+    // reap spawned processes ourselves; Ryuk reaps the containers
+    for (const child of state.children) child.kill('SIGKILL')
+    throw err
+  }
+}
+
+async function setup(): Promise<void> {
   // 1. infra containers
   const [redis, pg] = await Promise.all([
     new GenericContainer('redis:7-alpine')
