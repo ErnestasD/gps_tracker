@@ -32,6 +32,9 @@ export function createApiProm(): ApiProm {
 }
 
 export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
+  // defense-in-depth (review LOW): the 32-char floor was only in main.ts; any
+  // embedder/test with a weak HS256 secret is offline-brute-forceable
+  if (deps.jwtSecret.length < 32) throw new Error('jwtSecret must be at least 32 chars')
   const app = new Hono<AuthEnv>()
 
   app.get('/healthz', (c) => c.text('ok'))

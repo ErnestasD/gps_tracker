@@ -27,9 +27,17 @@ const COOKIE_PATH = '/v1/auth' // the cookie never rides on data requests
 
 const sha256 = (s: string | Buffer): string => createHash('sha256').update(s).digest('hex')
 
-/** client IP for lockout keying: socket addr unless explicitly behind a proxy */
+/**
+ * Client IP for lockout keying. With trustProxy, use the RIGHTMOST XFF entry —
+ * the one appended by our own nearest trusted proxy (Caddy) — NOT the leftmost,
+ * which is client-controlled and spoofable (review MED: leftmost let an attacker
+ * mint a fresh lockout bucket per request). Assumes exactly one trusted proxy.
+ */
 function clientIp(headerXff: string | undefined, remoteAddr: string, trustProxy: boolean): string {
-  if (trustProxy && headerXff) return headerXff.split(',')[0]!.trim()
+  if (trustProxy && headerXff) {
+    const parts = headerXff.split(',').map((p) => p.trim()).filter((p) => p !== '')
+    if (parts.length > 0) return parts[parts.length - 1]!
+  }
   return remoteAddr
 }
 
@@ -158,12 +166,18 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
   })
 
   app.post('/logout', async (c) => {
+    // clear the cookie UNCONDITIONALLY first (review LOW: a revoke throw must not
+    // leave a live cookie while the SPA believes it logged out)
+    deleteCookie(c, COOKIE, { path: COOKIE_PATH })
     const raw = getCookie(c, COOKIE)
     if (raw !== undefined && raw !== '') {
-      const row = await deps.db.refreshTokens.findByTokenHash(sha256(raw))
-      if (row) await deps.db.refreshTokens.revokeFamily(row.familyId, new Date())
+      try {
+        const row = await deps.db.refreshTokens.findByTokenHash(sha256(raw))
+        if (row) await deps.db.refreshTokens.revokeFamily(row.familyId, new Date())
+      } catch {
+        // best-effort server revoke; the cookie is already cleared
+      }
     }
-    deleteCookie(c, COOKIE, { path: COOKIE_PATH })
     return c.json({ ok: true })
   })
 

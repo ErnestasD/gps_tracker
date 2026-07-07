@@ -24,3 +24,6 @@ CREATE INDEX "refresh_tokens_userId_idx" ON "refresh_tokens"("userId");
 -- AddForeignKey
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+
+-- E03-1 review LOW: email-only index for cross-tenant login lookup
+CREATE INDEX "users_email_idx" ON "users"("email");

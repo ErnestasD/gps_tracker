@@ -258,6 +258,12 @@ describe('E03-1 AC[1]: refresh rotation + family revocation', () => {
     expect(out.headers.get('set-cookie')).toContain('Max-Age=0')
     expect((await refresh(c)).status).toBe(401)
   })
+
+  it('logout without a cookie still succeeds and clears (review LOW)', async () => {
+    const out = await fetch(`${base()}/v1/auth/logout`, { method: 'POST' })
+    expect(out.status).toBe(200)
+    expect(out.headers.get('set-cookie')).toContain('Max-Age=0')
+  })
 })
 
 describe('E03-1 AC[2]: role matrix (4 roles × representative endpoints)', () => {
