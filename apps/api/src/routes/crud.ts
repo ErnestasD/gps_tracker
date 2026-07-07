@@ -2,8 +2,10 @@ import type { Context } from 'hono'
 
 import type { Db } from '@orbetra/db'
 import {
+  ROLES,
   accountCreateSchema,
   accountUpdateSchema,
+  canGrantRole,
   ruleCreateSchema,
   ruleUpdateSchema,
   tenantCreateSchema,
@@ -12,6 +14,7 @@ import {
   userUpdateSchema,
   webhookCreateSchema,
   webhookUpdateSchema,
+  type Role,
 } from '@orbetra/shared'
 
 import { hashPassword } from '../auth/passwords.js'
@@ -20,6 +23,29 @@ import { scopeOf, type RouteDef } from './registry.js'
 
 export interface CrudDeps {
   db: Db
+}
+
+// Per-resource authorization (review HIGH). Reads are broad; writes are restricted;
+// platform routes are platform_admin-only (assigned by scopeClass below).
+const TENANT_ADMINS: Role[] = ['platform_admin', 'tsp_admin']
+const ACCOUNT_WRITERS: Role[] = ['platform_admin', 'tsp_admin', 'account_manager']
+const READ_POLICY: Record<string, Role[]> = {
+  account: [...ROLES],
+  user: TENANT_ADMINS.concat('account_manager'),
+  rule: [...ROLES],
+  webhook: ACCOUNT_WRITERS,
+  event: [...ROLES],
+}
+const WRITE_POLICY: Record<string, Role[]> = {
+  account: TENANT_ADMINS,
+  user: TENANT_ADMINS,
+  rule: ACCOUNT_WRITERS,
+  webhook: TENANT_ADMINS,
+}
+function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
+  if (scopeClass === 'platform') return ['platform_admin']
+  if (method === 'get') return READ_POLICY[entity] ?? [...ROLES]
+  return WRITE_POLICY[entity] ?? TENANT_ADMINS
 }
 
 /** :id is always present on an item route; narrow the noUncheckedIndexedAccess string|undefined. */
@@ -53,7 +79,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
   const { db } = deps
   const auth = (c: Context<AuthEnv>) => c.get('auth')
 
-  const routes: RouteDef[] = [
+  const raw: Omit<RouteDef, 'roles'>[] = [
     // ── accounts (tenant) ────────────────────────────────────────────────────
     { method: 'get', path: '/v1/accounts', scopeClass: 'tenant', entity: 'account', shape: 'collection',
       handler: async (c) => json(c, await db.accounts.list(scopeOf(auth(c)))) },
@@ -94,6 +120,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const data = await body(c, userCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const a = auth(c)
+        // role grant authorization (review HIGH): a caller cannot mint a role above
+        // its own tier, and only a platform_admin can mint a platform_admin
+        if (!canGrantRole(a.role, data.role)) return problem(c, 403, 'Forbidden', 'cannot grant that role')
         // account-scoped creators can only create in their own account
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if (accountId !== null && (await db.accounts.get(scopeOf(a), accountId)) === null) {
@@ -111,8 +140,23 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, userUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        // role grant authorization on update too (review HIGH: self-promotion vector)
+        if (data.role !== undefined && !canGrantRole(a.role, data.role)) {
+          return problem(c, 403, 'Forbidden', 'cannot grant that role')
+        }
+        // accountId change must stay in scope (review MED: PATCH skipped this);
+        // account-scoped callers cannot move users out of their account at all
+        if (data.accountId !== undefined) {
+          if (a.accountId !== undefined && data.accountId !== a.accountId) {
+            return problem(c, 403, 'Forbidden', 'cannot move users across accounts')
+          }
+          if (data.accountId !== null && (await db.accounts.get(scopeOf(a), data.accountId)) === null) {
+            return problem(c, 400, 'Bad Request', 'accountId not in scope')
+          }
+        }
         const { password, ...rest } = data
-        const row = await db.users.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), {
+        const row = await db.users.update(scopeOf(a), { userId: a.userId }, id(c), {
           ...rest,
           ...(password !== undefined ? { passwordHash: await hashPassword(password) } : {}),
         })
@@ -224,5 +268,6 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
   ]
-  return routes
+  // attach the allowed-roles policy uniformly (review HIGH)
+  return raw.map((r) => ({ ...r, roles: rolesFor(r.entity, r.method, r.scopeClass) }))
 }

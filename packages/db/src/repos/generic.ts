@@ -30,6 +30,15 @@ export interface GenericConfig {
   orderBy?: object
   /** Force these fields onto every create (scope stamping). */
   stampCreate?: (scope: Scope) => object
+  /** Fields redacted from audit before/after snapshots (secrets at rest). */
+  redactFields?: string[]
+}
+
+function redact<T extends { [k: string]: unknown }>(row: T | null, fields?: string[]): unknown {
+  if (row === null || fields === undefined) return row
+  const copy: { [k: string]: unknown } = { ...row }
+  for (const f of fields) if (f in copy) copy[f] = '***'
+  return copy
 }
 
 /**
@@ -65,7 +74,7 @@ export function createGenericRepo<Row extends { [k: string]: unknown }, CreateDa
       const row = await delegate.create({
         data: { ...(cfg.stampCreate ? cfg.stampCreate(scope) : { tenantId: scope.tenantId }), ...data },
       })
-      await audit.record(scope, actor, { action: 'create', entity: cfg.entity, entityId: String(row[idField]), after: row })
+      await audit.record(scope, actor, { action: 'create', entity: cfg.entity, entityId: String(row[idField]), after: redact(row, cfg.redactFields) })
       return row
     },
 
@@ -74,7 +83,13 @@ export function createGenericRepo<Row extends { [k: string]: unknown }, CreateDa
       const before = await delegate.findFirst({ where: scopedById(scope, id) })
       if (before === null) return null
       const row = await delegate.update({ where: { [idField]: id }, data: data as object })
-      await audit.record(scope, actor, { action: 'update', entity: cfg.entity, entityId: id, before, after: row })
+      await audit.record(scope, actor, {
+        action: 'update',
+        entity: cfg.entity,
+        entityId: id,
+        before: redact(before, cfg.redactFields),
+        after: redact(row, cfg.redactFields),
+      })
       return row
     },
 
@@ -82,7 +97,7 @@ export function createGenericRepo<Row extends { [k: string]: unknown }, CreateDa
       const before = await delegate.findFirst({ where: scopedById(scope, id) })
       if (before === null) return false
       await delegate.delete({ where: { [idField]: id } })
-      await audit.record(scope, actor, { action: 'delete', entity: cfg.entity, entityId: id, before })
+      await audit.record(scope, actor, { action: 'delete', entity: cfg.entity, entityId: id, before: redact(before, cfg.redactFields) })
       return true
     },
   }

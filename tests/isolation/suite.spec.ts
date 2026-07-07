@@ -96,6 +96,52 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     const res = await req(`/v1/tenants/${fx.t2.id}`, fx.t1.tokenPlatform)
     expect(res.status).toBe(200)
   })
+
+  it('account scope on NON-account entities: A1 manager cannot reach an A2-owned rule → 404', async () => {
+    const res = await req(`/v1/rules/${fx.t1.ruleA2Id}`, fx.t1.tokenAccountA1)
+    expect(res.status).toBe(404)
+    const list = (await (await req('/v1/rules', fx.t1.tokenAccountA1)).json()) as { id: string }[]
+    expect(list.map((r) => r.id)).not.toContain(fx.t1.ruleA2Id)
+  })
+})
+
+describe('E03-2 write authorization / RBAC (review HIGH)', () => {
+  const post = (path: string, token: string, bodyObj: unknown) =>
+    fetch(`${fx.baseUrl}${path}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(bodyObj),
+    })
+
+  it('a viewer cannot write (403 on rule/webhook/account/user create)', async () => {
+    expect((await post('/v1/rules', fx.t1.tokenViewerA1, { accountId: fx.t1.accounts[0], kind: 'overspeed', name: 'x' })).status).toBe(403)
+    expect((await post('/v1/webhooks', fx.t1.tokenViewerA1, { accountId: null, url: 'https://x.test/w', secret: 'secret-secret-16' })).status).toBe(403)
+    expect((await post('/v1/accounts', fx.t1.tokenViewerA1, { name: 'x' })).status).toBe(403)
+    expect((await post('/v1/users', fx.t1.tokenViewerA1, { email: 'x@x.test', password: 'password12', role: 'viewer', accountId: fx.t1.accounts[0] })).status).toBe(403)
+  })
+
+  it('an account_manager cannot create users at all (write policy = tenant admins)', async () => {
+    const res = await post('/v1/users', fx.t1.tokenAccountA1, { email: 'nope@x.test', password: 'password12', role: 'viewer', accountId: fx.t1.accounts[0] })
+    expect(res.status).toBe(403)
+  })
+
+  it('a tsp_admin cannot mint a platform_admin (role-grant ceiling)', async () => {
+    const res = await post('/v1/users', fx.t1.tokenTenant, { email: 'evil@x.test', password: 'password12', role: 'platform_admin', accountId: null })
+    expect(res.status).toBe(403)
+  })
+
+  it('a tsp_admin CAN create a lower-tier user (positive control)', async () => {
+    const res = await post('/v1/users', fx.t1.tokenTenant, { email: `ok-${Date.now()}@x.test`, password: 'password12', role: 'account_manager', accountId: fx.t1.accounts[0] })
+    expect(res.status).toBe(201)
+  })
+
+  it('webhooks are tenant-level: an account_manager cannot touch even its own-account webhook (403)', async () => {
+    const res = await fetch(`${fx.baseUrl}/v1/webhooks/${fx.t1.webhookId}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${fx.t1.tokenAccountA1}` },
+    })
+    expect(res.status).toBe(403)
+  })
 })
 
 describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
@@ -106,7 +152,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     // Hono exposes registered routes; the auth/public + infra routes are exempt
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|stream)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|stream)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)
@@ -122,7 +168,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     app.get('/v1/sneaky', (c) => c.json({}))
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|stream)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|stream)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)

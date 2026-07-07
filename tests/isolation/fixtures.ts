@@ -18,8 +18,10 @@ export interface TenantFixture {
   id: string
   accounts: [string, string] // [A1, A2]
   ruleId: string
+  ruleA2Id: string // a rule owned by A2 (for account cross-account tests)
   webhookId: string
   userId: string // an account-scoped (A1) user
+  amUserId: string // the account_manager's OWN user id (self-escalation test)
   eventId: string
   /** platform_admin token (tenant-wide). */
   tokenPlatform: string
@@ -27,6 +29,8 @@ export interface TenantFixture {
   tokenTenant: string
   /** account_manager token pinned to A1. */
   tokenAccountA1: string
+  /** viewer token pinned to A1 (write-authorization tests). */
+  tokenViewerA1: string
 }
 
 export interface Fixtures {
@@ -52,23 +56,27 @@ async function seedTenant(db: Db, poolInsertEvent: (t: string, a: string, dev: s
   const a2 = await db.accounts.create(scope, actor, { name: `${name}-A2` })
   const rule = await db.rules.create(scope, actor, { accountId: a1.id, kind: 'overspeed', name: 'r' })
   // a rule under A2 too, so account-scope tests have an out-of-account target
-  await db.rules.create(scope, actor, { accountId: a2.id, kind: 'overspeed', name: 'r2' })
+  const ruleA2 = await db.rules.create(scope, actor, { accountId: a2.id, kind: 'overspeed', name: 'r2' })
   const webhook = await db.webhooks.create(scope, actor, { accountId: a1.id, url: 'https://x.test/h', secret: 'secret-secret-16' })
   const pwHash = await hashPassword('irrelevant-not-logging-in')
   const platform = await db.users.create(scope, actor, { email: `${name}-pa@x.test`, passwordHash: pwHash, role: 'platform_admin', accountId: null })
   const tsp = await db.users.create(scope, actor, { email: `${name}-ta@x.test`, passwordHash: pwHash, role: 'tsp_admin', accountId: null })
   const am = await db.users.create(scope, actor, { email: `${name}-am@x.test`, passwordHash: pwHash, role: 'account_manager', accountId: a1.id })
+  const vw = await db.users.create(scope, actor, { email: `${name}-vw@x.test`, passwordHash: pwHash, role: 'viewer', accountId: a1.id })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
   return {
     id: tenant.id,
     accounts: [a1.id, a2.id],
     ruleId: rule.id,
+    ruleA2Id: ruleA2.id,
     webhookId: webhook.id,
     userId: am.id,
+    amUserId: am.id,
     eventId,
     tokenPlatform: await token(platform.id, tenant.id, 'platform_admin'),
     tokenTenant: await token(tsp.id, tenant.id, 'tsp_admin'),
     tokenAccountA1: await token(am.id, tenant.id, 'account_manager', a1.id),
+    tokenViewerA1: await token(vw.id, tenant.id, 'viewer', a1.id),
   }
 }
 

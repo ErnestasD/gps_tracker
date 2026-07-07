@@ -25,5 +25,6 @@ export function createWebhookRepo(prisma: PrismaClient, audit: AuditRepo): Webho
     entity: 'webhook',
     scopeOpts: { nullableAccount: true },
     orderBy: { createdAt: 'desc' },
+    redactFields: ['secret'], // never log the HMAC signing secret (review LOW)
   })
 }

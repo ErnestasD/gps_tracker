@@ -1,5 +1,7 @@
 import type { Hono } from 'hono'
 
+import type { Role } from '@orbetra/shared'
+
 import { requireRole, type AuthContext, type AuthEnv } from '../auth/middleware.js'
 
 export type Method = 'get' | 'post' | 'patch' | 'delete'
@@ -10,6 +12,8 @@ export interface RouteDef {
   /** Hono path, e.g. '/v1/accounts' or '/v1/accounts/:id'. */
   path: string
   scopeClass: ScopeClass
+  /** Roles allowed to CALL this route (E03-2 review HIGH: writes were unguarded). */
+  roles: Role[]
   /** Isolation-suite metadata: which seeded fixture entity this route addresses. */
   entity: string
   /** 'item' routes carry a :id param (cross-tenant target → 404); 'collection' don't. */
@@ -22,12 +26,13 @@ export interface ManifestEntry {
   method: Method
   path: string
   scopeClass: ScopeClass
+  roles: Role[]
   entity: string
   shape: 'collection' | 'item'
 }
 
 export const toManifest = (defs: RouteDef[]): ManifestEntry[] =>
-  defs.map(({ method, path, scopeClass, entity, shape }) => ({ method, path, scopeClass, entity, shape }))
+  defs.map(({ method, path, scopeClass, roles, entity, shape }) => ({ method, path, scopeClass, roles, entity, shape }))
 
 /**
  * Register every route from its definition (E03-2). Platform routes get a
@@ -37,23 +42,14 @@ export const toManifest = (defs: RouteDef[]): ManifestEntry[] =>
  */
 export function mountRoutes(app: Hono<AuthEnv>, defs: RouteDef[]): void {
   for (const def of defs) {
-    // platform routes get the role guard; auth is already applied to /v1/* upstream.
-    // Explicit per-method dispatch keeps Hono's typed overloads (indexed method
-    // access erases them).
-    const guard = def.scopeClass === 'platform' ? requireRole('platform_admin') : null
-    if (def.method === 'get') {
-      if (guard) app.get(def.path, guard, def.handler)
-      else app.get(def.path, def.handler)
-    } else if (def.method === 'post') {
-      if (guard) app.post(def.path, guard, def.handler)
-      else app.post(def.path, def.handler)
-    } else if (def.method === 'patch') {
-      if (guard) app.patch(def.path, guard, def.handler)
-      else app.patch(def.path, def.handler)
-    } else {
-      if (guard) app.delete(def.path, guard, def.handler)
-      else app.delete(def.path, def.handler)
-    }
+    // EVERY route carries an explicit allowed-roles list (review HIGH: writes were
+    // unguarded). auth is already applied to /v1/* upstream, so requireRole sees
+    // c.get('auth'). Explicit per-method dispatch keeps Hono's typed overloads.
+    const guard = requireRole(...def.roles)
+    if (def.method === 'get') app.get(def.path, guard, def.handler)
+    else if (def.method === 'post') app.post(def.path, guard, def.handler)
+    else if (def.method === 'patch') app.patch(def.path, guard, def.handler)
+    else app.delete(def.path, guard, def.handler)
   }
 }
 
