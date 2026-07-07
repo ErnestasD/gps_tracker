@@ -1,7 +1,7 @@
 import type { LiveEvent } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { LiveStore, type MapFrame } from '../src/lib/liveStore.js'
+import { LiveStore, buildTrailFeatures, type MapFrame, type TrailPoint } from '../src/lib/liveStore.js'
 
 const T0 = 1_751_600_000_000
 
@@ -108,6 +108,55 @@ describe('LiveStore', () => {
     store.ingestRaw(JSON.stringify({ ...ev('1', T0), extraField: 1 })) // strict schema
     store.flush()
     expect(store.getSnapshot().devices).toHaveLength(0)
+  })
+
+  it('trail segments: invalid points split the line into solid runs + a dashed gap (I5, E02-7)', () => {
+    const pt = (lon: number, lat: number, fixValid: boolean): TrailPoint => ({ lon, lat, fixValid, fixTimeMs: T0 })
+    const features = buildTrailFeatures([
+      pt(25.27, 54.68, true),
+      pt(25.272, 54.681, true),
+      pt(25.272, 54.681, false), // §3.4: repeats last valid coords while no fix
+      pt(25.272, 54.681, false),
+      pt(25.276, 54.683, true),
+      pt(25.278, 54.684, true),
+    ])
+    const solid = features.filter((f) => f.properties!['gap'] === false)
+    const gaps = features.filter((f) => f.properties!['gap'] === true)
+    expect(solid).toHaveLength(2)
+    expect(gaps).toHaveLength(1)
+    const gapLine = gaps[0]!.geometry as GeoJSON.LineString
+    expect(gapLine.coordinates).toEqual([[25.272, 54.681], [25.276, 54.683]]) // last valid → first valid after the stretch
+    const [runA, runB] = solid.map((f) => (f.geometry as GeoJSON.LineString).coordinates)
+    expect(runA).toHaveLength(2)
+    expect(runB).toHaveLength(2)
+  })
+
+  it('trail matches the invalidFix scenario shape: every 3rd point invalid → 2-point solid runs joined by dashes', () => {
+    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0 })
+    // v,v,i,v,v,i,v,v — tools/simulator invalidFix emits exactly this cadence
+    const features = buildTrailFeatures([
+      pt(25.27, true), pt(25.271, true), pt(25.271, false),
+      pt(25.273, true), pt(25.274, true), pt(25.274, false),
+      pt(25.276, true), pt(25.277, true),
+    ])
+    expect(features.filter((f) => f.properties!['gap'] === false)).toHaveLength(3)
+    expect(features.filter((f) => f.properties!['gap'] === true)).toHaveLength(2)
+  })
+
+  it('trail edge cases: all-valid → one solid line, no gap; leading/trailing invalid → no dangling connectors', () => {
+    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0 })
+    const allValid = buildTrailFeatures([pt(25.27, true), pt(25.272, true), pt(25.274, true)])
+    expect(allValid).toHaveLength(1)
+    expect(allValid[0]!.properties!['gap']).toBe(false)
+
+    const edges = buildTrailFeatures([pt(25.26, false), pt(25.27, true), pt(25.272, true), pt(25.274, false)])
+    expect(edges).toHaveLength(1) // only the solid middle run — nothing dangles
+    expect(edges[0]!.properties!['gap']).toBe(false)
+
+    // device resumes exactly where it lost the fix → no zero-length gap feature
+    const resumeInPlace = buildTrailFeatures([pt(25.27, true), pt(25.272, true), pt(25.272, false), pt(25.272, true), pt(25.274, true)])
+    expect(resumeInPlace.filter((f) => f.properties!['gap'] === true)).toHaveLength(0)
+    expect(resumeInPlace.filter((f) => f.properties!['gap'] === false)).toHaveLength(2)
   })
 
   it('map frame carries selection + follow for the LiveMap sink', () => {

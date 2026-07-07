@@ -15,6 +15,9 @@ export const WEB_PORT = 4173
 export const STUB_TOKEN = 'e2e-token'
 export const BASE_IMEI = '356307042441013'
 export const DEVICES = 3
+/** Extra device reserved for the invalid-fix trail test (seeded, outside the fleet). */
+export const TRAIL_IMEI = (BigInt(BASE_IMEI) + BigInt(DEVICES)).toString()
+export const SEEDED_DEVICES = DEVICES + 1
 
 export interface StackState {
   containers: StartedTestContainer[]

@@ -58,6 +58,9 @@ export function LiveMap() {
       attributionControl: { compact: false, customAttribution: '© OpenStreetMap contributors' },
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
+    // e2e handle: lets Playwright assert RENDERED features (queryRenderedFeatures)
+    // instead of guessing from canvas pixels
+    ;(container as HTMLDivElement & { __map?: MlMap }).__map = map
     map.on('error', (e) => console.error('maplibre', e.error)) // degraded tiles must not crash the shell
 
     let disposed = false
@@ -81,7 +84,21 @@ export function LiveMap() {
         id: 'trail-line',
         type: 'line',
         source: 'trail',
+        filter: ['!=', ['get', 'gap'], true],
         paint: { 'line-color': COLORS.online, 'line-width': 1.5, 'line-opacity': 0.9 },
+      })
+      // I5 (E02-7, spec §4): no-fix stretches render as a dashed muted connector
+      map.addLayer({
+        id: 'trail-gap',
+        type: 'line',
+        source: 'trail',
+        filter: ['==', ['get', 'gap'], true],
+        paint: {
+          'line-color': COLORS.stale,
+          'line-width': 1.5,
+          'line-opacity': 0.9,
+          'line-dasharray': [2, 2],
+        },
       })
       map.addLayer({
         id: 'selected-halo',

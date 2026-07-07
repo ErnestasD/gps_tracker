@@ -3,8 +3,8 @@ import { GenericContainer, Wait } from 'testcontainers'
 import {
   API_PORT,
   BASE_IMEI,
-  DEVICES,
   INGEST_PORT,
+  SEEDED_DEVICES,
   REPO_ROOT,
   STUB_TOKEN,
   TSX_BIN,
@@ -61,7 +61,7 @@ async function setup(): Promise<void> {
   await Promise.all([waitTcp(INGEST_PORT), waitHttp(`http://127.0.0.1:${API_PORT}/healthz`)])
 
   // 4. seed device registry (deviceId = numeric imei; tenant matches api stub default)
-  if ((await runToExit(TSX_BIN, ['tools/simulator/src/seed.ts', '--devices', String(DEVICES), '--imei', BASE_IMEI, '--redis-url', state.redisUrl], env)) !== 0)
+  if ((await runToExit(TSX_BIN, ['tools/simulator/src/seed.ts', '--devices', String(SEEDED_DEVICES), '--imei', BASE_IMEI, '--redis-url', state.redisUrl], env)) !== 0)
     throw new Error('seed failed')
 
   // 5. build against the offline style (AC[4] env-swap proof) + preview
