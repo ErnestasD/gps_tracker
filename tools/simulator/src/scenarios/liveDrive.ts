@@ -13,7 +13,13 @@ export const liveDrive: Scenario = {
   name: 'liveDrive',
   *packets(opts: ScenarioOpts) {
     const stepS = opts.hz > 0 ? 1 / opts.hz : 1
-    for (const rec of driveRecords({ seed: opts.seed, count: opts.count, startMs: opts.startMs, stepS })) {
+    for (const rec of driveRecords({
+      seed: opts.seed,
+      count: opts.count,
+      startMs: opts.startMs,
+      stepS,
+      startDistanceM: opts.startDistanceM,
+    })) {
       yield encodeAvlPacket(8, [rec])
     }
   },

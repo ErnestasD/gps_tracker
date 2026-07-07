@@ -38,9 +38,18 @@ async function main(): Promise<void> {
   // dedicated connection: scrape XLENs must not queue behind consumers' blocking reads
   const prom = startWorkerProm(redis.duplicate(), Number(process.env['PROMETHEUS_PORT'] ?? 9102))
   const liveState = new LiveState(redis)
+  const consumerConns: Redis[] = []
   const consumers = [...shards].map((s) => {
+    // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued
+    // command behind it on a shared ioredis socket — 16 idle consumers made a full
+    // read round take ~16×blockMs (>30 s), starving the leaser's renewal GETs on the
+    // same socket until every lease expired on an IDLE worker (found live in E02-6;
+    // log signature: "lease lost" for shards 1..15 but never shard 0, loss count
+    // increasing with shard number = serial queue depth)
+    const conn = redis.duplicate()
+    consumerConns.push(conn)
     const c = new ShardConsumer(s, {
-      redis,
+      redis: conn,
       pool,
       hash,
       workerId,
@@ -68,6 +77,7 @@ async function main(): Promise<void> {
     void (async () => {
       await Promise.all(consumers.map((c) => c.stop()))
       await leaser.release()
+      consumerConns.forEach((c) => c.disconnect())
       await redis.quit()
       await pool.end()
       process.exit(0)
