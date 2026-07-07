@@ -15,7 +15,9 @@
     "typecheck": {
       "dependsOn": ["@orbetra/db#db:generate"]
     },
-    "lint": {},
+    "lint": {
+      "dependsOn": ["@orbetra/db#db:generate"]
+    },
     "test": {
       "dependsOn": ["@orbetra/db#db:generate"]
     }
