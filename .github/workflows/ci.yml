@@ -43,3 +43,51 @@ jobs:
 
       - name: Hook script tests
         run: sh scripts/__tests__/hooks.spec.sh
+
+  # E02-6 full-stack smoke: testcontainers redis+timescale, ingest/worker/api,
+  # simulator fleet → built web app in chromium. Runs in parallel with gates.
+  web-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # image pulls / installs can hang; never run to the 6 h default
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install chromium
+        run: pnpm --filter @orbetra/web exec playwright install chromium --with-deps
+
+      - name: Web smoke (Playwright)
+        run: pnpm --filter @orbetra/web e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7
+
+      - name: Upload map screenshot
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: map-live-screenshot
+          path: apps/web/test-results/map-live.png
+          retention-days: 14

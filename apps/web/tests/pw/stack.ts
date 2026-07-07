@@ -1,0 +1,85 @@
+import { spawn, type ChildProcess } from 'node:child_process'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { connect } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+
+import type { StartedTestContainer } from 'testcontainers'
+
+/** Shared stack constants + helpers for global-setup/teardown/spec (one process). */
+export const REPO_ROOT = resolve(import.meta.dirname, '../../../..')
+export const TSX_BIN = join(REPO_ROOT, 'node_modules', '.bin', 'tsx')
+export const INGEST_PORT = 5127
+export const API_PORT = 3110
+export const WEB_PORT = 4173
+export const STUB_TOKEN = 'e2e-token'
+export const BASE_IMEI = '356307042441013'
+export const DEVICES = 3
+
+export interface StackState {
+  containers: StartedTestContainer[]
+  children: ChildProcess[]
+  redisUrl: string
+  databaseUrl: string
+}
+
+export const state: StackState = { containers: [], children: [], redisUrl: '', databaseUrl: '' }
+
+export function spawnChild(
+  cmd: string,
+  args: string[],
+  env: Record<string, string>,
+  logName: string,
+): ChildProcess {
+  const logDir = process.env['PW_STACK_LOG_DIR'] ?? mkdtempSync(join(tmpdir(), 'orbetra-e2e-'))
+  process.env['PW_STACK_LOG_DIR'] = logDir
+  const child = spawn(cmd, args, {
+    cwd: REPO_ROOT,
+    env: { ...process.env, ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  const chunks: string[] = []
+  child.stdout?.on('data', (d: Buffer) => chunks.push(d.toString()))
+  child.stderr?.on('data', (d: Buffer) => chunks.push(d.toString()))
+  child.on('exit', () => writeFileSync(join(logDir, `${logName}.log`), chunks.join('')))
+  state.children.push(child)
+  return child
+}
+
+export async function waitHttp(url: string, timeoutMs = 30_000): Promise<void> {
+  const t0 = Date.now()
+  for (;;) {
+    try {
+      const res = await fetch(url)
+      if (res.ok) return
+    } catch {
+      // not up yet
+    }
+    if (Date.now() - t0 > timeoutMs) throw new Error(`timeout waiting for ${url}`)
+    await new Promise((r) => setTimeout(r, 300))
+  }
+}
+
+export async function waitTcp(port: number, timeoutMs = 30_000): Promise<void> {
+  const t0 = Date.now()
+  for (;;) {
+    const ok = await new Promise<boolean>((res) => {
+      const sock = connect({ host: '127.0.0.1', port }, () => {
+        sock.destroy()
+        res(true)
+      })
+      sock.on('error', () => res(false))
+    })
+    if (ok) return
+    if (Date.now() - t0 > timeoutMs) throw new Error(`timeout waiting for tcp :${port}`)
+    await new Promise((r) => setTimeout(r, 300))
+  }
+}
+
+export function runToExit(cmd: string, args: string[], env: Record<string, string>): Promise<number> {
+  return new Promise((res, rej) => {
+    const child = spawn(cmd, args, { cwd: REPO_ROOT, env: { ...process.env, ...env }, stdio: 'inherit' })
+    child.on('exit', (code) => res(code ?? 1))
+    child.on('error', rej)
+  })
+}

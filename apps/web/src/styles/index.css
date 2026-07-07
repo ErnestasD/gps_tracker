@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+@import './tokens.css';
+@import '@fontsource-variable/inter';
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+/* Tailwind v4 theme mapping: utilities like bg-surface, text-muted, border-line,
+ * text-accent come straight from the token variables. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-success: var(--success);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --radius-card: var(--radius);
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --shadow-card: var(--shadow-card);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  /* spec §1: 13px dashboard density default; forms bump to 15px locally */
+  font-size: 13px;
+  @apply bg-bg text-text font-sans antialiased;
+}
+
+/* keep OSM attribution legible on the dark shell (rule 13: always visible) */
+.maplibregl-ctrl-attrib {
+  font-size: 11px;
+}
+
+/* offscreen device rows skip paint (500-row list without a virtualizer) */
+.device-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 44px;
+}

@@ -1,0 +1,11 @@
+{
+  "version": 8,
+  "name": "orbetra-dev-offline",
+  "metadata": {
+    "comment": "Deterministic offline MapLibre style for e2e/dev without tile network. Also the living proof of AC[4]: pointing VITE_TILES_STYLE_URL at this file swaps the basemap with zero code change."
+  },
+  "sources": {},
+  "layers": [
+    { "id": "background", "type": "background", "paint": { "background-color": "#16213A" } }
+  ]
+}

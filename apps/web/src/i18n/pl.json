@@ -1,0 +1,64 @@
+{
+  "login": {
+    "title": "Zaloguj się do Orbetra",
+    "tokenLabel": "Token dostępu",
+    "tokenHint": "Tymczasowe logowanie zastępcze — pełne konta pojawią się z E03-1.",
+    "submit": "Zaloguj się",
+    "invalidToken": "Token odrzucony. Sprawdź i spróbuj ponownie.",
+    "networkError": "Nie można połączyć się z serwerem. Czy API działa?"
+  },
+  "shell": {
+    "live": "Na żywo",
+    "map": "Mapa",
+    "fleet": "Flota",
+    "devices": "Urządzenia",
+    "trips": "Trasy",
+    "history": "Historia",
+    "automation": "Automatyzacja",
+    "geofences": "Geostrefy",
+    "rules": "Reguły",
+    "events": "Zdarzenia",
+    "insights": "Analizy",
+    "reports": "Raporty",
+    "ops": "Operacje",
+    "commands": "Komendy",
+    "admin": "Administracja",
+    "users": "Użytkownicy",
+    "branding": "Marka",
+    "soon": "Wkrótce",
+    "collapse": "Zwiń menu",
+    "expand": "Rozwiń menu",
+    "logout": "Wyloguj się"
+  },
+  "deviceList": {
+    "title": "Urządzenia",
+    "search": "Szukaj urządzeń…",
+    "empty": "Brak urządzeń — pojawią się, gdy zaczną raportować.",
+    "noMatch": "Brak wyników wyszukiwania.",
+    "count": "{{shown}} z {{total}}"
+  },
+  "info": {
+    "speed": "Prędkość",
+    "ignition": "Zapłon",
+    "on": "Wł.",
+    "off": "Wył.",
+    "satellites": "Satelity",
+    "invalidFix": "Brak sygnału GPS",
+    "follow": "Śledź",
+    "trail": "Ślad",
+    "close": "Zamknij"
+  },
+  "status": {
+    "online": "Online",
+    "stale": "Nieaktualny",
+    "offline": "Offline"
+  },
+  "map": {
+    "connecting": "Łączenie…",
+    "reconnecting": "Ponowne łączenie…",
+    "live": "Na żywo"
+  },
+  "units": {
+    "kmh": "km/h"
+  }
+}
