@@ -102,6 +102,16 @@ describe('E02-7 I5 seam (invalid fixes never reach motion consumers)', () => {
     expect(haversineM(54.0, 25.0, 54.001, 25.0)).toBeLessThan(118)
   })
 
+  it('GeofenceQueueStub is CAPPED — a long-lived worker cannot grow it unboundedly (§10)', () => {
+    const q = new GeofenceQueueStub()
+    const batch = Array.from({ length: 3_000 }, (_, i) => rec(42n, T0 + i * 1_000, 54.68, 25.27, true))
+    for (let i = 0; i < 4; i++) q.feed(batch) // 12k records into a 10k cap
+    expect(q.queue.length).toBe(GeofenceQueueStub.CAP)
+    expect(q.dropped).toBe(2_000)
+    // newest are kept, oldest dropped
+    expect(q.queue[q.queue.length - 1]!.fixTime.getTime()).toBe(T0 + 2_999_000)
+  })
+
   it('GeofenceQueueStub preserves arrival order (evaluator consumes FIFO)', () => {
     const q = new GeofenceQueueStub()
     q.feed([rec(42n, T0, 54.68, 25.27, true)])

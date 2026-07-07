@@ -131,6 +131,18 @@ describe('LiveStore', () => {
     expect(runB).toHaveLength(2)
   })
 
+  it('trail matches the invalidFix scenario shape: every 3rd point invalid → 2-point solid runs joined by dashes', () => {
+    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0 })
+    // v,v,i,v,v,i,v,v — tools/simulator invalidFix emits exactly this cadence
+    const features = buildTrailFeatures([
+      pt(25.27, true), pt(25.271, true), pt(25.271, false),
+      pt(25.273, true), pt(25.274, true), pt(25.274, false),
+      pt(25.276, true), pt(25.277, true),
+    ])
+    expect(features.filter((f) => f.properties!['gap'] === false)).toHaveLength(3)
+    expect(features.filter((f) => f.properties!['gap'] === true)).toHaveLength(2)
+  })
+
   it('trail edge cases: all-valid → one solid line, no gap; leading/trailing invalid → no dangling connectors', () => {
     const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0 })
     const allValid = buildTrailFeatures([pt(25.27, true), pt(25.272, true), pt(25.274, true)])

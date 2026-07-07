@@ -28,8 +28,11 @@ export function haversineM(aLat: number, aLon: number, bLat: number, bLon: numbe
 /**
  * STUB until E04-1 (story-sanctioned, E02-7 AC): per-device haversine distance
  * accumulator standing in for the trip engine's distance feed. Exists so I5 has a
- * concrete thing to protect and a test to prove it. E04-1 replaces this with the
- * real trip state machine (which also prefers Δodometer, §6.4).
+ * concrete thing to protect and a test to prove it. NOT real distance logic:
+ * it connects records in feed order and does not tolerate cross-batch fixTime
+ * disorder (consumer.ts note) — E04-1 replaces it with the real trip state
+ * machine (Δodometer preference, §6.4, E04-2 recompute). Memory: bounded by
+ * device count (two Maps).
  */
 export class TripDistanceStub {
   private readonly lastPoint = new Map<string, { lat: number; lon: number }>()
@@ -48,12 +51,25 @@ export class TripDistanceStub {
   }
 }
 
-/** STUB until E05-x: the geofence evaluator's input queue. */
+/**
+ * STUB until E05-x: the geofence evaluator's input queue. CAPPED ring — nothing
+ * consumes it yet, and an uncapped array in the long-lived worker is the §10
+ * unbounded-buffer failure (review HIGH: it would grow with every valid record
+ * until OOM, killing the shard leases with it). E05-x replaces this with a real
+ * consumer; until then old entries are dropped, counted, never awaited.
+ */
 export class GeofenceQueueStub {
+  static readonly CAP = 10_000
   readonly queue: NormalizedRecord[] = []
+  dropped = 0
 
   feed(records: NormalizedRecord[]): void {
     this.queue.push(...records)
+    const excess = this.queue.length - GeofenceQueueStub.CAP
+    if (excess > 0) {
+      this.queue.splice(0, excess)
+      this.dropped += excess
+    }
   }
 }
 
