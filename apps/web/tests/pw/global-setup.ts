@@ -65,7 +65,9 @@ async function setup(): Promise<void> {
     throw new Error('seed failed')
 
   // 5. build against the offline style (AC[4] env-swap proof) + preview
-  const viteBin = `${REPO_ROOT}/node_modules/.bin/vite`
+  // vite is apps/web's OWN devDep — its .bin lives there, not at the root
+  // (root hoisting differs between local installs and CI frozen-lockfile)
+  const viteBin = `${REPO_ROOT}/apps/web/node_modules/.bin/vite`
   if ((await runToExit(viteBin, ['build', 'apps/web'], { VITE_TILES_STYLE_URL: '/dev-style.json' })) !== 0)
     throw new Error('vite build failed')
   spawnChild(
