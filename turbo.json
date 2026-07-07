@@ -1,16 +1,23 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
+    "db:generate": {
+      "cache": false
+    },
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["@orbetra/db#db:generate", "^build"],
       "outputs": ["dist/**"]
     },
     "dev": {
       "cache": false,
       "persistent": true
     },
-    "typecheck": {},
+    "typecheck": {
+      "dependsOn": ["@orbetra/db#db:generate"]
+    },
     "lint": {},
-    "test": {}
+    "test": {
+      "dependsOn": ["@orbetra/db#db:generate"]
+    }
   }
 }
