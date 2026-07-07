@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { Gauge, Registry } from 'prom-client'
 
+import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
+
 import { issueTicket, type WsAuthContext, type WsDeps } from './ws.js'
 
 export interface AuthStub {
@@ -38,6 +40,41 @@ export function createApp(deps: WsDeps, auth: AuthStub, prom?: ApiProm): Hono {
     }
     const ticket = await issueTicket(deps, auth.ctx)
     return c.json({ ticket, expiresInS: deps.ticketTtlS ?? 30 })
+  })
+
+  // TEMPORARY until E03-3 (founder-approved E02-6 addition): last-known snapshot so the
+  // web map isn't empty until each device next reports. Reads the Redis hashes LiveState
+  // maintains; E03-3 replaces this with a scoped repository in packages/db and deletes
+  // the direct hash walk (HGETALL is fine at stub scale, not at 5k devices).
+  app.get('/v1/devices/last', async (c) => {
+    const header = c.req.header('authorization')
+    if (header !== `Bearer ${auth.token}`) {
+      return c.json({ title: 'Unauthorized', status: 401 }, 401)
+    }
+    const tenantMap = await deps.redis.hgetall('device:tenant')
+    let deviceIds = Object.keys(tenantMap)
+      .filter((id) => tenantMap[id] === auth.ctx.tenantId)
+      .sort()
+    if (auth.ctx.accountId !== undefined && deviceIds.length > 0) {
+      // same semantics as the WS fanout filter (ws.ts): account-scoped users see only
+      // their account's devices; unmapped (null) fails CLOSED
+      const accounts = await deps.redis.hmget('device:account', ...deviceIds)
+      deviceIds = deviceIds.filter((_, i) => accounts[i] === auth.ctx.accountId)
+    }
+    const jsons = await Promise.all(
+      deviceIds.map((id) => deps.redis.hget(`device:${id}:last`, 'json')),
+    )
+    const devices: LiveEvent[] = []
+    for (const raw of jsons) {
+      if (raw === null) continue // mapped but never reported
+      try {
+        const parsed = liveEventSchema.safeParse(JSON.parse(raw))
+        if (parsed.success) devices.push(parsed.data) // malformed state is skipped, not fatal
+      } catch {
+        // broken JSON in the hash — skip
+      }
+    }
+    return c.json({ devices })
   })
 
   return app
