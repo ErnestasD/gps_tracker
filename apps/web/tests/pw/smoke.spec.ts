@@ -121,6 +121,44 @@ test('invalid-fix: no-fix stretch renders a dashed trail gap (I5, E02-7 AC[2])',
   await page.screenshot({ path: 'test-results/trail-gap.png' }) // PR visual artifact
 })
 
+test('settings: theme toggle + password change → re-login with the new password (E03-2)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/settings')
+  await expect(page.getByTestId('settings-page')).toBeVisible()
+
+  // theme toggle flips the <html> class
+  await page.getByTestId('theme-light').click()
+  await expect(page.locator('html')).toHaveClass(/light/)
+  await page.getByTestId('theme-dark').click()
+  await expect(page.locator('html')).not.toHaveClass(/light/)
+
+  // wrong current password → inline error
+  await page.getByTestId('current-password').fill('definitely-wrong')
+  await page.getByTestId('new-password').fill('brand-new-password-1')
+  await page.getByTestId('change-password').click()
+  await expect(page.getByTestId('password-msg')).toHaveText(/wrong/i)
+
+  // correct current password → success (also revokes this session's refresh family)
+  const NEW_PW = 'brand-new-password-1'
+  await page.getByTestId('current-password').fill(E2E_PASSWORD)
+  await page.getByTestId('new-password').fill(NEW_PW)
+  await page.getByTestId('change-password').click()
+  await expect(page.getByTestId('password-msg')).not.toHaveText(/wrong/i)
+
+  // the new password logs in; the old one no longer does
+  await page.evaluate(() => sessionStorage.clear())
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(NEW_PW)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)

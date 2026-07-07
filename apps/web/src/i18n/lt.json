@@ -31,7 +31,8 @@
     "soon": "Netrukus",
     "collapse": "Suskleisti meniu",
     "expand": "Išskleisti meniu",
-    "logout": "Atsijungti"
+    "logout": "Atsijungti",
+    "settings": "Nustatymai"
   },
   "deviceList": {
     "title": "Įrenginiai",
@@ -63,5 +64,27 @@
   },
   "units": {
     "kmh": "km/val"
+  },
+  "settings": {
+    "title": "Nustatymai",
+    "profile": "Profilis",
+    "email": "El. paštas",
+    "role": "Rolė",
+    "appearance": "Išvaizda",
+    "locale": "Kalba",
+    "theme": "Tema",
+    "themeOption": {
+      "dark": "Tamsi",
+      "light": "Šviesi"
+    },
+    "password": {
+      "title": "Keisti slaptažodį",
+      "current": "Dabartinis slaptažodis",
+      "new": "Naujas slaptažodis",
+      "submit": "Atnaujinti slaptažodį",
+      "changed": "Slaptažodis atnaujintas.",
+      "wrongCurrent": "Neteisingas dabartinis slaptažodis.",
+      "error": "Nepavyko atnaujinti slaptažodžio."
+    }
   }
 }

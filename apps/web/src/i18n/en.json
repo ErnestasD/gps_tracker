@@ -31,7 +31,8 @@
     "soon": "Coming soon",
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
-    "logout": "Log out"
+    "logout": "Log out",
+    "settings": "Settings"
   },
   "deviceList": {
     "title": "Devices",
@@ -63,5 +64,27 @@
   },
   "units": {
     "kmh": "km/h"
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "email": "Email",
+    "role": "Role",
+    "appearance": "Appearance",
+    "locale": "Language",
+    "theme": "Theme",
+    "themeOption": {
+      "dark": "Dark",
+      "light": "Light"
+    },
+    "password": {
+      "title": "Change password",
+      "current": "Current password",
+      "new": "New password",
+      "submit": "Update password",
+      "changed": "Password updated.",
+      "wrongCurrent": "Current password is wrong.",
+      "error": "Could not update password."
+    }
   }
 }

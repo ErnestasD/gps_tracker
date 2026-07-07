@@ -44,6 +44,9 @@ export interface AuthDb {
     findByEmailAllTenants(email: string): Promise<AuthUserRow[]>
     /** UNSCOPED BY DESIGN: pk lookup from a refresh token we minted ourselves. */
     findByIdForAuth(id: string): Promise<AuthUserRow | null>
+    /** Self-service password change (E03-2): the userId comes from the verified
+     * access token, so no tenant scope is needed. UNSCOPED BY DESIGN. */
+    setPassword(id: string, passwordHash: string): Promise<void>
   }
   refreshTokens: {
     create(row: { id: string; familyId: string; userId: string; tokenHash: string; expiresAt: Date }): Promise<void>
@@ -59,20 +62,26 @@ export interface AuthDb {
   $disconnect(): Promise<void>
 }
 
-export function createAuthDb(databaseUrl: string): AuthDb {
-  const prisma = new PrismaClient({ datasourceUrl: databaseUrl })
+const AUTH_USER_SELECT = {
+  id: true,
+  tenantId: true,
+  accountId: true,
+  email: true,
+  passwordHash: true,
+  role: true,
+  locale: true,
+} as const
+
+/** Auth methods over an existing PrismaClient — shared by createAuthDb and
+ * createDb (E03-2) so both surfaces stay identical. */
+export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnect'> {
   return {
     users: {
-      findByEmailAllTenants: (email) =>
-        prisma.user.findMany({
-          where: { email },
-          select: { id: true, tenantId: true, accountId: true, email: true, passwordHash: true, role: true, locale: true },
-        }),
-      findByIdForAuth: (id) =>
-        prisma.user.findUnique({
-          where: { id },
-          select: { id: true, tenantId: true, accountId: true, email: true, passwordHash: true, role: true, locale: true },
-        }),
+      findByEmailAllTenants: (email) => prisma.user.findMany({ where: { email }, select: AUTH_USER_SELECT }),
+      findByIdForAuth: (id) => prisma.user.findUnique({ where: { id }, select: AUTH_USER_SELECT }),
+      setPassword: async (id, passwordHash) => {
+        await prisma.user.update({ where: { id }, data: { passwordHash } })
+      },
     },
     refreshTokens: {
       create: async (row) => {
@@ -92,12 +101,13 @@ export function createAuthDb(databaseUrl: string): AuthDb {
           select: { familyId: true, userId: true, rotatedAt: true, revokedAt: true, expiresAt: true },
         }),
       revokeFamily: async (familyId, now) => {
-        await prisma.refreshToken.updateMany({
-          where: { familyId, revokedAt: null },
-          data: { revokedAt: now },
-        })
+        await prisma.refreshToken.updateMany({ where: { familyId, revokedAt: null }, data: { revokedAt: now } })
       },
     },
-    $disconnect: () => prisma.$disconnect(),
   }
+}
+
+export function createAuthDb(databaseUrl: string): AuthDb {
+  const prisma = new PrismaClient({ datasourceUrl: databaseUrl })
+  return { ...buildAuthMethods(prisma), $disconnect: () => prisma.$disconnect() }
 }

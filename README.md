@@ -64,6 +64,19 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `VITE_API_URL` | apps/web (build-time) | API origin override; unset = same-origin (dev proxy / prod Caddy) |
 | `API_PROXY_TARGET` | apps/web vite dev/preview server | Where the `/v1` proxy forwards (http+ws), default `http://localhost:3010` |
 
+## Scoped repositories & isolation (E03-2)
+
+- **All relational DB access goes through `packages/db` scoped repos** (`createDb(url)`).
+  `@prisma/client` is lint-banned outside `packages/db` AND asserted by a test
+  (`tests/isolation/prisma.spec.ts`). Every repo method takes a `Scope`
+  (`{tenantId, accountId?}`) first; the tenant boundary is centralized in `scopedWhere`.
+- **Scoped CRUD API** (manifest-driven, `apps/api/src/routes/crud.ts`): `/v1/{accounts,
+  users,rules,webhooks,events}` + `/v1/tenants` (platform_admin) + `POST /v1/auth/password`.
+  Routes register from the exported manifest so it cannot drift from the live app.
+- **Isolation suite** (`pnpm test:isolation`, CI-blocking via `turbo run test`, needs
+  Docker): iterates the route manifest cross-tenant/-account expecting 404/403; a
+  meta-test fails if a `/v1` route is registered without a manifest entry.
+
 ## Web app (E02-6)
 
 - Dev: `turbo run dev --filter=@orbetra/web` (Vite on :5173, `/v1` proxied to :3010).

@@ -4,14 +4,15 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import type { Redis } from 'ioredis'
 
 import type { AuthDb, AuthUserRow } from '@orbetra/db'
-import { loginRequestSchema, type AuthSession, type AuthUser } from '@orbetra/shared'
+import { loginRequestSchema, passwordChangeSchema, type AuthSession, type AuthUser } from '@orbetra/shared'
 
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
-import { DUMMY_HASH_PROMISE, verifyPassword } from './passwords.js'
+import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from './passwords.js'
 
 export interface AuthRouteDeps {
-  db: AuthDb
+  /** The auth surface (createDb().auth or createAuthDb()); $disconnect not needed. */
+  db: Omit<AuthDb, '$disconnect'>
   redis: Redis
   jwtSecret: string
   jwtTtlS: number
@@ -188,6 +189,29 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     if (user === null) return problem(c, 401, 'Unauthorized')
     c.header('Cache-Control', 'no-store')
     return c.json(toAuthUser(user))
+  })
+
+  // self-service password change (E03-2, Settings/Profile). Verify current, set
+  // new, revoke ALL of the user's refresh families so other sessions re-login.
+  app.post('/password', authMiddleware({ jwtSecret: deps.jwtSecret }), async (c) => {
+    const parsed = passwordChangeSchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return problem(c, 400, 'Bad Request')
+    const auth = c.get('auth')
+    const user = await deps.db.users.findByIdForAuth(auth.userId)
+    if (user === null) return problem(c, 401, 'Unauthorized')
+    if (!(await verifyPassword(user.passwordHash, parsed.data.currentPassword))) {
+      return problem(c, 401, 'Unauthorized', 'current password is wrong')
+    }
+    await deps.db.users.setPassword(user.id, await hashPassword(parsed.data.newPassword))
+    // invalidate the current refresh family (this session's cookie); other sessions
+    // continue until their access token expires, then fail to refresh (family gone)
+    const raw = getCookie(c, COOKIE)
+    if (raw !== undefined && raw !== '') {
+      const row = await deps.db.refreshTokens.findByTokenHash(sha256(raw))
+      if (row) await deps.db.refreshTokens.revokeFamily(row.familyId, new Date())
+    }
+    deleteCookie(c, COOKIE, { path: COOKIE_PATH })
+    return c.json({ ok: true })
   })
 
   return app

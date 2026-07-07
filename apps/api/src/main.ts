@@ -3,7 +3,7 @@ import { serve } from '@hono/node-server'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import { Redis } from 'ioredis'
 
-import { createAuthDb } from '@orbetra/db'
+import { createDb } from '@orbetra/db'
 
 import { createApiProm, createApp } from './app.js'
 import { attachWsGateway } from './ws.js'
@@ -25,7 +25,7 @@ if (!databaseUrl) {
 
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
 const redisSub = redis.duplicate()
-const db = createAuthDb(databaseUrl)
+const db = createDb(databaseUrl)
 const prom = createApiProm()
 
 const deps = {

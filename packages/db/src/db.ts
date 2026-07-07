@@ -1,0 +1,44 @@
+import { PrismaClient } from '@prisma/client'
+
+import { buildAuthMethods, type AuthDb } from './auth.js'
+import { createAccountRepo, type AccountRepo } from './repos/accounts.js'
+import { createAuditRepo, type AuditRepo } from './repos/audit.js'
+import { createEventRepo, type EventRepo } from './repos/events.js'
+import { createRuleRepo, type RuleRepo } from './repos/rules.js'
+import { createTenantRepo, type TenantRepo } from './repos/tenants.js'
+import { createUserRepo, type UserRepo } from './repos/users.js'
+import { createWebhookRepo, type WebhookRepo } from './repos/webhooks.js'
+
+/**
+ * The scoped-repository layer (E03-2) — the ONLY DB API for relational data.
+ * ONE PrismaClient, all repos share it. `auth` is the E03-1 surface (unscoped by
+ * design, see UNSCOPED_AUTH_METHODS). Import repos from here; never `@prisma/client`
+ * outside packages/db (lint-banned, proven by the isolation suite's lint-proof test).
+ */
+export interface Db {
+  auth: Omit<AuthDb, '$disconnect'>
+  tenants: TenantRepo
+  accounts: AccountRepo
+  users: UserRepo
+  rules: RuleRepo
+  webhooks: WebhookRepo
+  events: EventRepo
+  audit: AuditRepo
+  $disconnect(): Promise<void>
+}
+
+export function createDb(databaseUrl: string): Db {
+  const prisma = new PrismaClient({ datasourceUrl: databaseUrl })
+  const audit = createAuditRepo(prisma)
+  return {
+    auth: buildAuthMethods(prisma),
+    tenants: createTenantRepo(prisma, audit),
+    accounts: createAccountRepo(prisma, audit),
+    users: createUserRepo(prisma, audit),
+    rules: createRuleRepo(prisma, audit),
+    webhooks: createWebhookRepo(prisma, audit),
+    events: createEventRepo(prisma),
+    audit,
+    $disconnect: () => prisma.$disconnect(),
+  }
+}
