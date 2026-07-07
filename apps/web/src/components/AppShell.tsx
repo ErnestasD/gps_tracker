@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { clearToken } from '@/lib/auth'
+import { logout as authLogout } from '@/lib/auth'
 import { liveStore } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
 
@@ -52,11 +52,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
 
   const logout = () => {
-    clearToken()
-    // review HIGH: without this, tenant A's markers survive into tenant B's session
-    // (byId never evicts) — a client-side cross-tenant position leak
-    liveStore.reset()
-    void navigate({ to: '/login' })
+    void (async () => {
+      await authLogout() // revokes the refresh family server-side
+      // without this, tenant A's markers survive into tenant B's session
+      // (byId never evicts) — a client-side cross-tenant position leak
+      liveStore.reset()
+      void navigate({ to: '/login' })
+    })()
   }
 
   return (

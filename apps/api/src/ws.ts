@@ -3,11 +3,16 @@ import type { IncomingMessage, Server } from 'node:http'
 import { Redis } from 'ioredis'
 import { WebSocketServer, type WebSocket } from 'ws'
 
+import type { Role } from '@orbetra/shared'
+
 export interface WsAuthContext {
   userId: string
   tenantId: string
   /** undefined ⇒ tenant-wide visibility (tsp_admin); set ⇒ single-account scope */
   accountId?: string
+  /** carried for future per-role socket features (E08-2 commands); the fanout
+   * filter keys on accountId presence only. Tickets live 30 s — no compat window. */
+  role: Role
 }
 
 export interface WsDeps {

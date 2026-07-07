@@ -61,6 +61,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # the api process (spawned by global-setup) imports @orbetra/db → @prisma/client;
+      # its auto-generate postinstall is blocked by onlyBuiltDependencies, so generate here
+      - name: Generate Prisma client
+        run: pnpm --filter @orbetra/db db:generate
+
       - name: Cache Playwright browsers
         id: pw-cache
         uses: actions/cache@v4

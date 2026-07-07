@@ -1,26 +1,81 @@
+import { authSessionSchema, type AuthUser } from '@orbetra/shared'
+
+import { API_BASE, ApiError } from './http'
+
 /**
- * Stub-era auth (E02-4 AuthStub counterpart): the shared bearer token lives in
- * sessionStorage — survives reload, stays per-tab, and is trivially deleted by
- * E03-1, which replaces this whole file with httpOnly-refresh + in-memory JWT.
+ * Session state (E03-1, replaces the sessionStorage stub): the access JWT lives
+ * ONLY in module memory — XSS cannot read what is never stored. Persistence
+ * across reloads comes from the httpOnly `orb_refresh` cookie (Path=/v1/auth):
+ * the router guard calls refreshSession() before bouncing to /login.
  */
-const KEY = 'orbetra.stub-token'
+let accessToken: string | null = null
+let currentUser: AuthUser | null = null
 
-export function getToken(): string | null {
-  try {
-    return sessionStorage.getItem(KEY)
-  } catch {
-    return null // storage disabled (private mode edge) — treated as logged out
-  }
+export function getAccessToken(): string | null {
+  return accessToken
 }
 
-export function setToken(token: string): void {
-  sessionStorage.setItem(KEY, token)
+export function getCurrentUser(): AuthUser | null {
+  return currentUser
 }
 
-export function clearToken(): void {
+export function clearSession(): void {
+  accessToken = null
+  currentUser = null
+}
+
+async function applySession(res: Response): Promise<AuthUser> {
+  const parsed = authSessionSchema.safeParse(await res.json())
+  if (!parsed.success) throw new ApiError(500)
+  accessToken = parsed.data.accessToken
+  currentUser = parsed.data.user
+  return parsed.data.user
+}
+
+/** POST /v1/auth/login — throws ApiError(401|409|429|…) for the form to map. */
+export async function login(email: string, password: string): Promise<AuthUser> {
+  const res = await fetch(`${API_BASE}/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  if (!res.ok) throw new ApiError(res.status)
+  return applySession(res)
+}
+
+let refreshInFlight: Promise<boolean> | null = null
+
+/**
+ * POST /v1/auth/refresh (cookie-authenticated). SINGLE-FLIGHT: concurrent 401s
+ * from parallel requests must not stampede — a second refresh with the same
+ * cookie would look like token REUSE server-side and revoke the whole family.
+ */
+export function refreshSession(): Promise<boolean> {
+  refreshInFlight ??= (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/v1/auth/refresh`, { method: 'POST' })
+      if (!res.ok) {
+        clearSession()
+        return false
+      }
+      await applySession(res)
+      return true
+    } catch {
+      clearSession()
+      return false
+    } finally {
+      refreshInFlight = null
+    }
+  })()
+  return refreshInFlight
+}
+
+/** POST /v1/auth/logout — revokes the refresh family server-side; always clears locally. */
+export async function logout(): Promise<void> {
   try {
-    sessionStorage.removeItem(KEY)
+    await fetch(`${API_BASE}/v1/auth/logout`, { method: 'POST' })
   } catch {
-    // already unavailable — nothing to clear
+    // server unreachable — local clear still logs the tab out
   }
+  clearSession()
 }

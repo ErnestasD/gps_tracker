@@ -1,11 +1,14 @@
 {
   "login": {
     "title": "Prisijunkite prie Orbetra",
-    "tokenLabel": "Prieigos raktas",
-    "tokenHint": "Laikinas stub prisijungimas — pilnos paskyros atvyks su E03-1.",
+    "emailLabel": "El. paštas",
+    "passwordLabel": "Slaptažodis",
     "submit": "Prisijungti",
-    "invalidToken": "Raktas atmestas. Patikrinkite ir bandykite dar kartą.",
-    "networkError": "Nepavyko pasiekti serverio. Ar API veikia?"
+    "invalidCredentials": "Neteisingas el. paštas arba slaptažodis.",
+    "tooManyAttempts": "Per daug bandymų — pabandykite po kelių minučių.",
+    "ambiguousIdentity": "Jūsų paskyra dviprasmiška tarp organizacijų — kreipkitės į administratorių.",
+    "networkError": "Nepavyko pasiekti serverio. Ar API veikia?",
+    "forgotHint": "Pamiršote slaptažodį? v1 versijoje jį atstato administratorius."
   },
   "shell": {
     "live": "Gyvai",

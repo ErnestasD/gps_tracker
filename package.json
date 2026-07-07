@@ -18,7 +18,8 @@
     "test": "turbo run test",
     "gates": "turbo run typecheck lint test",
     "sim": "tsx tools/simulator/src/main.ts",
-    "sim:seed": "tsx tools/simulator/src/seed.ts"
+    "sim:seed": "tsx tools/simulator/src/seed.ts",
+    "db:seed:user": "tsx packages/db/seed/users.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",

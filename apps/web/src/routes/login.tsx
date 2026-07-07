@@ -5,37 +5,45 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { ApiError, getLastPositions } from '@/lib/api'
-import { setToken } from '@/lib/auth'
+import { getLastPositions } from '@/lib/api'
+import { login } from '@/lib/auth'
+import { ApiError } from '@/lib/http'
 import { liveStore } from '@/lib/liveStore'
 
 /**
- * Stub-era login (spec §4 Auth screens; E03-1 replaces with email+password):
- * the "password" is STUB_AUTH_TOKEN, validated by calling the snapshot endpoint —
- * side-effect-free AND warms the store, so the map paints instantly after login.
+ * Login (E03-1, spec §4 Auth screens): email + password against POST /v1/auth/login.
+ * Tenant branding by Host arrives with E03-5; password reset is manual in v1
+ * (forgot-password stub note below the form).
  */
 export function LoginPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const search = useSearch({ from: '/login' })
-  const [token, setTokenInput] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const errorKey = (err: unknown): string => {
+    if (err instanceof ApiError) {
+      if (err.status === 401) return 'login.invalidCredentials'
+      if (err.status === 429) return 'login.tooManyAttempts'
+      if (err.status === 409) return 'login.ambiguousIdentity'
+    }
+    return 'login.networkError'
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
     setError(null)
-    setToken(token.trim())
-    liveStore.reset() // defense-in-depth vs stale prior-session devices (review HIGH)
-    getLastPositions()
-      .then((events) => {
-        liveStore.seed(events)
+    liveStore.reset() // no stale prior-session devices (E02-6 review HIGH)
+    login(email, password)
+      .then(async () => {
+        liveStore.seed(await getLastPositions()) // warm the map before navigating
         void navigate({ to: search.redirect ?? '/app/map' })
       })
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError && err.status === 401 ? t('login.invalidToken') : t('login.networkError'))
-      })
+      .catch((err: unknown) => setError(t(errorKey(err))))
       .finally(() => setBusy(false))
   }
 
@@ -49,28 +57,47 @@ export function LoginPage() {
         <CardContent className="pb-8">
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
-              <label htmlFor="token" className="text-sm text-muted">
-                {t('login.tokenLabel')}
+              <label htmlFor="email" className="text-sm text-muted">
+                {t('login.emailLabel')}
               </label>
               <Input
-                id="token"
+                id="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                data-testid="email-input"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-sm text-muted">
+                {t('login.passwordLabel')}
+              </label>
+              <Input
+                id="password"
                 type="password"
                 autoComplete="current-password"
-                value={token}
-                onChange={(e) => setTokenInput(e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
-                data-testid="token-input"
+                data-testid="password-input"
               />
-              <p className="text-xs text-muted">{t('login.tokenHint')}</p>
             </div>
             {error !== null && (
               <p role="alert" data-testid="login-error" className="text-sm text-danger">
                 {error}
               </p>
             )}
-            <Button type="submit" className="w-full" disabled={busy || token.trim() === ''} data-testid="login-submit">
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={busy || email.trim() === '' || password === ''}
+              data-testid="login-submit"
+            >
               {t('login.submit')}
             </Button>
+            <p className="text-center text-xs text-muted">{t('login.forgotHint')}</p>
           </form>
         </CardContent>
       </Card>

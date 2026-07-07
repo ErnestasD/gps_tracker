@@ -3,12 +3,15 @@ import { GenericContainer, Wait } from 'testcontainers'
 import {
   API_PORT,
   BASE_IMEI,
+  E2E_EMAIL,
+  E2E_JWT_SECRET,
+  E2E_PASSWORD,
   INGEST_PORT,
   SEEDED_DEVICES,
   REPO_ROOT,
-  STUB_TOKEN,
   TSX_BIN,
   WEB_PORT,
+  runCapture,
   runToExit,
   spawnChild,
   state,
@@ -57,12 +60,26 @@ async function setup(): Promise<void> {
   // 3. pipeline processes (prom ports offset — a founder dev stack may be running)
   spawnChild(TSX_BIN, ['apps/ingest/src/main.ts'], { ...env, INGEST_TCP_PORT: String(INGEST_PORT), PROMETHEUS_PORT: '9151' }, 'ingest')
   spawnChild(TSX_BIN, ['apps/worker/src/main.ts'], { ...env, PROMETHEUS_PORT: '9152' }, 'worker')
-  spawnChild(TSX_BIN, ['apps/api/src/main.ts'], { ...env, API_PORT: String(API_PORT), STUB_AUTH_TOKEN: STUB_TOKEN }, 'api')
+  spawnChild(
+    TSX_BIN,
+    ['apps/api/src/main.ts'],
+    { ...env, API_PORT: String(API_PORT), JWT_SECRET: E2E_JWT_SECRET, COOKIE_SECURE: '0' },
+    'api',
+  )
   await Promise.all([waitTcp(INGEST_PORT), waitHttp(`http://127.0.0.1:${API_PORT}/healthz`)])
 
-  // 4. seed device registry (deviceId = numeric imei; tenant matches api stub default)
-  if ((await runToExit(TSX_BIN, ['tools/simulator/src/seed.ts', '--devices', String(SEEDED_DEVICES), '--imei', BASE_IMEI, '--redis-url', state.redisUrl], env)) !== 0)
-    throw new Error('seed failed')
+  // 4a. seed the e2e login user (E03-1) — its tenantId must reach device:tenant
+  const seedUser = await runCapture(
+    TSX_BIN,
+    ['packages/db/seed/users.ts', '--email', E2E_EMAIL, '--password', E2E_PASSWORD, '--role', 'tsp_admin', '--tenant-name', 'E2E'],
+    env,
+  )
+  if (seedUser.code !== 0) throw new Error('user seed failed')
+  const { tenantId } = JSON.parse(seedUser.stdout) as { tenantId: string }
+
+  // 4b. seed device registry (deviceId = numeric imei) into the login user's tenant
+  if ((await runToExit(TSX_BIN, ['tools/simulator/src/seed.ts', '--devices', String(SEEDED_DEVICES), '--imei', BASE_IMEI, '--tenant', tenantId, '--redis-url', state.redisUrl], env)) !== 0)
+    throw new Error('device seed failed')
 
   // 5. build against the offline style (AC[4] env-swap proof) + preview
   // vite is apps/web's OWN devDep — its .bin lives there, not at the root

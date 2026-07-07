@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { BASE_IMEI, DEVICES, INGEST_PORT, STUB_TOKEN, TRAIL_IMEI, TSX_BIN, runToExit } from './stack'
+import { BASE_IMEI, DEVICES, E2E_EMAIL, E2E_PASSWORD, INGEST_PORT, TRAIL_IMEI, TSX_BIN, runToExit } from './stack'
 
 /**
  * E02-6 smoke (story AC + the full-chain <2 s assertion E02-4 deferred here):
@@ -10,9 +10,10 @@ import { BASE_IMEI, DEVICES, INGEST_PORT, STUB_TOKEN, TRAIL_IMEI, TSX_BIN, runTo
  */
 test.describe.configure({ mode: 'serial' })
 
-test('wrong token → inline error, stays on /login', async ({ page }) => {
+test('wrong password → inline error, stays on /login', async ({ page }) => {
   await page.goto('/login')
-  await page.getByTestId('token-input').fill('wrong-token')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill('wrong-password')
   await page.getByTestId('login-submit').click()
   await expect(page.getByTestId('login-error')).toBeVisible()
   expect(page.url()).toContain('/login')
@@ -20,8 +21,14 @@ test('wrong token → inline error, stays on /login', async ({ page }) => {
 
 test('login → map: OSM attribution visible, WS live, simulator devices appear', async ({ page }) => {
   await page.goto('/login')
-  await page.getByTestId('token-input').fill(STUB_TOKEN)
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  // E03-1: session survives reload — access token is memory-only, the httpOnly
+  // refresh cookie + router guard restore it without bouncing to /login
+  await page.reload()
   await page.waitForURL('**/app/map')
 
   // AC[2]: OSM attribution visible on every map view (CLAUDE.md rule 13)
@@ -60,7 +67,8 @@ test('login → map: OSM attribution visible, WS live, simulator devices appear'
 
 test('invalid-fix: no-fix stretch renders a dashed trail gap (I5, E02-7 AC[2])', async ({ page }) => {
   await page.goto('/login')
-  await page.getByTestId('token-input').fill(STUB_TOKEN)
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
   await page.waitForURL('**/app/map')
   await expect(page.getByTestId('conn-badge')).toHaveText(/Live/i, { timeout: 15_000 })
