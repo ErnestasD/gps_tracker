@@ -77,6 +77,19 @@ Every new variable must be added to the table here AND match the `.env` contract
   Docker): iterates the route manifest cross-tenant/-account expecting 404/403; a
   meta-test fails if a `/v1` route is registered without a manifest entry.
 
+## Devices (E03-3)
+
+- `pnpm db:seed:profiles` seeds the four device profiles (fmb1xx, fmc, fmb6xx-stub,
+  tat-asset). Create devices via the web Devices page or `POST /v1/devices`; each
+  create/retire **syncs the ingest/worker Redis registries** (`registry:imei`,
+  `device:tenant`, `device:account`) — a device is invisible to ingest until created
+  and rejected (0x00) on the next connect after retire.
+- **CSV bulk import**: `POST /v1/devices/import/preview` (dry-run diff: create/update/
+  error rows; per-row IMEI-Luhn + dup + unknown-profile validation) then
+  `POST /v1/devices/import` to apply. Columns: `imei,name,profileKey,accountId`
+  (a tenant-wide caller must name the account per row; an account-scoped caller is
+  pinned to their own).
+
 ## Web app (E02-6)
 
 - Dev: `turbo run dev --filter=@orbetra/web` (Vite on :5173, `/v1` proxied to :3010).

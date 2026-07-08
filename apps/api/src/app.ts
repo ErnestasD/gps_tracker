@@ -102,6 +102,14 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     return c.json({ devices })
   })
 
+  // GET /v1/profiles — GLOBAL reference data (device profiles are not tenant-scoped;
+  // E03-3). All authenticated roles; exempt from the isolation manifest (no tenant
+  // boundary to defend). Registered before mountRoutes.
+  app.get('/v1/profiles', async (c) => {
+    c.header('Cache-Control', 'no-store')
+    return c.json(await deps.db.profiles.list())
+  })
+
   // manifest-driven scoped CRUD (E03-2/E03-3) — registered AFTER the exact routes
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and

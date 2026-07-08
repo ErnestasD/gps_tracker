@@ -86,5 +86,34 @@
       "wrongCurrent": "Neteisingas dabartinis slaptažodis.",
       "error": "Nepavyko atnaujinti slaptažodžio."
     }
+  },
+  "devices": {
+    "title": "Įrenginiai",
+    "list": "Visi įrenginiai",
+    "add": "Pridėti įrenginį",
+    "create": "Sukurti",
+    "imei": "IMEI",
+    "name": "Pavadinimas",
+    "account": "Paskyra",
+    "profile": "Profilis",
+    "status": "Būsena",
+    "active": "Aktyvus",
+    "retired": "Išregistruotas",
+    "retire": "Išregistruoti",
+    "empty": "Įrenginių dar nėra.",
+    "loadError": "Nepavyko įkelti įrenginių.",
+    "createError": "Nepavyko sukurti įrenginio.",
+    "dupImei": "Toks IMEI jau užregistruotas.",
+    "import": {
+      "title": "Masinis importas (CSV)",
+      "hint": "Stulpeliai: imei, name, profileKey, accountId. Peržiūra patikrina kiekvieną eilutę prieš taikant.",
+      "preview": "Peržiūrėti",
+      "apply": "Taikyti ({{n}})",
+      "done": "Importuota {{n}} įrenginių.",
+      "create": "{{n}} kurti",
+      "update": "{{n}} esami",
+      "errors": "{{n}} klaidų",
+      "rowError": "Eilutė {{row}} ({{imei}}): {{reason}}"
+    }
   }
 }

@@ -10,6 +10,7 @@ import { AppShell } from '@/components/AppShell'
 import { getAccessToken, refreshSession } from '@/lib/auth'
 import { LoginPage } from '@/routes/login'
 import { MapPage } from '@/routes/app/map'
+import { DevicesPage } from '@/routes/app/devices/index'
 import { SettingsPage } from '@/routes/app/settings'
 
 /** Reload survival: the access token is memory-only, but the httpOnly refresh
@@ -65,13 +66,23 @@ const mapRoute = createRoute({
   component: MapPage,
 })
 
+const devicesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/devices',
+  component: DevicesPage,
+})
+
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/settings',
   component: SettingsPage,
 })
 
-const routeTree = rootRoute.addChildren([indexRoute, loginRoute, appRoute.addChildren([mapRoute, settingsRoute])])
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  loginRoute,
+  appRoute.addChildren([mapRoute, devicesRoute, settingsRoute]),
+])
 
 export const router = createRouter({ routeTree })
 

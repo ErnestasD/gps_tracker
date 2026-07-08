@@ -86,5 +86,34 @@
       "wrongCurrent": "Current password is wrong.",
       "error": "Could not update password."
     }
+  },
+  "devices": {
+    "title": "Devices",
+    "list": "All devices",
+    "add": "Add device",
+    "create": "Create",
+    "imei": "IMEI",
+    "name": "Name",
+    "account": "Account",
+    "profile": "Profile",
+    "status": "Status",
+    "active": "Active",
+    "retired": "Retired",
+    "retire": "Retire",
+    "empty": "No devices yet.",
+    "loadError": "Could not load devices.",
+    "createError": "Could not create device.",
+    "dupImei": "That IMEI is already registered.",
+    "import": {
+      "title": "Bulk import (CSV)",
+      "hint": "Columns: imei, name, profileKey, accountId. Preview validates every row before applying.",
+      "preview": "Preview",
+      "apply": "Apply ({{n}})",
+      "done": "Imported {{n}} device(s).",
+      "create": "{{n}} to create",
+      "update": "{{n}} existing",
+      "errors": "{{n}} errors",
+      "rowError": "Row {{row}} ({{imei}}): {{reason}}"
+    }
   }
 }

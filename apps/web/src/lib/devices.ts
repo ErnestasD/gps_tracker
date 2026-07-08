@@ -1,0 +1,48 @@
+import { getJson, mutate } from './client'
+
+/** Device shapes returned by the API (ids are stringified BigInt). */
+export interface Device {
+  id: string
+  accountId: string
+  profileId: string
+  imei: string
+  name: string
+  plate: string | null
+  groupName: string | null
+  odometerSource: string
+  retiredAt: string | null
+}
+export interface Account {
+  id: string
+  name: string
+}
+export interface Profile {
+  id: string
+  key: string
+  name: string
+}
+export interface DeviceCreateInput {
+  accountId: string
+  profileId: string
+  imei: string
+  name: string
+  plate?: string | null
+}
+export interface ImportError {
+  row: number
+  imei: string
+  reason: string
+}
+export interface DryRunResult {
+  create: unknown[]
+  update: { row: number; imei: string; deviceId: string }[]
+  errors: ImportError[]
+}
+
+export const listDevices = () => getJson<Device[]>('/v1/devices')
+export const listAccounts = () => getJson<Account[]>('/v1/accounts')
+export const listProfiles = () => getJson<Profile[]>('/v1/profiles')
+export const createDevice = (data: DeviceCreateInput) => mutate<Device>('POST', '/v1/devices', data)
+export const retireDevice = (id: string) => mutate<Device>('DELETE', `/v1/devices/${id}`)
+export const importPreview = (csv: string) => mutate<DryRunResult>('POST', '/v1/devices/import/preview', { csv })
+export const importApply = (csv: string) => mutate<{ created: number; errors: ImportError[] }>('POST', '/v1/devices/import', { csv })
