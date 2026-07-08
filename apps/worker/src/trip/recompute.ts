@@ -2,7 +2,9 @@ import type { NormalizedRecord } from '@orbetra/shared'
 import type { Pool, PoolClient } from 'pg'
 
 import { motionRecords } from '../motion.js'
-import { DEFAULT_THRESHOLDS, TripEngine, type TripThresholds } from './engine.js'
+import { DEFAULT_THRESHOLDS, TripEngine, type DeviceTripConfig } from './engine.js'
+
+const DEFAULT_CONFIG: DeviceTripConfig = { thresholds: DEFAULT_THRESHOLDS, odometerSource: 'auto' }
 
 /**
  * Authoritative trip recompute (E04-2, §6.4). The streaming engine (E04-1) is
@@ -63,8 +65,12 @@ export async function recomputeTrips(
   from: Date,
   to: Date,
   scope: RecomputeScope,
-  thresholds: TripThresholds = DEFAULT_THRESHOLDS,
+  // H2: recompute MUST use the same per-device config (thresholds + odometerSource) as the
+  // streaming path, else the authoritative rebuild silently diverges (asset segmentation,
+  // odometer source) for exactly the devices E04-5 targets.
+  config: DeviceTripConfig = DEFAULT_CONFIG,
 ): Promise<RecomputeResult> {
+  const thresholds = config.thresholds
   const dev = deviceId.toString()
   // Recompute reconciles SETTLED, CLOSED history only. It NEVER touches `open` rows: the
   // live streaming persister owns those and holds their ids (deleting one would strand its
@@ -94,7 +100,7 @@ export async function recomputeTrips(
   )
   const records = pos.rows.map((r) => toRecord(deviceId, r as Record<string, unknown>))
   const engine = new TripEngine(thresholds)
-  const events = engine.feed(motionRecords(records)) // I5: invalid fixes filtered
+  const events = engine.feed(motionRecords(records), () => config) // I5: invalid fixes filtered; per-device config (H2)
 
   // keep only CLOSED trips that START within the core span. A trailing open snapshot is
   // deliberately dropped — a trip still moving at readTo is either the live trip (owned by

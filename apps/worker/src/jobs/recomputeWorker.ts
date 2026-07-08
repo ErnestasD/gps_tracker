@@ -2,8 +2,22 @@ import { Worker, type ConnectionOptions, type Job } from 'bullmq'
 import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 
+import { deviceTripConfig } from '../trip/config.js'
+import type { DeviceTripConfig } from '../trip/engine.js'
 import { recomputeTrips, type RecomputeScope } from '../trip/recompute.js'
 import { TRIP_RECOMPUTE_QUEUE, type RecomputeJob } from './queue.js'
+
+/** Read a device's trip config from the registry (device:config); undefined ⇒ engine default. */
+async function resolveConfig(redis: Redis, deviceId: string): Promise<DeviceTripConfig | undefined> {
+  const raw = await redis.hget('device:config', deviceId)
+  if (raw === null) return undefined
+  try {
+    const j = JSON.parse(raw) as { presenceRules?: unknown; odometerSource?: unknown }
+    return deviceTripConfig(j.presenceRules as Record<string, unknown> | null | undefined, j.odometerSource)
+  } catch {
+    return undefined
+  }
+}
 
 export interface RecomputeWorkerDeps {
   connection: ConnectionOptions
@@ -43,7 +57,8 @@ export function startRecomputeWorker(deps: RecomputeWorkerDeps): Worker<Recomput
       const { deviceId, from, to } = job.data
       const scope = await resolveTripScope(deps.pool, deps.redis, deviceId)
       if (scope === null) return // unregistered + no prior trip → nothing to scope
-      const res = await recomputeTrips(deps.pool, BigInt(deviceId), new Date(from), new Date(to), scope)
+      const config = await resolveConfig(deps.redis, deviceId) // H2: match the streaming per-device config
+      const res = await recomputeTrips(deps.pool, BigInt(deviceId), new Date(from), new Date(to), scope, config)
       deps.onDone?.(res)
     },
     { connection: deps.connection },

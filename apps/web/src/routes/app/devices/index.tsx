@@ -11,6 +11,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
+  ODOMETER_SOURCES,
   createDevice,
   importApply,
   importPreview,
@@ -18,7 +19,9 @@ import {
   listDevices,
   listProfiles,
   retireDevice,
+  updateDevice,
   type DryRunResult,
+  type OdometerSource,
 } from '@/lib/devices'
 
 /** Devices page (E03-3): list + create + retire + CSV import wizard (dry-run → apply).
@@ -75,6 +78,7 @@ export function DevicesPage() {
                   <tr className="border-b border-line text-left text-xs text-muted">
                     <th className="py-2 pr-4 font-medium">{t('devices.name')}</th>
                     <th className="py-2 pr-4 font-medium">{t('devices.imei')}</th>
+                    <th className="py-2 pr-4 font-medium">{t('devices.odometer')}</th>
                     <th className="py-2 pr-4 font-medium">{t('devices.status')}</th>
                     <th className="py-2 pr-4"></th>
                   </tr>
@@ -84,6 +88,19 @@ export function DevicesPage() {
                     <tr key={d.id} className="border-b border-line/50" data-testid={`device-${d.imei}`}>
                       <td className="py-2 pr-4">{d.name}</td>
                       <td className="py-2 pr-4 font-mono text-xs">{d.imei}</td>
+                      <td className="py-2 pr-4">
+                        <select
+                          value={d.odometerSource}
+                          disabled={d.retiredAt !== null}
+                          data-testid={`odometer-${d.imei}`}
+                          onChange={(e) => void updateDevice(d.id, { odometerSource: e.target.value as OdometerSource }).then(refresh).catch(() => undefined)}
+                          className="h-7 rounded-card border border-line bg-surface px-1 text-xs text-text disabled:opacity-50"
+                        >
+                          {ODOMETER_SOURCES.map((s) => (
+                            <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="py-2 pr-4">
                         {d.retiredAt !== null ? (
                           <Badge variant="outline">{t('devices.retired')}</Badge>
@@ -133,6 +150,7 @@ function CreateDeviceForm({
   const [name, setName] = useState('')
   const [accountId, setAccountId] = useState('')
   const [profileId, setProfileId] = useState('')
+  const [odometerSource, setOdometerSource] = useState<OdometerSource>('auto')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -143,7 +161,7 @@ function CreateDeviceForm({
     e.preventDefault()
     setBusy(true)
     setError(null)
-    createDevice({ accountId: acc, profileId: prof, imei, name })
+    createDevice({ accountId: acc, profileId: prof, imei, name, odometerSource })
       .then(() => {
         setImei('')
         setName('')
@@ -183,6 +201,14 @@ function CreateDeviceForm({
             <select value={prof} onChange={(e) => setProfileId(e.target.value)} className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text" data-testid="device-profile">
               {profiles.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            {t('devices.odometer')}
+            <select value={odometerSource} onChange={(e) => setOdometerSource(e.target.value as OdometerSource)} className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text" data-testid="device-odometer">
+              {ODOMETER_SOURCES.map((s) => (
+                <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
               ))}
             </select>
           </label>

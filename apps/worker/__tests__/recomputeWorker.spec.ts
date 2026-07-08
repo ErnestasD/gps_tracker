@@ -53,15 +53,15 @@ afterAll(async () => {
 
 let h = 0
 async function insertDrive(): Promise<void> {
-  const pts: [number, number, number, boolean][] = [] // sec, lat, speed, ign
-  for (let i = 0; i < 12; i++) pts.push([i * 10, 54.0 + i * 0.0002, 8, true])
-  pts.push([130, 54.0022, 0, false])
-  pts.push([320, 54.0022, 0, false])
-  for (const [sec, lat, speed, ign] of pts) {
+  const pts: [number, number, number, boolean, bigint][] = [] // sec, lat, speed, ign, odo
+  for (let i = 0; i < 12; i++) pts.push([i * 10, 54.0 + i * 0.0002, 8, true, 100_000n + BigInt(i) * 100n])
+  pts.push([130, 54.0022, 0, false, 101_100n])
+  pts.push([320, 54.0022, 0, false, 101_100n])
+  for (const [sec, lat, speed, ign, odo] of pts) {
     await pool.query(
-      `INSERT INTO positions (device_id, fix_time, server_time, lat, lon, speed, fix_valid, ignition, movement, rec_hash)
-       VALUES ($1,$2,$2,$3,25.0,$4,true,$5,$5,$6)`,
-      [DEV.toString(), at(sec), lat, speed, ign, ++h],
+      `INSERT INTO positions (device_id, fix_time, server_time, lat, lon, speed, fix_valid, ignition, movement, odometer_m, rec_hash)
+       VALUES ($1,$2,$2,$3,25.0,$4,true,$5,$5,$6,$7)`,
+      [DEV.toString(), at(sec), lat, speed, ign, odo.toString(), ++h],
     )
   }
 }
@@ -113,6 +113,27 @@ describe('E04-2 recompute BullMQ worker (end-to-end)', () => {
     expect(row.status).toBe('closed')
     expect(row.tenantId).toBe(REG_TEN) // scoped from the registry (first computation)
     expect(row.distanceM).toBeGreaterThan(0)
+    await queue.close()
+  }, 30_000)
+
+  it('(H2) recompute honours the device:config odometerSource — gps forces haversine', async () => {
+    await pool.query('DELETE FROM trips')
+    await pool.query('DELETE FROM positions')
+    await insertDrive() // monotonic odometer present → 'auto' would use it
+    await redis.hset('device:tenant', DEV.toString(), REG_TEN)
+    await redis.hset('device:account', DEV.toString(), REG_ACC)
+    await redis.hset('device:config', DEV.toString(), JSON.stringify({ presenceRules: {}, odometerSource: 'gps' }))
+
+    const conn = redisConnection(redisUrl)
+    const queue = createRecomputeQueue(conn)
+    const done = new Promise<void>((res) => {
+      const worker = startRecomputeWorker({ connection: conn, pool, redis, onDone: () => { void worker.close(); res() } })
+    })
+    await enqueueRecompute(queue, DEV, at(-10), at(400))
+    await done
+
+    const trip = (await pool.query('SELECT "distanceSource" FROM trips WHERE "deviceId"=$1', [DEV.toString()])).rows[0] as { distanceSource: string }
+    expect(trip.distanceSource).toBe('gps') // config respected: NOT 'odometer' despite a clean odometer
     await queue.close()
   }, 30_000)
 })

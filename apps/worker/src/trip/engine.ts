@@ -99,12 +99,20 @@ interface OpenTrip {
   stopSince: Date | null
 }
 
+/** Per-device trip config (E04-5): thresholds + odometer-source preference. */
+export interface DeviceTripConfig {
+  thresholds: TripThresholds
+  odometerSource: 'auto' | 'device' | 'gps'
+}
+
 interface DeviceState {
   phase: 'parked' | 'moving'
   cand: Candidate | null
   trip: OpenTrip | null
   /** newest fixTime applied — drops out-of-order records in ANY phase (I2 intent). */
   lastSeen: Date | null
+  /** resolved ONCE per device (E04-5) — profile thresholds + odometerSource; stable per trip. */
+  config: DeviceTripConfig
 }
 
 export class TripEngine {
@@ -113,13 +121,17 @@ export class TripEngine {
   // EARLIEST late fixTime — the streaming engine drops these, so a recompute from
   // durable positions must reconcile that region (E04-2). Bounded by device count.
   private readonly late = new Map<string, Date>()
+  private readonly defaultConfig: DeviceTripConfig
 
-  constructor(private readonly thresholds: TripThresholds = DEFAULT_THRESHOLDS) {}
+  constructor(thresholds: TripThresholds = DEFAULT_THRESHOLDS) {
+    this.defaultConfig = { thresholds, odometerSource: 'auto' }
+  }
 
-  /** Feed fix_valid, fixTime-sorted records. Returns open/close events, in order. */
-  feed(records: NormalizedRecord[]): TripEvent[] {
+  /** Feed fix_valid, fixTime-sorted records. `configFor` supplies per-device thresholds
+   * + odometerSource (E04-5); a device with no entry uses the constructor default. */
+  feed(records: NormalizedRecord[], configFor?: (deviceId: bigint) => DeviceTripConfig | undefined): TripEvent[] {
     const out: TripEvent[] = []
-    for (const r of records) this.step(r, out)
+    for (const r of records) this.step(r, out, configFor)
     return out
   }
 
@@ -142,10 +154,13 @@ export class TripEngine {
     return trip ? { startTime: trip.startTime, startLat: trip.startLat, startLon: trip.startLon } : null
   }
 
-  private step(r: NormalizedRecord, out: TripEvent[]): void {
+  private step(r: NormalizedRecord, out: TripEvent[], configFor?: (deviceId: bigint) => DeviceTripConfig | undefined): void {
     if (!r.fixValid) return // defensive: I5 — engine must never let an invalid fix count
     const key = r.deviceId.toString()
-    const st = this.state.get(key) ?? { phase: 'parked' as const, cand: null, trip: null, lastSeen: null }
+    const st = this.state.get(key) ?? {
+      phase: 'parked' as const, cand: null, trip: null, lastSeen: null,
+      config: configFor?.(r.deviceId) ?? this.defaultConfig, // resolved once per device
+    }
     this.state.set(key, st)
     // drop out-of-order records in EVERY phase — a buffered late batch (§3.6) must not
     // corrupt a candidate or fabricate a negative-duration trip; E04-2 recompute owns
@@ -156,8 +171,14 @@ export class TripEngine {
       return
     }
     st.lastSeen = r.fixTime
+    // H1: re-resolve config BETWEEN trips (fully parked — no candidate, no open trip) so a
+    // device's updated odometerSource/profile takes effect on its NEXT trip without ever
+    // mutating the config of a trip already in flight.
+    if (st.phase === 'parked' && st.cand === null && st.trip === null) {
+      st.config = configFor?.(r.deviceId) ?? this.defaultConfig
+    }
     const speed = r.speed ?? 0
-    const t = this.thresholds
+    const t = st.config.thresholds
 
     if (st.phase === 'parked') {
       const moving = t.noIgnition ? speed > t.moveSpeedKmh : r.ignition === true && (r.movement === true || speed > t.moveSpeedKmh)
@@ -211,7 +232,7 @@ export class TripEngine {
     if (idling) {
       if (trip.idleSince === null) trip.idleSince = r.fixTime
     } else {
-      this.flushIdle(trip, r.fixTime)
+      this.flushIdle(trip, r.fixTime, t.idleSustainS)
     }
 
     // stop detection
@@ -243,20 +264,25 @@ export class TripEngine {
     trip.lastTime = r.fixTime
   }
 
-  private flushIdle(trip: OpenTrip, now: Date): void {
+  private flushIdle(trip: OpenTrip, now: Date, idleSustainS: number): void {
     if (trip.idleSince !== null) {
       const dur = secs(now, trip.idleSince)
-      if (dur >= this.thresholds.idleSustainS) trip.idleS += Math.round(dur)
+      if (dur >= idleSustainS) trip.idleS += Math.round(dur)
       trip.idleSince = null
     }
   }
 
   private close(deviceId: bigint, st: DeviceState, endTime: Date, out: TripEvent[]): void {
     const trip = st.trip!
-    this.flushIdle(trip, endTime) // count a trailing idle stretch if it qualifies
-    const odoUsable = !trip.odoBroken && trip.odoStart !== null && trip.odoLast !== null
-    const odoM = odoUsable ? Number(trip.odoLast! - trip.odoStart!) : 0
-    const distanceM = odoUsable ? Math.max(0, odoM) : Math.round(trip.haversineM)
+    this.flushIdle(trip, endTime, st.config.thresholds.idleSustainS) // trailing idle stretch
+    // odometer preference (E04-5): 'gps' forces haversine; 'device' uses the odometer
+    // whenever start+end are present and non-decreasing (tolerant of intermediate gaps);
+    // 'auto' additionally requires monotonicity throughout (odoBroken guard, E04-1 behaviour).
+    const src = st.config.odometerSource
+    const odoDelta = trip.odoStart !== null && trip.odoLast !== null ? Number(trip.odoLast - trip.odoStart) : null
+    const useOdo =
+      src === 'gps' ? false : odoDelta !== null && odoDelta >= 0 && (src === 'device' || !trip.odoBroken)
+    const distanceM = useOdo ? odoDelta! : Math.round(trip.haversineM)
     out.push({
       type: 'close',
       deviceId,
@@ -267,7 +293,7 @@ export class TripEngine {
       endLat: trip.lastLat,
       endLon: trip.lastLon,
       distanceM,
-      distanceSource: odoUsable ? 'odometer' : 'gps',
+      distanceSource: useOdo ? 'odometer' : 'gps',
       maxSpeed: Math.round(trip.maxSpeed),
       idleS: trip.idleS,
     })

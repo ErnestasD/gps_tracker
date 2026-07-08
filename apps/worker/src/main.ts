@@ -11,6 +11,7 @@ import { startWorkerProm } from './prom.js'
 import { ShardLeaser } from './shards.js'
 import { createRecomputeQueue, enqueueRecompute, redisConnection } from './jobs/queue.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
+import { DeviceConfigCache } from './trip/configCache.js'
 import { TripPersister } from './trip/persister.js'
 
 // Env contract per PROJECT_PLAN §6.7.
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
   const liveState = new LiveState(redis)
   const motionFeed = new MotionFeed() // I5 seam (E02-7): trip engine (E04-1) + geofence stub (E05-x)
   const tripPersister = new TripPersister(pool, redis) // persists trip open/close events
+  const configCache = new DeviceConfigCache(redis) // per-device trip thresholds/odometerSource (E04-5)
   // E04-2: late/buffered batches the streaming engine dropped are reconciled off the
   // hot path by trip-recompute jobs over durable positions (BullMQ, ADR-020).
   const recomputeConn = redisConnection(redisUrl)
@@ -85,7 +87,10 @@ async function main(): Promise<void> {
           console.error('liveState', err)
         }
         try {
-          const tripEvents = motionFeed.feed(records) // I5-filtered inside; presence path above is NOT
+          // E04-5: resolve each device's trip config (thresholds + odometerSource) before
+          // the synchronous engine feed — cached with a short TTL, so ~one Redis read/batch
+          const cfg = await configCache.resolveBatch(records.map((r) => r.deviceId), Date.now())
+          const tripEvents = motionFeed.feed(records, (id) => cfg.get(id.toString())) // I5-filtered inside; presence path above is NOT
           if (tripEvents.length > 0) {
             const { opened, closed } = await tripPersister.apply(tripEvents)
             prom.tripsOpened.inc(opened)

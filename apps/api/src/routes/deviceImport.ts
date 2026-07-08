@@ -146,6 +146,8 @@ export async function applyImport(
   const dr = await dryRun(db, scope, rows, new Set(profiles.keys()), callerAccountId)
   const errors = [...dr.errors]
   let created = 0
+  // profileId → presence_rules, resolved once for the worker trip config (E04-5)
+  const rulesByProfile = new Map((await db.profiles.list()).map((p) => [p.id, p.presenceRules]))
   // only the create-rows are applied; updates/errors are reported, not mutated (v1).
   // Per-row try/catch: a cross-tenant IMEI clash (global unique) surfaces as a
   // DuplicateImeiError → a per-row error, NOT a 500 that aborts the batch and loses
@@ -163,7 +165,10 @@ export async function applyImport(
         plate: row.plate ?? null,
         groupName: row.groupName ?? null,
       })
-      await activateDevice(redis, { id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId })
+      await activateDevice(redis, {
+        id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId,
+        config: { presenceRules: rulesByProfile.get(profileId) ?? {}, odometerSource: device.odometerSource }, // E04-5
+      })
       created++
     } catch (err) {
       if (err instanceof DuplicateImeiError) errors.push({ row: 0, imei: row.imei, reason: 'IMEI already registered' })

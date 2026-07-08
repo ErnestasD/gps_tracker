@@ -2,7 +2,7 @@ import type { NormalizedRecord } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
 import { haversineM, motionRecords } from '../src/motion.js'
-import { DEFAULT_THRESHOLDS, TripEngine, type CloseEvent, type TripEvent } from '../src/trip/engine.js'
+import { DEFAULT_THRESHOLDS, TripEngine, type CloseEvent, type DeviceTripConfig, type TripEvent } from '../src/trip/engine.js'
 
 /**
  * E04-1 trip state machine (§6.4), fixture-driven. Fixtures are synthetic position
@@ -263,6 +263,67 @@ describe('E04-1 trip state machine (§6.4)', () => {
     const late = engine.takeLate()
     expect(late).toEqual([{ deviceId: DEV, from: new Date(T0 + 400 * 1000) }])
     expect(engine.takeLate()).toHaveLength(0) // drained
+  })
+
+  it('E04-5 per-device thresholds: a noIgnition (asset) device opens on speed alone, a default device does not', () => {
+    const asset: DeviceTripConfig = { thresholds: { ...DEFAULT_THRESHOLDS, noIgnition: true, moveSpeedKmh: 3 }, odometerSource: 'auto' }
+    const configFor = (id: bigint): DeviceTripConfig | undefined => (id === 1n ? asset : undefined)
+    const batch: NormalizedRecord[] = []
+    for (let i = 0; i < 12; i++) {
+      // NO ignition signal on either device; only speed/movement
+      batch.push({ ...rec(i * 10, { lat: 54 + i * 0.0002, speed: 10 }), deviceId: 1n })
+      batch.push({ ...rec(i * 10, { lat: 55 + i * 0.0002, speed: 10 }), deviceId: 2n })
+    }
+    const ev = new TripEngine().feed(batch, configFor)
+    expect(ev.filter((e) => e.type === 'open' && e.deviceId === 1n)).toHaveLength(1) // asset opens on speed
+    expect(ev.filter((e) => e.type === 'open' && e.deviceId === 2n)).toHaveLength(0) // default needs ignition
+  })
+
+  it('E04-5 odometerSource=gps forces haversine even with a clean monotonic odometer', () => {
+    const cfg = (): DeviceTripConfig => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: 'gps' })
+    const moving = drive(0, 20, { odoStart: 100_000n, odoStep: 100n }) // Δodo = 1900
+    const lastLat = 54.0 + 19 * 0.0002
+    const stop = [rec(200, { lat: lastLat, ign: false, speed: 0, odo: 101_900n }), rec(380, { lat: lastLat, ign: false, speed: 0, odo: 101_900n })]
+    const c = closes(new TripEngine().feed([...moving, ...stop], cfg))
+    expect(c[0]!.distanceSource).toBe('gps')
+    expect(c[0]!.distanceM).toBeLessThan(1000) // haversine of the slow drive, NOT 1900
+  })
+
+  it('E04-5 odometerSource=device tolerates an intermediate odometer dip (net Δ≥0); auto falls to gps', () => {
+    const moving = drive(0, 20, { odoStart: 100_000n, odoStep: 100n }).map((r, i) => (i === 10 ? { ...r, odometerM: 50_000n } : r)) // one dip
+    const lastLat = 54.0 + 19 * 0.0002
+    const stop = [rec(200, { lat: lastLat, ign: false, speed: 0, odo: 101_900n }), rec(380, { lat: lastLat, ign: false, speed: 0, odo: 101_900n })]
+    const seq = [...moving, ...stop]
+    const dev = closes(new TripEngine().feed(seq, () => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: 'device' })))
+    const auto = closes(new TripEngine().feed(seq, () => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: 'auto' })))
+    expect(dev[0]!.distanceSource).toBe('odometer') // device trusts the odometer end-to-end
+    expect(dev[0]!.distanceM).toBe(1900) // 101900 − 100000
+    expect(auto[0]!.distanceSource).toBe('gps') // auto is strict about the mid-trip dip
+  })
+
+  it('E04-5 (H1) a config change between trips takes effect on the next trip', () => {
+    const engine = new TripEngine()
+    let src: 'auto' | 'gps' = 'auto'
+    const configFor = (): DeviceTripConfig => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: src })
+    const lastLat = 54.0 + 19 * 0.0002
+    // trip 1: monotonic odometer, source=auto → odometer distance
+    const t1 = [...drive(0, 20, { odoStart: 100_000n, odoStep: 100n }), rec(200, { lat: lastLat, ign: false, speed: 0, odo: 101_900n }), rec(380, { lat: lastLat, ign: false, speed: 0, odo: 101_900n })]
+    expect(closes(engine.feed(t1, configFor))[0]!.distanceSource).toBe('odometer')
+    // operator switches the device to gps between trips
+    src = 'gps'
+    // trip 2 (later, device now parked in between) must use the NEW config → gps
+    const t2 = [...drive(700, 20, { odoStart: 200_000n, odoStep: 100n }), rec(900, { lat: lastLat, ign: false, speed: 0, odo: 201_900n }), rec(1080, { lat: lastLat, ign: false, speed: 0, odo: 201_900n })]
+    expect(closes(engine.feed(t2, configFor))[0]!.distanceSource).toBe('gps')
+  })
+
+  it('E04-5 (M2) odometerSource=device with a net decrease (rollover) falls back to gps — never negative', () => {
+    // odometer counts UP then resets far below the start (a wrap/replacement) so net Δ < 0
+    const moving = drive(0, 20, { odoStart: 100_000n, odoStep: 100n }).map((r, i) => (i >= 15 ? { ...r, odometerM: 10_000n } : r))
+    const lastLat = 54.0 + 19 * 0.0002
+    const stop = [rec(200, { lat: lastLat, ign: false, speed: 0, odo: 10_000n }), rec(380, { lat: lastLat, ign: false, speed: 0, odo: 10_000n })]
+    const c = closes(new TripEngine().feed([...moving, ...stop], () => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: 'device' })))
+    expect(c[0]!.distanceSource).toBe('gps') // net decrease → haversine
+    expect(c[0]!.distanceM).toBeGreaterThanOrEqual(0) // never negative
   })
 
   it('per-device state is independent (two devices interleaved)', () => {

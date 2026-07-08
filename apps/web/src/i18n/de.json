@@ -203,7 +203,13 @@
       "errors": "{{n}} Fehler",
       "rowError": "Zeile {{row}} ({{imei}}): {{reason}}"
     },
-    "retireError": "Gerät {{imei}} konnte nicht stillgelegt werden."
+    "retireError": "Gerät {{imei}} konnte nicht stillgelegt werden.",
+    "odometer": "Kilometerzähler",
+    "odo": {
+      "auto": "Auto",
+      "device": "Gerät",
+      "gps": "GPS"
+    }
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",

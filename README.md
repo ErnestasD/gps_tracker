@@ -178,6 +178,22 @@ Every new variable must be added to the table here AND match the `.env` contract
   dependency), and a **scrub** slider that moves a cursor dot along the trail. Timestamps render in
   the browser locale.
 
+## Per-device trip config (E04-5)
+
+- The trip engine now applies **per-device** thresholds and odometer preference (E04-1 used
+  one default for all). Each device's profile `presence_rules` (§6.4, incl. the asset
+  `noIgnition` mode) + its `odometerSource` (`auto`/`device`/`gps`) are synced into Redis
+  `device:config` by the registry on create/claim/import (and on a PATCH that changes them).
+  The worker resolves them per batch through a short-TTL cache and feeds them to the engine.
+- **Odometer preference** (§6.4): `gps` forces haversine; `device` uses the device odometer
+  whenever start+end are present and non-decreasing (tolerant of intermediate gaps); `auto`
+  additionally requires monotonicity throughout, else falls back to haversine.
+- **UI**: the Devices page create form + an inline per-row select set `odometerSource`.
+- A config change (Redis TTL ≈60 s) takes effect on the device's **next trip** (never mid-trip),
+  and the authoritative E04-2 recompute reads the same `device:config`, so live and reconciled
+  trips stay consistent. A profile-content edit re-syncs on the device's next registry write
+  (full profile-edit propagation is a follow-up).
+
 ## Trips list & detail (E04-4)
 
 - **Web** `/app/trips` (nav Fleet → Trips) — filter trips by device + time range in a table
