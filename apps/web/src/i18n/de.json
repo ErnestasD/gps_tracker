@@ -76,8 +76,40 @@
     "loadMore": "Mehr laden",
     "allEntities": "Alle Objekte",
     "allActions": "Alle Aktionen",
-    "e": { "account": "Konto", "user": "Benutzer", "device": "Gerät", "rule": "Regel", "webhook": "Webhook", "domain": "Domain", "branding": "Branding", "tenant": "Mandant" },
-    "a": { "create": "Erstellt", "update": "Aktualisiert", "delete": "Gelöscht" }
+    "e": {
+      "account": "Konto",
+      "user": "Benutzer",
+      "device": "Gerät",
+      "rule": "Regel",
+      "webhook": "Webhook",
+      "domain": "Domain",
+      "branding": "Branding",
+      "tenant": "Mandant"
+    },
+    "a": {
+      "create": "Erstellt",
+      "update": "Aktualisiert",
+      "delete": "Gelöscht"
+    }
+  },
+  "trips": {
+    "title": "Fahrten",
+    "device": "Gerät",
+    "allDevices": "Alle Geräte",
+    "from": "Von",
+    "to": "Bis",
+    "loading": "Fahrten werden geladen…",
+    "empty": "Keine Fahrten in diesem Zeitraum.",
+    "pick": "Wählen Sie eine Fahrt, um die Route zu sehen.",
+    "start": "Start",
+    "duration": "Dauer",
+    "distance": "Strecke",
+    "maxSpeed": "Max. Geschw.",
+    "idle": "Leerlauf",
+    "ongoing": "Laufend",
+    "odo": "Odo",
+    "gps": "GPS",
+    "error": "Fahrten konnten nicht geladen werden."
   },
   "playback": {
     "title": "Verlauf-Wiedergabe",

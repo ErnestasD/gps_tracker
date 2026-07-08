@@ -178,6 +178,14 @@ Every new variable must be added to the table here AND match the `.env` contract
   dependency), and a **scrub** slider that moves a cursor dot along the trail. Timestamps render in
   the browser locale.
 
+## Trips list & detail (E04-4)
+
+- **Web** `/app/trips` (nav Fleet → Trips) — filter trips by device + time range in a table
+  (start, duration, distance + `odo`/`gps` source, max speed; an in-progress trip is badged
+  *Ongoing*). Selecting a row shows its **route** on the map (reusing `PlaybackMap` over the
+  trip's positions window) plus a **stats** card (duration, distance, max speed, idle).
+  Reads the E04-3 trips + positions API; an open trip's duration runs to now.
+
 ## Audit log (E03-6)
 
 - Every scoped mutation already writes one `audit_log` row (who/action/entity/entityId/

@@ -361,6 +361,26 @@ test('playback: history page loads a device trail with a scrubbable speed chart 
   }
 })
 
+test('trips: the trips page lists trips (or empty) and a row opens its route detail (E04-4)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/trips')
+  await expect(page.getByTestId('trips-device')).toBeVisible()
+  // a real trip needs a sustained/long drive (E04-1 thresholds); the list renders either
+  // way — assert the page integrates with the API (table or empty), then exercise detail
+  await expect(page.getByTestId('trips-table').or(page.getByTestId('trips-empty'))).toBeVisible({ timeout: 15_000 })
+  if (await page.getByTestId('trips-table').isVisible()) {
+    await page.locator('tbody tr[data-testid^="trip-row-"]').first().click()
+    await expect(page.getByTestId('trip-detail')).toBeVisible()
+  } else {
+    await expect(page.getByTestId('trip-detail-empty')).toBeVisible()
+  }
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)

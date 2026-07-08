@@ -76,8 +76,40 @@
     "loadMore": "Load more",
     "allEntities": "All entities",
     "allActions": "All actions",
-    "e": { "account": "Account", "user": "User", "device": "Device", "rule": "Rule", "webhook": "Webhook", "domain": "Domain", "branding": "Branding", "tenant": "Tenant" },
-    "a": { "create": "Created", "update": "Updated", "delete": "Deleted" }
+    "e": {
+      "account": "Account",
+      "user": "User",
+      "device": "Device",
+      "rule": "Rule",
+      "webhook": "Webhook",
+      "domain": "Domain",
+      "branding": "Branding",
+      "tenant": "Tenant"
+    },
+    "a": {
+      "create": "Created",
+      "update": "Updated",
+      "delete": "Deleted"
+    }
+  },
+  "trips": {
+    "title": "Trips",
+    "device": "Device",
+    "allDevices": "All devices",
+    "from": "From",
+    "to": "To",
+    "loading": "Loading trips…",
+    "empty": "No trips in this range.",
+    "pick": "Select a trip to see its route.",
+    "start": "Start",
+    "duration": "Duration",
+    "distance": "Distance",
+    "maxSpeed": "Max speed",
+    "idle": "Idle",
+    "ongoing": "Ongoing",
+    "odo": "odo",
+    "gps": "gps",
+    "error": "Could not load trips."
   },
   "playback": {
     "title": "History playback",
