@@ -60,7 +60,8 @@ export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: Cla
     return { ok: false, status: 400, reason: 'accountId not in the target tenant' }
   }
   // validate the (global) profile so a bad uuid is a clean 400, not a P2003 500 (review MED)
-  if ((await db.profiles.get(input.profileId)) === null) {
+  const profile = await db.profiles.get(input.profileId)
+  if (profile === null) {
     return { ok: false, status: 400, reason: 'unknown profileId' }
   }
   let device
@@ -75,7 +76,10 @@ export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: Cla
     if (err instanceof DuplicateImeiError) return { ok: false, status: 409, reason: 'IMEI already registered' }
     throw err
   }
-  await activateDevice(redis, { id: device.id, imei: device.imei, tenantId: input.tenantId, accountId: input.accountId })
+  await activateDevice(redis, {
+    id: device.id, imei: device.imei, tenantId: input.tenantId, accountId: input.accountId,
+    config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
+  })
   await redis.multi().zrem('quarantine:imei', input.imei).del(`quarantine:rejects:${input.imei}`).exec()
   return { ok: true, deviceId: device.id.toString() }
 }

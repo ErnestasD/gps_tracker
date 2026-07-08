@@ -13,16 +13,28 @@ export interface RegistryDevice {
   imei: string
   tenantId: string
   accountId: string
+  /** Trip config for the worker (E04-5): the device's profile presence_rules +
+   * odometerSource. Absent ⇒ the worker's trip engine uses defaults. */
+  config?: { presenceRules: unknown; odometerSource: string }
 }
 
 export async function activateDevice(redis: Redis, d: RegistryDevice): Promise<void> {
   const id = d.id.toString()
-  await redis
+  const m = redis
     .multi()
     .hset('registry:imei', d.imei, id)
     .hset('device:tenant', id, d.tenantId)
     .hset('device:account', id, d.accountId)
-    .exec()
+  if (d.config !== undefined) {
+    m.hset('device:config', id, JSON.stringify({ presenceRules: d.config.presenceRules ?? {}, odometerSource: d.config.odometerSource }))
+  }
+  await m.exec()
+}
+
+/** Update ONLY the worker trip config for a device (E04-5) — used when a PATCH changes
+ * odometerSource or profile without re-activating the whole registry entry. */
+export async function syncDeviceConfig(redis: Redis, id: bigint, presenceRules: unknown, odometerSource: string): Promise<void> {
+  await redis.hset('device:config', id.toString(), JSON.stringify({ presenceRules: presenceRules ?? {}, odometerSource }))
 }
 
 export async function deactivateDevice(redis: Redis, d: { id: bigint; imei: string }): Promise<void> {
@@ -32,6 +44,7 @@ export async function deactivateDevice(redis: Redis, d: { id: bigint; imei: stri
     .hdel('registry:imei', d.imei)
     .hdel('device:tenant', id)
     .hdel('device:account', id)
+    .hdel('device:config', id)
     .del(`device:${id}:last`)
     .exec()
 }

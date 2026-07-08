@@ -1,6 +1,6 @@
 import type { NormalizedRecord } from '@orbetra/shared'
 
-import { TripEngine, type TripEvent } from './trip/engine.js'
+import { TripEngine, type DeviceTripConfig, type TripEvent } from './trip/engine.js'
 
 export { haversineM } from './geo.js'
 
@@ -45,11 +45,12 @@ export class MotionFeed {
     readonly geofenceQueue = new GeofenceQueueStub(),
   ) {}
 
-  /** Feed a batch; returns the trip open/close events for the worker to persist. */
-  feed(records: NormalizedRecord[]): TripEvent[] {
+  /** Feed a batch; returns the trip open/close events for the worker to persist.
+   * `configFor` supplies per-device thresholds + odometerSource (E04-5). */
+  feed(records: NormalizedRecord[], configFor?: (deviceId: bigint) => DeviceTripConfig | undefined): TripEvent[] {
     const valid = motionRecords(records)
     if (valid.length === 0) return []
     this.geofenceQueue.feed(valid)
-    return this.tripEngine.feed(valid) // I5-filtered input only
+    return this.tripEngine.feed(valid, configFor) // I5-filtered input only
   }
 }

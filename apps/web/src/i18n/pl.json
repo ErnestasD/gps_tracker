@@ -203,7 +203,13 @@
       "errors": "{{n}} błędów",
       "rowError": "Wiersz {{row}} ({{imei}}): {{reason}}"
     },
-    "retireError": "Nie udało się wycofać urządzenia {{imei}}."
+    "retireError": "Nie udało się wycofać urządzenia {{imei}}.",
+    "odometer": "Licznik",
+    "odo": {
+      "auto": "Auto",
+      "device": "Urządzenie",
+      "gps": "GPS"
+    }
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",

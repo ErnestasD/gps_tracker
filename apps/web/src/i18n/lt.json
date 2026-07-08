@@ -203,7 +203,13 @@
       "errors": "{{n}} klaidų",
       "rowError": "Eilutė {{row}} ({{imei}}): {{reason}}"
     },
-    "retireError": "Nepavyko išregistruoti įrenginio {{imei}}."
+    "retireError": "Nepavyko išregistruoti įrenginio {{imei}}.",
+    "odometer": "Odometras",
+    "odo": {
+      "auto": "Automatinis",
+      "device": "Įrenginio",
+      "gps": "GPS"
+    }
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",

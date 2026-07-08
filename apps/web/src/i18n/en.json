@@ -203,7 +203,13 @@
       "errors": "{{n}} errors",
       "rowError": "Row {{row}} ({{imei}}): {{reason}}"
     },
-    "retireError": "Could not retire device {{imei}}."
+    "retireError": "Could not retire device {{imei}}.",
+    "odometer": "Odometer",
+    "odo": {
+      "auto": "Auto",
+      "device": "Device",
+      "gps": "GPS"
+    }
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",

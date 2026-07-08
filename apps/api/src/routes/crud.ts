@@ -26,7 +26,7 @@ import {
 
 import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
-import { activateDevice, deactivateDevice } from './deviceRegistry.js'
+import { activateDevice, deactivateDevice, syncDeviceConfig } from './deviceRegistry.js'
 import { applyImport, dryRun, parseCsv, rowsToImport } from './deviceImport.js'
 import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
@@ -208,7 +208,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if ((await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
         // validate the (global) profile — a bad uuid would else be a P2003 500 (review MED)
-        if ((await db.profiles.get(data.profileId)) === null) return problem(c, 400, 'Bad Request', 'unknown profileId')
+        const profile = await db.profiles.get(data.profileId)
+        if (profile === null) return problem(c, 400, 'Bad Request', 'unknown profileId')
         // IMEI is GLOBALLY unique — the repo throws DuplicateImeiError on ANY clash
         // (including another tenant's), translated to 409 here so a cross-tenant clash
         // is not a 500 and does not reveal the other tenant's row (review HIGH)
@@ -219,7 +220,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           if (err instanceof DuplicateImeiError) return problem(c, 409, 'Conflict', 'IMEI already registered')
           throw err
         }
-        await activateDevice(deps.redis, { id: device.id, imei: device.imei, tenantId: a.tenantId, accountId })
+        await activateDevice(deps.redis, {
+          id: device.id, imei: device.imei, tenantId: a.tenantId, accountId,
+          config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
+        })
         return json(c, device, 201)
       } },
     { method: 'patch', path: '/v1/devices/:id', scopeClass: 'account', entity: 'device', shape: 'item',
@@ -227,7 +231,14 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const data = await body(c, deviceUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const row = await db.devices.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
-        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+        if (row === null) return problem(c, 404, 'Not Found')
+        // E04-5: odometerSource / profile may have changed → re-sync the worker's trip config
+        // (skip a retired device — it's out of the registry; syncing would leave an orphan key)
+        if (row.retiredAt === null && (data.odometerSource !== undefined || data.profileId !== undefined)) {
+          const profile = await db.profiles.get(row.profileId)
+          await syncDeviceConfig(deps.redis, row.id, profile?.presenceRules, row.odometerSource)
+        }
+        return json(c, row)
       } },
     { method: 'delete', path: '/v1/devices/:id', scopeClass: 'account', entity: 'device', shape: 'item',
       handler: async (c) => {

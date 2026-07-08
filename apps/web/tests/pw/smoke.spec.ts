@@ -180,6 +180,10 @@ test('devices: create in UI → appears → retire → ingest rejects that IMEI 
   await page.getByTestId('device-create').click()
   await expect(page.getByTestId(`device-${IMEI}`)).toBeVisible({ timeout: 15_000 })
 
+  // E04-5: change the per-device odometer source (PATCH → re-syncs the worker trip config)
+  await page.getByTestId(`odometer-${IMEI}`).selectOption('gps')
+  await expect(page.getByTestId(`odometer-${IMEI}`)).toHaveValue('gps')
+
   // the created device is registered → a simulator on that IMEI is ACCEPTED
   const accepted = await runToExit(
     TSX_BIN,
