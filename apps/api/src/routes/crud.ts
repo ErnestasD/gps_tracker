@@ -53,6 +53,7 @@ const READ_POLICY: Record<string, Role[]> = {
   event: [...ROLES],
   branding: [...ROLES], // viewers see the theme
   domain: TENANT_ADMINS, // domains are admin config
+  audit: TENANT_ADMINS, // audit trail is tenant-wide + sensitive → admins only
 }
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
@@ -327,6 +328,26 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'get', path: '/v1/events/:id', scopeClass: 'account', entity: 'event', shape: 'item',
       handler: async (c) => {
         const row = await db.events.get(scopeOf(auth(c)), id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+
+    // ── audit log (E03-6, tenant, read-only + admin-gated, append-only) ─────────
+    { method: 'get', path: '/v1/audit', scopeClass: 'tenant', entity: 'audit', shape: 'collection',
+      handler: async (c) => {
+        const q = c.req.query.bind(c.req)
+        return json(c, await db.audit.list(scopeOf(auth(c)), {
+          take: Number(q('limit') ?? 50),
+          ...(q('cursor') !== undefined ? { cursor: q('cursor')! } : {}),
+          ...(q('entity') !== undefined ? { entity: q('entity')! } : {}),
+          ...(q('action') !== undefined ? { action: q('action')! } : {}),
+          ...(q('from') !== undefined ? { from: q('from')! } : {}),
+          ...(q('to') !== undefined ? { to: q('to')! } : {}),
+        }))
+      } },
+    { method: 'get', path: '/v1/audit/:id', scopeClass: 'tenant', entity: 'audit', shape: 'item',
+      handler: async (c) => {
+        if (!/^\d+$/.test(id(c))) return problem(c, 404, 'Not Found') // BigInt() would throw on non-numeric
+        const row = await db.audit.get(scopeOf(auth(c)), id(c))
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
 

@@ -28,6 +28,7 @@
     "admin": "Administracja",
     "users": "Użytkownicy",
     "branding": "Marka",
+    "audit": "Dziennik audytu",
     "soon": "Wkrótce",
     "collapse": "Zwiń menu",
     "expand": "Rozwiń menu",
@@ -58,6 +59,25 @@
     "badDomain": "Podaj poprawną nazwę hosta (np. fleet.example.com).",
     "txtInstruction": "Dodaj ten rekord TXT do {{domain}}, następnie kliknij Zweryfikuj:",
     "certNote": "Certyfikaty HTTPS są wystawiane automatycznie przy pierwszym bezpiecznym żądaniu po weryfikacji domeny."
+  },
+  "audit": {
+    "title": "Dziennik audytu",
+    "trail": "Historia zmian",
+    "when": "Kiedy",
+    "action": "Akcja",
+    "entity": "Obiekt",
+    "entityId": "ID",
+    "who": "Użytkownik",
+    "details": "Szczegóły",
+    "hide": "Ukryj",
+    "before": "Przed",
+    "after": "Po",
+    "empty": "Brak wpisów dla tych filtrów.",
+    "loadMore": "Wczytaj więcej",
+    "allEntities": "Wszystkie obiekty",
+    "allActions": "Wszystkie akcje",
+    "e": { "account": "Konto", "user": "Użytkownik", "device": "Urządzenie", "rule": "Reguła", "webhook": "Webhook", "domain": "Domena", "branding": "Marka", "tenant": "Najemca" },
+    "a": { "create": "Utworzono", "update": "Zaktualizowano", "delete": "Usunięto" }
   },
   "deviceList": {
     "title": "Urządzenia",

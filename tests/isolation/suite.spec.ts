@@ -37,6 +37,7 @@ function idFor(f: TenantFixture, entity: string): string {
     user: f.userId,
     device: f.deviceId,
     domain: f.domainId,
+    audit: f.auditId,
     rule: f.ruleId,
     webhook: f.webhookId,
     event: f.eventId,
@@ -148,6 +149,34 @@ describe('E03-2 write authorization / RBAC (review HIGH)', () => {
       headers: { authorization: `Bearer ${fx.t1.tokenAccountA1}` },
     })
     expect(res.status).toBe(403)
+  })
+
+  it('audit log is tenant-admin only: viewer + account_manager → 403, tsp_admin → 200 (E03-6)', async () => {
+    expect((await req('/v1/audit', fx.t1.tokenViewerA1)).status).toBe(403)
+    expect((await req('/v1/audit', fx.t1.tokenAccountA1)).status).toBe(403)
+    const ok = await req('/v1/audit', fx.t1.tokenTenant)
+    expect(ok.status).toBe(200)
+    const rows = (await ok.json()) as { entity: string; tenantId: string }[]
+    expect(Array.isArray(rows)).toBe(true)
+    // every returned row belongs to T1 (never a T2 leak) — audit is tenant-scoped
+    expect(rows.every((r) => r.tenantId === fx.t1.id)).toBe(true)
+    expect(rows.length).toBeGreaterThan(0)
+  })
+
+  it('audit filters: entity=account narrows results (E03-6)', async () => {
+    const accts = (await (await req('/v1/audit?entity=account', fx.t1.tokenTenant)).json()) as { entity: string }[]
+    expect(accts.length).toBeGreaterThan(0)
+    expect(accts.every((r) => r.entity === 'account')).toBe(true)
+  })
+
+  it('audit query params are robust: garbage cursor/limit/from never 500 (E03-6 review MED)', async () => {
+    for (const qs of ['cursor=not-a-number', 'cursor=', 'limit=abc', 'limit=-5', 'from=garbage', 'to=nonsense', 'cursor=1.5&limit=NaN']) {
+      const res = await req(`/v1/audit?${qs}`, fx.t1.tokenTenant)
+      expect(res.status, `/v1/audit?${qs}`).toBe(200)
+      expect(Array.isArray(await res.json())).toBe(true)
+    }
+    // a non-numeric :id is a clean 404, not a 500
+    expect((await req('/v1/audit/not-an-id', fx.t1.tokenTenant)).status).toBe(404)
   })
 })
 

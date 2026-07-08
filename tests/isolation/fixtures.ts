@@ -23,6 +23,7 @@ export interface TenantFixture {
   ruleA2Id: string // a rule owned by A2 (for account cross-account tests)
   deviceId: string
   domainId: string
+  auditId: string
   webhookId: string
   userId: string // an account-scoped (A1) user
   amUserId: string // the account_manager's OWN user id (self-escalation test)
@@ -76,6 +77,8 @@ async function seedTenant(
   const am = await db.users.create(scope, actor, { email: `${name}-am@x.test`, passwordHash: pwHash, role: 'account_manager', accountId: a1.id })
   const vw = await db.users.create(scope, actor, { email: `${name}-vw@x.test`, passwordHash: pwHash, role: 'viewer', accountId: a1.id })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
+  // newest audit row from all the seeding above — a real id for the item-route tests
+  const auditId = String((await db.audit.list(scope, { take: 1 }))[0]!.id)
   return {
     id: tenant.id,
     accounts: [a1.id, a2.id],
@@ -83,6 +86,7 @@ async function seedTenant(
     ruleA2Id: ruleA2.id,
     deviceId: device.id.toString(),
     domainId: domain.id,
+    auditId,
     webhookId: webhook.id,
     userId: am.id,
     amUserId: am.id,

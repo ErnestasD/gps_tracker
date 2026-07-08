@@ -303,6 +303,31 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   await expect(page.getByTestId('verify-fleet.acme-e2e.test')).toBeVisible()
 })
 
+test('audit: an admin sees the mutation trail, filters it, and expands a snapshot (E03-6)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  // cause a fresh, findable mutation (branding update → a branding:update audit row)
+  await page.goto('/app/branding')
+  await page.getByTestId('branding-productName').fill('Audit Probe Co')
+  await page.getByTestId('branding-save').click()
+  await expect(page.getByTestId('branding-saved')).toBeVisible()
+
+  // the audit page (admin-only nav) shows rows
+  await page.goto('/app/audit')
+  await expect(page.getByTestId('audit-table')).toBeVisible({ timeout: 15_000 })
+
+  // filter to branding entries and expand the newest one → before/after snapshot
+  await page.getByTestId('audit-entity').selectOption('branding')
+  const firstRow = page.getByTestId('audit-table').locator('tbody tr[data-testid^="audit-row-"]').first()
+  await expect(firstRow).toBeVisible({ timeout: 15_000 })
+  await firstRow.getByRole('button').click()
+  await expect(page.getByText('"productName": "Audit Probe Co"')).toBeVisible()
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)
