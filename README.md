@@ -147,8 +147,22 @@ Every new variable must be added to the table here AND match the `.env` contract
   writes `trips` rows (`open` on start, `closed` on stop; close is guarded on `status='open'`
   so a replay is a no-op). A trip is never written with a guessed tenant. Metrics:
   `trips_opened_total`, `trips_closed_total`.
-- Crash/late-batch reconciliation (out-of-order or replayed batches, orphaned `open` rows)
-  is E04-2 `trip-recompute`. Real-drive ±5 % distance validation is the W4 exit (post-hardware).
+- **Recompute** (E04-2, `apps/worker/src/trip/recompute.ts` + `jobs/`) — the streaming
+  engine drops out-of-order records, so a late/buffered batch (§3.6) can't reconcile
+  already-persisted trips. `recomputeTrips(device, window)` rebuilds trips **authoritatively**
+  from the durable `positions`: it expands the window to whole-trip boundaries, replays a
+  fresh engine, then **delete-overlap + insert in one transaction** — idempotent (running it
+  twice over the same positions yields identical trips; proved by a property test). Delivery
+  is a **BullMQ** `trip-recompute` job (ADR-020, Redis `maxmemory-policy noeviction`): when the
+  engine drops a late record it flags the device (`takeLate()`) and the worker enqueues a
+  deduped job (`recompute:{device}:{hour}`). Scope prefers an existing trip's tenant (so a
+  re-claim never moves historical trips), else the registry. Metrics: `trip_recompute_total`,
+  `trip_recompute_deleted_total`.
+  - **Recompute only reconciles settled, closed history** (`to = now − 15 min`) and never
+    touches `open` rows — the live streaming persister owns those, so a recompute can't race
+    or delete the in-progress trip. delete + insert are keyed on the exact core time span, so
+    a neighbour trip pulled into the read margin is never bisected.
+- Real-drive ±5 % distance validation is the W4 exit (post-hardware).
 
 ## Audit log (E03-6)
 

@@ -109,6 +109,10 @@ interface DeviceState {
 
 export class TripEngine {
   private readonly state = new Map<string, DeviceState>() // bounded by device count
+  // devices that saw an out-of-order (late) record since the last drain, with the
+  // EARLIEST late fixTime — the streaming engine drops these, so a recompute from
+  // durable positions must reconcile that region (E04-2). Bounded by device count.
+  private readonly late = new Map<string, Date>()
 
   constructor(private readonly thresholds: TripThresholds = DEFAULT_THRESHOLDS) {}
 
@@ -119,9 +123,23 @@ export class TripEngine {
     return out
   }
 
+  /** Drain the devices that saw a late (dropped) record and the earliest late time,
+   * so the caller can enqueue a trip-recompute for each. Clears the set. */
+  takeLate(): Array<{ deviceId: bigint; from: Date }> {
+    const out = [...this.late].map(([id, from]) => ({ deviceId: BigInt(id), from }))
+    this.late.clear()
+    return out
+  }
+
   /** True while a device has an unclosed trip (used by the worker to persist open rows). */
   hasOpenTrip(deviceId: bigint): boolean {
     return this.state.get(deviceId.toString())?.phase === 'moving'
+  }
+
+  /** The start of a device's still-open trip (recompute persists it as an open row), or null. */
+  openSnapshot(deviceId: bigint): { startTime: Date; startLat: number; startLon: number } | null {
+    const trip = this.state.get(deviceId.toString())?.trip
+    return trip ? { startTime: trip.startTime, startLat: trip.startLat, startLon: trip.startLon } : null
   }
 
   private step(r: NormalizedRecord, out: TripEvent[]): void {
@@ -132,7 +150,11 @@ export class TripEngine {
     // drop out-of-order records in EVERY phase — a buffered late batch (§3.6) must not
     // corrupt a candidate or fabricate a negative-duration trip; E04-2 recompute owns
     // authoritative reconciliation of late/replayed batches from durable positions.
-    if (st.lastSeen !== null && r.fixTime.getTime() < st.lastSeen.getTime()) return
+    if (st.lastSeen !== null && r.fixTime.getTime() < st.lastSeen.getTime()) {
+      const prev = this.late.get(key)
+      if (prev === undefined || r.fixTime.getTime() < prev.getTime()) this.late.set(key, r.fixTime)
+      return
+    }
     st.lastSeen = r.fixTime
     const speed = r.speed ?? 0
     const t = this.thresholds

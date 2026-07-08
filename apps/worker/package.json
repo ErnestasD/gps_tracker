@@ -21,6 +21,7 @@
     "@orbetra/codec": "workspace:*",
     "@orbetra/db": "workspace:*",
     "@orbetra/shared": "workspace:*",
+    "bullmq": "^5.79.3",
     "cbor-x": "^1.6.4",
     "ioredis": "^5.11.1",
     "pg": "^8.22.0",

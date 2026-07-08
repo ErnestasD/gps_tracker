@@ -255,6 +255,16 @@ describe('E04-1 trip state machine (§6.4)', () => {
     expect(closes(ev)).toHaveLength(0) // no close emitted while ignition is unknown
   })
 
+  it('takeLate: out-of-order records flag the device for recompute with the earliest late time', () => {
+    const engine = new TripEngine()
+    engine.feed([rec(1000, { ign: true, mov: true, speed: 8, lat: 54 })]) // lastSeen = t1000
+    engine.feed([rec(500, { ign: true, mov: true, speed: 8, lat: 54 })]) // late
+    engine.feed([rec(400, { ign: true, mov: true, speed: 8, lat: 54 })]) // earlier late → wins
+    const late = engine.takeLate()
+    expect(late).toEqual([{ deviceId: DEV, from: new Date(T0 + 400 * 1000) }])
+    expect(engine.takeLate()).toHaveLength(0) // drained
+  })
+
   it('per-device state is independent (two devices interleaved)', () => {
     const engine = new TripEngine()
     const recD = (dev: bigint, tSec: number, o: Opt): NormalizedRecord => ({ ...rec(tSec, o), deviceId: dev })
