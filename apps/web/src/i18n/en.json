@@ -79,6 +79,17 @@
     "e": { "account": "Account", "user": "User", "device": "Device", "rule": "Rule", "webhook": "Webhook", "domain": "Domain", "branding": "Branding", "tenant": "Tenant" },
     "a": { "create": "Created", "update": "Updated", "delete": "Deleted" }
   },
+  "playback": {
+    "title": "History playback",
+    "device": "Device",
+    "from": "From",
+    "to": "To",
+    "loading": "Loading history…",
+    "empty": "No positions in this range.",
+    "samples": "{{n}} samples",
+    "trips": "{{n}} trips",
+    "distance": "{{km}} km"
+  },
   "deviceList": {
     "title": "Devices",
     "search": "Search devices…",

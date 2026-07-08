@@ -164,6 +164,20 @@ Every new variable must be added to the table here AND match the `.env` contract
     a neighbour trip pulled into the read margin is never bisected.
 - Real-drive ±5 % distance validation is the W4 exit (post-hardware).
 
+## History & playback (E04-3)
+
+- **Read API** (§6.6): `GET /v1/devices/:id/positions?from&to&cursor&limit` (raw-SQL over the
+  positions hypertable, chronological, keyset cursor on `(fix_time, rec_hash)`, `limit` clamped
+  to 10k) and `GET /v1/devices/:id/trips?from&to` + `GET /v1/trips[/:id]` (scoped Prisma read).
+  Both device sub-routes **gate on `db.devices.get(scope, id)` first** (404 for an out-of-scope
+  device) before touching positions — the isolation suite covers them automatically. Every query
+  param is sanitized so garbage never 500s.
+- **Web playback** (`/app/playback`, nav Fleet → History) — pick a device + time range and replay
+  its trail on MapLibre (reusing `buildTrailFeatures`, so no-fix stretches render as dashed gaps,
+  I5), with trip start/end **stop markers**, a hand-rolled SVG **speed chart** (no chart
+  dependency), and a **scrub** slider that moves a cursor dot along the trail. Timestamps render in
+  the browser locale.
+
 ## Audit log (E03-6)
 
 - Every scoped mutation already writes one `audit_log` row (who/action/entity/entityId/

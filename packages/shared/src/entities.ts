@@ -53,6 +53,37 @@ export const deviceImportSchema = z.object({
   apply: z.boolean().optional(),
 })
 
+// ── history / playback (E04-3) — JSON-serialized shapes the web consumes ────────
+// (BigInt ids → string, timestamps → ISO, per the API's toJson convention)
+/** One historical position for playback (fix_valid=false ⇒ render as a trail gap, I5). */
+export interface PositionView {
+  fixTime: string // ISO
+  lat: number
+  lon: number
+  speed: number | null
+  course: number | null
+  ignition: boolean | null
+  fixValid: boolean
+  odometerM: string | null // bigint as string
+  recHash: string // bigint as string — the second half of the keyset cursor
+}
+/** A trip as returned by the read API (mirrors the Prisma Trip model, serialized). */
+export interface TripView {
+  id: string
+  deviceId: string
+  status: 'open' | 'closed'
+  startTime: string // ISO
+  endTime: string | null
+  startLat: number | null
+  startLon: number | null
+  endLat: number | null
+  endLon: number | null
+  distanceM: number
+  distanceSource: 'gps' | 'odometer'
+  maxSpeed: number
+  idleS: number
+}
+
 // ── rules ────────────────────────────────────────────────────────────────────
 // MUST mirror the Prisma RuleKind enum (packages/db/prisma/schema.prisma)
 export const ruleKindSchema = z.enum(['geofence', 'overspeed', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'device_offline'])

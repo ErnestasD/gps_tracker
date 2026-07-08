@@ -24,6 +24,7 @@ export interface TenantFixture {
   deviceId: string
   domainId: string
   auditId: string
+  tripId: string
   webhookId: string
   userId: string // an account-scoped (A1) user
   amUserId: string // the account_manager's OWN user id (self-escalation test)
@@ -56,6 +57,7 @@ const token = (userId: string, tenantId: string, role: Role, accountId?: string)
 async function seedTenant(
   db: Db,
   poolInsertEvent: (t: string, a: string, dev: string) => Promise<string>,
+  poolInsertTrip: (t: string, a: string, dev: string) => Promise<string>,
   name: string,
   profileId: string,
   imei: string,
@@ -77,6 +79,7 @@ async function seedTenant(
   const am = await db.users.create(scope, actor, { email: `${name}-am@x.test`, passwordHash: pwHash, role: 'account_manager', accountId: a1.id })
   const vw = await db.users.create(scope, actor, { email: `${name}-vw@x.test`, passwordHash: pwHash, role: 'viewer', accountId: a1.id })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
+  const tripId = await poolInsertTrip(tenant.id, a1.id, device.id.toString())
   // newest audit row from all the seeding above — a real id for the item-route tests
   const auditId = String((await db.audit.list(scope, { take: 1 }))[0]!.id)
   return {
@@ -87,6 +90,7 @@ async function seedTenant(
     deviceId: device.id.toString(),
     domainId: domain.id,
     auditId,
+    tripId,
     webhookId: webhook.id,
     userId: am.id,
     amUserId: am.id,
@@ -112,6 +116,8 @@ export async function setup(): Promise<Fixtures> {
   containers.push(pg, redisC)
   const databaseUrl = `postgresql://postgres:test@${pg.getHost()}:${pg.getMappedPort(5432)}/orbetra`
   execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], { cwd: DB_PKG, env: { ...process.env, DATABASE_URL: databaseUrl } })
+  // positions hypertable (raw-SQL layer) — needed by the /v1/devices/:id/positions route (E04-3)
+  execFileSync('pnpm', ['exec', 'tsx', 'sql/migrate.ts'], { cwd: DB_PKG, env: { ...process.env, DATABASE_URL: databaseUrl } })
 
   const redis = new Redis(redisC.getMappedPort(6379), redisC.getHost(), { maxRetriesPerRequest: null })
   const redisSub = redis.duplicate()
@@ -128,11 +134,21 @@ export async function setup(): Promise<Fixtures> {
     )
     return String((r.rows[0] as { id: string | number }).id)
   }
+  // trips are pipeline-written (worker raw SQL, E04-1) — seed one via the pool for the
+  // /v1/trips/:id item-route isolation checks
+  const insertTrip = async (tenantId: string, accountId: string, deviceId: string): Promise<string> => {
+    const r = await pool.query(
+      `INSERT INTO trips ("tenantId","accountId","deviceId","status","startTime") VALUES ($1,$2,$3,'closed',now()) RETURNING id`,
+      [tenantId, accountId, deviceId],
+    )
+    return String((r.rows[0] as { id: string | number }).id)
+  }
 
   const app = createApp({
     redis,
     redisSub,
     db,
+    pool,
     jwtSecret: JWT_SECRET,
     jwtTtlS: 900,
     refreshTtlS: 3600,
@@ -147,8 +163,8 @@ export async function setup(): Promise<Fixtures> {
 
   const profileIds = await seedProfiles(databaseUrl)
   const profileId = profileIds['fmb1xx']!
-  const t1 = await seedTenant(db, insertEvent, 'T1', profileId, '356307042440000')
-  const t2 = await seedTenant(db, insertEvent, 'T2', profileId, '356307042440001')
+  const t1 = await seedTenant(db, insertEvent, insertTrip, 'T1', profileId, '356307042440000')
+  const t2 = await seedTenant(db, insertEvent, insertTrip, 'T2', profileId, '356307042440001')
 
   return {
     baseUrl: `http://127.0.0.1:${port}`,

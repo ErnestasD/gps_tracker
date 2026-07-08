@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { Gauge, Registry } from 'prom-client'
 
-import type { Db } from '@orbetra/db'
+import type { Db, Pool } from '@orbetra/db'
 import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
 
 import { createAuthRoutes } from './auth/login.js'
@@ -14,6 +14,8 @@ import { issueTicket, type WsDeps } from './ws.js'
 
 export interface ApiDeps extends WsDeps {
   db: Db
+  /** raw-SQL pool for positions history reads (E04-3); positions are not in Prisma. */
+  pool?: Pool
   jwtSecret: string
   jwtTtlS: number
   refreshTtlS: number
@@ -133,7 +135,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
-  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver }))
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool }))
 
   return app
 }

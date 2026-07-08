@@ -56,6 +56,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     rules: repo,
     webhooks: repo,
     events: { list: notImpl, get: notImpl },
+    trips: { list: notImpl, get: notImpl },
     audit: { record: () => Promise.resolve(), list: notImpl, get: notImpl },
     $disconnect: () => Promise.resolve(),
   }

@@ -79,6 +79,17 @@
     "e": { "account": "Paskyra", "user": "Naudotojas", "device": "Įrenginys", "rule": "Taisyklė", "webhook": "Webhook", "domain": "Domenas", "branding": "Prekės ženklas", "tenant": "Nuomininkas" },
     "a": { "create": "Sukurta", "update": "Atnaujinta", "delete": "Ištrinta" }
   },
+  "playback": {
+    "title": "Istorijos peržiaura",
+    "device": "Įrenginys",
+    "from": "Nuo",
+    "to": "Iki",
+    "loading": "Kraunama istorija…",
+    "empty": "Šiame intervale pozicijų nėra.",
+    "samples": "{{n}} taškų",
+    "trips": "{{n}} kelionės",
+    "distance": "{{km}} km"
+  },
   "deviceList": {
     "title": "Įrenginiai",
     "search": "Ieškoti įrenginių…",
