@@ -44,7 +44,9 @@ function idFor(f: TenantFixture, entity: string): string {
   }
   return map[entity] ?? ''
 }
-// replace ANY :param (`:id`, `:imei`, …) so param-carrying routes get a realistic path
+// replace the FIRST :param (`:id`, `:imei`, …) so param-carrying routes get a realistic
+// path. All current routes are single-param; a future two-param route would need a
+// global replace (or per-param ids) — revisit then.
 const itemPath = (path: string, resourceId: string) => path.replace(/:[a-zA-Z]+/, resourceId)
 
 describe('E03-2 tenant isolation (manifest-driven)', () => {

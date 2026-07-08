@@ -59,6 +59,10 @@ export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: Cla
   if ((await db.accounts.get(scope, input.accountId)) === null) {
     return { ok: false, status: 400, reason: 'accountId not in the target tenant' }
   }
+  // validate the (global) profile so a bad uuid is a clean 400, not a P2003 500 (review MED)
+  if ((await db.profiles.get(input.profileId)) === null) {
+    return { ok: false, status: 400, reason: 'unknown profileId' }
+  }
   let device
   try {
     device = await db.devices.create(scope, actor, {

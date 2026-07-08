@@ -195,6 +195,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if ((await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        // validate the (global) profile — a bad uuid would else be a P2003 500 (review MED)
+        if ((await db.profiles.get(data.profileId)) === null) return problem(c, 400, 'Bad Request', 'unknown profileId')
         // IMEI is GLOBALLY unique — the repo throws DuplicateImeiError on ANY clash
         // (including another tenant's), translated to 409 here so a cross-tenant clash
         // is not a 500 and does not reveal the other tenant's row (review HIGH)

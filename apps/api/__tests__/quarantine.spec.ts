@@ -157,6 +157,13 @@ describe('E03-4 claim', () => {
   it('bad IMEI in path → 400', async () => {
     expect((await req('/v1/quarantine/not-an-imei/claim', platformToken, 'POST', { tenantId, accountId, profileId, name: 'X' })).status).toBe(400)
   })
+
+  it('unknown (well-formed) profileId → 400, NOT a 500 FK violation (review MED)', async () => {
+    const res = await req('/v1/quarantine/356307042449600/claim', platformToken, 'POST', {
+      tenantId, accountId, profileId: '00000000-0000-0000-0000-000000000000', name: 'X',
+    })
+    expect(res.status).toBe(400)
+  })
 })
 
 describe('E03-4 tenant accounts (platform, for the claim dialog)', () => {
