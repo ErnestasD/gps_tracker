@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import type { Db } from '@orbetra/db'
+import { DuplicateImeiError, type Db } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -193,9 +193,16 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if ((await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
-        // reject a duplicate IMEI in scope with a clear 409 (unique constraint would 500)
-        if ((await db.devices.getByImei(scopeOf(a), data.imei)) !== null) return problem(c, 409, 'Conflict', 'IMEI already registered')
-        const device = await db.devices.create(scopeOf(a), { userId: a.userId }, { ...data, accountId })
+        // IMEI is GLOBALLY unique — the repo throws DuplicateImeiError on ANY clash
+        // (including another tenant's), translated to 409 here so a cross-tenant clash
+        // is not a 500 and does not reveal the other tenant's row (review HIGH)
+        let device
+        try {
+          device = await db.devices.create(scopeOf(a), { userId: a.userId }, { ...data, accountId })
+        } catch (err) {
+          if (err instanceof DuplicateImeiError) return problem(c, 409, 'Conflict', 'IMEI already registered')
+          throw err
+        }
         await activateDevice(deps.redis, { id: device.id, imei: device.imei, tenantId: a.tenantId, accountId })
         return json(c, device, 201)
       } },
@@ -208,11 +215,15 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'delete', path: '/v1/devices/:id', scopeClass: 'account', entity: 'device', shape: 'item',
       handler: async (c) => {
-        // retire = soft delete + registry teardown → ingest rejects next connect (AC[2])
-        const row = await db.devices.retire(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
-        if (row === null) return problem(c, 404, 'Not Found')
-        await deactivateDevice(deps.redis, { id: row.id, imei: row.imei })
-        return json(c, row)
+        // retire = registry teardown THEN DB soft-delete. Registry FIRST so a Redis
+        // failure leaves the device consistently active-in-both (fail-safe: better a
+        // reconcile-retry than a "retired" device that ingest still accepts — review MED)
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        await deactivateDevice(deps.redis, { id: device.id, imei: device.imei }) // ingest rejects next connect (AC[2])
+        const row = await db.devices.retire(scope, { userId: auth(c).userId }, id(c))
+        return json(c, row ?? device)
       } },
     { method: 'post', path: '/v1/devices/import/preview', scopeClass: 'account', entity: 'device', shape: 'collection',
       handler: async (c) => {

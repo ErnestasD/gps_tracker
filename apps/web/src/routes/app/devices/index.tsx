@@ -27,6 +27,7 @@ export function DevicesPage() {
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles })
+  const [retireError, setRetireError] = useState<string | null>(null)
   const refresh = () => void qc.invalidateQueries({ queryKey: ['devices'] })
 
   return (
@@ -34,6 +35,11 @@ export function DevicesPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">{t('devices.title')}</h1>
       </div>
+      {retireError !== null && (
+        <p role="alert" className="text-sm text-danger" data-testid="retire-error">
+          {t('devices.retireError', { imei: retireError })}
+        </p>
+      )}
 
       <CreateDeviceForm
         accounts={accounts.data ?? []}
@@ -88,7 +94,9 @@ export function DevicesPage() {
                             size="sm"
                             data-testid={`retire-${d.imei}`}
                             onClick={() => {
-                              void retireDevice(d.id).then(refresh)
+                              void retireDevice(d.id)
+                                .then(refresh)
+                                .catch(() => setRetireError(d.imei))
                             }}
                           >
                             {t('devices.retire')}

@@ -114,6 +114,7 @@
       "update": "{{n}} istniejących",
       "errors": "{{n}} błędów",
       "rowError": "Wiersz {{row}} ({{imei}}): {{reason}}"
-    }
+    },
+    "retireError": "Nie udało się wycofać urządzenia {{imei}}."
   }
 }

@@ -114,6 +114,7 @@
       "update": "{{n}} vorhanden",
       "errors": "{{n}} Fehler",
       "rowError": "Zeile {{row}} ({{imei}}): {{reason}}"
-    }
+    },
+    "retireError": "Gerät {{imei}} konnte nicht stillgelegt werden."
   }
 }

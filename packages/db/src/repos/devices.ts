@@ -22,6 +22,25 @@ export interface DeviceUpdate {
 }
 
 /**
+ * IMEI is GLOBALLY unique — a create colliding with ANOTHER tenant's IMEI would
+ * otherwise surface a raw Prisma P2002 as a 500 (review HIGH). The repo catches
+ * it and throws this domain error so the API translates it to a 409 / per-row
+ * import error WITHOUT leaking that the IMEI exists in another tenant (the API
+ * never gets to see the other tenant's row).
+ */
+export class DuplicateImeiError extends Error {
+  constructor(readonly imei: string) {
+    super(`IMEI already registered: ${imei}`)
+    this.name = 'DuplicateImeiError'
+  }
+}
+
+/** Prisma unique-violation code, duck-typed (avoids importing @prisma/client here). */
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002'
+}
+
+/**
  * Devices repo (E03-3). Account-scoped (non-null accountId), like rules. NOT the
  * generic repo: `Device.id` is a BigInt PK, so the route `:id` string must be
  * coerced (a bad/overflowing id resolves to null → 404, never a 500). `imei` is
@@ -60,18 +79,24 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo): Device
     get: (scope, id) => scopedById(scope, id),
     getByImei: (scope, imei) => prisma.device.findFirst({ where: { ...scopedWhere(scope), imei } }),
     create: async (scope, actor, data) => {
-      const row = await prisma.device.create({
-        data: {
-          tenantId: scope.tenantId,
-          accountId: data.accountId,
-          profileId: data.profileId,
-          imei: data.imei,
-          name: data.name,
-          plate: data.plate ?? null,
-          groupName: data.groupName ?? null,
-          ...(data.odometerSource !== undefined ? { odometerSource: data.odometerSource } : {}),
-        },
-      })
+      let row
+      try {
+        row = await prisma.device.create({
+          data: {
+            tenantId: scope.tenantId,
+            accountId: data.accountId,
+            profileId: data.profileId,
+            imei: data.imei,
+            name: data.name,
+            plate: data.plate ?? null,
+            groupName: data.groupName ?? null,
+            ...(data.odometerSource !== undefined ? { odometerSource: data.odometerSource } : {}),
+          },
+        })
+      } catch (err) {
+        if (isUniqueViolation(err)) throw new DuplicateImeiError(data.imei) // global imei clash
+        throw err
+      }
       await audit.record(scope, actor, { action: 'create', entity: 'device', entityId: String(row.id), after: row })
       return row
     },

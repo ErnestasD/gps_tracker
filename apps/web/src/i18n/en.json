@@ -114,6 +114,7 @@
       "update": "{{n}} existing",
       "errors": "{{n}} errors",
       "rowError": "Row {{row}} ({{imei}}): {{reason}}"
-    }
+    },
+    "retireError": "Could not retire device {{imei}}."
   }
 }

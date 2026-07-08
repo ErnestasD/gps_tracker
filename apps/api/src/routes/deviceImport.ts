@@ -1,6 +1,6 @@
 import type { Redis } from 'ioredis'
 
-import type { Actor, Db, Scope } from '@orbetra/db'
+import { DuplicateImeiError, type Actor, type Db, type Scope } from '@orbetra/db'
 
 import { activateDevice } from './deviceRegistry.js'
 
@@ -144,22 +144,31 @@ export async function applyImport(
   callerAccountId: string | undefined,
 ): Promise<ApplyResult> {
   const dr = await dryRun(db, scope, rows, new Set(profiles.keys()), callerAccountId)
+  const errors = [...dr.errors]
   let created = 0
-  // only the create-rows are applied; updates/errors are reported, not mutated (v1)
+  // only the create-rows are applied; updates/errors are reported, not mutated (v1).
+  // Per-row try/catch: a cross-tenant IMEI clash (global unique) surfaces as a
+  // DuplicateImeiError → a per-row error, NOT a 500 that aborts the batch and loses
+  // the report of what was already created (review HIGH). row 0 = surfaced at apply.
   for (const row of dr.create) {
     const profileId = profiles.get(row.profileKey)
     const accountId = callerAccountId ?? row.accountId
     if (profileId === undefined || accountId === undefined) continue
-    const device = await db.devices.create(scope, actor, {
-      accountId,
-      profileId,
-      imei: row.imei,
-      name: row.name,
-      plate: row.plate ?? null,
-      groupName: row.groupName ?? null,
-    })
-    await activateDevice(redis, { id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId })
-    created++
+    try {
+      const device = await db.devices.create(scope, actor, {
+        accountId,
+        profileId,
+        imei: row.imei,
+        name: row.name,
+        plate: row.plate ?? null,
+        groupName: row.groupName ?? null,
+      })
+      await activateDevice(redis, { id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId })
+      created++
+    } catch (err) {
+      if (err instanceof DuplicateImeiError) errors.push({ row: 0, imei: row.imei, reason: 'IMEI already registered' })
+      else throw err
+    }
   }
-  return { created, errors: dr.errors }
+  return { created, errors }
 }

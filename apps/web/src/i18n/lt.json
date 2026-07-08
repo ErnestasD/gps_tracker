@@ -114,6 +114,7 @@
       "update": "{{n}} esami",
       "errors": "{{n}} klaidų",
       "rowError": "Eilutė {{row}} ({{imei}}): {{reason}}"
-    }
+    },
+    "retireError": "Nepavyko išregistruoti įrenginio {{imei}}."
   }
 }
