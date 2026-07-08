@@ -39,9 +39,29 @@ export interface DryRunResult {
   errors: ImportError[]
 }
 
+export interface QuarantineEntry {
+  imei: string
+  lastSeenMs: number
+  rejects: number
+}
+export interface Tenant {
+  id: string
+  name: string
+}
+export interface ClaimInput {
+  tenantId: string
+  accountId: string
+  profileId: string
+  name: string
+}
+
 export const listDevices = () => getJson<Device[]>('/v1/devices')
 export const listAccounts = () => getJson<Account[]>('/v1/accounts')
 export const listProfiles = () => getJson<Profile[]>('/v1/profiles')
+export const listQuarantine = () => getJson<QuarantineEntry[]>('/v1/quarantine')
+export const listTenants = () => getJson<Tenant[]>('/v1/tenants')
+export const listTenantAccounts = (tenantId: string) => getJson<Account[]>(`/v1/tenants/${tenantId}/accounts`)
+export const claimDevice = (imei: string, data: ClaimInput) => mutate<{ deviceId: string }>('POST', `/v1/quarantine/${imei}/claim`, data)
 export const createDevice = (data: DeviceCreateInput) => mutate<Device>('POST', '/v1/devices', data)
 export const retireDevice = (id: string) => mutate<Device>('DELETE', `/v1/devices/${id}`)
 export const importPreview = (csv: string) => mutate<DryRunResult>('POST', '/v1/devices/import/preview', { csv })

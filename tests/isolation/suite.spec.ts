@@ -40,10 +40,12 @@ function idFor(f: TenantFixture, entity: string): string {
     webhook: f.webhookId,
     event: f.eventId,
     tenant: f.id,
+    quarantine: '356307042440000', // a real 15-digit IMEI for the claim path param
   }
   return map[entity] ?? ''
 }
-const itemPath = (path: string, resourceId: string) => path.replace(':id', resourceId)
+// replace ANY :param (`:id`, `:imei`, …) so param-carrying routes get a realistic path
+const itemPath = (path: string, resourceId: string) => path.replace(/:[a-zA-Z]+/, resourceId)
 
 describe('E03-2 tenant isolation (manifest-driven)', () => {
   it('every scoped item route: T1 admin against a T2 resource → 404 (never a leak)', async () => {

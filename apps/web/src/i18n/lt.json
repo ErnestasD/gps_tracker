@@ -116,5 +116,20 @@
       "rowError": "Eilutė {{row}} ({{imei}}): {{reason}}"
     },
     "retireError": "Nepavyko išregistruoti įrenginio {{imei}}."
+  },
+  "quarantine": {
+    "title": "Karantinas (nežinomi įrenginiai)",
+    "empty": "Nežinomų įrenginių nėra.",
+    "imei": "IMEI",
+    "attempts": "Bandymai",
+    "claim": "Prisiimti",
+    "claimTitle": "Prisiimti {{imei}}",
+    "tenant": "Nuomininkas",
+    "account": "Paskyra",
+    "profile": "Profilis",
+    "name": "Pavadinimas",
+    "cancel": "Atšaukti",
+    "dupImei": "Toks IMEI jau užregistruotas.",
+    "claimError": "Nepavyko prisiimti įrenginio."
   }
 }

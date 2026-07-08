@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { BASE_IMEI, DEVICES, E2E_EMAIL, E2E_PASSWORD, INGEST_PORT, TRAIL_IMEI, TSX_BIN, runToExit } from './stack'
+import { BASE_IMEI, DEVICES, E2E_EMAIL, E2E_PASSWORD, INGEST_PORT, PLATFORM_EMAIL, PLATFORM_PASSWORD, TRAIL_IMEI, TSX_BIN, UNKNOWN_IMEI, runToExit } from './stack'
 
 /**
  * E02-6 smoke (story AC + the full-chain <2 s assertion E02-4 deferred here):
@@ -220,6 +220,51 @@ test('devices: CSV import dry-run shows per-row errors then applies (E03-3 AC[1]
   await page.getByTestId('import-apply').click()
   await expect(page.getByTestId('import-done')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('device-356307042441013')).toBeVisible()
+})
+
+test('quarantine: unknown IMEI → rejected → appears in quarantine → claim → accepted (E03-4 AC[1])', async ({ page }) => {
+  // an unknown IMEI hitting ingest is REJECTED (0x00 → exit 1) and quarantined
+  const rejected = await runToExit(
+    TSX_BIN,
+    ['tools/simulator/src/main.ts', '--scenario', 'liveDrive', '--count', '1', '--hz', '4', '--port', String(INGEST_PORT), '--imei', UNKNOWN_IMEI],
+    {},
+  )
+  expect(rejected).toBe(1)
+
+  // a platform_admin sees it in quarantine and claims it into the E2E tenant
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(PLATFORM_EMAIL)
+  await page.getByTestId('password-input').fill(PLATFORM_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+  await page.goto('/app/devices')
+
+  await expect(page.getByTestId('quarantine-card')).toBeVisible()
+  await expect(page.getByTestId(`quarantine-${UNKNOWN_IMEI}`)).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId(`claim-${UNKNOWN_IMEI}`).click()
+  await expect(page.getByTestId('claim-dialog')).toBeVisible()
+  await page.getByTestId('claim-name').fill('Claimed device')
+  await page.getByTestId('claim-submit').click()
+  await expect(page.getByTestId('claim-dialog')).toBeHidden({ timeout: 15_000 })
+
+  // now the same IMEI is registered → ingest ACCEPTS it (data flows)
+  const accepted = await runToExit(
+    TSX_BIN,
+    ['tools/simulator/src/main.ts', '--scenario', 'liveDrive', '--count', '1', '--hz', '4', '--port', String(INGEST_PORT), '--imei', UNKNOWN_IMEI],
+    {},
+  )
+  expect(accepted).toBe(0)
+})
+
+test('quarantine: a tenant admin does NOT see the quarantine section (E03-4 AC[2] role gate)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+  await page.goto('/app/devices')
+  await expect(page.getByTestId('devices-table').or(page.getByText(/No devices/i))).toBeVisible()
+  await expect(page.getByTestId('quarantine-card')).toHaveCount(0)
 })
 
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {

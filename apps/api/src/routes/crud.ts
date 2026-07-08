@@ -14,6 +14,7 @@ import {
   ruleUpdateSchema,
   tenantCreateSchema,
   tenantUpdateSchema,
+  quarantineClaimSchema,
   userCreateSchema,
   userUpdateSchema,
   webhookCreateSchema,
@@ -25,6 +26,7 @@ import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { activateDevice, deactivateDevice } from './deviceRegistry.js'
 import { applyImport, dryRun, parseCsv, rowsToImport } from './deviceImport.js'
+import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
 
 export interface CrudDeps {
@@ -344,6 +346,24 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const ok = await db.tenants.remove({ userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+    // accounts of a SPECIFIC tenant (platform) — the claim dialog needs the target
+    // tenant's accounts, which /v1/accounts (caller-scoped) can't give
+    { method: 'get', path: '/v1/tenants/:id/accounts', scopeClass: 'platform', entity: 'tenant', shape: 'item',
+      handler: async (c) => json(c, await db.accounts.list({ tenantId: id(c) })) },
+
+    // ── quarantine (PLATFORM) — unknown-IMEI review + claim (E03-4) ───────────
+    { method: 'get', path: '/v1/quarantine', scopeClass: 'platform', entity: 'quarantine', shape: 'collection',
+      handler: async (c) => json(c, await listQuarantine(deps.redis)) },
+    { method: 'post', path: '/v1/quarantine/:imei/claim', scopeClass: 'platform', entity: 'quarantine', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, quarantineClaimSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const imei = c.req.param('imei') ?? ''
+        if (!/^\d{15}$/.test(imei)) return problem(c, 400, 'Bad Request', 'invalid IMEI')
+        const result = await claimDevice(db, deps.redis, { userId: auth(c).userId }, { ...data, imei })
+        if (!result.ok) return problem(c, result.status, result.status === 409 ? 'Conflict' : 'Bad Request', result.reason)
+        return json(c, result, 201)
       } },
   ]
   // attach the allowed-roles policy uniformly (review HIGH)

@@ -14,7 +14,12 @@ export const API_PORT = 3110
 export const WEB_PORT = 4173
 export const E2E_EMAIL = 'e2e@orbetra.test'
 export const E2E_PASSWORD = 'e2e-correct-horse-battery'
+/** platform_admin for the quarantine flow (E03-4). */
+export const PLATFORM_EMAIL = 'platform@orbetra.test'
+export const PLATFORM_PASSWORD = 'platform-correct-horse-battery'
 export const E2E_JWT_SECRET = 'e2e-jwt-secret-e2e-jwt-secret-e2e!' // ≥32 chars
+/** An IMEI outside the seeded fleet — drives quarantine (unknown to ingest). */
+export const UNKNOWN_IMEI = '356307042449500'
 export const BASE_IMEI = '356307042441013'
 export const DEVICES = 3
 /** Extra device reserved for the invalid-fix trail test (seeded, outside the fleet). */
