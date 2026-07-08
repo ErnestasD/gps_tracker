@@ -39,6 +39,7 @@ function idFor(f: TenantFixture, entity: string): string {
     domain: f.domainId,
     audit: f.auditId,
     trip: f.tripId,
+    geofence: f.geofenceId,
     rule: f.ruleId,
     webhook: f.webhookId,
     event: f.eventId,
@@ -111,6 +112,16 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     expect(res.status).toBe(404)
     const list = (await (await req('/v1/rules', fx.t1.tokenAccountA1)).json()) as { id: string }[]
     expect(list.map((r) => r.id)).not.toContain(fx.t1.ruleA2Id)
+  })
+
+  it('geofences: A1 manager cannot reach an A2 geofence (404, excluded); a tenant-shared one IS visible (E05-1)', async () => {
+    // the nullable-account scope branch — a regression dropping the accountId predicate fails here
+    expect((await req(`/v1/geofences/${fx.t1.geofenceA2Id}`, fx.t1.tokenAccountA1)).status).toBe(404)
+    const list = (await (await req('/v1/geofences', fx.t1.tokenAccountA1)).json()) as { id: string }[]
+    const ids = list.map((g) => g.id)
+    expect(ids).not.toContain(fx.t1.geofenceA2Id) // sibling account's — hidden
+    expect(ids).toContain(fx.t1.geofenceId) // own account's — visible
+    expect(ids).toContain(fx.t1.geofenceSharedId) // tenant-shared (accountId null) — visible
   })
 })
 

@@ -5,6 +5,7 @@ import { createAccountRepo, type AccountRepo } from './repos/accounts.js'
 import { createAuditRepo, type AuditRepo } from './repos/audit.js'
 import { createDeviceRepo, type DeviceRepo } from './repos/devices.js'
 import { createEventRepo, type EventRepo } from './repos/events.js'
+import { createGeofenceRepo, type GeofenceRepo } from './repos/geofences.js'
 import { createProfileRepo, type ProfileRepo } from './repos/profiles.js'
 import { createRuleRepo, type RuleRepo } from './repos/rules.js'
 import { createTenantDomainRepo, type TenantDomainRepo } from './repos/tenantDomains.js'
@@ -31,6 +32,7 @@ export interface Db {
   webhooks: WebhookRepo
   events: EventRepo
   trips: TripReadRepo
+  geofences: GeofenceRepo
   audit: AuditRepo
   $disconnect(): Promise<void>
 }
@@ -50,6 +52,7 @@ export function createDb(databaseUrl: string): Db {
     webhooks: createWebhookRepo(prisma, audit),
     events: createEventRepo(prisma),
     trips: createTripRepo(prisma),
+    geofences: createGeofenceRepo(prisma, audit),
     audit,
     $disconnect: () => prisma.$disconnect(),
   }

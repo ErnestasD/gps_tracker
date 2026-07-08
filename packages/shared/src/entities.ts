@@ -156,3 +156,52 @@ export const passwordChangeSchema = z.object({
   currentPassword: z.string().min(1).max(1024),
   newPassword: z.string().min(8).max(1024),
 })
+
+// ── geofences (E05-1) ──────────────────────────────────────────────────────────
+const lngLat = z.tuple([z.number().gte(-180).lte(180), z.number().gte(-90).lte(90)])
+/** A GeoJSON Polygon: ≥1 linear ring, each ≥4 positions and closed (first === last).
+ * The server also enforces ST_IsValid + an area cap; this is the shape gate. */
+export const geoJsonPolygonSchema = z
+  .object({
+    type: z.literal('Polygon'),
+    coordinates: z
+      .array(z.array(lngLat).min(4).max(10_000))
+      .min(1)
+      .max(50),
+  })
+  .refine(
+    (g) => g.coordinates.every((ring) => {
+      const a = ring[0]
+      const b = ring[ring.length - 1]
+      return a !== undefined && b !== undefined && a[0] === b[0] && a[1] === b[1]
+    }),
+    { message: 'each ring must be closed (first position === last)' },
+  )
+export const geofenceKindSchema = z.enum(['polygon', 'circle'])
+export const geofenceCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  color: hexColor.optional(),
+  kind: geofenceKindSchema,
+  /** null ⇒ tenant-shared (visible to all accounts); a tenant admin may set it. */
+  accountId: z.string().uuid().nullable().optional(),
+  geometry: geoJsonPolygonSchema,
+})
+export const geofenceUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    color: hexColor,
+    kind: geofenceKindSchema,
+    geometry: geoJsonPolygonSchema,
+  })
+  .partial()
+
+export interface GeofenceView {
+  id: string
+  tenantId: string
+  accountId: string | null
+  name: string
+  color: string
+  kind: 'polygon' | 'circle'
+  geometry: unknown // GeoJSON Polygon
+  createdAt: string
+}

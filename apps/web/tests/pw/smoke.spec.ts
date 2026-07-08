@@ -385,6 +385,25 @@ test('trips: the trips page lists trips (or empty) and a row opens its route det
   }
 })
 
+test('geofences: the terra-draw editor mounts on the map and the list renders (E05-1)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/geofences')
+  // the map + terra-draw editor initialise without crashing (real MapLibre + terra-draw)
+  await expect(page.getByTestId('geofence-map')).toBeVisible()
+  await expect(page.getByTestId('gf-mode-polygon')).toBeVisible()
+  await expect(page.getByTestId('gf-mode-circle')).toBeVisible()
+  // switching draw modes doesn't throw; Save is disabled until a shape + name exist
+  await page.getByTestId('gf-mode-polygon').click()
+  await expect(page.getByTestId('gf-save')).toBeDisabled()
+  // list is present (empty for a fresh tenant, or shows rows)
+  await expect(page.getByTestId('gf-list').or(page.getByTestId('gf-empty'))).toBeVisible({ timeout: 15_000 })
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)

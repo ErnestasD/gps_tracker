@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DuplicateImeiError, MAX_DOMAINS_PER_TENANT, readPositions, type Db, type Pool } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readPositions, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -11,6 +11,8 @@ import {
   deviceCreateSchema,
   domainCreateSchema,
   deviceImportSchema,
+  geofenceCreateSchema,
+  geofenceUpdateSchema,
   deviceUpdateSchema,
   ruleCreateSchema,
   ruleUpdateSchema,
@@ -58,6 +60,7 @@ const READ_POLICY: Record<string, Role[]> = {
   branding: [...ROLES], // viewers see the theme
   domain: TENANT_ADMINS, // domains are admin config
   audit: TENANT_ADMINS, // audit trail is tenant-wide + sensitive → admins only
+  geofence: [...ROLES],
 }
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
@@ -65,6 +68,7 @@ const WRITE_POLICY: Record<string, Role[]> = {
   device: ACCOUNT_WRITERS,
   rule: ACCOUNT_WRITERS,
   webhook: TENANT_ADMINS,
+  geofence: ACCOUNT_WRITERS,
 }
 function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
   if (scopeClass === 'platform') return ['platform_admin']
@@ -330,6 +334,48 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'delete', path: '/v1/rules/:id', scopeClass: 'account', entity: 'rule', shape: 'item',
       handler: async (c) => {
         const ok = await db.rules.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+
+    // ── geofences (account-scoped, nullable account = tenant-shared, E05-1) ────
+    { method: 'get', path: '/v1/geofences', scopeClass: 'account', entity: 'geofence', shape: 'collection',
+      handler: async (c) => json(c, await db.geofences.list(scopeOf(auth(c)))) },
+    { method: 'get', path: '/v1/geofences/:id', scopeClass: 'account', entity: 'geofence', shape: 'item',
+      handler: async (c) => {
+        const row = await db.geofences.get(scopeOf(auth(c)), id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'post', path: '/v1/geofences', scopeClass: 'account', entity: 'geofence', shape: 'collection',
+      handler: async (c) => {
+        const data = await body(c, geofenceCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        // account users are pinned to their account; a tenant admin may target an account or
+        // null (tenant-shared). A named account must be in scope.
+        const accountId = a.accountId !== undefined ? a.accountId : (data.accountId ?? null)
+        if (accountId !== null && (await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        try {
+          return json(c, await db.geofences.create(scopeOf(a), { userId: a.userId }, { ...data, accountId }), 201)
+        } catch (err) {
+          if (err instanceof GeofenceTooLargeError || err instanceof GeofenceInvalidError) return problem(c, 400, 'Bad Request', err.message)
+          throw err
+        }
+      } },
+    { method: 'patch', path: '/v1/geofences/:id', scopeClass: 'account', entity: 'geofence', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, geofenceUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        try {
+          const row = await db.geofences.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
+          return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+        } catch (err) {
+          if (err instanceof GeofenceTooLargeError || err instanceof GeofenceInvalidError) return problem(c, 400, 'Bad Request', err.message)
+          throw err
+        }
+      } },
+    { method: 'delete', path: '/v1/geofences/:id', scopeClass: 'account', entity: 'geofence', shape: 'item',
+      handler: async (c) => {
+        const ok = await db.geofences.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
 

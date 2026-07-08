@@ -13,6 +13,7 @@ export { type RuleRepo, type RuleCreate, type RuleUpdate } from './repos/rules.j
 export { type WebhookRepo, type WebhookCreate, type WebhookUpdate } from './repos/webhooks.js'
 export { type EventRepo, type EventListOpts } from './repos/events.js'
 export { type TripReadRepo, type TripListOpts } from './repos/trips.js'
+export { type GeofenceRepo, type GeofenceCreate, type GeofenceUpdate, GeofenceInvalidError, GeofenceTooLargeError } from './repos/geofences.js'
 export { readPositions, type PositionsOpts } from './positions.js'
 export type { Pool } from 'pg'
 export { type TenantRepo, type TenantCreate, type TenantUpdate } from './repos/tenants.js'

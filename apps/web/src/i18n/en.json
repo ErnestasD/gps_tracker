@@ -122,6 +122,19 @@
     "trips": "{{n}} trips",
     "distance": "{{km}} km"
   },
+  "geofences": {
+    "title": "Geofences",
+    "polygon": "Polygon",
+    "circle": "Circle",
+    "clear": "Clear",
+    "name": "Name",
+    "color": "Color",
+    "save": "Save",
+    "empty": "No geofences yet — draw one on the map.",
+    "delete": "Delete",
+    "invalid": "Invalid or too-large geofence (max 10,000 km²).",
+    "error": "Could not save geofence."
+  },
   "deviceList": {
     "title": "Devices",
     "search": "Search devices…",

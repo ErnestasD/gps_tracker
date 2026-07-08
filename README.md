@@ -194,6 +194,20 @@ Every new variable must be added to the table here AND match the `.env` contract
   trips stay consistent. A profile-content edit re-syncs on the device's next registry write
   (full profile-edit propagation is a follow-up).
 
+## Geofences (E05-1)
+
+- **CRUD API** `GET/POST/PATCH/DELETE /v1/geofences` — account-scoped, `accountId` nullable
+  (`null` ⇒ tenant-shared, visible to all accounts). The `geom` column is
+  `geography(Polygon,4326)`, so the repo (`packages/db/repos/geofences.ts`) uses
+  parameterized `$queryRaw` PostGIS (`ST_GeomFromGeoJSON`/`ST_AsGeoJSON`), still scope-first.
+  Every geometry is server-validated (`ST_IsValid` → 400 on self-intersection) and
+  area-capped (`ST_Area ≤ 10,000 km²`, §6.3 → 400); GeoJSON is a bound string param, never
+  concatenated. Circles are stored as their polygon approximation (`kind` is UI metadata).
+- **Editor** (`/app/geofences`, nav Automation → Geofences) — draw polygon/circle with
+  **terra-draw** (ADR-021, MIT, MapLibre-native) on the OpenFreeMap map; existing geofences
+  render as coloured fills; name/colour + save; list with delete. i18n ×4.
+- Transition detection + rule evaluation land in E05-2/E05-4.
+
 ## Trips list & detail (E04-4)
 
 - **Web** `/app/trips` (nav Fleet → Trips) — filter trips by device + time range in a table
