@@ -50,6 +50,8 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     tenants: { list: notImpl, get: notImpl, create: notImpl, update: notImpl, remove: notImpl },
     accounts: repo,
     users: repo,
+    devices: { list: notImpl, get: notImpl, getByImei: notImpl, create: notImpl, update: notImpl, retire: notImpl },
+    profiles: { list: notImpl, map: notImpl },
     rules: repo,
     webhooks: repo,
     events: { list: notImpl, get: notImpl },

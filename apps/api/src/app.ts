@@ -40,7 +40,7 @@ export function createApiProm(): ApiProm {
  * suite's meta-test fails.
  */
 export function apiManifest(): ManifestEntry[] {
-  return toManifest(buildRoutes({ db: undefined as never }))
+  return toManifest(buildRoutes({ db: undefined as never, redis: undefined as never }))
 }
 
 export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
@@ -61,10 +61,6 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)
   app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret }))
-
-  // manifest-driven scoped CRUD (E03-2) — mounted from buildRoutes so the exported
-  // manifest and the live routes cannot drift (isolation suite meta-test)
-  mountRoutes(app, buildRoutes({ db: deps.db }))
 
   // §6.6: GET /v1/ws-ticket → single-use ticket for wss://…/v1/stream?ticket=
   // (any authenticated role — live map is viewer-accessible)
@@ -105,6 +101,12 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     c.header('Cache-Control', 'no-store') // tenant-scoped positions: never cacheable
     return c.json({ devices })
   })
+
+  // manifest-driven scoped CRUD (E03-2/E03-3) — registered AFTER the exact routes
+  // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
+  // registration order). Routes come from buildRoutes so the exported manifest and
+  // the live app cannot drift (isolation suite meta-test).
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis }))
 
   return app
 }

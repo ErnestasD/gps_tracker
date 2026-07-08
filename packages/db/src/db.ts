@@ -3,7 +3,9 @@ import { PrismaClient } from '@prisma/client'
 import { buildAuthMethods, type AuthDb } from './auth.js'
 import { createAccountRepo, type AccountRepo } from './repos/accounts.js'
 import { createAuditRepo, type AuditRepo } from './repos/audit.js'
+import { createDeviceRepo, type DeviceRepo } from './repos/devices.js'
 import { createEventRepo, type EventRepo } from './repos/events.js'
+import { createProfileRepo, type ProfileRepo } from './repos/profiles.js'
 import { createRuleRepo, type RuleRepo } from './repos/rules.js'
 import { createTenantRepo, type TenantRepo } from './repos/tenants.js'
 import { createUserRepo, type UserRepo } from './repos/users.js'
@@ -20,6 +22,8 @@ export interface Db {
   tenants: TenantRepo
   accounts: AccountRepo
   users: UserRepo
+  devices: DeviceRepo
+  profiles: ProfileRepo
   rules: RuleRepo
   webhooks: WebhookRepo
   events: EventRepo
@@ -35,6 +39,8 @@ export function createDb(databaseUrl: string): Db {
     tenants: createTenantRepo(prisma, audit),
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),
+    devices: createDeviceRepo(prisma, audit),
+    profiles: createProfileRepo(prisma),
     rules: createRuleRepo(prisma, audit),
     webhooks: createWebhookRepo(prisma, audit),
     events: createEventRepo(prisma),

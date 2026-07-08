@@ -20,7 +20,8 @@
     "sim": "tsx tools/simulator/src/main.ts",
     "sim:seed": "tsx tools/simulator/src/seed.ts",
     "db:seed:user": "tsx packages/db/seed/users.ts",
-    "test:isolation": "pnpm --filter @orbetra/isolation-suite test"
+    "test:isolation": "pnpm --filter @orbetra/isolation-suite test",
+    "db:seed:profiles": "tsx packages/db/seed/profiles.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",

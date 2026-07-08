@@ -35,6 +35,7 @@ function idFor(f: TenantFixture, entity: string): string {
   const map: Record<string, string> = {
     account: f.accounts[0],
     user: f.userId,
+    device: f.deviceId,
     rule: f.ruleId,
     webhook: f.webhookId,
     event: f.eventId,
