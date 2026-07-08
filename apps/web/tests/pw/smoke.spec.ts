@@ -157,6 +157,69 @@ test('settings: theme toggle + password change → re-login with the new passwor
   await page.getByTestId('password-input').fill(NEW_PW)
   await page.getByTestId('login-submit').click()
   await page.waitForURL('**/app/map')
+
+  // restore the original password so later serial tests can still log in
+  await page.goto('/app/settings')
+  await page.getByTestId('current-password').fill(NEW_PW)
+  await page.getByTestId('new-password').fill(E2E_PASSWORD)
+  await page.getByTestId('change-password').click()
+  await expect(page.getByTestId('password-msg')).not.toHaveText(/wrong/i)
+})
+
+test('devices: create in UI → appears → retire → ingest rejects that IMEI (E03-3 AC[2])', async ({ page }) => {
+  const IMEI = '356307042449999'
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/devices')
+  await page.getByTestId('device-imei').fill(IMEI)
+  await page.getByTestId('device-name').fill('E2E Truck')
+  await page.getByTestId('device-create').click()
+  await expect(page.getByTestId(`device-${IMEI}`)).toBeVisible({ timeout: 15_000 })
+
+  // the created device is registered → a simulator on that IMEI is ACCEPTED
+  const accepted = await runToExit(
+    TSX_BIN,
+    ['tools/simulator/src/main.ts', '--scenario', 'liveDrive', '--count', '1', '--hz', '4', '--port', String(INGEST_PORT), '--imei', IMEI],
+    {},
+  )
+  expect(accepted).toBe(0) // exit 0 = not rejected
+
+  // retire → registry teardown → the same IMEI is now REJECTED (0x00 → exit 1)
+  await page.getByTestId(`retire-${IMEI}`).click()
+  await expect(page.getByTestId(`device-${IMEI}`).getByText(/Retired|Išregistruotas|Wycofane|Stillgelegt/)).toBeVisible({ timeout: 15_000 })
+  const rejected = await runToExit(
+    TSX_BIN,
+    ['tools/simulator/src/main.ts', '--scenario', 'liveDrive', '--count', '1', '--hz', '4', '--port', String(INGEST_PORT), '--imei', IMEI],
+    {},
+  )
+  expect(rejected).toBe(1) // exit 1 = rejectedByImei
+})
+
+test('devices: CSV import dry-run shows per-row errors then applies (E03-3 AC[1])', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+  await page.goto('/app/devices')
+
+  // a tenant-wide caller must name the account per row — read it from the create form
+  const accountId = await page.locator('[data-testid="device-account"] option').first().getAttribute('value')
+  expect(accountId).toBeTruthy()
+
+  // one valid (Luhn), one bad-checksum → preview reports 1 create + 1 error
+  const csv = `imei,name,profileKey,accountId\n356307042441013,Good,fmb1xx,${accountId}\n356307042441011,Bad,fmb1xx,${accountId}`
+  await page.getByTestId('import-csv').fill(csv)
+  await page.getByTestId('import-preview').click()
+  await expect(page.getByTestId('import-summary')).toContainText(/1 to create|1 kurti|1 do utworzenia|1 zu erstellen/)
+  await expect(page.getByTestId('import-summary')).toContainText(/Luhn|IMEI/)
+  await page.getByTestId('import-apply').click()
+  await expect(page.getByTestId('import-done')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('device-356307042441013')).toBeVisible()
 })
 
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {

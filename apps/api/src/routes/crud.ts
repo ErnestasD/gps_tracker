@@ -1,11 +1,15 @@
 import type { Context } from 'hono'
+import type { Redis } from 'ioredis'
 
-import type { Db } from '@orbetra/db'
+import { DuplicateImeiError, type Db } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
   accountUpdateSchema,
   canGrantRole,
+  deviceCreateSchema,
+  deviceImportSchema,
+  deviceUpdateSchema,
   ruleCreateSchema,
   ruleUpdateSchema,
   tenantCreateSchema,
@@ -19,10 +23,14 @@ import {
 
 import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
+import { activateDevice, deactivateDevice } from './deviceRegistry.js'
+import { applyImport, dryRun, parseCsv, rowsToImport } from './deviceImport.js'
 import { scopeOf, type RouteDef } from './registry.js'
 
 export interface CrudDeps {
   db: Db
+  /** Device CRUD syncs the ingest/worker Redis registries (E03-3). */
+  redis: Redis
 }
 
 // Per-resource authorization (review HIGH). Reads are broad; writes are restricted;
@@ -32,6 +40,7 @@ const ACCOUNT_WRITERS: Role[] = ['platform_admin', 'tsp_admin', 'account_manager
 const READ_POLICY: Record<string, Role[]> = {
   account: [...ROLES],
   user: TENANT_ADMINS.concat('account_manager'),
+  device: [...ROLES],
   rule: [...ROLES],
   webhook: ACCOUNT_WRITERS,
   event: [...ROLES],
@@ -39,6 +48,7 @@ const READ_POLICY: Record<string, Role[]> = {
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
   user: TENANT_ADMINS,
+  device: ACCOUNT_WRITERS,
   rule: ACCOUNT_WRITERS,
   webhook: TENANT_ADMINS,
 }
@@ -166,6 +176,74 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const ok = await db.users.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+
+    // ── devices (account) — syncs the ingest/worker Redis registries ─────────
+    { method: 'get', path: '/v1/devices', scopeClass: 'account', entity: 'device', shape: 'collection',
+      handler: async (c) => json(c, await db.devices.list(scopeOf(auth(c)))) },
+    { method: 'get', path: '/v1/devices/:id', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const row = await db.devices.get(scopeOf(auth(c)), id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'post', path: '/v1/devices', scopeClass: 'account', entity: 'device', shape: 'collection',
+      handler: async (c) => {
+        const data = await body(c, deviceCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        const accountId = a.accountId !== undefined ? a.accountId : data.accountId
+        if ((await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        // IMEI is GLOBALLY unique — the repo throws DuplicateImeiError on ANY clash
+        // (including another tenant's), translated to 409 here so a cross-tenant clash
+        // is not a 500 and does not reveal the other tenant's row (review HIGH)
+        let device
+        try {
+          device = await db.devices.create(scopeOf(a), { userId: a.userId }, { ...data, accountId })
+        } catch (err) {
+          if (err instanceof DuplicateImeiError) return problem(c, 409, 'Conflict', 'IMEI already registered')
+          throw err
+        }
+        await activateDevice(deps.redis, { id: device.id, imei: device.imei, tenantId: a.tenantId, accountId })
+        return json(c, device, 201)
+      } },
+    { method: 'patch', path: '/v1/devices/:id', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, deviceUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const row = await db.devices.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'delete', path: '/v1/devices/:id', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        // retire = registry teardown THEN DB soft-delete. Registry FIRST so a Redis
+        // failure leaves the device consistently active-in-both (fail-safe: better a
+        // reconcile-retry than a "retired" device that ingest still accepts — review MED)
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        await deactivateDevice(deps.redis, { id: device.id, imei: device.imei }) // ingest rejects next connect (AC[2])
+        const row = await db.devices.retire(scope, { userId: auth(c).userId }, id(c))
+        return json(c, row ?? device)
+      } },
+    { method: 'post', path: '/v1/devices/import/preview', scopeClass: 'account', entity: 'device', shape: 'collection',
+      handler: async (c) => {
+        const parsed = await body(c, deviceImportSchema)
+        if (parsed === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        const profileKeys = new Set((await db.profiles.map()).keys())
+        const rows = rowsToImport(parseCsv(parsed.csv))
+        const result = await dryRun(db, scopeOf(a), rows, profileKeys, a.accountId)
+        return json(c, result)
+      } },
+    { method: 'post', path: '/v1/devices/import', scopeClass: 'account', entity: 'device', shape: 'collection',
+      handler: async (c) => {
+        const parsed = await body(c, deviceImportSchema)
+        if (parsed === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        const profiles = await db.profiles.map()
+        const rows = rowsToImport(parseCsv(parsed.csv))
+        const result = await applyImport(db, deps.redis, scopeOf(a), { userId: a.userId }, rows, profiles, a.accountId)
+        return json(c, result, 201)
       } },
 
     // ── rules (account) ──────────────────────────────────────────────────────

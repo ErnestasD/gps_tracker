@@ -35,6 +35,7 @@ function idFor(f: TenantFixture, entity: string): string {
   const map: Record<string, string> = {
     account: f.accounts[0],
     user: f.userId,
+    device: f.deviceId,
     rule: f.ruleId,
     webhook: f.webhookId,
     event: f.eventId,
@@ -152,7 +153,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     // Hono exposes registered routes; the auth/public + infra routes are exempt
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|stream)(?:\/|$)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|stream)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)
@@ -168,7 +169,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     app.get('/v1/sneaky', (c) => c.json({}))
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|stream)(?:\/|$)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|stream)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)

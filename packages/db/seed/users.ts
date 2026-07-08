@@ -45,13 +45,19 @@ export async function seedUser(opts: SeedUserOpts): Promise<{ tenantId: string; 
       (await prisma.tenant.findFirst({ where: { name: opts.tenantName } })) ??
       (await prisma.tenant.create({ data: { name: opts.tenantName, branding: {} } }))
 
-    let accountId: string | null = null
+    // The named account is created if given (device create form / fixtures need one),
+    // but a TENANT-WIDE role (platform_admin/tsp_admin) keeps accountId null — only
+    // account-scoped roles are pinned to it. (Otherwise a tenant admin's JWT carries
+    // an acc claim and the WS/scope treats them as account-scoped.)
+    let createdAccountId: string | null = null
     if (opts.accountName) {
       const account =
         (await prisma.account.findFirst({ where: { tenantId: tenant.id, name: opts.accountName } })) ??
         (await prisma.account.create({ data: { tenantId: tenant.id, name: opts.accountName, timezone: 'UTC' } }))
-      accountId = account.id
+      createdAccountId = account.id
     }
+    const accountScoped = opts.role === 'account_manager' || opts.role === 'viewer'
+    const userAccountId = accountScoped ? createdAccountId : null
 
     // normalize at write time so login's equality lookup is consistent (login lowercases too)
     const email = opts.email.trim().toLowerCase()
@@ -60,10 +66,10 @@ export async function seedUser(opts: SeedUserOpts): Promise<{ tenantId: string; 
     const passwordHash = await hash(opts.password, { algorithm: 2, ...ARGON2ID_PARAMS })
     const user = await prisma.user.upsert({
       where: { tenantId_email: { tenantId: tenant.id, email } },
-      create: { tenantId: tenant.id, accountId, email, passwordHash, role: opts.role, locale: opts.locale ?? 'en' },
-      update: { passwordHash, role: opts.role, accountId },
+      create: { tenantId: tenant.id, accountId: userAccountId, email, passwordHash, role: opts.role, locale: opts.locale ?? 'en' },
+      update: { passwordHash, role: opts.role, accountId: userAccountId },
     })
-    return { tenantId: tenant.id, accountId, userId: user.id }
+    return { tenantId: tenant.id, accountId: createdAccountId, userId: user.id }
   } finally {
     await prisma.$disconnect()
   }

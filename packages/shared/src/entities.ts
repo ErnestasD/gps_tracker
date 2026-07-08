@@ -27,6 +27,32 @@ export const userUpdateSchema = z
   })
   .partial()
 
+// ── devices ──────────────────────────────────────────────────────────────────
+export const odometerSourceSchema = z.enum(['auto', 'device', 'gps'])
+export const deviceCreateSchema = z.object({
+  accountId: z.string().uuid(),
+  profileId: z.string().uuid(),
+  imei: z.string().regex(/^\d{15}$/, 'IMEI must be 15 digits'),
+  name: z.string().min(1).max(120),
+  plate: z.string().max(32).nullable().optional(),
+  groupName: z.string().max(64).nullable().optional(),
+  odometerSource: odometerSourceSchema.optional(),
+})
+export const deviceUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    plate: z.string().max(32).nullable(),
+    groupName: z.string().max(64).nullable(),
+    profileId: z.string().uuid(),
+    odometerSource: odometerSourceSchema,
+  })
+  .partial()
+/** CSV import body: raw text + whether to apply (else dry-run preview). */
+export const deviceImportSchema = z.object({
+  csv: z.string().min(1).max(2_000_000),
+  apply: z.boolean().optional(),
+})
+
 // ── rules ────────────────────────────────────────────────────────────────────
 // MUST mirror the Prisma RuleKind enum (packages/db/prisma/schema.prisma)
 export const ruleKindSchema = z.enum(['geofence', 'overspeed', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'device_offline'])

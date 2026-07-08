@@ -68,14 +68,18 @@ async function setup(): Promise<void> {
   )
   await Promise.all([waitTcp(INGEST_PORT), waitHttp(`http://127.0.0.1:${API_PORT}/healthz`)])
 
-  // 4a. seed the e2e login user (E03-1) — its tenantId must reach device:tenant
+  // 4a. seed the e2e login user (E03-1) — its tenantId must reach device:tenant.
+  // --account-name gives the tenant an account so the Devices create form (E03-3) has
+  // one to target, and device profiles are seeded so the profile picker is populated.
   const seedUser = await runCapture(
     TSX_BIN,
-    ['packages/db/seed/users.ts', '--email', E2E_EMAIL, '--password', E2E_PASSWORD, '--role', 'tsp_admin', '--tenant-name', 'E2E'],
+    ['packages/db/seed/users.ts', '--email', E2E_EMAIL, '--password', E2E_PASSWORD, '--role', 'tsp_admin', '--tenant-name', 'E2E', '--account-name', 'E2E Fleet'],
     env,
   )
   if (seedUser.code !== 0) throw new Error('user seed failed')
   const { tenantId } = JSON.parse(seedUser.stdout) as { tenantId: string }
+  if ((await runToExit(TSX_BIN, ['packages/db/seed/profiles.ts'], env)) !== 0)
+    throw new Error('profiles seed failed')
 
   // 4b. seed device registry (deviceId = numeric imei) into the login user's tenant
   if ((await runToExit(TSX_BIN, ['tools/simulator/src/seed.ts', '--devices', String(SEEDED_DEVICES), '--imei', BASE_IMEI, '--tenant', tenantId, '--redis-url', state.redisUrl], env)) !== 0)

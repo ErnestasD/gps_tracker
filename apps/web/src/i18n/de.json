@@ -86,5 +86,35 @@
       "wrongCurrent": "Aktuelles Passwort ist falsch.",
       "error": "Passwort konnte nicht geändert werden."
     }
+  },
+  "devices": {
+    "title": "Geräte",
+    "list": "Alle Geräte",
+    "add": "Gerät hinzufügen",
+    "create": "Erstellen",
+    "imei": "IMEI",
+    "name": "Name",
+    "account": "Konto",
+    "profile": "Profil",
+    "status": "Status",
+    "active": "Aktiv",
+    "retired": "Stillgelegt",
+    "retire": "Stilllegen",
+    "empty": "Noch keine Geräte.",
+    "loadError": "Geräte konnten nicht geladen werden.",
+    "createError": "Gerät konnte nicht erstellt werden.",
+    "dupImei": "Diese IMEI ist bereits registriert.",
+    "import": {
+      "title": "Massenimport (CSV)",
+      "hint": "Spalten: imei, name, profileKey, accountId. Die Vorschau prüft jede Zeile vor dem Anwenden.",
+      "preview": "Vorschau",
+      "apply": "Anwenden ({{n}})",
+      "done": "{{n}} Gerät(e) importiert.",
+      "create": "{{n}} zu erstellen",
+      "update": "{{n}} vorhanden",
+      "errors": "{{n}} Fehler",
+      "rowError": "Zeile {{row}} ({{imei}}): {{reason}}"
+    },
+    "retireError": "Gerät {{imei}} konnte nicht stillgelegt werden."
   }
 }

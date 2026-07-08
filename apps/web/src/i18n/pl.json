@@ -86,5 +86,35 @@
       "wrongCurrent": "Obecne hasło jest błędne.",
       "error": "Nie udało się zmienić hasła."
     }
+  },
+  "devices": {
+    "title": "Urządzenia",
+    "list": "Wszystkie urządzenia",
+    "add": "Dodaj urządzenie",
+    "create": "Utwórz",
+    "imei": "IMEI",
+    "name": "Nazwa",
+    "account": "Konto",
+    "profile": "Profil",
+    "status": "Status",
+    "active": "Aktywne",
+    "retired": "Wycofane",
+    "retire": "Wycofaj",
+    "empty": "Brak urządzeń.",
+    "loadError": "Nie udało się wczytać urządzeń.",
+    "createError": "Nie udało się utworzyć urządzenia.",
+    "dupImei": "Ten IMEI jest już zarejestrowany.",
+    "import": {
+      "title": "Import zbiorczy (CSV)",
+      "hint": "Kolumny: imei, name, profileKey, accountId. Podgląd sprawdza każdy wiersz przed zastosowaniem.",
+      "preview": "Podgląd",
+      "apply": "Zastosuj ({{n}})",
+      "done": "Zaimportowano {{n}} urządzeń.",
+      "create": "{{n}} do utworzenia",
+      "update": "{{n}} istniejących",
+      "errors": "{{n}} błędów",
+      "rowError": "Wiersz {{row}} ({{imei}}): {{reason}}"
+    },
+    "retireError": "Nie udało się wycofać urządzenia {{imei}}."
   }
 }
