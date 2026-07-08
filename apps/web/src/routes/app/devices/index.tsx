@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getCurrentUser } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
+import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
   createDevice,
   importApply,
@@ -40,6 +42,8 @@ export function DevicesPage() {
           {t('devices.retireError', { imei: retireError })}
         </p>
       )}
+
+      {getCurrentUser()?.role === 'platform_admin' && <QuarantineSection />}
 
       <CreateDeviceForm
         accounts={accounts.data ?? []}

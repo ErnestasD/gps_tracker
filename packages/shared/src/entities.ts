@@ -87,6 +87,14 @@ export const tenantCreateSchema = z.object({
 })
 export const tenantUpdateSchema = tenantCreateSchema.partial()
 
+// ── quarantine claim (platform) ──────────────────────────────────────────────
+export const quarantineClaimSchema = z.object({
+  tenantId: z.string().uuid(),
+  accountId: z.string().uuid(),
+  profileId: z.string().uuid(),
+  name: z.string().min(1).max(120),
+})
+
 // ── self password change ─────────────────────────────────────────────────────
 export const passwordChangeSchema = z.object({
   currentPassword: z.string().min(1).max(1024),

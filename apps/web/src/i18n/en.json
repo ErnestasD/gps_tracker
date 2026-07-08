@@ -116,5 +116,20 @@
       "rowError": "Row {{row}} ({{imei}}): {{reason}}"
     },
     "retireError": "Could not retire device {{imei}}."
+  },
+  "quarantine": {
+    "title": "Quarantine (unknown devices)",
+    "empty": "No unknown devices waiting.",
+    "imei": "IMEI",
+    "attempts": "Attempts",
+    "claim": "Claim",
+    "claimTitle": "Claim {{imei}}",
+    "tenant": "Tenant",
+    "account": "Account",
+    "profile": "Profile",
+    "name": "Name",
+    "cancel": "Cancel",
+    "dupImei": "That IMEI is already registered.",
+    "claimError": "Could not claim device."
   }
 }

@@ -89,6 +89,14 @@ Every new variable must be added to the table here AND match the `.env` contract
   `POST /v1/devices/import` to apply. Columns: `imei,name,profileKey,accountId`
   (a tenant-wide caller must name the account per row; an account-scoped caller is
   pinned to their own).
+- **Quarantine & claim (E03-4, platform_admin only)**: unknown IMEIs that hit ingest
+  are 0x00-rejected and land in the `quarantine:imei` Redis zset. `GET /v1/quarantine`
+  lists them (with reject counts); `POST /v1/quarantine/:imei/claim`
+  `{tenantId,accountId,profileId,name}` creates the device in the **target** tenant
+  (account validated against it), populates the registry, and drops it from
+  quarantine → the next connect is accepted. `GET /v1/tenants/:id/accounts` feeds the
+  claim dialog's account picker. The Quarantine section on the Devices page renders
+  only for platform_admin.
 
 ## Web app (E02-6)
 

@@ -7,6 +7,8 @@ import {
   E2E_JWT_SECRET,
   E2E_PASSWORD,
   INGEST_PORT,
+  PLATFORM_EMAIL,
+  PLATFORM_PASSWORD,
   SEEDED_DEVICES,
   REPO_ROOT,
   TSX_BIN,
@@ -80,6 +82,9 @@ async function setup(): Promise<void> {
   const { tenantId } = JSON.parse(seedUser.stdout) as { tenantId: string }
   if ((await runToExit(TSX_BIN, ['packages/db/seed/profiles.ts'], env)) !== 0)
     throw new Error('profiles seed failed')
+  // a platform_admin (same tenant) for the E03-4 quarantine flow
+  if ((await runToExit(TSX_BIN, ['packages/db/seed/users.ts', '--email', PLATFORM_EMAIL, '--password', PLATFORM_PASSWORD, '--role', 'platform_admin', '--tenant-name', 'E2E'], env)) !== 0)
+    throw new Error('platform user seed failed')
 
   // 4b. seed device registry (deviceId = numeric imei) into the login user's tenant
   if ((await runToExit(TSX_BIN, ['tools/simulator/src/seed.ts', '--devices', String(SEEDED_DEVICES), '--imei', BASE_IMEI, '--tenant', tenantId, '--redis-url', state.redisUrl], env)) !== 0)

@@ -116,5 +116,20 @@
       "rowError": "Zeile {{row}} ({{imei}}): {{reason}}"
     },
     "retireError": "Gerät {{imei}} konnte nicht stillgelegt werden."
+  },
+  "quarantine": {
+    "title": "Quarantäne (unbekannte Geräte)",
+    "empty": "Keine unbekannten Geräte.",
+    "imei": "IMEI",
+    "attempts": "Versuche",
+    "claim": "Übernehmen",
+    "claimTitle": "{{imei}} übernehmen",
+    "tenant": "Mandant",
+    "account": "Konto",
+    "profile": "Profil",
+    "name": "Name",
+    "cancel": "Abbrechen",
+    "dupImei": "Diese IMEI ist bereits registriert.",
+    "claimError": "Gerät konnte nicht übernommen werden."
   }
 }

@@ -14,6 +14,7 @@ import {
   ruleUpdateSchema,
   tenantCreateSchema,
   tenantUpdateSchema,
+  quarantineClaimSchema,
   userCreateSchema,
   userUpdateSchema,
   webhookCreateSchema,
@@ -25,6 +26,7 @@ import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { activateDevice, deactivateDevice } from './deviceRegistry.js'
 import { applyImport, dryRun, parseCsv, rowsToImport } from './deviceImport.js'
+import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
 
 export interface CrudDeps {
@@ -193,6 +195,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if ((await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        // validate the (global) profile — a bad uuid would else be a P2003 500 (review MED)
+        if ((await db.profiles.get(data.profileId)) === null) return problem(c, 400, 'Bad Request', 'unknown profileId')
         // IMEI is GLOBALLY unique — the repo throws DuplicateImeiError on ANY clash
         // (including another tenant's), translated to 409 here so a cross-tenant clash
         // is not a 500 and does not reveal the other tenant's row (review HIGH)
@@ -344,6 +348,24 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const ok = await db.tenants.remove({ userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+    // accounts of a SPECIFIC tenant (platform) — the claim dialog needs the target
+    // tenant's accounts, which /v1/accounts (caller-scoped) can't give
+    { method: 'get', path: '/v1/tenants/:id/accounts', scopeClass: 'platform', entity: 'tenant', shape: 'item',
+      handler: async (c) => json(c, await db.accounts.list({ tenantId: id(c) })) },
+
+    // ── quarantine (PLATFORM) — unknown-IMEI review + claim (E03-4) ───────────
+    { method: 'get', path: '/v1/quarantine', scopeClass: 'platform', entity: 'quarantine', shape: 'collection',
+      handler: async (c) => json(c, await listQuarantine(deps.redis)) },
+    { method: 'post', path: '/v1/quarantine/:imei/claim', scopeClass: 'platform', entity: 'quarantine', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, quarantineClaimSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const imei = c.req.param('imei') ?? ''
+        if (!/^\d{15}$/.test(imei)) return problem(c, 400, 'Bad Request', 'invalid IMEI')
+        const result = await claimDevice(db, deps.redis, { userId: auth(c).userId }, { ...data, imei })
+        if (!result.ok) return problem(c, result.status, result.status === 409 ? 'Conflict' : 'Bad Request', result.reason)
+        return json(c, result, 201)
       } },
   ]
   // attach the allowed-roles policy uniformly (review HIGH)

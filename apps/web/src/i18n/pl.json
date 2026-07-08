@@ -116,5 +116,20 @@
       "rowError": "Wiersz {{row}} ({{imei}}): {{reason}}"
     },
     "retireError": "Nie udało się wycofać urządzenia {{imei}}."
+  },
+  "quarantine": {
+    "title": "Kwarantanna (nieznane urządzenia)",
+    "empty": "Brak nieznanych urządzeń.",
+    "imei": "IMEI",
+    "attempts": "Próby",
+    "claim": "Przejmij",
+    "claimTitle": "Przejmij {{imei}}",
+    "tenant": "Najemca",
+    "account": "Konto",
+    "profile": "Profil",
+    "name": "Nazwa",
+    "cancel": "Anuluj",
+    "dupImei": "Ten IMEI jest już zarejestrowany.",
+    "claimError": "Nie udało się przejąć urządzenia."
   }
 }
