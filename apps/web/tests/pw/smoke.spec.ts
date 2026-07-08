@@ -267,6 +267,42 @@ test('quarantine: a tenant admin does NOT see the quarantine section (E03-4 AC[2
   await expect(page.getByTestId('quarantine-card')).toHaveCount(0)
 })
 
+test('branding: edit color + name → live preview updates; add domain → TXT instructions (E03-5)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/branding')
+  await expect(page.getByTestId('branding-productName')).toBeVisible()
+
+  // pick a distinctive primary → applyBranding writes it (contrast-adjusted) to
+  // the --accent custom property live, before Save
+  await page.getByTestId('branding-primary').fill('#ff3b30')
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--accent').trim()))
+    .not.toBe('')
+
+  // productName drives the document title live (spec §1)
+  await page.getByTestId('branding-productName').fill('Acme Fleet')
+  await expect.poll(() => page.title()).toBe('Acme Fleet')
+
+  // persist → reload → the saved branding re-applies from GET /v1/tenant/branding
+  await page.getByTestId('branding-save').click()
+  await expect(page.getByTestId('branding-saved')).toBeVisible()
+  await page.reload()
+  await expect(page.getByTestId('branding-productName')).toHaveValue('Acme Fleet')
+
+  // add a custom domain → server returns a TXT token → instructions render
+  await page.getByTestId('domain-input').fill('fleet.acme-e2e.test')
+  await page.getByTestId('domain-add').click()
+  await expect(page.getByTestId('txt-instructions')).toContainText('orbetra-verify=')
+  await expect(page.getByTestId('domain-fleet.acme-e2e.test')).toBeVisible()
+  // unverified until DNS TXT is present (no real DNS in CI) → shows Verify affordance
+  await expect(page.getByTestId('verify-fleet.acme-e2e.test')).toBeVisible()
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)

@@ -1,13 +1,15 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DuplicateImeiError, type Db } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DuplicateImeiError, MAX_DOMAINS_PER_TENANT, type Db } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
   accountUpdateSchema,
+  brandingSchema,
   canGrantRole,
   deviceCreateSchema,
+  domainCreateSchema,
   deviceImportSchema,
   deviceUpdateSchema,
   ruleCreateSchema,
@@ -28,11 +30,14 @@ import { activateDevice, deactivateDevice } from './deviceRegistry.js'
 import { applyImport, dryRun, parseCsv, rowsToImport } from './deviceImport.js'
 import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
+import { expectedTxt, newTxtToken, verifyDomainTxt, type TxtResolver } from './tenantSelf.js'
 
 export interface CrudDeps {
   db: Db
   /** Device CRUD syncs the ingest/worker Redis registries (E03-3). */
   redis: Redis
+  /** DNS TXT resolver for domain verification (E03-5); injectable for tests. */
+  resolveTxt: TxtResolver
 }
 
 // Per-resource authorization (review HIGH). Reads are broad; writes are restricted;
@@ -46,6 +51,8 @@ const READ_POLICY: Record<string, Role[]> = {
   rule: [...ROLES],
   webhook: ACCOUNT_WRITERS,
   event: [...ROLES],
+  branding: [...ROLES], // viewers see the theme
+  domain: TENANT_ADMINS, // domains are admin config
 }
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
@@ -321,6 +328,63 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const row = await db.events.get(scopeOf(auth(c)), id(c))
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+
+    // ── tenant-self branding + domains (E03-5) — tenant from auth, never a param ─
+    { method: 'get', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
+      handler: async (c) => {
+        const tenant = await db.tenants.get(auth(c).tenantId)
+        return json(c, { branding: tenant?.branding ?? {}, name: tenant?.name })
+      } },
+    { method: 'patch', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
+      handler: async (c) => {
+        const data = await body(c, brandingSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        const tenant = await db.tenants.updateBranding({ userId: a.userId }, a.tenantId, data)
+        return json(c, { branding: tenant.branding, name: tenant.name })
+      } },
+    { method: 'get', path: '/v1/tenant/domains', scopeClass: 'tenant', entity: 'domain', shape: 'collection',
+      handler: async (c) => json(c, await db.tenantDomains.list(scopeOf(auth(c)))) },
+    { method: 'get', path: '/v1/tenant/domains/:id', scopeClass: 'tenant', entity: 'domain', shape: 'item',
+      handler: async (c) => {
+        const row = await db.tenantDomains.get(scopeOf(auth(c)), id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'post', path: '/v1/tenant/domains', scopeClass: 'tenant', entity: 'domain', shape: 'collection',
+      handler: async (c) => {
+        const data = await body(c, domainCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        try {
+          const row = await db.tenantDomains.create(scopeOf(a), { userId: a.userId }, data.domain.toLowerCase(), newTxtToken())
+          return json(c, { ...row, txtRecord: expectedTxt(row.txtToken) }, 201)
+        } catch (err) {
+          if (err instanceof DomainLimitError) return problem(c, 409, 'Conflict', `domain limit reached (max ${MAX_DOMAINS_PER_TENANT})`)
+          // (tenantId, domain) unique clash = this tenant already added it
+          return problem(c, 409, 'Conflict', 'domain already added')
+        }
+      } },
+    { method: 'delete', path: '/v1/tenant/domains/:id', scopeClass: 'tenant', entity: 'domain', shape: 'item',
+      handler: async (c) => {
+        const ok = await db.tenantDomains.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+    { method: 'post', path: '/v1/tenant/domains/:id/verify', scopeClass: 'tenant', entity: 'domain', shape: 'item',
+      handler: async (c) => {
+        const a = auth(c)
+        const row = await db.tenantDomains.get(scopeOf(a), id(c))
+        if (row === null) return problem(c, 404, 'Not Found')
+        if (!(await verifyDomainTxt(deps.resolveTxt, row.domain, row.txtToken))) {
+          return problem(c, 400, 'Not Verified', 'TXT record not found — check DNS and try again')
+        }
+        try {
+          return json(c, await db.tenantDomains.setVerified(scopeOf(a), { userId: a.userId }, id(c)))
+        } catch (err) {
+          // another tenant proved ownership of this domain first (partial-unique guard)
+          if (err instanceof DomainConflictError) return problem(c, 409, 'Conflict', 'domain already verified by another tenant')
+          throw err
+        }
       } },
 
     // ── tenants (PLATFORM) ───────────────────────────────────────────────────

@@ -87,6 +87,31 @@ export const tenantCreateSchema = z.object({
 })
 export const tenantUpdateSchema = tenantCreateSchema.partial()
 
+// ── white-label branding (E03-5) ─────────────────────────────────────────────
+/** Hex color — STRICT so a value can't break out of `setProperty('--accent', v)`
+ * into arbitrary CSS (XSS/style injection). */
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a #rrggbb hex color')
+export const brandingSchema = z
+  .object({
+    // https-only URL, rendered as an <img src> (never innerHTML)
+    logoUrl: z.string().url().startsWith('https://').max(2048),
+    primary: hexColor,
+    accent: hexColor,
+    productName: z.string().min(1).max(60),
+    supportEmail: z.string().email().max(320),
+  })
+  .partial()
+export type Branding = z.infer<typeof brandingSchema>
+
+export const domainCreateSchema = z.object({
+  // hostname: labels of a-z0-9-, dots; no scheme/path
+  domain: z
+    .string()
+    .min(3)
+    .max(253)
+    .regex(/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/, 'must be a bare hostname'),
+})
+
 // ── quarantine claim (platform) ──────────────────────────────────────────────
 export const quarantineClaimSchema = z.object({
   tenantId: z.string().uuid(),

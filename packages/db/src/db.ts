@@ -7,6 +7,7 @@ import { createDeviceRepo, type DeviceRepo } from './repos/devices.js'
 import { createEventRepo, type EventRepo } from './repos/events.js'
 import { createProfileRepo, type ProfileRepo } from './repos/profiles.js'
 import { createRuleRepo, type RuleRepo } from './repos/rules.js'
+import { createTenantDomainRepo, type TenantDomainRepo } from './repos/tenantDomains.js'
 import { createTenantRepo, type TenantRepo } from './repos/tenants.js'
 import { createUserRepo, type UserRepo } from './repos/users.js'
 import { createWebhookRepo, type WebhookRepo } from './repos/webhooks.js'
@@ -20,6 +21,7 @@ import { createWebhookRepo, type WebhookRepo } from './repos/webhooks.js'
 export interface Db {
   auth: Omit<AuthDb, '$disconnect'>
   tenants: TenantRepo
+  tenantDomains: TenantDomainRepo
   accounts: AccountRepo
   users: UserRepo
   devices: DeviceRepo
@@ -37,6 +39,7 @@ export function createDb(databaseUrl: string): Db {
   return {
     auth: buildAuthMethods(prisma),
     tenants: createTenantRepo(prisma, audit),
+    tenantDomains: createTenantDomainRepo(prisma, audit),
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),
     devices: createDeviceRepo(prisma, audit),

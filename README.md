@@ -58,7 +58,9 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `REFRESH_TTL` | apps/api | Refresh-token TTL seconds (sliding), default `1209600` (14 d) |
 | `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout (§6.1), defaults `5` / `900` |
 | `COOKIE_SECURE` | apps/api | `0` disables the Secure cookie flag (dev/e2e over http ONLY) |
-| `TRUST_PROXY` | apps/api | `1` = trust X-Forwarded-For for lockout IPs (behind Caddy) |
+| `TRUST_PROXY` | apps/api | `1` = trust X-Forwarded-For for lockout + caddy-ask IPs (behind Caddy) |
+| `ASK_RATE_MAX` / `ASK_RATE_WINDOW_S` | apps/api | Caddy on-demand-TLS ask throttle per source IP (E03-5), defaults `10` / `60` |
+| `ORBETRA_PUBLIC` | infra/Caddyfile (staging/prod) | `true` enables the on-demand-TLS `https://` site block for tenant custom domains |
 | `DATABASE_URL` | apps/api (E03-1+) | required — auth reads users/refresh tokens via @orbetra/db |
 | `VITE_TILES_STYLE_URL` | apps/web (build-time) | MapLibre style URL, default OpenFreeMap `liberty` (`TILES_STYLE_URL` web counterpart, §6.7) |
 | `VITE_API_URL` | apps/web (build-time) | API origin override; unset = same-origin (dev proxy / prod Caddy) |
@@ -97,6 +99,33 @@ Every new variable must be added to the table here AND match the `.env` contract
   quarantine → the next connect is accepted. `GET /v1/tenants/:id/accounts` feeds the
   claim dialog's account picker. The Quarantine section on the Devices page renders
   only for platform_admin.
+
+## White-label branding & custom domains (E03-5)
+
+- **Branding** (Admin → Branding, `tsp_admin`/`platform_admin`): `GET/PATCH
+  /v1/tenant/branding` edits the tenant's own logo/colors/product name/support email
+  (tenant taken from the JWT — **never** a path param). Colors are validated `#rrggbb`
+  server-side (`brandingSchema`) so they can only reach the browser as a CSS custom
+  property, never as arbitrary style; `logoUrl` is https-only. The web app applies them
+  live (`--accent` / `--accent-2`, with a WCAG-AA auto-lighten fallback so a near-black
+  accent can't vanish on the dark surface) and after login.
+- **Custom domains**: `GET/POST/DELETE /v1/tenant/domains` + `POST
+  /v1/tenant/domains/:id/verify`. Adding a domain returns a DNS TXT token
+  (`orbetra-verify=<token>`); the verify route confirms it via a DNS resolver
+  (injectable for tests). A domain is `pending` until verified, `verified` after.
+- **On-demand TLS**: `GET /v1/internal/caddy-ask?domain=` answers Caddy's ask hook —
+  200 only for a **verified** tenant domain, 403 otherwise, throttled **per requested
+  domain** (`ASK_RATE_MAX`/`ASK_RATE_WINDOW_S`; every ask shares Caddy's source IP, so
+  a per-IP bucket would be one global choke point). Caddy's own `interval`/`burst` is the
+  coarse global bound. Set `ORBETRA_PUBLIC=true` to enable the
+  `https://` site block in `infra/Caddyfile`; certs are then minted automatically on the
+  first HTTPS hit to a verified domain. Full 2-domain TLS is exercised on staging (no
+  `:443`/real DNS locally).
+- **Pre-login branding**: public `GET /v1/branding` resolves the tenant by `Host`
+  (`X-Forwarded-Host` behind Caddy) → verified domain → branding, so a custom-domain
+  login page shows the tenant's logo before authentication; unknown host → `{}`.
+- **Branded email**: `renderBrandedEmail(branding, tenantName, content)` renders the
+  tenant's name/logo/accent with all tenant strings HTML-escaped (snapshot-tested).
 
 ## Web app (E02-6)
 

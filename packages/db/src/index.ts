@@ -13,4 +13,5 @@ export { type RuleRepo, type RuleCreate, type RuleUpdate } from './repos/rules.j
 export { type WebhookRepo, type WebhookCreate, type WebhookUpdate } from './repos/webhooks.js'
 export { type EventRepo, type EventListOpts } from './repos/events.js'
 export { type TenantRepo, type TenantCreate, type TenantUpdate } from './repos/tenants.js'
+export { type TenantDomainRepo, DomainConflictError, DomainLimitError, MAX_DOMAINS_PER_TENANT } from './repos/tenantDomains.js'
 export { type AuditRepo } from './repos/audit.js'

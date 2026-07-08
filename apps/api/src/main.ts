@@ -40,6 +40,12 @@ const deps = {
     maxFails: Number(process.env['LOCKOUT_MAX_FAILS'] ?? 5),
     windowS: Number(process.env['LOCKOUT_WINDOW_S'] ?? 900),
   },
+  // Caddy on-demand-TLS ask throttle per source IP (E03-5); DNS TXT verify uses
+  // the real resolver by default (no env — tests inject a mock).
+  askRateLimit: {
+    max: Number(process.env['ASK_RATE_MAX'] ?? 10),
+    windowS: Number(process.env['ASK_RATE_WINDOW_S'] ?? 60),
+  },
   // Secure cookies DEFAULT ON — only an explicit dev opt-out disables them
   // (a prod box with NODE_ENV unset must still ship Secure)
   secureCookies: process.env['COOKIE_SECURE'] !== '0',
