@@ -49,7 +49,7 @@ const SECTIONS: NavSection[] = [
       { key: 'shell.history', icon: BarChart3, to: '/app/playback' },
     ],
   },
-  { key: 'shell.automation', items: [{ key: 'shell.geofences', icon: Hexagon }, { key: 'shell.rules', icon: Settings2 }] },
+  { key: 'shell.automation', items: [{ key: 'shell.geofences', icon: Hexagon, to: '/app/geofences' }, { key: 'shell.rules', icon: Settings2 }] },
   { key: 'shell.ops', items: [{ key: 'shell.commands', icon: TerminalSquare }] },
   {
     key: 'shell.admin',

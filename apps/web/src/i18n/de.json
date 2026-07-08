@@ -122,6 +122,19 @@
     "trips": "{{n}} Fahrten",
     "distance": "{{km}} km"
   },
+  "geofences": {
+    "title": "Geozonen",
+    "polygon": "Polygon",
+    "circle": "Kreis",
+    "clear": "Löschen",
+    "name": "Name",
+    "color": "Farbe",
+    "save": "Speichern",
+    "empty": "Noch keine Geozonen — auf der Karte zeichnen.",
+    "delete": "Entfernen",
+    "invalid": "Ungültige oder zu große Geozone (max. 10.000 km²).",
+    "error": "Geozone konnte nicht gespeichert werden."
+  },
   "deviceList": {
     "title": "Geräte",
     "search": "Geräte suchen…",

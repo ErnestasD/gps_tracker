@@ -122,6 +122,19 @@
     "trips": "{{n}} kelionės",
     "distance": "{{km}} km"
   },
+  "geofences": {
+    "title": "Geozonos",
+    "polygon": "Poligonas",
+    "circle": "Apskritimas",
+    "clear": "Išvalyti",
+    "name": "Pavadinimas",
+    "color": "Spalva",
+    "save": "Išsaugoti",
+    "empty": "Geozonų dar nėra — nubraižykite žemėlapyje.",
+    "delete": "Šalinti",
+    "invalid": "Netinkama arba per didelė geozona (maks. 10 000 km²).",
+    "error": "Nepavyko išsaugoti geozonos."
+  },
   "deviceList": {
     "title": "Įrenginiai",
     "search": "Ieškoti įrenginių…",

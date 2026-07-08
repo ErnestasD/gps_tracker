@@ -14,6 +14,7 @@ import { AuditPage } from '@/routes/app/audit'
 import { BrandingPage } from '@/routes/app/branding'
 import { PlaybackPage } from '@/routes/app/playback'
 import { TripsPage } from '@/routes/app/trips'
+import { GeofencesPage } from '@/routes/app/geofences'
 import { DevicesPage } from '@/routes/app/devices/index'
 import { SettingsPage } from '@/routes/app/settings'
 
@@ -94,6 +95,12 @@ const tripsRoute = createRoute({
   component: TripsPage,
 })
 
+const geofencesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/geofences',
+  component: GeofencesPage,
+})
+
 const auditRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/audit',
@@ -109,7 +116,7 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  appRoute.addChildren([mapRoute, devicesRoute, tripsRoute, playbackRoute, brandingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([mapRoute, devicesRoute, tripsRoute, playbackRoute, geofencesRoute, brandingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

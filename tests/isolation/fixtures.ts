@@ -25,6 +25,9 @@ export interface TenantFixture {
   domainId: string
   auditId: string
   tripId: string
+  geofenceId: string
+  geofenceA2Id: string // an A2-owned geofence (cross-account tests)
+  geofenceSharedId: string // a tenant-shared (accountId null) geofence
   webhookId: string
   userId: string // an account-scoped (A1) user
   amUserId: string // the account_manager's OWN user id (self-escalation test)
@@ -58,6 +61,7 @@ async function seedTenant(
   db: Db,
   poolInsertEvent: (t: string, a: string, dev: string) => Promise<string>,
   poolInsertTrip: (t: string, a: string, dev: string) => Promise<string>,
+  poolInsertGeofence: (t: string, a: string | null) => Promise<string>,
   name: string,
   profileId: string,
   imei: string,
@@ -80,6 +84,9 @@ async function seedTenant(
   const vw = await db.users.create(scope, actor, { email: `${name}-vw@x.test`, passwordHash: pwHash, role: 'viewer', accountId: a1.id })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
   const tripId = await poolInsertTrip(tenant.id, a1.id, device.id.toString())
+  const geofenceId = await poolInsertGeofence(tenant.id, a1.id)
+  const geofenceA2Id = await poolInsertGeofence(tenant.id, a2.id) // for cross-account checks
+  const geofenceSharedId = await poolInsertGeofence(tenant.id, null) // tenant-shared
   // newest audit row from all the seeding above — a real id for the item-route tests
   const auditId = String((await db.audit.list(scope, { take: 1 }))[0]!.id)
   return {
@@ -91,6 +98,9 @@ async function seedTenant(
     domainId: domain.id,
     auditId,
     tripId,
+    geofenceId,
+    geofenceA2Id,
+    geofenceSharedId,
     webhookId: webhook.id,
     userId: am.id,
     amUserId: am.id,
@@ -143,6 +153,15 @@ export async function setup(): Promise<Fixtures> {
     )
     return String((r.rows[0] as { id: string | number }).id)
   }
+  // an ACCOUNT-scoped geofence (E05-1) for the /v1/geofences/:id cross-account/tenant checks
+  const insertGeofence = async (tenantId: string, accountId: string | null): Promise<string> => {
+    const geojson = JSON.stringify({ type: 'Polygon', coordinates: [[[25.27, 54.68], [25.28, 54.68], [25.28, 54.69], [25.27, 54.69], [25.27, 54.68]]] })
+    const r = await pool.query(
+      `INSERT INTO geofences (id,"tenantId","accountId",name,kind,geom) VALUES (gen_random_uuid(),$1,$2,'gf','polygon',ST_GeomFromGeoJSON($3)::geography) RETURNING id`,
+      [tenantId, accountId, geojson],
+    )
+    return (r.rows[0] as { id: string }).id
+  }
 
   const app = createApp({
     redis,
@@ -163,8 +182,8 @@ export async function setup(): Promise<Fixtures> {
 
   const profileIds = await seedProfiles(databaseUrl)
   const profileId = profileIds['fmb1xx']!
-  const t1 = await seedTenant(db, insertEvent, insertTrip, 'T1', profileId, '356307042440000')
-  const t2 = await seedTenant(db, insertEvent, insertTrip, 'T2', profileId, '356307042440001')
+  const t1 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, 'T1', profileId, '356307042440000')
+  const t2 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, 'T2', profileId, '356307042440001')
 
   return {
     baseUrl: `http://127.0.0.1:${port}`,

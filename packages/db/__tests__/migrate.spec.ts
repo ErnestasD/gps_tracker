@@ -21,6 +21,7 @@ beforeAll(async () => {
     .withEnvironment({ POSTGRES_PASSWORD: 'test', POSTGRES_DB: 'orbetra' })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+    .withStartupTimeout(240_000)
     .start()
   url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/orbetra`
 }, 240_000)

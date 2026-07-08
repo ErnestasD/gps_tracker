@@ -29,6 +29,7 @@ beforeAll(async () => {
     .withEnvironment({ POSTGRES_PASSWORD: 'test', POSTGRES_DB: 'r8two' })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+    .withStartupTimeout(240_000)
     .start()
   const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/r8two`
   await migrate(url)
