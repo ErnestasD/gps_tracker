@@ -24,6 +24,10 @@ export interface TenantRepo {
   create(actor: Actor, data: TenantCreate): Promise<Tenant>
   update(actor: Actor, id: string, data: TenantUpdate): Promise<Tenant | null>
   remove(actor: Actor, id: string): Promise<boolean>
+  /** Tenant-self branding update (E03-5): the caller passes their OWN tenantId
+   * (from auth), and ONLY the branding jsonb is writable — not name (tenant admins
+   * brand themselves; renaming a tenant stays platform-only). */
+  updateBranding(actor: Actor, tenantId: string, branding: unknown): Promise<Tenant>
 }
 
 export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): TenantRepo {
@@ -56,6 +60,12 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       await prisma.tenant.delete({ where: { id } })
       await audit.record({ tenantId: id }, actor, { action: 'delete', entity: 'tenant', entityId: id, before })
       return true
+    },
+    updateBranding: async (actor, tenantId, branding) => {
+      const before = await prisma.tenant.findUnique({ where: { id: tenantId } })
+      const row = await prisma.tenant.update({ where: { id: tenantId }, data: { branding: branding as never } })
+      await audit.record({ tenantId }, actor, { action: 'update', entity: 'branding', entityId: tenantId, before, after: row })
+      return row
     },
   }
 }

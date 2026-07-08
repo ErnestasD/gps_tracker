@@ -36,6 +36,7 @@ function idFor(f: TenantFixture, entity: string): string {
     account: f.accounts[0],
     user: f.userId,
     device: f.deviceId,
+    domain: f.domainId,
     rule: f.ruleId,
     webhook: f.webhookId,
     event: f.eventId,
@@ -91,7 +92,8 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
   })
 
   it('positive control: T1 admin CAN reach its own resources (proves 404s are scope, not breakage)', async () => {
-    for (const m of fx.manifest.filter((x) => x.shape === 'item' && x.scopeClass !== 'platform')) {
+    // GET item routes only — action routes (POST /verify, DELETE) aren't GET-testable
+    for (const m of fx.manifest.filter((x) => x.shape === 'item' && x.method === 'get' && x.scopeClass !== 'platform')) {
       const res = await req(itemPath(m.path, idFor(fx.t1, m.entity)), fx.t1.tokenTenant)
       expect(res.status, `own ${m.path}`).toBe(200)
     }
@@ -157,7 +159,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     // Hono exposes registered routes; the auth/public + infra routes are exempt
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|stream)(?:\/|$)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|stream)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)
@@ -173,7 +175,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     app.get('/v1/sneaky', (c) => c.json({}))
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|stream)(?:\/|$)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|stream)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)

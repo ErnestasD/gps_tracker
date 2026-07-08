@@ -6,8 +6,10 @@ import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
 
 import { createAuthRoutes } from './auth/login.js'
 import { authMiddleware, type AuthEnv } from './auth/middleware.js'
+import { createPublicRoutes } from './routes/caddyAsk.js'
 import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
+import { defaultTxtResolver, type TxtResolver } from './routes/tenantSelf.js'
 import { issueTicket, type WsDeps } from './ws.js'
 
 export interface ApiDeps extends WsDeps {
@@ -20,6 +22,10 @@ export interface ApiDeps extends WsDeps {
   trustProxy: boolean
   /** Remote socket address resolver (Node server adapter specific; tests inject). */
   getRemoteAddr?: (c: unknown) => string
+  /** DNS TXT resolver for domain verification (E03-5); default node:dns. */
+  resolveTxt?: TxtResolver
+  /** Caddy-ask rate limit (E03-5); default 10/min per IP. */
+  askRateLimit?: { max: number; windowS: number }
 }
 
 export interface ApiProm {
@@ -40,7 +46,7 @@ export function createApiProm(): ApiProm {
  * suite's meta-test fails.
  */
 export function apiManifest(): ManifestEntry[] {
-  return toManifest(buildRoutes({ db: undefined as never, redis: undefined as never }))
+  return toManifest(buildRoutes({ db: undefined as never, redis: undefined as never, resolveTxt: undefined as never }))
 }
 
 export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
@@ -55,8 +61,21 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     app.get('/metrics', async (c) => c.text(await prom.registry.metrics()))
   }
 
+  const getRemoteAddr = deps.getRemoteAddr ?? (() => '0.0.0.0')
+
   // §6.6 auth routes (login/refresh/logout public; /me + /password guard themselves)
-  app.route('/v1/auth', createAuthRoutes({ ...deps, db: deps.db.auth }, deps.getRemoteAddr ?? (() => '0.0.0.0')))
+  app.route('/v1/auth', createAuthRoutes({ ...deps, db: deps.db.auth }, getRemoteAddr))
+
+  // PUBLIC white-label routes (E03-5) — MUST be registered before the /v1/* auth
+  // middleware (Caddy + pre-login browsers have no bearer). Manifest-exempt.
+  app.route(
+    '/',
+    createPublicRoutes({
+      db: deps.db,
+      redis: deps.redis,
+      askRateLimit: deps.askRateLimit ?? { max: 10, windowS: 60 },
+    }),
+  )
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)
@@ -114,7 +133,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
-  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis }))
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver }))
 
   return app
 }

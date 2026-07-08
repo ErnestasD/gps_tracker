@@ -7,17 +7,19 @@ import {
   Hexagon,
   LogOut,
   Map as MapIcon,
+  Palette,
   Radio,
   Settings,
   Settings2,
   TerminalSquare,
 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { logout as authLogout } from '@/lib/auth'
+import { applyBranding, getBranding } from '@/lib/branding'
 import { liveStore } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
 
@@ -46,13 +48,26 @@ const SECTIONS: NavSection[] = [
   },
   { key: 'shell.automation', items: [{ key: 'shell.geofences', icon: Hexagon }, { key: 'shell.rules', icon: Settings2 }] },
   { key: 'shell.ops', items: [{ key: 'shell.commands', icon: TerminalSquare }] },
-  { key: 'shell.admin', items: [{ key: 'shell.settings', icon: Settings, to: '/app/settings' }] },
+  {
+    key: 'shell.admin',
+    items: [
+      { key: 'shell.branding', icon: Palette, to: '/app/branding' },
+      { key: 'shell.settings', icon: Settings, to: '/app/settings' },
+    ],
+  },
 ]
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
+
+  // apply the tenant's white-label theme once authenticated (E03-5)
+  useEffect(() => {
+    getBranding()
+      .then((b) => applyBranding(b.branding))
+      .catch(() => undefined)
+  }, [])
 
   const logout = () => {
     void (async () => {

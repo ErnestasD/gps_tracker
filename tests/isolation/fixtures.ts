@@ -22,6 +22,7 @@ export interface TenantFixture {
   ruleId: string
   ruleA2Id: string // a rule owned by A2 (for account cross-account tests)
   deviceId: string
+  domainId: string
   webhookId: string
   userId: string // an account-scoped (A1) user
   amUserId: string // the account_manager's OWN user id (self-escalation test)
@@ -67,6 +68,7 @@ async function seedTenant(
   // a rule under A2 too, so account-scope tests have an out-of-account target
   const ruleA2 = await db.rules.create(scope, actor, { accountId: a2.id, kind: 'overspeed', name: 'r2' })
   const device = await db.devices.create(scope, actor, { accountId: a1.id, profileId, imei, name: 'dev' })
+  const domain = await db.tenantDomains.create(scope, actor, `${name.toLowerCase()}.example.test`, 'tok')
   const webhook = await db.webhooks.create(scope, actor, { accountId: a1.id, url: 'https://x.test/h', secret: 'secret-secret-16' })
   const pwHash = await hashPassword('irrelevant-not-logging-in')
   const platform = await db.users.create(scope, actor, { email: `${name}-pa@x.test`, passwordHash: pwHash, role: 'platform_admin', accountId: null })
@@ -80,6 +82,7 @@ async function seedTenant(
     ruleId: rule.id,
     ruleA2Id: ruleA2.id,
     deviceId: device.id.toString(),
+    domainId: domain.id,
     webhookId: webhook.id,
     userId: am.id,
     amUserId: am.id,
