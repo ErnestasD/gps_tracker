@@ -76,8 +76,40 @@
     "loadMore": "Rodyti daugiau",
     "allEntities": "Visi objektai",
     "allActions": "Visi veiksmai",
-    "e": { "account": "Paskyra", "user": "Naudotojas", "device": "Įrenginys", "rule": "Taisyklė", "webhook": "Webhook", "domain": "Domenas", "branding": "Prekės ženklas", "tenant": "Nuomininkas" },
-    "a": { "create": "Sukurta", "update": "Atnaujinta", "delete": "Ištrinta" }
+    "e": {
+      "account": "Paskyra",
+      "user": "Naudotojas",
+      "device": "Įrenginys",
+      "rule": "Taisyklė",
+      "webhook": "Webhook",
+      "domain": "Domenas",
+      "branding": "Prekės ženklas",
+      "tenant": "Nuomininkas"
+    },
+    "a": {
+      "create": "Sukurta",
+      "update": "Atnaujinta",
+      "delete": "Ištrinta"
+    }
+  },
+  "trips": {
+    "title": "Kelionės",
+    "device": "Įrenginys",
+    "allDevices": "Visi įrenginiai",
+    "from": "Nuo",
+    "to": "Iki",
+    "loading": "Kraunamos kelionės…",
+    "empty": "Šiame intervale kelionių nėra.",
+    "pick": "Pasirinkite kelionę, kad matytumėte maršrutą.",
+    "start": "Pradžia",
+    "duration": "Trukmė",
+    "distance": "Atstumas",
+    "maxSpeed": "Maks. greitis",
+    "idle": "Rida stovint",
+    "ongoing": "Vyksta",
+    "odo": "odo",
+    "gps": "gps",
+    "error": "Nepavyko įkelti kelionių."
   },
   "playback": {
     "title": "Istorijos peržiaura",

@@ -13,6 +13,7 @@ import { MapPage } from '@/routes/app/map'
 import { AuditPage } from '@/routes/app/audit'
 import { BrandingPage } from '@/routes/app/branding'
 import { PlaybackPage } from '@/routes/app/playback'
+import { TripsPage } from '@/routes/app/trips'
 import { DevicesPage } from '@/routes/app/devices/index'
 import { SettingsPage } from '@/routes/app/settings'
 
@@ -87,6 +88,12 @@ const playbackRoute = createRoute({
   component: PlaybackPage,
 })
 
+const tripsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/trips',
+  component: TripsPage,
+})
+
 const auditRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/audit',
@@ -102,7 +109,7 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  appRoute.addChildren([mapRoute, devicesRoute, playbackRoute, brandingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([mapRoute, devicesRoute, tripsRoute, playbackRoute, brandingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

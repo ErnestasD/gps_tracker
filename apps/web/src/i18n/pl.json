@@ -76,8 +76,40 @@
     "loadMore": "Wczytaj więcej",
     "allEntities": "Wszystkie obiekty",
     "allActions": "Wszystkie akcje",
-    "e": { "account": "Konto", "user": "Użytkownik", "device": "Urządzenie", "rule": "Reguła", "webhook": "Webhook", "domain": "Domena", "branding": "Marka", "tenant": "Najemca" },
-    "a": { "create": "Utworzono", "update": "Zaktualizowano", "delete": "Usunięto" }
+    "e": {
+      "account": "Konto",
+      "user": "Użytkownik",
+      "device": "Urządzenie",
+      "rule": "Reguła",
+      "webhook": "Webhook",
+      "domain": "Domena",
+      "branding": "Marka",
+      "tenant": "Najemca"
+    },
+    "a": {
+      "create": "Utworzono",
+      "update": "Zaktualizowano",
+      "delete": "Usunięto"
+    }
+  },
+  "trips": {
+    "title": "Trasy",
+    "device": "Urządzenie",
+    "allDevices": "Wszystkie urządzenia",
+    "from": "Od",
+    "to": "Do",
+    "loading": "Ładowanie tras…",
+    "empty": "Brak tras w tym zakresie.",
+    "pick": "Wybierz trasę, aby zobaczyć jej przebieg.",
+    "start": "Początek",
+    "duration": "Czas trwania",
+    "distance": "Dystans",
+    "maxSpeed": "Maks. prędkość",
+    "idle": "Postój",
+    "ongoing": "W toku",
+    "odo": "odo",
+    "gps": "gps",
+    "error": "Nie udało się wczytać tras."
   },
   "playback": {
     "title": "Odtwarzanie historii",

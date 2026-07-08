@@ -20,10 +20,10 @@ export function historyQuery(q: HistoryQuery): string {
 }
 
 export const listPositions = (deviceId: string, q: HistoryQuery = {}) =>
-  getJson<PositionView[]>(`/v1/devices/${deviceId}/positions${historyQuery(q)}`)
+  getJson<PositionView[]>(`/v1/devices/${encodeURIComponent(deviceId)}/positions${historyQuery(q)}`)
 
 export const listDeviceTrips = (deviceId: string, q: HistoryQuery = {}) =>
-  getJson<TripView[]>(`/v1/devices/${deviceId}/trips${historyQuery(q)}`)
+  getJson<TripView[]>(`/v1/devices/${encodeURIComponent(deviceId)}/trips${historyQuery(q)}`)
 
 /** The default range for the playback page: the last 24 h, as datetime-local values. */
 export function defaultRange(now: number): { from: string; to: string } {
