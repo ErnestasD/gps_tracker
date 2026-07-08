@@ -127,6 +127,29 @@ Every new variable must be added to the table here AND match the `.env` contract
 - **Branded email**: `renderBrandedEmail(branding, tenantName, content)` renders the
   tenant's name/logo/accent with all tenant strings HTML-escaped (snapshot-tested).
 
+## Trips (E04-1)
+
+- **Trip state machine** (`apps/worker/src/trip/engine.ts`, §6.4) — a pure, deterministic
+  engine driven by record `fixTime` (never wall-clock, so replays are stable). It consumes
+  **fix_valid** records only (the I5 seam `motionRecords` filters invalid fixes upstream, so
+  an invalid fix can never move trip distance) and emits `open`/`close` events.
+  - PARKED→MOVING: ignition on AND (movement OR speed > `moveSpeedKmh`) sustained
+    `movingSustainS` **or** `movingDisplaceM` of travel; the trip opens retroactively from the
+    candidate start. MOVING→PARKED: ignition off `parkedIgnitionOffS` (asset/`noIgnition`
+    profile: slow + small displacement `parkedStopS`). Idle accrues when ignition-on and
+    crawling for `idleSustainS`.
+  - Distance prefers the device odometer when present and monotonic for the whole trip
+    (`distanceSource='odometer'`), else haversine over fix_valid points (`'gps'`).
+  - E04-1 uses `DEFAULT_THRESHOLDS` for every device; per-device `presence_rules` selection
+    (and asset/no-ignition trackers) wires up in E04-5.
+- **Persistence** (`apps/worker/src/trip/{writer,persister}.ts`) — the worker resolves each
+  device's tenant/account from the Redis registry (`device:tenant`/`device:account`) and
+  writes `trips` rows (`open` on start, `closed` on stop; close is guarded on `status='open'`
+  so a replay is a no-op). A trip is never written with a guessed tenant. Metrics:
+  `trips_opened_total`, `trips_closed_total`.
+- Crash/late-batch reconciliation (out-of-order or replayed batches, orphaned `open` rows)
+  is E04-2 `trip-recompute`. Real-drive ±5 % distance validation is the W4 exit (post-hardware).
+
 ## Audit log (E03-6)
 
 - Every scoped mutation already writes one `audit_log` row (who/action/entity/entityId/

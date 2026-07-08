@@ -9,6 +9,7 @@ import { LiveState } from './liveState.js'
 import { MotionFeed } from './motion.js'
 import { startWorkerProm } from './prom.js'
 import { ShardLeaser } from './shards.js'
+import { TripPersister } from './trip/persister.js'
 
 // Env contract per PROJECT_PLAN §6.7.
 const redisUrl = process.env['REDIS_URL'] ?? 'redis://127.0.0.1:6379'
@@ -39,7 +40,8 @@ async function main(): Promise<void> {
   // dedicated connection: scrape XLENs must not queue behind consumers' blocking reads
   const prom = startWorkerProm(redis.duplicate(), Number(process.env['PROMETHEUS_PORT'] ?? 9102))
   const liveState = new LiveState(redis)
-  const motionFeed = new MotionFeed() // I5 seam (E02-7): trip/geofence stubs until E04-1/E05-x
+  const motionFeed = new MotionFeed() // I5 seam (E02-7): trip engine (E04-1) + geofence stub (E05-x)
+  const tripPersister = new TripPersister(pool, redis) // persists trip open/close events
   const consumerConns: Redis[] = []
   const consumers = [...shards].map((s) => {
     // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued
@@ -65,9 +67,18 @@ async function main(): Promise<void> {
           console.error('liveState', err)
         }
         try {
-          motionFeed.feed(records) // I5-filtered inside; presence path above is NOT
+          const tripEvents = motionFeed.feed(records) // I5-filtered inside; presence path above is NOT
+          if (tripEvents.length > 0) {
+            const { opened, closed } = await tripPersister.apply(tripEvents)
+            prom.tripsOpened.inc(opened)
+            prom.tripsClosed.inc(closed)
+          }
         } catch (err) {
-          console.error('motionFeed', err)
+          // trips are advisory on the stream path — positions are already durable (I1/I3)
+          // and E04-2 recompute rebuilds trips authoritatively from them. Never stall the
+          // shard for a trip write; surface the drop via a metric instead of silence.
+          prom.tripPersistErrors.inc()
+          console.error('tripPersist', err)
         }
       },
     })

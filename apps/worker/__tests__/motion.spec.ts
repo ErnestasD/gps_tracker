@@ -1,7 +1,7 @@
 import type { NormalizedRecord } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { GeofenceQueueStub, MotionFeed, TripDistanceStub, haversineM, motionRecords } from '../src/motion.js'
+import { GeofenceQueueStub, MotionFeed, haversineM, motionRecords } from '../src/motion.js'
 
 const T0 = 1_751_600_000_000
 
@@ -43,28 +43,7 @@ describe('E02-7 I5 seam (invalid fixes never reach motion consumers)', () => {
     expect(batch).toHaveLength(4) // original batch untouched — presence path still sees all
   })
 
-  it('AC[1]a: trip-distance accumulator is identical with and without invalid fixes — even teleporting ones', () => {
-    const validOnly = [
-      rec(42n, T0, 54.68, 25.27, true),
-      rec(42n, T0 + 1_000, 54.681, 25.272, true),
-      rec(42n, T0 + 3_000, 54.682, 25.274, true),
-    ]
-    // same drive, but with invalid fixes interleaved: one §3.4-style (repeats last
-    // valid coords) and one adversarial teleport (garbage coords while no fix)
-    const withInvalid = [
-      validOnly[0]!,
-      validOnly[1]!,
-      rec(42n, T0 + 1_500, 54.681, 25.272, false),
-      rec(42n, T0 + 2_000, 0, 0, false), // teleport to null island
-      validOnly[2]!,
-    ]
-    const a = new MotionFeed()
-    const b = new MotionFeed()
-    a.feed(validOnly)
-    b.feed(withInvalid)
-    expect(b.tripDistance.totalM.get('42')).toBe(a.tripDistance.totalM.get('42'))
-    expect(a.tripDistance.totalM.get('42')).toBeGreaterThan(0)
-  })
+  // (trip-distance I5 invariance now lives in trip-engine.spec against the real engine)
 
   it('AC[1]b: geofence input queue never contains a fixValid=false record', () => {
     const feed = new MotionFeed()
@@ -78,23 +57,11 @@ describe('E02-7 I5 seam (invalid fixes never reach motion consumers)', () => {
     expect(feed.geofenceQueue.queue.every((r) => r.fixValid)).toBe(true)
   })
 
-  it('an all-invalid batch mutates neither consumer (buffered no-fix stretch)', () => {
+  it('an all-invalid batch feeds no motion consumer (buffered no-fix stretch)', () => {
     const feed = new MotionFeed()
-    feed.feed([rec(42n, T0, 54.68, 25.27, false), rec(42n, T0 + 1_000, 54.68, 25.27, false)])
-    expect(feed.tripDistance.totalM.size).toBe(0)
+    const events = feed.feed([rec(42n, T0, 54.68, 25.27, false), rec(42n, T0 + 1_000, 54.68, 25.27, false)])
+    expect(events).toHaveLength(0) // no trip events emitted
     expect(feed.geofenceQueue.queue).toHaveLength(0)
-  })
-
-  it('distance accumulates per device independently', () => {
-    const trips = new TripDistanceStub()
-    trips.feed([
-      rec(1n, T0, 54.0, 25.0, true),
-      rec(2n, T0, 55.0, 26.0, true),
-      rec(1n, T0 + 1_000, 54.001, 25.0, true),
-      rec(2n, T0 + 1_000, 55.002, 26.0, true),
-    ])
-    expect(trips.totalM.get('1')).toBeCloseTo(haversineM(54.0, 25.0, 54.001, 25.0), 6)
-    expect(trips.totalM.get('2')).toBeCloseTo(haversineM(55.0, 26.0, 55.002, 26.0), 6)
   })
 
   it('haversine sanity: 0.001° lat ≈ 111 m', () => {
