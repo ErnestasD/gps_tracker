@@ -38,6 +38,7 @@ function idFor(f: TenantFixture, entity: string): string {
     device: f.deviceId,
     domain: f.domainId,
     audit: f.auditId,
+    trip: f.tripId,
     rule: f.ruleId,
     webhook: f.webhookId,
     event: f.eventId,

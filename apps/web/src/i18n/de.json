@@ -79,6 +79,17 @@
     "e": { "account": "Konto", "user": "Benutzer", "device": "Gerät", "rule": "Regel", "webhook": "Webhook", "domain": "Domain", "branding": "Branding", "tenant": "Mandant" },
     "a": { "create": "Erstellt", "update": "Aktualisiert", "delete": "Gelöscht" }
   },
+  "playback": {
+    "title": "Verlauf-Wiedergabe",
+    "device": "Gerät",
+    "from": "Von",
+    "to": "Bis",
+    "loading": "Verlauf wird geladen…",
+    "empty": "Keine Positionen in diesem Zeitraum.",
+    "samples": "{{n}} Punkte",
+    "trips": "{{n}} Fahrten",
+    "distance": "{{km}} km"
+  },
   "deviceList": {
     "title": "Geräte",
     "search": "Geräte suchen…",

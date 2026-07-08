@@ -3,7 +3,7 @@ import { serve } from '@hono/node-server'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import { Redis } from 'ioredis'
 
-import { createDb } from '@orbetra/db'
+import { createDb, createPool } from '@orbetra/db'
 
 import { createApiProm, createApp } from './app.js'
 import { attachWsGateway } from './ws.js'
@@ -26,12 +26,14 @@ if (!databaseUrl) {
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
 const redisSub = redis.duplicate()
 const db = createDb(databaseUrl)
+const pool = createPool(databaseUrl) // raw-SQL positions history reads (E04-3)
 const prom = createApiProm()
 
 const deps = {
   redis,
   redisSub,
   db,
+  pool,
   jwtSecret,
   jwtTtlS: Number(process.env['JWT_TTL'] ?? 900),
   refreshTtlS: Number(process.env['REFRESH_TTL'] ?? 1_209_600),
@@ -65,6 +67,7 @@ process.on('SIGTERM', () => {
     void redis
       .quit()
       .then(() => redisSub.quit())
+      .then(() => pool.end())
       .then(() => db.$disconnect())
       .then(() => process.exit(0))
   })

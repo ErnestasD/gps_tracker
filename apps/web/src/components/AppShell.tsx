@@ -46,7 +46,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { key: 'shell.devices', icon: Car, to: '/app/devices' },
       { key: 'shell.trips', icon: Radio },
-      { key: 'shell.history', icon: BarChart3 },
+      { key: 'shell.history', icon: BarChart3, to: '/app/playback' },
     ],
   },
   { key: 'shell.automation', items: [{ key: 'shell.geofences', icon: Hexagon }, { key: 'shell.rules', icon: Settings2 }] },

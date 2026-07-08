@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DuplicateImeiError, MAX_DOMAINS_PER_TENANT, type Db } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DuplicateImeiError, MAX_DOMAINS_PER_TENANT, readPositions, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -38,6 +38,10 @@ export interface CrudDeps {
   redis: Redis
   /** DNS TXT resolver for domain verification (E03-5); injectable for tests. */
   resolveTxt: TxtResolver
+  /** raw-SQL pool for positions history reads (E04-3); positions are not in Prisma.
+   * Optional so manifest-only construction (apiManifest) needs no DB; the positions
+   * route 503s if it is somehow reached without one. */
+  pool?: Pool
 }
 
 // Per-resource authorization (review HIGH). Reads are broad; writes are restricted;
@@ -237,6 +241,36 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const row = await db.devices.retire(scope, { userId: auth(c).userId }, id(c))
         return json(c, row ?? device)
       } },
+    // ── device history (E04-3, §6.6) — device-scope gated, then raw-SQL positions ──
+    { method: 'get', path: '/v1/devices/:id/positions', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        // scope gate FIRST: prove the device is in the caller's tenant/account (404 else),
+        // and only then read positions by the validated numeric id — never the raw :id
+        const device = await db.devices.get(scopeOf(auth(c)), id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
+        const q = c.req.query.bind(c.req)
+        return json(c, await readPositions(deps.pool, device.id, {
+          ...(q('from') !== undefined ? { from: q('from')! } : {}),
+          ...(q('to') !== undefined ? { to: q('to')! } : {}),
+          ...(q('cursor') !== undefined ? { cursor: q('cursor')! } : {}),
+          ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
+        }))
+      } },
+    { method: 'get', path: '/v1/devices/:id/trips', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        const q = c.req.query.bind(c.req)
+        return json(c, await db.trips.list(scope, {
+          deviceId: device.id.toString(),
+          ...(q('from') !== undefined ? { from: q('from')! } : {}),
+          ...(q('to') !== undefined ? { to: q('to')! } : {}),
+          ...(q('limit') !== undefined ? { take: Number(q('limit')) } : {}),
+        }))
+      } },
+
     { method: 'post', path: '/v1/devices/import/preview', scopeClass: 'account', entity: 'device', shape: 'collection',
       handler: async (c) => {
         const parsed = await body(c, deviceImportSchema)
@@ -328,6 +362,23 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'get', path: '/v1/events/:id', scopeClass: 'account', entity: 'event', shape: 'item',
       handler: async (c) => {
         const row = await db.events.get(scopeOf(auth(c)), id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+
+    // ── trips (account, read-only, E04-3) ────────────────────────────────────
+    { method: 'get', path: '/v1/trips', scopeClass: 'account', entity: 'trip', shape: 'collection',
+      handler: async (c) => {
+        const q = c.req.query.bind(c.req)
+        return json(c, await db.trips.list(scopeOf(auth(c)), {
+          ...(q('deviceId') !== undefined ? { deviceId: q('deviceId')! } : {}),
+          ...(q('from') !== undefined ? { from: q('from')! } : {}),
+          ...(q('to') !== undefined ? { to: q('to')! } : {}),
+          ...(q('limit') !== undefined ? { take: Number(q('limit')) } : {}),
+        }))
+      } },
+    { method: 'get', path: '/v1/trips/:id', scopeClass: 'account', entity: 'trip', shape: 'item',
+      handler: async (c) => {
+        const row = await db.trips.get(scopeOf(auth(c)), id(c))
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
 

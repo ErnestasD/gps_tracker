@@ -79,6 +79,17 @@
     "e": { "account": "Konto", "user": "Użytkownik", "device": "Urządzenie", "rule": "Reguła", "webhook": "Webhook", "domain": "Domena", "branding": "Marka", "tenant": "Najemca" },
     "a": { "create": "Utworzono", "update": "Zaktualizowano", "delete": "Usunięto" }
   },
+  "playback": {
+    "title": "Odtwarzanie historii",
+    "device": "Urządzenie",
+    "from": "Od",
+    "to": "Do",
+    "loading": "Ładowanie historii…",
+    "empty": "Brak pozycji w tym zakresie.",
+    "samples": "{{n}} punktów",
+    "trips": "{{n}} tras",
+    "distance": "{{km}} km"
+  },
   "deviceList": {
     "title": "Urządzenia",
     "search": "Szukaj urządzeń…",

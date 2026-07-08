@@ -1,6 +1,7 @@
 import type { Device, OdometerSource, PrismaClient } from '@prisma/client'
 
 import type { AuditRepo } from './audit.js'
+import { toInt8OrNull } from '../bigid.js'
 import type { Actor, Scope } from '../scope.js'
 import { scopedWhere } from '../scope.js'
 
@@ -58,15 +59,8 @@ export interface DeviceRepo {
   retire(scope: Scope, actor: Actor, id: string): Promise<Device | null>
 }
 
-/** Parse a route id to BigInt; non-numeric/overflow → null (caller → 404). */
-function toBigId(id: string): bigint | null {
-  if (!/^\d+$/.test(id)) return null
-  try {
-    return BigInt(id)
-  } catch {
-    return null
-  }
-}
+/** Parse a route id to BigInt; non-numeric/out-of-int8-range → null (caller → 404). */
+const toBigId = (id: string): bigint | null => toInt8OrNull(id)
 
 export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo): DeviceRepo {
   const scopedById = async (scope: Scope, id: string): Promise<Device | null> => {

@@ -9,6 +9,7 @@ import { createProfileRepo, type ProfileRepo } from './repos/profiles.js'
 import { createRuleRepo, type RuleRepo } from './repos/rules.js'
 import { createTenantDomainRepo, type TenantDomainRepo } from './repos/tenantDomains.js'
 import { createTenantRepo, type TenantRepo } from './repos/tenants.js'
+import { createTripRepo, type TripReadRepo } from './repos/trips.js'
 import { createUserRepo, type UserRepo } from './repos/users.js'
 import { createWebhookRepo, type WebhookRepo } from './repos/webhooks.js'
 
@@ -29,6 +30,7 @@ export interface Db {
   rules: RuleRepo
   webhooks: WebhookRepo
   events: EventRepo
+  trips: TripReadRepo
   audit: AuditRepo
   $disconnect(): Promise<void>
 }
@@ -47,6 +49,7 @@ export function createDb(databaseUrl: string): Db {
     rules: createRuleRepo(prisma, audit),
     webhooks: createWebhookRepo(prisma, audit),
     events: createEventRepo(prisma),
+    trips: createTripRepo(prisma),
     audit,
     $disconnect: () => prisma.$disconnect(),
   }
