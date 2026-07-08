@@ -9,11 +9,16 @@ import { LiveState } from './liveState.js'
 import { MotionFeed } from './motion.js'
 import { startWorkerProm } from './prom.js'
 import { ShardLeaser } from './shards.js'
+import { createRecomputeQueue, enqueueRecompute, redisConnection } from './jobs/queue.js'
+import { startRecomputeWorker } from './jobs/recomputeWorker.js'
 import { TripPersister } from './trip/persister.js'
 
 // Env contract per PROJECT_PLAN §6.7.
 const redisUrl = process.env['REDIS_URL'] ?? 'redis://127.0.0.1:6379'
 const databaseUrl = process.env['DATABASE_URL'] ?? ''
+// recompute only reconciles history older than this — comfortably past the largest stop
+// window (300 s) + a reporting gap, so it never races the live streaming trip (ADR-020)
+const RECOMPUTE_GUARD_MS = 15 * 60_000
 
 async function main(): Promise<void> {
   if (!databaseUrl) {
@@ -42,6 +47,19 @@ async function main(): Promise<void> {
   const liveState = new LiveState(redis)
   const motionFeed = new MotionFeed() // I5 seam (E02-7): trip engine (E04-1) + geofence stub (E05-x)
   const tripPersister = new TripPersister(pool, redis) // persists trip open/close events
+  // E04-2: late/buffered batches the streaming engine dropped are reconciled off the
+  // hot path by trip-recompute jobs over durable positions (BullMQ, ADR-020).
+  const recomputeConn = redisConnection(redisUrl)
+  const recomputeQueue = createRecomputeQueue(recomputeConn)
+  const recomputeWorker = startRecomputeWorker({
+    connection: recomputeConn,
+    pool,
+    redis,
+    onDone: (r) => {
+      prom.tripRecomputes.inc()
+      prom.tripRecomputeDeleted.inc(r.deleted)
+    },
+  })
   const consumerConns: Redis[] = []
   const consumers = [...shards].map((s) => {
     // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued
@@ -73,6 +91,21 @@ async function main(): Promise<void> {
             prom.tripsOpened.inc(opened)
             prom.tripsClosed.inc(closed)
           }
+          // any out-of-order (late) records the engine dropped → reconcile from durable
+          // positions off the hot path (positions are already written by the consumer).
+          // Bound recompute to SETTLED history (to = now − guard, guard > max stop window)
+          // so it can never delete/clobber the live open trip the streaming persister owns.
+          const settledTo = new Date(Date.now() - RECOMPUTE_GUARD_MS)
+          for (const { deviceId, from } of motionFeed.tripEngine.takeLate()) {
+            if (from >= settledTo) continue // late data is within the live edge → streaming owns it
+            // per-item guard: one enqueue failure must not drop the other devices' signals
+            try {
+              await enqueueRecompute(recomputeQueue, deviceId, from, settledTo)
+            } catch (e) {
+              prom.tripPersistErrors.inc()
+              console.error('enqueueRecompute', e)
+            }
+          }
         } catch (err) {
           // trips are advisory on the stream path — positions are already durable (I1/I3)
           // and E04-2 recompute rebuilds trips authoritatively from them. Never stall the
@@ -95,6 +128,8 @@ async function main(): Promise<void> {
     void (async () => {
       await Promise.all(consumers.map((c) => c.stop()))
       await leaser.release()
+      await recomputeWorker.close() // finish the in-flight recompute job, stop taking new
+      await recomputeQueue.close()
       consumerConns.forEach((c) => c.disconnect())
       await redis.quit()
       await pool.end()

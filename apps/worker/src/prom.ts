@@ -17,6 +17,8 @@ export interface WorkerProm {
   tripsOpened: Counter
   tripsClosed: Counter
   tripPersistErrors: Counter
+  tripRecomputes: Counter
+  tripRecomputeDeleted: Counter
   server: Server
 }
 
@@ -56,6 +58,8 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   // streaming trip persistence is advisory (E04-2 recompute is authoritative); a
   // non-zero rate here means trips are being dropped from the stream path → alert.
   const tripPersistErrors = new Counter({ name: 'trip_persist_errors_total', help: 'trip open/close DB writes that failed (advisory; E04-2 recompute reconciles)', registers: [registry] })
+  const tripRecomputes = new Counter({ name: 'trip_recompute_total', help: 'trip-recompute jobs applied (E04-2 late-batch reconciliation)', registers: [registry] })
+  const tripRecomputeDeleted = new Counter({ name: 'trip_recompute_deleted_total', help: 'trip rows deleted-and-replayed by recompute', registers: [registry] })
 
   const server = createServer((req, res) => {
     if (req.url !== '/metrics') {
@@ -74,5 +78,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, server }
 }
