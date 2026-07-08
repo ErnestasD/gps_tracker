@@ -127,6 +127,19 @@ Every new variable must be added to the table here AND match the `.env` contract
 - **Branded email**: `renderBrandedEmail(branding, tenantName, content)` renders the
   tenant's name/logo/accent with all tenant strings HTML-escaped (snapshot-tested).
 
+## Audit log (E03-6)
+
+- Every scoped mutation already writes one `audit_log` row (who/action/entity/entityId/
+  before/after/at) — enforced by `packages/db/__tests__/audit-coverage.spec.ts`, which
+  drives **every** mutating repo through create/update/delete and fails if a row is
+  missing (so a new repo that forgets `audit.record` turns the build red). Secrets are
+  redacted in snapshots (webhook `secret` → `***`; user `passwordHash` never selected).
+- **Read**: `GET /v1/audit` (+ `GET /v1/audit/:id`) — tenant-scoped, **admin-only**
+  (`TENANT_ADMINS`; viewer/account_manager → 403). Filters `entity`, `action`,
+  `from`/`to`, cursor pagination (`limit`/`cursor`, id desc). Append-only — no write API.
+- **Web**: Admin → Audit (nav shown only to admins) — filterable table with expandable
+  before/after snapshots; timestamps render in the browser's locale/timezone.
+
 ## Web app (E02-6)
 
 - Dev: `turbo run dev --filter=@orbetra/web` (Vite on :5173, `/v1` proxied to :3010).

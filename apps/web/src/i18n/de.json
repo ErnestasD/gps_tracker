@@ -28,6 +28,7 @@
     "admin": "Verwaltung",
     "users": "Benutzer",
     "branding": "Branding",
+    "audit": "Audit-Log",
     "soon": "Demnächst",
     "collapse": "Menü einklappen",
     "expand": "Menü ausklappen",
@@ -58,6 +59,25 @@
     "badDomain": "Gültigen Hostnamen eingeben (z. B. fleet.example.com).",
     "txtInstruction": "Fügen Sie diesen TXT-Eintrag zu {{domain}} hinzu und klicken Sie dann auf Verifizieren:",
     "certNote": "HTTPS-Zertifikate werden nach der Domain-Verifizierung automatisch bei der ersten sicheren Anfrage ausgestellt."
+  },
+  "audit": {
+    "title": "Audit-Log",
+    "trail": "Änderungsverlauf",
+    "when": "Wann",
+    "action": "Aktion",
+    "entity": "Objekt",
+    "entityId": "ID",
+    "who": "Benutzer",
+    "details": "Details",
+    "hide": "Ausblenden",
+    "before": "Vorher",
+    "after": "Nachher",
+    "empty": "Keine Einträge für diese Filter.",
+    "loadMore": "Mehr laden",
+    "allEntities": "Alle Objekte",
+    "allActions": "Alle Aktionen",
+    "e": { "account": "Konto", "user": "Benutzer", "device": "Gerät", "rule": "Regel", "webhook": "Webhook", "domain": "Domain", "branding": "Branding", "tenant": "Mandant" },
+    "a": { "create": "Erstellt", "update": "Aktualisiert", "delete": "Gelöscht" }
   },
   "deviceList": {
     "title": "Geräte",

@@ -10,6 +10,7 @@ import { AppShell } from '@/components/AppShell'
 import { getAccessToken, refreshSession } from '@/lib/auth'
 import { LoginPage } from '@/routes/login'
 import { MapPage } from '@/routes/app/map'
+import { AuditPage } from '@/routes/app/audit'
 import { BrandingPage } from '@/routes/app/branding'
 import { DevicesPage } from '@/routes/app/devices/index'
 import { SettingsPage } from '@/routes/app/settings'
@@ -79,6 +80,12 @@ const brandingRoute = createRoute({
   component: BrandingPage,
 })
 
+const auditRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/audit',
+  component: AuditPage,
+})
+
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/settings',
@@ -88,7 +95,7 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  appRoute.addChildren([mapRoute, devicesRoute, brandingRoute, settingsRoute]),
+  appRoute.addChildren([mapRoute, devicesRoute, brandingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

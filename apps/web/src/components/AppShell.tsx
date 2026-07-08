@@ -9,6 +9,7 @@ import {
   Map as MapIcon,
   Palette,
   Radio,
+  ScrollText,
   Settings,
   Settings2,
   TerminalSquare,
@@ -18,7 +19,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { logout as authLogout } from '@/lib/auth'
+import { getCurrentUser, logout as authLogout } from '@/lib/auth'
 import { applyBranding, getBranding } from '@/lib/branding'
 import { liveStore } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
@@ -28,6 +29,8 @@ interface NavItem {
   icon: typeof MapIcon
   /** Set ⇒ real page (clickable); absent ⇒ disabled placeholder. */
   to?: string
+  /** Only render for tenant admins (matches the route's TENANT_ADMINS read gate). */
+  adminOnly?: boolean
 }
 interface NavSection {
   key: string
@@ -52,6 +55,7 @@ const SECTIONS: NavSection[] = [
     key: 'shell.admin',
     items: [
       { key: 'shell.branding', icon: Palette, to: '/app/branding' },
+      { key: 'shell.audit', icon: ScrollText, to: '/app/audit', adminOnly: true },
       { key: 'shell.settings', icon: Settings, to: '/app/settings' },
     ],
   },
@@ -61,6 +65,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
+  const role = getCurrentUser()?.role
+  const isAdmin = role === 'platform_admin' || role === 'tsp_admin'
 
   // apply the tenant's white-label theme once authenticated (E03-5)
   useEffect(() => {
@@ -100,7 +106,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     {t(section.key)}
                   </div>
                 )}
-                {section.items.map((item) => {
+                {section.items.filter((item) => !item.adminOnly || isAdmin).map((item) => {
                   const Icon = item.icon
                   const enabled = item.to !== undefined
                   const rowClass = cn(

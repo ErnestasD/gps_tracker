@@ -28,6 +28,7 @@
     "admin": "Administravimas",
     "users": "Naudotojai",
     "branding": "Prekės ženklas",
+    "audit": "Audito žurnalas",
     "soon": "Netrukus",
     "collapse": "Suskleisti meniu",
     "expand": "Išskleisti meniu",
@@ -58,6 +59,25 @@
     "badDomain": "Įveskite tinkamą domeną (pvz. fleet.example.com).",
     "txtInstruction": "Pridėkite šį TXT įrašą prie {{domain}}, tada spauskite Patvirtinti:",
     "certNote": "HTTPS sertifikatai išduodami automatiškai per pirmą saugų užklausimą po domeno patvirtinimo."
+  },
+  "audit": {
+    "title": "Audito žurnalas",
+    "trail": "Pakeitimų istorija",
+    "when": "Kada",
+    "action": "Veiksmas",
+    "entity": "Objektas",
+    "entityId": "ID",
+    "who": "Naudotojas",
+    "details": "Detalės",
+    "hide": "Slėpti",
+    "before": "Prieš",
+    "after": "Po",
+    "empty": "Nėra įrašų pagal šiuos filtrus.",
+    "loadMore": "Rodyti daugiau",
+    "allEntities": "Visi objektai",
+    "allActions": "Visi veiksmai",
+    "e": { "account": "Paskyra", "user": "Naudotojas", "device": "Įrenginys", "rule": "Taisyklė", "webhook": "Webhook", "domain": "Domenas", "branding": "Prekės ženklas", "tenant": "Nuomininkas" },
+    "a": { "create": "Sukurta", "update": "Atnaujinta", "delete": "Ištrinta" }
   },
   "deviceList": {
     "title": "Įrenginiai",
