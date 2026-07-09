@@ -33,7 +33,8 @@
     "collapse": "Suskleisti meniu",
     "expand": "Išskleisti meniu",
     "logout": "Atsijungti",
-    "settings": "Nustatymai"
+    "settings": "Nustatymai",
+    "apiKeys": "API raktai"
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -337,5 +338,26 @@
       "maxSpeed": "Maks. greitis"
     },
     "account": "Paskyra"
+  },
+  "apiKeys": {
+    "title": "API raktai",
+    "add": "Sukurti raktą",
+    "name": "Pavadinimas",
+    "account": "Paskyra",
+    "tenantWide": "Visos paskyros",
+    "create": "Sukurti",
+    "error": "Nepavyko sukurti rakto.",
+    "list": "Raktai",
+    "empty": "API raktų dar nėra.",
+    "created": "Raktas sukurtas",
+    "copyNow": "Nukopijuokite raktą dabar — jis rodomas tik vieną kartą ir vėliau nebus prieinamas.",
+    "copy": "Kopijuoti",
+    "copied": "Nukopijuota",
+    "dismiss": "Gerai",
+    "revoke": "Atšaukti",
+    "revoked": "Atšauktas",
+    "active": "Aktyvus",
+    "lastUsed": "naudotas",
+    "neverUsed": "nenaudotas"
   }
 }

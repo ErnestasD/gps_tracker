@@ -33,7 +33,8 @@
     "collapse": "Zwiń menu",
     "expand": "Rozwiń menu",
     "logout": "Wyloguj się",
-    "settings": "Ustawienia"
+    "settings": "Ustawienia",
+    "apiKeys": "Klucze API"
   },
   "branding": {
     "title": "Marka",
@@ -337,5 +338,26 @@
       "maxSpeed": "Maks prędkość"
     },
     "account": "Konto"
+  },
+  "apiKeys": {
+    "title": "Klucze API",
+    "add": "Utwórz klucz",
+    "name": "Nazwa",
+    "account": "Konto",
+    "tenantWide": "Wszystkie konta",
+    "create": "Utwórz",
+    "error": "Nie udało się utworzyć klucza.",
+    "list": "Klucze",
+    "empty": "Brak kluczy API.",
+    "created": "Klucz utworzony",
+    "copyNow": "Skopiuj klucz teraz — jest pokazywany tylko raz.",
+    "copy": "Kopiuj",
+    "copied": "Skopiowano",
+    "dismiss": "Gotowe",
+    "revoke": "Odwołaj",
+    "revoked": "Odwołany",
+    "active": "Aktywny",
+    "lastUsed": "ostatnio użyty",
+    "neverUsed": "nieużywany"
   }
 }

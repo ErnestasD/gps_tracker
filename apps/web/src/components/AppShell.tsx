@@ -7,6 +7,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Hexagon,
+  KeyRound,
   LogOut,
   Map as MapIcon,
   Palette,
@@ -58,6 +59,7 @@ const SECTIONS: NavSection[] = [
     key: 'shell.admin',
     items: [
       { key: 'shell.branding', icon: Palette, to: '/app/branding' },
+      { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true },
       { key: 'shell.audit', icon: ScrollText, to: '/app/audit', adminOnly: true },
       { key: 'shell.settings', icon: Settings, to: '/app/settings' },
     ],

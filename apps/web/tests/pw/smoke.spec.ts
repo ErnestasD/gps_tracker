@@ -472,6 +472,32 @@ test('reports: run a report over a range (E06-2)', async ({ page }) => {
   await expect(page.getByTestId('report-table').or(page.getByTestId('report-empty'))).toBeVisible()
 })
 
+test('api keys: create shows the plaintext once, then revoke (E06-3 UI)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/api-keys')
+  await expect(page.getByTestId('apikey-name')).toBeVisible()
+  await page.getByTestId('apikey-name').fill('CI integration')
+  await page.getByTestId('apikey-create').click()
+
+  // the plaintext key is shown ONCE
+  const fresh = page.getByTestId('apikey-value')
+  await expect(fresh).toBeVisible()
+  await expect(fresh).toHaveText(/^orb_live_/)
+  await page.getByTestId('apikey-dismiss').click()
+  await expect(page.getByTestId('apikey-fresh')).toHaveCount(0)
+
+  // it lands in the list, active; revoking flips it
+  const row = page.locator('li[data-testid^="apikey-"]').filter({ hasText: 'CI integration' })
+  await expect(row).toBeVisible({ timeout: 15_000 })
+  await row.getByTestId(/apikey-revoke-/).click()
+  await expect(row.getByText(/Revoked|Atšauktas|Widerrufen|Odwołany/)).toBeVisible()
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)
