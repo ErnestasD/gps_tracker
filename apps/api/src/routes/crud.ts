@@ -29,10 +29,23 @@ import {
 import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { activateDevice, deactivateDevice, syncDeviceConfig } from './deviceRegistry.js'
+import { removeGeofence, syncGeofence } from './geofenceRegistry.js'
 import { applyImport, dryRun, parseCsv, rowsToImport } from './deviceImport.js'
 import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
 import { expectedTxt, newTxtToken, verifyDomainTxt, type TxtResolver } from './tenantSelf.js'
+
+// Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
+// truth and is already committed, so a Redis blip must NOT 500 the request (a 500 → client
+// retry → duplicate fence). A missed sync leaves the fence out of the worker cache until a
+// re-save; a startup DB→Redis rehydrate is the durable backfill (follow-up).
+const bestEffortSync = async (fn: () => Promise<void>): Promise<void> => {
+  try {
+    await fn()
+  } catch (e) {
+    console.error('geofence sync', e)
+  }
+}
 
 export interface CrudDeps {
   db: Db
@@ -355,7 +368,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const accountId = a.accountId !== undefined ? a.accountId : (data.accountId ?? null)
         if (accountId !== null && (await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
         try {
-          return json(c, await db.geofences.create(scopeOf(a), { userId: a.userId }, { ...data, accountId }), 201)
+          const gf = await db.geofences.create(scopeOf(a), { userId: a.userId }, { ...data, accountId })
+          await bestEffortSync(() => syncGeofence(deps.redis, gf)) // publish to the worker's geom cache (E05-2)
+          return json(c, gf, 201)
         } catch (err) {
           if (err instanceof GeofenceTooLargeError || err instanceof GeofenceInvalidError) return problem(c, 400, 'Bad Request', err.message)
           throw err
@@ -367,7 +382,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (data === null) return problem(c, 400, 'Bad Request')
         try {
           const row = await db.geofences.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
-          return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+          if (row === null) return problem(c, 404, 'Not Found')
+          await bestEffortSync(() => syncGeofence(deps.redis, row)) // re-publish the updated geometry (E05-2)
+          return json(c, row)
         } catch (err) {
           if (err instanceof GeofenceTooLargeError || err instanceof GeofenceInvalidError) return problem(c, 400, 'Bad Request', err.message)
           throw err
@@ -376,7 +393,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'delete', path: '/v1/geofences/:id', scopeClass: 'account', entity: 'geofence', shape: 'item',
       handler: async (c) => {
         const ok = await db.geofences.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
-        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+        if (!ok) return problem(c, 404, 'Not Found')
+        await bestEffortSync(() => removeGeofence(deps.redis, auth(c).tenantId, id(c))) // drop from the worker's geom cache
+        return json(c, { ok: true })
       } },
 
     // ── webhooks (tenant, nullable account) ──────────────────────────────────

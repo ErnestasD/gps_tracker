@@ -1,5 +1,6 @@
 import type { NormalizedRecord } from '@orbetra/shared'
 
+import { GeofenceEngine, type GeofenceDef, type GeofenceTransition } from './geofence/engine.js'
 import { TripEngine, type DeviceTripConfig, type TripEvent } from './trip/engine.js'
 
 export { haversineM } from './geo.js'
@@ -16,41 +17,32 @@ export function motionRecords(records: NormalizedRecord[]): NormalizedRecord[] {
   return records.filter((r) => r.fixValid) // I5
 }
 
-/**
- * STUB until E05-x: the geofence evaluator's input queue. CAPPED ring — nothing
- * consumes it yet, and an uncapped array in the long-lived worker is the §10
- * unbounded-buffer failure (review HIGH: it would grow with every valid record
- * until OOM, killing the shard leases with it). E05-x replaces this with a real
- * consumer; until then old entries are dropped, counted, never awaited.
- */
-export class GeofenceQueueStub {
-  static readonly CAP = 10_000
-  readonly queue: NormalizedRecord[] = []
-  dropped = 0
-
-  feed(records: NormalizedRecord[]): void {
-    this.queue.push(...records)
-    const excess = this.queue.length - GeofenceQueueStub.CAP
-    if (excess > 0) {
-      this.queue.splice(0, excess)
-      this.dropped += excess
-    }
-  }
+export interface MotionResult {
+  tripEvents: TripEvent[]
+  transitions: GeofenceTransition[]
 }
 
-/** Batch fan-out to all motion consumers, behind the I5 filter. */
+/** Batch fan-out to all motion consumers, behind the I5 filter. Records are filtered to
+ * fix_valid ONCE and shared by both engines (E04-1 trips + E05-2 geofences). */
 export class MotionFeed {
   constructor(
     readonly tripEngine = new TripEngine(),
-    readonly geofenceQueue = new GeofenceQueueStub(),
+    readonly geofenceEngine = new GeofenceEngine(),
   ) {}
 
-  /** Feed a batch; returns the trip open/close events for the worker to persist.
-   * `configFor` supplies per-device thresholds + odometerSource (E04-5). */
-  feed(records: NormalizedRecord[], configFor?: (deviceId: bigint) => DeviceTripConfig | undefined): TripEvent[] {
+  /** `configFor` = per-device trip thresholds/odometerSource (E04-5); `geofencesFor` =
+   * the device's applicable geofences (E05-2), both pre-resolved by the worker. */
+  feed(
+    records: NormalizedRecord[],
+    configFor?: (deviceId: bigint) => DeviceTripConfig | undefined,
+    geofencesFor?: (deviceId: bigint) => readonly GeofenceDef[],
+    insideFor?: (deviceId: bigint, geofenceId: string) => boolean,
+  ): MotionResult {
     const valid = motionRecords(records)
-    if (valid.length === 0) return []
-    this.geofenceQueue.feed(valid)
-    return this.tripEngine.feed(valid, configFor) // I5-filtered input only
+    if (valid.length === 0) return { tripEvents: [], transitions: [] }
+    return {
+      tripEvents: this.tripEngine.feed(valid, configFor),
+      transitions: geofencesFor ? this.geofenceEngine.feed(valid, geofencesFor, insideFor) : [],
+    }
   }
 }
