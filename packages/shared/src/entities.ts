@@ -83,6 +83,19 @@ export interface TripView {
   maxSpeed: number
   idleS: number
 }
+/** An event as returned by the read API (E05-2/4 pipeline output, serialized). */
+export interface EventView {
+  id: string // bigint as string — also the pagination cursor
+  deviceId: string
+  ruleId: string | null
+  kind: string
+  at: string // ISO
+  lat: number | null
+  lon: number | null
+  payload: Record<string, unknown>
+  acknowledgedAt: string | null
+  createdAt: string
+}
 
 // ── rules ────────────────────────────────────────────────────────────────────
 // MUST mirror the Prisma RuleKind enum (packages/db/prisma/schema.prisma)

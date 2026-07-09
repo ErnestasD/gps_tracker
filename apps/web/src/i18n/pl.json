@@ -272,5 +272,31 @@
     "cancel": "Anuluj",
     "dupImei": "Ten IMEI jest już zarejestrowany.",
     "claimError": "Nie udało się przejąć urządzenia."
+  },
+  "events": {
+    "title": "Zdarzenia",
+    "timeline": "Oś czasu",
+    "kind": "Rodzaj",
+    "allKinds": "Wszystkie rodzaje",
+    "device": "Urządzenie",
+    "allDevices": "Wszystkie urządzenia",
+    "from": "Od",
+    "to": "Do",
+    "when": "Kiedy",
+    "detail": "Szczegół",
+    "hide": "Ukryj",
+    "details": "Szczegóły",
+    "empty": "Brak zdarzeń dla tych filtrów.",
+    "loadMore": "Wczytaj więcej",
+    "k": {
+      "geofence": "Geostrefa",
+      "overspeed": "Przekroczenie prędkości",
+      "ignition": "Zapłon",
+      "din_change": "Zmiana wejścia",
+      "power_cut": "Zanik zasilania",
+      "low_battery": "Niski poziom baterii",
+      "panic": "Alarm",
+      "device_offline": "Urządzenie offline"
+    }
   }
 }

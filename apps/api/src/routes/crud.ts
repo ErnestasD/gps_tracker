@@ -438,9 +438,16 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     // ── events (account, read-only) ──────────────────────────────────────────
     { method: 'get', path: '/v1/events', scopeClass: 'account', entity: 'event', shape: 'collection',
       handler: async (c) => {
-        const take = Number(c.req.query('limit') ?? 100)
-        const cursor = c.req.query('cursor')
-        return json(c, await db.events.list(scopeOf(auth(c)), { take, ...(cursor !== undefined ? { cursor } : {}), ...(c.req.query('kind') !== undefined ? { kind: c.req.query('kind')! } : {}) }))
+        const q = (k: string): string | undefined => c.req.query(k) ?? undefined
+        // all filters are sanitized in the repo (garbage never 500s) — E05-6 timeline UI
+        return json(c, await db.events.list(scopeOf(auth(c)), {
+          take: Number(c.req.query('limit') ?? 100),
+          ...(q('cursor') !== undefined ? { cursor: q('cursor') } : {}),
+          ...(q('kind') !== undefined ? { kind: q('kind') } : {}),
+          ...(q('deviceId') !== undefined ? { deviceId: q('deviceId') } : {}),
+          ...(q('from') !== undefined ? { from: q('from') } : {}),
+          ...(q('to') !== undefined ? { to: q('to') } : {}),
+        }))
       } },
     { method: 'get', path: '/v1/events/:id', scopeClass: 'account', entity: 'event', shape: 'item',
       handler: async (c) => {

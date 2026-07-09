@@ -272,5 +272,31 @@
     "cancel": "Atšaukti",
     "dupImei": "Toks IMEI jau užregistruotas.",
     "claimError": "Nepavyko prisiimti įrenginio."
+  },
+  "events": {
+    "title": "Įvykiai",
+    "timeline": "Laiko juosta",
+    "kind": "Tipas",
+    "allKinds": "Visi tipai",
+    "device": "Įrenginys",
+    "allDevices": "Visi įrenginiai",
+    "from": "Nuo",
+    "to": "Iki",
+    "when": "Kada",
+    "detail": "Detalė",
+    "hide": "Slėpti",
+    "details": "Detalės",
+    "empty": "Pagal šiuos filtrus įvykių nėra.",
+    "loadMore": "Rodyti daugiau",
+    "k": {
+      "geofence": "Geozona",
+      "overspeed": "Greičio viršijimas",
+      "ignition": "Uždegimas",
+      "din_change": "Įvesties pokytis",
+      "power_cut": "Maitinimo nutrūkimas",
+      "low_battery": "Žema baterija",
+      "panic": "Pavojaus mygtukas",
+      "device_offline": "Įrenginys neprisijungęs"
+    }
   }
 }
