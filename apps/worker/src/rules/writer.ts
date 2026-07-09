@@ -14,8 +14,8 @@ export interface RuleEventRow {
   ruleId: string
   kind: string
   at: Date
-  lat: number
-  lon: number
+  lat: number | null // null for position-less events (e.g. device_offline, E05-4b)
+  lon: number | null
   payload: Record<string, unknown>
 }
 

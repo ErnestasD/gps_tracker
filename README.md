@@ -241,7 +241,13 @@ Every new variable must be added to the table here AND match the `.env` contract
   making event emission idempotent under the ACK-replay window. **panic + power_cut bypass**
   the cooldown (§6.5 priority-2). Events are persisted to `events` (with `ruleId` + `kind`)
   before any notification; the notification channels (email/Telegram) are E05-5. Metric
-  `rule_events_total{kind}`. The `device_offline` sweeper is E05-4b.
+  `rule_events_total{kind}`.
+- **device_offline sweeper (E05-4b)** — a repeatable BullMQ job (every 60 s, off the hot
+  path) scans device presence against each account's `device_offline` rules. A device is
+  offline when its last fix (`device:{id}:last`) is older than the threshold —
+  `config.afterH`, else the profile's presence `offlineAfterH`, else 26 h (TAT100 default).
+  A per-device fired-flag (`rule:offline:{deviceId}`) fires the event once per episode and
+  resets on recovery. Devices that never reported are skipped.
 
 ## Trips list & detail (E04-4)
 
