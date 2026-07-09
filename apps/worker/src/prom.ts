@@ -24,6 +24,8 @@ export interface WorkerProm {
   notificationSent: Counter
   notificationFailed: Counter
   notificationSkipped: Counter
+  webhookDelivered: Counter
+  webhookFailed: Counter
   server: Server
 }
 
@@ -70,6 +72,8 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const notificationSent = new Counter({ name: 'notification_sent_total', help: 'notifications delivered by channel (E05-5)', labelNames: ['channel'], registers: [registry] })
   const notificationFailed = new Counter({ name: 'notification_failed_total', help: 'notification delivery failures by channel (retried by BullMQ)', labelNames: ['channel'], registers: [registry] })
   const notificationSkipped = new Counter({ name: 'notification_skipped_total', help: 'notifications skipped by reason (e.g. unconfigured channel)', labelNames: ['reason'], registers: [registry] })
+  const webhookDelivered = new Counter({ name: 'webhook_delivered_total', help: 'webhook deliveries that returned 2xx (E06-4)', registers: [registry] })
+  const webhookFailed = new Counter({ name: 'webhook_failed_total', help: 'webhook delivery attempts that failed (retried by BullMQ)', registers: [registry] })
 
   const server = createServer((req, res) => {
     if (req.url !== '/metrics') {
@@ -88,5 +92,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, webhookDelivered, webhookFailed, server }
 }

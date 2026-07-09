@@ -14,6 +14,8 @@ import { createOfflineQueue, scheduleOfflineSweep } from './jobs/offlineQueue.js
 import { startOfflineWorker } from './jobs/offlineWorker.js'
 import { createNotifyQueue, enqueueNotify } from './jobs/notifyQueue.js'
 import { startNotifyWorker } from './jobs/notifyWorker.js'
+import { createWebhookQueue, enqueueWebhook } from './jobs/webhookQueue.js'
+import { startWebhookWorker } from './jobs/webhookWorker.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
 import { driversFromEnv } from './notify/drivers.js'
 import { GeofenceCache } from './geofence/cache.js'
@@ -99,6 +101,23 @@ async function main(): Promise<void> {
     onFailed: (ch) => prom.notificationFailed.inc({ channel: ch }),
     onSkipped: (reason) => prom.notificationSkipped.inc({ reason }),
   })
+  // E06-4: webhook delivery — every persisted event (rule/geofence/offline) is POSTed,
+  // HMAC-signed, to the account's subscribed webhooks with BullMQ retry.
+  const webhookQueue = createWebhookQueue(recomputeConn)
+  const webhookWorker = startWebhookWorker({
+    connection: recomputeConn,
+    pool,
+    redis: offlineRedis,
+    onDelivered: () => prom.webhookDelivered.inc(),
+    onFailed: () => prom.webhookFailed.inc(),
+  })
+  // enqueue an event to BOTH notification + webhook delivery, best-effort (a queue blip must
+  // not stall the shard; the event is already durably persisted).
+  const emitWebhook = (ev: { deviceId: bigint; kind: string; at: Date; payload: Record<string, unknown>; dedupe: string }): Promise<void> =>
+    enqueueWebhook(webhookQueue, ev).catch((err: unknown) => {
+      prom.webhookFailed.inc()
+      console.error('enqueueWebhook', err)
+    })
   const offlineWorker = startOfflineWorker({
     connection: recomputeConn,
     pool,
@@ -109,12 +128,13 @@ async function main(): Promise<void> {
     // Surface a dropped enqueue via a metric instead (review MED-1).
     onEvents: (events) =>
       Promise.allSettled(
-        events.map((e) =>
+        events.flatMap((e) => [
           enqueueNotify(notifyQueue, { ruleId: e.ruleId, deviceId: e.deviceId, kind: e.kind, at: e.at, payload: e.payload }).catch((err: unknown) => {
             prom.notificationFailed.inc({ channel: 'enqueue' })
             console.error('enqueueNotify(offline)', err)
           }),
-        ),
+          emitWebhook({ deviceId: e.deviceId, kind: e.kind, at: e.at, payload: e.payload, dedupe: e.ruleId }),
+        ]),
       ).then(() => undefined),
   })
   await scheduleOfflineSweep(offlineQueue)
@@ -164,6 +184,11 @@ async function main(): Promise<void> {
           if (transitions.length > 0) {
             const written = await geofenceEvents.persist(transitions)
             prom.geofenceEvents.inc(written)
+            // E06-4: geofence transitions are webhook-deliverable events too (no rule/notify
+            // path — geofence events carry no ruleId). Enqueue after they're persisted.
+            for (const tr of transitions) {
+              await emitWebhook({ deviceId: tr.deviceId, kind: 'geofence', at: tr.at, payload: { geofenceId: tr.geofenceId, name: tr.geofenceName, transition: tr.type }, dedupe: `${tr.geofenceId}:${tr.type}` })
+            }
           }
           // E05-4: rule engine (overspeed + IO). Fed the FULL batch, NOT the motion-filtered
           // records — IO events (ignition/din/power_cut/low_battery/panic) must fire on
@@ -194,6 +219,7 @@ async function main(): Promise<void> {
                     prom.notificationFailed.inc({ channel: 'enqueue' })
                     console.error('enqueueNotify', err)
                   }
+                  await emitWebhook({ deviceId: e.deviceId, kind: e.kind, at: e.at, payload: e.payload, dedupe: e.ruleId })
                 }
               }
               // now advance durable IO state so the NEXT batch / a clean restart warm-starts
@@ -250,6 +276,8 @@ async function main(): Promise<void> {
       await offlineQueue.close()
       await notifyWorker.close() // finish the in-flight notification, stop taking new
       await notifyQueue.close()
+      await webhookWorker.close() // finish the in-flight webhook delivery, stop taking new
+      await webhookQueue.close()
       offlineRedis.disconnect()
       consumerConns.forEach((c) => c.disconnect())
       await redis.quit()
