@@ -206,7 +206,14 @@ Every new variable must be added to the table here AND match the `.env` contract
 - **Editor** (`/app/geofences`, nav Automation → Geofences) — draw polygon/circle with
   **terra-draw** (ADR-021, MIT, MapLibre-native) on the OpenFreeMap map; existing geofences
   render as coloured fills; name/colour + save; list with delete. i18n ×4.
-- Transition detection + rule evaluation land in E05-2/E05-4.
+- **Transition detection** (E05-2, worker) — geofence CRUD publishes geometries to Redis
+  (`geofence:tenant:{id}`); the worker resolves each device's applicable fences (own account
+  + tenant-shared) through a short-TTL geom cache and runs a pure point-in-polygon engine
+  with **hysteresis** (enter/exit confirmed only after 2 consecutive fix_valid observations on
+  the new side, so boundary jitter can't flap). Invalid fixes never move geofence state (I5).
+  Confirmed transitions are written as `events` (`kind='geofence'`, payload = geofenceId +
+  enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
+  approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
 ## Trips list & detail (E04-4)
 

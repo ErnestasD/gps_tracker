@@ -11,6 +11,8 @@ import { startWorkerProm } from './prom.js'
 import { ShardLeaser } from './shards.js'
 import { createRecomputeQueue, enqueueRecompute, redisConnection } from './jobs/queue.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
+import { GeofenceCache } from './geofence/cache.js'
+import { GeofenceEventPersister } from './geofence/persister.js'
 import { DeviceConfigCache } from './trip/configCache.js'
 import { TripPersister } from './trip/persister.js'
 
@@ -49,6 +51,8 @@ async function main(): Promise<void> {
   const motionFeed = new MotionFeed() // I5 seam (E02-7): trip engine (E04-1) + geofence stub (E05-x)
   const tripPersister = new TripPersister(pool, redis) // persists trip open/close events
   const configCache = new DeviceConfigCache(redis) // per-device trip thresholds/odometerSource (E04-5)
+  const geofenceCache = new GeofenceCache(redis) // per-tenant geofence geoms (E05-2)
+  const geofenceEvents = new GeofenceEventPersister(pool, redis) // geofence transitions → events
   // E04-2: late/buffered batches the streaming engine dropped are reconciled off the
   // hot path by trip-recompute jobs over durable positions (BullMQ, ADR-020).
   const recomputeConn = redisConnection(redisUrl)
@@ -87,14 +91,27 @@ async function main(): Promise<void> {
           console.error('liveState', err)
         }
         try {
-          // E04-5: resolve each device's trip config (thresholds + odometerSource) before
-          // the synchronous engine feed — cached with a short TTL, so ~one Redis read/batch
-          const cfg = await configCache.resolveBatch(records.map((r) => r.deviceId), Date.now())
-          const tripEvents = motionFeed.feed(records, (id) => cfg.get(id.toString())) // I5-filtered inside; presence path above is NOT
+          // E04-5 + E05-2: pre-resolve per-device trip config + geofences (async Redis)
+          // before the synchronous engine feed — both cached with a short TTL
+          const now = Date.now()
+          const deviceIds = records.map((r) => r.deviceId)
+          const [cfg, gf] = await Promise.all([configCache.resolveBatch(deviceIds, now), geofenceCache.resolveBatch(deviceIds, now)])
+          // warm-start geofence engine from durable state for devices that have fences (MED-1)
+          const insideFor = await geofenceEvents.loadInside([...gf.keys()])
+          const { tripEvents, transitions } = motionFeed.feed(
+            records,
+            (id) => cfg.get(id.toString()),
+            (id) => gf.get(id.toString()) ?? [],
+            insideFor,
+          )
           if (tripEvents.length > 0) {
             const { opened, closed } = await tripPersister.apply(tripEvents)
             prom.tripsOpened.inc(opened)
             prom.tripsClosed.inc(closed)
+          }
+          if (transitions.length > 0) {
+            const written = await geofenceEvents.persist(transitions)
+            prom.geofenceEvents.inc(written)
           }
           // any out-of-order (late) records the engine dropped → reconcile from durable
           // positions off the hot path (positions are already written by the consumer).
