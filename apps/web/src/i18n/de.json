@@ -111,6 +111,40 @@
     "gps": "GPS",
     "error": "Fahrten konnten nicht geladen werden."
   },
+  "rules": {
+    "title": "Regeln",
+    "list": "Regeln",
+    "add": "Regel hinzufügen",
+    "empty": "Noch keine Regeln.",
+    "kindLabel": "Art",
+    "name": "Name",
+    "account": "Konto",
+    "cooldown": "Abklingzeit",
+    "enabled": "Aktiv",
+    "create": "Erstellen",
+    "delete": "Entfernen",
+    "invalid": "Regelfelder prüfen.",
+    "error": "Regel konnte nicht gespeichert werden.",
+    "kind": {
+      "overspeed": "Geschwindigkeit",
+      "geofence": "Geozone",
+      "ignition": "Zündung",
+      "din_change": "DIN-Änderung",
+      "power_cut": "Stromausfall",
+      "low_battery": "Schwache Batterie",
+      "panic": "Panik",
+      "device_offline": "Gerät offline"
+    },
+    "cfg": {
+      "speedKmh": "Geschw. (km/h)",
+      "geofenceId": "Geozone",
+      "on": "Bei",
+      "thresholdV": "Schwelle (V)",
+      "afterH": "Nach (Std.)"
+    },
+    "needGeofence": "Wählen Sie eine Geozone für diese Regel.",
+    "actionError": "Aktion fehlgeschlagen — erneut versuchen."
+  },
   "playback": {
     "title": "Verlauf-Wiedergabe",
     "device": "Gerät",

@@ -404,6 +404,38 @@ test('geofences: the terra-draw editor mounts on the map and the list renders (E
   await expect(page.getByTestId('gf-list').or(page.getByTestId('gf-empty'))).toBeVisible({ timeout: 15_000 })
 })
 
+test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/rules')
+  await expect(page.getByTestId('rule-kind')).toBeVisible()
+  // overspeed is the default kind → the speed config field is shown
+  await expect(page.getByTestId('rule-cfg-speedKmh')).toBeVisible()
+  await page.getByTestId('rule-name').fill('Speeding')
+  await page.getByTestId('rule-cfg-speedKmh').fill('80')
+  await page.getByTestId('rule-create').click()
+
+  // it lands in the list, enabled by default
+  const row = page.locator('li[data-testid^="rule-"]').filter({ hasText: 'Speeding' })
+  await expect(row).toBeVisible({ timeout: 15_000 })
+  // controlled checkbox: `checked` reflects server state, which only flips after the
+  // PATCH + refetch round-trips. `.click()` fires onChange without asserting a
+  // synchronous state flip; the assertion below then polls until the refetch lands.
+  await row.getByRole('checkbox').click()
+  await expect(row.getByRole('checkbox')).not.toBeChecked()
+
+  // switching kind to geofence swaps the config fields
+  await page.getByTestId('rule-kind').selectOption('geofence')
+  await expect(page.getByTestId('rule-cfg-on')).toBeVisible()
+
+  await row.getByTestId(/rule-del-/).click()
+  await expect(row).toHaveCount(0)
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)

@@ -111,6 +111,40 @@
     "gps": "gps",
     "error": "Nepavyko įkelti kelionių."
   },
+  "rules": {
+    "title": "Taisyklės",
+    "list": "Taisyklės",
+    "add": "Pridėti taisyklę",
+    "empty": "Taisyklių dar nėra.",
+    "kindLabel": "Tipas",
+    "name": "Pavadinimas",
+    "account": "Paskyra",
+    "cooldown": "Atvėsimas",
+    "enabled": "Įjungta",
+    "create": "Sukurti",
+    "delete": "Šalinti",
+    "invalid": "Patikrinkite taisyklės laukus.",
+    "error": "Nepavyko išsaugoti taisyklės.",
+    "kind": {
+      "overspeed": "Greičio viršijimas",
+      "geofence": "Geozona",
+      "ignition": "Degimas",
+      "din_change": "DIN pokytis",
+      "power_cut": "Maitinimo dingimas",
+      "low_battery": "Žema baterija",
+      "panic": "Panika",
+      "device_offline": "Įrenginys neprisijungęs"
+    },
+    "cfg": {
+      "speedKmh": "Greitis (km/val)",
+      "geofenceId": "Geozona",
+      "on": "Kai",
+      "thresholdV": "Riba (V)",
+      "afterH": "Po (val.)"
+    },
+    "needGeofence": "Pasirinkite geozoną šiai taisyklei.",
+    "actionError": "Veiksmas nepavyko — bandykite dar kartą."
+  },
   "playback": {
     "title": "Istorijos peržiaura",
     "device": "Įrenginys",

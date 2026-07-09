@@ -111,6 +111,40 @@
     "gps": "gps",
     "error": "Nie udało się wczytać tras."
   },
+  "rules": {
+    "title": "Reguły",
+    "list": "Reguły",
+    "add": "Dodaj regułę",
+    "empty": "Brak reguł.",
+    "kindLabel": "Typ",
+    "name": "Nazwa",
+    "account": "Konto",
+    "cooldown": "Odstęp",
+    "enabled": "Włączona",
+    "create": "Utwórz",
+    "delete": "Usuń",
+    "invalid": "Sprawdź pola reguły.",
+    "error": "Nie udało się zapisać reguły.",
+    "kind": {
+      "overspeed": "Przekroczenie prędkości",
+      "geofence": "Geostrefa",
+      "ignition": "Zapłon",
+      "din_change": "Zmiana DIN",
+      "power_cut": "Utrata zasilania",
+      "low_battery": "Niski poziom baterii",
+      "panic": "Panika",
+      "device_offline": "Urządzenie offline"
+    },
+    "cfg": {
+      "speedKmh": "Prędkość (km/h)",
+      "geofenceId": "Geostrefa",
+      "on": "Gdy",
+      "thresholdV": "Próg (V)",
+      "afterH": "Po (godz.)"
+    },
+    "needGeofence": "Wybierz geostrefę dla tej reguły.",
+    "actionError": "Akcja nie powiodła się — spróbuj ponownie."
+  },
   "playback": {
     "title": "Odtwarzanie historii",
     "device": "Urządzenie",

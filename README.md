@@ -215,6 +215,15 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## Rules (E05-3)
+
+- **Web** `/app/rules` (nav Automation → Rules) — create alert rules over the existing
+  `/v1/rules` API with **kind-specific config**: overspeed (speed km/h), geofence (fence +
+  enter/exit/both), low_battery (threshold V), device_offline (after hours); ignition /
+  din_change / power_cut / panic are event-driven (no threshold). Per-rule cooldown, an
+  inline enabled toggle, and delete. The rule **engine** that evaluates these + fans out
+  notifications is E05-4.
+
 ## Trips list & detail (E04-4)
 
 - **Web** `/app/trips` (nav Fleet → Trips) — filter trips by device + time range in a table
