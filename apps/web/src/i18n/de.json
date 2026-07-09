@@ -33,7 +33,8 @@
     "collapse": "Menü einklappen",
     "expand": "Menü ausklappen",
     "logout": "Abmelden",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "apiKeys": "API-Schlüssel"
   },
   "branding": {
     "title": "Branding",
@@ -337,5 +338,26 @@
       "maxSpeed": "Max Tempo"
     },
     "account": "Konto"
+  },
+  "apiKeys": {
+    "title": "API-Schlüssel",
+    "add": "Schlüssel erstellen",
+    "name": "Name",
+    "account": "Konto",
+    "tenantWide": "Alle Konten",
+    "create": "Erstellen",
+    "error": "Schlüssel konnte nicht erstellt werden.",
+    "list": "Schlüssel",
+    "empty": "Noch keine API-Schlüssel.",
+    "created": "Schlüssel erstellt",
+    "copyNow": "Kopieren Sie den Schlüssel jetzt — er wird nur einmal angezeigt.",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "dismiss": "Fertig",
+    "revoke": "Widerrufen",
+    "revoked": "Widerrufen",
+    "active": "Aktiv",
+    "lastUsed": "zuletzt genutzt",
+    "neverUsed": "nie genutzt"
   }
 }

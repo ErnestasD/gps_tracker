@@ -252,7 +252,9 @@ Every new variable must be added to the table here AND match the `.env` contract
 - **Rate limit** — per-key fixed 60 s window in Redis (`apikey:rl:{id}:{minute}`), default
   **600/min** (`apiKeyRateLimitPerMin`); over budget → `429`.
 - **Management** — `POST/GET/DELETE /v1/api-keys` (**tenant-admin only** — an API key can't
-  mint keys). Dedicated routes, EXEMPT from the manifest with dedicated isolation tests.
+  mint keys). Dedicated routes, EXEMPT from the manifest with dedicated isolation tests. The
+  **web** exposes this at `/app/api-keys` (nav Admin → API keys, admin-only): create a key
+  (the plaintext is shown **once** to copy), list keys with last-used + status, and revoke.
 
 ## Reports UI + CSV export (E06-2)
 

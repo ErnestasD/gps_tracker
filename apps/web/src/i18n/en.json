@@ -33,7 +33,8 @@
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
     "logout": "Log out",
-    "settings": "Settings"
+    "settings": "Settings",
+    "apiKeys": "API keys"
   },
   "branding": {
     "title": "Branding",
@@ -337,5 +338,26 @@
       "maxSpeed": "Max speed"
     },
     "account": "Account"
+  },
+  "apiKeys": {
+    "title": "API keys",
+    "add": "Create a key",
+    "name": "Name",
+    "account": "Account",
+    "tenantWide": "All accounts (tenant-wide)",
+    "create": "Create",
+    "error": "Could not create the key.",
+    "list": "Keys",
+    "empty": "No API keys yet.",
+    "created": "Key created",
+    "copyNow": "Copy this key now — it is shown only once and cannot be retrieved again.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "dismiss": "Done",
+    "revoke": "Revoke",
+    "revoked": "Revoked",
+    "active": "Active",
+    "lastUsed": "last used",
+    "neverUsed": "never used"
   }
 }
