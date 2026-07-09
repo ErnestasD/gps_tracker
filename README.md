@@ -215,6 +215,18 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## API keys + public REST (E06-3)
+
+- **Auth** — integrations send `X-Api-Key: orb_live_…` instead of a Bearer JWT on the same
+  `/v1/*` routes (§6.6). The key is SHA-256'd and looked up; a match resolves to a
+  **read-only** context (role `viewer`) — key holders can GET and run reports but never
+  mutate (writes 403). The full key is shown **once** at creation; only its hash + a display
+  prefix are stored.
+- **Rate limit** — per-key fixed 60 s window in Redis (`apikey:rl:{id}:{minute}`), default
+  **600/min** (`apiKeyRateLimitPerMin`); over budget → `429`.
+- **Management** — `POST/GET/DELETE /v1/api-keys` (**tenant-admin only** — an API key can't
+  mint keys). Dedicated routes, EXEMPT from the manifest with dedicated isolation tests.
+
 ## Reports UI + CSV export (E06-2)
 
 - **Web** `/app/reports` (nav Insights → Reports) — pick a report type + device + date range,

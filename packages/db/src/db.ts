@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 
 import { buildAuthMethods, type AuthDb } from './auth.js'
 import { createAccountRepo, type AccountRepo } from './repos/accounts.js'
+import { createApiKeyRepo, type ApiKeyRepo } from './repos/apiKeys.js'
 import { createAuditRepo, type AuditRepo } from './repos/audit.js'
 import { createDeviceRepo, type DeviceRepo } from './repos/devices.js'
 import { createEventRepo, type EventRepo } from './repos/events.js'
@@ -30,6 +31,7 @@ export interface Db {
   profiles: ProfileRepo
   rules: RuleRepo
   webhooks: WebhookRepo
+  apiKeys: ApiKeyRepo
   events: EventRepo
   trips: TripReadRepo
   geofences: GeofenceRepo
@@ -50,6 +52,7 @@ export function createDb(databaseUrl: string): Db {
     profiles: createProfileRepo(prisma),
     rules: createRuleRepo(prisma, audit),
     webhooks: createWebhookRepo(prisma, audit),
+    apiKeys: createApiKeyRepo(prisma, audit),
     events: createEventRepo(prisma),
     trips: createTripRepo(prisma),
     geofences: createGeofenceRepo(prisma, audit),

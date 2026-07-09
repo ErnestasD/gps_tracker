@@ -3,6 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 
 import type { Role } from '@orbetra/shared'
 
+import type { ApiKeyAuth } from './apiKey.js'
 import { verifyAccessToken } from './jwt.js'
 
 /** Authenticated request context — claims verified from the access JWT. */
@@ -32,9 +33,23 @@ export function problem(
   )
 }
 
-/** Bearer JWT → c.set('auth', ctx); 401 problem+json otherwise. */
-export function authMiddleware(cfg: { jwtSecret: string }): MiddlewareHandler<AuthEnv> {
+/** X-Api-Key → c.set('auth') (read-only), else Bearer JWT → c.set('auth'); 401/429 otherwise.
+ * The API-key path (E06-3) is tried first only when the header is present, so the web's JWT
+ * flow is unchanged. */
+export function authMiddleware(cfg: { jwtSecret: string; apiKey?: ApiKeyAuth }): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
+    const rawKey = c.req.header('x-api-key')?.trim()
+    // only take the API-key branch for a NON-EMPTY key — an empty/whitespace header must not
+    // shadow a valid Bearer JWT (review LOW: a proxy that always attaches x-api-key: "")
+    if (rawKey && cfg.apiKey !== undefined) {
+      const out = await cfg.apiKey.resolve(rawKey)
+      if ('error' in out) {
+        return out.error === 'rate_limited' ? problem(c, 429, 'Too Many Requests') : problem(c, 401, 'Unauthorized')
+      }
+      c.set('auth', out.ok)
+      await next()
+      return
+    }
     const header = c.req.header('authorization')
     if (!header?.startsWith('Bearer ')) return problem(c, 401, 'Unauthorized')
     const claims = await verifyAccessToken(header.slice('Bearer '.length), cfg.jwtSecret)

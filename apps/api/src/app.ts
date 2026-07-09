@@ -5,7 +5,9 @@ import type { Db, Pool } from '@orbetra/db'
 import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
 
 import { createAuthRoutes } from './auth/login.js'
+import { createApiKeyAuth } from './auth/apiKey.js'
 import { authMiddleware, type AuthEnv } from './auth/middleware.js'
+import { mountApiKeys } from './routes/apiKeys.js'
 import { createPublicRoutes } from './routes/caddyAsk.js'
 import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
@@ -29,6 +31,8 @@ export interface ApiDeps extends WsDeps {
   resolveTxt?: TxtResolver
   /** Caddy-ask rate limit (E03-5); default 10/min per IP. */
   askRateLimit?: { max: number; windowS: number }
+  /** Per-API-key rate limit (E06-3); default 600/min. */
+  apiKeyRateLimitPerMin?: number
 }
 
 export interface ApiProm {
@@ -82,7 +86,8 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)
-  app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret }))
+  const apiKeyAuth = createApiKeyAuth({ apiKeys: deps.db.apiKeys, redis: deps.redis, perMin: deps.apiKeyRateLimitPerMin ?? 600 })
+  app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret, apiKey: apiKeyAuth }))
 
   // §6.6: GET /v1/ws-ticket → single-use ticket for wss://…/v1/stream?ticket=
   // (any authenticated role — live map is viewer-accessible)
@@ -141,6 +146,9 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.
   mountReports(app, { db: deps.db, pool: deps.pool })
+
+  // API-key management (E06-3) — tenant-admin only; dedicated route, EXEMPT from the manifest.
+  mountApiKeys(app, { db: deps.db })
 
   return app
 }
