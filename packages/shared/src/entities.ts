@@ -121,6 +121,18 @@ export const ruleCreateSchema = z.object({
 })
 export const ruleUpdateSchema = ruleCreateSchema.omit({ accountId: true, kind: true }).partial()
 
+// ── reports (E06-1) ──────────────────────────────────────────────────────────
+// POST /v1/reports/:type body. `accountId` is required only for a tenant-wide caller
+// (an account-scoped user's account is fixed by their token). from/to are ISO; the engine
+// buckets by the account's IANA zone (§7.7).
+export const reportRequestSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+  deviceId: z.string().regex(/^\d+$/).optional(),
+  accountId: z.string().uuid().optional(),
+})
+export type ReportRequest = z.infer<typeof reportRequestSchema>
+
 // ── webhooks ─────────────────────────────────────────────────────────────────
 export const webhookCreateSchema = z.object({
   accountId: z.string().uuid().nullable(),

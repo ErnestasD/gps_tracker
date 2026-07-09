@@ -215,6 +215,19 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## Reports (E06-1)
+
+- **API** `POST /v1/reports/:type` (account-scoped) — `type` ∈ `trips · mileage · stops ·
+  overspeed · geofence · engine_hours`; body `{ from, to, deviceId?, accountId? }` (a
+  tenant-wide caller must name an `accountId`; an account user's is fixed by their token).
+  Returns JSON rows.
+- **Engine** (`packages/db/reports.ts`) — scoped raw SQL over trips + events (aggregation
+  Prisma can't express). **Day bucketing is account-timezone-correct**: `at AT TIME ZONE $tz`
+  runs the offset math **in Postgres** (DST-aware, incl. the Europe/Warsaw 2026-10-25
+  fall-back — §7.7). All timestamps stored UTC; the account's IANA zone converts only here.
+  Every query is bounded by the caller's tenant + account; params are sanitized (garbage
+  dates/deviceId never 500). Async CSV/XLSX export is E06-2.
+
 ## Notification dispatch (E05-5)
 
 - **Worker** — after a rule event is durably persisted (E05-4), it's enqueued on a BullMQ
