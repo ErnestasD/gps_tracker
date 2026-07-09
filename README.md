@@ -215,6 +215,16 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## Reports UI + CSV export (E06-2)
+
+- **Web** `/app/reports` (nav Insights → Reports) — pick a report type + device + date range,
+  Run, and view the rows in a table. **Export CSV** is client-side (RFC-4180, Blob download —
+  no server round-trip, no storage backend). Consumes the E06-1 sync API; the account
+  timezone is applied server-side.
+- The plan's **async** server-side XLSX export (BullMQ → exceljs → R2 signed URL, for large
+  or scheduled exports) is a follow-up — it needs R2/S3 credentials (`S3_ENDPOINT/KEY/…`) and
+  an exceljs ADR.
+
 ## Reports (E06-1)
 
 - **API** `POST /v1/reports/:type` (account-scoped) — `type` ∈ `trips · mileage · stops ·

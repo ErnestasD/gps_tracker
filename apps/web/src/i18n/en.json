@@ -298,5 +298,44 @@
       "panic": "Panic",
       "device_offline": "Device offline"
     }
+  },
+  "reports": {
+    "title": "Reports",
+    "run": "Run a report",
+    "type": "Report",
+    "device": "Device",
+    "allDevices": "All devices",
+    "from": "From",
+    "to": "To",
+    "runBtn": "Run",
+    "exportCsv": "Export CSV",
+    "error": "Report failed. Check the date range.",
+    "result": "Result",
+    "idle": "Choose a type and range, then Run.",
+    "empty": "No data for this range.",
+    "t": {
+      "mileage": "Mileage",
+      "trips": "Trips",
+      "stops": "Stops",
+      "overspeed": "Overspeed",
+      "geofence": "Geofence",
+      "engine_hours": "Engine hours"
+    },
+    "col": {
+      "day": "Day",
+      "deviceId": "Device",
+      "trips": "Trips",
+      "distanceM": "Distance (m)",
+      "idleS": "Idle (s)",
+      "seconds": "Seconds",
+      "count": "Count",
+      "maxSpeedKmh": "Max km/h",
+      "enters": "Enters",
+      "exits": "Exits",
+      "startTime": "Start",
+      "endTime": "End",
+      "maxSpeed": "Max speed"
+    },
+    "account": "Account"
   }
 }

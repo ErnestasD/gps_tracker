@@ -298,5 +298,44 @@
       "panic": "Panik",
       "device_offline": "Gerät offline"
     }
+  },
+  "reports": {
+    "title": "Berichte",
+    "run": "Bericht erstellen",
+    "type": "Bericht",
+    "device": "Gerät",
+    "allDevices": "Alle Geräte",
+    "from": "Von",
+    "to": "Bis",
+    "runBtn": "Erstellen",
+    "exportCsv": "CSV exportieren",
+    "error": "Fehlgeschlagen. Zeitraum prüfen.",
+    "result": "Ergebnis",
+    "idle": "Typ und Zeitraum wählen, dann Erstellen.",
+    "empty": "Keine Daten für diesen Zeitraum.",
+    "t": {
+      "mileage": "Kilometer",
+      "trips": "Fahrten",
+      "stops": "Stopps",
+      "overspeed": "Tempo",
+      "geofence": "Geofence",
+      "engine_hours": "Motorstunden"
+    },
+    "col": {
+      "day": "Tag",
+      "deviceId": "Gerät",
+      "trips": "Fahrten",
+      "distanceM": "Distanz (m)",
+      "idleS": "Leerlauf (s)",
+      "seconds": "Sekunden",
+      "count": "Anzahl",
+      "maxSpeedKmh": "Max km/h",
+      "enters": "Einfahrten",
+      "exits": "Ausfahrten",
+      "startTime": "Start",
+      "endTime": "Ende",
+      "maxSpeed": "Max Tempo"
+    },
+    "account": "Konto"
   }
 }

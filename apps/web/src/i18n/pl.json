@@ -298,5 +298,44 @@
       "panic": "Alarm",
       "device_offline": "Urządzenie offline"
     }
+  },
+  "reports": {
+    "title": "Raporty",
+    "run": "Uruchom raport",
+    "type": "Raport",
+    "device": "Urządzenie",
+    "allDevices": "Wszystkie urządzenia",
+    "from": "Od",
+    "to": "Do",
+    "runBtn": "Uruchom",
+    "exportCsv": "Eksport CSV",
+    "error": "Niepowodzenie. Sprawdź zakres dat.",
+    "result": "Wynik",
+    "idle": "Wybierz typ i zakres, następnie Uruchom.",
+    "empty": "Brak danych dla tego zakresu.",
+    "t": {
+      "mileage": "Przebieg",
+      "trips": "Trasy",
+      "stops": "Postoje",
+      "overspeed": "Prędkość",
+      "geofence": "Geostrefy",
+      "engine_hours": "Godziny pracy"
+    },
+    "col": {
+      "day": "Dzień",
+      "deviceId": "Urządzenie",
+      "trips": "Trasy",
+      "distanceM": "Dystans (m)",
+      "idleS": "Bezczynność (s)",
+      "seconds": "Sekundy",
+      "count": "Liczba",
+      "maxSpeedKmh": "Maks km/h",
+      "enters": "Wjazdy",
+      "exits": "Wyjazdy",
+      "startTime": "Start",
+      "endTime": "Koniec",
+      "maxSpeed": "Maks prędkość"
+    },
+    "account": "Konto"
   }
 }

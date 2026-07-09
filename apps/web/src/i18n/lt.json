@@ -298,5 +298,44 @@
       "panic": "Pavojaus mygtukas",
       "device_offline": "Įrenginys neprisijungęs"
     }
+  },
+  "reports": {
+    "title": "Ataskaitos",
+    "run": "Sugeneruoti ataskaitą",
+    "type": "Ataskaita",
+    "device": "Įrenginys",
+    "allDevices": "Visi įrenginiai",
+    "from": "Nuo",
+    "to": "Iki",
+    "runBtn": "Generuoti",
+    "exportCsv": "Eksportuoti CSV",
+    "error": "Nepavyko. Patikrinkite datų intervalą.",
+    "result": "Rezultatas",
+    "idle": "Pasirinkite tipą ir intervalą, tada Generuoti.",
+    "empty": "Šiam intervalui duomenų nėra.",
+    "t": {
+      "mileage": "Rida",
+      "trips": "Kelionės",
+      "stops": "Sustojimai",
+      "overspeed": "Greičio viršijimas",
+      "geofence": "Geozonos",
+      "engine_hours": "Variklio valandos"
+    },
+    "col": {
+      "day": "Diena",
+      "deviceId": "Įrenginys",
+      "trips": "Kelionės",
+      "distanceM": "Atstumas (m)",
+      "idleS": "Prastova (s)",
+      "seconds": "Sekundės",
+      "count": "Kiekis",
+      "maxSpeedKmh": "Maks. km/h",
+      "enters": "Įvažiavimai",
+      "exits": "Išvažiavimai",
+      "startTime": "Pradžia",
+      "endTime": "Pabaiga",
+      "maxSpeed": "Maks. greitis"
+    },
+    "account": "Paskyra"
   }
 }

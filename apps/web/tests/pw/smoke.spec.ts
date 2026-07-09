@@ -453,6 +453,25 @@ test('events: timeline page loads with filters (E05-6)', async ({ page }) => {
   await expect(page.getByTestId('events-table').or(page.getByTestId('events-empty'))).toBeVisible()
 })
 
+test('reports: run a report over a range (E06-2)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/reports')
+  await expect(page.getByTestId('report-type')).toBeVisible()
+  await expect(page.getByTestId('report-idle')).toBeVisible() // nothing run yet
+  // Run is disabled until both bounds are set
+  await expect(page.getByTestId('report-run')).toBeDisabled()
+  await page.getByTestId('report-from').fill('2026-07-01T00:00')
+  await page.getByTestId('report-to').fill('2026-07-31T00:00')
+  await page.getByTestId('report-run').click()
+  // the result panel resolves to a table or the empty state (no trips required)
+  await expect(page.getByTestId('report-table').or(page.getByTestId('report-empty'))).toBeVisible()
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)
