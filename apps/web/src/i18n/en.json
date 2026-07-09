@@ -111,6 +111,40 @@
     "gps": "gps",
     "error": "Could not load trips."
   },
+  "rules": {
+    "title": "Rules",
+    "list": "Rules",
+    "add": "Add rule",
+    "empty": "No rules yet.",
+    "kindLabel": "Kind",
+    "name": "Name",
+    "account": "Account",
+    "cooldown": "Cooldown",
+    "enabled": "Enabled",
+    "create": "Create",
+    "delete": "Delete",
+    "invalid": "Check the rule fields.",
+    "error": "Could not save rule.",
+    "kind": {
+      "overspeed": "Overspeed",
+      "geofence": "Geofence",
+      "ignition": "Ignition",
+      "din_change": "DIN change",
+      "power_cut": "Power cut",
+      "low_battery": "Low battery",
+      "panic": "Panic",
+      "device_offline": "Device offline"
+    },
+    "cfg": {
+      "speedKmh": "Speed (km/h)",
+      "geofenceId": "Geofence",
+      "on": "On",
+      "thresholdV": "Threshold (V)",
+      "afterH": "After (hours)"
+    },
+    "needGeofence": "Select a geofence for this rule.",
+    "actionError": "Action failed — try again."
+  },
   "playback": {
     "title": "History playback",
     "device": "Device",
