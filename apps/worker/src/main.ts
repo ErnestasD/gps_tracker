@@ -12,7 +12,10 @@ import { ShardLeaser } from './shards.js'
 import { createRecomputeQueue, enqueueRecompute, redisConnection } from './jobs/queue.js'
 import { createOfflineQueue, scheduleOfflineSweep } from './jobs/offlineQueue.js'
 import { startOfflineWorker } from './jobs/offlineWorker.js'
+import { createNotifyQueue, enqueueNotify } from './jobs/notifyQueue.js'
+import { startNotifyWorker } from './jobs/notifyWorker.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
+import { driversFromEnv } from './notify/drivers.js'
 import { GeofenceCache } from './geofence/cache.js'
 import { GeofenceEventPersister } from './geofence/persister.js'
 import { RuleCache } from './rules/cache.js'
@@ -81,11 +84,38 @@ async function main(): Promise<void> {
   // shared socket that would queue behind (and stall) the leaser's renewal, the E02-6
   // lease-loss class of bug (review MED). Same rationale as the prom scraper's duplicate.
   const offlineRedis = redis.duplicate()
+  // E05-5: notification dispatch — persisted rule events are enqueued here and delivered to
+  // the rule's channels (email/telegram) with BullMQ retry. Drivers are env-gated: a channel
+  // whose credentials are absent is skipped (metric), not failed. Email transport (SES) lands
+  // with founder-provisioned creds — until then only Telegram (TELEGRAM_BOT_TOKEN) can send.
+  const notifyQueue = createNotifyQueue(recomputeConn)
+  const drivers = driversFromEnv(process.env)
+  const notifyWorker = startNotifyWorker({
+    connection: recomputeConn,
+    pool,
+    redis: offlineRedis,
+    drivers,
+    onSent: (ch) => prom.notificationSent.inc({ channel: ch }),
+    onFailed: (ch) => prom.notificationFailed.inc({ channel: ch }),
+    onSkipped: (reason) => prom.notificationSkipped.inc({ reason }),
+  })
   const offlineWorker = startOfflineWorker({
     connection: recomputeConn,
     pool,
     redis: offlineRedis,
     onFired: (n) => prom.ruleEvents.inc({ kind: 'device_offline' }, n),
+    // best-effort per item: a Redis blip must not fail the sweep (the fired-flag is already
+    // set with a 30-day TTL, so a thrown sweep would strand the notification for ~30 days).
+    // Surface a dropped enqueue via a metric instead (review MED-1).
+    onEvents: (events) =>
+      Promise.allSettled(
+        events.map((e) =>
+          enqueueNotify(notifyQueue, { ruleId: e.ruleId, deviceId: e.deviceId, kind: e.kind, at: e.at, payload: e.payload }).catch((err: unknown) => {
+            prom.notificationFailed.inc({ channel: 'enqueue' })
+            console.error('enqueueNotify(offline)', err)
+          }),
+        ),
+      ).then(() => undefined),
   })
   await scheduleOfflineSweep(offlineQueue)
   const consumerConns: Redis[] = []
@@ -153,7 +183,18 @@ async function main(): Promise<void> {
               // the replay edge → a missed panic. Order matters (review HIGH-1).
               if (ruleEvents.length > 0) {
                 const persisted = await rulePersister.persist(ruleEvents)
-                for (const e of persisted) prom.ruleEvents.inc({ kind: e.kind })
+                for (const e of persisted) {
+                  prom.ruleEvents.inc({ kind: e.kind })
+                  // E05-5: enqueue notification AFTER the event is durably persisted (§6.5).
+                  // Best-effort per event — a notify-enqueue failure must not stall the shard,
+                  // but it IS a silent-alert-drop, so surface it via a metric (review MED-2).
+                  try {
+                    await enqueueNotify(notifyQueue, { ruleId: e.ruleId, deviceId: e.deviceId, kind: e.kind, at: e.at, payload: e.payload })
+                  } catch (err) {
+                    prom.notificationFailed.inc({ channel: 'enqueue' })
+                    console.error('enqueueNotify', err)
+                  }
+                }
               }
               // now advance durable IO state so the NEXT batch / a clean restart warm-starts
               const snapshots = new Map<string, DeviceIo>()
@@ -207,6 +248,8 @@ async function main(): Promise<void> {
       await recomputeQueue.close()
       await offlineWorker.close() // finish the in-flight sweep, stop taking new
       await offlineQueue.close()
+      await notifyWorker.close() // finish the in-flight notification, stop taking new
+      await notifyQueue.close()
       offlineRedis.disconnect()
       consumerConns.forEach((c) => c.disconnect())
       await redis.quit()

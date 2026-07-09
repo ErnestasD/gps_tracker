@@ -99,7 +99,7 @@ describe('E05-4b runOfflineSweep (glue)', () => {
       lastFixMs: { '42': NOW - 5 * H }, // 5 h > 2 h
     })
     const n = await runOfflineSweep(pool, redis, NOW)
-    expect(n).toBe(1)
+    expect(n).toHaveLength(1)
     const insert = calls.find((c) => c.sql.startsWith('INSERT INTO events'))!
     expect(insert.params.slice(0, 5)).toEqual(['ten-1', 'acc-1', '42', 'ro', 'device_offline'])
     expect(flagWrites).toContainEqual({ op: 'set', key: 'rule:offline:42' })
@@ -114,7 +114,7 @@ describe('E05-4b runOfflineSweep (glue)', () => {
       lastFixMs: { '42': NOW - 50 * H },
     })
     const n = await runOfflineSweep(pool, redis, NOW)
-    expect(n).toBe(0)
+    expect(n).toHaveLength(0)
     expect(calls.some((c) => c.sql.startsWith('INSERT INTO events'))).toBe(false)
   })
 
@@ -128,7 +128,7 @@ describe('E05-4b runOfflineSweep (glue)', () => {
       flagged: ['42'],
     })
     const n = await runOfflineSweep(pool, redis, NOW)
-    expect(n).toBe(0)
+    expect(n).toHaveLength(0)
     expect(flagWrites).toContainEqual({ op: 'del', key: 'rule:offline:42' })
   })
 
@@ -141,7 +141,7 @@ describe('E05-4b runOfflineSweep (glue)', () => {
       lastFixMs: {}, // no last fix → real hget returns null
     })
     const n = await runOfflineSweep(pool, redis, NOW)
-    expect(n).toBe(0)
+    expect(n).toHaveLength(0)
     expect(calls.some((c) => c.sql.startsWith('INSERT INTO events'))).toBe(false)
     expect(flagWrites).toHaveLength(0)
   })
@@ -157,7 +157,7 @@ describe('E05-4b runOfflineSweep (glue)', () => {
       claimed: ['42'], // a concurrent tick already claimed the flag
     })
     const n = await runOfflineSweep(pool, redis, NOW)
-    expect(n).toBe(0)
+    expect(n).toHaveLength(0)
     expect(calls.some((c) => c.sql.startsWith('INSERT INTO events'))).toBe(false)
   })
 })
