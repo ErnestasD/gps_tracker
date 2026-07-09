@@ -11,6 +11,7 @@ export { DuplicateImeiError, type DeviceRepo, type DeviceCreate, type DeviceUpda
 export { type ProfileRepo } from './repos/profiles.js'
 export { type RuleRepo, type RuleCreate, type RuleUpdate } from './repos/rules.js'
 export { type WebhookRepo, type WebhookCreate, type WebhookUpdate } from './repos/webhooks.js'
+export { hashKey, type ApiKeyRepo, type ApiKeyView, type ApiKeyCreate, type CreatedApiKey, type ApiKeyResolved } from './repos/apiKeys.js'
 export { type EventRepo, type EventListOpts } from './repos/events.js'
 export { type TripReadRepo, type TripListOpts } from './repos/trips.js'
 export { type GeofenceRepo, type GeofenceCreate, type GeofenceUpdate, GeofenceInvalidError, GeofenceTooLargeError } from './repos/geofences.js'

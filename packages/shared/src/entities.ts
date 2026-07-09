@@ -121,6 +121,16 @@ export const ruleCreateSchema = z.object({
 })
 export const ruleUpdateSchema = ruleCreateSchema.omit({ accountId: true, kind: true }).partial()
 
+// ── api keys (E06-3) ─────────────────────────────────────────────────────────
+// Integration keys. `accountId` (nullable) scopes the key to one account; a tenant admin
+// may leave it null for tenant-wide read. scopes default ['read'] (write is not v1).
+export const apiKeyCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  accountId: z.string().uuid().nullable().optional(),
+  scopes: z.array(z.enum(['read'])).optional(),
+})
+export type ApiKeyCreateInput = z.infer<typeof apiKeyCreateSchema>
+
 // ── reports (E06-1) ──────────────────────────────────────────────────────────
 // POST /v1/reports/:type body. `accountId` is required only for a tenant-wide caller
 // (an account-scoped user's account is fixed by their token). from/to are ISO; the engine
