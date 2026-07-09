@@ -241,6 +241,10 @@ Every new variable must be added to the table here AND match the `.env` contract
   allowed, redirects are refused (`redirect: 'error'`), and each POST has a 10 s timeout so a
   hanging endpoint can't pin worker concurrency. The persisted delivery-log + its UI are a
   follow-up (E06-4b).
+- **Web** `/app/webhooks` (nav Admin → Webhooks, admin-only) — register an endpoint URL +
+  event-kind filter; the signing **secret** is generated client-side and shown **once** (it
+  is redacted `***` in every list/get — the API never returns a stored secret). Toggle
+  enabled / delete.
 
 ## API keys + public REST (E06-3)
 

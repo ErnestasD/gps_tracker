@@ -34,7 +34,8 @@
     "expand": "Išskleisti meniu",
     "logout": "Atsijungti",
     "settings": "Nustatymai",
-    "apiKeys": "API raktai"
+    "apiKeys": "API raktai",
+    "webhooks": "Webhooks"
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -359,5 +360,22 @@
     "active": "Aktyvus",
     "lastUsed": "naudotas",
     "neverUsed": "nenaudotas"
+  },
+  "webhooks": {
+    "title": "Webhooks",
+    "add": "Pridėti webhook",
+    "url": "Endpoint URL",
+    "events": "Įvykiai",
+    "emptyAll": "nieko = visi tipai",
+    "create": "Sukurti",
+    "error": "Nepavyko sukurti. Patikrinkite URL.",
+    "list": "Webhooks",
+    "empty": "Webhook’ų dar nėra.",
+    "allKinds": "visi tipai",
+    "enabled": "Įjungta",
+    "delete": "Ištrinti",
+    "created": "Webhook sukurtas",
+    "secretOnce": "Nukopijuokite pasirašymo raktą dabar — jis tikrina X-Signature ir rodomas tik vieną kartą.",
+    "dismiss": "Gerai"
   }
 }

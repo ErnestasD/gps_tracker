@@ -126,6 +126,21 @@ describe('E03-6 audit coverage — every mutation writes an audit row', () => {
     }
   })
 
+  it('webhook list/get REDACT the secret in API responses, but delivery (raw SQL) still sees it', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-000000000001' }
+    const t = await db.tenants.create(actor, { name: 'WH-tenant' })
+    const scope = { tenantId: t.id }
+    const wh = await db.webhooks.create(scope, actor, { accountId: null, url: 'https://x.test/hook', secret: 'signing-secret-abcdef123' })
+    // read paths must never return the raw secret (rule 12)
+    const listed = (await db.webhooks.list(scope)).find((w) => w.id === wh.id)!
+    expect((listed as { secret: string }).secret).toBe('***')
+    const got = await db.webhooks.get(scope, wh.id)
+    expect((got as { secret: string }).secret).toBe('***')
+    // but the delivery worker reads it via raw SQL and gets the real value
+    const raw = await q<{ secret: string }>(`SELECT secret FROM webhooks WHERE id = $1`, [wh.id])
+    expect(raw[0]!.secret).toBe('signing-secret-abcdef123')
+  })
+
   it('user audit snapshots never contain a password hash', async () => {
     const rows = await q<{ after: Record<string, unknown> | null; before: Record<string, unknown> | null }>(
       `SELECT before, after FROM audit_log WHERE entity = 'user'`,

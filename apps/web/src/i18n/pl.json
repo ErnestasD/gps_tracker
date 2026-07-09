@@ -34,7 +34,8 @@
     "expand": "Rozwiń menu",
     "logout": "Wyloguj się",
     "settings": "Ustawienia",
-    "apiKeys": "Klucze API"
+    "apiKeys": "Klucze API",
+    "webhooks": "Webhooki"
   },
   "branding": {
     "title": "Marka",
@@ -359,5 +360,22 @@
     "active": "Aktywny",
     "lastUsed": "ostatnio użyty",
     "neverUsed": "nieużywany"
+  },
+  "webhooks": {
+    "title": "Webhooki",
+    "add": "Dodaj webhook",
+    "url": "URL punktu końcowego",
+    "events": "Zdarzenia",
+    "emptyAll": "brak = wszystkie rodzaje",
+    "create": "Utwórz",
+    "error": "Nie udało się utworzyć. Sprawdź URL.",
+    "list": "Webhooki",
+    "empty": "Brak webhooków.",
+    "allKinds": "wszystkie rodzaje",
+    "enabled": "Włączony",
+    "delete": "Usuń",
+    "created": "Webhook utworzony",
+    "secretOnce": "Skopiuj sekret podpisu teraz — weryfikuje X-Signature i jest pokazywany tylko raz.",
+    "dismiss": "Gotowe"
   }
 }

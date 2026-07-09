@@ -34,7 +34,8 @@
     "expand": "Menü ausklappen",
     "logout": "Abmelden",
     "settings": "Einstellungen",
-    "apiKeys": "API-Schlüssel"
+    "apiKeys": "API-Schlüssel",
+    "webhooks": "Webhooks"
   },
   "branding": {
     "title": "Branding",
@@ -359,5 +360,22 @@
     "active": "Aktiv",
     "lastUsed": "zuletzt genutzt",
     "neverUsed": "nie genutzt"
+  },
+  "webhooks": {
+    "title": "Webhooks",
+    "add": "Webhook hinzufügen",
+    "url": "Endpunkt-URL",
+    "events": "Ereignisse",
+    "emptyAll": "keine = alle Arten",
+    "create": "Erstellen",
+    "error": "Konnte nicht erstellt werden. URL prüfen.",
+    "list": "Webhooks",
+    "empty": "Noch keine Webhooks.",
+    "allKinds": "alle Arten",
+    "enabled": "Aktiv",
+    "delete": "Löschen",
+    "created": "Webhook erstellt",
+    "secretOnce": "Kopieren Sie das Signatur-Secret jetzt — es prüft die X-Signature und wird nur einmal gezeigt.",
+    "dismiss": "Fertig"
   }
 }
