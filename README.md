@@ -215,6 +215,17 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## API docs / OpenAPI (E06-5)
+
+- **`GET /v1/openapi.json`** — an OpenAPI 3.1 document for the public API, **generated from
+  the route manifest** (so it can't drift from the live routes) plus the curated non-manifest
+  routes (auth, reports, api-keys). Two security schemes — `bearerAuth` (JWT) and `apiKeyAuth`
+  (X-Api-Key); GET operations accept either, writes require the JWT. Import it into Postman /
+  your client, or view **`GET /v1/docs`** — a self-contained, dependency-free HTML page (no
+  external CDN/resources) that lists the endpoints grouped by tag. Both are public (before the
+  auth guard). A richer Scalar/Stoplight embed can replace the renderer later (needs a bundle
+  ADR).
+
 ## Webhook delivery (E06-4)
 
 - **Worker** — every persisted event (rule / geofence / device_offline) is enqueued and the

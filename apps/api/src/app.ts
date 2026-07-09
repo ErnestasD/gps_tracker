@@ -8,6 +8,7 @@ import { createAuthRoutes } from './auth/login.js'
 import { createApiKeyAuth } from './auth/apiKey.js'
 import { authMiddleware, type AuthEnv } from './auth/middleware.js'
 import { mountApiKeys } from './routes/apiKeys.js'
+import { mountDocs } from './routes/docs.js'
 import { createPublicRoutes } from './routes/caddyAsk.js'
 import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
@@ -86,6 +87,9 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)
+  // PUBLIC API docs (E06-5) — the OpenAPI document + docs page, before the /v1/* auth guard.
+  mountDocs(app, { manifest: apiManifest(), ...(process.env['PUBLIC_API_URL'] ? { serverUrl: process.env['PUBLIC_API_URL'] } : {}) })
+
   const apiKeyAuth = createApiKeyAuth({ apiKeys: deps.db.apiKeys, redis: deps.redis, perMin: deps.apiKeyRateLimitPerMin ?? 600 })
   app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret, apiKey: apiKeyAuth }))
 
