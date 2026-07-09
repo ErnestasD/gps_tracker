@@ -32,6 +32,9 @@ export interface GenericConfig {
   stampCreate?: (scope: Scope) => object
   /** Fields redacted from audit before/after snapshots (secrets at rest). */
   redactFields?: string[]
+  /** Fields masked in list/get RESPONSES so a secret is never returned over the API
+   * (e.g. a webhook HMAC secret — rule 12). Distinct from audit redaction. */
+  readRedact?: string[]
 }
 
 function redact<T extends { [k: string]: unknown }>(row: T | null, fields?: string[]): unknown {
@@ -62,13 +65,16 @@ export function createGenericRepo<Row extends { [k: string]: unknown }, CreateDa
 
   return {
     list: (scope, opts) =>
-      delegate.findMany({
-        where: scopedWhere(scope, cfg.scopeOpts),
-        ...(cfg.orderBy ? { orderBy: cfg.orderBy } : {}),
-        ...(opts?.take ? { take: opts.take } : {}),
-      }),
+      delegate
+        .findMany({
+          where: scopedWhere(scope, cfg.scopeOpts),
+          ...(cfg.orderBy ? { orderBy: cfg.orderBy } : {}),
+          ...(opts?.take ? { take: opts.take } : {}),
+        })
+        .then((rows) => (cfg.readRedact ? (rows.map((r) => redact(r, cfg.readRedact)) as Row[]) : rows)),
 
-    get: (scope, id) => delegate.findFirst({ where: scopedById(scope, id) }),
+    get: (scope, id) =>
+      delegate.findFirst({ where: scopedById(scope, id) }).then((r) => (cfg.readRedact ? (redact(r, cfg.readRedact) as Row | null) : r)),
 
     create: async (scope, actor, data) => {
       const row = await delegate.create({

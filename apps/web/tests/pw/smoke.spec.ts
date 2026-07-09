@@ -498,6 +498,33 @@ test('api keys: create shows the plaintext once, then revoke (E06-3 UI)', async 
   await expect(row.getByText(/Revoked|Atšauktas|Widerrufen|Odwołany/)).toBeVisible()
 })
 
+test('webhooks: create (secret shown once) → toggle → delete (E06-4 UI)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/webhooks')
+  await expect(page.getByTestId('webhook-url')).toBeVisible()
+  await page.getByTestId('webhook-url').fill('https://example.com/hook')
+  await page.getByTestId('webhook-kind-panic').check()
+  await page.getByTestId('webhook-create').click()
+
+  // the signing secret is shown once (48 hex chars)
+  const secret = page.getByTestId('webhook-secret')
+  await expect(secret).toBeVisible()
+  await expect(secret).toHaveText(/^[0-9a-f]{48}$/)
+  await page.getByTestId('webhook-dismiss').click()
+
+  const row = page.locator('li[data-testid^="webhook-"]').filter({ hasText: 'example.com/hook' })
+  await expect(row).toBeVisible({ timeout: 15_000 })
+  await row.getByRole('checkbox').click() // toggle enabled off
+  await expect(row.getByRole('checkbox')).not.toBeChecked()
+  await row.getByTestId(/webhook-del-/).click()
+  await expect(row).toHaveCount(0)
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)

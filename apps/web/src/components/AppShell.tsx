@@ -16,6 +16,7 @@ import {
   Settings,
   Settings2,
   TerminalSquare,
+  Webhook,
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -60,6 +61,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { key: 'shell.branding', icon: Palette, to: '/app/branding' },
       { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true },
+      { key: 'shell.webhooks', icon: Webhook, to: '/app/webhooks', adminOnly: true },
       { key: 'shell.audit', icon: ScrollText, to: '/app/audit', adminOnly: true },
       { key: 'shell.settings', icon: Settings, to: '/app/settings' },
     ],

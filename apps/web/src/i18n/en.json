@@ -34,7 +34,8 @@
     "expand": "Expand sidebar",
     "logout": "Log out",
     "settings": "Settings",
-    "apiKeys": "API keys"
+    "apiKeys": "API keys",
+    "webhooks": "Webhooks"
   },
   "branding": {
     "title": "Branding",
@@ -359,5 +360,22 @@
     "active": "Active",
     "lastUsed": "last used",
     "neverUsed": "never used"
+  },
+  "webhooks": {
+    "title": "Webhooks",
+    "add": "Add a webhook",
+    "url": "Endpoint URL",
+    "events": "Events",
+    "emptyAll": "none = all kinds",
+    "create": "Create",
+    "error": "Could not create the webhook. Check the URL.",
+    "list": "Webhooks",
+    "empty": "No webhooks yet.",
+    "allKinds": "all kinds",
+    "enabled": "Enabled",
+    "delete": "Delete",
+    "created": "Webhook created",
+    "secretOnce": "Copy this signing secret now — it verifies the X-Signature and is shown only once.",
+    "dismiss": "Done"
   }
 }
