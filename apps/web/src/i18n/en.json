@@ -272,5 +272,31 @@
     "cancel": "Cancel",
     "dupImei": "That IMEI is already registered.",
     "claimError": "Could not claim device."
+  },
+  "events": {
+    "title": "Events",
+    "timeline": "Timeline",
+    "kind": "Kind",
+    "allKinds": "All kinds",
+    "device": "Device",
+    "allDevices": "All devices",
+    "from": "From",
+    "to": "To",
+    "when": "When",
+    "detail": "Detail",
+    "hide": "Hide",
+    "details": "Details",
+    "empty": "No events match these filters.",
+    "loadMore": "Load more",
+    "k": {
+      "geofence": "Geofence",
+      "overspeed": "Overspeed",
+      "ignition": "Ignition",
+      "din_change": "Input change",
+      "power_cut": "Power cut",
+      "low_battery": "Low battery",
+      "panic": "Panic",
+      "device_offline": "Device offline"
+    }
   }
 }

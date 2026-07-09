@@ -215,6 +215,16 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## Events timeline (E05-6)
+
+- **Web** `/app/events` (nav Automation → Events) — the pipeline's rule/geofence output
+  (E05-2/4) as a reverse-chronological timeline. Filter by **kind**, **device**, and a
+  **time range** (`from`/`to`); each row shows a kind-specific one-line summary and expands
+  to the raw `payload`. Cursor-paginated (newest first, "Load more").
+- **API** `GET /v1/events?kind&deviceId&from&to&cursor&limit` (account-scoped, read-only).
+  All query params are sanitized in the events repo (mirrors the audit repo) — a malformed
+  cursor/date/deviceId is ignored rather than 500-ing.
+
 ## Rules (E05-3)
 
 - **Web** `/app/rules` (nav Automation → Rules) — create alert rules over the existing

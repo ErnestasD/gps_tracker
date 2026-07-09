@@ -272,5 +272,31 @@
     "cancel": "Abbrechen",
     "dupImei": "Diese IMEI ist bereits registriert.",
     "claimError": "Gerät konnte nicht übernommen werden."
+  },
+  "events": {
+    "title": "Ereignisse",
+    "timeline": "Zeitverlauf",
+    "kind": "Art",
+    "allKinds": "Alle Arten",
+    "device": "Gerät",
+    "allDevices": "Alle Geräte",
+    "from": "Von",
+    "to": "Bis",
+    "when": "Wann",
+    "detail": "Detail",
+    "hide": "Ausblenden",
+    "details": "Details",
+    "empty": "Keine Ereignisse für diese Filter.",
+    "loadMore": "Mehr laden",
+    "k": {
+      "geofence": "Geofence",
+      "overspeed": "Geschwindigkeit",
+      "ignition": "Zündung",
+      "din_change": "Eingangswechsel",
+      "power_cut": "Stromausfall",
+      "low_battery": "Batterie schwach",
+      "panic": "Panik",
+      "device_offline": "Gerät offline"
+    }
   }
 }

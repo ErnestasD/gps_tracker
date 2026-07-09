@@ -436,6 +436,23 @@ test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', as
   await expect(row).toHaveCount(0)
 })
 
+test('events: timeline page loads with filters (E05-6)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/events')
+  // filters are present; the list is either a table or the empty state (no events required)
+  await expect(page.getByTestId('events-kind')).toBeVisible()
+  await expect(page.getByTestId('events-device')).toBeVisible()
+  await expect(page.getByTestId('events-from')).toBeVisible()
+  // a garbage-safe filter change must not error the page (repo sanitizes)
+  await page.getByTestId('events-kind').selectOption('panic')
+  await expect(page.getByTestId('events-table').or(page.getByTestId('events-empty'))).toBeVisible()
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)
