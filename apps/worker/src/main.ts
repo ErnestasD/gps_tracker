@@ -10,6 +10,8 @@ import { MotionFeed } from './motion.js'
 import { startWorkerProm } from './prom.js'
 import { ShardLeaser } from './shards.js'
 import { createRecomputeQueue, enqueueRecompute, redisConnection } from './jobs/queue.js'
+import { createOfflineQueue, scheduleOfflineSweep } from './jobs/offlineQueue.js'
+import { startOfflineWorker } from './jobs/offlineWorker.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
 import { GeofenceCache } from './geofence/cache.js'
 import { GeofenceEventPersister } from './geofence/persister.js'
@@ -72,6 +74,20 @@ async function main(): Promise<void> {
       prom.tripRecomputeDeleted.inc(r.deleted)
     },
   })
+  // E05-4b: device_offline sweeper — a repeatable 60 s job scans presence against each
+  // account's device_offline rules (evaluated off the hot path, not per position).
+  const offlineQueue = createOfflineQueue(recomputeConn)
+  // dedicated connection: the sweep HGETALLs the whole device registry every 60 s — on the
+  // shared socket that would queue behind (and stall) the leaser's renewal, the E02-6
+  // lease-loss class of bug (review MED). Same rationale as the prom scraper's duplicate.
+  const offlineRedis = redis.duplicate()
+  const offlineWorker = startOfflineWorker({
+    connection: recomputeConn,
+    pool,
+    redis: offlineRedis,
+    onFired: (n) => prom.ruleEvents.inc({ kind: 'device_offline' }, n),
+  })
+  await scheduleOfflineSweep(offlineQueue)
   const consumerConns: Redis[] = []
   const consumers = [...shards].map((s) => {
     // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued
@@ -189,6 +205,9 @@ async function main(): Promise<void> {
       await leaser.release()
       await recomputeWorker.close() // finish the in-flight recompute job, stop taking new
       await recomputeQueue.close()
+      await offlineWorker.close() // finish the in-flight sweep, stop taking new
+      await offlineQueue.close()
+      offlineRedis.disconnect()
       consumerConns.forEach((c) => c.disconnect())
       await redis.quit()
       await pool.end()
