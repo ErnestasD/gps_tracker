@@ -20,6 +20,7 @@ export interface WorkerProm {
   tripRecomputes: Counter
   tripRecomputeDeleted: Counter
   geofenceEvents: Counter
+  ruleEvents: Counter
   server: Server
 }
 
@@ -62,6 +63,7 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const tripRecomputes = new Counter({ name: 'trip_recompute_total', help: 'trip-recompute jobs applied (E04-2 late-batch reconciliation)', registers: [registry] })
   const tripRecomputeDeleted = new Counter({ name: 'trip_recompute_deleted_total', help: 'trip rows deleted-and-replayed by recompute', registers: [registry] })
   const geofenceEvents = new Counter({ name: 'geofence_events_total', help: 'geofence enter/exit transition events written (E05-2)', registers: [registry] })
+  const ruleEvents = new Counter({ name: 'rule_events_total', help: 'rule events written by kind (E05-4)', labelNames: ['kind'], registers: [registry] })
 
   const server = createServer((req, res) => {
     if (req.url !== '/metrics') {
@@ -80,5 +82,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, server }
 }

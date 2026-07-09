@@ -30,6 +30,7 @@ import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { activateDevice, deactivateDevice, syncDeviceConfig } from './deviceRegistry.js'
 import { removeGeofence, syncGeofence } from './geofenceRegistry.js'
+import { removeRule, syncRule } from './ruleRegistry.js'
 import { applyImport, dryRun, parseCsv, rowsToImport } from './deviceImport.js'
 import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
@@ -335,19 +336,25 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if ((await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
-        return json(c, await db.rules.create(scopeOf(a), { userId: a.userId }, { ...data, accountId }), 201)
+        const rule = await db.rules.create(scopeOf(a), { userId: a.userId }, { ...data, accountId })
+        await bestEffortSync(() => syncRule(deps.redis, rule)) // publish to the worker's rule cache (E05-4)
+        return json(c, rule, 201)
       } },
     { method: 'patch', path: '/v1/rules/:id', scopeClass: 'account', entity: 'rule', shape: 'item',
       handler: async (c) => {
         const data = await body(c, ruleUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const row = await db.rules.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
-        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+        if (row === null) return problem(c, 404, 'Not Found')
+        await bestEffortSync(() => syncRule(deps.redis, row)) // re-publish the updated rule (E05-4)
+        return json(c, row)
       } },
     { method: 'delete', path: '/v1/rules/:id', scopeClass: 'account', entity: 'rule', shape: 'item',
       handler: async (c) => {
         const ok = await db.rules.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
-        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+        if (!ok) return problem(c, 404, 'Not Found')
+        await bestEffortSync(() => removeRule(deps.redis, auth(c).tenantId, id(c))) // drop from the worker's rule cache
+        return json(c, { ok: true })
       } },
 
     // ── geofences (account-scoped, nullable account = tenant-shared, E05-1) ────

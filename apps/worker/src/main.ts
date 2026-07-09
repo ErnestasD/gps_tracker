@@ -13,6 +13,9 @@ import { createRecomputeQueue, enqueueRecompute, redisConnection } from './jobs/
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
 import { GeofenceCache } from './geofence/cache.js'
 import { GeofenceEventPersister } from './geofence/persister.js'
+import { RuleCache } from './rules/cache.js'
+import { RuleEngine, type DeviceIo } from './rules/engine.js'
+import { RulePersister } from './rules/persister.js'
 import { DeviceConfigCache } from './trip/configCache.js'
 import { TripPersister } from './trip/persister.js'
 
@@ -53,6 +56,9 @@ async function main(): Promise<void> {
   const configCache = new DeviceConfigCache(redis) // per-device trip thresholds/odometerSource (E04-5)
   const geofenceCache = new GeofenceCache(redis) // per-tenant geofence geoms (E05-2)
   const geofenceEvents = new GeofenceEventPersister(pool, redis) // geofence transitions → events
+  const ruleCache = new RuleCache(redis) // per-tenant enabled engine rules (E05-4)
+  const ruleEngine = new RuleEngine() // overspeed/ignition/din/power_cut/low_battery/panic
+  const rulePersister = new RulePersister(pool, redis) // rule events + cooldown + IO warm-start
   // E04-2: late/buffered batches the streaming engine dropped are reconciled off the
   // hot path by trip-recompute jobs over durable positions (BullMQ, ADR-020).
   const recomputeConn = redisConnection(redisUrl)
@@ -112,6 +118,37 @@ async function main(): Promise<void> {
           if (transitions.length > 0) {
             const written = await geofenceEvents.persist(transitions)
             prom.geofenceEvents.inc(written)
+          }
+          // E05-4: rule engine (overspeed + IO). Fed the FULL batch, NOT the motion-filtered
+          // records — IO events (ignition/din/power_cut/low_battery/panic) must fire on
+          // invalid-fix records too (§3.4); overspeed self-guards on fixValid inside the engine.
+          // Isolated try: a rule-write failure must not stall the shard or drop trips/geofences.
+          try {
+            const rules = await ruleCache.resolveBatch(deviceIds, now)
+            if (rules.size > 0) {
+              const ruleDevices = [...rules.keys()]
+              const ioStateFor = await rulePersister.loadIoState(ruleDevices.map(BigInt)) // warm-start (no restart re-fire)
+              const ruleEvents = ruleEngine.feed(records, (id) => rules.get(id.toString()) ?? [], ioStateFor)
+              // Persist events BEFORE saving IO state. If the worker crashes in the
+              // ACK-replay window, un-saved IO state means the replay warm-starts the OLD
+              // value and RE-FIRES the edge (non-bypass edges are then suppressed by the
+              // already-set cooldown key ⇒ idempotent; panic/power_cut may double-fire —
+              // "doubled beats missed", §6.5). Saving IO state first would instead SUPPRESS
+              // the replay edge → a missed panic. Order matters (review HIGH-1).
+              if (ruleEvents.length > 0) {
+                const persisted = await rulePersister.persist(ruleEvents)
+                for (const e of persisted) prom.ruleEvents.inc({ kind: e.kind })
+              }
+              // now advance durable IO state so the NEXT batch / a clean restart warm-starts
+              const snapshots = new Map<string, DeviceIo>()
+              for (const key of ruleDevices) {
+                const snap = ruleEngine.snapshot(BigInt(key))
+                if (snap !== undefined) snapshots.set(key, snap)
+              }
+              await rulePersister.saveIoState(snapshots)
+            }
+          } catch (err) {
+            console.error('ruleEngine', err)
           }
           // any out-of-order (late) records the engine dropped → reconcile from durable
           // positions off the hot path (positions are already written by the consumer).
