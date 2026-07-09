@@ -215,6 +215,22 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## Webhook delivery (E06-4)
+
+- **Worker** — every persisted event (rule / geofence / device_offline) is enqueued and the
+  webhook worker POSTs it to the event account's enabled webhooks that subscribe to the kind
+  (empty `events[]` = all kinds; tenant-shared webhooks with a null account also match).
+- Each delivery carries **`X-Signature: sha256=<hmac>`** = HMAC-SHA256 of the exact body with
+  the webhook's secret (§6.5), so the receiver verifies authenticity + integrity. **Retry is
+  BullMQ's** (`attempts: 5`, exp backoff); a per-job Redis sent-set gives **per-endpoint
+  idempotency** (a retry re-POSTs only the endpoints that failed) keyed by a stable
+  `X-Webhook-Id`. Metrics `webhook_delivered_total` / `webhook_failed_total`.
+- **SSRF-guarded**: the target URL is re-resolved at request time and rejected if it maps to
+  a loopback/link-local/private/ULA/metadata address (defeats DNS rebinding), only http(s) is
+  allowed, redirects are refused (`redirect: 'error'`), and each POST has a 10 s timeout so a
+  hanging endpoint can't pin worker concurrency. The persisted delivery-log + its UI are a
+  follow-up (E06-4b).
+
 ## API keys + public REST (E06-3)
 
 - **Auth** — integrations send `X-Api-Key: orb_live_…` instead of a Bearer JWT on the same
