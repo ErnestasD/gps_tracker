@@ -224,6 +224,25 @@ Every new variable must be added to the table here AND match the `.env` contract
   inline enabled toggle, and delete. The rule **engine** that evaluates these + fans out
   notifications is E05-4.
 
+## Rule engine (E05-4)
+
+- **Worker** — rule CRUD publishes enabled rules to Redis (`rule:tenant:{tenantId}`,
+  ruleRegistry.ts); the worker resolves each batch's devices → their account-scoped rules
+  (`RuleCache`, short TTL) and evaluates them per batch. Unlike trips/geofences the engine
+  is fed the **full** batch (not the I5 motion filter): IO events (ignition / din_change /
+  power_cut / low_battery / panic) fire on invalid-fix records too (§3.4), while **overspeed
+  self-guards on `fixValid`** (rule 6) — an invalid fix never triggers a speed alert.
+- **Kinds** — overspeed (`speed` vs `config.speedKmh`, level), low_battery (Battery Voltage
+  AVL 67 × 0.001 V vs `thresholdV`, level), ignition (AVL 239 transition), din_change
+  (Digital Input 1, AVL 1, transition), power_cut (Unplug AVL 252 rising edge), panic (Alarm
+  AVL 236 rising edge). Edge kinds track last-IO state in Redis (`rule:iostate:{deviceId}`)
+  and **warm-start** it so a worker restart doesn't re-fire.
+- **Cooldown** — per-rule (default 300 s) via atomic `SET NX EX` on `rule:cd:{ruleId}:{deviceId}`,
+  making event emission idempotent under the ACK-replay window. **panic + power_cut bypass**
+  the cooldown (§6.5 priority-2). Events are persisted to `events` (with `ruleId` + `kind`)
+  before any notification; the notification channels (email/Telegram) are E05-5. Metric
+  `rule_events_total{kind}`. The `device_offline` sweeper is E05-4b.
+
 ## Trips list & detail (E04-4)
 
 - **Web** `/app/trips` (nav Fleet → Trips) — filter trips by device + time range in a table
