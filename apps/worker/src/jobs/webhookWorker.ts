@@ -2,6 +2,7 @@ import { Worker, type ConnectionOptions, type Job } from 'bullmq'
 import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 
+import { writeDeliveries, type DeliveryRow } from '../webhook/deliveryLog.js'
 import { assertPublicUrl } from '../webhook/guard.js'
 import { signBody } from '../webhook/sign.js'
 import { WEBHOOK_QUEUE, type WebhookJob } from './webhookQueue.js'
@@ -52,6 +53,10 @@ export async function runWebhook(deps: WebhookWorkerDeps, job: Job<WebhookJob>):
   const fetchImpl = deps.fetchImpl ?? fetch
   const sentKey = `wh:sent:${job.id ?? eventId}`
   const failures: string[] = []
+  const log: DeliveryRow[] = [] // E06-4b: one row per attempt (never the payload/secret)
+  const rec = (webhookId: string, statusCode: number | null, success: boolean, error: string | null): void => {
+    log.push({ tenantId, accountId, webhookId, eventId, kind, statusCode, success, error })
+  }
 
   for (const h of hooks) {
     if ((await deps.redis.sismember(sentKey, h.id)) === 1) continue // delivered on a prior attempt
@@ -69,13 +74,18 @@ export async function runWebhook(deps: WebhookWorkerDeps, job: Job<WebhookJob>):
       if (!res.ok) throw new Error(`status ${res.status}`)
       await deps.redis.pipeline().sadd(sentKey, h.id).expire(sentKey, SENT_TTL_S).exec() // claim AFTER success
       deps.onDelivered?.()
-    } catch {
+      rec(h.id, res.status, true, null)
+    } catch (err) {
       // network error / non-2xx / timeout / unsafe-url → count + retry (unsafe-url will keep
       // failing until the admin fixes it, then removeOnFail:500 retains it for inspection)
       deps.onFailed?.()
       failures.push(h.id)
+      const status = /status (\d+)/.exec(err instanceof Error ? err.message : '')
+      rec(h.id, status ? Number(status[1]) : null, false, (err instanceof Error ? err.message : 'error').slice(0, 200))
     }
   }
+  // record the attempts (best-effort — a log-write failure must not fail delivery/retry)
+  if (log.length > 0) await writeDeliveries(deps.pool, log).catch((e: unknown) => console.error('writeDeliveries', e))
   // any endpoint still failing → throw so BullMQ retries (delivered ones are in the sent-set)
   if (failures.length > 0) throw new Error(`webhook: ${failures.length} endpoint(s) failed for ${kind}`)
 }

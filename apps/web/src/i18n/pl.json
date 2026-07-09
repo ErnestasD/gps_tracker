@@ -376,6 +376,12 @@
     "delete": "Usuń",
     "created": "Webhook utworzony",
     "secretOnce": "Skopiuj sekret podpisu teraz — weryfikuje X-Signature i jest pokazywany tylko raz.",
-    "dismiss": "Gotowe"
+    "dismiss": "Gotowe",
+    "deliveries": "Ostatnie dostawy",
+    "noDeliveries": "Brak dostaw.",
+    "when": "Kiedy",
+    "event": "Zdarzenie",
+    "status": "Status",
+    "noResponse": "brak odpowiedzi"
   }
 }

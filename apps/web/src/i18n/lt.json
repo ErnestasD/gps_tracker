@@ -376,6 +376,12 @@
     "delete": "Ištrinti",
     "created": "Webhook sukurtas",
     "secretOnce": "Nukopijuokite pasirašymo raktą dabar — jis tikrina X-Signature ir rodomas tik vieną kartą.",
-    "dismiss": "Gerai"
+    "dismiss": "Gerai",
+    "deliveries": "Paskutiniai pristatymai",
+    "noDeliveries": "Pristatymų dar nėra.",
+    "when": "Kada",
+    "event": "Įvykis",
+    "status": "Būsena",
+    "noResponse": "nėra atsakymo"
   }
 }

@@ -332,6 +332,27 @@ model Webhook {
   @@map("webhooks")
 }
 
+/// Webhook delivery attempts (E06-4b) — one row per POST attempt for observability/debugging.
+/// Written by the worker (raw SQL); read-only over the API. Retention pruning is W7.
+model WebhookDelivery {
+  id         BigInt   @id @default(autoincrement())
+  tenantId   String   @db.Uuid
+  accountId  String?  @db.Uuid
+  webhookId  String   @db.Uuid
+  eventId    String
+  kind       String
+  /// HTTP status if a response arrived; null on a network error / timeout / blocked URL
+  statusCode Int?
+  success    Boolean
+  /// short failure reason (never the payload/secret)
+  error      String?
+  at         DateTime @default(now()) @db.Timestamptz()
+
+  @@index([tenantId, at])
+  @@index([webhookId, at])
+  @@map("webhook_deliveries")
+}
+
 model UsageDaily {
   tenantId  String   @db.Uuid
   accountId String   @db.Uuid

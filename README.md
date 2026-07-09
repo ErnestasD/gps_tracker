@@ -239,8 +239,11 @@ Every new variable must be added to the table here AND match the `.env` contract
 - **SSRF-guarded**: the target URL is re-resolved at request time and rejected if it maps to
   a loopback/link-local/private/ULA/metadata address (defeats DNS rebinding), only http(s) is
   allowed, redirects are refused (`redirect: 'error'`), and each POST has a 10 s timeout so a
-  hanging endpoint can't pin worker concurrency. The persisted delivery-log + its UI are a
-  follow-up (E06-4b).
+  hanging endpoint can't pin worker concurrency.
+- **Delivery log (E06-4b)** — the worker records one `webhook_deliveries` row per POST attempt
+  (endpoint id, event id/kind, HTTP status, success, short error — never the payload/secret),
+  read-only over `GET /v1/webhook-deliveries` and shown as a "Recent deliveries" table on the
+  webhooks page. Retention pruning is W7.
 - **Web** `/app/webhooks` (nav Admin → Webhooks, admin-only) — register an endpoint URL +
   event-kind filter; the signing **secret** is generated client-side and shown **once** (it
   is redacted `***` in every list/get — the API never returns a stored secret). Toggle

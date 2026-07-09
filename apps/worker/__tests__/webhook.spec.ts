@@ -29,12 +29,17 @@ interface Hook {
   events: string[]
 }
 function fakePool(hooks: Hook[]) {
-  const query = vi.fn((_sql: string, params: unknown[]) => {
+  const inserts: { sql: string; params: unknown[] }[] = []
+  const query = vi.fn((sql: string, params: unknown[]) => {
+    if (sql.startsWith('INSERT INTO webhook_deliveries')) {
+      inserts.push({ sql, params })
+      return Promise.resolve({ rows: [], rowCount: (sql.match(/\(\$/g) ?? []).length })
+    }
     const kind = params[2] as string
     const rows = hooks.filter((h) => h.events.length === 0 || h.events.includes(kind))
     return Promise.resolve({ rows, rowCount: rows.length })
   })
-  return { pool: { query } as unknown as Pool, query }
+  return { pool: { query } as unknown as Pool, query, inserts }
 }
 function fakeRedis(tenant: string | null, account: string | null, sent: string[] = []) {
   const set = new Set(sent)
@@ -98,6 +103,21 @@ describe('E06-4 runWebhook', () => {
     const { pool } = fakePool([{ id: 'h1', url: 'https://x.test/u', secret: 's', events: ['panic'] }])
     await runWebhook(baseDeps(pool, fakeRedis('t', 'a', ['h1']), fetchImpl), job())
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('records a delivery-log row per attempt (E06-4b): status + success/failure', async () => {
+    const okImpl = okFetch()
+    const okPool = fakePool([{ id: 'h1', url: 'https://x.test/ok', secret: 's', events: ['panic'] }])
+    await runWebhook(baseDeps(okPool.pool, fakeRedis('t', 'a'), okImpl), job())
+    expect(okPool.inserts).toHaveLength(1)
+    // params: tenantId, accountId, webhookId, eventId, kind, statusCode, success, error
+    expect(okPool.inserts[0]!.params.slice(2, 8)).toEqual(['h1', '42:panic:0:r1', 'panic', 200, true, null])
+
+    const failImpl = vi.fn(() => Promise.resolve({ ok: false, status: 502 } as Response)) as ReturnType<typeof okFetch>
+    const failPool = fakePool([{ id: 'h1', url: 'https://x.test/bad', secret: 's', events: ['panic'] }])
+    await expect(runWebhook(baseDeps(failPool.pool, fakeRedis('t', 'a'), failImpl), job())).rejects.toThrow()
+    expect(failPool.inserts[0]!.params[5]).toBe(502) // statusCode parsed from the error
+    expect(failPool.inserts[0]!.params[6]).toBe(false) // success
   })
 
   it('SSRF: a URL resolving to a private/metadata IP is never fetched (counts as a failure)', async () => {

@@ -376,6 +376,12 @@
     "delete": "Löschen",
     "created": "Webhook erstellt",
     "secretOnce": "Kopieren Sie das Signatur-Secret jetzt — es prüft die X-Signature und wird nur einmal gezeigt.",
-    "dismiss": "Fertig"
+    "dismiss": "Fertig",
+    "deliveries": "Letzte Zustellungen",
+    "noDeliveries": "Noch keine Zustellungen.",
+    "when": "Wann",
+    "event": "Ereignis",
+    "status": "Status",
+    "noResponse": "keine Antwort"
   }
 }
