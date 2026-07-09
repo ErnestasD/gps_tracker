@@ -9,6 +9,7 @@ import { authMiddleware, type AuthEnv } from './auth/middleware.js'
 import { createPublicRoutes } from './routes/caddyAsk.js'
 import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
+import { mountReports } from './routes/reports.js'
 import { defaultTxtResolver, type TxtResolver } from './routes/tenantSelf.js'
 import { issueTicket, type WsDeps } from './ws.js'
 
@@ -136,6 +137,10 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
   mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool }))
+
+  // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
+  // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.
+  mountReports(app, { db: deps.db, pool: deps.pool })
 
   return app
 }
