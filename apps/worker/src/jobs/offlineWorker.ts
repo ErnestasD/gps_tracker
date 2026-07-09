@@ -3,7 +3,7 @@ import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 
 import { sweepOffline, type DeviceState, type OfflineRule } from '../rules/offline.js'
-import { writeRuleEvents } from '../rules/writer.js'
+import { writeRuleEvents, type RuleEventRow } from '../rules/writer.js'
 import { DEVICE_OFFLINE_QUEUE } from './offlineQueue.js'
 
 /** Fired-flag TTL (30 days): bounds the Redis key for decommissioned/rule-removed devices
@@ -16,6 +16,7 @@ export interface OfflineWorkerDeps {
   /** registry/state connection (device:*, rule:*). */
   redis: Redis
   onFired?: (n: number) => void // metric hook: device_offline events written
+  onEvents?: (events: RuleEventRow[]) => Promise<void> | void // enqueue notifications (E05-5)
 }
 
 /** device_offline rules grouped by accountId, loaded from the tenants that own devices. */
@@ -84,18 +85,18 @@ async function loadDeviceStates(
 }
 
 /** Run one sweep: registry → offline rules → presence → events + flag updates. */
-export async function runOfflineSweep(pool: Pool, redis: Redis, nowMs: number): Promise<number> {
+export async function runOfflineSweep(pool: Pool, redis: Redis, nowMs: number): Promise<RuleEventRow[]> {
   const [tenantMap, accountMap] = await Promise.all([redis.hgetall('device:tenant'), redis.hgetall('device:account')])
   const tenants = [...new Set(Object.values(tenantMap))]
-  if (tenants.length === 0) return 0
+  if (tenants.length === 0) return []
   const rulesByAccount = await loadOfflineRules(redis, tenants)
-  if (rulesByAccount.size === 0) return 0 // no device_offline rules anywhere → nothing to do
+  if (rulesByAccount.size === 0) return [] // no device_offline rules anywhere → nothing to do
 
   // only devices whose account has an offline rule are candidates
   const candidates = Object.keys(tenantMap)
     .map((deviceId) => ({ deviceId, tenantId: tenantMap[deviceId]!, accountId: accountMap[deviceId] ?? '' }))
     .filter((d) => d.accountId !== '' && rulesByAccount.has(d.accountId))
-  if (candidates.length === 0) return 0
+  if (candidates.length === 0) return []
 
   const { states, flagged } = await loadDeviceStates(redis, candidates)
   const { events, toFlag, toClear } = sweepOffline(states, rulesByAccount, flagged, nowMs)
@@ -120,7 +121,7 @@ export async function runOfflineSweep(pool: Pool, redis: Redis, nowMs: number): 
     for (const id of toClear) pipe.del(`rule:offline:${id}`)
     await pipe.exec()
   }
-  return wonEvents.length
+  return wonEvents
 }
 
 /** BullMQ worker running the repeatable device_offline sweep. Caller must close() on shutdown. */
@@ -128,8 +129,11 @@ export function startOfflineWorker(deps: OfflineWorkerDeps): Worker {
   return new Worker(
     DEVICE_OFFLINE_QUEUE,
     async () => {
-      const n = await runOfflineSweep(deps.pool, deps.redis, Date.now())
-      if (n > 0) deps.onFired?.(n)
+      const events = await runOfflineSweep(deps.pool, deps.redis, Date.now())
+      if (events.length > 0) {
+        deps.onFired?.(events.length)
+        await deps.onEvents?.(events)
+      }
     },
     { connection: deps.connection, concurrency: 1 }, // never overlap sweeps within a worker
   )

@@ -215,6 +215,23 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## Notification dispatch (E05-5)
+
+- **Worker** — after a rule event is durably persisted (E05-4), it's enqueued on a BullMQ
+  `notify` queue; the notify worker loads the rule's `channels` from the DB and delivers the
+  message to each. **Retry is BullMQ's** (`attempts: 5`, exponential backoff — §6.5). A
+  per-job Redis sent-set gives **per-channel idempotency**: a retry re-attempts only the
+  channels that failed, never re-sending a delivered one.
+- **Channels** — a rule's `channels` (validated by `notificationChannelSchema`) are `email`
+  (`{to}`) and `telegram` (`{chatId}`). **Drivers are env-gated**: a channel whose
+  credentials are absent is *skipped* (metric `notification_skipped_total{reason}`), not
+  failed. Telegram sends via the Bot API (`TELEGRAM_BOT_TOKEN`); email takes an injected
+  SMTP/SES transport. Metrics `notification_sent_total{channel}` / `_failed_total{channel}`.
+- **BLOCKED-INFO** (founder must provision): AWS SES production access + `MAIL_FROM` for real
+  email; `TELEGRAM_BOT_TOKEN` (+ the pairing deep-link that binds a `chat_id`) for Telegram.
+  Until then those channels are skipped. Per-account channel config UI + Telegram pairing +
+  the webhook channel (E06-4) are follow-ups; the dispatch pipeline + retry are done.
+
 ## Events timeline (E05-6)
 
 - **Web** `/app/events` (nav Automation → Events) — the pipeline's rule/geofence output

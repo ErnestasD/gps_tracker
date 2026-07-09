@@ -100,13 +100,22 @@ export interface EventView {
 // ── rules ────────────────────────────────────────────────────────────────────
 // MUST mirror the Prisma RuleKind enum (packages/db/prisma/schema.prisma)
 export const ruleKindSchema = z.enum(['geofence', 'overspeed', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'device_offline'])
+
+// A rule's notification channels (E05-5). email = SES recipient; telegram = a chat_id bound
+// via the pairing deep-link. Webhook delivery is a separate channel type in E06-4.
+export const notificationChannelSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('email'), to: z.string().email() }),
+  z.object({ type: z.literal('telegram'), chatId: z.string().min(1).max(64) }),
+])
+export type NotificationChannel = z.infer<typeof notificationChannelSchema>
+
 export const ruleCreateSchema = z.object({
   accountId: z.string().uuid(),
   kind: ruleKindSchema,
   name: z.string().min(1).max(120),
   config: z.record(z.string(), z.unknown()).optional(),
   scope: z.record(z.string(), z.unknown()).optional(),
-  channels: z.array(z.unknown()).optional(),
+  channels: z.array(notificationChannelSchema).max(20).optional(),
   cooldownS: z.number().int().min(0).max(86_400).optional(),
   enabled: z.boolean().optional(),
 })

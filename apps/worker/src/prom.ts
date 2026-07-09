@@ -21,6 +21,9 @@ export interface WorkerProm {
   tripRecomputeDeleted: Counter
   geofenceEvents: Counter
   ruleEvents: Counter
+  notificationSent: Counter
+  notificationFailed: Counter
+  notificationSkipped: Counter
   server: Server
 }
 
@@ -64,6 +67,9 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const tripRecomputeDeleted = new Counter({ name: 'trip_recompute_deleted_total', help: 'trip rows deleted-and-replayed by recompute', registers: [registry] })
   const geofenceEvents = new Counter({ name: 'geofence_events_total', help: 'geofence enter/exit transition events written (E05-2)', registers: [registry] })
   const ruleEvents = new Counter({ name: 'rule_events_total', help: 'rule events written by kind (E05-4)', labelNames: ['kind'], registers: [registry] })
+  const notificationSent = new Counter({ name: 'notification_sent_total', help: 'notifications delivered by channel (E05-5)', labelNames: ['channel'], registers: [registry] })
+  const notificationFailed = new Counter({ name: 'notification_failed_total', help: 'notification delivery failures by channel (retried by BullMQ)', labelNames: ['channel'], registers: [registry] })
+  const notificationSkipped = new Counter({ name: 'notification_skipped_total', help: 'notifications skipped by reason (e.g. unconfigured channel)', labelNames: ['reason'], registers: [registry] })
 
   const server = createServer((req, res) => {
     if (req.url !== '/metrics') {
@@ -82,5 +88,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, server }
 }
