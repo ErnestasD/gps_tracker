@@ -422,7 +422,10 @@ test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', as
   // it lands in the list, enabled by default
   const row = page.locator('li[data-testid^="rule-"]').filter({ hasText: 'Speeding' })
   await expect(row).toBeVisible({ timeout: 15_000 })
-  await row.getByRole('checkbox').uncheck()
+  // controlled checkbox: `checked` reflects server state, which only flips after the
+  // PATCH + refetch round-trips. `.click()` fires onChange without asserting a
+  // synchronous state flip; the assertion below then polls until the refetch lands.
+  await row.getByRole('checkbox').click()
   await expect(row.getByRole('checkbox')).not.toBeChecked()
 
   // switching kind to geofence swaps the config fields
