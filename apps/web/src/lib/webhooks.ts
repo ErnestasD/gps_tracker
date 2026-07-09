@@ -26,6 +26,18 @@ export interface WebhookCreateInput {
 
 export const WEBHOOK_EVENT_KINDS = EVENT_KINDS
 
+export interface WebhookDelivery {
+  id: string
+  webhookId: string
+  eventId: string
+  kind: string
+  statusCode: number | null
+  success: boolean
+  error: string | null
+  at: string
+}
+export const listDeliveries = (limit = 50) => getJson<WebhookDelivery[]>(`/v1/webhook-deliveries?limit=${limit}`)
+
 export const listWebhooks = () => getJson<Webhook[]>('/v1/webhooks')
 export const createWebhook = (data: WebhookCreateInput) => mutate<Webhook>('POST', '/v1/webhooks', data)
 export const deleteWebhook = (id: string) => mutate<{ ok: boolean }>('DELETE', `/v1/webhooks/${encodeURIComponent(id)}`)

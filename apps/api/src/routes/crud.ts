@@ -75,6 +75,7 @@ const READ_POLICY: Record<string, Role[]> = {
   domain: TENANT_ADMINS, // domains are admin config
   audit: TENANT_ADMINS, // audit trail is tenant-wide + sensitive → admins only
   geofence: [...ROLES],
+  webhookDelivery: ACCOUNT_WRITERS, // webhook delivery log — same readers as webhooks
 }
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
@@ -434,6 +435,14 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const ok = await db.webhooks.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
+
+    // ── webhook deliveries (tenant, read-only log — E06-4b) ───────────────────
+    { method: 'get', path: '/v1/webhook-deliveries', scopeClass: 'tenant', entity: 'webhookDelivery', shape: 'collection',
+      handler: async (c) => json(c, await db.webhookDeliveries.list(scopeOf(auth(c)), {
+        take: Number(c.req.query('limit') ?? 100),
+        ...(c.req.query('cursor') !== undefined ? { cursor: c.req.query('cursor')! } : {}),
+        ...(c.req.query('webhookId') !== undefined ? { webhookId: c.req.query('webhookId')! } : {}),
+      })) },
 
     // ── events (account, read-only) ──────────────────────────────────────────
     { method: 'get', path: '/v1/events', scopeClass: 'account', entity: 'event', shape: 'collection',

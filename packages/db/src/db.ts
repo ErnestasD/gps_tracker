@@ -14,6 +14,7 @@ import { createTenantRepo, type TenantRepo } from './repos/tenants.js'
 import { createTripRepo, type TripReadRepo } from './repos/trips.js'
 import { createUserRepo, type UserRepo } from './repos/users.js'
 import { createWebhookRepo, type WebhookRepo } from './repos/webhooks.js'
+import { createWebhookDeliveryRepo, type WebhookDeliveryRepo } from './repos/webhookDeliveries.js'
 
 /**
  * The scoped-repository layer (E03-2) — the ONLY DB API for relational data.
@@ -31,6 +32,7 @@ export interface Db {
   profiles: ProfileRepo
   rules: RuleRepo
   webhooks: WebhookRepo
+  webhookDeliveries: WebhookDeliveryRepo
   apiKeys: ApiKeyRepo
   events: EventRepo
   trips: TripReadRepo
@@ -52,6 +54,7 @@ export function createDb(databaseUrl: string): Db {
     profiles: createProfileRepo(prisma),
     rules: createRuleRepo(prisma, audit),
     webhooks: createWebhookRepo(prisma, audit),
+    webhookDeliveries: createWebhookDeliveryRepo(prisma),
     apiKeys: createApiKeyRepo(prisma, audit),
     events: createEventRepo(prisma),
     trips: createTripRepo(prisma),

@@ -5,7 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { createWebhook, deleteWebhook, generateSecret, listWebhooks, setWebhookEnabled, WEBHOOK_EVENT_KINDS } from '@/lib/webhooks'
+import { createWebhook, deleteWebhook, generateSecret, listDeliveries, listWebhooks, setWebhookEnabled, WEBHOOK_EVENT_KINDS } from '@/lib/webhooks'
+
+const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' })
 
 /** Webhooks (E06-4 UI): tenant-admin registers HMAC-signed delivery endpoints. The signing
  * secret is generated + shown ONCE on creation; it is redacted (`***`) in every list. */
@@ -13,6 +15,7 @@ export function WebhooksPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const hooks = useQuery({ queryKey: ['webhooks'], queryFn: listWebhooks })
+  const deliveries = useQuery({ queryKey: ['webhook-deliveries'], queryFn: () => listDeliveries(50) })
   const [url, setUrl] = useState('')
   const [kinds, setKinds] = useState<string[]>([])
   const [freshSecret, setFreshSecret] = useState<string | null>(null)
@@ -93,6 +96,40 @@ export function WebhooksPage() {
                 </li>
               ))}
             </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">{t('webhooks.deliveries')}</CardTitle></CardHeader>
+        <CardContent>
+          {(deliveries.data ?? []).length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted" data-testid="deliveries-empty">{t('webhooks.noDeliveries')}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" data-testid="deliveries-table">
+                <thead>
+                  <tr className="border-b border-line text-left text-xs text-muted">
+                    <th className="py-2 pr-3 font-medium">{t('webhooks.when')}</th>
+                    <th className="py-2 pr-3 font-medium">{t('webhooks.event')}</th>
+                    <th className="py-2 pr-3 font-medium">{t('webhooks.status')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(deliveries.data ?? []).map((d) => (
+                    <tr key={d.id} className="border-b border-line/60" data-testid="delivery-row">
+                      <td className="py-2 pr-3 tabular-nums text-muted">{fmt.format(new Date(d.at))}</td>
+                      <td className="py-2 pr-3">{t(`events.k.${d.kind}`, d.kind)}</td>
+                      <td className="py-2 pr-3">
+                        <span className={d.success ? 'text-[var(--color-success,#2b8a3e)]' : 'text-danger'}>
+                          {d.success ? '✓' : '✗'} {d.statusCode ?? t('webhooks.noResponse')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
