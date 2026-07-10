@@ -48,6 +48,10 @@ export function driveRecords(opts: DriveOpts): EncodableRecord[] {
         [240, 1n], // Movement
         [21, BigInt(3 + Math.floor(rnd() * 3))], // GSM Signal
         [66, BigInt(12300 + Math.floor(rnd() * 400))], // External Voltage, mV raw
+        // Fuel level % (AVL 89) — drains ~1% per km driven, floored at 5, so playback's
+        // fuel graph (E08-3) has realistic data.
+        // https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+        [89, BigInt(Math.max(5, 90 - Math.floor(distanceM / 1000)))],
       ]),
     })
   }

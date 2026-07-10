@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readPositions, type Db, type Pool } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readPositions, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -288,6 +288,19 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           ...(q('from') !== undefined ? { from: q('from')! } : {}),
           ...(q('to') !== undefined ? { to: q('to')! } : {}),
           ...(q('cursor') !== undefined ? { cursor: q('cursor')! } : {}),
+          ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
+        }))
+      } },
+    // fuel series for the playback fuel graph (E08-3) — same gate + raw-SQL shape as positions
+    { method: 'get', path: '/v1/devices/:id/fuel', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const device = await db.devices.get(scopeOf(auth(c)), id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
+        const q = c.req.query.bind(c.req)
+        return json(c, await readFuelSeries(deps.pool, device.id, {
+          ...(q('from') !== undefined ? { from: q('from')! } : {}),
+          ...(q('to') !== undefined ? { to: q('to')! } : {}),
           ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
         }))
       } },

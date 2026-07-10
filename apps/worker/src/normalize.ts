@@ -7,6 +7,14 @@ const AVL_IGNITION = 239
 const AVL_MOVEMENT = 240
 const AVL_TOTAL_ODOMETER = 16
 
+// Fuel ids kept under FORCED io_<id> keys (E08-3). 84 (l, ×0.1) and 89 (%) share the
+// dictionary name "Fuel level" — a record carrying only ONE of them would store its value
+// under a key whose unit the reader cannot know. Deterministic id-keys make the fuel
+// series readable; values stay raw (multipliers apply at read, like every other attr).
+// https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+// (48 = OBD Fuel Level %, 84 = Fuel level l ×0.1, 89 = Fuel level %)
+const FORCED_ID_KEYS = new Set([48, 84, 89])
+
 export type HashFn = (data: Uint8Array) => bigint
 
 /**
@@ -36,7 +44,7 @@ export function normalize(
     else if (id === AVL_MOVEMENT && typeof v === 'bigint') movement = v === 1n
     else if (id === AVL_TOTAL_ODOMETER && typeof v === 'bigint') odometerM = v
     else {
-      const name = dict.get(id)?.name
+      const name = FORCED_ID_KEYS.has(id) ? undefined : dict.get(id)?.name
       // §3.7 never-dropped: dictionary names are NOT unique across ids (e.g. two
       // "Battery Voltage" rows) — on collision the later id keeps its io_<id> key
       let key = name ?? `io_${id}`

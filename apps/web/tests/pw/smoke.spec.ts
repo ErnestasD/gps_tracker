@@ -410,17 +410,21 @@ test('playback: history page loads a device trail with a scrubbable speed chart 
   await expect(page.getByTestId('playback-device')).toBeVisible()
   await expect(page.getByTestId('playback-map')).toBeVisible()
 
-  // the driven device's history loads: speed chart + scrub appear (allow a moment for the
-  // pipeline to persist positions). If auto-selected device has no data yet, the empty
-  // message shows — either is a valid rendered state, but we drove BASE_IMEI so expect data.
-  await expect(page.getByTestId('speed-chart').or(page.getByTestId('playback-empty'))).toBeVisible({ timeout: 20_000 })
+  // pick the DB device that owns BASE_IMEI ("Good", created by the CSV-import test) — the
+  // dropdown auto-selects the FIRST device, which is a retired one with no positions. The
+  // old `.or(playback-empty)` tolerance silently skipped every assertion below (review LOW).
+  await page.getByTestId('playback-device').selectOption({ label: 'Good' })
 
-  // if we got samples, scrubbing updates the current-sample readout without crashing
-  if (await page.getByTestId('speed-chart').isVisible()) {
-    await page.getByTestId('playback-end').click()
-    await expect(page.getByTestId('playback-current')).toBeVisible()
-    await page.getByTestId('playback-scrub').fill('0')
-  }
+  // we DROVE BASE_IMEI above, so its history must load — an empty state here is a failure
+  await expect(page.getByTestId('speed-chart')).toBeVisible({ timeout: 20_000 })
+
+  // scrubbing updates the current-sample readout without crashing
+  await page.getByTestId('playback-end').click()
+  await expect(page.getByTestId('playback-current')).toBeVisible()
+  await page.getByTestId('playback-scrub').fill('0')
+  // E08-3: the simulator reports AVL 89 fuel %, so the AVL-gated fuel graph must appear
+  await expect(page.getByTestId('fuel-chart')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('fuel-last')).toContainText('%')
 })
 
 test('trips: the trips page lists trips (or empty) and a row opens its route detail (E04-4)', async ({ page }) => {

@@ -178,6 +178,17 @@ Every new variable must be added to the table here AND match the `.env` contract
   dependency), and a **scrub** slider that moves a cursor dot along the trail. Timestamps render in
   the browser locale.
 
+## Fuel level graph (E08-3, §4 "where AVL present")
+
+- Fuel AVL ids are stored under **forced `io_<id>` keys** by the worker (48 = OBD %, 84 = liters
+  ×0.1, 89 = %) — 84 and 89 share the dictionary name "Fuel level", so name-keyed attrs would be
+  unit-ambiguous ([FMB120 sending params](https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID)).
+- `GET /v1/devices/:id/fuel?from&to&limit` (device-scope gated, raw SQL like positions) returns
+  `{fixTime, pct, liters}` samples — % from 89 (or OBD 48), liters from 84 with the wiki ×0.1
+  applied at read; garbage attrs values are skipped, never 500.
+- Playback shows an SVG **fuel line** below the speed chart **only when the device reports fuel**
+  (AVL-gated; % preferred over liters). Display only — fuel-theft detection is V2 by §4.
+
 ## Per-device trip config (E04-5)
 
 - The trip engine now applies **per-device** thresholds and odometer preference (E04-1 used

@@ -21,3 +21,6 @@ coverage/
 # playwright artifacts
 apps/web/playwright-report/
 apps/web/test-results/
+
+# separate Lovable design project (deliberately untracked; see memory design-project)
+orbetra_design/
