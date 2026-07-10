@@ -73,3 +73,30 @@ describe('simulator scenarios (E02-1)', () => {
     expect(() => createTeltonikaCodec().feed(packets[0]!)).toThrow(FrameError)
   })
 })
+
+describe('panic scenario ↔ worker panic rule pairing (E08-5 review)', () => {
+  it('emits an Alarm (AVL 236) rising EDGE mid-drive: 0 baseline everywhere, one 1 before the park tail', async () => {
+    // The worker's `panic` rule kind edge-detects AVL 236 with a KNOWN-FALSE previous
+    // value (apps/worker/src/rules/{io,engine}.ts). A scenario without the 236 baseline
+    // (or with the panic landing in the parked tail) demos nothing — this pins the pairing.
+    const { panic } = await import('../src/scenarios/panic.js')
+    const opts: ScenarioOpts = { ...OPTS, count: 9, parkTailS: 240 }
+    const packets = await collect(panic.packets(opts))
+    const codec = createTeltonikaCodec()
+    const alarms: { i: number; v: bigint; priority: number }[] = []
+    for (const [i, pkt] of packets.entries()) {
+      const parsed = codec.parse(codec.feed(pkt)[0]!)
+      if (parsed.kind !== 'avl') expect.unreachable('avl expected')
+      const rec = parsed.records[0]!
+      const v = rec.io.get(236)
+      expect(typeof v, `record ${i} must carry AVL 236`).toBe('bigint')
+      alarms.push({ i, v: v as bigint, priority: rec.priority })
+    }
+    expect(packets.length).toBeGreaterThan(9) // drive + parked tail records
+    const edges = alarms.filter((a) => a.v === 1n)
+    expect(edges).toHaveLength(1) // exactly one alarm
+    expect(edges[0]!.i).toBeLessThan(9) // mid-DRIVE, never inside the parked tail
+    expect(edges[0]!.i).toBeGreaterThan(0) // a prior 236=0 record exists → rising edge
+    expect(edges[0]!.priority).toBe(2) // §3.4 panic priority
+  })
+})

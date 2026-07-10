@@ -12,7 +12,7 @@ import type { Scenario, ScenarioOpts } from './types.js'
 export const invalidFix: Scenario = {
   name: 'invalidFix',
   *packets(opts: ScenarioOpts) {
-    const records = driveRecords({ seed: opts.seed, count: opts.count, startMs: opts.startMs })
+    const records = driveRecords({ seed: opts.seed, count: opts.count, startMs: opts.startMs, startDistanceM: opts.startDistanceM, parkTailS: opts.parkTailS })
     let lastValid: EncodableRecord | null = null
     for (const [i, rec] of records.entries()) {
       if (i % 3 === 2 && lastValid) {

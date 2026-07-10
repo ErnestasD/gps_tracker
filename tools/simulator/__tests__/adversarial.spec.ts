@@ -70,13 +70,18 @@ describe('E02-2 adversarial scenarios', () => {
     }
   })
 
-  it('panic: exactly one priority=2 record with DIN1=1 and eventIoId=1 (§3.4 PANIC)', async () => {
+  it('panic: exactly one priority=2 record with Alarm(236)=1 + DIN1=1, eventIoId=236 (§3.4 PANIC)', async () => {
+    // eventIoId/trigger moved from DIN1 to Alarm (AVL 236) in E08-5: the worker's `panic`
+    // rule kind edge-detects 236 — a DIN1-only panic record demoed nothing.
     const records = parseAll(await collect(panic.packets({ ...OPTS, count: 21 })))
     const panics = records.filter((r) => r.priority === 2)
     expect(panics).toHaveLength(1)
-    expect(panics[0]!.eventIoId).toBe(1)
-    expect(panics[0]!.io.get(1)).toBe(1n)
+    expect(panics[0]!.eventIoId).toBe(236)
+    expect(panics[0]!.io.get(236)).toBe(1n)
+    expect(panics[0]!.io.get(1)).toBe(1n) // DIN1 kept for realism
     expect(records.filter((r) => r.priority === 0)).toHaveLength(20)
+    // every non-panic record carries the 236=0 baseline (edge detectors need known-false)
+    expect(records.filter((r) => r.priority === 0).every((r) => r.io.get(236) === 0n)).toBe(true)
   })
 
   it('slowLoris: valid single packet + 5000ms default byte delay declared', async () => {
