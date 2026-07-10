@@ -226,6 +226,64 @@ test('devices: CSV import dry-run shows per-row errors then applies (E03-3 AC[1]
   await expect(page.getByTestId('device-356307042441013')).toBeVisible()
 })
 
+test('commands: preset queues in history; destructive needs a second confirming click (E08-2b)', async ({ page }) => {
+  const IMEI = '356307042448887'
+  const IMEI2 = '356307042448888'
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/devices')
+  for (const [imei, name] of [[IMEI, 'E2E Cmd Van'], [IMEI2, 'E2E Cmd Van 2']] as const) {
+    await page.getByTestId('device-imei').fill(imei)
+    await page.getByTestId('device-name').fill(name)
+    await page.getByTestId('device-create').click()
+    await expect(page.getByTestId(`device-${imei}`)).toBeVisible({ timeout: 15_000 })
+  }
+
+  // count real POSTs — the "arming click sends nothing" assertions below must not be
+  // satisfiable by mere refetch latency
+  let commandPosts = 0
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && /\/v1\/devices\/[^/]+\/commands$/.test(req.url())) commandPosts++
+  })
+
+  // open the per-device command panel and send a read-only preset — one click, no gate
+  await page.getByTestId(`commands-${IMEI}`).click()
+  await expect(page.getByTestId('commands-card')).toBeVisible()
+  await page.getByTestId('preset-getinfo').click()
+  await expect(page.getByTestId('command-text')).toHaveValue('getinfo')
+  await page.getByTestId('command-send').click()
+  // the device is offline, so the command sits queued (or fails later) — the row must exist
+  await expect(page.getByTestId('commands-table')).toContainText('getinfo', { timeout: 15_000 })
+  expect(commandPosts).toBe(1)
+
+  // destructive preset: first click only ARMS (warning shown, ZERO posts fired)…
+  await page.getByTestId('preset-deleterecords').click()
+  await page.getByTestId('command-send').click()
+  await expect(page.getByTestId('command-armed')).toBeVisible()
+  expect(commandPosts).toBe(1)
+
+  // …switching to ANOTHER device must fully disarm (armed state may never carry over —
+  // one click here would otherwise wipe a device the operator never confirmed)
+  await page.getByTestId(`commands-${IMEI2}`).click()
+  await expect(page.getByTestId('command-armed')).not.toBeVisible()
+  await expect(page.getByTestId('command-text')).toHaveValue('')
+
+  // back on the first device: re-arm, then the second (post-dwell) click actually sends
+  await page.getByTestId(`commands-${IMEI}`).click()
+  await page.getByTestId('preset-deleterecords').click()
+  await page.getByTestId('command-send').click()
+  await expect(page.getByTestId('command-armed')).toBeVisible()
+  expect(commandPosts).toBe(1)
+  await page.getByTestId('command-send').click() // playwright waits out the dwell-disable
+  await expect(page.getByTestId('commands-table')).toContainText('deleterecords', { timeout: 15_000 })
+  await expect(page.getByTestId('command-armed')).not.toBeVisible()
+  expect(commandPosts).toBe(2)
+})
+
 test('quarantine: unknown IMEI → rejected → appears in quarantine → claim → accepted (E03-4 AC[1])', async ({ page }) => {
   // an unknown IMEI hitting ingest is REJECTED (0x00 → exit 1) and quarantined
   const rejected = await runToExit(

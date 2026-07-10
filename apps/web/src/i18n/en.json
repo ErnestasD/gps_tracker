@@ -259,6 +259,41 @@
       "auto": "Auto",
       "device": "Device",
       "gps": "GPS"
+    },
+    "commands": "Commands",
+    "cmd": {
+      "title": "Commands — {{name}}",
+      "send": "Send",
+      "confirm": "Confirm: {{cmd}}",
+      "destructiveWarn": "This command is destructive and cannot be undone. Click again to send it to the device.",
+      "placeholder": "Command text (e.g. getinfo)",
+      "sendError": "Could not send the command.",
+      "loadError": "Could not load command history.",
+      "empty": "No commands sent to this device yet.",
+      "command": "Command",
+      "status": "Status",
+      "response": "Response",
+      "at": "Sent",
+      "st": {
+        "queued": "Queued",
+        "sent": "Sent",
+        "acked": "Acknowledged",
+        "failed": "Failed",
+        "expired": "Expired"
+      },
+      "preset": {
+        "getinfo": "Info",
+        "getver": "Version",
+        "getgps": "GPS fix",
+        "getio": "IO status",
+        "cpureset": "Reboot",
+        "dout_on": "Output on",
+        "dout_off": "Output off",
+        "reporting_interval": "Report interval",
+        "server_address": "Server address",
+        "deleterecords": "Delete records"
+      },
+      "asciiError": "Commands may contain printable ASCII characters only."
     }
   },
   "quarantine": {

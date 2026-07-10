@@ -259,6 +259,41 @@
       "auto": "Auto",
       "device": "Urządzenie",
       "gps": "GPS"
+    },
+    "commands": "Polecenia",
+    "cmd": {
+      "title": "Polecenia — {{name}}",
+      "send": "Wyślij",
+      "confirm": "Potwierdź: {{cmd}}",
+      "destructiveWarn": "To polecenie jest destrukcyjne i nieodwracalne. Kliknij ponownie, aby wysłać je do urządzenia.",
+      "placeholder": "Treść polecenia (np. getinfo)",
+      "sendError": "Nie udało się wysłać polecenia.",
+      "loadError": "Nie udało się wczytać historii poleceń.",
+      "empty": "Do tego urządzenia nie wysłano jeszcze poleceń.",
+      "command": "Polecenie",
+      "status": "Status",
+      "response": "Odpowiedź",
+      "at": "Wysłano",
+      "st": {
+        "queued": "W kolejce",
+        "sent": "Wysłano",
+        "acked": "Potwierdzono",
+        "failed": "Niepowodzenie",
+        "expired": "Wygasło"
+      },
+      "preset": {
+        "getinfo": "Informacje",
+        "getver": "Wersja",
+        "getgps": "Pozycja GPS",
+        "getio": "Stan IO",
+        "cpureset": "Restart",
+        "dout_on": "Wyjście wł.",
+        "dout_off": "Wyjście wył.",
+        "reporting_interval": "Interwał raportów",
+        "server_address": "Adres serwera",
+        "deleterecords": "Usuń zapisy"
+      },
+      "asciiError": "Polecenia mogą zawierać tylko drukowalne znaki ASCII."
     }
   },
   "quarantine": {

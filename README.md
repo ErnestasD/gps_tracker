@@ -229,7 +229,12 @@ Every new variable must be added to the table here AND match the `.env` contract
   (max 3) then fails, and `expiresAt` past 24 h expires. Metric `commands_resolved_total{outcome}`.
 - **Status** — `GET /v1/commands/:id` and `GET /v1/devices/:id/commands`. The 10 presets
   (`getinfo`, `getver`, `getgps`, `getio`, `cpureset`, dout on/off, reporting-interval,
-  server-address, `deleterecords`) are in `@orbetra/shared`. Web UI is E08-2b.
+  server-address, `deleterecords`) are in `@orbetra/shared`.
+- **Web** (E08-2b) — Devices page → per-row **Commands** opens the device panel: the 10 preset
+  buttons + free-text (printable ASCII, ≤512), command history with status badges + response,
+  polled every 5 s while anything is queued/sent. Destructive commands (`cpureset`,
+  `deleterecords`) are two-step: the first click arms a danger confirm, the second sends;
+  editing the text or switching preset disarms.
 
 ## Usage metering + platform panel (E07-4)
 

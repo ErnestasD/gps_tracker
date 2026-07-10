@@ -259,6 +259,41 @@
       "auto": "Auto",
       "device": "Gerät",
       "gps": "GPS"
+    },
+    "commands": "Befehle",
+    "cmd": {
+      "title": "Befehle — {{name}}",
+      "send": "Senden",
+      "confirm": "Bestätigen: {{cmd}}",
+      "destructiveWarn": "Dieser Befehl ist destruktiv und kann nicht rückgängig gemacht werden. Erneut klicken, um ihn an das Gerät zu senden.",
+      "placeholder": "Befehlstext (z. B. getinfo)",
+      "sendError": "Befehl konnte nicht gesendet werden.",
+      "loadError": "Befehlsverlauf konnte nicht geladen werden.",
+      "empty": "An dieses Gerät wurden noch keine Befehle gesendet.",
+      "command": "Befehl",
+      "status": "Status",
+      "response": "Antwort",
+      "at": "Gesendet",
+      "st": {
+        "queued": "In Warteschlange",
+        "sent": "Gesendet",
+        "acked": "Bestätigt",
+        "failed": "Fehlgeschlagen",
+        "expired": "Abgelaufen"
+      },
+      "preset": {
+        "getinfo": "Info",
+        "getver": "Version",
+        "getgps": "GPS-Fix",
+        "getio": "IO-Status",
+        "cpureset": "Neustart",
+        "dout_on": "Ausgang ein",
+        "dout_off": "Ausgang aus",
+        "reporting_interval": "Berichtsintervall",
+        "server_address": "Serveradresse",
+        "deleterecords": "Daten löschen"
+      },
+      "asciiError": "Befehle dürfen nur druckbare ASCII-Zeichen enthalten."
     }
   },
   "quarantine": {
