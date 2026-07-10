@@ -46,9 +46,12 @@ export async function enqueueRecompute(queue: Queue<RecomputeJob>, deviceId: big
       // dedupe only collapses concurrent WAITING bursts for the same device+hour;
       // removeOnComplete:true frees the id immediately so a genuinely new later batch
       // touching the same bucket can re-enqueue (a retained id would block it — review MED)
-      jobId: `recompute:${deviceId}:${bucket}`,
+      // dash id: colon jobIds ride a deprecated BullMQ carve-out (exactly-3-segment) that
+      // the library's own TODO removes next breaking change; removeOnFail so a permanently
+      // failed bucket can't block its jobId forever (same class as the E08-4 HIGH-2)
+      jobId: `recompute-${deviceId}-${bucket}`,
       removeOnComplete: true,
-      removeOnFail: 100,
+      removeOnFail: true,
       attempts: 3,
       backoff: { type: 'exponential', delay: 1_000 }, // transient DB blip → retry, not drop
     },

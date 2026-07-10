@@ -1,6 +1,9 @@
 import { execFileSync } from 'node:child_process'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { gzipSync } from 'node:zlib'
 import { serve } from '@hono/node-server'
 import { Redis } from 'ioredis'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
@@ -33,6 +36,7 @@ export interface TenantFixture {
   amUserId: string // the account_manager's OWN user id (self-escalation test)
   eventId: string
   commandId: string
+  exportId: string
   /** platform_admin token (tenant-wide). */
   tokenPlatform: string
   /** tsp_admin token (tenant-wide, NOT platform). */
@@ -65,6 +69,7 @@ async function seedTenant(
   poolInsertGeofence: (t: string, a: string | null) => Promise<string>,
   poolInsertUsage: (t: string, a: string, dev: string, day: string) => Promise<void>,
   poolInsertCommand: (t: string, a: string, dev: string) => Promise<string>,
+  poolInsertExport: (t: string, a: string) => Promise<string>,
   name: string,
   profileId: string,
   imei: string,
@@ -87,6 +92,7 @@ async function seedTenant(
   const vw = await db.users.create(scope, actor, { email: `${name}-vw@x.test`, passwordHash: pwHash, role: 'viewer', accountId: a1.id })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
   const commandId = await poolInsertCommand(tenant.id, a1.id, device.id.toString())
+  const exportId = await poolInsertExport(tenant.id, a1.id)
   const tripId = await poolInsertTrip(tenant.id, a1.id, device.id.toString())
   const geofenceId = await poolInsertGeofence(tenant.id, a1.id)
   const geofenceA2Id = await poolInsertGeofence(tenant.id, a2.id) // for cross-account checks
@@ -114,6 +120,7 @@ async function seedTenant(
     amUserId: am.id,
     eventId,
     commandId,
+    exportId,
     tokenPlatform: await token(platform.id, tenant.id, 'platform_admin'),
     tokenTenant: await token(tsp.id, tenant.id, 'tsp_admin'),
     tokenAccountA1: await token(am.id, tenant.id, 'account_manager', a1.id),
@@ -174,6 +181,18 @@ export async function setup(): Promise<Fixtures> {
   const insertUsage = async (tenantId: string, accountId: string, deviceId: string, day: string): Promise<void> => {
     await pool.query(`INSERT INTO usage_daily ("tenantId","accountId","deviceId",day) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [tenantId, accountId, deviceId, day])
   }
+  // a DONE GDPR export job (E08-4) with a real file, so the /v1/exports/:id item + download
+  // routes have a working positive control (pending jobs 404 on download by design)
+  const insertExport = async (tenantId: string, accountId: string): Promise<string> => {
+    const dir = mkdtempSync(join(tmpdir(), 'orbetra-iso-export-'))
+    const file = join(dir, 'export.ndjson.gz')
+    writeFileSync(file, gzipSync('{"type":"meta","data":{}}\n'))
+    const r = await pool.query(
+      `INSERT INTO export_jobs (id,"tenantId","accountId",status,path,"sizeBytes","expiresAt") VALUES (gen_random_uuid(),$1,$2,'done',$3,42,now()+interval '7 days') RETURNING id`,
+      [tenantId, accountId, file],
+    )
+    return (r.rows[0] as { id: string }).id
+  }
   // an ACCOUNT-scoped geofence (E05-1) for the /v1/geofences/:id cross-account/tenant checks
   const insertGeofence = async (tenantId: string, accountId: string | null): Promise<string> => {
     const geojson = JSON.stringify({ type: 'Polygon', coordinates: [[[25.27, 54.68], [25.28, 54.68], [25.28, 54.69], [25.27, 54.69], [25.27, 54.68]]] })
@@ -203,8 +222,8 @@ export async function setup(): Promise<Fixtures> {
 
   const profileIds = await seedProfiles(databaseUrl)
   const profileId = profileIds['fmb1xx']!
-  const t1 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, 'T1', profileId, '356307042440000')
-  const t2 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, 'T2', profileId, '356307042440001')
+  const t1 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, insertExport, 'T1', profileId, '356307042440000')
+  const t2 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, insertExport, 'T2', profileId, '356307042440001')
 
   return {
     baseUrl: `http://127.0.0.1:${port}`,

@@ -225,6 +225,21 @@
       "changed": "Passwort aktualisiert.",
       "wrongCurrent": "Aktuelles Passwort ist falsch.",
       "error": "Passwort konnte nicht geändert werden."
+    },
+    "export": {
+      "title": "Datenexport (DSGVO)",
+      "hint": "Vollständige Kopie der Kontodaten (Geräte, Positionen, Fahrten, Ereignisse, Regeln, Benutzer) als NDJSON herunterladen. Dateien verfallen nach 7 Tagen.",
+      "account": "Konto",
+      "request": "Export anfordern",
+      "requested": "Angefordert",
+      "status": "Status",
+      "download": "Herunterladen",
+      "error": "Exportanfrage fehlgeschlagen.",
+      "st": {
+        "pending": "Wird vorbereitet",
+        "done": "Bereit",
+        "failed": "Fehlgeschlagen"
+      }
     }
   },
   "devices": {
@@ -296,7 +311,11 @@
         "deleterecords": "Daten löschen"
       },
       "asciiError": "Befehle dürfen nur druckbare ASCII-Zeichen enthalten."
-    }
+    },
+    "erase": "Daten löschen",
+    "eraseConfirm": "Löschen bestätigen — unwiderruflich",
+    "eraseQueued": "Datenlöschung eingeplant. Verlauf, Fahrten, Ereignisse und Befehle werden dauerhaft gelöscht.",
+    "eraseError": "Löschanfrage fehlgeschlagen. Das Gerät muss zuerst mindestens eine Stunde stillgelegt sein."
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",

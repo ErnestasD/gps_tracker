@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
+import { eraseDevice } from '@/lib/gdpr'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
@@ -36,7 +37,18 @@ export function DevicesPage() {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles })
   const [retireError, setRetireError] = useState<string | null>(null)
   const [commandsForId, setCommandsForId] = useState<string | null>(null)
+  // GDPR erase (E08-4): two-step confirm per device id, auto-disarmed after 6 s so an
+  // armed irreversible button never lingers (review LOW)
+  const [eraseArmedId, setEraseArmedId] = useState<string | null>(null)
+  const [eraseQueued, setEraseQueued] = useState(false)
+  const [eraseError, setEraseError] = useState(false)
+  useEffect(() => {
+    if (eraseArmedId === null) return
+    const t = setTimeout(() => setEraseArmedId(null), 6000)
+    return () => clearTimeout(t)
+  }, [eraseArmedId])
   const refresh = () => void qc.invalidateQueries({ queryKey: ['devices'] })
+  const isAdmin = ['platform_admin', 'tsp_admin'].includes(getCurrentUser()?.role ?? '')
   // derive the panel's device from the LIVE list (never a snapshot): a retire or refetch
   // closes/updates the panel instead of leaving a stale device you can still command
   const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
@@ -49,6 +61,16 @@ export function DevicesPage() {
       {retireError !== null && (
         <p role="alert" className="text-sm text-danger" data-testid="retire-error">
           {t('devices.retireError', { imei: retireError })}
+        </p>
+      )}
+      {eraseQueued && (
+        <p className="text-sm text-muted" data-testid="erase-queued">
+          {t('devices.eraseQueued')}
+        </p>
+      )}
+      {eraseError && (
+        <p role="alert" className="text-sm text-danger" data-testid="erase-error">
+          {t('devices.eraseError')}
         </p>
       )}
 
@@ -109,7 +131,29 @@ export function DevicesPage() {
                       </td>
                       <td className="py-2 pr-4">
                         {d.retiredAt !== null ? (
-                          <Badge variant="outline">{t('devices.retired')}</Badge>
+                          <span className="inline-flex items-center gap-2">
+                            <Badge variant="outline">{t('devices.retired')}</Badge>
+                            {isAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-danger"
+                                data-testid={`erase-${d.imei}`}
+                                onClick={() => {
+                                  if (eraseArmedId !== d.id) {
+                                    setEraseArmedId(d.id) // first click arms — GDPR erase is irreversible
+                                    return
+                                  }
+                                  setEraseArmedId(null)
+                                  void eraseDevice(d.id)
+                                    .then(() => setEraseQueued(true))
+                                    .catch(() => setEraseError(true))
+                                }}
+                              >
+                                {eraseArmedId === d.id ? t('devices.eraseConfirm') : t('devices.erase')}
+                              </Button>
+                            )}
+                          </span>
                         ) : (
                           <Badge variant="success">{t('devices.active')}</Badge>
                         )}

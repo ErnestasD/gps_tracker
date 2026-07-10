@@ -44,6 +44,8 @@ function idFor(f: TenantFixture, entity: string): string {
     webhook: f.webhookId,
     event: f.eventId,
     command: f.commandId,
+    export: f.exportId,
+    gdpr: f.deviceId, // /v1/devices/:id/erase — the :id is a device
     tenant: f.id,
     quarantine: '356307042440000', // a real 15-digit IMEI for the claim path param
   }

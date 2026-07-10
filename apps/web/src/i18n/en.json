@@ -225,6 +225,21 @@
       "changed": "Password updated.",
       "wrongCurrent": "Current password is wrong.",
       "error": "Could not update password."
+    },
+    "export": {
+      "title": "Data export (GDPR)",
+      "hint": "Download a full copy of an account's data (devices, positions, trips, events, rules, users) as NDJSON. Files expire after 7 days.",
+      "account": "Account",
+      "request": "Request export",
+      "requested": "Requested",
+      "status": "Status",
+      "download": "Download",
+      "error": "Export request failed.",
+      "st": {
+        "pending": "Preparing",
+        "done": "Ready",
+        "failed": "Failed"
+      }
     }
   },
   "devices": {
@@ -296,7 +311,11 @@
         "deleterecords": "Delete records"
       },
       "asciiError": "Commands may contain printable ASCII characters only."
-    }
+    },
+    "erase": "Erase data",
+    "eraseConfirm": "Confirm erase — irreversible",
+    "eraseQueued": "Data erase queued. History, trips, events and commands will be permanently deleted.",
+    "eraseError": "Erase request failed. The device must be retired for at least an hour first."
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",

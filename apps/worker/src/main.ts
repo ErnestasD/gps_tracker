@@ -15,6 +15,9 @@ import { startOfflineWorker } from './jobs/offlineWorker.js'
 import { createNotifyQueue, enqueueNotify } from './jobs/notifyQueue.js'
 import { startNotifyWorker } from './jobs/notifyWorker.js'
 import { createCommandDispatchQueue, scheduleCommandDispatch, startCommandDispatcher } from './commands/dispatcher.js'
+import { startGdprEraseWorker } from './jobs/gdprEraseWorker.js'
+import { startGdprExportWorker, startGdprSweepWorker } from './jobs/gdprExportWorker.js'
+import { createGdprSweepQueue, scheduleExportSweep } from './jobs/gdprQueue.js'
 import { createUsageQueue, scheduleUsageSweep } from './jobs/usageQueue.js'
 import { startUsageWorker } from './jobs/usageWorker.js'
 import { createWebhookQueue, enqueueWebhook } from './jobs/webhookQueue.js'
@@ -165,6 +168,35 @@ async function main(): Promise<void> {
     },
   })
   await scheduleCommandDispatch(commandQueue)
+  // E08-4: GDPR jobs — device-erase cascade + account export (api enqueues one-shots)
+  const gdprEraseWorker = startGdprEraseWorker({
+    connection: recomputeConn,
+    pool,
+    redis: offlineRedis,
+    onErased: (r) => {
+      prom.gdprErased.inc()
+      console.log(`gdpr erase complete: device ${r.deviceId}, ${r.positions} positions`)
+    },
+    onFailed: () => prom.gdprFailed.inc({ job: 'erase' }),
+  })
+  const gdprExportWorker = startGdprExportWorker({
+    connection: recomputeConn,
+    pool,
+    exportDir: process.env['EXPORT_DIR'] ?? 'var/exports',
+    onDone: (r) => {
+      prom.gdprExported.inc()
+      console.log(`gdpr export complete: ${r.exportId}, ${r.bytes} bytes`)
+    },
+    onFailed: () => prom.gdprFailed.inc({ job: 'export' }),
+  })
+  // hourly sweep: unlink expired export files + mark rows (the 7-day expiry is real)
+  const gdprSweepQueue = createGdprSweepQueue(recomputeConn)
+  const gdprSweepWorker = startGdprSweepWorker({
+    connection: recomputeConn,
+    pool,
+    onSwept: (n) => console.log(`gdpr export sweep: removed ${n} expired file(s)`),
+  })
+  await scheduleExportSweep(gdprSweepQueue)
   const consumerConns: Redis[] = []
   const consumers = [...shards].map((s) => {
     // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued
@@ -309,6 +341,10 @@ async function main(): Promise<void> {
       await usageQueue.close()
       await commandWorker.close() // finish the in-flight command dispatch, stop taking new
       await commandQueue.close()
+      await gdprEraseWorker.close() // finish the in-flight erase step, stop taking new
+      await gdprExportWorker.close() // finish the in-flight export, stop taking new
+      await gdprSweepWorker.close()
+      await gdprSweepQueue.close()
       offlineRedis.disconnect()
       consumerConns.forEach((c) => c.disconnect())
       await redis.quit()

@@ -225,6 +225,21 @@
       "changed": "Hasło zaktualizowane.",
       "wrongCurrent": "Obecne hasło jest błędne.",
       "error": "Nie udało się zmienić hasła."
+    },
+    "export": {
+      "title": "Eksport danych (RODO)",
+      "hint": "Pobierz pełną kopię danych konta (urządzenia, pozycje, trasy, zdarzenia, reguły, użytkownicy) w formacie NDJSON. Pliki wygasają po 7 dniach.",
+      "account": "Konto",
+      "request": "Zamów eksport",
+      "requested": "Zamówiono",
+      "status": "Status",
+      "download": "Pobierz",
+      "error": "Żądanie eksportu nie powiodło się.",
+      "st": {
+        "pending": "Przygotowywanie",
+        "done": "Gotowy",
+        "failed": "Niepowodzenie"
+      }
     }
   },
   "devices": {
@@ -296,7 +311,11 @@
         "deleterecords": "Usuń zapisy"
       },
       "asciiError": "Polecenia mogą zawierać tylko drukowalne znaki ASCII."
-    }
+    },
+    "erase": "Usuń dane",
+    "eraseConfirm": "Potwierdź usunięcie — nieodwracalne",
+    "eraseQueued": "Usuwanie danych zaplanowane. Historia, trasy, zdarzenia i polecenia zostaną trwale usunięte.",
+    "eraseError": "Żądanie usunięcia nie powiodło się. Urządzenie musi być wycofane od co najmniej godziny."
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",

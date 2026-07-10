@@ -39,7 +39,12 @@ export async function enqueueWebhook(queue: Queue<WebhookJob>, ev: EnqueueWebhoo
     'deliver',
     { eventId, deviceId: ev.deviceId.toString(), kind: ev.kind, at: ev.at.toISOString(), payload: ev.payload },
     {
-      jobId: `wh:${eventId}`, // includes the discriminator → replay-dedup without collisions
+      // DASH-sanitized: BullMQ rejects custom ids containing ':' (a legacy exactly-3-segment
+      // carve-out aside) — the old `wh:${eventId}` (5+ segments) THREW on every enqueue and
+      // main.ts's best-effort catch swallowed it → webhook deliveries were silently never
+      // queued (found by the E08-4 requeue regression test). eventId itself keeps its ':'
+      // format — it is the X-Webhook-Id header + receiver-dedup contract (E06-4).
+      jobId: `wh-${eventId.replace(/:/g, '-')}`, // includes the discriminator → replay-dedup without collisions
       removeOnComplete: true,
       removeOnFail: 500,
       attempts: 5, // §6.5 max 5

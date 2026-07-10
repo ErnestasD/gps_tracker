@@ -114,6 +114,20 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     expect(ingest!.metrics.rejectedImeiTotal).toBe(3)
   }, 30_000)
 
+  it('mid-session de-registration (retire/GDPR): next frame kills the socket, no ACK (E08-4)', async () => {
+    // retire only used to bar the NEXT connect — a live session kept streaming a retired
+    // device's positions past a GDPR erase (review HIGH-1 residual). The per-frame registry
+    // re-check must terminate the session as soon as the mapping is gone.
+    const port = await startIngest()
+    const run = runScenario(liveDrive, { ...base, count: 10, hz: 4, host: '127.0.0.1', port })
+    await new Promise((r) => setTimeout(r, 600)) // let the handshake + first frames through
+    await redis.hdel('registry:imei', IMEI) // retire happens mid-session
+    const res = await run
+    expect(res.socketClosedByServer).toBe(true)
+    expect(res.ackedRecords).toBeLessThan(10) // the tail was refused, never acked
+    expect(await redis.xlen(`raw:${SHARD}`)).toBe(res.ackedRecords) // persisted == acked (rule 4)
+  }, 30_000)
+
   it('slow-loris: killed by the handshake timeout, nothing persisted', async () => {
     const port = await startIngest({ handshakeTimeoutMs: 300 })
     const started = Date.now()

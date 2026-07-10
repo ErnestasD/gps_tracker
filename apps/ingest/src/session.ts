@@ -248,6 +248,18 @@ export class Session {
     }
     if (parsed.kind !== 'avl') return
 
+    // registry RE-CHECK per data frame (E08-4 review): retire only prevents the NEXT
+    // connect — a live session (or a profile with a long read-idle, e.g. tat-asset 26 h)
+    // would keep streaming a retired device's positions past a GDPR erase. Same transport
+    // lookup as the handshake (rule 3); a de-registered device's session dies here, before
+    // anything is persisted and WITHOUT an ACK (rule 4: nothing persisted ⇒ nothing acked).
+    const mapped = await this.deps.registry.lookup(this.imei ?? '')
+    if (mapped === null || mapped !== this.deviceId) {
+      this.deps.metrics.rejectedImeiTotal++
+      this.socket.destroy()
+      return
+    }
+
     const good: AvlRecord[] = []
     const insane: AvlRecord[] = []
     for (const rec of parsed.records) {
