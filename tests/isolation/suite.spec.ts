@@ -43,6 +43,7 @@ function idFor(f: TenantFixture, entity: string): string {
     rule: f.ruleId,
     webhook: f.webhookId,
     event: f.eventId,
+    command: f.commandId,
     tenant: f.id,
     quarantine: '356307042440000', // a real 15-digit IMEI for the claim path param
   }

@@ -28,6 +28,7 @@ export interface WorkerProm {
   webhookFailed: Counter
   usageDeviceDays: Counter
   usageSweepFailed: Counter
+  commandsResolved: Counter
   server: Server
 }
 
@@ -79,6 +80,7 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const usageDeviceDays = new Counter({ name: 'usage_device_days_total', help: 'billable device-day rows written by the usage sweep (E07-4)', registers: [registry] })
   // a stalled metering pipeline is silent under-billing — alert on any non-zero rate
   const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })
+  const commandsResolved = new Counter({ name: 'commands_resolved_total', help: 'Codec-12 commands resolved by the dispatcher (E08-2)', labelNames: ['outcome'], registers: [registry] })
 
   const server = createServer((req, res) => {
     if (req.url !== '/metrics') {
@@ -97,5 +99,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, commandsResolved, server }
 }

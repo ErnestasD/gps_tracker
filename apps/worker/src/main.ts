@@ -14,6 +14,7 @@ import { createOfflineQueue, scheduleOfflineSweep } from './jobs/offlineQueue.js
 import { startOfflineWorker } from './jobs/offlineWorker.js'
 import { createNotifyQueue, enqueueNotify } from './jobs/notifyQueue.js'
 import { startNotifyWorker } from './jobs/notifyWorker.js'
+import { createCommandDispatchQueue, scheduleCommandDispatch, startCommandDispatcher } from './commands/dispatcher.js'
 import { createUsageQueue, scheduleUsageSweep } from './jobs/usageQueue.js'
 import { startUsageWorker } from './jobs/usageWorker.js'
 import { createWebhookQueue, enqueueWebhook } from './jobs/webhookQueue.js'
@@ -150,6 +151,20 @@ async function main(): Promise<void> {
     onFailed: () => prom.usageSweepFailed.inc(),
   })
   await scheduleUsageSweep(usageQueue)
+  // E08-2: Codec-12 command dispatcher — ~15s reconcile of in-flight commands vs device
+  // responses (transport seam written by ingest); drives the DB status machine.
+  const commandQueue = createCommandDispatchQueue(recomputeConn)
+  const commandWorker = startCommandDispatcher({
+    connection: recomputeConn,
+    pool,
+    redis: offlineRedis,
+    onResult: (r) => {
+      prom.commandsResolved.inc({ outcome: 'acked' }, r.acked)
+      prom.commandsResolved.inc({ outcome: 'failed' }, r.failed)
+      prom.commandsResolved.inc({ outcome: 'expired' }, r.expired)
+    },
+  })
+  await scheduleCommandDispatch(commandQueue)
   const consumerConns: Redis[] = []
   const consumers = [...shards].map((s) => {
     // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued
@@ -292,6 +307,8 @@ async function main(): Promise<void> {
       await webhookQueue.close()
       await usageWorker.close() // finish the in-flight usage sweep, stop taking new
       await usageQueue.close()
+      await commandWorker.close() // finish the in-flight command dispatch, stop taking new
+      await commandQueue.close()
       offlineRedis.disconnect()
       consumerConns.forEach((c) => c.disconnect())
       await redis.quit()

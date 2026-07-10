@@ -32,6 +32,7 @@ export interface TenantFixture {
   userId: string // an account-scoped (A1) user
   amUserId: string // the account_manager's OWN user id (self-escalation test)
   eventId: string
+  commandId: string
   /** platform_admin token (tenant-wide). */
   tokenPlatform: string
   /** tsp_admin token (tenant-wide, NOT platform). */
@@ -63,6 +64,7 @@ async function seedTenant(
   poolInsertTrip: (t: string, a: string, dev: string) => Promise<string>,
   poolInsertGeofence: (t: string, a: string | null) => Promise<string>,
   poolInsertUsage: (t: string, a: string, dev: string, day: string) => Promise<void>,
+  poolInsertCommand: (t: string, a: string, dev: string) => Promise<string>,
   name: string,
   profileId: string,
   imei: string,
@@ -84,6 +86,7 @@ async function seedTenant(
   const am = await db.users.create(scope, actor, { email: `${name}-am@x.test`, passwordHash: pwHash, role: 'account_manager', accountId: a1.id })
   const vw = await db.users.create(scope, actor, { email: `${name}-vw@x.test`, passwordHash: pwHash, role: 'viewer', accountId: a1.id })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
+  const commandId = await poolInsertCommand(tenant.id, a1.id, device.id.toString())
   const tripId = await poolInsertTrip(tenant.id, a1.id, device.id.toString())
   const geofenceId = await poolInsertGeofence(tenant.id, a1.id)
   const geofenceA2Id = await poolInsertGeofence(tenant.id, a2.id) // for cross-account checks
@@ -110,6 +113,7 @@ async function seedTenant(
     userId: am.id,
     amUserId: am.id,
     eventId,
+    commandId,
     tokenPlatform: await token(platform.id, tenant.id, 'platform_admin'),
     tokenTenant: await token(tsp.id, tenant.id, 'tsp_admin'),
     tokenAccountA1: await token(am.id, tenant.id, 'account_manager', a1.id),
@@ -158,6 +162,14 @@ export async function setup(): Promise<Fixtures> {
     )
     return String((r.rows[0] as { id: string | number }).id)
   }
+  // a Codec-12 command (E08-2) for the /v1/commands/:id positive-control + isolation checks
+  const insertCommand = async (tenantId: string, accountId: string, deviceId: string): Promise<string> => {
+    const r = await pool.query(
+      `INSERT INTO commands (id,"tenantId","accountId","deviceId",text,status,"expiresAt") VALUES (gen_random_uuid(),$1,$2,$3,'getinfo','queued',now()+interval '24 hours') RETURNING id`,
+      [tenantId, accountId, deviceId],
+    )
+    return String((r.rows[0] as { id: string }).id)
+  }
   // usage_daily rows are pipeline-written (E07-4 worker sweep) — seed via the pool
   const insertUsage = async (tenantId: string, accountId: string, deviceId: string, day: string): Promise<void> => {
     await pool.query(`INSERT INTO usage_daily ("tenantId","accountId","deviceId",day) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [tenantId, accountId, deviceId, day])
@@ -191,8 +203,8 @@ export async function setup(): Promise<Fixtures> {
 
   const profileIds = await seedProfiles(databaseUrl)
   const profileId = profileIds['fmb1xx']!
-  const t1 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, 'T1', profileId, '356307042440000')
-  const t2 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, 'T2', profileId, '356307042440001')
+  const t1 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, 'T1', profileId, '356307042440000')
+  const t2 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, 'T2', profileId, '356307042440001')
 
   return {
     baseUrl: `http://127.0.0.1:${port}`,
