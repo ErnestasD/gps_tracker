@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
+import { CommandsCard } from '@/routes/app/devices/commands'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
   ODOMETER_SOURCES,
@@ -20,6 +21,7 @@ import {
   listProfiles,
   retireDevice,
   updateDevice,
+  type Device,
   type DryRunResult,
   type OdometerSource,
 } from '@/lib/devices'
@@ -33,7 +35,11 @@ export function DevicesPage() {
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles })
   const [retireError, setRetireError] = useState<string | null>(null)
+  const [commandsForId, setCommandsForId] = useState<string | null>(null)
   const refresh = () => void qc.invalidateQueries({ queryKey: ['devices'] })
+  // derive the panel's device from the LIVE list (never a snapshot): a retire or refetch
+  // closes/updates the panel instead of leaving a stale device you can still command
+  const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
@@ -110,18 +116,28 @@ export function DevicesPage() {
                       </td>
                       <td className="py-2 pr-4 text-right">
                         {d.retiredAt === null && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            data-testid={`retire-${d.imei}`}
-                            onClick={() => {
-                              void retireDevice(d.id)
-                                .then(refresh)
-                                .catch(() => setRetireError(d.imei))
-                            }}
-                          >
-                            {t('devices.retire')}
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`commands-${d.imei}`}
+                              onClick={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
+                            >
+                              {t('devices.commands')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`retire-${d.imei}`}
+                              onClick={() => {
+                                void retireDevice(d.id)
+                                  .then(refresh)
+                                  .catch(() => setRetireError(d.imei))
+                              }}
+                            >
+                              {t('devices.retire')}
+                            </Button>
+                          </>
                         )}
                       </td>
                     </tr>
@@ -132,6 +148,10 @@ export function DevicesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* key remounts the panel per device — armed/text state must NEVER survive a device
+          switch (a confirm armed for device A must not send with one click on device B) */}
+      {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
     </div>
   )
 }

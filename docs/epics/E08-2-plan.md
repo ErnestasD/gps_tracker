@@ -34,3 +34,10 @@ Gates + testai žali. §3.5 semantika (FIFO correlate, 30s/retry3/24h). Rule 3: 
 - **Late-response desync** (§3.5 accepted): timeout'inta komanda, jei device atsako vėliau, desyncina FIFO — real devices atsako per 30s; ilgesnė tyla = socket drop → re-send. Dokumentuota reconcile.ts.
 - **ingest send-path testas**: simuliatorius nepriima komandų (read-side confuse) → NE e2e; padengta kontraktu (api įrodo cmd:pending, dispatcher įrodo inflight→DB) + transport mirror'ina esamą cmd:resp pattern.
 - **Web UI + presets grid + deleterecords warning-gate** = E08-2b.
+
+## E08-2b — commands web UI (papildyta po E08-2a merge, PR #43)
+
+- **lib/commands.ts**: CommandView (mirror api CommandView), `listDeviceCommands(deviceId)` GET /v1/devices/:id/commands, `sendCommand(deviceId, text)` POST; presets iš `@orbetra/shared` COMMAND_PRESETS; `isDestructiveCommand = !isRetryableCommand` (cpureset/deleterecords); pure `statusVariant(status)` badge mapping (queued/sent→outline, acked→success, failed/expired→danger).
+- **routes/app/devices/commands.tsx** `CommandsCard({device})`: rodomas Devices puslapyje pasirinkus eilutės „Commands" mygtuką (tik ne-retired). Presets grid (10) + free-text input (printable ASCII, maxLength 512) + Send. **Warning-gate**: destructive preset/text → pirmas paspaudimas „arms" (danger būsena su patvirtinimo tekstu), antras siunčia; bet koks kitas veiksmas dis-arm'ina. Istorijos lentelė (text, status badge, response, createdAt) su `refetchInterval` 5s kol yra non-terminal (queued/sent) komandų.
+- **Testai**: web unit commands.spec (destructive set, statusVariant, presets parity su shared — laisva, nes importuojama tiesiogiai); e2e smoke: atidaryti Commands → siųsti getinfo → istorijoje atsiranda eilutė (statusas gali būti queued/sent/failed — simuliatorius komandų neatsako, assert'inam tik eilutės egzistavimą; dokumentuota E08-2a rizika).
+- i18n ×4 (en/lt/de/pl) devices.cmd.* raktai.

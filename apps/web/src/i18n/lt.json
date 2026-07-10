@@ -259,6 +259,41 @@
       "auto": "Automatinis",
       "device": "Įrenginio",
       "gps": "GPS"
+    },
+    "commands": "Komandos",
+    "cmd": {
+      "title": "Komandos — {{name}}",
+      "send": "Siųsti",
+      "confirm": "Patvirtinti: {{cmd}}",
+      "destructiveWarn": "Ši komanda yra destruktyvi ir negrįžtama. Spustelėkite dar kartą, kad išsiųstumėte į įrenginį.",
+      "placeholder": "Komandos tekstas (pvz., getinfo)",
+      "sendError": "Nepavyko išsiųsti komandos.",
+      "loadError": "Nepavyko įkelti komandų istorijos.",
+      "empty": "Šiam įrenginiui komandų dar nesiųsta.",
+      "command": "Komanda",
+      "status": "Būsena",
+      "response": "Atsakymas",
+      "at": "Išsiųsta",
+      "st": {
+        "queued": "Eilėje",
+        "sent": "Išsiųsta",
+        "acked": "Patvirtinta",
+        "failed": "Nepavyko",
+        "expired": "Pasibaigusi"
+      },
+      "preset": {
+        "getinfo": "Informacija",
+        "getver": "Versija",
+        "getgps": "GPS padėtis",
+        "getio": "IO būsena",
+        "cpureset": "Perkrauti",
+        "dout_on": "Išvestis įjungta",
+        "dout_off": "Išvestis išjungta",
+        "reporting_interval": "Siuntimo intervalas",
+        "server_address": "Serverio adresas",
+        "deleterecords": "Trinti įrašus"
+      },
+      "asciiError": "Komandoje leidžiami tik spausdinami ASCII simboliai."
     }
   },
   "quarantine": {
