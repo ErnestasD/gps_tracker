@@ -157,7 +157,9 @@
     "empty": "Keine Positionen in diesem Zeitraum.",
     "samples": "{{n}} Punkte",
     "trips": "{{n}} Fahrten",
-    "distance": "{{km}} km"
+    "distance": "{{km}} km",
+    "fuel": "Kraftstoffstand",
+    "fuelLiters": "{{l}} l"
   },
   "geofences": {
     "title": "Geozonen",

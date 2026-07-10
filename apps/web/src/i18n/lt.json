@@ -157,7 +157,9 @@
     "empty": "Šiame intervale pozicijų nėra.",
     "samples": "{{n}} taškų",
     "trips": "{{n}} kelionės",
-    "distance": "{{km}} km"
+    "distance": "{{km}} km",
+    "fuel": "Kuro lygis",
+    "fuelLiters": "{{l}} l"
   },
   "geofences": {
     "title": "Geozonos",

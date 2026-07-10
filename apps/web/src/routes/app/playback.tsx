@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { FuelChart } from '@/components/FuelChart'
 import { PlaybackMap } from '@/components/PlaybackMap'
 import { SpeedChart } from '@/components/SpeedChart'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { listDevices } from '@/lib/devices'
+import { fuelSeries, listFuel } from '@/lib/fuel'
 import { defaultRange, listDeviceTrips, listPositions } from '@/lib/playback'
 
 const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' })
@@ -37,9 +39,15 @@ export function PlaybackPage() {
     queryFn: () => listDeviceTrips(deviceId, { from: iso(range.from), to: iso(range.to) }),
     enabled: deviceId !== '',
   })
+  const fuel = useQuery({
+    queryKey: ['fuel', deviceId, range.from, range.to],
+    queryFn: () => listFuel(deviceId, { from: iso(range.from), to: iso(range.to) }),
+    enabled: deviceId !== '',
+  })
 
   const pts = useMemo(() => positions.data ?? [], [positions.data])
   const speeds = useMemo(() => pts.map((p) => p.speed ?? 0), [pts])
+  const fuelData = useMemo(() => fuelSeries(fuel.data ?? []), [fuel.data])
   useEffect(() => setIndex(0), [pts])
 
   const current = pts[Math.min(index, pts.length - 1)]
@@ -89,6 +97,8 @@ export function PlaybackPage() {
                 </span>
               </div>
               <SpeedChart speeds={speeds} index={index} onScrub={setIndex} />
+              {/* AVL-gated (§4): only devices actually reporting fuel get the graph */}
+              {fuelData.points.length > 0 && <FuelChart points={fuelData.points} unit={fuelData.unit} />}
               <div className="flex items-center gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setIndex(0)} data-testid="playback-start">⏮</Button>
                 <input

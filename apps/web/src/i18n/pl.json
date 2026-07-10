@@ -157,7 +157,9 @@
     "empty": "Brak pozycji w tym zakresie.",
     "samples": "{{n}} punktów",
     "trips": "{{n}} tras",
-    "distance": "{{km}} km"
+    "distance": "{{km}} km",
+    "fuel": "Poziom paliwa",
+    "fuelLiters": "{{l}} l"
   },
   "geofences": {
     "title": "Geostrefy",

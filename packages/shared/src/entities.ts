@@ -83,6 +83,15 @@ export interface TripView {
   maxSpeed: number
   idleS: number
 }
+/** One fuel-level sample for the playback fuel graph (E08-3). pct comes from AVL 89 (or
+ * OBD 48) in %, liters from AVL 84 (wiki ×0.1 already applied). Either may be null when
+ * the device reports only one representation. */
+export interface FuelSampleView {
+  fixTime: string // ISO
+  pct: number | null
+  liters: number | null
+}
+
 /** An event as returned by the read API (E05-2/4 pipeline output, serialized). */
 export interface EventView {
   id: string // bigint as string — also the pagination cursor

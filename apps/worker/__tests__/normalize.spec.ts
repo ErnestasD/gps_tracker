@@ -95,6 +95,23 @@ describe('normalize (E02-3)', () => {
     expect(rec.attrs[`io_${id2}`]).toBe(2)
   })
 
+  it('fuel ids (48/84/89) always keep their io_<id> key — never the ambiguous dictionary name (E08-3)', () => {
+    // 84 (l ×0.1) and 89 (%) are BOTH named "Fuel level" in fmb1xx — a single-id record
+    // would land under one indistinguishable key. Forced id-keys make read-side units safe.
+    const rec = normalize({ ...basePayload, io: [[89, 76n], [84, 412n], [48, 51n]] }, hash)
+    expect(rec.attrs['io_89']).toBe(76)
+    expect(rec.attrs['io_84']).toBe(412) // raw — the ×0.1 wiki multiplier applies at read
+    expect(rec.attrs['io_48']).toBe(51)
+    expect(rec.attrs['Fuel level']).toBeUndefined()
+    expect(rec.attrs['Fuel Level']).toBeUndefined()
+  })
+
+  it('a single fuel id still gets its io_<id> key (the no-collision case is the dangerous one)', () => {
+    const rec = normalize({ ...basePayload, io: [[89, 30n]] }, hash)
+    expect(rec.attrs['io_89']).toBe(30)
+    expect(rec.attrs['Fuel level']).toBeUndefined()
+  })
+
   it('malformed payload throws (consumer dead-letters it)', () => {
     expect(() => normalize({ nonsense: true }, hash)).toThrow()
   })
