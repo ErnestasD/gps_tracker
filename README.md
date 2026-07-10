@@ -215,6 +215,17 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## Security headers (E07-5)
+
+- Every API response (incl. 401/404 and the public docs) carries `X-Content-Type-Options:
+  nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, COOP/CORP `same-origin`,
+  and a minimal `Permissions-Policy`. **HSTS** (180 d) is sent only in TLS deployments
+  (`ApiDeps.hsts`, defaults to `secureCookies`) — dev/e2e over plain http never advertises it.
+  The Caddy edge sets the same set for the SPA (defense in depth) and drops the `Server`
+  banner. No global CSP yet (the self-contained `/v1/docs` inline script needs a nonce first)
+  — see `docs/audit/security-pass-2026-07.md` for the full W7 S5 audit (rate limits, deps,
+  secrets, argon2, WS auth).
+
 ## API docs / OpenAPI (E06-5)
 
 - **`GET /v1/openapi.json`** — an OpenAPI 3.1 document for the public API, **generated from

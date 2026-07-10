@@ -29,6 +29,19 @@ https:// {
 	tls {
 		on_demand
 	}
+	# Security headers at the edge (E07-5). Site-wide, so /v1 responses carry them TWICE
+	# (edge + the api's own set — defense in depth). Duplicates are harmless while the two
+	# layers stay IDENTICAL; if you change a value here, change apps/api/src/security.ts
+	# too (conflicting XFO/STS duplicates confuse browsers). The SPA is never embedded,
+	# so framing is denied outright.
+	header {
+		Strict-Transport-Security "max-age=15552000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
 	# API + realtime first (longest-prefix wins in Caddy route ordering)
 	handle /v1/* {
 		reverse_proxy api:3010
