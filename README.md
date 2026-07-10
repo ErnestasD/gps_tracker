@@ -52,6 +52,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `INGEST_MAX_CONN` | apps/ingest | Total concurrent connection cap, default `20000` |
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
+| `EXPORT_DIR` | apps/worker | GDPR export output directory (E08-4), default `var/exports`; R2/S3 upload is the follow-up when creds exist |
 | `API_PORT` | apps/api | HTTP+WS port, default `3010` |
 | `JWT_SECRET` | apps/api | HS256 access-token secret, **required**, min 32 chars |
 | `JWT_TTL` | apps/api | Access-token TTL seconds, default `900` (15 min) |
@@ -246,6 +247,31 @@ Every new variable must be added to the table here AND match the `.env` contract
   polled every 5 s while anything is queued/sent. Destructive commands (`cpureset`,
   `deleterecords`) are two-step: the first click arms a danger confirm, the second sends;
   editing the text or switching preset disarms.
+
+## GDPR (E08-4): retention · device-delete cascade · account export
+
+- **Retention** is PLATFORM-WIDE by design (§6.3, R8-3): `add_retention_policy('positions',
+  13 months)` — chunks are time-partitioned across ALL tenants, so per-tenant retention
+  cannot drop chunks. Shorter per-tenant retention = a V2 delete-by-device job (plan-normative).
+- **Device erase** (`POST /v1/devices/:id/erase`, TENANT admins, retired devices only —
+  retire already tears down ingest, so no new data races the delete): a BullMQ job deletes
+  positions (30-day windows), trips, events, commands and Redis state, then the device row
+  LAST (crash-retry marker). Deliberately kept: `usage_daily` (billing, legitimate interest)
+  and `audit_log` (append-only evidence; redaction V2). Metric `gdpr_erase_total`.
+- **Account export** (`POST /v1/accounts/:id/export`, §6.6): a BullMQ job streams ONE
+  NDJSON.gz (account, users **without passwordHash**, devices, trips, events, commands,
+  geofences, rules, webhooks **without secret** — every unbounded table keyset-paged, gzip
+  backpressure honoured, temp-file + atomic rename) to `EXPORT_DIR`; `GET /v1/exports/:id`
+  polls status, `/download` streams it (scoped, 410 + unlink after the 7-day expiry; an
+  hourly worker sweep removes expired files durably). A pending export per account is
+  coalesced. Web: Settings → Data export (admins) + Erase on retired devices.
+- **Erase timing**: allowed only ≥60 min after retire (409 earlier). Three belts close the
+  resurrection window completely: (1) **ingest re-checks the registry on every data frame**
+  — a de-registered device's live session dies on its next frame, unACKed (covers long
+  read-idle profiles like tat-asset's 26 h and never-silent sessions); (2) the 60-min guard
+  outlives the stream backlog; (3) the worker runs a final post-delete sweep. Kept by
+  design: `usage_daily`, `audit_log`, `webhook_deliveries` (no location PII); tenant-shared
+  (account-null) geofences/webhooks are not part of an account's export.
 
 ## Usage metering + platform panel (E07-4)
 

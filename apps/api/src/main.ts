@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import { serve } from '@hono/node-server'
 import { getConnInfo } from '@hono/node-server/conninfo'
+import { Queue } from 'bullmq'
 import { Redis } from 'ioredis'
 
 import { createDb, createPool } from '@orbetra/db'
@@ -29,11 +30,29 @@ const db = createDb(databaseUrl)
 const pool = createPool(databaseUrl) // raw-SQL positions history reads (E04-3)
 const prom = createApiProm()
 
+// GDPR job producers (E08-4, ADR-020 addendum): the api enqueues, the worker consumes.
+// BullMQ wants its own connection options; jobIds dedupe double-submits.
+const gdprConn = { url: redisUrl }
+const gdprEraseQueue = new Queue('gdpr-erase', { connection: gdprConn })
+const gdprExportQueue = new Queue('gdpr-export', { connection: gdprConn })
+// removeOnFail: TRUE (review HIGH-2) — a job parked in the failed set blocks its jobId, so a
+// later POST would 202 while nothing ever runs. Both jobs are idempotent; failure is already
+// surfaced via gdpr_job_failed_total + logs, so dropping the corpse re-opens the retry path.
+const gdpr = {
+  enqueueErase: async (data: { deviceId: string; tenantId: string }): Promise<void> => {
+    await gdprEraseQueue.add('erase', data, { jobId: `erase-${data.deviceId}`, attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true })
+  },
+  enqueueExport: async (data: { exportId: string }): Promise<void> => {
+    await gdprExportQueue.add('export', data, { jobId: `export-${data.exportId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true })
+  },
+}
+
 const deps = {
   redis,
   redisSub,
   db,
   pool,
+  gdpr,
   jwtSecret,
   jwtTtlS: Number(process.env['JWT_TTL'] ?? 900),
   refreshTtlS: Number(process.env['REFRESH_TTL'] ?? 1_209_600),
@@ -67,6 +86,8 @@ process.on('SIGTERM', () => {
     void redis
       .quit()
       .then(() => redisSub.quit())
+      .then(() => gdprEraseQueue.close())
+      .then(() => gdprExportQueue.close())
       .then(() => pool.end())
       .then(() => db.$disconnect())
       .then(() => process.exit(0))

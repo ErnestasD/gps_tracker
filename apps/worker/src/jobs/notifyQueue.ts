@@ -37,7 +37,10 @@ export async function enqueueNotify(queue: Queue<NotifyJob>, ev: EnqueueNotifyIn
     'notify',
     { ruleId: ev.ruleId, deviceId: ev.deviceId.toString(), kind: ev.kind, at: ev.at.toISOString(), payload: ev.payload },
     {
-      jobId: `notify:${ev.ruleId}:${ev.deviceId.toString()}:${ev.at.getTime()}`,
+      // DASH separators: BullMQ rejects custom ids containing ':' (unless exactly 3
+      // segments — a legacy carve-out). The old `notify:a:b:c` id THREW on every enqueue and
+      // the best-effort catch swallowed it → notifications were silently never queued.
+      jobId: `notify-${ev.ruleId}-${ev.deviceId.toString()}-${ev.at.getTime()}`,
       removeOnComplete: true,
       removeOnFail: 500,
       attempts: 5, // §6.5 max 5

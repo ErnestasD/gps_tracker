@@ -225,6 +225,21 @@
       "changed": "Slaptažodis atnaujintas.",
       "wrongCurrent": "Neteisingas dabartinis slaptažodis.",
       "error": "Nepavyko atnaujinti slaptažodžio."
+    },
+    "export": {
+      "title": "Duomenų eksportas (GDPR)",
+      "hint": "Atsisiųskite pilną paskyros duomenų kopiją (įrenginiai, pozicijos, kelionės, įvykiai, taisyklės, naudotojai) NDJSON formatu. Failai galioja 7 dienas.",
+      "account": "Paskyra",
+      "request": "Užsakyti eksportą",
+      "requested": "Užsakyta",
+      "status": "Būsena",
+      "download": "Atsisiųsti",
+      "error": "Eksporto užklausa nepavyko.",
+      "st": {
+        "pending": "Ruošiama",
+        "done": "Paruošta",
+        "failed": "Nepavyko"
+      }
     }
   },
   "devices": {
@@ -296,7 +311,11 @@
         "deleterecords": "Trinti įrašus"
       },
       "asciiError": "Komandoje leidžiami tik spausdinami ASCII simboliai."
-    }
+    },
+    "erase": "Ištrinti duomenis",
+    "eraseConfirm": "Patvirtinti trynimą — negrįžtama",
+    "eraseQueued": "Duomenų trynimas suplanuotas. Istorija, kelionės, įvykiai ir komandos bus negrįžtamai ištrinti.",
+    "eraseError": "Trynimo užklausa nepavyko. Įrenginys turi būti išregistruotas bent prieš valandą."
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",

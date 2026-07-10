@@ -5,6 +5,7 @@ import { createAccountRepo, type AccountRepo } from './repos/accounts.js'
 import { createApiKeyRepo, type ApiKeyRepo } from './repos/apiKeys.js'
 import { createAuditRepo, type AuditRepo } from './repos/audit.js'
 import { createCommandRepo, type CommandRepo } from './repos/commands.js'
+import { createExportRepo, type ExportRepo } from './repos/exports.js'
 import { createDeviceRepo, type DeviceRepo } from './repos/devices.js'
 import { createEventRepo, type EventRepo } from './repos/events.js'
 import { createGeofenceRepo, type GeofenceRepo } from './repos/geofences.js'
@@ -41,6 +42,7 @@ export interface Db {
   events: EventRepo
   trips: TripReadRepo
   geofences: GeofenceRepo
+  exports: ExportRepo
   audit: AuditRepo
   $disconnect(): Promise<void>
 }
@@ -65,6 +67,7 @@ export function createDb(databaseUrl: string): Db {
     events: createEventRepo(prisma),
     trips: createTripRepo(prisma),
     geofences: createGeofenceRepo(prisma, audit),
+    exports: createExportRepo(prisma, audit),
     audit,
     $disconnect: () => prisma.$disconnect(),
   }

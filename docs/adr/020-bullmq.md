@@ -35,3 +35,13 @@ runtime dependency, so it needs the rule-10 paper trail.
   next late batch or a manual re-enqueue — no BullMQ persistence guarantee is relied upon.
 - Downstream stories (E05 notifications/Telegram, E06 reports/exports/webhooks) build on
   this same BullMQ layer; this ADR covers the dependency for all of them.
+
+## Addendum (2026-07-10, E08-4)
+
+**apps/api becomes a BullMQ PRODUCER** for the GDPR one-shot jobs (`gdpr-erase`,
+`gdpr-export`): the api enqueues, the worker consumes. Same `bullmq` version as
+apps/worker, no new queue infrastructure — this is the "exports" bullet of the original
+context finally landing. The api never starts a `Worker` (consumption stays in
+apps/worker); a queue producer holds one Redis connection and adds jobs, nothing more.
+Not a new dependency to the monorepo — an extension of this ADR's scope to a second
+package (rule 10 paper trail).

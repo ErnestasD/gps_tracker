@@ -9,6 +9,7 @@ export { type AccountRepo, type AccountCreate, type AccountUpdate } from './repo
 export { type UserRepo, type UserView, type UserCreate, type UserUpdate } from './repos/users.js'
 export { DuplicateImeiError, type DeviceRepo, type DeviceCreate, type DeviceUpdate } from './repos/devices.js'
 export { type CommandRepo, type CommandView, type CommandCreate } from './repos/commands.js'
+export { type ExportRepo, type ExportJobView } from './repos/exports.js'
 export { type ProfileRepo } from './repos/profiles.js'
 export { type RuleRepo, type RuleCreate, type RuleUpdate } from './repos/rules.js'
 export { type WebhookRepo, type WebhookCreate, type WebhookUpdate } from './repos/webhooks.js'
@@ -20,6 +21,7 @@ export { type TripReadRepo, type TripListOpts } from './repos/trips.js'
 export { type GeofenceRepo, type GeofenceCreate, type GeofenceUpdate, GeofenceInvalidError, GeofenceTooLargeError } from './repos/geofences.js'
 export { readPositions, type PositionsOpts } from './positions.js'
 export { readFuelSeries, type FuelOpts } from './fuel.js'
+export { erasePositions } from './gdpr.js'
 export {
   runReport,
   isReportType,

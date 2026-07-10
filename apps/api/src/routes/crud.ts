@@ -59,6 +59,16 @@ export interface CrudDeps {
    * Optional so manifest-only construction (apiManifest) needs no DB; the positions
    * route 503s if it is somehow reached without one. */
   pool?: Pool
+  /** GDPR job enqueuers (E08-4) — BullMQ producers wired in the server entry (ADR-020
+   * addendum); optional so manifest-only construction needs no Redis, routes 503 without. */
+  gdpr?: {
+    enqueueErase(data: { deviceId: string; tenantId: string }): Promise<void>
+    enqueueExport(data: { exportId: string }): Promise<void>
+    /** erase is refused until the device has been retired this long (review HIGH-1: a live
+     * TCP session survives retire until idle-timeout, and stream backlog drains async — an
+     * instant erase could be "resurrected" by in-flight positions). Default 60 min. */
+    eraseMinRetiredMs?: number
+  }
 }
 
 // Per-resource authorization (review HIGH). Reads are broad; writes are restricted;
@@ -79,6 +89,7 @@ const READ_POLICY: Record<string, Role[]> = {
   command: [...ROLES], // reading command status is broad; SENDING is a write (below)
   webhookDelivery: ACCOUNT_WRITERS, // webhook delivery log — same readers as webhooks
   usage: TENANT_ADMINS, // billing data — a tenant admin can see their own bill
+  export: TENANT_ADMINS, // GDPR exports contain the account's full data — admins only
 }
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
@@ -88,6 +99,8 @@ const WRITE_POLICY: Record<string, Role[]> = {
   webhook: TENANT_ADMINS,
   geofence: ACCOUNT_WRITERS,
   command: ACCOUNT_WRITERS, // sending a Codec-12 command controls hardware → writers only
+  export: TENANT_ADMINS, // requesting a GDPR export
+  gdpr: TENANT_ADMINS, // device erase — irreversible data destruction
 }
 function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
   if (scopeClass === 'platform') return ['platform_admin']
@@ -112,7 +125,7 @@ function toJson(value: unknown): object {
     JSON.stringify(value, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v)),
   ) as object
 }
-const json = (c: Context, data: unknown, status: 200 | 201 = 200): Response => {
+const json = (c: Context, data: unknown, status: 200 | 201 | 202 = 200): Response => {
   c.header('Cache-Control', 'no-store')
   return c.json(toJson(data), status)
 }
@@ -351,6 +364,80 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const row = await db.commands.get(scopeOf(auth(c)), id(c))
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+
+    // ── GDPR (E08-4): device-erase cascade + account data export ────────────────
+    { method: 'post', path: '/v1/devices/:id/erase', scopeClass: 'account', entity: 'gdpr', shape: 'item',
+      handler: async (c) => {
+        const a = auth(c)
+        const scope = scopeOf(a)
+        const device = await db.devices.get(scope, id(c)) // scope gate FIRST (404 else)
+        if (device === null) return problem(c, 404, 'Not Found')
+        // retire tears down the ingest registry — erasing a LIVE device would race new data
+        if (device.retiredAt === null) return problem(c, 400, 'Bad Request', 'retire the device first')
+        if (deps.gdpr === undefined) return problem(c, 503, 'Unavailable', 'gdpr queue not configured')
+        // a live session survives retire until its idle timeout and the stream backlog drains
+        // async — an instant erase would race in-flight positions that then resurrect after
+        // the delete with NO remaining erase path (device row gone → 404 forever). Wait out
+        // the window (review HIGH-1); the worker also runs a post-delete final sweep.
+        const minRetiredMs = deps.gdpr.eraseMinRetiredMs ?? 60 * 60_000
+        if (Date.now() - new Date(device.retiredAt).getTime() < minRetiredMs) {
+          return problem(c, 409, 'Conflict', `retired too recently — erase is allowed ${Math.ceil(minRetiredMs / 60_000)} min after retire`)
+        }
+        await db.audit.record(scope, { userId: a.userId }, { action: 'delete', entity: 'device', entityId: device.id.toString(), before: { imei: device.imei, name: device.name, gdprErase: true } })
+        await deps.gdpr.enqueueErase({ deviceId: device.id.toString(), tenantId: scope.tenantId })
+        return json(c, { queued: true, deviceId: device.id.toString() }, 202)
+      } },
+    { method: 'post', path: '/v1/accounts/:id/export', scopeClass: 'account', entity: 'export', shape: 'item',
+      handler: async (c) => {
+        const a = auth(c)
+        const scope = scopeOf(a)
+        const account = await db.accounts.get(scope, id(c)) // scope gate FIRST (404 else)
+        if (account === null) return problem(c, 404, 'Not Found')
+        if (deps.gdpr === undefined) return problem(c, 503, 'Unavailable', 'gdpr queue not configured')
+        // coalesce: a pending export already covers this request — do not pile up
+        // full-history files on disk (review MED-3 flood guard)
+        const pending = await db.exports.findPending(scope, account.id)
+        if (pending !== null) {
+          // SELF-HEAL (review): if the BullMQ job was lost (Redis restart), a zombie pending
+          // row would coalesce every future POST forever. Re-enqueue: BullMQ dedupes by jobId
+          // if the job still exists; if it vanished, this actually runs it (idempotent).
+          await deps.gdpr.enqueueExport({ exportId: pending.id })
+          return json(c, pending, 200)
+        }
+        const job = await db.exports.create(scope, { userId: a.userId }, account.id)
+        await deps.gdpr.enqueueExport({ exportId: job.id })
+        return json(c, job, 201)
+      } },
+    { method: 'get', path: '/v1/exports', scopeClass: 'account', entity: 'export', shape: 'collection',
+      handler: async (c) => json(c, await db.exports.list(scopeOf(auth(c)))) },
+    { method: 'get', path: '/v1/exports/:id', scopeClass: 'account', entity: 'export', shape: 'item',
+      handler: async (c) => {
+        const row = await db.exports.get(scopeOf(auth(c)), id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'get', path: '/v1/exports/:id/download', scopeClass: 'account', entity: 'export', shape: 'item',
+      handler: async (c) => {
+        const info = await db.exports.pathOf(scopeOf(auth(c)), id(c))
+        if (info === null) return problem(c, 404, 'Not Found')
+        if (info.status === 'expired') return problem(c, 410, 'Gone', 'export expired')
+        if (info.status !== 'done' || info.path === null) return problem(c, 404, 'Not Found')
+        const { createReadStream } = await import('node:fs')
+        const { stat, unlink } = await import('node:fs/promises')
+        if (info.expiresAt.getTime() < Date.now()) {
+          // lazy expiry cleanup (review MED-3): the worker sweep is the durable one; this
+          // best-effort unlink stops an expired personal-data dump lingering after a hit
+          await unlink(info.path).catch(() => undefined)
+          return problem(c, 410, 'Gone', 'export expired')
+        }
+        const st = await stat(info.path).catch(() => null)
+        if (st === null) return problem(c, 410, 'Gone', 'export file removed')
+        c.header('content-type', 'application/gzip')
+        c.header('content-disposition', `attachment; filename="orbetra-export-${id(c)}.ndjson.gz"`)
+        c.header('content-length', String(st.size))
+        const nodeStream = createReadStream(info.path)
+        const { Readable } = await import('node:stream')
+        return c.body(Readable.toWeb(nodeStream) as ReadableStream)
       } },
 
     { method: 'post', path: '/v1/devices/import/preview', scopeClass: 'account', entity: 'device', shape: 'collection',
