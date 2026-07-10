@@ -37,6 +37,7 @@ in the commit message, and any staged `TODO(VERIFY-WIKI)` marker blocks the comm
 | `packages/shared` | zod schemas — single source of types |
 | `tools/simulator` | device emulator (scenarios per PROJECT_PLAN §7.2) |
 | `tools/replay` | real-log replayer for load tests |
+| `tools/seed-demo` | demo tenant provisioner for sales calls (`pnpm seed:demo`, E08-5) |
 | `tools/redact` | strips real IMEIs from captures before they become fixtures |
 
 ## Environment variables
@@ -247,6 +248,21 @@ Every new variable must be added to the table here AND match the `.env` contract
   polled every 5 s while anything is queued/sent. Destructive commands (`cpureset`,
   `deleterecords`) are two-step: the first click arms a danger confirm, the second sends;
   editing the text or switching preset disarms.
+
+## Demo data (E08-5, `pnpm seed:demo`)
+
+Provisions the **Demo Logistics** tenant for sales calls against a RUNNING stack
+(`make up` + ingest + worker + api, or staging env vars): 2 accounts, 3 users
+(`demo-admin@orbetra.test` + manager + viewer; password printed, or set `DEMO_PASSWORD`),
+12 devices with 3 days of drive history pushed **through the real pipeline** (simulator →
+ingest TCP → worker), a geofence, overspeed + panic rules, one panic event and one
+invalid-fix trail gap for the playback demo. Drives end with an ignition-off park tail so
+trips CLOSE; rules/geofences are synced to the worker's Redis caches so events actually
+fire. Idempotent for rows (demo users' password is re-stamped so the printed one always
+works); history is sent only when devices were newly created (`--with-history` to
+re-drive). Guards: any non-loopback DB/ingest target requires `SEED_DEMO_ALLOW=1` (or
+`--yes`); `NODE_ENV=production` additionally requires `--force`. Synthetic 867… IMEIs
+only (rule 12). Env: `DATABASE_URL` (required), `REDIS_URL`, `INGEST_HOST`/`INGEST_PORT`.
 
 ## GDPR (E08-4): retention · device-delete cascade · account export
 

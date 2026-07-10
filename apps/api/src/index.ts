@@ -7,3 +7,8 @@ export { authMiddleware, requireRole, problem, type AuthContext, type AuthEnv } 
 export { mintAccessToken, verifyAccessToken, ISSUER, type AccessClaims } from './auth/jwt.js'
 export { hashPassword, verifyPassword } from './auth/passwords.js'
 export { createAuthRoutes, type AuthRouteDeps } from './auth/login.js'
+// registry sync — the ONE implementation of device/rule/geofence↔worker wiring;
+// tools/seed-demo reuses these instead of duplicating Redis key formats
+export { activateDevice, type RegistryDevice } from './routes/deviceRegistry.js'
+export { syncRule } from './routes/ruleRegistry.js'
+export { syncGeofence } from './routes/geofenceRegistry.js'

@@ -16,6 +16,11 @@ export interface DriveOpts {
   /** Start this far along the route (default 0). Route.at() wraps modulo route
    * length, so any offset is safe — fleet mode spreads devices with this. */
   startDistanceM?: number
+  /** Append a stationary ignition-OFF tail this long (seconds, 30 s record spacing).
+   * The trip engine closes a trip only after ignition-off is SUSTAINED past
+   * parkedIgnitionOffS (default 180 s) — without a tail a replayed drive leaves a
+   * forever-open trip (E08-5 review HIGH-2). */
+  parkTailS?: number
 }
 
 /**
@@ -54,6 +59,16 @@ export function driveRecords(opts: DriveOpts): EncodableRecord[] {
         [89, BigInt(Math.max(5, 90 - Math.floor(distanceM / 1000)))],
       ]),
     })
+  }
+  if (opts.parkTailS !== undefined && opts.parkTailS > 0 && out.length > 0) {
+    const last = out[out.length - 1]!
+    const tailSteps = Math.ceil(opts.parkTailS / 30)
+    for (let j = 1; j <= tailSteps; j++) {
+      const io = new Map(last.io)
+      io.set(239, 0n) // Ignition off (wiki FMB120 table)
+      io.set(240, 0n) // Movement off
+      out.push({ ...last, tsMs: last.tsMs + j * 30_000, speed: 0, angle: last.angle, io })
+    }
   }
   return out
 }

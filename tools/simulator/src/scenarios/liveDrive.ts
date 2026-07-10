@@ -19,6 +19,7 @@ export const liveDrive: Scenario = {
       startMs: opts.startMs,
       stepS,
       startDistanceM: opts.startDistanceM,
+      parkTailS: opts.parkTailS,
     })) {
       yield encodeAvlPacket(8, [rec])
     }

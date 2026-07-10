@@ -10,6 +10,8 @@ export interface ScenarioOpts {
   byteDelayMs?: number
   /** Route start offset in metres (fleet mode spreads devices; liveDrive only). */
   startDistanceM?: number
+  /** stationary ignition-off tail seconds (closes the trip; see DriveOpts.parkTailS). */
+  parkTailS?: number
 }
 
 export interface Scenario {
