@@ -4,6 +4,7 @@ import { buildAuthMethods, type AuthDb } from './auth.js'
 import { createAccountRepo, type AccountRepo } from './repos/accounts.js'
 import { createApiKeyRepo, type ApiKeyRepo } from './repos/apiKeys.js'
 import { createAuditRepo, type AuditRepo } from './repos/audit.js'
+import { createCommandRepo, type CommandRepo } from './repos/commands.js'
 import { createDeviceRepo, type DeviceRepo } from './repos/devices.js'
 import { createEventRepo, type EventRepo } from './repos/events.js'
 import { createGeofenceRepo, type GeofenceRepo } from './repos/geofences.js'
@@ -30,6 +31,7 @@ export interface Db {
   accounts: AccountRepo
   users: UserRepo
   devices: DeviceRepo
+  commands: CommandRepo
   profiles: ProfileRepo
   rules: RuleRepo
   webhooks: WebhookRepo
@@ -53,6 +55,7 @@ export function createDb(databaseUrl: string): Db {
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),
     devices: createDeviceRepo(prisma, audit),
+    commands: createCommandRepo(prisma, audit),
     profiles: createProfileRepo(prisma),
     rules: createRuleRepo(prisma, audit),
     webhooks: createWebhookRepo(prisma, audit),

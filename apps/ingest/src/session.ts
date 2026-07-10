@@ -5,6 +5,7 @@ import type { Redis } from 'ioredis'
 import {
   createTeltonikaCodec,
   CrcError,
+  encodeCodec12,
   FrameError,
   type AvlRecord,
   type TeltonikaCodec,
@@ -171,6 +172,47 @@ export class Session {
     this.deps.onAuthenticated(parsed.imei, this)
     this.socket.write(this.codec.encodeImeiReply(true))
     this.armTimer(this.deps.config.readIdleTimeoutMs)
+    await this.drainPending() // a live socket may already have queued commands (E08-2)
+  }
+
+  /**
+   * Send any queued Codec-12 commands to this live device (E08-2). TRANSPORT ONLY (rule 3):
+   * LPOP the api-queued command, write it to the socket, and record it in-flight for the
+   * worker's dispatcher — no queue/timeout/retry policy here. Best-effort: a send failure
+   * leaves the command in-flight; the dispatcher times it out and re-queues it.
+   */
+  private async drainPending(): Promise<void> {
+    if (this.deviceId === null) return
+    const pendKey = `cmd:pending:${this.deviceId}`
+    for (let i = 0; i < 16; i++) {
+      // bound per drain
+      const raw = await this.deps.redis.lpop(pendKey)
+      if (raw === null) return
+      let cmd: { id: string; text: string; attempt?: number; expiresAtMs?: number }
+      try {
+        cmd = JSON.parse(raw) as { id: string; text: string; attempt?: number; expiresAtMs?: number }
+      } catch {
+        continue // malformed queue entry — skip
+      }
+      // NEVER send a command past its 24 h expiry — a device that was offline for a day must not
+      // execute a stale (possibly destructive) command on reconnect. Drop it; the dispatcher's
+      // DB expiry sweep marks it 'expired' (E08-2 review HIGH).
+      if (cmd.expiresAtMs !== undefined && cmd.expiresAtMs <= this.now()) continue
+      try {
+        this.socket.write(encodeCodec12(cmd.text))
+      } catch {
+        // encode failed (empty/oversize) — drop; the dispatcher will expire it in the DB
+        continue
+      }
+      const inflightKey = `cmd:inflight:${this.deviceId}`
+      await this.deps.redis
+        .multi()
+        // keep expiresAtMs so a dispatcher resend can re-stamp it onto the pending entry
+        .rpush(inflightKey, JSON.stringify({ id: cmd.id, text: cmd.text, attempt: cmd.attempt ?? 0, sentAtMs: this.now(), ...(cmd.expiresAtMs !== undefined ? { expiresAtMs: cmd.expiresAtMs } : {}) }))
+        .expire(inflightKey, 24 * 3_600) // bound the list (dispatcher reconciles + trims it)
+        .sadd('cmd:active', String(this.deviceId))
+        .exec()
+    }
   }
 
   private async handleStreamFrame(
@@ -200,6 +242,7 @@ export class Session {
         .rpush(key, JSON.stringify({ codec: parsed.codec, text: parsed.text, nack: parsed.nack ?? false }))
         .ltrim(key, -1000, -1)
         .expire(key, 24 * 3600)
+        .sadd('cmd:active', String(this.deviceId)) // wake the dispatcher (E08-2)
         .exec()
       return
     }
@@ -269,6 +312,7 @@ export class Session {
 
     // depth check AFTER ack (§6.1 order: persist → ACK → depth-check → maybe pause)
     await this.maybeBackpressure()
+    await this.drainPending() // deliver any commands queued since the last frame (E08-2)
   }
 
   private sane(rec: AvlRecord): boolean {

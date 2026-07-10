@@ -215,6 +215,22 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## Codec 12 commands (E08-2)
+
+- **Send** a GPRS command to a live device: `POST /v1/devices/:id/commands {text}` (device-
+  scope-gated; hardware control → `ACCOUNT_WRITERS`; a retired device is 400). It creates a
+  `queued` `Command` (24 h expiry, §3.5) and queues it on the Redis transport seam.
+- **Transport** — `apps/ingest` (rule 3: transport only) LPOPs `cmd:pending:{deviceId}` after
+  the handshake + after each frame, writes `encodeCodec12(text)` to the socket, and records it
+  `cmd:inflight`; device responses are captured to `cmd:resp` (existing).
+- **Policy** — the worker dispatcher (~15 s) reconciles in-flight ↔ responses **in FIFO order**
+  (the device answers sequentially, §3.5) and drives the DB status machine
+  `queued→sent→acked|failed|expired`: a response acks (nack → failed), a 30 s timeout retries
+  (max 3) then fails, and `expiresAt` past 24 h expires. Metric `commands_resolved_total{outcome}`.
+- **Status** — `GET /v1/commands/:id` and `GET /v1/devices/:id/commands`. The 10 presets
+  (`getinfo`, `getver`, `getgps`, `getio`, `cpureset`, dout on/off, reporting-interval,
+  server-address, `deleterecords`) are in `@orbetra/shared`. Web UI is E08-2b.
+
 ## Usage metering + platform panel (E07-4)
 
 - **Metering** — an hourly worker sweep derives billable **device-days** from **positions**

@@ -8,6 +8,7 @@ export { type Scope, type Actor, scopedWhere, NotInScopeError } from './scope.js
 export { type AccountRepo, type AccountCreate, type AccountUpdate } from './repos/accounts.js'
 export { type UserRepo, type UserView, type UserCreate, type UserUpdate } from './repos/users.js'
 export { DuplicateImeiError, type DeviceRepo, type DeviceCreate, type DeviceUpdate } from './repos/devices.js'
+export { type CommandRepo, type CommandView, type CommandCreate } from './repos/commands.js'
 export { type ProfileRepo } from './repos/profiles.js'
 export { type RuleRepo, type RuleCreate, type RuleUpdate } from './repos/rules.js'
 export { type WebhookRepo, type WebhookCreate, type WebhookUpdate } from './repos/webhooks.js'

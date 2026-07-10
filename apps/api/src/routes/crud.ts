@@ -14,6 +14,7 @@ import {
   geofenceCreateSchema,
   geofenceUpdateSchema,
   deviceUpdateSchema,
+  commandCreateSchema,
   ruleCreateSchema,
   ruleUpdateSchema,
   tenantCreateSchema,
@@ -75,6 +76,7 @@ const READ_POLICY: Record<string, Role[]> = {
   domain: TENANT_ADMINS, // domains are admin config
   audit: TENANT_ADMINS, // audit trail is tenant-wide + sensitive → admins only
   geofence: [...ROLES],
+  command: [...ROLES], // reading command status is broad; SENDING is a write (below)
   webhookDelivery: ACCOUNT_WRITERS, // webhook delivery log — same readers as webhooks
   usage: TENANT_ADMINS, // billing data — a tenant admin can see their own bill
 }
@@ -85,6 +87,7 @@ const WRITE_POLICY: Record<string, Role[]> = {
   rule: ACCOUNT_WRITERS,
   webhook: TENANT_ADMINS,
   geofence: ACCOUNT_WRITERS,
+  command: ACCOUNT_WRITERS, // sending a Codec-12 command controls hardware → writers only
 }
 function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
   if (scopeClass === 'platform') return ['platform_admin']
@@ -300,6 +303,41 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           ...(q('to') !== undefined ? { to: q('to')! } : {}),
           ...(q('limit') !== undefined ? { take: Number(q('limit')) } : {}),
         }))
+      } },
+
+    // ── Codec-12 commands (E08-2, §3.5) — device-scope gated ──────────────────
+    { method: 'get', path: '/v1/devices/:id/commands', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        return json(c, await db.commands.listForDevice(scope, device.id))
+      } },
+    { method: 'post', path: '/v1/devices/:id/commands', scopeClass: 'account', entity: 'command', shape: 'item',
+      handler: async (c) => {
+        const a = auth(c)
+        const scope = scopeOf(a)
+        const device = await db.devices.get(scope, id(c)) // scope gate FIRST (404 else)
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (device.retiredAt !== null) return problem(c, 400, 'Bad Request', 'device is retired')
+        const data = await body(c, commandCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const cmd = await db.commands.create(scope, { userId: a.userId }, { deviceId: device.id, accountId: device.accountId, text: data.text })
+        // transport seam (E08-2): queue for ingest to send + wake the dispatcher. Carry
+        // expiresAtMs so a command still queued at 24 h is purged (never drained+executed on a
+        // late reconnect — critical for destructive presets like deleterecords/cpureset).
+        await bestEffortSync(async () => {
+          const pendKey = `cmd:pending:${device.id.toString()}`
+          await deps.redis.rpush(pendKey, JSON.stringify({ id: cmd.id, text: cmd.text, attempt: 0, expiresAtMs: Date.parse(cmd.expiresAt) }))
+          await deps.redis.expire(pendKey, 24 * 3_600) // bound the list if the device never connects
+          await deps.redis.sadd('cmd:active', device.id.toString())
+        })
+        return json(c, cmd, 201)
+      } },
+    { method: 'get', path: '/v1/commands/:id', scopeClass: 'account', entity: 'command', shape: 'item',
+      handler: async (c) => {
+        const row = await db.commands.get(scopeOf(auth(c)), id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
 
     { method: 'post', path: '/v1/devices/import/preview', scopeClass: 'account', entity: 'device', shape: 'collection',

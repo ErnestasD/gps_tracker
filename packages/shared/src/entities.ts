@@ -131,6 +131,37 @@ export const apiKeyCreateSchema = z.object({
 })
 export type ApiKeyCreateInput = z.infer<typeof apiKeyCreateSchema>
 
+// ── commands (E08-2, Codec 12) ───────────────────────────────────────────────
+// A Codec-12 GPRS command sent to a device over its live socket (§3.5). `text` is the raw
+// command; a preset just fills it in for the operator. deleterecords is warning-gated in UI.
+export const commandCreateSchema = z.object({
+  // printable ASCII only — encodeCodec12 sends raw ASCII bytes; unicode would be mangled
+  text: z.string().min(1).max(512).regex(/^[\x20-\x7e]+$/, 'command must be printable ASCII'),
+})
+
+/** Non-idempotent commands that must NOT be auto-retried on timeout (a cpureset causes the
+ * >30 s silence that looks like a timeout — retrying resets the just-rebooted device). */
+export function isRetryableCommand(text: string): boolean {
+  const verb = text.trim().toLowerCase().split(/\s+/)[0] ?? ''
+  return verb !== 'cpureset' && verb !== 'deleterecords'
+}
+export type CommandCreateInput = z.infer<typeof commandCreateSchema>
+
+/** The 10 V1 presets (§8 W8 S2). `text` is the exact Codec-12 payload (FMB Commands wiki). */
+export const COMMAND_PRESETS = [
+  { key: 'getinfo', text: 'getinfo' },
+  { key: 'getver', text: 'getver' },
+  { key: 'getgps', text: 'getgps' },
+  { key: 'getio', text: 'getio' },
+  { key: 'cpureset', text: 'cpureset' },
+  { key: 'dout_on', text: 'setdigout 1' },
+  { key: 'dout_off', text: 'setdigout 0' },
+  { key: 'reporting_interval', text: 'setparam 10050:30' }, // data acquisition period (s) — operator edits value
+  { key: 'server_address', text: 'setparam 2004:0.0.0.0,2005:5027' }, // domain:port — operator edits
+  { key: 'deleterecords', text: 'deleterecords' }, // DESTRUCTIVE — UI warning-gates it
+] as const
+export type CommandPresetKey = (typeof COMMAND_PRESETS)[number]['key']
+
 // ── reports (E06-1) ──────────────────────────────────────────────────────────
 // POST /v1/reports/:type body. `accountId` is required only for a tenant-wide caller
 // (an account-scoped user's account is fixed by their token). from/to are ISO; the engine
