@@ -14,6 +14,8 @@ import { createOfflineQueue, scheduleOfflineSweep } from './jobs/offlineQueue.js
 import { startOfflineWorker } from './jobs/offlineWorker.js'
 import { createNotifyQueue, enqueueNotify } from './jobs/notifyQueue.js'
 import { startNotifyWorker } from './jobs/notifyWorker.js'
+import { createUsageQueue, scheduleUsageSweep } from './jobs/usageQueue.js'
+import { startUsageWorker } from './jobs/usageWorker.js'
 import { createWebhookQueue, enqueueWebhook } from './jobs/webhookQueue.js'
 import { startWebhookWorker } from './jobs/webhookWorker.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
@@ -138,6 +140,16 @@ async function main(): Promise<void> {
       ).then(() => undefined),
   })
   await scheduleOfflineSweep(offlineQueue)
+  // E07-4: usage metering — an hourly repeatable sweep derives billable device-days from
+  // POSITIONS (authoritative; idempotent ON CONFLICT; UTC day semantics, §6.9).
+  const usageQueue = createUsageQueue(recomputeConn)
+  const usageWorker = startUsageWorker({
+    connection: recomputeConn,
+    pool,
+    onSwept: (n) => prom.usageDeviceDays.inc(n),
+    onFailed: () => prom.usageSweepFailed.inc(),
+  })
+  await scheduleUsageSweep(usageQueue)
   const consumerConns: Redis[] = []
   const consumers = [...shards].map((s) => {
     // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued
@@ -278,6 +290,8 @@ async function main(): Promise<void> {
       await notifyQueue.close()
       await webhookWorker.close() // finish the in-flight webhook delivery, stop taking new
       await webhookQueue.close()
+      await usageWorker.close() // finish the in-flight usage sweep, stop taking new
+      await usageQueue.close()
       offlineRedis.disconnect()
       consumerConns.forEach((c) => c.disconnect())
       await redis.quit()

@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import {
   BarChart3,
   Bell,
+  Building2,
   Car,
   FileText,
   ChevronsLeft,
@@ -35,6 +36,8 @@ interface NavItem {
   to?: string
   /** Only render for tenant admins (matches the route's TENANT_ADMINS read gate). */
   adminOnly?: boolean
+  /** Only render for platform_admin (matches the route's platform scope gate). */
+  platformOnly?: boolean
 }
 interface NavSection {
   key: string
@@ -62,6 +65,7 @@ const SECTIONS: NavSection[] = [
       { key: 'shell.branding', icon: Palette, to: '/app/branding' },
       { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true },
       { key: 'shell.webhooks', icon: Webhook, to: '/app/webhooks', adminOnly: true },
+      { key: 'shell.platform', icon: Building2, to: '/app/platform', platformOnly: true },
       { key: 'shell.audit', icon: ScrollText, to: '/app/audit', adminOnly: true },
       { key: 'shell.settings', icon: Settings, to: '/app/settings' },
     ],
@@ -113,7 +117,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     {t(section.key)}
                   </div>
                 )}
-                {section.items.filter((item) => !item.adminOnly || isAdmin).map((item) => {
+                {section.items.filter((item) => (!item.adminOnly || isAdmin) && (!item.platformOnly || role === 'platform_admin')).map((item) => {
                   const Icon = item.icon
                   const enabled = item.to !== undefined
                   const rowClass = cn(

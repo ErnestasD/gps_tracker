@@ -26,6 +26,8 @@ export interface WorkerProm {
   notificationSkipped: Counter
   webhookDelivered: Counter
   webhookFailed: Counter
+  usageDeviceDays: Counter
+  usageSweepFailed: Counter
   server: Server
 }
 
@@ -74,6 +76,9 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const notificationSkipped = new Counter({ name: 'notification_skipped_total', help: 'notifications skipped by reason (e.g. unconfigured channel)', labelNames: ['reason'], registers: [registry] })
   const webhookDelivered = new Counter({ name: 'webhook_delivered_total', help: 'webhook deliveries that returned 2xx (E06-4)', registers: [registry] })
   const webhookFailed = new Counter({ name: 'webhook_failed_total', help: 'webhook delivery attempts that failed (retried by BullMQ)', registers: [registry] })
+  const usageDeviceDays = new Counter({ name: 'usage_device_days_total', help: 'billable device-day rows written by the usage sweep (E07-4)', registers: [registry] })
+  // a stalled metering pipeline is silent under-billing — alert on any non-zero rate
+  const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })
 
   const server = createServer((req, res) => {
     if (req.url !== '/metrics') {
@@ -92,5 +97,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, webhookDelivered, webhookFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, server }
 }

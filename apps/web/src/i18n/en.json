@@ -35,7 +35,8 @@
     "logout": "Log out",
     "settings": "Settings",
     "apiKeys": "API keys",
-    "webhooks": "Webhooks"
+    "webhooks": "Webhooks",
+    "platform": "Platform"
   },
   "branding": {
     "title": "Branding",
@@ -383,5 +384,16 @@
     "event": "Event",
     "status": "Status",
     "noResponse": "no response"
+  },
+  "platform": {
+    "title": "Platform",
+    "denied": "Platform administrators only.",
+    "tenants": "Tenants",
+    "tenant": "Tenant",
+    "deviceDays": "Device-days (this month)",
+    "activeDevices": "Active devices",
+    "monthTotal": "Total device-days this month",
+    "empty": "No tenants yet.",
+    "note": "A device-day = the device reported at least once during that UTC day (billing metric)."
   }
 }

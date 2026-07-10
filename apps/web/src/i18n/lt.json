@@ -35,7 +35,8 @@
     "logout": "Atsijungti",
     "settings": "Nustatymai",
     "apiKeys": "API raktai",
-    "webhooks": "Webhooks"
+    "webhooks": "Webhooks",
+    "platform": "Platforma"
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -383,5 +384,16 @@
     "event": "Įvykis",
     "status": "Būsena",
     "noResponse": "nėra atsakymo"
+  },
+  "platform": {
+    "title": "Platforma",
+    "denied": "Tik platformos administratoriams.",
+    "tenants": "Nuomininkai",
+    "tenant": "Nuomininkas",
+    "deviceDays": "Įrenginio dienos (šį mėn.)",
+    "activeDevices": "Aktyvūs įrenginiai",
+    "monthTotal": "Viso įrenginio dienų šį mėnesį",
+    "empty": "Nuomininkų dar nėra.",
+    "note": "Įrenginio diena = įrenginys bent kartą atsiskaitė tą UTC parą (atsiskaitymo metrika)."
   }
 }

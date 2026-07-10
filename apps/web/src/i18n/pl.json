@@ -35,7 +35,8 @@
     "logout": "Wyloguj się",
     "settings": "Ustawienia",
     "apiKeys": "Klucze API",
-    "webhooks": "Webhooki"
+    "webhooks": "Webhooki",
+    "platform": "Platforma"
   },
   "branding": {
     "title": "Marka",
@@ -383,5 +384,16 @@
     "event": "Zdarzenie",
     "status": "Status",
     "noResponse": "brak odpowiedzi"
+  },
+  "platform": {
+    "title": "Platforma",
+    "denied": "Tylko administratorzy platformy.",
+    "tenants": "Najemcy",
+    "tenant": "Najemca",
+    "deviceDays": "Dni urządzeń (ten miesiąc)",
+    "activeDevices": "Aktywne urządzenia",
+    "monthTotal": "Łącznie dni urządzeń w tym miesiącu",
+    "empty": "Brak najemców.",
+    "note": "Dzień urządzenia = urządzenie zgłosiło się co najmniej raz w danym dniu UTC (metryka rozliczeniowa)."
   }
 }
