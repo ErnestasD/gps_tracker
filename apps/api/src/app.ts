@@ -14,6 +14,7 @@ import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { mountReports } from './routes/reports.js'
 import { defaultTxtResolver, type TxtResolver } from './routes/tenantSelf.js'
+import { securityHeaders } from './security.js'
 import { issueTicket, type WsDeps } from './ws.js'
 
 export interface ApiDeps extends WsDeps {
@@ -34,6 +35,8 @@ export interface ApiDeps extends WsDeps {
   askRateLimit?: { max: number; windowS: number }
   /** Per-API-key rate limit (E06-3); default 600/min. */
   apiKeyRateLimitPerMin?: number
+  /** Send Strict-Transport-Security (E07-5); defaults to secureCookies (TLS deployments). */
+  hsts?: boolean
 }
 
 export interface ApiProm {
@@ -62,6 +65,10 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // embedder/test with a weak HS256 secret is offline-brute-forceable
   if (deps.jwtSecret.length < 32) throw new Error('jwtSecret must be at least 32 chars')
   const app = new Hono<AuthEnv>()
+
+  // security headers on EVERY response, incl. 401/404/problem+json (E07-5) — registered
+  // first so no route can be reached without them. HSTS only in TLS deployments.
+  app.use('*', securityHeaders({ hsts: deps.hsts ?? deps.secureCookies }))
 
   app.get('/healthz', (c) => c.text('ok'))
 
