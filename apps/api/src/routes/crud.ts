@@ -76,6 +76,7 @@ const READ_POLICY: Record<string, Role[]> = {
   audit: TENANT_ADMINS, // audit trail is tenant-wide + sensitive → admins only
   geofence: [...ROLES],
   webhookDelivery: ACCOUNT_WRITERS, // webhook delivery log — same readers as webhooks
+  usage: TENANT_ADMINS, // billing data — a tenant admin can see their own bill
 }
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
@@ -435,6 +436,19 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const ok = await db.webhooks.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
+
+    // ── usage metering (E07-4): platform panel + a tenant's own bill ──────────
+    { method: 'get', path: '/v1/platform/usage', scopeClass: 'platform', entity: 'usage', shape: 'collection',
+      // platformSummary is UNSCOPED by design — reachable ONLY here (platform_admin via scopeClass)
+      handler: async (c) => json(c, await db.usage.platformSummary({
+        ...(c.req.query('from') !== undefined ? { from: c.req.query('from')! } : {}),
+        ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
+      })) },
+    { method: 'get', path: '/v1/usage', scopeClass: 'tenant', entity: 'usage', shape: 'collection',
+      handler: async (c) => json(c, await db.usage.tenantSummary(scopeOf(auth(c)), {
+        ...(c.req.query('from') !== undefined ? { from: c.req.query('from')! } : {}),
+        ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
+      })) },
 
     // ── webhook deliveries (tenant, read-only log — E06-4b) ───────────────────
     { method: 'get', path: '/v1/webhook-deliveries', scopeClass: 'tenant', entity: 'webhookDelivery', shape: 'collection',

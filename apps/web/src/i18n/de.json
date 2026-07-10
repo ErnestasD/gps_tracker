@@ -35,7 +35,8 @@
     "logout": "Abmelden",
     "settings": "Einstellungen",
     "apiKeys": "API-Schlüssel",
-    "webhooks": "Webhooks"
+    "webhooks": "Webhooks",
+    "platform": "Plattform"
   },
   "branding": {
     "title": "Branding",
@@ -383,5 +384,16 @@
     "event": "Ereignis",
     "status": "Status",
     "noResponse": "keine Antwort"
+  },
+  "platform": {
+    "title": "Plattform",
+    "denied": "Nur Plattform-Administratoren.",
+    "tenants": "Mandanten",
+    "tenant": "Mandant",
+    "deviceDays": "Gerätetage (dieser Monat)",
+    "activeDevices": "Aktive Geräte",
+    "monthTotal": "Gerätetage gesamt diesen Monat",
+    "empty": "Noch keine Mandanten.",
+    "note": "Ein Gerätetag = das Gerät hat an diesem UTC-Tag mindestens einmal gemeldet (Abrechnungsmetrik)."
   }
 }

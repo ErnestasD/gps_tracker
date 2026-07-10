@@ -190,6 +190,26 @@ describe('E03-2 write authorization / RBAC (review HIGH)', () => {
     // a non-numeric :id is a clean 404, not a 500
     expect((await req('/v1/audit/not-an-id', fx.t1.tokenTenant)).status).toBe(404)
   })
+
+  it('usage metering is tenant-scoped: /v1/usage sums EXACTLY the caller tenant seed (E07-4)', async () => {
+    // both tenants seed 2 device-days; a tenant-scope leak would double the sum to 4
+    for (const t of [fx.t1, fx.t2]) {
+      const rows = (await (await req('/v1/usage', t.tokenTenant)).json()) as { day: string; deviceDays: number }[]
+      const total = rows.reduce((s, r) => s + r.deviceDays, 0)
+      expect(total, `tenant ${t.id} usage total`).toBe(2)
+    }
+  })
+
+  it('usage RBAC: account-scoped roles cannot read the tenant bill (403), platform usage is platform-only', async () => {
+    expect((await req('/v1/usage', fx.t1.tokenAccountA1)).status).toBe(403)
+    expect((await req('/v1/usage', fx.t1.tokenViewerA1)).status).toBe(403)
+    expect((await req('/v1/platform/usage', fx.t1.tokenTenant)).status).toBe(403) // tsp_admin ≠ platform
+    // platform_admin sees BOTH tenants' summaries (unscoped by design behind the platform gate)
+    const rows = (await (await req('/v1/platform/usage', fx.t1.tokenPlatform)).json()) as { tenantId: string; deviceDays: number }[]
+    const byTenant = new Map(rows.map((r) => [r.tenantId, r.deviceDays]))
+    expect(byTenant.get(fx.t1.id)).toBe(2)
+    expect(byTenant.get(fx.t2.id)).toBe(2)
+  })
 })
 
 describe('E03-2 meta-test: manifest completeness (AC[3])', () => {

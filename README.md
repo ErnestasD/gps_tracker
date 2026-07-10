@@ -215,6 +215,21 @@ Every new variable must be added to the table here AND match the `.env` contract
   enter/exit); metric `geofence_events_total`. Containment is planar on lon/lat (an excellent
   approximation within the 10,000 km² cap). Rule evaluation + notifications are E05-4.
 
+## Usage metering + platform panel (E07-4)
+
+- **Metering** — an hourly worker sweep derives billable **device-days** from **positions**
+  (the authoritative record — a last-fix snapshot would lose days, e.g. a trip crossing UTC
+  midnight): every UTC day a device has ≥1 position (invalid fixes count — presence, §3.4)
+  gets one `usage_daily` row, scoped via the devices table. `PK (deviceId, day)` +
+  `ON CONFLICT DO NOTHING` → a day is counted **once**; the 48 h lookback also backfills
+  worker outages (longer gaps: run the sweep with a wider lookback at month-close). UTC on
+  purpose: billing periods must be timezone-stable (§6.9). Metrics `usage_device_days_total`
+  + `usage_sweep_failed_total` (a stalled metering pipeline is silent under-billing).
+- **API** — `GET /v1/platform/usage?from&to` (platform_admin: per-tenant device-days +
+  distinct active devices) and `GET /v1/usage?from&to` (tenant admins: own per-day counts).
+- **Web** — `/app/platform` (nav Admin → Platform, **platform_admin only**): tenants with
+  this month's device-days + active devices (the month-close billing input, §6.9).
+
 ## Security headers (E07-5)
 
 - Every API response (incl. 401/404 and the public docs) carries `X-Content-Type-Options:

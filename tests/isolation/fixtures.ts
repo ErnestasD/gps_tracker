@@ -62,6 +62,7 @@ async function seedTenant(
   poolInsertEvent: (t: string, a: string, dev: string) => Promise<string>,
   poolInsertTrip: (t: string, a: string, dev: string) => Promise<string>,
   poolInsertGeofence: (t: string, a: string | null) => Promise<string>,
+  poolInsertUsage: (t: string, a: string, dev: string, day: string) => Promise<void>,
   name: string,
   profileId: string,
   imei: string,
@@ -87,6 +88,10 @@ async function seedTenant(
   const geofenceId = await poolInsertGeofence(tenant.id, a1.id)
   const geofenceA2Id = await poolInsertGeofence(tenant.id, a2.id) // for cross-account checks
   const geofenceSharedId = await poolInsertGeofence(tenant.id, null) // tenant-shared
+  // usage metering rows (E07-4): 2 device-days per tenant — /v1/usage must sum EXACTLY its
+  // own tenant's rows (a scope leak would double the total; see the dedicated suite test)
+  await poolInsertUsage(tenant.id, a1.id, device.id.toString(), '2026-07-01')
+  await poolInsertUsage(tenant.id, a1.id, device.id.toString(), '2026-07-02')
   // newest audit row from all the seeding above — a real id for the item-route tests
   const auditId = String((await db.audit.list(scope, { take: 1 }))[0]!.id)
   return {
@@ -153,6 +158,10 @@ export async function setup(): Promise<Fixtures> {
     )
     return String((r.rows[0] as { id: string | number }).id)
   }
+  // usage_daily rows are pipeline-written (E07-4 worker sweep) — seed via the pool
+  const insertUsage = async (tenantId: string, accountId: string, deviceId: string, day: string): Promise<void> => {
+    await pool.query(`INSERT INTO usage_daily ("tenantId","accountId","deviceId",day) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [tenantId, accountId, deviceId, day])
+  }
   // an ACCOUNT-scoped geofence (E05-1) for the /v1/geofences/:id cross-account/tenant checks
   const insertGeofence = async (tenantId: string, accountId: string | null): Promise<string> => {
     const geojson = JSON.stringify({ type: 'Polygon', coordinates: [[[25.27, 54.68], [25.28, 54.68], [25.28, 54.69], [25.27, 54.69], [25.27, 54.68]]] })
@@ -182,8 +191,8 @@ export async function setup(): Promise<Fixtures> {
 
   const profileIds = await seedProfiles(databaseUrl)
   const profileId = profileIds['fmb1xx']!
-  const t1 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, 'T1', profileId, '356307042440000')
-  const t2 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, 'T2', profileId, '356307042440001')
+  const t1 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, 'T1', profileId, '356307042440000')
+  const t2 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, 'T2', profileId, '356307042440001')
 
   return {
     baseUrl: `http://127.0.0.1:${port}`,
