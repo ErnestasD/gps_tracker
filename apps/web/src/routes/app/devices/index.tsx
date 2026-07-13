@@ -12,6 +12,7 @@ import { ApiError } from '@/lib/http'
 import { eraseDevice } from '@/lib/gdpr'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { HealthCard } from '@/routes/app/devices/health'
+import { ShareCard } from '@/routes/app/devices/share'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
   ODOMETER_SOURCES,
@@ -39,6 +40,7 @@ export function DevicesPage() {
   const [retireError, setRetireError] = useState<string | null>(null)
   const [commandsForId, setCommandsForId] = useState<string | null>(null)
   const [healthForId, setHealthForId] = useState<string | null>(null)
+  const [shareForId, setShareForId] = useState<string | null>(null)
   // GDPR erase (E08-4): two-step confirm per device id, auto-disarmed after 6 s so an
   // armed irreversible button never lingers (review LOW)
   const [eraseArmedId, setEraseArmedId] = useState<string | null>(null)
@@ -55,6 +57,7 @@ export function DevicesPage() {
   // closes/updates the panel instead of leaving a stale device you can still command
   const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
   const healthFor: Device | null = (devices.data ?? []).find((d) => d.id === healthForId && d.retiredAt === null) ?? null
+  const shareFor: Device | null = (devices.data ?? []).find((d) => d.id === shareForId && d.retiredAt === null) ?? null
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
@@ -183,6 +186,14 @@ export function DevicesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              data-testid={`share-${d.imei}`}
+                              onClick={() => setShareForId((cur) => (cur === d.id ? null : d.id))}
+                            >
+                              {t('devices.share.button')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               data-testid={`retire-${d.imei}`}
                               onClick={() => {
                                 void retireDevice(d.id)
@@ -208,6 +219,7 @@ export function DevicesPage() {
           switch (a confirm armed for device A must not send with one click on device B) */}
       {healthFor !== null && <HealthCard key={healthFor.id} device={healthFor} />}
       {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
+      {shareFor !== null && <ShareCard key={shareFor.id} device={shareFor} />}
     </div>
   )
 }

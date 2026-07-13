@@ -23,6 +23,7 @@ import { RulesPage } from '@/routes/app/rules'
 import { WebhooksPage } from '@/routes/app/webhooks'
 import { DevicesPage } from '@/routes/app/devices/index'
 import { SettingsPage } from '@/routes/app/settings'
+import { SharePage } from '@/routes/share/index'
 
 /** Reload survival: the access token is memory-only, but the httpOnly refresh
  * cookie is not — try a refresh before deciding the user is logged out. */
@@ -53,6 +54,16 @@ const loginRoute = createRoute({
     return typeof r === 'string' && r.startsWith('/') && !r.startsWith('//') ? { redirect: r } : {}
   },
   component: LoginPage,
+})
+
+// PUBLIC temporary share page (V1-nice) — no auth, no app shell; the token is the capability.
+const shareRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/s/$token',
+  component: function ShareRoute() {
+    const { token } = shareRoute.useParams()
+    return <SharePage token={token} />
+  },
 })
 
 const appRoute = createRoute({
@@ -158,6 +169,7 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  shareRoute,
   appRoute.addChildren([mapRoute, devicesRoute, tripsRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, auditRoute, settingsRoute]),
 ])
 

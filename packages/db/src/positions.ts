@@ -86,3 +86,31 @@ export async function readPositions(pool: Pool, deviceId: bigint, opts: Position
     recHash: row.rec_hash,
   }))
 }
+
+/**
+ * The single NEWEST valid-fix position for a device — the live point a public share link shows.
+ * Rule 6: `fix_valid=false` (satellites==0) rows are excluded, so a share never advertises a
+ * bogus (0,0)-ish location. Caller resolves the device from the share token (unscoped by design,
+ * bounded to that one device); this reads by the validated numeric id only.
+ */
+export async function readLatestValidPosition(pool: Pool, deviceId: bigint): Promise<PositionView | null> {
+  const res = await pool.query<PgPositionRow>(
+    `SELECT fix_time, lat, lon, speed, course, ignition, fix_valid, odometer_m, rec_hash
+     FROM positions WHERE device_id = $1 AND fix_valid = true
+     ORDER BY fix_time DESC, rec_hash DESC LIMIT 1`,
+    [deviceId.toString()],
+  )
+  const row = res.rows[0]
+  if (row === undefined) return null
+  return {
+    fixTime: row.fix_time.toISOString(),
+    lat: row.lat,
+    lon: row.lon,
+    speed: row.speed,
+    course: row.course,
+    ignition: row.ignition,
+    fixValid: row.fix_valid,
+    odometerM: row.odometer_m,
+    recHash: row.rec_hash,
+  }
+}

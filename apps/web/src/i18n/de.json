@@ -327,6 +327,34 @@
       "fwUnknown": "unbekannt (getver senden)",
       "empty": "Noch keine Zustandsdaten — das Gerät meldet GSM/Spannung im Betrieb.",
       "loadError": "Zustand konnte nicht geladen werden."
+    },
+    "share": {
+      "button": "Teilen",
+      "title": "Freigabelink — {{name}}",
+      "blurb": "Erstellen Sie einen ablaufenden öffentlichen Link, der dieses Gerät live auf einer Karte zeigt — ohne Login.",
+      "ttl": "Gültig für",
+      "label": "Bezeichnung",
+      "labelPlaceholder": "z. B. Kurier-ETA",
+      "create": "Link erstellen",
+      "freshHint": "Kopieren Sie den Link jetzt — er wird nur einmal angezeigt.",
+      "copy": "Kopieren",
+      "copied": "Kopiert",
+      "active": "Aktive Links",
+      "none": "Keine aktiven Links.",
+      "loading": "Wird geladen…",
+      "expired": "abgelaufen",
+      "revoke": "Widerrufen",
+      "ttlOpt": {
+        "1h": "1 Stunde",
+        "8h": "8 Stunden",
+        "24h": "24 Stunden",
+        "7d": "7 Tage"
+      },
+      "expiresIn": {
+        "min": "noch {{n}} Min.",
+        "hour": "noch {{n}} Std.",
+        "day": "noch {{n}} Tage"
+      }
     }
   },
   "quarantine": {
@@ -463,5 +491,12 @@
     "monthTotal": "Gerätetage gesamt diesen Monat",
     "empty": "Noch keine Mandanten.",
     "note": "Ein Gerätetag = das Gerät hat an diesem UTC-Tag mindestens einmal gemeldet (Abrechnungsmetrik)."
+  },
+  "share": {
+    "title": "Live-Verfolgung",
+    "poweredBy": "Bereitgestellt von Orbetra",
+    "expiredTitle": "Link abgelaufen",
+    "expiredBody": "Dieser Tracking-Link ist nicht mehr aktiv.",
+    "noFix": "Warte auf die erste gültige Position…"
   }
 }

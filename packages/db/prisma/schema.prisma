@@ -186,9 +186,36 @@ model Device {
 
   account Account       @relation(fields: [accountId], references: [id])
   profile DeviceProfile @relation(fields: [profileId], references: [id])
+  shareLinks ShareLink[]
 
   @@index([tenantId, accountId])
   @@map("devices")
+}
+
+/// Temporary public share link (V1-nice) — an expiring, revocable URL exposing ONE device's
+/// live position with no login. Token stored as SHA-256 hash + short prefix (like ApiKey,
+/// E06-3); plaintext returned once. Expiry + revoke are enforced in the resolve query.
+model ShareLink {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @db.Uuid
+  /// copied from the device at creation so account-scoped users see only their own links
+  accountId       String    @db.Uuid
+  deviceId        BigInt
+  /// SHA-256 of the opaque token — the plaintext is never stored
+  tokenHash       String    @unique
+  /// short display prefix (first chars) for the management list
+  tokenPrefix     String
+  label           String?
+  createdByUserId String    @db.Uuid
+  expiresAt       DateTime  @db.Timestamptz()
+  revokedAt       DateTime? @db.Timestamptz()
+  createdAt       DateTime  @default(now()) @db.Timestamptz()
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([deviceId])
+  @@map("share_links")
 }
 
 model RawReject {

@@ -327,6 +327,34 @@
       "fwUnknown": "nežinoma (siųsk getver)",
       "empty": "Būklės duomenų dar nėra — įrenginys praneša GSM/įtampą veikdamas.",
       "loadError": "Nepavyko įkelti būklės."
+    },
+    "share": {
+      "button": "Bendrinti",
+      "title": "Bendrinimo nuoroda — {{name}}",
+      "blurb": "Sukurkite laikiną viešą nuorodą, rodančią šį įrenginį gyvame žemėlapyje — be prisijungimo.",
+      "ttl": "Galioja",
+      "label": "Žymė",
+      "labelPlaceholder": "pvz. Kurjerio ETA",
+      "create": "Sukurti nuorodą",
+      "freshHint": "Nukopijuokite nuorodą dabar — ji rodoma tik kartą.",
+      "copy": "Kopijuoti",
+      "copied": "Nukopijuota",
+      "active": "Aktyvios nuorodos",
+      "none": "Nėra aktyvių nuorodų.",
+      "loading": "Kraunama…",
+      "expired": "nebegalioja",
+      "revoke": "Atšaukti",
+      "ttlOpt": {
+        "1h": "1 val.",
+        "8h": "8 val.",
+        "24h": "24 val.",
+        "7d": "7 dienos"
+      },
+      "expiresIn": {
+        "min": "liko {{n}} min.",
+        "hour": "liko {{n}} val.",
+        "day": "liko {{n}} d."
+      }
     }
   },
   "quarantine": {
@@ -463,5 +491,12 @@
     "monthTotal": "Viso įrenginio dienų šį mėnesį",
     "empty": "Nuomininkų dar nėra.",
     "note": "Įrenginio diena = įrenginys bent kartą atsiskaitė tą UTC parą (atsiskaitymo metrika)."
+  },
+  "share": {
+    "title": "Gyvas sekimas",
+    "poweredBy": "Sukurta su Orbetra",
+    "expiredTitle": "Nuoroda nebegalioja",
+    "expiredBody": "Ši sekimo nuoroda nebeaktyvi.",
+    "noFix": "Laukiama pirmos tikslios pozicijos…"
   }
 }

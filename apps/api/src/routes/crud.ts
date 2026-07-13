@@ -17,6 +17,7 @@ import {
   commandCreateSchema,
   ruleCreateSchema,
   ruleUpdateSchema,
+  shareCreateSchema,
   tenantCreateSchema,
   tenantUpdateSchema,
   quarantineClaimSchema,
@@ -90,6 +91,7 @@ const READ_POLICY: Record<string, Role[]> = {
   webhookDelivery: ACCOUNT_WRITERS, // webhook delivery log — same readers as webhooks
   usage: TENANT_ADMINS, // billing data — a tenant admin can see their own bill
   export: TENANT_ADMINS, // GDPR exports contain the account's full data — admins only
+  share: [...ROLES], // viewing which public share links exist is broad
 }
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
@@ -101,6 +103,7 @@ const WRITE_POLICY: Record<string, Role[]> = {
   command: ACCOUNT_WRITERS, // sending a Codec-12 command controls hardware → writers only
   export: TENANT_ADMINS, // requesting a GDPR export
   gdpr: TENANT_ADMINS, // device erase — irreversible data destruction
+  share: ACCOUNT_WRITERS, // minting/revoking a public link exposes device location → writers only
 }
 function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
   if (scopeClass === 'platform') return ['platform_admin']
@@ -383,6 +386,39 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const row = await db.commands.get(scopeOf(auth(c)), id(c))
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+
+    // ── temporary public share links (V1-nice) ─────────────────────────────────
+    // create a share for a device — scope gate FIRST (404 before body validation, so a
+    // cross-tenant device is indistinguishable from a bad body); accountId pinned from the device.
+    { method: 'post', path: '/v1/devices/:id/shares', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const a = auth(c)
+        const scope = scopeOf(a)
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        const data = await body(c, shareCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const created = await db.shareLinks.create(scope, { userId: a.userId }, {
+          deviceId: device.id, accountId: device.accountId, ttlHours: data.ttlHours,
+          ...(data.label !== undefined ? { label: data.label } : {}),
+        })
+        // return the plaintext token ONCE + a relative path; the web app prepends its own origin
+        return json(c, { token: created.token, path: `/s/${created.token}`, view: created.view }, 201)
+      } },
+    { method: 'get', path: '/v1/devices/:id/shares', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        return json(c, await db.shareLinks.list(scope, device.id))
+      } },
+    { method: 'get', path: '/v1/shares', scopeClass: 'account', entity: 'share', shape: 'collection',
+      handler: async (c) => json(c, await db.shareLinks.list(scopeOf(auth(c)))) },
+    { method: 'delete', path: '/v1/shares/:id', scopeClass: 'account', entity: 'share', shape: 'item',
+      handler: async (c) => {
+        const ok = await db.shareLinks.revoke(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
 
     // ── GDPR (E08-4): device-erase cascade + account data export ────────────────
