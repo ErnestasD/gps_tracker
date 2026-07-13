@@ -355,6 +355,18 @@
         "hour": "liko {{n}} val.",
         "day": "liko {{n}} d."
       }
+    },
+    "onboard": "Prijungti",
+    "onb": {
+      "title": "Prijungti {{name}} (SMS)",
+      "intro": "Nukreipkite šį Teltonika įrenginį į {{host}}:{{port}} per SMS — jokio Teltonikos softo nereikia. Nustatykite APN (klauskite SIM tiekėjo), tada nusiųskite abi žinutes į įrenginio telefono numerį.",
+      "apn": "SIM APN",
+      "apnPlaceholder": "pvz. internet",
+      "smsApn": "1. APN SMS",
+      "smsServer": "2. Serverio SMS",
+      "copy": "Kopijuoti",
+      "copied": "Nukopijuota",
+      "caveat": "Šio įrenginio šeima gali naudoti kitus parametrus — pasitikrinkite Teltonikos wiki savo modeliui."
     }
   },
   "quarantine": {
