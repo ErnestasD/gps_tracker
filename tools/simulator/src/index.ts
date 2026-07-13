@@ -1,5 +1,6 @@
 // @orbetra/simulator — Teltonika device emulator (E02-1). CLI entry: src/main.ts
 export { runScenario } from './client.js'
+export { runFleet, planFleet, type FleetOpts, type FleetResult } from './fleet.js'
 export { liveDrive } from './scenarios/liveDrive.js'
 export { corruptCrc } from './scenarios/corruptCrc.js'
 export { oversize } from './scenarios/oversize.js'

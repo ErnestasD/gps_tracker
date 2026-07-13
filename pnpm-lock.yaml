@@ -452,6 +452,31 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
 
+  tools/loadtest:
+    dependencies:
+      '@orbetra/ingest':
+        specifier: workspace:*
+        version: link:../../apps/ingest
+      '@orbetra/simulator':
+        specifier: workspace:*
+        version: link:../simulator
+      ioredis:
+        specifier: ^5.11.1
+        version: 5.11.1
+    devDependencies:
+      eslint:
+        specifier: ^9.30.0
+        version: 9.39.4(jiti@2.7.0)
+      testcontainers:
+        specifier: ^11.7.1
+        version: 11.14.0
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
+
   tools/redact:
     devDependencies:
       eslint:
