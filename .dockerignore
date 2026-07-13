@@ -1,0 +1,13 @@
+# app image build context guard (W7-D review MED): the image must be safe to build from
+# ANY checkout — never rely on rsync excludes. Secrets stay out (rule 12).
+.git
+node_modules
+**/node_modules
+orbetra_design
+.env
+.env.*
+.claude
+apps/web/dist
+playwright-report
+test-results
+var

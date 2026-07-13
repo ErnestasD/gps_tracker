@@ -1,0 +1,96 @@
+# Orbetra APP layer (staging, W7-D) — overlay on the infra compose:
+#   docker compose -f docker-compose.yml -f docker-compose.apps.yml up -d
+# One image, four services (tsx entrypoints — same as dev/e2e). Secrets come from
+# /opt/orbetra/.env on the server (JWT_SECRET etc.) — NEVER from this file (rule 12).
+# Internal services keep loopback-only publishing (PR #11: Docker bypasses UFW);
+# only Caddy (80/443) and ingest TCP (5027 — devices must reach it) face the world.
+
+services:
+  # the staging HTTP-by-IP Caddyfile block reads {$ORBETRA_STAGING_HOST} from the
+  # CONTAINER env — compose .env substitution alone doesn't reach the Caddyfile
+  caddy:
+    environment:
+      ORBETRA_STAGING_HOST: ${ORBETRA_STAGING_HOST:-staging-host.invalid}
+
+  app-base:
+    build:
+      context: ../..
+      dockerfile: infra/docker/app.Dockerfile
+    image: orbetra-app:latest
+    profiles: ["build-only"] # never runs — exists so `compose build app-base` builds the shared image
+
+  ingest:
+    image: orbetra-app:latest
+    command: ["tsx", "apps/ingest/src/main.ts"]
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379
+      INGEST_TCP_PORT: "5027"
+      PROMETHEUS_PORT: "9101"
+    ports:
+      - "5027:5027" # devices connect here — the ONE public app port besides Caddy
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: orbetra-app:latest
+    command: ["tsx", "apps/worker/src/main.ts"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:${PG_PASSWORD:-orbetra_dev}@pg:5432/orbetra
+      REDIS_URL: redis://redis:6379
+      PROMETHEUS_PORT: "9102"
+      EXPORT_DIR: /var/orbetra/exports
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    volumes:
+      - exports:/var/orbetra/exports
+    depends_on:
+      pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    image: orbetra-app:latest
+    command: ["tsx", "apps/api/src/main.ts"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:${PG_PASSWORD:-orbetra_dev}@pg:5432/orbetra
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      API_PORT: "3010"
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://185.80.129.33}
+      GEOCODER_URL: http://photon:2322
+      TRUST_PROXY: "1"
+      # staging is reachable over plain HTTP by IP until DNS lands — Secure cookies
+      # would silently break login there. Flip to 1 the day TLS is on.
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      EXPORT_DIR: /var/orbetra/exports
+    volumes:
+      # the GDPR download route streams the file the WORKER wrote — same volume on both
+      # (review HIGH: without this every export download 410s "file removed")
+      - exports:/var/orbetra/exports
+    depends_on:
+      pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  prometheus:
+    volumes:
+      - ../prometheus/prometheus.staging.yml:/etc/prometheus/prometheus.yml:ro
+
+  web:
+    image: orbetra-app:latest
+    # serves the PRE-BUILT dist (vite preview — the e2e-tested path); /v1+/ws go through
+    # Caddy, so the SPA never needs an absolute API origin
+    command: ["pnpm", "--filter", "@orbetra/web", "exec", "vite", "preview", "--host", "0.0.0.0", "--port", "5173"]
+    restart: unless-stopped
+    environment:
+      API_PROXY_TARGET: http://api:3010
+    depends_on:
+      - api
+
+volumes:
+  exports:
