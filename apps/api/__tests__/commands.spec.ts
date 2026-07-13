@@ -105,12 +105,15 @@ describe('E08-2 Codec-12 commands API', () => {
 
   it('onboarding sheet: server SMS points at the configured host, APN appended when passed (V1-nice)', async () => {
     const sheet = (await (await req(`/v1/devices/${deviceId}/onboarding?apn=internet`, viewerToken)).json()) as { smsServer: string; smsApn: string | null; steps: string[] }
-    expect(sheet.smsServer).toBe('  setparam 2004:orbetra.com;2005:5027;2003:0')
+    expect(sheet.smsServer).toBe('  setparam 2004:orbetra.com;2005:5027;2006:0') // 2006:0 = protocol TCP (2003 is the APN password)
     expect(sheet.smsApn).toBe('  setparam 2001:internet')
     expect(sheet.steps.length).toBeGreaterThan(0)
     // no apn → no APN SMS
     const noApn = (await (await req(`/v1/devices/${deviceId}/onboarding`, viewerToken)).json()) as { smsApn: string | null }
     expect(noApn.smsApn).toBeNull()
+    // an APN carrying an SMS separator is rejected end-to-end (review HIGH — injection)
+    const evil = (await (await req(`/v1/devices/${deviceId}/onboarding?apn=x;2004:evil.com`, viewerToken)).json()) as { smsApn: string | null }
+    expect(evil.smsApn).toBeNull()
     // cross-tenant device → 404
     expect((await req(`/v1/devices/${deviceId}/onboarding`, t2Token)).status).toBe(404)
   })
