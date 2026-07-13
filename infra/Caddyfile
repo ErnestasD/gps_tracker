@@ -18,6 +18,23 @@
 	respond 404
 }
 
+# ── Staging over plain HTTP by IP (W7-D, until DNS/TLS lands) ────────────────
+# Served only when the request Host matches ORBETRA_STAGING_HOST (set in the server's
+# .env, e.g. 185.80.129.33). The default is an unresolvable name, so this block is
+# inert locally. Same routing as the HTTPS block below; drop this once real DNS + TLS
+# are live.
+http://{$ORBETRA_STAGING_HOST:staging-host.invalid} {
+	handle /v1/* {
+		reverse_proxy api:3010
+	}
+	handle /ws {
+		reverse_proxy api:3010
+	}
+	handle {
+		reverse_proxy web:5173
+	}
+}
+
 # ── Tenant custom domains (staging/prod) ─────────────────────────────────────
 # Any hostname NOT matched above gets a cert on demand (gated by the ask above),
 # then proxies to web (SPA) with /v1 + /ws carved out to the api. The SPA reads
