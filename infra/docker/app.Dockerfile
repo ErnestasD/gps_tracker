@@ -4,7 +4,10 @@
 # e2e harness exactly (API_PROXY_TARGET carries /v1 + /ws to the api service).
 FROM node:22-alpine
 
-RUN npm i -g pnpm@10.34.4 tsx
+# pinned versions — unpinned tsx made builds unreproducible (review LOW). Runs as root
+# for now (named volumes are root-owned; USER node needs a volume-permissions pass —
+# staging-accepted tradeoff, hardening follow-up).
+RUN npm i -g pnpm@10.34.4 tsx@4.23.0
 WORKDIR /app
 
 # manifests first — layer-cache pnpm install across source-only changes

@@ -6,6 +6,12 @@
 # only Caddy (80/443) and ingest TCP (5027 — devices must reach it) face the world.
 
 services:
+  # the staging HTTP-by-IP Caddyfile block reads {$ORBETRA_STAGING_HOST} from the
+  # CONTAINER env — compose .env substitution alone doesn't reach the Caddyfile
+  caddy:
+    environment:
+      ORBETRA_STAGING_HOST: ${ORBETRA_STAGING_HOST:-staging-host.invalid}
+
   app-base:
     build:
       context: ../..
@@ -60,11 +66,20 @@ services:
       # staging is reachable over plain HTTP by IP until DNS lands — Secure cookies
       # would silently break login there. Flip to 1 the day TLS is on.
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      EXPORT_DIR: /var/orbetra/exports
+    volumes:
+      # the GDPR download route streams the file the WORKER wrote — same volume on both
+      # (review HIGH: without this every export download 410s "file removed")
+      - exports:/var/orbetra/exports
     depends_on:
       pg:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  prometheus:
+    volumes:
+      - ../prometheus/prometheus.staging.yml:/etc/prometheus/prometheus.yml:ro
 
   web:
     image: orbetra-app:latest

@@ -1,0 +1,21 @@
+# Prometheus scrape config (E01-2). App metric targets (ingest/worker/api) register
+# in E02-5 when the metrics endpoints exist; names are frozen in Appendix A.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+  # app targets (E02-5; frozen metric names per Appendix A). host.docker.internal
+  # reaches apps running on the host during local dev; staging runs apps in-compose.
+  - job_name: ingest
+    static_configs:
+      - targets: ['ingest:9101']
+  - job_name: worker
+    static_configs:
+      - targets: ['worker:9102']
+  - job_name: api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['api:3010']
