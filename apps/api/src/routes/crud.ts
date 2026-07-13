@@ -409,6 +409,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         await deps.gdpr.enqueueExport({ exportId: job.id })
         return json(c, job, 201)
       } },
+    // pilot leads from the public site (W9-S1) — platform sales inbox
+    { method: 'get', path: '/v1/platform/leads', scopeClass: 'platform', entity: 'lead', shape: 'collection',
+      handler: async (c) => json(c, await db.leads.list()) },
     { method: 'get', path: '/v1/exports', scopeClass: 'account', entity: 'export', shape: 'collection',
       handler: async (c) => json(c, await db.exports.list(scopeOf(auth(c)))) },
     { method: 'get', path: '/v1/exports/:id', scopeClass: 'account', entity: 'export', shape: 'item',

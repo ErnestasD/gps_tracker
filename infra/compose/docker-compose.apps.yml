@@ -11,6 +11,9 @@ services:
   caddy:
     environment:
       ORBETRA_STAGING_HOST: ${ORBETRA_STAGING_HOST:-staging-host.invalid}
+      ORBETRA_SITE_HOST: ${ORBETRA_SITE_HOST:-site-host.invalid}
+      ORBETRA_SITE_WWW: ${ORBETRA_SITE_WWW:-www-host.invalid}
+      ORBETRA_APP_HOST: ${ORBETRA_APP_HOST:-app-host.invalid}
 
   app-base:
     build:
@@ -80,6 +83,16 @@ services:
   prometheus:
     volumes:
       - ../prometheus/prometheus.staging.yml:/etc/prometheus/prometheus.yml:ro
+
+  site:
+    image: orbetra-app:latest
+    # public marketing site (W9-S1): pre-built static dist behind Caddy
+    command: ["pnpm", "--filter", "@orbetra/site", "exec", "vite", "preview", "--host", "0.0.0.0", "--port", "4174"]
+    restart: unless-stopped
+    environment:
+      API_PROXY_TARGET: http://api:3010
+    depends_on:
+      - api
 
   web:
     image: orbetra-app:latest

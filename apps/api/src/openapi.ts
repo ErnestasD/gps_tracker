@@ -72,6 +72,7 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
   add('get', '/v1/devices/last', { tags: ['device'], summary: 'Last-known position snapshot', security: READ_SEC, responses: RESPONSES.read })
   add('get', '/v1/profiles', { tags: ['device'], summary: 'Device profiles (global reference data)', security: READ_SEC, responses: RESPONSES.read })
   add('get', '/v1/branding', { tags: ['tenant'], summary: 'Public branding by Host', security: [], responses: RESPONSES.read })
+  add('post', '/v1/public/pilot-request', { tags: ['public'], summary: 'Pilot request from the marketing site (rate-limited, honeypotted)', security: [], responses: { ...RESPONSES.publicPost, '201': { description: 'Created' } } })
   add('post', '/v1/reports/{type}', {
     tags: ['report'],
     summary: 'Run a report (trips/mileage/stops/overspeed/geofence/engine_hours)',

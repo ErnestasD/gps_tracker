@@ -171,6 +171,22 @@ export const COMMAND_PRESETS = [
 ] as const
 export type CommandPresetKey = (typeof COMMAND_PRESETS)[number]['key']
 
+// ── public pilot request (W9-S1, §6.9) ───────────────────────────────────────
+// The ONLY unauthenticated write. `hp_field` is a honeypot (hidden field — humans leave
+// it empty, bots/autofill fill it; NOT named 'website'/'url' so browser autofill skips it);
+// `ref` is the affiliate code from the tc_ref cookie.
+export const pilotRequestSchema = z.object({
+  name: z.string().min(1).max(120),
+  company: z.string().min(1).max(160),
+  email: z.string().email().max(320),
+  phone: z.string().max(40).optional().or(z.literal('')),
+  deviceCount: z.string().max(40).optional().or(z.literal('')),
+  message: z.string().max(2000).optional().or(z.literal('')),
+  hp_field: z.string().max(200).optional().or(z.literal('')),
+  ref: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
+})
+export type PilotRequestInput = z.infer<typeof pilotRequestSchema>
+
 // ── reports (E06-1) ──────────────────────────────────────────────────────────
 // POST /v1/reports/:type body. `accountId` is required only for a tenant-wide caller
 // (an account-scoped user's account is fixed by their token). from/to are ISO; the engine

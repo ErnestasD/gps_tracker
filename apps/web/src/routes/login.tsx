@@ -51,7 +51,7 @@ export function LoginPage() {
     <div className="flex h-full items-center justify-center bg-[radial-gradient(ellipse_at_top,_#16213A_0%,_#0B1020_60%)] p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center pt-8 text-center">
-          <img src="/icons/pwa-192.png" alt="" className="mb-2 h-12 w-12 rounded-xl" />
+          <img src="/orbetra-logo.svg" alt="Orbetra" className="mb-2 h-12 w-12" />
           <CardTitle className="text-lg">{t('login.title')}</CardTitle>
         </CardHeader>
         <CardContent className="pb-8">

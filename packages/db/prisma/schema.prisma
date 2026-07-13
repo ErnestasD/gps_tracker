@@ -371,6 +371,24 @@ model ExportJob {
   @@map("export_jobs")
 }
 
+/// Pilot-request lead from the public site (W9-S1, §6.9). UNSCOPED table — leads
+/// precede tenants; readable by platform_admin only.
+model Lead {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  company     String
+  email       String
+  phone       String?
+  deviceCount String?
+  message     String?
+  /// affiliate code from the tc_ref cookie (§6.9 last-touch)
+  ref         String?
+  createdAt   DateTime @default(now()) @db.Timestamptz()
+
+  @@index([createdAt])
+  @@map("leads")
+}
+
 model UsageDaily {
   tenantId  String   @db.Uuid
   accountId String   @db.Uuid

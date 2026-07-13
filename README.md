@@ -36,6 +36,7 @@ in the commit message, and any staged `TODO(VERIFY-WIKI)` marker blocks the comm
 | `packages/db` | Prisma (relational) + raw SQL layer for positions + scoped repositories |
 | `packages/shared` | zod schemas — single source of types |
 | `tools/simulator` | device emulator (scenarios per PROJECT_PLAN §7.2) |
+| `apps/site` | public marketing site (Lovable design → static Vite SPA, W9-S1) |
 | `tools/replay` | real-log replayer for load tests |
 | `tools/seed-demo` | demo tenant provisioner for sales calls (`pnpm seed:demo`, E08-5) |
 | `tools/redact` | strips real IMEIs from captures before they become fixtures |
@@ -54,6 +55,11 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
 | `EXPORT_DIR` | apps/worker | GDPR export output directory (E08-4), default `var/exports`; R2/S3 upload is the follow-up when creds exist |
+| `ORBETRA_SITE_HOST` / `ORBETRA_SITE_WWW` | infra/Caddyfile | public site apex + www hosts (W9-S1); www 301s to apex; unset = inert |
+| `ORBETRA_APP_HOST` | infra/Caddyfile | dashboard host (dash.<domain>) for the app SPA |
+| `VITE_DASH_URL` | apps/site (build-time) | dashboard URL the site's Sign-in links point to, default `https://dash.orbetra.com` |
+| `API_PROXY_TARGET` | apps/site + apps/web vite dev/preview | where the `/v1` proxy forwards, default `http://localhost:3010` |
+| `VITE_TILES_STYLE_URL` | apps/site (build-time) | MapLibre style URL, default OpenFreeMap `liberty` (rule 13) |
 | `API_PORT` | apps/api | HTTP+WS port, default `3010` |
 | `JWT_SECRET` | apps/api | HS256 access-token secret, **required**, min 32 chars |
 | `JWT_TTL` | apps/api | Access-token TTL seconds, default `900` (15 min) |
@@ -248,6 +254,20 @@ Every new variable must be added to the table here AND match the `.env` contract
   polled every 5 s while anything is queued/sent. Destructive commands (`cpureset`,
   `deleterecords`) are two-step: the first click arms a danger confirm, the second sends;
   editing the text or switching preset disarms.
+
+## Public site (W9-S1, apps/site)
+
+Static Vite SPA built from the founder's Lovable design (`orbetra_design/` stays the
+design source; syncs are manual with review — ADR-022). Served as **orbetra.com** behind
+Caddy (`ORBETRA_SITE_HOST`/`ORBETRA_SITE_WWW` env; the app lives at **dash.orbetra.com**,
+`ORBETRA_APP_HOST`). Pages: home, pricing, TSP, pilot + the legal pack (terms/privacy/
+DPA/subprocessors/impressum). The pilot form POSTs to the public
+`POST /v1/public/pilot-request` (honeypot field + 5/h per-IP limit, fails open on a Redis
+blip — a lost lead costs more than rare spam); leads land in the `leads` table, readable
+via `GET /v1/platform/leads` (platform_admin). The affiliate `?ref=` code is stored as
+the `tc_ref` cookie (60 d) only after a one-line consent and rides along in the form
+payload (§6.9 last-touch). EN-only until the W8 S3 i18n pass (the design's fake language
+switcher was removed, not shipped).
 
 ## Demo data (E08-5, `pnpm seed:demo`)
 
