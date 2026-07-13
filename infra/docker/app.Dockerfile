@@ -31,6 +31,9 @@ COPY . .
 # prisma client is gitignored generated code — build it in the image
 RUN pnpm --filter @orbetra/db db:generate
 # SPA builds: same-origin API (Caddy carves /v1 + /ws), OpenFreeMap default style URL
+# rule 13: pin OpenFreeMap for the site build too (the design defaults to it now, but make
+# the production build explicit so a design re-sync can't silently reintroduce a CDN)
+ENV VITE_TILES_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
 RUN pnpm --filter @orbetra/web build && pnpm --filter @orbetra/site build
 
 # default command is a no-op; docker-compose.apps.yml sets one per service

@@ -172,8 +172,9 @@ export const COMMAND_PRESETS = [
 export type CommandPresetKey = (typeof COMMAND_PRESETS)[number]['key']
 
 // ── public pilot request (W9-S1, §6.9) ───────────────────────────────────────
-// The ONLY unauthenticated write. `website` is a honeypot (hidden field — humans leave
-// it empty, bots fill it); `ref` is the affiliate code from the tc_ref cookie.
+// The ONLY unauthenticated write. `hp_field` is a honeypot (hidden field — humans leave
+// it empty, bots/autofill fill it; NOT named 'website'/'url' so browser autofill skips it);
+// `ref` is the affiliate code from the tc_ref cookie.
 export const pilotRequestSchema = z.object({
   name: z.string().min(1).max(120),
   company: z.string().min(1).max(160),
@@ -181,7 +182,7 @@ export const pilotRequestSchema = z.object({
   phone: z.string().max(40).optional().or(z.literal('')),
   deviceCount: z.string().max(40).optional().or(z.literal('')),
   message: z.string().max(2000).optional().or(z.literal('')),
-  website: z.string().max(200).optional().or(z.literal('')),
+  hp_field: z.string().max(200).optional().or(z.literal('')),
   ref: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
 })
 export type PilotRequestInput = z.infer<typeof pilotRequestSchema>

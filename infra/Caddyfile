@@ -31,9 +31,13 @@
 	}
 	@www host {$ORBETRA_SITE_WWW:www-host.invalid}
 	redir @www https://{$ORBETRA_SITE_HOST:site-host.invalid}{uri} permanent
-	# the pilot form posts same-origin; carve /v1 to the api (public pilot-request only
-	# matters here, but the api's own auth guards everything else anyway)
-	handle /v1/* {
+	# least privilege (review LOW): the site only needs the PUBLIC pilot endpoint — not the
+	# whole /v1 surface (login brute-force, caddy-ask, docs). Cap the unauthenticated body
+	# at 64 KB (review MED: the only public write must not buffer multi-MB POSTs).
+	handle /v1/public/* {
+		request_body {
+			max_size 64KB
+		}
 		reverse_proxy api:3010
 	}
 	# static SPA (vite preview serving the built dist — same tested path as the app)

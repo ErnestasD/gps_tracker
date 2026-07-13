@@ -27,6 +27,8 @@ let db: Db
 let pool: Pool
 let port: number
 let httpServer: ReturnType<typeof createServer>
+let proxiedServer: ReturnType<typeof createServer>
+let proxiedPort: number
 let platformToken: string
 let tspToken: string
 
@@ -52,11 +54,19 @@ beforeAll(async () => {
   const app = createApp({ redis, redisSub: redis, db, pool, jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30, lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '203.0.113.7' })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
+
+  // a SECOND instance with trustProxy=true — models production behind Caddy, where every
+  // request's socket peer is Caddy and the real client is the rightmost XFF entry
+  const proxied = createApp({ redis, redisSub: redis, db, pool, jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30, lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: true, getRemoteAddr: () => '172.20.0.2' })
+  proxiedServer = serve({ fetch: proxied.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+  proxiedPort = await new Promise<number>((r) => proxiedServer.on('listening', () => r((proxiedServer.address() as { port: number }).port)))
 }, 300_000)
 
 afterAll(async () => {
   httpServer?.closeAllConnections?.()
+  proxiedServer?.closeAllConnections?.()
   await new Promise<void>((r) => httpServer.close(() => r()))
+  await new Promise<void>((r) => proxiedServer.close(() => r()))
   await pool.end(); await db.$disconnect(); await redis.quit(); await Promise.all([pg.stop(), redisC.stop()])
 })
 
@@ -72,11 +82,15 @@ describe('W9-S1 POST /v1/public/pilot-request', () => {
     expect((await fetch(`${base()}/v1/platform/leads`, { headers: { authorization: `Bearer ${tspToken}` } })).status).toBe(403)
   })
 
-  it('honeypot: filled `website` gets a FAKE 200 and stores nothing', async () => {
-    const res = await post({ ...VALID, email: 'bot@spam.test', website: 'https://spam.example' })
-    expect(res.status).toBe(200) // the bot must not learn it was caught
-    const leads = (await (await fetch(`${base()}/v1/platform/leads`, { headers: { authorization: `Bearer ${platformToken}` } })).json()) as { email: string }[]
+  it('honeypot: filled hp_field gets an INDISTINGUISHABLE 201 (random id) and stores nothing', async () => {
+    const res = await post({ ...VALID, email: 'bot@spam.test', hp_field: 'https://spam.example' })
+    expect(res.status).toBe(201) // same shape as success — a bot can't A/B-detect the trap
+    const j = (await res.json()) as { ok: boolean; id: string }
+    expect(j.ok).toBe(true)
+    expect(j.id).toMatch(/^[0-9a-f-]{36}$/) // a uuid, but NOT a stored lead
+    const leads = (await (await fetch(`${base()}/v1/platform/leads`, { headers: { authorization: `Bearer ${platformToken}` } })).json()) as { id: string; email: string }[]
     expect(leads.some((l) => l.email === 'bot@spam.test')).toBe(false)
+    expect(leads.some((l) => l.id === j.id)).toBe(false) // the fake id is not in the DB
   })
 
   it('garbage body → 400; oversize message → 400', async () => {
@@ -85,9 +99,22 @@ describe('W9-S1 POST /v1/public/pilot-request', () => {
     expect((await post({ ...VALID, ref: 'not a slug!' })).status).toBe(400)
   })
 
-  it('per-IP rate limit: the 6th request in the window → 429', async () => {
-    await redis.del('pilot:rl:203.0.113.7') // clean slate for the counter
+  it('per-IP rate limit keys on the REAL client IP (rightmost XFF), 6th in window → 429', async () => {
+    // trustProxy is false in this app instance, so the key is the injected remote addr —
+    // distinct IPs get distinct buckets (proves keying, not just counting)
+    await redis.del('pilot:rl:203.0.113.7')
     for (let i = 0; i < 5; i++) expect((await post({ ...VALID, email: `u${i}@x.lt` })).status).toBe(201)
     expect((await post({ ...VALID, email: 'u6@x.lt' })).status).toBe(429)
+  })
+
+  it('behind a proxy, distinct clients get distinct buckets via rightmost XFF (not Caddy IP)', async () => {
+    const proxied = (xff: string, bodyObj: unknown) =>
+      fetch(`http://127.0.0.1:${proxiedPort}/v1/public/pilot-request`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': xff }, body: JSON.stringify(bodyObj) })
+    await redis.del('pilot:rl:9.9.9.9', 'pilot:rl:8.8.8.8')
+    // client A (rightmost = 9.9.9.9, spoofed leftmost ignored) exhausts its bucket…
+    for (let i = 0; i < 5; i++) expect((await proxied('1.2.3.4, 9.9.9.9', { ...VALID, email: `a${i}@x.lt` })).status).toBe(201)
+    expect((await proxied('1.2.3.4, 9.9.9.9', { ...VALID, email: 'a6@x.lt' })).status).toBe(429)
+    // …a DIFFERENT client (8.8.8.8) is unaffected — proof the key is per real client, not global
+    expect((await proxied('7.7.7.7, 8.8.8.8', { ...VALID, email: 'b1@x.lt' })).status).toBe(201)
   })
 })

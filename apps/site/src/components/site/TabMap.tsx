@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 // Free, CORS-friendly dark vector style (Carto Dark Matter).
 const DEFAULT_STYLE =
   (import.meta as any).env?.VITE_TILES_STYLE_URL ||
-  "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+  "https://tiles.openfreemap.org/styles/liberty"; // rule 13: OpenFreeMap, never a paid provider
 
 export interface TabMapProps {
   styleUrl?: string | Record<string, any>;
@@ -178,7 +178,7 @@ export function TabMap({
         style: styleUrl || DEFAULT_STYLE,
         center,
         zoom,
-        attributionControl: false,
+        attributionControl: { compact: true }, // rule 13: OSM attribution visible on every map
         interactive: true,
         dragRotate: false,
         pitchWithRotate: false,

@@ -99,7 +99,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   )
 
   // PUBLIC pilot-request (W9-S1) — the marketing site's form; honeypot + per-IP limit
-  app.route('/', createPilotRequestRoute({ db: deps.db, redis: deps.redis, getRemoteAddr }))
+  app.route('/', createPilotRequestRoute({ db: deps.db, redis: deps.redis, getRemoteAddr, trustProxy: deps.trustProxy }))
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)

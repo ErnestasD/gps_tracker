@@ -57,9 +57,6 @@ export function NavBar() {
           <a href={import.meta.env.VITE_DASH_URL ?? "https://dash.orbetra.com"} className="text-sm text-muted-foreground hover:text-ink">Sign in</a>
         </nav>
         <div className="flex items-center gap-3">
-          <button className="hidden sm:inline-flex h-8 px-3 items-center justify-center rounded text-xs font-medium mono text-muted-foreground bg-[rgba(10,20,40,0.6)] border border-[var(--hairline)] hover:border-[rgba(76,77,207,0.55)] hover:text-ink transition-colors">
-            EN
-          </button>
           <Link to="/pilot" className="pill-primary hover:pill-primary-hover">
             Request a pilot
           </Link>

@@ -13,16 +13,23 @@ export function refFromSearch(search: string): string | null {
   return /^[a-zA-Z0-9_-]+$/.test(trimmed) ? trimmed : null
 }
 
+const SLUG = /^[a-zA-Z0-9_-]{1,64}$/
+
 export function readRefCookie(cookieHeader: string): string | null {
   for (const part of cookieHeader.split(';')) {
     const [k, ...v] = part.trim().split('=')
-    if (k === COOKIE) return decodeURIComponent(v.join('=')) || null
+    if (k === COOKIE) {
+      const val = decodeURIComponent(v.join('='))
+      // re-validate: a corrupted cookie must not make the server 400 the whole pilot post
+      return SLUG.test(val) ? val : null
+    }
   }
   return null
 }
 
 export function refCookieString(code: string): string {
-  return `${COOKIE}=${encodeURIComponent(code)}; Max-Age=${DAYS_60_S}; Path=/; SameSite=Lax`
+  // Secure: the site is HTTPS+HSTS (localhost is exempt from the Secure requirement)
+  return `${COOKIE}=${encodeURIComponent(code)}; Max-Age=${DAYS_60_S}; Path=/; SameSite=Lax; Secure`
 }
 
 /** Current ref for the pilot form: cookie wins (consented), else the live query param. */

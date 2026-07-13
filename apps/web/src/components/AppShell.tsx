@@ -106,7 +106,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         >
           <div className={cn('flex h-14 items-center gap-2 border-b border-line px-4', collapsed && 'justify-center px-0')}>
-            <img src="/icons/pwa-192.png" alt="" className="h-6 w-6 rounded" />
+            <img src="/orbetra-logo.svg" alt="" className="h-6 w-6" />
             {!collapsed && <span className="text-sm font-semibold tracking-wide">Orbetra</span>}
           </div>
           <nav className="flex-1 overflow-y-auto py-3">

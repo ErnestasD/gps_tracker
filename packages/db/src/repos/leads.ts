@@ -5,6 +5,9 @@ import type { Lead, PrismaClient } from '@prisma/client'
  * tenant exists, so the table is deliberately unscoped: `create` is called by the
  * public endpoint (rate-limited + honeypotted upstream), `list` only ever behind the
  * platform_admin gate. No update/delete — a lead trail is append-only sales history.
+ *
+ * NOTE for a future leads UI: name/company/message are stored RAW (public input). The JSON
+ * API is safe, but any HTML rendering MUST escape them (stored-XSS) — never dangerouslySetInnerHTML.
  */
 export interface LeadView {
   id: string

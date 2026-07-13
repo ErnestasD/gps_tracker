@@ -5,7 +5,7 @@ import { TabMap } from "./TabMap";
 // Dark vector style — real streets/cities visible.
 const HERO_STYLE =
   (import.meta as any).env?.VITE_TILES_STYLE_URL ||
-  "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+  "https://tiles.openfreemap.org/styles/liberty"; // rule 13: OpenFreeMap, never a paid provider
 
 const NODES: Array<{
   id: string;

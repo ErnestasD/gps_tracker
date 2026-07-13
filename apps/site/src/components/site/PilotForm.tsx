@@ -18,7 +18,7 @@ export function pilotPayload(form: FormData, ref: string | null): Record<string,
     phone: val("phone"),
     deviceCount: val("deviceCount"),
     message: val("message"),
-    website: val("website"), // honeypot — must stay empty
+    hp_field: val("hp_field"), // honeypot — must stay empty
     ...(ref !== null ? { ref } : {}),
   };
 }
@@ -65,11 +65,12 @@ export function PilotForm() {
         <Field label="Phone (optional)" name="phone" />
       </div>
       <Field label="How many devices?" name="deviceCount" placeholder="e.g. 250" required />
-      {/* honeypot: hidden from humans (and from screen readers), irresistible to bots */}
+      {/* honeypot: off-screen + aria-hidden; name avoids 'website'/'url' so browser
+          autofill skips it (a real user's autofill must not fill it and get discarded) */}
       <div aria-hidden="true" className="absolute left-[-9999px] top-auto h-px w-px overflow-hidden">
         <label>
-          Website
-          <input type="text" name="website" tabIndex={-1} autoComplete="off" />
+          Leave this field empty
+          <input type="text" name="hp_field" tabIndex={-1} autoComplete="off" />
         </label>
       </div>
       <div>
@@ -90,7 +91,7 @@ export function PilotForm() {
       </button>
       {state === "error" && (
         <p role="alert" className="text-xs text-center text-[color:var(--brand-amber,#F59E0B)]">
-          Something went wrong — please retry, or write to hello@orbetra.com.
+          Something went wrong — please retry, or write to hello@orbetra.eu.
         </p>
       )}
       <p className="text-xs text-muted-foreground text-center">

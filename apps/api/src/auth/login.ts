@@ -9,6 +9,7 @@ import { loginRequestSchema, passwordChangeSchema, type AuthSession, type AuthUs
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from './passwords.js'
+import { clientIp } from '../net.js'
 
 export interface AuthRouteDeps {
   /** The auth surface (createDb().auth or createAuthDb()); $disconnect not needed. */
@@ -28,19 +29,6 @@ const COOKIE_PATH = '/v1/auth' // the cookie never rides on data requests
 
 const sha256 = (s: string | Buffer): string => createHash('sha256').update(s).digest('hex')
 
-/**
- * Client IP for lockout keying. With trustProxy, use the RIGHTMOST XFF entry —
- * the one appended by our own nearest trusted proxy (Caddy) — NOT the leftmost,
- * which is client-controlled and spoofable (review MED: leftmost let an attacker
- * mint a fresh lockout bucket per request). Assumes exactly one trusted proxy.
- */
-function clientIp(headerXff: string | undefined, remoteAddr: string, trustProxy: boolean): string {
-  if (trustProxy && headerXff) {
-    const parts = headerXff.split(',').map((p) => p.trim()).filter((p) => p !== '')
-    if (parts.length > 0) return parts[parts.length - 1]!
-  }
-  return remoteAddr
-}
 
 const toAuthUser = (u: AuthUserRow): AuthUser => ({
   id: u.id,
