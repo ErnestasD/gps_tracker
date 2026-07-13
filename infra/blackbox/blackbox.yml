@@ -1,0 +1,10 @@
+# Blackbox exporter (W7-S1): TLS cert-expiry probing for our own hosts. Caddy auto-renews;
+# probe_ssl_earliest_cert_expiry feeds the CertExpiringSoon safety-net alert.
+modules:
+  https_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      fail_if_not_ssl: true
+      preferred_ip_protocol: ip4

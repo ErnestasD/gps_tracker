@@ -55,6 +55,8 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
 | `EXPORT_DIR` | apps/worker | GDPR export output directory (E08-4), default `var/exports`; R2/S3 upload is the follow-up when creds exist |
+| `TELEGRAM_BOT_TOKEN` | apps/worker + infra/alertmanager | notification delivery (E05-5) AND ops alerts (W7-S1); unset = alerts visible in UI only, no push |
+| `TELEGRAM_ALERT_CHAT_ID` | infra/alertmanager | founders' chat id for ops alerts (W7-S1) |
 | `ORBETRA_SITE_HOST` / `ORBETRA_SITE_WWW` | infra/Caddyfile | public site apex + www hosts (W9-S1); www 301s to apex; unset = inert |
 | `ORBETRA_APP_HOST` | infra/Caddyfile | dashboard host (dash.<domain>) for the app SPA |
 | `VITE_DASH_URL` | apps/site (build-time) | dashboard URL the site's Sign-in links point to, default `https://dash.orbetra.com` |

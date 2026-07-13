@@ -1,0 +1,100 @@
+# Orbetra alert rules (W7-S1, PROJECT_PLAN §8). Metric names are the ones the apps
+# actually emit (apps/{ingest,worker}/src/prom.ts) — verified, not guessed. Routed to
+# the founders' Telegram via Alertmanager (infra/alertmanager/).
+groups:
+  - name: pipeline
+    rules:
+      # Redis Streams backlog: MAXLEN ~100k/shard (§5). 50% sustained = consumers
+      # falling behind; near the cap = imminent backpressure / data-loss risk.
+      - alert: StreamDepthHigh
+        expr: max(stream_depth) > 50000
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Redis stream depth high ({{ $value | humanize }})"
+          description: "A shard backlog has exceeded 50k for 5m — consumers are falling behind. Check worker health / lease ownership."
+      - alert: StreamDepthCritical
+        expr: max(stream_depth) > 90000
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Redis stream depth CRITICAL ({{ $value | humanize }})"
+          description: "A shard is near the 100k MAXLEN cap — backpressure/eviction imminent. Scale or restart workers now."
+
+      # pipeline_lag_ms: age of the oldest unprocessed record. >30s risks the trip &
+      # GDPR-erase guards (both assume lag << their windows).
+      - alert: PipelineLagHigh
+        expr: max(pipeline_lag_ms) > 30000
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Pipeline lag > 30s ({{ $value | humanize }}ms)"
+          description: "Oldest unprocessed record is >30s old for 5m. Trip/geofence/GDPR guards assume lag << their windows."
+      - alert: PipelineLagCritical
+        expr: max(pipeline_lag_ms) > 120000
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Pipeline lag CRITICAL ({{ $value | humanize }}ms)"
+          description: "Lag >2m — do NOT run GDPR erase (60m guard assumes lag << 60m). Investigate the worker."
+
+      # sudden CRC/structure failures = protocol drift or a misbehaving device fleet.
+      - alert: ParseFailSpike
+        expr: rate(ingest_parse_fail_total[5m]) > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Ingest parse-fail spike ({{ $value | humanize }}/s)"
+          description: "CRC/structure failures >5/s for 10m — protocol drift or corrupt-frame flood. Check a capture."
+
+      # p99 ACK latency SLA (§5: p99 < 250 ms).
+      - alert: AckLatencyHigh
+        expr: histogram_quantile(0.99, sum(rate(ack_latency_ms_bucket[5m])) by (le)) > 250
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "ACK p99 latency > 250ms"
+          description: "Ingest p99 ACK latency breached the §5 SLA (250ms) for 5m."
+
+      # I4 backpressure sustained = a shard can't drain.
+      - alert: BackpressureSustained
+        expr: max(ingest_paused_sockets) > 0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Sockets paused by backpressure for 10m"
+          description: "ingest_paused_sockets > 0 sustained — a shard is not draining. Check worker throughput."
+
+  - name: infra
+    rules:
+      - alert: TargetDown
+        expr: up{job=~"ingest|worker|api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} is DOWN"
+          description: "Prometheus can't scrape {{ $labels.job }} for 2m — the service is down or unreachable."
+
+      - alert: DiskFillingUp
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Disk < 15% free ({{ $value | humanizePercentage }})"
+          description: "Root filesystem below 15% — the positions hypertable grows continuously. Plan retention / capacity."
+      - alert: DiskCritical
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Disk < 5% free ({{ $value | humanizePercentage }})"
+          description: "Root filesystem critically low — writes will start failing. Act now."
+
+      # Caddy auto-renews; this is the safety net if renewal silently fails.
+      - alert: CertExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry - time()) < (14 * 24 * 3600)
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "TLS cert for {{ $labels.instance }} expires in <14d"
+          description: "Caddy should auto-renew; if this fires, renewal failed. Check the caddy container logs."

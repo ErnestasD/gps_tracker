@@ -1,0 +1,92 @@
+# promtool unit tests for the alert rules (W7-S1). Run: promtool test rules alerts.test.yml
+# aggregations (max/sum) DROP source labels; per-series metrics (disk, up) KEEP them, so the
+# expected label sets differ deliberately.
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'stream_depth{shard="3"}'
+        values: '60000x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: StreamDepthHigh
+        exp_alerts:
+          - exp_labels: { severity: warning }
+      - eval_time: 6m
+        alertname: StreamDepthCritical
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'stream_depth{shard="3"}'
+        values: '95000x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: StreamDepthCritical
+        exp_alerts:
+          - exp_labels: { severity: critical }
+
+  - interval: 1m
+    input_series:
+      - series: 'pipeline_lag_ms'
+        values: '45000x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PipelineLagHigh
+        exp_alerts:
+          - exp_labels: { severity: warning }
+
+  - interval: 1m
+    input_series:
+      - series: 'pipeline_lag_ms'
+        values: '1000x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PipelineLagHigh
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'ingest_parse_fail_total'
+        values: '0+600x15'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ParseFailSpike
+        exp_alerts:
+          - exp_labels: { severity: warning }
+
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{mountpoint="/"}'
+        values: '10x15'
+      - series: 'node_filesystem_size_bytes{mountpoint="/"}'
+        values: '100x15'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: DiskFillingUp
+        exp_alerts:
+          - exp_labels: { severity: warning, mountpoint: "/" }
+      - eval_time: 11m
+        alertname: DiskCritical
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="worker"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TargetDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: worker }
+
+  - interval: 1h
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{instance="https://orbetra.com"}'
+        values: '1000000000x3'
+    alert_rule_test:
+      - eval_time: 1h
+        alertname: CertExpiringSoon
+        exp_alerts: []

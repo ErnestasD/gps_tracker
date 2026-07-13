@@ -1,0 +1,38 @@
+# Alertmanager → founders' Telegram (W7-S1). This is a TEMPLATE: the container entrypoint
+# runs `envsubst` to fill ${TELEGRAM_BOT_TOKEN} and ${TELEGRAM_ALERT_CHAT_ID} from the
+# server .env at start. BLOCKED-INFO: those two are founder-provisioned (like SES creds);
+# until set, alerts are still visible in the Alertmanager UI (SSH tunnel) + Prometheus /alerts.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: telegram
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # criticals page immediately and re-notify more often
+    - matchers: [ severity="critical" ]
+      receiver: telegram
+      group_wait: 0s
+      repeat_interval: 1h
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token: '${TELEGRAM_BOT_TOKEN}'
+        chat_id: ${TELEGRAM_ALERT_CHAT_ID}
+        api_url: 'https://api.telegram.org'
+        parse_mode: HTML
+        message: |
+          <b>[{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}</b>
+          {{ range .Alerts }}{{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+
+inhibit_rules:
+  # a firing critical silences the matching warning for the same alert family
+  - source_matchers: [ severity="critical" ]
+    target_matchers: [ severity="warning" ]
+    equal: ['alertname']

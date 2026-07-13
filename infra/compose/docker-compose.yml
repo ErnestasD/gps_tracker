@@ -63,9 +63,43 @@ services:
     image: prom/prometheus:latest
     volumes:
       - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prom_data:/prometheus
     ports:
       - '127.0.0.1:9090:9090'
+
+  # W7-S1: alert routing to the founders' Telegram (token founder-gated, rendered at start)
+  alertmanager:
+    image: prom/alertmanager:latest
+    entrypoint: ['/bin/sh', '/etc/alertmanager/entrypoint.sh']
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
+    volumes:
+      - ../alertmanager/alertmanager.yml.tmpl:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      - ../alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - am_data:/alertmanager
+    ports:
+      - '127.0.0.1:9093:9093'
+
+  # host-level metrics (disk/RAM) for the DiskFillingUp alert
+  node-exporter:
+    image: prom/node-exporter:latest
+    command:
+      - '--path.rootfs=/host'
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    ports:
+      - '127.0.0.1:9100:9100'
+
+  # TLS cert-expiry probing for CertExpiringSoon
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    volumes:
+      - ../blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    ports:
+      - '127.0.0.1:9115:9115'
 
   grafana:
     image: grafana/grafana-oss:latest
@@ -97,6 +131,7 @@ services:
       - '${CADDY_HTTPS_PORT:-8449}:443'
 
 volumes:
+  am_data:
   pg_data:
   redis_data:
   photon_data:
