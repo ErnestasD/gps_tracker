@@ -39,7 +39,9 @@ const authed = (path: string, token: string, method = 'GET') =>
   fetch(`${base()}${path}`, { method, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, ...(method === 'POST' ? { body: '{}' } : {}) })
 const postJson = (path: string, token: string, body: unknown) =>
   fetch(`${base()}${path}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) })
-const pub = (path: string) => fetch(`${base()}${path}`)
+// public fetch with a per-test client IP (trustProxy=true → rate-limit keys on XFF) so one
+// test's requests never share another's per-IP bucket
+const pub = (path: string, ip = '203.0.113.1') => fetch(`${base()}${path}`, { headers: { 'x-forwarded-for': ip } })
 
 beforeAll(async () => {
   ;[pg, redisC] = await Promise.all([
@@ -82,7 +84,7 @@ beforeAll(async () => {
   const app = createApp({
     redis, redisSub: redis, db, pool,
     jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
-    lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '127.0.0.1',
+    lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: true, getRemoteAddr: () => '127.0.0.1',
     shareRateLimit: { max: 5, windowS: 60 },
   })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
@@ -124,41 +126,50 @@ describe('V1-nice share links — management', () => {
 })
 
 describe('V1-nice share links — public resolve', () => {
-  it('resolves to the latest VALID position (invalid newest fix excluded), no-store', async () => {
-    const { token } = (await (await postJson(`/v1/devices/${devId}/shares`, t1Token, { ttlHours: 24 })).json()) as { token: string }
-    const res = await pub(`/v1/public/share/${token}`)
+  it('exposes the link LABEL (never the device name) + latest VALID position, no-store', async () => {
+    const { token } = (await (await postJson(`/v1/devices/${devId}/shares`, t1Token, { ttlHours: 24, label: 'Track me' })).json()) as { token: string }
+    const res = await pub(`/v1/public/share/${token}`, '203.0.113.10')
     expect(res.status).toBe(200)
     expect(res.headers.get('cache-control')).toBe('no-store')
-    const view = (await res.json()) as { deviceLabel: string; position: { fixTime: string; speedKph: number } | null }
-    expect(view.deviceLabel).toBe('Courier Van')
+    const view = (await res.json()) as Record<string, unknown> & { label: string | null; position: { fixTime: string; speedKph: number } | null }
+    expect(view.label).toBe('Track me')
+    // the device's internal name must NOT leak to the public payload (review MED — PII)
+    expect(JSON.stringify(view)).not.toContain('Courier Van')
+    expect(view).not.toHaveProperty('deviceLabel')
     // sec 30 is the newest VALID fix; sec 40 (invalid) must NOT be returned
     expect(view.position!.fixTime).toBe(new Date(T0.getTime() + 30_000).toISOString())
     expect(view.position!.speedKph).toBe(42)
+    // an unlabeled share exposes label:null (still no device name)
+    const { token: t2 } = (await (await postJson(`/v1/devices/${devId}/shares`, t1Token, { ttlHours: 24 })).json()) as { token: string }
+    expect(((await (await pub(`/v1/public/share/${t2}`, '203.0.113.11')).json()) as { label: string | null }).label).toBeNull()
   })
 
   it('404s on a malformed token and an unknown (well-formed) token', async () => {
-    expect((await pub('/v1/public/share/not-a-token')).status).toBe(404)
-    expect((await pub(`/v1/public/share/${'a'.repeat(64)}`)).status).toBe(404)
+    expect((await pub('/v1/public/share/not-a-token', '203.0.113.12')).status).toBe(404)
+    expect((await pub(`/v1/public/share/${'a'.repeat(64)}`, '203.0.113.12')).status).toBe(404)
   })
 
-  it('404s after the link is revoked (enforced in SQL)', async () => {
+  it('404s after the link is revoked (enforced in the resolve query)', async () => {
     const { token, view } = (await (await postJson(`/v1/devices/${devId}/shares`, t1Token, { ttlHours: 24 })).json()) as { token: string; view: { id: string } }
-    expect((await pub(`/v1/public/share/${token}`)).status).toBe(200)
+    expect((await pub(`/v1/public/share/${token}`, '203.0.113.13')).status).toBe(200)
     expect((await authed(`/v1/shares/${view.id}`, t1Token, 'DELETE')).status).toBe(200)
-    expect((await pub(`/v1/public/share/${token}`)).status).toBe(404)
+    expect((await pub(`/v1/public/share/${token}`, '203.0.113.13')).status).toBe(404)
   })
 
   it('404s once expired (expiresAt in the past)', async () => {
     const { token, view } = (await (await postJson(`/v1/devices/${devId}/shares`, t1Token, { ttlHours: 1 })).json()) as { token: string; view: { id: string } }
     await pool.query(`UPDATE share_links SET "expiresAt" = now() - interval '1 hour' WHERE id=$1`, [view.id])
-    expect((await pub(`/v1/public/share/${token}`)).status).toBe(404)
+    expect((await pub(`/v1/public/share/${token}`, '203.0.113.14')).status).toBe(404)
   })
 
-  it('rate-limits a single token (429 past the window budget)', async () => {
+  it('rate-limits per CLIENT IP (429 past the window budget); a different IP is unaffected', async () => {
     const { token } = (await (await postJson(`/v1/devices/${devId}/shares`, t1Token, { ttlHours: 24 })).json()) as { token: string }
+    const attacker = '198.51.100.7'
     const codes: number[] = []
-    for (let i = 0; i < 7; i++) codes.push((await pub(`/v1/public/share/${token}`)).status)
-    expect(codes.filter((c) => c === 200).length).toBe(5) // max
+    for (let i = 0; i < 7; i++) codes.push((await pub(`/v1/public/share/${token}`, attacker)).status)
+    expect(codes.filter((c) => c === 200).length).toBe(5) // max per IP
     expect(codes).toContain(429)
+    // the SAME token from a DIFFERENT IP still resolves — legit viewers don't share a bucket
+    expect((await pub(`/v1/public/share/${token}`, '198.51.100.8')).status).toBe(200)
   })
 })

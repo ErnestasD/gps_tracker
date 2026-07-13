@@ -330,9 +330,13 @@ export interface ShareLinkView {
   revokedAt: string | null
   createdAt: string
 }
-/** What the PUBLIC (no-auth) share endpoint returns — only the shared device, nothing else. */
+/**
+ * What the PUBLIC (no-auth) share endpoint returns — deliberately minimal. `label` is the
+ * OPERATOR-CHOSEN public label for the link (null if unset); the device's internal name is NEVER
+ * exposed (it commonly carries PII/plates the minting user didn't mean to publish — review MED).
+ */
 export interface PublicShareView {
-  deviceLabel: string
+  label: string | null
   expiresAt: string
   position: {
     lat: number

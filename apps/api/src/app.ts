@@ -97,7 +97,9 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
       db: deps.db,
       redis: deps.redis,
       askRateLimit: deps.askRateLimit ?? { max: 10, windowS: 60 },
-      shareRateLimit: deps.shareRateLimit ?? { max: 60, windowS: 60 },
+      shareRateLimit: deps.shareRateLimit ?? { max: 300, windowS: 60 },
+      getRemoteAddr,
+      trustProxy: deps.trustProxy,
       ...(deps.pool !== undefined ? { pool: deps.pool } : {}),
     }),
   )

@@ -36,11 +36,13 @@ export interface CreatedShareLink {
   token: string
   view: ShareLinkView
 }
-/** The subset the public endpoint needs: which device (in which tenant) the token grants. */
+/** The subset the public endpoint needs: which device (in which tenant) the token grants,
+ *  plus the operator-chosen public label (never the device's internal name). */
 export interface ShareLinkResolved {
   tenantId: string
   deviceId: bigint
   expiresAt: string
+  label: string | null
 }
 
 export interface ShareLinkRepo {
@@ -114,11 +116,13 @@ export function createShareLinkRepo(prisma: PrismaClient, audit: AuditRepo): Sha
       return true
     },
     resolveByHash: async (hash) => {
-      // expiry + revoke enforced in the query — a stale hash never resolves
+      // expiry + revoke enforced in the query — a revoked/expired hash never resolves. NB: the
+      // `expires_at > now` bound is the API server's clock (Prisma binds `new Date()`), consistent
+      // with creation which used the same clock; it is NOT the DB's now() despite being a filter.
       const row = await prisma.shareLink.findFirst({
         where: { tokenHash: hash, revokedAt: null, expiresAt: { gt: new Date() } },
       })
-      return row === null ? null : { tenantId: row.tenantId, deviceId: row.deviceId, expiresAt: row.expiresAt.toISOString() }
+      return row === null ? null : { tenantId: row.tenantId, deviceId: row.deviceId, expiresAt: row.expiresAt.toISOString(), label: row.label }
     },
   }
 }

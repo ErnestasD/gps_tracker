@@ -77,7 +77,7 @@ export function SharePage({ token }: { token: string }) {
     <div className="flex h-screen flex-col bg-bg text-text">
       <header className="flex items-center justify-between border-b border-line px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="font-semibold">{share?.deviceLabel ?? t('share.title')}</span>
+          <span className="font-semibold">{share?.label ?? t('share.title')}</span>
           {exp && (
             <span className="text-xs text-muted">
               {exp.expired ? t('devices.share.expired') : t(`devices.share.expiresIn.${exp.unit}`, { n: exp.value })}

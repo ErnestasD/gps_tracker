@@ -18,7 +18,7 @@ export interface CreatedShare {
 }
 /** The public (no-auth) share payload — mirrors packages/shared PublicShareView. */
 export interface PublicShare {
-  deviceLabel: string
+  label: string | null
   expiresAt: string
   position: { lat: number; lon: number; fixTime: string; speedKph: number | null; course: number | null } | null
 }
