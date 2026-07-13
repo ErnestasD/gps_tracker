@@ -22,3 +22,8 @@ gates:
 hooks:
 	git config core.hooksPath scripts/githooks
 	@echo "git hooks path -> scripts/githooks"
+
+.PHONY: alerts-test
+alerts-test: ## W7-S1: validate + unit-test the Prometheus alert rules (needs Docker)
+	docker run --rm --entrypoint promtool -v "$(PWD)/infra/prometheus":/w prom/prometheus:v3.1.0 check rules /w/alerts.yml
+	docker run --rm --entrypoint promtool -v "$(PWD)/infra/prometheus":/w prom/prometheus:v3.1.0 test rules /w/alerts.test.yml
