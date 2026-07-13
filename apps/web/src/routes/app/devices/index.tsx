@@ -11,6 +11,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
 import { eraseDevice } from '@/lib/gdpr'
 import { CommandsCard } from '@/routes/app/devices/commands'
+import { HealthCard } from '@/routes/app/devices/health'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
   ODOMETER_SOURCES,
@@ -37,6 +38,7 @@ export function DevicesPage() {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles })
   const [retireError, setRetireError] = useState<string | null>(null)
   const [commandsForId, setCommandsForId] = useState<string | null>(null)
+  const [healthForId, setHealthForId] = useState<string | null>(null)
   // GDPR erase (E08-4): two-step confirm per device id, auto-disarmed after 6 s so an
   // armed irreversible button never lingers (review LOW)
   const [eraseArmedId, setEraseArmedId] = useState<string | null>(null)
@@ -52,6 +54,7 @@ export function DevicesPage() {
   // derive the panel's device from the LIVE list (never a snapshot): a retire or refetch
   // closes/updates the panel instead of leaving a stale device you can still command
   const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
+  const healthFor: Device | null = (devices.data ?? []).find((d) => d.id === healthForId && d.retiredAt === null) ?? null
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
@@ -164,6 +167,14 @@ export function DevicesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              data-testid={`health-${d.imei}`}
+                              onClick={() => setHealthForId((cur) => (cur === d.id ? null : d.id))}
+                            >
+                              {t('devices.healthBtn')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               data-testid={`commands-${d.imei}`}
                               onClick={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
                             >
@@ -195,6 +206,7 @@ export function DevicesPage() {
 
       {/* key remounts the panel per device — armed/text state must NEVER survive a device
           switch (a confirm armed for device A must not send with one click on device B) */}
+      {healthFor !== null && <HealthCard key={healthFor.id} device={healthFor} />}
       {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
     </div>
   )

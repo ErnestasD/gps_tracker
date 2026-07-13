@@ -92,6 +92,14 @@ export interface FuelSampleView {
   liters: number | null
 }
 
+/** One device-health sample (V1-nice): GSM signal 0–5, external + battery voltage (V). */
+export interface HealthSampleView {
+  fixTime: string // ISO
+  gsm: number | null
+  extV: number | null
+  battV: number | null
+}
+
 /** An event as returned by the read API (E05-2/4 pipeline output, serialized). */
 export interface EventView {
   id: string // bigint as string — also the pagination cursor

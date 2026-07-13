@@ -315,7 +315,19 @@
     "erase": "Usuń dane",
     "eraseConfirm": "Potwierdź usunięcie — nieodwracalne",
     "eraseQueued": "Usuwanie danych zaplanowane. Historia, trasy, zdarzenia i polecenia zostaną trwale usunięte.",
-    "eraseError": "Żądanie usunięcia nie powiodło się. Urządzenie musi być wycofane od co najmniej godziny."
+    "eraseError": "Żądanie usunięcia nie powiodło się. Urządzenie musi być wycofane od co najmniej godziny.",
+    "healthBtn": "Stan",
+    "health": {
+      "title": "Stan — {{name}}",
+      "gsm": "Sygnał GSM",
+      "extV": "Napięcie zewnętrzne",
+      "battV": "Bateria",
+      "lastSeen": "Ostatnio widziano",
+      "firmware": "Oprogramowanie",
+      "fwUnknown": "nieznane (wyślij getver)",
+      "empty": "Brak danych o stanie — urządzenie zgłasza GSM/napięcie podczas pracy.",
+      "loadError": "Nie udało się wczytać stanu."
+    }
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",
