@@ -315,7 +315,19 @@
     "erase": "Ištrinti duomenis",
     "eraseConfirm": "Patvirtinti trynimą — negrįžtama",
     "eraseQueued": "Duomenų trynimas suplanuotas. Istorija, kelionės, įvykiai ir komandos bus negrįžtamai ištrinti.",
-    "eraseError": "Trynimo užklausa nepavyko. Įrenginys turi būti išregistruotas bent prieš valandą."
+    "eraseError": "Trynimo užklausa nepavyko. Įrenginys turi būti išregistruotas bent prieš valandą.",
+    "healthBtn": "Būklė",
+    "health": {
+      "title": "Būklė — {{name}}",
+      "gsm": "GSM signalas",
+      "extV": "Išorinė įtampa",
+      "battV": "Baterija",
+      "lastSeen": "Paskutinį kartą",
+      "firmware": "Programinė įranga",
+      "fwUnknown": "nežinoma (siųsk getver)",
+      "empty": "Būklės duomenų dar nėra — įrenginys praneša GSM/įtampą veikdamas.",
+      "loadError": "Nepavyko įkelti būklės."
+    }
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",

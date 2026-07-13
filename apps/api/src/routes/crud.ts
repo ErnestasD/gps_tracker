@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readPositions, type Db, type Pool } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readPositions, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -316,6 +316,25 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           ...(q('to') !== undefined ? { to: q('to')! } : {}),
           ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
         }))
+      } },
+    // device-health series + summary (V1-nice) — GSM/voltage trend, last-seen, firmware
+    { method: 'get', path: '/v1/devices/:id/health', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
+        const q = c.req.query.bind(c.req)
+        const series = await readHealthSeries(deps.pool, device.id, {
+          ...(q('from') !== undefined ? { from: q('from')! } : {}),
+          ...(q('to') !== undefined ? { to: q('to')! } : {}),
+          ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
+        })
+        // firmware = newest acked getver response (E08-2 commands)
+        const cmds = await db.commands.listForDevice(scope, device.id)
+        const firmware = cmds.find((cmd) => cmd.text.trim().toLowerCase() === 'getver' && cmd.status === 'acked' && cmd.response !== null)?.response ?? null
+        const latest = series.length > 0 ? series[series.length - 1] : null
+        return json(c, { series, latest, firmware, lastSeen: latest?.fixTime ?? null })
       } },
     { method: 'get', path: '/v1/devices/:id/trips', scopeClass: 'account', entity: 'device', shape: 'item',
       handler: async (c) => {

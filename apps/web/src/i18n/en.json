@@ -315,7 +315,19 @@
     "erase": "Erase data",
     "eraseConfirm": "Confirm erase — irreversible",
     "eraseQueued": "Data erase queued. History, trips, events and commands will be permanently deleted.",
-    "eraseError": "Erase request failed. The device must be retired for at least an hour first."
+    "eraseError": "Erase request failed. The device must be retired for at least an hour first.",
+    "healthBtn": "Health",
+    "health": {
+      "title": "Health — {{name}}",
+      "gsm": "GSM signal",
+      "extV": "External voltage",
+      "battV": "Battery",
+      "lastSeen": "Last seen",
+      "firmware": "Firmware",
+      "fwUnknown": "unknown (send getver)",
+      "empty": "No health data yet — the device reports GSM/voltage as it runs.",
+      "loadError": "Could not load health."
+    }
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",

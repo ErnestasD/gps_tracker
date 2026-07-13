@@ -315,7 +315,19 @@
     "erase": "Daten löschen",
     "eraseConfirm": "Löschen bestätigen — unwiderruflich",
     "eraseQueued": "Datenlöschung eingeplant. Verlauf, Fahrten, Ereignisse und Befehle werden dauerhaft gelöscht.",
-    "eraseError": "Löschanfrage fehlgeschlagen. Das Gerät muss zuerst mindestens eine Stunde stillgelegt sein."
+    "eraseError": "Löschanfrage fehlgeschlagen. Das Gerät muss zuerst mindestens eine Stunde stillgelegt sein.",
+    "healthBtn": "Zustand",
+    "health": {
+      "title": "Zustand — {{name}}",
+      "gsm": "GSM-Signal",
+      "extV": "Externe Spannung",
+      "battV": "Batterie",
+      "lastSeen": "Zuletzt gesehen",
+      "firmware": "Firmware",
+      "fwUnknown": "unbekannt (getver senden)",
+      "empty": "Noch keine Zustandsdaten — das Gerät meldet GSM/Spannung im Betrieb.",
+      "loadError": "Zustand konnte nicht geladen werden."
+    }
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",

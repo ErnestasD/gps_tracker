@@ -22,6 +22,7 @@ export { type TripReadRepo, type TripListOpts } from './repos/trips.js'
 export { type GeofenceRepo, type GeofenceCreate, type GeofenceUpdate, GeofenceInvalidError, GeofenceTooLargeError } from './repos/geofences.js'
 export { readPositions, type PositionsOpts } from './positions.js'
 export { readFuelSeries, type FuelOpts } from './fuel.js'
+export { readHealthSeries, type HealthOpts } from './health.js'
 export { erasePositions } from './gdpr.js'
 export {
   runReport,
