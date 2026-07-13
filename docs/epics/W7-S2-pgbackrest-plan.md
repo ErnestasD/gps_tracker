@@ -32,6 +32,7 @@
 ## Rizikos
 
 - **Live pg restart** archive_mode įjungimui — staging demo ~30s downtime (dokumentuota; prod = maintenance window arba nuo pradžių įjungta).
+- **archive_mode=on outage vektorius**: repo pilnas/nepasiekiamas → archive-push fail → WAL kaupiasi pg_wal → diskas pilnas → pg sustoja. Alertai WalArchiveFailing/WalDirGrowing + first-response (archive_command=/bin/true) runbook'e.
 - **Storage Box BLOCKED**: lokalus repo tos pačios mašinos diske = NE tikras disaster recovery (mašina krenta → repo dingsta). Storage Box SFTP = privaloma prod prieš pilotus; dokumentuota kaip founder-gated blocker.
 - **timescaledb + PITR**: hypertable chunk'ai = normalūs pg failai, pgBackRest juos backup'ina kaip bet ką; jokio specialaus handling (patvirtinta drill'e).
 - **Spilo/Patroni**: image ha, bet single-node standalone (ne Patroni cluster) — ALTER SYSTEM archive_command veiks; jei Patroni perrašytų, fallback = conf drop-in per SPILO env (dokumentuota).

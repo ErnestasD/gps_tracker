@@ -32,11 +32,17 @@ created, `pgbackrest check` green (WAL segment archived successfully).
 pgBackRest streams WAL continuously via `archive_command`; add periodic base backups:
 
 ```cron
-# /etc/cron.d/orbetra-pgbackrest  (server)
-# Sunday 02:15 UTC — full; other days 02:15 — incremental. retention keeps 2 fulls.
-15 2 * * 0 root docker exec -u postgres orbetra-pg-1 env TYPE=full sh /etc/pgbackrest/backup.sh
-15 2 * * 1-6 root docker exec -u postgres orbetra-pg-1 env TYPE=incr sh /etc/pgbackrest/backup.sh
+# /etc/cron.d/orbetra-pgbackrest  (server) — cron has a minimal PATH, so use ABSOLUTE
+# docker (verify: `command -v docker`) and log output; a bare `docker` silently fails.
+PATH=/usr/local/bin:/usr/bin:/bin
+# Sunday 02:15 UTC — full; other days — incremental. retention keeps 2 fulls + their WAL.
+15 2 * * 0 root docker exec -u postgres orbetra-pg-1 env TYPE=full sh /etc/pgbackrest/backup.sh >> /var/log/pgbackrest-cron.log 2>&1
+15 2 * * 1-6 root docker exec -u postgres orbetra-pg-1 env TYPE=incr sh /etc/pgbackrest/backup.sh >> /var/log/pgbackrest-cron.log 2>&1
 ```
+
+**Recoverable window:** `repo1-retention-full=2` keeps the last 2 full backups + all WAL
+back to the older one. With 1 full/week that's ≈ up to 2 weeks of PITR. Want deeper —
+raise retention (and size the repo/Storage Box accordingly).
 
 ## Restore drill (AC: RTO < 30 min DEMONSTRATED)
 
@@ -54,8 +60,29 @@ sh /opt/orbetra/app/infra/pgbackrest/restore-drill.sh
 ```
 
 RTO scales with database size + WAL replay depth. 4 s at 50 MB; a production DB (tens of
-GB of positions) restores in minutes, still far under 30 min. Re-run the drill after the
-DB grows and re-record the number; over a Storage Box, add network-transfer time.
+GB of positions) restores in minutes, still far under 30 min. **This 4 s is data-restore
+time only** — real service RTO also includes detection, decision, provisioning a target
+host, and app cutover. Re-run the drill after the DB grows and re-record; over a Storage
+Box, add network-transfer time. The drill now asserts restored row counts against a LIVE
+baseline (non-zero + ≥ baseline) and exits non-zero on mismatch — a green drill means the
+DATA came back, not just that a process ran.
+
+## ⚠ archive_mode=on failure mode (READ THIS)
+
+Enabling WAL archiving means **live write availability now depends on `archive-push`
+succeeding**. If the repo fills or (after the Storage Box swap) becomes unreachable,
+`archive_command` fails, WAL accumulates in `pg_wal`, the disk fills, and PostgreSQL
+**stops accepting writes** — taking ingest down with it.
+
+Alerts cover it: `WalArchiveFailing` (critical, pg_stat_archiver failure rate) and
+`WalDirGrowing` (warning, no WAL archived >15m), plus `DiskFillingUp`. **First response**
+if archiving is broken and the disk is climbing:
+```sh
+docker exec orbetra-pg-1 psql -U postgres -c "ALTER SYSTEM SET archive_command = '/bin/true';"
+docker exec orbetra-pg-1 psql -U postgres -c "SELECT pg_reload_conf();"
+```
+This keeps the DB up (WAL recycles) at the cost of a gap in archived WAL — fix the repo,
+then restore archiving and take a fresh full backup to re-anchor PITR.
 
 ## Manual point-in-time restore (real recovery)
 

@@ -95,6 +95,18 @@ services:
     ports:
       - '127.0.0.1:9100:9100'
 
+  # postgres metrics (pg_stat_archiver health, pg_wal size) — W7-S2: archive_mode=on makes
+  # write availability depend on archive-push succeeding, so we MUST watch it.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.16.0
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:${PG_PASSWORD:-orbetra_dev}@pg:5432/orbetra?sslmode=disable"
+    ports:
+      - '127.0.0.1:9187:9187'
+    depends_on:
+      pg:
+        condition: service_healthy
+
   # TLS cert-expiry probing for CertExpiringSoon
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.26.0

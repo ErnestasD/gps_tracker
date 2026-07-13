@@ -65,6 +65,27 @@ groups:
           summary: "Sockets paused by backpressure for 10m"
           description: "ingest_paused_sockets > 0 sustained — a shard is not draining. Check worker throughput."
 
+  - name: backups
+    rules:
+      # archive_mode=on (W7-S2): if archive-push fails, WAL piles up in pg_wal → disk fills
+      # → PG stops accepting writes. Watch the archiver's failure counter directly, not just
+      # the whole-disk alert (which fires late and never names the cause).
+      - alert: WalArchiveFailing
+        expr: rate(pg_stat_archiver_failed_count[5m]) > 0
+        for: 15m
+        labels: { severity: critical, component: backups }
+        annotations:
+          summary: "WAL archiving is FAILING"
+          description: "pg_stat_archiver failed_count is rising — archive-push can't reach the repo. WAL will accumulate in pg_wal and eventually stop writes. First response: set archive_command to /bin/true to keep the DB up, then fix the repo (see w7-pgbackrest runbook)."
+      # WAL backing up locally is the early symptom, independent of the whole root FS.
+      - alert: WalDirGrowing
+        expr: pg_stat_archiver_last_archived_time != 0 and (time() - pg_stat_archiver_last_archived_time) > 900
+        for: 15m
+        labels: { severity: warning, component: backups }
+        annotations:
+          summary: "No WAL archived in >15m"
+          description: "The newest archived WAL segment is >15m old — archiving may be stuck. Check pgbackrest + repo reachability."
+
   - name: infra
     rules:
       - alert: TargetDown

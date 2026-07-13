@@ -158,3 +158,27 @@ tests:
       - eval_time: 61m
         alertname: CertExpiringSoon
         exp_alerts: []
+
+  # WAL archiving failing → critical
+  - interval: 1m
+    input_series:
+      - series: 'pg_stat_archiver_failed_count'
+        values: '0+2x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: WalArchiveFailing
+        exp_alerts:
+          - exp_labels: { severity: critical, component: backups }
+            exp_annotations:
+              summary: "WAL archiving is FAILING"
+              description: "pg_stat_archiver failed_count is rising — archive-push can't reach the repo. WAL will accumulate in pg_wal and eventually stop writes. First response: set archive_command to /bin/true to keep the DB up, then fix the repo (see w7-pgbackrest runbook)."
+
+  # healthy archiver (no failures) → silent
+  - interval: 1m
+    input_series:
+      - series: 'pg_stat_archiver_failed_count'
+        values: '0+0x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: WalArchiveFailing
+        exp_alerts: []
