@@ -14,6 +14,8 @@ services:
       - '127.0.0.1:5432:5432'
     volumes:
       - pg_data:/home/postgres/pgdata
+      - pgbackrest_repo:/var/lib/pgbackrest
+      - ../pgbackrest:/etc/pgbackrest:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d orbetra']
       interval: 5s
@@ -132,6 +134,7 @@ services:
 
 volumes:
   am_data:
+  pgbackrest_repo:
   pg_data:
   redis_data:
   photon_data:
