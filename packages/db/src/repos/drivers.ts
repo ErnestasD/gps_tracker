@@ -1,0 +1,105 @@
+import type { Driver, PrismaClient } from '@prisma/client'
+
+import type { AuditRepo } from './audit.js'
+import type { Actor, Scope } from '../scope.js'
+import { scopedWhere } from '../scope.js'
+
+export interface DriverCreate {
+  accountId: string
+  name: string
+  licenseNo?: string | null
+  ibutton?: string | null
+  phone?: string | null
+  notes?: string | null
+  active?: boolean
+}
+export interface DriverUpdate {
+  name?: string
+  licenseNo?: string | null
+  ibutton?: string | null
+  phone?: string | null
+  notes?: string | null
+  active?: boolean
+}
+
+/**
+ * iButton is unique WITHIN a tenant. A create/update colliding with another driver's key would
+ * otherwise surface a raw Prisma P2002 as a 500. The repo catches it and throws this domain error
+ * so the API returns 409 without revealing which driver holds the key (mirrors DuplicateImeiError).
+ */
+export class DriverIbuttonConflictError extends Error {
+  constructor(readonly ibutton: string) {
+    super(`iButton already assigned: ${ibutton}`)
+    this.name = 'DriverIbuttonConflictError'
+  }
+}
+/** Prisma unique-violation code, duck-typed (avoids importing @prisma/client here). */
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002'
+}
+
+/**
+ * Driver registry (V2). Account-scoped (non-null accountId), UUID PK — like rules, but a custom
+ * repo (not generic) so the iButton unique-violation becomes a domain error the API can 409.
+ * `findByIbutton` (scoped) is for the follow-up that resolves a tapped iButton to a driver.
+ */
+export interface DriverRepo {
+  list(scope: Scope): Promise<Driver[]>
+  get(scope: Scope, id: string): Promise<Driver | null>
+  findByIbutton(scope: Scope, ibutton: string): Promise<Driver | null>
+  create(scope: Scope, actor: Actor, data: DriverCreate): Promise<Driver>
+  update(scope: Scope, actor: Actor, id: string, data: DriverUpdate): Promise<Driver | null>
+  remove(scope: Scope, actor: Actor, id: string): Promise<boolean>
+}
+
+export function createDriverRepo(prisma: PrismaClient, audit: AuditRepo): DriverRepo {
+  const scopedById = (scope: Scope, id: string): Promise<Driver | null> =>
+    prisma.driver.findFirst({ where: { ...scopedWhere(scope), id } })
+  return {
+    list: (scope) => prisma.driver.findMany({ where: scopedWhere(scope), orderBy: { createdAt: 'desc' } }),
+    get: (scope, id) => scopedById(scope, id),
+    findByIbutton: (scope, ibutton) => prisma.driver.findFirst({ where: { ...scopedWhere(scope), ibutton } }),
+    create: async (scope, actor, data) => {
+      let row
+      try {
+        row = await prisma.driver.create({
+          data: {
+            tenantId: scope.tenantId,
+            accountId: data.accountId,
+            name: data.name,
+            licenseNo: data.licenseNo ?? null,
+            ibutton: data.ibutton ?? null,
+            phone: data.phone ?? null,
+            notes: data.notes ?? null,
+            ...(data.active !== undefined ? { active: data.active } : {}),
+          },
+        })
+      } catch (err) {
+        if (isUniqueViolation(err) && data.ibutton != null) throw new DriverIbuttonConflictError(data.ibutton)
+        throw err
+      }
+      await audit.record(scope, actor, { action: 'create', entity: 'driver', entityId: row.id, after: row })
+      return row
+    },
+    update: async (scope, actor, id, data) => {
+      const before = await scopedById(scope, id)
+      if (before === null) return null
+      let row
+      try {
+        row = await prisma.driver.update({ where: { id: before.id }, data })
+      } catch (err) {
+        if (isUniqueViolation(err) && data.ibutton != null) throw new DriverIbuttonConflictError(data.ibutton)
+        throw err
+      }
+      await audit.record(scope, actor, { action: 'update', entity: 'driver', entityId: id, before, after: row })
+      return row
+    },
+    remove: async (scope, actor, id) => {
+      const before = await scopedById(scope, id)
+      if (before === null) return false
+      await prisma.driver.delete({ where: { id: before.id } })
+      await audit.record(scope, actor, { action: 'delete', entity: 'driver', entityId: id, before })
+      return true
+    },
+  }
+}

@@ -22,6 +22,7 @@ import { ReportsPage } from '@/routes/app/reports'
 import { RulesPage } from '@/routes/app/rules'
 import { WebhooksPage } from '@/routes/app/webhooks'
 import { DevicesPage } from '@/routes/app/devices/index'
+import { DriversPage } from '@/routes/app/drivers'
 import { SettingsPage } from '@/routes/app/settings'
 import { SharePage } from '@/routes/share/index'
 
@@ -92,6 +93,12 @@ const devicesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/devices',
   component: DevicesPage,
+})
+
+const driversRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/drivers',
+  component: DriversPage,
 })
 
 const brandingRoute = createRoute({
@@ -170,7 +177,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   shareRoute,
-  appRoute.addChildren([mapRoute, devicesRoute, tripsRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([mapRoute, devicesRoute, driversRoute, tripsRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

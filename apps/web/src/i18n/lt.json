@@ -36,7 +36,8 @@
     "settings": "Nustatymai",
     "apiKeys": "API raktai",
     "webhooks": "Webhooks",
-    "platform": "Platforma"
+    "platform": "Platforma",
+    "drivers": "Vairuotojai"
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -510,5 +511,31 @@
     "expiredTitle": "Nuoroda nebegalioja",
     "expiredBody": "Ši sekimo nuoroda nebeaktyvi.",
     "noFix": "Laukiama pirmos tikslios pozicijos…"
+  },
+  "drivers": {
+    "title": "Vairuotojai",
+    "list": "Vairuotojų sąrašas",
+    "addTitle": "Pridėti vairuotoją",
+    "editTitle": "Redaguoti vairuotoją",
+    "name": "Vardas",
+    "license": "Pažymėjimo nr.",
+    "ibutton": "iButton / RFID",
+    "phone": "Telefonas",
+    "account": "Paskyra",
+    "status": "Būsena",
+    "active": "Aktyvus",
+    "inactive": "Neaktyvus",
+    "create": "Pridėti",
+    "save": "Išsaugoti",
+    "cancel": "Atšaukti",
+    "edit": "Redaguoti",
+    "delete": "Ištrinti",
+    "loading": "Kraunama…",
+    "empty": "Vairuotojų dar nėra.",
+    "loadError": "Nepavyko įkelti vairuotojų.",
+    "saveError": "Nepavyko išsaugoti vairuotojo.",
+    "nameRequired": "Vardas privalomas.",
+    "ibuttonInvalid": "iButton turi būti 8–32 šešioliktainiai simboliai.",
+    "ibuttonTaken": "Šis iButton jau priskirtas kitam vairuotojui."
   }
 }

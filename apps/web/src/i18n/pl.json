@@ -36,7 +36,8 @@
     "settings": "Ustawienia",
     "apiKeys": "Klucze API",
     "webhooks": "Webhooki",
-    "platform": "Platforma"
+    "platform": "Platforma",
+    "drivers": "Kierowcy"
   },
   "branding": {
     "title": "Marka",
@@ -510,5 +511,31 @@
     "expiredTitle": "Link wygasł",
     "expiredBody": "Ten link śledzenia nie jest już aktywny.",
     "noFix": "Oczekiwanie na pierwszą prawidłową pozycję…"
+  },
+  "drivers": {
+    "title": "Kierowcy",
+    "list": "Lista kierowców",
+    "addTitle": "Dodaj kierowcę",
+    "editTitle": "Edytuj kierowcę",
+    "name": "Imię i nazwisko",
+    "license": "Nr prawa jazdy",
+    "ibutton": "iButton / RFID",
+    "phone": "Telefon",
+    "account": "Konto",
+    "status": "Status",
+    "active": "Aktywny",
+    "inactive": "Nieaktywny",
+    "create": "Dodaj",
+    "save": "Zapisz",
+    "cancel": "Anuluj",
+    "edit": "Edytuj",
+    "delete": "Usuń",
+    "loading": "Ładowanie…",
+    "empty": "Brak kierowców.",
+    "loadError": "Nie udało się wczytać kierowców.",
+    "saveError": "Nie udało się zapisać kierowcy.",
+    "nameRequired": "Imię jest wymagane.",
+    "ibuttonInvalid": "iButton musi mieć 8–32 znaki szesnastkowe.",
+    "ibuttonTaken": "Ten iButton jest już przypisany do innego kierowcy."
   }
 }

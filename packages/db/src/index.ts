@@ -8,6 +8,7 @@ export { type Scope, type Actor, scopedWhere, NotInScopeError } from './scope.js
 export { type AccountRepo, type AccountCreate, type AccountUpdate } from './repos/accounts.js'
 export { type UserRepo, type UserView, type UserCreate, type UserUpdate } from './repos/users.js'
 export { DuplicateImeiError, type DeviceRepo, type DeviceCreate, type DeviceUpdate } from './repos/devices.js'
+export { DriverIbuttonConflictError, type DriverRepo, type DriverCreate, type DriverUpdate } from './repos/drivers.js'
 export { type CommandRepo, type CommandView, type CommandCreate } from './repos/commands.js'
 export { type ExportRepo, type ExportJobView } from './repos/exports.js'
 export { type LeadRepo, type LeadView, type LeadCreate } from './repos/leads.js'
