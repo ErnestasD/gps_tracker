@@ -54,7 +54,7 @@ export function DevicesPage() {
   // derive the panel's device from the LIVE list (never a snapshot): a retire or refetch
   // closes/updates the panel instead of leaving a stale device you can still command
   const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
-  const healthFor: Device | null = (devices.data ?? []).find((d) => d.id === healthForId) ?? null
+  const healthFor: Device | null = (devices.data ?? []).find((d) => d.id === healthForId && d.retiredAt === null) ?? null
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">

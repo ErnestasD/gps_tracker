@@ -6,11 +6,18 @@ import type { HealthSampleView } from '@orbetra/shared'
  * Scoped device-health series (V1-nice: the "#1 TSP support-call deflector"). Raw SQL over
  * positions (rule 1) — the CALLER scope-gates the device (like readFuelSeries). All fields
  * already flow through the pipeline into attrs (wiki FMB120 params):
- *   GSM Signal (AVL 21, 0–5) · External Voltage (AVL 66, V ×0.001) · Battery Voltage (AVL 67, V ×0.001)
+ *   GSM Signal (AVL 21, 1–5) · External Voltage (AVL 66, V ×0.001) · Battery Voltage (AVL 67, V ×0.001)
  * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
  * normalize() stores these under the dictionary NAME, falling back to io_<id> on a
  * name collision, so the reader coalesces both. Voltages are raw mV — scaled to V here.
- * jsonb values are coerced defensively in JS (a ::numeric cast on garbage would 500).
+ * (AVL 168 is ALSO named "Battery Voltage" but is likewise mV, so ×0.001 holds whichever
+ * key wins the collision.) jsonb values are coerced defensively in JS (a ::numeric cast on
+ * garbage would 500).
+ *
+ * Rows are selected NEWEST-first (DESC + LIMIT) then reversed to ascending for the chart, so
+ * with no from/to the window is the most-recent `limit` samples — NOT the earliest. The API
+ * derives the "latest"/"last seen" headline from the tail of this series; an ASC+LIMIT scan
+ * would pin the headline to the ~10 000th-OLDEST sample once a device exceeds `limit` points.
  */
 export interface HealthOpts {
   from?: string
@@ -51,11 +58,13 @@ export async function readHealthSeries(pool: Pool, deviceId: bigint, opts: Healt
             COALESCE(attrs->>'External Voltage', attrs->>'io_66') AS ext_mv,
             COALESCE(attrs->>'Battery Voltage', attrs->>'io_67') AS bat_mv
      FROM positions WHERE ${where.join(' AND ')}
-     ORDER BY fix_time ASC, rec_hash ASC LIMIT ${limit}`,
+     ORDER BY fix_time DESC, rec_hash DESC LIMIT ${limit}`,
     params,
   )
   const out: HealthSampleView[] = []
-  for (const r of res.rows) {
+  // DESC-selected newest rows → reverse to ascending so the chart reads left-to-right and
+  // the caller's series[last] is the genuinely-newest sample (see header note).
+  for (const r of res.rows.reverse()) {
     const gsm = num(r.gsm)
     const extMv = num(r.ext_mv)
     const batMv = num(r.bat_mv)
