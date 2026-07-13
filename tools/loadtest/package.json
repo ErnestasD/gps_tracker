@@ -1,0 +1,22 @@
+{
+  "name": "@orbetra/loadtest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "eslint": "^9.30.0",
+    "testcontainers": "^11.7.1",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "@orbetra/ingest": "workspace:*",
+    "@orbetra/simulator": "workspace:*",
+    "ioredis": "^5.11.1"
+  }
+}
