@@ -36,7 +36,8 @@
     "settings": "Einstellungen",
     "apiKeys": "API-Schlüssel",
     "webhooks": "Webhooks",
-    "platform": "Plattform"
+    "platform": "Plattform",
+    "drivers": "Fahrer"
   },
   "branding": {
     "title": "Branding",
@@ -510,5 +511,31 @@
     "expiredTitle": "Link abgelaufen",
     "expiredBody": "Dieser Tracking-Link ist nicht mehr aktiv.",
     "noFix": "Warte auf die erste gültige Position…"
+  },
+  "drivers": {
+    "title": "Fahrer",
+    "list": "Fahrerliste",
+    "addTitle": "Fahrer hinzufügen",
+    "editTitle": "Fahrer bearbeiten",
+    "name": "Name",
+    "license": "Führerschein-Nr.",
+    "ibutton": "iButton / RFID",
+    "phone": "Telefon",
+    "account": "Konto",
+    "status": "Status",
+    "active": "Aktiv",
+    "inactive": "Inaktiv",
+    "create": "Hinzufügen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "loading": "Wird geladen…",
+    "empty": "Noch keine Fahrer.",
+    "loadError": "Fahrer konnten nicht geladen werden.",
+    "saveError": "Fahrer konnte nicht gespeichert werden.",
+    "nameRequired": "Name ist erforderlich.",
+    "ibuttonInvalid": "iButton muss 8–32 Hex-Zeichen haben.",
+    "ibuttonTaken": "Dieser iButton ist bereits einem anderen Fahrer zugewiesen."
   }
 }

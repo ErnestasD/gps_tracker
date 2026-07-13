@@ -314,6 +314,33 @@ export interface GeofenceView {
   createdAt: string
 }
 
+// ── driver registry (V2) ──────────────────────────────────────────────────────────────────
+// iButton/RFID key ids are hex (Dallas 1-Wire 64-bit → up to 16 hex; be generous to 32). The
+// hex charset also keeps the value injection-inert for the follow-up that puts it in Redis / SMS.
+const ibuttonSchema = z.string().regex(/^[0-9a-fA-F]{8,32}$/, 'iButton id must be 8–32 hex chars')
+export const driverCreateSchema = z.object({
+  accountId: z.string().uuid().optional(),
+  name: z.string().min(1).max(120),
+  licenseNo: z.string().max(60).nullish(),
+  ibutton: ibuttonSchema.nullish(),
+  phone: z.string().max(40).nullish(),
+  notes: z.string().max(500).nullish(),
+  active: z.boolean().optional(),
+})
+export const driverUpdateSchema = driverCreateSchema.partial().omit({ accountId: true })
+export interface DriverView {
+  id: string
+  tenantId: string
+  accountId: string
+  name: string
+  licenseNo: string | null
+  ibutton: string | null
+  phone: string | null
+  notes: string | null
+  active: boolean
+  createdAt: string
+}
+
 // ── temporary public share links (V1-nice) ────────────────────────────────────────────────
 /** Create a share link for a device. ttl capped at 30 days so a "temporary" link can't be forever. */
 export const shareCreateSchema = z.object({

@@ -36,7 +36,8 @@
     "settings": "Settings",
     "apiKeys": "API keys",
     "webhooks": "Webhooks",
-    "platform": "Platform"
+    "platform": "Platform",
+    "drivers": "Drivers"
   },
   "branding": {
     "title": "Branding",
@@ -510,5 +511,31 @@
     "expiredTitle": "Link expired",
     "expiredBody": "This tracking link is no longer active.",
     "noFix": "Waiting for the first valid position…"
+  },
+  "drivers": {
+    "title": "Drivers",
+    "list": "Driver roster",
+    "addTitle": "Add driver",
+    "editTitle": "Edit driver",
+    "name": "Name",
+    "license": "License no.",
+    "ibutton": "iButton / RFID",
+    "phone": "Phone",
+    "account": "Account",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "create": "Add",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "loading": "Loading…",
+    "empty": "No drivers yet.",
+    "loadError": "Could not load drivers.",
+    "saveError": "Could not save the driver.",
+    "nameRequired": "Name is required.",
+    "ibuttonInvalid": "iButton must be 8–32 hex characters.",
+    "ibuttonTaken": "That iButton is already assigned to another driver."
   }
 }

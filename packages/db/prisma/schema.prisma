@@ -218,6 +218,26 @@ model ShareLink {
   @@map("share_links")
 }
 
+/// Driver registry (V2). Account-scoped. `ibutton` is the driver's physical iButton/RFID key id
+/// (hex) — stored so a follow-up can resolve a tap (AVL iButton) to a driver and stamp the trip.
+/// iButton is unique WITHIN a tenant (NULLs are distinct in Postgres → many keyless drivers ok).
+model Driver {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  accountId String   @db.Uuid
+  name      String
+  licenseNo String?
+  ibutton   String?
+  phone     String?
+  notes     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@unique([tenantId, ibutton])
+  @@index([tenantId, accountId])
+  @@map("drivers")
+}
+
 model RawReject {
   id        BigInt   @id @default(autoincrement())
   imei      String?

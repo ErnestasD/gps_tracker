@@ -8,6 +8,7 @@ import { createCommandRepo, type CommandRepo } from './repos/commands.js'
 import { createExportRepo, type ExportRepo } from './repos/exports.js'
 import { createLeadRepo, type LeadRepo } from './repos/leads.js'
 import { createDeviceRepo, type DeviceRepo } from './repos/devices.js'
+import { createDriverRepo, type DriverRepo } from './repos/drivers.js'
 import { createEventRepo, type EventRepo } from './repos/events.js'
 import { createGeofenceRepo, type GeofenceRepo } from './repos/geofences.js'
 import { createProfileRepo, type ProfileRepo } from './repos/profiles.js'
@@ -34,6 +35,7 @@ export interface Db {
   accounts: AccountRepo
   users: UserRepo
   devices: DeviceRepo
+  drivers: DriverRepo
   commands: CommandRepo
   profiles: ProfileRepo
   rules: RuleRepo
@@ -61,6 +63,7 @@ export function createDb(databaseUrl: string): Db {
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),
     devices: createDeviceRepo(prisma, audit),
+    drivers: createDriverRepo(prisma, audit),
     commands: createCommandRepo(prisma, audit),
     profiles: createProfileRepo(prisma),
     rules: createRuleRepo(prisma, audit),

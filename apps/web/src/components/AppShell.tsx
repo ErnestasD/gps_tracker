@@ -8,6 +8,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Hexagon,
+  IdCard,
   KeyRound,
   LogOut,
   Map as MapIcon,
@@ -52,6 +53,7 @@ const SECTIONS: NavSection[] = [
     key: 'shell.fleet',
     items: [
       { key: 'shell.devices', icon: Car, to: '/app/devices' },
+      { key: 'shell.drivers', icon: IdCard, to: '/app/drivers' },
       { key: 'shell.trips', icon: Radio, to: '/app/trips' },
       { key: 'shell.history', icon: BarChart3, to: '/app/playback' },
     ],

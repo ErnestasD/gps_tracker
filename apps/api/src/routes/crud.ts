@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readPositions, type Db, type Pool } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readPositions, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -18,6 +18,8 @@ import {
   commandCreateSchema,
   ruleCreateSchema,
   ruleUpdateSchema,
+  driverCreateSchema,
+  driverUpdateSchema,
   shareCreateSchema,
   tenantCreateSchema,
   tenantUpdateSchema,
@@ -90,6 +92,7 @@ const READ_POLICY: Record<string, Role[]> = {
   domain: TENANT_ADMINS, // domains are admin config
   audit: TENANT_ADMINS, // audit trail is tenant-wide + sensitive → admins only
   geofence: [...ROLES],
+  driver: [...ROLES], // the driver roster is broadly readable
   command: [...ROLES], // reading command status is broad; SENDING is a write (below)
   webhookDelivery: ACCOUNT_WRITERS, // webhook delivery log — same readers as webhooks
   usage: TENANT_ADMINS, // billing data — a tenant admin can see their own bill
@@ -103,6 +106,7 @@ const WRITE_POLICY: Record<string, Role[]> = {
   rule: ACCOUNT_WRITERS,
   webhook: TENANT_ADMINS,
   geofence: ACCOUNT_WRITERS,
+  driver: ACCOUNT_WRITERS,
   command: ACCOUNT_WRITERS, // sending a Codec-12 command controls hardware → writers only
   export: TENANT_ADMINS, // requesting a GDPR export
   gdpr: TENANT_ADMINS, // device erase — irreversible data destruction
@@ -572,6 +576,47 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (!ok) return problem(c, 404, 'Not Found')
         await bestEffortSync(() => removeRule(deps.redis, auth(c).tenantId, id(c))) // drop from the worker's rule cache
         return json(c, { ok: true })
+      } },
+
+    // ── drivers (account, V2 registry) ─────────────────────────────────────────
+    { method: 'get', path: '/v1/drivers', scopeClass: 'account', entity: 'driver', shape: 'collection',
+      handler: async (c) => json(c, await db.drivers.list(scopeOf(auth(c)))) },
+    { method: 'get', path: '/v1/drivers/:id', scopeClass: 'account', entity: 'driver', shape: 'item',
+      handler: async (c) => {
+        const row = await db.drivers.get(scopeOf(auth(c)), id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'post', path: '/v1/drivers', scopeClass: 'account', entity: 'driver', shape: 'collection',
+      handler: async (c) => {
+        const data = await body(c, driverCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        const accountId = a.accountId !== undefined ? a.accountId : data.accountId
+        if (accountId === undefined || (await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        try {
+          return json(c, await db.drivers.create(scopeOf(a), { userId: a.userId }, { ...data, accountId }), 201)
+        } catch (err) {
+          // tenant-local iButton clash → 409 (never a 500, never reveal the holder — review pattern)
+          if (err instanceof DriverIbuttonConflictError) return problem(c, 409, 'Conflict', 'iButton already assigned')
+          throw err
+        }
+      } },
+    { method: 'patch', path: '/v1/drivers/:id', scopeClass: 'account', entity: 'driver', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, driverUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        try {
+          const row = await db.drivers.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
+          return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+        } catch (err) {
+          if (err instanceof DriverIbuttonConflictError) return problem(c, 409, 'Conflict', 'iButton already assigned')
+          throw err
+        }
+      } },
+    { method: 'delete', path: '/v1/drivers/:id', scopeClass: 'account', entity: 'driver', shape: 'item',
+      handler: async (c) => {
+        const ok = await db.drivers.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
 
     // ── geofences (account-scoped, nullable account = tenant-shared, E05-1) ────
