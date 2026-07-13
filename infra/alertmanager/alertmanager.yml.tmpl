@@ -1,5 +1,5 @@
 # Alertmanager → founders' Telegram (W7-S1). This is a TEMPLATE: the container entrypoint
-# runs `envsubst` to fill ${TELEGRAM_BOT_TOKEN} and ${TELEGRAM_ALERT_CHAT_ID} from the
+# runs `sed` to fill ${TELEGRAM_BOT_TOKEN} and ${TELEGRAM_ALERT_CHAT_ID} from the
 # server .env at start. BLOCKED-INFO: those two are founder-provisioned (like SES creds);
 # until set, alerts are still visible in the Alertmanager UI (SSH tunnel) + Prometheus /alerts.
 global:
@@ -35,4 +35,4 @@ inhibit_rules:
   # a firing critical silences the matching warning for the same alert family
   - source_matchers: [ severity="critical" ]
     target_matchers: [ severity="warning" ]
-    equal: ['alertname']
+    equal: ['component']

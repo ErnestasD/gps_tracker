@@ -9,14 +9,14 @@ groups:
       - alert: StreamDepthHigh
         expr: max(stream_depth) > 50000
         for: 5m
-        labels: { severity: warning }
+        labels: { severity: warning, component: stream_depth }
         annotations:
           summary: "Redis stream depth high ({{ $value | humanize }})"
           description: "A shard backlog has exceeded 50k for 5m — consumers are falling behind. Check worker health / lease ownership."
       - alert: StreamDepthCritical
         expr: max(stream_depth) > 90000
         for: 2m
-        labels: { severity: critical }
+        labels: { severity: critical, component: stream_depth }
         annotations:
           summary: "Redis stream depth CRITICAL ({{ $value | humanize }})"
           description: "A shard is near the 100k MAXLEN cap — backpressure/eviction imminent. Scale or restart workers now."
@@ -26,14 +26,14 @@ groups:
       - alert: PipelineLagHigh
         expr: max(pipeline_lag_ms) > 30000
         for: 5m
-        labels: { severity: warning }
+        labels: { severity: warning, component: pipeline_lag }
         annotations:
           summary: "Pipeline lag > 30s ({{ $value | humanize }}ms)"
           description: "Oldest unprocessed record is >30s old for 5m. Trip/geofence/GDPR guards assume lag << their windows."
       - alert: PipelineLagCritical
         expr: max(pipeline_lag_ms) > 120000
         for: 2m
-        labels: { severity: critical }
+        labels: { severity: critical, component: pipeline_lag }
         annotations:
           summary: "Pipeline lag CRITICAL ({{ $value | humanize }}ms)"
           description: "Lag >2m — do NOT run GDPR erase (60m guard assumes lag << 60m). Investigate the worker."
@@ -78,21 +78,23 @@ groups:
       - alert: DiskFillingUp
         expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
         for: 10m
-        labels: { severity: warning }
+        labels: { severity: warning, component: disk }
         annotations:
           summary: "Disk < 15% free ({{ $value | humanizePercentage }})"
           description: "Root filesystem below 15% — the positions hypertable grows continuously. Plan retention / capacity."
       - alert: DiskCritical
         expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.05
         for: 5m
-        labels: { severity: critical }
+        labels: { severity: critical, component: disk }
         annotations:
           summary: "Disk < 5% free ({{ $value | humanizePercentage }})"
           description: "Root filesystem critically low — writes will start failing. Act now."
 
       # Caddy auto-renews; this is the safety net if renewal silently fails.
       - alert: CertExpiringSoon
-        expr: (probe_ssl_earliest_cert_expiry - time()) < (14 * 24 * 3600)
+        # probe_ssl_earliest_cert_expiry is 0 when TLS can't be established — guard against
+        # 0-time() firing a false 'cert expiring' during an outage (review HIGH)
+        expr: (probe_ssl_earliest_cert_expiry > 0) and (probe_ssl_earliest_cert_expiry - time() < 14 * 24 * 3600)
         for: 1h
         labels: { severity: warning }
         annotations:

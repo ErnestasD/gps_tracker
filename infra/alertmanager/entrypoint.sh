@@ -23,7 +23,7 @@ receivers:
 inhibit_rules:
   - source_matchers: [ severity="critical" ]
     target_matchers: [ severity="warning" ]
-    equal: ['alertname']
+    equal: ['component']
 YML
 fi
 exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager

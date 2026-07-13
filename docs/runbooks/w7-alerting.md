@@ -23,8 +23,9 @@ Alertmanager needs two values in the server `/opt/orbetra/.env`:
 - `TELEGRAM_ALERT_CHAT_ID` — the founders' group/chat id (add the bot, then
   `curl https://api.telegram.org/bot<token>/getUpdates` and read `chat.id`).
 
-`infra/alertmanager/entrypoint.sh` renders `alertmanager.yml.tmpl` with `envsubst` at
-container start. **Until both are set**, Alertmanager runs with a placeholder receiver —
+`infra/alertmanager/entrypoint.sh` renders `alertmanager.yml.tmpl` with `sed` at container
+start (the alertmanager image has no `envsubst`); a Telegram token/chat-id contains no sed
+metacharacters, so substitution is safe. **Until both are set**, Alertmanager runs with a placeholder receiver —
 alerts are still visible in the Alertmanager UI and Prometheus `/alerts` (no Telegram push).
 
 Same `TELEGRAM_BOT_TOKEN` also unblocks E05-5 notification delivery — set it once.
@@ -34,7 +35,7 @@ Same `TELEGRAM_BOT_TOKEN` also unblocks E05-5 notification delivery — set it o
 ```sh
 # rules valid + unit tests pass (pin the image so humanize() output is stable)
 docker run --rm --entrypoint promtool -v "$PWD/infra/prometheus":/w \
-  prom/prometheus:latest test rules /w/alerts.test.yml
+  prom/prometheus:v3.1.0 test rules /w/alerts.test.yml
 
 # on the server (SSH tunnel): Prometheus rules loaded, blackbox probing our hosts
 ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 -i ~/.ssh/orbetra_staging root@185.80.129.33

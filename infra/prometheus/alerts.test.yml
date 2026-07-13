@@ -1,6 +1,5 @@
-# promtool unit tests for the alert rules (W7-S1). Run against a PINNED image so humanize()
-# output is stable: docker run --rm --entrypoint promtool prom/prometheus:v3.1.0 test rules ...
-# Aggregations (max/sum) drop source labels; per-series metrics keep them.
+# promtool unit tests for the alert rules (W7-S1). Pin the image so humanize() is stable:
+# docker run --rm --entrypoint promtool prom/prometheus:v3.1.0 test rules alerts.test.yml
 rule_files:
   - alerts.yml
 evaluation_interval: 1m
@@ -13,7 +12,7 @@ tests:
       - eval_time: 6m
         alertname: StreamDepthHigh
         exp_alerts:
-          - exp_labels: { severity: warning }
+          - exp_labels: { severity: warning, component: stream_depth }
             exp_annotations:
               summary: "Redis stream depth high (60k)"
               description: "A shard backlog has exceeded 50k for 5m — consumers are falling behind. Check worker health / lease ownership."
@@ -29,7 +28,7 @@ tests:
       - eval_time: 3m
         alertname: StreamDepthCritical
         exp_alerts:
-          - exp_labels: { severity: critical }
+          - exp_labels: { severity: critical, component: stream_depth }
             exp_annotations:
               summary: "Redis stream depth CRITICAL (95k)"
               description: "A shard is near the 100k MAXLEN cap — backpressure/eviction imminent. Scale or restart workers now."
@@ -42,7 +41,7 @@ tests:
       - eval_time: 6m
         alertname: PipelineLagHigh
         exp_alerts:
-          - exp_labels: { severity: warning }
+          - exp_labels: { severity: warning, component: pipeline_lag }
             exp_annotations:
               summary: "Pipeline lag > 30s (45kms)"
               description: "Oldest unprocessed record is >30s old for 5m. Trip/geofence/GDPR guards assume lag << their windows."
@@ -69,6 +68,42 @@ tests:
               summary: "Ingest parse-fail spike (10/s)"
               description: "CRC/structure failures >5/s for 10m — protocol drift or corrupt-frame flood. Check a capture."
 
+  # ACK p99 latency: all observations land in the 250–500ms bucket → p99 > 250
+  - interval: 1m
+    input_series:
+      - series: 'ack_latency_ms_bucket{le="1"}'
+        values: '0+0x10'
+      - series: 'ack_latency_ms_bucket{le="250"}'
+        values: '0+0x10'
+      - series: 'ack_latency_ms_bucket{le="500"}'
+        values: '0+10x10'
+      - series: 'ack_latency_ms_bucket{le="1000"}'
+        values: '0+10x10'
+      - series: 'ack_latency_ms_bucket{le="+Inf"}'
+        values: '0+10x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: AckLatencyHigh
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "ACK p99 latency > 250ms"
+              description: "Ingest p99 ACK latency breached the §5 SLA (250ms) for 5m."
+
+  # sustained backpressure
+  - interval: 1m
+    input_series:
+      - series: 'ingest_paused_sockets'
+        values: '1+0x12'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: BackpressureSustained
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Sockets paused by backpressure for 10m"
+              description: "ingest_paused_sockets > 0 sustained — a shard is not draining. Check worker throughput."
+
   - interval: 1m
     input_series:
       - series: 'node_filesystem_avail_bytes{mountpoint="/"}'
@@ -79,7 +114,7 @@ tests:
       - eval_time: 11m
         alertname: DiskFillingUp
         exp_alerts:
-          - exp_labels: { severity: warning, mountpoint: "/" }
+          - exp_labels: { severity: warning, component: disk, mountpoint: "/" }
             exp_annotations:
               summary: "Disk < 15% free (10%)"
               description: "Root filesystem below 15% — the positions hypertable grows continuously. Plan retention / capacity."
@@ -100,11 +135,26 @@ tests:
               summary: "worker is DOWN"
               description: "Prometheus can't scrape worker for 2m — the service is down or unreachable."
 
-  - interval: 1h
+  # cert 5 days out → FIRES (time() at eval 2h = 7200; expiry 7200 + 5d)
+  - interval: 1m
     input_series:
       - series: 'probe_ssl_earliest_cert_expiry{instance="https://orbetra.com"}'
-        values: '1000000000+0x3'
+        values: '439200+0x65'
     alert_rule_test:
-      - eval_time: 1h
+      - eval_time: 61m
+        alertname: CertExpiringSoon
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: "https://orbetra.com" }
+            exp_annotations:
+              summary: "TLS cert for https://orbetra.com expires in <14d"
+              description: "Caddy should auto-renew; if this fires, renewal failed. Check the caddy container logs."
+
+  # probe FAILURE (metric = 0) must NOT fire CertExpiringSoon (review HIGH: 0-time()<14d)
+  - interval: 1m
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{instance="https://orbetra.com"}'
+        values: '0+0x65'
+    alert_rule_test:
+      - eval_time: 61m
         alertname: CertExpiringSoon
         exp_alerts: []

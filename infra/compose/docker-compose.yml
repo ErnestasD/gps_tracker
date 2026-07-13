@@ -60,7 +60,7 @@ services:
       - kuma_data:/app/data
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.1.0
     volumes:
       - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ../prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -70,7 +70,7 @@ services:
 
   # W7-S1: alert routing to the founders' Telegram (token founder-gated, rendered at start)
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.28.0
     entrypoint: ['/bin/sh', '/etc/alertmanager/entrypoint.sh']
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
@@ -84,7 +84,7 @@ services:
 
   # host-level metrics (disk/RAM) for the DiskFillingUp alert
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.9.1
     command:
       - '--path.rootfs=/host'
     pid: host
@@ -95,7 +95,7 @@ services:
 
   # TLS cert-expiry probing for CertExpiringSoon
   blackbox-exporter:
-    image: prom/blackbox-exporter:latest
+    image: prom/blackbox-exporter:v0.26.0
     volumes:
       - ../blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
     ports:
