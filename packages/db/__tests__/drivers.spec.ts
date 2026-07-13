@@ -74,6 +74,17 @@ describe('V2 drivers repo', () => {
     expect((await db.drivers.findByIbutton(a.aScope, key))?.name).toBe('A1') // resolves within tenant only
   })
 
+  it('canonicalizes iButton case so a case-variant of the SAME key still collides (review MED-1)', async () => {
+    const { aScope, accountId } = await seedTenant('Case Co')
+    const d = await db.drivers.create(aScope, actor, { accountId, name: 'C1', ibutton: 'a1b2c3d4' })
+    expect(d.ibutton).toBe('A1B2C3D4') // stored upper-case, not the lower-case input
+    // the same physical key in a different case must NOT create a second row
+    await expect(db.drivers.create(aScope, actor, { accountId, name: 'C2', ibutton: 'A1B2C3D4' })).rejects.toBeInstanceOf(DriverIbuttonConflictError)
+    // findByIbutton resolves a tap regardless of the case it arrives in (AVL isn't schema-normalized)
+    expect((await db.drivers.findByIbutton(aScope, 'a1b2c3d4'))?.id).toBe(d.id)
+    expect((await db.drivers.findByIbutton(aScope, 'A1B2C3D4'))?.id).toBe(d.id)
+  })
+
   it('allows multiple keyless drivers (NULL iButtons are distinct)', async () => {
     const { aScope, accountId } = await seedTenant('Keyless Co')
     await db.drivers.create(aScope, actor, { accountId, name: 'K1' })

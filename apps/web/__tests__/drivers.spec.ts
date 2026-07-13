@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { normalizeIbutton } from '../src/lib/drivers'
 
 describe('V2 driver helpers', () => {
-  it('normalizeIbutton: empty → null, valid hex → upper-case, else "invalid"', () => {
+  it('normalizeIbutton: empty → null, valid hex → upper-case, else false', () => {
     expect(normalizeIbutton('')).toBeNull()
     expect(normalizeIbutton('   ')).toBeNull()
     expect(normalizeIbutton('a1b2c3d4')).toBe('A1B2C3D4')

@@ -52,13 +52,19 @@ export interface DriverRepo {
   remove(scope: Scope, actor: Actor, id: string): Promise<boolean>
 }
 
+/** Canonicalize an iButton to upper-case hex so 'a1b2c3d4' and 'A1B2C3D4' — the SAME physical key
+ * — collide on the tenant-unique index (Postgres text compares case-sensitively). Without this,
+ * two drivers could each "own" one key and tap-resolution would be ambiguous. */
+const canonIbutton = (v: string | null | undefined): string | null | undefined =>
+  typeof v === 'string' ? v.toUpperCase() : v
+
 export function createDriverRepo(prisma: PrismaClient, audit: AuditRepo): DriverRepo {
   const scopedById = (scope: Scope, id: string): Promise<Driver | null> =>
     prisma.driver.findFirst({ where: { ...scopedWhere(scope), id } })
   return {
     list: (scope) => prisma.driver.findMany({ where: scopedWhere(scope), orderBy: { createdAt: 'desc' } }),
     get: (scope, id) => scopedById(scope, id),
-    findByIbutton: (scope, ibutton) => prisma.driver.findFirst({ where: { ...scopedWhere(scope), ibutton } }),
+    findByIbutton: (scope, ibutton) => prisma.driver.findFirst({ where: { ...scopedWhere(scope), ibutton: canonIbutton(ibutton) ?? ibutton } }),
     create: async (scope, actor, data) => {
       let row
       try {
@@ -68,7 +74,7 @@ export function createDriverRepo(prisma: PrismaClient, audit: AuditRepo): Driver
             accountId: data.accountId,
             name: data.name,
             licenseNo: data.licenseNo ?? null,
-            ibutton: data.ibutton ?? null,
+            ibutton: canonIbutton(data.ibutton) ?? null,
             phone: data.phone ?? null,
             notes: data.notes ?? null,
             ...(data.active !== undefined ? { active: data.active } : {}),
@@ -84,9 +90,11 @@ export function createDriverRepo(prisma: PrismaClient, audit: AuditRepo): Driver
     update: async (scope, actor, id, data) => {
       const before = await scopedById(scope, id)
       if (before === null) return null
+      // canonicalize the key on update too (same case-collision reason as create)
+      const patch = 'ibutton' in data ? { ...data, ibutton: canonIbutton(data.ibutton) ?? null } : data
       let row
       try {
-        row = await prisma.driver.update({ where: { id: before.id }, data })
+        row = await prisma.driver.update({ where: { id: before.id }, data: patch })
       } catch (err) {
         if (isUniqueViolation(err) && data.ibutton != null) throw new DriverIbuttonConflictError(data.ibutton)
         throw err
