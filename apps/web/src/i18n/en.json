@@ -355,6 +355,18 @@
         "hour": "{{n}} h left",
         "day": "{{n}} d left"
       }
+    },
+    "onboard": "Onboard",
+    "onb": {
+      "title": "Onboard {{name}} (SMS)",
+      "intro": "Point this Teltonika device at {{host}}:{{port}} by SMS — no Teltonika software needed. Set the APN (ask your SIM provider), then send both texts to the tracker's phone number.",
+      "apn": "SIM APN",
+      "apnPlaceholder": "e.g. internet",
+      "smsApn": "1. APN SMS",
+      "smsServer": "2. Server SMS",
+      "copy": "Copy",
+      "copied": "Copied",
+      "caveat": "This device family may use different parameters — verify on the Teltonika wiki for your model."
     }
   },
   "quarantine": {

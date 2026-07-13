@@ -40,6 +40,8 @@ export interface ApiDeps extends WsDeps {
   apiKeyRateLimitPerMin?: number
   /** Send Strict-Transport-Security (E07-5); defaults to secureCookies (TLS deployments). */
   hsts?: boolean
+  /** SMS onboarding target (V1-nice); default orbetra.com:5027. */
+  onboarding?: { host: string; port: number }
   /** GDPR job enqueuers (E08-4, ADR-020 addendum); routes 503 when absent. */
   gdpr?: {
     enqueueErase(data: { deviceId: string; tenantId: string }): Promise<void>
@@ -167,7 +169,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
-  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool, gdpr: deps.gdpr }))
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding }))
 
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.

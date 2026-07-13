@@ -355,6 +355,18 @@
         "hour": "pozostało {{n}} godz.",
         "day": "pozostało {{n}} dni"
       }
+    },
+    "onboard": "Podłącz",
+    "onb": {
+      "title": "Podłącz {{name}} (SMS)",
+      "intro": "Skieruj to urządzenie Teltonika na {{host}}:{{port}} przez SMS — bez oprogramowania Teltonika. Ustaw APN (zapytaj dostawcę SIM), następnie wyślij oba SMS-y na numer urządzenia.",
+      "apn": "APN karty SIM",
+      "apnPlaceholder": "np. internet",
+      "smsApn": "1. SMS APN",
+      "smsServer": "2. SMS serwera",
+      "copy": "Kopiuj",
+      "copied": "Skopiowano",
+      "caveat": "Ta rodzina urządzeń może używać innych parametrów — sprawdź w wiki Teltonika dla swojego modelu."
     }
   },
   "quarantine": {

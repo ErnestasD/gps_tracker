@@ -49,6 +49,7 @@ const gdpr = {
 
 const deps = {
   redis,
+  onboarding: { host: process.env['INGEST_PUBLIC_HOST'] ?? 'orbetra.com', port: Number(process.env['INGEST_TCP_PORT'] ?? 5027) },
   redisSub,
   db,
   pool,

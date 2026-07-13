@@ -14,6 +14,7 @@ import {
   geofenceCreateSchema,
   geofenceUpdateSchema,
   deviceUpdateSchema,
+  buildOnboarding,
   commandCreateSchema,
   ruleCreateSchema,
   ruleUpdateSchema,
@@ -60,6 +61,8 @@ export interface CrudDeps {
    * Optional so manifest-only construction (apiManifest) needs no DB; the positions
    * route 503s if it is somehow reached without one. */
   pool?: Pool
+  /** public ingest endpoint for the SMS onboarding sheet (V1-nice); default orbetra.com:5027. */
+  onboarding?: { host: string; port: number }
   /** GDPR job enqueuers (E08-4) — BullMQ producers wired in the server entry (ADR-020
    * addendum); optional so manifest-only construction needs no Redis, routes 503 without. */
   gdpr?: {
@@ -419,6 +422,22 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const ok = await db.shareLinks.revoke(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+    // SMS onboarding sheet (V1-nice) — point a device at us without Teltonika software
+    { method: 'get', path: '/v1/devices/:id/onboarding', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const device = await db.devices.get(scopeOf(auth(c)), id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        const profile = await db.profiles.get(device.profileId)
+        const target = deps.onboarding ?? { host: 'orbetra.com', port: 5027 }
+        const apnRaw = c.req.query('apn')
+        return json(c, buildOnboarding({
+          imei: device.imei,
+          host: target.host,
+          port: target.port,
+          ...(apnRaw !== undefined ? { apn: apnRaw } : {}),
+          ...(profile !== null ? { family: profile.key } : {}),
+        }))
       } },
 
     // ── GDPR (E08-4): device-erase cascade + account data export ────────────────

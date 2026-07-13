@@ -59,7 +59,7 @@ beforeAll(async () => {
   t2Token = await mintTestToken({ userId: s2.userId, tenantId: s2.tenantId, role: 'tsp_admin' })
   viewerToken = await mintTestToken({ userId: '00000000-0000-0000-0000-0000000000cc', tenantId: s1.tenantId, accountId: acct1, role: 'viewer' })
 
-  const app = createApp({ redis, redisSub: redis, db, pool, jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30, lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '127.0.0.1' })
+  const app = createApp({ redis, redisSub: redis, db, pool, onboarding: { host: 'orbetra.com', port: 5027 }, jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30, lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '127.0.0.1' })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
 }, 300_000)
@@ -101,5 +101,17 @@ describe('E08-2 Codec-12 commands API', () => {
 
   it('rejects an empty command body (400)', async () => {
     expect((await req(`/v1/devices/${deviceId}/commands`, t1Token, 'POST', { text: '' })).status).toBe(400)
+  })
+
+  it('onboarding sheet: server SMS points at the configured host, APN appended when passed (V1-nice)', async () => {
+    const sheet = (await (await req(`/v1/devices/${deviceId}/onboarding?apn=internet`, viewerToken)).json()) as { smsServer: string; smsApn: string | null; steps: string[] }
+    expect(sheet.smsServer).toBe('  setparam 2004:orbetra.com;2005:5027;2003:0')
+    expect(sheet.smsApn).toBe('  setparam 2001:internet')
+    expect(sheet.steps.length).toBeGreaterThan(0)
+    // no apn → no APN SMS
+    const noApn = (await (await req(`/v1/devices/${deviceId}/onboarding`, viewerToken)).json()) as { smsApn: string | null }
+    expect(noApn.smsApn).toBeNull()
+    // cross-tenant device → 404
+    expect((await req(`/v1/devices/${deviceId}/onboarding`, t2Token)).status).toBe(404)
   })
 })

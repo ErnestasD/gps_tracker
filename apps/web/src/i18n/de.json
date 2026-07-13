@@ -355,6 +355,18 @@
         "hour": "noch {{n}} Std.",
         "day": "noch {{n}} Tage"
       }
+    },
+    "onboard": "Einrichten",
+    "onb": {
+      "title": "{{name}} einrichten (SMS)",
+      "intro": "Richten Sie dieses Teltonika-Gerät per SMS auf {{host}}:{{port}} — keine Teltonika-Software nötig. APN setzen (beim SIM-Anbieter erfragen), dann beide Texte an die Gerätenummer senden.",
+      "apn": "SIM-APN",
+      "apnPlaceholder": "z. B. internet",
+      "smsApn": "1. APN-SMS",
+      "smsServer": "2. Server-SMS",
+      "copy": "Kopieren",
+      "copied": "Kopiert",
+      "caveat": "Diese Gerätefamilie verwendet evtl. andere Parameter — im Teltonika-Wiki für Ihr Modell prüfen."
     }
   },
   "quarantine": {
