@@ -34,6 +34,8 @@ export interface ApiDeps extends WsDeps {
   resolveTxt?: TxtResolver
   /** Caddy-ask rate limit (E03-5); default 10/min per IP. */
   askRateLimit?: { max: number; windowS: number }
+  /** Public share-resolve rate limit (V1-nice); default 60/min per token. */
+  shareRateLimit?: { max: number; windowS: number }
   /** Per-API-key rate limit (E06-3); default 600/min. */
   apiKeyRateLimitPerMin?: number
   /** Send Strict-Transport-Security (E07-5); defaults to secureCookies (TLS deployments). */
@@ -95,6 +97,8 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
       db: deps.db,
       redis: deps.redis,
       askRateLimit: deps.askRateLimit ?? { max: 10, windowS: 60 },
+      shareRateLimit: deps.shareRateLimit ?? { max: 60, windowS: 60 },
+      ...(deps.pool !== undefined ? { pool: deps.pool } : {}),
     }),
   )
 

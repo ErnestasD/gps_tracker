@@ -37,6 +37,7 @@ export interface TenantFixture {
   eventId: string
   commandId: string
   exportId: string
+  shareId: string // an active share link (temporary public link cross-tenant tests)
   /** platform_admin token (tenant-wide). */
   tokenPlatform: string
   /** tsp_admin token (tenant-wide, NOT platform). */
@@ -85,6 +86,7 @@ async function seedTenant(
   const device = await db.devices.create(scope, actor, { accountId: a1.id, profileId, imei, name: 'dev' })
   const domain = await db.tenantDomains.create(scope, actor, `${name.toLowerCase()}.example.test`, 'tok')
   const webhook = await db.webhooks.create(scope, actor, { accountId: a1.id, url: 'https://x.test/h', secret: 'secret-secret-16' })
+  const share = await db.shareLinks.create(scope, actor, { deviceId: device.id, accountId: a1.id, ttlHours: 24 })
   const pwHash = await hashPassword('irrelevant-not-logging-in')
   const platform = await db.users.create(scope, actor, { email: `${name}-pa@x.test`, passwordHash: pwHash, role: 'platform_admin', accountId: null })
   const tsp = await db.users.create(scope, actor, { email: `${name}-ta@x.test`, passwordHash: pwHash, role: 'tsp_admin', accountId: null })
@@ -121,6 +123,7 @@ async function seedTenant(
     eventId,
     commandId,
     exportId,
+    shareId: share.view.id,
     tokenPlatform: await token(platform.id, tenant.id, 'platform_admin'),
     tokenTenant: await token(tsp.id, tenant.id, 'tsp_admin'),
     tokenAccountA1: await token(am.id, tenant.id, 'account_manager', a1.id),

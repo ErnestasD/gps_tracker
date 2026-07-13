@@ -327,6 +327,34 @@
       "fwUnknown": "unknown (send getver)",
       "empty": "No health data yet — the device reports GSM/voltage as it runs.",
       "loadError": "Could not load health."
+    },
+    "share": {
+      "button": "Share",
+      "title": "Share link — {{name}}",
+      "blurb": "Create an expiring public link that shows this device on a live map — no login needed.",
+      "ttl": "Valid for",
+      "label": "Label",
+      "labelPlaceholder": "e.g. Courier ETA",
+      "create": "Create link",
+      "freshHint": "Copy this link now — it is shown only once.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "active": "Active links",
+      "none": "No active links.",
+      "loading": "Loading…",
+      "expired": "expired",
+      "revoke": "Revoke",
+      "ttlOpt": {
+        "1h": "1 hour",
+        "8h": "8 hours",
+        "24h": "24 hours",
+        "7d": "7 days"
+      },
+      "expiresIn": {
+        "min": "{{n}} min left",
+        "hour": "{{n}} h left",
+        "day": "{{n}} d left"
+      }
     }
   },
   "quarantine": {
@@ -463,5 +491,12 @@
     "monthTotal": "Total device-days this month",
     "empty": "No tenants yet.",
     "note": "A device-day = the device reported at least once during that UTC day (billing metric)."
+  },
+  "share": {
+    "title": "Live tracking",
+    "poweredBy": "Powered by Orbetra",
+    "expiredTitle": "Link expired",
+    "expiredBody": "This tracking link is no longer active.",
+    "noFix": "Waiting for the first valid position…"
   }
 }

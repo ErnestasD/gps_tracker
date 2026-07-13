@@ -313,3 +313,32 @@ export interface GeofenceView {
   geometry: unknown // GeoJSON Polygon
   createdAt: string
 }
+
+// ── temporary public share links (V1-nice) ────────────────────────────────────────────────
+/** Create a share link for a device. ttl capped at 30 days so a "temporary" link can't be forever. */
+export const shareCreateSchema = z.object({
+  ttlHours: z.number().int().min(1).max(720),
+  label: z.string().max(80).optional(),
+})
+export interface ShareLinkView {
+  id: string
+  tenantId: string
+  deviceId: string
+  prefix: string
+  label: string | null
+  expiresAt: string
+  revokedAt: string | null
+  createdAt: string
+}
+/** What the PUBLIC (no-auth) share endpoint returns — only the shared device, nothing else. */
+export interface PublicShareView {
+  deviceLabel: string
+  expiresAt: string
+  position: {
+    lat: number
+    lon: number
+    fixTime: string
+    speedKph: number | null
+    course: number | null
+  } | null
+}

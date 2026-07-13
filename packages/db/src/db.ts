@@ -12,6 +12,7 @@ import { createEventRepo, type EventRepo } from './repos/events.js'
 import { createGeofenceRepo, type GeofenceRepo } from './repos/geofences.js'
 import { createProfileRepo, type ProfileRepo } from './repos/profiles.js'
 import { createRuleRepo, type RuleRepo } from './repos/rules.js'
+import { createShareLinkRepo, type ShareLinkRepo } from './repos/shareLinks.js'
 import { createTenantDomainRepo, type TenantDomainRepo } from './repos/tenantDomains.js'
 import { createTenantRepo, type TenantRepo } from './repos/tenants.js'
 import { createTripRepo, type TripReadRepo } from './repos/trips.js'
@@ -36,6 +37,7 @@ export interface Db {
   commands: CommandRepo
   profiles: ProfileRepo
   rules: RuleRepo
+  shareLinks: ShareLinkRepo
   webhooks: WebhookRepo
   webhookDeliveries: WebhookDeliveryRepo
   usage: UsageRepo
@@ -62,6 +64,7 @@ export function createDb(databaseUrl: string): Db {
     commands: createCommandRepo(prisma, audit),
     profiles: createProfileRepo(prisma),
     rules: createRuleRepo(prisma, audit),
+    shareLinks: createShareLinkRepo(prisma, audit),
     webhooks: createWebhookRepo(prisma, audit),
     webhookDeliveries: createWebhookDeliveryRepo(prisma),
     usage: createUsageRepo(prisma),

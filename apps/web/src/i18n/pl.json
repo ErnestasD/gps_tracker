@@ -327,6 +327,34 @@
       "fwUnknown": "nieznane (wyślij getver)",
       "empty": "Brak danych o stanie — urządzenie zgłasza GSM/napięcie podczas pracy.",
       "loadError": "Nie udało się wczytać stanu."
+    },
+    "share": {
+      "button": "Udostępnij",
+      "title": "Link udostępniania — {{name}}",
+      "blurb": "Utwórz wygasający publiczny link pokazujący to urządzenie na mapie na żywo — bez logowania.",
+      "ttl": "Ważny przez",
+      "label": "Etykieta",
+      "labelPlaceholder": "np. ETA kuriera",
+      "create": "Utwórz link",
+      "freshHint": "Skopiuj link teraz — jest pokazywany tylko raz.",
+      "copy": "Kopiuj",
+      "copied": "Skopiowano",
+      "active": "Aktywne linki",
+      "none": "Brak aktywnych linków.",
+      "loading": "Ładowanie…",
+      "expired": "wygasł",
+      "revoke": "Unieważnij",
+      "ttlOpt": {
+        "1h": "1 godzina",
+        "8h": "8 godzin",
+        "24h": "24 godziny",
+        "7d": "7 dni"
+      },
+      "expiresIn": {
+        "min": "pozostało {{n}} min",
+        "hour": "pozostało {{n}} godz.",
+        "day": "pozostało {{n}} dni"
+      }
     }
   },
   "quarantine": {
@@ -463,5 +491,12 @@
     "monthTotal": "Łącznie dni urządzeń w tym miesiącu",
     "empty": "Brak najemców.",
     "note": "Dzień urządzenia = urządzenie zgłosiło się co najmniej raz w danym dniu UTC (metryka rozliczeniowa)."
+  },
+  "share": {
+    "title": "Śledzenie na żywo",
+    "poweredBy": "Obsługiwane przez Orbetra",
+    "expiredTitle": "Link wygasł",
+    "expiredBody": "Ten link śledzenia nie jest już aktywny.",
+    "noFix": "Oczekiwanie na pierwszą prawidłową pozycję…"
   }
 }

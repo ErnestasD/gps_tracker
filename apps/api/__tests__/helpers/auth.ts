@@ -54,6 +54,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     devices: { list: notImpl, get: notImpl, getByImei: notImpl, create: notImpl, update: notImpl, retire: notImpl },
     profiles: { list: notImpl, get: notImpl, map: notImpl },
     rules: repo,
+    shareLinks: { list: notImpl, create: notImpl, revoke: notImpl, resolveByHash: notImpl },
     webhooks: repo,
     apiKeys: { list: notImpl, create: notImpl, revoke: notImpl, findActiveByHash: notImpl, touch: notImpl },
     commands: { create: notImpl, get: notImpl, listForDevice: notImpl },
