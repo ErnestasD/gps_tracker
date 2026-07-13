@@ -33,5 +33,7 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) }, // mirrors tsconfig paths
   },
   server: { proxy },
-  preview: { proxy },
+  // vite preview 403s unknown Hosts (IPs pass by default, domains do NOT) — the app is
+  // served as dash.<domain> behind Caddy on staging/prod (W9-S1)
+  preview: { proxy, allowedHosts: ['dash.orbetra.com'] },
 })

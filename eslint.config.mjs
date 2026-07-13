@@ -57,6 +57,22 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
   {
+    // apps/site design components are IMPORTED Lovable output (W9-S1): visual code with
+    // loose typing that re-syncs from the design tool — relaxing the unsafe-any family
+    // here beats re-fighting every sync. Our OWN site code (lib/, routes edits, forms)
+    // stays fully checked; so do all other packages.
+    files: ['apps/site/src/components/site/**'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+  {
     // typed-checked separately by apps/web tsconfig.node.json/tsconfig.sw.json;
     // the eslint default project resolves their ESM-only plugin types as any
     files: ['apps/web/vite.config.ts', 'apps/web/sw.ts', 'apps/web/playwright.config.ts', 'apps/web/tests/pw/**'],

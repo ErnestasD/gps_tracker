@@ -17,6 +17,51 @@
 	respond 404
 }
 
+# ── Production hosts (W9-S1): orbetra.com = public site, dash.orbetra.com = app ──
+# Both env-gated: unset defaults are unresolvable, so these blocks are inert locally.
+# Caddy mints Let's Encrypt certs automatically once DNS points here (ports 80/443 open).
+{$ORBETRA_SITE_HOST:site-host.invalid}, {$ORBETRA_SITE_WWW:www-host.invalid} {
+	header {
+		Strict-Transport-Security "max-age=15552000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
+	@www host {$ORBETRA_SITE_WWW:www-host.invalid}
+	redir @www https://{$ORBETRA_SITE_HOST:site-host.invalid}{uri} permanent
+	# the pilot form posts same-origin; carve /v1 to the api (public pilot-request only
+	# matters here, but the api's own auth guards everything else anyway)
+	handle /v1/* {
+		reverse_proxy api:3010
+	}
+	# static SPA (vite preview serving the built dist — same tested path as the app)
+	handle {
+		reverse_proxy site:4174
+	}
+}
+
+{$ORBETRA_APP_HOST:app-host.invalid} {
+	header {
+		Strict-Transport-Security "max-age=15552000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
+	handle /v1/* {
+		reverse_proxy api:3010
+	}
+	handle /ws {
+		reverse_proxy api:3010
+	}
+	handle {
+		reverse_proxy web:5173
+	}
+}
+
 # ── Staging over plain HTTP by IP (W7-D, until DNS/TLS lands) ────────────────
 # Served only when the request Host matches ORBETRA_STAGING_HOST (set in the server's
 # .env, e.g. 185.80.129.33). The default is an unresolvable name, so this block is

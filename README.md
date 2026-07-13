@@ -36,6 +36,7 @@ in the commit message, and any staged `TODO(VERIFY-WIKI)` marker blocks the comm
 | `packages/db` | Prisma (relational) + raw SQL layer for positions + scoped repositories |
 | `packages/shared` | zod schemas — single source of types |
 | `tools/simulator` | device emulator (scenarios per PROJECT_PLAN §7.2) |
+| `apps/site` | public marketing site (Lovable design → static Vite SPA, W9-S1) |
 | `tools/replay` | real-log replayer for load tests |
 | `tools/seed-demo` | demo tenant provisioner for sales calls (`pnpm seed:demo`, E08-5) |
 | `tools/redact` | strips real IMEIs from captures before they become fixtures |
@@ -248,6 +249,20 @@ Every new variable must be added to the table here AND match the `.env` contract
   polled every 5 s while anything is queued/sent. Destructive commands (`cpureset`,
   `deleterecords`) are two-step: the first click arms a danger confirm, the second sends;
   editing the text or switching preset disarms.
+
+## Public site (W9-S1, apps/site)
+
+Static Vite SPA built from the founder's Lovable design (`orbetra_design/` stays the
+design source; syncs are manual with review — ADR-022). Served as **orbetra.com** behind
+Caddy (`ORBETRA_SITE_HOST`/`ORBETRA_SITE_WWW` env; the app lives at **dash.orbetra.com**,
+`ORBETRA_APP_HOST`). Pages: home, pricing, TSP, pilot + the legal pack (terms/privacy/
+DPA/subprocessors/impressum). The pilot form POSTs to the public
+`POST /v1/public/pilot-request` (honeypot field + 5/h per-IP limit, fails open on a Redis
+blip — a lost lead costs more than rare spam); leads land in the `leads` table, readable
+via `GET /v1/platform/leads` (platform_admin). The affiliate `?ref=` code is stored as
+the `tc_ref` cookie (60 d) only after a one-line consent and rides along in the form
+payload (§6.9 last-touch). EN-only until the W8 S3 i18n pass (the design's fake language
+switcher was removed, not shipped).
 
 ## Demo data (E08-5, `pnpm seed:demo`)
 

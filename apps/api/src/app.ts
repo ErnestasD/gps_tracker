@@ -10,6 +10,7 @@ import { authMiddleware, type AuthEnv } from './auth/middleware.js'
 import { mountApiKeys } from './routes/apiKeys.js'
 import { mountDocs } from './routes/docs.js'
 import { createPublicRoutes } from './routes/caddyAsk.js'
+import { createPilotRequestRoute } from './routes/pilotRequest.js'
 import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { mountReports } from './routes/reports.js'
@@ -96,6 +97,9 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
       askRateLimit: deps.askRateLimit ?? { max: 10, windowS: 60 },
     }),
   )
+
+  // PUBLIC pilot-request (W9-S1) — the marketing site's form; honeypot + per-IP limit
+  app.route('/', createPilotRequestRoute({ db: deps.db, redis: deps.redis, getRemoteAddr }))
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)

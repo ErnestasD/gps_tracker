@@ -16,6 +16,7 @@ COPY apps/ingest/package.json apps/ingest/
 COPY apps/worker/package.json apps/worker/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+COPY apps/site/package.json apps/site/
 COPY packages/codec/package.json packages/codec/
 COPY packages/db/package.json packages/db/
 COPY packages/shared/package.json packages/shared/
@@ -29,8 +30,8 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 # prisma client is gitignored generated code — build it in the image
 RUN pnpm --filter @orbetra/db db:generate
-# SPA build: same-origin API (Caddy carves /v1 + /ws), OpenFreeMap default style URL
-RUN pnpm --filter @orbetra/web build
+# SPA builds: same-origin API (Caddy carves /v1 + /ws), OpenFreeMap default style URL
+RUN pnpm --filter @orbetra/web build && pnpm --filter @orbetra/site build
 
 # default command is a no-op; docker-compose.apps.yml sets one per service
 CMD ["node", "--version"]
