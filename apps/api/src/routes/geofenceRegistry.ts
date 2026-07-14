@@ -11,8 +11,15 @@ import type { GeofenceView } from '@orbetra/shared'
  */
 const key = (tenantId: string): string => `geofence:tenant:${tenantId}`
 
+/** The canonical [hashKey, field, value] a geofence occupies in the worker's cache — the SINGLE
+ *  source of the cache shape, shared by the incremental CRUD sync and the boot rehydrate (no drift). */
+export function geofenceCacheEntry(g: GeofenceView): [string, string, string] {
+  return [key(g.tenantId), g.id, JSON.stringify({ accountId: g.accountId, name: g.name, geometry: g.geometry })]
+}
+
 export async function syncGeofence(redis: Redis, g: GeofenceView): Promise<void> {
-  await redis.hset(key(g.tenantId), g.id, JSON.stringify({ accountId: g.accountId, name: g.name, geometry: g.geometry }))
+  const [k, field, value] = geofenceCacheEntry(g)
+  await redis.hset(k, field, value)
 }
 
 export async function removeGeofence(redis: Redis, tenantId: string, id: string): Promise<void> {

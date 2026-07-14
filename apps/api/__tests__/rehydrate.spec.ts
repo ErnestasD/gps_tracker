@@ -15,8 +15,14 @@ const T = '11111111-1111-1111-1111-111111111111'
 const A = '22222222-2222-2222-2222-222222222222'
 
 function fakeRedis(store: Map<string, Record<string, string>>): Redis {
+  const set = (k: string, f: string, v: string) => { const h = store.get(k) ?? {}; h[f] = v; store.set(k, h) }
   return {
-    hset: (k: string, f: string, v: string) => { const h = store.get(k) ?? {}; h[f] = v; store.set(k, h); return Promise.resolve(1) },
+    hset: (k: string, f: string, v: string) => { set(k, f, v); return Promise.resolve(1) },
+    // rehydrate uses a pipeline: a chainable hset + exec
+    pipeline: () => {
+      const chain = { hset: (k: string, f: string, v: string) => { set(k, f, v); return chain }, exec: () => Promise.resolve([]) }
+      return chain
+    },
   } as unknown as Redis
 }
 
