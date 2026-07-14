@@ -73,7 +73,7 @@ export function createDb(databaseUrl: string): Db {
     usage: createUsageRepo(prisma),
     apiKeys: createApiKeyRepo(prisma, audit),
     events: createEventRepo(prisma),
-    trips: createTripRepo(prisma),
+    trips: createTripRepo(prisma, audit),
     geofences: createGeofenceRepo(prisma, audit),
     exports: createExportRepo(prisma, audit),
     leads: createLeadRepo(prisma),

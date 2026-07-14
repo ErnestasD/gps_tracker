@@ -20,7 +20,7 @@ export { type WebhookDeliveryRepo, type WebhookDeliveryView, type WebhookDeliver
 export { type UsageRepo, type PlatformUsageRow, type TenantUsageRow, type UsageRangeOpts } from './repos/usage.js'
 export { hashKey, type ApiKeyRepo, type ApiKeyView, type ApiKeyCreate, type CreatedApiKey, type ApiKeyResolved } from './repos/apiKeys.js'
 export { type EventRepo, type EventListOpts } from './repos/events.js'
-export { type TripReadRepo, type TripListOpts } from './repos/trips.js'
+export { DriverNotInScopeError, type TripReadRepo, type TripListOpts, type TripWithDriver } from './repos/trips.js'
 export { type GeofenceRepo, type GeofenceCreate, type GeofenceUpdate, GeofenceInvalidError, GeofenceTooLargeError } from './repos/geofences.js'
 export { readPositions, readLatestValidPosition, type PositionsOpts } from './positions.js'
 export { readFuelSeries, type FuelOpts } from './fuel.js'

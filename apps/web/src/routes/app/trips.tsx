@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -6,8 +6,9 @@ import { PlaybackMap } from '@/components/PlaybackMap'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { listDevices } from '@/lib/devices'
+import { listDrivers } from '@/lib/drivers'
 import { defaultRange, listPositions } from '@/lib/playback'
-import { fmtDuration, fmtKm, listTrips, tripDurationMs } from '@/lib/trips'
+import { assignTripDriver, fmtDuration, fmtKm, listTrips, tripDurationMs } from '@/lib/trips'
 import type { TripView } from '@orbetra/shared'
 
 const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' })
@@ -19,6 +20,15 @@ export function TripsPage() {
   const [deviceId, setDeviceId] = useState('')
   const [range, setRange] = useState(() => defaultRange(Date.now()))
   const [selected, setSelected] = useState<TripView | null>(null)
+  const qc = useQueryClient()
+  const drivers = useQuery({ queryKey: ['drivers'], queryFn: listDrivers })
+
+  const assign = async (tripId: string, driverId: string | null) => {
+    const updated = await assignTripDriver(tripId, driverId).catch(() => null)
+    if (updated === null) return
+    setSelected((s) => (s?.id === tripId ? updated : s)) // reflect the new driver in the open detail
+    void qc.invalidateQueries({ queryKey: ['trips'] }) // refresh the table's driver column
+  }
 
   const trips = useQuery({
     queryKey: ['trips', deviceId, range.from, range.to],
@@ -74,6 +84,7 @@ export function TripsPage() {
                     <th className="p-2 font-medium">{t('trips.duration')}</th>
                     <th className="p-2 font-medium">{t('trips.distance')}</th>
                     <th className="p-2 font-medium">{t('trips.maxSpeed')}</th>
+                    <th className="p-2 font-medium">{t('trips.driver')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -94,6 +105,7 @@ export function TripsPage() {
                         <span className="ml-1 text-[10px] uppercase text-muted">{tr.distanceSource === 'odometer' ? t('trips.odo') : t('trips.gps')}</span>
                       </td>
                       <td className="p-2 tabular-nums text-muted">{tr.maxSpeed} km/h</td>
+                      <td className="p-2 text-muted" data-testid={`trip-driver-${tr.id}`}>{tr.driverName ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -118,6 +130,18 @@ export function TripsPage() {
                   <Stat label={t('trips.maxSpeed')} value={`${selected.maxSpeed} km/h`} />
                   <Stat label={t('trips.idle')} value={fmtDuration(selected.idleS * 1000)} />
                 </div>
+                <label className="flex items-center gap-2 text-xs text-muted">
+                  {t('trips.driver')}:
+                  <select
+                    value={selected.driverId ?? ''}
+                    data-testid="trip-driver-select"
+                    onChange={(e) => void assign(selected.id, e.target.value === '' ? null : e.target.value)}
+                    className="h-8 flex-1 rounded-card border border-line bg-surface px-2 text-sm text-text"
+                  >
+                    <option value="">{t('trips.noDriver')}</option>
+                    {(drivers.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </label>
               </>
             )}
           </CardContent>

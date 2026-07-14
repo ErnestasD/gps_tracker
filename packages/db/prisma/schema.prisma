@@ -233,6 +233,8 @@ model Driver {
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz()
 
+  trips Trip[]
+
   @@unique([tenantId, ibutton])
   @@index([tenantId, accountId])
   @@map("drivers")
@@ -266,7 +268,12 @@ model Trip {
   distanceSource String     @default("gps")
   maxSpeed       Int        @default(0)
   idleS          Int        @default(0)
+  /// driver on this trip (V2) — assigned manually or resolved from the iButton tap (follow-up).
+  /// SET NULL on driver delete so trip history survives (never a dangling FK).
+  driverId       String?    @db.Uuid
   createdAt      DateTime   @default(now()) @db.Timestamptz()
+
+  driver Driver? @relation(fields: [driverId], references: [id], onDelete: SetNull)
 
   @@index([deviceId, startTime])
   @@index([tenantId, accountId, startTime])

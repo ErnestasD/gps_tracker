@@ -113,7 +113,9 @@
     "ongoing": "Vyksta",
     "odo": "odo",
     "gps": "gps",
-    "error": "Nepavyko įkelti kelionių."
+    "error": "Nepavyko įkelti kelionių.",
+    "driver": "Vairuotojas",
+    "noDriver": "Nėra vairuotojo"
   },
   "rules": {
     "title": "Taisyklės",

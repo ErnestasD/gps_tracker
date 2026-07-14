@@ -1,6 +1,6 @@
 import type { TripView } from '@orbetra/shared'
 
-import { getJson } from './client'
+import { getJson, mutate } from './client'
 import { historyQuery, type HistoryQuery } from './playback'
 
 /** Trips list/detail client (E04-4). Backend routes land in E04-3. */
@@ -16,6 +16,10 @@ export function tripsQuery(q: TripsQuery): string {
 }
 
 export const listTrips = (q: TripsQuery = {}) => getJson<TripView[]>(`/v1/trips${tripsQuery(q)}`)
+
+/** Assign (driverId) or clear (null) the trip's driver (V2). */
+export const assignTripDriver = (tripId: string, driverId: string | null) =>
+  mutate<TripView>('PATCH', `/v1/trips/${encodeURIComponent(tripId)}/driver`, { driverId })
 
 /** Trip duration in ms; an open trip (no endTime) runs to `now`. Pure. */
 export function tripDurationMs(t: Pick<TripView, 'startTime' | 'endTime'>, now: number): number {
