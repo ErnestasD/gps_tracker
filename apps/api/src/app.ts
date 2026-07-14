@@ -1,8 +1,12 @@
 import { Hono } from 'hono'
 import { Gauge, Registry } from 'prom-client'
 
-import type { Db, Pool } from '@orbetra/db'
+import { HTTPException } from 'hono/http-exception'
+
+import { dbErrorHttp, type Db, type Pool } from '@orbetra/db'
 import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
+
+import { problem } from './auth/middleware.js'
 
 import { createAuthRoutes } from './auth/login.js'
 import { createApiKeyAuth } from './auth/apiKey.js'
@@ -82,6 +86,20 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // embedder/test with a weak HS256 secret is offline-brute-forceable
   if (deps.jwtSecret.length < 32) throw new Error('jwtSecret must be at least 32 chars')
   const app = new Hono<AuthEnv>()
+
+  // Global error handler: translate an UNHANDLED Prisma error to the right HTTP status instead of a
+  // raw 500 — chiefly a non-UUID `:id` hitting a uuid column (P2023 → 404), which previously 500'd on
+  // every item route (accounts/users/rules/webhooks/drivers/…). Repos that own a constraint already
+  // map it in their route, so those never reach here. HTTPException (intentional) passes through, and
+  // any truly unexpected error still 500s (logged). Header middleware runs post-next, so the response
+  // this returns still carries the security headers (pinned by securityHeaders.spec).
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) return err.getResponse()
+    const mapped = dbErrorHttp(err)
+    if (mapped !== null) return problem(c, mapped.status, mapped.title)
+    console.error('unhandled API error', err)
+    return problem(c, 500, 'Internal Server Error')
+  })
 
   // security headers on EVERY response, incl. 401/404/problem+json (E07-5) — registered
   // first so no route can be reached without them. HSTS only in TLS deployments.
