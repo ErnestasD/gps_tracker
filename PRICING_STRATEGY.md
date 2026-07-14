@@ -1,4 +1,15 @@
 # PRICING_STRATEGY.md — Orbetra
+> ## ⚠️ SOURCE OF TRUTH FOR ALL PRICING
+> **This document is the single, authoritative source for every pricing number, tier, plan, and billing rule in the Orbetra project.** It overrides any pricing figures mentioned in PROJECT_PLAN.md, PUBLIC_WEB_LOVABLE.md, DASHBOARD_UI_SPEC.md, or any other document. Where those files quote different numbers (e.g. an old "€1.5–2.5/device" range, or "€49/€149/€399" tiers), **those are void — use the tables in this file instead.**
+>
+> **For Claude Code / agents:** when implementing anything touching prices, plans, tiers, billing, overage, or affiliate commission math, read THIS file, not the pricing lines elsewhere. If another doc conflicts, this wins.
+> **For the affiliate module (PROJECT_PLAN §6.9 / E09):** the "plan pricing" used in the commission month-close job = the TSP base + metered overage defined in §2–3 here.
+> **For the public site (PUBLIC_WEB_LOVABLE.md):** the pricing page uses the exact numbers in §2–3 here.
+>
+> All pricing changes go into THIS file only — other docs are already handed to coding agents and must not be edited for pricing.
+
+---
+
 **Status:** market-validated (2026), baseline for launch · **Companion to:** PROJECT_PLAN.md §7
 **One-line:** two tracks — self-service **Direct** for small fleets, sales-led **White-label/TSP** for resellers. Monthly + annual (2 months free). Per-device economics validated against GpsGate ($1.5/device), Wialon wholesale (~€0.30–0.60), gps-server (~€0.45–1.25), 1NCE SIM (~€0.10/mo).
 
