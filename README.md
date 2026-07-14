@@ -55,6 +55,9 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
 | `EXPORT_DIR` | apps/worker | GDPR export output directory (E08-4), default `var/exports`; R2/S3 upload is the follow-up when creds exist |
+| `SMTP_URL` | apps/worker | SES SMTP connection string `smtp://<user>:<pass>@email-smtp.eu-central-1.amazonaws.com:587` (E05-5, ADR-023); unset = email channel skipped |
+| `MAIL_FROM` | apps/worker | e-mail sender, a DKIM-verified SES identity (e.g. `alerts@orbetra.com`); required with `SMTP_URL` |
+| `SES_CONFIG_SET` | apps/worker | optional SES configuration set → `X-SES-CONFIGURATION-SET` header, routes bounces/complaints to SNS |
 | `TELEGRAM_BOT_TOKEN` | apps/worker + infra/alertmanager | notification delivery (E05-5) AND ops alerts (W7-S1); unset = alerts visible in UI only, no push |
 | `TELEGRAM_ALERT_CHAT_ID` | infra/alertmanager | founders' chat id for ops alerts (W7-S1) |
 | pgBackRest repo | infra/pgbackrest/pgbackrest.conf | local volume now; swap to Hetzner Storage Box SFTP for real DR (W7-S2, founder-gated) |
@@ -421,8 +424,9 @@ only (rule 12). Env: `DATABASE_URL` (required), `REDIS_URL`, `INGEST_HOST`/`INGE
   credentials are absent is *skipped* (metric `notification_skipped_total{reason}`), not
   failed. Telegram sends via the Bot API (`TELEGRAM_BOT_TOKEN`); email takes an injected
   SMTP/SES transport. Metrics `notification_sent_total{channel}` / `_failed_total{channel}`.
-- **BLOCKED-INFO** (founder must provision): AWS SES production access + `MAIL_FROM` for real
-  email; `TELEGRAM_BOT_TOKEN` (+ the pairing deep-link that binds a `chat_id`) for Telegram.
+- **Email is LIVE-capable** (SES production access approved 2026-07-14, ADR-023): set `SMTP_URL`
+  + `MAIL_FROM` on the worker (see docs/runbooks/aws-ses-setup.md) and email alerts send.
+  **Telegram still gated** on `TELEGRAM_BOT_TOKEN` (+ the pairing deep-link that binds a `chat_id`).
   Until then those channels are skipped. Per-account channel config UI + Telegram pairing +
   the webhook channel (E06-4) are follow-ups; the dispatch pipeline + retry are done.
 

@@ -6,6 +6,20 @@ addresses); the production-access request is human-reviewed (1–3 days) — sub
 
 Region for EVERYTHING below: **Europe (Frankfurt) — eu-central-1** (EU data residency).
 
+> **STATUS 2026-07-14: production access APPROVED** — 50,000 msg/day, 14 msg/s, out of
+> sandbox. The code is WIRED (ADR-023, nodemailer SMTP behind the E05-5 dispatch seam). To
+> GO LIVE, set these on the **worker** server `.env` (never in git — rule 12), then restart the
+> worker:
+> ```
+> SMTP_URL=smtp://<SES_SMTP_USER>:<SES_SMTP_PASS>@email-smtp.eu-central-1.amazonaws.com:587
+> MAIL_FROM=alerts@<domain>            # a DKIM-verified SES identity (see §2/§4)
+> SES_CONFIG_SET=orbetra-notifications # optional but recommended — routes bounces/complaints
+> ```
+> Preconditions before real sends: domain identity **Verified** (DKIM), custom MAIL FROM
+> records added (§4), and SMTP credentials created (§6). Bounce/complaint auto-suppression
+> (SNS→webhook consuming the config-set events) is a documented FOLLOW-UP; until then use the
+> SES console's bounce/complaint dashboards (volume is < 10k/month initially).
+
 ---
 
 ## 0. Prerequisites
