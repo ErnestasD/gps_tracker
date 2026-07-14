@@ -159,7 +159,10 @@
       "add": "Add",
       "invalid": "Enter a valid email or chat id.",
       "count": "{{n}} channel(s)",
-      "none": "no channels"
+      "none": "no channels",
+      "edit": "Channels",
+      "save": "Save",
+      "cancel": "Cancel"
     }
   },
   "playback": {

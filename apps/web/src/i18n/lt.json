@@ -159,7 +159,10 @@
       "add": "Pridėti",
       "invalid": "Įveskite teisingą el. paštą arba chat id.",
       "count": "{{n}} kanal.",
-      "none": "nėra kanalų"
+      "none": "nėra kanalų",
+      "edit": "Kanalai",
+      "save": "Išsaugoti",
+      "cancel": "Atšaukti"
     }
   },
   "playback": {

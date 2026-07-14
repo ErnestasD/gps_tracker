@@ -159,7 +159,10 @@
       "add": "Hinzufügen",
       "invalid": "Gültige E-Mail oder Chat-ID eingeben.",
       "count": "{{n}} Kanäle",
-      "none": "keine Kanäle"
+      "none": "keine Kanäle",
+      "edit": "Kanäle",
+      "save": "Speichern",
+      "cancel": "Abbrechen"
     }
   },
   "playback": {
