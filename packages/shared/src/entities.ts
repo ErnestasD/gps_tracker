@@ -319,9 +319,9 @@ export const geofenceCreateSchema = z
     { message: 'corridor requires { line, bufferM }; polygon/circle require { geometry }' })
 export const geofenceUpdateSchema = z
   .object({
+    // kind is immutable post-create (a corridor is physically stored as a buffered polygon)
     name: z.string().min(1).max(120),
     color: hexColor,
-    kind: geofenceKindSchema,
     geometry: geoJsonPolygonSchema,
   })
   .partial()

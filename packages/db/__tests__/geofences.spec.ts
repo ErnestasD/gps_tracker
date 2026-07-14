@@ -70,6 +70,17 @@ describe('geofence repo — corridor (V2)', () => {
     ).rejects.toBeInstanceOf(GeofenceTooLargeError)
   })
 
+  it('rejects a bare corridor call with a missing/out-of-range buffer (non-HTTP caller guard)', async () => {
+    const { aScope, accountId } = await seedTenant('Bad Buffer Co')
+    // the API's zod refine catches this, but a direct repo call must not ST_Buffer(line, 0) → empty fence
+    await expect(
+      db.geofences.create(aScope, actor, { name: 'no buf', kind: 'corridor', accountId, line: ROUTE }),
+    ).rejects.toBeInstanceOf(GeofenceInvalidError)
+    await expect(
+      db.geofences.create(aScope, actor, { name: 'zero buf', kind: 'corridor', accountId, line: ROUTE, bufferM: 0 }),
+    ).rejects.toBeInstanceOf(GeofenceInvalidError)
+  })
+
   it('still creates a plain polygon and rejects an invalid one (regression)', async () => {
     const { aScope, accountId } = await seedTenant('Poly Co')
     const square = { type: 'Polygon', coordinates: [[[25.26, 54.67], [25.3, 54.67], [25.3, 54.7], [25.26, 54.7], [25.26, 54.67]]] }
