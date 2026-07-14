@@ -49,7 +49,9 @@
     "subscribe": "Prenumeruoti",
     "manage": "Valdyti atsiskaitymus",
     "none": "Nėra prenumeratos",
-    "unavailable": "Atsiskaitymai šioje aplinkoje nepasiekiami."
+    "unavailable": "Atsiskaitymai šioje aplinkoje nepasiekiami.",
+    "noPlans": "Planų kol kas nesukonfigūruota.",
+    "interval": { "month": "mėn.", "year": "m." }
   },
   "branding": {
     "title": "Prekės ženklas",

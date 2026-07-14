@@ -52,6 +52,7 @@ async function freshTenant(name: string) {
 const calls: { checkout: number; portal: number } = { checkout: 0, portal: 0 }
 const fakeStripe: StripeGateway = {
   prices: ['price_test'],
+  listPlans: () => Promise.resolve([{ priceId: 'price_test', productName: 'Direct 10', amount: 1500, currency: 'eur', interval: 'month' }]),
   ensureCustomer: ({ tenantId, existingCustomerId }) => Promise.resolve(existingCustomerId ?? `cus_${tenantId.slice(0, 8)}`),
   createCheckoutSession: ({ customerId }) => { calls.checkout++; return Promise.resolve(`https://checkout.test/${customerId}`) },
   createPortalSession: ({ customerId }) => { calls.portal++; return Promise.resolve(`https://portal.test/${customerId}`) },
@@ -213,6 +214,14 @@ describe('billing lifecycle (ADR-024)', () => {
   it('billing is admin-only — a viewer is forbidden', async () => {
     expect((await req(port, '/v1/billing', t1Viewer)).status).toBe(403)
     expect((await req(port, '/v1/billing/checkout', t1Viewer, 'POST')).status).toBe(403)
+    expect((await req(port, '/v1/billing/plans', t1Viewer)).status).toBe(403)
+  })
+
+  it('lists the configured plans (keyless server → empty)', async () => {
+    const plans = (await (await req(port, '/v1/billing/plans', t1Token)).json()) as { priceId: string; productName: string }[]
+    expect(plans).toHaveLength(1)
+    expect(plans[0]).toMatchObject({ priceId: 'price_test', productName: 'Direct 10' })
+    expect(await (await req(portOff, '/v1/billing/plans', t1Token)).json()).toEqual([]) // no keys → empty
   })
 
   it('portal 409s before a customer exists, then returns a url', async () => {

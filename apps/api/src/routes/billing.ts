@@ -1,7 +1,7 @@
 import type { Hono } from 'hono'
 
 import type { Db, SubscriptionUpdate } from '@orbetra/db'
-import type { BillingView, Role } from '@orbetra/shared'
+import type { BillingPlanView, BillingView, Role } from '@orbetra/shared'
 
 import type { StripeGateway } from '../billing/stripe.js'
 import { type AuthEnv } from '../auth/middleware.js'
@@ -56,6 +56,15 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
       currentPeriodEnd: b?.currentPeriodEnd ?? null,
     }
     return c.json(view)
+  })
+
+  app.get('/v1/billing/plans', async (c) => {
+    const auth = c.get('auth')
+    if (!isAdmin(auth.role)) return c.json({ error: 'Forbidden' }, 403)
+    c.header('Cache-Control', 'no-store')
+    if (deps.stripe === undefined) return c.json([] as BillingPlanView[])
+    const plans = await deps.stripe.listPlans()
+    return c.json(plans satisfies BillingPlanView[])
   })
 
   app.post('/v1/billing/checkout', async (c) => {
