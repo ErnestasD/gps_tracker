@@ -53,7 +53,9 @@ export async function readDriverScores(pool: Pool, scope: DriverScoreScope, opts
       coalesce(sum(t."idleS"), 0) AS idle_s,
       coalesce(sum(EXTRACT(EPOCH FROM (coalesce(t."endTime", $3::timestamptz) - t."startTime"))), 0) AS drive_s,
       coalesce((
-        SELECT count(*) FROM events e JOIN trips t2
+        -- count DISTINCT events: if a driver had overlapping trips on one device, an event in the
+        -- overlap must count ONCE, not once per matching trip window
+        SELECT count(DISTINCT e.id) FROM events e JOIN trips t2
           ON t2."driverId" = d.id AND e."deviceId" = t2."deviceId"
           AND e.at >= t2."startTime" AND e.at <= coalesce(t2."endTime", $3::timestamptz)
           AND t2."startTime" >= $2 AND t2."startTime" <= $3
