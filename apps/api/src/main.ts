@@ -7,6 +7,7 @@ import { Redis } from 'ioredis'
 import { createDb, createPool } from '@orbetra/db'
 
 import { createApiProm, createApp } from './app.js'
+import { createStripeGateway, stripeConfigFromEnv } from './billing/stripe.js'
 import { attachWsGateway } from './ws.js'
 
 // Env contract per PROJECT_PLAN §6.7 (E03-1: real auth — the E02-4 stub is gone).
@@ -47,9 +48,17 @@ const gdpr = {
   },
 }
 
+// Stripe billing (ADR-024): configured only when all three keys are present; otherwise the
+// billing routes report not-configured / 503 (staging + CI run keyless).
+const stripeConfig = stripeConfigFromEnv()
+const stripe = stripeConfig !== null ? createStripeGateway(stripeConfig) : undefined
+if (stripe === undefined) console.warn('Stripe not configured (STRIPE_SECRET_KEY/WEBHOOK_SECRET/PRICE_ID) — billing routes disabled')
+
 const deps = {
   redis,
   onboarding: { host: process.env['INGEST_PUBLIC_HOST'] ?? 'orbetra.com', port: Number(process.env['INGEST_TCP_PORT'] ?? 5027) },
+  ...(stripe !== undefined ? { stripe } : {}),
+  ...(process.env['APP_BASE_URL'] ? { appBaseUrl: process.env['APP_BASE_URL'] } : {}),
   redisSub,
   db,
   pool,

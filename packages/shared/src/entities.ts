@@ -521,3 +521,23 @@ export interface PublicShareView {
     course: number | null
   } | null
 }
+
+// ── billing (Stripe, ADR-024) ──────────────────────────────────────────────────────────────
+/** GET /v1/billing — the tenant's subscription state. `configured` is false when the server
+ *  has no Stripe keys (staging/CI): the UI then shows billing as unavailable rather than erroring. */
+export interface BillingView {
+  /** true when STRIPE_SECRET_KEY + price are set server-side; false ⇒ billing disabled */
+  configured: boolean
+  /** true once a Stripe customer exists for the tenant */
+  hasCustomer: boolean
+  /** mirrors Stripe subscription.status; null = never subscribed */
+  status: string | null
+  /** convenience: status ∈ {active, trialing} */
+  active: boolean
+  /** ISO end of the current paid period, or null */
+  currentPeriodEnd: string | null
+}
+/** POST /v1/billing/checkout and /portal both return a Stripe-hosted URL to redirect to. */
+export interface BillingRedirectView {
+  url: string
+}

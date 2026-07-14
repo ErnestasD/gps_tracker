@@ -38,7 +38,18 @@
     "webhooks": "Webhooki",
     "platform": "Platforma",
     "drivers": "Kierowcy",
-    "maintenance": "Konserwacja"
+    "maintenance": "Konserwacja",
+    "billing": "Płatności"
+  },
+  "billing": {
+    "title": "Płatności",
+    "subscription": "Subskrypcja",
+    "pricingNote": "Przejrzyste ceny — zobacz swój plan. Subskrypcją, metodą płatności i fakturami zarządzasz w portalu Stripe.",
+    "renews": "Odnawia się",
+    "subscribe": "Subskrybuj",
+    "manage": "Zarządzaj płatnościami",
+    "none": "Brak subskrypcji",
+    "unavailable": "Płatności są niedostępne w tym środowisku."
   },
   "branding": {
     "title": "Marka",

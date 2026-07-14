@@ -38,7 +38,18 @@
     "webhooks": "Webhooks",
     "platform": "Platforma",
     "drivers": "Vairuotojai",
-    "maintenance": "Priežiūra"
+    "maintenance": "Priežiūra",
+    "billing": "Atsiskaitymai"
+  },
+  "billing": {
+    "title": "Atsiskaitymai",
+    "subscription": "Prenumerata",
+    "pricingNote": "Skaidri kaina — žr. savo planą. Prenumeratą, mokėjimo būdą ir sąskaitas valdykite Stripe portale.",
+    "renews": "Atsinaujina",
+    "subscribe": "Prenumeruoti",
+    "manage": "Valdyti atsiskaitymus",
+    "none": "Nėra prenumeratos",
+    "unavailable": "Atsiskaitymai šioje aplinkoje nepasiekiami."
   },
   "branding": {
     "title": "Prekės ženklas",

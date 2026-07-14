@@ -12,6 +12,20 @@ export interface TenantUpdate {
   branding?: unknown
 }
 
+/** Stripe billing state (ADR-024). currentPeriodEnd is an ISO string for the API view. */
+export interface BillingState {
+  stripeCustomerId: string | null
+  stripeSubscriptionId: string | null
+  subscriptionStatus: string | null
+  currentPeriodEnd: string | null
+}
+/** Subscription fields written by the signature-verified webhook (never by the browser). */
+export interface SubscriptionUpdate {
+  stripeSubscriptionId: string | null
+  subscriptionStatus: string | null
+  currentPeriodEnd: Date | null
+}
+
 /**
  * Tenants repo — PLATFORM level (NOT scoped): only platform_admin reaches it (API
  * `requireRole('platform_admin')`). There is no tenant scope above a tenant, so
@@ -28,6 +42,15 @@ export interface TenantRepo {
    * (from auth), and ONLY the branding jsonb is writable — not name (tenant admins
    * brand themselves; renaming a tenant stays platform-only). */
   updateBranding(actor: Actor, tenantId: string, branding: unknown): Promise<Tenant>
+  /** Tenant-self billing read (ADR-024): caller passes their OWN tenantId (from auth). */
+  getBilling(tenantId: string): Promise<BillingState | null>
+  /** Persist the Stripe customer id created lazily on first checkout (tenant-self). */
+  setStripeCustomer(tenantId: string, stripeCustomerId: string): Promise<void>
+  /** Webhook path: write subscription state, resolving the tenant by customer id. Applied ONLY when
+   *  `eventAt` is strictly newer than the last applied event (monotonic guard vs out-of-order/duplicate
+   *  delivery — this WHERE is atomic, so concurrent duplicates collapse). Returns false when nothing
+   *  was updated (unknown customer, or a stale/replayed event). */
+  applySubscriptionEvent(stripeCustomerId: string, eventAt: Date, data: SubscriptionUpdate): Promise<boolean>
 }
 
 export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): TenantRepo {
@@ -66,6 +89,38 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       const row = await prisma.tenant.update({ where: { id: tenantId }, data: { branding: branding as never } })
       await audit.record({ tenantId }, actor, { action: 'update', entity: 'branding', entityId: tenantId, before, after: row })
       return row
+    },
+    getBilling: async (tenantId) => {
+      const row = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { stripeCustomerId: true, stripeSubscriptionId: true, subscriptionStatus: true, currentPeriodEnd: true },
+      })
+      if (row === null) return null
+      return {
+        stripeCustomerId: row.stripeCustomerId,
+        stripeSubscriptionId: row.stripeSubscriptionId,
+        subscriptionStatus: row.subscriptionStatus,
+        currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
+      }
+    },
+    setStripeCustomer: async (tenantId, stripeCustomerId) => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { stripeCustomerId } })
+    },
+    applySubscriptionEvent: async (stripeCustomerId, eventAt, data) => {
+      // Atomic monotonic guard: match the customer AND only when this event is strictly newer than the
+      // last applied one. A reordered stale event (older `eventAt`) or a replay (equal `eventAt`) matches
+      // zero rows → no-op. Concurrent duplicates collapse: the first write advances lastBillingEventAt,
+      // the second's `lt` predicate then fails. An unknown customer id also matches zero rows.
+      const result = await prisma.tenant.updateMany({
+        where: { stripeCustomerId, OR: [{ lastBillingEventAt: null }, { lastBillingEventAt: { lt: eventAt } }] },
+        data: {
+          stripeSubscriptionId: data.stripeSubscriptionId,
+          subscriptionStatus: data.subscriptionStatus,
+          currentPeriodEnd: data.currentPeriodEnd,
+          lastBillingEventAt: eventAt,
+        },
+      })
+      return result.count > 0
     },
   }
 }

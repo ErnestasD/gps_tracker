@@ -38,7 +38,18 @@
     "webhooks": "Webhooks",
     "platform": "Platform",
     "drivers": "Drivers",
-    "maintenance": "Maintenance"
+    "maintenance": "Maintenance",
+    "billing": "Billing"
+  },
+  "billing": {
+    "title": "Billing",
+    "subscription": "Subscription",
+    "pricingNote": "Transparent pricing — see your plan. Manage your subscription, payment method and invoices in the Stripe portal.",
+    "renews": "Renews",
+    "subscribe": "Subscribe",
+    "manage": "Manage billing",
+    "none": "No subscription",
+    "unavailable": "Billing is not available on this environment."
   },
   "branding": {
     "title": "Branding",

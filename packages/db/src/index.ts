@@ -45,6 +45,6 @@ export {
   type TripRow,
 } from './reports.js'
 export type { Pool } from 'pg'
-export { type TenantRepo, type TenantCreate, type TenantUpdate } from './repos/tenants.js'
+export { type TenantRepo, type TenantCreate, type TenantUpdate, type BillingState, type SubscriptionUpdate } from './repos/tenants.js'
 export { type TenantDomainRepo, DomainConflictError, DomainLimitError, MAX_DOMAINS_PER_TENANT } from './repos/tenantDomains.js'
 export { type AuditRepo } from './repos/audit.js'
