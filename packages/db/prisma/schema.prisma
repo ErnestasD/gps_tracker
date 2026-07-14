@@ -49,6 +49,7 @@ enum RuleKind {
   low_battery
   panic
   device_offline
+  fuel_theft
 }
 
 enum OdometerSource {

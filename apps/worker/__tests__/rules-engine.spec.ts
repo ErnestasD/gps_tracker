@@ -102,7 +102,7 @@ describe('E05-4 RuleEngine — ignition (edge)', () => {
 
   it('warm-starts the prior value so a restart does not re-fire', () => {
     const e = new RuleEngine()
-    const ioState = (): DeviceIo => ({ ignition: true, din1: null, unplug: null, alarm: null })
+    const ioState = (): DeviceIo => ({ ignition: true, din1: null, unplug: null, alarm: null, fuelPct: null, fuelL: null })
     // device is still ignition-on after restart → no phantom edge
     expect(e.feed([rec(0, { ignition: true })], only(rule('ignition')), ioState)).toHaveLength(0)
   })
@@ -161,6 +161,44 @@ describe('E05-4 RuleEngine — ordering & scope', () => {
   it('snapshot exposes the current IO for durable persistence', () => {
     const e = new RuleEngine()
     e.feed([rec(0, { ignition: true, attrs: { Unplug: 1, Alarm: 0, 'Digital Input 1': 1 } })], only(rule('ignition')))
-    expect(e.snapshot(42n)).toEqual({ ignition: true, din1: true, unplug: true, alarm: false })
+    expect(e.snapshot(42n)).toEqual({ ignition: true, din1: true, unplug: true, alarm: false, fuelPct: null, fuelL: null })
+  })
+})
+
+describe('RuleEngine — fuel_theft (V2: drop while engine OFF)', () => {
+  const off = (tSec: number, pct: number) => rec(tSec, { ignition: false, attrs: { io_89: pct } })
+
+  it('fires on a %-drop beyond the threshold while ignition is off at both ends', () => {
+    const e = new RuleEngine()
+    const ev = e.feed([off(0, 80), off(60, 60)], only(rule('fuel_theft', { dropPct: 10 })))
+    expect(ev).toHaveLength(1)
+    expect(ev[0]!.payload).toMatchObject({ unit: 'pct', from: 80, to: 60, drop: 20 })
+  })
+
+  it('does NOT fire while the engine is ON (that is consumption, not theft)', () => {
+    const e = new RuleEngine()
+    const drive = (t: number, pct: number) => rec(t, { ignition: true, attrs: { io_89: pct } })
+    expect(e.feed([drive(0, 80), drive(60, 60)], only(rule('fuel_theft', { dropPct: 10 })))).toHaveLength(0)
+  })
+
+  it('does NOT fire when just parked (ignition was ON at the previous sample)', () => {
+    const e = new RuleEngine()
+    const on = (t: number, pct: number) => rec(t, { ignition: true, attrs: { io_89: pct } })
+    // prev = engine ON (80), cur = engine OFF (60): can't attribute the drop to a parked theft
+    expect(e.feed([on(0, 80), off(60, 60)], only(rule('fuel_theft', { dropPct: 10 })))).toHaveLength(0)
+  })
+
+  it('stays silent on a sub-threshold drop and on a refuel (rise)', () => {
+    expect(new RuleEngine().feed([off(0, 80), off(60, 75)], only(rule('fuel_theft', { dropPct: 10 })))).toHaveLength(0)
+    expect(new RuleEngine().feed([off(0, 60), off(60, 80)], only(rule('fuel_theft', { dropPct: 10 })))).toHaveLength(0)
+  })
+
+  it('supports a litres threshold (AVL 84 ×0.1) when configured', () => {
+    const e = new RuleEngine()
+    const offL = (t: number, raw: number) => rec(t, { ignition: false, attrs: { io_84: raw } })
+    // 800→500 raw ⇒ 80→50 L ⇒ 30 L drop ≥ 20
+    const ev = e.feed([offL(0, 800), offL(60, 500)], only(rule('fuel_theft', { dropLiters: 20 })))
+    expect(ev).toHaveLength(1)
+    expect(ev[0]!.payload).toMatchObject({ unit: 'liters', drop: 30 })
   })
 })

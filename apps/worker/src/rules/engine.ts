@@ -1,6 +1,6 @@
 import type { NormalizedRecord } from '@orbetra/shared'
 
-import { alarmOf, batteryVoltsOf, din1Of, ignitionOf, unplugOf } from './io.js'
+import { alarmOf, batteryVoltsOf, din1Of, fuelLevelOf, ignitionOf, unplugOf } from './io.js'
 import type { EngineRuleKind, RuleDef, RuleEvent } from './types.js'
 
 /**
@@ -22,9 +22,12 @@ export interface DeviceIo {
   din1: boolean | null
   unplug: boolean | null
   alarm: boolean | null
+  /** last fuel level % (AVL 89/48) and litres (AVL 84) — for fuel_theft drop detection */
+  fuelPct: number | null
+  fuelL: number | null
 }
 
-const EMPTY_IO: DeviceIo = { ignition: null, din1: null, unplug: null, alarm: null }
+const EMPTY_IO: DeviceIo = { ignition: null, din1: null, unplug: null, alarm: null, fuelPct: null, fuelL: null }
 
 /** Rules whose event bypasses cooldown (§6.5 priority-2 / power_cut). */
 const BYPASS: ReadonlySet<EngineRuleKind> = new Set<EngineRuleKind>(['panic', 'power_cut'])
@@ -57,11 +60,14 @@ export class RuleEngine {
 
       // previous IO for edge detection (warm-start once from durable state)
       const prev = this.io.get(dev) ?? ioStateFor?.(r.deviceId) ?? EMPTY_IO
+      const fuel = fuelLevelOf(r)
       const cur: DeviceIo = {
         ignition: ignitionOf(r),
         din1: din1Of(r),
         unplug: unplugOf(r),
         alarm: alarmOf(r),
+        fuelPct: fuel.pct,
+        fuelL: fuel.liters,
       }
 
       for (const rule of rules) {
@@ -76,6 +82,8 @@ export class RuleEngine {
         din1: cur.din1 ?? prev.din1,
         unplug: cur.unplug ?? prev.unplug,
         alarm: cur.alarm ?? prev.alarm,
+        fuelPct: cur.fuelPct ?? prev.fuelPct,
+        fuelL: cur.fuelL ?? prev.fuelL,
       })
     }
     return out
@@ -124,6 +132,22 @@ export class RuleEngine {
       case 'panic':
         // rising edge only: Alarm 0→1
         return prev.alarm === false && cur.alarm === true ? this.emit(rule, r, { alarm: true }) : null
+      case 'fuel_theft': {
+        // fuel dropping while the engine is OFF at BOTH ends of the interval can't be consumption →
+        // theft/leak. Uses % (AVL 89/48) when both samples have it, else litres (AVL 84) if a
+        // dropLiters threshold is set. Consecutive-reading drop (a fast siphon between two parked
+        // samples); a slow multi-reading drain is a tuning follow-up (windowed baseline).
+        if (prev.ignition !== false || cur.ignition !== false) return null
+        const dropPct = num(rule.config['dropPct'], 10)
+        if (prev.fuelPct !== null && cur.fuelPct !== null && prev.fuelPct - cur.fuelPct >= dropPct) {
+          return this.emit(rule, r, { unit: 'pct', from: prev.fuelPct, to: cur.fuelPct, drop: prev.fuelPct - cur.fuelPct })
+        }
+        const dropLiters = rule.config['dropLiters'] !== undefined ? num(rule.config['dropLiters'], 0) : null
+        if (dropLiters !== null && dropLiters > 0 && prev.fuelL !== null && cur.fuelL !== null && prev.fuelL - cur.fuelL >= dropLiters) {
+          return this.emit(rule, r, { unit: 'liters', from: prev.fuelL, to: cur.fuelL, drop: prev.fuelL - cur.fuelL })
+        }
+        return null
+      }
     }
   }
 

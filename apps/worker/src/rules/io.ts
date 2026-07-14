@@ -21,6 +21,9 @@ export const AVL_DIN1 = 1 // "Digital Input 1" — Logic 0/1
 export const AVL_BATTERY_VOLTAGE = 67 // "Battery Voltage" — multiplier 0.001 (mV → V)
 export const AVL_ALARM = 236 // "Alarm" — 0: Reserved, 1: Alarm event occurred
 export const AVL_UNPLUG = 252 // "Unplug" — 0: battery present, 1: battery unplugged
+// Fuel level ids share the ambiguous name "Fuel Level", so normalize FORCES io_<id> keys (E08-3):
+// io_89 Fuel level %, io_48 OBD Fuel Level %, io_84 Fuel level l (wiki multiplier ×0.1).
+const FUEL_LITERS_MULTIPLIER = 0.1
 
 /** Battery Voltage multiplier from the dictionary (0.001): normalize stores the RAW
  * integer (mV), so the engine scales to volts here. Standard across FMB/FMC/TAT families. */
@@ -60,4 +63,18 @@ export function alarmOf(r: NormalizedRecord): boolean | null {
 export function batteryVoltsOf(r: NormalizedRecord): number | null {
   const mv = attrNumber(r.attrs, AVL_BATTERY_VOLTAGE, 'Battery Voltage')
   return mv === null ? null : mv * BATTERY_VOLTAGE_MULTIPLIER
+}
+
+/** Read a fuel id's value from its FORCED io_<id> key only (the shared name is ambiguous). */
+function fuelIo(attrs: Record<string, unknown>, id: number): number | null {
+  const raw = attrs[`io_${id}`]
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : null
+}
+
+/** Fuel level as { pct, liters } (E08-3 semantics): pct from io_89 (fallback io_48, both %,
+ *  no multiplier); liters from io_84 (wiki ×0.1). Either may be null if the model omits it. */
+export function fuelLevelOf(r: NormalizedRecord): { pct: number | null; liters: number | null } {
+  const pct = fuelIo(r.attrs, 89) ?? fuelIo(r.attrs, 48)
+  const l84 = fuelIo(r.attrs, 84)
+  return { pct, liters: l84 === null ? null : l84 * FUEL_LITERS_MULTIPLIER }
 }

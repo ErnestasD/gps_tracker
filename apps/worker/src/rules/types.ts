@@ -4,10 +4,10 @@
  * engine (E05-2) and `device_offline` from the sweeper job (E05-4b). Those two are
  * filtered out by the RuleCache so they never reach this engine.
  */
-export type EngineRuleKind = 'overspeed' | 'ignition' | 'din_change' | 'power_cut' | 'low_battery' | 'panic'
+export type EngineRuleKind = 'overspeed' | 'ignition' | 'din_change' | 'power_cut' | 'low_battery' | 'panic' | 'fuel_theft'
 
 /** The engine-handled subset of RuleKind, resolved per device by the RuleCache. */
-export const ENGINE_RULE_KINDS: readonly EngineRuleKind[] = ['overspeed', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic']
+export const ENGINE_RULE_KINDS: readonly EngineRuleKind[] = ['overspeed', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'fuel_theft']
 
 /** A single enabled rule, flattened for the engine (config is kind-specific, see io.ts/engine.ts). */
 export interface RuleDef {

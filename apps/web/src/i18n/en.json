@@ -153,14 +153,16 @@
       "power_cut": "Power cut",
       "low_battery": "Low battery",
       "panic": "Panic",
-      "device_offline": "Device offline"
+      "device_offline": "Device offline",
+      "fuel_theft": "Fuel theft"
     },
     "cfg": {
       "speedKmh": "Speed (km/h)",
       "geofenceId": "Geofence",
       "on": "On",
       "thresholdV": "Threshold (V)",
-      "afterH": "After (hours)"
+      "afterH": "After (hours)",
+      "dropPct": "Drop (%)"
     },
     "needGeofence": "Select a geofence for this rule.",
     "actionError": "Action failed — try again.",
@@ -440,7 +442,8 @@
       "power_cut": "Power cut",
       "low_battery": "Low battery",
       "panic": "Panic",
-      "device_offline": "Device offline"
+      "device_offline": "Device offline",
+      "fuel_theft": "Fuel theft"
     }
   },
   "reports": {
