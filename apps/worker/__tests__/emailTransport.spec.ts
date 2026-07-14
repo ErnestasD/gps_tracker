@@ -1,43 +1,61 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { buildEmailTransport, type MailSender } from '../src/notify/emailTransport.js'
+import { buildEmailTransport, type MailSender, type SmtpOptions } from '../src/notify/emailTransport.js'
 
-/** A recording fake so we exercise the env-gating + send mapping without a live SMTP server. */
+/** A recording fake so we exercise env-gating + send mapping without a live SMTP server. */
 function fakeMailer() {
   const calls: Array<Parameters<MailSender['sendMail']>[0]> = []
-  const mailer: MailSender = { sendMail: (opts) => { calls.push(opts); return Promise.resolve({}) } }
-  return { calls, create: vi.fn(() => mailer) }
+  const opts: SmtpOptions[] = []
+  const mailer: MailSender = { sendMail: (o) => { calls.push(o); return Promise.resolve({}) } }
+  return { calls, opts, create: vi.fn((o: SmtpOptions) => { opts.push(o); return mailer }) }
 }
 
+const FULL = { SMTP_HOST: 'email-smtp.eu-central-1.amazonaws.com', SMTP_USER: 'AKIA', SMTP_PASS: 'Bo+9vK/qR7xZ==', MAIL_FROM: 'alerts@orbetra.com' }
+
 describe('E05-5 buildEmailTransport', () => {
-  it('is undefined (channel skipped) unless BOTH SMTP_URL and MAIL_FROM are set', () => {
+  it('is undefined (channel skipped) unless host, user, pass AND from are all set', () => {
     const f = fakeMailer()
     expect(buildEmailTransport({}, f.create)).toBeUndefined()
-    expect(buildEmailTransport({ SMTP_URL: 'smtp://x' }, f.create)).toBeUndefined()
-    expect(buildEmailTransport({ MAIL_FROM: 'a@b.c' }, f.create)).toBeUndefined()
-    expect(buildEmailTransport({ SMTP_URL: 'smtp://x', MAIL_FROM: 'a@b.c' }, f.create)).toBeDefined()
+    for (const drop of ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM']) {
+      const env: Record<string, string> = { ...FULL }
+      delete env[drop]
+      expect(buildEmailTransport(env, f.create), `missing ${drop}`).toBeUndefined()
+    }
+    expect(buildEmailTransport({ ...FULL }, f.create)).toBeDefined()
+  })
+
+  it('builds an OPTIONS object (no URL parsing) — a base64 SES password with / + = survives intact', () => {
+    const f = fakeMailer()
+    buildEmailTransport({ ...FULL }, f.create)
+    // the whole point of HIGH-3: the password is passed structurally, never URL-parsed
+    expect(f.opts[0]).toEqual({ host: FULL.SMTP_HOST, port: 587, secure: false, auth: { user: 'AKIA', pass: 'Bo+9vK/qR7xZ==' } })
+  })
+
+  it('uses secure:true only for port 465; rejects a non-numeric/out-of-range SMTP_PORT (skip, no crash)', () => {
+    const f = fakeMailer()
+    buildEmailTransport({ ...FULL, SMTP_PORT: '465' }, f.create)
+    expect(f.opts[0]!.secure).toBe(true)
+    expect(buildEmailTransport({ ...FULL, SMTP_PORT: 'abc' }, f.create)).toBeUndefined()
+    expect(buildEmailTransport({ ...FULL, SMTP_PORT: '99999' }, f.create)).toBeUndefined()
   })
 
   it('sends with MAIL_FROM as the sender and passes subject/text through', async () => {
     const f = fakeMailer()
-    const t = buildEmailTransport({ SMTP_URL: 'smtp://u:p@host:587', MAIL_FROM: 'alerts@orbetra.com' }, f.create)!
-    expect(f.create).toHaveBeenCalledWith('smtp://u:p@host:587')
+    const t = buildEmailTransport({ ...FULL }, f.create)!
     await t.send('driver@fleet.test', 'Panic alert', 'Device 42 pressed panic.')
-    expect(f.calls).toHaveLength(1)
     expect(f.calls[0]).toMatchObject({ from: 'alerts@orbetra.com', to: 'driver@fleet.test', subject: 'Panic alert', text: 'Device 42 pressed panic.' })
     expect(f.calls[0]!.headers).toBeUndefined() // no config set → no header
   })
 
-  it('a malformed SMTP_URL disables email (undefined) instead of crashing the worker', () => {
-    const create = vi.fn(() => { throw new Error('invalid URL') }) // nodemailer rejects a bad url
-    // must NOT throw — a bad email env can never take down the position pipeline
-    expect(buildEmailTransport({ SMTP_URL: 'not a url', MAIL_FROM: 'a@b.c' }, create)).toBeUndefined()
+  it('a createTransport failure disables email (undefined) instead of crashing the worker', () => {
+    const create = vi.fn(() => { throw new Error('boom') })
+    expect(buildEmailTransport({ ...FULL }, create)).toBeUndefined() // must not throw
     expect(create).toHaveBeenCalledOnce()
   })
 
   it('adds the SES config-set header for bounce/complaint routing when configured', async () => {
     const f = fakeMailer()
-    const t = buildEmailTransport({ SMTP_URL: 'smtp://h', MAIL_FROM: 'a@b.c', SES_CONFIG_SET: 'orbetra-notifications' }, f.create)!
+    const t = buildEmailTransport({ ...FULL, SES_CONFIG_SET: 'orbetra-notifications' }, f.create)!
     await t.send('x@y.z', 's', 'b')
     expect(f.calls[0]!.headers).toEqual({ 'X-SES-CONFIGURATION-SET': 'orbetra-notifications' })
   })

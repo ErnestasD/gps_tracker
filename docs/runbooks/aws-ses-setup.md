@@ -8,13 +8,21 @@ Region for EVERYTHING below: **Europe (Frankfurt) — eu-central-1** (EU data re
 
 > **STATUS 2026-07-14: production access APPROVED** — 50,000 msg/day, 14 msg/s, out of
 > sandbox. The code is WIRED (ADR-023, nodemailer SMTP behind the E05-5 dispatch seam). To
-> GO LIVE, set these on the **worker** server `.env` (never in git — rule 12), then restart the
-> worker:
+> GO LIVE, set these DISCRETE vars on the **worker** server `.env` (never in git — rule 12),
+> then restart the worker:
 > ```
-> SMTP_URL=smtp://<SES_SMTP_USER>:<SES_SMTP_PASS>@email-smtp.eu-central-1.amazonaws.com:587
+> SMTP_HOST=email-smtp.eu-central-1.amazonaws.com
+> SMTP_PORT=587                         # STARTTLS (default); 465 = implicit TLS
+> SMTP_USER=<SES_SMTP_USERNAME>
+> SMTP_PASS=<SES_SMTP_PASSWORD>         # paste RAW — do NOT URL-encode (discrete var, not a URL)
 > MAIL_FROM=alerts@<domain>            # a DKIM-verified SES identity (see §2/§4)
 > SES_CONFIG_SET=orbetra-notifications # optional but recommended — routes bounces/complaints
 > ```
+> **Why discrete vars, not one `SMTP_URL`:** SES SMTP passwords are base64 (`+ / =`); a `/`
+> inside a URL password silently misparses as the path (wrong creds, every send auth-fails), and
+> other chars crash the URL parser. Discrete host/port/user/pass sidesteps URL parsing entirely.
+> Any missing var ⇒ the email channel is simply skipped (never a crash).
+>
 > Preconditions before real sends: domain identity **Verified** (DKIM), custom MAIL FROM
 > records added (§4), and SMTP credentials created (§6). Bounce/complaint auto-suppression
 > (SNS→webhook consuming the config-set events) is a documented FOLLOW-UP; until then use the
@@ -71,8 +79,9 @@ Lets you send test mail while still in sandbox.
 1. SES → **SMTP settings** → **Create SMTP credentials** → creates an IAM user →
    **Download** the username + password (shown once).
 2. Note the SMTP endpoint: `email-smtp.eu-central-1.amazonaws.com`, port **587** (STARTTLS).
-3. These map to staging `.env` (PROJECT_PLAN §6.7):
-   - `SMTP_URL=smtp://<SMTP_USERNAME>:<SMTP_PASSWORD>@email-smtp.eu-central-1.amazonaws.com:587`
+3. These map to the worker `.env` as DISCRETE vars (PROJECT_PLAN §6.7; see the STATUS block above):
+   - `SMTP_HOST=email-smtp.eu-central-1.amazonaws.com` · `SMTP_PORT=587`
+   - `SMTP_USER=<SMTP_USERNAME>` · `SMTP_PASS=<SMTP_PASSWORD>` (paste raw — NOT a URL, no encoding)
    - `MAIL_FROM=alerts@yourdomain.com`
    Store in a password manager. NEVER commit to the repo (rule 12).
 

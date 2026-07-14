@@ -9,8 +9,9 @@ import type { NotifyMessage } from './message.js'
  * records the channel as SKIPPED (a config gap, not a retryable failure).
  *
  * Config (creds in the server .env only — rule 12; absent ⇒ that channel is skipped, not failed):
- *  - Email: WIRED (ADR-023, SES prod access approved 2026-07-14). Set SMTP_URL + MAIL_FROM
- *    (+ optional SES_CONFIG_SET) — see buildEmailTransport / docs/runbooks/aws-ses-setup.md.
+ *  - Email: WIRED (ADR-023, SES prod access approved 2026-07-14). Set SMTP_HOST/SMTP_PORT/
+ *    SMTP_USER/SMTP_PASS + MAIL_FROM (+ optional SES_CONFIG_SET) — see buildEmailTransport /
+ *    docs/runbooks/aws-ses-setup.md.
  *  - Telegram: TELEGRAM_BOT_TOKEN — without it the telegram driver is absent (skipped).
  *    The token also gates the pairing deep-link (chat_id binding) built in a follow-up.
  */

@@ -14,12 +14,16 @@ eu-central-1, out of sandbox). Wiring real delivery needs an SMTP client — a n
 
 - **Adopt `nodemailer` in apps/worker** (MIT, the de-facto Node SMTP client, zero mandatory
   transitive deps of concern) as the concrete `EmailTransport`.
-- **SMTP, not the SES API.** The transport reads the runbook's env contract verbatim —
-  `SMTP_URL=smtp://<user>:<pass>@email-smtp.eu-central-1.amazonaws.com:587` + `MAIL_FROM`
-  (docs/runbooks/aws-ses-setup.md §6). SMTP is provider-agnostic: it drives SES SMTP today and
-  the **per-tenant custom SMTP/DKIM** roadmap item (PROJECT_PLAN §4 V2) with the SAME transport —
-  a per-tenant `SMTP_URL` is the whole feature. The AWS SDK would lock us to SES and add a much
-  larger dependency for no capability we need (bounces are tracked by SES regardless of send path).
+- **SMTP, not the SES API.** SMTP is provider-agnostic: it drives SES SMTP today and the
+  **per-tenant custom SMTP/DKIM** roadmap item (PROJECT_PLAN §4 V2) with the SAME transport. The
+  AWS SDK would lock us to SES and add a much larger dependency for no capability we need (bounces
+  are tracked by SES regardless of send path).
+- **DISCRETE env vars, not a single `SMTP_URL`** (review HIGH-3): `SMTP_HOST` / `SMTP_PORT` /
+  `SMTP_USER` / `SMTP_PASS` + `MAIL_FROM`, passed to `createTransport({host,port,secure,auth})`.
+  SES SMTP passwords are base64 (`+ / =`); a `/` inside a URL password silently misparses as the
+  path (wrong creds → every send auth-fails, no signal), and other chars throw the URL parser
+  (worker-wide crash). An options object sidesteps URL parsing entirely. Construction is also
+  wrapped in try/catch → a bad email config degrades to "channel skipped", never a pipeline crash.
 - **Env-gated, like every other driver.** `buildEmailTransport(env)` returns `undefined` when
   `SMTP_URL`/`MAIL_FROM` are absent, so the email channel is SKIPPED (a config gap, not a failure) —
   identical to the Telegram token gate. No secret is ever in code (rule 12); creds live only in the
