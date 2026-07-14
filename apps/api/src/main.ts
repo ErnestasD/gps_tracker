@@ -7,6 +7,7 @@ import { Redis } from 'ioredis'
 import { createDb, createPool } from '@orbetra/db'
 
 import { createApiProm, createApp } from './app.js'
+import { rehydrateRegistries } from './rehydrate.js'
 import { createStripeGateway, stripeConfigFromEnv } from './billing/stripe.js'
 import { attachWsGateway } from './ws.js'
 
@@ -90,6 +91,12 @@ const app = createApp(deps, prom)
 const httpServer = serve({ fetch: app.fetch, port, createServer }) as ReturnType<typeof createServer>
 attachWsGateway(httpServer, deps, (n) => prom.setWsClients(n))
 console.log(`orbetra api listening on :${port} (auth live, ws_clients metric live)`)
+
+// Boot backfill (DB→Redis): repopulate the geofence + iButton caches in case Redis was flushed;
+// best-effort — a failure here must never block serving (CRUD re-syncs incrementally anyway).
+void rehydrateRegistries(redis, db)
+  .then((r) => console.log(`rehydrated Redis registries: ${r.geofences} geofences, ${r.ibuttons} iButtons`))
+  .catch((e: unknown) => console.error('rehydrate failed (non-fatal)', e))
 
 process.on('SIGTERM', () => {
   httpServer.close(() => {

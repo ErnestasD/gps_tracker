@@ -50,6 +50,9 @@ export interface DriverRepo {
   create(scope: Scope, actor: Actor, data: DriverCreate): Promise<Driver>
   update(scope: Scope, actor: Actor, id: string, data: DriverUpdate): Promise<Driver | null>
   remove(scope: Scope, actor: Actor, id: string): Promise<boolean>
+  /** UNSCOPED boot rehydrate (no request scope): every ACTIVE driver that has an iButton, across all
+   *  tenants, so the API can repopulate the `driver:ibutton:*` Redis map after a Redis flush. */
+  listAllIbuttons(): Promise<{ tenantId: string; accountId: string; ibutton: string; driverId: string }[]>
 }
 
 /** Canonicalize an iButton to upper-case hex so 'a1b2c3d4' and 'A1B2C3D4' — the SAME physical key
@@ -65,6 +68,10 @@ export function createDriverRepo(prisma: PrismaClient, audit: AuditRepo): Driver
     list: (scope) => prisma.driver.findMany({ where: scopedWhere(scope), orderBy: { createdAt: 'desc' } }),
     get: (scope, id) => scopedById(scope, id),
     findByIbutton: (scope, ibutton) => prisma.driver.findFirst({ where: { ...scopedWhere(scope), ibutton: canonIbutton(ibutton) ?? ibutton } }),
+    listAllIbuttons: async () => {
+      const rows = await prisma.driver.findMany({ where: { active: true, ibutton: { not: null } }, select: { tenantId: true, accountId: true, ibutton: true, id: true } })
+      return rows.map((r) => ({ tenantId: r.tenantId, accountId: r.accountId, ibutton: r.ibutton!, driverId: r.id }))
+    },
     create: async (scope, actor, data) => {
       let row
       try {

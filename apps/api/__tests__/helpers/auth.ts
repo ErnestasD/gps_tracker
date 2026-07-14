@@ -52,7 +52,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     accounts: repo,
     users: repo,
     devices: { list: notImpl, get: notImpl, getByImei: notImpl, create: notImpl, update: notImpl, retire: notImpl },
-    drivers: { list: notImpl, get: notImpl, findByIbutton: notImpl, create: notImpl, update: notImpl, remove: notImpl },
+    drivers: { list: notImpl, get: notImpl, findByIbutton: notImpl, create: notImpl, update: notImpl, remove: notImpl, listAllIbuttons: notImpl },
     maintenance: { list: notImpl, get: notImpl, create: notImpl, update: notImpl, remove: notImpl, markServiced: notImpl },
     profiles: { list: notImpl, get: notImpl, map: notImpl },
     rules: repo,
@@ -66,7 +66,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     usage: { platformSummary: notImpl, tenantSummary: notImpl },
     events: { list: notImpl, get: notImpl },
     trips: { list: notImpl, get: notImpl, assignDriver: notImpl },
-    geofences: { list: notImpl, get: notImpl, create: notImpl, update: notImpl, remove: notImpl },
+    geofences: { list: notImpl, listAll: notImpl, get: notImpl, create: notImpl, update: notImpl, remove: notImpl },
     audit: { record: () => Promise.resolve(), list: notImpl, get: notImpl },
     $disconnect: () => Promise.resolve(),
   }
