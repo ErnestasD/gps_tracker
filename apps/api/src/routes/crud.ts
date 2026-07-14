@@ -41,6 +41,7 @@ import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { activateDevice, deactivateDevice, syncDeviceConfig } from './deviceRegistry.js'
 import { removeGeofence, syncGeofence } from './geofenceRegistry.js'
+import { removeDriverIbutton, syncDriverIbutton } from './driverRegistry.js'
 import { removeRule, syncRule } from './ruleRegistry.js'
 import { applyImport, dryRun, parseCsv, rowsToImport } from './deviceImport.js'
 import { claimDevice, listQuarantine } from './quarantine.js'
@@ -51,11 +52,11 @@ import { expectedTxt, newTxtToken, verifyDomainTxt, type TxtResolver } from './t
 // truth and is already committed, so a Redis blip must NOT 500 the request (a 500 → client
 // retry → duplicate fence). A missed sync leaves the fence out of the worker cache until a
 // re-save; a startup DB→Redis rehydrate is the durable backfill (follow-up).
-const bestEffortSync = async (fn: () => Promise<void>): Promise<void> => {
+const bestEffortSync = async (fn: () => Promise<void>, what = 'redis sync'): Promise<void> => {
   try {
     await fn()
   } catch (e) {
-    console.error('geofence sync', e)
+    console.error(`${what} failed (best-effort)`, e) // e.g. 'driver ibutton sync' — not always geofence
   }
 }
 
@@ -623,7 +624,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if (accountId === undefined || (await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
         try {
-          return json(c, await db.drivers.create(scopeOf(a), { userId: a.userId }, { ...data, accountId }), 201)
+          const created = await db.drivers.create(scopeOf(a), { userId: a.userId }, { ...data, accountId })
+          // publish the iButton→driver mapping to the worker's resolution map (V2 Part B, best-effort)
+          await bestEffortSync(() => syncDriverIbutton(deps.redis, created.tenantId, created.accountId, created.id, created.ibutton, null), 'driver ibutton sync')
+          return json(c, created, 201)
         } catch (err) {
           // tenant-local iButton clash → 409 (never a 500, never reveal the holder — review pattern)
           if (err instanceof DriverIbuttonConflictError) return problem(c, 409, 'Conflict', 'iButton already assigned')
@@ -634,9 +638,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, driverUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
+        const scope = scopeOf(auth(c))
+        const before = await db.drivers.get(scope, id(c)) // old iButton, to drop the stale mapping
         try {
-          const row = await db.drivers.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
-          return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+          const row = await db.drivers.update(scope, { userId: auth(c).userId }, id(c), data)
+          if (row === null) return problem(c, 404, 'Not Found')
+          await bestEffortSync(() => syncDriverIbutton(deps.redis, row.tenantId, row.accountId, row.id, row.ibutton, before?.ibutton ?? null), 'driver ibutton sync')
+          return json(c, row)
         } catch (err) {
           if (err instanceof DriverIbuttonConflictError) return problem(c, 409, 'Conflict', 'iButton already assigned')
           throw err
@@ -644,8 +652,12 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'delete', path: '/v1/drivers/:id', scopeClass: 'account', entity: 'driver', shape: 'item',
       handler: async (c) => {
-        const ok = await db.drivers.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
-        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+        const scope = scopeOf(auth(c))
+        const before = await db.drivers.get(scope, id(c)) // capture the iButton to drop its mapping
+        const ok = await db.drivers.remove(scope, { userId: auth(c).userId }, id(c))
+        if (!ok) return problem(c, 404, 'Not Found')
+        if (before !== null) await bestEffortSync(() => removeDriverIbutton(deps.redis, before.tenantId, before.accountId, before.ibutton), 'driver ibutton sync')
+        return json(c, { ok: true })
       } },
 
     // ── maintenance reminders (account, V2) — due computed at read from current odometer + now ──

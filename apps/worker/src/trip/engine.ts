@@ -1,6 +1,12 @@
-import type { NormalizedRecord } from '@orbetra/shared'
+import { ibuttonKeyFromAvl, type NormalizedRecord } from '@orbetra/shared'
 
 import { haversineM } from '../geo.js'
+
+/** The trip's driver iButton (V2, Part B): the canonical key of AVL 78 seen during the trip, or
+ * null. PURE — the persister resolves it to a driverId via the Redis driver:ibutton map. */
+function recordIbutton(r: NormalizedRecord): string | null {
+  return ibuttonKeyFromAvl(r.attrs['iButton'] ?? r.attrs['io_78'])
+}
 
 /**
  * Trip state machine (E04-1, PROJECT_PLAN §6.4). PURE + deterministic: driven by
@@ -66,6 +72,8 @@ export interface CloseEvent {
   distanceSource: 'gps' | 'odometer'
   maxSpeed: number
   idleS: number
+  /** canonical iButton key seen during the trip (V2, Part B); null when no driver tapped. */
+  ibutton: string | null
 }
 export type TripEvent = OpenEvent | CloseEvent
 
@@ -80,6 +88,7 @@ interface Candidate {
   lastLon: number
   dispM: number
   maxSpeed: number
+  ibutton: string | null
 }
 
 interface OpenTrip {
@@ -97,6 +106,7 @@ interface OpenTrip {
   idleS: number
   idleSince: Date | null
   stopSince: Date | null
+  ibutton: string | null
 }
 
 /** Per-device trip config (E04-5): thresholds + odometer-source preference. */
@@ -187,12 +197,14 @@ export class TripEngine {
         return
       }
       if (st.cand === null) {
-        st.cand = { startTime: r.fixTime, startLat: r.lat, startLon: r.lon, startOdo: r.odometerM, lastLat: r.lat, lastLon: r.lon, dispM: 0, maxSpeed: speed }
+        st.cand = { startTime: r.fixTime, startLat: r.lat, startLon: r.lon, startOdo: r.odometerM, lastLat: r.lat, lastLon: r.lon, dispM: 0, maxSpeed: speed, ibutton: recordIbutton(r) }
       } else {
         st.cand.dispM += haversineM(st.cand.lastLat, st.cand.lastLon, r.lat, r.lon)
         st.cand.lastLat = r.lat
         st.cand.lastLon = r.lon
         if (speed > st.cand.maxSpeed) st.cand.maxSpeed = speed
+        const ib = recordIbutton(r) // a tap during the candidate window (driver just got in)
+        if (ib !== null) st.cand.ibutton = ib
       }
       if (secs(r.fixTime, st.cand.startTime) >= t.movingSustainS || st.cand.dispM >= t.movingDisplaceM) {
         // open retroactively from the candidate start; cand.dispM already holds the
@@ -216,6 +228,7 @@ export class TripEngine {
           idleS: 0,
           idleSince: null,
           stopSince: null,
+          ibutton: c.ibutton ?? recordIbutton(r), // carry the tap seen while the trip was forming
         }
         st.phase = 'moving'
         st.cand = null
@@ -262,6 +275,8 @@ export class TripEngine {
     trip.lastLat = r.lat
     trip.lastLon = r.lon
     trip.lastTime = r.fixTime
+    const ib = recordIbutton(r) // a mid-trip tap (driver change) updates the attribution
+    if (ib !== null) trip.ibutton = ib
   }
 
   private flushIdle(trip: OpenTrip, now: Date, idleSustainS: number): void {
@@ -296,6 +311,7 @@ export class TripEngine {
       distanceSource: useOdo ? 'odometer' : 'gps',
       maxSpeed: Math.round(trip.maxSpeed),
       idleS: trip.idleS,
+      ibutton: trip.ibutton,
     })
     st.phase = 'parked'
     st.trip = null

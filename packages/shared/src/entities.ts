@@ -421,6 +421,31 @@ export function maintenanceDue(
   return { kmRemaining, daysRemaining, status }
 }
 
+// ── iButton driver resolution (V2, Part B) ─────────────────────────────────────────────────
+// The physical Dallas key has ONE 64-bit id, but it reaches us two ways: the driver registry
+// stores it as HEX (what the operator reads off the key), while the pipeline's AVL 78 "iButton"
+// arrives DECIMAL (the codec decodes the 8-byte big-endian value as an integer — Codec 8/8E fixed
+// IO, https://wiki.teltonika-gps.com/view/Codec, AVL id 78 "iButton", 8 B Unsigned). To match, both
+// sides reduce to the same canonical DECIMAL string via BigInt — leading-zero / case differences
+// vanish. ASSUMPTION (byte order): the operator enters the hex in the SAME big-endian order the
+// device reports AVL 78; a golden fixture with a real non-zero iButton to pin this is a follow-up
+// (existing codec8 fixture carries iButton=0). If a device family printed the id byte-reversed,
+// resolution would silently miss (no wrong assignment, just no auto-driver) — safe-fail.
+/** Canonical key from the registry's hex iButton (e.g. "00A1B2C3D4" → "692635348"). null if invalid. */
+export function ibuttonKeyFromHex(hex: string): string | null {
+  if (!/^[0-9a-fA-F]{1,32}$/.test(hex)) return null
+  try { return BigInt('0x' + hex).toString() } catch { return null }
+}
+/** Canonical key from the AVL 78 value (a decimal Number/string/bigint). null when 0/absent/invalid
+ *  (iButton value 0 = no key attached). */
+export function ibuttonKeyFromAvl(value: unknown): string | null {
+  // AVL 78 arrives as a decimal number/bigint/string; anything else isn't an iButton value
+  if (typeof value !== 'number' && typeof value !== 'bigint' && typeof value !== 'string') return null
+  const s = String(value).trim()
+  if (s === '' || !/^\d+$/.test(s)) return null
+  try { const n = BigInt(s); return n === 0n ? null : n.toString() } catch { return null }
+}
+
 // ── driver registry (V2) ──────────────────────────────────────────────────────────────────
 // iButton/RFID key ids are hex (Dallas 1-Wire 64-bit → up to 16 hex; be generous to 32). The
 // hex charset also keeps the value injection-inert for the follow-up that puts it in Redis / SMS.

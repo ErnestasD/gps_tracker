@@ -21,6 +21,7 @@ interface Opt {
   mov?: boolean | null
   odo?: bigint | null
   fixValid?: boolean
+  ib?: string | number // AVL 78 iButton value (decimal), stashed in attrs
 }
 const rec = (tSec: number, o: Opt = {}): NormalizedRecord => ({
   deviceId: DEV,
@@ -38,7 +39,7 @@ const rec = (tSec: number, o: Opt = {}): NormalizedRecord => ({
   odometerM: o.odo ?? null,
   priority: 0,
   recHash: BigInt(T0 + tSec),
-  attrs: {},
+  attrs: o.ib !== undefined ? { iButton: o.ib } : {},
 })
 
 const closes = (ev: TripEvent[]): CloseEvent[] => ev.filter((e): e is CloseEvent => e.type === 'close')
@@ -59,6 +60,28 @@ function drive(fromSec: number, points: number, opts: { speed?: number; odoStart
   }
   return out
 }
+
+describe('V2 Part B: iButton capture', () => {
+  it('captures the AVL 78 tap seen during a trip onto CloseEvent.ibutton (canonical decimal)', () => {
+    const moving = drive(0, 20)
+    moving[3] = rec(30, { lat: 54.0 + 3 * 0.0002, speed: 8, ign: true, mov: true, ib: 2712847316 }) // driver taps
+    const lastLat = 54.0 + 19 * 0.0002
+    const stop = [rec(200, { lat: lastLat, ign: false, speed: 0 }), rec(380, { lat: lastLat, ign: false, speed: 0 })]
+    const ev = closes(new TripEngine().feed([...moving, ...stop]))
+    expect(ev).toHaveLength(1)
+    expect(ev[0]!.ibutton).toBe('2712847316')
+  })
+
+  it('a trip with no tap has ibutton=null; an iButton on an INVALID fix is never captured (I5)', () => {
+    const noTap = closes(new TripEngine().feed([...drive(0, 20), rec(200, { ign: false, speed: 0 }), rec(380, { ign: false, speed: 0 })]))
+    expect(noTap[0]!.ibutton).toBeNull()
+    // the ONLY tap rides an invalid-fix record → the engine drops it before capture (rule 6)
+    const moving = drive(1000, 20)
+    moving[5] = rec(1050, { lat: 54.0 + 5 * 0.0002, speed: 8, ign: true, mov: true, ib: 999, fixValid: false })
+    const withBad = closes(new TripEngine().feed([...moving, rec(1200, { ign: false, speed: 0 }), rec(1380, { ign: false, speed: 0 })]))
+    expect(withBad[0]!.ibutton).toBeNull() // the invalid-fix tap contributed nothing
+  })
+})
 
 describe('E04-1 trip state machine (§6.4)', () => {
   it('trip-basic: park→drive→stop opens once (sustain) and closes on ignition-off', () => {

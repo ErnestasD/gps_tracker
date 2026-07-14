@@ -53,6 +53,23 @@ describe('E04-1 trip writer (raw SQL persistence)', () => {
     expect(closed['endTime']).not.toBeNull()
   })
 
+  it('closeTrip auto-sets driverId on a null-driver trip, but COALESCE keeps a manual assignment (V2 Part B)', async () => {
+    const drvA = '33333333-3333-3333-3333-333333333333'
+    const drvB = '44444444-4444-4444-4444-444444444444'
+    await pool.query(`INSERT INTO drivers (id,"tenantId","accountId",name) VALUES ($1,$2,$3,'Auto'),($4,$2,$3,'Manual')`, [drvA, TEN, ACC, drvB])
+
+    // (1) fresh trip (driverId null) → auto-resolved driver fills it
+    const id1 = await openTrip(pool, { tenantId: TEN, accountId: ACC, deviceId: 358n, startTime: new Date('2026-07-02T10:00:00Z'), startLat: 54, startLon: 25 })
+    await closeTrip(pool, id1, { endTime: new Date('2026-07-02T10:30:00Z'), endLat: 54, endLon: 25, distanceM: 100, distanceSource: 'gps', maxSpeed: 40, idleS: 0, driverId: drvA })
+    expect(((await pool.query('SELECT "driverId" FROM trips WHERE id=$1', [id1])).rows[0] as Record<string, unknown>)['driverId']).toBe(drvA)
+
+    // (2) trip manually assigned (drvB) while open → auto close with a DIFFERENT driver must NOT overwrite it
+    const id2 = await openTrip(pool, { tenantId: TEN, accountId: ACC, deviceId: 359n, startTime: new Date('2026-07-02T11:00:00Z'), startLat: 54, startLon: 25 })
+    await pool.query('UPDATE trips SET "driverId"=$2 WHERE id=$1', [id2, drvB]) // manual assignment
+    await closeTrip(pool, id2, { endTime: new Date('2026-07-02T11:30:00Z'), endLat: 54, endLon: 25, distanceM: 100, distanceSource: 'gps', maxSpeed: 40, idleS: 0, driverId: drvA })
+    expect(((await pool.query('SELECT "driverId" FROM trips WHERE id=$1', [id2])).rows[0] as Record<string, unknown>)['driverId']).toBe(drvB) // manual wins
+  })
+
   it('closeTrip on an already-closed row is a no-op (guarded on status=open — replay-safe)', async () => {
     const id = await openTrip(pool, { tenantId: TEN, accountId: ACC, deviceId: 357n, startTime: new Date('2026-07-01T11:00:00Z'), startLat: 54, startLon: 25 })
     await closeTrip(pool, id, { endTime: new Date('2026-07-01T11:10:00Z'), endLat: 54, endLon: 25, distanceM: 1000, distanceSource: 'gps', maxSpeed: 50, idleS: 0 })
