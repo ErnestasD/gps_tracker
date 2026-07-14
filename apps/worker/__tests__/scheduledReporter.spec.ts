@@ -22,6 +22,13 @@ describe('isDue', () => {
     expect(isDue({ cadence: 'daily', hourUtc: 6, weekday: null }, NOW, NOW - 3_600_000)).toBe(false) // ran 1h ago
     expect(isDue({ cadence: 'daily', hourUtc: 6, weekday: null }, NOW, NOW - 25 * 3_600_000)).toBe(true) // ran >23h ago
   })
+  it('catches up a missed hour later the same day (hour ≥ hourUtc)', () => {
+    const later = Date.UTC(2026, 6, 15, 9, 0, 0) // 09:00, schedule was for 06:00, never ran
+    expect(isDue({ cadence: 'daily', hourUtc: 6, weekday: null }, later, null)).toBe(true)
+  })
+  it('a weekly schedule with no weekday never fires (would be silently dead)', () => {
+    expect(isDue({ cadence: 'weekly', hourUtc: 6, weekday: null }, NOW, null)).toBe(false)
+  })
 })
 
 describe('reportWindow', () => {
@@ -46,9 +53,13 @@ const fakePool = { query: () => Promise.resolve({ rows: [], rowCount: 0 }) } as 
 const transport = (sent: { to: string; subject: string }[]): EmailTransport => ({
   send: (to, subject) => { sent.push({ to, subject }); return Promise.resolve() },
 })
-function fakeDb(schedules: Schedule[], marked: string[]): Db {
+// claimed set models the atomic claim: the first claim for an id wins, later claims lose
+function fakeDb(schedules: Schedule[], claimed: Set<string>): Db {
   return {
-    scheduledReports: { listEnabled: () => Promise.resolve(schedules), markRun: (id: string) => { marked.push(id); return Promise.resolve() } },
+    scheduledReports: {
+      listEnabled: () => Promise.resolve(schedules),
+      claimRun: (id: string) => { if (claimed.has(id)) return Promise.resolve(false); claimed.add(id); return Promise.resolve(true) },
+    },
   } as unknown as Db
 }
 const sched = (o: Partial<Schedule>): Schedule => ({
@@ -57,23 +68,40 @@ const sched = (o: Partial<Schedule>): Schedule => ({
 })
 
 describe('runDueSchedules', () => {
-  it('emails a due schedule to each recipient and marks it run', async () => {
+  it('claims + emails a due schedule to each recipient', async () => {
     const sent: { to: string; subject: string }[] = []
-    const marked: string[] = []
-    const db = fakeDb([sched({ recipients: ['a@x.test', 'b@x.test'] })], marked)
+    const claimed = new Set<string>()
+    const db = fakeDb([sched({ recipients: ['a@x.test', 'b@x.test'] })], claimed)
     const r = await runDueSchedules({ db, pool: fakePool, transport: transport(sent), now: () => NOW })
     expect(r).toEqual({ due: 1, emailed: 2 })
     expect(sent.map((s) => s.to)).toEqual(['a@x.test', 'b@x.test'])
-    expect(marked).toEqual(['sr-1'])
+    expect(claimed.has('sr-1')).toBe(true)
   })
 
-  it('skips a not-due schedule (wrong hour) — no email, no mark', async () => {
+  it('skips a not-due schedule (before its hour) — no email, no claim', async () => {
     const sent: { to: string; subject: string }[] = []
-    const marked: string[] = []
-    const db = fakeDb([sched({ hourUtc: 9 })], marked)
-    const r = await runDueSchedules({ db, pool: fakePool, transport: transport(sent), now: () => NOW })
+    const claimed = new Set<string>()
+    const r = await runDueSchedules({ db: fakeDb([sched({ hourUtc: 9 })], claimed), pool: fakePool, transport: transport(sent), now: () => NOW })
     expect(r).toEqual({ due: 0, emailed: 0 })
     expect(sent).toHaveLength(0)
-    expect(marked).toHaveLength(0)
+    expect(claimed.size).toBe(0)
+  })
+
+  it('a lost claim (already run by an overlapping worker) sends nothing', async () => {
+    const sent: { to: string; subject: string }[] = []
+    const claimed = new Set<string>(['sr-1']) // already claimed
+    const r = await runDueSchedules({ db: fakeDb([sched({})], claimed), pool: fakePool, transport: transport(sent), now: () => NOW })
+    expect(r).toEqual({ due: 1, emailed: 0 }) // due, but claim lost → no send
+    expect(sent).toHaveLength(0)
+  })
+
+  it('one bad recipient address does not suppress the others', async () => {
+    const claimed = new Set<string>()
+    const failing: EmailTransport = {
+      send: (to) => (to === 'bad@x.test' ? Promise.reject(new Error('550 no such user')) : Promise.resolve()),
+    }
+    const db = fakeDb([sched({ recipients: ['ok1@x.test', 'bad@x.test', 'ok2@x.test'] })], claimed)
+    const r = await runDueSchedules({ db, pool: fakePool, transport: failing, now: () => NOW })
+    expect(r.emailed).toBe(2) // ok1 + ok2 delivered; bad one logged + skipped
   })
 })

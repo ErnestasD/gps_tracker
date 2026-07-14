@@ -23,14 +23,16 @@ export interface Schedule {
 }
 
 const DAY_MS = 24 * 3_600_000
+export const RUN_GUARD_MS = 23 * 3_600_000 // won't re-run a schedule within this window (the claim is authoritative)
 
-/** True when the schedule should fire at `nowMs` and hasn't already run within the cadence. */
+/** True when the schedule is eligible to fire at `nowMs`. Uses hour ≥ hourUtc (not ==) so a tick
+ *  missed during a deploy/restart still CATCHES UP later the same day; the atomic claimRun then
+ *  guarantees it runs at most once per cadence period. A weekly schedule with no weekday never fires. */
 export function isDue(s: Pick<Schedule, 'cadence' | 'hourUtc' | 'weekday'>, nowMs: number, lastRunAtMs: number | null): boolean {
   const d = new Date(nowMs)
-  if (d.getUTCHours() !== s.hourUtc) return false
-  if (s.cadence === 'weekly' && d.getUTCDay() !== s.weekday) return false
-  // already ran within this cadence window? (23 h guard covers the hourly re-check + restarts)
-  if (lastRunAtMs !== null && nowMs - lastRunAtMs < 23 * 3_600_000) return false
+  if (d.getUTCHours() < s.hourUtc) return false
+  if (s.cadence === 'weekly' && (s.weekday === null || d.getUTCDay() !== s.weekday)) return false
+  if (lastRunAtMs !== null && nowMs - lastRunAtMs < RUN_GUARD_MS) return false // cheap pre-filter; claim is authoritative
   return true
 }
 
@@ -66,18 +68,25 @@ export async function runDueSchedules(deps: ScheduledReporterDeps): Promise<{ du
   for (const s of schedules) {
     if (!isDue(s, nowMs, s.lastRunAt ? s.lastRunAt.getTime() : null)) continue
     due++
+    // atomically CLAIM before doing any work: only one of two overlapping cron runs wins → no dup
+    // emails; a lost claim (already run this period) is skipped. Claim-before-send = at-most-once.
+    if (!(await deps.db.scheduledReports.claimRun(s.id, new Date(nowMs), RUN_GUARD_MS))) continue
     try {
       const window = reportWindow(s.cadence, nowMs)
       const result = await runReport(deps.pool, s.reportType as ReportType, { tenantId: s.tenantId, accountId: s.accountId }, { ...window, timezone: s.timezone })
       const { subject, text } = formatReport(result, window)
+      // each recipient independently: one bad address must NOT suppress the others
       for (const to of s.recipients) {
-        await deps.transport.send(to, subject, text)
-        emailed++
+        try {
+          await deps.transport.send(to, subject, text)
+          emailed++
+        } catch (err) {
+          console.error('scheduled report send failed', s.id, err instanceof Error ? err.message : String(err)) // message only, no PII object
+        }
       }
-      // mark AFTER a successful send so a transient failure retries next hour (at-least-once)
-      await deps.db.scheduledReports.markRun(s.id, new Date(nowMs))
     } catch (err) {
-      console.error('scheduled report failed', s.id, err) // no recipient PII beyond the id
+      // report build failed after the claim → this period is skipped (at-most-once); logged only
+      console.error('scheduled report run failed', s.id, err instanceof Error ? err.message : String(err))
     }
   }
   return { due, emailed }

@@ -26,8 +26,10 @@ export interface ScheduledReportUpdate {
 export type ScheduledReportRepo = GenericRepo<ScheduledReport, ScheduledReportCreate, ScheduledReportUpdate> & {
   /** UNSCOPED (worker cron): all enabled schedules across tenants, to evaluate for a due run. */
   listEnabled(): Promise<ScheduledReport[]>
-  /** Stamp a successful run (worker), so `isDue` won't re-fire it within the cadence. */
-  markRun(id: string, at: Date): Promise<void>
+  /** ATOMICALLY claim a schedule for this run: set lastRunAt=`at` only if it hasn't run within the
+   *  cadence guard. Returns true iff THIS caller won the claim — so two overlapping cron runs (BullMQ
+   *  stall/overlap) can't both send. Claim BEFORE sending ⇒ at-most-once (no duplicate report emails). */
+  claimRun(id: string, at: Date, guardMs: number): Promise<boolean>
 }
 
 /** Scheduled reports: account-scoped CRUD (every report targets one account's data). */
@@ -39,8 +41,13 @@ export function createScheduledReportRepo(prisma: PrismaClient, audit: AuditRepo
   return {
     ...base,
     listEnabled: () => prisma.scheduledReport.findMany({ where: { enabled: true } }),
-    markRun: async (id, at) => {
-      await prisma.scheduledReport.update({ where: { id }, data: { lastRunAt: at } })
+    claimRun: async (id, at, guardMs) => {
+      // atomic: only the run whose UPDATE matches (lastRunAt still older than the guard) wins
+      const res = await prisma.scheduledReport.updateMany({
+        where: { id, OR: [{ lastRunAt: null }, { lastRunAt: { lt: new Date(at.getTime() - guardMs) } }] },
+        data: { lastRunAt: at },
+      })
+      return res.count > 0
     },
   }
 }

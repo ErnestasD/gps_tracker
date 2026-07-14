@@ -694,7 +694,15 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, scheduledReportUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
-        const row = await db.scheduledReports.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
+        const scope = scopeOf(auth(c))
+        const before = await db.scheduledReports.get(scope, id(c))
+        if (before === null) return problem(c, 404, 'Not Found')
+        // cross-field guard on the MERGED row: a weekly schedule must keep a weekday, else the cron
+        // silently never fires (the partial update schema can't see the existing row on its own)
+        const cadence = data.cadence ?? before.cadence
+        const weekday = data.weekday !== undefined ? data.weekday : before.weekday
+        if (cadence === 'weekly' && (weekday === null || weekday === undefined)) return problem(c, 400, 'Bad Request', 'weekly cadence requires a weekday')
+        const row = await db.scheduledReports.update(scope, { userId: auth(c).userId }, id(c), data)
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
     { method: 'delete', path: '/v1/scheduled-reports/:id', scopeClass: 'account', entity: 'scheduledReport', shape: 'item',
