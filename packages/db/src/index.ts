@@ -9,7 +9,7 @@ export { type AccountRepo, type AccountCreate, type AccountUpdate } from './repo
 export { type UserRepo, type UserView, type UserCreate, type UserUpdate } from './repos/users.js'
 export { DuplicateImeiError, type DeviceRepo, type DeviceCreate, type DeviceUpdate } from './repos/devices.js'
 export { DriverIbuttonConflictError, type DriverRepo, type DriverCreate, type DriverUpdate } from './repos/drivers.js'
-export { type MaintenanceRepo, type MaintenanceCreate, type MaintenanceUpdate } from './repos/maintenance.js'
+export { toDeviceId, type MaintenanceRepo, type MaintenanceCreate, type MaintenanceUpdate } from './repos/maintenance.js'
 export { type CommandRepo, type CommandView, type CommandCreate } from './repos/commands.js'
 export { type ExportRepo, type ExportJobView } from './repos/exports.js'
 export { type LeadRepo, type LeadView, type LeadCreate } from './repos/leads.js'

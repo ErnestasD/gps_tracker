@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, type Db, type Pool } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -175,6 +175,8 @@ function toMaintView(
 export function buildRoutes(deps: CrudDeps): RouteDef[] {
   const { db } = deps
   const auth = (c: Context<AuthEnv>) => c.get('auth')
+  // odometer(s) for maintenance due — empty map (km-due null) when the positions pool is absent
+  const odoMap = (ids: bigint[]) => (deps.pool !== undefined ? readOdometersKm(deps.pool, ids) : Promise.resolve(new Map<string, number>()))
 
   const raw: Omit<RouteDef, 'roles'>[] = [
     // ── accounts (tenant) ────────────────────────────────────────────────────
@@ -650,20 +652,17 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'get', path: '/v1/maintenance', scopeClass: 'account', entity: 'maintenance', shape: 'collection',
       handler: async (c) => {
         const scope = scopeOf(auth(c))
-        // optional device filter — only a well-formed numeric id (a garbage value must not 500)
-        const devQ = c.req.query('deviceId')
-        const devFilter = devQ !== undefined && /^\d{1,19}$/.test(devQ) ? ([BigInt(devQ)] as const) : ([] as const)
-        const items = await db.maintenance.list(scope, ...devFilter)
-        // one batched odometer read for all listed devices (absent pool ⇒ km-based due is just null)
-        const odo = deps.pool !== undefined ? await readOdometersKm(deps.pool, [...new Set(items.map((i) => i.deviceId))]) : new Map<string, number>()
+        // optional device filter — toDeviceId range-guards int8 (a huge-but-numeric id must not 500)
+        const bid = toDeviceId(c.req.query('deviceId') ?? '')
+        const items = await db.maintenance.list(scope, ...(bid !== null ? ([bid] as const) : ([] as const)))
+        const odo = await odoMap([...new Set(items.map((i) => i.deviceId))]) // one batched read
         return json(c, items.map((i) => toMaintView(i, odo)))
       } },
     { method: 'get', path: '/v1/maintenance/:id', scopeClass: 'account', entity: 'maintenance', shape: 'item',
       handler: async (c) => {
         const item = await db.maintenance.get(scopeOf(auth(c)), id(c))
         if (item === null) return problem(c, 404, 'Not Found')
-        const odo = deps.pool !== undefined ? await readOdometersKm(deps.pool, [item.deviceId]) : new Map<string, number>()
-        return json(c, toMaintView(item, odo))
+        return json(c, toMaintView(item, await odoMap([item.deviceId])))
       } },
     { method: 'post', path: '/v1/maintenance', scopeClass: 'account', entity: 'maintenance', shape: 'collection',
       handler: async (c) => {
@@ -674,14 +673,21 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // the target device must be in the caller's scope (never schedule against another's device)
         const device = await db.devices.get(scope, data.deviceId)
         if (device === null) return problem(c, 400, 'Bad Request', 'deviceId not in scope')
+        const odo = await odoMap([device.id])
+        // a km reminder with no explicit baseline starts from the device's CURRENT odometer, so it
+        // begins with a full interval remaining — NOT baselined at 0 (which would read overdue at
+        // once on a used vehicle). Falls back to null (status 'unknown') if no odometer is known.
+        const kmBaseline = data.intervalKm != null && data.lastServiceOdoKm == null
+          ? (odo.get(device.id.toString()) != null ? Math.round(odo.get(device.id.toString())!) : null)
+          : (data.lastServiceOdoKm ?? null)
         const created = await db.maintenance.create(scope, { userId: a.userId }, {
           accountId: device.accountId, deviceId: device.id, title: data.title,
           intervalKm: data.intervalKm ?? null, intervalDays: data.intervalDays ?? null,
-          lastServiceOdoKm: data.lastServiceOdoKm ?? null,
-          lastServiceAt: data.lastServiceAt != null ? new Date(data.lastServiceAt) : null,
+          lastServiceOdoKm: kmBaseline,
+          lastServiceAt: data.lastServiceAt != null ? new Date(data.lastServiceAt) : (data.intervalDays != null ? new Date() : null),
           ...(data.active !== undefined ? { active: data.active } : {}),
         })
-        return json(c, toMaintView(created, new Map()), 201)
+        return json(c, toMaintView(created, odo), 201)
       } },
     { method: 'patch', path: '/v1/maintenance/:id', scopeClass: 'account', entity: 'maintenance', shape: 'item',
       handler: async (c) => {
@@ -695,7 +701,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           ...('lastServiceAt' in data ? { lastServiceAt: data.lastServiceAt != null ? new Date(data.lastServiceAt) : null } : {}),
           ...('active' in data ? { active: data.active } : {}),
         })
-        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, new Map()))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, await odoMap([row.deviceId])))
       } },
     { method: 'delete', path: '/v1/maintenance/:id', scopeClass: 'account', entity: 'maintenance', shape: 'item',
       handler: async (c) => {
@@ -711,7 +717,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (data === null) return problem(c, 400, 'Bad Request')
         const at = data.at != null ? new Date(data.at) : new Date()
         const row = await db.maintenance.markServiced(scope, { userId: auth(c).userId }, id(c), at, data.odoKm ?? null)
-        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, new Map()))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, await odoMap([row.deviceId])))
       } },
 
     // ── geofences (account-scoped, nullable account = tenant-shared, E05-1) ────

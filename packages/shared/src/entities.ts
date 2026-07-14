@@ -324,7 +324,8 @@ export interface GeofenceView {
 // ── maintenance reminders (V2) ─────────────────────────────────────────────────────────────
 export const maintenanceCreateSchema = z.object({
   deviceId: z.string().min(1), // stringified BigInt; the route validates the device is in scope
-  accountId: z.string().uuid().optional(),
+  // accountId is intentionally NOT accepted — it's derived from the device's account (a body value
+  // could otherwise imply a caller can steer the account; the route ignores it either way).
   title: z.string().min(1).max(120),
   intervalKm: z.number().int().min(1).max(10_000_000).nullish(),
   intervalDays: z.number().int().min(1).max(3650).nullish(),
@@ -332,7 +333,7 @@ export const maintenanceCreateSchema = z.object({
   lastServiceAt: z.string().datetime().nullish(),
   active: z.boolean().optional(),
 })
-export const maintenanceUpdateSchema = maintenanceCreateSchema.omit({ deviceId: true, accountId: true }).partial()
+export const maintenanceUpdateSchema = maintenanceCreateSchema.omit({ deviceId: true }).partial()
 export const markServicedSchema = z.object({
   at: z.string().datetime().optional(), // defaults to now server-side
   odoKm: z.number().int().min(0).max(10_000_000).nullable().optional(),

@@ -87,12 +87,12 @@ function MaintForm({ devices, onCreated }: { devices: { id: string; name: string
     if (km === null && days === null) { setError(t('maint.needInterval')); return }
     setBusy(true)
     try {
-      // baseline the km interval on the odometer at creation (else km-due can't compute yet)
+      // only send an explicit odometer baseline when the operator typed one; otherwise the server
+      // baselines a km reminder to the device's CURRENT odometer (full interval remaining), never 0
       await createMaintenance({
         deviceId: dev, title: title.trim(),
         intervalKm: km, intervalDays: days,
-        ...(km !== null ? { lastServiceOdoKm: odoKm.trim() === '' ? 0 : Number(odoKm) } : {}),
-        ...(days !== null ? { lastServiceAt: new Date().toISOString() } : {}),
+        ...(km !== null && odoKm.trim() !== '' ? { lastServiceOdoKm: Number(odoKm) } : {}),
       })
       setTitle(''); setIntervalKm(''); setIntervalDays(''); setOdoKm('')
       onCreated()
