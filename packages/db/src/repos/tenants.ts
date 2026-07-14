@@ -23,7 +23,16 @@ export interface BillingState {
 export interface SubscriptionUpdate {
   stripeSubscriptionId: string | null
   subscriptionStatus: string | null
+  /** the subscribed BASE price id (which plan) — for the usage reporter's included-device lookup */
+  subscriptionPriceId: string | null
   currentPeriodEnd: Date | null
+}
+
+/** An active subscriber for the daily usage reporter (PR B2). */
+export interface ActiveSubscriber {
+  tenantId: string
+  stripeCustomerId: string
+  subscriptionPriceId: string | null
 }
 
 /**
@@ -51,6 +60,8 @@ export interface TenantRepo {
    *  delivery — this WHERE is atomic, so concurrent duplicates collapse). Returns false when nothing
    *  was updated (unknown customer, or a stale/replayed event). */
   applySubscriptionEvent(stripeCustomerId: string, eventAt: Date, data: SubscriptionUpdate): Promise<boolean>
+  /** Worker usage reporter (PR B2): tenants with an active/trialing subscription + a customer id. */
+  listActiveSubscribers(): Promise<ActiveSubscriber[]>
 }
 
 export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): TenantRepo {
@@ -116,11 +127,20 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         data: {
           stripeSubscriptionId: data.stripeSubscriptionId,
           subscriptionStatus: data.subscriptionStatus,
+          subscriptionPriceId: data.subscriptionPriceId,
           currentPeriodEnd: data.currentPeriodEnd,
           lastBillingEventAt: eventAt,
         },
       })
       return result.count > 0
+    },
+    listActiveSubscribers: async () => {
+      const rows = await prisma.tenant.findMany({
+        where: { stripeCustomerId: { not: null }, subscriptionStatus: { in: ['active', 'trialing'] } },
+        select: { id: true, stripeCustomerId: true, subscriptionPriceId: true },
+      })
+      // stripeCustomerId is non-null by the WHERE; assert for the type
+      return rows.map((r) => ({ tenantId: r.id, stripeCustomerId: r.stripeCustomerId!, subscriptionPriceId: r.subscriptionPriceId }))
     },
   }
 }

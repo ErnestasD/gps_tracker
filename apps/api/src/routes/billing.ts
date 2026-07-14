@@ -111,8 +111,22 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
   })
 }
 
+/** The BASE (licensed) price id from a subscription's items = the one on the server allowlist
+ *  (the metered overage price is never allowlisted). Null if none matches. */
+function basePriceIdOf(obj: Record<string, unknown>, allowlist: readonly string[]): string | null {
+  const items = obj['items']
+  const data = typeof items === 'object' && items !== null && 'data' in items ? (items as { data?: unknown }).data : undefined
+  if (!Array.isArray(data)) return null
+  for (const item of data) {
+    const price = (item as { price?: unknown }).price
+    const pid = typeof price === 'object' && price !== null && 'id' in price ? (price as { id?: unknown }).id : undefined
+    if (typeof pid === 'string' && allowlist.includes(pid)) return pid
+  }
+  return null
+}
+
 /** Map a Stripe subscription resource → the fields we persist, keyed by its customer id. */
-function subscriptionFrom(obj: Record<string, unknown>): { customerId: string; update: SubscriptionUpdate } | null {
+function subscriptionFrom(obj: Record<string, unknown>, allowlist: readonly string[]): { customerId: string; update: SubscriptionUpdate } | null {
   // treat an empty/absent customer as no-match (never let '' reach a query)
   const customerId = typeof obj['customer'] === 'string' && obj['customer'] !== '' ? obj['customer'] : null
   if (customerId === null) return null
@@ -120,7 +134,7 @@ function subscriptionFrom(obj: Record<string, unknown>): { customerId: string; u
   const status = typeof obj['status'] === 'string' ? obj['status'] : null
   // current_period_end is a Unix timestamp (seconds); a UTC instant, stored as timestamptz
   const cpe = typeof obj['current_period_end'] === 'number' ? new Date(obj['current_period_end'] * 1000) : null
-  return { customerId, update: { stripeSubscriptionId: id, subscriptionStatus: status, currentPeriodEnd: cpe } }
+  return { customerId, update: { stripeSubscriptionId: id, subscriptionStatus: status, subscriptionPriceId: basePriceIdOf(obj, allowlist), currentPeriodEnd: cpe } }
 }
 
 const SUBSCRIPTION_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted'])
@@ -146,7 +160,7 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
       return c.text('invalid signature', 400)
     }
     if (SUBSCRIPTION_EVENTS.has(event.type)) {
-      const mapped = subscriptionFrom(event.data.object)
+      const mapped = subscriptionFrom(event.data.object, deps.stripe.prices)
       // event.created is the Unix-seconds ordering key; the DB guard applies it only if strictly newer
       if (mapped !== null) await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
     }
