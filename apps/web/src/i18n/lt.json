@@ -37,7 +37,8 @@
     "apiKeys": "API raktai",
     "webhooks": "Webhooks",
     "platform": "Platforma",
-    "drivers": "Vairuotojai"
+    "drivers": "Vairuotojai",
+    "maintenance": "Priežiūra"
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -553,5 +554,32 @@
     "nameRequired": "Vardas privalomas.",
     "ibuttonInvalid": "iButton turi būti 8–32 šešioliktainiai simboliai.",
     "ibuttonTaken": "Šis iButton jau priskirtas kitam vairuotojui."
+  },
+  "maint": {
+    "title": "Techninė priežiūra",
+    "list": "Aptarnavimo grafikas",
+    "add": "Pridėti priminimą",
+    "device": "Įrenginys",
+    "itemTitle": "Aptarnavimas",
+    "intervalKm": "Kas (km)",
+    "intervalDays": "Kas (d.)",
+    "currentOdo": "Dabartinė rida (km)",
+    "create": "Pridėti",
+    "loading": "Kraunama…",
+    "empty": "Priežiūros priminimų dar nėra.",
+    "loadError": "Nepavyko įkelti priežiūros.",
+    "saveError": "Nepavyko išsaugoti priminimo.",
+    "needFields": "Pasirinkite įrenginį ir pavadinimą.",
+    "needInterval": "Nurodykite km ir/arba dienų intervalą.",
+    "markServiced": "Pažymėti atlikta",
+    "delete": "Ištrinti",
+    "kmLeft": "liko {{n}} km",
+    "daysLeft": "liko {{n}} d.",
+    "status": {
+      "ok": "Gerai",
+      "due_soon": "Netrukus",
+      "overdue": "Pradelsta",
+      "unknown": "Nėra duomenų"
+    }
   }
 }

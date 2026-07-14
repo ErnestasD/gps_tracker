@@ -88,6 +88,26 @@ export async function readPositions(pool: Pool, deviceId: bigint, opts: Position
 }
 
 /**
+ * Current odometer (km) per device — max(odometer_m)/1000 over positions (odometer is monotonic,
+ * so max = current; robust to out-of-order rows). Used by the V2 maintenance due computation.
+ * Returns a Map keyed by deviceId STRING; a device with no odometer reports is simply absent.
+ * Batched (one query over the id list) so a maintenance list of N devices is a single round-trip.
+ */
+export async function readOdometersKm(pool: Pool, deviceIds: bigint[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  if (deviceIds.length === 0) return out
+  const res = await pool.query<{ device_id: string; odo_m: string | null }>(
+    `SELECT device_id, max(odometer_m) AS odo_m FROM positions WHERE device_id = ANY($1::int8[]) GROUP BY device_id`,
+    [deviceIds.map((d) => d.toString())],
+  )
+  for (const r of res.rows) {
+    const m = r.odo_m === null ? null : Number(r.odo_m)
+    if (m !== null && Number.isFinite(m)) out.set(r.device_id, m / 1000)
+  }
+  return out
+}
+
+/**
  * The single NEWEST valid-fix position for a device — the live point a public share link shows.
  * Rule 6: `fix_valid=false` (satellites==0) rows are excluded, so a share never advertises a
  * bogus (0,0)-ish location. Caller resolves the device from the share token (unscoped by design,

@@ -321,6 +321,76 @@ export interface GeofenceView {
   createdAt: string
 }
 
+// ── maintenance reminders (V2) ─────────────────────────────────────────────────────────────
+export const maintenanceCreateSchema = z.object({
+  deviceId: z.string().min(1), // stringified BigInt; the route validates the device is in scope
+  accountId: z.string().uuid().optional(),
+  title: z.string().min(1).max(120),
+  intervalKm: z.number().int().min(1).max(10_000_000).nullish(),
+  intervalDays: z.number().int().min(1).max(3650).nullish(),
+  lastServiceOdoKm: z.number().int().min(0).max(10_000_000).nullish(),
+  lastServiceAt: z.string().datetime().nullish(),
+  active: z.boolean().optional(),
+})
+export const maintenanceUpdateSchema = maintenanceCreateSchema.omit({ deviceId: true, accountId: true }).partial()
+export const markServicedSchema = z.object({
+  at: z.string().datetime().optional(), // defaults to now server-side
+  odoKm: z.number().int().min(0).max(10_000_000).nullable().optional(),
+})
+
+/** Computed maintenance due state (V2) — never stored; derived from the device's current odometer
+ *  + now. `status='unknown'` means no computable interval (missing interval or baseline). */
+export type MaintenanceStatus = 'ok' | 'due_soon' | 'overdue' | 'unknown'
+export interface MaintenanceDue {
+  kmRemaining: number | null
+  daysRemaining: number | null
+  status: MaintenanceStatus
+}
+export interface MaintenanceView {
+  id: string
+  deviceId: string
+  title: string
+  intervalKm: number | null
+  intervalDays: number | null
+  lastServiceOdoKm: number | null
+  lastServiceAt: string | null
+  active: boolean
+  createdAt: string
+  /** the device's current odometer (km) at read time — null if the device reports none. */
+  currentOdoKm: number | null
+  due: MaintenanceDue
+}
+
+/** "Due soon" thresholds (V2). Overdue = past the interval; due_soon = within this window. */
+export const MAINT_DUE_SOON_KM = 500
+export const MAINT_DUE_SOON_DAYS = 14
+const DAY_MS = 86_400_000
+
+/** Pure due computation — the single source of truth for both API and web. Given the item, the
+ *  device's current odometer (km, or null), and now (ms): compute km/day remaining + a status. */
+export function maintenanceDue(
+  item: { intervalKm: number | null; intervalDays: number | null; lastServiceOdoKm: number | null; lastServiceAt: string | null },
+  currentOdoKm: number | null,
+  nowMs: number,
+): MaintenanceDue {
+  const kmRemaining =
+    item.intervalKm != null && item.lastServiceOdoKm != null && currentOdoKm != null
+      ? item.lastServiceOdoKm + item.intervalKm - currentOdoKm
+      : null
+  let daysRemaining: number | null = null
+  if (item.intervalDays != null && item.lastServiceAt != null) {
+    const dueAt = Date.parse(item.lastServiceAt) + item.intervalDays * DAY_MS
+    if (Number.isFinite(dueAt)) daysRemaining = Math.floor((dueAt - nowMs) / DAY_MS)
+  }
+  let status: MaintenanceStatus = 'unknown'
+  if (kmRemaining !== null || daysRemaining !== null) {
+    const overdue = (kmRemaining !== null && kmRemaining < 0) || (daysRemaining !== null && daysRemaining < 0)
+    const soon = (kmRemaining !== null && kmRemaining <= MAINT_DUE_SOON_KM) || (daysRemaining !== null && daysRemaining <= MAINT_DUE_SOON_DAYS)
+    status = overdue ? 'overdue' : soon ? 'due_soon' : 'ok'
+  }
+  return { kmRemaining, daysRemaining, status }
+}
+
 // ── driver registry (V2) ──────────────────────────────────────────────────────────────────
 // iButton/RFID key ids are hex (Dallas 1-Wire 64-bit → up to 16 hex; be generous to 32). The
 // hex charset also keeps the value injection-inert for the follow-up that puts it in Redis / SMS.

@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readPositions, type Db, type Pool } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -21,6 +21,11 @@ import {
   driverCreateSchema,
   driverUpdateSchema,
   tripAssignDriverSchema,
+  maintenanceCreateSchema,
+  maintenanceUpdateSchema,
+  markServicedSchema,
+  maintenanceDue,
+  type MaintenanceView,
   shareCreateSchema,
   tenantCreateSchema,
   tenantUpdateSchema,
@@ -94,6 +99,7 @@ const READ_POLICY: Record<string, Role[]> = {
   audit: TENANT_ADMINS, // audit trail is tenant-wide + sensitive → admins only
   geofence: [...ROLES],
   driver: [...ROLES], // the driver roster is broadly readable
+  maintenance: [...ROLES], // maintenance schedule is broadly readable
   command: [...ROLES], // reading command status is broad; SENDING is a write (below)
   webhookDelivery: ACCOUNT_WRITERS, // webhook delivery log — same readers as webhooks
   usage: TENANT_ADMINS, // billing data — a tenant admin can see their own bill
@@ -108,6 +114,7 @@ const WRITE_POLICY: Record<string, Role[]> = {
   webhook: TENANT_ADMINS,
   geofence: ACCOUNT_WRITERS,
   driver: ACCOUNT_WRITERS,
+  maintenance: ACCOUNT_WRITERS,
   trip: ACCOUNT_WRITERS, // assigning a driver to a trip is an operator action
   command: ACCOUNT_WRITERS, // sending a Codec-12 command controls hardware → writers only
   export: TENANT_ADMINS, // requesting a GDPR export
@@ -140,6 +147,24 @@ function toJson(value: unknown): object {
 const json = (c: Context, data: unknown, status: 200 | 201 | 202 = 200): Response => {
   c.header('Cache-Control', 'no-store')
   return c.json(toJson(data), status)
+}
+
+/** Serialize a maintenance row + attach the device's current odometer + the computed due (V2). */
+function toMaintView(
+  item: { id: string; deviceId: bigint; title: string; intervalKm: number | null; intervalDays: number | null; lastServiceOdoKm: number | null; lastServiceAt: Date | null; active: boolean; createdAt: Date },
+  odo: Map<string, number>,
+): MaintenanceView {
+  const deviceId = item.deviceId.toString()
+  const currentOdoKm = odo.get(deviceId) ?? null
+  const lastServiceAt = item.lastServiceAt?.toISOString() ?? null
+  return {
+    id: item.id, deviceId, title: item.title,
+    intervalKm: item.intervalKm, intervalDays: item.intervalDays,
+    lastServiceOdoKm: item.lastServiceOdoKm, lastServiceAt,
+    active: item.active, createdAt: item.createdAt.toISOString(),
+    currentOdoKm,
+    due: maintenanceDue({ intervalKm: item.intervalKm, intervalDays: item.intervalDays, lastServiceOdoKm: item.lastServiceOdoKm, lastServiceAt }, currentOdoKm, Date.now()),
+  }
 }
 
 /**
@@ -619,6 +644,74 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const ok = await db.drivers.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+
+    // ── maintenance reminders (account, V2) — due computed at read from current odometer + now ──
+    { method: 'get', path: '/v1/maintenance', scopeClass: 'account', entity: 'maintenance', shape: 'collection',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        // optional device filter — only a well-formed numeric id (a garbage value must not 500)
+        const devQ = c.req.query('deviceId')
+        const devFilter = devQ !== undefined && /^\d{1,19}$/.test(devQ) ? ([BigInt(devQ)] as const) : ([] as const)
+        const items = await db.maintenance.list(scope, ...devFilter)
+        // one batched odometer read for all listed devices (absent pool ⇒ km-based due is just null)
+        const odo = deps.pool !== undefined ? await readOdometersKm(deps.pool, [...new Set(items.map((i) => i.deviceId))]) : new Map<string, number>()
+        return json(c, items.map((i) => toMaintView(i, odo)))
+      } },
+    { method: 'get', path: '/v1/maintenance/:id', scopeClass: 'account', entity: 'maintenance', shape: 'item',
+      handler: async (c) => {
+        const item = await db.maintenance.get(scopeOf(auth(c)), id(c))
+        if (item === null) return problem(c, 404, 'Not Found')
+        const odo = deps.pool !== undefined ? await readOdometersKm(deps.pool, [item.deviceId]) : new Map<string, number>()
+        return json(c, toMaintView(item, odo))
+      } },
+    { method: 'post', path: '/v1/maintenance', scopeClass: 'account', entity: 'maintenance', shape: 'collection',
+      handler: async (c) => {
+        const data = await body(c, maintenanceCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        const scope = scopeOf(a)
+        // the target device must be in the caller's scope (never schedule against another's device)
+        const device = await db.devices.get(scope, data.deviceId)
+        if (device === null) return problem(c, 400, 'Bad Request', 'deviceId not in scope')
+        const created = await db.maintenance.create(scope, { userId: a.userId }, {
+          accountId: device.accountId, deviceId: device.id, title: data.title,
+          intervalKm: data.intervalKm ?? null, intervalDays: data.intervalDays ?? null,
+          lastServiceOdoKm: data.lastServiceOdoKm ?? null,
+          lastServiceAt: data.lastServiceAt != null ? new Date(data.lastServiceAt) : null,
+          ...(data.active !== undefined ? { active: data.active } : {}),
+        })
+        return json(c, toMaintView(created, new Map()), 201)
+      } },
+    { method: 'patch', path: '/v1/maintenance/:id', scopeClass: 'account', entity: 'maintenance', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, maintenanceUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const row = await db.maintenance.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), {
+          ...('title' in data ? { title: data.title } : {}),
+          ...('intervalKm' in data ? { intervalKm: data.intervalKm ?? null } : {}),
+          ...('intervalDays' in data ? { intervalDays: data.intervalDays ?? null } : {}),
+          ...('lastServiceOdoKm' in data ? { lastServiceOdoKm: data.lastServiceOdoKm ?? null } : {}),
+          ...('lastServiceAt' in data ? { lastServiceAt: data.lastServiceAt != null ? new Date(data.lastServiceAt) : null } : {}),
+          ...('active' in data ? { active: data.active } : {}),
+        })
+        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, new Map()))
+      } },
+    { method: 'delete', path: '/v1/maintenance/:id', scopeClass: 'account', entity: 'maintenance', shape: 'item',
+      handler: async (c) => {
+        const ok = await db.maintenance.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+    // record a completed service — resets the baseline (odo + timestamp) for the next due
+    { method: 'post', path: '/v1/maintenance/:id/serviced', scopeClass: 'account', entity: 'maintenance', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        if (await db.maintenance.get(scope, id(c)) === null) return problem(c, 404, 'Not Found')
+        const data = await body(c, markServicedSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const at = data.at != null ? new Date(data.at) : new Date()
+        const row = await db.maintenance.markServiced(scope, { userId: auth(c).userId }, id(c), at, data.odoKm ?? null)
+        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, new Map()))
       } },
 
     // ── geofences (account-scoped, nullable account = tenant-shared, E05-1) ────
