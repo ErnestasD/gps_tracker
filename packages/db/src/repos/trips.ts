@@ -78,10 +78,12 @@ export function createTripRepo(prisma: PrismaClient, audit: AuditRepo): TripRead
     assignDriver: async (scope, actor, tripId, driverId) => {
       const before = await scopedById(scope, tripId)
       if (before === null) return null
-      // a non-null driver MUST belong to the caller's scope (never assign another tenant's/account's
-      // driver) — the scoped lookup is the boundary; null clears the assignment
+      // the driver MUST belong to the SAME account as the trip — pinned to the TRIP's tenant+account,
+      // not merely the caller's scope. Otherwise a tenant-wide admin (accountId undefined) could
+      // assign account A2's driver to A1's trip, leaking an A2 driver name to A1 users in a
+      // white-label tenant where accounts are separate customers (review MED). null clears it.
       if (driverId !== null) {
-        const driver = await prisma.driver.findFirst({ where: { ...scopedWhere(scope), id: driverId } })
+        const driver = await prisma.driver.findFirst({ where: { tenantId: before.tenantId, accountId: before.accountId, id: driverId } })
         if (driver === null) throw new DriverNotInScopeError()
       }
       const row = flat(await prisma.trip.update({ where: { id: before.id }, data: { driverId }, ...withDriver }))

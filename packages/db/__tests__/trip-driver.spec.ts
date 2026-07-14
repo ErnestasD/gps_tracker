@@ -83,6 +83,22 @@ describe('V2 trip driver assignment', () => {
     expect(await db.trips.assignDriver(a.aScope, actor, b.tripId, a.driver.id)).toBeNull()
   })
 
+  it('refuses a SIBLING-ACCOUNT driver even for a tenant-wide caller (account boundary — review MED)', async () => {
+    const tenant = await db.tenants.create(actor, { name: 'WL Co' })
+    const tScope = { tenantId: tenant.id } // tenant-wide (accountId undefined)
+    const a1 = await db.accounts.create(tScope, actor, { name: 'A1' })
+    const a2 = await db.accounts.create(tScope, actor, { name: 'A2' })
+    const [prof] = await q<{ id: string }>(`INSERT INTO device_profiles(id,key,name) VALUES (gen_random_uuid(),'wl','P') RETURNING id`)
+    const dev = await db.devices.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, profileId: prof!.id, imei: '356307042450009', name: 'V' })
+    const [trip] = await q<{ id: string }>(`INSERT INTO trips ("tenantId","accountId","deviceId","status","startTime") VALUES ($1,$2,$3,'closed',now()) RETURNING id`, [tenant.id, a1.id, dev.id.toString()])
+    const a2Driver = await db.drivers.create({ tenantId: tenant.id, accountId: a2.id }, actor, { accountId: a2.id, name: 'A2 Driver' })
+    // tenant-wide scope, but the driver is in a DIFFERENT account than the trip → refused
+    await expect(db.trips.assignDriver(tScope, actor, trip!.id, a2Driver.id)).rejects.toBeInstanceOf(DriverNotInScopeError)
+    // a same-account driver IS assignable by the tenant-wide caller
+    const a1Driver = await db.drivers.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, name: 'A1 Driver' })
+    expect((await db.trips.assignDriver(tScope, actor, trip!.id, a1Driver.id))?.driverName).toBe('A1 Driver')
+  })
+
   it('deleting an assigned driver SET NULLs the trip (history survives)', async () => {
     const s = await seed('Del Co', '356307042450004')
     await db.trips.assignDriver(s.aScope, actor, s.tripId, s.driver.id)
