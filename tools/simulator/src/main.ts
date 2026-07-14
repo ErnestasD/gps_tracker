@@ -4,6 +4,7 @@ import { bufferedFlood } from './scenarios/bufferedFlood.js'
 import { corruptCrc } from './scenarios/corruptCrc.js'
 import { invalidFix } from './scenarios/invalidFix.js'
 import { panic } from './scenarios/panic.js'
+import { fuelTheft } from './scenarios/fuelTheft.js'
 import { slowLoris } from './scenarios/slowLoris.js'
 import { liveDrive } from './scenarios/liveDrive.js'
 import { oversize } from './scenarios/oversize.js'
@@ -16,6 +17,7 @@ const SCENARIOS: Record<string, Scenario> = {
   bufferedFlood,
   invalidFix,
   panic,
+  fuelTheft,
   slowLoris,
 }
 

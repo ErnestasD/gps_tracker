@@ -153,14 +153,17 @@
       "power_cut": "Utrata zasilania",
       "low_battery": "Niski poziom baterii",
       "panic": "Panika",
-      "device_offline": "Urządzenie offline"
+      "device_offline": "Urządzenie offline",
+      "fuel_theft": "Kradzież paliwa"
     },
     "cfg": {
       "speedKmh": "Prędkość (km/h)",
       "geofenceId": "Geostrefa",
       "on": "Gdy",
       "thresholdV": "Próg (V)",
-      "afterH": "Po (godz.)"
+      "afterH": "Po (godz.)",
+      "dropPct": "Spadek (%)",
+      "dropLiters": "Spadek (litry)"
     },
     "needGeofence": "Wybierz geostrefę dla tej reguły.",
     "actionError": "Akcja nie powiodła się — spróbuj ponownie.",
@@ -440,7 +443,8 @@
       "power_cut": "Zanik zasilania",
       "low_battery": "Niski poziom baterii",
       "panic": "Alarm",
-      "device_offline": "Urządzenie offline"
+      "device_offline": "Urządzenie offline",
+      "fuel_theft": "Kradzież paliwa"
     }
   },
   "reports": {

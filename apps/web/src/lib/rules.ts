@@ -3,7 +3,7 @@ import { notificationChannelSchema } from '@orbetra/shared'
 import { getJson, mutate } from './client'
 
 /** Rule kinds (mirror the Prisma RuleKind enum). */
-export const RULE_KINDS = ['overspeed', 'geofence', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'device_offline'] as const
+export const RULE_KINDS = ['overspeed', 'geofence', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'device_offline', 'fuel_theft'] as const
 export type RuleKind = (typeof RULE_KINDS)[number]
 
 /** A rule's notification channel (mirrors packages/shared notificationChannelSchema). */
@@ -69,6 +69,9 @@ export function configFields(kind: RuleKind): ConfigField[] {
       return [{ key: 'thresholdV', type: 'number', min: 1, max: 60, default: 11 }]
     case 'device_offline':
       return [{ key: 'afterH', type: 'number', min: 1, max: 168, default: 26 }]
+    case 'fuel_theft':
+      // % works on most senders; litres (AVL 84) covers CAN/OBD trucks that report only litres
+      return [{ key: 'dropPct', type: 'number', min: 1, max: 100, default: 15 }, { key: 'dropLiters', type: 'number', min: 1, max: 1000, default: 0 }]
     default:
       return [] // ignition / din_change / power_cut / panic — event-driven, no threshold
   }

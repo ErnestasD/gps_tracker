@@ -153,14 +153,17 @@
       "power_cut": "Maitinimo dingimas",
       "low_battery": "Žema baterija",
       "panic": "Panika",
-      "device_offline": "Įrenginys neprisijungęs"
+      "device_offline": "Įrenginys neprisijungęs",
+      "fuel_theft": "Kuro vagystė"
     },
     "cfg": {
       "speedKmh": "Greitis (km/val)",
       "geofenceId": "Geozona",
       "on": "Kai",
       "thresholdV": "Riba (V)",
-      "afterH": "Po (val.)"
+      "afterH": "Po (val.)",
+      "dropPct": "Kritimas (%)",
+      "dropLiters": "Kritimas (l)"
     },
     "needGeofence": "Pasirinkite geozoną šiai taisyklei.",
     "actionError": "Veiksmas nepavyko — bandykite dar kartą.",
@@ -440,7 +443,8 @@
       "power_cut": "Maitinimo nutrūkimas",
       "low_battery": "Žema baterija",
       "panic": "Pavojaus mygtukas",
-      "device_offline": "Įrenginys neprisijungęs"
+      "device_offline": "Įrenginys neprisijungęs",
+      "fuel_theft": "Kuro vagystė"
     }
   },
   "reports": {

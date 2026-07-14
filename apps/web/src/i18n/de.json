@@ -153,14 +153,17 @@
       "power_cut": "Stromausfall",
       "low_battery": "Schwache Batterie",
       "panic": "Panik",
-      "device_offline": "Gerät offline"
+      "device_offline": "Gerät offline",
+      "fuel_theft": "Kraftstoffdiebstahl"
     },
     "cfg": {
       "speedKmh": "Geschw. (km/h)",
       "geofenceId": "Geozone",
       "on": "Bei",
       "thresholdV": "Schwelle (V)",
-      "afterH": "Nach (Std.)"
+      "afterH": "Nach (Std.)",
+      "dropPct": "Abfall (%)",
+      "dropLiters": "Abfall (Liter)"
     },
     "needGeofence": "Wählen Sie eine Geozone für diese Regel.",
     "actionError": "Aktion fehlgeschlagen — erneut versuchen.",
@@ -440,7 +443,8 @@
       "power_cut": "Stromausfall",
       "low_battery": "Batterie schwach",
       "panic": "Panik",
-      "device_offline": "Gerät offline"
+      "device_offline": "Gerät offline",
+      "fuel_theft": "Kraftstoffdiebstahl"
     }
   },
   "reports": {

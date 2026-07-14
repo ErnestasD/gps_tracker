@@ -1,6 +1,6 @@
 import type { NormalizedRecord } from '@orbetra/shared'
 
-import { alarmOf, batteryVoltsOf, din1Of, ignitionOf, unplugOf } from './io.js'
+import { alarmOf, batteryVoltsOf, din1Of, fuelLevelOf, ignitionOf, unplugOf } from './io.js'
 import type { EngineRuleKind, RuleDef, RuleEvent } from './types.js'
 
 /**
@@ -22,9 +22,17 @@ export interface DeviceIo {
   din1: boolean | null
   unplug: boolean | null
   alarm: boolean | null
+  /** last fuel level % (AVL 89/48) and litres (AVL 84) — for fuel_theft drop detection */
+  fuelPct: number | null
+  fuelL: number | null
+  /** fuel level at the start of the current PARKED period (seeded from a parked reading, never a
+   *  driving one; null while driving). fuel_theft measures the drop from this, so a driving slosh
+   *  can't seed the baseline. */
+  fuelBasePct: number | null
+  fuelBaseL: number | null
 }
 
-const EMPTY_IO: DeviceIo = { ignition: null, din1: null, unplug: null, alarm: null }
+const EMPTY_IO: DeviceIo = { ignition: null, din1: null, unplug: null, alarm: null, fuelPct: null, fuelL: null, fuelBasePct: null, fuelBaseL: null }
 
 /** Rules whose event bypasses cooldown (§6.5 priority-2 / power_cut). */
 const BYPASS: ReadonlySet<EngineRuleKind> = new Set<EngineRuleKind>(['panic', 'power_cut'])
@@ -57,11 +65,16 @@ export class RuleEngine {
 
       // previous IO for edge detection (warm-start once from durable state)
       const prev = this.io.get(dev) ?? ioStateFor?.(r.deviceId) ?? EMPTY_IO
+      const fuel = fuelLevelOf(r)
       const cur: DeviceIo = {
         ignition: ignitionOf(r),
         din1: din1Of(r),
         unplug: unplugOf(r),
         alarm: alarmOf(r),
+        fuelPct: fuel.pct,
+        fuelL: fuel.liters,
+        fuelBasePct: null, // baseline is not a per-reading value; computed in carry-forward below
+        fuelBaseL: null,
       }
 
       for (const rule of rules) {
@@ -71,11 +84,18 @@ export class RuleEngine {
 
       // carry forward: a null current reading keeps the previous value so a rule added
       // later, or a packet that omits the id, doesn't fabricate an edge
+      // parked baseline: cleared while driving; else HELD once seeded (from the first parked reading),
+      // so it's always a parked value — a driving slosh never becomes the theft baseline.
+      const seedIgnOff = cur.ignition === false || (cur.ignition === null && prev.ignition === false)
       this.io.set(dev, {
         ignition: cur.ignition ?? prev.ignition,
         din1: cur.din1 ?? prev.din1,
         unplug: cur.unplug ?? prev.unplug,
         alarm: cur.alarm ?? prev.alarm,
+        fuelPct: cur.fuelPct ?? prev.fuelPct,
+        fuelL: cur.fuelL ?? prev.fuelL,
+        fuelBasePct: cur.ignition === true ? null : (prev.fuelBasePct ?? (seedIgnOff ? cur.fuelPct : null)),
+        fuelBaseL: cur.ignition === true ? null : (prev.fuelBaseL ?? (seedIgnOff ? cur.fuelL : null)),
       })
     }
     return out
@@ -124,6 +144,26 @@ export class RuleEngine {
       case 'panic':
         // rising edge only: Alarm 0→1
         return prev.alarm === false && cur.alarm === true ? this.emit(rule, r, { alarm: true }) : null
+      case 'fuel_theft': {
+        // Fuel dropping while the engine is OFF (both ends) can't be consumption → theft/leak. The
+        // drop is measured from the PARKED baseline and must be CONFIRMED on two consecutive readings
+        // (both the previous and current sample are ≥ threshold below baseline), so a single sensor
+        // glitch (a lone dip that recovers) never alerts. Uses % (AVL 89/48); litres (AVL 84) when a
+        // dropLiters threshold is configured. LIMITATION (tuning, needs LLS data): a large fuel-sender
+        // slosh that SETTLES over several parked readings can still trip — raise the threshold per fleet.
+        if (prev.ignition !== false || cur.ignition !== false) return null
+        const dropPct = num(rule.config['dropPct'], 15)
+        const base = prev.fuelBasePct
+        if (base !== null && cur.fuelPct !== null && prev.fuelPct !== null && base - cur.fuelPct >= dropPct && base - prev.fuelPct >= dropPct) {
+          return this.emit(rule, r, { unit: 'pct', baseline: base, to: cur.fuelPct, drop: base - cur.fuelPct })
+        }
+        const dropLiters = rule.config['dropLiters'] !== undefined ? num(rule.config['dropLiters'], 0) : null
+        const baseL = prev.fuelBaseL
+        if (dropLiters !== null && dropLiters > 0 && baseL !== null && cur.fuelL !== null && prev.fuelL !== null && baseL - cur.fuelL >= dropLiters && baseL - prev.fuelL >= dropLiters) {
+          return this.emit(rule, r, { unit: 'liters', baseline: baseL, to: cur.fuelL, drop: baseL - cur.fuelL })
+        }
+        return null
+      }
     }
   }
 
