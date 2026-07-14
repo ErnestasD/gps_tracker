@@ -16,7 +16,7 @@ import { closeTrip, openTrip } from './writer.js'
  * left to recompute — never a wrong-row update.
  */
 export class TripPersister {
-  private readonly openIds = new Map<string, string>() // deviceId → open trip id
+  private readonly openIds = new Map<string, { id: string; tenantId: string }>() // deviceId → open trip id + its tenant (for iButton→driver resolution at close)
 
   constructor(
     private readonly pool: Pool,
@@ -40,12 +40,15 @@ export class TripPersister {
           startLat: ev.startLat,
           startLon: ev.startLon,
         })
-        this.openIds.set(key, id)
+        this.openIds.set(key, { id, tenantId: scope.tenantId })
         opened++
       } else {
-        const id = this.openIds.get(key)
-        if (id === undefined) continue // no known open row → leave to E04-2 recompute
-        await closeTrip(this.pool, id, {
+        const open = this.openIds.get(key)
+        if (open === undefined) continue // no known open row → leave to E04-2 recompute
+        // V2 Part B: resolve the trip's iButton to a driver via the tenant's Redis map (best-effort;
+        // a lookup miss/blip just leaves driverId null — closeTrip won't overwrite a manual assign)
+        const driverId = ev.ibutton !== null ? await this.resolveDriver(open.tenantId, ev.ibutton) : null
+        await closeTrip(this.pool, open.id, {
           endTime: ev.endTime,
           endLat: ev.endLat,
           endLon: ev.endLon,
@@ -53,6 +56,7 @@ export class TripPersister {
           distanceSource: ev.distanceSource,
           maxSpeed: ev.maxSpeed,
           idleS: ev.idleS,
+          driverId,
         })
         this.openIds.delete(key)
         closed++
@@ -67,5 +71,15 @@ export class TripPersister {
       this.redis.hget('device:account', deviceId),
     ])
     return tenantId !== null && accountId !== null ? { tenantId, accountId } : null
+  }
+
+  /** iButton canonical key → driverId, via the tenant's Redis map (synced by driver CRUD in the API).
+   *  Returns null on a miss or a Redis blip — auto-attribution is best-effort, never blocks the close. */
+  private async resolveDriver(tenantId: string, ibuttonKey: string): Promise<string | null> {
+    try {
+      return await this.redis.hget(`driver:ibutton:${tenantId}`, ibuttonKey)
+    } catch {
+      return null
+    }
   }
 }
