@@ -147,7 +147,18 @@
       "afterH": "After (hours)"
     },
     "needGeofence": "Select a geofence for this rule.",
-    "actionError": "Action failed — try again."
+    "actionError": "Action failed — try again.",
+    "channels": {
+      "label": "Notification channels",
+      "email": "Email",
+      "telegram": "Telegram",
+      "emailPlaceholder": "name@company.com",
+      "telegramPlaceholder": "chat id",
+      "add": "Add",
+      "invalid": "Enter a valid email or chat id.",
+      "count": "{{n}} channel(s)",
+      "none": "no channels"
+    }
   },
   "playback": {
     "title": "History playback",

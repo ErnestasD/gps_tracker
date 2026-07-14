@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { listAccounts } from '@/lib/devices'
 import { listGeofences } from '@/lib/geofences'
 import { ApiError } from '@/lib/http'
-import { RULE_KINDS, configFields, createRule, deleteRule, listRules, updateRule, type RuleKind } from '@/lib/rules'
+import { RULE_KINDS, channelLabel, configFields, createRule, deleteRule, listRules, parseChannel, updateRule, type NotificationChannel, type RuleKind } from '@/lib/rules'
 
 /** Rules CRUD (E05-3): create alert rules with kind-specific config; toggle/delete. */
 export function RulesPage() {
@@ -43,6 +43,9 @@ export function RulesPage() {
                   <Badge variant="outline">{t(`rules.kind.${r.kind}`)}</Badge>
                   <span className="truncate font-medium">{r.name}</span>
                   <span className="text-xs text-muted">{t('rules.cooldown')}: {r.cooldownS}s</span>
+                  {(r.channels ?? []).length > 0
+                    ? <Badge variant="outline" data-testid={`rule-ch-count-${r.id}`}>{t('rules.channels.count', { n: r.channels.length })}</Badge>
+                    : <span className="text-xs text-warn" data-testid={`rule-ch-none-${r.id}`}>{t('rules.channels.none')}</span>}
                   <label className="ml-auto flex items-center gap-1 text-xs text-muted">
                     <input
                       type="checkbox" checked={r.enabled} data-testid={`rule-enabled-${r.id}`}
@@ -68,8 +71,20 @@ function RuleForm({ accounts, geofences, onCreated }: { accounts: { id: string; 
   const [accountId, setAccountId] = useState('')
   const [cooldownS, setCooldownS] = useState(300)
   const [cfg, setCfg] = useState<Record<string, string>>({})
+  const [channels, setChannels] = useState<NotificationChannel[]>([])
+  const [chType, setChType] = useState<'email' | 'telegram'>('email')
+  const [chValue, setChValue] = useState('')
+  const [chError, setChError] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const addChannel = () => {
+    const parsed = parseChannel(chType, chValue)
+    if (parsed === null) { setChError(true); return }
+    // dedupe identical targets so a rule doesn't email the same address twice
+    setChannels((cs) => (cs.some((c) => channelLabel(c) === channelLabel(parsed)) ? cs : [...cs, parsed]))
+    setChValue(''); setChError(false)
+  }
 
   const fields = useMemo(() => configFields(kind), [kind])
   const acc = accountId || accounts[0]?.id || ''
@@ -88,8 +103,8 @@ function RuleForm({ accounts, geofences, onCreated }: { accounts: { id: string; 
       const val = raw === undefined || raw === '' ? f.default : raw
       config[f.key] = f.type === 'number' ? Number(val) : val
     }
-    createRule({ accountId: acc, kind, name: name.trim(), config, cooldownS, enabled: true })
-      .then(() => { setName(''); setCfg({}); onCreated() })
+    createRule({ accountId: acc, kind, name: name.trim(), config, cooldownS, enabled: true, ...(channels.length > 0 ? { channels } : {}) })
+      .then(() => { setName(''); setCfg({}); setChannels([]); onCreated() })
       .catch((err: unknown) => setError(err instanceof ApiError && err.status === 400 ? t('rules.invalid') : t('rules.error')))
       .finally(() => setBusy(false))
   }
@@ -133,6 +148,38 @@ function RuleForm({ accounts, geofences, onCreated }: { accounts: { id: string; 
           <Field label={t('rules.cooldown')}>
             <Input type="number" min={0} max={86_400} value={cooldownS} onChange={(e) => setCooldownS(Number(e.target.value))} data-testid="rule-cooldown" className="w-24" />
           </Field>
+          {/* notification channels (E05-5) — email needs SES configured on the worker; telegram
+              needs the bot token + pairing. Without a channel the rule fires an event but sends nothing. */}
+          <div className="flex w-full flex-col gap-1">
+            <span className="text-xs text-muted">{t('rules.channels.label')}</span>
+            <div className="flex flex-wrap items-end gap-2">
+              <select value={chType} onChange={(e) => { setChType(e.target.value as 'email' | 'telegram'); setChError(false) }} data-testid="rule-ch-type" className="h-9 rounded-card border border-line bg-surface px-2 text-sm">
+                <option value="email">{t('rules.channels.email')}</option>
+                <option value="telegram">{t('rules.channels.telegram')}</option>
+              </select>
+              <Input
+                value={chValue}
+                onChange={(e) => { setChValue(e.target.value); setChError(false) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addChannel() } }}
+                placeholder={chType === 'email' ? t('rules.channels.emailPlaceholder') : t('rules.channels.telegramPlaceholder')}
+                data-testid="rule-ch-value" className="w-52"
+              />
+              <Button type="button" variant="ghost" size="sm" onClick={addChannel} data-testid="rule-ch-add">{t('rules.channels.add')}</Button>
+            </div>
+            {chError && <span className="text-xs text-danger" data-testid="rule-ch-error">{t('rules.channels.invalid')}</span>}
+            {channels.length > 0 && (
+              <ul className="flex flex-wrap gap-1" data-testid="rule-ch-list">
+                {channels.map((c) => (
+                  <li key={channelLabel(c)}>
+                    <Badge variant="outline" className="gap-1">
+                      {channelLabel(c)}
+                      <button type="button" className="text-muted hover:text-danger" data-testid={`rule-ch-remove-${channelLabel(c)}`} onClick={() => setChannels((cs) => cs.filter((x) => channelLabel(x) !== channelLabel(c)))}>×</button>
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <Button type="submit" disabled={busy || name.trim() === '' || acc === '' || missingGeofence} data-testid="rule-create">{t('rules.create')}</Button>
           {missingGeofence && <p className="w-full text-xs text-warn" data-testid="rule-need-geofence">{t('rules.needGeofence')}</p>}
           {error !== null && <p role="alert" className="w-full text-sm text-danger">{error}</p>}

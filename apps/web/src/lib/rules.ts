@@ -4,6 +4,9 @@ import { getJson, mutate } from './client'
 export const RULE_KINDS = ['overspeed', 'geofence', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'device_offline'] as const
 export type RuleKind = (typeof RULE_KINDS)[number]
 
+/** A rule's notification channel (mirrors packages/shared notificationChannelSchema). */
+export type NotificationChannel = { type: 'email'; to: string } | { type: 'telegram'; chatId: string }
+
 export interface Rule {
   id: string
   accountId: string
@@ -11,7 +14,7 @@ export interface Rule {
   name: string
   config: Record<string, unknown>
   scope: Record<string, unknown>
-  channels: unknown[]
+  channels: NotificationChannel[]
   cooldownS: number
   enabled: boolean
 }
@@ -21,10 +24,22 @@ export interface RuleCreateInput {
   kind: RuleKind
   name: string
   config?: Record<string, unknown>
+  channels?: NotificationChannel[]
   cooldownS?: number
   enabled?: boolean
 }
 export type RuleUpdateInput = Partial<Omit<RuleCreateInput, 'accountId' | 'kind'>>
+
+/** Parse a "type + value" draft into a channel, or null if invalid. Pure — unit-tested. The email
+ *  regex mirrors zod's `.email()` closely enough to catch typos before the 400 round-trip. */
+export function parseChannel(type: 'email' | 'telegram', value: string): NotificationChannel | null {
+  const v = value.trim()
+  if (v === '') return null
+  if (type === 'email') return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? { type: 'email', to: v } : null
+  return v.length <= 64 ? { type: 'telegram', chatId: v } : null
+}
+/** Human label for a channel chip. */
+export const channelLabel = (c: NotificationChannel): string => (c.type === 'email' ? c.to : `Telegram ${c.chatId}`)
 
 export const listRules = () => getJson<Rule[]>('/v1/rules')
 export const createRule = (data: RuleCreateInput) => mutate<Rule>('POST', '/v1/rules', data)
