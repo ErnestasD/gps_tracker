@@ -553,7 +553,15 @@
     "saveError": "Nepavyko išsaugoti vairuotojo.",
     "nameRequired": "Vardas privalomas.",
     "ibuttonInvalid": "iButton turi būti 8–32 šešioliktainiai simboliai.",
-    "ibuttonTaken": "Šis iButton jau priskirtas kitam vairuotojui."
+    "ibuttonTaken": "Šis iButton jau priskirtas kitam vairuotojui.",
+    "scores": {
+      "title": "Saugumo balai (30 d.)",
+      "empty": "Per 30 d. nevažiuota.",
+      "trips": "Kelionės",
+      "distance": "Atstumas",
+      "overspeed": "Greičio viršij.",
+      "score": "Balas"
+    }
   },
   "maint": {
     "title": "Techninė priežiūra",

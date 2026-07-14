@@ -14,6 +14,7 @@ import { createPilotRequestRoute } from './routes/pilotRequest.js'
 import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { mountReports } from './routes/reports.js'
+import { mountDriverScores } from './routes/driverScores.js'
 import { defaultTxtResolver, type TxtResolver } from './routes/tenantSelf.js'
 import { securityHeaders } from './security.js'
 import { issueTicket, type WsDeps } from './ws.js'
@@ -174,6 +175,9 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.
   mountReports(app, { db: deps.db, pool: deps.pool })
+
+  // Driver safety scoring (V2) — dedicated read route, EXEMPT from the manifest (aggregate result).
+  mountDriverScores(app, { db: deps.db, pool: deps.pool })
 
   // API-key management (E06-3) — tenant-admin only; dedicated route, EXEMPT from the manifest.
   mountApiKeys(app, { db: deps.db })

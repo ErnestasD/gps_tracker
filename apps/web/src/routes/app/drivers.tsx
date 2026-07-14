@@ -12,8 +12,10 @@ import {
   createDriver,
   deleteDriver,
   isIbuttonConflict,
+  listDriverScores,
   listDrivers,
   normalizeIbutton,
+  scoreVariant,
   updateDriver,
   type Driver,
 } from '@/lib/drivers'
@@ -89,7 +91,53 @@ export function DriversPage() {
           )}
         </CardContent>
       </Card>
+
+      <DriverScores />
     </div>
+  )
+}
+
+/** Safety scores over the last 30 days (V2) — from assigned trips + overspeed events. */
+function DriverScores() {
+  const { t } = useTranslation()
+  const scores = useQuery({ queryKey: ['driver-scores'], queryFn: listDriverScores })
+  const rows = (scores.data ?? []).filter((s) => s.trips > 0) // only drivers with driving in the window
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">{t('drivers.scores.title')}</CardTitle></CardHeader>
+      <CardContent>
+        {scores.isLoading ? (
+          <p className="text-sm text-muted">{t('drivers.loading')}</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted">{t('drivers.scores.empty')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="driver-scores-table">
+              <thead>
+                <tr className="border-b border-line text-left text-xs text-muted">
+                  <th className="py-2 pr-4 font-medium">{t('drivers.name')}</th>
+                  <th className="py-2 pr-4 font-medium">{t('drivers.scores.trips')}</th>
+                  <th className="py-2 pr-4 font-medium">{t('drivers.scores.distance')}</th>
+                  <th className="py-2 pr-4 font-medium">{t('drivers.scores.overspeed')}</th>
+                  <th className="py-2 pr-4 font-medium">{t('drivers.scores.score')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((s) => (
+                  <tr key={s.driverId} className="border-b border-line/50" data-testid={`driver-score-${s.driverId}`}>
+                    <td className="py-2 pr-4">{s.driverName}</td>
+                    <td className="py-2 pr-4 tabular-nums text-muted">{s.trips}</td>
+                    <td className="py-2 pr-4 tabular-nums text-muted">{s.distanceKm} km</td>
+                    <td className="py-2 pr-4 tabular-nums text-muted">{s.overspeedEvents}</td>
+                    <td className="py-2 pr-4"><Badge variant={scoreVariant(s.score)}>{s.score ?? '—'}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

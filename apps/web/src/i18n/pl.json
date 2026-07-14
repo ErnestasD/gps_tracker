@@ -553,7 +553,15 @@
     "saveError": "Nie udało się zapisać kierowcy.",
     "nameRequired": "Imię jest wymagane.",
     "ibuttonInvalid": "iButton musi mieć 8–32 znaki szesnastkowe.",
-    "ibuttonTaken": "Ten iButton jest już przypisany do innego kierowcy."
+    "ibuttonTaken": "Ten iButton jest już przypisany do innego kierowcy.",
+    "scores": {
+      "title": "Ocena bezpieczeństwa (30 dni)",
+      "empty": "Brak jazdy w ostatnich 30 dniach.",
+      "trips": "Przejazdy",
+      "distance": "Dystans",
+      "overspeed": "Przekr. prędk.",
+      "score": "Wynik"
+    }
   },
   "maint": {
     "title": "Konserwacja",
