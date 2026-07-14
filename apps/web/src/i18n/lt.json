@@ -364,6 +364,16 @@
       "empty": "Būklės duomenų dar nėra — įrenginys praneša GSM/įtampą veikdamas.",
       "loadError": "Nepavyko įkelti būklės."
     },
+    "can": {
+      "title": "Variklis (CAN/OBD)",
+      "rpm": "Variklio sūkiai",
+      "coolant": "Aušinimo skystis",
+      "load": "Variklio apkrova",
+      "throttle": "Droselis",
+      "speed": "Greitis",
+      "odometer": "Rida",
+      "loadError": "Nepavyko įkelti variklio duomenų."
+    },
     "share": {
       "button": "Bendrinti",
       "title": "Bendrinimo nuoroda — {{name}}",
