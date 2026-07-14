@@ -541,3 +541,12 @@ export interface BillingView {
 export interface BillingRedirectView {
   url: string
 }
+/** GET /v1/billing/plans — a subscribable plan for the picker (resolved from Stripe prices). */
+export interface BillingPlanView {
+  priceId: string
+  productName: string
+  /** amount in minor units (cents), or null for a metered price */
+  amount: number | null
+  currency: string
+  interval: string | null
+}

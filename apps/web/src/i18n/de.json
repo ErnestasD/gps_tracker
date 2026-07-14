@@ -49,7 +49,9 @@
     "subscribe": "Abonnieren",
     "manage": "Abrechnung verwalten",
     "none": "Kein Abonnement",
-    "unavailable": "Abrechnung ist in dieser Umgebung nicht verfügbar."
+    "unavailable": "Abrechnung ist in dieser Umgebung nicht verfügbar.",
+    "noPlans": "Es sind noch keine Tarife konfiguriert.",
+    "interval": { "month": "Mon.", "year": "Jahr" }
   },
   "branding": {
     "title": "Branding",

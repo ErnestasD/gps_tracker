@@ -49,7 +49,9 @@
     "subscribe": "Subskrybuj",
     "manage": "Zarządzaj płatnościami",
     "none": "Brak subskrypcji",
-    "unavailable": "Płatności są niedostępne w tym środowisku."
+    "unavailable": "Płatności są niedostępne w tym środowisku.",
+    "noPlans": "Nie skonfigurowano jeszcze planów.",
+    "interval": { "month": "mies.", "year": "rok" }
   },
   "branding": {
     "title": "Marka",

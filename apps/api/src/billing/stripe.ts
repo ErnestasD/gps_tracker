@@ -17,9 +17,22 @@ export interface StripeEvent {
   data: { object: Record<string, unknown> }
 }
 
+/** A subscribable plan, resolved from a Stripe price (+ its product) for the plan picker. */
+export interface StripePlan {
+  priceId: string
+  productName: string
+  /** amount in the currency's minor unit (cents), or null for a metered/free price */
+  amount: number | null
+  currency: string
+  /** 'month' | 'year' for a recurring price */
+  interval: string | null
+}
+
 export interface StripeGateway {
   /** The server-configured allowlist of subscribable price ids (a client may only check out one of these). */
   readonly prices: readonly string[]
+  /** Resolve the allowlisted prices (+ product names/amounts) for the plan picker. */
+  listPlans(): Promise<StripePlan[]>
   /** Return the existing customer id, or create one for the tenant. */
   ensureCustomer(opts: { tenantId: string; name: string; email?: string; existingCustomerId?: string | null }): Promise<string>
   /** Create a subscription Checkout Session for the chosen price; returns the hosted URL to redirect to. */
@@ -53,6 +66,24 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
   const stripe = new Stripe(cfg.secretKey)
   return {
     prices: cfg.priceIds,
+    listPlans: async () => {
+      // resolve each allowlisted price (+ its product) in parallel; a deleted/invalid id is dropped
+      const settled = await Promise.allSettled(cfg.priceIds.map((id) => stripe.prices.retrieve(id, { expand: ['product'] })))
+      const plans: StripePlan[] = []
+      for (const r of settled) {
+        if (r.status !== 'fulfilled') continue
+        const p = r.value
+        const product = typeof p.product === 'object' && p.product !== null && 'name' in p.product ? (p.product as { name?: string }).name : undefined
+        plans.push({
+          priceId: p.id,
+          productName: product ?? 'Plan',
+          amount: p.unit_amount ?? null,
+          currency: p.currency,
+          interval: p.recurring?.interval ?? null,
+        })
+      }
+      return plans
+    },
     ensureCustomer: async ({ tenantId, name, email, existingCustomerId }) => {
       if (existingCustomerId) return existingCustomerId
       const customer = await stripe.customers.create({ name, ...(email ? { email } : {}), metadata: { tenantId } })

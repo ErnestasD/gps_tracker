@@ -49,7 +49,9 @@
     "subscribe": "Subscribe",
     "manage": "Manage billing",
     "none": "No subscription",
-    "unavailable": "Billing is not available on this environment."
+    "unavailable": "Billing is not available on this environment.",
+    "noPlans": "No plans are configured yet.",
+    "interval": { "month": "mo", "year": "yr" }
   },
   "branding": {
     "title": "Branding",
