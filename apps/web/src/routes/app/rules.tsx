@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { listAccounts } from '@/lib/devices'
 import { listGeofences } from '@/lib/geofences'
 import { ApiError } from '@/lib/http'
-import { RULE_KINDS, channelLabel, configFields, createRule, deleteRule, listRules, parseChannel, updateRule, type NotificationChannel, type RuleKind } from '@/lib/rules'
+import { RULE_KINDS, channelLabel, configFields, createRule, deleteRule, listRules, parseChannel, updateRule, type NotificationChannel, type Rule, type RuleKind } from '@/lib/rules'
 
 /** Rules CRUD (E05-3): create alert rules with kind-specific config; toggle/delete. */
 export function RulesPage() {
@@ -19,6 +19,7 @@ export function RulesPage() {
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const geofences = useQuery({ queryKey: ['geofences'], queryFn: listGeofences })
   const [actionError, setActionError] = useState(false)
+  const [editChannelsId, setEditChannelsId] = useState<string | null>(null)
   const refresh = () => void qc.invalidateQueries({ queryKey: ['rules'] })
   const onActionErr = () => setActionError(true)
   // clear a stale error banner before each new toggle/delete so it isn't sticky
@@ -39,14 +40,15 @@ export function RulesPage() {
           ) : (
             <ul className="space-y-2" data-testid="rules-list">
               {(rules.data ?? []).map((r) => (
-                <li key={r.id} className="flex items-center gap-3 rounded-card border border-line p-2 text-sm" data-testid={`rule-${r.id}`}>
+                <li key={r.id} className="flex flex-wrap items-center gap-3 rounded-card border border-line p-2 text-sm" data-testid={`rule-${r.id}`}>
                   <Badge variant="outline">{t(`rules.kind.${r.kind}`)}</Badge>
                   <span className="truncate font-medium">{r.name}</span>
                   <span className="text-xs text-muted">{t('rules.cooldown')}: {r.cooldownS}s</span>
                   {(r.channels ?? []).length > 0
                     ? <Badge variant="outline" data-testid={`rule-ch-count-${r.id}`}>{t('rules.channels.count', { n: r.channels.length })}</Badge>
                     : <span className="text-xs text-warn" data-testid={`rule-ch-none-${r.id}`}>{t('rules.channels.none')}</span>}
-                  <label className="ml-auto flex items-center gap-1 text-xs text-muted">
+                  <Button variant="ghost" size="sm" className="ml-auto" data-testid={`rule-ch-edit-btn-${r.id}`} onClick={() => setEditChannelsId((cur) => (cur === r.id ? null : r.id))}>{t('rules.channels.edit')}</Button>
+                  <label className="flex items-center gap-1 text-xs text-muted">
                     <input
                       type="checkbox" checked={r.enabled} data-testid={`rule-enabled-${r.id}`}
                       onChange={(e) => { clearErr(); void updateRule(r.id, { enabled: e.target.checked }).then(refresh).catch(onActionErr) }}
@@ -54,6 +56,7 @@ export function RulesPage() {
                     {t('rules.enabled')}
                   </label>
                   <Button variant="ghost" size="sm" data-testid={`rule-del-${r.id}`} onClick={() => { clearErr(); void deleteRule(r.id).then(refresh).catch(onActionErr) }}>{t('rules.delete')}</Button>
+                  {editChannelsId === r.id && <RuleChannelsEdit rule={r} onSaved={refresh} onCancel={() => setEditChannelsId(null)} />}
                 </li>
               ))}
             </ul>
@@ -72,19 +75,8 @@ function RuleForm({ accounts, geofences, onCreated }: { accounts: { id: string; 
   const [cooldownS, setCooldownS] = useState(300)
   const [cfg, setCfg] = useState<Record<string, string>>({})
   const [channels, setChannels] = useState<NotificationChannel[]>([])
-  const [chType, setChType] = useState<'email' | 'telegram'>('email')
-  const [chValue, setChValue] = useState('')
-  const [chError, setChError] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-
-  const addChannel = () => {
-    const parsed = parseChannel(chType, chValue)
-    if (parsed === null) { setChError(true); return }
-    // dedupe identical targets so a rule doesn't email the same address twice
-    setChannels((cs) => (cs.some((c) => channelLabel(c) === channelLabel(parsed)) ? cs : [...cs, parsed]))
-    setChValue(''); setChError(false)
-  }
 
   const fields = useMemo(() => configFields(kind), [kind])
   const acc = accountId || accounts[0]?.id || ''
@@ -150,36 +142,7 @@ function RuleForm({ accounts, geofences, onCreated }: { accounts: { id: string; 
           </Field>
           {/* notification channels (E05-5) — email needs SES configured on the worker; telegram
               needs the bot token + pairing. Without a channel the rule fires an event but sends nothing. */}
-          <div className="flex w-full flex-col gap-1">
-            <span className="text-xs text-muted">{t('rules.channels.label')}</span>
-            <div className="flex flex-wrap items-end gap-2">
-              <select value={chType} onChange={(e) => { setChType(e.target.value as 'email' | 'telegram'); setChError(false) }} data-testid="rule-ch-type" className="h-9 rounded-card border border-line bg-surface px-2 text-sm">
-                <option value="email">{t('rules.channels.email')}</option>
-                <option value="telegram">{t('rules.channels.telegram')}</option>
-              </select>
-              <Input
-                value={chValue}
-                onChange={(e) => { setChValue(e.target.value); setChError(false) }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addChannel() } }}
-                placeholder={chType === 'email' ? t('rules.channels.emailPlaceholder') : t('rules.channels.telegramPlaceholder')}
-                data-testid="rule-ch-value" className="w-52"
-              />
-              <Button type="button" variant="ghost" size="sm" onClick={addChannel} data-testid="rule-ch-add">{t('rules.channels.add')}</Button>
-            </div>
-            {chError && <span className="text-xs text-danger" data-testid="rule-ch-error">{t('rules.channels.invalid')}</span>}
-            {channels.length > 0 && (
-              <ul className="flex flex-wrap gap-1" data-testid="rule-ch-list">
-                {channels.map((c) => (
-                  <li key={channelLabel(c)}>
-                    <Badge variant="outline" className="gap-1">
-                      {channelLabel(c)}
-                      <button type="button" className="text-muted hover:text-danger" data-testid={`rule-ch-remove-${channelLabel(c)}`} onClick={() => setChannels((cs) => cs.filter((x) => channelLabel(x) !== channelLabel(c)))}>×</button>
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <ChannelsEditor channels={channels} onChange={setChannels} />
           <Button type="submit" disabled={busy || name.trim() === '' || acc === '' || missingGeofence} data-testid="rule-create">{t('rules.create')}</Button>
           {missingGeofence && <p className="w-full text-xs text-warn" data-testid="rule-need-geofence">{t('rules.needGeofence')}</p>}
           {error !== null && <p role="alert" className="w-full text-sm text-danger">{error}</p>}
@@ -191,4 +154,77 @@ function RuleForm({ accounts, geofences, onCreated }: { accounts: { id: string; 
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="flex flex-col gap-1 text-xs text-muted">{label}{children}</label>
+}
+
+/** Reusable notification-channel editor (E05-5): add/remove email/telegram targets. Owns its draft
+ * (type/value/error); the committed `channels` list is lifted via `onChange`. Used by the create
+ * form and the per-rule inline editor. */
+function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[]; onChange: (c: NotificationChannel[]) => void }) {
+  const { t } = useTranslation()
+  const [type, setType] = useState<'email' | 'telegram'>('email')
+  const [value, setValue] = useState('')
+  const [err, setErr] = useState(false)
+
+  const add = () => {
+    const parsed = parseChannel(type, value)
+    if (parsed === null) { setErr(true); return }
+    // dedupe identical targets so a rule doesn't notify the same address twice
+    if (!channels.some((c) => channelLabel(c) === channelLabel(parsed))) onChange([...channels, parsed])
+    setValue(''); setErr(false)
+  }
+
+  return (
+    <div className="flex w-full flex-col gap-1">
+      <span className="text-xs text-muted">{t('rules.channels.label')}</span>
+      <div className="flex flex-wrap items-end gap-2">
+        <select value={type} onChange={(e) => { setType(e.target.value as 'email' | 'telegram'); setErr(false) }} data-testid="rule-ch-type" className="h-9 rounded-card border border-line bg-surface px-2 text-sm">
+          <option value="email">{t('rules.channels.email')}</option>
+          <option value="telegram">{t('rules.channels.telegram')}</option>
+        </select>
+        <Input
+          value={value}
+          onChange={(e) => { setValue(e.target.value); setErr(false) }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          placeholder={type === 'email' ? t('rules.channels.emailPlaceholder') : t('rules.channels.telegramPlaceholder')}
+          data-testid="rule-ch-value" className="w-52"
+        />
+        <Button type="button" variant="ghost" size="sm" onClick={add} data-testid="rule-ch-add">{t('rules.channels.add')}</Button>
+      </div>
+      {err && <span className="text-xs text-danger" data-testid="rule-ch-error">{t('rules.channels.invalid')}</span>}
+      {channels.length > 0 && (
+        <ul className="flex flex-wrap gap-1" data-testid="rule-ch-list">
+          {channels.map((c) => (
+            <li key={channelLabel(c)}>
+              <Badge variant="outline" className="gap-1">
+                {channelLabel(c)}
+                <button type="button" className="text-muted hover:text-danger" data-testid={`rule-ch-remove-${channelLabel(c)}`} onClick={() => onChange(channels.filter((x) => channelLabel(x) !== channelLabel(c)))}>×</button>
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/** Per-rule inline channel editor: expands from the list, saves via updateRule({ channels }). */
+function RuleChannelsEdit({ rule, onSaved, onCancel }: { rule: Rule; onSaved: () => void; onCancel: () => void }) {
+  const { t } = useTranslation()
+  const [channels, setChannels] = useState<NotificationChannel[]>(rule.channels ?? [])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(false)
+  const save = () => {
+    setBusy(true); setError(false)
+    updateRule(rule.id, { channels }).then(() => { onSaved(); onCancel() }).catch(() => setError(true)).finally(() => setBusy(false))
+  }
+  return (
+    <div className="mt-2 w-full rounded-card border border-line bg-surface2 p-2" data-testid={`rule-ch-edit-${rule.id}`}>
+      <ChannelsEditor channels={channels} onChange={setChannels} />
+      <div className="mt-2 flex items-center gap-2">
+        <Button type="button" size="sm" disabled={busy} data-testid={`rule-ch-save-${rule.id}`} onClick={save}>{t('rules.channels.save')}</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>{t('rules.channels.cancel')}</Button>
+        {error && <span className="text-xs text-danger">{t('rules.error')}</span>}
+      </div>
+    </div>
+  )
 }
