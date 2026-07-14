@@ -553,7 +553,15 @@
     "saveError": "Could not save the driver.",
     "nameRequired": "Name is required.",
     "ibuttonInvalid": "iButton must be 8–32 hex characters.",
-    "ibuttonTaken": "That iButton is already assigned to another driver."
+    "ibuttonTaken": "That iButton is already assigned to another driver.",
+    "scores": {
+      "title": "Safety scores (30 days)",
+      "empty": "No driving in the last 30 days.",
+      "trips": "Trips",
+      "distance": "Distance",
+      "overspeed": "Overspeed",
+      "score": "Score"
+    }
   },
   "maint": {
     "title": "Maintenance",

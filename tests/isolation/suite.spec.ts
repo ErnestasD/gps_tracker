@@ -197,6 +197,14 @@ describe('E03-2 write authorization / RBAC (review HIGH)', () => {
     expect((await req('/v1/audit/not-an-id', fx.t1.tokenTenant)).status).toBe(404)
   })
 
+  it('driver-scores is tenant-scoped: T1 never sees a T2 driver (V2)', async () => {
+    const rows = (await (await req('/v1/driver-scores', fx.t1.tokenTenant)).json()) as { driverId: string }[]
+    expect(Array.isArray(rows)).toBe(true)
+    const ids = rows.map((r) => r.driverId)
+    expect(ids).toContain(fx.t1.driverId) // own tenant's driver present
+    expect(ids).not.toContain(fx.t2.driverId) // never another tenant's
+  })
+
   it('usage metering is tenant-scoped: /v1/usage sums EXACTLY the caller tenant seed (E07-4)', async () => {
     // both tenants seed 2 device-days; a tenant-scope leak would double the sum to 4
     for (const t of [fx.t1, fx.t2]) {
@@ -226,7 +234,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     // Hono exposes registered routes; the auth/public + infra routes are exempt
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/share|stream|reports|api-keys|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/share|driver-scores|stream|reports|api-keys|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)
@@ -242,7 +250,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     app.get('/v1/sneaky', (c) => c.json({}))
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/share|stream|reports|api-keys|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/share|driver-scores|stream|reports|api-keys|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)

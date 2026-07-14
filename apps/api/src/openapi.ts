@@ -80,6 +80,7 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
     parameters: pathParams(['type']),
     responses: RESPONSES.read,
   })
+  add('get', '/v1/driver-scores', { tags: ['driver'], summary: 'Driver safety scores over a window (V2)', security: READ_SEC, responses: RESPONSES.read })
   // api-key management is tenant-admin only (an API key can't reach it) → JWT security only
   add('get', '/v1/api-keys', { ...op('apiKey', 'get', '/v1/api-keys', []), security: WRITE_SEC })
   add('post', '/v1/api-keys', op('apiKey', 'post', '/v1/api-keys', []))

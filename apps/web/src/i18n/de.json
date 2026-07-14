@@ -553,7 +553,15 @@
     "saveError": "Fahrer konnte nicht gespeichert werden.",
     "nameRequired": "Name ist erforderlich.",
     "ibuttonInvalid": "iButton muss 8–32 Hex-Zeichen haben.",
-    "ibuttonTaken": "Dieser iButton ist bereits einem anderen Fahrer zugewiesen."
+    "ibuttonTaken": "Dieser iButton ist bereits einem anderen Fahrer zugewiesen.",
+    "scores": {
+      "title": "Sicherheitsbewertung (30 Tage)",
+      "empty": "Keine Fahrten in den letzten 30 Tagen.",
+      "trips": "Fahrten",
+      "distance": "Distanz",
+      "overspeed": "Tempo",
+      "score": "Punkte"
+    }
   },
   "maint": {
     "title": "Wartung",

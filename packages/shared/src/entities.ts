@@ -321,6 +321,35 @@ export interface GeofenceView {
   createdAt: string
 }
 
+// ── driver safety scoring (V2) ─────────────────────────────────────────────────────────────
+export interface DriverScoreView {
+  driverId: string
+  driverName: string
+  trips: number
+  distanceKm: number
+  maxSpeed: number
+  idleH: number
+  overspeedEvents: number
+  /** 0–100 safety score; null when the driver has no trips in the window (nothing to score). */
+  score: number | null
+}
+
+/** Pure safety score (0–100) from a driver's window aggregates — the single source for API + web.
+ *  100 = clean; deductions for overspeed frequency, excessive top speed, and idling. Null when the
+ *  driver drove no trips in the window (no signal). Deterministic + clamped; unit-tested. */
+export function driverScore(agg: { trips: number; distanceM: number; maxSpeed: number; idleS: number; driveS: number; overspeedEvents: number }): number | null {
+  if (agg.trips <= 0) return null
+  const km = agg.distanceM / 1000
+  // overspeed events per 100 km (guard tiny distance so one event on 0.1 km isn't ×1000)
+  const perHundredKm = km >= 1 ? (agg.overspeedEvents / km) * 100 : agg.overspeedEvents
+  const overspeedPenalty = Math.min(perHundredKm * 8, 45)
+  // top speed above 100 km/h
+  const speedPenalty = agg.maxSpeed > 100 ? Math.min((agg.maxSpeed - 100) * 0.5, 20) : 0
+  // idle share of drive time
+  const idlePenalty = agg.driveS > 0 ? Math.min((agg.idleS / agg.driveS) * 30, 20) : 0
+  return Math.max(0, Math.min(100, Math.round(100 - overspeedPenalty - speedPenalty - idlePenalty)))
+}
+
 // ── maintenance reminders (V2) ─────────────────────────────────────────────────────────────
 export const maintenanceCreateSchema = z.object({
   deviceId: z.string().min(1), // stringified BigInt; the route validates the device is in scope
