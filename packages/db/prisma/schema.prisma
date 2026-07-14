@@ -68,6 +68,8 @@ model Tenant {
   /// ONLY by the signature-verified webhook, never by the browser.
   stripeCustomerId       String?  @unique
   stripeSubscriptionId   String?
+  /// the subscribed BASE price id (which plan) — drives the usage reporter's included-device lookup (PR B2)
+  subscriptionPriceId    String?
   /// mirrors Stripe's subscription.status (active|trialing|past_due|canceled|unpaid|…); null = never subscribed
   subscriptionStatus     String?
   currentPeriodEnd       DateTime? @db.Timestamptz()

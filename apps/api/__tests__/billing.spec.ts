@@ -50,6 +50,7 @@ async function freshTenant(name: string) {
 
 // a fake Stripe gateway: deterministic customer ids, records checkout/portal calls
 const calls: { checkout: number; portal: number } = { checkout: 0, portal: 0 }
+// 'price_test' behaves like a TSP plan (maps to an overage price) so checkout adds the 2nd line item
 const fakeStripe: StripeGateway = {
   prices: ['price_test'],
   listPlans: () => Promise.resolve([{ priceId: 'price_test', productName: 'Direct 10', amount: 1500, currency: 'eur', interval: 'month' }]),
@@ -60,6 +61,7 @@ const fakeStripe: StripeGateway = {
     if (sig !== 'valid') throw new Error('invalid signature')
     return JSON.parse(raw) as StripeEvent
   },
+  overageFor: (b) => (b === 'price_test' ? 'price_over' : undefined),
 }
 
 const base = (p: number) => `http://127.0.0.1:${p}`
@@ -70,9 +72,11 @@ const req = (p: number, path: string, token: string | null, method = 'GET', body
     ...(bodyObj !== undefined ? { body: typeof bodyObj === 'string' ? bodyObj : JSON.stringify(bodyObj) } : {}),
   })
 
-// a subscription webhook event for a given customer id; `created` is the Unix-seconds ordering key
+// a subscription webhook event for a given customer id; `created` is the Unix-seconds ordering key.
+// items carry the base price 'price_test' (∩ allowlist) so subscriptionPriceId is populated.
 const subEvent = (id: string, customer: string, type: string, status: string, created = 1_700_000_000, periodEnd = 1_800_000_000): StripeEvent => ({
-  id, type, created, data: { object: { id: `sub_${customer}`, customer, status, current_period_end: periodEnd } },
+  id, type, created,
+  data: { object: { id: `sub_${customer}`, customer, status, current_period_end: periodEnd, items: { data: [{ price: { id: 'price_test' } }] } } },
 })
 
 beforeAll(async () => {
@@ -204,6 +208,17 @@ describe('billing lifecycle (ADR-024)', () => {
     const { token } = await freshTenant('BadPrice')
     const res = await req(port, '/v1/billing/checkout', token, 'POST', { priceId: 'price_attacker_free' })
     expect(res.status).toBe(400)
+  })
+
+  it('webhook records the base plan price id → listable for the usage reporter', async () => {
+    const { token, tenantId, cus } = await freshTenant('PlanId')
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_pl', cus, 'customer.subscription.updated', 'active', 100), { 'stripe-signature': 'valid' })
+    const subs = await db.tenants.listActiveSubscribers()
+    const mine = subs.find((s) => s.tenantId === tenantId)
+    expect(mine).toBeDefined()
+    expect(mine?.subscriptionPriceId).toBe('price_test') // the base price from the subscription items
+    expect(mine?.stripeCustomerId).toBe(cus)
   })
 
   it('an unknown customer id in a webhook is a safe no-op', async () => {

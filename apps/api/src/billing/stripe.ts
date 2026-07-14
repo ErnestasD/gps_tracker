@@ -41,25 +41,40 @@ export interface StripeGateway {
   createPortalSession(opts: { customerId: string; returnUrl: string }): Promise<string>
   /** Verify the webhook signature and parse the event. THROWS on an invalid signature. */
   constructEvent(rawBody: string, signature: string): StripeEvent
+  /** The metered overage price id for a base plan (TSP), added as a 2nd checkout line item;
+   *  undefined for a Direct plan. (The daily usage push itself lives in the worker.) */
+  overageFor(basePriceId: string): string | undefined
 }
 
 export interface StripeConfig {
   secretKey: string
   webhookSecret: string
-  /** Allowlist of subscribable Stripe price ids (`price_…`). Two-track catalog per PRICING_STRATEGY.md
-   *  §7 (Direct flat tiers + TSP base/overage). The exact price↔plan mapping lives client-side / PR B;
-   *  here we only enforce that a checkout targets a configured price. */
+  /** Allowlist of subscribable Stripe BASE price ids (`price_…`). Two-track catalog per
+   *  PRICING_STRATEGY.md §7 (Direct flat tiers + TSP base). */
   priceIds: string[]
+  /** base price id → metered overage price id (TSP only) — added as a 2nd checkout line item. */
+  overageMap: Record<string, string>
+}
+
+/** Parse a `a:b,c:d` env pair-map (base price → overage price). */
+function parsePairMap(raw: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const pair of (raw ?? '').split(',')) {
+    const [k, v] = pair.split(':').map((s) => s.trim())
+    if (k === undefined || k === '' || v === undefined || v === '') continue
+    out[k] = v
+  }
+  return out
 }
 
 /** Build config from env, or null when billing is not configured (no keys ⇒ routes 503).
- *  STRIPE_PRICES is a comma-separated allowlist of price ids. */
+ *  STRIPE_PRICES = allowlist; STRIPE_OVERAGE_MAP = base:overage,… (the worker owns STRIPE_INCLUDED). */
 export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): StripeConfig | null {
   const secretKey = env['STRIPE_SECRET_KEY']
   const webhookSecret = env['STRIPE_WEBHOOK_SECRET']
   const priceIds = (env['STRIPE_PRICES'] ?? '').split(',').map((s) => s.trim()).filter((s) => s.length > 0)
   if (!secretKey || !webhookSecret || priceIds.length === 0) return null
-  return { secretKey, webhookSecret, priceIds }
+  return { secretKey, webhookSecret, priceIds, overageMap: parsePairMap(env['STRIPE_OVERAGE_MAP']) }
 }
 
 export function createStripeGateway(cfg: StripeConfig): StripeGateway {
@@ -89,12 +104,17 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
       const customer = await stripe.customers.create({ name, ...(email ? { email } : {}), metadata: { tenantId } })
       return customer.id
     },
+    overageFor: (basePriceId) => cfg.overageMap[basePriceId],
     createCheckoutSession: async ({ customerId, tenantId, priceId, successUrl, cancelUrl }) => {
+      // TSP plans carry a metered overage price as a 2nd line item (no quantity — usage-reported);
+      // Direct plans have none. The base is always flat quantity 1.
+      const overage = cfg.overageMap[priceId]
+      const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [{ price: priceId, quantity: 1 }]
+      if (overage !== undefined) lineItems.push({ price: overage })
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         customer: customerId,
-        // Direct plans are flat (quantity 1); TSP base likewise. Metered overage is added in PR B.
-        line_items: [{ price: priceId, quantity: 1 }],
+        line_items: lineItems,
         success_url: successUrl,
         cancel_url: cancelUrl,
         client_reference_id: tenantId,

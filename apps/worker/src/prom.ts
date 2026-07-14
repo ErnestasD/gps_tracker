@@ -28,6 +28,7 @@ export interface WorkerProm {
   webhookFailed: Counter
   usageDeviceDays: Counter
   usageSweepFailed: Counter
+  stripeOverageReported: Counter
   commandsResolved: Counter
   gdprErased: Counter
   gdprExported: Counter
@@ -83,6 +84,7 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const usageDeviceDays = new Counter({ name: 'usage_device_days_total', help: 'billable device-day rows written by the usage sweep (E07-4)', registers: [registry] })
   // a stalled metering pipeline is silent under-billing — alert on any non-zero rate
   const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })
+  const stripeOverageReported = new Counter({ name: 'stripe_overage_reported_total', help: 'tenants for which device overage was reported to the Stripe meter (ADR-024 PR B2)', registers: [registry] })
   const commandsResolved = new Counter({ name: 'commands_resolved_total', help: 'Codec-12 commands resolved by the dispatcher (E08-2)', labelNames: ['outcome'], registers: [registry] })
   const gdprErased = new Counter({ name: 'gdpr_erase_total', help: 'GDPR device-erase cascades completed (E08-4)', registers: [registry] })
   const gdprExported = new Counter({ name: 'gdpr_export_total', help: 'GDPR account exports completed (E08-4)', registers: [registry] })
@@ -105,5 +107,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, stripeOverageReported, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

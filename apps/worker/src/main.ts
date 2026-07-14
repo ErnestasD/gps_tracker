@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Redis } from 'ioredis'
 import xxhash from 'xxhash-wasm'
 
-import { createPool } from '@orbetra/db'
+import { createDb, createPool } from '@orbetra/db'
 
 import { ShardConsumer } from './consumer.js'
 import { LiveState } from './liveState.js'
@@ -20,6 +20,9 @@ import { startGdprExportWorker, startGdprSweepWorker } from './jobs/gdprExportWo
 import { createGdprSweepQueue, scheduleExportSweep } from './jobs/gdprQueue.js'
 import { createUsageQueue, scheduleUsageSweep } from './jobs/usageQueue.js'
 import { startUsageWorker } from './jobs/usageWorker.js'
+import { createStripeUsageQueue, scheduleStripeUsage } from './jobs/stripeUsageQueue.js'
+import { createStripeUsageWorker } from './jobs/stripeUsageWorker.js'
+import { stripeUsagePortFromEnv } from './billing/usageReporter.js'
 import { createWebhookQueue, enqueueWebhook } from './jobs/webhookQueue.js'
 import { startWebhookWorker } from './jobs/webhookWorker.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
@@ -48,6 +51,7 @@ async function main(): Promise<void> {
   const workerId = `worker-${randomUUID().slice(0, 8)}`
   const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
   const pool = createPool(databaseUrl)
+  const db = createDb(databaseUrl) // scoped repos for the Stripe usage reporter (tenants + usage)
   const hasher = await xxhash()
   const hash = (data: Uint8Array): bigint => hasher.h64Raw(data)
 
@@ -155,6 +159,14 @@ async function main(): Promise<void> {
     onFailed: () => prom.usageSweepFailed.inc(),
   })
   await scheduleUsageSweep(usageQueue)
+  // ADR-024 PR B2: daily Stripe overage reporter — reports yesterday's per-tenant device overage
+  // to the meter. Only runs when Stripe is configured (STRIPE_SECRET_KEY); otherwise skipped.
+  const stripeUsagePort = stripeUsagePortFromEnv()
+  const stripeUsageQueue = stripeUsagePort !== null ? createStripeUsageQueue(recomputeConn) : null
+  const stripeUsageWorker = stripeUsagePort !== null
+    ? createStripeUsageWorker({ connection: recomputeConn, db, stripe: stripeUsagePort, onReported: (r) => prom.stripeOverageReported.inc(r.reported) })
+    : null
+  if (stripeUsageQueue !== null) await scheduleStripeUsage(stripeUsageQueue)
   // E08-2: Codec-12 command dispatcher — ~15s reconcile of in-flight commands vs device
   // responses (transport seam written by ingest); drives the DB status machine.
   const commandQueue = createCommandDispatchQueue(recomputeConn)
@@ -340,6 +352,8 @@ async function main(): Promise<void> {
       await webhookQueue.close()
       await usageWorker.close() // finish the in-flight usage sweep, stop taking new
       await usageQueue.close()
+      await stripeUsageWorker?.close() // finish the in-flight overage report, stop taking new
+      await stripeUsageQueue?.close()
       await commandWorker.close() // finish the in-flight command dispatch, stop taking new
       await commandQueue.close()
       await gdprEraseWorker.close() // finish the in-flight erase step, stop taking new
