@@ -96,7 +96,11 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse()
     const mapped = dbErrorHttp(err)
-    if (mapped !== null) return problem(c, mapped.status, mapped.title)
+    if (mapped !== null) {
+      // log the code so a mis-mapped case (e.g. a would-be-400 P2023 from a body) is not silent
+      console.warn('mapped DB error', mapped.status, (err as { code?: unknown }).code)
+      return problem(c, mapped.status, mapped.title)
+    }
     console.error('unhandled API error', err)
     return problem(c, 500, 'Internal Server Error')
   })

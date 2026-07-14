@@ -36,7 +36,9 @@ describe('app.onError', () => {
   it('passes an intentional HTTPException through unchanged', async () => {
     const app = makeApp()
     app.get('/teapot', () => { throw new HTTPException(418, { message: 'teapot' }) })
-    expect((await app.request('/teapot')).status).toBe(418)
+    const res = await app.request('/teapot')
+    expect(res.status).toBe(418)
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff') // headers apply on passthrough too
   })
 
   it('still 500s a truly unexpected error (as problem+json)', async () => {
