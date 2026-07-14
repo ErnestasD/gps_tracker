@@ -37,7 +37,8 @@
     "apiKeys": "Klucze API",
     "webhooks": "Webhooki",
     "platform": "Platforma",
-    "drivers": "Kierowcy"
+    "drivers": "Kierowcy",
+    "maintenance": "Konserwacja"
   },
   "branding": {
     "title": "Marka",
@@ -553,5 +554,32 @@
     "nameRequired": "Imię jest wymagane.",
     "ibuttonInvalid": "iButton musi mieć 8–32 znaki szesnastkowe.",
     "ibuttonTaken": "Ten iButton jest już przypisany do innego kierowcy."
+  },
+  "maint": {
+    "title": "Konserwacja",
+    "list": "Harmonogram serwisu",
+    "add": "Dodaj przypomnienie",
+    "device": "Urządzenie",
+    "itemTitle": "Serwis",
+    "intervalKm": "Co (km)",
+    "intervalDays": "Co (dni)",
+    "currentOdo": "Aktualny przebieg (km)",
+    "create": "Dodaj",
+    "loading": "Ładowanie…",
+    "empty": "Brak przypomnień konserwacji.",
+    "loadError": "Nie udało się wczytać konserwacji.",
+    "saveError": "Nie udało się zapisać przypomnienia.",
+    "needFields": "Wybierz urządzenie i tytuł.",
+    "needInterval": "Ustaw interwał km i/lub dni.",
+    "markServiced": "Oznacz jako wykonane",
+    "delete": "Usuń",
+    "kmLeft": "pozostało {{n}} km",
+    "daysLeft": "pozostało {{n}} dni",
+    "status": {
+      "ok": "OK",
+      "due_soon": "Wkrótce",
+      "overdue": "Zaległe",
+      "unknown": "Brak danych"
+    }
   }
 }

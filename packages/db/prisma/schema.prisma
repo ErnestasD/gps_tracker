@@ -187,6 +187,7 @@ model Device {
   account Account       @relation(fields: [accountId], references: [id])
   profile DeviceProfile @relation(fields: [profileId], references: [id])
   shareLinks ShareLink[]
+  maintenanceItems MaintenanceItem[]
 
   @@index([tenantId, accountId])
   @@map("devices")
@@ -238,6 +239,28 @@ model Driver {
   @@unique([tenantId, ibutton])
   @@index([tenantId, accountId])
   @@map("drivers")
+}
+
+/// Maintenance schedule item (V2). Per-device service reminder by odometer km and/or elapsed days.
+/// Due is computed at READ time from the device's current odometer + now (not stored). Account-scoped.
+model MaintenanceItem {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  accountId        String    @db.Uuid
+  deviceId         BigInt
+  title            String
+  intervalKm       Int?
+  intervalDays     Int?
+  lastServiceOdoKm Int?
+  lastServiceAt    DateTime? @db.Timestamptz()
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now()) @db.Timestamptz()
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, accountId])
+  @@index([deviceId])
+  @@map("maintenance_items")
 }
 
 model RawReject {

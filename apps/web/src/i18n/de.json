@@ -37,7 +37,8 @@
     "apiKeys": "API-Schlüssel",
     "webhooks": "Webhooks",
     "platform": "Plattform",
-    "drivers": "Fahrer"
+    "drivers": "Fahrer",
+    "maintenance": "Wartung"
   },
   "branding": {
     "title": "Branding",
@@ -553,5 +554,32 @@
     "nameRequired": "Name ist erforderlich.",
     "ibuttonInvalid": "iButton muss 8–32 Hex-Zeichen haben.",
     "ibuttonTaken": "Dieser iButton ist bereits einem anderen Fahrer zugewiesen."
+  },
+  "maint": {
+    "title": "Wartung",
+    "list": "Serviceplan",
+    "add": "Erinnerung hinzufügen",
+    "device": "Gerät",
+    "itemTitle": "Service",
+    "intervalKm": "Alle (km)",
+    "intervalDays": "Alle (Tage)",
+    "currentOdo": "Aktueller Kilometerstand (km)",
+    "create": "Hinzufügen",
+    "loading": "Wird geladen…",
+    "empty": "Noch keine Wartungserinnerungen.",
+    "loadError": "Wartung konnte nicht geladen werden.",
+    "saveError": "Erinnerung konnte nicht gespeichert werden.",
+    "needFields": "Gerät und Titel wählen.",
+    "needInterval": "Ein km- und/oder Tagesintervall festlegen.",
+    "markServiced": "Als erledigt markieren",
+    "delete": "Löschen",
+    "kmLeft": "noch {{n}} km",
+    "daysLeft": "noch {{n}} T.",
+    "status": {
+      "ok": "OK",
+      "due_soon": "Bald fällig",
+      "overdue": "Überfällig",
+      "unknown": "Keine Daten"
+    }
   }
 }

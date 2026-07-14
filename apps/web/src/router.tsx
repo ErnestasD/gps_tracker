@@ -23,6 +23,7 @@ import { RulesPage } from '@/routes/app/rules'
 import { WebhooksPage } from '@/routes/app/webhooks'
 import { DevicesPage } from '@/routes/app/devices/index'
 import { DriversPage } from '@/routes/app/drivers'
+import { MaintenancePage } from '@/routes/app/maintenance'
 import { SettingsPage } from '@/routes/app/settings'
 import { SharePage } from '@/routes/share/index'
 
@@ -101,6 +102,12 @@ const driversRoute = createRoute({
   component: DriversPage,
 })
 
+const maintenanceRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/maintenance',
+  component: MaintenancePage,
+})
+
 const brandingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/branding',
@@ -177,7 +184,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   shareRoute,
-  appRoute.addChildren([mapRoute, devicesRoute, driversRoute, tripsRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

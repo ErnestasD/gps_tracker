@@ -37,7 +37,8 @@
     "apiKeys": "API keys",
     "webhooks": "Webhooks",
     "platform": "Platform",
-    "drivers": "Drivers"
+    "drivers": "Drivers",
+    "maintenance": "Maintenance"
   },
   "branding": {
     "title": "Branding",
@@ -553,5 +554,32 @@
     "nameRequired": "Name is required.",
     "ibuttonInvalid": "iButton must be 8–32 hex characters.",
     "ibuttonTaken": "That iButton is already assigned to another driver."
+  },
+  "maint": {
+    "title": "Maintenance",
+    "list": "Service schedule",
+    "add": "Add reminder",
+    "device": "Device",
+    "itemTitle": "Service",
+    "intervalKm": "Every (km)",
+    "intervalDays": "Every (days)",
+    "currentOdo": "Current odometer (km)",
+    "create": "Add",
+    "loading": "Loading…",
+    "empty": "No maintenance reminders yet.",
+    "loadError": "Could not load maintenance.",
+    "saveError": "Could not save the reminder.",
+    "needFields": "Pick a device and a title.",
+    "needInterval": "Set a km and/or day interval.",
+    "markServiced": "Mark serviced",
+    "delete": "Delete",
+    "kmLeft": "{{n}} km left",
+    "daysLeft": "{{n}} d left",
+    "status": {
+      "ok": "OK",
+      "due_soon": "Due soon",
+      "overdue": "Overdue",
+      "unknown": "No data"
+    }
   }
 }

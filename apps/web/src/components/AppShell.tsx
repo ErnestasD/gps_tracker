@@ -19,6 +19,7 @@ import {
   Settings2,
   TerminalSquare,
   Webhook,
+  Wrench,
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -54,6 +55,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { key: 'shell.devices', icon: Car, to: '/app/devices' },
       { key: 'shell.drivers', icon: IdCard, to: '/app/drivers' },
+      { key: 'shell.maintenance', icon: Wrench, to: '/app/maintenance' },
       { key: 'shell.trips', icon: Radio, to: '/app/trips' },
       { key: 'shell.history', icon: BarChart3, to: '/app/playback' },
     ],
