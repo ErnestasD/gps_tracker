@@ -23,9 +23,13 @@ the official `stripe` Node SDK (new runtime dependency — this ADR satisfies ha
 - **Why the `stripe` SDK (not raw REST via `fetch`):** webhook signature verification
   (`stripe.webhooks.constructEvent`) is security-critical and uses a timing-safe HMAC scheme that must not
   be hand-rolled. The SDK is the canonical, audited implementation. This is the single new runtime dep.
-- **Billing model:** one **metered/usage-based price** (per device-day). A subscription is created via
-  Checkout; a daily job reports each tenant's device-days from `usage_daily` as Stripe meter events
-  (see follow-up PR B). Stripe invoices monthly on real usage.
+- **Billing model:** **two tracks** per `PRICING_STRATEGY.md` §7 (the authoritative pricing source):
+  *Direct* = 5 flat per-device tiers (monthly/yearly Prices); *TSP* = 3 base plans + a **metered overage**
+  Price. Checkout targets a price id from a **server allowlist** (`STRIPE_PRICES`); the client picks a
+  plan but can never subscribe to an off-catalog price. The lifecycle (customer/checkout/webhook/portal/
+  status) is identical across tracks. The TSP overage metering + the plan→price catalog UI land in PR B
+  (they need the founder's Stripe Products/Prices to exist first). Earlier "single €1.5–2.5 metered price"
+  framing is void — see PRICING_STRATEGY.md.
 
 ## Architecture (this ADR spans two PRs)
 
@@ -44,7 +48,15 @@ the official `stripe` Node SDK (new runtime dependency — this ADR satisfies ha
 - **Webhook is the ONLY trusted source of subscription state.** The browser never tells us "I paid" — we
   set `subscriptionStatus` solely from signature-verified webhook events (`checkout.session.completed`,
   `customer.subscription.updated|deleted`, `invoice.payment_failed`). An invalid signature → 400, no state change.
-- **Idempotent webhook**: events carry a stable id; a processed-event guard (Redis SETNX) drops replays.
+- **Out-of-order & idempotent webhook**: Stripe does not guarantee ordering and retries until 2xx.
+  Subscription state is written by an **atomic monotonic guard** — `applySubscriptionEvent` updates the
+  row only when the event's `created` timestamp is strictly newer than the stored `lastBillingEventAt`
+  (a single `UPDATE … WHERE lastBillingEventAt < ?`). This makes reordered stale events no-ops (a late
+  `active` cannot resurrect a `canceled` sub), collapses concurrent duplicates (the second loses the
+  WHERE), and — because the guard lives in the DB write, not a mark-before-process cache — a failed
+  write returns non-2xx so Stripe safely retries (no lost transition).
+- **No second subscription**: checkout refuses (409) when the tenant is already `active`/`trialing`,
+  so a UI/webhook race can't create a duplicate subscription (double billing).
 - **Tenant isolation (rule 2 / §10 #7):** billing routes derive the tenant from `auth.tenantId`, never a
   path param (like the E03-5 tenant-self routes); webhook lookups are by `stripeCustomerId` inside a
   packages/db repo method. `/v1/billing` + `/v1/webhooks` are isolation-suite EXEMPT (no cross-tenant :id surface).

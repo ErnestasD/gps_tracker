@@ -61,7 +61,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `SES_CONFIG_SET` | apps/worker | optional SES configuration set → `X-SES-CONFIGURATION-SET` header, routes bounces/complaints to SNS |
 | `STRIPE_SECRET_KEY` | apps/api | Stripe secret key (`sk_test_`/`sk_live_`); all three STRIPE vars required or billing routes report not-configured (ADR-024). Server `.env` only, never git |
 | `STRIPE_WEBHOOK_SECRET` | apps/api | Stripe webhook signing secret (`whsec_…`); verifies `POST /v1/webhooks/stripe` — invalid signature ⇒ 400, no state change |
-| `STRIPE_PRICE_ID` | apps/api | the metered per-device price id (`price_…`) subscriptions are created against |
+| `STRIPE_PRICES` | apps/api | comma-separated allowlist of subscribable price ids (`price_…`); a checkout may target only one of these. Two-track catalog per PRICING_STRATEGY.md §7 (Direct flat tiers + TSP base/overage) |
 | `APP_BASE_URL` | apps/api | absolute base for Checkout/portal return URLs (e.g. `https://app.orbetra.com`); falls back to the request Origin |
 | `TELEGRAM_BOT_TOKEN` | apps/worker + infra/alertmanager | notification delivery (E05-5) AND ops alerts (W7-S1); unset = alerts visible in UI only, no push |
 | `TELEGRAM_ALERT_CHAT_ID` | infra/alertmanager | founders' chat id for ops alerts (W7-S1) |

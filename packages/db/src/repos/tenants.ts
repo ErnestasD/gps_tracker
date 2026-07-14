@@ -46,11 +46,11 @@ export interface TenantRepo {
   getBilling(tenantId: string): Promise<BillingState | null>
   /** Persist the Stripe customer id created lazily on first checkout (tenant-self). */
   setStripeCustomer(tenantId: string, stripeCustomerId: string): Promise<void>
-  /** Webhook path: resolve a tenant by its Stripe customer id (no request scope exists). */
-  findByStripeCustomer(stripeCustomerId: string): Promise<Tenant | null>
-  /** Webhook path: write subscription state, resolving the tenant by customer id.
-   *  Returns false if the customer id maps to no tenant (unknown/foreign event). */
-  applySubscriptionEvent(stripeCustomerId: string, data: SubscriptionUpdate): Promise<boolean>
+  /** Webhook path: write subscription state, resolving the tenant by customer id. Applied ONLY when
+   *  `eventAt` is strictly newer than the last applied event (monotonic guard vs out-of-order/duplicate
+   *  delivery — this WHERE is atomic, so concurrent duplicates collapse). Returns false when nothing
+   *  was updated (unknown customer, or a stale/replayed event). */
+  applySubscriptionEvent(stripeCustomerId: string, eventAt: Date, data: SubscriptionUpdate): Promise<boolean>
 }
 
 export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): TenantRepo {
@@ -106,15 +106,18 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
     setStripeCustomer: async (tenantId, stripeCustomerId) => {
       await prisma.tenant.update({ where: { id: tenantId }, data: { stripeCustomerId } })
     },
-    findByStripeCustomer: (stripeCustomerId) => prisma.tenant.findUnique({ where: { stripeCustomerId } }),
-    applySubscriptionEvent: async (stripeCustomerId, data) => {
-      // resolve by customer id; a webhook for an unknown customer is a no-op (returns false)
+    applySubscriptionEvent: async (stripeCustomerId, eventAt, data) => {
+      // Atomic monotonic guard: match the customer AND only when this event is strictly newer than the
+      // last applied one. A reordered stale event (older `eventAt`) or a replay (equal `eventAt`) matches
+      // zero rows → no-op. Concurrent duplicates collapse: the first write advances lastBillingEventAt,
+      // the second's `lt` predicate then fails. An unknown customer id also matches zero rows.
       const result = await prisma.tenant.updateMany({
-        where: { stripeCustomerId },
+        where: { stripeCustomerId, OR: [{ lastBillingEventAt: null }, { lastBillingEventAt: { lt: eventAt } }] },
         data: {
           stripeSubscriptionId: data.stripeSubscriptionId,
           subscriptionStatus: data.subscriptionStatus,
           currentPeriodEnd: data.currentPeriodEnd,
+          lastBillingEventAt: eventAt,
         },
       })
       return result.count > 0

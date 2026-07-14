@@ -44,7 +44,7 @@
   "billing": {
     "title": "Billing",
     "subscription": "Subscription",
-    "pricingNote": "Transparent per-device pricing. You're billed monthly for your active devices.",
+    "pricingNote": "Transparent pricing — see your plan. Manage your subscription, payment method and invoices in the Stripe portal.",
     "renews": "Renews",
     "subscribe": "Subscribe",
     "manage": "Manage billing",

@@ -118,7 +118,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
 
   // PUBLIC Stripe webhook (ADR-024) — before the /v1/* auth guard (Stripe carries no JWT);
   // raw body + signature verified inside. Manifest-exempt.
-  mountStripeWebhook(app, { db: deps.db, redis: deps.redis, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl })
+  mountStripeWebhook(app, { db: deps.db, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl })
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)
@@ -189,7 +189,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // Driver safety scoring (V2) — dedicated read route, EXEMPT from the manifest (aggregate result).
   mountDriverScores(app, { db: deps.db, pool: deps.pool })
   // billing (ADR-024) — tenant-self, admin-only; manifest-exempt with a dedicated isolation test
-  mountBilling(app, { db: deps.db, redis: deps.redis, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl })
+  mountBilling(app, { db: deps.db, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl })
 
   // API-key management (E06-3) — tenant-admin only; dedicated route, EXEMPT from the manifest.
   mountApiKeys(app, { db: deps.db })

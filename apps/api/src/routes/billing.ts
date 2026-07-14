@@ -1,5 +1,4 @@
 import type { Hono } from 'hono'
-import type { Redis } from 'ioredis'
 
 import type { Db, SubscriptionUpdate } from '@orbetra/db'
 import type { BillingView, Role } from '@orbetra/shared'
@@ -19,7 +18,6 @@ const isAdmin = (role: Role): boolean => TENANT_ADMINS.includes(role)
 
 export interface BillingDeps {
   db: Db
-  redis: Redis
   stripe?: StripeGateway | undefined
   /** absolute base for Checkout success/cancel + portal return; falls back to the request Origin */
   appBaseUrl?: string | undefined
@@ -66,13 +64,25 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     if (deps.stripe === undefined) return c.json({ error: 'billing_not_configured' }, 503)
     const base = baseUrl(deps.appBaseUrl, c.req.header('origin'))
     if (base === null) return c.json({ error: 'no_return_url' }, 400)
+    // the plan to subscribe to = a price id from the server allowlist; if exactly one is configured
+    // it may be omitted (single-plan staging). An off-allowlist price is rejected (never trust the client).
+    const body = (await c.req.json().catch(() => ({}))) as { priceId?: unknown }
+    const prices = deps.stripe.prices
+    const requested = typeof body.priceId === 'string' ? body.priceId : undefined
+    const priceId = requested ?? (prices.length === 1 ? prices[0] : undefined)
+    if (priceId === undefined || !prices.includes(priceId)) return c.json({ error: 'invalid_price' }, 400)
+
     const tenant = await deps.db.tenants.get(auth.tenantId)
     if (tenant === null) return c.json({ error: 'Not Found' }, 404)
+    // never create a SECOND subscription for an already-subscribed tenant (double-billing guard):
+    // an active/trialing tenant is sent to the portal to manage, not through Checkout again
+    if (tenant.subscriptionStatus != null && ACTIVE.has(tenant.subscriptionStatus)) return c.json({ error: 'already_subscribed' }, 409)
     const customerId = await deps.stripe.ensureCustomer({ tenantId: tenant.id, name: tenant.name, existingCustomerId: tenant.stripeCustomerId })
     if (tenant.stripeCustomerId !== customerId) await deps.db.tenants.setStripeCustomer(tenant.id, customerId)
     const url = await deps.stripe.createCheckoutSession({
       customerId,
       tenantId: tenant.id,
+      priceId,
       successUrl: `${base}/app/billing?checkout=success`,
       cancelUrl: `${base}/app/billing?checkout=cancel`,
     })
@@ -94,7 +104,8 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
 
 /** Map a Stripe subscription resource → the fields we persist, keyed by its customer id. */
 function subscriptionFrom(obj: Record<string, unknown>): { customerId: string; update: SubscriptionUpdate } | null {
-  const customerId = typeof obj['customer'] === 'string' ? obj['customer'] : null
+  // treat an empty/absent customer as no-match (never let '' reach a query)
+  const customerId = typeof obj['customer'] === 'string' && obj['customer'] !== '' ? obj['customer'] : null
   if (customerId === null) return null
   const id = typeof obj['id'] === 'string' ? obj['id'] : null
   const status = typeof obj['status'] === 'string' ? obj['status'] : null
@@ -103,11 +114,15 @@ function subscriptionFrom(obj: Record<string, unknown>): { customerId: string; u
   return { customerId, update: { stripeSubscriptionId: id, subscriptionStatus: status, currentPeriodEnd: cpe } }
 }
 
+const SUBSCRIPTION_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted'])
+
 /**
  * PUBLIC Stripe webhook — MUST be registered before the /v1/* auth guard (Stripe carries no JWT).
  * The raw body is required for signature verification; an invalid signature ⇒ 400 with NO state
- * change. Idempotent: a processed event id is a no-op (Redis SETNX). Subscription lifecycle events
- * are the ONLY trusted source of `subscriptionStatus`.
+ * change. Ordering/idempotency is enforced in the DB write (applySubscriptionEvent's atomic
+ * monotonic guard by event timestamp), so out-of-order and replayed deliveries are safe and there
+ * is no mark-before-process gap: if the write throws we return non-2xx and Stripe retries.
+ * Subscription lifecycle events are the ONLY trusted source of `subscriptionStatus`.
  */
 export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void {
   app.post('/v1/webhooks/stripe', async (c) => {
@@ -121,13 +136,10 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
     } catch {
       return c.text('invalid signature', 400)
     }
-    // idempotency: drop replays (Stripe retries until 2xx) — first writer wins for 24h
-    const fresh = await deps.redis.set(`stripe:evt:${event.id}`, '1', 'EX', 86_400, 'NX')
-    if (fresh === null) return c.text('duplicate', 200)
-
-    if (event.type === 'customer.subscription.created' || event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+    if (SUBSCRIPTION_EVENTS.has(event.type)) {
       const mapped = subscriptionFrom(event.data.object)
-      if (mapped !== null) await deps.db.tenants.applySubscriptionEvent(mapped.customerId, mapped.update)
+      // event.created is the Unix-seconds ordering key; the DB guard applies it only if strictly newer
+      if (mapped !== null) await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
     }
     // other event types (checkout.session.completed, invoice.*) are acked; subscription.* is authoritative
     return c.text('ok', 200)

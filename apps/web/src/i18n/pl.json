@@ -44,7 +44,7 @@
   "billing": {
     "title": "Płatności",
     "subscription": "Subskrypcja",
-    "pricingNote": "Przejrzysta cena za urządzenie. Rozliczenie miesięczne za aktywne urządzenia.",
+    "pricingNote": "Przejrzyste ceny — zobacz swój plan. Subskrypcją, metodą płatności i fakturami zarządzasz w portalu Stripe.",
     "renews": "Odnawia się",
     "subscribe": "Subskrybuj",
     "manage": "Zarządzaj płatnościami",

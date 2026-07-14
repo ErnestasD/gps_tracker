@@ -71,6 +71,9 @@ model Tenant {
   /// mirrors Stripe's subscription.status (active|trialing|past_due|canceled|unpaid|…); null = never subscribed
   subscriptionStatus     String?
   currentPeriodEnd       DateTime? @db.Timestamptz()
+  /// timestamp of the last APPLIED Stripe event; a webhook update lands only when strictly newer
+  /// (monotonic guard against out-of-order/duplicate delivery — ADR-024)
+  lastBillingEventAt     DateTime? @db.Timestamptz()
   createdAt              DateTime @default(now()) @db.Timestamptz()
 
   accounts Account[]

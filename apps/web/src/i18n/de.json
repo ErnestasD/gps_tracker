@@ -44,7 +44,7 @@
   "billing": {
     "title": "Abrechnung",
     "subscription": "Abonnement",
-    "pricingNote": "Transparenter Preis pro Gerät. Monatliche Abrechnung nach aktiven Geräten.",
+    "pricingNote": "Transparente Preise — siehe Ihr Tarif. Abonnement, Zahlungsmethode und Rechnungen im Stripe-Portal verwalten.",
     "renews": "Verlängert am",
     "subscribe": "Abonnieren",
     "manage": "Abrechnung verwalten",

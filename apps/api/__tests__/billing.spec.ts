@@ -29,20 +29,29 @@ let redisC: StartedTestContainer
 let redis: Redis
 let redisSub: Redis
 let db: Db
+let databaseUrl: string
 let port: number
 let portOff: number
 let httpServer: ReturnType<typeof createServer>
 let httpServerOff: ReturnType<typeof createServer>
 
 let t1: string
-let t2: string
 let t1Token: string
-let t2Token: string
 let t1Viewer: string
+
+// seed a fresh tenant + admin token; its fake customer id is derived from the tenant id. Each
+// stateful test uses its OWN tenant so the monotonic `lastBillingEventAt` guard never bleeds across
+// tests (customer state persists in the shared db between tests).
+async function freshTenant(name: string) {
+  const s = await seedUser({ databaseUrl, email: `${name}@t.test`, password: 'password12', role: 'tsp_admin', tenantName: name })
+  const token = await mintTestToken({ userId: s.userId, tenantId: s.tenantId, role: 'tsp_admin' })
+  return { tenantId: s.tenantId, token, cus: `cus_${s.tenantId.slice(0, 8)}` }
+}
 
 // a fake Stripe gateway: deterministic customer ids, records checkout/portal calls
 const calls: { checkout: number; portal: number } = { checkout: 0, portal: 0 }
 const fakeStripe: StripeGateway = {
+  prices: ['price_test'],
   ensureCustomer: ({ tenantId, existingCustomerId }) => Promise.resolve(existingCustomerId ?? `cus_${tenantId.slice(0, 8)}`),
   createCheckoutSession: ({ customerId }) => { calls.checkout++; return Promise.resolve(`https://checkout.test/${customerId}`) },
   createPortalSession: ({ customerId }) => { calls.portal++; return Promise.resolve(`https://portal.test/${customerId}`) },
@@ -60,9 +69,9 @@ const req = (p: number, path: string, token: string | null, method = 'GET', body
     ...(bodyObj !== undefined ? { body: typeof bodyObj === 'string' ? bodyObj : JSON.stringify(bodyObj) } : {}),
   })
 
-// a subscription webhook event for a given customer id
-const subEvent = (id: string, customer: string, type: string, status: string, periodEnd = 1_800_000_000): StripeEvent => ({
-  id, type, data: { object: { id: `sub_${customer}`, customer, status, current_period_end: periodEnd } },
+// a subscription webhook event for a given customer id; `created` is the Unix-seconds ordering key
+const subEvent = (id: string, customer: string, type: string, status: string, created = 1_700_000_000, periodEnd = 1_800_000_000): StripeEvent => ({
+  id, type, created, data: { object: { id: `sub_${customer}`, customer, status, current_period_end: periodEnd } },
 })
 
 beforeAll(async () => {
@@ -75,7 +84,7 @@ beforeAll(async () => {
       .start(),
     new GenericContainer('redis:7-alpine').withExposedPorts(6379).withWaitStrategy(Wait.forLogMessage(/Ready to accept connections/)).start(),
   ])
-  const databaseUrl = `postgresql://postgres:test@${pg.getHost()}:${pg.getMappedPort(5432)}/orbetra`
+  databaseUrl = `postgresql://postgres:test@${pg.getHost()}:${pg.getMappedPort(5432)}/orbetra`
   execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], { cwd: DB_PKG, env: { ...process.env, DATABASE_URL: databaseUrl } })
   const opts = { maxRetriesPerRequest: null }
   redis = new Redis(redisC.getMappedPort(6379), redisC.getHost(), opts)
@@ -83,11 +92,8 @@ beforeAll(async () => {
   db = createDb(databaseUrl)
 
   const s1 = await seedUser({ databaseUrl, email: 'a@t1.test', password: 'password12', role: 'tsp_admin', tenantName: 'T1' })
-  const s2 = await seedUser({ databaseUrl, email: 'a@t2.test', password: 'password12', role: 'tsp_admin', tenantName: 'T2' })
   t1 = s1.tenantId
-  t2 = s2.tenantId
   t1Token = await mintTestToken({ userId: s1.userId, tenantId: t1, role: 'tsp_admin' })
-  t2Token = await mintTestToken({ userId: s2.userId, tenantId: t2, role: 'tsp_admin' })
   t1Viewer = await mintTestToken({ userId: s1.userId, tenantId: t1, role: 'viewer' })
 
   const common = {
@@ -140,45 +146,63 @@ describe('billing lifecycle (ADR-024)', () => {
   })
 
   it('subscription state is set ONLY by a signature-verified webhook', async () => {
-    // ensure T1 has a customer first
-    await req(port, '/v1/billing/checkout', t1Token, 'POST')
-    const cus = `cus_${t1.slice(0, 8)}`
+    const { token, cus } = await freshTenant('SubOnly')
+    await req(port, '/v1/billing/checkout', token, 'POST')
 
     // an invalid signature changes nothing → 400
-    const bad = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_1', cus, 'customer.subscription.updated', 'active'), { 'stripe-signature': 'nope' })
+    const bad = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_1', cus, 'customer.subscription.updated', 'active', 100), { 'stripe-signature': 'nope' })
     expect(bad.status).toBe(400)
-    expect(((await (await req(port, '/v1/billing', t1Token)).json()) as BillingView).status).toBeNull()
+    expect(((await (await req(port, '/v1/billing', token)).json()) as BillingView).status).toBeNull()
 
     // a valid subscription.updated activates the tenant
-    const ok = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_2', cus, 'customer.subscription.updated', 'active'), { 'stripe-signature': 'valid' })
+    const ok = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_2', cus, 'customer.subscription.updated', 'active', 200), { 'stripe-signature': 'valid' })
     expect(ok.status).toBe(200)
-    const view = (await (await req(port, '/v1/billing', t1Token)).json()) as BillingView
+    const view = (await (await req(port, '/v1/billing', token)).json()) as BillingView
     expect(view).toMatchObject({ status: 'active', active: true })
     expect(view.currentPeriodEnd).not.toBeNull()
 
-    // a deleted event cancels it
-    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_3', cus, 'customer.subscription.deleted', 'canceled'), { 'stripe-signature': 'valid' })
-    expect(((await (await req(port, '/v1/billing', t1Token)).json()) as BillingView).active).toBe(false)
+    // a later deleted event cancels it
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_3', cus, 'customer.subscription.deleted', 'canceled', 300), { 'stripe-signature': 'valid' })
+    expect(((await (await req(port, '/v1/billing', token)).json()) as BillingView).active).toBe(false)
   })
 
-  it('a replayed webhook event id is a no-op (idempotent)', async () => {
-    await req(port, '/v1/billing/checkout', t1Token, 'POST')
-    const cus = `cus_${t1.slice(0, 8)}`
-    const first = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_dup', cus, 'customer.subscription.updated', 'past_due'), { 'stripe-signature': 'valid' })
-    expect(first.status).toBe(200)
-    const dup = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_dup', cus, 'customer.subscription.updated', 'active'), { 'stripe-signature': 'valid' })
-    expect(await dup.text()).toBe('duplicate')
-    // the replay (which claimed 'active') must NOT overwrite — state stays at the first event's 'past_due'
-    expect(((await (await req(port, '/v1/billing', t1Token)).json()) as BillingView).status).toBe('past_due')
+  it('out-of-order + replayed webhooks never resurrect a canceled subscription (monotonic guard)', async () => {
+    const { token, cus } = await freshTenant('Ordering')
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    // canceled at t=200
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_c', cus, 'customer.subscription.deleted', 'canceled', 200), { 'stripe-signature': 'valid' })
+    expect(((await (await req(port, '/v1/billing', token)).json()) as BillingView).active).toBe(false)
+    // a STALE 'active' from t=100 arrives late (distinct event id, so no id-based dedupe would catch it)
+    const stale = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_stale', cus, 'customer.subscription.updated', 'active', 100), { 'stripe-signature': 'valid' })
+    expect(stale.status).toBe(200) // acked...
+    expect(((await (await req(port, '/v1/billing', token)).json()) as BillingView).active).toBe(false) // ...but ignored
+    // a replay of the canceled event (same t=200) is a no-op — still canceled
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_c', cus, 'customer.subscription.deleted', 'canceled', 200), { 'stripe-signature': 'valid' })
+    expect(((await (await req(port, '/v1/billing', token)).json()) as BillingView).status).toBe('canceled')
   })
 
-  it('webhook state is per-tenant — a T2 customer event never touches T1', async () => {
-    await req(port, '/v1/billing/checkout', t1Token, 'POST')
-    await req(port, '/v1/billing/checkout', t2Token, 'POST')
-    const cus2 = `cus_${t2.slice(0, 8)}`
-    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_t2', cus2, 'customer.subscription.updated', 'active'), { 'stripe-signature': 'valid' })
-    expect(((await (await req(port, '/v1/billing', t2Token)).json()) as BillingView).active).toBe(true)
-    expect(((await (await req(port, '/v1/billing', t1Token)).json()) as BillingView).active).toBe(false) // T1 untouched
+  it('webhook state is per-tenant — one customer event never touches another tenant', async () => {
+    const a = await freshTenant('PerA')
+    const b = await freshTenant('PerB')
+    await req(port, '/v1/billing/checkout', a.token, 'POST')
+    await req(port, '/v1/billing/checkout', b.token, 'POST')
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_b', b.cus, 'customer.subscription.updated', 'active', 100), { 'stripe-signature': 'valid' })
+    expect(((await (await req(port, '/v1/billing', b.token)).json()) as BillingView).active).toBe(true)
+    expect(((await (await req(port, '/v1/billing', a.token)).json()) as BillingView).active).toBe(false) // A untouched
+  })
+
+  it('checkout while already subscribed is refused (double-billing guard) → 409', async () => {
+    const { token, cus } = await freshTenant('Double')
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_a', cus, 'customer.subscription.updated', 'active', 100), { 'stripe-signature': 'valid' })
+    const second = await req(port, '/v1/billing/checkout', token, 'POST')
+    expect(second.status).toBe(409) // no second subscription created
+  })
+
+  it('checkout rejects a price id outside the server allowlist (never trust the client)', async () => {
+    const { token } = await freshTenant('BadPrice')
+    const res = await req(port, '/v1/billing/checkout', token, 'POST', { priceId: 'price_attacker_free' })
+    expect(res.status).toBe(400)
   })
 
   it('an unknown customer id in a webhook is a safe no-op', async () => {
@@ -192,12 +216,10 @@ describe('billing lifecycle (ADR-024)', () => {
   })
 
   it('portal 409s before a customer exists, then returns a url', async () => {
-    // fresh redis but db customer persists across tests; use a path where we control it: T-portal
-    const sp = await seedUser({ databaseUrl: `postgresql://postgres:test@${pg.getHost()}:${pg.getMappedPort(5432)}/orbetra`, email: 'p@t.test', password: 'password12', role: 'tsp_admin', tenantName: 'TP' })
-    const tok = await mintTestToken({ userId: sp.userId, tenantId: sp.tenantId, role: 'tsp_admin' })
-    expect((await req(port, '/v1/billing/portal', tok, 'POST')).status).toBe(409)
-    await req(port, '/v1/billing/checkout', tok, 'POST')
-    const res = await req(port, '/v1/billing/portal', tok, 'POST')
+    const { token } = await freshTenant('Portal')
+    expect((await req(port, '/v1/billing/portal', token, 'POST')).status).toBe(409)
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    const res = await req(port, '/v1/billing/portal', token, 'POST')
     expect(res.status).toBe(200)
     expect(((await res.json()) as { url: string }).url).toContain('https://portal.test/')
   })
