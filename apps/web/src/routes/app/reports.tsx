@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { listAccounts, listDevices } from '@/lib/devices'
 import { COLUMNS, downloadCsv, runReport, toCsv, REPORT_TYPES, type ReportResult, type ReportType } from '@/lib/reports'
+import { ScheduledReportsCard } from '@/routes/app/scheduledReports'
 
 /** Reports (E06-2): run a report over a date range and export CSV. Consumes the E06-1 sync
  * API; account timezone is applied server-side. Async server-side XLSX export is a follow-up. */
@@ -107,6 +108,8 @@ export function ReportsPage() {
           )}
         </CardContent>
       </Card>
+
+      <ScheduledReportsCard {...(acc ? { accountId: acc } : {})} />
     </div>
   )
 }

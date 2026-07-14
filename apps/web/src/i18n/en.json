@@ -51,7 +51,10 @@
     "none": "No subscription",
     "unavailable": "Billing is not available on this environment.",
     "noPlans": "No plans are configured yet.",
-    "interval": { "month": "mo", "year": "yr" }
+    "interval": {
+      "month": "mo",
+      "year": "yr"
+    }
   },
   "branding": {
     "title": "Branding",
@@ -617,6 +620,29 @@
       "due_soon": "Due soon",
       "overdue": "Overdue",
       "unknown": "No data"
+    }
+  },
+  "scheduled": {
+    "title": "Scheduled reports",
+    "type": "Report",
+    "cadence": "Cadence",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "weekday": "Weekday",
+    "hour": "Hour (UTC)",
+    "recipients": "Recipients (comma-separated)",
+    "add": "Add",
+    "empty": "No scheduled reports yet.",
+    "delete": "Delete",
+    "error": "Could not save.",
+    "wd": {
+      "0": "Sun",
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat"
     }
   }
 }

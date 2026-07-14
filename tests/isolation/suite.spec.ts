@@ -47,6 +47,7 @@ function idFor(f: TenantFixture, entity: string): string {
     export: f.exportId,
     driver: f.driverId,
     maintenance: f.maintenanceId,
+    scheduledReport: f.scheduledReportId,
     share: f.shareId,
     gdpr: f.deviceId, // /v1/devices/:id/erase — the :id is a device
     tenant: f.id,
