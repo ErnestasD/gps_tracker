@@ -28,6 +28,13 @@ describe('E05-5 buildEmailTransport', () => {
     expect(f.calls[0]!.headers).toBeUndefined() // no config set → no header
   })
 
+  it('a malformed SMTP_URL disables email (undefined) instead of crashing the worker', () => {
+    const create = vi.fn(() => { throw new Error('invalid URL') }) // nodemailer rejects a bad url
+    // must NOT throw — a bad email env can never take down the position pipeline
+    expect(buildEmailTransport({ SMTP_URL: 'not a url', MAIL_FROM: 'a@b.c' }, create)).toBeUndefined()
+    expect(create).toHaveBeenCalledOnce()
+  })
+
   it('adds the SES config-set header for bounce/complaint routing when configured', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ SMTP_URL: 'smtp://h', MAIL_FROM: 'a@b.c', SES_CONFIG_SET: 'orbetra-notifications' }, f.create)!

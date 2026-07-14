@@ -26,7 +26,16 @@ export function buildEmailTransport(
   const from = env['MAIL_FROM']
   if (!url || !from) return undefined // not configured → channel skipped
   const configSet = env['SES_CONFIG_SET']
-  const mailer = createTransport(url)
+  // A MALFORMED SMTP_URL must NOT crash the worker at startup — that would take the whole pipeline
+  // (ingest consumers, trips, geofences) down over an email misconfig. Fall back to "skipped".
+  let mailer: MailSender
+  try {
+    mailer = createTransport(url)
+  } catch {
+    // NEVER log the error/URL — a URL-parse error can echo the SMTP password (rule 12). Static only.
+    console.error('email transport disabled: SMTP_URL was rejected by the SMTP client')
+    return undefined
+  }
   return {
     send: async (to, subject, text) => {
       await mailer.sendMail({
