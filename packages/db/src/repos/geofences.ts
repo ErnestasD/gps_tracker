@@ -28,18 +28,22 @@ export class GeofenceTooLargeError extends Error {
   }
 }
 
+export type GeofenceKind = 'polygon' | 'circle' | 'corridor'
 export interface GeofenceCreate {
   name: string
   color?: string
-  kind: 'polygon' | 'circle'
+  kind: GeofenceKind
   accountId?: string | null
-  geometry: unknown // GeoJSON Polygon (zod-validated shape upstream)
+  /** polygon/circle: the GeoJSON Polygon (zod-validated upstream). Absent for a corridor. */
+  geometry?: unknown
+  /** corridor (V2): GeoJSON LineString centre-line + buffer half-width (m); server buffers to a polygon. */
+  line?: unknown
+  bufferM?: number
 }
 export interface GeofenceUpdate {
   name?: string
   color?: string
-  kind?: 'polygon' | 'circle'
-  geometry?: unknown
+  geometry?: unknown // kind is immutable post-create (a corridor is physically a buffered polygon)
 }
 
 export interface GeofenceRepo {
@@ -67,7 +71,7 @@ const toView = (r: Row): GeofenceView => ({
   accountId: r.accountId,
   name: r.name,
   color: r.color,
-  kind: r.kind as 'polygon' | 'circle',
+  kind: r.kind as GeofenceKind,
   geometry: JSON.parse(r.geojson) as unknown,
   createdAt: r.createdAt.toISOString(),
 })
@@ -81,11 +85,23 @@ const scopeSql = (scope: Scope): Prisma.Sql =>
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): GeofenceRepo {
-  /** Validate + area-check a GeoJSON polygon in the DB before persisting. */
-  const guard = async (geometry: unknown): Promise<void> => {
-    const json = JSON.stringify(geometry)
+  /** The geography expression for a create: a corridor buffers its line into a polygon (ST_Buffer on
+   *  geography → metres); polygon/circle parse their GeoJSON directly. Both land as geography. */
+  const geogFor = (data: GeofenceCreate): Prisma.Sql => {
+    if (data.kind === 'corridor') {
+      // defend non-HTTP callers (bulk import/scripts): the zod refine already guarantees this for the
+      // API, but a bare repo call must NOT fall back to ST_Buffer(line, 0) → an empty, silently-dead fence
+      if (data.line === undefined || typeof data.bufferM !== 'number' || data.bufferM < 10 || data.bufferM > 5_000) throw new GeofenceInvalidError()
+      return Prisma.sql`ST_Buffer(ST_GeomFromGeoJSON(${JSON.stringify(data.line)})::geography, ${data.bufferM})`
+    }
+    if (data.geometry === undefined) throw new GeofenceInvalidError()
+    return Prisma.sql`ST_GeomFromGeoJSON(${JSON.stringify(data.geometry)})::geography`
+  }
+  /** Validate + area-check a geography expression in the DB before persisting (the SAME guard for a
+   *  raw polygon and a buffered corridor — the resulting polygon must be valid + within the area cap). */
+  const guardGeog = async (geog: Prisma.Sql): Promise<void> => {
     const [chk] = await prisma.$queryRaw<{ valid: boolean; area: number }[]>(
-      Prisma.sql`SELECT ST_IsValid(g) AS valid, ST_Area(g::geography) AS area FROM (SELECT ST_GeomFromGeoJSON(${json}) AS g) s`,
+      Prisma.sql`SELECT ST_IsValid(g::geometry) AS valid, ST_Area(g) AS area FROM (SELECT ${geog} AS g) s`,
     )
     if (chk === undefined || !chk.valid) throw new GeofenceInvalidError()
     if (Number(chk.area) > MAX_AREA_M2) throw new GeofenceTooLargeError()
@@ -103,12 +119,12 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
     },
     get: one,
     create: async (scope, actor, data) => {
-      await guard(data.geometry)
-      const json = JSON.stringify(data.geometry)
+      const geog = geogFor(data) // polygon/circle → GeoJSON; corridor → buffered line
+      await guardGeog(geog)
       const accountId = data.accountId ?? null
       const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
         INSERT INTO geofences (id,"tenantId","accountId",name,color,kind,geom)
-        VALUES (gen_random_uuid(), ${scope.tenantId}::uuid, ${accountId}::uuid, ${data.name}, ${data.color ?? '#4DA3FF'}, ${data.kind}::"GeofenceKind", ST_GeomFromGeoJSON(${json})::geography)
+        VALUES (gen_random_uuid(), ${scope.tenantId}::uuid, ${accountId}::uuid, ${data.name}, ${data.color ?? '#4DA3FF'}, ${data.kind}::"GeofenceKind", ${geog})
         RETURNING ${COLS}`)
       const view = toView(rows[0]!)
       await audit.record(scope, actor, { action: 'create', entity: 'geofence', entityId: view.id, after: { id: view.id, name: view.name, kind: view.kind, accountId: view.accountId } })
@@ -117,11 +133,11 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
     update: async (scope, actor, id, data) => {
       const before = await one(scope, id)
       if (before === null) return null
-      if (data.geometry !== undefined) await guard(data.geometry)
+      // update only changes a POLYGON geometry (corridor re-editing = redraw, like circles)
+      if (data.geometry !== undefined) await guardGeog(Prisma.sql`ST_GeomFromGeoJSON(${JSON.stringify(data.geometry)})::geography`)
       const sets: Prisma.Sql[] = []
       if (data.name !== undefined) sets.push(Prisma.sql`name = ${data.name}`)
       if (data.color !== undefined) sets.push(Prisma.sql`color = ${data.color}`)
-      if (data.kind !== undefined) sets.push(Prisma.sql`kind = ${data.kind}::"GeofenceKind"`)
       if (data.geometry !== undefined) sets.push(Prisma.sql`geom = ST_GeomFromGeoJSON(${JSON.stringify(data.geometry)})::geography`)
       if (sets.length === 0) return before
       const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`

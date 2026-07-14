@@ -183,6 +183,8 @@
     "title": "Geostrefy",
     "polygon": "Wielokąt",
     "circle": "Okrąg",
+    "corridor": "Korytarz",
+    "buffer": "Bufor (m)",
     "clear": "Wyczyść",
     "name": "Nazwa",
     "color": "Kolor",

@@ -183,6 +183,8 @@
     "title": "Geofences",
     "polygon": "Polygon",
     "circle": "Circle",
+    "corridor": "Corridor",
+    "buffer": "Buffer (m)",
     "clear": "Clear",
     "name": "Name",
     "color": "Color",

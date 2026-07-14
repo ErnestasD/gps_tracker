@@ -292,20 +292,36 @@ export const geoJsonPolygonSchema = z
     }),
     { message: 'each ring must be closed (first position === last)' },
   )
-export const geofenceKindSchema = z.enum(['polygon', 'circle'])
-export const geofenceCreateSchema = z.object({
-  name: z.string().min(1).max(120),
-  color: hexColor.optional(),
-  kind: geofenceKindSchema,
-  /** null ⇒ tenant-shared (visible to all accounts); a tenant admin may set it. */
-  accountId: z.string().uuid().nullable().optional(),
-  geometry: geoJsonPolygonSchema,
+/** A GeoJSON LineString: ≥2 positions — the centre-line of a corridor geofence (V2). */
+export const geoJsonLineStringSchema = z.object({
+  type: z.literal('LineString'),
+  coordinates: z.array(lngLat).min(2).max(10_000),
 })
-export const geofenceUpdateSchema = z
+export const geofenceKindSchema = z.enum(['polygon', 'circle', 'corridor'])
+/** Corridor half-width in metres (the buffer around the route line). 10 m … 5 km. */
+const corridorBufferSchema = z.number().int().min(10).max(5_000)
+
+export const geofenceCreateSchema = z
   .object({
     name: z.string().min(1).max(120),
-    color: hexColor,
+    color: hexColor.optional(),
     kind: geofenceKindSchema,
+    /** null ⇒ tenant-shared (visible to all accounts); a tenant admin may set it. */
+    accountId: z.string().uuid().nullable().optional(),
+    /** polygon/circle: the closed polygon. Absent for a corridor. */
+    geometry: geoJsonPolygonSchema.optional(),
+    /** corridor: the route centre-line + buffer half-width (server buffers it to a polygon). */
+    line: geoJsonLineStringSchema.optional(),
+    bufferM: corridorBufferSchema.optional(),
+  })
+  // exactly the fields for the kind: a corridor needs line+bufferM (no geometry); others need geometry
+  .refine((d) => (d.kind === 'corridor' ? d.line !== undefined && d.bufferM !== undefined && d.geometry === undefined : d.geometry !== undefined && d.line === undefined),
+    { message: 'corridor requires { line, bufferM }; polygon/circle require { geometry }' })
+export const geofenceUpdateSchema = z
+  .object({
+    // kind is immutable post-create (a corridor is physically stored as a buffered polygon)
+    name: z.string().min(1).max(120),
+    color: hexColor,
     geometry: geoJsonPolygonSchema,
   })
   .partial()
@@ -316,8 +332,8 @@ export interface GeofenceView {
   accountId: string | null
   name: string
   color: string
-  kind: 'polygon' | 'circle'
-  geometry: unknown // GeoJSON Polygon
+  kind: 'polygon' | 'circle' | 'corridor'
+  geometry: unknown // GeoJSON Polygon (a corridor is stored as its buffered polygon)
   createdAt: string
 }
 
