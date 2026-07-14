@@ -12,6 +12,7 @@ import {
   KeyRound,
   LogOut,
   Map as MapIcon,
+  CreditCard,
   Palette,
   Radio,
   ScrollText,
@@ -67,6 +68,7 @@ const SECTIONS: NavSection[] = [
     key: 'shell.admin',
     items: [
       { key: 'shell.branding', icon: Palette, to: '/app/branding' },
+      { key: 'shell.billing', icon: CreditCard, to: '/app/billing', adminOnly: true },
       { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true },
       { key: 'shell.webhooks', icon: Webhook, to: '/app/webhooks', adminOnly: true },
       { key: 'shell.platform', icon: Building2, to: '/app/platform', platformOnly: true },

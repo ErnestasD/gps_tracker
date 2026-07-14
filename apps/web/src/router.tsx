@@ -11,6 +11,7 @@ import { getAccessToken, refreshSession } from '@/lib/auth'
 import { LoginPage } from '@/routes/login'
 import { MapPage } from '@/routes/app/map'
 import { AuditPage } from '@/routes/app/audit'
+import { BillingPage } from '@/routes/app/billing'
 import { BrandingPage } from '@/routes/app/branding'
 import { PlaybackPage } from '@/routes/app/playback'
 import { TripsPage } from '@/routes/app/trips'
@@ -114,6 +115,12 @@ const brandingRoute = createRoute({
   component: BrandingPage,
 })
 
+const billingRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/billing',
+  component: BillingPage,
+})
+
 const playbackRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/playback',
@@ -184,7 +191,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   shareRoute,
-  appRoute.addChildren([mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

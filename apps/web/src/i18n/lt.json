@@ -38,7 +38,18 @@
     "webhooks": "Webhooks",
     "platform": "Platforma",
     "drivers": "Vairuotojai",
-    "maintenance": "Priežiūra"
+    "maintenance": "Priežiūra",
+    "billing": "Atsiskaitymai"
+  },
+  "billing": {
+    "title": "Atsiskaitymai",
+    "subscription": "Prenumerata",
+    "pricingNote": "Skaidri kaina už įrenginį. Mokate kas mėnesį už aktyvius įrenginius.",
+    "renews": "Atsinaujina",
+    "subscribe": "Prenumeruoti",
+    "manage": "Valdyti atsiskaitymus",
+    "none": "Nėra prenumeratos",
+    "unavailable": "Atsiskaitymai šioje aplinkoje nepasiekiami."
   },
   "branding": {
     "title": "Prekės ženklas",

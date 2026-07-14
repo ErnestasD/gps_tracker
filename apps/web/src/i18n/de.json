@@ -38,7 +38,18 @@
     "webhooks": "Webhooks",
     "platform": "Plattform",
     "drivers": "Fahrer",
-    "maintenance": "Wartung"
+    "maintenance": "Wartung",
+    "billing": "Abrechnung"
+  },
+  "billing": {
+    "title": "Abrechnung",
+    "subscription": "Abonnement",
+    "pricingNote": "Transparenter Preis pro Gerät. Monatliche Abrechnung nach aktiven Geräten.",
+    "renews": "Verlängert am",
+    "subscribe": "Abonnieren",
+    "manage": "Abrechnung verwalten",
+    "none": "Kein Abonnement",
+    "unavailable": "Abrechnung ist in dieser Umgebung nicht verfügbar."
   },
   "branding": {
     "title": "Branding",

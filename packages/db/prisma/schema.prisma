@@ -64,6 +64,13 @@ model Tenant {
   branding               Json     @default("{}")
   /// set once from pilot-lead ref, immutable afterwards (§6.9)
   referredByAffiliateId  String?  @db.Uuid
+  /// Stripe billing (ADR-024). Set lazily on first checkout; subscription state is written
+  /// ONLY by the signature-verified webhook, never by the browser.
+  stripeCustomerId       String?  @unique
+  stripeSubscriptionId   String?
+  /// mirrors Stripe's subscription.status (active|trialing|past_due|canceled|unpaid|…); null = never subscribed
+  subscriptionStatus     String?
+  currentPeriodEnd       DateTime? @db.Timestamptz()
   createdAt              DateTime @default(now()) @db.Timestamptz()
 
   accounts Account[]
