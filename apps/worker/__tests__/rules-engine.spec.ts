@@ -102,7 +102,7 @@ describe('E05-4 RuleEngine — ignition (edge)', () => {
 
   it('warm-starts the prior value so a restart does not re-fire', () => {
     const e = new RuleEngine()
-    const ioState = (): DeviceIo => ({ ignition: true, din1: null, unplug: null, alarm: null, fuelPct: null, fuelL: null })
+    const ioState = (): DeviceIo => ({ ignition: true, din1: null, unplug: null, alarm: null, fuelPct: null, fuelL: null, fuelBasePct: null, fuelBaseL: null })
     // device is still ignition-on after restart → no phantom edge
     expect(e.feed([rec(0, { ignition: true })], only(rule('ignition')), ioState)).toHaveLength(0)
   })
@@ -161,44 +161,52 @@ describe('E05-4 RuleEngine — ordering & scope', () => {
   it('snapshot exposes the current IO for durable persistence', () => {
     const e = new RuleEngine()
     e.feed([rec(0, { ignition: true, attrs: { Unplug: 1, Alarm: 0, 'Digital Input 1': 1 } })], only(rule('ignition')))
-    expect(e.snapshot(42n)).toEqual({ ignition: true, din1: true, unplug: true, alarm: false, fuelPct: null, fuelL: null })
+    expect(e.snapshot(42n)).toEqual({ ignition: true, din1: true, unplug: true, alarm: false, fuelPct: null, fuelL: null, fuelBasePct: null, fuelBaseL: null })
   })
 })
 
-describe('RuleEngine — fuel_theft (V2: drop while engine OFF)', () => {
+describe('RuleEngine — fuel_theft (V2: confirmed drop from a parked baseline)', () => {
   const off = (tSec: number, pct: number) => rec(tSec, { ignition: false, attrs: { io_89: pct } })
+  const drive = (tSec: number, pct: number) => rec(tSec, { ignition: true, attrs: { io_89: pct } })
 
-  it('fires on a %-drop beyond the threshold while ignition is off at both ends', () => {
+  it('fires on a CONFIRMED drop from the parked baseline (two consecutive low readings)', () => {
     const e = new RuleEngine()
-    const ev = e.feed([off(0, 80), off(60, 60)], only(rule('fuel_theft', { dropPct: 10 })))
+    // baseline 80 seeded on the first parked reading; 55 unconfirmed (prev still 80); 55 confirmed → fire
+    const ev = e.feed([off(0, 80), off(60, 55), off(120, 55)], only(rule('fuel_theft', { dropPct: 15 })))
     expect(ev).toHaveLength(1)
-    expect(ev[0]!.payload).toMatchObject({ unit: 'pct', from: 80, to: 60, drop: 20 })
+    expect(ev[0]!.payload).toMatchObject({ unit: 'pct', baseline: 80, to: 55, drop: 25 })
   })
 
-  it('does NOT fire while the engine is ON (that is consumption, not theft)', () => {
+  it('does NOT fire on a single-sample glitch that recovers (debounce)', () => {
     const e = new RuleEngine()
-    const drive = (t: number, pct: number) => rec(t, { ignition: true, attrs: { io_89: pct } })
-    expect(e.feed([drive(0, 80), drive(60, 60)], only(rule('fuel_theft', { dropPct: 10 })))).toHaveLength(0)
+    // 80 baseline, a lone 30 dip, back to 80 — a sensor glitch must not alert
+    expect(e.feed([off(0, 80), off(60, 30), off(120, 80)], only(rule('fuel_theft', { dropPct: 15 })))).toHaveLength(0)
   })
 
-  it('does NOT fire when just parked (ignition was ON at the previous sample)', () => {
+  it('does NOT fire while the engine is ON (consumption, not theft)', () => {
     const e = new RuleEngine()
-    const on = (t: number, pct: number) => rec(t, { ignition: true, attrs: { io_89: pct } })
-    // prev = engine ON (80), cur = engine OFF (60): can't attribute the drop to a parked theft
-    expect(e.feed([on(0, 80), off(60, 60)], only(rule('fuel_theft', { dropPct: 10 })))).toHaveLength(0)
+    expect(e.feed([drive(0, 80), drive(60, 55), drive(120, 55)], only(rule('fuel_theft', { dropPct: 15 })))).toHaveLength(0)
+  })
+
+  it('does NOT seed the baseline from a DRIVING reading (slosh protection)', () => {
+    const e = new RuleEngine()
+    // drive 80 (sloshed high) → park with fuel omitted → park settles to 62: baseline is the PARKED
+    // 62, not the driving 80, so the settle is not read as a 18% theft
+    const parkNoFuel = rec(60, { ignition: false })
+    expect(e.feed([drive(0, 80), parkNoFuel, off(120, 62), off(180, 62)], only(rule('fuel_theft', { dropPct: 15 })))).toHaveLength(0)
   })
 
   it('stays silent on a sub-threshold drop and on a refuel (rise)', () => {
-    expect(new RuleEngine().feed([off(0, 80), off(60, 75)], only(rule('fuel_theft', { dropPct: 10 })))).toHaveLength(0)
-    expect(new RuleEngine().feed([off(0, 60), off(60, 80)], only(rule('fuel_theft', { dropPct: 10 })))).toHaveLength(0)
+    expect(new RuleEngine().feed([off(0, 80), off(60, 72), off(120, 72)], only(rule('fuel_theft', { dropPct: 15 })))).toHaveLength(0)
+    expect(new RuleEngine().feed([off(0, 60), off(60, 80), off(120, 80)], only(rule('fuel_theft', { dropPct: 15 })))).toHaveLength(0)
   })
 
   it('supports a litres threshold (AVL 84 ×0.1) when configured', () => {
     const e = new RuleEngine()
     const offL = (t: number, raw: number) => rec(t, { ignition: false, attrs: { io_84: raw } })
-    // 800→500 raw ⇒ 80→50 L ⇒ 30 L drop ≥ 20
-    const ev = e.feed([offL(0, 800), offL(60, 500)], only(rule('fuel_theft', { dropLiters: 20 })))
+    // 800→500 raw ⇒ 80→50 L baseline drop 30 ≥ 20, confirmed on the 2nd low reading
+    const ev = e.feed([offL(0, 800), offL(60, 500), offL(120, 500)], only(rule('fuel_theft', { dropLiters: 20 })))
     expect(ev).toHaveLength(1)
-    expect(ev[0]!.payload).toMatchObject({ unit: 'liters', drop: 30 })
+    expect(ev[0]!.payload).toMatchObject({ unit: 'liters', baseline: 80, drop: 30 })
   })
 })

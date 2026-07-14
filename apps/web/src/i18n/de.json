@@ -162,7 +162,8 @@
       "on": "Bei",
       "thresholdV": "Schwelle (V)",
       "afterH": "Nach (Std.)",
-      "dropPct": "Abfall (%)"
+      "dropPct": "Abfall (%)",
+      "dropLiters": "Abfall (Liter)"
     },
     "needGeofence": "Wählen Sie eine Geozone für diese Regel.",
     "actionError": "Aktion fehlgeschlagen — erneut versuchen.",

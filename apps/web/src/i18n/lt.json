@@ -162,7 +162,8 @@
       "on": "Kai",
       "thresholdV": "Riba (V)",
       "afterH": "Po (val.)",
-      "dropPct": "Kritimas (%)"
+      "dropPct": "Kritimas (%)",
+      "dropLiters": "Kritimas (l)"
     },
     "needGeofence": "Pasirinkite geozoną šiai taisyklei.",
     "actionError": "Veiksmas nepavyko — bandykite dar kartą.",

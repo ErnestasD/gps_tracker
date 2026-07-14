@@ -70,7 +70,8 @@ export function configFields(kind: RuleKind): ConfigField[] {
     case 'device_offline':
       return [{ key: 'afterH', type: 'number', min: 1, max: 168, default: 26 }]
     case 'fuel_theft':
-      return [{ key: 'dropPct', type: 'number', min: 1, max: 100, default: 10 }]
+      // % works on most senders; litres (AVL 84) covers CAN/OBD trucks that report only litres
+      return [{ key: 'dropPct', type: 'number', min: 1, max: 100, default: 15 }, { key: 'dropLiters', type: 'number', min: 1, max: 1000, default: 0 }]
     default:
       return [] // ignition / din_change / power_cut / panic — event-driven, no threshold
   }

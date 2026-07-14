@@ -31,7 +31,7 @@ export class RulePersister {
     const map = new Map<string, DeviceIo>()
     ids.forEach((id, i) => {
       const h = (res?.[i]?.[1] ?? {}) as Record<string, string>
-      if (Object.keys(h).length > 0) map.set(id, { ignition: bit(h['ignition']), din1: bit(h['din1']), unplug: bit(h['unplug']), alarm: bit(h['alarm']), fuelPct: numOrNull(h['fuelPct']), fuelL: numOrNull(h['fuelL']) })
+      if (Object.keys(h).length > 0) map.set(id, { ignition: bit(h['ignition']), din1: bit(h['din1']), unplug: bit(h['unplug']), alarm: bit(h['alarm']), fuelPct: numOrNull(h['fuelPct']), fuelL: numOrNull(h['fuelL']), fuelBasePct: numOrNull(h['fuelBasePct']), fuelBaseL: numOrNull(h['fuelBaseL']) })
     })
     return (deviceId) => map.get(deviceId.toString())
   }
@@ -48,6 +48,8 @@ export class RulePersister {
       if (io.alarm !== null) fields['alarm'] = io.alarm ? '1' : '0'
       if (io.fuelPct !== null) fields['fuelPct'] = String(io.fuelPct)
       if (io.fuelL !== null) fields['fuelL'] = String(io.fuelL)
+      if (io.fuelBasePct !== null) fields['fuelBasePct'] = String(io.fuelBasePct)
+      if (io.fuelBaseL !== null) fields['fuelBaseL'] = String(io.fuelBaseL)
       if (Object.keys(fields).length > 0) pipe.hset(`rule:iostate:${id}`, fields)
     }
     await pipe.exec()

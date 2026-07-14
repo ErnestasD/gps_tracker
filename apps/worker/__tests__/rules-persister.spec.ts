@@ -134,17 +134,17 @@ describe('E05-4 RulePersister — IO state round-trip', () => {
     const redis = { pipeline: vi.fn(() => { pendingKeys.length = 0; return pipe }) } as unknown as Redis
     const persister = new RulePersister(pool, redis)
 
-    const snap: DeviceIo = { ignition: true, din1: false, unplug: null, alarm: false, fuelPct: null, fuelL: null }
+    const snap: DeviceIo = { ignition: true, din1: false, unplug: null, alarm: false, fuelPct: null, fuelL: null, fuelBasePct: null, fuelBaseL: null }
     await persister.saveIoState(new Map([['42', snap]]))
     expect(store['rule:iostate:42']).toEqual({ ignition: '1', din1: '0', alarm: '0' }) // null unplug omitted
 
     const lookup = await persister.loadIoState([42n])
-    expect(lookup(42n)).toEqual({ ignition: true, din1: false, unplug: null, alarm: false, fuelPct: null, fuelL: null })
+    expect(lookup(42n)).toEqual({ ignition: true, din1: false, unplug: null, alarm: false, fuelPct: null, fuelL: null, fuelBasePct: null, fuelBaseL: null })
     expect(lookup(99n)).toBeUndefined()
 
     // fuel level round-trips (a restart warm-starts the last fuel for fuel_theft drop detection)
-    await persister.saveIoState(new Map([['7', { ignition: false, din1: null, unplug: null, alarm: null, fuelPct: 55, fuelL: 40.5 }]]))
+    await persister.saveIoState(new Map([['7', { ignition: false, din1: null, unplug: null, alarm: null, fuelPct: 55, fuelL: 40.5, fuelBasePct: null, fuelBaseL: null }]]))
     expect(store['rule:iostate:7']).toMatchObject({ ignition: '0', fuelPct: '55', fuelL: '40.5' })
-    expect((await persister.loadIoState([7n]))(7n)).toMatchObject({ fuelPct: 55, fuelL: 40.5 })
+    expect((await persister.loadIoState([7n]))(7n)).toMatchObject({ fuelPct: 55, fuelL: 40.5, fuelBasePct: null, fuelBaseL: null })
   })
 })

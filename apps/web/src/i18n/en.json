@@ -162,7 +162,8 @@
       "on": "On",
       "thresholdV": "Threshold (V)",
       "afterH": "After (hours)",
-      "dropPct": "Drop (%)"
+      "dropPct": "Drop (%)",
+      "dropLiters": "Drop (litres)"
     },
     "needGeofence": "Select a geofence for this rule.",
     "actionError": "Action failed — try again.",

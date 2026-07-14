@@ -162,7 +162,8 @@
       "on": "Gdy",
       "thresholdV": "Próg (V)",
       "afterH": "Po (godz.)",
-      "dropPct": "Spadek (%)"
+      "dropPct": "Spadek (%)",
+      "dropLiters": "Spadek (litry)"
     },
     "needGeofence": "Wybierz geostrefę dla tej reguły.",
     "actionError": "Akcja nie powiodła się — spróbuj ponownie.",
