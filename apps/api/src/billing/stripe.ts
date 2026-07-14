@@ -41,12 +41,9 @@ export interface StripeGateway {
   createPortalSession(opts: { customerId: string; returnUrl: string }): Promise<string>
   /** Verify the webhook signature and parse the event. THROWS on an invalid signature. */
   constructEvent(rawBody: string, signature: string): StripeEvent
-  /** The metered overage price id for a base plan (TSP), or undefined (Direct plans have none). */
+  /** The metered overage price id for a base plan (TSP), added as a 2nd checkout line item;
+   *  undefined for a Direct plan. (The daily usage push itself lives in the worker.) */
   overageFor(basePriceId: string): string | undefined
-  /** Included device count for a base plan (TSP), or undefined (Direct plans have no overage). */
-  includedFor(basePriceId: string): number | undefined
-  /** Report device-day usage to the overage meter (PR B2). value = excess devices for a day. */
-  reportUsage(opts: { customerId: string; value: number; timestampS: number }): Promise<void>
 }
 
 export interface StripeConfig {
@@ -55,41 +52,29 @@ export interface StripeConfig {
   /** Allowlist of subscribable Stripe BASE price ids (`price_…`). Two-track catalog per
    *  PRICING_STRATEGY.md §7 (Direct flat tiers + TSP base). */
   priceIds: string[]
-  /** base price id → metered overage price id (TSP only). */
+  /** base price id → metered overage price id (TSP only) — added as a 2nd checkout line item. */
   overageMap: Record<string, string>
-  /** base price id → included device count (TSP only). */
-  includedMap: Record<string, number>
-  /** the meter event name (matches the Stripe meter); default `orbetra_device_overage`. */
-  meterEvent: string
 }
 
-/** Parse a `a:b,c:d` env pair-map; `valueOf` coerces the value half. */
-function parsePairMap<T>(raw: string | undefined, valueOf: (v: string) => T | undefined): Record<string, T> {
-  const out: Record<string, T> = {}
+/** Parse a `a:b,c:d` env pair-map (base price → overage price). */
+function parsePairMap(raw: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
   for (const pair of (raw ?? '').split(',')) {
     const [k, v] = pair.split(':').map((s) => s.trim())
     if (k === undefined || k === '' || v === undefined || v === '') continue
-    const val = valueOf(v)
-    if (val !== undefined) out[k] = val
+    out[k] = v
   }
   return out
 }
 
 /** Build config from env, or null when billing is not configured (no keys ⇒ routes 503).
- *  STRIPE_PRICES = allowlist; STRIPE_OVERAGE_MAP = base:overage,…; STRIPE_INCLUDED = base:count,…. */
+ *  STRIPE_PRICES = allowlist; STRIPE_OVERAGE_MAP = base:overage,… (the worker owns STRIPE_INCLUDED). */
 export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): StripeConfig | null {
   const secretKey = env['STRIPE_SECRET_KEY']
   const webhookSecret = env['STRIPE_WEBHOOK_SECRET']
   const priceIds = (env['STRIPE_PRICES'] ?? '').split(',').map((s) => s.trim()).filter((s) => s.length > 0)
   if (!secretKey || !webhookSecret || priceIds.length === 0) return null
-  return {
-    secretKey,
-    webhookSecret,
-    priceIds,
-    overageMap: parsePairMap(env['STRIPE_OVERAGE_MAP'], (v) => v),
-    includedMap: parsePairMap(env['STRIPE_INCLUDED'], (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined }),
-    meterEvent: env['STRIPE_METER_EVENT'] ?? 'orbetra_device_overage',
-  }
+  return { secretKey, webhookSecret, priceIds, overageMap: parsePairMap(env['STRIPE_OVERAGE_MAP']) }
 }
 
 export function createStripeGateway(cfg: StripeConfig): StripeGateway {
@@ -120,15 +105,6 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
       return customer.id
     },
     overageFor: (basePriceId) => cfg.overageMap[basePriceId],
-    includedFor: (basePriceId) => cfg.includedMap[basePriceId],
-    reportUsage: async ({ customerId, value, timestampS }) => {
-      await stripe.billing.meterEvents.create({
-        event_name: cfg.meterEvent,
-        // meter value must be a string; the meter maps customers by stripe_customer_id
-        payload: { value: String(value), stripe_customer_id: customerId },
-        timestamp: timestampS,
-      })
-    },
     createCheckoutSession: async ({ customerId, tenantId, priceId, successUrl, cancelUrl }) => {
       // TSP plans carry a metered overage price as a 2nd line item (no quantity — usage-reported);
       // Direct plans have none. The base is always flat quantity 1.

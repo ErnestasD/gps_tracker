@@ -50,7 +50,7 @@ async function freshTenant(name: string) {
 
 // a fake Stripe gateway: deterministic customer ids, records checkout/portal calls
 const calls: { checkout: number; portal: number } = { checkout: 0, portal: 0 }
-// 'price_test' behaves like a TSP plan (has overage + included=2) so we can exercise the metering path
+// 'price_test' behaves like a TSP plan (maps to an overage price) so checkout adds the 2nd line item
 const fakeStripe: StripeGateway = {
   prices: ['price_test'],
   listPlans: () => Promise.resolve([{ priceId: 'price_test', productName: 'Direct 10', amount: 1500, currency: 'eur', interval: 'month' }]),
@@ -62,8 +62,6 @@ const fakeStripe: StripeGateway = {
     return JSON.parse(raw) as StripeEvent
   },
   overageFor: (b) => (b === 'price_test' ? 'price_over' : undefined),
-  includedFor: (b) => (b === 'price_test' ? 2 : undefined),
-  reportUsage: () => Promise.resolve(),
 }
 
 const base = (p: number) => `http://127.0.0.1:${p}`

@@ -17,8 +17,9 @@ import type { Db } from '@orbetra/db'
 export interface StripeUsagePort {
   /** Included device count for a base plan (TSP), or undefined for a Direct plan (no overage). */
   includedFor(basePriceId: string): number | undefined
-  /** Report a day's excess-device value to the overage meter for a customer. */
-  reportUsage(opts: { customerId: string; value: number; timestampS: number }): Promise<void>
+  /** Report a day's excess-device value to the overage meter. `identifier` makes the additive meter
+   *  idempotent: a re-fire (retry/restart/replay) with the same id is a Stripe-side no-op within 24 h. */
+  reportUsage(opts: { customerId: string; value: number; timestampS: number; identifier: string }): Promise<void>
 }
 
 /** Overage = devices beyond the plan's included allowance (never negative). */
@@ -35,16 +36,19 @@ export function stripeUsagePortFromEnv(env: NodeJS.ProcessEnv = process.env): St
   const included: Record<string, number> = {}
   for (const pair of (env['STRIPE_INCLUDED'] ?? '').split(',')) {
     const [k, v] = pair.split(':').map((s) => s.trim())
-    if (k === undefined || k === '' || v === undefined) continue
+    // v === '' would coerce Number('') → 0 → bill EVERY device as overage; drop it (no included config)
+    if (k === undefined || k === '' || v === undefined || v === '') continue
     const n = Number(v)
     if (Number.isFinite(n) && n >= 0) included[k] = Math.floor(n)
   }
   const stripe = new Stripe(secretKey)
   return {
     includedFor: (basePriceId) => included[basePriceId],
-    reportUsage: async ({ customerId, value, timestampS }) => {
+    reportUsage: async ({ customerId, value, timestampS, identifier }) => {
       await stripe.billing.meterEvents.create({
         event_name: meterEvent,
+        // identifier dedupes re-fires within Stripe's 24h window → the additive meter never double-bills
+        identifier,
         payload: { value: String(value), stripe_customer_id: customerId },
         timestamp: timestampS,
       })
@@ -78,7 +82,8 @@ export async function reportDailyOverage(
     const active = rows[0]?.deviceDays ?? 0
     const over = overageDevices(active, included)
     if (over <= 0) continue
-    await deps.stripe.reportUsage({ customerId: s.stripeCustomerId, value: over, timestampS })
+    // idempotency key = one report per (customer, day); a re-fire is a Stripe-side no-op
+    await deps.stripe.reportUsage({ customerId: s.stripeCustomerId, value: over, timestampS, identifier: `overage:${dayIso}:${s.stripeCustomerId}` })
     reported++
     devicesOver += over
   }

@@ -31,7 +31,10 @@ export function createStripeUsageWorker(deps: StripeUsageWorkerDeps): Worker {
     async () => {
       const nowMs = now()
       const day = utcDay(nowMs - 24 * 3_600_000) // yesterday (UTC)
-      const r = await reportDailyOverage({ db: deps.db, stripe: deps.stripe }, day, Math.floor(nowMs / 1000))
+      // stamp the meter event at NOON of the billed day (not report-time): a 00:00-aligned run must not
+      // push yesterday's usage into today's billing period at a subscription-renewal boundary.
+      const timestampS = Math.floor(Date.parse(`${day}T12:00:00Z`) / 1000)
+      const r = await reportDailyOverage({ db: deps.db, stripe: deps.stripe }, day, timestampS)
       deps.onReported?.(r)
     },
     { connection: deps.connection, concurrency: 1 },

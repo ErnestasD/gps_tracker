@@ -127,7 +127,9 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         data: {
           stripeSubscriptionId: data.stripeSubscriptionId,
           subscriptionStatus: data.subscriptionStatus,
-          subscriptionPriceId: data.subscriptionPriceId,
+          // only overwrite the base price when this event actually carried one (expanded items ∩
+          // allowlist) — a malformed/unexpanded event must not null out a good plan → drop from billing
+          ...(data.subscriptionPriceId !== null ? { subscriptionPriceId: data.subscriptionPriceId } : {}),
           currentPeriodEnd: data.currentPeriodEnd,
           lastBillingEventAt: eventAt,
         },

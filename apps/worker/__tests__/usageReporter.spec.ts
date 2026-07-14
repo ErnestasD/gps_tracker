@@ -19,9 +19,9 @@ describe('overageDevices', () => {
 })
 
 // a fake port: 'price_tsp' includes 200 devices; 'price_direct' has no overage
-const port = (reports: { customerId: string; value: number }[]): StripeUsagePort => ({
+const port = (reports: { customerId: string; value: number; identifier: string }[]): StripeUsagePort => ({
   includedFor: (p) => (p === 'price_tsp' ? 200 : undefined),
-  reportUsage: ({ customerId, value }) => { reports.push({ customerId, value }); return Promise.resolve() },
+  reportUsage: ({ customerId, value, identifier }) => { reports.push({ customerId, value, identifier }); return Promise.resolve() },
 })
 
 // a fake Db exposing only what the reporter uses
@@ -34,7 +34,7 @@ function fakeDb(subs: { tenantId: string; stripeCustomerId: string; subscription
 
 describe('reportDailyOverage', () => {
   it('reports only TSP tenants over their allowance, with the excess device count', async () => {
-    const reports: { customerId: string; value: number }[] = []
+    const reports: { customerId: string; value: number; identifier: string }[] = []
     const db = fakeDb(
       [
         { tenantId: 't-over', stripeCustomerId: 'cus_over', subscriptionPriceId: 'price_tsp' }, // 205 → over by 5
@@ -46,11 +46,12 @@ describe('reportDailyOverage', () => {
     )
     const r = await reportDailyOverage({ db, stripe: port(reports) }, '2026-07-13', 1_800_000_000)
     expect(r).toMatchObject({ subscribers: 4, reported: 1, devicesOver: 5 })
-    expect(reports).toEqual([{ customerId: 'cus_over', value: 5 }]) // ONLY the over-allowance TSP tenant
+    // ONLY the over-allowance TSP tenant, with a per-(customer,day) idempotency key
+    expect(reports).toEqual([{ customerId: 'cus_over', value: 5, identifier: 'overage:2026-07-13:cus_over' }])
   })
 
   it('reports nothing when no tenant exceeds its allowance', async () => {
-    const reports: { customerId: string; value: number }[] = []
+    const reports: { customerId: string; value: number; identifier: string }[] = []
     const db = fakeDb([{ tenantId: 't1', stripeCustomerId: 'cus_1', subscriptionPriceId: 'price_tsp' }], { t1: 200 })
     const r = await reportDailyOverage({ db, stripe: port(reports) }, '2026-07-13', 1_800_000_000)
     expect(r.reported).toBe(0)
