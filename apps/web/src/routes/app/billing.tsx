@@ -16,7 +16,11 @@ import { fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from 
 export function BillingPage() {
   const { t } = useTranslation()
   const billing = useQuery({ queryKey: ['billing'], queryFn: getBilling })
-  const plans = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans })
+  const b = billing.data
+  const showPicker = b?.configured === true && !b.active
+  // only fetch the catalog when the picker is shown (each plan is a live Stripe price lookup);
+  // catalog data is near-static, so cache it for the session
+  const plans = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker, staleTime: 5 * 60 * 1000 })
   const [busy, setBusy] = useState(false)
 
   const go = (fn: () => Promise<{ url: string }>) => {
@@ -26,9 +30,7 @@ export function BillingPage() {
       .catch(() => setBusy(false))
   }
 
-  const b = billing.data
   const statusLabel = b?.status ?? t('billing.none')
-  const showPicker = b?.configured === true && !b.active
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col gap-4 overflow-auto p-4">
