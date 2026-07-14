@@ -107,6 +107,17 @@ export interface HealthSampleView {
   battV: number | null
 }
 
+/** Latest CAN/OBD engine snapshot (V2). null fields = the vehicle/adapter doesn't report that param. */
+export interface CanView {
+  fixTime: string // ISO
+  rpm: number | null
+  coolantC: number | null
+  engineLoadPct: number | null
+  throttlePct: number | null
+  speedKmh: number | null
+  totalMileageKm: number | null
+}
+
 /** An event as returned by the read API (E05-2/4 pipeline output, serialized). */
 export interface EventView {
   id: string // bigint as string — also the pagination cursor

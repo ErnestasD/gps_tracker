@@ -364,6 +364,16 @@
       "empty": "Brak danych o stanie — urządzenie zgłasza GSM/napięcie podczas pracy.",
       "loadError": "Nie udało się wczytać stanu."
     },
+    "can": {
+      "title": "Silnik (CAN/OBD)",
+      "rpm": "Obroty silnika",
+      "coolant": "Płyn chłodzący",
+      "load": "Obciążenie silnika",
+      "throttle": "Przepustnica",
+      "speed": "Prędkość",
+      "odometer": "Przebieg",
+      "loadError": "Nie udało się wczytać danych silnika."
+    },
     "share": {
       "button": "Udostępnij",
       "title": "Link udostępniania — {{name}}",

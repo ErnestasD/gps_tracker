@@ -364,6 +364,16 @@
       "empty": "No health data yet — the device reports GSM/voltage as it runs.",
       "loadError": "Could not load health."
     },
+    "can": {
+      "title": "Engine (CAN/OBD)",
+      "rpm": "Engine RPM",
+      "coolant": "Coolant",
+      "load": "Engine load",
+      "throttle": "Throttle",
+      "speed": "Vehicle speed",
+      "odometer": "Odometer",
+      "loadError": "Could not load engine data."
+    },
     "share": {
       "button": "Share",
       "title": "Share link — {{name}}",

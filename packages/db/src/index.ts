@@ -27,6 +27,7 @@ export { readPositions, readLatestValidPosition, readOdometersKm, type Positions
 export { readDriverScores, type DriverScoreScope, type DriverScoreOpts, type DriverScoreAgg } from './driverScores.js'
 export { readFuelSeries, type FuelOpts } from './fuel.js'
 export { readHealthSeries, type HealthOpts } from './health.js'
+export { readCanLatest } from './can.js'
 export { erasePositions } from './gdpr.js'
 export {
   runReport,

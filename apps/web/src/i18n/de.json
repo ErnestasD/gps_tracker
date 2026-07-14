@@ -364,6 +364,16 @@
       "empty": "Noch keine Zustandsdaten — das Gerät meldet GSM/Spannung im Betrieb.",
       "loadError": "Zustand konnte nicht geladen werden."
     },
+    "can": {
+      "title": "Motor (CAN/OBD)",
+      "rpm": "Motordrehzahl",
+      "coolant": "Kühlmittel",
+      "load": "Motorlast",
+      "throttle": "Drosselklappe",
+      "speed": "Geschwindigkeit",
+      "odometer": "Kilometerstand",
+      "loadError": "Motordaten konnten nicht geladen werden."
+    },
     "share": {
       "button": "Teilen",
       "title": "Freigabelink — {{name}}",

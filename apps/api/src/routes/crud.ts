@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -375,6 +375,15 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const firmware = cmds.find((cmd) => cmd.text.trim().toLowerCase() === 'getver' && cmd.status === 'acked' && cmd.response !== null)?.response ?? null
         const latest = series.length > 0 ? series[series.length - 1] : null
         return json(c, { series, latest, firmware, lastSeen: latest?.fixTime ?? null })
+      } },
+    // latest CAN/OBD engine snapshot (V2) — null when the vehicle has no CAN adapter
+    { method: 'get', path: '/v1/devices/:id/can', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
+        return json(c, await readCanLatest(deps.pool, device.id))
       } },
     { method: 'get', path: '/v1/devices/:id/trips', scopeClass: 'account', entity: 'device', shape: 'item',
       handler: async (c) => {

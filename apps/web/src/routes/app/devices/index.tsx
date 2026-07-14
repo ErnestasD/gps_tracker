@@ -12,6 +12,7 @@ import { ApiError } from '@/lib/http'
 import { eraseDevice } from '@/lib/gdpr'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { HealthCard } from '@/routes/app/devices/health'
+import { CanCard } from '@/routes/app/devices/can'
 import { ShareCard } from '@/routes/app/devices/share'
 import { OnboardingCard } from '@/routes/app/devices/onboarding'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
@@ -229,6 +230,7 @@ export function DevicesPage() {
       {/* key remounts the panel per device — armed/text state must NEVER survive a device
           switch (a confirm armed for device A must not send with one click on device B) */}
       {healthFor !== null && <HealthCard key={healthFor.id} device={healthFor} />}
+      {healthFor !== null && <CanCard key={`can-${healthFor.id}`} device={healthFor} />}
       {onboardFor !== null && <OnboardingCard key={onboardFor.id} device={onboardFor} />}
       {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
       {shareFor !== null && <ShareCard key={shareFor.id} device={shareFor} />}
