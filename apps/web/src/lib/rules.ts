@@ -1,8 +1,13 @@
+import { notificationChannelSchema } from '@orbetra/shared'
+
 import { getJson, mutate } from './client'
 
 /** Rule kinds (mirror the Prisma RuleKind enum). */
 export const RULE_KINDS = ['overspeed', 'geofence', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'device_offline'] as const
 export type RuleKind = (typeof RULE_KINDS)[number]
+
+/** A rule's notification channel (mirrors packages/shared notificationChannelSchema). */
+export type NotificationChannel = { type: 'email'; to: string } | { type: 'telegram'; chatId: string }
 
 export interface Rule {
   id: string
@@ -11,7 +16,7 @@ export interface Rule {
   name: string
   config: Record<string, unknown>
   scope: Record<string, unknown>
-  channels: unknown[]
+  channels: NotificationChannel[]
   cooldownS: number
   enabled: boolean
 }
@@ -21,10 +26,24 @@ export interface RuleCreateInput {
   kind: RuleKind
   name: string
   config?: Record<string, unknown>
+  channels?: NotificationChannel[]
   cooldownS?: number
   enabled?: boolean
 }
 export type RuleUpdateInput = Partial<Omit<RuleCreateInput, 'accountId' | 'kind'>>
+
+/** Parse a "type + value" draft into a channel, or null if invalid. Pure — unit-tested. Validates
+ *  through the SHARED notificationChannelSchema (the same zod the server enforces) so the client is
+ *  never looser than the server — a value that would 400 is rejected at the chip, with a field error. */
+export function parseChannel(type: 'email' | 'telegram', value: string): NotificationChannel | null {
+  const v = value.trim()
+  if (v === '') return null
+  const candidate = type === 'email' ? { type: 'email', to: v } : { type: 'telegram', chatId: v }
+  const r = notificationChannelSchema.safeParse(candidate)
+  return r.success ? r.data : null
+}
+/** Human label for a channel chip. */
+export const channelLabel = (c: NotificationChannel): string => (c.type === 'email' ? c.to : `Telegram ${c.chatId}`)
 
 export const listRules = () => getJson<Rule[]>('/v1/rules')
 export const createRule = (data: RuleCreateInput) => mutate<Rule>('POST', '/v1/rules', data)

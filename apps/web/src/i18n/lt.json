@@ -147,7 +147,18 @@
       "afterH": "Po (val.)"
     },
     "needGeofence": "Pasirinkite geozoną šiai taisyklei.",
-    "actionError": "Veiksmas nepavyko — bandykite dar kartą."
+    "actionError": "Veiksmas nepavyko — bandykite dar kartą.",
+    "channels": {
+      "label": "Pranešimų kanalai",
+      "email": "El. paštas",
+      "telegram": "Telegram",
+      "emailPlaceholder": "vardas@imone.lt",
+      "telegramPlaceholder": "chat id",
+      "add": "Pridėti",
+      "invalid": "Įveskite teisingą el. paštą arba chat id.",
+      "count": "{{n}} kanal.",
+      "none": "nėra kanalų"
+    }
   },
   "playback": {
     "title": "Istorijos peržiaura",

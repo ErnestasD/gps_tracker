@@ -147,7 +147,18 @@
       "afterH": "Po (godz.)"
     },
     "needGeofence": "Wybierz geostrefę dla tej reguły.",
-    "actionError": "Akcja nie powiodła się — spróbuj ponownie."
+    "actionError": "Akcja nie powiodła się — spróbuj ponownie.",
+    "channels": {
+      "label": "Kanały powiadomień",
+      "email": "E-mail",
+      "telegram": "Telegram",
+      "emailPlaceholder": "imie@firma.com",
+      "telegramPlaceholder": "chat id",
+      "add": "Dodaj",
+      "invalid": "Wpisz poprawny e-mail lub chat id.",
+      "count": "{{n}} kanał(y)",
+      "none": "brak kanałów"
+    }
   },
   "playback": {
     "title": "Odtwarzanie historii",

@@ -147,7 +147,18 @@
       "afterH": "Nach (Std.)"
     },
     "needGeofence": "Wählen Sie eine Geozone für diese Regel.",
-    "actionError": "Aktion fehlgeschlagen — erneut versuchen."
+    "actionError": "Aktion fehlgeschlagen — erneut versuchen.",
+    "channels": {
+      "label": "Benachrichtigungskanäle",
+      "email": "E-Mail",
+      "telegram": "Telegram",
+      "emailPlaceholder": "name@firma.com",
+      "telegramPlaceholder": "Chat-ID",
+      "add": "Hinzufügen",
+      "invalid": "Gültige E-Mail oder Chat-ID eingeben.",
+      "count": "{{n}} Kanäle",
+      "none": "keine Kanäle"
+    }
   },
   "playback": {
     "title": "Verlauf-Wiedergabe",
