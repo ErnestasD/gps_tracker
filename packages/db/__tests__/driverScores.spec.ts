@@ -88,6 +88,19 @@ describe('V2 readDriverScores', () => {
     expect(bob.overspeedEvents).toBe(0)
   })
 
+  it('account-scoped: a scope with accountId sees ONLY that account’s drivers (review MED)', async () => {
+    const tenant = await db.tenants.create(actor, { name: 'Two-Acct Co' })
+    const tScope = { tenantId: tenant.id }
+    const a1 = await db.accounts.create(tScope, actor, { name: 'A1' })
+    const a2 = await db.accounts.create(tScope, actor, { name: 'A2' })
+    await db.drivers.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, name: 'A1 Driver' })
+    await db.drivers.create({ tenantId: tenant.id, accountId: a2.id }, actor, { accountId: a2.id, name: 'A2 Driver' })
+    // tenant-wide scope sees both
+    expect((await readDriverScores(pool, tScope, {})).map((s) => s.driverName).sort()).toEqual(['A1 Driver', 'A2 Driver'])
+    // account A1 scope sees ONLY A1's driver (the $4 accountId filter)
+    expect((await readDriverScores(pool, { tenantId: tenant.id, accountId: a1.id }, {})).map((s) => s.driverName)).toEqual(['A1 Driver'])
+  })
+
   it('is tenant-scoped: another tenant’s drivers never appear', async () => {
     const other = await db.tenants.create(actor, { name: 'Other Co' })
     const oa = await db.accounts.create({ tenantId: other.id }, actor, { name: 'A' })

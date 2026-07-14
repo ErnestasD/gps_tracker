@@ -59,7 +59,9 @@ export async function readDriverScores(pool: Pool, scope: DriverScoreScope, opts
           ON t2."driverId" = d.id AND e."deviceId" = t2."deviceId"
           AND e.at >= t2."startTime" AND e.at <= coalesce(t2."endTime", $3::timestamptz)
           AND t2."startTime" >= $2 AND t2."startTime" <= $3
-        WHERE e.kind = 'overspeed'
+        -- explicit tenant scope (defense-in-depth: makes isolation self-evident, not merely implied
+        -- by globally-unique driverId/deviceId, and lets the planner use the tenant index)
+        WHERE e.kind = 'overspeed' AND e."tenantId" = $1 AND t2."tenantId" = $1
       ), 0) AS overspeed_events
     FROM drivers d
     LEFT JOIN trips t ON t."driverId" = d.id AND t."startTime" >= $2 AND t."startTime" <= $3
