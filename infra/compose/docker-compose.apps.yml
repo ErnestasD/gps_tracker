@@ -53,6 +53,10 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: ${MAIL_FROM:-}
       SES_CONFIG_SET: ${SES_CONFIG_SET:-}
+      # Stripe overage usage reporter (ADR-024 PR B2) — values in /opt/orbetra/.env (rule 12); absent ⇒ skipped
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_INCLUDED: ${STRIPE_INCLUDED:-}
+      STRIPE_METER_EVENT: ${STRIPE_METER_EVENT:-orbetra_device_overage}
     volumes:
       - exports:/var/orbetra/exports
     depends_on:
@@ -77,6 +81,12 @@ services:
       # would silently break login there. Flip to 1 the day TLS is on.
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
       EXPORT_DIR: /var/orbetra/exports
+      # Stripe billing (ADR-024) — values in /opt/orbetra/.env (rule 12); absent ⇒ billing routes 503
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICES: ${STRIPE_PRICES:-}
+      STRIPE_OVERAGE_MAP: ${STRIPE_OVERAGE_MAP:-}
+      APP_BASE_URL: ${APP_BASE_URL:-}
     volumes:
       # the GDPR download route streams the file the WORKER wrote — same volume on both
       # (review HIGH: without this every export download 410s "file removed")
