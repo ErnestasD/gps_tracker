@@ -183,6 +183,8 @@
     "title": "Geozonen",
     "polygon": "Polygon",
     "circle": "Kreis",
+    "corridor": "Korridor",
+    "buffer": "Puffer (m)",
     "clear": "Löschen",
     "name": "Name",
     "color": "Farbe",

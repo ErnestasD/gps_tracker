@@ -183,6 +183,8 @@
     "title": "Geozonos",
     "polygon": "Poligonas",
     "circle": "Apskritimas",
+    "corridor": "Koridorius",
+    "buffer": "Buferis (m)",
     "clear": "Išvalyti",
     "name": "Pavadinimas",
     "color": "Spalva",

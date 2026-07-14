@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import maplibregl, { Map as MlMap } from 'maplibre-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TerraDraw, TerraDrawCircleMode, TerraDrawPolygonMode, TerraDrawSelectMode } from 'terra-draw'
+import { TerraDraw, TerraDrawCircleMode, TerraDrawLineStringMode, TerraDrawPolygonMode, TerraDrawSelectMode } from 'terra-draw'
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter'
 
 import { Badge } from '@/components/ui/badge'
@@ -16,9 +16,10 @@ import { createGeofence, deleteGeofence, geofenceFeatures, listGeofences } from 
 const STYLE_URL: string = (import.meta.env.VITE_TILES_STYLE_URL as string | undefined) ?? 'https://tiles.openfreemap.org/styles/liberty'
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 
-type Drawn = { geometry: GeoJSON.Geometry; kind: 'polygon' | 'circle' } | null
+type Drawn = { geometry: GeoJSON.Geometry; kind: 'polygon' | 'circle' | 'corridor' } | null
 
-/** Geofences (E05-1): draw polygon/circle with terra-draw, save, list, delete. */
+/** Geofences (E05-1): draw polygon/circle with terra-draw, save, list, delete.
+ *  Corridor (V2): draw a route LineString + a buffer half-width; the server buffers it to a polygon. */
 export function GeofencesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -30,6 +31,7 @@ export function GeofencesPage() {
   const [drawn, setDrawn] = useState<Drawn>(null)
   const [name, setName] = useState('')
   const [color, setColor] = useState('#4DA3FF')
+  const [bufferM, setBufferM] = useState(100) // corridor half-width in metres (10 … 5000)
   const [error, setError] = useState<string | null>(null)
 
   // map + terra-draw lifecycle
@@ -47,14 +49,17 @@ export function GeofencesPage() {
       map.addLayer({ id: 'gf-line', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
       const draw = new TerraDraw({
         adapter: new TerraDrawMapLibreGLAdapter({ map, coordinatePrecision: 9 }),
-        modes: [new TerraDrawPolygonMode(), new TerraDrawCircleMode(), new TerraDrawSelectMode()],
+        modes: [new TerraDrawPolygonMode(), new TerraDrawCircleMode(), new TerraDrawLineStringMode(), new TerraDrawSelectMode()],
       })
       draw.start()
       draw.on('finish', (id) => {
         const feat = draw.getSnapshot().find((f) => f.id === id)
-        if (feat && feat.geometry.type === 'Polygon') {
+        if (!feat) return
+        if (feat.geometry.type === 'Polygon') {
           const mode = feat.properties['mode']
           setDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: mode === 'circle' ? 'circle' : 'polygon' })
+        } else if (feat.geometry.type === 'LineString') {
+          setDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: 'corridor' })
         }
       })
       drawRef.current = draw
@@ -76,7 +81,7 @@ export function GeofencesPage() {
     map.getSource<maplibregl.GeoJSONSource>('geofences')?.setData(geofenceFeatures(geofences.data ?? []))
   }, [geofences.data, ready])
 
-  const setMode = (mode: 'polygon' | 'circle' | 'select') => {
+  const setMode = (mode: 'polygon' | 'circle' | 'linestring' | 'select') => {
     drawRef.current?.setMode(mode)
     if (mode !== 'select') { drawRef.current?.clear(); setDrawn(null) }
   }
@@ -85,7 +90,11 @@ export function GeofencesPage() {
   const save = () => {
     if (drawn === null || name.trim() === '') return
     setError(null)
-    createGeofence({ name: name.trim(), kind: drawn.kind, color, geometry: drawn.geometry })
+    // a corridor sends its route line + buffer half-width; polygon/circle send the drawn polygon
+    const created = drawn.kind === 'corridor'
+      ? createGeofence({ name: name.trim(), kind: 'corridor', color, line: drawn.geometry, bufferM })
+      : createGeofence({ name: name.trim(), kind: drawn.kind, color, geometry: drawn.geometry })
+    created
       .then(() => {
         setName(''); clearDraw()
         void qc.invalidateQueries({ queryKey: ['geofences'] })
@@ -100,8 +109,14 @@ export function GeofencesPage() {
         <div className="flex gap-1">
           <Button variant="secondary" size="sm" data-testid="gf-mode-polygon" onClick={() => setMode('polygon')}>{t('geofences.polygon')}</Button>
           <Button variant="secondary" size="sm" data-testid="gf-mode-circle" onClick={() => setMode('circle')}>{t('geofences.circle')}</Button>
+          <Button variant="secondary" size="sm" data-testid="gf-mode-corridor" onClick={() => setMode('linestring')}>{t('geofences.corridor')}</Button>
           <Button variant="ghost" size="sm" data-testid="gf-clear" onClick={clearDraw}>{t('geofences.clear')}</Button>
         </div>
+        {drawn?.kind === 'corridor' && (
+          <label className="flex flex-col gap-1 text-xs text-muted">{t('geofences.buffer')}
+            <Input type="number" min={10} max={5000} step={10} value={bufferM} onChange={(e) => setBufferM(Math.max(10, Math.min(5000, Number(e.target.value) || 10)))} data-testid="gf-buffer" className="w-24" />
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-xs text-muted">{t('geofences.name')}
           <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="gf-name" className="w-40" />
         </label>
