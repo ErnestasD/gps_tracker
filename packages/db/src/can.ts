@@ -13,6 +13,10 @@ import type { CanView } from '@orbetra/shared'
  * under `io_<id>` on collision — we coalesce the CAN id first, then the OBD id, then the name. jsonb
  * values are coerced defensively in JS (a ::numeric cast on garbage would 500). Returns null when the
  * device has never reported any CAN param (non-CAN vehicle).
+ *
+ * PERF (deferred, like readFuelSeries): the `?|` filter can't use the (device_id, fix_time) index, so
+ * a non-CAN device scans its history to return null. Fine at V1 scale; add a partial index if CAN
+ * fleets grow. The panel hides + React-Query caches, so a device is scanned at most once per open.
  */
 const num = (v: string | null | undefined): number | null => {
   if (v === null || v === undefined) return null
