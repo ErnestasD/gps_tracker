@@ -64,7 +64,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     webhookDeliveries: { list: notImpl },
     usage: { platformSummary: notImpl, tenantSummary: notImpl },
     events: { list: notImpl, get: notImpl },
-    trips: { list: notImpl, get: notImpl },
+    trips: { list: notImpl, get: notImpl, assignDriver: notImpl },
     geofences: { list: notImpl, get: notImpl, create: notImpl, update: notImpl, remove: notImpl },
     audit: { record: () => Promise.resolve(), list: notImpl, get: notImpl },
     $disconnect: () => Promise.resolve(),

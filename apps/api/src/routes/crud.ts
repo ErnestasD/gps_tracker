@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readPositions, type Db, type Pool } from '@orbetra/db'
+import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readFuelSeries, readHealthSeries, readPositions, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -20,6 +20,7 @@ import {
   ruleUpdateSchema,
   driverCreateSchema,
   driverUpdateSchema,
+  tripAssignDriverSchema,
   shareCreateSchema,
   tenantCreateSchema,
   tenantUpdateSchema,
@@ -107,6 +108,7 @@ const WRITE_POLICY: Record<string, Role[]> = {
   webhook: TENANT_ADMINS,
   geofence: ACCOUNT_WRITERS,
   driver: ACCOUNT_WRITERS,
+  trip: ACCOUNT_WRITERS, // assigning a driver to a trip is an operator action
   command: ACCOUNT_WRITERS, // sending a Codec-12 command controls hardware → writers only
   export: TENANT_ADMINS, // requesting a GDPR export
   gdpr: TENANT_ADMINS, // device erase — irreversible data destruction
@@ -753,6 +755,22 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const row = await db.trips.get(scopeOf(auth(c)), id(c))
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    // assign/clear a trip's driver (V2) — scope gate the TRIP first (404), then validate body; a
+    // cross-tenant/-account driver is refused (DriverNotInScopeError → 400, never assigns it)
+    { method: 'patch', path: '/v1/trips/:id/driver', scopeClass: 'account', entity: 'trip', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        if (await db.trips.get(scope, id(c)) === null) return problem(c, 404, 'Not Found')
+        const data = await body(c, tripAssignDriverSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        try {
+          const row = await db.trips.assignDriver(scope, { userId: auth(c).userId }, id(c), data.driverId)
+          return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+        } catch (err) {
+          if (err instanceof DriverNotInScopeError) return problem(c, 400, 'Bad Request', 'driverId not in scope')
+          throw err
+        }
       } },
 
     // ── audit log (E03-6, tenant, read-only + admin-gated, append-only) ─────────

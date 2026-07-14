@@ -113,7 +113,9 @@
     "ongoing": "W toku",
     "odo": "odo",
     "gps": "gps",
-    "error": "Nie udało się wczytać tras."
+    "error": "Nie udało się wczytać tras.",
+    "driver": "Kierowca",
+    "noDriver": "Brak kierowcy"
   },
   "rules": {
     "title": "Reguły",

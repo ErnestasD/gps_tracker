@@ -113,7 +113,9 @@
     "ongoing": "Ongoing",
     "odo": "odo",
     "gps": "gps",
-    "error": "Could not load trips."
+    "error": "Could not load trips.",
+    "driver": "Driver",
+    "noDriver": "No driver"
   },
   "rules": {
     "title": "Rules",

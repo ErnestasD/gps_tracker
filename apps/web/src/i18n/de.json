@@ -113,7 +113,9 @@
     "ongoing": "Laufend",
     "odo": "Odo",
     "gps": "GPS",
-    "error": "Fahrten konnten nicht geladen werden."
+    "error": "Fahrten konnten nicht geladen werden.",
+    "driver": "Fahrer",
+    "noDriver": "Kein Fahrer"
   },
   "rules": {
     "title": "Regeln",

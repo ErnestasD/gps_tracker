@@ -82,7 +82,14 @@ export interface TripView {
   distanceSource: 'gps' | 'odometer'
   maxSpeed: number
   idleS: number
+  /** assigned driver (V2) — null when unassigned; driverName is the joined display label. */
+  driverId: string | null
+  driverName: string | null
 }
+/** Assign or clear a trip's driver (V2). null clears the assignment. */
+export const tripAssignDriverSchema = z.object({
+  driverId: z.string().uuid().nullable(),
+})
 /** One fuel-level sample for the playback fuel graph (E08-3). pct comes from AVL 89 (or
  * OBD 48) in %, liters from AVL 84 (wiki ×0.1 already applied). Either may be null when
  * the device reports only one representation. */
