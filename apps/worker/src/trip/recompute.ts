@@ -121,6 +121,15 @@ export async function recomputeTrips(
   const client: PoolClient = await pool.connect()
   try {
     await client.query('BEGIN')
+    // capture existing driver assignments BEFORE the delete so recompute doesn't wipe them — a
+    // driverId is a manual assignment OR a prior auto iButton resolution, neither derivable from
+    // positions. Ordered so an earlier window wins a same-slot tie (first-writer via the NULL guard).
+    const oldDrivers = await client.query<{ startTime: Date; endTime: Date | null; driverId: string }>(
+      `SELECT "startTime","endTime","driverId" FROM trips
+         WHERE "deviceId"=$1 AND status='closed' AND "startTime" >= $2 AND "startTime" <= $3 AND "driverId" IS NOT NULL
+         ORDER BY "startTime"`,
+      [dev, coreFrom, coreTo],
+    )
     const del = await client.query(
       `DELETE FROM trips WHERE "deviceId"=$1 AND status='closed' AND "startTime" >= $2 AND "startTime" <= $3`,
       [dev, coreFrom, coreTo],
@@ -130,6 +139,16 @@ export async function recomputeTrips(
         `INSERT INTO trips ("tenantId","accountId","deviceId","status","startTime","endTime","startLat","startLon","endLat","endLon","distanceM","distanceSource","maxSpeed","idleS")
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [scope.tenantId, scope.accountId, dev, t.status, t.startTime, t.endTime, t.startLat, t.startLon, t.endLat, t.endLon, t.distanceM, t.distanceSource, t.maxSpeed, t.idleS],
+      )
+    }
+    // carry each captured driver onto the recomputed trip(s) that START within its old window,
+    // only where still unset — so a preserved boundary keeps its driver, a split shares it, and a
+    // merge takes the earliest. Positions never carry a driver, so this is the sole carry path.
+    for (const od of oldDrivers.rows) {
+      await client.query(
+        `UPDATE trips SET "driverId"=$4
+           WHERE "deviceId"=$1 AND status='closed' AND "driverId" IS NULL AND "startTime" >= $2 AND "startTime" <= $3`,
+        [dev, od.startTime, od.endTime ?? od.startTime, od.driverId],
       )
     }
     await client.query('COMMIT')

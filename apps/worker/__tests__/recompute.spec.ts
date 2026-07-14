@@ -81,7 +81,25 @@ async function snapshot(): Promise<Snap[]> {
   })
 }
 
+const DRIVER = '33333333-3333-3333-3333-333333333333'
+async function driverIdOfTrips(): Promise<(string | null)[]> {
+  const r = await pool.query('SELECT "driverId" FROM trips WHERE "deviceId"=$1 ORDER BY "startTime"', [DEV.toString()])
+  return r.rows.map((x) => (x as { driverId: string | null }).driverId)
+}
+
 describe('E04-2 trip recompute (idempotent, §6.4)', () => {
+  it('carries a driver assignment across a recompute (manual/auto driver is not wiped)', async () => {
+    await pool.query(`INSERT INTO drivers (id,"tenantId","accountId",name) VALUES ($1,$2,$3,'Jonas')`, [DRIVER, SCOPE.tenantId, SCOPE.accountId])
+    await insert(trip(0, 54.9))
+    await recomputeTrips(pool, DEV, at(-10), at(400), SCOPE)
+    // assign the driver (manual assign, or a prior auto iButton resolution)
+    await pool.query('UPDATE trips SET "driverId"=$1 WHERE "deviceId"=$2', [DRIVER, DEV.toString()])
+    expect(await driverIdOfTrips()).toEqual([DRIVER])
+    // a late-batch recompute must NOT lose the driver
+    await recomputeTrips(pool, DEV, at(-10), at(400), SCOPE)
+    expect(await driverIdOfTrips()).toEqual([DRIVER])
+  })
+
   it('idempotency: recompute twice over the same positions == recompute once', async () => {
     await insert([...trip(0, 54.0), ...trip(700, 55.0)])
     const first = await recomputeTrips(pool, DEV, at(-10), at(1100), SCOPE)
