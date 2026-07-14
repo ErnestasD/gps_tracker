@@ -46,6 +46,13 @@ services:
       PROMETHEUS_PORT: "9102"
       EXPORT_DIR: /var/orbetra/exports
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # E05-5 email delivery (ADR-023) — values live in /opt/orbetra/.env (rule 12); absent ⇒ skipped
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      SES_CONFIG_SET: ${SES_CONFIG_SET:-}
     volumes:
       - exports:/var/orbetra/exports
     depends_on:
