@@ -48,6 +48,9 @@ export interface GeofenceUpdate {
 
 export interface GeofenceRepo {
   list(scope: Scope): Promise<GeofenceView[]>
+  /** UNSCOPED boot rehydrate (no request scope): every geofence across all tenants, so the API can
+   *  repopulate the `geofence:tenant:*` Redis cache after a Redis flush. */
+  listAll(): Promise<GeofenceView[]>
   get(scope: Scope, id: string): Promise<GeofenceView | null>
   /** @throws GeofenceInvalidError | GeofenceTooLargeError */
   create(scope: Scope, actor: Actor, data: GeofenceCreate): Promise<GeofenceView>
@@ -115,6 +118,10 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
   return {
     list: async (scope) => {
       const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`SELECT ${COLS} FROM geofences WHERE ${scopeSql(scope)} ORDER BY "createdAt" DESC`)
+      return rows.map(toView)
+    },
+    listAll: async () => {
+      const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`SELECT ${COLS} FROM geofences`)
       return rows.map(toView)
     },
     get: one,
