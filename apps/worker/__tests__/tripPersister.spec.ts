@@ -67,14 +67,18 @@ describe('E04-1 TripPersister', () => {
 
   it('resolves the trip iButton to a driver (V2 Part B) and closes with COALESCE(driverId)', async () => {
     const { pool, calls } = fakePool()
-    // device 42 in tenant ten-1; the tenant's iButton map resolves key "2712847316" → driver drv-9
-    const redis = fakeRedis({ '42': { t: 'ten-1', a: 'acc-1' } }, { 'ten-1': { '2712847316': 'drv-9' } })
+    // device 42 in ten-1/acc-1. acc-1's map resolves 2712847316 → drv-9; a SIBLING account acc-2 has
+    // a driver on the SAME key that must NEVER resolve for an acc-1 trip (account boundary).
+    const redis = fakeRedis({ '42': { t: 'ten-1', a: 'acc-1' } }, {
+      'ten-1:acc-1': { '2712847316': 'drv-9' },
+      'ten-1:acc-2': { '2712847316': 'drv-OTHER' },
+    })
     const p = new TripPersister(pool, redis)
     await p.apply([openEv(42n)])
     await p.apply([closeEv(42n, '2712847316')])
     const update = calls.find((c) => c.sql.includes('UPDATE trips'))!
     expect(update.sql).toContain('COALESCE("driverId"')
-    expect(update.params[8]).toBe('drv-9') // resolved driver threaded as the 9th param
+    expect(update.params[8]).toBe('drv-9') // acc-1's driver — never drv-OTHER from acc-2
     // a close with an UNKNOWN iButton resolves to null (no driver), never errors
     await p.apply([openEv(42n)])
     await p.apply([closeEv(42n, '9999999999')])
