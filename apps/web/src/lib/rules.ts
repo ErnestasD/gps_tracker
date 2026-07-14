@@ -1,3 +1,5 @@
+import { notificationChannelSchema } from '@orbetra/shared'
+
 import { getJson, mutate } from './client'
 
 /** Rule kinds (mirror the Prisma RuleKind enum). */
@@ -30,13 +32,15 @@ export interface RuleCreateInput {
 }
 export type RuleUpdateInput = Partial<Omit<RuleCreateInput, 'accountId' | 'kind'>>
 
-/** Parse a "type + value" draft into a channel, or null if invalid. Pure — unit-tested. The email
- *  regex mirrors zod's `.email()` closely enough to catch typos before the 400 round-trip. */
+/** Parse a "type + value" draft into a channel, or null if invalid. Pure — unit-tested. Validates
+ *  through the SHARED notificationChannelSchema (the same zod the server enforces) so the client is
+ *  never looser than the server — a value that would 400 is rejected at the chip, with a field error. */
 export function parseChannel(type: 'email' | 'telegram', value: string): NotificationChannel | null {
   const v = value.trim()
   if (v === '') return null
-  if (type === 'email') return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? { type: 'email', to: v } : null
-  return v.length <= 64 ? { type: 'telegram', chatId: v } : null
+  const candidate = type === 'email' ? { type: 'email', to: v } : { type: 'telegram', chatId: v }
+  const r = notificationChannelSchema.safeParse(candidate)
+  return r.success ? r.data : null
 }
 /** Human label for a channel chip. */
 export const channelLabel = (c: NotificationChannel): string => (c.type === 'email' ? c.to : `Telegram ${c.chatId}`)

@@ -42,6 +42,10 @@ describe('E05-3 rule config fields', () => {
     expect(parseChannel('email', ' alerts@orbetra.com ')).toEqual({ type: 'email', to: 'alerts@orbetra.com' })
     expect(parseChannel('email', 'not-an-email')).toBeNull()
     expect(parseChannel('email', '')).toBeNull()
+    // aligned to the server zod (not a looser hand-rolled regex): these 400-class typos are
+    // rejected at the chip, not sent to a dead-end 400 (review MED-1)
+    expect(parseChannel('email', 'a..b@x.com')).toBeNull() // double dot
+    expect(parseChannel('email', '.name@x.com')).toBeNull() // leading dot
     expect(parseChannel('telegram', '123456789')).toEqual({ type: 'telegram', chatId: '123456789' })
     expect(parseChannel('telegram', 'a'.repeat(65))).toBeNull() // >64
     expect(channelLabel({ type: 'email', to: 'x@y.z' })).toBe('x@y.z')
