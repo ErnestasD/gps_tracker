@@ -12,7 +12,9 @@ Region for EVERYTHING below: **Europe (Frankfurt) — eu-central-1** (EU data re
 > then restart the worker:
 > ```
 > SMTP_HOST=email-smtp.eu-central-1.amazonaws.com
-> SMTP_PORT=587                         # STARTTLS (default); 465 = implicit TLS
+> SMTP_PORT=2587                        # STARTTLS. Standard 587/465/25 are BLOCKED on vpsnet
+>                                       # (provider anti-spam); SES alt ports 2587 (STARTTLS) /
+>                                       # 2465 (TLS) are open. Verified on staging 2026-07-14.
 > SMTP_USER=<SES_SMTP_USERNAME>
 > SMTP_PASS=<SES_SMTP_PASSWORD>         # paste RAW — do NOT URL-encode (discrete var, not a URL)
 > MAIL_FROM=alerts@<domain>            # a DKIM-verified SES identity (see §2/§4)
