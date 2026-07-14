@@ -41,6 +41,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await pool.query('DELETE FROM positions')
   await pool.query('DELETE FROM trips')
+  await pool.query('DELETE FROM drivers')
 })
 
 let hash = 0
@@ -98,6 +99,22 @@ describe('E04-2 trip recompute (idempotent, §6.4)', () => {
     // a late-batch recompute must NOT lose the driver
     await recomputeTrips(pool, DEV, at(-10), at(400), SCOPE)
     expect(await driverIdOfTrips()).toEqual([DRIVER])
+  })
+
+  it('carry-over is per-trip: two trips with two drivers each keep their own (disjoint windows)', async () => {
+    const DRIVER2 = '44444444-4444-4444-4444-444444444444'
+    await pool.query(`INSERT INTO drivers (id,"tenantId","accountId",name) VALUES ($1,$3,$4,'Jonas'),($2,$3,$4,'Petras')`, [DRIVER, DRIVER2, SCOPE.tenantId, SCOPE.accountId])
+    await insert(trip(0, 54.9))
+    await insert(trip(600, 55.0)) // a second, later trip
+    await recomputeTrips(pool, DEV, at(-10), at(1100), SCOPE)
+    const snaps = await snapshot()
+    expect(snaps.length).toBe(2)
+    // assign a distinct driver to each by start time
+    await pool.query('UPDATE trips SET "driverId"=$1 WHERE "deviceId"=$2 AND "startTime"=$3', [DRIVER, DEV.toString(), snaps[0]!.start])
+    await pool.query('UPDATE trips SET "driverId"=$1 WHERE "deviceId"=$2 AND "startTime"=$3', [DRIVER2, DEV.toString(), snaps[1]!.start])
+    expect(await driverIdOfTrips()).toEqual([DRIVER, DRIVER2])
+    await recomputeTrips(pool, DEV, at(-10), at(1100), SCOPE)
+    expect(await driverIdOfTrips()).toEqual([DRIVER, DRIVER2]) // each trip kept ITS OWN driver
   })
 
   it('idempotency: recompute twice over the same positions == recompute once', async () => {
