@@ -24,6 +24,7 @@ import { createWebhookQueue, enqueueWebhook } from './jobs/webhookQueue.js'
 import { startWebhookWorker } from './jobs/webhookWorker.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
 import { driversFromEnv } from './notify/drivers.js'
+import { buildEmailTransport } from './notify/emailTransport.js'
 import { GeofenceCache } from './geofence/cache.js'
 import { GeofenceEventPersister } from './geofence/persister.js'
 import { RuleCache } from './rules/cache.js'
@@ -94,10 +95,10 @@ async function main(): Promise<void> {
   const offlineRedis = redis.duplicate()
   // E05-5: notification dispatch — persisted rule events are enqueued here and delivered to
   // the rule's channels (email/telegram) with BullMQ retry. Drivers are env-gated: a channel
-  // whose credentials are absent is skipped (metric), not failed. Email transport (SES) lands
-  // with founder-provisioned creds — until then only Telegram (TELEGRAM_BOT_TOKEN) can send.
+  // whose credentials are absent is skipped (metric), not failed. Email = SES SMTP (ADR-023,
+  // SMTP_URL+MAIL_FROM); Telegram = TELEGRAM_BOT_TOKEN. Absent env ⇒ that channel is skipped.
   const notifyQueue = createNotifyQueue(recomputeConn)
-  const drivers = driversFromEnv(process.env)
+  const drivers = driversFromEnv(process.env, buildEmailTransport(process.env))
   const notifyWorker = startNotifyWorker({
     connection: recomputeConn,
     pool,
