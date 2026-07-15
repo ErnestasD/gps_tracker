@@ -423,6 +423,30 @@ model Webhook {
   @@map("webhooks")
 }
 
+/// Scheduled emailed reports (V1-nice). The worker's hourly cron runs the report over the account's
+/// data at the configured UTC hour (daily, or weekly on `weekday`) and e-mails it to `recipients`.
+/// The report window is computed in `timezone` (account-local day boundaries, §7.7).
+model ScheduledReport {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  accountId   String    @db.Uuid
+  reportType  String
+  /// 'daily' | 'weekly'
+  cadence     String
+  /// hour of day (UTC, 0–23) the cron fires the report
+  hourUtc     Int
+  /// 0=Sunday … 6=Saturday, only for cadence='weekly'
+  weekday     Int?
+  recipients  String[]  @default([])
+  timezone    String    @default("UTC")
+  enabled     Boolean   @default(true)
+  lastRunAt   DateTime? @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @db.Timestamptz()
+
+  @@index([enabled])
+  @@map("scheduled_reports")
+}
+
 /// Webhook delivery attempts (E06-4b) — one row per POST attempt for observability/debugging.
 /// Written by the worker (raw SQL); read-only over the API. Retention pruning is W7.
 model WebhookDelivery {

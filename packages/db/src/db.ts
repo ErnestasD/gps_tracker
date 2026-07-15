@@ -21,6 +21,7 @@ import { createTripRepo, type TripReadRepo } from './repos/trips.js'
 import { createUsageRepo, type UsageRepo } from './repos/usage.js'
 import { createUserRepo, type UserRepo } from './repos/users.js'
 import { createWebhookRepo, type WebhookRepo } from './repos/webhooks.js'
+import { createScheduledReportRepo, type ScheduledReportRepo } from './repos/scheduledReports.js'
 import { createWebhookDeliveryRepo, type WebhookDeliveryRepo } from './repos/webhookDeliveries.js'
 
 /**
@@ -43,6 +44,7 @@ export interface Db {
   rules: RuleRepo
   shareLinks: ShareLinkRepo
   webhooks: WebhookRepo
+  scheduledReports: ScheduledReportRepo
   webhookDeliveries: WebhookDeliveryRepo
   usage: UsageRepo
   apiKeys: ApiKeyRepo
@@ -72,6 +74,7 @@ export function createDb(databaseUrl: string): Db {
     rules: createRuleRepo(prisma, audit),
     shareLinks: createShareLinkRepo(prisma, audit),
     webhooks: createWebhookRepo(prisma, audit),
+    scheduledReports: createScheduledReportRepo(prisma, audit),
     webhookDeliveries: createWebhookDeliveryRepo(prisma),
     usage: createUsageRepo(prisma),
     apiKeys: createApiKeyRepo(prisma, audit),

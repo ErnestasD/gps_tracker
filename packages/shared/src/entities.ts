@@ -225,6 +225,48 @@ export const reportRequestSchema = z.object({
 })
 export type ReportRequest = z.infer<typeof reportRequestSchema>
 
+// ── scheduled emailed reports (V1-nice) ─────────────────────────────────────────
+export const reportTypeSchema = z.enum(['trips', 'mileage', 'stops', 'overspeed', 'geofence', 'engine_hours'])
+export const scheduledReportCreateSchema = z
+  .object({
+    /** null/omitted ⇒ the caller's account (account users are pinned); a tenant admin may target one. */
+    accountId: z.string().uuid().optional(),
+    reportType: reportTypeSchema,
+    cadence: z.enum(['daily', 'weekly']),
+    hourUtc: z.number().int().min(0).max(23),
+    weekday: z.number().int().min(0).max(6).optional(), // 0=Sun … 6=Sat (weekly only)
+    recipients: z.array(z.string().email()).min(1).max(20),
+    timezone: z.string().min(1).max(64).optional(),
+    enabled: z.boolean().optional(),
+  })
+  .refine((d) => d.cadence !== 'weekly' || d.weekday !== undefined, { message: 'weekly cadence requires a weekday' })
+export const scheduledReportUpdateSchema = z
+  .object({
+    reportType: reportTypeSchema,
+    cadence: z.enum(['daily', 'weekly']),
+    hourUtc: z.number().int().min(0).max(23),
+    weekday: z.number().int().min(0).max(6).nullable(),
+    recipients: z.array(z.string().email()).min(1).max(20),
+    timezone: z.string().min(1).max(64),
+    enabled: z.boolean(),
+  })
+  .partial()
+
+export interface ScheduledReportView {
+  id: string
+  tenantId: string
+  accountId: string
+  reportType: string
+  cadence: string
+  hourUtc: number
+  weekday: number | null
+  recipients: string[]
+  timezone: string
+  enabled: boolean
+  lastRunAt: string | null
+  createdAt: string
+}
+
 // ── webhooks ─────────────────────────────────────────────────────────────────
 export const webhookCreateSchema = z.object({
   accountId: z.string().uuid().nullable(),

@@ -33,6 +33,8 @@ import {
   userCreateSchema,
   userUpdateSchema,
   webhookCreateSchema,
+  scheduledReportCreateSchema,
+  scheduledReportUpdateSchema,
   webhookUpdateSchema,
   type Role,
 } from '@orbetra/shared'
@@ -106,6 +108,7 @@ const READ_POLICY: Record<string, Role[]> = {
   usage: TENANT_ADMINS, // billing data — a tenant admin can see their own bill
   export: TENANT_ADMINS, // GDPR exports contain the account's full data — admins only
   share: [...ROLES], // viewing which public share links exist is broad
+  scheduledReport: ACCOUNT_WRITERS, // report config incl. recipient emails — managers+admins
 }
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
@@ -121,6 +124,7 @@ const WRITE_POLICY: Record<string, Role[]> = {
   export: TENANT_ADMINS, // requesting a GDPR export
   gdpr: TENANT_ADMINS, // device erase — irreversible data destruction
   share: ACCOUNT_WRITERS, // minting/revoking a public link exposes device location → writers only
+  scheduledReport: ACCOUNT_WRITERS,
 }
 function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
   if (scopeClass === 'platform') return ['platform_admin']
@@ -667,6 +671,44 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (!ok) return problem(c, 404, 'Not Found')
         if (before !== null) await bestEffortSync(() => removeDriverIbutton(deps.redis, before.tenantId, before.accountId, before.ibutton), 'driver ibutton sync')
         return json(c, { ok: true })
+      } },
+
+    // ── scheduled emailed reports (account, V1-nice) ───────────────────────────
+    { method: 'get', path: '/v1/scheduled-reports', scopeClass: 'account', entity: 'scheduledReport', shape: 'collection',
+      handler: async (c) => json(c, await db.scheduledReports.list(scopeOf(auth(c)))) },
+    { method: 'get', path: '/v1/scheduled-reports/:id', scopeClass: 'account', entity: 'scheduledReport', shape: 'item',
+      handler: async (c) => {
+        const row = await db.scheduledReports.get(scopeOf(auth(c)), id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'post', path: '/v1/scheduled-reports', scopeClass: 'account', entity: 'scheduledReport', shape: 'collection',
+      handler: async (c) => {
+        const data = await body(c, scheduledReportCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        const accountId = a.accountId !== undefined ? a.accountId : data.accountId
+        if (accountId === undefined || (await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        return json(c, await db.scheduledReports.create(scopeOf(a), { userId: a.userId }, { ...data, accountId }), 201)
+      } },
+    { method: 'patch', path: '/v1/scheduled-reports/:id', scopeClass: 'account', entity: 'scheduledReport', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, scheduledReportUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const scope = scopeOf(auth(c))
+        const before = await db.scheduledReports.get(scope, id(c))
+        if (before === null) return problem(c, 404, 'Not Found')
+        // cross-field guard on the MERGED row: a weekly schedule must keep a weekday, else the cron
+        // silently never fires (the partial update schema can't see the existing row on its own)
+        const cadence = data.cadence ?? before.cadence
+        const weekday = data.weekday !== undefined ? data.weekday : before.weekday
+        if (cadence === 'weekly' && (weekday === null || weekday === undefined)) return problem(c, 400, 'Bad Request', 'weekly cadence requires a weekday')
+        const row = await db.scheduledReports.update(scope, { userId: auth(c).userId }, id(c), data)
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'delete', path: '/v1/scheduled-reports/:id', scopeClass: 'account', entity: 'scheduledReport', shape: 'item',
+      handler: async (c) => {
+        const ok = await db.scheduledReports.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
 
     // ── maintenance reminders (account, V2) — due computed at read from current odometer + now ──

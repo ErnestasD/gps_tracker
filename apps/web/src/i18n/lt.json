@@ -51,7 +51,10 @@
     "none": "Nėra prenumeratos",
     "unavailable": "Atsiskaitymai šioje aplinkoje nepasiekiami.",
     "noPlans": "Planų kol kas nesukonfigūruota.",
-    "interval": { "month": "mėn.", "year": "m." }
+    "interval": {
+      "month": "mėn.",
+      "year": "m."
+    }
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -617,6 +620,29 @@
       "due_soon": "Netrukus",
       "overdue": "Pradelsta",
       "unknown": "Nėra duomenų"
+    }
+  },
+  "scheduled": {
+    "title": "Suplanuotos ataskaitos",
+    "type": "Ataskaita",
+    "cadence": "Dažnis",
+    "daily": "Kasdien",
+    "weekly": "Kas savaitę",
+    "weekday": "Savaitės diena",
+    "hour": "Valanda (UTC)",
+    "recipients": "Gavėjai (per kablelį)",
+    "add": "Pridėti",
+    "empty": "Suplanuotų ataskaitų nėra.",
+    "delete": "Šalinti",
+    "error": "Nepavyko išsaugoti.",
+    "wd": {
+      "0": "Sk",
+      "1": "Pr",
+      "2": "An",
+      "3": "Tr",
+      "4": "Kt",
+      "5": "Pn",
+      "6": "Št"
     }
   }
 }

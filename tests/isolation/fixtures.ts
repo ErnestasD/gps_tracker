@@ -39,6 +39,7 @@ export interface TenantFixture {
   exportId: string
   driverId: string // a driver (V2 registry cross-tenant tests)
   maintenanceId: string // a maintenance item (V2 cross-tenant tests)
+  scheduledReportId: string // a scheduled report (V1-nice cross-tenant tests)
   shareId: string // an active share link (temporary public link cross-tenant tests)
   /** platform_admin token (tenant-wide). */
   tokenPlatform: string
@@ -90,6 +91,7 @@ async function seedTenant(
   const webhook = await db.webhooks.create(scope, actor, { accountId: a1.id, url: 'https://x.test/h', secret: 'secret-secret-16' })
   const driver = await db.drivers.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, name: `${name} Driver` })
   const maint = await db.maintenance.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, deviceId: device.id, title: 'Oil', intervalKm: 15000 })
+  const sched = await db.scheduledReports.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, reportType: 'trips', cadence: 'daily', hourUtc: 6, recipients: ['ops@x.test'] })
   const share = await db.shareLinks.create(scope, actor, { deviceId: device.id, accountId: a1.id, ttlHours: 24 })
   const pwHash = await hashPassword('irrelevant-not-logging-in')
   const platform = await db.users.create(scope, actor, { email: `${name}-pa@x.test`, passwordHash: pwHash, role: 'platform_admin', accountId: null })
@@ -129,6 +131,7 @@ async function seedTenant(
     exportId,
     driverId: driver.id,
     maintenanceId: maint.id,
+    scheduledReportId: sched.id,
     shareId: share.view.id,
     tokenPlatform: await token(platform.id, tenant.id, 'platform_admin'),
     tokenTenant: await token(tsp.id, tenant.id, 'tsp_admin'),

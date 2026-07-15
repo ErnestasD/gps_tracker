@@ -51,7 +51,10 @@
     "none": "Brak subskrypcji",
     "unavailable": "Płatności są niedostępne w tym środowisku.",
     "noPlans": "Nie skonfigurowano jeszcze planów.",
-    "interval": { "month": "mies.", "year": "rok" }
+    "interval": {
+      "month": "mies.",
+      "year": "rok"
+    }
   },
   "branding": {
     "title": "Marka",
@@ -617,6 +620,29 @@
       "due_soon": "Wkrótce",
       "overdue": "Zaległe",
       "unknown": "Brak danych"
+    }
+  },
+  "scheduled": {
+    "title": "Zaplanowane raporty",
+    "type": "Raport",
+    "cadence": "Częstotliwość",
+    "daily": "Codziennie",
+    "weekly": "Co tydzień",
+    "weekday": "Dzień tygodnia",
+    "hour": "Godzina (UTC)",
+    "recipients": "Odbiorcy (po przecinku)",
+    "add": "Dodaj",
+    "empty": "Brak zaplanowanych raportów.",
+    "delete": "Usuń",
+    "error": "Nie udało się zapisać.",
+    "wd": {
+      "0": "Nd",
+      "1": "Pn",
+      "2": "Wt",
+      "3": "Śr",
+      "4": "Cz",
+      "5": "Pt",
+      "6": "So"
     }
   }
 }

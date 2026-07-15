@@ -51,7 +51,10 @@
     "none": "Kein Abonnement",
     "unavailable": "Abrechnung ist in dieser Umgebung nicht verfügbar.",
     "noPlans": "Es sind noch keine Tarife konfiguriert.",
-    "interval": { "month": "Mon.", "year": "Jahr" }
+    "interval": {
+      "month": "Mon.",
+      "year": "Jahr"
+    }
   },
   "branding": {
     "title": "Branding",
@@ -617,6 +620,29 @@
       "due_soon": "Bald fällig",
       "overdue": "Überfällig",
       "unknown": "Keine Daten"
+    }
+  },
+  "scheduled": {
+    "title": "Geplante Berichte",
+    "type": "Bericht",
+    "cadence": "Häufigkeit",
+    "daily": "Täglich",
+    "weekly": "Wöchentlich",
+    "weekday": "Wochentag",
+    "hour": "Stunde (UTC)",
+    "recipients": "Empfänger (kommagetrennt)",
+    "add": "Hinzufügen",
+    "empty": "Noch keine geplanten Berichte.",
+    "delete": "Löschen",
+    "error": "Speichern fehlgeschlagen.",
+    "wd": {
+      "0": "So",
+      "1": "Mo",
+      "2": "Di",
+      "3": "Mi",
+      "4": "Do",
+      "5": "Fr",
+      "6": "Sa"
     }
   }
 }

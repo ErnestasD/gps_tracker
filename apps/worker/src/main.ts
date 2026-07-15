@@ -23,6 +23,8 @@ import { startUsageWorker } from './jobs/usageWorker.js'
 import { createStripeUsageQueue, scheduleStripeUsage } from './jobs/stripeUsageQueue.js'
 import { createStripeUsageWorker } from './jobs/stripeUsageWorker.js'
 import { stripeUsagePortFromEnv } from './billing/usageReporter.js'
+import { createScheduledReportQueue, scheduleScheduledReports } from './jobs/scheduledReportQueue.js'
+import { startScheduledReportWorker } from './jobs/scheduledReportWorker.js'
 import { createWebhookQueue, enqueueWebhook } from './jobs/webhookQueue.js'
 import { startWebhookWorker } from './jobs/webhookWorker.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
@@ -102,7 +104,8 @@ async function main(): Promise<void> {
   // whose credentials are absent is skipped (metric), not failed. Email = SES SMTP (ADR-023,
   // SMTP_URL+MAIL_FROM); Telegram = TELEGRAM_BOT_TOKEN. Absent env ⇒ that channel is skipped.
   const notifyQueue = createNotifyQueue(recomputeConn)
-  const drivers = driversFromEnv(process.env, buildEmailTransport(process.env))
+  const emailTransport = buildEmailTransport(process.env)
+  const drivers = driversFromEnv(process.env, emailTransport)
   const notifyWorker = startNotifyWorker({
     connection: recomputeConn,
     pool,
@@ -167,6 +170,13 @@ async function main(): Promise<void> {
     ? createStripeUsageWorker({ connection: recomputeConn, db, stripe: stripeUsagePort, onReported: (r) => prom.stripeOverageReported.inc(r.reported) })
     : null
   if (stripeUsageQueue !== null) await scheduleStripeUsage(stripeUsageQueue)
+  // V1-nice: scheduled emailed reports — hourly cron runs due schedules + e-mails them. Only when
+  // email is configured (no transport ⇒ nothing to send); reuses the same SES SMTP as notifications.
+  const scheduledReportQueue = emailTransport !== undefined ? createScheduledReportQueue(recomputeConn) : null
+  const scheduledReportWorker = emailTransport !== undefined
+    ? startScheduledReportWorker({ connection: recomputeConn, db, pool, transport: emailTransport, onRun: (r) => prom.scheduledReportsSent.inc(r.emailed) })
+    : null
+  if (scheduledReportQueue !== null) await scheduleScheduledReports(scheduledReportQueue)
   // E08-2: Codec-12 command dispatcher — ~15s reconcile of in-flight commands vs device
   // responses (transport seam written by ingest); drives the DB status machine.
   const commandQueue = createCommandDispatchQueue(recomputeConn)
@@ -354,6 +364,8 @@ async function main(): Promise<void> {
       await usageQueue.close()
       await stripeUsageWorker?.close() // finish the in-flight overage report, stop taking new
       await stripeUsageQueue?.close()
+      await scheduledReportWorker?.close() // finish the in-flight scheduled-report run, stop taking new
+      await scheduledReportQueue?.close()
       await commandWorker.close() // finish the in-flight command dispatch, stop taking new
       await commandQueue.close()
       await gdprEraseWorker.close() // finish the in-flight erase step, stop taking new
