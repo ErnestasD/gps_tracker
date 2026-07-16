@@ -78,9 +78,11 @@ function datagram(records: EncodableRecord[], opts: { packetId?: number; avlPack
   return wrap(avlData(records), opts)
 }
 
-async function start(metrics: IngestMetrics, overrides: Partial<UdpConfig> = {}): Promise<number> {
+async function start(metrics: IngestMetrics, overrides: Partial<UdpConfig> = {}, now?: () => number): Promise<number> {
   await redis.hset('registry:imei', IMEI, '42')
-  server = createIngestUdpServer(redis, metrics, { ...DEFAULT_CONFIG, maxDatagramsPerIpPerMin: 6000, maxDatagramsPerSec: 50_000, depthCacheMs: 0, ...overrides })
+  // a fixed clock keeps the 1-second global-ceiling window from straddling a real-time boundary
+  // between two datagrams (flaky on slow CI); it stays ≈ Date.now() so sanity still passes
+  server = createIngestUdpServer(redis, metrics, { ...DEFAULT_CONFIG, maxDatagramsPerIpPerMin: 6000, maxDatagramsPerSec: 50_000, depthCacheMs: 0, ...overrides }, undefined, now)
   return new Promise((resolve) => server!.socket.bind(0, '127.0.0.1', () => resolve((server!.socket.address() as { port: number }).port)))
 }
 
@@ -164,7 +166,8 @@ describe('UDP ingest channel (e2e vs real redis)', () => {
 
   it('global ceiling: total datagrams/sec are shed regardless of source (spoof-flood defense)', async () => {
     const metrics = new IngestMetrics()
-    const port = await start(metrics, { maxDatagramsPerSec: 1 })
+    const fixedNow = Date.now() // pin the 1-second window so both datagrams fall in it deterministically
+    const port = await start(metrics, { maxDatagramsPerSec: 1 }, () => fixedNow)
     const ok = await sendAndAwaitAck(port, datagram([record()]))
     expect(ok).not.toBeNull()
     const blocked = await sendAndAwaitAck(port, datagram([record()]), 700)

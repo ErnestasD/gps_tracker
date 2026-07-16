@@ -12,6 +12,10 @@ export interface ScenarioOpts {
   startDistanceM?: number
   /** stationary ignition-off tail seconds (closes the trip; see DriveOpts.parkTailS). */
   parkTailS?: number
+  /** iButton key (hex) reported as AVL 78 — driver auto-resolution demo (see DriveOpts.ibutton). */
+  ibutton?: string
+  /** emit CAN/OBD engine params on driving records (see DriveOpts.can). */
+  can?: boolean
 }
 
 export interface Scenario {

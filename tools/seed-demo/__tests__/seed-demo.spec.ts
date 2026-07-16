@@ -63,8 +63,16 @@ describe('E08-5 seedDemo (integration)', () => {
     const users = await db.users.list(scope)
     expect(users.map((u) => u.email).sort()).toEqual(['demo-admin@orbetra.test', 'demo-manager@orbetra.test', 'demo-viewer@orbetra.test'])
     expect((await db.devices.list(scope))).toHaveLength(DEMO_DEVICES)
-    expect((await db.geofences.list(scope)).some((g) => g.name === 'Vilnius Depot')).toBe(true)
-    expect((await db.rules.list(scope)).map((x) => x.name).sort()).toEqual(['Demo overspeed 60', 'Demo panic'])
+    const fences = (await db.geofences.list(scope)).map((g) => g.name).sort()
+    expect(fences).toEqual(['Vilnius Depot', 'Vilnius–Kaunas corridor'])
+    expect((await db.rules.list(scope)).map((x) => x.name).sort()).toEqual(['Demo corridor exit', 'Demo fuel theft', 'Demo overspeed 60', 'Demo panic'])
+    // V2 enrichment: drivers (iButton), a maintenance reminder, a scheduled report
+    expect((await db.drivers.list(scope)).map((d) => d.name).sort()).toEqual(['Andrius Kazlauskas', 'Jonas Petrauskas'])
+    expect((await db.maintenance.list(scope)).some((m) => m.title === 'Oil change')).toBe(true)
+    expect((await db.scheduledReports.list(scope)).some((s) => s.reportType === 'trips')).toBe(true)
+    // driver iButton map is populated so the worker can auto-resolve AVL 78 taps
+    const acc0 = (await db.accounts.list(scope)).find((a) => a.name === 'Vilnius Fleet')!
+    expect(Object.keys(await redis.hgetall(`driver:ibutton:${r.tenantId}:${acc0.id}`))).toHaveLength(1)
 
     // registry sync: ingest accepted the fleet (records durably in the raw shards)
     let streamed = 0
@@ -85,9 +93,12 @@ describe('E08-5 seedDemo (integration)', () => {
     const scope = { tenantId: r.tenantId }
     expect((await db.devices.list(scope))).toHaveLength(DEMO_DEVICES) // no duplicates
     expect(await db.users.list(scope)).toHaveLength(3)
-    expect((await db.rules.list(scope))).toHaveLength(2)
-    // the worker caches got synced: rules + geofence present in Redis for the tenant
-    expect(Object.keys(await redis.hgetall(`rule:tenant:${r.tenantId}`))).toHaveLength(2)
-    expect(Object.keys(await redis.hgetall(`geofence:tenant:${r.tenantId}`))).toHaveLength(1)
+    expect((await db.rules.list(scope))).toHaveLength(4)
+    expect((await db.drivers.list(scope))).toHaveLength(2) // no duplicate drivers on re-run
+    expect((await db.maintenance.list(scope)).filter((m) => m.title === 'Oil change')).toHaveLength(1) // no dup
+    expect((await db.scheduledReports.list(scope)).filter((s) => s.reportType === 'trips')).toHaveLength(1) // no dup
+    // the worker caches got synced: rules + geofences present in Redis for the tenant
+    expect(Object.keys(await redis.hgetall(`rule:tenant:${r.tenantId}`))).toHaveLength(4)
+    expect(Object.keys(await redis.hgetall(`geofence:tenant:${r.tenantId}`))).toHaveLength(2)
   }, 240_000)
 })

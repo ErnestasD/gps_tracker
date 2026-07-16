@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url'
 
 import { Redis } from 'ioredis'
 
-import { activateDevice, hashPassword, syncGeofence, syncRule } from '@orbetra/api'
+import { activateDevice, hashPassword, syncDriverIbutton, syncGeofence, syncRule } from '@orbetra/api'
 import { createDb, DuplicateImeiError, type Db, type Scope } from '@orbetra/db'
-import { invalidFix, liveDrive, panic, runScenario, type Scenario } from '@orbetra/simulator'
+import { fuelTheft, invalidFix, liveDrive, panic, runScenario, type Scenario } from '@orbetra/simulator'
 import { seedProfiles } from '../../../packages/db/seed/profiles.js'
-import { planDemoFleet, type DemoDrive } from './plan.js'
+import { DEMO_DRIVERS, planDemoFleet, type DemoDrive } from './plan.js'
 
 /**
  * tools/seed-demo (E08-5, W8 S4): provision a complete, realistic demo tenant for sales
@@ -30,7 +30,7 @@ import { planDemoFleet, type DemoDrive } from './plan.js'
  */
 const TENANT_NAME = 'Demo Logistics'
 const ACCOUNT_NAMES = ['Vilnius Fleet', 'Kaunas Fleet'] as const
-const SCENARIOS: Record<DemoDrive['scenario'], Scenario> = { liveDrive, panic, invalidFix }
+const SCENARIOS: Record<DemoDrive['scenario'], Scenario> = { liveDrive, panic, invalidFix, fuelTheft }
 
 const ACTOR = { userId: '00000000-0000-0000-0000-00000000d000' } // audit rows attribute to a fixed seed actor
 
@@ -128,17 +128,56 @@ export async function seedDemo(opts: {
       })
     }
     await syncGeofence(redis, fence)
+    // corridor geofence (V2): a buffered route line — "left the corridor" = a geofence rule on 'exit'
+    const corridor =
+      fences.find((f) => f.name === 'Vilnius–Kaunas corridor') ??
+      (await db.geofences.create(scope, ACTOR, {
+        name: 'Vilnius–Kaunas corridor',
+        kind: 'corridor',
+        accountId: accountIds[0]!,
+        line: { type: 'LineString', coordinates: [[25.28, 54.69], [24.6, 54.95], [23.9, 54.9]] },
+        bufferM: 500,
+      }))
+    await syncGeofence(redis, corridor)
+
     const rules = await db.rules.list(scope)
-    // overspeed limit 60: demo drives cruise 30–70 km/h, so the rule VISIBLY fires
-    const wantedRules: { name: string; kind: 'overspeed' | 'panic'; config: Record<string, unknown> }[] = [
+    // overspeed limit 60: demo drives cruise 30–70 km/h, so the rule VISIBLY fires. fuel_theft (V2)
+    // fires on device 7's parked fuel drop. The corridor-exit rule makes the corridor a real alert.
+    const wantedRules: { name: string; kind: 'overspeed' | 'panic' | 'fuel_theft' | 'geofence'; config: Record<string, unknown> }[] = [
       { name: 'Demo overspeed 60', kind: 'overspeed', config: { speedKmh: 60 } },
       { name: 'Demo panic', kind: 'panic', config: {} },
+      { name: 'Demo fuel theft', kind: 'fuel_theft', config: { dropPct: 15 } },
+      { name: 'Demo corridor exit', kind: 'geofence', config: { geofenceId: corridor.id, on: 'exit' } },
     ]
     for (const w of wantedRules) {
       const rule = rules.find((r) => r.name === w.name) ?? (await db.rules.create(scope, ACTOR, { accountId: accountIds[0]!, kind: w.kind, name: w.name, config: w.config }))
       // sync the DB ROW (exactly like crud.ts) — a hand-built object would overwrite UI
       // edits (enabled/limits) in Redis while the DB kept them (review MED)
       await syncRule(redis, rule)
+    }
+
+    // drivers (V2 iButton) — DB rows AND the driver:ibutton Redis map the worker resolves AVL 78
+    // against; without the sync a tap would never auto-assign a trip.
+    const existingDrivers = await db.drivers.list(scope)
+    for (const dr of DEMO_DRIVERS) {
+      const accountId = accountIds[dr.account]!
+      const found = existingDrivers.find((x) => x.name === dr.name)
+      const row = found ?? (await db.drivers.create(scope, ACTOR, { accountId, name: dr.name, ibutton: dr.ibutton, licenseNo: dr.licenseNo }))
+      await syncDriverIbutton(redis, tenant.id, accountId, row.id, dr.ibutton, found?.ibutton ?? null)
+    }
+
+    // one maintenance reminder + one scheduled report so those panels aren't empty on a demo. The
+    // reminder must sit on a device IN account 0 (its accountId is stored verbatim), so pick one.
+    const acc0Device = (await db.devices.list(scope)).find((d) => d.accountId === accountIds[0])
+    if (acc0Device !== undefined) {
+      const maint = await db.maintenance.list(scope, acc0Device.id)
+      if (!maint.some((m) => m.title === 'Oil change')) {
+        await db.maintenance.create(scope, ACTOR, { accountId: acc0Device.accountId, deviceId: acc0Device.id, title: 'Oil change', intervalKm: 15_000, lastServiceOdoKm: 8_000 })
+      }
+    }
+    const schedules = await db.scheduledReports.list(scope)
+    if (!schedules.some((s) => s.reportType === 'trips')) {
+      await db.scheduledReports.create(scope, ACTOR, { accountId: accountIds[0]!, reportType: 'trips', cadence: 'daily', hourUtc: 6, recipients: ['demo-admin@orbetra.test'], timezone: 'Europe/Vilnius' })
     }
 
     // history through the REAL pipeline: simulator → ingest TCP (worker persists async).
@@ -159,6 +198,8 @@ export async function seedDemo(opts: {
           hz: 0, // as fast as the socket allows — record timestamps carry the history spacing
           host: opts.ingestHost,
           port: opts.ingestPort,
+          ...(drive.ibutton !== undefined ? { ibutton: drive.ibutton } : {}),
+          ...(drive.can === true ? { can: true } : {}),
         })
         acked += res.ackedRecords
         if (res.rejectedByImei) rejected++

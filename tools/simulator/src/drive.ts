@@ -21,6 +21,12 @@ export interface DriveOpts {
    * parkedIgnitionOffS (default 180 s) — without a tail a replayed drive leaves a
    * forever-open trip (E08-5 review HIGH-2). */
   parkTailS?: number
+  /** iButton key (hex) reported on driving records as AVL 78 — drives the driver auto-resolution
+   *  demo (the worker maps AVL 78 → driver via the registry). https://wiki.teltonika-gps.com/view/Codec */
+  ibutton?: string
+  /** Emit CAN/OBD engine params (RPM/coolant/load/throttle/speed/mileage) so the CAN panel populates
+   *  (wiki FMB120 table: RPM 85, Coolant 32, Load 114, Throttle 41, Speed 81, Total Mileage 87). */
+  can?: boolean
 }
 
 /**
@@ -38,6 +44,26 @@ export function driveRecords(opts: DriveOpts): EncodableRecord[] {
     const speedKmh = Math.round(30 + rnd() * 40)
     distanceM += (speedKmh / 3.6) * stepS
     const p = route.at(distanceM)
+    const io = new Map<number, bigint | Buffer>([
+      [239, 1n], // Ignition (wiki FMB120 table)
+      [240, 1n], // Movement
+      [21, BigInt(3 + Math.floor(rnd() * 3))], // GSM Signal
+      [66, BigInt(12300 + Math.floor(rnd() * 400))], // External Voltage, mV raw
+      // Fuel level % (AVL 89) — drains ~1% per km driven, floored at 5, so playback's
+      // fuel graph (E08-3) has realistic data.
+      // https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+      [89, BigInt(Math.max(5, 90 - Math.floor(distanceM / 1000)))],
+    ])
+    if (opts.ibutton !== undefined) io.set(78, BigInt('0x' + opts.ibutton)) // iButton (AVL 78, 8 B)
+    if (opts.can === true) {
+      // CAN/OBD engine params (wiki FMB120 table) — seeded but plausible for the CAN panel
+      io.set(85, BigInt(800 + Math.floor(rnd() * 2200))) // Engine RPM
+      io.set(32, BigInt(80 + Math.floor(rnd() * 15))) // Coolant Temperature °C
+      io.set(114, BigInt(20 + Math.floor(rnd() * 60))) // Engine Load %
+      io.set(41, BigInt(15 + Math.floor(rnd() * 70))) // Throttle Position %
+      io.set(81, BigInt(speedKmh)) // Vehicle Speed km/h
+      io.set(87, BigInt(Math.round(distanceM))) // Total Mileage m
+    }
     out.push({
       tsMs: opts.startMs + Math.round(i * 1000 * stepS),
       priority: 0,
@@ -48,16 +74,7 @@ export function driveRecords(opts: DriveOpts): EncodableRecord[] {
       satellites: 8 + Math.floor(rnd() * 7),
       speed: speedKmh,
       eventIoId: 0,
-      io: new Map<number, bigint | Buffer>([
-        [239, 1n], // Ignition (wiki FMB120 table)
-        [240, 1n], // Movement
-        [21, BigInt(3 + Math.floor(rnd() * 3))], // GSM Signal
-        [66, BigInt(12300 + Math.floor(rnd() * 400))], // External Voltage, mV raw
-        // Fuel level % (AVL 89) — drains ~1% per km driven, floored at 5, so playback's
-        // fuel graph (E08-3) has realistic data.
-        // https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
-        [89, BigInt(Math.max(5, 90 - Math.floor(distanceM / 1000)))],
-      ]),
+      io,
     })
   }
   if (opts.parkTailS !== undefined && opts.parkTailS > 0 && out.length > 0) {

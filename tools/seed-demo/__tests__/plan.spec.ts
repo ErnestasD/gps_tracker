@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEMO_DEVICES, planDemoFleet } from '../src/plan.js'
+import { DEMO_DEVICES, DEMO_DRIVERS, planDemoFleet } from '../src/plan.js'
 
 const NOW = Date.UTC(2026, 6, 10, 12, 0, 0)
 
@@ -42,7 +42,32 @@ describe('E08-5 planDemoFleet (pure)', () => {
   it('special scenarios target their designated devices', () => {
     const panicDrive = drives.find((d) => d.scenario === 'panic')!
     const invalidDrive = drives.find((d) => d.scenario === 'invalidFix')!
+    const fuelDrive = drives.find((d) => d.scenario === 'fuelTheft')!
     expect(devices.find((x) => x.imei === panicDrive.imei)!.kind).toBe('panic')
     expect(devices.find((x) => x.imei === invalidDrive.imei)!.kind).toBe('invalidFix')
+    expect(devices.find((x) => x.imei === fuelDrive.imei)!.kind).toBe('fuelTheft')
+  })
+
+  it('driver devices carry their iButton on EVERY liveDrive so trips auto-assign (V2)', () => {
+    const withDriver = devices.filter((d) => d.driver !== undefined)
+    expect(withDriver.length).toBe(2) // one per account
+    for (const dev of withDriver) {
+      const key = DEMO_DRIVERS[dev.driver!]!.ibutton
+      const live = drives.filter((d) => d.imei === dev.imei && d.scenario === 'liveDrive')
+      expect(live.length).toBeGreaterThan(0)
+      for (const drive of live) expect(drive.ibutton).toBe(key) // every drive taps the same key
+    }
+    // devices without a driver never leak an iButton
+    for (const d of drives) {
+      const dev = devices.find((x) => x.imei === d.imei)!
+      if (dev.driver === undefined) expect(d.ibutton).toBeUndefined()
+    }
+  })
+
+  it('exactly one CAN device, and its drives emit CAN engine data', () => {
+    const canDevices = devices.filter((d) => d.can === true)
+    expect(canDevices).toHaveLength(1)
+    const canDrives = drives.filter((d) => d.imei === canDevices[0]!.imei && d.scenario === 'liveDrive')
+    expect(canDrives.every((d) => d.can === true)).toBe(true)
   })
 })
