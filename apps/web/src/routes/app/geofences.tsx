@@ -28,6 +28,7 @@ export function GeofencesPage() {
   const mapRef = useRef<MlMap | null>(null)
   const drawRef = useRef<TerraDraw | null>(null)
   const [ready, setReady] = useState(false)
+  const [mapError, setMapError] = useState(false) // map/tiles failed to load (e.g. a network filter blocking the tile CDN)
   const [drawn, setDrawn] = useState<Drawn>(null)
   const [name, setName] = useState('')
   const [color, setColor] = useState('#4DA3FF')
@@ -43,7 +44,11 @@ export function GeofencesPage() {
     ;(container as HTMLDivElement & { __map?: MlMap }).__map = map
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
     map.on('error', (e) => console.error('maplibre', e.error))
+    // if the base map never loads (blocked tile CDN / offline / WebGL failure), the draw tools can't
+    // attach — surface it instead of leaving the polygon/circle buttons silently dead.
+    const loadTimer = setTimeout(() => { if (!drawRef.current) setMapError(true) }, 8000)
     map.on('load', () => {
+      clearTimeout(loadTimer)
       map.addSource('geofences', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       map.addLayer({ id: 'gf-fill', type: 'fill', source: 'geofences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 } })
       map.addLayer({ id: 'gf-line', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
@@ -66,6 +71,7 @@ export function GeofencesPage() {
       setReady(true)
     })
     return () => {
+      clearTimeout(loadTimer)
       try { drawRef.current?.stop() } catch { /* map already gone */ }
       drawRef.current = null
       map.remove()
@@ -128,7 +134,14 @@ export function GeofencesPage() {
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[2fr_1fr]">
-        <div ref={containerRef} className="min-h-0 overflow-hidden rounded-card border border-line" data-testid="geofence-map" />
+        <div className="relative min-h-0 overflow-hidden rounded-card border border-line">
+          <div ref={containerRef} className="h-full w-full" data-testid="geofence-map" />
+          {mapError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-surface/90 p-4 text-center text-sm text-danger" data-testid="geofence-map-error">
+              {t('geofences.mapError')}
+            </div>
+          )}
+        </div>
         <Card className="min-h-0 overflow-hidden">
           <CardContent className="h-full overflow-auto p-2">
             {(geofences.data ?? []).length === 0 ? (
