@@ -29,9 +29,11 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
       INGEST_TCP_PORT: "5027"
+      # UDP channel shares the port (a device picks ONE protocol); set INGEST_UDP_PORT=0 to disable
       PROMETHEUS_PORT: "9101"
     ports:
-      - "5027:5027" # devices connect here — the ONE public app port besides Caddy
+      - "5027:5027" # devices connect here (TCP) — the ONE public app port besides Caddy
+      - "5027:5027/udp" # same port, UDP channel (Teltonika UDP-configured devices)
     depends_on:
       redis:
         condition: service_healthy

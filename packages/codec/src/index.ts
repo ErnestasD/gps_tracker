@@ -10,6 +10,7 @@ export { parseFrame } from './parse.js'
 export { encodeCodec12, decodeCodec12 } from './codec12.js'
 export { walkRecords, extractNx8e } from './walk.js'
 export { encodeAvlPacket, type EncodableRecord } from './encode.js'
+export { decodeUdpHeader, parseUdpAvl, decodeUdpPacket, encodeUdpAck, type UdpHeader, type UdpPacket } from './udp.js'
 export { loadDictionary, type AvlDictionaryEntry, type DictionaryFamily } from './dictionaries.js'
 export type { AvlRecord, Frame, ParsedPacket, TeltonikaCodec } from './types.js'
 

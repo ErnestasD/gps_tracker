@@ -1,4 +1,3 @@
-import { Encoder } from 'cbor-x'
 import type { Socket } from 'node:net'
 import type { Redis } from 'ioredis'
 
@@ -7,10 +6,10 @@ import {
   CrcError,
   encodeCodec12,
   FrameError,
-  type AvlRecord,
   type TeltonikaCodec,
 } from '@orbetra/codec'
 
+import { persistAvlBatch } from './persist.js'
 import type { DeviceRegistry } from './registry.js'
 import type { IngestMetrics } from './metrics.js'
 
@@ -29,8 +28,6 @@ export interface SessionConfig {
 }
 
 export const SHARD_COUNT = 16 // CLAUDE.md rule 5: imei % 16
-
-const cbor = new Encoder()
 
 interface SessionDeps {
   redis: Redis
@@ -260,78 +257,23 @@ export class Session {
       return
     }
 
-    const good: AvlRecord[] = []
-    const insane: AvlRecord[] = []
-    for (const rec of parsed.records) {
-      if (this.sane(rec)) good.push(rec)
-      else insane.push(rec)
-    }
-
-    // persist to the device's shard stream, THEN ack (rule 4 / I1). Sanity-rejected
-    // records are written durably to the 'rejects' stream IN THE SAME pipeline and
-    // COUNT toward the ACK — §3.2 resend is whole-packet, so under-ACKing a record
-    // we have already taken responsibility for would wedge the device in an eternal
-    // resend loop (adversarial review finding, E01-5).
-    if (good.length > 0 || insane.length > 0) {
-      const pipeline = this.deps.redis.pipeline()
-      const serverTimeMs = this.now()
-      for (const rec of insane) {
-        this.deps.metrics.sanityRejectsTotal++
-        pipeline.xadd(
-          'rejects',
-          'MAXLEN',
-          '~',
-          100_000,
-          '*',
-          'p',
-          cbor.encode({ imei: this.imei, tsMs: rec.tsMs, raw: rec.raw, reason: 'sanity' }),
-        )
-      }
-      for (const rec of good) {
-        pipeline.xadd(
-          `raw:${this.shard}`,
-          'MAXLEN',
-          '~',
-          100_000, // §5 R8-4 hard cap per shard
-          '*',
-          'p',
-          cbor.encode({
-            deviceId: this.deviceId,
-            imei: this.imei,
-            serverTimeMs,
-            tsMs: rec.tsMs,
-            priority: rec.priority,
-            lat: rec.lat,
-            lon: rec.lon,
-            altitude: rec.altitude,
-            angle: rec.angle,
-            satellites: rec.satellites,
-            speed: rec.speed,
-            eventIoId: rec.eventIoId,
-            io: [...rec.io.entries()],
-            raw: rec.raw,
-          }),
-        )
-      }
-      const results = await pipeline.exec()
-      const persisted = results?.filter((r) => r[0] === null).length ?? 0
-      this.deps.metrics.ackedRecordsTotal += persisted
-      this.socket.write(this.codec.encodeAck(persisted))
-    } else {
-      this.socket.write(this.codec.encodeAck(0))
-    }
+    if (this.deviceId === null) return // unreachable while STREAMING; narrows the type for persist
+    // persist to the device's shard stream, THEN ack (rule 4 / I1). The shared helper writes the
+    // SAME payload as the UDP listener (udp.ts) and durably records sanity rejects — see persist.ts.
+    const persisted = await persistAvlBatch(
+      this.deps.redis,
+      { deviceId: this.deviceId, imei: this.imei, shard: this.shard },
+      parsed.records,
+      this.deps.config,
+      this.deps.metrics,
+      this.now(),
+    )
+    this.socket.write(this.codec.encodeAck(persisted))
     this.deps.observeAckLatencyMs?.(this.now() - t0)
 
     // depth check AFTER ack (§6.1 order: persist → ACK → depth-check → maybe pause)
     await this.maybeBackpressure()
     await this.drainPending() // deliver any commands queued since the last frame (E08-2)
-  }
-
-  private sane(rec: AvlRecord): boolean {
-    const cfg = this.deps.config
-    if (rec.tsMs < cfg.minTsMs || rec.tsMs > this.now() + cfg.maxFutureMs) return false
-    if (Math.abs(rec.lat) > 90 || Math.abs(rec.lon) > 180) return false
-    return true
   }
 
   private async maybeBackpressure(): Promise<void> {
@@ -369,7 +311,7 @@ export class Session {
 // per-shard XLEN cache, refreshed at most once per second (§6.1 "cached, refreshed 1 s")
 const depthCache = new Map<number, { at: number; depth: number }>()
 
-async function getCachedShardDepth(
+export async function getCachedShardDepth(
   redis: Redis,
   shard: number,
   nowMs: number,
