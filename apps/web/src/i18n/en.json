@@ -39,7 +39,10 @@
     "platform": "Platform",
     "drivers": "Drivers",
     "maintenance": "Maintenance",
-    "billing": "Billing"
+    "billing": "Billing",
+    "menu": "Open menu",
+    "close": "Close",
+    "theme": "Toggle theme"
   },
   "billing": {
     "title": "Billing",
@@ -658,5 +661,16 @@
       "5": "Fri",
       "6": "Sat"
     }
+  },
+  "admin": {
+    "search": "Search…",
+    "nothingFound": "Nothing found",
+    "clear": "Clear",
+    "empty": "No records",
+    "pageInfo": "{{n}} records · page {{page}} / {{pages}}",
+    "prev": "Previous",
+    "next": "Next",
+    "pick": "Select…",
+    "allOf": "{{header}}: all"
   }
 }

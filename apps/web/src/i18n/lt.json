@@ -39,7 +39,10 @@
     "platform": "Platforma",
     "drivers": "Vairuotojai",
     "maintenance": "Priežiūra",
-    "billing": "Atsiskaitymai"
+    "billing": "Atsiskaitymai",
+    "menu": "Atidaryti meniu",
+    "close": "Uždaryti",
+    "theme": "Perjungti temą"
   },
   "billing": {
     "title": "Atsiskaitymai",
@@ -658,5 +661,16 @@
       "5": "Pn",
       "6": "Št"
     }
+  },
+  "admin": {
+    "search": "Ieškoti…",
+    "nothingFound": "Nieko nerasta",
+    "clear": "Išvalyti",
+    "empty": "Įrašų nėra",
+    "pageInfo": "{{n}} įrašų · psl. {{page}} / {{pages}}",
+    "prev": "Ankstesnis",
+    "next": "Kitas",
+    "pick": "Pasirinkti…",
+    "allOf": "{{header}}: visi"
   }
 }

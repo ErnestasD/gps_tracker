@@ -1,28 +1,70 @@
-/* Design tokens — DASHBOARD_UI_SPEC §1 verbatim (canonical; the public site copies
- * these). Dark values are the DEFAULTS (dark-first); .light on <html> overrides.
- * White-label (E03-5) remaps --accent/--accent-2 from tenants.branding. */
+/* Design tokens — admin redesign (ADR-028, orbetra_design_new palette). Dark values are
+ * the DEFAULTS (dark-first); .light on <html> overrides. Token NAMES are unchanged from
+ * DASHBOARD_UI_SPEC §1 so every existing utility (bg-surface, border-line, text-muted…)
+ * re-themes without markup churn. White-label (E03-5) remaps --accent/--accent-2 from
+ * tenants.branding; every --admin-* brand tint derives from --accent via color-mix so
+ * white-label re-themes the whole admin surface too. */
 :root {
-  --bg: #0b1020;
-  --surface: #111a2e;
-  --surface-2: #16213a;
-  --border: #22304c;
-  --text: #e7ecf4;
-  --muted: #93a1b7;
-  --accent: #4da3ff;
+  --bg: #0a0e1a;
+  --surface: #10151f;
+  --surface-2: #1a1f2c;
+  --border: #232838;
+  --text: #e6eaf2;
+  --muted: #8b93a7;
+  --accent: #7c7df5;
   --accent-2: #7c5cfc;
   --success: #34d399;
   --warn: #fbbf24;
   --danger: #f87171;
-  --radius: 10px;
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --info: #38bdf8;
+  --radius: 12px;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.35);
+
+  /* admin-design aliases (ported components read these) */
+  --admin-surface: var(--surface);
+  --admin-surface-2: var(--bg);
+  --admin-surface-sunken: #070a12;
+  --admin-ink: var(--text);
+  --admin-ink-soft: var(--muted);
+  --admin-hairline: var(--border);
+  --admin-hairline-soft: #1a1f2c;
+  --admin-brand: var(--accent);
+  --admin-brand-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --admin-success: var(--success);
+  --admin-success-soft: color-mix(in srgb, var(--success) 16%, var(--surface));
+  --admin-warning: var(--warn);
+  --admin-warning-soft: color-mix(in srgb, var(--warn) 16%, var(--surface));
+  --admin-danger: var(--danger);
+  --admin-danger-soft: color-mix(in srgb, var(--danger) 16%, var(--surface));
+  --admin-info: var(--info);
+  --admin-info-soft: color-mix(in srgb, var(--info) 16%, var(--surface));
+  --admin-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+  --admin-shadow-md: 0 6px 20px -6px rgb(0 0 0 / 0.5);
+  --admin-shadow-lg: 0 24px 48px -16px rgb(0 0 0 / 0.6);
 }
 
 .light {
-  --bg: #f7f9fc;
+  --bg: #f7f8fa;
   --surface: #ffffff;
-  --surface-2: #eef2f8;
-  --border: #e3e8f0;
-  --text: #0b1020;
-  --muted: #5b6b82;
-  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.08);
+  --surface-2: #f1f3f8;
+  --border: #e5e8ef;
+  --text: #0b1220;
+  --muted: #5b6478;
+  --accent: #4f46e5;
+  --success: #059669;
+  --warn: #b45309;
+  --danger: #e11d48;
+  --info: #0284c7;
+  --shadow-card: 0 1px 2px rgb(11 18 32 / 0.04), 0 1px 1px rgb(11 18 32 / 0.03);
+
+  --admin-surface-sunken: #f1f3f8;
+  --admin-hairline-soft: #eef0f4;
+  --admin-brand-soft: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  --admin-success-soft: color-mix(in srgb, var(--success) 10%, var(--surface));
+  --admin-warning-soft: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  --admin-danger-soft: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  --admin-info-soft: color-mix(in srgb, var(--info) 10%, var(--surface));
+  --admin-shadow-sm: 0 1px 2px rgb(11 18 32 / 0.04), 0 1px 1px rgb(11 18 32 / 0.03);
+  --admin-shadow-md: 0 4px 12px -2px rgb(11 18 32 / 0.08), 0 2px 4px -1px rgb(11 18 32 / 0.04);
+  --admin-shadow-lg: 0 20px 40px -12px rgb(11 18 32 / 0.12), 0 8px 16px -8px rgb(11 18 32 / 0.06);
 }

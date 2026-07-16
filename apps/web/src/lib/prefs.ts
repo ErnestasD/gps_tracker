@@ -20,6 +20,8 @@ export function applyTheme(theme: Theme): void {
   document.documentElement.classList.toggle('light', theme === 'light')
 }
 
+const THEME_EVENT = 'orbetra:theme'
+
 export function setTheme(theme: Theme): void {
   try {
     localStorage.setItem(THEME_KEY, theme)
@@ -27,6 +29,15 @@ export function setTheme(theme: Theme): void {
     // storage disabled — theme still applies for this session
   }
   applyTheme(theme)
+  // both the topbar toggle and the settings radios render theme state — broadcast so
+  // neither holds a stale copy (ADR-028 review MED)
+  window.dispatchEvent(new Event(THEME_EVENT))
+}
+
+/** Subscribe to theme changes made anywhere in the app. Returns the unsubscribe. */
+export function onThemeChange(cb: () => void): () => void {
+  window.addEventListener(THEME_EVENT, cb)
+  return () => window.removeEventListener(THEME_EVENT, cb)
 }
 
 export function getStoredLocale(): string | null {

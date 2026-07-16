@@ -68,7 +68,7 @@ export function BrandingPage() {
               <Input type="email" value={form.supportEmail ?? ''} onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))} data-testid="branding-supportEmail" />
             </Field>
             <Field label={t('branding.primary')}>
-              <input type="color" value={form.primary ?? '#4da3ff'} onChange={(e) => setForm((f) => ({ ...f, primary: e.target.value }))} className="h-9 w-full rounded-card border border-line bg-surface" data-testid="branding-primary" />
+              <input type="color" value={form.primary ?? '#7c7df5'} onChange={(e) => setForm((f) => ({ ...f, primary: e.target.value }))} className="h-9 w-full rounded-card border border-line bg-surface" data-testid="branding-primary" />
             </Field>
             <Field label={t('branding.accent')}>
               <input type="color" value={form.accent ?? '#7c5cfc'} onChange={(e) => setForm((f) => ({ ...f, accent: e.target.value }))} className="h-9 w-full rounded-card border border-line bg-surface" data-testid="branding-accent" />

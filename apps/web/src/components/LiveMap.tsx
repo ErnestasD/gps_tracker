@@ -13,7 +13,8 @@ const STYLE_URL: string =
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 
-const COLORS = { online: '#4DA3FF', stale: '#93A1B7', offline: '#5b6b82', halo: '#7C5CFC' }
+// ADR-028 palette: online = --accent (dark), stale = --muted, stroke/labels = --bg
+const COLORS = { online: '#7C7DF5', stale: '#8B93A7', offline: '#5b6478', halo: '#7C5CFC' }
 
 /** Course-rotatable arrow glyph drawn at runtime — no binary assets in the repo. */
 function arrowImage(color: string): ImageData {
@@ -32,7 +33,7 @@ function arrowImage(color: string): ImageData {
   ctx.fillStyle = color
   ctx.fill()
   ctx.lineWidth = 2
-  ctx.strokeStyle = '#0B1020'
+  ctx.strokeStyle = '#0A0E1A'
   ctx.stroke()
   return ctx.getImageData(0, 0, size, size)
 }
@@ -117,7 +118,7 @@ export function LiveMap() {
           'circle-opacity': 0.85,
           'circle-radius': ['step', ['get', 'point_count'], 14, 25, 18, 100, 24],
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#0B1020',
+          'circle-stroke-color': '#0A0E1A',
         },
       })
       // count labels need glyphs; the offline dev/e2e style has none — clusters
@@ -133,7 +134,7 @@ export function LiveMap() {
             'text-size': 11,
             'text-font': ['Noto Sans Regular'],
           },
-          paint: { 'text-color': '#0B1020' },
+          paint: { 'text-color': '#0A0E1A' },
         })
       }
       map.addLayer({

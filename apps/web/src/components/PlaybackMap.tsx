@@ -7,7 +7,8 @@ import { buildTrailFeatures } from '@/lib/liveStore'
 const STYLE_URL: string =
   (import.meta.env.VITE_TILES_STYLE_URL as string | undefined) ?? 'https://tiles.openfreemap.org/styles/liberty'
 const VILNIUS: [number, number] = [25.2797, 54.6872]
-const COLORS = { trail: '#4DA3FF', gap: '#93A1B7', stop: '#F5A524', cursor: '#7C5CFC' }
+// ADR-028 palette: trail = --accent (dark), gap = --muted
+const COLORS = { trail: '#7C7DF5', gap: '#8B93A7', stop: '#F5A524', cursor: '#7C5CFC' }
 
 const pointFC = (feats: GeoJSON.Feature[]): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: feats })
 const stopFeatures = (trips: TripView[]): GeoJSON.Feature[] => {
@@ -46,7 +47,7 @@ export function PlaybackMap({ positions, trips, index }: { positions: PositionVi
       map.addSource('cursor', { type: 'geojson', data: pointFC([]) })
       map.addLayer({ id: 'trail-line', type: 'line', source: 'trail', filter: ['!=', ['get', 'gap'], true], paint: { 'line-color': COLORS.trail, 'line-width': 2, 'line-opacity': 0.9 } })
       map.addLayer({ id: 'trail-gap', type: 'line', source: 'trail', filter: ['==', ['get', 'gap'], true], paint: { 'line-color': COLORS.gap, 'line-width': 2, 'line-opacity': 0.8, 'line-dasharray': [2, 2] } })
-      map.addLayer({ id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': 5, 'circle-color': COLORS.stop, 'circle-stroke-width': 2, 'circle-stroke-color': '#0B1020' } })
+      map.addLayer({ id: 'stops', type: 'circle', source: 'stops', paint: { 'circle-radius': 5, 'circle-color': COLORS.stop, 'circle-stroke-width': 2, 'circle-stroke-color': '#0A0E1A' } })
       map.addLayer({ id: 'cursor', type: 'circle', source: 'cursor', paint: { 'circle-radius': 7, 'circle-color': COLORS.cursor, 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
       setReady(true)
     })
