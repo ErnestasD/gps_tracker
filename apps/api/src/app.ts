@@ -20,6 +20,7 @@ import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.j
 import { mountReports } from './routes/reports.js'
 import { mountDriverScores } from './routes/driverScores.js'
 import { mountBilling, mountStripeWebhook } from './routes/billing.js'
+import { mountPush } from './routes/push.js'
 import type { StripeGateway } from './billing/stripe.js'
 import { defaultTxtResolver, type TxtResolver } from './routes/tenantSelf.js'
 import { securityHeaders } from './security.js'
@@ -58,6 +59,8 @@ export interface ApiDeps extends WsDeps {
   stripe?: StripeGateway
   /** absolute base URL for Checkout/portal return URLs; falls back to the request Origin. */
   appBaseUrl?: string
+  /** VAPID public key for Web Push (ADR-026); absent ⇒ push unavailable (client sees a null key). */
+  vapidPublicKey?: string
 }
 
 export interface ApiProm {
@@ -212,6 +215,8 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   mountDriverScores(app, { db: deps.db, pool: deps.pool })
   // billing (ADR-024) — tenant-self, admin-only; manifest-exempt with a dedicated isolation test
   mountBilling(app, { db: deps.db, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl })
+  // Web Push subscriptions (ADR-026) — tenant-self, manifest-exempt
+  mountPush(app, { db: deps.db, vapidPublicKey: deps.vapidPublicKey })
 
   // API-key management (E06-3) — tenant-admin only; dedicated route, EXEMPT from the manifest.
   mountApiKeys(app, { db: deps.db })

@@ -182,7 +182,8 @@
       "none": "nėra kanalų",
       "edit": "Kanalai",
       "save": "Išsaugoti",
-      "cancel": "Atšaukti"
+      "cancel": "Atšaukti",
+      "webpush": "Naršyklės pranešimai"
     }
   },
   "playback": {
@@ -280,6 +281,17 @@
         "done": "Paruošta",
         "failed": "Nepavyko"
       }
+    },
+    "push": {
+      "title": "Naršyklės pranešimai",
+      "hint": "Įjunkite push pranešimus šioje naršyklėje. Taisyklės su „Naršyklės pranešimai“ kanalu praneš į kiekvieną čia įjungtą naršyklę.",
+      "unsupported": "Jūsų naršyklė nepalaiko push pranešimų.",
+      "enable": "Įjungti",
+      "disable": "Išjungti",
+      "on": "Įjungta",
+      "off": "Išjungta",
+      "denied": "Leidimas atmestas — leiskite pranešimus naršyklės nustatymuose.",
+      "error": "Nepavyko atnaujinti pranešimų."
     }
   },
   "devices": {

@@ -1,4 +1,4 @@
-import { ruleKindSchema } from '@orbetra/shared'
+import { notificationChannelSchema, ruleKindSchema } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
 import { RULE_KINDS, channelLabel, configFields, parseChannel } from '../src/lib/rules.js'
@@ -50,5 +50,11 @@ describe('E05-3 rule config fields', () => {
     expect(parseChannel('telegram', 'a'.repeat(65))).toBeNull() // >64
     expect(channelLabel({ type: 'email', to: 'x@y.z' })).toBe('x@y.z')
     expect(channelLabel({ type: 'telegram', chatId: '42' })).toBe('Telegram 42')
+  })
+
+  it('webpush channel labels as a targetless browser channel (ADR-026)', () => {
+    // webpush carries no target — the label is constant so ChannelsEditor dedupes to one per rule
+    expect(channelLabel({ type: 'webpush' })).toBe('Browser push')
+    expect(notificationChannelSchema.safeParse({ type: 'webpush' }).success).toBe(true)
   })
 })

@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   // SMTP_URL+MAIL_FROM); Telegram = TELEGRAM_BOT_TOKEN. Absent env ⇒ that channel is skipped.
   const notifyQueue = createNotifyQueue(recomputeConn)
   const emailTransport = buildEmailTransport(process.env)
-  const drivers = driversFromEnv(process.env, emailTransport)
+  const drivers = driversFromEnv(process.env, { emailTransport, subscriptions: db.pushSubscriptions })
   const notifyWorker = startNotifyWorker({
     connection: recomputeConn,
     pool,

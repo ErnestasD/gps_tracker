@@ -182,7 +182,8 @@
       "none": "no channels",
       "edit": "Channels",
       "save": "Save",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "webpush": "Browser push"
     }
   },
   "playback": {
@@ -280,6 +281,17 @@
         "done": "Ready",
         "failed": "Failed"
       }
+    },
+    "push": {
+      "title": "Browser notifications",
+      "hint": "Enable push alerts in this browser. Rules with the \"Browser push\" channel notify every browser you enable here.",
+      "unsupported": "Your browser does not support push notifications.",
+      "enable": "Enable",
+      "disable": "Disable",
+      "on": "On",
+      "off": "Off",
+      "denied": "Permission denied — allow notifications in your browser settings.",
+      "error": "Could not update notifications."
     }
   },
   "devices": {

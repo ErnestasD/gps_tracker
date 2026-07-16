@@ -1,6 +1,6 @@
 import type { NotificationChannel } from '@orbetra/shared'
 
-import type { Drivers } from './drivers.js'
+import type { DriverContext, Drivers } from './drivers.js'
 import type { NotifyMessage } from './message.js'
 
 /**
@@ -19,7 +19,8 @@ export interface DispatchResult {
   skipped: string[]
 }
 
-const channelKey = (c: NotificationChannel): string => (c.type === 'email' ? `email:${c.to}` : `telegram:${c.chatId}`)
+const channelKey = (c: NotificationChannel): string =>
+  c.type === 'email' ? `email:${c.to}` : c.type === 'telegram' ? `telegram:${c.chatId}` : 'webpush' // webpush = one fan-out per job
 
 export async function dispatchEvent(
   channels: readonly NotificationChannel[],
@@ -27,6 +28,7 @@ export async function dispatchEvent(
   drivers: Drivers,
   alreadySent: (key: string) => Promise<boolean>,
   markSent: (key: string) => Promise<void>,
+  ctx?: DriverContext,
 ): Promise<DispatchResult> {
   const out: DispatchResult = { sent: [], failed: [], skipped: [] }
   for (const ch of channels) {
@@ -38,7 +40,7 @@ export async function dispatchEvent(
       continue
     }
     try {
-      await driver.send(ch, msg)
+      await driver.send(ch, msg, ctx)
       await markSent(key) // claim AFTER success so a failed send re-attempts on retry
       out.sent.push(key)
     } catch {

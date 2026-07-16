@@ -7,7 +7,7 @@ export const RULE_KINDS = ['overspeed', 'geofence', 'ignition', 'din_change', 'p
 export type RuleKind = (typeof RULE_KINDS)[number]
 
 /** A rule's notification channel (mirrors packages/shared notificationChannelSchema). */
-export type NotificationChannel = { type: 'email'; to: string } | { type: 'telegram'; chatId: string }
+export type NotificationChannel = { type: 'email'; to: string } | { type: 'telegram'; chatId: string } | { type: 'webpush' }
 
 export interface Rule {
   id: string
@@ -43,7 +43,7 @@ export function parseChannel(type: 'email' | 'telegram', value: string): Notific
   return r.success ? r.data : null
 }
 /** Human label for a channel chip. */
-export const channelLabel = (c: NotificationChannel): string => (c.type === 'email' ? c.to : `Telegram ${c.chatId}`)
+export const channelLabel = (c: NotificationChannel): string => (c.type === 'email' ? c.to : c.type === 'telegram' ? `Telegram ${c.chatId}` : 'Browser push')
 
 export const listRules = () => getJson<Rule[]>('/v1/rules')
 export const createRule = (data: RuleCreateInput) => mutate<Rule>('POST', '/v1/rules', data)

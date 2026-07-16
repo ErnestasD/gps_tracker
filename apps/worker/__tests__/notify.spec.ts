@@ -1,8 +1,11 @@
+import webpush from 'web-push'
+
+import type { PushSubscriptionRepo, PushTarget } from '@orbetra/db'
 import type { NotificationChannel } from '@orbetra/shared'
 import { describe, expect, it, vi } from 'vitest'
 
 import { dispatchEvent } from '../src/notify/dispatch.js'
-import { driversFromEnv, emailDriver, telegramDriver, type Drivers, type EmailTransport } from '../src/notify/drivers.js'
+import { driversFromEnv, emailDriver, telegramDriver, webPushDriver, type Drivers, type EmailTransport } from '../src/notify/drivers.js'
 import { notificationMessage } from '../src/notify/message.js'
 
 const email = (to: string): NotificationChannel => ({ type: 'email', to })
@@ -93,7 +96,77 @@ describe('E05-5 emailDriver + driversFromEnv', () => {
     expect(driversFromEnv({}).telegram).toBeUndefined()
     expect(driversFromEnv({ TELEGRAM_BOT_TOKEN: 'T' }).telegram).toBeDefined()
     expect(driversFromEnv({ TELEGRAM_BOT_TOKEN: 'T' }).email).toBeUndefined() // no transport injected
-    expect(driversFromEnv({}, { send: () => Promise.resolve() }).email).toBeDefined()
+    expect(driversFromEnv({}, { emailTransport: { send: () => Promise.resolve() } }).email).toBeDefined()
+  })
+
+  it('webpush driver is present only with VAPID keys + a subscriptions repo (ADR-026)', async () => {
+    // generate a throwaway keypair at runtime — never commit a VAPID private key (rule 12)
+    const { default: webpush } = await import('web-push')
+    const vapid = webpush.generateVAPIDKeys()
+    const env = { VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: vapid.privateKey }
+    const subs = { subscribe: () => Promise.resolve(), unsubscribe: () => Promise.resolve(false), listByAccount: () => Promise.resolve([]), deleteByEndpoint: () => Promise.resolve() }
+    expect(driversFromEnv({}, { subscriptions: subs }).webpush).toBeUndefined() // no VAPID
+    expect(driversFromEnv(env, {}).webpush).toBeUndefined() // no repo
+    expect(driversFromEnv(env, { subscriptions: subs }).webpush).toBeDefined()
+    expect(driversFromEnv({ VAPID_PUBLIC_KEY: 'bad', VAPID_PRIVATE_KEY: 'bad' }, { subscriptions: subs }).webpush).toBeUndefined() // invalid keys → skipped, no crash
+  })
+})
+
+describe('ADR-026 webPushDriver.send (fan-out + prune)', () => {
+  const chan: NotificationChannel = { type: 'webpush' }
+  const ctx = { tenantId: 't1', accountId: 'a1' }
+  const target = (endpoint: string): PushTarget => ({ endpoint, p256dh: 'p', auth: 'a' })
+  // a push-service error the way web-push surfaces it: an Error carrying the HTTP statusCode
+  const pushErr = (statusCode: number) => Object.assign(new Error('push service error'), { statusCode })
+
+  // capture the mocks as locals (not method refs) so assertions don't trip no-unbound-method
+  function repo(targets: PushTarget[]) {
+    const listByAccount = vi.fn(() => Promise.resolve(targets))
+    const deleteByEndpoint = vi.fn(() => Promise.resolve())
+    const r: PushSubscriptionRepo = { subscribe: () => Promise.resolve(), unsubscribe: () => Promise.resolve(false), listByAccount, deleteByEndpoint }
+    return { r, listByAccount, deleteByEndpoint }
+  }
+
+  it('fans out one push per subscription of the account, with the {title,body} payload', async () => {
+    const send = vi.spyOn(webpush, 'sendNotification').mockResolvedValue({} as never)
+    const { r, listByAccount } = repo([target('https://a'), target('https://b')])
+    await webPushDriver(r).send(chan, MSG, ctx)
+    expect(listByAccount).toHaveBeenCalledWith('t1', 'a1')
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(send.mock.calls[0]![1] as string)).toEqual({ title: 's', body: 't' })
+    send.mockRestore()
+  })
+
+  it('prunes a 410 Gone subscription and still delivers to the healthy ones (no throw)', async () => {
+    const send = vi.spyOn(webpush, 'sendNotification').mockImplementation((s: { endpoint: string }) =>
+      s.endpoint === 'https://dead' ? Promise.reject(pushErr(410)) : Promise.resolve({} as never),
+    )
+    const { r, deleteByEndpoint } = repo([target('https://dead'), target('https://live')])
+    await webPushDriver(r).send(chan, MSG, ctx) // resolves — a dead sub is not a failure
+    expect(deleteByEndpoint).toHaveBeenCalledWith('https://dead')
+    expect(deleteByEndpoint).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledTimes(2) // the dead one did not abort the loop
+    send.mockRestore()
+  })
+
+  it('throws on a transient failure (→ BullMQ retry) but attempts every target and prunes nothing', async () => {
+    const send = vi.spyOn(webpush, 'sendNotification').mockImplementation((s: { endpoint: string }) =>
+      s.endpoint === 'https://flaky' ? Promise.reject(pushErr(503)) : Promise.resolve({} as never),
+    )
+    const { r, deleteByEndpoint } = repo([target('https://flaky'), target('https://ok')])
+    await expect(webPushDriver(r).send(chan, MSG, ctx)).rejects.toBeDefined()
+    expect(send).toHaveBeenCalledTimes(2) // transient on the first did not short-circuit the second
+    expect(deleteByEndpoint).not.toHaveBeenCalled() // 503 ≠ Gone → never prune a live sub
+    send.mockRestore()
+  })
+
+  it('does nothing without ctx — no account means no fan-out target', async () => {
+    const send = vi.spyOn(webpush, 'sendNotification')
+    const { r, listByAccount } = repo([target('https://a')])
+    await webPushDriver(r).send(chan, MSG, undefined)
+    expect(listByAccount).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+    send.mockRestore()
   })
 })
 

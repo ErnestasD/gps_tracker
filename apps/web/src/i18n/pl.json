@@ -182,7 +182,8 @@
       "none": "brak kanałów",
       "edit": "Kanały",
       "save": "Zapisz",
-      "cancel": "Anuluj"
+      "cancel": "Anuluj",
+      "webpush": "Push w przeglądarce"
     }
   },
   "playback": {
@@ -280,6 +281,17 @@
         "done": "Gotowy",
         "failed": "Niepowodzenie"
       }
+    },
+    "push": {
+      "title": "Powiadomienia przeglądarki",
+      "hint": "Włącz powiadomienia push w tej przeglądarce. Reguły z kanałem „Push w przeglądarce” powiadomią każdą włączoną tu przeglądarkę.",
+      "unsupported": "Twoja przeglądarka nie obsługuje powiadomień push.",
+      "enable": "Włącz",
+      "disable": "Wyłącz",
+      "on": "Wł.",
+      "off": "Wył.",
+      "denied": "Odmowa uprawnień — zezwól na powiadomienia w ustawieniach przeglądarki.",
+      "error": "Nie udało się zaktualizować powiadomień."
     }
   },
   "devices": {

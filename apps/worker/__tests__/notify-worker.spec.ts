@@ -28,6 +28,8 @@ function fakeRedis(sent: string[] = []) {
       void k
       return Promise.resolve(set.has(m) ? 1 : 0)
     }),
+    // device→account resolution for webpush fan-out (ADR-026); no mapping ⇒ null (ctx undefined)
+    hget: vi.fn((h: string) => Promise.resolve(h === 'device:tenant' ? 't1' : h === 'device:account' ? 'a1' : null)),
     pipeline: vi.fn(() => pipe),
   } as unknown as Redis
 }

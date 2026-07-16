@@ -18,6 +18,7 @@ export { type RuleRepo, type RuleCreate, type RuleUpdate } from './repos/rules.j
 export { hashShareToken, type ShareLinkRepo, type ShareLinkView, type ShareLinkCreate, type CreatedShareLink, type ShareLinkResolved } from './repos/shareLinks.js'
 export { type WebhookRepo, type WebhookCreate, type WebhookUpdate } from './repos/webhooks.js'
 export { type ScheduledReportRepo, type ScheduledReportCreate, type ScheduledReportUpdate } from './repos/scheduledReports.js'
+export { type PushSubscriptionRepo, type PushSubscriptionInput, type PushTarget } from './repos/pushSubscriptions.js'
 export { type WebhookDeliveryRepo, type WebhookDeliveryView, type WebhookDeliveryListOpts } from './repos/webhookDeliveries.js'
 export { type UsageRepo, type PlatformUsageRow, type TenantUsageRow, type UsageRangeOpts } from './repos/usage.js'
 export { hashKey, type ApiKeyRepo, type ApiKeyView, type ApiKeyCreate, type CreatedApiKey, type ApiKeyResolved } from './repos/apiKeys.js'

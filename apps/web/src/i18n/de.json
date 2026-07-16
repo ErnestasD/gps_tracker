@@ -182,7 +182,8 @@
       "none": "keine Kanäle",
       "edit": "Kanäle",
       "save": "Speichern",
-      "cancel": "Abbrechen"
+      "cancel": "Abbrechen",
+      "webpush": "Browser-Push"
     }
   },
   "playback": {
@@ -280,6 +281,17 @@
         "done": "Bereit",
         "failed": "Fehlgeschlagen"
       }
+    },
+    "push": {
+      "title": "Browser-Benachrichtigungen",
+      "hint": "Push-Benachrichtigungen in diesem Browser aktivieren. Regeln mit dem Kanal „Browser-Push“ benachrichtigen jeden hier aktivierten Browser.",
+      "unsupported": "Ihr Browser unterstützt keine Push-Benachrichtigungen.",
+      "enable": "Aktivieren",
+      "disable": "Deaktivieren",
+      "on": "An",
+      "off": "Aus",
+      "denied": "Berechtigung verweigert — Benachrichtigungen in den Browsereinstellungen erlauben.",
+      "error": "Benachrichtigungen konnten nicht aktualisiert werden."
     }
   },
   "devices": {

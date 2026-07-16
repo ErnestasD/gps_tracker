@@ -17,3 +17,34 @@ self.addEventListener('install', () => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim())
 })
+
+// Web Push (ADR-026): the worker sends {title, body}; show it as a notification. A malformed/absent
+// payload falls back to a generic alert rather than dropping it silently.
+self.addEventListener('push', (event) => {
+  let data: { title?: string; body?: string } = {}
+  try {
+    data = (event.data?.json() as { title?: string; body?: string }) ?? {}
+  } catch {
+    data = { body: event.data?.text() }
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title ?? 'Orbetra', {
+      body: data.body ?? 'New alert',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: 'orbetra-alert',
+    }),
+  )
+})
+
+// clicking a notification focuses an open app tab, or opens one
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => 'focus' in c)
+      if (existing) return existing.focus()
+      return self.clients.openWindow('/app/events')
+    }),
+  )
+})

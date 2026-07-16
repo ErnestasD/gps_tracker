@@ -53,6 +53,10 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: ${MAIL_FROM:-}
       SES_CONFIG_SET: ${SES_CONFIG_SET:-}
+      # Web Push (ADR-026) — VAPID_PRIVATE_KEY in /opt/orbetra/.env (rule 12); absent ⇒ webpush skipped
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:ops@orbetra.com}
       # Stripe overage usage reporter (ADR-024 PR B2) — values in /opt/orbetra/.env (rule 12); absent ⇒ skipped
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_INCLUDED: ${STRIPE_INCLUDED:-}
@@ -87,6 +91,8 @@ services:
       STRIPE_PRICES: ${STRIPE_PRICES:-}
       STRIPE_OVERAGE_MAP: ${STRIPE_OVERAGE_MAP:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
+      # Web Push (ADR-026) — the API serves the PUBLIC key to the browser; absent ⇒ push unavailable
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
     volumes:
       # the GDPR download route streams the file the WORKER wrote — same volume on both
       # (review HIGH: without this every export download 410s "file removed")
