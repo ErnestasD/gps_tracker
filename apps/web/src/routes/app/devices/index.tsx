@@ -2,10 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
@@ -31,8 +28,18 @@ import {
   type OdometerSource,
 } from '@/lib/devices'
 
+const selectStyle: React.CSSProperties = {
+  borderColor: 'var(--admin-hairline)',
+  background: 'var(--admin-surface)',
+  color: 'var(--admin-ink)',
+}
+
+const th = 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
+const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
+
 /** Devices page (E03-3): list + create + retire + CSV import wizard (dry-run → apply).
- * Full shared DataTable (§3) is deferred; this is a functional table on tokens. */
+ * Re-skinned onto the admin design (ADR-028): PageHeader + admin-card sections; the table keeps
+ * its own markup (per-row actions + sub-card toggling) restyled to the admin idiom. */
 export function DevicesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -64,22 +71,20 @@ export function DevicesPage() {
   const onboardFor: Device | null = (devices.data ?? []).find((d) => d.id === onboardForId && d.retiredAt === null) ?? null
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{t('devices.title')}</h1>
-      </div>
+    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+      <PageHeader className="mb-0" title={t('devices.title')} description={t('devices.desc')} />
       {retireError !== null && (
-        <p role="alert" className="text-sm text-danger" data-testid="retire-error">
+        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="retire-error">
           {t('devices.retireError', { imei: retireError })}
         </p>
       )}
       {eraseQueued && (
-        <p className="text-sm text-muted" data-testid="erase-queued">
+        <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="erase-queued">
           {t('devices.eraseQueued')}
         </p>
       )}
       {eraseError && (
-        <p role="alert" className="text-sm text-danger" data-testid="erase-error">
+        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="erase-error">
           {t('devices.eraseError')}
         </p>
       )}
@@ -94,138 +99,141 @@ export function DevicesPage() {
 
       <ImportCard onImported={refresh} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('devices.list')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {devices.isLoading ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-8 w-full" />
-              ))}
-            </div>
-          ) : devices.isError ? (
-            <p className="text-sm text-danger">{t('devices.loadError')}</p>
-          ) : (devices.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted">{t('devices.empty')}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" data-testid="devices-table">
-                <thead>
-                  <tr className="border-b border-line text-left text-xs text-muted">
-                    <th className="py-2 pr-4 font-medium">{t('devices.name')}</th>
-                    <th className="py-2 pr-4 font-medium">{t('devices.imei')}</th>
-                    <th className="py-2 pr-4 font-medium">{t('devices.odometer')}</th>
-                    <th className="py-2 pr-4 font-medium">{t('devices.status')}</th>
-                    <th className="py-2 pr-4"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(devices.data ?? []).map((d) => (
-                    <tr key={d.id} className="border-b border-line/50" data-testid={`device-${d.imei}`}>
-                      <td className="py-2 pr-4">{d.name}</td>
-                      <td className="py-2 pr-4 font-mono text-xs">{d.imei}</td>
-                      <td className="py-2 pr-4">
-                        <select
-                          value={d.odometerSource}
-                          disabled={d.retiredAt !== null}
-                          data-testid={`odometer-${d.imei}`}
-                          onChange={(e) => void updateDevice(d.id, { odometerSource: e.target.value as OdometerSource }).then(refresh).catch(() => undefined)}
-                          className="h-7 rounded-card border border-line bg-surface px-1 text-xs text-text disabled:opacity-50"
-                        >
-                          {ODOMETER_SOURCES.map((s) => (
-                            <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-2 pr-4">
-                        {d.retiredAt !== null ? (
-                          <span className="inline-flex items-center gap-2">
-                            <Badge variant="outline">{t('devices.retired')}</Badge>
-                            {isAdmin && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-danger"
-                                data-testid={`erase-${d.imei}`}
-                                onClick={() => {
-                                  if (eraseArmedId !== d.id) {
-                                    setEraseArmedId(d.id) // first click arms — GDPR erase is irreversible
-                                    return
-                                  }
-                                  setEraseArmedId(null)
-                                  void eraseDevice(d.id)
-                                    .then(() => setEraseQueued(true))
-                                    .catch(() => setEraseError(true))
-                                }}
-                              >
-                                {eraseArmedId === d.id ? t('devices.eraseConfirm') : t('devices.erase')}
-                              </Button>
-                            )}
-                          </span>
-                        ) : (
-                          <Badge variant="success">{t('devices.active')}</Badge>
-                        )}
-                      </td>
-                      <td className="py-2 pr-4 text-right">
-                        {d.retiredAt === null && (
-                          <>
-                            <Button
+      <div className="admin-card overflow-hidden">
+        <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+          {t('devices.list')}
+        </div>
+        {devices.isLoading ? (
+          <div className="space-y-2 p-4">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : devices.isError ? (
+          <p className="p-4 text-sm" style={{ color: 'var(--admin-danger)' }}>{t('devices.loadError')}</p>
+        ) : (devices.data ?? []).length === 0 ? (
+          <p className="p-4 text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('devices.empty')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="devices-table">
+              <thead>
+                <tr style={{ background: 'var(--admin-surface-sunken)' }}>
+                  <th className={th} style={thStyle}>{t('devices.name')}</th>
+                  <th className={th} style={thStyle}>{t('devices.imei')}</th>
+                  <th className={th} style={thStyle}>{t('devices.odometer')}</th>
+                  <th className={th} style={thStyle}>{t('devices.status')}</th>
+                  <th className={th} style={thStyle}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(devices.data ?? []).map((d) => (
+                  <tr
+                    key={d.id}
+                    className="admin-hairline-b transition-colors hover:bg-[var(--admin-surface-sunken)]"
+                    data-testid={`device-${d.imei}`}
+                  >
+                    <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--admin-ink)' }}>{d.name}</td>
+                    <td className="mono px-4 py-2.5 text-xs" style={{ color: 'var(--admin-ink)' }}>{d.imei}</td>
+                    <td className="px-4 py-2.5">
+                      <select
+                        value={d.odometerSource}
+                        disabled={d.retiredAt !== null}
+                        data-testid={`odometer-${d.imei}`}
+                        onChange={(e) => void updateDevice(d.id, { odometerSource: e.target.value as OdometerSource }).then(refresh).catch(() => undefined)}
+                        className="h-7 rounded-md border px-1 text-xs disabled:opacity-50"
+                        style={selectStyle}
+                      >
+                        {ODOMETER_SOURCES.map((s) => (
+                          <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {d.retiredAt !== null ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Badge tone="neutral">{t('devices.retired')}</Badge>
+                          {isAdmin && (
+                            <AdminButton
                               variant="ghost"
                               size="sm"
-                              data-testid={`health-${d.imei}`}
-                              onClick={() => setHealthForId((cur) => (cur === d.id ? null : d.id))}
-                            >
-                              {t('devices.healthBtn')}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`onboarding-${d.imei}`}
-                              onClick={() => setOnboardForId((cur) => (cur === d.id ? null : d.id))}
-                            >
-                              {t('devices.onboard')}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`commands-${d.imei}`}
-                              onClick={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
-                            >
-                              {t('devices.commands')}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`share-${d.imei}`}
-                              onClick={() => setShareForId((cur) => (cur === d.id ? null : d.id))}
-                            >
-                              {t('devices.share.button')}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`retire-${d.imei}`}
+                              style={{ color: 'var(--admin-danger)' }}
+                              data-testid={`erase-${d.imei}`}
                               onClick={() => {
-                                void retireDevice(d.id)
-                                  .then(refresh)
-                                  .catch(() => setRetireError(d.imei))
+                                if (eraseArmedId !== d.id) {
+                                  setEraseArmedId(d.id) // first click arms — GDPR erase is irreversible
+                                  return
+                                }
+                                setEraseArmedId(null)
+                                void eraseDevice(d.id)
+                                  .then(() => setEraseQueued(true))
+                                  .catch(() => setEraseError(true))
                               }}
                             >
-                              {t('devices.retire')}
-                            </Button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                              {eraseArmedId === d.id ? t('devices.eraseConfirm') : t('devices.erase')}
+                            </AdminButton>
+                          )}
+                        </span>
+                      ) : (
+                        <Badge tone="success">{t('devices.active')}</Badge>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {d.retiredAt === null && (
+                        <>
+                          <AdminButton
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`health-${d.imei}`}
+                            onClick={() => setHealthForId((cur) => (cur === d.id ? null : d.id))}
+                          >
+                            {t('devices.healthBtn')}
+                          </AdminButton>
+                          <AdminButton
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`onboarding-${d.imei}`}
+                            onClick={() => setOnboardForId((cur) => (cur === d.id ? null : d.id))}
+                          >
+                            {t('devices.onboard')}
+                          </AdminButton>
+                          <AdminButton
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`commands-${d.imei}`}
+                            onClick={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
+                          >
+                            {t('devices.commands')}
+                          </AdminButton>
+                          <AdminButton
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`share-${d.imei}`}
+                            onClick={() => setShareForId((cur) => (cur === d.id ? null : d.id))}
+                          >
+                            {t('devices.share.button')}
+                          </AdminButton>
+                          <AdminButton
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`retire-${d.imei}`}
+                            onClick={() => {
+                              void retireDevice(d.id)
+                                .then(refresh)
+                                .catch(() => setRetireError(d.imei))
+                            }}
+                          >
+                            {t('devices.retire')}
+                          </AdminButton>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* key remounts the panel per device — armed/text state must NEVER survive a device
           switch (a confirm armed for device A must not send with one click on device B) */}
@@ -235,6 +243,15 @@ export function DevicesPage() {
       {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
       {shareFor !== null && <ShareCard key={shareFor.id} device={shareFor} />}
     </div>
+  )
+}
+
+function FieldLabel({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
+      {label}
+      {children}
+    </label>
   )
 }
 
@@ -276,51 +293,48 @@ function CreateDeviceForm({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{t('devices.add')}</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <div className="admin-card">
+      <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+        {t('devices.add')}
+      </div>
+      <div className="p-4">
         <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            {t('devices.imei')}
-            <Input value={imei} onChange={(e) => setImei(e.target.value)} required pattern="\d{15}" placeholder="15 digits" data-testid="device-imei" className="w-48" />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            {t('devices.name')}
-            <Input value={name} onChange={(e) => setName(e.target.value)} required data-testid="device-name" className="w-48" />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            {t('devices.account')}
-            <select value={acc} onChange={(e) => setAccountId(e.target.value)} className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text" data-testid="device-account">
+          <FieldLabel label={t('devices.imei')}>
+            <AdminInput value={imei} onChange={(e) => setImei(e.target.value)} required pattern="\d{15}" placeholder="15 digits" data-testid="device-imei" className="w-48" />
+          </FieldLabel>
+          <FieldLabel label={t('devices.name')}>
+            <AdminInput value={name} onChange={(e) => setName(e.target.value)} required data-testid="device-name" className="w-48" />
+          </FieldLabel>
+          <FieldLabel label={t('devices.account')}>
+            <select value={acc} onChange={(e) => setAccountId(e.target.value)} className="h-9 rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-account">
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            {t('devices.profile')}
-            <select value={prof} onChange={(e) => setProfileId(e.target.value)} className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text" data-testid="device-profile">
+          </FieldLabel>
+          <FieldLabel label={t('devices.profile')}>
+            <select value={prof} onChange={(e) => setProfileId(e.target.value)} className="h-9 rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-profile">
               {profiles.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            {t('devices.odometer')}
-            <select value={odometerSource} onChange={(e) => setOdometerSource(e.target.value as OdometerSource)} className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text" data-testid="device-odometer">
+          </FieldLabel>
+          <FieldLabel label={t('devices.odometer')}>
+            <select value={odometerSource} onChange={(e) => setOdometerSource(e.target.value as OdometerSource)} className="h-9 rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-odometer">
               {ODOMETER_SOURCES.map((s) => (
                 <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
               ))}
             </select>
-          </label>
-          <Button type="submit" disabled={busy || imei === '' || name === '' || acc === '' || prof === ''} data-testid="device-create">
+          </FieldLabel>
+          <AdminButton type="submit" disabled={busy || imei === '' || name === '' || acc === '' || prof === ''} data-testid="device-create">
             {t('devices.create')}
-          </Button>
-          {error !== null && <p role="alert" data-testid="device-error" className="w-full text-sm text-danger">{error}</p>}
+          </AdminButton>
+          {error !== null && (
+            <p role="alert" data-testid="device-error" className="w-full text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>
+          )}
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
@@ -353,42 +367,45 @@ function ImportCard({ onImported }: { onImported: () => void }) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{t('devices.import.title')}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-xs text-muted">{t('devices.import.hint')}</p>
+    <div className="admin-card">
+      <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+        {t('devices.import.title')}
+      </div>
+      <div className="space-y-3 p-4">
+        <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('devices.import.hint')}</p>
         <textarea
           value={csv}
           onChange={(e) => setCsv(e.target.value)}
           rows={4}
           placeholder="imei,name,profileKey,accountId"
           data-testid="import-csv"
-          className="w-full rounded-card border border-line bg-surface p-2 font-mono text-xs text-text"
+          className="mono w-full rounded-md border p-2 text-xs outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30"
+          style={selectStyle}
         />
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" disabled={busy || csv === ''} onClick={runPreview} data-testid="import-preview">
+          <AdminButton variant="secondary" size="sm" disabled={busy || csv === ''} onClick={runPreview} data-testid="import-preview">
             {t('devices.import.preview')}
-          </Button>
+          </AdminButton>
           {preview !== null && (
-            <Button size="sm" disabled={busy || preview.create.length === 0} onClick={apply} data-testid="import-apply">
+            <AdminButton size="sm" disabled={busy || preview.create.length === 0} onClick={apply} data-testid="import-apply">
               {t('devices.import.apply', { n: preview.create.length })}
-            </Button>
+            </AdminButton>
           )}
-          {applied !== null && <span className="text-sm text-success" data-testid="import-done">{t('devices.import.done', { n: applied })}</span>}
+          {applied !== null && (
+            <span className="text-sm" style={{ color: 'var(--admin-success)' }} data-testid="import-done">{t('devices.import.done', { n: applied })}</span>
+          )}
         </div>
         {preview !== null && (
           <div className="text-xs" data-testid="import-summary">
             <div className="flex gap-4">
-              <span className="text-success">{t('devices.import.create', { n: preview.create.length })}</span>
-              <span className="text-warn">{t('devices.import.update', { n: preview.update.length })}</span>
-              <span className="text-danger">{t('devices.import.errors', { n: preview.errors.length })}</span>
+              <span style={{ color: 'var(--admin-success)' }}>{t('devices.import.create', { n: preview.create.length })}</span>
+              <span style={{ color: 'var(--admin-warning)' }}>{t('devices.import.update', { n: preview.update.length })}</span>
+              <span style={{ color: 'var(--admin-danger)' }}>{t('devices.import.errors', { n: preview.errors.length })}</span>
             </div>
             {preview.errors.length > 0 && (
               <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto">
                 {preview.errors.slice(0, 50).map((e, i) => (
-                  <li key={i} className="text-danger">
+                  <li key={i} style={{ color: 'var(--admin-danger)' }}>
                     {t('devices.import.rowError', { row: e.row, imei: e.imei, reason: e.reason })}
                   </li>
                 ))}
@@ -396,7 +413,7 @@ function ImportCard({ onImported }: { onImported: () => void }) {
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
