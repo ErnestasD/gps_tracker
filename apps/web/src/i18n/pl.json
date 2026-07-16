@@ -118,6 +118,7 @@
   },
   "trips": {
     "title": "Trasy",
+    "desc": "Wszystkie trasy floty z filtrem czasu.",
     "device": "Urządzenie",
     "allDevices": "Wszystkie urządzenia",
     "from": "Od",
@@ -302,6 +303,7 @@
   },
   "devices": {
     "title": "Urządzenia",
+    "desc": "Wszystkie urządzenia GPS floty w jednym miejscu.",
     "list": "Wszystkie urządzenia",
     "add": "Dodaj urządzenie",
     "create": "Utwórz",
@@ -590,6 +592,7 @@
   },
   "drivers": {
     "title": "Kierowcy",
+    "desc": "Kierowcy, ich oceny bezpieczeństwa i przypisania.",
     "list": "Lista kierowców",
     "addTitle": "Dodaj kierowcę",
     "editTitle": "Edytuj kierowcę",
@@ -624,6 +627,12 @@
   },
   "maint": {
     "title": "Konserwacja",
+    "desc": "Przypomnienia serwisowe i harmonogram.",
+    "stat": {
+      "ok": "W porządku",
+      "due": "Zbliża się termin",
+      "overdue": "Zaległe"
+    },
     "list": "Harmonogram serwisu",
     "add": "Dodaj przypomnienie",
     "device": "Urządzenie",

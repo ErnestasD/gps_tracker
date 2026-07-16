@@ -118,6 +118,7 @@
   },
   "trips": {
     "title": "Fahrten",
+    "desc": "Alle Fahrten der Flotte mit Zeitfilter.",
     "device": "Gerät",
     "allDevices": "Alle Geräte",
     "from": "Von",
@@ -302,6 +303,7 @@
   },
   "devices": {
     "title": "Geräte",
+    "desc": "Alle GPS-Geräte der Flotte an einem Ort.",
     "list": "Alle Geräte",
     "add": "Gerät hinzufügen",
     "create": "Erstellen",
@@ -590,6 +592,7 @@
   },
   "drivers": {
     "title": "Fahrer",
+    "desc": "Fahrer, ihre Sicherheitsbewertungen und Zuweisungen.",
     "list": "Fahrerliste",
     "addTitle": "Fahrer hinzufügen",
     "editTitle": "Fahrer bearbeiten",
@@ -624,6 +627,12 @@
   },
   "maint": {
     "title": "Wartung",
+    "desc": "Wartungserinnerungen und Zeitplan.",
+    "stat": {
+      "ok": "In Ordnung",
+      "due": "Bald fällig",
+      "overdue": "Überfällig"
+    },
     "list": "Serviceplan",
     "add": "Erinnerung hinzufügen",
     "device": "Gerät",
