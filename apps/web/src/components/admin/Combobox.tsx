@@ -92,7 +92,7 @@ export function Combobox({
                   onChange(o.value)
                   setOpen(false)
                 }}
-                className="flex w-full items-center justify-between gap-2 rounded px-2.5 py-1.5 text-left text-sm transition-colors hover:opacity-100"
+                className="flex w-full items-center justify-between gap-2 rounded px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-[var(--admin-surface-sunken)]"
                 style={{ color: 'var(--admin-ink)', background: isActive ? 'var(--admin-brand-soft)' : 'transparent' }}
               >
                 <span className="min-w-0 flex-1 truncate">{o.label}</span>

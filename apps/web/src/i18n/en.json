@@ -667,7 +667,7 @@
     "nothingFound": "Nothing found",
     "clear": "Clear",
     "empty": "No records",
-    "pageInfo": "{{count}} records · page {{page}} / {{pages}}",
+    "pageInfo": "{{n}} records · page {{page}} / {{pages}}",
     "prev": "Previous",
     "next": "Next",
     "pick": "Select…",

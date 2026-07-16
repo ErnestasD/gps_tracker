@@ -667,7 +667,7 @@
     "nothingFound": "Nichts gefunden",
     "clear": "Zurücksetzen",
     "empty": "Keine Einträge",
-    "pageInfo": "{{count}} Einträge · Seite {{page}} / {{pages}}",
+    "pageInfo": "{{n}} Einträge · Seite {{page}} / {{pages}}",
     "prev": "Zurück",
     "next": "Weiter",
     "pick": "Auswählen…",

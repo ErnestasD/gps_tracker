@@ -24,7 +24,9 @@ export interface TenantDomain {
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/
-const SURFACE = '#111a2e' // tokens.css --surface (dark); contrast reference
+// tokens.css --surface (dark) — contrast reference for the auto-lighten guard (ADR-028 palette).
+// Light-theme contrast for white-label accents is a documented follow-up (theme-aware clamping).
+const SURFACE = '#10151f'
 
 function toRgb(hex: string): [number, number, number] {
   return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]

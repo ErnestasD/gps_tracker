@@ -57,7 +57,8 @@ export function AdminButton({
         : variant === 'danger'
           ? { background: 'var(--admin-danger)', color: '#fff' }
           : { background: 'transparent', color: 'var(--admin-ink)' }
-  return <button className={cn(base, sz, className)} style={style} {...props} />
+  // default type="button" — these compose inside forms; a bare <button> would submit
+  return <button type="button" className={cn(base, sz, className)} style={style} {...props} />
 }
 
 export function Badge({

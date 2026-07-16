@@ -121,7 +121,7 @@ export function DataTable<T extends { id: string }>({
               style={{ color: 'var(--admin-ink)' }}
             />
             {q !== '' && (
-              <button onClick={() => setQ('')} aria-label={t('admin.clear')}>
+              <button type="button" onClick={() => setQ('')} aria-label={t('admin.clear')}>
                 <X className="h-3.5 w-3.5 opacity-60" />
               </button>
             )}
@@ -144,6 +144,7 @@ export function DataTable<T extends { id: string }>({
         ))}
         {anyFilterActive && (
           <button
+            type="button"
             onClick={() => {
               setFilters({})
               setQ('')
@@ -174,6 +175,7 @@ export function DataTable<T extends { id: string }>({
                 >
                   {c.sortable === true ? (
                     <button
+                      type="button"
                       onClick={() =>
                         setSort((s) => (s?.key === c.key ? { key: c.key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: c.key, dir: 'asc' }))
                       }
@@ -256,9 +258,10 @@ export function DataTable<T extends { id: string }>({
 
       {/* pagination */}
       <div className="admin-hairline-t flex items-center justify-between gap-2 px-4 py-2.5 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
-        <div>{t('admin.pageInfo', { count: filtered.length, page: page + 1, pages: pageCount })}</div>
+        <div>{t('admin.pageInfo', { n: filtered.length, page: page + 1, pages: pageCount })}</div>
         <div className="flex items-center gap-1">
           <button
+            type="button"
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}
             className="rounded border px-2 py-1 disabled:opacity-40"
@@ -267,6 +270,7 @@ export function DataTable<T extends { id: string }>({
             ← {t('admin.prev')}
           </button>
           <button
+            type="button"
             onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
             disabled={page >= pageCount - 1}
             className="rounded border px-2 py-1 disabled:opacity-40"

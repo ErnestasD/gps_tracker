@@ -11,7 +11,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { listAccounts } from '@/lib/devices'
 import { downloadExport, hasPendingExport, listExports, requestExport } from '@/lib/gdpr'
 import { ApiError } from '@/lib/http'
-import { getTheme, setStoredLocale, setTheme, type Theme } from '@/lib/prefs'
+import { getTheme, onThemeChange, setStoredLocale, setTheme, type Theme } from '@/lib/prefs'
 import { disablePush, enablePush, pushEnabled, pushSupported } from '@/lib/push'
 
 const LOCALES = ['en', 'lt', 'pl', 'de'] as const
@@ -21,6 +21,8 @@ export function SettingsPage() {
   const { t, i18n } = useTranslation()
   const user = getCurrentUser()
   const [theme, setThemeState] = useState<Theme>(getTheme())
+  // the topbar toggle also changes the theme — keep the radios in sync (ADR-028)
+  useEffect(() => onThemeChange(() => setThemeState(getTheme())), [])
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [pwMsg, setPwMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)

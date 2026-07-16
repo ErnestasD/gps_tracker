@@ -667,7 +667,7 @@
     "nothingFound": "Nieko nerasta",
     "clear": "Išvalyti",
     "empty": "Įrašų nėra",
-    "pageInfo": "{{count}} įrašų · psl. {{page}} / {{pages}}",
+    "pageInfo": "{{n}} įrašų · psl. {{page}} / {{pages}}",
     "prev": "Ankstesnis",
     "next": "Kitas",
     "pick": "Pasirinkti…",

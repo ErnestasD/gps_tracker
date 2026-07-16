@@ -667,7 +667,7 @@
     "nothingFound": "Nic nie znaleziono",
     "clear": "Wyczyść",
     "empty": "Brak wpisów",
-    "pageInfo": "{{count}} wpisów · str. {{page}} / {{pages}}",
+    "pageInfo": "{{n}} wpisów · str. {{page}} / {{pages}}",
     "prev": "Poprzednia",
     "next": "Następna",
     "pick": "Wybierz…",

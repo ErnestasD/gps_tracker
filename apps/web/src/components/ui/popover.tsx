@@ -12,14 +12,14 @@ const PopoverAnchor = PopoverPrimitive.Anchor
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = 'center', sideOffset = 4, ...props }, ref) => (
+>(({ className, align = 'center', sideOffset = 4, style, ...props }, ref) => (
   <PopoverPrimitive.Portal>
     <PopoverPrimitive.Content
       ref={ref}
       align={align}
       sideOffset={sideOffset}
       className={cn('z-50 w-72 rounded-md border border-line bg-surface p-4 text-text outline-none', className)}
-      style={{ boxShadow: 'var(--admin-shadow-md)' }}
+      style={{ boxShadow: 'var(--admin-shadow-md)', ...style }}
       {...props}
     />
   </PopoverPrimitive.Portal>

@@ -34,7 +34,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { getCurrentUser, logout as authLogout } from '@/lib/auth'
 import { applyBranding, getBranding } from '@/lib/branding'
 import { liveStore } from '@/lib/liveStore'
-import { getTheme, setTheme, type Theme } from '@/lib/prefs'
+import { getTheme, onThemeChange, setTheme, type Theme } from '@/lib/prefs'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
@@ -105,6 +105,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // close the mobile drawer on navigation
   useEffect(() => setMobileOpen(false), [pathname])
+
+  // stay in sync when the settings page (or anything else) changes the theme
+  useEffect(() => onThemeChange(() => setThemeState(getTheme())), [])
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
