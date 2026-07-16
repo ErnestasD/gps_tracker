@@ -50,6 +50,30 @@ describe('simulator scenarios (E02-1)', () => {
     }
   })
 
+  it('an iButton drive emits AVL 78 that canonicalizes to the driver registry key (driver auto-resolution)', async () => {
+    const hex = '0a1b2c3d4e5f6071'
+    const packets = await collect(liveDrive.packets({ ...OPTS, ibutton: hex, can: true }))
+    const codec = createTeltonikaCodec()
+    const parsed = codec.parse(codec.feed(packets[0]!)[0]!)
+    if (parsed.kind !== 'avl') expect.unreachable('avl expected')
+    const rec = parsed.records[0]!
+    // the worker's ibuttonKeyFromAvl(value) = String(bigint); the registry's ibuttonKeyFromHex(hex) =
+    // BigInt('0x'+hex).toString(). They MUST match or a demo tap would silently never assign a driver.
+    expect(String(rec.io.get(78))).toBe(BigInt('0x' + hex).toString())
+    // CAN engine params present for the CAN panel
+    expect(rec.io.get(85)).toBeGreaterThan(0n) // Engine RPM
+    expect(rec.io.has(32)).toBe(true) // Coolant Temperature
+    expect(rec.io.has(87)).toBe(true) // Total Mileage
+  })
+
+  it('a plain drive carries no iButton / CAN ids', async () => {
+    const packets = await collect(liveDrive.packets(OPTS))
+    const codec = createTeltonikaCodec()
+    const rec = (codec.parse(codec.feed(packets[0]!)[0]!) as { records: { io: Map<number, unknown> }[] }).records[0]!
+    expect(rec.io.has(78)).toBe(false)
+    expect(rec.io.has(85)).toBe(false)
+  })
+
   it('same seed ⇒ byte-identical stream; different seed ⇒ different bytes', async () => {
     const a = Buffer.concat(await collect(liveDrive.packets(OPTS)))
     const b = Buffer.concat(await collect(liveDrive.packets({ ...OPTS })))
