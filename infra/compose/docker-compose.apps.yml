@@ -47,6 +47,7 @@ services:
       REDIS_URL: redis://redis:6379
       PROMETHEUS_PORT: "9102"
       EXPORT_DIR: /var/orbetra/exports
+      WEBHOOK_DELIVERY_RETENTION_DAYS: ${WEBHOOK_DELIVERY_RETENTION_DAYS:-30}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # E05-5 email delivery (ADR-023) — values live in /opt/orbetra/.env (rule 12); absent ⇒ skipped
       SMTP_HOST: ${SMTP_HOST:-}

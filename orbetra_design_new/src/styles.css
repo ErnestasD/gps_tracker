@@ -1,0 +1,400 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-violet: var(--brand-violet);
+  --color-brand-green: var(--brand-green);
+  --color-brand-amber: var(--brand-amber);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-ink: var(--ink);
+  --color-hairline: var(--hairline);
+  --color-blueprint: var(--blueprint);
+}
+
+:root {
+  --radius: 0.5rem;
+
+  /* Midnight Cyan — dark hi-tech dispatch palette */
+  --background: #04070F;
+  --foreground: #E6F1FF;
+  --ink: #E6F1FF;
+  --blueprint: #0A1428;
+  --hairline: #12213D;
+
+  --card: #0A1428;
+  --card-foreground: #E6F1FF;
+  --popover: #0A1428;
+  --popover-foreground: #E6F1FF;
+
+  --primary: #4c4dcf;
+  --primary-foreground: #E6F1FF;
+  --secondary: #0E3A5F;
+  --secondary-foreground: #E6F1FF;
+  --muted: #0A1428;
+  --muted-foreground: #7A8CAA;
+  --accent: #0E3A5F;
+  --accent-foreground: #E6F1FF;
+  --destructive: #F43F5E;
+  --destructive-foreground: #FFFFFF;
+  --border: #12213D;
+  --input: #12213D;
+  --ring: #4c4dcf;
+
+  --brand-blue: #4338CA;
+  --brand-cyan: #4c4dcf;
+  --brand-violet: #5B21B6;
+  --brand-green: #059669;
+  --brand-amber: #B45309;
+
+  --gradient-headline: linear-gradient(90deg, #4c4dcf 0%, #3a3b8f 100%);
+  --gradient-band: linear-gradient(180deg, #04070F 0%, #0A1428 100%);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  h1, h2, h3, .display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  .mono, code, pre, kbd, samp {
+    font-family: var(--font-mono);
+  }
+}
+
+@utility text-gradient {
+  background: var(--gradient-headline);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+@utility surface-card {
+  background: linear-gradient(180deg, rgba(14,58,95,0.28) 0%, rgba(10,20,40,0.6) 100%);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  backdrop-filter: blur(8px);
+  transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
+}
+@utility surface-card-hover {
+  box-shadow: 0 10px 32px -14px rgba(76,77,207,0.35);
+  border-color: rgba(76,77,207,0.55);
+  transform: translateY(-2px);
+}
+
+@utility pill-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.35rem;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #4c4dcf 0%, #3a3b8f 100%);
+  color: #E6F1FF;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 0 1px rgba(76,77,207,0.4), 0 8px 24px -10px rgba(76,77,207,0.55);
+  transition: transform .15s ease, box-shadow .2s ease, background .2s ease;
+}
+@utility pill-primary-hover {
+  background: linear-gradient(180deg, #6a6bdf 0%, #4c4dcf 100%);
+  box-shadow: 0 0 0 1px rgba(76,77,207,0.6), 0 12px 32px -10px rgba(76,77,207,0.75);
+}
+@utility pill-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.35rem;
+  border-radius: 4px;
+  border: 1px solid var(--hairline);
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 0.85rem;
+  background: rgba(10,20,40,0.6);
+  backdrop-filter: blur(6px);
+  transition: border-color .15s ease, background .15s ease;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.6); opacity: 0.5; }
+}
+.animate-pulse-dot { animation: pulseDot 2.2s ease-in-out infinite; }
+
+@keyframes radarSweep {
+  0% { transform: rotate(0deg); opacity: 0; }
+  10% { opacity: 0.6; }
+  100% { transform: rotate(360deg); opacity: 0; }
+}
+.animate-radar-sweep { animation: radarSweep 3.5s ease-out 0.4s 1; transform-origin: center; }
+
+@keyframes dashFlow {
+  to { stroke-dashoffset: -100; }
+}
+.animate-dash-flow { animation: dashFlow 6s linear infinite; }
+
+@keyframes floatY {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float-y { animation: floatY 6s ease-in-out infinite; }
+
+@keyframes orbitSpin {
+  to { transform: rotate(360deg); }
+}
+.animate-orbit-slow { animation: orbitSpin 60s linear infinite; transform-origin: center; }
+.animate-orbit-mid  { animation: orbitSpin 40s linear infinite; transform-origin: center; }
+.animate-orbit-fast { animation: orbitSpin 24s linear infinite reverse; transform-origin: center; }
+@keyframes orbitSpinRev { to { transform: rotate(-360deg); } }
+.animate-orbit-halo    { animation: orbitSpin 120s linear infinite; transform-origin: center; }
+.animate-orbit-counter { animation: orbitSpinRev 120s linear infinite; transform-origin: center; }
+
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-ticker { animation: ticker 45s linear infinite; }
+
+@keyframes tickerVertical {
+  from { transform: translateY(0); }
+  to { transform: translateY(-33.333%); }
+}
+.animate-ticker-vertical { animation: tickerVertical 40s linear infinite; }
+
+@utility glass-panel {
+  background: linear-gradient(180deg, rgba(14,58,95,0.5) 0%, rgba(4,7,15,0.85) 100%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(76,77,207,0.22);
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(76,77,207,0.15) inset,
+    0 0 0 1px rgba(76,77,207,0.06),
+    0 30px 60px -20px rgba(0,0,0,0.6),
+    0 60px 120px -40px rgba(76,77,207,0.15);
+}
+
+@utility chip-frost {
+  background: rgba(10,20,40,0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(76,77,207,0.28);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px -10px rgba(0,0,0,0.6), 0 0 0 1px rgba(76,77,207,0.06);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ============================================================
+   ADMIN PANEL — scoped light/dark theme.
+   Applied via <div data-admin-theme="light|dark"> wrapper so the
+   marketing site palette is untouched.
+   ============================================================ */
+
+[data-admin-theme] { color-scheme: light dark; }
+
+[data-admin-theme="light"] {
+  --background: #F7F8FA;
+  --foreground: #0B1220;
+  --card: #FFFFFF;
+  --card-foreground: #0B1220;
+  --popover: #FFFFFF;
+  --popover-foreground: #0B1220;
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F1F3F8;
+  --secondary-foreground: #0B1220;
+  --muted: #F1F3F8;
+  --muted-foreground: #5B6478;
+  --accent: #EEF0FF;
+  --accent-foreground: #3A38B8;
+  --destructive: #E11D48;
+  --destructive-foreground: #FFFFFF;
+  --border: #E5E8EF;
+  --input: #E5E8EF;
+  --ring: #4F46E5;
+  --admin-surface: #FFFFFF;
+  --admin-surface-2: #F7F8FA;
+  --admin-surface-sunken: #F1F3F8;
+  --admin-ink: #0B1220;
+  --admin-ink-soft: #5B6478;
+  --admin-hairline: #E5E8EF;
+  --admin-hairline-soft: #EEF0F4;
+  --admin-brand: #4F46E5;
+  --admin-brand-soft: #EEF0FF;
+  --admin-success: #059669;
+  --admin-success-soft: #E7F7EF;
+  --admin-warning: #B45309;
+  --admin-warning-soft: #FEF3E2;
+  --admin-danger: #E11D48;
+  --admin-danger-soft: #FEECEF;
+  --admin-info: #0284C7;
+  --admin-info-soft: #E4F3FC;
+  --admin-shadow-sm: 0 1px 2px rgba(11,18,32,0.04), 0 1px 1px rgba(11,18,32,0.03);
+  --admin-shadow-md: 0 4px 12px -2px rgba(11,18,32,0.08), 0 2px 4px -1px rgba(11,18,32,0.04);
+  --admin-shadow-lg: 0 20px 40px -12px rgba(11,18,32,0.12), 0 8px 16px -8px rgba(11,18,32,0.06);
+}
+
+[data-admin-theme="dark"] {
+  --background: #0A0E1A;
+  --foreground: #E6EAF2;
+  --card: #10151F;
+  --card-foreground: #E6EAF2;
+  --popover: #10151F;
+  --popover-foreground: #E6EAF2;
+  --primary: #7C7DF5;
+  --primary-foreground: #0A0E1A;
+  --secondary: #1A1F2C;
+  --secondary-foreground: #E6EAF2;
+  --muted: #1A1F2C;
+  --muted-foreground: #8B93A7;
+  --accent: #1E2237;
+  --accent-foreground: #B4B8FF;
+  --destructive: #F43F5E;
+  --destructive-foreground: #0A0E1A;
+  --border: #232838;
+  --input: #232838;
+  --ring: #7C7DF5;
+  --admin-surface: #10151F;
+  --admin-surface-2: #0A0E1A;
+  --admin-surface-sunken: #070A12;
+  --admin-ink: #E6EAF2;
+  --admin-ink-soft: #8B93A7;
+  --admin-hairline: #232838;
+  --admin-hairline-soft: #1A1F2C;
+  --admin-brand: #7C7DF5;
+  --admin-brand-soft: #1E2237;
+  --admin-success: #34D399;
+  --admin-success-soft: #0F2A22;
+  --admin-warning: #FBBF24;
+  --admin-warning-soft: #2A2010;
+  --admin-danger: #F87171;
+  --admin-danger-soft: #2A1216;
+  --admin-info: #38BDF8;
+  --admin-info-soft: #0E2230;
+  --admin-shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+  --admin-shadow-md: 0 6px 20px -6px rgba(0,0,0,0.5);
+  --admin-shadow-lg: 0 24px 48px -16px rgba(0,0,0,0.6);
+}
+
+[data-admin-theme] { background-color: var(--admin-surface-2); color: var(--admin-ink); }
+[data-admin-theme] .admin-card {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-hairline);
+  border-radius: 12px;
+  box-shadow: var(--admin-shadow-sm);
+}
+[data-admin-theme] .admin-hairline-b { border-bottom: 1px solid var(--admin-hairline); }
+[data-admin-theme] .admin-hairline-t { border-top: 1px solid var(--admin-hairline); }
+[data-admin-theme] .admin-hairline-r { border-right: 1px solid var(--admin-hairline); }
+
+@keyframes adminShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+[data-admin-theme] .admin-skeleton {
+  background: linear-gradient(90deg, var(--admin-hairline-soft) 0%, var(--admin-hairline) 50%, var(--admin-hairline-soft) 100%);
+  background-size: 200% 100%;
+  animation: adminShimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+
+/* Fix tw-animate-css `enter`/`exit` keyframes missing a 100% stop,
+   which left Radix popovers/dialogs/sheets stuck at opacity 0. */
+@keyframes enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
+      scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1))
+      rotate(var(--tw-enter-rotate, 0));
+    filter: blur(var(--tw-enter-blur, 0));
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1) rotate(0);
+    filter: blur(0);
+  }
+}
+@keyframes exit {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1) rotate(0);
+    filter: blur(0);
+  }
+  to {
+    opacity: var(--tw-exit-opacity, 1);
+    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)
+      scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1))
+      rotate(var(--tw-exit-rotate, 0));
+    filter: blur(var(--tw-exit-blur, 0));
+  }
+}
