@@ -498,7 +498,8 @@
       "endTime": "End",
       "maxSpeed": "Max speed"
     },
-    "account": "Account"
+    "account": "Account",
+    "exportPdf": "Export PDF"
   },
   "apiKeys": {
     "title": "API keys",

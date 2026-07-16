@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { COLUMNS, REPORT_TYPES, toCsv } from '../src/lib/reports.js'
+import { COLUMNS, REPORT_TYPES, toCsv, toPdfTable } from '../src/lib/reports.js'
 
 describe('E06-2 toCsv', () => {
   const cols = COLUMNS.mileage // day, deviceId, trips, distanceM
@@ -28,5 +28,14 @@ describe('E06-2 toCsv', () => {
 
   it('every report type has a column layout', () => {
     for (const t of REPORT_TYPES) expect(COLUMNS[t].length).toBeGreaterThan(0)
+  })
+})
+
+describe('toPdfTable (ADR-025)', () => {
+  it('builds a head row from column keys + a body matrix, stringifying cells', () => {
+    const cols = [{ key: 'day', label: 'day' }, { key: 'distanceM', label: 'distanceM' }]
+    const t = toPdfTable(cols, [{ day: '2026-07-09', distanceM: 12000 }, { day: '2026-07-10', distanceM: null }])
+    expect(t.head).toEqual([['day', 'distanceM']])
+    expect(t.body).toEqual([['2026-07-09', '12000'], ['2026-07-10', '']]) // null → '', number → string
   })
 })

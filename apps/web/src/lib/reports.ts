@@ -61,3 +61,26 @@ export function downloadCsv(filename: string, csv: string): void {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+/** Report rows → a PDF-table matrix { head, body } (pure; unit-tested). Cells are stringified like CSV. */
+export function toPdfTable(columns: Column[], rows: Record<string, unknown>[]): { head: string[][]; body: string[][] } {
+  const cell = (v: unknown): string => (typeof v === 'string' ? v : v === null || v === undefined ? '' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v))
+  return {
+    head: [columns.map((col) => col.key)],
+    body: rows.map((r) => columns.map((col) => cell(r[col.key]))),
+  }
+}
+
+/** Render a report to a PDF (client-side, jsPDF + autotable — ADR-025) and download it. */
+export async function downloadPdf(filename: string, title: string, columns: Column[], rows: Record<string, unknown>[]): Promise<void> {
+  const { jsPDF } = await import('jspdf')
+  const { default: autoTable } = await import('jspdf-autotable')
+  const doc = new jsPDF({ orientation: 'landscape' })
+  doc.setFontSize(14)
+  doc.text(title, 14, 16)
+  doc.setFontSize(9)
+  doc.text(`Generated ${new Date().toISOString().slice(0, 19).replace('T', ' ')} UTC`, 14, 22)
+  const { head, body } = toPdfTable(columns, rows)
+  autoTable(doc, { head, body, startY: 26, styles: { fontSize: 8 }, headStyles: { fillColor: [77, 163, 255] } })
+  doc.save(filename)
+}
