@@ -1,6 +1,10 @@
 @import 'tailwindcss';
 @import './tokens.css';
 @import '@fontsource-variable/inter';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
 @import 'maplibre-gl/dist/maplibre-gl.css';
 
 /* Tailwind v4 theme mapping: utilities like bg-surface, text-muted, border-line,
@@ -17,8 +21,11 @@
   --color-success: var(--success);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
+  --color-info: var(--info);
   --radius-card: var(--radius);
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Space Grotesk', 'Inter Variable', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   --shadow-card: var(--shadow-card);
 }
 
@@ -32,6 +39,53 @@ body {
   /* spec §1: 13px dashboard density default; forms bump to 15px locally */
   font-size: 13px;
   @apply bg-bg text-text font-sans antialiased;
+}
+
+/* admin redesign typography (ADR-028): display face for headings, mono for codes */
+h1,
+h2,
+h3,
+.display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+.mono,
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+}
+
+/* admin redesign primitives (ADR-028, ported from orbetra_design_new) */
+.admin-card {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-hairline);
+  border-radius: 12px;
+  box-shadow: var(--admin-shadow-sm);
+}
+.admin-hairline-b {
+  border-bottom: 1px solid var(--admin-hairline);
+}
+.admin-hairline-t {
+  border-top: 1px solid var(--admin-hairline);
+}
+.admin-hairline-r {
+  border-right: 1px solid var(--admin-hairline);
+}
+@keyframes adminShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.admin-skeleton {
+  background: linear-gradient(90deg, var(--admin-hairline-soft) 0%, var(--admin-hairline) 50%, var(--admin-hairline-soft) 100%);
+  background-size: 200% 100%;
+  animation: adminShimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
 }
 
 /* keep OSM attribution legible on the dark shell (rule 13: always visible) */

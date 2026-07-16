@@ -39,7 +39,10 @@
     "platform": "Platforma",
     "drivers": "Kierowcy",
     "maintenance": "Konserwacja",
-    "billing": "Płatności"
+    "billing": "Płatności",
+    "menu": "Otwórz menu",
+    "close": "Zamknij",
+    "theme": "Przełącz motyw"
   },
   "billing": {
     "title": "Płatności",
@@ -658,5 +661,16 @@
       "5": "Pt",
       "6": "So"
     }
+  },
+  "admin": {
+    "search": "Szukaj…",
+    "nothingFound": "Nic nie znaleziono",
+    "clear": "Wyczyść",
+    "empty": "Brak wpisów",
+    "pageInfo": "{{count}} wpisów · str. {{page}} / {{pages}}",
+    "prev": "Poprzednia",
+    "next": "Następna",
+    "pick": "Wybierz…",
+    "allOf": "{{header}}: wszystkie"
   }
 }

@@ -39,7 +39,10 @@
     "platform": "Plattform",
     "drivers": "Fahrer",
     "maintenance": "Wartung",
-    "billing": "Abrechnung"
+    "billing": "Abrechnung",
+    "menu": "Menü öffnen",
+    "close": "Schließen",
+    "theme": "Design umschalten"
   },
   "billing": {
     "title": "Abrechnung",
@@ -658,5 +661,16 @@
       "5": "Fr",
       "6": "Sa"
     }
+  },
+  "admin": {
+    "search": "Suchen…",
+    "nothingFound": "Nichts gefunden",
+    "clear": "Zurücksetzen",
+    "empty": "Keine Einträge",
+    "pageInfo": "{{count}} Einträge · Seite {{page}} / {{pages}}",
+    "prev": "Zurück",
+    "next": "Weiter",
+    "pick": "Auswählen…",
+    "allOf": "{{header}}: alle"
   }
 }
