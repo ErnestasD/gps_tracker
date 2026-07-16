@@ -171,6 +171,20 @@ describe('billing lifecycle (ADR-024)', () => {
     expect(((await (await req(port, '/v1/billing', token)).json()) as BillingView).active).toBe(false)
   })
 
+  it('reads current_period_end from the subscription ITEMS (Stripe basil API, no top-level field)', async () => {
+    const { token, cus } = await freshTenant('Basil')
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    // a basil-style event: no top-level current_period_end, it lives on the item
+    const basil: StripeEvent = {
+      id: 'evt_basil', type: 'customer.subscription.updated', created: 400,
+      data: { object: { id: 'sub_b', customer: cus, status: 'active', items: { data: [{ price: { id: 'price_test' }, current_period_end: 1_900_000_000 }] } } },
+    }
+    await req(port, '/v1/webhooks/stripe', null, 'POST', basil, { 'stripe-signature': 'valid' })
+    const view = (await (await req(port, '/v1/billing', token)).json()) as BillingView
+    expect(view.active).toBe(true)
+    expect(view.currentPeriodEnd).toBe(new Date(1_900_000_000 * 1000).toISOString()) // read from items, not top-level
+  })
+
   it('out-of-order + replayed webhooks never resurrect a canceled subscription (monotonic guard)', async () => {
     const { token, cus } = await freshTenant('Ordering')
     await req(port, '/v1/billing/checkout', token, 'POST')

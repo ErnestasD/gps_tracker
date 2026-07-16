@@ -125,6 +125,21 @@ function basePriceIdOf(obj: Record<string, unknown>, allowlist: readonly string[
   return null
 }
 
+/** current_period_end (Unix seconds → UTC instant). Reads the subscription top-level (older API) OR,
+ *  since Stripe `2025-03-31.basil`, the per-item `current_period_end` (max across items). */
+function periodEndOf(obj: Record<string, unknown>): Date | null {
+  if (typeof obj['current_period_end'] === 'number') return new Date(obj['current_period_end'] * 1000)
+  const items = obj['items']
+  const data = typeof items === 'object' && items !== null && 'data' in items ? (items as { data?: unknown }).data : undefined
+  if (!Array.isArray(data)) return null
+  let maxSec = 0
+  for (const item of data) {
+    const v = (item as { current_period_end?: unknown }).current_period_end
+    if (typeof v === 'number' && v > maxSec) maxSec = v
+  }
+  return maxSec > 0 ? new Date(maxSec * 1000) : null
+}
+
 /** Map a Stripe subscription resource → the fields we persist, keyed by its customer id. */
 function subscriptionFrom(obj: Record<string, unknown>, allowlist: readonly string[]): { customerId: string; update: SubscriptionUpdate } | null {
   // treat an empty/absent customer as no-match (never let '' reach a query)
@@ -132,9 +147,7 @@ function subscriptionFrom(obj: Record<string, unknown>, allowlist: readonly stri
   if (customerId === null) return null
   const id = typeof obj['id'] === 'string' ? obj['id'] : null
   const status = typeof obj['status'] === 'string' ? obj['status'] : null
-  // current_period_end is a Unix timestamp (seconds); a UTC instant, stored as timestamptz
-  const cpe = typeof obj['current_period_end'] === 'number' ? new Date(obj['current_period_end'] * 1000) : null
-  return { customerId, update: { stripeSubscriptionId: id, subscriptionStatus: status, subscriptionPriceId: basePriceIdOf(obj, allowlist), currentPeriodEnd: cpe } }
+  return { customerId, update: { stripeSubscriptionId: id, subscriptionStatus: status, subscriptionPriceId: basePriceIdOf(obj, allowlist), currentPeriodEnd: periodEndOf(obj) } }
 }
 
 const SUBSCRIPTION_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted'])
