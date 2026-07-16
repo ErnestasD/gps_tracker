@@ -20,6 +20,8 @@ import { startGdprExportWorker, startGdprSweepWorker } from './jobs/gdprExportWo
 import { createGdprSweepQueue, scheduleExportSweep } from './jobs/gdprQueue.js'
 import { createUsageQueue, scheduleUsageSweep } from './jobs/usageQueue.js'
 import { startUsageWorker } from './jobs/usageWorker.js'
+import { createRetentionQueue, scheduleRetentionSweep } from './jobs/retentionQueue.js'
+import { startRetentionWorker } from './jobs/retentionWorker.js'
 import { createStripeUsageQueue, scheduleStripeUsage } from './jobs/stripeUsageQueue.js'
 import { createStripeUsageWorker } from './jobs/stripeUsageWorker.js'
 import { stripeUsagePortFromEnv } from './billing/usageReporter.js'
@@ -177,6 +179,17 @@ async function main(): Promise<void> {
     ? startScheduledReportWorker({ connection: recomputeConn, db, pool, transport: emailTransport, onRun: (r) => prom.scheduledReportsSent.inc(r.emailed) })
     : null
   if (scheduledReportQueue !== null) await scheduleScheduledReports(scheduledReportQueue)
+  // Data retention: daily prune of the webhook delivery-log (operational, grows unbounded)
+  const retentionQueue = createRetentionQueue(recomputeConn)
+  // empty-string / garbage env → the documented 30-day default (?? only catches undefined; '' → 0)
+  const retentionEnv = Number(process.env['WEBHOOK_DELIVERY_RETENTION_DAYS'])
+  const retentionWorker = startRetentionWorker({
+    connection: recomputeConn,
+    db,
+    retentionDays: Number.isFinite(retentionEnv) && retentionEnv > 0 ? retentionEnv : 30,
+    onPruned: (n) => prom.retentionPruned.inc(n),
+  })
+  await scheduleRetentionSweep(retentionQueue)
   // E08-2: Codec-12 command dispatcher — ~15s reconcile of in-flight commands vs device
   // responses (transport seam written by ingest); drives the DB status machine.
   const commandQueue = createCommandDispatchQueue(recomputeConn)
@@ -366,6 +379,8 @@ async function main(): Promise<void> {
       await stripeUsageQueue?.close()
       await scheduledReportWorker?.close() // finish the in-flight scheduled-report run, stop taking new
       await scheduledReportQueue?.close()
+      await retentionWorker.close() // finish the in-flight retention prune, stop taking new
+      await retentionQueue.close()
       await commandWorker.close() // finish the in-flight command dispatch, stop taking new
       await commandQueue.close()
       await gdprEraseWorker.close() // finish the in-flight erase step, stop taking new

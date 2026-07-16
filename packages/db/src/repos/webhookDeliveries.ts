@@ -24,6 +24,9 @@ export interface WebhookDeliveryListOpts {
 }
 export interface WebhookDeliveryRepo {
   list(scope: Scope, opts?: WebhookDeliveryListOpts): Promise<WebhookDeliveryView[]>
+  /** UNSCOPED platform-wide retention prune (worker cron): delete rows older than `cutoff`, in
+   *  batches so a large first pass never takes one long lock. Returns total rows deleted. */
+  pruneOlderThan(cutoff: Date, batchSize?: number): Promise<number>
 }
 
 const uuid = (s: string | undefined): boolean => s !== undefined && /^[0-9a-f-]{36}$/i.test(s)
@@ -53,6 +56,18 @@ export function createWebhookDeliveryRepo(prisma: PrismaClient): WebhookDelivery
         ...(numeric(opts.cursor) ? { cursor: { id: BigInt(opts.cursor!) }, skip: 1 } : {}),
       })
       return rows.map(toView)
+    },
+    pruneOlderThan: async (cutoff, batchSize = 5_000) => {
+      const size = Math.min(Math.max(Math.trunc(batchSize), 1), 50_000)
+      let total = 0
+      for (;;) {
+        // batched keyset-free delete: bound each statement so the first (possibly large) prune
+        // never holds one long lock on the hot delivery-log table
+        const n = await prisma.$executeRaw`DELETE FROM webhook_deliveries WHERE id IN (SELECT id FROM webhook_deliveries WHERE at < ${cutoff} LIMIT ${size})`
+        total += n
+        if (n < size) break
+      }
+      return total
     },
   }
 }

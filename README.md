@@ -57,6 +57,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
 | `EXPORT_DIR` | apps/worker | GDPR export output directory (E08-4), default `var/exports`; R2/S3 upload is the follow-up when creds exist |
+| `WEBHOOK_DELIVERY_RETENTION_DAYS` | apps/worker | Days to keep webhook delivery-log rows before the daily retention sweep prunes them, default `30` |
 | `SMTP_HOST` / `SMTP_PORT` | apps/worker | SES SMTP endpoint `email-smtp.eu-central-1.amazonaws.com` / `587` (E05-5, ADR-023); discrete vars, not a URL (SES passwords are base64 — `/` breaks URL parsing) |
 | `SMTP_USER` / `SMTP_PASS` | apps/worker | SES SMTP credentials (paste raw, no encoding); all four SMTP vars + `MAIL_FROM` required or the email channel is skipped |
 | `MAIL_FROM` | apps/worker | e-mail sender, a DKIM-verified SES identity (e.g. `alerts@orbetra.com`) |

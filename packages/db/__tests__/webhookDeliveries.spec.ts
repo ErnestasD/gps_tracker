@@ -51,4 +51,23 @@ describe('E06-4b WebhookDeliveryRepo', () => {
     expect(captured()!.cursor).toEqual({ id: 5n })
     expect(captured()!.skip).toBe(1)
   })
+
+  it('pruneOlderThan batches until a partial batch and returns the total deleted', async () => {
+    const returns = [2, 2, 1] // full, full, partial → stop
+    let i = 0
+    const executeRaw = vi.fn(() => Promise.resolve(returns[i++] ?? 0))
+    const prisma = { $executeRaw: executeRaw } as unknown as PrismaClient
+    const cutoff = new Date('2026-07-01T00:00:00.000Z')
+    const total = await createWebhookDeliveryRepo(prisma).pruneOlderThan(cutoff, 2)
+    expect(total).toBe(5)
+    expect(executeRaw).toHaveBeenCalledTimes(3) // stopped on the partial batch (1 < 2)
+  })
+
+  it('pruneOlderThan stops immediately when the first batch is already partial (nothing old)', async () => {
+    const executeRaw = vi.fn(() => Promise.resolve(0))
+    const prisma = { $executeRaw: executeRaw } as unknown as PrismaClient
+    const total = await createWebhookDeliveryRepo(prisma).pruneOlderThan(new Date(), 5_000)
+    expect(total).toBe(0)
+    expect(executeRaw).toHaveBeenCalledTimes(1)
+  })
 })

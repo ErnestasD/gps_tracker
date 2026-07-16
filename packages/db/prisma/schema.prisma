@@ -481,6 +481,8 @@ model WebhookDelivery {
 
   @@index([tenantId, at])
   @@index([webhookId, at])
+  // bare `at` supports the retention prune (WHERE at < cutoff, no tenant/webhook constraint)
+  @@index([at])
   @@map("webhook_deliveries")
 }
 
