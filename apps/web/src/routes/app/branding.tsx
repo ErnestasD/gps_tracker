@@ -2,10 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ApiError } from '@/lib/http'
 import {
   addDomain,
@@ -19,7 +16,8 @@ import {
 } from '@/lib/branding'
 
 /** Branding page (E03-5): edit colors/logo/name with a live preview, and manage
- * custom domains (DNS TXT verify). tsp_admin edits their own tenant only (API-scoped). */
+ * custom domains (DNS TXT verify). tsp_admin edits their own tenant only (API-scoped).
+ * Re-skinned onto the admin design (ADR-028): PageHeader + admin-card sections. */
 export function BrandingPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -52,88 +50,128 @@ export function BrandingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <h1 className="text-lg font-semibold">{t('branding.title')}</h1>
+    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+      <PageHeader className="mb-0" title={t('branding.title')} description={t('branding.desc')} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('branding.appearance')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label={t('branding.productName')}>
-              <Input value={form.productName ?? ''} onChange={(e) => setForm((f) => ({ ...f, productName: e.target.value }))} data-testid="branding-productName" />
-            </Field>
-            <Field label={t('branding.supportEmail')}>
-              <Input type="email" value={form.supportEmail ?? ''} onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))} data-testid="branding-supportEmail" />
-            </Field>
-            <Field label={t('branding.primary')}>
-              <input type="color" value={form.primary ?? '#7c7df5'} onChange={(e) => setForm((f) => ({ ...f, primary: e.target.value }))} className="h-9 w-full rounded-card border border-line bg-surface" data-testid="branding-primary" />
-            </Field>
-            <Field label={t('branding.accent')}>
-              <input type="color" value={form.accent ?? '#7c5cfc'} onChange={(e) => setForm((f) => ({ ...f, accent: e.target.value }))} className="h-9 w-full rounded-card border border-line bg-surface" data-testid="branding-accent" />
-            </Field>
-            <Field label={t('branding.logoUrl')}>
-              <Input value={form.logoUrl ?? ''} onChange={(e) => setForm((f) => ({ ...f, logoUrl: e.target.value }))} placeholder="https://…" data-testid="branding-logoUrl" />
-            </Field>
-            <div className="col-span-full flex items-center gap-3">
-              <Button type="submit" data-testid="branding-save">{t('branding.save')}</Button>
-              {saved && <span className="text-sm text-success" data-testid="branding-saved">{t('branding.savedMsg')}</span>}
-              {error !== null && <span role="alert" className="text-sm text-danger">{error}</span>}
-              {/* preview swatch reflects the live --accent */}
-              <span className="ml-auto inline-flex items-center gap-2 text-xs text-muted">
-                {t('branding.preview')} <span className="h-5 w-5 rounded-full bg-accent" data-testid="branding-swatch" />
-              </span>
+      <div className="admin-card p-5">
+        <h3 className="mb-4 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+          {t('branding.appearance')}
+        </h3>
+        <form onSubmit={submit}>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <AdminLabel>{t('branding.productName')}</AdminLabel>
+              <AdminInput value={form.productName ?? ''} onChange={(e) => setForm((f) => ({ ...f, productName: e.target.value }))} data-testid="branding-productName" />
             </div>
-          </form>
-        </CardContent>
-      </Card>
+            <div>
+              <AdminLabel>{t('branding.supportEmail')}</AdminLabel>
+              <AdminInput type="email" value={form.supportEmail ?? ''} onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))} data-testid="branding-supportEmail" />
+            </div>
+            <div>
+              <AdminLabel>{t('branding.primary')}</AdminLabel>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={form.primary ?? '#7c7df5'}
+                  onChange={(e) => setForm((f) => ({ ...f, primary: e.target.value }))}
+                  className="h-9 w-14 cursor-pointer rounded-md border"
+                  style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)' }}
+                  data-testid="branding-primary"
+                />
+                <span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{form.primary ?? '#7c7df5'}</span>
+              </div>
+            </div>
+            <div>
+              <AdminLabel>{t('branding.accent')}</AdminLabel>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={form.accent ?? '#7c5cfc'}
+                  onChange={(e) => setForm((f) => ({ ...f, accent: e.target.value }))}
+                  className="h-9 w-14 cursor-pointer rounded-md border"
+                  style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)' }}
+                  data-testid="branding-accent"
+                />
+                <span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{form.accent ?? '#7c5cfc'}</span>
+              </div>
+            </div>
+            <div className="md:col-span-2">
+              <AdminLabel>{t('branding.logoUrl')}</AdminLabel>
+              <AdminInput value={form.logoUrl ?? ''} onChange={(e) => setForm((f) => ({ ...f, logoUrl: e.target.value }))} placeholder="https://…" data-testid="branding-logoUrl" />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <AdminButton type="submit" data-testid="branding-save">{t('branding.save')}</AdminButton>
+            {saved && (
+              <span className="text-sm" style={{ color: 'var(--admin-success)' }} data-testid="branding-saved">
+                {t('branding.savedMsg')}
+              </span>
+            )}
+            {error !== null && (
+              <span role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>
+                {error}
+              </span>
+            )}
+            {/* preview swatch reflects the live --accent custom property */}
+            <span className="ml-auto inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs" style={{ background: 'var(--admin-surface-sunken)', color: 'var(--admin-ink-soft)' }}>
+              {t('branding.preview')}
+              <span className="h-4 w-4 rounded-full" style={{ background: 'var(--accent)' }} data-testid="branding-swatch" />
+            </span>
+          </div>
+        </form>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('branding.domains')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <div className="admin-card p-5">
+        <h3 className="mb-4 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+          {t('branding.domains')}
+        </h3>
+        <div className="space-y-3">
           <AddDomain onAdded={() => void qc.invalidateQueries({ queryKey: ['domains'] })} />
           {(domains.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted">{t('branding.noDomains')}</p>
+            <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.noDomains')}</p>
           ) : (
-            <ul className="space-y-2" data-testid="domains-list">
+            <ul className="flex flex-col gap-2" data-testid="domains-list">
               {(domains.data ?? []).map((d) => (
-                <li key={d.id} className="flex items-center justify-between rounded-card border border-line p-2 text-sm" data-testid={`domain-${d.domain}`}>
-                  <span className="font-mono text-xs">{d.domain}</span>
+                <li
+                  key={d.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm"
+                  style={{ borderColor: 'var(--admin-hairline)' }}
+                  data-testid={`domain-${d.domain}`}
+                >
+                  <span className="mono text-xs" style={{ color: 'var(--admin-ink)' }}>{d.domain}</span>
                   <div className="flex items-center gap-2">
                     {d.verified ? (
-                      <Badge variant="success">{t('branding.verified')}</Badge>
+                      <Badge tone="success">{t('branding.verified')}</Badge>
                     ) : (
                       <>
-                        <Badge variant="warn">{t('branding.pending')}</Badge>
-                        <Button variant="secondary" size="sm" data-testid={`verify-${d.domain}`} onClick={() => void verifyDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => undefined)}>
+                        <Badge tone="warning">{t('branding.pending')}</Badge>
+                        <AdminButton
+                          variant="secondary"
+                          size="sm"
+                          data-testid={`verify-${d.domain}`}
+                          onClick={() => void verifyDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => undefined)}
+                        >
                           {t('branding.verify')}
-                        </Button>
+                        </AdminButton>
                       </>
                     )}
-                    <Button variant="ghost" size="sm" onClick={() => void removeDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => undefined)}>
+                    <AdminButton
+                      variant="ghost"
+                      size="sm"
+                      style={{ color: 'var(--admin-danger)' }}
+                      onClick={() => void removeDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => undefined)}
+                    >
                       {t('branding.remove')}
-                    </Button>
+                    </AdminButton>
                   </div>
                 </li>
               ))}
             </ul>
           )}
-          <p className="text-xs text-muted">{t('branding.certNote')}</p>
-        </CardContent>
-      </Card>
+          <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.certNote')}</p>
+        </div>
+      </div>
     </div>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1 text-xs text-muted">
-      {label}
-      {children}
-    </label>
   )
 }
 
@@ -158,14 +196,16 @@ function AddDomain({ onAdded }: { onAdded: () => void }) {
   return (
     <div className="space-y-2">
       <form onSubmit={add} className="flex gap-2">
-        <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="fleet.example.com" data-testid="domain-input" className="max-w-xs" />
-        <Button type="submit" size="sm" disabled={domain.trim() === ''} data-testid="domain-add">{t('branding.addDomain')}</Button>
+        <AdminInput value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="fleet.example.com" data-testid="domain-input" className="max-w-xs" />
+        <AdminButton type="submit" disabled={domain.trim() === ''} data-testid="domain-add">{t('branding.addDomain')}</AdminButton>
       </form>
-      {error !== null && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {error !== null && (
+        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>
+      )}
       {txt !== null && (
-        <div className="rounded-card border border-line bg-surface-2 p-3 text-xs" data-testid="txt-instructions">
-          <p className="text-muted">{t('branding.txtInstruction', { domain: txt.domain })}</p>
-          <code className="mt-1 block break-all font-mono text-text">{txt.record}</code>
+        <div className="rounded-md border p-3 text-xs" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }} data-testid="txt-instructions">
+          <p style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.txtInstruction', { domain: txt.domain })}</p>
+          <code className="mono mt-1 block break-all" style={{ color: 'var(--admin-ink)' }}>{txt.record}</code>
         </div>
       )}
     </div>

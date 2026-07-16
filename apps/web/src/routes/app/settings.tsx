@@ -1,11 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { AdminButton, Badge, AdminInput, PageHeader } from '@/components/admin/AdminKit'
 import { changePassword } from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { listAccounts } from '@/lib/devices'
@@ -16,17 +13,42 @@ import { disablePush, enablePush, pushEnabled, pushSupported } from '@/lib/push'
 
 const LOCALES = ['en', 'lt', 'pl', 'de'] as const
 
-/** Settings/Profile (E03-2, DASHBOARD_UI_SPEC §4): locale, theme, password change. */
+const selectStyle: React.CSSProperties = {
+  borderColor: 'var(--admin-hairline)',
+  background: 'var(--admin-surface)',
+  color: 'var(--admin-ink)',
+}
+
+const th = 'py-2 pr-4 text-left text-[11px] font-semibold uppercase tracking-wider'
+const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
+
+const TAB_IDS = ['profile', 'security', 'notifications', 'data'] as const
+type TabId = (typeof TAB_IDS)[number]
+
+/** Settings/Profile (E03-2, DASHBOARD_UI_SPEC §4): locale, theme, password change, push, export.
+ * Re-skinned onto the admin design (ADR-028). The tab bar is ANCHOR navigation, not panel
+ * switching: every section stays mounted and visible because the e2e flow (smoke.spec.ts
+ * 'settings: theme toggle + password change') clicks theme-light/theme-dark and then fills
+ * current-password with NO tab click in between — hiding non-active panels would break it. */
 export function SettingsPage() {
   const { t, i18n } = useTranslation()
   const user = getCurrentUser()
+  const isAdmin = user?.role === 'platform_admin' || user?.role === 'tsp_admin'
   const [theme, setThemeState] = useState<Theme>(getTheme())
-  // the topbar toggle also changes the theme — keep the radios in sync (ADR-028)
+  // the topbar toggle also changes the theme — keep the buttons in sync (ADR-028)
   useEffect(() => onThemeChange(() => setThemeState(getTheme())), [])
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [pwMsg, setPwMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const [activeTab, setActiveTab] = useState<TabId>('profile')
+  const sectionRefs = useRef<Partial<Record<TabId, HTMLDivElement | null>>>({})
+  const goTo = (id: TabId) => {
+    setActiveTab(id)
+    sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const tabs = TAB_IDS.filter((id) => id !== 'data' || isAdmin)
 
   const onTheme = (value: Theme) => {
     setThemeState(value)
@@ -55,38 +77,56 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6" data-testid="settings-page">
-      <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
+    <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6" data-testid="settings-page">
+      <PageHeader className="mb-0" title={t('settings.title')} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('settings.profile')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted">{t('settings.email')}</span>
-            <span className="font-mono">{user?.email ?? '—'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted">{t('settings.role')}</span>
-            <span>{user?.role ?? '—'}</span>
-          </div>
-        </CardContent>
-      </Card>
+      {/* hand-rolled tab bar (no Radix): anchor-jumps, active gets the brand underline */}
+      <div className="admin-hairline-b flex gap-1" role="tablist" aria-label={t('settings.title')}>
+        {tabs.map((id) => {
+          const active = activeTab === id
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => goTo(id)}
+              className="-mb-px rounded-t-md px-3 py-2 text-sm font-medium transition-colors"
+              style={{
+                color: active ? 'var(--admin-brand)' : 'var(--admin-ink-soft)',
+                background: active ? 'var(--admin-brand-soft)' : 'transparent',
+                borderBottom: active ? '2px solid var(--admin-brand)' : '2px solid transparent',
+              }}
+            >
+              {t(`settings.tab.${id}`)}
+            </button>
+          )
+        })}
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('settings.appearance')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      {/* Profile: identity + appearance (locale/theme) */}
+      <div ref={(el) => { sectionRefs.current.profile = el }} className="admin-card scroll-mt-4">
+        <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+          {t('settings.profile')}
+        </div>
+        <div className="space-y-4 p-4 text-sm">
           <div className="flex items-center justify-between">
-            <label htmlFor="locale" className="text-sm text-muted">{t('settings.locale')}</label>
+            <span style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.email')}</span>
+            <span className="mono text-xs" style={{ color: 'var(--admin-ink)' }}>{user?.email ?? '—'}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.role')}</span>
+            <Badge tone="neutral">{user?.role ?? '—'}</Badge>
+          </div>
+          <div className="admin-hairline-t flex items-center justify-between pt-4">
+            <label htmlFor="locale" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.locale')}</label>
             <select
               id="locale"
               data-testid="locale-select"
               value={i18n.language.split('-')[0]}
               onChange={(e) => onLocale(e.target.value)}
-              className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text"
+              className="h-9 rounded-md border px-2 text-sm"
+              style={selectStyle}
             >
               {LOCALES.map((l) => (
                 <option key={l} value={l}>{l.toUpperCase()}</option>
@@ -94,31 +134,32 @@ export function SettingsPage() {
             </select>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted">{t('settings.theme')}</span>
+            <span style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.theme')}</span>
             <div className="flex gap-2">
               {(['dark', 'light'] as const).map((value) => (
-                <Button
+                <AdminButton
                   key={value}
-                  variant={theme === value ? 'default' : 'secondary'}
+                  variant={theme === value ? 'primary' : 'secondary'}
                   size="sm"
                   onClick={() => onTheme(value)}
                   data-testid={`theme-${value}`}
                 >
                   {t(`settings.themeOption.${value}`)}
-                </Button>
+                </AdminButton>
               ))}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('settings.password.title')}</CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* Security: password change */}
+      <div ref={(el) => { sectionRefs.current.security = el }} className="admin-card scroll-mt-4">
+        <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+          {t('settings.password.title')}
+        </div>
+        <div className="p-4">
           <form onSubmit={submitPassword} className="space-y-3">
-            <Input
+            <AdminInput
               type="password"
               autoComplete="current-password"
               placeholder={t('settings.password.current')}
@@ -127,7 +168,7 @@ export function SettingsPage() {
               required
               data-testid="current-password"
             />
-            <Input
+            <AdminInput
               type="password"
               autoComplete="new-password"
               placeholder={t('settings.password.new')}
@@ -138,20 +179,28 @@ export function SettingsPage() {
               data-testid="new-password"
             />
             {pwMsg !== null && (
-              <p role="alert" data-testid="password-msg" className={pwMsg.kind === 'ok' ? 'text-sm text-success' : 'text-sm text-danger'}>
+              <p role="alert" data-testid="password-msg" className="text-sm" style={{ color: pwMsg.kind === 'ok' ? 'var(--admin-success)' : 'var(--admin-danger)' }}>
                 {pwMsg.text}
               </p>
             )}
-            <Button type="submit" disabled={busy || current === '' || next.length < 8} data-testid="change-password">
+            <AdminButton type="submit" disabled={busy || current === '' || next.length < 8} data-testid="change-password">
               {t('settings.password.submit')}
-            </Button>
+            </AdminButton>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <PushSection />
+      {/* Notifications: browser push */}
+      <div ref={(el) => { sectionRefs.current.notifications = el }} className="scroll-mt-4">
+        <PushSection />
+      </div>
 
-      {(user?.role === 'platform_admin' || user?.role === 'tsp_admin') && <ExportSection />}
+      {/* Data: GDPR export (admins only — the server enforces it too) */}
+      {isAdmin && (
+        <div ref={(el) => { sectionRefs.current.data = el }} className="scroll-mt-4">
+          <ExportSection />
+        </div>
+      )}
     </div>
   )
 }
@@ -183,27 +232,29 @@ function PushSection() {
   }
 
   return (
-    <Card data-testid="push-section">
-      <CardHeader>
-        <CardTitle className="text-base">{t('settings.push.title')}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-xs text-muted">{t('settings.push.hint')}</p>
+    <div className="admin-card" data-testid="push-section">
+      <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+        {t('settings.push.title')}
+      </div>
+      <div className="space-y-3 p-4">
+        <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.push.hint')}</p>
         {!supported ? (
-          <p className="text-sm text-muted" data-testid="push-unsupported">{t('settings.push.unsupported')}</p>
+          <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="push-unsupported">{t('settings.push.unsupported')}</p>
         ) : (
           <div className="flex items-center gap-3">
-            <Button variant={enabled ? 'secondary' : 'default'} size="sm" disabled={busy} onClick={toggle} data-testid="push-toggle">
+            <AdminButton variant={enabled ? 'secondary' : 'primary'} size="sm" disabled={busy} onClick={toggle} data-testid="push-toggle">
               {enabled ? t('settings.push.disable') : t('settings.push.enable')}
-            </Button>
-            <Badge variant={enabled ? 'success' : 'outline'} data-testid="push-status">
+            </AdminButton>
+            <Badge tone={enabled ? 'success' : 'neutral'} data-testid="push-status">
               {enabled ? t('settings.push.on') : t('settings.push.off')}
             </Badge>
           </div>
         )}
-        {error !== null && <p role="alert" className="text-sm text-danger" data-testid="push-error">{error}</p>}
-      </CardContent>
-    </Card>
+        {error !== null && (
+          <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="push-error">{error}</p>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -235,49 +286,51 @@ function ExportSection() {
   }
 
   return (
-    <Card data-testid="export-section">
-      <CardHeader>
-        <CardTitle className="text-base">{t('settings.export.title')}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-xs text-muted">{t('settings.export.hint')}</p>
+    <div className="admin-card" data-testid="export-section">
+      <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+        {t('settings.export.title')}
+      </div>
+      <div className="space-y-3 p-4">
+        <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.export.hint')}</p>
         <form onSubmit={submit} className="flex items-end gap-2">
-          <label className="flex flex-col gap-1 text-xs text-muted">
+          <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
             {t('settings.export.account')}
-            <select value={acc} onChange={(e) => setAccountId(e.target.value)} className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text" data-testid="export-account">
+            <select value={acc} onChange={(e) => setAccountId(e.target.value)} className="h-9 rounded-md border px-2 text-sm" style={selectStyle} data-testid="export-account">
               {(accounts.data ?? []).map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
           </label>
-          <Button type="submit" disabled={busy || acc === ''} data-testid="export-request">
+          <AdminButton type="submit" disabled={busy || acc === ''} data-testid="export-request">
             {t('settings.export.request')}
-          </Button>
-          {error !== null && <p role="alert" className="text-sm text-danger">{error}</p>}
+          </AdminButton>
+          {error !== null && (
+            <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>
+          )}
         </form>
         {(jobs.data ?? []).length > 0 && (
           <table className="w-full text-sm" data-testid="exports-table">
             <thead>
-              <tr className="border-b border-line text-left text-xs text-muted">
-                <th className="py-2 pr-4 font-medium">{t('settings.export.requested')}</th>
-                <th className="py-2 pr-4 font-medium">{t('settings.export.status')}</th>
-                <th className="py-2 pr-4"></th>
+              <tr className="admin-hairline-b">
+                <th className={th} style={thStyle}>{t('settings.export.requested')}</th>
+                <th className={th} style={thStyle}>{t('settings.export.status')}</th>
+                <th className="py-2 pr-4" />
               </tr>
             </thead>
             <tbody>
               {(jobs.data ?? []).map((j) => (
-                <tr key={j.id} className="border-b border-line/50" data-testid={`export-${j.id}`}>
-                  <td className="py-2 pr-4 text-xs text-muted">{new Date(j.createdAt).toLocaleString()}</td>
+                <tr key={j.id} className="admin-hairline-b last:border-b-0" data-testid={`export-${j.id}`}>
+                  <td className="py-2 pr-4 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{new Date(j.createdAt).toLocaleString()}</td>
                   <td className="py-2 pr-4">
-                    <Badge variant={j.status === 'done' ? 'success' : j.status === 'failed' ? 'danger' : 'outline'}>
+                    <Badge tone={j.status === 'done' ? 'success' : j.status === 'failed' ? 'danger' : 'neutral'}>
                       {t(`settings.export.st.${j.status}`, j.status)}
                     </Badge>
                   </td>
                   <td className="py-2 pr-4 text-right">
                     {j.status === 'done' && new Date(j.expiresAt).getTime() > Date.now() && (
-                      <Button variant="secondary" size="sm" data-testid={`export-download-${j.id}`} onClick={() => void downloadExport(j.id).catch(() => setError(t('settings.export.error')))}>
+                      <AdminButton variant="secondary" size="sm" data-testid={`export-download-${j.id}`} onClick={() => void downloadExport(j.id).catch(() => setError(t('settings.export.error')))}>
                         {t('settings.export.download')}
-                      </Button>
+                      </AdminButton>
                     )}
                   </td>
                 </tr>
@@ -285,7 +338,7 @@ function ExportSection() {
             </tbody>
           </table>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

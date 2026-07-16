@@ -46,6 +46,7 @@
   },
   "billing": {
     "title": "Płatności",
+    "desc": "Plan subskrypcji i płatności przez Stripe.",
     "subscription": "Subskrypcja",
     "pricingNote": "Przejrzyste ceny — zobacz swój plan. Subskrypcją, metodą płatności i fakturami zarządzasz w portalu Stripe.",
     "renews": "Odnawia się",
@@ -61,6 +62,7 @@
   },
   "branding": {
     "title": "Marka",
+    "desc": "Wygląd white-label — nazwa produktu, kolory i własne domeny.",
     "appearance": "Wygląd",
     "productName": "Nazwa produktu",
     "supportEmail": "E-mail pomocy",
@@ -86,6 +88,7 @@
   },
   "audit": {
     "title": "Dziennik audytu",
+    "desc": "Kto, co i kiedy zmienił — historia zmian najemcy.",
     "trail": "Historia zmian",
     "when": "Kiedy",
     "action": "Akcja",
@@ -252,6 +255,12 @@
   },
   "settings": {
     "title": "Ustawienia",
+    "tab": {
+      "profile": "Profil",
+      "security": "Bezpieczeństwo",
+      "notifications": "Powiadomienia",
+      "data": "Dane"
+    },
     "profile": "Profil",
     "email": "E-mail",
     "role": "Rola",
@@ -520,6 +529,7 @@
   },
   "apiKeys": {
     "title": "Klucze API",
+    "desc": "Klucze dostępu do integracji.",
     "add": "Utwórz klucz",
     "name": "Nazwa",
     "account": "Konto",
@@ -541,6 +551,7 @@
   },
   "webhooks": {
     "title": "Webhooki",
+    "desc": "Kanały HTTP odbierające podpisane zdarzenia.",
     "add": "Dodaj webhook",
     "url": "URL punktu końcowego",
     "events": "Zdarzenia",
@@ -564,6 +575,7 @@
   },
   "platform": {
     "title": "Platforma",
+    "desc": "Najemcy i rozliczane użycie w tym miesiącu.",
     "denied": "Tylko administratorzy platformy.",
     "tenants": "Najemcy",
     "tenant": "Najemca",

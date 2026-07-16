@@ -46,6 +46,7 @@
   },
   "billing": {
     "title": "Abrechnung",
+    "desc": "Abonnement und Zahlungen über Stripe.",
     "subscription": "Abonnement",
     "pricingNote": "Transparente Preise — siehe Ihr Tarif. Abonnement, Zahlungsmethode und Rechnungen im Stripe-Portal verwalten.",
     "renews": "Verlängert am",
@@ -61,6 +62,7 @@
   },
   "branding": {
     "title": "Branding",
+    "desc": "White-Label-Erscheinungsbild — Ihr Produktname, Farben und eigene Domains.",
     "appearance": "Erscheinungsbild",
     "productName": "Produktname",
     "supportEmail": "Support-E-Mail",
@@ -86,6 +88,7 @@
   },
   "audit": {
     "title": "Audit-Log",
+    "desc": "Wer wann was geändert hat — der Änderungsverlauf des Mandanten.",
     "trail": "Änderungsverlauf",
     "when": "Wann",
     "action": "Aktion",
@@ -252,6 +255,12 @@
   },
   "settings": {
     "title": "Einstellungen",
+    "tab": {
+      "profile": "Profil",
+      "security": "Sicherheit",
+      "notifications": "Benachrichtigungen",
+      "data": "Daten"
+    },
     "profile": "Profil",
     "email": "E-Mail",
     "role": "Rolle",
@@ -520,6 +529,7 @@
   },
   "apiKeys": {
     "title": "API-Schlüssel",
+    "desc": "Zugriffsschlüssel für Integrationen.",
     "add": "Schlüssel erstellen",
     "name": "Name",
     "account": "Konto",
@@ -541,6 +551,7 @@
   },
   "webhooks": {
     "title": "Webhooks",
+    "desc": "HTTP-Endpunkte für signierte Ereignis-Zustellungen.",
     "add": "Webhook hinzufügen",
     "url": "Endpunkt-URL",
     "events": "Ereignisse",
@@ -564,6 +575,7 @@
   },
   "platform": {
     "title": "Plattform",
+    "desc": "Mandanten und abrechenbare Nutzung in diesem Monat.",
     "denied": "Nur Plattform-Administratoren.",
     "tenants": "Mandanten",
     "tenant": "Mandant",

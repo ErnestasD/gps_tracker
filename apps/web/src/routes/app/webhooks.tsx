@@ -2,15 +2,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { createWebhook, deleteWebhook, generateSecret, listDeliveries, listWebhooks, setWebhookEnabled, WEBHOOK_EVENT_KINDS } from '@/lib/webhooks'
 
 const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' })
 
+const th = 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
+const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
+// native checkboxes stay native (e2e drives them via role=checkbox); accent-color themes them
+const checkboxStyle: React.CSSProperties = { accentColor: 'var(--admin-brand)' }
+
 /** Webhooks (E06-4 UI): tenant-admin registers HMAC-signed delivery endpoints. The signing
- * secret is generated + shown ONCE on creation; it is redacted (`***`) in every list. */
+ * secret is generated + shown ONCE on creation; it is redacted (`***`) in every list.
+ * Re-skinned onto the admin design (ADR-028): PageHeader + admin-card list/table idiom. */
 export function WebhooksPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -40,99 +44,140 @@ export function WebhooksPage() {
   const validUrl = /^https?:\/\/.+/.test(url.trim())
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-6">
-      <h1 className="text-lg font-semibold">{t('webhooks.title')}</h1>
+    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+      <PageHeader className="mb-0" title={t('webhooks.title')} description={t('webhooks.desc')} />
 
       {freshSecret !== null && (
-        <Card className="border-accent" data-testid="webhook-fresh">
-          <CardHeader><CardTitle className="text-base">{t('webhooks.created')}</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-sm text-warn">{t('webhooks.secretOnce')}</p>
-            <code className="block overflow-x-auto rounded-card border border-line bg-surface p-2 text-xs" data-testid="webhook-secret">{freshSecret}</code>
-            <Button size="sm" variant="ghost" onClick={() => setFreshSecret(null)} data-testid="webhook-dismiss">{t('webhooks.dismiss')}</Button>
-          </CardContent>
-        </Card>
+        <div className="admin-card p-4" style={{ background: 'var(--admin-brand-soft)', borderColor: 'var(--admin-brand)' }} data-testid="webhook-fresh">
+          <div className="mb-2 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('webhooks.created')}</div>
+          <p className="mb-2 text-sm" style={{ color: 'var(--admin-warning)' }}>{t('webhooks.secretOnce')}</p>
+          <code
+            className="mono block overflow-x-auto rounded-md border p-2 text-xs"
+            style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }}
+            data-testid="webhook-secret"
+          >
+            {freshSecret}
+          </code>
+          <AdminButton size="sm" variant="ghost" className="mt-2" onClick={() => setFreshSecret(null)} data-testid="webhook-dismiss">
+            {t('webhooks.dismiss')}
+          </AdminButton>
+        </div>
       )}
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">{t('webhooks.add')}</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            {t('webhooks.url')}
-            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" data-testid="webhook-url" className="w-full max-w-md" />
-          </label>
+      <div className="admin-card">
+        <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+          {t('webhooks.add')}
+        </div>
+        <div className="space-y-3 p-4">
           <div>
-            <div className="pb-1 text-xs text-muted">{t('webhooks.events')} <span className="opacity-70">({t('webhooks.emptyAll')})</span></div>
+            <AdminLabel>{t('webhooks.url')}</AdminLabel>
+            <AdminInput value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" data-testid="webhook-url" className="w-full max-w-md" />
+          </div>
+          <div>
+            <div className="mb-1 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
+              {t('webhooks.events')} <span className="opacity-70">({t('webhooks.emptyAll')})</span>
+            </div>
             <div className="flex flex-wrap gap-2">
-              {WEBHOOK_EVENT_KINDS.map((k) => (
-                <label key={k} className="flex items-center gap-1 rounded-card border border-line px-2 py-1 text-xs">
-                  <input type="checkbox" checked={kinds.includes(k)} onChange={() => toggleKind(k)} data-testid={`webhook-kind-${k}`} />
-                  {t(`events.k.${k}`, k)}
-                </label>
-              ))}
+              {WEBHOOK_EVENT_KINDS.map((k) => {
+                const on = kinds.includes(k)
+                return (
+                  <label
+                    key={k}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors"
+                    style={{
+                      borderColor: on ? 'var(--admin-brand)' : 'var(--admin-hairline)',
+                      background: on ? 'var(--admin-brand-soft)' : 'var(--admin-surface)',
+                      color: 'var(--admin-ink)',
+                    }}
+                  >
+                    <input type="checkbox" checked={on} onChange={() => toggleKind(k)} style={checkboxStyle} data-testid={`webhook-kind-${k}`} />
+                    {t(`events.k.${k}`, k)}
+                  </label>
+                )
+              })}
             </div>
           </div>
-          <Button disabled={!validUrl || create.isPending} onClick={() => create.mutate()} data-testid="webhook-create">{t('webhooks.create')}</Button>
-          {create.isError && <p role="alert" className="text-sm text-danger" data-testid="webhook-error">{t('webhooks.error')}</p>}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">{t('webhooks.list')}</CardTitle></CardHeader>
-        <CardContent>
-          {(hooks.data ?? []).length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted" data-testid="webhooks-empty">{t('webhooks.empty')}</p>
-          ) : (
-            <ul className="space-y-2" data-testid="webhooks-list">
-              {(hooks.data ?? []).map((w) => (
-                <li key={w.id} className="flex items-center gap-3 rounded-card border border-line p-2 text-sm" data-testid={`webhook-${w.id}`}>
-                  <code className="truncate text-xs">{w.url}</code>
-                  <span className="text-xs text-muted">{w.events.length === 0 ? t('webhooks.allKinds') : w.events.map((k) => t(`events.k.${k}`, k)).join(', ')}</span>
-                  <label className="ml-auto flex items-center gap-1 text-xs text-muted">
-                    <input type="checkbox" checked={w.enabled} data-testid={`webhook-enabled-${w.id}`} onChange={(e) => toggle.mutate({ id: w.id, enabled: e.target.checked })} />
-                    {t('webhooks.enabled')}
-                  </label>
-                  <Button variant="ghost" size="sm" data-testid={`webhook-del-${w.id}`} onClick={() => del.mutate(w.id)}>{t('webhooks.delete')}</Button>
-                </li>
-              ))}
-            </ul>
+          <AdminButton disabled={!validUrl || create.isPending} onClick={() => create.mutate()} data-testid="webhook-create">
+            {t('webhooks.create')}
+          </AdminButton>
+          {create.isError && (
+            <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="webhook-error">{t('webhooks.error')}</p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">{t('webhooks.deliveries')}</CardTitle></CardHeader>
-        <CardContent>
-          {(deliveries.data ?? []).length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted" data-testid="deliveries-empty">{t('webhooks.noDeliveries')}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" data-testid="deliveries-table">
-                <thead>
-                  <tr className="border-b border-line text-left text-xs text-muted">
-                    <th className="py-2 pr-3 font-medium">{t('webhooks.when')}</th>
-                    <th className="py-2 pr-3 font-medium">{t('webhooks.event')}</th>
-                    <th className="py-2 pr-3 font-medium">{t('webhooks.status')}</th>
+      <div className="admin-card overflow-hidden">
+        <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+          {t('webhooks.list')}
+        </div>
+        {(hooks.data ?? []).length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="webhooks-empty">{t('webhooks.empty')}</p>
+        ) : (
+          <ul data-testid="webhooks-list">
+            {(hooks.data ?? []).map((w) => (
+              <li key={w.id} className="admin-hairline-b flex flex-wrap items-center gap-3 p-4 text-sm last:border-b-0" data-testid={`webhook-${w.id}`}>
+                <div className="min-w-0 flex-1">
+                  <div className="mono truncate text-sm" style={{ color: 'var(--admin-ink)' }}>{w.url}</div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {w.events.length === 0 ? (
+                      <Badge tone="neutral">{t('webhooks.allKinds')}</Badge>
+                    ) : (
+                      w.events.map((k) => <Badge key={k} tone="neutral">{t(`events.k.${k}`, k)}</Badge>)
+                    )}
+                  </div>
+                </div>
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+                  <input
+                    type="checkbox"
+                    checked={w.enabled}
+                    style={checkboxStyle}
+                    data-testid={`webhook-enabled-${w.id}`}
+                    onChange={(e) => toggle.mutate({ id: w.id, enabled: e.target.checked })}
+                  />
+                  {t('webhooks.enabled')}
+                </label>
+                <AdminButton variant="ghost" size="sm" style={{ color: 'var(--admin-danger)' }} data-testid={`webhook-del-${w.id}`} onClick={() => del.mutate(w.id)}>
+                  {t('webhooks.delete')}
+                </AdminButton>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="admin-card overflow-hidden">
+        <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+          {t('webhooks.deliveries')}
+        </div>
+        {(deliveries.data ?? []).length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="deliveries-empty">{t('webhooks.noDeliveries')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="deliveries-table">
+              <thead>
+                <tr style={{ background: 'var(--admin-surface-sunken)' }}>
+                  <th className={th} style={thStyle}>{t('webhooks.when')}</th>
+                  <th className={th} style={thStyle}>{t('webhooks.event')}</th>
+                  <th className={th} style={thStyle}>{t('webhooks.status')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(deliveries.data ?? []).map((d) => (
+                  <tr key={d.id} className="admin-hairline-b transition-colors last:border-b-0 hover:bg-[var(--admin-surface-sunken)]" data-testid="delivery-row">
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{fmt.format(new Date(d.at))}</td>
+                    <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink)' }}>{t(`events.k.${d.kind}`, d.kind)}</td>
+                    <td className="px-4 py-2.5">
+                      <span style={{ color: d.success ? 'var(--admin-success)' : 'var(--admin-danger)' }}>
+                        {d.success ? '✓' : '✗'} {d.statusCode ?? t('webhooks.noResponse')}
+                      </span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {(deliveries.data ?? []).map((d) => (
-                    <tr key={d.id} className="border-b border-line/60" data-testid="delivery-row">
-                      <td className="py-2 pr-3 tabular-nums text-muted">{fmt.format(new Date(d.at))}</td>
-                      <td className="py-2 pr-3">{t(`events.k.${d.kind}`, d.kind)}</td>
-                      <td className="py-2 pr-3">
-                        <span className={d.success ? 'text-[var(--color-success,#2b8a3e)]' : 'text-danger'}>
-                          {d.success ? '✓' : '✗'} {d.statusCode ?? t('webhooks.noResponse')}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
