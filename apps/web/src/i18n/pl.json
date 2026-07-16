@@ -140,6 +140,7 @@
   },
   "rules": {
     "title": "Reguły",
+    "desc": "Automatyzacja: alerty, powiadomienia i kanały.",
     "list": "Reguły",
     "add": "Dodaj regułę",
     "empty": "Brak reguł.",
@@ -192,6 +193,7 @@
   },
   "playback": {
     "title": "Odtwarzanie historii",
+    "desc": "Odtwarzanie tras z wykresami prędkości i paliwa.",
     "device": "Urządzenie",
     "from": "Od",
     "to": "Do",
@@ -205,6 +207,7 @@
   },
   "geofences": {
     "title": "Geostrefy",
+    "desc": "Rysowane strefy, które wyzwalają reguły i zdarzenia.",
     "polygon": "Wielokąt",
     "circle": "Okrąg",
     "corridor": "Korytarz",
@@ -453,6 +456,7 @@
   },
   "events": {
     "title": "Zdarzenia",
+    "desc": "Strumień alertów: geostrefy, prędkość, SOS, offline.",
     "timeline": "Oś czasu",
     "kind": "Rodzaj",
     "allKinds": "Wszystkie rodzaje",
@@ -476,10 +480,16 @@
       "panic": "Alarm",
       "device_offline": "Urządzenie offline",
       "fuel_theft": "Kradzież paliwa"
+    },
+    "stat": {
+      "critical": "Krytyczne",
+      "warning": "Ostrzeżenia",
+      "info": "Informacyjne"
     }
   },
   "reports": {
     "title": "Raporty",
+    "desc": "Generuj raporty za wybrany okres i planuj cykliczne.",
     "run": "Uruchom raport",
     "type": "Raport",
     "device": "Urządzenie",
