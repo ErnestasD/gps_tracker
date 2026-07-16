@@ -11,6 +11,7 @@ import {
   Hexagon,
   IdCard,
   KeyRound,
+  LayoutDashboard,
   LogOut,
   Map as MapIcon,
   Menu,
@@ -54,7 +55,7 @@ interface NavSection {
 
 // Sidebar sections (ADR-028 layout, same gating/keys as before the redesign).
 const SECTIONS: NavSection[] = [
-  { key: 'shell.live', items: [{ key: 'shell.map', icon: MapIcon, to: '/app/map' }] },
+  { key: 'shell.live', items: [{ key: 'shell.overview', icon: LayoutDashboard, to: '/app' }, { key: 'shell.map', icon: MapIcon, to: '/app/map' }] },
   {
     key: 'shell.fleet',
     items: [

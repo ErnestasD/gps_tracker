@@ -42,7 +42,8 @@
     "billing": "Abrechnung",
     "menu": "Menü öffnen",
     "close": "Schließen",
-    "theme": "Design umschalten"
+    "theme": "Design umschalten",
+    "overview": "Übersicht"
   },
   "billing": {
     "title": "Abrechnung",
@@ -254,7 +255,8 @@
     "live": "Live"
   },
   "units": {
-    "kmh": "km/h"
+    "kmh": "km/h",
+    "km": "{{n}} km"
   },
   "settings": {
     "title": "Einstellungen",
@@ -703,5 +705,23 @@
     "next": "Weiter",
     "pick": "Auswählen…",
     "allOf": "{{header}}: alle"
+  },
+  "dash": {
+    "title": "Übersicht",
+    "desc": "Flotte auf einen Blick — Präsenz, Ereignisse und Fahrleistung.",
+    "toReports": "Berichte",
+    "toMap": "Live-Karte",
+    "devices": "Geräte",
+    "retiredHint": "{{n}} stillgelegt",
+    "online": "Jetzt online",
+    "staleHint": "{{n}} veraltet",
+    "events24": "Ereignisse (24 h)",
+    "critical24": "Kritisch (24 h)",
+    "mileage7": "Fahrleistung (7 T.)",
+    "latestDevices": "Zuletzt gemeldet",
+    "recent": "Letzte Ereignisse",
+    "viewAll": "Alle anzeigen",
+    "empty": "Noch keine Daten",
+    "noAccount": "Kein Konto für den Bericht"
   }
 }
