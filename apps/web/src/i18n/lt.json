@@ -498,7 +498,8 @@
       "endTime": "Pabaiga",
       "maxSpeed": "Maks. greitis"
     },
-    "account": "Paskyra"
+    "account": "Paskyra",
+    "exportPdf": "Eksportuoti PDF"
   },
   "apiKeys": {
     "title": "API raktai",

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { listAccounts, listDevices } from '@/lib/devices'
-import { COLUMNS, downloadCsv, runReport, toCsv, REPORT_TYPES, type ReportResult, type ReportType } from '@/lib/reports'
+import { COLUMNS, downloadCsv, downloadPdf, runReport, toCsv, REPORT_TYPES, type ReportResult, type ReportType } from '@/lib/reports'
 import { ScheduledReportsCard } from '@/routes/app/scheduledReports'
 
 /** Reports (E06-2): run a report over a date range and export CSV. Consumes the E06-1 sync
@@ -40,6 +40,10 @@ export function ReportsPage() {
   const exportCsv = () => {
     if (result === undefined) return
     downloadCsv(`${result.type}-report.csv`, toCsv(COLUMNS[result.type], result.rows))
+  }
+  const exportPdf = () => {
+    if (result === undefined) return
+    void downloadPdf(`${result.type}-report.pdf`, `Orbetra — ${result.type} report`, COLUMNS[result.type], result.rows)
   }
 
   return (
@@ -76,6 +80,7 @@ export function ReportsPage() {
             </Field>
             <Button data-testid="report-run" disabled={!canRun || run.isPending} onClick={() => run.mutate()}>{t('reports.runBtn')}</Button>
             <Button variant="secondary" data-testid="report-export" disabled={result === undefined || result.rows.length === 0} onClick={exportCsv}>{t('reports.exportCsv')}</Button>
+            <Button variant="secondary" data-testid="report-export-pdf" disabled={result === undefined || result.rows.length === 0} onClick={exportPdf}>{t('reports.exportPdf')}</Button>
           </div>
           {run.isError && <p role="alert" className="mt-2 text-sm text-danger" data-testid="report-error">{t('reports.error')}</p>}
         </CardContent>

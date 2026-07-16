@@ -498,7 +498,8 @@
       "endTime": "Koniec",
       "maxSpeed": "Maks prędkość"
     },
-    "account": "Konto"
+    "account": "Konto",
+    "exportPdf": "Eksportuj PDF"
   },
   "apiKeys": {
     "title": "Klucze API",
