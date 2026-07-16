@@ -42,7 +42,8 @@
     "billing": "Atsiskaitymai",
     "menu": "Atidaryti meniu",
     "close": "Uždaryti",
-    "theme": "Perjungti temą"
+    "theme": "Perjungti temą",
+    "overview": "Apžvalga"
   },
   "billing": {
     "title": "Atsiskaitymai",
@@ -254,7 +255,8 @@
     "live": "Gyvai"
   },
   "units": {
-    "kmh": "km/val"
+    "kmh": "km/val",
+    "km": "{{n}} km"
   },
   "settings": {
     "title": "Nustatymai",
@@ -703,5 +705,23 @@
     "next": "Kitas",
     "pick": "Pasirinkti…",
     "allOf": "{{header}}: visi"
+  },
+  "dash": {
+    "title": "Apžvalga",
+    "desc": "Parkas iš pirmo žvilgsnio — būsena, įvykiai ir rida.",
+    "toReports": "Ataskaitos",
+    "toMap": "Žemėlapis",
+    "devices": "Įrenginiai",
+    "retiredHint": "{{n}} išregistruoti",
+    "online": "Prisijungę dabar",
+    "staleHint": "{{n}} pasenę",
+    "events24": "Įvykiai (24 val.)",
+    "critical24": "Kritiniai (24 val.)",
+    "mileage7": "Rida (7 d.)",
+    "latestDevices": "Paskutiniai pranešę",
+    "recent": "Paskutiniai įvykiai",
+    "viewAll": "Rodyti visus",
+    "empty": "Duomenų dar nėra",
+    "noAccount": "Nėra paskyros ataskaitai"
   }
 }

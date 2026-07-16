@@ -42,7 +42,8 @@
     "billing": "Billing",
     "menu": "Open menu",
     "close": "Close",
-    "theme": "Toggle theme"
+    "theme": "Toggle theme",
+    "overview": "Overview"
   },
   "billing": {
     "title": "Billing",
@@ -254,7 +255,8 @@
     "live": "Live"
   },
   "units": {
-    "kmh": "km/h"
+    "kmh": "km/h",
+    "km": "{{n}} km"
   },
   "settings": {
     "title": "Settings",
@@ -703,5 +705,23 @@
     "next": "Next",
     "pick": "Select…",
     "allOf": "{{header}}: all"
+  },
+  "dash": {
+    "title": "Overview",
+    "desc": "Fleet at a glance — live presence, events and mileage.",
+    "toReports": "Reports",
+    "toMap": "Live map",
+    "devices": "Devices",
+    "retiredHint": "{{n}} retired",
+    "online": "Online now",
+    "staleHint": "{{n}} stale",
+    "events24": "Events (24 h)",
+    "critical24": "Critical (24 h)",
+    "mileage7": "Mileage (7 d)",
+    "latestDevices": "Latest reporting",
+    "recent": "Recent events",
+    "viewAll": "View all",
+    "empty": "No data yet",
+    "noAccount": "No account to report on"
   }
 }

@@ -42,7 +42,8 @@
     "billing": "Płatności",
     "menu": "Otwórz menu",
     "close": "Zamknij",
-    "theme": "Przełącz motyw"
+    "theme": "Przełącz motyw",
+    "overview": "Przegląd"
   },
   "billing": {
     "title": "Płatności",
@@ -254,7 +255,8 @@
     "live": "Na żywo"
   },
   "units": {
-    "kmh": "km/h"
+    "kmh": "km/h",
+    "km": "{{n}} km"
   },
   "settings": {
     "title": "Ustawienia",
@@ -703,5 +705,23 @@
     "next": "Następna",
     "pick": "Wybierz…",
     "allOf": "{{header}}: wszystkie"
+  },
+  "dash": {
+    "title": "Przegląd",
+    "desc": "Flota w skrócie — obecność, zdarzenia i przebieg.",
+    "toReports": "Raporty",
+    "toMap": "Mapa na żywo",
+    "devices": "Urządzenia",
+    "retiredHint": "{{n}} wycofane",
+    "online": "Online teraz",
+    "staleHint": "{{n}} nieaktualne",
+    "events24": "Zdarzenia (24 h)",
+    "critical24": "Krytyczne (24 h)",
+    "mileage7": "Przebieg (7 dni)",
+    "latestDevices": "Ostatnio raportujące",
+    "recent": "Ostatnie zdarzenia",
+    "viewAll": "Pokaż wszystkie",
+    "empty": "Brak danych",
+    "noAccount": "Brak konta do raportu"
   }
 }
