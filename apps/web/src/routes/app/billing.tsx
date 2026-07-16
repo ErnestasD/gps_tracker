@@ -2,9 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from '@/lib/billing'
 
 /**
@@ -12,6 +10,7 @@ import { fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from 
  * Checkout (subscribe) / Customer Portal (manage) — we host no payment UI. Subscription state
  * is authoritative from the webhook; on return from Stripe we just refetch. When not subscribed,
  * a plan picker (resolved from the server's configured Stripe prices) drives checkout.
+ * Re-skinned onto the admin design (ADR-028): PageHeader + admin-card sections.
  */
 export function BillingPage() {
   const { t } = useTranslation()
@@ -33,48 +32,60 @@ export function BillingPage() {
   const statusLabel = b?.status ?? t('billing.none')
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col gap-4 overflow-auto p-4">
-      <h1 className="text-lg font-semibold">{t('billing.title')}</h1>
+    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+      <PageHeader className="mb-0" title={t('billing.title')} description={t('billing.desc')} />
 
       {b?.configured === false ? (
-        <Card><CardContent className="p-6 text-sm text-muted" data-testid="billing-unconfigured">{t('billing.unavailable')}</CardContent></Card>
+        <div className="admin-card p-6 text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="billing-unconfigured">
+          {t('billing.unavailable')}
+        </div>
       ) : (
         <>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>{t('billing.subscription')}</CardTitle>
+          <div className="admin-card">
+            <div className="admin-hairline-b flex items-center justify-between px-4 py-3">
+              <span className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('billing.subscription')}</span>
               {b !== undefined && (
-                <Badge variant={b.active ? 'default' : 'outline'} data-testid="billing-status">{statusLabel}</Badge>
+                <Badge tone={b.active ? 'success' : 'neutral'} data-testid="billing-status">{statusLabel}</Badge>
               )}
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <p className="text-sm text-muted">{t('billing.pricingNote')}</p>
+            </div>
+            <div className="flex flex-col gap-4 p-4">
+              <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.pricingNote')}</p>
               {b?.currentPeriodEnd != null && (
-                <p className="text-sm" data-testid="billing-period">{t('billing.renews')}: {new Date(b.currentPeriodEnd).toLocaleDateString()}</p>
+                <p className="text-sm" style={{ color: 'var(--admin-ink)' }} data-testid="billing-period">
+                  {t('billing.renews')}: {new Date(b.currentPeriodEnd).toLocaleDateString()}
+                </p>
               )}
               {b?.hasCustomer === true && (
                 <div>
-                  <Button variant={b.active ? 'default' : 'secondary'} disabled={busy} data-testid="billing-manage" onClick={() => go(openPortal)}>{t('billing.manage')}</Button>
+                  <AdminButton variant={b.active ? 'primary' : 'secondary'} disabled={busy} data-testid="billing-manage" onClick={() => go(openPortal)}>
+                    {t('billing.manage')}
+                  </AdminButton>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {showPicker && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="billing-plans">
               {(plans.data ?? []).map((p) => (
-                <Card key={p.priceId} data-testid={`plan-${p.priceId}`}>
-                  <CardHeader><CardTitle className="text-base">{p.productName}</CardTitle></CardHeader>
-                  <CardContent className="flex flex-col gap-3">
-                    <p className="text-xl font-semibold">
-                      {fmtPlanAmount(p.amount, p.currency)}
-                      {p.interval !== null && <span className="text-sm font-normal text-muted"> / {t(`billing.interval.${p.interval}`)}</span>}
-                    </p>
-                    <Button size="sm" disabled={busy} data-testid={`subscribe-${p.priceId}`} onClick={() => go(() => startCheckout(p.priceId))}>{t('billing.subscribe')}</Button>
-                  </CardContent>
-                </Card>
+                <div key={p.priceId} className="admin-card flex flex-col gap-3 p-5" style={{ borderColor: 'var(--admin-brand)' }} data-testid={`plan-${p.priceId}`}>
+                  <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{p.productName}</div>
+                  <p className="display text-2xl font-semibold tracking-tight" style={{ color: 'var(--admin-ink)' }}>
+                    {fmtPlanAmount(p.amount, p.currency)}
+                    {p.interval !== null && (
+                      <span className="text-sm font-normal" style={{ color: 'var(--admin-ink-soft)' }}> / {t(`billing.interval.${p.interval}`)}</span>
+                    )}
+                  </p>
+                  <div>
+                    <AdminButton size="sm" disabled={busy} data-testid={`subscribe-${p.priceId}`} onClick={() => go(() => startCheckout(p.priceId))}>
+                      {t('billing.subscribe')}
+                    </AdminButton>
+                  </div>
+                </div>
               ))}
-              {(plans.data ?? []).length === 0 && <p className="text-sm text-muted" data-testid="plans-empty">{t('billing.noPlans')}</p>}
+              {(plans.data ?? []).length === 0 && (
+                <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="plans-empty">{t('billing.noPlans')}</p>
+              )}
             </div>
           )}
         </>

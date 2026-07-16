@@ -46,6 +46,7 @@
   },
   "billing": {
     "title": "Atsiskaitymai",
+    "desc": "Prenumeratos planas ir mokėjimai per Stripe.",
     "subscription": "Prenumerata",
     "pricingNote": "Skaidri kaina — žr. savo planą. Prenumeratą, mokėjimo būdą ir sąskaitas valdykite Stripe portale.",
     "renews": "Atsinaujina",
@@ -61,6 +62,7 @@
   },
   "branding": {
     "title": "Prekės ženklas",
+    "desc": "White-label išvaizda — jūsų produkto pavadinimas, spalvos ir nuosavi domenai.",
     "appearance": "Išvaizda",
     "productName": "Produkto pavadinimas",
     "supportEmail": "Pagalbos el. paštas",
@@ -86,6 +88,7 @@
   },
   "audit": {
     "title": "Audito žurnalas",
+    "desc": "Kas, ką ir kada pakeitė — nuomininko pakeitimų istorija.",
     "trail": "Pakeitimų istorija",
     "when": "Kada",
     "action": "Veiksmas",
@@ -255,6 +258,12 @@
   },
   "settings": {
     "title": "Nustatymai",
+    "tab": {
+      "profile": "Profilis",
+      "security": "Sauga",
+      "notifications": "Pranešimai",
+      "data": "Duomenys"
+    },
     "profile": "Profilis",
     "email": "El. paštas",
     "role": "Rolė",
@@ -530,6 +539,7 @@
   },
   "apiKeys": {
     "title": "API raktai",
+    "desc": "Prieigos raktai integracijoms.",
     "add": "Sukurti raktą",
     "name": "Pavadinimas",
     "account": "Paskyra",
@@ -551,6 +561,7 @@
   },
   "webhooks": {
     "title": "Webhooks",
+    "desc": "HTTP kanalai pasirašytiems įvykiams siųsti į išorines sistemas.",
     "add": "Pridėti webhook",
     "url": "Endpoint URL",
     "events": "Įvykiai",
@@ -574,6 +585,7 @@
   },
   "platform": {
     "title": "Platforma",
+    "desc": "Nuomininkai ir apmokestinamas naudojimas šį mėnesį.",
     "denied": "Tik platformos administratoriams.",
     "tenants": "Nuomininkai",
     "tenant": "Nuomininkas",
