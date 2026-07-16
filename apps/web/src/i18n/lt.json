@@ -118,6 +118,7 @@
   },
   "trips": {
     "title": "Kelionės",
+    "desc": "Visos parko kelionės su laiko filtru.",
     "device": "Įrenginys",
     "allDevices": "Visi įrenginiai",
     "from": "Nuo",
@@ -299,6 +300,7 @@
   },
   "devices": {
     "title": "Įrenginiai",
+    "desc": "Visi parko GPS įrenginiai vienoje vietoje.",
     "list": "Visi įrenginiai",
     "add": "Pridėti įrenginį",
     "create": "Sukurti",
@@ -580,6 +582,7 @@
   },
   "drivers": {
     "title": "Vairuotojai",
+    "desc": "Vairuotojai, jų saugos balai ir priskyrimai.",
     "list": "Vairuotojų sąrašas",
     "addTitle": "Pridėti vairuotoją",
     "editTitle": "Redaguoti vairuotoją",
@@ -614,6 +617,12 @@
   },
   "maint": {
     "title": "Techninė priežiūra",
+    "desc": "Techninių priežiūrų priminimai ir grafikas.",
+    "stat": {
+      "ok": "Tvarka",
+      "due": "Artėja",
+      "overdue": "Vėluoja"
+    },
     "list": "Aptarnavimo grafikas",
     "add": "Pridėti priminimą",
     "device": "Įrenginys",

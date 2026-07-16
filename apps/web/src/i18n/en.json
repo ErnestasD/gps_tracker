@@ -118,6 +118,7 @@
   },
   "trips": {
     "title": "Trips",
+    "desc": "All fleet trips with a time filter.",
     "device": "Device",
     "allDevices": "All devices",
     "from": "From",
@@ -299,6 +300,7 @@
   },
   "devices": {
     "title": "Devices",
+    "desc": "All fleet GPS devices in one place.",
     "list": "All devices",
     "add": "Add device",
     "create": "Create",
@@ -580,6 +582,7 @@
   },
   "drivers": {
     "title": "Drivers",
+    "desc": "Drivers, their safety scores and assignments.",
     "list": "Driver roster",
     "addTitle": "Add driver",
     "editTitle": "Edit driver",
@@ -614,6 +617,12 @@
   },
   "maint": {
     "title": "Maintenance",
+    "desc": "Service reminders and schedule.",
+    "stat": {
+      "ok": "OK",
+      "due": "Due soon",
+      "overdue": "Overdue"
+    },
     "list": "Service schedule",
     "add": "Add reminder",
     "device": "Device",
