@@ -139,6 +139,7 @@
   },
   "rules": {
     "title": "Rules",
+    "desc": "Automation: alerts, notifications and channels.",
     "list": "Rules",
     "add": "Add rule",
     "empty": "No rules yet.",
@@ -191,6 +192,7 @@
   },
   "playback": {
     "title": "History playback",
+    "desc": "Trip replay with speed and fuel charts.",
     "device": "Device",
     "from": "From",
     "to": "To",
@@ -204,6 +206,7 @@
   },
   "geofences": {
     "title": "Geofences",
+    "desc": "Draw zones that trigger rules and events.",
     "polygon": "Polygon",
     "circle": "Circle",
     "corridor": "Corridor",
@@ -451,6 +454,7 @@
   },
   "events": {
     "title": "Events",
+    "desc": "Alert stream: geofences, overspeed, panic, offline.",
     "timeline": "Timeline",
     "kind": "Kind",
     "allKinds": "All kinds",
@@ -474,10 +478,16 @@
       "panic": "Panic",
       "device_offline": "Device offline",
       "fuel_theft": "Fuel theft"
+    },
+    "stat": {
+      "critical": "Critical",
+      "warning": "Warnings",
+      "info": "Info"
     }
   },
   "reports": {
     "title": "Reports",
+    "desc": "Run reports over a date range and schedule recurring ones.",
     "run": "Run a report",
     "type": "Report",
     "device": "Device",

@@ -6,10 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { TerraDraw, TerraDrawCircleMode, TerraDrawLineStringMode, TerraDrawPolygonMode, TerraDrawSelectMode } from 'terra-draw'
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ApiError } from '@/lib/http'
 import { createGeofence, deleteGeofence, geofenceFeatures, listGeofences } from '@/lib/geofences'
 
@@ -17,6 +14,9 @@ const STYLE_URL: string = (import.meta.env.VITE_TILES_STYLE_URL as string | unde
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 
 type Drawn = { geometry: GeoJSON.Geometry; kind: 'polygon' | 'circle' | 'corridor' } | null
+
+const fieldCls = 'flex flex-col gap-1 text-xs'
+const fieldStyle = { color: 'var(--admin-ink-soft)' } as const
 
 /** Geofences (E05-1): draw polygon/circle with terra-draw, save, list, delete.
  *  Corridor (V2): draw a route LineString + a buffer half-width; the server buffers it to a polygon. */
@@ -109,59 +109,64 @@ export function GeofencesPage() {
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-6xl flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <h1 className="mr-auto text-lg font-semibold">{t('geofences.title')}</h1>
+    <div className="flex h-full flex-col gap-3 p-4 md:p-6">
+      <PageHeader title={t('geofences.title')} description={t('geofences.desc')} className="mb-0">
         <div className="flex gap-1">
-          <Button variant="secondary" size="sm" data-testid="gf-mode-polygon" onClick={() => setMode('polygon')}>{t('geofences.polygon')}</Button>
-          <Button variant="secondary" size="sm" data-testid="gf-mode-circle" onClick={() => setMode('circle')}>{t('geofences.circle')}</Button>
-          <Button variant="secondary" size="sm" data-testid="gf-mode-corridor" onClick={() => setMode('linestring')}>{t('geofences.corridor')}</Button>
-          <Button variant="ghost" size="sm" data-testid="gf-clear" onClick={clearDraw}>{t('geofences.clear')}</Button>
+          <AdminButton variant="secondary" size="sm" data-testid="gf-mode-polygon" onClick={() => setMode('polygon')}>{t('geofences.polygon')}</AdminButton>
+          <AdminButton variant="secondary" size="sm" data-testid="gf-mode-circle" onClick={() => setMode('circle')}>{t('geofences.circle')}</AdminButton>
+          <AdminButton variant="secondary" size="sm" data-testid="gf-mode-corridor" onClick={() => setMode('linestring')}>{t('geofences.corridor')}</AdminButton>
+          <AdminButton variant="ghost" size="sm" data-testid="gf-clear" onClick={clearDraw}>{t('geofences.clear')}</AdminButton>
         </div>
         {drawn?.kind === 'corridor' && (
-          <label className="flex flex-col gap-1 text-xs text-muted">{t('geofences.buffer')}
-            <Input type="number" min={10} max={5000} step={10} value={bufferM} onChange={(e) => setBufferM(Math.max(10, Math.min(5000, Number(e.target.value) || 10)))} data-testid="gf-buffer" className="w-24" />
+          <label className={fieldCls} style={fieldStyle}>{t('geofences.buffer')}
+            <AdminInput type="number" min={10} max={5000} step={10} value={bufferM} onChange={(e) => setBufferM(Math.max(10, Math.min(5000, Number(e.target.value) || 10)))} data-testid="gf-buffer" className="w-24" />
           </label>
         )}
-        <label className="flex flex-col gap-1 text-xs text-muted">{t('geofences.name')}
-          <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="gf-name" className="w-40" />
+        <label className={fieldCls} style={fieldStyle}>{t('geofences.name')}
+          <AdminInput value={name} onChange={(e) => setName(e.target.value)} data-testid="gf-name" className="w-40" />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-muted">{t('geofences.color')}
-          <input type="color" value={color} onChange={(e) => setColor(e.target.value)} data-testid="gf-color" className="h-9 w-12 rounded-card border border-line bg-surface" />
+        <label className={fieldCls} style={fieldStyle}>{t('geofences.color')}
+          <input type="color" value={color} onChange={(e) => setColor(e.target.value)} data-testid="gf-color" className="h-9 w-12 rounded-md border" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)' }} />
         </label>
-        <Button size="sm" disabled={drawn === null || name.trim() === ''} data-testid="gf-save" onClick={save}>{t('geofences.save')}</Button>
-        {error !== null && <span role="alert" className="w-full text-sm text-danger">{error}</span>}
-      </div>
+        <AdminButton disabled={drawn === null || name.trim() === ''} data-testid="gf-save" onClick={save}>{t('geofences.save')}</AdminButton>
+        {error !== null && <span role="alert" className="w-full text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</span>}
+      </PageHeader>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[2fr_1fr]">
-        <div className="relative min-h-0 overflow-hidden rounded-card border border-line">
-          <div ref={containerRef} className="h-full w-full" data-testid="geofence-map" />
-          {mapError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-surface/90 p-4 text-center text-sm text-danger" data-testid="geofence-map-error">
-              {t('geofences.mapError')}
-            </div>
-          )}
-        </div>
-        <Card className="min-h-0 overflow-hidden">
-          <CardContent className="h-full overflow-auto p-2">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,22rem)_1fr]">
+        {/* list aside (design split view: list left, map right) */}
+        <aside className="admin-card flex min-h-0 flex-col overflow-hidden">
+          <div className="admin-hairline-b px-3 py-2 text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--admin-ink-soft)' }}>
+            {t('geofences.title')}
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-2">
             {(geofences.data ?? []).length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted" data-testid="gf-empty">{t('geofences.empty')}</p>
+              <p className="py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="gf-empty">{t('geofences.empty')}</p>
             ) : (
               <ul className="space-y-1" data-testid="gf-list">
                 {(geofences.data ?? []).map((g: GeofenceView) => (
-                  <li key={g.id} className="flex items-center gap-2 rounded-card border border-line p-2 text-sm" data-testid={`gf-${g.id}`}>
+                  <li key={g.id} className="flex items-center gap-2 rounded-md border p-2 text-sm" style={{ borderColor: 'var(--admin-hairline)', color: 'var(--admin-ink)' }} data-testid={`gf-${g.id}`}>
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: g.color }} />
                     <span className="truncate">{g.name}</span>
-                    <Badge variant="outline" className="ml-auto">{t(`geofences.${g.kind}`)}</Badge>
-                    <Button variant="ghost" size="sm" data-testid={`gf-del-${g.id}`} onClick={() => void deleteGeofence(g.id).then(() => qc.invalidateQueries({ queryKey: ['geofences'] })).catch(() => undefined)}>
+                    <Badge tone="neutral" className="ml-auto">{t(`geofences.${g.kind}`)}</Badge>
+                    <AdminButton variant="ghost" size="sm" style={{ background: 'transparent', color: 'var(--admin-danger)' }} data-testid={`gf-del-${g.id}`} onClick={() => void deleteGeofence(g.id).then(() => qc.invalidateQueries({ queryKey: ['geofences'] })).catch(() => undefined)}>
                       {t('geofences.delete')}
-                    </Button>
+                    </AdminButton>
                   </li>
                 ))}
               </ul>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </aside>
+
+        {/* map panel */}
+        <div className="admin-card relative min-h-[320px] overflow-hidden lg:min-h-0">
+          <div ref={containerRef} className="h-full w-full" data-testid="geofence-map" />
+          {mapError && (
+            <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm" style={{ background: 'color-mix(in srgb, var(--admin-surface) 92%, transparent)', color: 'var(--admin-danger)' }} data-testid="geofence-map-error">
+              {t('geofences.mapError')}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

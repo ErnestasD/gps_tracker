@@ -139,6 +139,7 @@
   },
   "rules": {
     "title": "Regeln",
+    "desc": "Automatisierung: Alarme, Benachrichtigungen und Kanäle.",
     "list": "Regeln",
     "add": "Regel hinzufügen",
     "empty": "Noch keine Regeln.",
@@ -191,6 +192,7 @@
   },
   "playback": {
     "title": "Verlauf-Wiedergabe",
+    "desc": "Fahrten-Wiedergabe mit Geschwindigkeits- und Kraftstoffdiagrammen.",
     "device": "Gerät",
     "from": "Von",
     "to": "Bis",
@@ -204,6 +206,7 @@
   },
   "geofences": {
     "title": "Geozonen",
+    "desc": "Gezeichnete Zonen, die Regeln und Ereignisse auslösen.",
     "polygon": "Polygon",
     "circle": "Kreis",
     "corridor": "Korridor",
@@ -451,6 +454,7 @@
   },
   "events": {
     "title": "Ereignisse",
+    "desc": "Alarm-Stream: Geozonen, Geschwindigkeit, Panik, Offline.",
     "timeline": "Zeitverlauf",
     "kind": "Art",
     "allKinds": "Alle Arten",
@@ -474,10 +478,16 @@
       "panic": "Panik",
       "device_offline": "Gerät offline",
       "fuel_theft": "Kraftstoffdiebstahl"
+    },
+    "stat": {
+      "critical": "Kritisch",
+      "warning": "Warnungen",
+      "info": "Info"
     }
   },
   "reports": {
     "title": "Berichte",
+    "desc": "Berichte über einen Zeitraum ausführen und wiederkehrend planen.",
     "run": "Bericht erstellen",
     "type": "Bericht",
     "device": "Gerät",

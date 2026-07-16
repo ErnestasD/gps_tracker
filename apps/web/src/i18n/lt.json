@@ -139,6 +139,7 @@
   },
   "rules": {
     "title": "Taisyklės",
+    "desc": "Automatika: signalai, pranešimai ir kanalai.",
     "list": "Taisyklės",
     "add": "Pridėti taisyklę",
     "empty": "Taisyklių dar nėra.",
@@ -191,6 +192,7 @@
   },
   "playback": {
     "title": "Istorijos peržiaura",
+    "desc": "Kelionių atkūrimas su greičio ir kuro grafikais.",
     "device": "Įrenginys",
     "from": "Nuo",
     "to": "Iki",
@@ -204,6 +206,7 @@
   },
   "geofences": {
     "title": "Geozonos",
+    "desc": "Braižomos zonos, kurios aktyvuoja taisykles ir įvykius.",
     "polygon": "Poligonas",
     "circle": "Apskritimas",
     "corridor": "Koridorius",
@@ -451,6 +454,7 @@
   },
   "events": {
     "title": "Įvykiai",
+    "desc": "Signalų srautas: geozonos, greičio viršijimai, pavojaus mygtukas, ryšio dingimas.",
     "timeline": "Laiko juosta",
     "kind": "Tipas",
     "allKinds": "Visi tipai",
@@ -474,10 +478,16 @@
       "panic": "Pavojaus mygtukas",
       "device_offline": "Įrenginys neprisijungęs",
       "fuel_theft": "Kuro vagystė"
+    },
+    "stat": {
+      "critical": "Kritiniai",
+      "warning": "Įspėjimai",
+      "info": "Informaciniai"
     }
   },
   "reports": {
     "title": "Ataskaitos",
+    "desc": "Vykdykite ataskaitas pagal laikotarpį ir planuokite reguliarias.",
     "run": "Sugeneruoti ataskaitą",
     "type": "Ataskaita",
     "device": "Įrenginys",
