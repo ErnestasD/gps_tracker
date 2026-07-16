@@ -447,6 +447,22 @@ model ScheduledReport {
   @@map("scheduled_reports")
 }
 
+/// Browser push subscriptions (Web Push, ADR-026). One row per subscribed browser; a `webpush` rule
+/// channel fans out to the account's rows. `endpoint` is globally unique (the push-service URL).
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  accountId String   @db.Uuid
+  userId    String   @db.Uuid
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@index([tenantId, accountId])
+  @@map("push_subscriptions")
+}
+
 /// Webhook delivery attempts (E06-4b) — one row per POST attempt for observability/debugging.
 /// Written by the worker (raw SQL); read-only over the API. Retention pruning is W7.
 model WebhookDelivery {

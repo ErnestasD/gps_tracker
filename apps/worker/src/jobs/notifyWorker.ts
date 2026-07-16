@@ -44,6 +44,9 @@ export async function runNotify(deps: NotifyWorkerDeps, job: Job<NotifyJob>): Pr
 
   const msg = notificationMessage(kind, deviceId, payload, new Date(at))
   const sentKey = `notify:sent:${job.id ?? `${ruleId}:${deviceId}:${at}`}`
+  // resolve the device's account so a webpush channel can fan out to that account's subscriptions
+  const [tenantId, accountId] = await Promise.all([deps.redis.hget('device:tenant', deviceId), deps.redis.hget('device:account', deviceId)])
+  const ctx = tenantId && accountId ? { tenantId, accountId } : undefined
   const result = await dispatchEvent(
     channels,
     msg,
@@ -54,6 +57,7 @@ export async function runNotify(deps: NotifyWorkerDeps, job: Job<NotifyJob>): Pr
       // accumulating forever under the mandated noeviction Redis (review LOW-1)
       await deps.redis.pipeline().sadd(sentKey, k).expire(sentKey, SENT_TTL_S).exec()
     },
+    ctx,
   )
 
   for (const c of result.sent) deps.onSent?.(c.split(':')[0]!)

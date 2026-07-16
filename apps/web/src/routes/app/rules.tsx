@@ -161,12 +161,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * form and the per-rule inline editor. */
 function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[]; onChange: (c: NotificationChannel[]) => void }) {
   const { t } = useTranslation()
-  const [type, setType] = useState<'email' | 'telegram'>('email')
+  const [type, setType] = useState<'email' | 'telegram' | 'webpush'>('email')
   const [value, setValue] = useState('')
   const [err, setErr] = useState(false)
 
   const add = () => {
-    const parsed = parseChannel(type, value)
+    // webpush carries no target — it fans out to the account's browser subscriptions (ADR-026)
+    const parsed: NotificationChannel | null = type === 'webpush' ? { type: 'webpush' } : parseChannel(type, value)
     if (parsed === null) { setErr(true); return }
     // dedupe identical targets so a rule doesn't notify the same address twice
     if (!channels.some((c) => channelLabel(c) === channelLabel(parsed))) onChange([...channels, parsed])
@@ -177,17 +178,20 @@ function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[
     <div className="flex w-full flex-col gap-1">
       <span className="text-xs text-muted">{t('rules.channels.label')}</span>
       <div className="flex flex-wrap items-end gap-2">
-        <select value={type} onChange={(e) => { setType(e.target.value as 'email' | 'telegram'); setErr(false) }} data-testid="rule-ch-type" className="h-9 rounded-card border border-line bg-surface px-2 text-sm">
+        <select value={type} onChange={(e) => { setType(e.target.value as 'email' | 'telegram' | 'webpush'); setErr(false) }} data-testid="rule-ch-type" className="h-9 rounded-card border border-line bg-surface px-2 text-sm">
           <option value="email">{t('rules.channels.email')}</option>
           <option value="telegram">{t('rules.channels.telegram')}</option>
+          <option value="webpush">{t('rules.channels.webpush')}</option>
         </select>
-        <Input
-          value={value}
-          onChange={(e) => { setValue(e.target.value); setErr(false) }}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-          placeholder={type === 'email' ? t('rules.channels.emailPlaceholder') : t('rules.channels.telegramPlaceholder')}
-          data-testid="rule-ch-value" className="w-52"
-        />
+        {type !== 'webpush' && (
+          <Input
+            value={value}
+            onChange={(e) => { setValue(e.target.value); setErr(false) }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+            placeholder={type === 'email' ? t('rules.channels.emailPlaceholder') : t('rules.channels.telegramPlaceholder')}
+            data-testid="rule-ch-value" className="w-52"
+          />
+        )}
         <Button type="button" variant="ghost" size="sm" onClick={add} data-testid="rule-ch-add">{t('rules.channels.add')}</Button>
       </div>
       {err && <span className="text-xs text-danger" data-testid="rule-ch-error">{t('rules.channels.invalid')}</span>}

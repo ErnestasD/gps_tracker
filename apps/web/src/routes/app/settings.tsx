@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -12,6 +12,7 @@ import { listAccounts } from '@/lib/devices'
 import { downloadExport, hasPendingExport, listExports, requestExport } from '@/lib/gdpr'
 import { ApiError } from '@/lib/http'
 import { getTheme, setStoredLocale, setTheme, type Theme } from '@/lib/prefs'
+import { disablePush, enablePush, pushEnabled, pushSupported } from '@/lib/push'
 
 const LOCALES = ['en', 'lt', 'pl', 'de'] as const
 
@@ -146,8 +147,61 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
+      <PushSection />
+
       {(user?.role === 'platform_admin' || user?.role === 'tsp_admin') && <ExportSection />}
     </div>
+  )
+}
+
+/** Browser push opt-in (ADR-026): subscribe THIS browser to Web Push. Rules with a `webpush` channel
+ * then fan out to every browser the account has enrolled. Per-device, not per-account. */
+function PushSection() {
+  const { t } = useTranslation()
+  const [supported] = useState(pushSupported())
+  const [enabled, setEnabled] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void pushEnabled().then(setEnabled)
+  }, [])
+
+  const toggle = () => {
+    setBusy(true)
+    setError(null)
+    const action = enabled ? disablePush().then(() => false) : enablePush()
+    action
+      .then((ok) => {
+        setEnabled(ok)
+        if (!ok && !enabled) setError(t('settings.push.denied'))
+      })
+      .catch(() => setError(t('settings.push.error')))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <Card data-testid="push-section">
+      <CardHeader>
+        <CardTitle className="text-base">{t('settings.push.title')}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted">{t('settings.push.hint')}</p>
+        {!supported ? (
+          <p className="text-sm text-muted" data-testid="push-unsupported">{t('settings.push.unsupported')}</p>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Button variant={enabled ? 'secondary' : 'default'} size="sm" disabled={busy} onClick={toggle} data-testid="push-toggle">
+              {enabled ? t('settings.push.disable') : t('settings.push.enable')}
+            </Button>
+            <Badge variant={enabled ? 'success' : 'outline'} data-testid="push-status">
+              {enabled ? t('settings.push.on') : t('settings.push.off')}
+            </Badge>
+          </div>
+        )}
+        {error !== null && <p role="alert" className="text-sm text-danger" data-testid="push-error">{error}</p>}
+      </CardContent>
+    </Card>
   )
 }
 

@@ -22,6 +22,7 @@ import { createUsageRepo, type UsageRepo } from './repos/usage.js'
 import { createUserRepo, type UserRepo } from './repos/users.js'
 import { createWebhookRepo, type WebhookRepo } from './repos/webhooks.js'
 import { createScheduledReportRepo, type ScheduledReportRepo } from './repos/scheduledReports.js'
+import { createPushSubscriptionRepo, type PushSubscriptionRepo } from './repos/pushSubscriptions.js'
 import { createWebhookDeliveryRepo, type WebhookDeliveryRepo } from './repos/webhookDeliveries.js'
 
 /**
@@ -45,6 +46,7 @@ export interface Db {
   shareLinks: ShareLinkRepo
   webhooks: WebhookRepo
   scheduledReports: ScheduledReportRepo
+  pushSubscriptions: PushSubscriptionRepo
   webhookDeliveries: WebhookDeliveryRepo
   usage: UsageRepo
   apiKeys: ApiKeyRepo
@@ -75,6 +77,7 @@ export function createDb(databaseUrl: string): Db {
     shareLinks: createShareLinkRepo(prisma, audit),
     webhooks: createWebhookRepo(prisma, audit),
     scheduledReports: createScheduledReportRepo(prisma, audit),
+    pushSubscriptions: createPushSubscriptionRepo(prisma),
     webhookDeliveries: createWebhookDeliveryRepo(prisma),
     usage: createUsageRepo(prisma),
     apiKeys: createApiKeyRepo(prisma, audit),

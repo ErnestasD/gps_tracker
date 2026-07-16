@@ -141,8 +141,16 @@ export const ruleKindSchema = z.enum(['geofence', 'overspeed', 'ignition', 'din_
 export const notificationChannelSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('email'), to: z.string().email() }),
   z.object({ type: z.literal('telegram'), chatId: z.string().min(1).max(64) }),
+  // webpush has NO target in the channel — it fans out to the account's stored browser subscriptions (ADR-026)
+  z.object({ type: z.literal('webpush') }),
 ])
 export type NotificationChannel = z.infer<typeof notificationChannelSchema>
+
+/** POST /v1/push/subscribe body — a browser's PushSubscription (endpoint + keys). */
+export const pushSubscribeSchema = z.object({
+  endpoint: z.string().url().max(2000),
+  keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(200) }),
+})
 
 export const ruleCreateSchema = z.object({
   accountId: z.string().uuid(),
