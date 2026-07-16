@@ -211,7 +211,8 @@
     "empty": "Noch keine Geozonen — auf der Karte zeichnen.",
     "delete": "Entfernen",
     "invalid": "Ungültige oder zu große Geozone (max. 10.000 km²).",
-    "error": "Geozone konnte nicht gespeichert werden."
+    "error": "Geozone konnte nicht gespeichert werden.",
+    "mapError": "Die Karte konnte nicht geladen werden — der Kartenserver wird evtl. von Ihrem Netzwerk blockiert. Bitten Sie die IT, tiles.openfreemap.org freizugeben."
   },
   "deviceList": {
     "title": "Geräte",

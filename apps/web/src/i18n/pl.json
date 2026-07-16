@@ -211,7 +211,8 @@
     "empty": "Brak geostref — narysuj na mapie.",
     "delete": "Usuń",
     "invalid": "Nieprawidłowa lub zbyt duża geostrefa (maks. 10 000 km²).",
-    "error": "Nie udało się zapisać geostrefy."
+    "error": "Nie udało się zapisać geostrefy.",
+    "mapError": "Nie udało się wczytać mapy — serwer kafelków może być blokowany przez Twoją sieć. Poproś IT o odblokowanie tiles.openfreemap.org."
   },
   "deviceList": {
     "title": "Urządzenia",
