@@ -38,6 +38,9 @@ export function startIngestProm(metrics: IngestMetrics, port: number): IngestPro
   reflect('ingest_rejected_imei_total', 'unknown-IMEI rejects', () => metrics.rejectedImeiTotal)
   reflect('ingest_sanity_rejects_total', 'records failing §3.6 sanity', () => metrics.sanityRejectsTotal)
   reflect('ingest_paused_sockets', 'sockets paused by I4 backpressure', () => metrics.pausedSockets)
+  reflect('ingest_udp_datagrams_total', 'datagrams received on the UDP channel', () => metrics.udpDatagramsTotal)
+  reflect('ingest_udp_rate_limited_total', 'UDP datagrams dropped by the per-IP flood guard', () => metrics.udpRateLimitedTotal)
+  reflect('ingest_udp_backpressure_drops_total', 'UDP datagrams shed above shard depth (I4)', () => metrics.udpBackpressureDropsTotal)
 
   const ackLatencyMs = new Histogram({
     name: 'ack_latency_ms',

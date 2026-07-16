@@ -51,6 +51,8 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `DATABASE_URL` | packages/db (`make migrate`, Prisma, raw SQL pool) | PostgreSQL 16 + TimescaleDB + PostGIS connection string |
 | `REDIS_URL` | apps/ingest | Redis connection (streams + registry), default `redis://127.0.0.1:6379` |
 | `INGEST_TCP_PORT` | apps/ingest | Teltonika TCP listener port, default `5027` |
+| `INGEST_UDP_PORT` | apps/ingest | Teltonika UDP channel port, default = TCP port; `0` disables UDP |
+| `INGEST_UDP_MAX_DGRAMS_PER_IP_PER_MIN` | apps/ingest | Per-IP UDP datagram flood cap, default `6000` |
 | `INGEST_MAX_CONN` | apps/ingest | Total concurrent connection cap, default `20000` |
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
