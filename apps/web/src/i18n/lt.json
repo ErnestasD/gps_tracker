@@ -541,6 +541,8 @@
     "from": "Nuo",
     "to": "Iki",
     "when": "Kada",
+    "severity": "Rimtumas",
+    "allSeverities": "Visi lygiai",
     "detail": "Detalė",
     "hide": "Slėpti",
     "details": "Detalės",
@@ -561,6 +563,11 @@
       "critical": "Kritiniai",
       "warning": "Įspėjimai",
       "info": "Informaciniai"
+    },
+    "sev": {
+      "critical": "Kritinis",
+      "warning": "Įspėjimas",
+      "info": "Info"
     },
     "s": {
       "overspeed": "{{speed}} km/val > {{limit}}",
@@ -690,6 +697,7 @@
     "list": "Vairuotojų sąrašas",
     "addTitle": "Pridėti vairuotoją",
     "editTitle": "Redaguoti vairuotoją",
+    "add": "Pridėti vairuotoją",
     "name": "Vardas",
     "license": "Pažymėjimo nr.",
     "ibutton": "iButton / RFID",
@@ -710,6 +718,7 @@
     "nameRequired": "Vardas privalomas.",
     "ibuttonInvalid": "iButton turi būti 8–32 šešioliktainiai simboliai.",
     "ibuttonTaken": "Šis iButton jau priskirtas kitam vairuotojui.",
+    "deleteSure": "Ištrinti vairuotoją {{name}}? To atšaukti negalima.",
     "scores": {
       "title": "Saugumo balai (30 d.)",
       "empty": "Per 30 d. nevažiuota.",
@@ -730,6 +739,7 @@
     },
     "list": "Aptarnavimo grafikas",
     "add": "Pridėti priminimą",
+    "addTitle": "Naujas priežiūros priminimas",
     "device": "Įrenginys",
     "itemTitle": "Aptarnavimas",
     "intervalKm": "Kas (km)",
@@ -746,6 +756,13 @@
     "delete": "Ištrinti",
     "kmLeft": "liko {{n}} km",
     "daysLeft": "liko {{n}} d.",
+    "interval": "Intervalas",
+    "remaining": "Liko",
+    "statusHeader": "Būsena",
+    "everyKm": "kas {{n}} km",
+    "everyDays": "kas {{n}} d.",
+    "deleteSure": "Ištrinti priminimą {{title}}? To atšaukti negalima.",
+    "servicedSure": "Pažymėti {{title}} kaip atliktą? Atskaita prasidės iš naujo nuo dabartinės ridos/datos.",
     "status": {
       "ok": "Gerai",
       "due_soon": "Netrukus",

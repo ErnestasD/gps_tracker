@@ -541,6 +541,8 @@
     "from": "Od",
     "to": "Do",
     "when": "Kiedy",
+    "severity": "Waga",
+    "allSeverities": "Wszystkie wagi",
     "detail": "Szczegół",
     "hide": "Ukryj",
     "details": "Szczegóły",
@@ -561,6 +563,11 @@
       "critical": "Krytyczne",
       "warning": "Ostrzeżenia",
       "info": "Informacyjne"
+    },
+    "sev": {
+      "critical": "Krytyczne",
+      "warning": "Ostrzeżenie",
+      "info": "Info"
     },
     "s": {
       "overspeed": "{{speed}} km/h > {{limit}}",
@@ -690,6 +697,7 @@
     "list": "Lista kierowców",
     "addTitle": "Dodaj kierowcę",
     "editTitle": "Edytuj kierowcę",
+    "add": "Dodaj kierowcę",
     "name": "Imię i nazwisko",
     "license": "Nr prawa jazdy",
     "ibutton": "iButton / RFID",
@@ -710,6 +718,7 @@
     "nameRequired": "Imię jest wymagane.",
     "ibuttonInvalid": "iButton musi mieć 8–32 znaki szesnastkowe.",
     "ibuttonTaken": "Ten iButton jest już przypisany do innego kierowcy.",
+    "deleteSure": "Usunąć kierowcę {{name}}? Tego nie można cofnąć.",
     "scores": {
       "title": "Ocena bezpieczeństwa (30 dni)",
       "empty": "Brak jazdy w ostatnich 30 dniach.",
@@ -730,6 +739,7 @@
     },
     "list": "Harmonogram serwisu",
     "add": "Dodaj przypomnienie",
+    "addTitle": "Nowe przypomnienie o przeglądzie",
     "device": "Urządzenie",
     "itemTitle": "Serwis",
     "intervalKm": "Co (km)",
@@ -746,6 +756,13 @@
     "delete": "Usuń",
     "kmLeft": "pozostało {{n}} km",
     "daysLeft": "pozostało {{n}} dni",
+    "interval": "Interwał",
+    "remaining": "Pozostało",
+    "statusHeader": "Status",
+    "everyKm": "co {{n}} km",
+    "everyDays": "co {{n}} dni",
+    "deleteSure": "Usunąć przypomnienie {{title}}? Tego nie można cofnąć.",
+    "servicedSure": "Oznaczyć {{title}} jako wykonane? Odliczanie rozpocznie się od bieżącego przebiegu/daty.",
     "status": {
       "ok": "OK",
       "due_soon": "Wkrótce",

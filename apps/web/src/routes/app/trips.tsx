@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowDown, ArrowUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -52,7 +53,19 @@ export function TripsPage() {
     enabled: selected !== null,
   })
 
-  const rows = useMemo(() => trips.data ?? [], [trips.data])
+  // Pradžia column sort (Lovable polish): a plain toggle over the loaded rows — the markup
+  // stays a hand-rolled table because row selection drives the detail map (DataTable is not a fit)
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc')
+  const rows = useMemo(() => {
+    const list = trips.data ?? []
+    return [...list].sort((a, b) => {
+      const da = Date.parse(a.startTime)
+      const db = Date.parse(b.startTime)
+      return sortDir === 'asc' ? da - db : db - da
+    })
+  }, [trips.data, sortDir])
+
+  const deviceLabel = (id: string): string => (devices.data ?? []).find((d) => d.id === id)?.name ?? id
 
   return (
     <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 p-4 md:p-6">
@@ -71,9 +84,10 @@ export function TripsPage() {
         </FilterLabel>
       </PageHeader>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* Lovable two-panel proportions: the list carries the wide columns, the detail map keeps 2/5 */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-5">
         {/* list */}
-        <div className="admin-card min-h-0 overflow-hidden">
+        <div className="admin-card min-h-0 overflow-hidden lg:col-span-3">
           <div className="h-full overflow-auto">
             {trips.isError ? (
               <p role="alert" className="py-10 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="trips-error">{t('trips.error')}</p>
@@ -85,11 +99,21 @@ export function TripsPage() {
               <table className="w-full text-sm" data-testid="trips-table">
                 <thead className="sticky top-0">
                   <tr>
-                    <th className={th} style={thStyle}>{t('trips.start')}</th>
-                    <th className={th} style={thStyle}>{t('trips.duration')}</th>
-                    <th className={th} style={thStyle}>{t('trips.distance')}</th>
-                    <th className={th} style={thStyle}>{t('trips.maxSpeed')}</th>
+                    <th className={th} style={thStyle}>
+                      <button
+                        type="button"
+                        onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+                        className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-[var(--admin-ink)]"
+                        data-testid="trips-sort-start"
+                      >
+                        {t('trips.start')}
+                        {sortDir === 'asc' ? <ArrowUp className="h-3 w-3" aria-hidden /> : <ArrowDown className="h-3 w-3" aria-hidden />}
+                      </button>
+                    </th>
+                    <th className={`${th} hidden md:table-cell`} style={thStyle}>{t('trips.device')}</th>
                     <th className={th} style={thStyle}>{t('trips.driver')}</th>
+                    <th className={th} style={thStyle}>{t('trips.distance')}</th>
+                    <th className={`${th} hidden md:table-cell`} style={thStyle}>{t('trips.duration')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -114,13 +138,13 @@ export function TripsPage() {
                         {dt(tr.startTime)}
                         {tr.status === 'open' && <Badge tone="warning" className="ml-2">{t('trips.ongoing')}</Badge>}
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{fmtDuration(tripDurationMs(tr, Date.now()))}</td>
+                      <td className="hidden px-3 py-2.5 font-medium md:table-cell" style={{ color: 'var(--admin-ink)' }}>{deviceLabel(tr.deviceId)}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`trip-driver-${tr.id}`}>{tr.driverName ?? '—'}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink)' }}>
                         {fmtKm(tr.distanceM)}
                         <span className="ml-1 text-[10px] uppercase" style={{ color: 'var(--admin-ink-soft)' }}>{tr.distanceSource === 'odometer' ? t('trips.odo') : t('trips.gps')}</span>
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{tr.maxSpeed} km/h</td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`trip-driver-${tr.id}`}>{tr.driverName ?? '—'}</td>
+                      <td className="hidden px-3 py-2.5 tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{fmtDuration(tripDurationMs(tr, Date.now()))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -130,7 +154,7 @@ export function TripsPage() {
         </div>
 
         {/* detail */}
-        <div className="admin-card min-h-0 overflow-hidden">
+        <div className="admin-card min-h-0 overflow-hidden lg:col-span-2">
           <div className="flex h-full flex-col gap-2 p-2">
             {selected === null ? (
               <p className="m-auto text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="trip-detail-empty">{t('trips.pick')}</p>

@@ -541,6 +541,8 @@
     "from": "Von",
     "to": "Bis",
     "when": "Wann",
+    "severity": "Schweregrad",
+    "allSeverities": "Alle Schweregrade",
     "detail": "Detail",
     "hide": "Ausblenden",
     "details": "Details",
@@ -560,6 +562,11 @@
     "stat": {
       "critical": "Kritisch",
       "warning": "Warnungen",
+      "info": "Info"
+    },
+    "sev": {
+      "critical": "Kritisch",
+      "warning": "Warnung",
       "info": "Info"
     },
     "s": {
@@ -690,6 +697,7 @@
     "list": "Fahrerliste",
     "addTitle": "Fahrer hinzufügen",
     "editTitle": "Fahrer bearbeiten",
+    "add": "Fahrer hinzufügen",
     "name": "Name",
     "license": "Führerschein-Nr.",
     "ibutton": "iButton / RFID",
@@ -710,6 +718,7 @@
     "nameRequired": "Name ist erforderlich.",
     "ibuttonInvalid": "iButton muss 8–32 Hex-Zeichen haben.",
     "ibuttonTaken": "Dieser iButton ist bereits einem anderen Fahrer zugewiesen.",
+    "deleteSure": "Fahrer {{name}} löschen? Dies kann nicht rückgängig gemacht werden.",
     "scores": {
       "title": "Sicherheitsbewertung (30 Tage)",
       "empty": "Keine Fahrten in den letzten 30 Tagen.",
@@ -730,6 +739,7 @@
     },
     "list": "Serviceplan",
     "add": "Erinnerung hinzufügen",
+    "addTitle": "Neue Wartungserinnerung",
     "device": "Gerät",
     "itemTitle": "Service",
     "intervalKm": "Alle (km)",
@@ -746,6 +756,13 @@
     "delete": "Löschen",
     "kmLeft": "noch {{n}} km",
     "daysLeft": "noch {{n}} T.",
+    "interval": "Intervall",
+    "remaining": "Verbleibend",
+    "statusHeader": "Status",
+    "everyKm": "alle {{n}} km",
+    "everyDays": "alle {{n}} Tage",
+    "deleteSure": "Erinnerung {{title}} löschen? Dies kann nicht rückgängig gemacht werden.",
+    "servicedSure": "{{title}} als erledigt markieren? Die Zählung beginnt ab aktuellem Kilometerstand/Datum neu.",
     "status": {
       "ok": "OK",
       "due_soon": "Bald fällig",
