@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { ApiError } from '@/lib/http'
 import {
   addDomain,
@@ -17,7 +18,8 @@ import {
 
 /** Branding page (E03-5): edit colors/logo/name with a live preview, and manage
  * custom domains (DNS TXT verify). tsp_admin edits their own tenant only (API-scoped).
- * Re-skinned onto the admin design (ADR-028): PageHeader + admin-card sections. */
+ * Re-skinned onto the admin design (ADR-028): PageHeader + admin-card sections.
+ * Round 2: domain removal goes through a danger ConfirmDialog. */
 export function BrandingPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -27,6 +29,9 @@ export function BrandingPage() {
   const [form, setForm] = useState<Branding>({})
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // remove target resolves against the LIVE list (devices precedent)
+  const [removeForId, setRemoveForId] = useState<string | null>(null)
+  const removeFor = (domains.data ?? []).find((d) => d.id === removeForId) ?? null
 
   useEffect(() => {
     if (current.data) setForm(current.data.branding)
@@ -161,7 +166,8 @@ export function BrandingPage() {
                       variant="ghost"
                       size="sm"
                       style={{ color: 'var(--admin-danger)' }}
-                      onClick={() => void removeDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => undefined)}
+                      data-testid={`domain-remove-${d.domain}`}
+                      onClick={() => setRemoveForId(d.id)}
                     >
                       {t('branding.remove')}
                     </AdminButton>
@@ -173,6 +179,22 @@ export function BrandingPage() {
           <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.certNote')}</p>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={removeFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setRemoveForId(null)
+        }}
+        tone="danger"
+        title={t('branding.remove')}
+        description={removeFor !== null ? t('branding.domainRemoveSure', { domain: removeFor.domain }) : undefined}
+        confirmLabel={t('branding.remove')}
+        onConfirm={() => {
+          const d = removeFor
+          if (d === null) return
+          void removeDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => undefined)
+        }}
+      />
     </div>
   )
 }

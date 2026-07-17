@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRound } from 'lucide-react'
-import { useState } from 'react'
+import { KeyRound, Plus } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { createApiKey, listApiKeys, revokeApiKey } from '@/lib/apiKeys'
 import { useFmt } from '@/lib/datetime'
 import { listAccounts } from '@/lib/devices'
@@ -16,28 +18,23 @@ const selectStyle: React.CSSProperties = {
 
 /** API keys (E06-3 UI): tenant-admin mints read-only integration keys. The plaintext key is
  * shown ONCE on creation — the operator must copy it before dismissing.
- * Re-skinned onto the admin design (ADR-028): PageHeader + tile-row list idiom. */
+ * Rebuilt on the orbetra_design_new app.api-keys layout (ADR-028 round 2): the create form
+ * lives in a right Sheet behind "Create a key"; tile rows stay; revoke goes through a danger
+ * ConfirmDialog. */
 export function ApiKeysPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
   const qc = useQueryClient()
   const keys = useQuery({ queryKey: ['api-keys'], queryFn: listApiKeys })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
-  const [name, setName] = useState('')
-  const [account, setAccount] = useState('')
+  const [addOpen, setAddOpen] = useState(false)
   const [fresh, setFresh] = useState<string | null>(null) // the just-minted plaintext key
   const [copied, setCopied] = useState(false)
+  // revoke target resolves against the LIVE list (devices precedent); only active keys are eligible
+  const [revokeForId, setRevokeForId] = useState<string | null>(null)
+  const revokeFor = (keys.data ?? []).find((k) => k.id === revokeForId && k.revokedAt === null) ?? null
 
   const refresh = () => void qc.invalidateQueries({ queryKey: ['api-keys'] })
-  const create = useMutation({
-    mutationFn: () => createApiKey({ name: name.trim(), ...(account ? { accountId: account } : {}) }),
-    onSuccess: (k) => {
-      setFresh(k.key)
-      setCopied(false)
-      setName('')
-      refresh()
-    },
-  })
   const revoke = useMutation({ mutationFn: (id: string) => revokeApiKey(id), onSuccess: refresh })
 
   const copy = () => {
@@ -46,7 +43,33 @@ export function ApiKeysPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t('apiKeys.title')} description={t('apiKeys.desc')} />
+      <PageHeader className="mb-0" title={t('apiKeys.title')} description={t('apiKeys.desc')}>
+        <Sheet open={addOpen} onOpenChange={setAddOpen}>
+          <SheetTrigger asChild>
+            <AdminButton data-testid="apikey-add-open">
+              <Plus className="h-4 w-4" aria-hidden />
+              {t('apiKeys.add')}
+            </AdminButton>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>{t('apiKeys.addTitle')}</SheetTitle>
+            </SheetHeader>
+            {/* closing the sheet unmounts the form — each open starts fresh; the plaintext-key
+                banner lives OUTSIDE so it survives the sheet closing */}
+            <ApiKeyForm
+              accounts={accounts.data ?? []}
+              onCreated={(plaintext) => {
+                setFresh(plaintext)
+                setCopied(false)
+                setAddOpen(false)
+                refresh()
+              }}
+              onCancel={() => setAddOpen(false)}
+            />
+          </SheetContent>
+        </Sheet>
+      </PageHeader>
 
       {fresh !== null && (
         <div role="status" className="admin-card p-4" style={{ background: 'var(--admin-brand-soft)', borderColor: 'var(--admin-brand)' }} data-testid="apikey-fresh">
@@ -69,35 +92,6 @@ export function ApiKeysPage() {
           </AdminButton>
         </div>
       )}
-
-      <div className="admin-card">
-        <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
-          {t('apiKeys.add')}
-        </div>
-        <div className="p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <AdminLabel htmlFor="apikey-name">{t('apiKeys.name')}</AdminLabel>
-              <AdminInput id="apikey-name" value={name} onChange={(e) => setName(e.target.value)} data-testid="apikey-name" className="w-48" />
-            </div>
-            {(accounts.data ?? []).length > 1 && (
-              <div>
-                <AdminLabel htmlFor="apikey-account">{t('apiKeys.account')}</AdminLabel>
-                <select id="apikey-account" value={account} onChange={(e) => setAccount(e.target.value)} data-testid="apikey-account" className="h-9 rounded-md border px-2 text-sm" style={selectStyle}>
-                  <option value="">{t('apiKeys.tenantWide')}</option>
-                  {(accounts.data ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
-            )}
-            <AdminButton disabled={name.trim() === '' || create.isPending} onClick={() => create.mutate()} data-testid="apikey-create">
-              {t('apiKeys.create')}
-            </AdminButton>
-          </div>
-          {create.isError && (
-            <p role="alert" className="mt-2 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="apikey-error">{t('apiKeys.error')}</p>
-          )}
-        </div>
-      </div>
 
       <div className="admin-card overflow-hidden">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
@@ -135,7 +129,7 @@ export function ApiKeysPage() {
                     style={{ color: 'var(--admin-danger)' }}
                     data-testid={`apikey-revoke-${k.id}`}
                     disabled={revoke.isPending}
-                    onClick={() => revoke.mutate(k.id)}
+                    onClick={() => setRevokeForId(k.id)}
                   >
                     {t('apiKeys.revoke')}
                   </AdminButton>
@@ -145,6 +139,72 @@ export function ApiKeysPage() {
           </ul>
         )}
       </div>
+
+      <ConfirmDialog
+        open={revokeFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setRevokeForId(null)
+        }}
+        tone="danger"
+        title={t('apiKeys.revoke')}
+        description={revokeFor !== null ? t('apiKeys.revokeSure', { name: revokeFor.name }) : undefined}
+        confirmLabel={t('apiKeys.revoke')}
+        onConfirm={() => {
+          const k = revokeFor
+          if (k === null) return
+          revoke.mutate(k.id)
+        }}
+      />
     </div>
+  )
+}
+
+/** Create form inside the header Sheet (devices precedent): name + optional account scope;
+ * the plaintext key is handed to the parent exactly once via onCreated. */
+function ApiKeyForm({ accounts, onCreated, onCancel }: {
+  accounts: { id: string; name: string }[]
+  onCreated: (plaintext: string) => void
+  onCancel: () => void
+}) {
+  const { t } = useTranslation()
+  const [name, setName] = useState('')
+  const [account, setAccount] = useState('')
+
+  const create = useMutation({
+    mutationFn: () => createApiKey({ name: name.trim(), ...(account ? { accountId: account } : {}) }),
+    onSuccess: (k) => onCreated(k.key),
+  })
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    if (name.trim() === '' || create.isPending) return
+    create.mutate()
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-2 flex flex-col gap-3">
+      <div>
+        <AdminLabel htmlFor="apikey-name">{t('apiKeys.name')}</AdminLabel>
+        <AdminInput id="apikey-name" value={name} onChange={(e) => setName(e.target.value)} data-testid="apikey-name" className="w-full" />
+      </div>
+      {accounts.length > 1 && (
+        <div>
+          <AdminLabel htmlFor="apikey-account">{t('apiKeys.account')}</AdminLabel>
+          <select id="apikey-account" value={account} onChange={(e) => setAccount(e.target.value)} data-testid="apikey-account" className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle}>
+            <option value="">{t('apiKeys.tenantWide')}</option>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+      )}
+      {create.isError && (
+        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="apikey-error">{t('apiKeys.error')}</p>
+      )}
+      <SheetFooter className="mt-2">
+        <AdminButton variant="secondary" onClick={onCancel}>{t('admin.cancel')}</AdminButton>
+        <AdminButton type="submit" disabled={name.trim() === '' || create.isPending} data-testid="apikey-create">
+          {t('apiKeys.create')}
+        </AdminButton>
+      </SheetFooter>
+    </form>
   )
 }
