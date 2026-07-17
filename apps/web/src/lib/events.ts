@@ -62,14 +62,21 @@ export function eventSummary(e: EventRow): string {
   }
 }
 
+/** Display options for summaries: fmtSpeed renders a km/h value in the user's speed unit
+ * (useUnits().speed) — overspeed summaries then read '45 mph > 56 mph' instead of km/h. */
+export interface SummaryOpts {
+  fmtSpeed?: (kmh: number) => string
+}
+
 /** i18n descriptor for an event summary: a key under events.s.* plus interpolation params.
  * Pure — unit-tested. Render via localizedEventSummary (falls back to eventSummary for
  * unknown kinds / missing catalog entries so nothing regresses to an empty cell). */
-export function eventSummaryT(e: EventRow): { key: string; params: Record<string, string> } | null {
+export function eventSummaryT(e: EventRow, opts: SummaryOpts = {}): { key: string; params: Record<string, string> } | null {
   const p = e.payload ?? {}
+  const speed = (v: unknown): string => (typeof v === 'number' && opts.fmtSpeed !== undefined ? opts.fmtSpeed(v) : `${num(v)} km/h`)
   switch (e.kind) {
     case 'overspeed':
-      return { key: 'events.s.overspeed', params: { speed: num(p['speedKmh']), limit: num(p['limitKmh']) } }
+      return { key: 'events.s.overspeed', params: { speed: speed(p['speedKmh']), limit: speed(p['limitKmh']) } }
     case 'low_battery':
       return { key: 'events.s.low_battery', params: { volts: num(p['volts']), threshold: num(p['thresholdV']) } }
     case 'ignition':
@@ -96,9 +103,10 @@ export function eventSummaryT(e: EventRow): { key: string; params: Record<string
 export type TFn = (key: string, options?: Record<string, unknown>) => string
 
 /** Localized one-line event summary: eventSummaryT rendered through t(), with the pure
- * English eventSummary as the defaultValue fallback. */
-export function localizedEventSummary(t: TFn, e: EventRow): string {
-  const d = eventSummaryT(e)
+ * English eventSummary as the defaultValue fallback. Pass opts.fmtSpeed (useUnits().speed)
+ * so overspeed summaries follow the display speed unit. */
+export function localizedEventSummary(t: TFn, e: EventRow, opts: SummaryOpts = {}): string {
+  const d = eventSummaryT(e, opts)
   if (d === null) return eventSummary(e)
   return t(d.key, { ...d.params, defaultValue: eventSummary(e) })
 }

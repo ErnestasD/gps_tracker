@@ -1,4 +1,6 @@
 import { mutate } from './client'
+import { kmToMi, kmhToMph, round1 } from './units'
+import type { DistanceUnit, SpeedUnit } from './prefs'
 
 /**
  * Reports client (E06-2). Runs a report via the E06-1 sync API and renders/exports the rows.
@@ -20,9 +22,14 @@ export interface ReportResult {
 }
 
 export interface Column {
+  /** row-object key the value is read from */
   key: string
   /** i18n key suffix under reports.col.* */
   label: string
+  /** unit-suffixed header for CSV/PDF exports; defaults to `key` */
+  csvKey?: string
+  /** display-unit conversion applied to the cell value before render/export */
+  convert?: (v: unknown) => unknown
 }
 
 /** Column layout per report type — drives both the table and the CSV. */
@@ -38,6 +45,34 @@ function c(key: string): Column {
   return { key, label: key }
 }
 
+export interface ReportUnitPrefs {
+  distance: DistanceUnit
+  speed: SpeedUnit
+}
+
+/** COLUMNS with display-unit conversion applied (pure — unit-tested): `distanceM` renders as
+ * km/mi and speed columns as km/h or mph, with unit-suffixed headers for the table, CSV and
+ * PDF (header says which unit the numbers are in). Non-numeric cells pass through untouched. */
+export function unitColumns(columns: Column[], u: ReportUnitPrefs): Column[] {
+  return columns.map((col) => {
+    if (col.key === 'distanceM') {
+      const mi = u.distance === 'mi'
+      const label = mi ? 'distanceMi' : 'distanceKm'
+      return { ...col, label, csvKey: label, convert: (v) => (typeof v === 'number' ? round1(mi ? kmToMi(v / 1000) : v / 1000) : v) }
+    }
+    if (col.key === 'maxSpeedKmh' || col.key === 'maxSpeed') {
+      const mph = u.speed === 'mph'
+      const label = mph ? 'maxSpeedMph' : 'maxSpeedKmh'
+      return { ...col, label, csvKey: label, convert: (v) => (typeof v === 'number' && mph ? Math.round(kmhToMph(v)) : v) }
+    }
+    return col
+  })
+}
+
+/** A column's cell value for the given row, with its unit conversion applied. */
+export const cellValue = (col: Column, row: Record<string, unknown>): unknown =>
+  col.convert !== undefined ? col.convert(row[col.key]) : row[col.key]
+
 export const runReport = (type: ReportType, req: ReportRequest) => mutate<ReportResult>('POST', `/v1/reports/${encodeURIComponent(type)}`, req)
 
 /** Serialize rows to RFC-4180 CSV (quote fields containing "/,/CR/LF). Pure — unit-tested. */
@@ -46,8 +81,8 @@ export function toCsv(columns: Column[], rows: Record<string, unknown>[]): strin
     const s = typeof v === 'string' ? v : v === null || v === undefined ? '' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v)
     return /["\n\r,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
-  const header = columns.map((col) => esc(col.key)).join(',')
-  const body = rows.map((r) => columns.map((col) => esc(r[col.key])).join(',')).join('\r\n')
+  const header = columns.map((col) => esc(col.csvKey ?? col.key)).join(',')
+  const body = rows.map((r) => columns.map((col) => esc(cellValue(col, r))).join(',')).join('\r\n')
   return rows.length > 0 ? `${header}\r\n${body}` : header
 }
 
@@ -66,8 +101,8 @@ export function downloadCsv(filename: string, csv: string): void {
 export function toPdfTable(columns: Column[], rows: Record<string, unknown>[]): { head: string[][]; body: string[][] } {
   const cell = (v: unknown): string => (typeof v === 'string' ? v : v === null || v === undefined ? '' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v))
   return {
-    head: [columns.map((col) => col.key)],
-    body: rows.map((r) => columns.map((col) => cell(r[col.key]))),
+    head: [columns.map((col) => col.csvKey ?? col.key)],
+    body: rows.map((r) => columns.map((col) => cell(cellValue(col, r)))),
   }
 }
 

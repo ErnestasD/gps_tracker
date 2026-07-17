@@ -336,7 +336,12 @@
   },
   "units": {
     "kmh": "km/val",
-    "km": "{{n}} km"
+    "km": "{{n}} km",
+    "mph": "mph",
+    "mi": "mi",
+    "gal": "gal",
+    "l": "l",
+    "kmLabel": "km"
   },
   "settings": {
     "title": "Nustatymai",
@@ -390,6 +395,23 @@
       "off": "Išjungta",
       "denied": "Leidimas atmestas — leiskite pranešimus naršyklės nustatymuose.",
       "error": "Nepavyko atnaujinti pranešimų."
+    },
+    "display": {
+      "title": "Rodymo nustatymai",
+      "timeFormat": "Laiko formatas",
+      "h24": "24 valandų",
+      "h12": "12 valandų (AM/PM)",
+      "timeZone": "Laiko juosta",
+      "tzAuto": "Automatinė (naršyklės)",
+      "dateFormat": "Datos formatas",
+      "dfAuto": "Pagal kalbą",
+      "speed": "Greitis",
+      "distance": "Atstumas",
+      "volume": "Tūris",
+      "km": "Kilometrai (km)",
+      "mi": "Mylios (mi)",
+      "l": "Litrai (l)",
+      "gal": "JAV galonai (gal)"
     }
   },
   "devices": {
@@ -592,7 +614,7 @@
       "info": "Info"
     },
     "s": {
-      "overspeed": "{{speed}} km/val > {{limit}}",
+      "overspeed": "{{speed}} > {{limit}}",
       "low_battery": "{{volts}} V < {{threshold}}",
       "ignition_on": "degimas įjungtas",
       "ignition_off": "degimas išjungtas",
@@ -642,7 +664,10 @@
       "exits": "Išvažiavimai",
       "startTime": "Pradžia",
       "endTime": "Pabaiga",
-      "maxSpeed": "Maks. greitis"
+      "maxSpeed": "Maks. greitis",
+      "distanceKm": "Atstumas (km)",
+      "distanceMi": "Atstumas (mi)",
+      "maxSpeedMph": "Maks. mph"
     },
     "account": "Paskyra",
     "exportPdf": "Eksportuoti PDF",
@@ -800,7 +825,9 @@
       "unknown": "Nėra duomenų"
     },
     "actionError": "Veiksmas nepavyko — bandykite dar kartą.",
-    "actions": "Veiksmai"
+    "actions": "Veiksmai",
+    "everyMi": "kas {{n}} mi",
+    "miLeft": "liko {{n}} mi"
   },
   "scheduled": {
     "title": "Suplanuotos ataskaitos",

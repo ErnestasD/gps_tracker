@@ -11,7 +11,8 @@ import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { listDrivers } from '@/lib/drivers'
 import { dayEndIso, dayStartIso, defaultDayRange, listPositions } from '@/lib/playback'
-import { assignTripDriver, fmtDuration, fmtKm, listTrips, tripAvgSpeedKmh, tripDurationMs } from '@/lib/trips'
+import { assignTripDriver, fmtDuration, listTrips, tripAvgSpeedKmh, tripDurationMs } from '@/lib/trips'
+import { useUnits } from '@/lib/units'
 import type { TripView } from '@orbetra/shared'
 
 const th = 'px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
@@ -30,6 +31,7 @@ type SortKey = 'start' | 'device' | 'distance' | 'avg' | 'max'
 export function TripsPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
+  const u = useUnits()
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const [deviceId, setDeviceId] = useState('')
   const [range, setRange] = useState(() => defaultDayRange(Date.now()))
@@ -198,11 +200,11 @@ export function TripsPage() {
                       <td className="hidden px-3 py-2.5 font-medium md:table-cell" style={{ color: 'var(--admin-ink)' }}>{deviceLabel(tr.deviceId)}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`trip-driver-${tr.id}`}>{tr.driverName ?? '—'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: 'var(--admin-ink)' }}>
-                        {fmtKm(tr.distanceM)}
+                        {u.distanceM(tr.distanceM)}
                         <span className="ml-1 text-[10px] uppercase" style={{ color: 'var(--admin-ink-soft)' }}>{tr.distanceSource === 'odometer' ? t('trips.odo') : t('trips.gps')}</span>
                       </td>
-                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{tripAvgSpeedKmh(tr, Date.now())} {t('units.kmh')}</td>
-                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{tr.maxSpeed} {t('units.kmh')}</td>
+                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{u.speed(tripAvgSpeedKmh(tr, Date.now()))}</td>
+                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{u.speed(tr.maxSpeed)}</td>
                       <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{fmtDuration(tripDurationMs(tr, Date.now()))}</td>
                     </tr>
                   ))}
@@ -224,8 +226,8 @@ export function TripsPage() {
                 </div>
                 <div className="grid grid-cols-4 gap-2 text-center text-xs">
                   <Stat label={t('trips.duration')} value={fmtDuration(tripDurationMs(selected, Date.now()))} />
-                  <Stat label={t('trips.distance')} value={fmtKm(selected.distanceM)} />
-                  <Stat label={t('trips.maxSpeed')} value={`${selected.maxSpeed} km/h`} />
+                  <Stat label={t('trips.distance')} value={u.distanceM(selected.distanceM)} />
+                  <Stat label={t('trips.maxSpeed')} value={u.speed(selected.maxSpeed)} />
                   <Stat label={t('trips.idle')} value={fmtDuration(selected.idleS * 1000)} />
                 </div>
                 <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>

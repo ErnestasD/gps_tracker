@@ -13,8 +13,7 @@ import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { fuelAtTime, fuelSeries, listFuel } from '@/lib/fuel'
 import { dayEndIso, dayStartIso, defaultDayRange, listDeviceTrips, listPositions } from '@/lib/playback'
-
-const km = (m: number) => (m / 1000).toFixed(1)
+import { useUnits } from '@/lib/units'
 
 /** History playback (E04-3), rebuilt on the orbetra_design_new app.history layout (ADR-028
  * round 2): device Combobox + DatePicker range in the PageHeader (date-only per the reference —
@@ -25,6 +24,7 @@ const km = (m: number) => (m / 1000).toFixed(1)
 export function PlaybackPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
+  const u = useUnits()
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const [deviceId, setDeviceId] = useState('')
   const [range, setRange] = useState(() => defaultDayRange(Date.now()))
@@ -112,12 +112,12 @@ export function PlaybackPage() {
               <div className="mt-1 flex items-center gap-3 text-sm" style={{ color: 'var(--admin-ink)' }}>
                 <span className="inline-flex items-center gap-1 tabular-nums">
                   <Gauge className="h-3.5 w-3.5" style={{ color: 'var(--admin-brand)' }} aria-hidden />
-                  {current.speed ?? 0} {t('units.kmh')}
+                  {u.speed(current.speed ?? 0)}
                 </span>
                 {fuelNow !== null && (
                   <span className="inline-flex items-center gap-1 tabular-nums">
                     <Fuel className="h-3.5 w-3.5" style={{ color: 'var(--admin-brand)' }} aria-hidden />
-                    {fuelData.unit === 'pct' ? `${fuelNow}%` : t('playback.fuelLiters', { l: fuelNow.toFixed(1) })}
+                    {fuelData.unit === 'pct' ? `${fuelNow}%` : u.volumeL(fuelNow)}
                   </span>
                 )}
               </div>
@@ -176,7 +176,7 @@ export function PlaybackPage() {
                 <div className="flex flex-wrap items-center gap-3 text-xs tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>
                   <span data-testid="playback-current">{t('playback.point', { i: Math.min(index, pts.length - 1) + 1, n: pts.length })}</span>
                   {tripList.length > 0 && <span>{t('playback.trips', { n: tripList.length })}</span>}
-                  {tripList.length > 0 && <span>{t('playback.distance', { km: km(tripList.reduce((s, tr) => s + tr.distanceM, 0)) })}</span>}
+                  {tripList.length > 0 && <span>{u.distanceM(tripList.reduce((s, tr) => s + tr.distanceM, 0))}</span>}
                 </div>
               </div>
               <input
@@ -202,7 +202,7 @@ export function PlaybackPage() {
               <span style={{ color: 'var(--admin-ink-soft)' }}>{t('playback.speed')}</span>
               <Badge tone="brand">
                 <span className="tabular-nums">
-                  {current?.speed ?? 0} {t('units.kmh')}
+                  {u.speed(current?.speed ?? 0)}
                 </span>
               </Badge>
             </div>

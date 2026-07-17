@@ -4,11 +4,13 @@ import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getCan, hasCanData } from '@/lib/can'
 import type { Device } from '@/lib/devices'
+import { useUnits } from '@/lib/units'
 
 /** CAN/OBD engine panel (V2): latest RPM / coolant / load / throttle / speed / odometer.
  *  Hidden entirely for non-CAN vehicles (the read returns null / all-null). */
 export function CanCard({ device }: { device: Device }) {
   const { t } = useTranslation()
+  const u = useUnits()
   const can = useQuery({ queryKey: ['can', device.id], queryFn: () => getCan(device.id) })
   const c = can.data ?? null
 
@@ -28,8 +30,8 @@ export function CanCard({ device }: { device: Device }) {
             <Stat label={t('devices.can.coolant')} value={fmt(c?.coolantC, ' °C')} testid="can-coolant" />
             <Stat label={t('devices.can.load')} value={fmt(c?.engineLoadPct, ' %')} testid="can-load" />
             <Stat label={t('devices.can.throttle')} value={fmt(c?.throttlePct, ' %')} testid="can-throttle" />
-            <Stat label={t('devices.can.speed')} value={fmt(c?.speedKmh, ' km/h')} testid="can-speed" />
-            <Stat label={t('devices.can.odometer')} value={fmt(c?.totalMileageKm, ' km', 1)} testid="can-odo" />
+            <Stat label={t('devices.can.speed')} value={c?.speedKmh == null ? '—' : u.speed(c.speedKmh)} testid="can-speed" />
+            <Stat label={t('devices.can.odometer')} value={c?.totalMileageKm == null ? '—' : u.distanceKm(c.totalMileageKm)} testid="can-odo" />
           </div>
         )}
       </CardContent>

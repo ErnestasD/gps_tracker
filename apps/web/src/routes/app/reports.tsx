@@ -7,13 +7,15 @@ import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
 import { listAccounts, listDevices } from '@/lib/devices'
 import { dayEndIso, dayStartIso } from '@/lib/playback'
-import { COLUMNS, downloadCsv, downloadPdf, runReport, toCsv, REPORT_TYPES, type ReportResult, type ReportType } from '@/lib/reports'
+import { cellValue, COLUMNS, downloadCsv, downloadPdf, runReport, toCsv, unitColumns, REPORT_TYPES, type ReportResult, type ReportType } from '@/lib/reports'
+import { useUnits } from '@/lib/units'
 import { ScheduledReportsCard } from '@/routes/app/scheduledReports'
 
 /** Reports (E06-2): run a report over a date range and export CSV. Consumes the E06-1 sync
  * API; account timezone is applied server-side. Async server-side XLSX export is a follow-up. */
 export function ReportsPage() {
   const { t } = useTranslation()
+  const u = useUnits()
   const [type, setType] = useState<ReportType>('mileage')
   const [account, setAccount] = useState('')
   const [deviceId, setDeviceId] = useState('')
@@ -34,17 +36,20 @@ export function ReportsPage() {
     mutationFn: () => runReport(type, { from: dayStartIso(from!), to: dayEndIso(to!), accountId: acc, ...(deviceId ? { deviceId } : {}) }),
   })
   const result: ReportResult | undefined = run.data
-  const cols = result ? COLUMNS[result.type] : COLUMNS[type]
+  // display prefs applied to the RESULT table, CSV and PDF alike: distance/speed value
+  // columns convert (unit-suffixed headers say which unit the numbers are in)
+  const units = { distance: u.prefs.unitDistance, speed: u.prefs.unitSpeed }
+  const cols = unitColumns(result ? COLUMNS[result.type] : COLUMNS[type], units)
 
   const exportCsv = () => {
     if (result === undefined) return
-    downloadCsv(`${result.type}-report.csv`, toCsv(COLUMNS[result.type], result.rows))
+    downloadCsv(`${result.type}-report.csv`, toCsv(unitColumns(COLUMNS[result.type], units), result.rows))
   }
   const exportPdf = () => {
     if (result === undefined) return
     // localized PDF title from the report-type label — no raw slug, no hardcoded brand
     // (white-label: the platform name doesn't belong in a tenant's export)
-    void downloadPdf(`${result.type}-report.pdf`, t('reports.pdfTitle', { type: t(`reports.t.${result.type}`) }), COLUMNS[result.type], result.rows)
+    void downloadPdf(`${result.type}-report.pdf`, t('reports.pdfTitle', { type: t(`reports.t.${result.type}`) }), unitColumns(COLUMNS[result.type], units), result.rows)
   }
 
   return (
@@ -110,7 +115,7 @@ export function ReportsPage() {
               <tbody style={{ color: 'var(--admin-ink)' }}>
                 {result.rows.map((r, i) => (
                   <tr key={i} className="border-t" style={{ borderColor: 'var(--admin-hairline)' }} data-testid="report-row">
-                    {cols.map((col) => <td key={col.key} className="px-3 py-2 tabular-nums md:px-4">{fmtCell(r[col.key])}</td>)}
+                    {cols.map((col) => <td key={col.key} className="px-3 py-2 tabular-nums md:px-4">{fmtCell(cellValue(col, r))}</td>)}
                   </tr>
                 ))}
               </tbody>

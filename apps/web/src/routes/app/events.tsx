@@ -10,6 +10,7 @@ import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { EVENT_KINDS, listEvents, localizedEventSummary, type EventRow } from '@/lib/events'
 import { dayEndIso, dayStartIso } from '@/lib/playback'
+import { useUnits } from '@/lib/units'
 
 const PAGE = 50
 
@@ -39,6 +40,7 @@ const SEVERITIES: Severity[] = ['critical', 'warning', 'info']
 export function EventsPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
+  const u = useUnits()
   const [kind, setKind] = useState('')
   const [severity, setSeverity] = useState<'' | Severity>('')
   const [deviceId, setDeviceId] = useState('')
@@ -126,7 +128,7 @@ export function EventsPage() {
                       <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{dt(r.at)}</td>
                       <td className="px-4 py-2.5"><Badge tone={TONE[severityOf(r.kind)]}>{t(`events.k.${r.kind}`, r.kind)}</Badge></td>
                       <td className="px-4 py-2.5">{deviceName(r.deviceId)}</td>
-                      <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink-soft)' }}>{localizedEventSummary(t, r)}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink-soft)' }}>{localizedEventSummary(t, r, { fmtSpeed: u.speed })}</td>
                       <td className="hidden px-4 py-2.5 md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>
                         {(() => {
                           const sev = severityOf(r.kind)
