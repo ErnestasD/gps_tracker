@@ -30,9 +30,13 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 # prisma client is gitignored generated code — build it in the image
 RUN pnpm --filter @orbetra/db db:generate
-# SPA builds: same-origin API (Caddy carves /v1 + /ws), OpenFreeMap default style URL
-# rule 13: pin OpenFreeMap for the site build too (the design defaults to it now, but make
-# the production build explicit so a design re-sync can't silently reintroduce a CDN)
+# SPA builds: same-origin API (Caddy carves /v1 + /ws).
+# apps/web (ADR-030): Mapbox GL — VITE_MAPBOX_TOKEN comes from apps/web/.env, which is
+# UNTRACKED in git (GitHub push protection blocks Mapbox tokens) and reaches the build
+# host via rsync (see README env table); vite reads it at build time. Styles default to
+# mapbox dark-v11/light-v11 (override via VITE_MAPBOX_STYLE_DARK/_LIGHT if ever needed).
+# apps/site stays on MapLibre + OpenFreeMap — pin its style URL explicitly so a design
+# re-sync can't silently reintroduce a CDN.
 ENV VITE_TILES_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
 RUN pnpm --filter @orbetra/web build && pnpm --filter @orbetra/site build
 

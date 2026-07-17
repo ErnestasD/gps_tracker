@@ -88,7 +88,9 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `ASK_RATE_MAX` / `ASK_RATE_WINDOW_S` | apps/api | Caddy on-demand-TLS ask throttle per source IP (E03-5), defaults `10` / `60` |
 | `ORBETRA_PUBLIC` | infra/Caddyfile (staging/prod) | `true` enables the on-demand-TLS `https://` site block for tenant custom domains |
 | `DATABASE_URL` | apps/api (E03-1+) | required — auth reads users/refresh tokens via @orbetra/db |
-| `VITE_TILES_STYLE_URL` | apps/web (build-time) | MapLibre style URL, default OpenFreeMap `liberty` (`TILES_STYLE_URL` web counterpart, §6.7) |
+| `VITE_MAPBOX_TOKEN` | apps/web (build-time) | Mapbox public `pk.` token (ADR-030). NOT in git (GitHub secret-scanning blocks Mapbox tokens): create untracked `apps/web/.env` locally; staging receives it via rsync. |
+| `VITE_MAPBOX_STYLE_DARK` | apps/web (build-time) | Map style for the dark theme, default `mapbox://styles/mapbox/dark-v11` (e2e points it at the offline `dev-style.json`) |
+| `VITE_MAPBOX_STYLE_LIGHT` | apps/web (build-time) | Map style for the light theme, default `mapbox://styles/mapbox/light-v11` |
 | `VITE_API_URL` | apps/web (build-time) | API origin override; unset = same-origin (dev proxy / prod Caddy) |
 | `API_PROXY_TARGET` | apps/web vite dev/preview server | Where the `/v1` proxy forwards (http+ws), default `http://localhost:3010` |
 
@@ -520,9 +522,9 @@ only (rule 12). Env: `DATABASE_URL` (required), `REDIS_URL`, `INGEST_HOST`/`INGE
   `pnpm sim:seed -- --devices 500 && pnpm sim -- --scenario liveDrive --devices 500 --count 600 --hz 1`
 - E2E smoke: `pnpm --filter @orbetra/web e2e` (Docker required; boots the full stack via testcontainers).
 - **Manual checks (documented per AC):**
-  - *Tiles swap:* rebuild with `VITE_TILES_STYLE_URL=<MapTiler/other style URL>` — zero
-    code change (the URL is read in exactly one place, `LiveMap.tsx`). The e2e build
-    proves the swap by pointing it at the offline `public/dev-style.json`.
+  - *Style swap (ADR-030):* rebuild with `VITE_MAPBOX_STYLE_DARK/_LIGHT=<style URL>` — zero
+    code change (the style/token are read in exactly one place, `src/lib/map.ts`). The e2e
+    build proves the swap by pointing both at the offline `public/dev-style.json`.
   - *Lighthouse PWA:* `pnpm --filter @orbetra/web build && pnpm --filter @orbetra/web preview`,
     open Chrome DevTools → Lighthouse → check "installable" (manifest + registered SW;
     also asserted by the e2e PWA test).

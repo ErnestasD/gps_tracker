@@ -273,7 +273,7 @@
     "delete": "Šalinti",
     "invalid": "Netinkama arba per didelė geozona (maks. 10 000 km²).",
     "error": "Nepavyko išsaugoti geozonos.",
-    "mapError": "Žemėlapis neužsikrovė — jo tiles serverį gali blokuoti jūsų tinklas/ugniasienė. Paprašykite IT leisti tiles.openfreemap.org arba susisiekite, kad talpintume žemėlapį patys."
+    "mapError": "Žemėlapis neužsikrovė — Mapbox serverius gali blokuoti jūsų tinklas/ugniasienė. Paprašykite IT leisti api.mapbox.com arba susisiekite su pagalba."
   },
   "deviceList": {
     "title": "Įrenginiai",

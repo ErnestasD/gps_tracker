@@ -1,20 +1,16 @@
-import maplibregl, { Map as MlMap, type MapLayerMouseEvent } from 'maplibre-gl'
-import { useEffect, useRef } from 'react'
+import type { GeoJSONSource, Map as MbMap, MapMouseEvent } from 'mapbox-gl'
+import { useEffect, useRef, useState } from 'react'
 
+import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { liveStore, type MapFrame } from '@/lib/liveStore'
-
-/**
- * The ONLY place the tiles style is read (AC[4]: swapping providers = env change,
- * zero code). Default per PROJECT_PLAN §6.7; CLAUDE.md rule 13: free stack only.
- */
-const STYLE_URL: string =
-  (import.meta.env.VITE_TILES_STYLE_URL as string | undefined) ??
-  'https://tiles.openfreemap.org/styles/liberty'
+import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 
 // ADR-028 palette: online = --accent (dark), stale = --muted, stroke/labels = --bg
 const COLORS = { online: '#7C7DF5', stale: '#8B93A7', offline: '#5b6478', halo: '#7C5CFC' }
+
+const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
 /** Course-rotatable arrow glyph drawn at runtime — no binary assets in the repo. */
 function arrowImage(color: string): ImageData {
@@ -45,41 +41,49 @@ function arrowImage(color: string): ImageData {
  */
 export function LiveMap() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
-    const map = new MlMap({
-      container,
-      style: STYLE_URL,
-      center: VILNIUS,
-      zoom: 11,
-      // rule 13: OSM attribution visible on EVERY map view, never collapsed
-      attributionControl: { compact: false, customAttribution: '© OpenStreetMap contributors' },
-    })
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
+    const { map, unsubscribe } = createThemedMap(container, { center: VILNIUS, zoom: 11 })
+    const stopWatch = watchMapLoad(map, setMapError)
+    if (map === null) {
+      // missing token / WebGL failure — the overlay is up, nothing to wire
+      return () => {
+        stopWatch()
+        unsubscribe()
+      }
+    }
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     // e2e handle: lets Playwright assert RENDERED features (queryRenderedFeatures)
     // instead of guessing from canvas pixels
-    ;(container as HTMLDivElement & { __map?: MlMap }).__map = map
-    map.on('error', (e) => console.error('maplibre', e.error)) // degraded tiles must not crash the shell
+    ;(container as HTMLDivElement & { __map?: MbMap }).__map = map
+    map.on('error', (e) => console.error('mapbox', e.error)) // degraded tiles must not crash the shell
 
     let disposed = false
-    map.on('load', () => {
+    let lastFrame: MapFrame | null = null // re-applied when a theme swap rebuilds the style
+
+    // IDEMPOTENT setup (ADR-030): `style.load` fires for the initial style AND after
+    // every theme `setStyle`, which drops ALL runtime images/sources/layers — re-add
+    // everything, seeded from the last flushed frame so the swap is seamless.
+    const setup = () => {
       if (disposed) return
-      map.addImage('arrow-online', arrowImage(COLORS.online))
-      map.addImage('arrow-stale', arrowImage(COLORS.stale))
-      map.addImage('arrow-offline', arrowImage(COLORS.offline))
+      for (const [name, color] of [['arrow-online', COLORS.online], ['arrow-stale', COLORS.stale], ['arrow-offline', COLORS.offline]] as const) {
+        if (!map.hasImage(name)) map.addImage(name, arrowImage(color))
+      }
+      if (map.getSource('devices')) return // sources/layers survived (no style swap)
 
       map.addSource('devices', {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
+        data: lastFrame?.devices ?? EMPTY_FC,
         cluster: true,
         clusterRadius: 50,
         clusterMaxZoom: 14,
         promoteId: 'deviceId',
       })
-      map.addSource('trail', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      map.addSource('trail', { type: 'geojson', data: lastFrame?.trail ?? EMPTY_FC })
 
       map.addLayer({
         id: 'trail-line',
@@ -105,7 +109,7 @@ export function LiveMap() {
         id: 'selected-halo',
         type: 'circle',
         source: 'devices',
-        filter: ['==', ['get', 'deviceId'], ''],
+        filter: ['==', ['get', 'deviceId'], lastFrame?.selected?.deviceId ?? ''],
         paint: { 'circle-radius': 16, 'circle-color': COLORS.halo, 'circle-opacity': 0.35, 'circle-blur': 0.4 },
       })
       map.addLayer({
@@ -123,7 +127,7 @@ export function LiveMap() {
       })
       // count labels need glyphs; the offline dev/e2e style has none — clusters
       // still render as sized accent bubbles there
-      if (map.getStyle().glyphs !== undefined) {
+      if (map.getStyle()?.glyphs !== undefined) {
         map.addLayer({
           id: 'cluster-count',
           type: 'symbol',
@@ -132,7 +136,8 @@ export function LiveMap() {
           layout: {
             'text-field': ['get', 'point_count_abbreviated'],
             'text-size': 11,
-            'text-font': ['Noto Sans Regular'],
+            // Mapbox-hosted font stack (docs.mapbox.com/mapbox-gl-js/example/cluster/)
+            'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
           },
           paint: { 'text-color': '#0A0E1A' },
         })
@@ -150,51 +155,65 @@ export function LiveMap() {
           'icon-size': 0.6,
         },
       })
+    }
+    map.on('style.load', setup)
 
-      map.on('click', 'device-arrows', (e: MapLayerMouseEvent) => {
-        const id = e.features?.[0]?.properties?.['deviceId'] as string | undefined
-        if (id !== undefined) liveStore.select(id)
-      })
-      map.on('click', 'clusters', (e: MapLayerMouseEvent) => {
-        const feature = e.features?.[0]
-        const clusterId = feature?.properties?.['cluster_id'] as number | undefined
-        const source = map.getSource<maplibregl.GeoJSONSource>('devices')
-        if (clusterId === undefined || !source) return
-        void source.getClusterExpansionZoom(clusterId).then((zoom: number) => {
-          if (disposed) return // promise may outlive map.remove()
-          if (feature?.geometry.type === 'Point') {
-            map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom })
-          }
-        })
-      })
-      for (const layer of ['device-arrows', 'clusters']) {
-        map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'))
-        map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''))
-      }
-
-      // store → map sink: setData at flush cadence (≤1 Hz), halo via setFilter
-      liveStore.onMapFrame((frame: MapFrame) => {
-        if (disposed) return
-        const devices = map.getSource<maplibregl.GeoJSONSource>('devices')
-        const trail = map.getSource<maplibregl.GeoJSONSource>('trail')
-        devices?.setData(frame.devices)
-        trail?.setData(frame.trail)
-        map.setFilter('selected-halo', ['==', ['get', 'deviceId'], frame.selected?.deviceId ?? ''])
-        if (frame.follow && frame.selected) {
-          map.easeTo({ center: [frame.selected.lon, frame.selected.lat], duration: 900 })
+    // delegated layer handlers are keyed by layer id and evaluated at event time —
+    // registered ONCE, they survive theme setStyle swaps (the ids never change)
+    map.on('click', 'device-arrows', (e: MapMouseEvent) => {
+      const id = e.features?.[0]?.properties?.['deviceId'] as string | undefined
+      if (id !== undefined) liveStore.select(id)
+    })
+    map.on('click', 'clusters', (e: MapMouseEvent) => {
+      const feature = e.features?.[0]
+      const clusterId = feature?.properties?.['cluster_id'] as number | undefined
+      const source = map.getSource<GeoJSONSource>('devices')
+      if (clusterId === undefined || !source) return
+      // mapbox-gl uses the callback form here (not a Promise)
+      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+        if (disposed || err || zoom == null) return // callback may outlive map.remove()
+        if (feature?.geometry.type === 'Point') {
+          map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom })
         }
       })
+    })
+    for (const layer of ['device-arrows', 'clusters']) {
+      map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'))
+      map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''))
+    }
+
+    // store → map sink: setData at flush cadence (≤1 Hz), halo via setFilter.
+    // Guards tolerate the brief window while a theme swap rebuilds the style.
+    liveStore.onMapFrame((frame: MapFrame) => {
+      if (disposed) return
+      lastFrame = frame
+      map.getSource<GeoJSONSource>('devices')?.setData(frame.devices)
+      map.getSource<GeoJSONSource>('trail')?.setData(frame.trail)
+      if (map.getLayer('selected-halo')) {
+        map.setFilter('selected-halo', ['==', ['get', 'deviceId'], frame.selected?.deviceId ?? ''])
+      }
+      if (frame.follow && frame.selected) {
+        map.easeTo({ center: [frame.selected.lon, frame.selected.lat], duration: 900 })
+      }
     })
 
     return () => {
       disposed = true
       liveStore.onMapFrame(null)
+      stopWatch()
+      unsubscribe()
       map.remove()
     }
   }, [])
 
-  // NOT absolute/inset: maplibre-gl.css stamps `.maplibregl-map{position:relative}`
-  // onto this very div and wins the cascade — with position:relative inset-0 sizes
-  // to 0 height (found live: blank map, canvas 1200×0). Explicit h/w sidesteps it.
-  return <div ref={containerRef} data-testid="live-map" className="h-full w-full" />
+  // map div NOT absolute/inset: mapbox-gl.css stamps `.mapboxgl-map{position:relative}`
+  // onto it and wins the cascade — with position:relative inset-0 sizes to 0 height
+  // (found live: blank map, canvas 1200×0). Explicit h/w sidesteps it; the relative
+  // wrapper only anchors the error overlay.
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} data-testid="live-map" className="h-full w-full" />
+      <MapErrorOverlay show={mapError} testId="live-map-error" variant="shell" />
+    </div>
+  )
 }

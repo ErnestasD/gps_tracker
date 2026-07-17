@@ -1,19 +1,21 @@
 import type { GeofenceView } from '@orbetra/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import maplibregl, { Map as MlMap } from 'maplibre-gl'
+import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TerraDraw, TerraDrawCircleMode, TerraDrawLineStringMode, TerraDrawPolygonMode, TerraDrawSelectMode } from 'terra-draw'
-import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter'
+import { TerraDraw, TerraDrawCircleMode, TerraDrawLineStringMode, TerraDrawPolygonMode, TerraDrawSelectMode, type GeoJSONStoreFeatures } from 'terra-draw'
+import { TerraDrawMapboxGLAdapter } from 'terra-draw-mapbox-gl-adapter'
 
 import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { ApiError } from '@/lib/http'
 import { createGeofence, deleteGeofence, geofenceFeatures, listGeofences } from '@/lib/geofences'
+import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 
-const STYLE_URL: string = (import.meta.env.VITE_TILES_STYLE_URL as string | undefined) ?? 'https://tiles.openfreemap.org/styles/liberty'
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 
 type Drawn = { geometry: GeoJSON.Geometry; kind: 'polygon' | 'circle' | 'corridor' } | null
+type DrawMode = 'polygon' | 'circle' | 'linestring' | 'select'
 
 const fieldCls = 'flex flex-col gap-1 text-xs'
 const fieldStyle = { color: 'var(--admin-ink-soft)' } as const
@@ -25,76 +27,148 @@ export function GeofencesPage() {
   const qc = useQueryClient()
   const geofences = useQuery({ queryKey: ['geofences'], queryFn: listGeofences })
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<MlMap | null>(null)
+  const mapRef = useRef<MbMap | null>(null)
   const drawRef = useRef<TerraDraw | null>(null)
-  const [ready, setReady] = useState(false)
-  const [mapError, setMapError] = useState(false) // map/tiles failed to load (e.g. a network filter blocking the tile CDN)
+  // bumps on EVERY style.load (initial + theme swaps, ADR-030) so the geofence
+  // features get re-applied to the freshly rebuilt (empty) source
+  const [styleEpoch, setStyleEpoch] = useState(0)
+  const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
   const [drawn, setDrawn] = useState<Drawn>(null)
   const [name, setName] = useState('')
   const [color, setColor] = useState('#4DA3FF')
   const [bufferM, setBufferM] = useState(100) // corridor half-width in metres (10 … 5000)
   const [error, setError] = useState<string | null>(null)
 
+  // tracked so the mode buttons can expose an active/pressed state (aria-pressed + variant);
+  // the ref mirrors let the map-lifecycle closures read the CURRENT values on a theme swap
+  const [activeMode, setActiveMode] = useState<DrawMode>('select')
+  const activeModeRef = useRef<DrawMode>('select')
+  const drawnRef = useRef<Drawn>(null)
+  const updateDrawn = (d: Drawn) => { drawnRef.current = d; setDrawn(d) }
+  // features carried across a theme swap (detached in onBeforeStyleSwap, re-added in style.load)
+  const pendingFeaturesRef = useRef<GeoJSONStoreFeatures[]>([])
+
   // map + terra-draw lifecycle
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const map = new MlMap({ container, style: STYLE_URL, center: VILNIUS, zoom: 10, attributionControl: { compact: false, customAttribution: '© OpenStreetMap contributors' } })
-    mapRef.current = map
-    ;(container as HTMLDivElement & { __map?: MlMap }).__map = map
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
-    map.on('error', (e) => console.error('maplibre', e.error))
-    // if the base map never loads (blocked tile CDN / offline / WebGL failure), the draw tools can't
-    // attach — surface it instead of leaving the polygon/circle buttons silently dead.
-    const loadTimer = setTimeout(() => { if (!drawRef.current) setMapError(true) }, 8000)
-    map.on('load', () => {
-      clearTimeout(loadTimer)
-      map.addSource('geofences', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-      map.addLayer({ id: 'gf-fill', type: 'fill', source: 'geofences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 } })
-      map.addLayer({ id: 'gf-line', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
-      const draw = new TerraDraw({
-        adapter: new TerraDrawMapLibreGLAdapter({ map, coordinatePrecision: 9 }),
-        modes: [new TerraDrawPolygonMode(), new TerraDrawCircleMode(), new TerraDrawLineStringMode(), new TerraDrawSelectMode()],
-      })
-      draw.start()
-      draw.on('finish', (id) => {
-        const feat = draw.getSnapshot().find((f) => f.id === id)
-        if (!feat) return
-        if (feat.geometry.type === 'Polygon') {
-          const mode = feat.properties['mode']
-          setDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: mode === 'circle' ? 'circle' : 'polygon' })
-        } else if (feat.geometry.type === 'LineString') {
-          setDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: 'corridor' })
+    const { map, unsubscribe } = createThemedMap(container, {
+      center: VILNIUS,
+      zoom: 10,
+      // MED-3: a theme setStyle drops terra-draw's td-* sources while the instance is
+      // still live — a Clear/mode click in that window would throw inside the adapter.
+      // Detach BEFORE the swap (its layers still exist here); style.load re-attaches.
+      onBeforeStyleSwap: () => {
+        const draw = drawRef.current
+        if (draw === null) return
+        try {
+          // LOW-6: carry only the FINISHED shape across the swap. A mid-draw sketch
+          // would come back as a dead static feature the user can never finish — drop
+          // it (the finished one is identified by the geometry saved on 'finish').
+          const finished = drawnRef.current
+          pendingFeaturesRef.current = finished === null
+            ? []
+            : draw.getSnapshot().filter((f) => JSON.stringify(f.geometry) === JSON.stringify(finished.geometry))
+          draw.stop()
+        } catch (err) {
+          pendingFeaturesRef.current = []
+          console.error('terra-draw detach before theme swap failed', err)
         }
-      })
-      drawRef.current = draw
-      setReady(true)
+      },
+    })
+    // 8s watchdog: blocked tile CDN / offline / WebGL failure / bad token — surface it
+    // instead of leaving the polygon/circle buttons silently dead (clears on style.load)
+    const stopWatch = watchMapLoad(map, setMapError)
+    if (map === null) {
+      return () => {
+        stopWatch()
+        unsubscribe()
+      }
+    }
+    mapRef.current = map
+    ;(container as HTMLDivElement & { __map?: MbMap }).__map = map
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
+    map.on('error', (e) => console.error('mapbox', e.error))
+    let disposed = false
+    // idempotent: style.load re-fires after every theme setStyle, which drops all
+    // runtime sources/layers INCLUDING terra-draw's — everything is re-attached here
+    map.on('style.load', () => {
+      if (disposed) return
+      if (!map.getSource('geofences')) {
+        map.addSource('geofences', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+        map.addLayer({ id: 'gf-fill', type: 'fill', source: 'geofences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 } })
+        map.addLayer({ id: 'gf-line', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
+      }
+      if (drawRef.current === null) {
+        const draw = new TerraDraw({
+          adapter: new TerraDrawMapboxGLAdapter({ map, coordinatePrecision: 9 }),
+          modes: [new TerraDrawPolygonMode(), new TerraDrawCircleMode(), new TerraDrawLineStringMode(), new TerraDrawSelectMode()],
+        })
+        draw.start()
+        draw.on('finish', (id) => {
+          const feat = draw.getSnapshot().find((f) => f.id === id)
+          if (!feat) return
+          if (feat.geometry.type === 'Polygon') {
+            const mode = feat.properties['mode']
+            updateDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: mode === 'circle' ? 'circle' : 'polygon' })
+          } else if (feat.geometry.type === 'LineString') {
+            updateDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: 'corridor' })
+          }
+        })
+        drawRef.current = draw
+      } else {
+        // theme swap (instance was stopped in onBeforeStyleSwap): restart on the new
+        // style, restoring the finished shape and the active mode
+        const draw = drawRef.current
+        try {
+          draw.start()
+          if (pendingFeaturesRef.current.length > 0) draw.addFeatures(pendingFeaturesRef.current)
+          pendingFeaturesRef.current = []
+          draw.setMode(activeModeRef.current)
+        } catch (err) {
+          console.error('terra-draw restart after theme swap failed', err)
+        }
+      }
+      setStyleEpoch((e) => e + 1)
     })
     return () => {
-      clearTimeout(loadTimer)
+      disposed = true
+      stopWatch()
       try { drawRef.current?.stop() } catch { /* map already gone */ }
       drawRef.current = null
+      unsubscribe()
       map.remove()
       mapRef.current = null
-      setReady(false)
+      setStyleEpoch(0)
     }
   }, [])
 
-  // render existing geofences on the map
+  // render existing geofences on the map (re-applied after every theme swap)
   useEffect(() => {
     const map = mapRef.current
-    if (map === null || !ready) return
-    map.getSource<maplibregl.GeoJSONSource>('geofences')?.setData(geofenceFeatures(geofences.data ?? []))
-  }, [geofences.data, ready])
+    if (map === null || styleEpoch === 0) return
+    map.getSource<GeoJSONSource>('geofences')?.setData(geofenceFeatures(geofences.data ?? []))
+  }, [geofences.data, styleEpoch])
 
-  // tracked so the mode buttons can expose an active/pressed state (aria-pressed + variant)
-  const [activeMode, setActiveMode] = useState<'polygon' | 'circle' | 'linestring' | 'select'>('select')
-  const setMode = (mode: 'polygon' | 'circle' | 'linestring' | 'select') => {
-    drawRef.current?.setMode(mode)
+  // try/catch: a click can land in the brief window where terra-draw is detached for a
+  // theme swap (stopped instance throws) — dropping the input beats crashing the page
+  const setMode = (mode: DrawMode) => {
+    try {
+      drawRef.current?.setMode(mode)
+      if (mode !== 'select') { drawRef.current?.clear(); updateDrawn(null) }
+    } catch (err) {
+      console.error('terra-draw mode change ignored (style swap in progress)', err)
+      return
+    }
     setActiveMode(mode)
-    if (mode !== 'select') { drawRef.current?.clear(); setDrawn(null) }
+    activeModeRef.current = mode
   }
-  const clearDraw = () => { drawRef.current?.clear(); setDrawn(null); setActiveMode('select') }
+  const clearDraw = () => {
+    try { drawRef.current?.clear() } catch (err) { console.error('terra-draw clear ignored (style swap in progress)', err); return }
+    updateDrawn(null)
+    setActiveMode('select')
+    activeModeRef.current = 'select'
+  }
 
   const save = () => {
     if (drawn === null || name.trim() === '') return
@@ -164,11 +238,7 @@ export function GeofencesPage() {
         {/* map panel */}
         <div className="admin-card relative min-h-[320px] overflow-hidden lg:min-h-0">
           <div ref={containerRef} className="h-full w-full" data-testid="geofence-map" />
-          {mapError && (
-            <div role="alert" className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm" style={{ background: 'color-mix(in srgb, var(--admin-surface) 92%, transparent)', color: 'var(--admin-danger)' }} data-testid="geofence-map-error">
-              {t('geofences.mapError')}
-            </div>
-          )}
+          <MapErrorOverlay show={mapError} testId="geofence-map-error" />
         </div>
       </div>
     </div>

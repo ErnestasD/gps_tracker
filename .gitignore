@@ -10,6 +10,9 @@ coverage/
 .env
 .env.*
 !.env.example
+# ADR-030: apps/web/.env (public pk. Mapbox token) is deliberately UNTRACKED — GitHub
+# push protection blocks Mapbox tokens. Recreate it per the README env table; staging
+# receives it via rsync.
 
 # claude code
 .claude/worktrees/

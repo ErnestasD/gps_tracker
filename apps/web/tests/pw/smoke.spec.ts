@@ -19,7 +19,7 @@ test('wrong password → inline error, stays on /login', async ({ page }) => {
   expect(page.url()).toContain('/login')
 })
 
-test('login → map: OSM attribution visible, WS live, simulator devices appear', async ({ page }) => {
+test('login → map: Mapbox mark visible, WS live, simulator devices appear', async ({ page }) => {
   await page.goto('/login')
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
@@ -31,8 +31,12 @@ test('login → map: OSM attribution visible, WS live, simulator devices appear'
   await page.reload()
   await page.waitForURL('**/app/map')
 
-  // AC[2]: OSM attribution visible on every map view (CLAUDE.md rule 13)
-  await expect(page.locator('.maplibregl-ctrl-attrib')).toContainText('© OpenStreetMap contributors')
+  // AC[2]/ADR-030: the Mapbox mark stays visible on every map view (TOS). The offline
+  // e2e style has no tile sources, so the TEXT attribution is empty here — but mapbox-gl
+  // renders the logo control regardless (only a source with mapbox_logo:false hides it);
+  // real mapbox:// styles additionally show "© Mapbox © OpenStreetMap" in the attrib bar.
+  await expect(page.locator('.mapboxgl-ctrl-logo')).toBeVisible()
+  await expect(page.locator('.mapboxgl-ctrl-attrib')).toBeAttached()
 
   // WS connects (ws-ticket flow end-to-end through the preview proxy)
   await expect(page.getByTestId('conn-badge')).toHaveText(/Live/i, { timeout: 15_000 })
@@ -455,7 +459,7 @@ test('geofences: the terra-draw editor mounts on the map and the list renders (E
   await page.waitForURL('**/app/map')
 
   await page.goto('/app/geofences')
-  // the map + terra-draw editor initialise without crashing (real MapLibre + terra-draw)
+  // the map + terra-draw editor initialise without crashing (real Mapbox GL + terra-draw)
   await expect(page.getByTestId('geofence-map')).toBeVisible()
   await expect(page.getByTestId('gf-mode-polygon')).toBeVisible()
   await expect(page.getByTestId('gf-mode-circle')).toBeVisible()

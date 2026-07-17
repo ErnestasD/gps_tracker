@@ -251,9 +251,9 @@ importers:
       lucide-react:
         specifier: ^0.545.0
         version: 0.545.0(react@18.3.1)
-      maplibre-gl:
-        specifier: ^5.9.1
-        version: 5.24.0
+      mapbox-gl:
+        specifier: ^3.26.0
+        version: 3.26.0
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -269,9 +269,9 @@ importers:
       terra-draw:
         specifier: ^1.31.2
         version: 1.31.2
-      terra-draw-maplibre-gl-adapter:
-        specifier: ^1.4.1
-        version: 1.4.1(maplibre-gl@5.24.0)(terra-draw@1.31.2)
+      terra-draw-mapbox-gl-adapter:
+        specifier: ^1.4.0
+        version: 1.4.0(mapbox-gl@3.26.0)(terra-draw@1.31.2)
     devDependencies:
       '@playwright/test':
         specifier: ^1.56.1
@@ -3909,6 +3909,9 @@ packages:
     resolution: {integrity: sha512-hXdUTZYIVOt1Ex//jAQi+wTZZpUpwBj/0QsOzqegb3rGMMeJiSEu5xLHnYfBrRV4RH2+OCSOO95Is/7x1WJ4bw==}
     engines: {node: '>=10'}
 
+  mapbox-gl@3.26.0:
+    resolution: {integrity: sha512-N+Y8VmvpD6xDeP0hAbegPZeEMY5TtnLcV0gEUBZ/KHq3s/yUKQm0PVG9JEkId0QFMMe5/W+FEjoyV4NI3B/N7A==}
+
   maplibre-gl@5.24.0:
     resolution: {integrity: sha512-ALyFxgtd5R+65UqZ/++lOqwWcC0SNho9c27fYSyLmG7AfnAul2o46F05aDJGPbFU57wos9dgcIySHs0Xe6ia3A==}
     engines: {node: '>=16.14.0', npm: '>=8.1.0'}
@@ -4695,10 +4698,10 @@ packages:
     resolution: {integrity: sha512-G13vtMYPT/J8A4X2SjdtBTphZlrp1gKv6hZiOjw14RCWg6GbHuQBGtjlx75xLbYV/wEc0D7G5K4rxKP/cXk8Bw==}
     engines: {node: '>=10'}
 
-  terra-draw-maplibre-gl-adapter@1.4.1:
-    resolution: {integrity: sha512-qZ/bc9bVPnyt0keLVTofV8xiTPkdkbO6RzqrfNLe9zH/edW5PsjvJw97m1EksPZeXNJtFxsVbhi12cPaoNiWfg==}
+  terra-draw-mapbox-gl-adapter@1.4.0:
+    resolution: {integrity: sha512-wsAkLX1asSI1XnVu39GCnEJNID1XqlHrTuPjxcBdwOCBisvhtXLsdOdeNxmBo6jtY/UWczTsQBqa2UaWIYydjA==}
     peerDependencies:
-      maplibre-gl: '>=4'
+      mapbox-gl: ^3.9.2
       terra-draw: ^1.0.0
 
   terra-draw@1.31.2:
@@ -8637,6 +8640,8 @@ snapshots:
     dependencies:
       semver: 7.8.5
 
+  mapbox-gl@3.26.0: {}
+
   maplibre-gl@5.24.0:
     dependencies:
       '@mapbox/jsonlint-lines-primitives': 2.0.3
@@ -9530,9 +9535,9 @@ snapshots:
       type-fest: 0.16.0
       unique-string: 2.0.0
 
-  terra-draw-maplibre-gl-adapter@1.4.1(maplibre-gl@5.24.0)(terra-draw@1.31.2):
+  terra-draw-mapbox-gl-adapter@1.4.0(mapbox-gl@3.26.0)(terra-draw@1.31.2):
     dependencies:
-      maplibre-gl: 5.24.0
+      mapbox-gl: 3.26.0
       terra-draw: 1.31.2
 
   terra-draw@1.31.2: {}
