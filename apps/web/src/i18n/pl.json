@@ -44,7 +44,12 @@
     "close": "Zamknij",
     "theme": "Przełącz motyw",
     "overview": "Przegląd",
-    "routing": "Trasy"
+    "routing": "Trasy",
+    "search": "Szukaj…",
+    "searchHint": "Przejdź do strony lub znajdź urządzenie…",
+    "palettePages": "Strony",
+    "paletteDevices": "Urządzenia",
+    "paletteEmpty": "Brak wyników"
   },
   "routing": {
     "title": "Planer tras",
@@ -772,7 +777,10 @@
     "prev": "Poprzednia",
     "next": "Następna",
     "pick": "Wybierz…",
-    "allOf": "{{header}}: wszystkie"
+    "allOf": "{{header}}: wszystkie",
+    "confirm": "Potwierdź",
+    "cancel": "Anuluj",
+    "confirmTitle": "Czy na pewno?"
   },
   "dash": {
     "title": "Przegląd",
@@ -798,5 +806,11 @@
     "tsp_admin": "Administrator organizacji",
     "account_manager": "Menedżer konta",
     "viewer": "Podgląd"
+  },
+  "bell": {
+    "title": "Powiadomienia",
+    "markAll": "Oznacz wszystkie jako przeczytane",
+    "empty": "Brak powiadomień",
+    "viewAll": "Wszystkie zdarzenia"
   }
 }

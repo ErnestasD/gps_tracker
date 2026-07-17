@@ -20,6 +20,7 @@ import {
   Radio,
   Route,
   ScrollText,
+  Search,
   Settings,
   Settings2,
   Sun,
@@ -31,11 +32,14 @@ import {
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CommandPalette } from '@/components/admin/CommandPalette'
+import { NotificationsBell } from '@/components/admin/NotificationsBell'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getCurrentUser, logout as authLogout } from '@/lib/auth'
 import { applyBranding, getBranding, type Branding } from '@/lib/branding'
 import { liveStore } from '@/lib/liveStore'
+import { isPaletteShortcut, shortcutLabel } from '@/lib/palette'
 import { getTheme, onThemeChange, setTheme, type Theme } from '@/lib/prefs'
 import { cn } from '@/lib/utils'
 
@@ -94,6 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [theme, setThemeState] = useState<Theme>(getTheme())
   const user = getCurrentUser()
   const role = user?.role
@@ -128,6 +133,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   // stay in sync when the settings page (or anything else) changes the theme
   useEffect(() => onThemeChange(() => setThemeState(getTheme())), [])
 
+  // ⌘K / Ctrl+K toggles the command palette from anywhere in the app
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isPaletteShortcut(e)) {
+        e.preventDefault()
+        setPaletteOpen((o) => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
     setThemeState(next)
@@ -146,6 +163,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const crumbKey = CRUMBS.get(pathname)
   const initials = (user?.email ?? '?').slice(0, 2).toUpperCase()
+  // palette quick-nav: same items and role gates as the sidebar (real pages only)
+  const paletteNav = SECTIONS.flatMap((s) => s.items)
+    .filter((i) => i.to !== undefined && (!i.adminOnly || isAdmin) && (!i.platformOnly || role === 'platform_admin'))
+    .map((i) => ({ key: i.key, to: i.to! }))
+  const kbd = shortcutLabel(typeof navigator !== 'undefined' ? navigator.platform : '')
 
   const sidebar = (withCollapse: boolean) => (
     <>
@@ -264,6 +286,28 @@ export function AppShell({ children }: { children: ReactNode }) {
               )}
             </div>
             <div className="flex-1" />
+            {/* ⌘K search (Lovable topbar idiom) — a button styled like an input; opens the palette */}
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className="hidden items-center gap-2 rounded-md border px-3 py-1.5 text-sm md:flex md:w-64"
+              style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)', color: 'var(--admin-ink-soft)' }}
+              data-testid="topbar-search"
+            >
+              <Search className="h-3.5 w-3.5" aria-hidden />
+              <span className="flex-1 truncate text-left">{t('shell.search')}</span>
+              <kbd
+                className="mono inline-flex h-5 min-w-[20px] items-center justify-center rounded border px-1 text-[10px] font-medium leading-none tracking-tight"
+                style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink-soft)' }}
+              >
+                {kbd}
+              </kbd>
+            </button>
+            {/* mobile: same palette behind a plain icon button */}
+            <button type="button" onClick={() => setPaletteOpen(true)} className="grid h-8 w-8 place-items-center rounded-md md:hidden" style={{ color: 'var(--admin-ink)' }} aria-label={t('shell.search')} data-testid="topbar-search-mobile">
+              <Search className="h-4 w-4" aria-hidden />
+            </button>
+            <NotificationsBell />
             <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t('shell.theme')} data-testid="topbar-theme">
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -274,6 +318,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </header>
           <main className="relative min-h-0 flex-1">{children}</main>
         </div>
+
+        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} nav={paletteNav} onNavigate={(to) => void navigate({ to })} />
       </div>
     </TooltipProvider>
   )
