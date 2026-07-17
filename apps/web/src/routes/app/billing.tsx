@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from '@/lib/billing'
+import { useFmt } from '@/lib/datetime'
 
 /**
  * Billing (Stripe, ADR-024). Shows the subscription status and hands off to Stripe-hosted
@@ -14,6 +15,7 @@ import { fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from 
  */
 export function BillingPage() {
   const { t } = useTranslation()
+  const { d } = useFmt()
   const billing = useQuery({ queryKey: ['billing'], queryFn: getBilling })
   const b = billing.data
   const showPicker = b?.configured === true && !b.active
@@ -54,7 +56,7 @@ export function BillingPage() {
               <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.pricingNote')}</p>
               {b?.currentPeriodEnd != null && (
                 <p className="text-sm" style={{ color: 'var(--admin-ink)' }} data-testid="billing-period">
-                  {t('billing.renews')}: {new Date(b.currentPeriodEnd).toLocaleDateString()}
+                  {t('billing.renews')}: {d(b.currentPeriodEnd)}
                 </p>
               )}
               {b?.hasCustomer === true && (

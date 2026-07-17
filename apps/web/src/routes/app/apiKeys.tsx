@@ -5,9 +5,8 @@ import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { createApiKey, listApiKeys, revokeApiKey } from '@/lib/apiKeys'
+import { useFmt } from '@/lib/datetime'
 import { listAccounts } from '@/lib/devices'
-
-const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 const selectStyle: React.CSSProperties = {
   borderColor: 'var(--admin-hairline)',
@@ -20,6 +19,7 @@ const selectStyle: React.CSSProperties = {
  * Re-skinned onto the admin design (ADR-028): PageHeader + tile-row list idiom. */
 export function ApiKeysPage() {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const qc = useQueryClient()
   const keys = useQuery({ queryKey: ['api-keys'], queryFn: listApiKeys })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
@@ -125,7 +125,7 @@ export function ApiKeysPage() {
                 </div>
                 {k.revokedAt !== null ? <Badge tone="neutral">{t('apiKeys.revoked')}</Badge> : <Badge tone="success">{t('apiKeys.active')}</Badge>}
                 <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
-                  {k.lastUsedAt ? `${t('apiKeys.lastUsed')}: ${fmt.format(new Date(k.lastUsedAt))}` : t('apiKeys.neverUsed')}
+                  {k.lastUsedAt ? `${t('apiKeys.lastUsed')}: ${dt(k.lastUsedAt)}` : t('apiKeys.neverUsed')}
                 </span>
                 {k.revokedAt === null && (
                   <AdminButton

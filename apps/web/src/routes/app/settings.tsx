@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { AdminButton, Badge, AdminInput, PageHeader } from '@/components/admin/AdminKit'
 import { changePassword } from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
+import { useFmt } from '@/lib/datetime'
 import { listAccounts } from '@/lib/devices'
 import { downloadExport, hasPendingExport, listExports, requestExport } from '@/lib/gdpr'
 import { ApiError } from '@/lib/http'
@@ -267,6 +268,7 @@ function PushSection() {
  * (the server enforces it too — this gate is UX, not security). */
 function ExportSection() {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const qc = useQueryClient()
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const jobs = useQuery({
@@ -325,7 +327,7 @@ function ExportSection() {
             <tbody>
               {(jobs.data ?? []).map((j) => (
                 <tr key={j.id} className="admin-hairline-b last:border-b-0" data-testid={`export-${j.id}`}>
-                  <td className="py-2 pr-4 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{new Date(j.createdAt).toLocaleString()}</td>
+                  <td className="py-2 pr-4 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{dt(j.createdAt)}</td>
                   <td className="py-2 pr-4">
                     <Badge tone={j.status === 'done' ? 'success' : j.status === 'failed' ? 'danger' : 'neutral'}>
                       {t(`settings.export.st.${j.status}`, j.status)}

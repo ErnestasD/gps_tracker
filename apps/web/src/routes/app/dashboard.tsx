@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/AdminKit'
 import { getLastPositions } from '@/lib/api'
 import { dailyKmSeries, eventSeverity, fleetCounts } from '@/lib/dashboard'
+import { useFmt } from '@/lib/datetime'
 import { listAccounts, listDevices } from '@/lib/devices'
 import { listEvents, localizedEventSummary } from '@/lib/events'
 import { runReport } from '@/lib/reports'
@@ -15,6 +16,7 @@ import { runReport } from '@/lib/reports'
  */
 export function DashboardPage() {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const navigate = useNavigate()
   const now = Date.now()
   const dayAgo = new Date(now - 24 * 3_600_000).toISOString()
@@ -140,7 +142,7 @@ export function DashboardPage() {
                 <Badge tone={sev === 'critical' ? 'danger' : sev === 'warning' ? 'warning' : 'info'}>{t(`events.k.${e.kind}`, e.kind)}</Badge>
                 <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--admin-ink)' }}>{localizedEventSummary(t, e)}</span>
                 <span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{e.deviceId}</span>
-                <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{new Date(e.at).toLocaleString()}</span>
+                <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{dt(e.at)}</span>
               </li>
             )
           })}

@@ -6,11 +6,11 @@ import { FuelChart } from '@/components/FuelChart'
 import { PlaybackMap } from '@/components/PlaybackMap'
 import { SpeedChart } from '@/components/SpeedChart'
 import { AdminButton, PageHeader } from '@/components/admin/AdminKit'
+import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { fuelSeries, listFuel } from '@/lib/fuel'
 import { defaultRange, listDeviceTrips, listPositions } from '@/lib/playback'
 
-const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' })
 const km = (m: number) => (m / 1000).toFixed(1)
 
 const selectCls = 'h-9 rounded-md border px-2 text-sm outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30'
@@ -22,6 +22,7 @@ const fieldStyle: CSSProperties = { color: 'var(--admin-ink-soft)' }
  * chart + scrub, trip stop markers. */
 export function PlaybackPage() {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const [deviceId, setDeviceId] = useState('')
   const [range, setRange] = useState(() => defaultRange(Date.now()))
@@ -92,7 +93,7 @@ export function PlaybackPage() {
               <span style={{ color: 'var(--admin-ink-soft)' }}>{t('playback.samples', { n: pts.length })}</span>
               {current && (
                 <span data-testid="playback-current" className="tabular-nums">
-                  {fmt.format(new Date(current.fixTime))} · {current.speed ?? 0} {t('units.kmh')}
+                  {dt(current.fixTime)} · {current.speed ?? 0} {t('units.kmh')}
                 </span>
               )}
               <span className="ml-auto flex gap-3 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>

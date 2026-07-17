@@ -3,9 +3,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { useFmt } from '@/lib/datetime'
 import { createWebhook, deleteWebhook, generateSecret, listDeliveries, listWebhooks, setWebhookEnabled, WEBHOOK_EVENT_KINDS } from '@/lib/webhooks'
-
-const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' })
 
 const th = 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
 const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
@@ -17,6 +16,7 @@ const checkboxStyle: React.CSSProperties = { accentColor: 'var(--admin-brand)' }
  * Re-skinned onto the admin design (ADR-028): PageHeader + admin-card list/table idiom. */
 export function WebhooksPage() {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const qc = useQueryClient()
   const hooks = useQuery({ queryKey: ['webhooks'], queryFn: listWebhooks })
   const deliveries = useQuery({ queryKey: ['webhook-deliveries'], queryFn: () => listDeliveries(50) })
@@ -164,7 +164,7 @@ export function WebhooksPage() {
               <tbody>
                 {(deliveries.data ?? []).map((d) => (
                   <tr key={d.id} className="admin-hairline-b transition-colors last:border-b-0 hover:bg-[var(--admin-surface-sunken)]" data-testid="delivery-row">
-                    <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{fmt.format(new Date(d.at))}</td>
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{dt(d.at)}</td>
                     <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink)' }}>{t(`events.k.${d.kind}`, d.kind)}</td>
                     <td className="px-4 py-2.5">
                       <span style={{ color: d.success ? 'var(--admin-success)' : 'var(--admin-danger)' }}>

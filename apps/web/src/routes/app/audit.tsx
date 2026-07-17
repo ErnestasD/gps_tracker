@@ -4,9 +4,9 @@ import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { AUDIT_ACTIONS, AUDIT_ENTITIES, listAudit, type AuditRow } from '@/lib/audit'
+import { useFmt } from '@/lib/datetime'
 
 const PAGE = 50
-const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
 
 const selectStyle: React.CSSProperties = {
   borderColor: 'var(--admin-hairline)',
@@ -23,6 +23,7 @@ const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
  * (the design's client-side DataTable cannot page a server cursor). */
 export function AuditPage() {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const [entity, setEntity] = useState('')
   const [action, setAction] = useState('')
   const [open, setOpen] = useState<string | null>(null)
@@ -73,7 +74,7 @@ export function AuditPage() {
                 {rows.map((r) => (
                   <Fragment key={r.id}>
                     <tr className="admin-hairline-b transition-colors hover:bg-[var(--admin-surface-sunken)]" data-testid={`audit-row-${r.id}`}>
-                      <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{fmt.format(new Date(r.at))}</td>
+                      <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{dt(r.at)}</td>
                       {/* destructive actions read as warnings (pre-redesign parity) */}
                       <td className="px-4 py-2.5"><Badge tone={r.action === 'delete' ? 'warning' : 'brand'}>{t(`audit.a.${r.action}`)}</Badge></td>
                       <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink)' }}>{t(`audit.e.${r.entity}`, r.entity)}</td>
