@@ -58,7 +58,20 @@
     "noPlans": "Es sind noch keine Tarife konfiguriert.",
     "interval": {
       "month": "Mon.",
-      "year": "Jahr"
+      "year": "Jahr",
+      "week": "Wo.",
+      "day": "Tag"
+    },
+    "loading": "Pläne werden geladen…",
+    "st": {
+      "active": "Aktiv",
+      "trialing": "Testphase",
+      "past_due": "Überfällig",
+      "canceled": "Gekündigt",
+      "unpaid": "Unbezahlt",
+      "incomplete": "Unvollständig",
+      "incomplete_expired": "Abgelaufen",
+      "paused": "Pausiert"
     }
   },
   "branding": {
@@ -85,7 +98,8 @@
     "dupDomain": "Diese Domain ist bereits registriert.",
     "badDomain": "Gültigen Hostnamen eingeben (z. B. fleet.example.com).",
     "txtInstruction": "Fügen Sie diesen TXT-Eintrag zu {{domain}} hinzu und klicken Sie dann auf Verifizieren:",
-    "certNote": "HTTPS-Zertifikate werden nach der Domain-Verifizierung automatisch bei der ersten sicheren Anfrage ausgestellt."
+    "certNote": "HTTPS-Zertifikate werden nach der Domain-Verifizierung automatisch bei der ersten sicheren Anfrage ausgestellt.",
+    "domainLabel": "Domain"
   },
   "audit": {
     "title": "Audit-Log",
@@ -112,7 +126,16 @@
       "webhook": "Webhook",
       "domain": "Domain",
       "branding": "Branding",
-      "tenant": "Mandant"
+      "tenant": "Mandant",
+      "geofence": "Geozone",
+      "trip": "Fahrt",
+      "apiKey": "API-Schlüssel",
+      "command": "Befehl",
+      "driver": "Fahrer",
+      "export": "Datenexport",
+      "maintenance": "Wartung",
+      "scheduledReport": "Geplanter Bericht",
+      "shareLink": "Freigabelink"
     },
     "a": {
       "create": "Erstellt",
@@ -192,8 +215,11 @@
       "edit": "Kanäle",
       "save": "Speichern",
       "cancel": "Abbrechen",
-      "webpush": "Browser-Push"
-    }
+      "webpush": "Browser-Push",
+      "chipTelegram": "Telegram {{chatId}}",
+      "remove": "{{target}} entfernen"
+    },
+    "cooldownValue": "{{s}} s"
   },
   "playback": {
     "title": "Verlauf-Wiedergabe",
@@ -207,7 +233,10 @@
     "trips": "{{n}} Fahrten",
     "distance": "{{km}} km",
     "fuel": "Kraftstoffstand",
-    "fuelLiters": "{{l}} l"
+    "fuelLiters": "{{l}} l",
+    "skipStart": "Zum Anfang",
+    "skipEnd": "Zum Ende",
+    "scrub": "Wiedergabeposition"
   },
   "geofences": {
     "title": "Geozonen",
@@ -448,7 +477,9 @@
       "copy": "Kopieren",
       "copied": "Kopiert",
       "caveat": "Diese Gerätefamilie verwendet evtl. andere Parameter — im Teltonika-Wiki für Ihr Modell prüfen."
-    }
+    },
+    "imeiPh": "15 Ziffern",
+    "actions": "Aktionen"
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",
@@ -496,6 +527,20 @@
       "critical": "Kritisch",
       "warning": "Warnungen",
       "info": "Info"
+    },
+    "s": {
+      "overspeed": "{{speed}} km/h > {{limit}}",
+      "low_battery": "{{volts}} V < {{threshold}}",
+      "ignition_on": "Zündung ein",
+      "ignition_off": "Zündung aus",
+      "din_on": "DIN1 ein",
+      "din_off": "DIN1 aus",
+      "geofence_enter": "{{name}} · Einfahrt",
+      "geofence_exit": "{{name}} · Ausfahrt",
+      "geofence": "{{name}} · {{transition}}",
+      "device_offline": "offline {{hours}} Std. (≥ {{threshold}} Std.)",
+      "panic": "SOS ausgelöst",
+      "power_cut": "externe Stromversorgung unterbrochen"
     }
   },
   "reports": {
@@ -537,7 +582,8 @@
       "maxSpeed": "Max Tempo"
     },
     "account": "Konto",
-    "exportPdf": "PDF exportieren"
+    "exportPdf": "PDF exportieren",
+    "pdfTitle": "{{type}}-Bericht"
   },
   "apiKeys": {
     "title": "API-Schlüssel",
@@ -637,7 +683,8 @@
       "distance": "Distanz",
       "overspeed": "Tempo",
       "score": "Punkte"
-    }
+    },
+    "actions": "Aktionen"
   },
   "maint": {
     "title": "Wartung",
@@ -670,7 +717,8 @@
       "due_soon": "Bald fällig",
       "overdue": "Überfällig",
       "unknown": "Keine Daten"
-    }
+    },
+    "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen."
   },
   "scheduled": {
     "title": "Geplante Berichte",
@@ -722,6 +770,13 @@
     "recent": "Letzte Ereignisse",
     "viewAll": "Alle anzeigen",
     "empty": "Noch keine Daten",
-    "noAccount": "Kein Konto für den Bericht"
+    "noAccount": "Kein Konto für den Bericht",
+    "error": "Daten konnten nicht geladen werden."
+  },
+  "roles": {
+    "platform_admin": "Plattform-Administrator",
+    "tsp_admin": "Organisations-Administrator",
+    "account_manager": "Kontomanager",
+    "viewer": "Betrachter"
   }
 }

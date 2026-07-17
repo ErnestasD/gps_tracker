@@ -58,7 +58,20 @@
     "noPlans": "Nie skonfigurowano jeszcze planów.",
     "interval": {
       "month": "mies.",
-      "year": "rok"
+      "year": "rok",
+      "week": "tydz.",
+      "day": "dzień"
+    },
+    "loading": "Wczytywanie planów…",
+    "st": {
+      "active": "Aktywna",
+      "trialing": "Okres próbny",
+      "past_due": "Zaległa płatność",
+      "canceled": "Anulowana",
+      "unpaid": "Nieopłacona",
+      "incomplete": "Nieukończona",
+      "incomplete_expired": "Wygasła",
+      "paused": "Wstrzymana"
     }
   },
   "branding": {
@@ -85,7 +98,8 @@
     "dupDomain": "Ta domena jest już zarejestrowana.",
     "badDomain": "Podaj poprawną nazwę hosta (np. fleet.example.com).",
     "txtInstruction": "Dodaj ten rekord TXT do {{domain}}, następnie kliknij Zweryfikuj:",
-    "certNote": "Certyfikaty HTTPS są wystawiane automatycznie przy pierwszym bezpiecznym żądaniu po weryfikacji domeny."
+    "certNote": "Certyfikaty HTTPS są wystawiane automatycznie przy pierwszym bezpiecznym żądaniu po weryfikacji domeny.",
+    "domainLabel": "Domena"
   },
   "audit": {
     "title": "Dziennik audytu",
@@ -112,7 +126,16 @@
       "webhook": "Webhook",
       "domain": "Domena",
       "branding": "Marka",
-      "tenant": "Najemca"
+      "tenant": "Najemca",
+      "geofence": "Geostrefa",
+      "trip": "Trasa",
+      "apiKey": "Klucz API",
+      "command": "Polecenie",
+      "driver": "Kierowca",
+      "export": "Eksport danych",
+      "maintenance": "Konserwacja",
+      "scheduledReport": "Zaplanowany raport",
+      "shareLink": "Link udostępniania"
     },
     "a": {
       "create": "Utworzono",
@@ -192,8 +215,11 @@
       "edit": "Kanały",
       "save": "Zapisz",
       "cancel": "Anuluj",
-      "webpush": "Push w przeglądarce"
-    }
+      "webpush": "Push w przeglądarce",
+      "chipTelegram": "Telegram {{chatId}}",
+      "remove": "Usuń {{target}}"
+    },
+    "cooldownValue": "{{s}} s"
   },
   "playback": {
     "title": "Odtwarzanie historii",
@@ -207,7 +233,10 @@
     "trips": "{{n}} tras",
     "distance": "{{km}} km",
     "fuel": "Poziom paliwa",
-    "fuelLiters": "{{l}} l"
+    "fuelLiters": "{{l}} l",
+    "skipStart": "Na początek",
+    "skipEnd": "Na koniec",
+    "scrub": "Pozycja odtwarzania"
   },
   "geofences": {
     "title": "Geostrefy",
@@ -448,7 +477,9 @@
       "copy": "Kopiuj",
       "copied": "Skopiowano",
       "caveat": "Ta rodzina urządzeń może używać innych parametrów — sprawdź w wiki Teltonika dla swojego modelu."
-    }
+    },
+    "imeiPh": "15 cyfr",
+    "actions": "Akcje"
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",
@@ -496,6 +527,20 @@
       "critical": "Krytyczne",
       "warning": "Ostrzeżenia",
       "info": "Informacyjne"
+    },
+    "s": {
+      "overspeed": "{{speed}} km/h > {{limit}}",
+      "low_battery": "{{volts}} V < {{threshold}}",
+      "ignition_on": "zapłon włączony",
+      "ignition_off": "zapłon wyłączony",
+      "din_on": "DIN1 włączone",
+      "din_off": "DIN1 wyłączone",
+      "geofence_enter": "{{name}} · wjazd",
+      "geofence_exit": "{{name}} · wyjazd",
+      "geofence": "{{name}} · {{transition}}",
+      "device_offline": "offline {{hours}} godz. (≥ {{threshold}} godz.)",
+      "panic": "Alarm SOS",
+      "power_cut": "utrata zasilania zewnętrznego"
     }
   },
   "reports": {
@@ -537,7 +582,8 @@
       "maxSpeed": "Maks prędkość"
     },
     "account": "Konto",
-    "exportPdf": "Eksportuj PDF"
+    "exportPdf": "Eksportuj PDF",
+    "pdfTitle": "Raport: {{type}}"
   },
   "apiKeys": {
     "title": "Klucze API",
@@ -637,7 +683,8 @@
       "distance": "Dystans",
       "overspeed": "Przekr. prędk.",
       "score": "Wynik"
-    }
+    },
+    "actions": "Akcje"
   },
   "maint": {
     "title": "Konserwacja",
@@ -670,7 +717,8 @@
       "due_soon": "Wkrótce",
       "overdue": "Zaległe",
       "unknown": "Brak danych"
-    }
+    },
+    "actionError": "Akcja nie powiodła się — spróbuj ponownie."
   },
   "scheduled": {
     "title": "Zaplanowane raporty",
@@ -722,6 +770,13 @@
     "recent": "Ostatnie zdarzenia",
     "viewAll": "Pokaż wszystkie",
     "empty": "Brak danych",
-    "noAccount": "Brak konta do raportu"
+    "noAccount": "Brak konta do raportu",
+    "error": "Nie udało się wczytać danych."
+  },
+  "roles": {
+    "platform_admin": "Administrator platformy",
+    "tsp_admin": "Administrator organizacji",
+    "account_manager": "Menedżer konta",
+    "viewer": "Podgląd"
   }
 }

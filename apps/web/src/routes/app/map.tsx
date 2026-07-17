@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { DeviceList } from '@/components/DeviceList'
 import { InfoCard } from '@/components/InfoCard'
 import { LiveMap } from '@/components/LiveMap'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/admin/AdminKit'
 import { getLastPositions, getWsTicket, wsUrl, ApiError } from '@/lib/api'
 import { liveStore } from '@/lib/liveStore'
 import { LiveSocket } from '@/lib/ws'
@@ -56,7 +56,8 @@ export function MapPage() {
         />
       )}
       <div className="absolute right-14 top-4 z-10">
-        <Badge variant={snap.connection === 'open' ? 'success' : 'warn'} data-testid="conn-badge">
+        {/* admin idiom (ADR-028) tone Badge; live region so AT hears the drop to reconnecting */}
+        <Badge tone={snap.connection === 'open' ? 'success' : 'warning'} role="status" aria-live="polite" data-testid="conn-badge">
           {snap.connection === 'open' ? t('map.live') : t('map.reconnecting')}
         </Badge>
       </div>

@@ -29,7 +29,9 @@ export function BillingPage() {
       .catch(() => setBusy(false))
   }
 
-  const statusLabel = b?.status ?? t('billing.none')
+  // Stripe's machine status (mirrors subscription.status) → catalog label; the raw value is the
+  // defaultValue fallback so an unmapped future status still renders instead of a literal key
+  const statusLabel = b?.status != null ? t(`billing.st.${b.status}`, b.status) : t('billing.none')
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
@@ -72,8 +74,10 @@ export function BillingPage() {
                   <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{p.productName}</div>
                   <p className="display text-2xl font-semibold tracking-tight" style={{ color: 'var(--admin-ink)' }}>
                     {fmtPlanAmount(p.amount, p.currency)}
-                    {p.interval !== null && (
-                      <span className="text-sm font-normal" style={{ color: 'var(--admin-ink-soft)' }}> / {t(`billing.interval.${p.interval}`)}</span>
+                    {/* no dangling "/ mo" on a metered (amount-less) price; raw interval is the
+                        defaultValue fallback should Stripe send one outside the catalog */}
+                    {p.amount !== null && p.interval !== null && (
+                      <span className="text-sm font-normal" style={{ color: 'var(--admin-ink-soft)' }}> / {t(`billing.interval.${p.interval}`, p.interval)}</span>
                     )}
                   </p>
                   <div>
@@ -83,8 +87,13 @@ export function BillingPage() {
                   </div>
                 </div>
               ))}
-              {(plans.data ?? []).length === 0 && (
-                <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="plans-empty">{t('billing.noPlans')}</p>
+              {/* the catalog is a live Stripe lookup — don't flash the empty state while it loads */}
+              {plans.isLoading ? (
+                <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="plans-loading">{t('billing.loading')}</p>
+              ) : (
+                (plans.data ?? []).length === 0 && (
+                  <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="plans-empty">{t('billing.noPlans')}</p>
+                )
               )}
             </div>
           )}

@@ -3,7 +3,6 @@ import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, Badge as AdminBadge, PageHeader } from '@/components/admin/AdminKit'
-import { Badge } from '@/components/ui/badge'
 import { getCurrentUser } from '@/lib/auth'
 import { listAccounts } from '@/lib/devices'
 import {
@@ -27,6 +26,9 @@ const selectStyle: React.CSSProperties = {
 const th = 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
 const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
 const rowCls = 'admin-hairline-b transition-colors hover:bg-[var(--admin-surface-sunken)]'
+
+/** scoreVariant (pure, unit-tested) → AdminBadge tone (1:1). */
+const SCORE_TONE = { success: 'success', warn: 'warning', danger: 'danger', outline: 'neutral' } as const
 
 /** Driver registry (V2): list + create/edit + deactivate. Account-scoped; the iButton key is the
  * physical tag a driver taps (resolved to trips in a follow-up). Admin re-skin (ADR-028). */
@@ -72,7 +74,7 @@ export function DriversPage() {
                   <th className={th} style={thStyle}>{t('drivers.license')}</th>
                   <th className={th} style={thStyle}>{t('drivers.ibutton')}</th>
                   <th className={th} style={thStyle}>{t('drivers.status')}</th>
-                  <th className={th} style={thStyle}></th>
+                  <th className={th} style={thStyle}><span className="sr-only">{t('drivers.actions')}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -138,10 +140,10 @@ function DriverScores() {
                 <tr key={s.driverId} className={rowCls} data-testid={`driver-score-${s.driverId}`}>
                   <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--admin-ink)' }}>{s.driverName}</td>
                   <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{s.trips}</td>
-                  <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{s.distanceKm} km</td>
+                  <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{t('units.km', { n: s.distanceKm })}</td>
                   <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{s.overspeedEvents}</td>
-                  {/* scoreVariant is the unit-tested ui/badge mapping — keep ui/badge here */}
-                  <td className="px-4 py-2.5"><Badge variant={scoreVariant(s.score)}>{s.score ?? '—'}</Badge></td>
+                  {/* scoreVariant stays the unit-tested pure mapping; its variants map 1:1 onto AdminBadge tones */}
+                  <td className="px-4 py-2.5"><AdminBadge tone={SCORE_TONE[scoreVariant(s.score)]}>{s.score ?? '—'}</AdminBadge></td>
                 </tr>
               ))}
             </tbody>

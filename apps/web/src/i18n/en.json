@@ -58,7 +58,20 @@
     "noPlans": "No plans are configured yet.",
     "interval": {
       "month": "mo",
-      "year": "yr"
+      "year": "yr",
+      "week": "wk",
+      "day": "day"
+    },
+    "loading": "Loading plans…",
+    "st": {
+      "active": "Active",
+      "trialing": "Trial",
+      "past_due": "Past due",
+      "canceled": "Canceled",
+      "unpaid": "Unpaid",
+      "incomplete": "Incomplete",
+      "incomplete_expired": "Expired",
+      "paused": "Paused"
     }
   },
   "branding": {
@@ -85,7 +98,8 @@
     "dupDomain": "That domain is already registered.",
     "badDomain": "Enter a valid hostname (e.g. fleet.example.com).",
     "txtInstruction": "Add this TXT record to {{domain}}, then click Verify:",
-    "certNote": "HTTPS certificates are issued automatically on the first secure request after a domain is verified."
+    "certNote": "HTTPS certificates are issued automatically on the first secure request after a domain is verified.",
+    "domainLabel": "Domain"
   },
   "audit": {
     "title": "Audit log",
@@ -112,7 +126,16 @@
       "webhook": "Webhook",
       "domain": "Domain",
       "branding": "Branding",
-      "tenant": "Tenant"
+      "tenant": "Tenant",
+      "geofence": "Geofence",
+      "trip": "Trip",
+      "apiKey": "API key",
+      "command": "Command",
+      "driver": "Driver",
+      "export": "Data export",
+      "maintenance": "Maintenance",
+      "scheduledReport": "Scheduled report",
+      "shareLink": "Share link"
     },
     "a": {
       "create": "Created",
@@ -192,8 +215,11 @@
       "edit": "Channels",
       "save": "Save",
       "cancel": "Cancel",
-      "webpush": "Browser push"
-    }
+      "webpush": "Browser push",
+      "chipTelegram": "Telegram {{chatId}}",
+      "remove": "Remove {{target}}"
+    },
+    "cooldownValue": "{{s}} s"
   },
   "playback": {
     "title": "History playback",
@@ -207,7 +233,10 @@
     "trips": "{{n}} trips",
     "distance": "{{km}} km",
     "fuel": "Fuel level",
-    "fuelLiters": "{{l}} l"
+    "fuelLiters": "{{l}} l",
+    "skipStart": "Skip to start",
+    "skipEnd": "Skip to end",
+    "scrub": "Playback position"
   },
   "geofences": {
     "title": "Geofences",
@@ -448,7 +477,9 @@
       "copy": "Copy",
       "copied": "Copied",
       "caveat": "This device family may use different parameters — verify on the Teltonika wiki for your model."
-    }
+    },
+    "imeiPh": "15 digits",
+    "actions": "Actions"
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",
@@ -496,6 +527,20 @@
       "critical": "Critical",
       "warning": "Warnings",
       "info": "Info"
+    },
+    "s": {
+      "overspeed": "{{speed}} km/h > {{limit}}",
+      "low_battery": "{{volts}} V < {{threshold}}",
+      "ignition_on": "ignition on",
+      "ignition_off": "ignition off",
+      "din_on": "DIN1 on",
+      "din_off": "DIN1 off",
+      "geofence_enter": "{{name}} · enter",
+      "geofence_exit": "{{name}} · exit",
+      "geofence": "{{name}} · {{transition}}",
+      "device_offline": "offline {{hours}} h (≥ {{threshold}} h)",
+      "panic": "SOS triggered",
+      "power_cut": "external power lost"
     }
   },
   "reports": {
@@ -537,7 +582,8 @@
       "maxSpeed": "Max speed"
     },
     "account": "Account",
-    "exportPdf": "Export PDF"
+    "exportPdf": "Export PDF",
+    "pdfTitle": "{{type}} report"
   },
   "apiKeys": {
     "title": "API keys",
@@ -637,7 +683,8 @@
       "distance": "Distance",
       "overspeed": "Overspeed",
       "score": "Score"
-    }
+    },
+    "actions": "Actions"
   },
   "maint": {
     "title": "Maintenance",
@@ -670,7 +717,8 @@
       "due_soon": "Due soon",
       "overdue": "Overdue",
       "unknown": "No data"
-    }
+    },
+    "actionError": "Action failed — try again."
   },
   "scheduled": {
     "title": "Scheduled reports",
@@ -722,6 +770,13 @@
     "recent": "Recent events",
     "viewAll": "View all",
     "empty": "No data yet",
-    "noAccount": "No account to report on"
+    "noAccount": "No account to report on",
+    "error": "Could not load data."
+  },
+  "roles": {
+    "platform_admin": "Platform admin",
+    "tsp_admin": "Organization admin",
+    "account_manager": "Account manager",
+    "viewer": "Viewer"
   }
 }

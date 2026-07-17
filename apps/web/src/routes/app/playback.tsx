@@ -92,7 +92,7 @@ export function PlaybackPage() {
               <span style={{ color: 'var(--admin-ink-soft)' }}>{t('playback.samples', { n: pts.length })}</span>
               {current && (
                 <span data-testid="playback-current" className="tabular-nums">
-                  {fmt.format(new Date(current.fixTime))} · {current.speed ?? 0} km/h
+                  {fmt.format(new Date(current.fixTime))} · {current.speed ?? 0} {t('units.kmh')}
                 </span>
               )}
               <span className="ml-auto flex gap-3 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
@@ -104,13 +104,14 @@ export function PlaybackPage() {
             {/* AVL-gated (§4): only devices actually reporting fuel get the graph */}
             {fuelData.points.length > 0 && <FuelChart points={fuelData.points} unit={fuelData.unit} />}
             <div className="flex items-center gap-2">
-              <AdminButton variant="secondary" size="sm" onClick={() => setIndex(0)} data-testid="playback-start">⏮</AdminButton>
+              <AdminButton variant="secondary" size="sm" aria-label={t('playback.skipStart')} onClick={() => setIndex(0)} data-testid="playback-start">⏮</AdminButton>
               <input
                 type="range" min={0} max={Math.max(0, pts.length - 1)} value={index}
                 onChange={(e) => setIndex(Number(e.target.value))}
+                aria-label={t('playback.scrub')}
                 data-testid="playback-scrub" className="flex-1 accent-[var(--admin-brand)]"
               />
-              <AdminButton variant="secondary" size="sm" onClick={() => setIndex(pts.length - 1)} data-testid="playback-end">⏭</AdminButton>
+              <AdminButton variant="secondary" size="sm" aria-label={t('playback.skipEnd')} onClick={() => setIndex(pts.length - 1)} data-testid="playback-end">⏭</AdminButton>
             </div>
           </>
         )}

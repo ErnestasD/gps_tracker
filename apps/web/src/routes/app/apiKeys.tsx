@@ -49,7 +49,7 @@ export function ApiKeysPage() {
       <PageHeader className="mb-0" title={t('apiKeys.title')} description={t('apiKeys.desc')} />
 
       {fresh !== null && (
-        <div className="admin-card p-4" style={{ background: 'var(--admin-brand-soft)', borderColor: 'var(--admin-brand)' }} data-testid="apikey-fresh">
+        <div role="status" className="admin-card p-4" style={{ background: 'var(--admin-brand-soft)', borderColor: 'var(--admin-brand)' }} data-testid="apikey-fresh">
           <div className="mb-2 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('apiKeys.created')}</div>
           <p className="mb-2 text-sm" style={{ color: 'var(--admin-warning)' }}>{t('apiKeys.copyNow')}</p>
           <div className="flex items-center gap-2">
@@ -77,13 +77,13 @@ export function ApiKeysPage() {
         <div className="p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <AdminLabel>{t('apiKeys.name')}</AdminLabel>
-              <AdminInput value={name} onChange={(e) => setName(e.target.value)} data-testid="apikey-name" className="w-48" />
+              <AdminLabel htmlFor="apikey-name">{t('apiKeys.name')}</AdminLabel>
+              <AdminInput id="apikey-name" value={name} onChange={(e) => setName(e.target.value)} data-testid="apikey-name" className="w-48" />
             </div>
             {(accounts.data ?? []).length > 1 && (
               <div>
-                <AdminLabel>{t('apiKeys.account')}</AdminLabel>
-                <select value={account} onChange={(e) => setAccount(e.target.value)} data-testid="apikey-account" className="h-9 rounded-md border px-2 text-sm" style={selectStyle}>
+                <AdminLabel htmlFor="apikey-account">{t('apiKeys.account')}</AdminLabel>
+                <select id="apikey-account" value={account} onChange={(e) => setAccount(e.target.value)} data-testid="apikey-account" className="h-9 rounded-md border px-2 text-sm" style={selectStyle}>
                   <option value="">{t('apiKeys.tenantWide')}</option>
                   {(accounts.data ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>

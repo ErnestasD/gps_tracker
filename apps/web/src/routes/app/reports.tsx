@@ -45,7 +45,9 @@ export function ReportsPage() {
   }
   const exportPdf = () => {
     if (result === undefined) return
-    void downloadPdf(`${result.type}-report.pdf`, `Orbetra — ${result.type} report`, COLUMNS[result.type], result.rows)
+    // localized PDF title from the report-type label — no raw slug, no hardcoded brand
+    // (white-label: the platform name doesn't belong in a tenant's export)
+    void downloadPdf(`${result.type}-report.pdf`, t('reports.pdfTitle', { type: t(`reports.t.${result.type}`) }), COLUMNS[result.type], result.rows)
   }
 
   return (

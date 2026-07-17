@@ -26,8 +26,12 @@ export interface AuditFilters {
   limit?: number
 }
 
-/** The entities/actions the UI offers as filter options (mirrors READ/WRITE policy). */
-export const AUDIT_ENTITIES = ['account', 'user', 'device', 'rule', 'webhook', 'domain', 'branding', 'tenant'] as const
+/** The entities/actions the UI offers as filter options — the full set the server's repos write
+ * via audit.record (packages/db/src/repos), each with an audit.e.* label in all locales. */
+export const AUDIT_ENTITIES = [
+  'account', 'user', 'device', 'rule', 'webhook', 'domain', 'branding', 'tenant',
+  'geofence', 'trip', 'apiKey', 'command', 'driver', 'export', 'maintenance', 'scheduledReport', 'shareLink',
+] as const
 export const AUDIT_ACTIONS = ['create', 'update', 'delete'] as const
 
 /** Build the /v1/audit query string from filters (drops empty values). Pure — unit-tested. */
