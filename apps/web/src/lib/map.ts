@@ -5,10 +5,12 @@
  */
 import mapboxgl, { type MapOptions } from 'mapbox-gl'
 
-import { getTheme, onThemeChange, type Theme } from '@/lib/prefs'
+// relative (not '@/') so the vitest suite can import this module without alias config
+import { getTheme, onThemeChange, type Theme } from './prefs'
 
 // pk. tokens are public by design — they ship in the client bundle (config, not a
 // secret; rule 12 unaffected). URL-restricted in the Mapbox dashboard (ADR-030).
+// Lives in the UNTRACKED apps/web/.env (GitHub push protection blocks Mapbox tokens).
 mapboxgl.accessToken = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined) ?? ''
 
 /**
@@ -22,9 +24,22 @@ export function styleForTheme(theme: Theme): string {
 }
 
 export interface ThemedMap {
-  map: mapboxgl.Map
+  /** null when the map could not even be constructed (e.g. a missing/empty token with a
+   *  mapbox:// style throws SYNCHRONOUSLY from the constructor via normalizeStyleURL) —
+   *  callers must render their map-error overlay instead of wiring sources/layers. */
+  map: mapboxgl.Map | null
   /** Detaches the theme listener — call it right before `map.remove()`. */
   unsubscribe: () => void
+}
+
+export interface ThemedMapOptions extends Omit<MapOptions, 'container' | 'style'> {
+  /**
+   * Invoked synchronously RIGHT BEFORE a theme swap calls `map.setStyle` — the last
+   * moment the outgoing style's runtime sources/layers still exist. Style-coupled
+   * plugins (terra-draw) must detach here and re-attach in `style.load`; otherwise a
+   * user interaction during the swap window hits their already-dropped sources.
+   */
+  onBeforeStyleSwap?: () => void
 }
 
 /**
@@ -35,23 +50,60 @@ export interface ThemedMap {
  * `map.getSource(id)` / `map.hasImage(id)`) — `style.load` fires for the initial
  * style AND after every theme swap, which is what keeps custom layers alive.
  */
-export function createThemedMap(container: HTMLElement, opts: Omit<MapOptions, 'container' | 'style'> = {}): ThemedMap {
-  const map = new mapboxgl.Map({
-    container,
-    style: styleForTheme(getTheme()),
-    // Mapbox attribution + logo stay visible on every map view (TOS, ADR-030)
-    attributionControl: true,
-    antialias: true,
-    ...opts,
-  })
+export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions = {}): ThemedMap {
+  const { onBeforeStyleSwap, ...mapOpts } = opts
+  let map: mapboxgl.Map
+  try {
+    map = new mapboxgl.Map({
+      container,
+      style: styleForTheme(getTheme()),
+      // Mapbox attribution + logo stay visible on every map view (TOS, ADR-030)
+      attributionControl: true,
+      antialias: true,
+      ...mapOpts,
+    })
+  } catch (err) {
+    // missing/invalid token + mapbox:// style throws synchronously — degrade to the
+    // caller's error overlay (watchMapLoad reports it), never a route crash
+    console.error('mapbox init failed', err)
+    return { map: null, unsubscribe: () => {} }
+  }
   let current: Theme = getTheme()
   const unsubscribe = onThemeChange(() => {
     const next = getTheme()
     if (next === current) return
     current = next
+    onBeforeStyleSwap?.()
     map.setStyle(styleForTheme(next))
   })
   return { map, unsubscribe }
+}
+
+/**
+ * Watchdog for the silent-blank-map failure (blocked tile CDN / WebGL failure / bad
+ * token): reports `onError(true)` if construction already failed (`map === null`) or
+ * if no `style.load` lands within `timeoutMs`, and reports `onError(false)` whenever
+ * a `style.load` DOES land — including one that beats the timer late, so the overlay
+ * never latches over a working map. Returns a cleanup for the effect teardown.
+ */
+export function watchMapLoad(map: mapboxgl.Map | null, onError: (failed: boolean) => void, timeoutMs = 8000): () => void {
+  if (map === null) {
+    onError(true)
+    return () => {}
+  }
+  let loaded = false
+  const timer = setTimeout(() => {
+    if (!loaded) onError(true)
+  }, timeoutMs)
+  const onLoad = () => {
+    loaded = true
+    onError(false)
+  }
+  map.on('style.load', onLoad)
+  return () => {
+    clearTimeout(timer)
+    map.off('style.load', onLoad)
+  }
 }
 
 // Re-exported so surfaces get controls/markers from the module that set the token —

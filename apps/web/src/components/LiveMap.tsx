@@ -1,8 +1,9 @@
 import type { GeoJSONSource, Map as MbMap, MapMouseEvent } from 'mapbox-gl'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
+import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { liveStore, type MapFrame } from '@/lib/liveStore'
-import { createThemedMap, mapboxgl } from '@/lib/map'
+import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 
@@ -40,12 +41,21 @@ function arrowImage(color: string): ImageData {
  */
 export function LiveMap() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
     const { map, unsubscribe } = createThemedMap(container, { center: VILNIUS, zoom: 11 })
+    const stopWatch = watchMapLoad(map, setMapError)
+    if (map === null) {
+      // missing token / WebGL failure — the overlay is up, nothing to wire
+      return () => {
+        stopWatch()
+        unsubscribe()
+      }
+    }
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     // e2e handle: lets Playwright assert RENDERED features (queryRenderedFeatures)
     // instead of guessing from canvas pixels
@@ -190,13 +200,20 @@ export function LiveMap() {
     return () => {
       disposed = true
       liveStore.onMapFrame(null)
+      stopWatch()
       unsubscribe()
       map.remove()
     }
   }, [])
 
-  // NOT absolute/inset: mapbox-gl.css stamps `.mapboxgl-map{position:relative}`
-  // onto this very div and wins the cascade — with position:relative inset-0 sizes
-  // to 0 height (found live: blank map, canvas 1200×0). Explicit h/w sidesteps it.
-  return <div ref={containerRef} data-testid="live-map" className="h-full w-full" />
+  // map div NOT absolute/inset: mapbox-gl.css stamps `.mapboxgl-map{position:relative}`
+  // onto it and wins the cascade — with position:relative inset-0 sizes to 0 height
+  // (found live: blank map, canvas 1200×0). Explicit h/w sidesteps it; the relative
+  // wrapper only anchors the error overlay.
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} data-testid="live-map" className="h-full w-full" />
+      <MapErrorOverlay show={mapError} testId="live-map-error" variant="shell" />
+    </div>
+  )
 }

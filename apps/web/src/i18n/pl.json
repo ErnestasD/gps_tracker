@@ -273,7 +273,7 @@
     "delete": "Usuń",
     "invalid": "Nieprawidłowa lub zbyt duża geostrefa (maks. 10 000 km²).",
     "error": "Nie udało się zapisać geostrefy.",
-    "mapError": "Nie udało się wczytać mapy — serwer kafelków może być blokowany przez Twoją sieć. Poproś IT o odblokowanie tiles.openfreemap.org."
+    "mapError": "Nie udało się wczytać mapy — serwery Mapbox mogą być blokowane przez Twoją sieć/zaporę. Poproś IT o odblokowanie api.mapbox.com lub skontaktuj się z pomocą."
   },
   "deviceList": {
     "title": "Urządzenia",

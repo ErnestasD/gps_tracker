@@ -2,7 +2,8 @@ import type { Map as MbMap, Marker } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { mapboxgl, styleForTheme } from '@/lib/map'
+import { MapErrorOverlay } from '@/components/MapErrorOverlay'
+import { mapboxgl, styleForTheme, watchMapLoad } from '@/lib/map'
 import { expiryLabel, fetchPublicShare, type PublicShare } from '@/lib/share'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
@@ -20,6 +21,7 @@ export function SharePage({ token }: { token: string }) {
   const markerRef = useRef<Marker | null>(null)
   const [share, setShare] = useState<PublicShare | null>(null)
   const [state, setState] = useState<'loading' | 'ok' | 'gone' | 'error'>('loading')
+  const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
 
   // poll the public endpoint
   useEffect(() => {
@@ -46,19 +48,29 @@ export function SharePage({ token }: { token: string }) {
     const container = containerRef.current
     if (!container || mapRef.current) return
     const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches
-    const map = new mapboxgl.Map({
-      container,
-      style: styleForTheme(prefersLight ? 'light' : 'dark'), // dark-first, like the app shell
-      center: VILNIUS,
-      zoom: 12,
-      // Mapbox attribution + logo stay visible on every map view (TOS, ADR-030)
-      attributionControl: true,
-      antialias: true,
-    })
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
-    map.on('error', (e) => console.error('mapbox', e.error))
-    mapRef.current = map
-    return () => { map.remove(); mapRef.current = null }
+    let map: MbMap | null = null
+    try {
+      map = new mapboxgl.Map({
+        container,
+        style: styleForTheme(prefersLight ? 'light' : 'dark'), // dark-first, like the app shell
+        center: VILNIUS,
+        zoom: 12,
+        // Mapbox attribution + logo stay visible on every map view (TOS, ADR-030)
+        attributionControl: true,
+        antialias: true,
+      })
+    } catch (err) {
+      // missing/empty token + mapbox:// style throws synchronously — degrade to the
+      // overlay (watchMapLoad below reports it), never a page crash
+      console.error('mapbox init failed', err)
+    }
+    const stopWatch = watchMapLoad(map, setMapError)
+    if (map === null) return () => stopWatch()
+    const live = map
+    live.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
+    live.on('error', (e) => console.error('mapbox', e.error))
+    mapRef.current = live
+    return () => { stopWatch(); live.remove(); mapRef.current = null }
   }, [])
 
   // move the marker on new positions
@@ -91,6 +103,7 @@ export function SharePage({ token }: { token: string }) {
 
       <div className="relative flex-1">
         <div ref={containerRef} className="absolute inset-0" data-testid="share-map" />
+        <MapErrorOverlay show={mapError} testId="share-map-error" variant="shell" />
         {state === 'gone' && (
           <div className="absolute inset-0 flex items-center justify-center bg-bg/80" data-testid="share-gone">
             <div className="rounded-card border border-line bg-surface p-6 text-center">

@@ -2,8 +2,9 @@ import type { PositionView, TripView } from '@orbetra/shared'
 import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 
+import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { buildTrailFeatures } from '@/lib/liveStore'
-import { createThemedMap, mapboxgl } from '@/lib/map'
+import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 // ADR-028 palette: trail = --accent (dark), gap = --muted
@@ -27,11 +28,23 @@ export function PlaybackMap({ positions, trips, index }: { positions: PositionVi
   // bumps on EVERY style.load (initial + theme swaps, ADR-030) so the data effects
   // below re-apply setData/filters to the freshly rebuilt (empty) sources
   const [styleEpoch, setStyleEpoch] = useState(0)
+  const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
+  // the positions array the camera was last fitted to — a theme swap re-runs the data
+  // effect (styleEpoch bump) but must NOT yank the camera back to the full bounds
+  const lastFitRef = useRef<PositionView[] | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
     const { map, unsubscribe } = createThemedMap(container, { center: VILNIUS, zoom: 10 })
+    const stopWatch = watchMapLoad(map, setMapError)
+    if (map === null) {
+      // missing token / WebGL failure — the overlay is up, nothing to wire
+      return () => {
+        stopWatch()
+        unsubscribe()
+      }
+    }
     mapRef.current = map
     ;(container as HTMLDivElement & { __map?: MbMap }).__map = map
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
@@ -53,14 +66,17 @@ export function PlaybackMap({ positions, trips, index }: { positions: PositionVi
     })
     return () => {
       disposed = true
+      stopWatch()
       unsubscribe()
       map.remove()
       mapRef.current = null
+      lastFitRef.current = null
       setStyleEpoch(0)
     }
   }, [])
 
-  // trail + stops + fit bounds when the data (or the style, on theme swap) changes
+  // trail + stops re-applied when the data (or the style, on theme swap) changes;
+  // fitBounds ONLY when the positions themselves changed — not on styleEpoch bumps
   useEffect(() => {
     const map = mapRef.current
     if (map === null || styleEpoch === 0) return
@@ -68,6 +84,8 @@ export function PlaybackMap({ positions, trips, index }: { positions: PositionVi
       pointFC(buildTrailFeatures(positions.map((p) => ({ lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Date.parse(p.fixTime) })))),
     )
     map.getSource<GeoJSONSource>('stops')?.setData(pointFC(stopFeatures(trips)))
+    if (positions === lastFitRef.current) return // theme swap: keep the user's camera
+    lastFitRef.current = positions
     const valid = positions.filter((p) => p.fixValid)
     if (valid.length > 0) {
       const b = new mapboxgl.LngLatBounds([valid[0]!.lon, valid[0]!.lat], [valid[0]!.lon, valid[0]!.lat])
@@ -86,5 +104,10 @@ export function PlaybackMap({ positions, trips, index }: { positions: PositionVi
     else src?.setData(pointFC([{ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: {} }]))
   }, [index, positions, styleEpoch])
 
-  return <div ref={containerRef} className="h-full w-full" data-testid="playback-map" />
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full" data-testid="playback-map" />
+      <MapErrorOverlay show={mapError} testId="playback-map-error" />
+    </div>
+  )
 }

@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, PageHeader } from '@/components/admin/AdminKit'
+import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { ApiError } from '@/lib/http'
-import { createThemedMap, mapboxgl } from '@/lib/map'
+import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 import { optimizeRoute, parseStopsText } from '@/lib/routing'
 import { fmtDuration, fmtKm } from '@/lib/trips'
 
@@ -32,11 +33,10 @@ export function RoutePlannerPage() {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MbMap | null>(null)
-  const loadedRef = useRef(false)
   // bumps on EVERY style.load (initial + theme swaps, ADR-030) so the stops/route
   // effect re-applies its data to the freshly rebuilt (empty) sources
   const [styleEpoch, setStyleEpoch] = useState(0)
-  const [mapError, setMapError] = useState(false) // tile CDN blocked / WebGL failure (geofences.tsx pattern)
+  const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
   const [text, setText] = useState('')
   const [roundtrip, setRoundtrip] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -50,18 +50,23 @@ export function RoutePlannerPage() {
     const container = containerRef.current
     if (!container) return
     const { map, unsubscribe } = createThemedMap(container, { center: VILNIUS, zoom: 10 })
+    // if the base map never loads, the click-to-add flow is silently dead — surface it
+    // (8s watchdog; also fires immediately when construction failed, clears on style.load)
+    const stopWatch = watchMapLoad(map, setMapError)
+    if (map === null) {
+      return () => {
+        stopWatch()
+        unsubscribe()
+      }
+    }
     mapRef.current = map
     ;(container as HTMLDivElement & { __map?: MbMap }).__map = map
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     map.on('error', (e) => console.error('mapbox', e.error))
-    // if the base map never loads, the click-to-add flow is silently dead — surface it
-    const loadTimer = setTimeout(() => { if (!loadedRef.current) setMapError(true) }, 8000)
     let disposed = false
     // idempotent: style.load re-fires after every theme setStyle (layers were dropped)
     map.on('style.load', () => {
       if (disposed) return
-      clearTimeout(loadTimer)
-      loadedRef.current = true
       if (!map.getSource('route')) {
         map.addSource('route', { type: 'geojson', data: emptyFC })
         map.addSource('stops', { type: 'geojson', data: emptyFC })
@@ -84,8 +89,7 @@ export function RoutePlannerPage() {
     })
     return () => {
       disposed = true
-      clearTimeout(loadTimer)
-      loadedRef.current = false
+      stopWatch()
       unsubscribe()
       map.remove()
       mapRef.current = null
@@ -206,11 +210,7 @@ export function RoutePlannerPage() {
         {/* map panel */}
         <div className="admin-card relative min-h-[320px] overflow-hidden lg:min-h-0">
           <div ref={containerRef} className="h-full w-full" data-testid="routing-map" />
-          {mapError && (
-            <div role="alert" className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm" style={{ background: 'color-mix(in srgb, var(--admin-surface) 92%, transparent)', color: 'var(--admin-danger)' }} data-testid="routing-map-error">
-              {t('geofences.mapError')}
-            </div>
-          )}
+          <MapErrorOverlay show={mapError} testId="routing-map-error" />
         </div>
       </div>
     </div>

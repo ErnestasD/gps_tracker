@@ -273,7 +273,7 @@
     "delete": "Delete",
     "invalid": "Invalid or too-large geofence (max 10,000 km²).",
     "error": "Could not save geofence.",
-    "mapError": "The map couldn't load — its tile server may be blocked by your network/firewall. Ask IT to allow tiles.openfreemap.org, or contact us to self-host the map."
+    "mapError": "The map couldn't load — the Mapbox servers may be blocked by your network/firewall. Ask IT to allow api.mapbox.com, or contact support."
   },
   "deviceList": {
     "title": "Devices",

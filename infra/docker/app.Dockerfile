@@ -31,8 +31,9 @@ COPY . .
 # prisma client is gitignored generated code — build it in the image
 RUN pnpm --filter @orbetra/db db:generate
 # SPA builds: same-origin API (Caddy carves /v1 + /ws).
-# apps/web (ADR-030): Mapbox GL — VITE_MAPBOX_TOKEN comes from the committed
-# apps/web/.env (public pk. token) which vite reads at build time; styles default to
+# apps/web (ADR-030): Mapbox GL — VITE_MAPBOX_TOKEN comes from apps/web/.env, which is
+# UNTRACKED in git (GitHub push protection blocks Mapbox tokens) and reaches the build
+# host via rsync (see README env table); vite reads it at build time. Styles default to
 # mapbox dark-v11/light-v11 (override via VITE_MAPBOX_STYLE_DARK/_LIGHT if ever needed).
 # apps/site stays on MapLibre + OpenFreeMap — pin its style URL explicitly so a design
 # re-sync can't silently reintroduce a CDN.
