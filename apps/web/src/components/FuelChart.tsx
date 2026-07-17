@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Badge } from '@/components/admin/AdminKit'
 import { fuelChartPoints, type FuelPoint } from '@/lib/fuel'
 
 /**
@@ -21,12 +22,12 @@ export function FuelChart({ points, unit }: { points: FuelPoint[]; unit: 'pct' |
 
   return (
     <div className="space-y-1" data-testid="fuel-chart">
-      <div className="flex items-center gap-2 text-xs text-muted">
-        <span>{t('playback.fuel')}</span>
+      <div className="mb-1 flex items-center justify-between text-xs">
+        <span style={{ color: 'var(--admin-ink-soft)' }}>{t('playback.fuel')}</span>
         {last !== undefined && (
-          <span className="tabular-nums" data-testid="fuel-last">
-            {unit === 'pct' ? `${last}%` : t('playback.fuelLiters', { l: last.toFixed(1) })}
-          </span>
+          <Badge tone="brand" data-testid="fuel-last">
+            <span className="tabular-nums">{unit === 'pct' ? `${last}%` : t('playback.fuelLiters', { l: last.toFixed(1) })}</span>
+          </Badge>
         )}
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="h-20 w-full select-none rounded-card border border-line bg-surface" role="img" aria-label="fuel level timeline">

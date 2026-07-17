@@ -35,6 +35,17 @@ export function fuelSeries(samples: readonly FuelSampleView[]): { unit: 'pct' | 
   return { unit, points }
 }
 
+/** Latest fuel value at-or-before tMs (points are chronological). Null before the first
+ * sample — the playback overlay shows fuel only once the device has reported it. Pure. */
+export function fuelAtTime(points: readonly FuelPoint[], tMs: number): number | null {
+  let v: number | null = null
+  for (const p of points) {
+    if (p.tMs > tMs) break
+    v = p.v
+  }
+  return v
+}
+
 /** Map fuel points → SVG [x,y]: x scaled by TIME within the series span, y by value. Pure. */
 export function fuelChartPoints(points: readonly FuelPoint[], w: number, h: number, pad: number): Array<[number, number]> {
   if (points.length === 0) return []

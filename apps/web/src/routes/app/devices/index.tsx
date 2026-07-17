@@ -1,8 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, type FormEvent } from 'react'
+import { MoreHorizontal, Plus, Upload } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
+import { DataTable, type Column } from '@/components/admin/DataTable'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
@@ -34,33 +39,32 @@ const selectStyle: React.CSSProperties = {
   color: 'var(--admin-ink)',
 }
 
-const th = 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
-const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
+const statusOf = (d: Device): 'active' | 'retired' => (d.retiredAt === null ? 'active' : 'retired')
 
-/** Devices page (E03-3): list + create + retire + CSV import wizard (dry-run → apply).
- * Re-skinned onto the admin design (ADR-028): PageHeader + admin-card sections; the table keeps
- * its own markup (per-row actions + sub-card toggling) restyled to the admin idiom. */
+/** Devices page (E03-3), rebuilt on the orbetra_design_new app.devices layout (ADR-028 round 2):
+ * PageHeader actions open right Sheets (CSV import wizard + create form), the list is the shared
+ * DataTable (search / status filter / sort / pagination), per-row actions live in a "..." popover
+ * menu, and destructive retire/erase go through ConfirmDialog. Sub-cards (health/CAN/onboarding/
+ * commands/share) still toggle below the table, unchanged. */
 export function DevicesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles })
+  const [addOpen, setAddOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [retireError, setRetireError] = useState<string | null>(null)
   const [commandsForId, setCommandsForId] = useState<string | null>(null)
   const [healthForId, setHealthForId] = useState<string | null>(null)
   const [shareForId, setShareForId] = useState<string | null>(null)
   const [onboardForId, setOnboardForId] = useState<string | null>(null)
-  // GDPR erase (E08-4): two-step confirm per device id, auto-disarmed after 6 s so an
-  // armed irreversible button never lingers (review LOW)
-  const [eraseArmedId, setEraseArmedId] = useState<string | null>(null)
+  // destructive flows (retire / GDPR erase, E08-4) are gated by ConfirmDialog (ADR-028 round 2);
+  // the pending target is an ID resolved against the LIVE list below, never a snapshot
+  const [retireForId, setRetireForId] = useState<string | null>(null)
+  const [eraseForId, setEraseForId] = useState<string | null>(null)
   const [eraseQueued, setEraseQueued] = useState(false)
   const [eraseError, setEraseError] = useState(false)
-  useEffect(() => {
-    if (eraseArmedId === null) return
-    const t = setTimeout(() => setEraseArmedId(null), 6000)
-    return () => clearTimeout(t)
-  }, [eraseArmedId])
   const refresh = () => void qc.invalidateQueries({ queryKey: ['devices'] })
   const isAdmin = ['platform_admin', 'tsp_admin'].includes(getCurrentUser()?.role ?? '')
   // derive the panel's device from the LIVE list (never a snapshot): a retire or refetch
@@ -69,10 +73,107 @@ export function DevicesPage() {
   const healthFor: Device | null = (devices.data ?? []).find((d) => d.id === healthForId && d.retiredAt === null) ?? null
   const shareFor: Device | null = (devices.data ?? []).find((d) => d.id === shareForId && d.retiredAt === null) ?? null
   const onboardFor: Device | null = (devices.data ?? []).find((d) => d.id === onboardForId && d.retiredAt === null) ?? null
+  const retireFor: Device | null = (devices.data ?? []).find((d) => d.id === retireForId && d.retiredAt === null) ?? null
+  const eraseFor: Device | null = (devices.data ?? []).find((d) => d.id === eraseForId && d.retiredAt !== null) ?? null
+
+  const columns: Column<Device>[] = [
+    {
+      key: 'name',
+      header: t('devices.name'),
+      sortable: true,
+      sortValue: (r) => r.name.toLowerCase(),
+      cell: (r) => (
+        <div>
+          <div className="font-medium">{r.name}</div>
+          {r.plate !== null && r.plate !== '' && (
+            <div className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+              {r.plate}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'imei',
+      header: t('devices.imei'),
+      hideOnMobile: true,
+      cell: (r) => <span className="mono text-xs">{r.imei}</span>,
+    },
+    {
+      key: 'status',
+      header: t('devices.status'),
+      sortable: true,
+      sortValue: statusOf,
+      filterValue: statusOf,
+      filterOptions: [
+        { value: 'active', label: t('devices.active') },
+        { value: 'retired', label: t('devices.retired') },
+      ],
+      cell: (r) =>
+        r.retiredAt === null ? <Badge tone="success">{t('devices.active')}</Badge> : <Badge tone="neutral">{t('devices.retired')}</Badge>,
+    },
+    {
+      key: 'odometer',
+      header: t('devices.odometer'),
+      cell: (r) => (
+        <select
+          value={r.odometerSource}
+          disabled={r.retiredAt !== null}
+          aria-label={t('devices.odometer')}
+          data-testid={`odometer-${r.imei}`}
+          onChange={(e) => void updateDevice(r.id, { odometerSource: e.target.value as OdometerSource }).then(refresh).catch(() => undefined)}
+          className="h-7 rounded-md border px-1 text-xs disabled:opacity-50"
+          style={selectStyle}
+        >
+          {ODOMETER_SOURCES.map((s) => (
+            <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
+          ))}
+        </select>
+      ),
+    },
+  ]
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t('devices.title')} description={t('devices.desc')} />
+    <div className="mx-auto max-w-7xl space-y-4 px-4 py-6 md:px-8 md:py-8">
+      <PageHeader className="mb-2" title={t('devices.title')} description={t('devices.desc')}>
+        <Sheet open={importOpen} onOpenChange={setImportOpen}>
+          <SheetTrigger asChild>
+            <AdminButton variant="secondary" data-testid="import-open">
+              <Upload className="h-4 w-4" aria-hidden />
+              {t('devices.import.open')}
+            </AdminButton>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-lg">
+            <SheetHeader>
+              <SheetTitle>{t('devices.import.title')}</SheetTitle>
+            </SheetHeader>
+            <ImportSheetBody onImported={refresh} />
+          </SheetContent>
+        </Sheet>
+        <Sheet open={addOpen} onOpenChange={setAddOpen}>
+          <SheetTrigger asChild>
+            <AdminButton data-testid="device-add-open">
+              <Plus className="h-4 w-4" aria-hidden />
+              {t('devices.add')}
+            </AdminButton>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>{t('devices.addTitle')}</SheetTitle>
+            </SheetHeader>
+            <CreateDeviceForm
+              accounts={accounts.data ?? []}
+              profiles={profiles.data ?? []}
+              onCreated={() => {
+                refresh()
+                setAddOpen(false)
+              }}
+              onCancel={() => setAddOpen(false)}
+            />
+          </SheetContent>
+        </Sheet>
+      </PageHeader>
+
       {retireError !== null && (
         <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="retire-error">
           {t('devices.retireError', { imei: retireError })}
@@ -89,152 +190,37 @@ export function DevicesPage() {
         </p>
       )}
 
-      {getCurrentUser()?.role === 'platform_admin' && <QuarantineSection />}
-
-      <CreateDeviceForm
-        accounts={accounts.data ?? []}
-        profiles={profiles.data ?? []}
-        onCreated={refresh}
-      />
-
-      <ImportCard onImported={refresh} />
-
-      <div className="admin-card overflow-hidden">
-        <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
-          {t('devices.list')}
+      {devices.isLoading ? (
+        <div className="admin-card space-y-2 p-4">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-8 w-full" />
+          ))}
         </div>
-        {devices.isLoading ? (
-          <div className="space-y-2 p-4">
-            {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-8 w-full" />
-            ))}
-          </div>
-        ) : devices.isError ? (
-          <p className="p-4 text-sm" style={{ color: 'var(--admin-danger)' }}>{t('devices.loadError')}</p>
-        ) : (devices.data ?? []).length === 0 ? (
-          <p className="p-4 text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('devices.empty')}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="devices-table">
-              <thead>
-                <tr style={{ background: 'var(--admin-surface-sunken)' }}>
-                  <th scope="col" className={th} style={thStyle}>{t('devices.name')}</th>
-                  <th scope="col" className={th} style={thStyle}>{t('devices.imei')}</th>
-                  <th scope="col" className={th} style={thStyle}>{t('devices.odometer')}</th>
-                  <th scope="col" className={th} style={thStyle}>{t('devices.status')}</th>
-                  <th scope="col" className={th} style={thStyle}><span className="sr-only">{t('devices.actions')}</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(devices.data ?? []).map((d) => (
-                  <tr
-                    key={d.id}
-                    className="admin-hairline-b transition-colors hover:bg-[var(--admin-surface-sunken)]"
-                    data-testid={`device-${d.imei}`}
-                  >
-                    <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--admin-ink)' }}>{d.name}</td>
-                    <td className="mono px-4 py-2.5 text-xs" style={{ color: 'var(--admin-ink)' }}>{d.imei}</td>
-                    <td className="px-4 py-2.5">
-                      <select
-                        value={d.odometerSource}
-                        disabled={d.retiredAt !== null}
-                        aria-label={t('devices.odometer')}
-                        data-testid={`odometer-${d.imei}`}
-                        onChange={(e) => void updateDevice(d.id, { odometerSource: e.target.value as OdometerSource }).then(refresh).catch(() => undefined)}
-                        className="h-7 rounded-md border px-1 text-xs disabled:opacity-50"
-                        style={selectStyle}
-                      >
-                        {ODOMETER_SOURCES.map((s) => (
-                          <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {d.retiredAt !== null ? (
-                        <span className="inline-flex items-center gap-2">
-                          <Badge tone="neutral">{t('devices.retired')}</Badge>
-                          {isAdmin && (
-                            <AdminButton
-                              variant="ghost"
-                              size="sm"
-                              style={{ color: 'var(--admin-danger)' }}
-                              data-testid={`erase-${d.imei}`}
-                              onClick={() => {
-                                if (eraseArmedId !== d.id) {
-                                  setEraseArmedId(d.id) // first click arms — GDPR erase is irreversible
-                                  return
-                                }
-                                setEraseArmedId(null)
-                                void eraseDevice(d.id)
-                                  .then(() => setEraseQueued(true))
-                                  .catch(() => setEraseError(true))
-                              }}
-                            >
-                              {eraseArmedId === d.id ? t('devices.eraseConfirm') : t('devices.erase')}
-                            </AdminButton>
-                          )}
-                        </span>
-                      ) : (
-                        <Badge tone="success">{t('devices.active')}</Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {d.retiredAt === null && (
-                        <>
-                          <AdminButton
-                            variant="ghost"
-                            size="sm"
-                            data-testid={`health-${d.imei}`}
-                            onClick={() => setHealthForId((cur) => (cur === d.id ? null : d.id))}
-                          >
-                            {t('devices.healthBtn')}
-                          </AdminButton>
-                          <AdminButton
-                            variant="ghost"
-                            size="sm"
-                            data-testid={`onboarding-${d.imei}`}
-                            onClick={() => setOnboardForId((cur) => (cur === d.id ? null : d.id))}
-                          >
-                            {t('devices.onboard')}
-                          </AdminButton>
-                          <AdminButton
-                            variant="ghost"
-                            size="sm"
-                            data-testid={`commands-${d.imei}`}
-                            onClick={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
-                          >
-                            {t('devices.commands')}
-                          </AdminButton>
-                          <AdminButton
-                            variant="ghost"
-                            size="sm"
-                            data-testid={`share-${d.imei}`}
-                            onClick={() => setShareForId((cur) => (cur === d.id ? null : d.id))}
-                          >
-                            {t('devices.share.button')}
-                          </AdminButton>
-                          <AdminButton
-                            variant="ghost"
-                            size="sm"
-                            data-testid={`retire-${d.imei}`}
-                            onClick={() => {
-                              void retireDevice(d.id)
-                                .then(refresh)
-                                .catch(() => setRetireError(d.imei))
-                            }}
-                          >
-                            {t('devices.retire')}
-                          </AdminButton>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      ) : devices.isError ? (
+        <p className="text-sm" style={{ color: 'var(--admin-danger)' }}>{t('devices.loadError')}</p>
+      ) : (
+        <DataTable
+          data-testid="devices-table"
+          data={devices.data ?? []}
+          columns={columns}
+          searchKeys={['name', 'plate', 'imei']}
+          pageSize={12}
+          emptyLabel={t('devices.empty')}
+          rowTestId={(d) => `device-${d.imei}`}
+          rowAction={(d) => (
+            <RowMenu
+              device={d}
+              isAdmin={isAdmin}
+              onHealth={() => setHealthForId((cur) => (cur === d.id ? null : d.id))}
+              onOnboard={() => setOnboardForId((cur) => (cur === d.id ? null : d.id))}
+              onCommands={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
+              onShare={() => setShareForId((cur) => (cur === d.id ? null : d.id))}
+              onRetire={() => setRetireForId(d.id)}
+              onErase={() => setEraseForId(d.id)}
+            />
+          )}
+        />
+      )}
 
       {/* key remounts the panel per device — armed/text state must NEVER survive a device
           switch (a confirm armed for device A must not send with one click on device B) */}
@@ -243,11 +229,122 @@ export function DevicesPage() {
       {onboardFor !== null && <OnboardingCard key={onboardFor.id} device={onboardFor} />}
       {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
       {shareFor !== null && <ShareCard key={shareFor.id} device={shareFor} />}
+
+      {getCurrentUser()?.role === 'platform_admin' && <QuarantineSection />}
+
+      <ConfirmDialog
+        open={retireFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setRetireForId(null)
+        }}
+        tone="danger"
+        title={t('devices.retire')}
+        description={retireFor !== null ? t('devices.retireSure', { name: retireFor.name, imei: retireFor.imei }) : undefined}
+        confirmLabel={t('devices.retire')}
+        onConfirm={() => {
+          const d = retireFor
+          if (d === null) return
+          setRetireError(null)
+          void retireDevice(d.id)
+            .then(refresh)
+            .catch(() => setRetireError(d.imei))
+        }}
+      />
+      <ConfirmDialog
+        open={eraseFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setEraseForId(null)
+        }}
+        tone="danger"
+        title={t('devices.erase')}
+        description={eraseFor !== null ? t('devices.eraseSure', { name: eraseFor.name }) : undefined}
+        confirmLabel={t('devices.eraseConfirm')}
+        onConfirm={() => {
+          const d = eraseFor
+          if (d === null) return
+          setEraseQueued(false)
+          setEraseError(false)
+          void eraseDevice(d.id)
+            .then(() => setEraseQueued(true))
+            .catch(() => setEraseError(true))
+        }}
+      />
     </div>
   )
 }
 
-function FieldLabel({ label, children }: { label: string; children: React.ReactNode }) {
+/** Per-row "..." actions menu (Lovable rowAction idiom): sub-card toggles for active devices,
+ * retire behind ConfirmDialog; retired devices expose GDPR erase (admin-only). */
+function RowMenu({
+  device,
+  isAdmin,
+  onHealth,
+  onOnboard,
+  onCommands,
+  onShare,
+  onRetire,
+  onErase,
+}: {
+  device: Device
+  isAdmin: boolean
+  onHealth: () => void
+  onOnboard: () => void
+  onCommands: () => void
+  onShare: () => void
+  onRetire: () => void
+  onErase: () => void
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const active = device.retiredAt === null
+  if (!active && !isAdmin) return null // a retired device has no non-admin actions
+
+  const item = (testid: string, label: string, onClick: () => void, danger = false) => (
+    <button
+      type="button"
+      data-testid={testid}
+      onClick={() => {
+        setOpen(false)
+        onClick()
+      }}
+      className="block w-full rounded px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-[var(--admin-surface-sunken)]"
+      style={{ color: danger ? 'var(--admin-danger)' : 'var(--admin-ink)' }}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={t('devices.actions')}
+          data-testid={`row-menu-${device.imei}`}
+          className="grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-[var(--admin-surface-sunken)]"
+        >
+          <MoreHorizontal className="h-4 w-4" style={{ color: 'var(--admin-ink-soft)' }} aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-48 p-1">
+        {active ? (
+          <>
+            {item(`health-${device.imei}`, t('devices.healthBtn'), onHealth)}
+            {item(`onboarding-${device.imei}`, t('devices.onboard'), onOnboard)}
+            {item(`commands-${device.imei}`, t('devices.commands'), onCommands)}
+            {item(`share-${device.imei}`, t('devices.share.button'), onShare)}
+            <div className="admin-hairline-t my-1" aria-hidden />
+            {item(`retire-${device.imei}`, t('devices.retire'), onRetire, true)}
+          </>
+        ) : (
+          item(`erase-${device.imei}`, t('devices.erase'), onErase, true)
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
       {label}
@@ -260,14 +357,17 @@ function CreateDeviceForm({
   accounts,
   profiles,
   onCreated,
+  onCancel,
 }: {
   accounts: { id: string; name: string }[]
   profiles: { id: string; key: string; name: string }[]
   onCreated: () => void
+  onCancel: () => void
 }) {
   const { t } = useTranslation()
   const [imei, setImei] = useState('')
   const [name, setName] = useState('')
+  const [plate, setPlate] = useState('')
   const [accountId, setAccountId] = useState('')
   const [profileId, setProfileId] = useState('')
   const [odometerSource, setOdometerSource] = useState<OdometerSource>('auto')
@@ -281,12 +381,8 @@ function CreateDeviceForm({
     e.preventDefault()
     setBusy(true)
     setError(null)
-    createDevice({ accountId: acc, profileId: prof, imei, name, odometerSource })
-      .then(() => {
-        setImei('')
-        setName('')
-        onCreated()
-      })
+    createDevice({ accountId: acc, profileId: prof, imei, name, plate: plate.trim() === '' ? null : plate.trim(), odometerSource })
+      .then(() => onCreated()) // parent closes the sheet; unmount resets the form
       .catch((err: unknown) => {
         setError(err instanceof ApiError && err.status === 409 ? t('devices.dupImei') : t('devices.createError'))
       })
@@ -294,52 +390,53 @@ function CreateDeviceForm({
   }
 
   return (
-    <div className="admin-card">
-      <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
-        {t('devices.add')}
-      </div>
-      <div className="p-4">
-        <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
-          <FieldLabel label={t('devices.imei')}>
-            <AdminInput value={imei} onChange={(e) => setImei(e.target.value)} required pattern="\d{15}" placeholder={t('devices.imeiPh')} data-testid="device-imei" className="w-48" />
-          </FieldLabel>
-          <FieldLabel label={t('devices.name')}>
-            <AdminInput value={name} onChange={(e) => setName(e.target.value)} required data-testid="device-name" className="w-48" />
-          </FieldLabel>
-          <FieldLabel label={t('devices.account')}>
-            <select value={acc} onChange={(e) => setAccountId(e.target.value)} className="h-9 rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-account">
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-          </FieldLabel>
-          <FieldLabel label={t('devices.profile')}>
-            <select value={prof} onChange={(e) => setProfileId(e.target.value)} className="h-9 rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-profile">
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </FieldLabel>
-          <FieldLabel label={t('devices.odometer')}>
-            <select value={odometerSource} onChange={(e) => setOdometerSource(e.target.value as OdometerSource)} className="h-9 rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-odometer">
-              {ODOMETER_SOURCES.map((s) => (
-                <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
-              ))}
-            </select>
-          </FieldLabel>
-          <AdminButton type="submit" disabled={busy || imei === '' || name === '' || acc === '' || prof === ''} data-testid="device-create">
-            {t('devices.create')}
-          </AdminButton>
-          {error !== null && (
-            <p role="alert" data-testid="device-error" className="w-full text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>
-          )}
-        </form>
-      </div>
-    </div>
+    <form onSubmit={submit} className="mt-2 flex flex-col gap-3">
+      <Field label={t('devices.imei')}>
+        <AdminInput value={imei} onChange={(e) => setImei(e.target.value)} required pattern="\d{15}" placeholder={t('devices.imeiPh')} data-testid="device-imei" />
+      </Field>
+      <Field label={t('devices.name')}>
+        <AdminInput value={name} onChange={(e) => setName(e.target.value)} required data-testid="device-name" />
+      </Field>
+      <Field label={t('devices.plate')}>
+        <AdminInput value={plate} onChange={(e) => setPlate(e.target.value)} maxLength={32} data-testid="device-plate" />
+      </Field>
+      <Field label={t('devices.account')}>
+        <select value={acc} onChange={(e) => setAccountId(e.target.value)} className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-account">
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label={t('devices.profile')}>
+        <select value={prof} onChange={(e) => setProfileId(e.target.value)} className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-profile">
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label={t('devices.odometer')}>
+        <select value={odometerSource} onChange={(e) => setOdometerSource(e.target.value as OdometerSource)} className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-odometer">
+          {ODOMETER_SOURCES.map((s) => (
+            <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
+          ))}
+        </select>
+      </Field>
+      {error !== null && (
+        <p role="alert" data-testid="device-error" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>
+      )}
+      <SheetFooter className="mt-2">
+        <AdminButton variant="secondary" onClick={onCancel}>{t('admin.cancel')}</AdminButton>
+        <AdminButton type="submit" disabled={busy || imei === '' || name === '' || acc === '' || prof === ''} data-testid="device-create">
+          {t('devices.create')}
+        </AdminButton>
+      </SheetFooter>
+    </form>
   )
 }
 
-function ImportCard({ onImported }: { onImported: () => void }) {
+/** CSV import wizard (dry-run → apply) inside the header Sheet. Same flow/testids as before;
+ * closing the sheet unmounts it, so each open starts a fresh wizard. */
+function ImportSheetBody({ onImported }: { onImported: () => void }) {
   const { t } = useTranslation()
   const [csv, setCsv] = useState('')
   const [preview, setPreview] = useState<DryRunResult | null>(null)
@@ -368,54 +465,49 @@ function ImportCard({ onImported }: { onImported: () => void }) {
   }
 
   return (
-    <div className="admin-card">
-      <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
-        {t('devices.import.title')}
-      </div>
-      <div className="space-y-3 p-4">
-        <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('devices.import.hint')}</p>
-        <textarea
-          value={csv}
-          onChange={(e) => setCsv(e.target.value)}
-          rows={4}
-          aria-label={t('devices.import.title')}
-          placeholder="imei,name,profileKey,accountId"
-          data-testid="import-csv"
-          className="mono w-full rounded-md border p-2 text-xs outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30"
-          style={selectStyle}
-        />
-        <div className="flex items-center gap-2">
-          <AdminButton variant="secondary" size="sm" disabled={busy || csv === ''} onClick={runPreview} data-testid="import-preview">
-            {t('devices.import.preview')}
-          </AdminButton>
-          {preview !== null && (
-            <AdminButton size="sm" disabled={busy || preview.create.length === 0} onClick={apply} data-testid="import-apply">
-              {t('devices.import.apply', { n: preview.create.length })}
-            </AdminButton>
-          )}
-          {applied !== null && (
-            <span className="text-sm" style={{ color: 'var(--admin-success)' }} data-testid="import-done">{t('devices.import.done', { n: applied })}</span>
-          )}
-        </div>
+    <div className="mt-2 space-y-3">
+      <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('devices.import.hint')}</p>
+      <textarea
+        value={csv}
+        onChange={(e) => setCsv(e.target.value)}
+        rows={6}
+        aria-label={t('devices.import.title')}
+        placeholder="imei,name,profileKey,accountId"
+        data-testid="import-csv"
+        className="mono w-full rounded-md border p-2 text-xs outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30"
+        style={selectStyle}
+      />
+      <div className="flex items-center gap-2">
+        <AdminButton variant="secondary" size="sm" disabled={busy || csv === ''} onClick={runPreview} data-testid="import-preview">
+          {t('devices.import.preview')}
+        </AdminButton>
         {preview !== null && (
-          <div className="text-xs" data-testid="import-summary">
-            <div className="flex gap-4">
-              <span style={{ color: 'var(--admin-success)' }}>{t('devices.import.create', { n: preview.create.length })}</span>
-              <span style={{ color: 'var(--admin-warning)' }}>{t('devices.import.update', { n: preview.update.length })}</span>
-              <span style={{ color: 'var(--admin-danger)' }}>{t('devices.import.errors', { n: preview.errors.length })}</span>
-            </div>
-            {preview.errors.length > 0 && (
-              <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto">
-                {preview.errors.slice(0, 50).map((e, i) => (
-                  <li key={i} style={{ color: 'var(--admin-danger)' }}>
-                    {t('devices.import.rowError', { row: e.row, imei: e.imei, reason: e.reason })}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <AdminButton size="sm" disabled={busy || preview.create.length === 0} onClick={apply} data-testid="import-apply">
+            {t('devices.import.apply', { n: preview.create.length })}
+          </AdminButton>
+        )}
+        {applied !== null && (
+          <span className="text-sm" style={{ color: 'var(--admin-success)' }} data-testid="import-done">{t('devices.import.done', { n: applied })}</span>
         )}
       </div>
+      {preview !== null && (
+        <div className="text-xs" data-testid="import-summary">
+          <div className="flex gap-4">
+            <span style={{ color: 'var(--admin-success)' }}>{t('devices.import.create', { n: preview.create.length })}</span>
+            <span style={{ color: 'var(--admin-warning)' }}>{t('devices.import.update', { n: preview.update.length })}</span>
+            <span style={{ color: 'var(--admin-danger)' }}>{t('devices.import.errors', { n: preview.errors.length })}</span>
+          </div>
+          {preview.errors.length > 0 && (
+            <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto">
+              {preview.errors.slice(0, 50).map((e, i) => (
+                <li key={i} style={{ color: 'var(--admin-danger)' }}>
+                  {t('devices.import.rowError', { row: e.row, imei: e.imei, reason: e.reason })}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }

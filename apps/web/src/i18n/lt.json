@@ -261,7 +261,11 @@
     "fuelLiters": "{{l}} l",
     "skipStart": "Į pradžią",
     "skipEnd": "Į pabaigą",
-    "scrub": "Atkūrimo pozicija"
+    "scrub": "Atkūrimo pozicija",
+    "play": "Groti",
+    "pause": "Pauzė",
+    "point": "taškas {{i}} / {{n}}",
+    "speed": "Greitis"
   },
   "geofences": {
     "title": "Geozonos",
@@ -393,7 +397,8 @@
       "create": "{{n}} kurti",
       "update": "{{n}} esami",
       "errors": "{{n}} klaidų",
-      "rowError": "Eilutė {{row}} ({{imei}}): {{reason}}"
+      "rowError": "Eilutė {{row}} ({{imei}}): {{reason}}",
+      "open": "Importuoti CSV"
     },
     "retireError": "Nepavyko išregistruoti įrenginio {{imei}}.",
     "odometer": "Odometras",
@@ -504,7 +509,11 @@
       "caveat": "Šio įrenginio šeima gali naudoti kitus parametrus — pasitikrinkite Teltonikos wiki savo modeliui."
     },
     "imeiPh": "15 skaitmenų",
-    "actions": "Veiksmai"
+    "actions": "Veiksmai",
+    "addTitle": "Naujas įrenginys",
+    "plate": "Valst. numeris (nebūtina)",
+    "retireSure": "Išregistruoti {{name}} ({{imei}})? Nuo šiol šis IMEI bus atmetamas.",
+    "eraseSure": "Negrįžtamai ištrinti visus {{name}} duomenis? Istorija, kelionės, įvykiai ir komandos bus ištrinti. To atšaukti negalima."
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",

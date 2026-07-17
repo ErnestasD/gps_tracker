@@ -261,7 +261,11 @@
     "fuelLiters": "{{l}} l",
     "skipStart": "Zum Anfang",
     "skipEnd": "Zum Ende",
-    "scrub": "Wiedergabeposition"
+    "scrub": "Wiedergabeposition",
+    "play": "Abspielen",
+    "pause": "Pause",
+    "point": "Punkt {{i}} / {{n}}",
+    "speed": "Geschwindigkeit"
   },
   "geofences": {
     "title": "Geozonen",
@@ -393,7 +397,8 @@
       "create": "{{n}} zu erstellen",
       "update": "{{n}} vorhanden",
       "errors": "{{n}} Fehler",
-      "rowError": "Zeile {{row}} ({{imei}}): {{reason}}"
+      "rowError": "Zeile {{row}} ({{imei}}): {{reason}}",
+      "open": "CSV importieren"
     },
     "retireError": "Gerät {{imei}} konnte nicht stillgelegt werden.",
     "odometer": "Kilometerzähler",
@@ -504,7 +509,11 @@
       "caveat": "Diese Gerätefamilie verwendet evtl. andere Parameter — im Teltonika-Wiki für Ihr Modell prüfen."
     },
     "imeiPh": "15 Ziffern",
-    "actions": "Aktionen"
+    "actions": "Aktionen",
+    "addTitle": "Neues Gerät",
+    "plate": "Kennzeichen (optional)",
+    "retireSure": "{{name}} ({{imei}}) stilllegen? Diese IMEI wird ab sofort abgelehnt.",
+    "eraseSure": "Alle Daten von {{name}} dauerhaft löschen? Verlauf, Fahrten, Ereignisse und Befehle werden gelöscht. Dies kann nicht rückgängig gemacht werden."
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",
