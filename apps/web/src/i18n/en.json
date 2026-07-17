@@ -44,7 +44,12 @@
     "close": "Close",
     "theme": "Toggle theme",
     "overview": "Overview",
-    "routing": "Routes"
+    "routing": "Routes",
+    "search": "Search…",
+    "searchHint": "Jump to a page or find a device…",
+    "palettePages": "Pages",
+    "paletteDevices": "Devices",
+    "paletteEmpty": "No results"
   },
   "routing": {
     "title": "Route planner",
@@ -772,7 +777,10 @@
     "prev": "Previous",
     "next": "Next",
     "pick": "Select…",
-    "allOf": "{{header}}: all"
+    "allOf": "{{header}}: all",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "confirmTitle": "Are you sure?"
   },
   "dash": {
     "title": "Overview",
@@ -798,5 +806,11 @@
     "tsp_admin": "Organization admin",
     "account_manager": "Account manager",
     "viewer": "Viewer"
+  },
+  "bell": {
+    "title": "Notifications",
+    "markAll": "Mark all read",
+    "empty": "No notifications",
+    "viewAll": "All events"
   }
 }

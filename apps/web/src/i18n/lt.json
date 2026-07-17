@@ -44,7 +44,12 @@
     "close": "Uždaryti",
     "theme": "Perjungti temą",
     "overview": "Apžvalga",
-    "routing": "Maršrutai"
+    "routing": "Maršrutai",
+    "search": "Ieškoti…",
+    "searchHint": "Pereiti į puslapį ar rasti įrenginį…",
+    "palettePages": "Puslapiai",
+    "paletteDevices": "Įrenginiai",
+    "paletteEmpty": "Nieko nerasta"
   },
   "routing": {
     "title": "Maršrutų planuoklė",
@@ -772,7 +777,10 @@
     "prev": "Ankstesnis",
     "next": "Kitas",
     "pick": "Pasirinkti…",
-    "allOf": "{{header}}: visi"
+    "allOf": "{{header}}: visi",
+    "confirm": "Patvirtinti",
+    "cancel": "Atšaukti",
+    "confirmTitle": "Ar tikrai?"
   },
   "dash": {
     "title": "Apžvalga",
@@ -798,5 +806,11 @@
     "tsp_admin": "Organizacijos administratorius",
     "account_manager": "Paskyros vadybininkas",
     "viewer": "Žiūrėtojas"
+  },
+  "bell": {
+    "title": "Pranešimai",
+    "markAll": "Pažymėti visus skaitytais",
+    "empty": "Pranešimų nėra",
+    "viewAll": "Visi įvykiai"
   }
 }
