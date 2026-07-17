@@ -90,7 +90,7 @@ export function buildTrailFeatures(points: readonly TrailPoint[]): GeoJSON.Featu
 
 /**
  * The perf keystone (E02-6 AC: 500 devices, no jank). WS messages only mutate a
- * Map between flushes — zero React/MapLibre work per message. A 1 Hz flush rebuilds
+ * Map between flushes — zero React/Mapbox work per message. A 1 Hz flush rebuilds
  * the GeoJSON for the map sink and a React snapshot with STABLE refs for unchanged
  * devices, so memoized DeviceList rows skip re-render. Max-wins on fixTimeMs mirrors
  * the server's LiveState (buffered floods must never regress a marker).

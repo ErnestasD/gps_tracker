@@ -10,6 +10,7 @@ coverage/
 .env
 .env.*
 !.env.example
+# ADR-030: the web Mapbox token is a PUBLIC pk. token (URL-restricted) — committed deliberately
 
 # claude code
 .claude/worktrees/

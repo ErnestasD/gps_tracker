@@ -6,6 +6,8 @@ node_modules
 orbetra_design
 .env
 .env.*
+# ADR-030: public pk. Mapbox token — the web vite build inside the image reads it
+!apps/web/.env
 .claude
 apps/web/dist
 playwright-report

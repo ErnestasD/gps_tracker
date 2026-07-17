@@ -1,25 +1,23 @@
-import maplibregl, { Map as MlMap } from 'maplibre-gl'
+import type { Map as MbMap, Marker } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { mapboxgl, styleForTheme } from '@/lib/map'
 import { expiryLabel, fetchPublicShare, type PublicShare } from '@/lib/share'
 
-/** Same free-stack tiles as the live map (rule 13); provider swap = env change. */
-const STYLE_URL: string =
-  (import.meta.env.VITE_TILES_STYLE_URL as string | undefined) ?? 'https://tiles.openfreemap.org/styles/liberty'
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 const POLL_MS = 15_000
 
 /**
  * PUBLIC live-tracking page (V1-nice) — no login. Resolves a share token to ONE device's latest
  * valid position and polls it. A 404 (expired/revoked/unknown) renders a friendly notice, never a
- * crash. OSM attribution stays visible (rule 13).
+ * crash. Mapbox attribution stays visible (TOS, ADR-030).
  */
 export function SharePage({ token }: { token: string }) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<MlMap | null>(null)
-  const markerRef = useRef<maplibregl.Marker | null>(null)
+  const mapRef = useRef<MbMap | null>(null)
+  const markerRef = useRef<Marker | null>(null)
   const [share, setShare] = useState<PublicShare | null>(null)
   const [state, setState] = useState<'loading' | 'ok' | 'gone' | 'error'>('loading')
 
@@ -42,19 +40,23 @@ export function SharePage({ token }: { token: string }) {
     return () => { alive = false; clearInterval(iv) }
   }, [token])
 
-  // init map once
+  // init map once — this public page has no in-app theme toggle, so the style follows
+  // the OS theme, read ONCE at load (no onThemeChange subscription; ADR-030)
   useEffect(() => {
     const container = containerRef.current
     if (!container || mapRef.current) return
-    const map = new MlMap({
+    const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches
+    const map = new mapboxgl.Map({
       container,
-      style: STYLE_URL,
+      style: styleForTheme(prefersLight ? 'light' : 'dark'), // dark-first, like the app shell
       center: VILNIUS,
       zoom: 12,
-      attributionControl: { compact: false, customAttribution: '© OpenStreetMap contributors' },
+      // Mapbox attribution + logo stay visible on every map view (TOS, ADR-030)
+      attributionControl: true,
+      antialias: true,
     })
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
-    map.on('error', (e) => console.error('maplibre', e.error))
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
+    map.on('error', (e) => console.error('mapbox', e.error))
     mapRef.current = map
     return () => { map.remove(); mapRef.current = null }
   }, [])
@@ -65,7 +67,7 @@ export function SharePage({ token }: { token: string }) {
     const pos = share?.position
     if (!map || !pos) return
     const lngLat: [number, number] = [pos.lon, pos.lat]
-    if (!markerRef.current) markerRef.current = new maplibregl.Marker({ color: '#7C5CFC' }).setLngLat(lngLat).addTo(map)
+    if (!markerRef.current) markerRef.current = new mapboxgl.Marker({ color: '#7C5CFC' }).setLngLat(lngLat).addTo(map)
     else markerRef.current.setLngLat(lngLat)
     map.easeTo({ center: lngLat, duration: 600 })
   }, [share])

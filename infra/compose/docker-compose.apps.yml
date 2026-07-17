@@ -127,7 +127,10 @@ services:
   web:
     image: orbetra-app:latest
     # serves the PRE-BUILT dist (vite preview — the e2e-tested path); /v1+/ws go through
-    # Caddy, so the SPA never needs an absolute API origin
+    # Caddy, so the SPA never needs an absolute API origin.
+    # Mapbox (ADR-030): VITE_MAPBOX_TOKEN is baked into the dist at IMAGE BUILD time from
+    # the committed apps/web/.env (public pk. token) — runtime env cannot change it; to
+    # rotate the token, update apps/web/.env and rebuild `compose build app-base`.
     command: ["pnpm", "--filter", "@orbetra/web", "exec", "vite", "preview", "--host", "0.0.0.0", "--port", "5173"]
     restart: unless-stopped
     environment:

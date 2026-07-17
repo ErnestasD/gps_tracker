@@ -5,7 +5,7 @@
 @import '@fontsource/space-grotesk/700.css';
 @import '@fontsource/jetbrains-mono/400.css';
 @import '@fontsource/jetbrains-mono/500.css';
-@import 'maplibre-gl/dist/maplibre-gl.css';
+@import 'mapbox-gl/dist/mapbox-gl.css';
 
 /* Tailwind v4 theme mapping: utilities like bg-surface, text-muted, border-line,
  * text-accent come straight from the token variables. */
@@ -88,8 +88,8 @@ samp {
   border-radius: 6px;
 }
 
-/* keep OSM attribution legible on the dark shell (rule 13: always visible) */
-.maplibregl-ctrl-attrib {
+/* keep Mapbox attribution legible on the dark shell (rule 13 / ADR-030: always visible) */
+.mapboxgl-ctrl-attrib {
   font-size: 11px;
 }
 

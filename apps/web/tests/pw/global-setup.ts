@@ -93,8 +93,10 @@ async function setup(): Promise<void> {
   // 5. build against the offline style (AC[4] env-swap proof) + preview
   // vite is apps/web's OWN devDep — its .bin lives there, not at the root
   // (root hoisting differs between local installs and CI frozen-lockfile)
+  // Both theme styles point at the offline dev style — no Mapbox tile network in e2e;
+  // hermetic e2e: dummy token (offline dev-style.json — no Mapbox endpoint is ever hit)
   const viteBin = `${REPO_ROOT}/apps/web/node_modules/.bin/vite`
-  if ((await runToExit(viteBin, ['build', 'apps/web'], { VITE_TILES_STYLE_URL: '/dev-style.json' })) !== 0)
+  if ((await runToExit(viteBin, ['build', 'apps/web'], { VITE_MAPBOX_STYLE_DARK: '/dev-style.json', VITE_MAPBOX_STYLE_LIGHT: '/dev-style.json', VITE_MAPBOX_TOKEN: 'pk.e2e-dummy-offline' })) !== 0)
     throw new Error('vite build failed')
   spawnChild(
     viteBin,

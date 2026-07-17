@@ -25,7 +25,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
-          // headless WebGL for MapLibre in CI
+          // headless WebGL for Mapbox GL in CI
           args: ['--enable-unsafe-swiftshader', '--use-gl=swiftshader'],
         },
       },

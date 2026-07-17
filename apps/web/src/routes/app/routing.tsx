@@ -1,14 +1,14 @@
 import type { RouteOptimizeResult } from '@orbetra/shared'
-import maplibregl, { Map as MlMap, LngLatBounds } from 'maplibre-gl'
+import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, PageHeader } from '@/components/admin/AdminKit'
 import { ApiError } from '@/lib/http'
+import { createThemedMap, mapboxgl } from '@/lib/map'
 import { optimizeRoute, parseStopsText } from '@/lib/routing'
 import { fmtDuration, fmtKm } from '@/lib/trips'
 
-const STYLE_URL: string = (import.meta.env.VITE_TILES_STYLE_URL as string | undefined) ?? 'https://tiles.openfreemap.org/styles/liberty'
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 // ADR-028 palette (PlaybackMap COLORS): route = --accent, stop markers = cursor purple
 const COLORS = { route: '#7C7DF5', stop: '#7C5CFC' }
@@ -31,9 +31,11 @@ function stopFeatures(stops: { lat: number; lon: number; label?: string }[]): Ge
 export function RoutePlannerPage() {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<MlMap | null>(null)
+  const mapRef = useRef<MbMap | null>(null)
   const loadedRef = useRef(false)
-  const [ready, setReady] = useState(false)
+  // bumps on EVERY style.load (initial + theme swaps, ADR-030) so the stops/route
+  // effect re-applies its data to the freshly rebuilt (empty) sources
+  const [styleEpoch, setStyleEpoch] = useState(0)
   const [mapError, setMapError] = useState(false) // tile CDN blocked / WebGL failure (geofences.tsx pattern)
   const [text, setText] = useState('')
   const [roundtrip, setRoundtrip] = useState(true)
@@ -47,55 +49,67 @@ export function RoutePlannerPage() {
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const map = new MlMap({ container, style: STYLE_URL, center: VILNIUS, zoom: 10, attributionControl: { compact: false, customAttribution: '© OpenStreetMap contributors' } })
+    const { map, unsubscribe } = createThemedMap(container, { center: VILNIUS, zoom: 10 })
     mapRef.current = map
-    ;(container as HTMLDivElement & { __map?: MlMap }).__map = map
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
-    map.on('error', (e) => console.error('maplibre', e.error))
+    ;(container as HTMLDivElement & { __map?: MbMap }).__map = map
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
+    map.on('error', (e) => console.error('mapbox', e.error))
     // if the base map never loads, the click-to-add flow is silently dead — surface it
     const loadTimer = setTimeout(() => { if (!loadedRef.current) setMapError(true) }, 8000)
-    map.on('load', () => {
+    let disposed = false
+    // idempotent: style.load re-fires after every theme setStyle (layers were dropped)
+    map.on('style.load', () => {
+      if (disposed) return
       clearTimeout(loadTimer)
       loadedRef.current = true
-      map.addSource('route', { type: 'geojson', data: emptyFC })
-      map.addSource('stops', { type: 'geojson', data: emptyFC })
-      map.addLayer({ id: 'route-line', type: 'line', source: 'route', paint: { 'line-color': COLORS.route, 'line-width': 3, 'line-opacity': 0.9 } })
-      map.addLayer({ id: 'stops-circle', type: 'circle', source: 'stops', paint: { 'circle-radius': 9, 'circle-color': COLORS.stop, 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
-      // visit numbers on the markers (Noto Sans is in the OpenFreeMap liberty glyph set)
-      map.addLayer({ id: 'stops-order', type: 'symbol', source: 'stops', layout: { 'text-field': ['get', 'n'], 'text-size': 11, 'text-font': ['Noto Sans Regular'], 'text-allow-overlap': true }, paint: { 'text-color': '#fff' } })
-      // click appends a stop line to the textarea (no address search — no Photon proxy in v1)
-      map.on('click', (e) => {
-        const line = `${e.lngLat.wrap().lat.toFixed(5)},${e.lngLat.wrap().lng.toFixed(5)}`
-        setText((prev) => (prev.trimEnd() === '' ? `${line}\n` : `${prev.trimEnd()}\n${line}\n`))
-        setResult(null)
-      })
-      setReady(true)
+      if (!map.getSource('route')) {
+        map.addSource('route', { type: 'geojson', data: emptyFC })
+        map.addSource('stops', { type: 'geojson', data: emptyFC })
+        map.addLayer({ id: 'route-line', type: 'line', source: 'route', paint: { 'line-color': COLORS.route, 'line-width': 3, 'line-opacity': 0.9 } })
+        map.addLayer({ id: 'stops-circle', type: 'circle', source: 'stops', paint: { 'circle-radius': 9, 'circle-color': COLORS.stop, 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
+        // visit numbers on the markers — Mapbox-hosted font stack (same as LiveMap's
+        // cluster-count); the offline dev/e2e style has no glyphs, so skip there
+        if (map.getStyle()?.glyphs !== undefined) {
+          map.addLayer({ id: 'stops-order', type: 'symbol', source: 'stops', layout: { 'text-field': ['get', 'n'], 'text-size': 11, 'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'], 'text-allow-overlap': true }, paint: { 'text-color': '#fff' } })
+        }
+      }
+      setStyleEpoch((e) => e + 1)
+    })
+    // map-level (non-layer) handler: registered once, unaffected by theme setStyle.
+    // click appends a stop line to the textarea (no address search — no Photon proxy in v1)
+    map.on('click', (e) => {
+      const line = `${e.lngLat.wrap().lat.toFixed(5)},${e.lngLat.wrap().lng.toFixed(5)}`
+      setText((prev) => (prev.trimEnd() === '' ? `${line}\n` : `${prev.trimEnd()}\n${line}\n`))
+      setResult(null)
     })
     return () => {
+      disposed = true
       clearTimeout(loadTimer)
       loadedRef.current = false
+      unsubscribe()
       map.remove()
       mapRef.current = null
-      setReady(false)
+      setStyleEpoch(0)
     }
   }, [])
 
-  // stops + route on the map; fit bounds when an optimized result lands
+  // stops + route on the map (re-applied after every theme swap); fit bounds when an
+  // optimized result lands
   useEffect(() => {
     const map = mapRef.current
-    if (map === null || !ready) return
+    if (map === null || styleEpoch === 0) return
     const stops = result?.stops ?? parsed.stops
-    map.getSource<maplibregl.GeoJSONSource>('stops')?.setData(stopFeatures(stops))
-    map.getSource<maplibregl.GeoJSONSource>('route')?.setData(
+    map.getSource<GeoJSONSource>('stops')?.setData(stopFeatures(stops))
+    map.getSource<GeoJSONSource>('route')?.setData(
       result === null ? emptyFC : { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: result.geometry, properties: {} }] },
     )
     if (result !== null && result.geometry.coordinates.length > 0) {
       const first = result.geometry.coordinates[0]!
-      const b = new LngLatBounds(first, first)
+      const b = new mapboxgl.LngLatBounds(first, first)
       for (const c of result.geometry.coordinates) b.extend(c)
       map.fitBounds(b, { padding: 48, maxZoom: 14, duration: 400 })
     }
-  }, [result, text, ready]) // parsed derives from text
+  }, [result, text, styleEpoch]) // parsed derives from text
 
   const optimize = () => {
     if (parsed.stops.length < 2 || parsed.errors.length > 0 || busy) return
