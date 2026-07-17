@@ -61,7 +61,8 @@
     "errors": {
       "unroutable": "Nepavyko sudaryti maršruto — įsitikinkite, kad visi sustojimai yra aprėpties regione (Lietuvoje).",
       "unavailable": "Maršrutų optimizavimas šioje aplinkoje neprieinamas.",
-      "parse": "Patikrinkite eilutę {{lines}} — formatas: lat,lon[,pavadinimas]"
+      "parse": "Patikrinkite eilutę {{lines}} — formatas: lat,lon[,pavadinimas]",
+      "rateLimited": "Per daug užklausų — pabandykite po minutės"
     }
   },
   "billing": {

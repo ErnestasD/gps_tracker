@@ -67,7 +67,8 @@ services:
     volumes:
       - osrm_data:/data
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- "http://localhost:5000/nearest/v1/driving/25.2797,54.6872" || exit 1']
+      # image has neither wget nor curl (verified) — bash /dev/tcp is the liveness probe
+      test: ['CMD-SHELL', 'timeout 3 bash -c "</dev/tcp/localhost/5000"']
       interval: 30s
       timeout: 5s
       retries: 10

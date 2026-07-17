@@ -61,7 +61,8 @@
     "errors": {
       "unroutable": "Could not route these stops — make sure every stop is inside the covered region (Lithuania).",
       "unavailable": "Route optimization is not available on this environment.",
-      "parse": "Check line {{lines}} — expected: lat,lon[,label]"
+      "parse": "Check line {{lines}} — expected: lat,lon[,label]",
+      "rateLimited": "Too many requests — try again in a minute"
     }
   },
   "billing": {

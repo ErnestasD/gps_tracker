@@ -61,7 +61,8 @@
     "errors": {
       "unroutable": "Nie udało się wyznaczyć trasy — upewnij się, że wszystkie przystanki są w obsługiwanym regionie (Litwa).",
       "unavailable": "Optymalizacja tras jest niedostępna w tym środowisku.",
-      "parse": "Sprawdź linię {{lines}} — format: lat,lon[,etykieta]"
+      "parse": "Sprawdź linię {{lines}} — format: lat,lon[,etykieta]",
+      "rateLimited": "Zbyt wiele żądań — spróbuj za minutę"
     }
   },
   "billing": {

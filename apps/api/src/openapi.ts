@@ -84,7 +84,7 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
   add('post', '/v1/routing/optimize', {
     tags: ['routing'],
     summary: 'Optimize a multi-stop route (self-hosted OSRM trip, ADR-029)',
-    security: WRITE_SEC,
+    security: READ_SEC,
     responses: {
       '200': { description: 'OK' },
       '400': { description: 'Bad request' },

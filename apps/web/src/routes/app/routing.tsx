@@ -65,7 +65,7 @@ export function RoutePlannerPage() {
       map.addLayer({ id: 'stops-order', type: 'symbol', source: 'stops', layout: { 'text-field': ['get', 'n'], 'text-size': 11, 'text-font': ['Noto Sans Regular'], 'text-allow-overlap': true }, paint: { 'text-color': '#fff' } })
       // click appends a stop line to the textarea (no address search — no Photon proxy in v1)
       map.on('click', (e) => {
-        const line = `${e.lngLat.lat.toFixed(5)},${e.lngLat.lng.toFixed(5)}`
+        const line = `${e.lngLat.wrap().lat.toFixed(5)},${e.lngLat.wrap().lng.toFixed(5)}`
         setText((prev) => (prev.trimEnd() === '' ? `${line}\n` : `${prev.trimEnd()}\n${line}\n`))
         setResult(null)
       })
@@ -105,7 +105,7 @@ export function RoutePlannerPage() {
       .then(setResult)
       .catch((err: unknown) => {
         setResult(null)
-        setError(err instanceof ApiError && err.status === 422 ? t('routing.errors.unroutable') : t('routing.errors.unavailable'))
+        setError(err instanceof ApiError && err.status === 422 ? t('routing.errors.unroutable') : err instanceof ApiError && err.status === 429 ? t('routing.errors.rateLimited') : t('routing.errors.unavailable'))
       })
       .finally(() => setBusy(false))
   }
