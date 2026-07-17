@@ -43,7 +43,27 @@
     "menu": "Otwórz menu",
     "close": "Zamknij",
     "theme": "Przełącz motyw",
-    "overview": "Przegląd"
+    "overview": "Przegląd",
+    "routing": "Trasy"
+  },
+  "routing": {
+    "title": "Planer tras",
+    "desc": "Optymalna kolejność przystanków na rzeczywistych drogach (zasięg pilotażu: Litwa).",
+    "pasteHint": "Jeden przystanek na linię: lat,lon[,etykieta]",
+    "addByClick": "Kliknij mapę, aby dodać przystanek.",
+    "optimize": "Optymalizuj",
+    "roundtrip": "Powrót do startu (pętla)",
+    "stop": "Przystanek",
+    "order": "#",
+    "leg": "Do następnego",
+    "total": "Razem",
+    "empty": "Wklej przystanki lub kliknij mapę, a następnie uruchom optymalizację.",
+    "errors": {
+      "unroutable": "Nie udało się wyznaczyć trasy — upewnij się, że wszystkie przystanki są w obsługiwanym regionie (Litwa).",
+      "unavailable": "Optymalizacja tras jest niedostępna w tym środowisku.",
+      "parse": "Sprawdź linię {{lines}} — format: lat,lon[,etykieta]",
+      "rateLimited": "Zbyt wiele żądań — spróbuj za minutę"
+    }
   },
   "billing": {
     "title": "Płatności",

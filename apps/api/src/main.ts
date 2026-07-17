@@ -61,6 +61,8 @@ const deps = {
   ...(stripe !== undefined ? { stripe } : {}),
   ...(process.env['APP_BASE_URL'] ? { appBaseUrl: process.env['APP_BASE_URL'] } : {}),
   ...(process.env['VAPID_PUBLIC_KEY'] ? { vapidPublicKey: process.env['VAPID_PUBLIC_KEY'] } : {}),
+  // OSRM route optimization (ADR-029): unset ⇒ POST /v1/routing/optimize answers 503
+  ...(process.env['OSRM_URL'] ? { osrm: { url: process.env['OSRM_URL'] } } : {}),
   redisSub,
   db,
   pool,

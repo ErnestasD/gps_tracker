@@ -96,6 +96,10 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-}
       # Web Push (ADR-026) — the API serves the PUBLIC key to the browser; absent ⇒ push unavailable
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      # OSRM route optimization (ADR-029) — empty until staging preps the osrm volume
+      # (infra/osrm/README.md), then set OSRM_URL=http://osrm:5000 in /opt/orbetra/.env;
+      # absent ⇒ POST /v1/routing/optimize answers 503 and the web page degrades
+      OSRM_URL: ${OSRM_URL:-}
     volumes:
       # the GDPR download route streams the file the WORKER wrote — same volume on both
       # (review HIGH: without this every export download 410s "file removed")

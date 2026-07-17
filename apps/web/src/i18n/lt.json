@@ -43,7 +43,27 @@
     "menu": "Atidaryti meniu",
     "close": "Uždaryti",
     "theme": "Perjungti temą",
-    "overview": "Apžvalga"
+    "overview": "Apžvalga",
+    "routing": "Maršrutai"
+  },
+  "routing": {
+    "title": "Maršrutų planuoklė",
+    "desc": "Optimalus kelių sustojimų maršruto eiliškumas realiais keliais (pilotinė aprėptis: Lietuva).",
+    "pasteHint": "Po vieną sustojimą eilutėje: lat,lon[,pavadinimas]",
+    "addByClick": "Spustelėkite žemėlapį, kad pridėtumėte sustojimą.",
+    "optimize": "Optimizuoti",
+    "roundtrip": "Grįžti į pradžią (žiedinis)",
+    "stop": "Sustojimas",
+    "order": "#",
+    "leg": "Iki kito",
+    "total": "Iš viso",
+    "empty": "Įklijuokite sustojimus arba spustelėkite žemėlapį, tada paleiskite optimizavimą.",
+    "errors": {
+      "unroutable": "Nepavyko sudaryti maršruto — įsitikinkite, kad visi sustojimai yra aprėpties regione (Lietuvoje).",
+      "unavailable": "Maršrutų optimizavimas šioje aplinkoje neprieinamas.",
+      "parse": "Patikrinkite eilutę {{lines}} — formatas: lat,lon[,pavadinimas]",
+      "rateLimited": "Per daug užklausų — pabandykite po minutės"
+    }
   },
   "billing": {
     "title": "Atsiskaitymai",

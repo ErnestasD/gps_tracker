@@ -234,8 +234,10 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       jwtSecret: 'x'.repeat(32), jwtTtlS: 900, refreshTtlS: 3600,
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
-    // Hono exposes registered routes; the auth/public + infra routes are exempt
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/share|driver-scores|stream|reports|api-keys|billing|webhooks|push|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
+    // Hono exposes registered routes; the auth/public + infra routes are exempt.
+    // `routing` (ADR-029) is a stateless OSRM proxy — reads/writes NO tenant data,
+    // so there is no tenant boundary for the manifest harness to defend.
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/share|driver-scores|routing|stream|reports|api-keys|billing|webhooks|push|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)
@@ -251,7 +253,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     app.get('/v1/sneaky', (c) => c.json({}))
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/share|driver-scores|stream|reports|api-keys|billing|webhooks|push|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/share|driver-scores|routing|stream|reports|api-keys|billing|webhooks|push|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)

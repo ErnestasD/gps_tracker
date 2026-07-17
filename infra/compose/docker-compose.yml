@@ -54,6 +54,27 @@ services:
       # first boot downloads GBs of index — tolerate a long warmup (E01-2 edge case)
       start_period: 15m
 
+  # OSRM route optimization backend (ADR-029). Behind a profile: local `make up` SKIPS it
+  # (devs lack the prepared LT extract — see infra/osrm/README.md; the API 503-degrades).
+  # Staging enables with COMPOSE_PROFILES=osrm AFTER preparing the osrm_data volume.
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    profiles: [osrm]
+    # --max-trip-size 100: the API caps requests at 50 stops, well below this
+    command: osrm-routed --algorithm mld --max-trip-size 100 /data/lithuania-latest.osrm
+    ports:
+      - '127.0.0.1:5001:5000'
+    volumes:
+      - osrm_data:/data
+    healthcheck:
+      # image has neither wget nor curl (verified) — bash /dev/tcp is the liveness probe
+      test: ['CMD-SHELL', 'timeout 3 bash -c "</dev/tcp/localhost/5000"']
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      # MLD data files are mmapped on boot — tolerate a slow first load
+      start_period: 2m
+
   uptime-kuma:
     image: louislam/uptime-kuma:1
     ports:
@@ -150,6 +171,7 @@ volumes:
   pg_data:
   redis_data:
   photon_data:
+  osrm_data:
   kuma_data:
   prom_data:
   grafana_data:

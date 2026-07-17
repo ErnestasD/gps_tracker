@@ -69,6 +69,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `STRIPE_INCLUDED` | apps/api + apps/worker | `basePriceId:count,…` — included device count per TSP plan; the daily reporter bills devices beyond it |
 | `STRIPE_METER_EVENT` | apps/api + apps/worker | Stripe meter event name for overage; default `orbetra_device_overage` |
 | `APP_BASE_URL` | apps/api | absolute base for Checkout/portal return URLs (e.g. `https://app.orbetra.com`); falls back to the request Origin |
+| `OSRM_URL` | apps/api | self-hosted OSRM base URL for route optimization (ADR-029), e.g. `http://osrm:5000`; unset ⇒ `POST /v1/routing/optimize` answers 503. Prep the data volume first (`infra/osrm/README.md`) |
 | `TELEGRAM_BOT_TOKEN` | apps/worker + infra/alertmanager | notification delivery (E05-5) AND ops alerts (W7-S1); unset = alerts visible in UI only, no push |
 | `TELEGRAM_ALERT_CHAT_ID` | infra/alertmanager | founders' chat id for ops alerts (W7-S1) |
 | pgBackRest repo | infra/pgbackrest/pgbackrest.conf | local volume now; swap to Hetzner Storage Box SFTP for real DR (W7-S2, founder-gated) |

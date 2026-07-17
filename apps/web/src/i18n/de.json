@@ -43,7 +43,27 @@
     "menu": "Menü öffnen",
     "close": "Schließen",
     "theme": "Design umschalten",
-    "overview": "Übersicht"
+    "overview": "Übersicht",
+    "routing": "Routen"
+  },
+  "routing": {
+    "title": "Routenplaner",
+    "desc": "Optimale Stopp-Reihenfolge auf echten Straßen (Pilotabdeckung: Litauen).",
+    "pasteHint": "Ein Stopp pro Zeile: lat,lon[,Bezeichnung]",
+    "addByClick": "Klicken Sie auf die Karte, um einen Stopp hinzuzufügen.",
+    "optimize": "Optimieren",
+    "roundtrip": "Zurück zum Start (Rundfahrt)",
+    "stop": "Stopp",
+    "order": "#",
+    "leg": "Bis zum nächsten",
+    "total": "Gesamt",
+    "empty": "Stopps einfügen oder auf die Karte klicken, dann optimieren.",
+    "errors": {
+      "unroutable": "Route konnte nicht berechnet werden — stellen Sie sicher, dass alle Stopps im abgedeckten Gebiet (Litauen) liegen.",
+      "unavailable": "Routenoptimierung ist in dieser Umgebung nicht verfügbar.",
+      "parse": "Prüfen Sie Zeile {{lines}} — Format: lat,lon[,Bezeichnung]",
+      "rateLimited": "Zu viele Anfragen — in einer Minute erneut versuchen"
+    }
   },
   "billing": {
     "title": "Abrechnung",

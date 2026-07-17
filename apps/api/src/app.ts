@@ -19,6 +19,7 @@ import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { mountReports } from './routes/reports.js'
 import { mountDriverScores } from './routes/driverScores.js'
+import { mountRouting } from './routes/routing.js'
 import { mountBilling, mountStripeWebhook } from './routes/billing.js'
 import { mountPush } from './routes/push.js'
 import type { StripeGateway } from './billing/stripe.js'
@@ -61,6 +62,10 @@ export interface ApiDeps extends WsDeps {
   appBaseUrl?: string
   /** VAPID public key for Web Push (ADR-026); absent ⇒ push unavailable (client sees a null key). */
   vapidPublicKey?: string
+  /** self-hosted OSRM for route optimization (ADR-029); absent ⇒ /v1/routing/optimize 503s. */
+  osrm?: { url: string; fetchImpl?: typeof fetch }
+  /** route-optimization per-user rate limit (ADR-029); default 30/min. */
+  routingRateLimit?: { max: number; windowS: number }
 }
 
 export interface ApiProm {
@@ -213,6 +218,13 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
 
   // Driver safety scoring (V2) — dedicated read route, EXEMPT from the manifest (aggregate result).
   mountDriverScores(app, { db: deps.db, pool: deps.pool })
+  // Route optimization (ADR-029) — stateless OSRM proxy, no tenant data; manifest-EXEMPT.
+  mountRouting(app, {
+    redis: deps.redis,
+    ...(deps.osrm !== undefined ? { osrmUrl: deps.osrm.url } : {}),
+    ...(deps.osrm?.fetchImpl !== undefined ? { fetchImpl: deps.osrm.fetchImpl } : {}),
+    ...(deps.routingRateLimit !== undefined ? { rateLimit: deps.routingRateLimit } : {}),
+  })
   // billing (ADR-024) — tenant-self, admin-only; manifest-exempt with a dedicated isolation test
   mountBilling(app, { db: deps.db, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl })
   // Web Push subscriptions (ADR-026) — tenant-self, manifest-exempt

@@ -17,6 +17,7 @@ import { BrandingPage } from '@/routes/app/branding'
 import { PlaybackPage } from '@/routes/app/playback'
 import { TripsPage } from '@/routes/app/trips'
 import { GeofencesPage } from '@/routes/app/geofences'
+import { RoutePlannerPage } from '@/routes/app/routing'
 import { ApiKeysPage } from '@/routes/app/apiKeys'
 import { PlatformPage } from '@/routes/app/platform'
 import { EventsPage } from '@/routes/app/events'
@@ -140,6 +141,12 @@ const tripsRoute = createRoute({
   component: TripsPage,
 })
 
+const routingRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/routing',
+  component: RoutePlannerPage,
+})
+
 const geofencesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/geofences',
@@ -198,7 +205,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   shareRoute,
-  appRoute.addChildren([appIndexRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([appIndexRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })
