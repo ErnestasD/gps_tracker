@@ -4,13 +4,12 @@ import { useTranslation } from 'react-i18next'
 
 import { PlaybackMap } from '@/components/PlaybackMap'
 import { Badge, PageHeader } from '@/components/admin/AdminKit'
+import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { listDrivers } from '@/lib/drivers'
 import { defaultRange, listPositions } from '@/lib/playback'
 import { assignTripDriver, fmtDuration, fmtKm, listTrips, tripDurationMs } from '@/lib/trips'
 import type { TripView } from '@orbetra/shared'
-
-const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' })
 
 const fieldStyle: React.CSSProperties = {
   borderColor: 'var(--admin-hairline)',
@@ -25,6 +24,7 @@ const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)', backgroun
  * Admin re-skin (ADR-028): PageHeader carries the filters; list/detail are admin-cards. */
 export function TripsPage() {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const [deviceId, setDeviceId] = useState('')
   const [range, setRange] = useState(() => defaultRange(Date.now()))
@@ -111,7 +111,7 @@ export function TripsPage() {
                       style={selected?.id === tr.id ? { background: 'var(--admin-surface-sunken)' } : undefined}
                     >
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink)' }}>
-                        {fmt.format(new Date(tr.startTime))}
+                        {dt(tr.startTime)}
                         {tr.status === 'open' && <Badge tone="warning" className="ml-2">{t('trips.ongoing')}</Badge>}
                       </td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{fmtDuration(tripDurationMs(tr, Date.now()))}</td>

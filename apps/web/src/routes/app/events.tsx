@@ -4,11 +4,11 @@ import { Fragment, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/AdminKit'
+import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { EVENT_KINDS, listEvents, localizedEventSummary, type EventRow } from '@/lib/events'
 
 const PAGE = 50
-const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
 
 const selectCls = 'h-8 rounded-md border px-2 text-xs outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30'
 const selectStyle: CSSProperties = { borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }
@@ -30,6 +30,7 @@ const TONE: Record<Severity, 'danger' | 'warning' | 'info'> = { critical: 'dange
  * and time range; expand a row for the raw payload. Cursor-paginated (newest first). */
 export function EventsPage() {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const [kind, setKind] = useState('')
   const [deviceId, setDeviceId] = useState('')
   const [from, setFrom] = useState('')
@@ -107,7 +108,7 @@ export function EventsPage() {
                 {rows.map((r) => (
                   <Fragment key={r.id}>
                     <tr className="border-t" style={{ borderColor: 'var(--admin-hairline)' }} data-testid={`event-row-${r.id}`}>
-                      <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{fmt.format(new Date(r.at))}</td>
+                      <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{dt(r.at)}</td>
                       <td className="px-3 py-2"><Badge tone={TONE[severityOf(r.kind)]}>{t(`events.k.${r.kind}`, r.kind)}</Badge></td>
                       <td className="px-3 py-2">{deviceName(r.deviceId)}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--admin-ink-soft)' }}>{localizedEventSummary(t, r)}</td>

@@ -4,12 +4,14 @@ import { useTranslation } from 'react-i18next'
 
 import { chartPoints } from '@/components/SpeedChart'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useFmt } from '@/lib/datetime'
 import { getHealth, voltageSeries } from '@/lib/health'
 import type { Device } from '@/lib/devices'
 
 /** Device-health panel (V1-nice): GSM bars, voltage trend, last-seen, firmware. */
 export function HealthCard({ device }: { device: Device }) {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const health = useQuery({ queryKey: ['health', device.id], queryFn: () => getHealth(device.id) })
   const volts = useMemo(() => voltageSeries(health.data?.series ?? []), [health.data])
   const pts = useMemo(() => chartPoints(volts.values, 600, 80, 6), [volts.values])
@@ -33,7 +35,7 @@ export function HealthCard({ device }: { device: Device }) {
               <Stat label={t('devices.health.gsm')} value={gsm === null ? '—' : <GsmBars level={gsm} />} testid="health-gsm" />
               <Stat label={t('devices.health.extV')} value={latest?.extV != null ? `${latest.extV.toFixed(1)} V` : '—'} testid="health-extv" />
               <Stat label={t('devices.health.battV')} value={latest?.battV != null ? `${latest.battV.toFixed(2)} V` : '—'} testid="health-battv" />
-              <Stat label={t('devices.health.lastSeen')} value={health.data?.lastSeen ? new Date(health.data.lastSeen).toLocaleString() : '—'} testid="health-lastseen" />
+              <Stat label={t('devices.health.lastSeen')} value={health.data?.lastSeen ? dt(health.data.lastSeen) : '—'} testid="health-lastseen" />
               <Stat label={t('devices.health.firmware')} value={health.data?.firmware ?? t('devices.health.fwUnknown')} testid="health-fw" />
             </div>
             <div>

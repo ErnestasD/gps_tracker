@@ -14,6 +14,7 @@ import {
   sendCommand,
   statusVariant,
 } from '@/lib/commands'
+import { useFmt } from '@/lib/datetime'
 import type { Device } from '@/lib/devices'
 
 /** Codec-12 command panel for one device (E08-2b): 10 presets + free text + history.
@@ -21,6 +22,7 @@ import type { Device } from '@/lib/devices'
  * confirm, the second click sends; changing the text or picking another preset disarms. */
 export function CommandsCard({ device }: { device: Device }) {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const qc = useQueryClient()
   const [text, setText] = useState('')
   const [armed, setArmed] = useState(false)
@@ -149,7 +151,7 @@ export function CommandsCard({ device }: { device: Device }) {
                     <td className="max-w-64 truncate py-2 pr-4 font-mono text-xs" title={c.response ?? ''}>
                       {c.response ?? '—'}
                     </td>
-                    <td className="py-2 pr-4 text-xs text-muted">{new Date(c.createdAt).toLocaleString()}</td>
+                    <td className="py-2 pr-4 text-xs text-muted">{dt(c.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
