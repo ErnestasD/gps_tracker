@@ -96,10 +96,13 @@ export function StatCard({
 }: React.HTMLAttributes<HTMLDivElement> & {
   label: string
   value: React.ReactNode
-  delta?: { value: string; tone: 'up' | 'down' | 'flat' }
+  /** tone = arrow direction; sentiment = badge color when direction ≠ goodness
+   *  (e.g. critical events UP is bad → tone 'up' + sentiment 'bad' renders a red ↑). */
+  delta?: { value: string; tone: 'up' | 'down' | 'flat'; sentiment?: 'good' | 'bad' | 'neutral' }
   hint?: string
   spark?: number[]
 }) {
+  const sentiment = delta?.sentiment ?? (delta?.tone === 'up' ? 'good' : delta?.tone === 'down' ? 'bad' : 'neutral')
   return (
     <div className="admin-card flex flex-col gap-2 p-3 sm:p-4" {...props}>
       <div className="flex items-start justify-between gap-2">
@@ -107,7 +110,7 @@ export function StatCard({
           {label}
         </span>
         {delta !== undefined && (
-          <Badge tone={delta.tone === 'up' ? 'success' : delta.tone === 'down' ? 'danger' : 'neutral'} className="shrink-0 !text-[10px]">
+          <Badge tone={sentiment === 'good' ? 'success' : sentiment === 'bad' ? 'danger' : 'neutral'} className="shrink-0 !text-[10px]">
             {delta.tone === 'up' ? '↑' : delta.tone === 'down' ? '↓' : '→'} {delta.value}
           </Badge>
         )}
