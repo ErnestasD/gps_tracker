@@ -1,8 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState, type CSSProperties, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { listAccounts } from '@/lib/devices'
 import { listGeofences } from '@/lib/geofences'
 import { ApiError } from '@/lib/http'
@@ -11,15 +14,23 @@ import { RULE_KINDS, channelDisplay, channelLabel, configFields, createRule, del
 const selectCls = 'h-9 rounded-md border px-2 text-sm outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30'
 const selectStyle: CSSProperties = { borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }
 
-/** Rules CRUD (E05-3): create alert rules with kind-specific config; toggle/delete. */
+/** Rules CRUD (E05-3), rebuilt on the orbetra_design_new app.rules layout (ADR-028 round 2):
+ * the create form lives in a right Sheet behind "Add rule", the list is Lovable card rows
+ * (kind Badge + name, cooldown meta line, channel Badges), the enable toggle stays a native
+ * checkbox (e2e pins rule-enabled-{id}), and delete goes through a danger ConfirmDialog. */
 export function RulesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const rules = useQuery({ queryKey: ['rules'], queryFn: listRules })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const geofences = useQuery({ queryKey: ['geofences'], queryFn: listGeofences })
+  const [addOpen, setAddOpen] = useState(false)
   const [actionError, setActionError] = useState(false)
   const [editChannelsId, setEditChannelsId] = useState<string | null>(null)
+  // delete target resolves against the LIVE list (devices precedent) — a refetch never
+  // leaves the confirm pointed at a stale snapshot
+  const [deleteForId, setDeleteForId] = useState<string | null>(null)
+  const deleteFor = (rules.data ?? []).find((r) => r.id === deleteForId) ?? null
   const refresh = () => void qc.invalidateQueries({ queryKey: ['rules'] })
   const onActionErr = () => setActionError(true)
   // clear a stale error banner before each new toggle/delete so it isn't sticky
@@ -27,9 +38,31 @@ export function RulesPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
-      <PageHeader title={t('rules.title')} description={t('rules.desc')} className="mb-0" />
-
-      <RuleForm accounts={accounts.data ?? []} geofences={geofences.data ?? []} onCreated={refresh} />
+      <PageHeader title={t('rules.title')} description={t('rules.desc')} className="mb-0">
+        <Sheet open={addOpen} onOpenChange={setAddOpen}>
+          <SheetTrigger asChild>
+            <AdminButton data-testid="rule-add-open">
+              <Plus className="h-4 w-4" aria-hidden />
+              {t('rules.add')}
+            </AdminButton>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>{t('rules.addTitle')}</SheetTitle>
+            </SheetHeader>
+            {/* closing the sheet unmounts the form, so each open starts a fresh draft */}
+            <RuleForm
+              accounts={accounts.data ?? []}
+              geofences={geofences.data ?? []}
+              onCreated={() => {
+                refresh()
+                setAddOpen(false)
+              }}
+              onCancel={() => setAddOpen(false)}
+            />
+          </SheetContent>
+        </Sheet>
+      </PageHeader>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('rules.list')}</h2>
@@ -49,9 +82,13 @@ export function RulesPage() {
                   </div>
                   <div className="mt-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('rules.cooldown')}: {t('rules.cooldownValue', { s: r.cooldownS })}</div>
                 </div>
-                {(r.channels ?? []).length > 0
-                  ? <Badge tone="neutral" data-testid={`rule-ch-count-${r.id}`}>{t('rules.channels.count', { n: r.channels.length })}</Badge>
-                  : <span className="text-xs" style={{ color: 'var(--admin-warning)' }} data-testid={`rule-ch-none-${r.id}`}>{t('rules.channels.none')}</span>}
+                {(r.channels ?? []).length > 0 ? (
+                  <div className="flex flex-wrap gap-1" data-testid={`rule-ch-count-${r.id}`}>
+                    {r.channels.map((c) => <Badge key={channelLabel(c)} tone="neutral">{channelDisplay(t, c)}</Badge>)}
+                  </div>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--admin-warning)' }} data-testid={`rule-ch-none-${r.id}`}>{t('rules.channels.none')}</span>
+                )}
                 <AdminButton variant="ghost" size="sm" data-testid={`rule-ch-edit-btn-${r.id}`} onClick={() => setEditChannelsId((cur) => (cur === r.id ? null : r.id))}>{t('rules.channels.edit')}</AdminButton>
                 {/* enable toggle stays a real <input type=checkbox> (e2e pins rule-enabled-{id}) — styled, not swapped */}
                 <label className="flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
@@ -62,18 +99,51 @@ export function RulesPage() {
                   />
                   {t('rules.enabled')}
                 </label>
-                <AdminButton variant="ghost" size="sm" style={{ background: 'transparent', color: 'var(--admin-danger)' }} data-testid={`rule-del-${r.id}`} onClick={() => { clearErr(); void deleteRule(r.id).then(refresh).catch(onActionErr) }}>{t('rules.delete')}</AdminButton>
+                <button
+                  type="button"
+                  aria-label={t('rules.delete')}
+                  data-testid={`rule-del-${r.id}`}
+                  className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)]"
+                  style={{ color: 'var(--admin-danger)' }}
+                  onClick={() => setDeleteForId(r.id)}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                </button>
                 {editChannelsId === r.id && <RuleChannelsEdit rule={r} onSaved={refresh} onCancel={() => setEditChannelsId(null)} />}
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      <ConfirmDialog
+        open={deleteFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setDeleteForId(null)
+        }}
+        tone="danger"
+        title={t('rules.delete')}
+        description={deleteFor !== null ? t('rules.deleteSure', { name: deleteFor.name }) : undefined}
+        confirmLabel={t('rules.delete')}
+        onConfirm={() => {
+          const r = deleteFor
+          if (r === null) return
+          clearErr()
+          void deleteRule(r.id).then(refresh).catch(onActionErr)
+        }}
+      />
     </div>
   )
 }
 
-function RuleForm({ accounts, geofences, onCreated }: { accounts: { id: string; name: string }[]; geofences: { id: string; name: string }[]; onCreated: () => void }) {
+/** Create form inside the header Sheet (devices precedent): vertical fields, all rule-* testids
+ * kept on the same element kinds; Cancel/Create sit in the SheetFooter. */
+function RuleForm({ accounts, geofences, onCreated, onCancel }: {
+  accounts: { id: string; name: string }[]
+  geofences: { id: string; name: string }[]
+  onCreated: () => void
+  onCancel: () => void
+}) {
   const { t } = useTranslation()
   const [kind, setKind] = useState<RuleKind>('overspeed')
   const [name, setName] = useState('')
@@ -102,57 +172,57 @@ function RuleForm({ accounts, geofences, onCreated }: { accounts: { id: string; 
       config[f.key] = f.type === 'number' ? Number(val) : val
     }
     createRule({ accountId: acc, kind, name: name.trim(), config, cooldownS, enabled: true, ...(channels.length > 0 ? { channels } : {}) })
-      .then(() => { setName(''); setCfg({}); setChannels([]); onCreated() })
+      .then(() => onCreated()) // parent closes the sheet; unmount resets the form
       .catch((err: unknown) => setError(err instanceof ApiError && err.status === 400 ? t('rules.invalid') : t('rules.error')))
       .finally(() => setBusy(false))
   }
 
   return (
-    <div className="admin-card p-4 md:p-5">
-      <h2 className="mb-3 font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('rules.add')}</h2>
-      <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
-        <Field label={t('rules.kindLabel')}>
-          <select value={kind} onChange={(e) => { setKind(e.target.value as RuleKind); setCfg({}) }} data-testid="rule-kind" className={selectCls} style={selectStyle}>
-            {RULE_KINDS.map((k) => <option key={k} value={k}>{t(`rules.kind.${k}`)}</option>)}
+    <form onSubmit={submit} className="mt-2 flex flex-col gap-3">
+      <Field label={t('rules.kindLabel')}>
+        <select value={kind} onChange={(e) => { setKind(e.target.value as RuleKind); setCfg({}) }} data-testid="rule-kind" className={selectCls} style={selectStyle}>
+          {RULE_KINDS.map((k) => <option key={k} value={k}>{t(`rules.kind.${k}`)}</option>)}
+        </select>
+      </Field>
+      <Field label={t('rules.name')}>
+        <AdminInput value={name} onChange={(e) => setName(e.target.value)} required data-testid="rule-name" />
+      </Field>
+      {accounts.length > 1 && (
+        <Field label={t('rules.account')}>
+          <select value={acc} onChange={(e) => setAccountId(e.target.value)} data-testid="rule-account" className={selectCls} style={selectStyle}>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </Field>
-        <Field label={t('rules.name')}>
-          <AdminInput value={name} onChange={(e) => setName(e.target.value)} required data-testid="rule-name" className="w-40" />
-        </Field>
-        {accounts.length > 1 && (
-          <Field label={t('rules.account')}>
-            <select value={acc} onChange={(e) => setAccountId(e.target.value)} data-testid="rule-account" className={selectCls} style={selectStyle}>
-              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      )}
+      {fields.map((f) => (
+        <Field key={f.key} label={t(`rules.cfg.${f.key}`)}>
+          {f.type === 'select' && f.key === 'geofenceId' ? (
+            <select value={cfg[f.key] ?? ''} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className={selectCls} style={selectStyle}>
+              <option value="">—</option>
+              {geofences.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
-          </Field>
-        )}
-        {fields.map((f) => (
-          <Field key={f.key} label={t(`rules.cfg.${f.key}`)}>
-            {f.type === 'select' && f.key === 'geofenceId' ? (
-              <select value={cfg[f.key] ?? ''} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className={selectCls} style={selectStyle}>
-                <option value="">—</option>
-                {geofences.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-              </select>
-            ) : f.type === 'select' ? (
-              <select value={cfg[f.key] ?? String(f.default)} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className={selectCls} style={selectStyle}>
-                {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            ) : (
-              <AdminInput type="number" min={f.min} max={f.max} value={cfg[f.key] ?? String(f.default)} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className="w-28" />
-            )}
-          </Field>
-        ))}
-        <Field label={t('rules.cooldown')}>
-          <AdminInput type="number" min={0} max={86_400} value={cooldownS} onChange={(e) => setCooldownS(Number(e.target.value))} data-testid="rule-cooldown" className="w-24" />
+          ) : f.type === 'select' ? (
+            <select value={cfg[f.key] ?? String(f.default)} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className={selectCls} style={selectStyle}>
+              {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          ) : (
+            <AdminInput type="number" min={f.min} max={f.max} value={cfg[f.key] ?? String(f.default)} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className="w-28" />
+          )}
         </Field>
-        {/* notification channels (E05-5) — email needs SES configured on the worker; telegram
-            needs the bot token + pairing. Without a channel the rule fires an event but sends nothing. */}
-        <ChannelsEditor channels={channels} onChange={setChannels} />
+      ))}
+      <Field label={t('rules.cooldown')}>
+        <AdminInput type="number" min={0} max={86_400} value={cooldownS} onChange={(e) => setCooldownS(Number(e.target.value))} data-testid="rule-cooldown" className="w-24" />
+      </Field>
+      {/* notification channels (E05-5) — email needs SES configured on the worker; telegram
+          needs the bot token + pairing. Without a channel the rule fires an event but sends nothing. */}
+      <ChannelsEditor channels={channels} onChange={setChannels} />
+      {missingGeofence && <p className="text-xs" style={{ color: 'var(--admin-warning)' }} data-testid="rule-need-geofence">{t('rules.needGeofence')}</p>}
+      {error !== null && <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>}
+      <SheetFooter className="mt-2">
+        <AdminButton variant="secondary" onClick={onCancel}>{t('admin.cancel')}</AdminButton>
         <AdminButton type="submit" disabled={busy || name.trim() === '' || acc === '' || missingGeofence} data-testid="rule-create">{t('rules.create')}</AdminButton>
-        {missingGeofence && <p className="w-full text-xs" style={{ color: 'var(--admin-warning)' }} data-testid="rule-need-geofence">{t('rules.needGeofence')}</p>}
-        {error !== null && <p role="alert" className="w-full text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>}
-      </form>
-    </div>
+      </SheetFooter>
+    </form>
   )
 }
 

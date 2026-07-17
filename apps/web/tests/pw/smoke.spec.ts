@@ -501,6 +501,8 @@ test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', as
   await page.waitForURL('**/app/map')
 
   await page.goto('/app/rules')
+  // design round 2: the create form lives in a right Sheet behind "Add rule"
+  await page.getByTestId('rule-add-open').click()
   await expect(page.getByTestId('rule-kind')).toBeVisible()
   // overspeed is the default kind → the speed config field is shown
   await expect(page.getByTestId('rule-cfg-speedKmh')).toBeVisible()
@@ -517,11 +519,15 @@ test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', as
   await row.getByRole('checkbox').click()
   await expect(row.getByRole('checkbox')).not.toBeChecked()
 
-  // switching kind to geofence swaps the config fields
+  // switching kind to geofence swaps the config fields (form lives in the Sheet — reopen it)
+  await page.getByTestId('rule-add-open').click()
   await page.getByTestId('rule-kind').selectOption('geofence')
   await expect(page.getByTestId('rule-cfg-on')).toBeVisible()
+  await page.keyboard.press('Escape') // close the sheet to uncover the list
 
+  // delete is gated by a danger ConfirmDialog (round 2)
   await row.getByTestId(/rule-del-/).click()
+  await page.getByTestId('confirm-ok').click()
   await expect(row).toHaveCount(0)
 })
 
@@ -569,6 +575,8 @@ test('api keys: create shows the plaintext once, then revoke (E06-3 UI)', async 
   await page.waitForURL('**/app/map')
 
   await page.goto('/app/api-keys')
+  // design round 2: the create form lives in a right Sheet behind "Create a key"
+  await page.getByTestId('apikey-add-open').click()
   await expect(page.getByTestId('apikey-name')).toBeVisible()
   await page.getByTestId('apikey-name').fill('CI integration')
   await page.getByTestId('apikey-create').click()
@@ -583,7 +591,9 @@ test('api keys: create shows the plaintext once, then revoke (E06-3 UI)', async 
   // it lands in the list, active; revoking flips it
   const row = page.locator('li[data-testid^="apikey-"]').filter({ hasText: 'CI integration' })
   await expect(row).toBeVisible({ timeout: 15_000 })
+  // revoke is gated by a danger ConfirmDialog (round 2)
   await row.getByTestId(/apikey-revoke-/).click()
+  await page.getByTestId('confirm-ok').click()
   await expect(row.getByText(/Revoked|Atšauktas|Widerrufen|Odwołany/)).toBeVisible()
 })
 
@@ -595,6 +605,8 @@ test('webhooks: create (secret shown once) → toggle → delete (E06-4 UI)', as
   await page.waitForURL('**/app/map')
 
   await page.goto('/app/webhooks')
+  // design round 2: the create form lives in a right Sheet behind "Add a webhook"
+  await page.getByTestId('webhook-add-open').click()
   await expect(page.getByTestId('webhook-url')).toBeVisible()
   await page.getByTestId('webhook-url').fill('https://example.com/hook')
   await page.getByTestId('webhook-kind-panic').check()
@@ -610,7 +622,9 @@ test('webhooks: create (secret shown once) → toggle → delete (E06-4 UI)', as
   await expect(row).toBeVisible({ timeout: 15_000 })
   await row.getByRole('checkbox').click() // toggle enabled off
   await expect(row.getByRole('checkbox')).not.toBeChecked()
+  // delete is gated by a danger ConfirmDialog (round 2)
   await row.getByTestId(/webhook-del-/).click()
+  await page.getByTestId('confirm-ok').click()
   await expect(row).toHaveCount(0)
 })
 

@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Trash2 } from 'lucide-react'
 import { useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, Badge } from '@/components/admin/AdminKit'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { createScheduledReport, deleteScheduledReport, listScheduledReports, REPORT_TYPES } from '@/lib/scheduledReports'
 
 const selectCls = 'h-9 rounded-md border px-2 text-sm outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30'
@@ -10,7 +12,8 @@ const selectStyle: CSSProperties = { borderColor: 'var(--admin-hairline)', backg
 const fieldCls = 'flex flex-col gap-1 text-xs'
 const fieldStyle: CSSProperties = { color: 'var(--admin-ink-soft)' }
 
-/** Scheduled emailed reports (V1-nice): pick a report + cadence + recipients; the worker e-mails it. */
+/** Scheduled emailed reports (V1-nice): pick a report + cadence + recipients; the worker e-mails it.
+ * Round 2 (ADR-028): delete goes through a danger ConfirmDialog. */
 export function ScheduledReportsCard({ accountId }: { accountId?: string }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -21,6 +24,9 @@ export function ScheduledReportsCard({ accountId }: { accountId?: string }) {
   const [weekday, setWeekday] = useState(1)
   const [recipients, setRecipients] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // delete target resolves against the LIVE list (devices precedent)
+  const [deleteForId, setDeleteForId] = useState<string | null>(null)
+  const deleteFor = (list.data ?? []).find((s) => s.id === deleteForId) ?? null
 
   const emails = recipients.split(',').map((s) => s.trim()).filter((s) => s.length > 0)
   const canSave = emails.length > 0
@@ -77,13 +83,36 @@ export function ScheduledReportsCard({ accountId }: { accountId?: string }) {
               <Badge tone="brand">{t(`reports.t.${s.reportType}`)}</Badge>
               <span style={{ color: 'var(--admin-ink-soft)' }}>{t(`scheduled.${s.cadence}`)}{s.cadence === 'weekly' && s.weekday != null ? ` · ${t(`scheduled.wd.${s.weekday}`)}` : ''} · {String(s.hourUtc).padStart(2, '0')}:00 UTC</span>
               <span className="truncate">{s.recipients.join(', ')}</span>
-              <AdminButton variant="ghost" size="sm" className="ml-auto" style={{ background: 'transparent', color: 'var(--admin-danger)' }} data-testid={`sr-del-${s.id}`} onClick={() => void deleteScheduledReport(s.id).then(() => qc.invalidateQueries({ queryKey: ['scheduled-reports'] })).catch(() => undefined)}>
-                {t('scheduled.delete')}
-              </AdminButton>
+              <button
+                type="button"
+                aria-label={t('scheduled.delete')}
+                data-testid={`sr-del-${s.id}`}
+                className="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)]"
+                style={{ color: 'var(--admin-danger)' }}
+                onClick={() => setDeleteForId(s.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              </button>
             </li>
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={deleteFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setDeleteForId(null)
+        }}
+        tone="danger"
+        title={t('scheduled.delete')}
+        description={t('scheduled.deleteSure')}
+        confirmLabel={t('scheduled.delete')}
+        onConfirm={() => {
+          const s = deleteFor
+          if (s === null) return
+          void deleteScheduledReport(s.id).then(() => qc.invalidateQueries({ queryKey: ['scheduled-reports'] })).catch(() => undefined)
+        }}
+      />
     </div>
   )
 }

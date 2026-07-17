@@ -1,5 +1,6 @@
 import type { GeofenceView } from '@orbetra/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Circle as CircleIcon, Hexagon, Route as RouteIcon, Trash2 } from 'lucide-react'
 import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,6 +8,7 @@ import { TerraDraw, TerraDrawCircleMode, TerraDrawLineStringMode, TerraDrawPolyg
 import { TerraDrawMapboxGLAdapter } from 'terra-draw-mapbox-gl-adapter'
 
 import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { ApiError } from '@/lib/http'
 import { createGeofence, deleteGeofence, geofenceFeatures, listGeofences } from '@/lib/geofences'
@@ -20,8 +22,13 @@ type DrawMode = 'polygon' | 'circle' | 'linestring' | 'select'
 const fieldCls = 'flex flex-col gap-1 text-xs'
 const fieldStyle = { color: 'var(--admin-ink-soft)' } as const
 
+/** kind → list-row icon (Lovable app.geofences idiom: tinted chip per shape kind). */
+const KIND_ICON = { polygon: Hexagon, circle: CircleIcon, corridor: RouteIcon } as const
+
 /** Geofences (E05-1): draw polygon/circle with terra-draw, save, list, delete.
- *  Corridor (V2): draw a route LineString + a buffer half-width; the server buffers it to a polygon. */
+ *  Corridor (V2): draw a route LineString + a buffer half-width; the server buffers it to a polygon.
+ *  Round 2 (ADR-028): list rows polished to the Lovable idiom (icon chip by kind, name, kind
+ *  Badge) and delete goes through a danger ConfirmDialog. */
 export function GeofencesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -38,6 +45,10 @@ export function GeofencesPage() {
   const [color, setColor] = useState('#4DA3FF')
   const [bufferM, setBufferM] = useState(100) // corridor half-width in metres (10 … 5000)
   const [error, setError] = useState<string | null>(null)
+  // delete target resolves against the LIVE list (devices precedent) — a refetch never
+  // leaves the confirm pointed at a stale snapshot
+  const [deleteForId, setDeleteForId] = useState<string | null>(null)
+  const deleteFor = (geofences.data ?? []).find((g) => g.id === deleteForId) ?? null
 
   // tracked so the mode buttons can expose an active/pressed state (aria-pressed + variant);
   // the ref mirrors let the map-lifecycle closures read the CURRENT values on a theme swap
@@ -220,16 +231,29 @@ export function GeofencesPage() {
               <p className="py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="gf-empty">{t('geofences.empty')}</p>
             ) : (
               <ul className="space-y-1" data-testid="gf-list">
-                {(geofences.data ?? []).map((g: GeofenceView) => (
-                  <li key={g.id} className="flex items-center gap-2 rounded-md border p-2 text-sm" style={{ borderColor: 'var(--admin-hairline)', color: 'var(--admin-ink)' }} data-testid={`gf-${g.id}`}>
-                    <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: g.color }} />
-                    <span className="truncate">{g.name}</span>
-                    <Badge tone="neutral" className="ml-auto">{t(`geofences.${g.kind}`)}</Badge>
-                    <AdminButton variant="ghost" size="sm" style={{ background: 'transparent', color: 'var(--admin-danger)' }} data-testid={`gf-del-${g.id}`} onClick={() => void deleteGeofence(g.id).then(() => qc.invalidateQueries({ queryKey: ['geofences'] })).catch(() => undefined)}>
-                      {t('geofences.delete')}
-                    </AdminButton>
-                  </li>
-                ))}
+                {(geofences.data ?? []).map((g: GeofenceView) => {
+                  const KindIcon = KIND_ICON[g.kind] ?? Hexagon
+                  return (
+                    <li key={g.id} className="flex items-center gap-2 rounded-md border p-2 text-sm" style={{ borderColor: 'var(--admin-hairline)', color: 'var(--admin-ink)' }} data-testid={`gf-${g.id}`}>
+                      {/* tinted icon chip by kind (Lovable idiom): hex color + '22' = ~13% alpha */}
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md" style={{ background: `${g.color}22`, color: g.color }} aria-hidden>
+                        <KindIcon className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="truncate font-medium">{g.name}</span>
+                      <Badge tone="neutral" className="ml-auto">{t(`geofences.${g.kind}`)}</Badge>
+                      <button
+                        type="button"
+                        aria-label={t('geofences.delete')}
+                        data-testid={`gf-del-${g.id}`}
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)]"
+                        style={{ color: 'var(--admin-danger)' }}
+                        onClick={() => setDeleteForId(g.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </div>
@@ -241,6 +265,22 @@ export function GeofencesPage() {
           <MapErrorOverlay show={mapError} testId="geofence-map-error" />
         </div>
       </div>
+
+      <ConfirmDialog
+        open={deleteFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setDeleteForId(null)
+        }}
+        tone="danger"
+        title={t('geofences.delete')}
+        description={deleteFor !== null ? t('geofences.deleteSure', { name: deleteFor.name }) : undefined}
+        confirmLabel={t('geofences.delete')}
+        onConfirm={() => {
+          const g = deleteFor
+          if (g === null) return
+          void deleteGeofence(g.id).then(() => qc.invalidateQueries({ queryKey: ['geofences'] })).catch(() => undefined)
+        }}
+      />
     </div>
   )
 }
