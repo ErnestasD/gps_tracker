@@ -142,6 +142,7 @@ test('settings: theme toggle + password change → re-login with the new passwor
   await expect(page.locator('html')).not.toHaveClass(/light/)
 
   // wrong current password → inline error
+  await page.getByTestId('settings-tab-security').click()
   await page.getByTestId('current-password').fill('definitely-wrong')
   await page.getByTestId('new-password').fill('brand-new-password-1')
   await page.getByTestId('change-password').click()
@@ -164,6 +165,7 @@ test('settings: theme toggle + password change → re-login with the new passwor
 
   // restore the original password so later serial tests can still log in
   await page.goto('/app/settings')
+  await page.getByTestId('settings-tab-security').click()
   await page.getByTestId('current-password').fill(NEW_PW)
   await page.getByTestId('new-password').fill(E2E_PASSWORD)
   await page.getByTestId('change-password').click()

@@ -22,10 +22,11 @@ const TAB_IDS = ['profile', 'security', 'notifications', 'data'] as const
 type TabId = (typeof TAB_IDS)[number]
 
 /** Settings/Profile (E03-2, DASHBOARD_UI_SPEC §4): locale, theme, password change, push, export.
- * Re-skinned onto the admin design (ADR-028). The tab bar is ANCHOR navigation, not panel
+ * Re-skinned onto the admin design (ADR-028). REAL tab panels (founder fix): only the active
+ * tab's panel is visible; all stay MOUNTED via the hidden attribute so form state and queries
  * switching: every section stays mounted and visible because the e2e flow (smoke.spec.ts
  * 'settings: theme toggle + password change') clicks theme-light/theme-dark and then fills
- * current-password with NO tab click in between — hiding non-active panels would break it. */
+ * survive tab switches. The e2e spec clicks the Security tab before the password flow. */
 export function SettingsPage() {
   const { t, i18n } = useTranslation()
   const user = getCurrentUser()
@@ -40,10 +41,7 @@ export function SettingsPage() {
 
   const [activeTab, setActiveTab] = useState<TabId>('profile')
   const sectionRefs = useRef<Partial<Record<TabId, HTMLDivElement | null>>>({})
-  const goTo = (id: TabId) => {
-    setActiveTab(id)
-    sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  const goTo = (id: TabId) => setActiveTab(id)
   const tabs = TAB_IDS.filter((id) => id !== 'data' || isAdmin)
 
   const onTheme = (value: Theme) => {
@@ -87,6 +85,7 @@ export function SettingsPage() {
               type="button"
               role="tab"
               id={`settings-tab-${id}`}
+              data-testid={`settings-tab-${id}`}
               aria-controls={`settings-panel-${id}`}
               aria-selected={active}
               onClick={() => goTo(id)}
@@ -104,7 +103,7 @@ export function SettingsPage() {
       </div>
 
       {/* Profile: identity + appearance (locale/theme) */}
-      <div ref={(el) => { sectionRefs.current.profile = el }} role="tabpanel" id="settings-panel-profile" aria-labelledby="settings-tab-profile" className="admin-card scroll-mt-4">
+      <div ref={(el) => { sectionRefs.current.profile = el }} role="tabpanel" id="settings-panel-profile" hidden={activeTab !== 'profile'} aria-labelledby="settings-tab-profile" className="admin-card scroll-mt-4">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('settings.profile')}
         </div>
@@ -149,7 +148,7 @@ export function SettingsPage() {
       </div>
 
       {/* Security: password change */}
-      <div ref={(el) => { sectionRefs.current.security = el }} role="tabpanel" id="settings-panel-security" aria-labelledby="settings-tab-security" className="admin-card scroll-mt-4">
+      <div ref={(el) => { sectionRefs.current.security = el }} role="tabpanel" id="settings-panel-security" hidden={activeTab !== 'security'} aria-labelledby="settings-tab-security" className="admin-card scroll-mt-4">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('settings.password.title')}
         </div>
@@ -189,13 +188,13 @@ export function SettingsPage() {
       </div>
 
       {/* Notifications: browser push */}
-      <div ref={(el) => { sectionRefs.current.notifications = el }} role="tabpanel" id="settings-panel-notifications" aria-labelledby="settings-tab-notifications" className="scroll-mt-4">
+      <div ref={(el) => { sectionRefs.current.notifications = el }} role="tabpanel" id="settings-panel-notifications" hidden={activeTab !== 'notifications'} aria-labelledby="settings-tab-notifications" className="scroll-mt-4">
         <PushSection />
       </div>
 
       {/* Data: GDPR export (admins only — the server enforces it too) */}
       {isAdmin && (
-        <div ref={(el) => { sectionRefs.current.data = el }} role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" className="scroll-mt-4">
+        <div ref={(el) => { sectionRefs.current.data = el }} role="tabpanel" id="settings-panel-data" hidden={activeTab !== 'data'} aria-labelledby="settings-tab-data" className="scroll-mt-4">
           <ExportSection />
         </div>
       )}
