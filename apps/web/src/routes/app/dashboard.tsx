@@ -6,7 +6,7 @@ import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/Adm
 import { getLastPositions } from '@/lib/api'
 import { dailyKmSeries, eventSeverity, fleetCounts } from '@/lib/dashboard'
 import { listAccounts, listDevices } from '@/lib/devices'
-import { eventSummary, listEvents } from '@/lib/events'
+import { listEvents, localizedEventSummary } from '@/lib/events'
 import { runReport } from '@/lib/reports'
 
 /**
@@ -34,15 +34,22 @@ export function DashboardPage() {
   })
 
   const live = devices.data?.filter((d) => !d.retiredAt) ?? []
-  const counts = fleetCounts(positions.data ?? [], now)
+  const deviceName = new Map(live.map((d) => [String(d.id), d.name]))
+  // presence/latest count only live (non-retired) devices, so they agree with the Devices stat
+  const livePositions = (positions.data ?? []).filter((p) => deviceName.has(String(p.deviceId)))
+  const counts = fleetCounts(livePositions, now)
   const rows = events.data ?? []
+  // the fetch window is capped at 50 — mark the count as a floor when it's full (like events24)
+  const truncated = rows.length >= 50
   const critical = rows.filter((e) => eventSeverity(e.kind) === 'critical').length
   const series = dailyKmSeries(mileage.data?.rows ?? [])
   const weekKm = Math.round(series.reduce((s, d) => s + d.km, 0) * 10) / 10
   const recent = rows.slice(0, 8)
-  const deviceName = new Map(live.map((d) => [String(d.id), d.name]))
-  const latest = [...(positions.data ?? [])].sort((a, b) => b.fixTimeMs - a.fixTimeMs).slice(0, 5)
+  const latest = [...livePositions].sort((a, b) => b.fixTimeMs - a.fixTimeMs).slice(0, 5)
   const maxKm = Math.max(1, ...series.map((s) => s.km))
+  // multi-account tenants: say WHICH account the mileage card covers (it mirrors reports.tsx's
+  // first-account default but had no scope indication)
+  const accName = (accounts.data ?? []).length > 1 ? accounts.data?.[0]?.name : undefined
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
@@ -52,21 +59,28 @@ export function DashboardPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard data-testid="dash-devices" label={t('dash.devices')} value={live.length} hint={t('dash.retiredHint', { n: (devices.data?.length ?? 0) - live.length })} />
-        <StatCard data-testid="dash-online" label={t('dash.online')} value={counts.online} hint={t('dash.staleHint', { n: counts.stale })} />
-        <StatCard data-testid="dash-events" label={t('dash.events24')} value={rows.length >= 50 ? '50+' : rows.length} />
-        <StatCard data-testid="dash-critical" label={t('dash.critical24')} value={critical} {...(critical > 0 ? { delta: { value: String(critical), tone: 'down' as const } } : {})} />
+        <StatCard data-testid="dash-devices" label={t('dash.devices')} value={devices.isError ? '—' : live.length} hint={devices.isError ? t('dash.error') : t('dash.retiredHint', { n: (devices.data?.length ?? 0) - live.length })} />
+        <StatCard data-testid="dash-online" label={t('dash.online')} value={positions.isError ? '—' : counts.online} hint={positions.isError ? t('dash.error') : t('dash.staleHint', { n: counts.stale })} />
+        <StatCard data-testid="dash-events" label={t('dash.events24')} value={events.isError ? '—' : truncated ? '50+' : rows.length} />
+        <StatCard data-testid="dash-critical" label={t('dash.critical24')} value={events.isError ? '—' : `${critical}${truncated ? '+' : ''}`} {...(critical > 0 ? { delta: { value: `${critical}${truncated ? '+' : ''}`, tone: 'down' as const } } : {})} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* 7d mileage — hand-rolled SVG bars (no chart dep, ADR-028) */}
         <section className="admin-card">
           <div className="admin-hairline-b flex items-center justify-between px-4 py-3">
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('dash.mileage7')}</h2>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+              {t('dash.mileage7')}
+              {accName !== undefined && (
+                <span className="ml-2 text-xs font-normal" style={{ color: 'var(--admin-ink-soft)' }} data-testid="dash-mileage-account">{accName}</span>
+              )}
+            </h2>
             {acc !== undefined && series.length > 0 && <Badge tone="brand">{t('units.km', { n: weekKm })}</Badge>}
           </div>
           <div className="p-4">
-            {acc === undefined ? (
+            {accounts.isError || mileage.isError ? (
+              <p role="alert" className="py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="dash-mileage-error">{t('dash.error')}</p>
+            ) : acc === undefined ? (
               <p className="py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('dash.noAccount')}</p>
             ) : series.length === 0 ? (
               <p className="py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="dash-mileage-empty">{t('dash.empty')}</p>
@@ -93,14 +107,15 @@ export function DashboardPage() {
             <AdminButton variant="ghost" size="sm" onClick={() => void navigate({ to: '/app/devices' })}>{t('dash.viewAll')}</AdminButton>
           </div>
           <ul data-testid="dash-latest">
-            {latest.length === 0 && <li className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('dash.empty')}</li>}
+            {positions.isError && <li role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="dash-latest-error">{t('dash.error')}</li>}
+            {!positions.isError && latest.length === 0 && <li className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('dash.empty')}</li>}
             {latest.map((p) => {
               const age = now - p.fixTimeMs
               const tone = age <= 60_000 ? 'success' : age <= 600_000 ? 'warning' : 'neutral'
               return (
                 <li key={p.deviceId} className="admin-hairline-b flex items-center gap-3 px-4 py-2.5 text-sm last:border-b-0">
                   <span className="min-w-0 flex-1 truncate font-medium" style={{ color: 'var(--admin-ink)' }}>{deviceName.get(p.deviceId) ?? p.deviceId}</span>
-                  {p.speed !== null && <span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{Math.round(p.speed)} km/h</span>}
+                  {p.speed !== null && <span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{Math.round(p.speed)} {t('units.kmh')}</span>}
                   <Badge tone={tone}>{t(tone === 'success' ? 'status.online' : tone === 'warning' ? 'status.stale' : 'status.offline')}</Badge>
                 </li>
               )
@@ -116,13 +131,14 @@ export function DashboardPage() {
           <AdminButton variant="ghost" size="sm" onClick={() => void navigate({ to: '/app/events' })}>{t('dash.viewAll')}</AdminButton>
         </div>
         <ul data-testid="dash-recent">
-          {recent.length === 0 && <li className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('dash.empty')}</li>}
+          {events.isError && <li role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="dash-recent-error">{t('dash.error')}</li>}
+          {!events.isError && recent.length === 0 && <li className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('dash.empty')}</li>}
           {recent.map((e) => {
             const sev = eventSeverity(e.kind)
             return (
               <li key={e.id} className="admin-hairline-b flex items-center gap-3 px-4 py-2.5 text-sm last:border-b-0">
                 <Badge tone={sev === 'critical' ? 'danger' : sev === 'warning' ? 'warning' : 'info'}>{t(`events.k.${e.kind}`, e.kind)}</Badge>
-                <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--admin-ink)' }}>{eventSummary(e)}</span>
+                <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--admin-ink)' }}>{localizedEventSummary(t, e)}</span>
                 <span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{e.deviceId}</span>
                 <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{new Date(e.at).toLocaleString()}</span>
               </li>

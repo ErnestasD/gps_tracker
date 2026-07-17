@@ -66,7 +66,7 @@ export function AuditPage() {
                   <th className={th} style={thStyle}>{t('audit.entity')}</th>
                   <th className={th} style={thStyle}>{t('audit.entityId')}</th>
                   <th className={th} style={thStyle}>{t('audit.who')}</th>
-                  <th className="px-4 py-2.5" />
+                  <th className="px-4 py-2.5"><span className="sr-only">{t('audit.details')}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -74,12 +74,13 @@ export function AuditPage() {
                   <Fragment key={r.id}>
                     <tr className="admin-hairline-b transition-colors hover:bg-[var(--admin-surface-sunken)]" data-testid={`audit-row-${r.id}`}>
                       <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{fmt.format(new Date(r.at))}</td>
-                      <td className="px-4 py-2.5"><Badge tone="brand">{t(`audit.a.${r.action}`)}</Badge></td>
+                      {/* destructive actions read as warnings (pre-redesign parity) */}
+                      <td className="px-4 py-2.5"><Badge tone={r.action === 'delete' ? 'warning' : 'brand'}>{t(`audit.a.${r.action}`)}</Badge></td>
                       <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink)' }}>{t(`audit.e.${r.entity}`, r.entity)}</td>
                       <td className="mono px-4 py-2.5 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{r.entityId}</td>
                       <td className="mono px-4 py-2.5 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{r.userId?.slice(0, 8) ?? '—'}</td>
                       <td className="px-4 py-2.5 text-right">
-                        <AdminButton variant="ghost" size="sm" data-testid={`audit-expand-${r.id}`} onClick={() => setOpen((o) => (o === r.id ? null : r.id))}>
+                        <AdminButton variant="ghost" size="sm" data-testid={`audit-expand-${r.id}`} aria-expanded={open === r.id} onClick={() => setOpen((o) => (o === r.id ? null : r.id))}>
                           {open === r.id ? t('audit.hide') : t('audit.details')}
                         </AdminButton>
                       </td>

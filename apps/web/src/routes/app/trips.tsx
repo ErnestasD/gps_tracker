@@ -98,7 +98,16 @@ export function TripsPage() {
                       key={tr.id}
                       data-testid={`trip-row-${tr.id}`}
                       onClick={() => setSelected(tr)}
-                      className="admin-hairline-b cursor-pointer transition-colors hover:bg-[var(--admin-surface-sunken)]"
+                      // keyboard access: rows are the only way to open the detail pane (a11y MED)
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelected(tr)
+                        }
+                      }}
+                      aria-selected={selected?.id === tr.id}
+                      className="admin-hairline-b cursor-pointer transition-colors hover:bg-[var(--admin-surface-sunken)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--admin-brand)]"
                       style={selected?.id === tr.id ? { background: 'var(--admin-surface-sunken)' } : undefined}
                     >
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink)' }}>

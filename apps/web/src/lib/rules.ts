@@ -42,8 +42,20 @@ export function parseChannel(type: 'email' | 'telegram', value: string): Notific
   const r = notificationChannelSchema.safeParse(candidate)
   return r.success ? r.data : null
 }
-/** Human label for a channel chip. */
+/** Human label for a channel chip. Pure (English) — the stable identity used for dedupe keys
+ * and data-testids; render user-visible chip text via channelDisplay instead. */
 export const channelLabel = (c: NotificationChannel): string => (c.type === 'email' ? c.to : c.type === 'telegram' ? `Telegram ${c.chatId}` : 'Browser push')
+
+/** Translator shape we need from react-i18next's t (structural, so the lib stays UI-free). */
+export type TFn = (key: string, options?: Record<string, unknown>) => string
+
+/** Localized chip text for a channel — email targets are shown verbatim; telegram/webpush go
+ * through the catalog with channelLabel as the defaultValue fallback. Pure given t. */
+export function channelDisplay(t: TFn, c: NotificationChannel): string {
+  if (c.type === 'email') return c.to
+  if (c.type === 'telegram') return t('rules.channels.chipTelegram', { chatId: c.chatId, defaultValue: channelLabel(c) })
+  return t('rules.channels.webpush', { defaultValue: channelLabel(c) })
+}
 
 export const listRules = () => getJson<Rule[]>('/v1/rules')
 export const createRule = (data: RuleCreateInput) => mutate<Rule>('POST', '/v1/rules', data)

@@ -87,11 +87,14 @@ export function GeofencesPage() {
     map.getSource<maplibregl.GeoJSONSource>('geofences')?.setData(geofenceFeatures(geofences.data ?? []))
   }, [geofences.data, ready])
 
+  // tracked so the mode buttons can expose an active/pressed state (aria-pressed + variant)
+  const [activeMode, setActiveMode] = useState<'polygon' | 'circle' | 'linestring' | 'select'>('select')
   const setMode = (mode: 'polygon' | 'circle' | 'linestring' | 'select') => {
     drawRef.current?.setMode(mode)
+    setActiveMode(mode)
     if (mode !== 'select') { drawRef.current?.clear(); setDrawn(null) }
   }
-  const clearDraw = () => { drawRef.current?.clear(); setDrawn(null) }
+  const clearDraw = () => { drawRef.current?.clear(); setDrawn(null); setActiveMode('select') }
 
   const save = () => {
     if (drawn === null || name.trim() === '') return
@@ -112,9 +115,9 @@ export function GeofencesPage() {
     <div className="flex h-full flex-col gap-3 p-4 md:p-6">
       <PageHeader title={t('geofences.title')} description={t('geofences.desc')} className="mb-0">
         <div className="flex gap-1">
-          <AdminButton variant="secondary" size="sm" data-testid="gf-mode-polygon" onClick={() => setMode('polygon')}>{t('geofences.polygon')}</AdminButton>
-          <AdminButton variant="secondary" size="sm" data-testid="gf-mode-circle" onClick={() => setMode('circle')}>{t('geofences.circle')}</AdminButton>
-          <AdminButton variant="secondary" size="sm" data-testid="gf-mode-corridor" onClick={() => setMode('linestring')}>{t('geofences.corridor')}</AdminButton>
+          <AdminButton variant={activeMode === 'polygon' ? 'primary' : 'secondary'} size="sm" aria-pressed={activeMode === 'polygon'} data-testid="gf-mode-polygon" onClick={() => setMode('polygon')}>{t('geofences.polygon')}</AdminButton>
+          <AdminButton variant={activeMode === 'circle' ? 'primary' : 'secondary'} size="sm" aria-pressed={activeMode === 'circle'} data-testid="gf-mode-circle" onClick={() => setMode('circle')}>{t('geofences.circle')}</AdminButton>
+          <AdminButton variant={activeMode === 'linestring' ? 'primary' : 'secondary'} size="sm" aria-pressed={activeMode === 'linestring'} data-testid="gf-mode-corridor" onClick={() => setMode('linestring')}>{t('geofences.corridor')}</AdminButton>
           <AdminButton variant="ghost" size="sm" data-testid="gf-clear" onClick={clearDraw}>{t('geofences.clear')}</AdminButton>
         </div>
         {drawn?.kind === 'corridor' && (
@@ -162,7 +165,7 @@ export function GeofencesPage() {
         <div className="admin-card relative min-h-[320px] overflow-hidden lg:min-h-0">
           <div ref={containerRef} className="h-full w-full" data-testid="geofence-map" />
           {mapError && (
-            <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm" style={{ background: 'color-mix(in srgb, var(--admin-surface) 92%, transparent)', color: 'var(--admin-danger)' }} data-testid="geofence-map-error">
+            <div role="alert" className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm" style={{ background: 'color-mix(in srgb, var(--admin-surface) 92%, transparent)', color: 'var(--admin-danger)' }} data-testid="geofence-map-error">
               {t('geofences.mapError')}
             </div>
           )}

@@ -70,8 +70,8 @@ export function WebhooksPage() {
         </div>
         <div className="space-y-3 p-4">
           <div>
-            <AdminLabel>{t('webhooks.url')}</AdminLabel>
-            <AdminInput value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" data-testid="webhook-url" className="w-full max-w-md" />
+            <AdminLabel htmlFor="webhook-url">{t('webhooks.url')}</AdminLabel>
+            <AdminInput id="webhook-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" data-testid="webhook-url" className="w-full max-w-md" />
           </div>
           <div>
             <div className="mb-1 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>

@@ -33,7 +33,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getCurrentUser, logout as authLogout } from '@/lib/auth'
-import { applyBranding, getBranding } from '@/lib/branding'
+import { applyBranding, getBranding, type Branding } from '@/lib/branding'
 import { liveStore } from '@/lib/liveStore'
 import { getTheme, onThemeChange, setTheme, type Theme } from '@/lib/prefs'
 import { cn } from '@/lib/utils'
@@ -96,16 +96,32 @@ export function AppShell({ children }: { children: ReactNode }) {
   const user = getCurrentUser()
   const role = user?.role
   const isAdmin = role === 'platform_admin' || role === 'tsp_admin'
+  // white-label shell (E03-5): the sidebar brand block uses the tenant's productName/logoUrl
+  // when present; Orbetra + the local svg are only the fallback
+  const [branding, setBranding] = useState<Branding | null>(null)
 
   // apply the tenant's white-label theme once authenticated (E03-5)
   useEffect(() => {
     getBranding()
-      .then((b) => applyBranding(b.branding))
+      .then((b) => {
+        applyBranding(b.branding)
+        setBranding(b.branding)
+      })
       .catch(() => undefined)
   }, [])
 
   // close the mobile drawer on navigation
   useEffect(() => setMobileOpen(false), [pathname])
+
+  // the drawer is a modal dialog — Escape must close it (a11y)
+  useEffect(() => {
+    if (!mobileOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobileOpen])
 
   // stay in sync when the settings page (or anything else) changes the theme
   useEffect(() => onThemeChange(() => setThemeState(getTheme())), [])
@@ -133,11 +149,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     <>
       <div className={cn('flex h-14 items-center gap-2.5 px-4 admin-hairline-b', collapsed && withCollapse && 'justify-center px-0')}>
         <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg" style={{ background: 'var(--admin-brand-soft)' }}>
-          <img src="/orbetra-logo.svg" alt="" className="h-5 w-5" />
+          <img src={branding?.logoUrl ?? '/orbetra-logo.svg'} alt="" className="h-5 w-5" />
         </div>
         {!(collapsed && withCollapse) && (
           <div className="min-w-0 leading-tight">
-            <div className="display text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>Orbetra</div>
+            <div className="display truncate text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{branding?.productName ?? 'Orbetra'}</div>
             <div className="mono text-[9px] uppercase tracking-[0.18em]" style={{ color: 'var(--admin-ink-soft)' }}>{t('shell.admin')}</div>
           </div>
         )}
@@ -166,7 +182,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   : { color: enabled ? 'var(--admin-ink)' : 'var(--admin-ink-soft)' }
                 if (enabled) {
                   return (
-                    <button key={item.key} type="button" className={cn(rowClass, !active && 'hover:bg-surface-2')} style={rowStyle} onClick={() => void navigate({ to: item.to! })}>
+                    <button key={item.key} type="button" aria-current={active ? 'page' : undefined} className={cn(rowClass, !active && 'hover:bg-surface-2')} style={rowStyle} onClick={() => void navigate({ to: item.to! })}>
                       <Icon className="h-4 w-4 shrink-0" aria-hidden />
                       {!(collapsed && withCollapse) && <span>{t(item.key)}</span>}
                     </button>
@@ -196,7 +212,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="min-w-0 leading-tight">
               <div className="truncate text-xs font-medium" style={{ color: 'var(--admin-ink)' }}>{user.email}</div>
-              <div className="truncate text-[10px]" style={{ color: 'var(--admin-ink-soft)' }}>{user.role}</div>
+              <div className="truncate text-[10px]" style={{ color: 'var(--admin-ink-soft)' }}>{t(`roles.${user.role}`, user.role)}</div>
             </div>
           </div>
         )}
@@ -219,7 +235,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {/* mobile drawer */}
         {mobileOpen && (
-          <div className="fixed inset-0 z-50 md:hidden">
+          <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label={t('shell.menu')}>
             <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
             <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-surface admin-hairline-r">
               <button type="button" className="absolute right-2 top-3.5 p-1" style={{ color: 'var(--admin-ink-soft)' }} onClick={() => setMobileOpen(false)} aria-label={t('shell.close')}>

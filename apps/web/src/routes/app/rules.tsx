@@ -6,7 +6,7 @@ import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/A
 import { listAccounts } from '@/lib/devices'
 import { listGeofences } from '@/lib/geofences'
 import { ApiError } from '@/lib/http'
-import { RULE_KINDS, channelLabel, configFields, createRule, deleteRule, listRules, parseChannel, updateRule, type NotificationChannel, type Rule, type RuleKind } from '@/lib/rules'
+import { RULE_KINDS, channelDisplay, channelLabel, configFields, createRule, deleteRule, listRules, parseChannel, updateRule, type NotificationChannel, type Rule, type RuleKind } from '@/lib/rules'
 
 const selectCls = 'h-9 rounded-md border px-2 text-sm outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30'
 const selectStyle: CSSProperties = { borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }
@@ -47,7 +47,7 @@ export function RulesPage() {
                     <Badge tone="brand">{t(`rules.kind.${r.kind}`)}</Badge>
                     <span className="truncate text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{r.name}</span>
                   </div>
-                  <div className="mt-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('rules.cooldown')}: {r.cooldownS}s</div>
+                  <div className="mt-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('rules.cooldown')}: {t('rules.cooldownValue', { s: r.cooldownS })}</div>
                 </div>
                 {(r.channels ?? []).length > 0
                   ? <Badge tone="neutral" data-testid={`rule-ch-count-${r.id}`}>{t('rules.channels.count', { n: r.channels.length })}</Badge>
@@ -182,7 +182,7 @@ function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[
     <div className="flex w-full flex-col gap-1">
       <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('rules.channels.label')}</span>
       <div className="flex flex-wrap items-end gap-2">
-        <select value={type} onChange={(e) => { setType(e.target.value as 'email' | 'telegram' | 'webpush'); setErr(false) }} data-testid="rule-ch-type" className={selectCls} style={selectStyle}>
+        <select aria-label={t('rules.channels.label')} value={type} onChange={(e) => { setType(e.target.value as 'email' | 'telegram' | 'webpush'); setErr(false) }} data-testid="rule-ch-type" className={selectCls} style={selectStyle}>
           <option value="email">{t('rules.channels.email')}</option>
           <option value="telegram">{t('rules.channels.telegram')}</option>
           <option value="webpush">{t('rules.channels.webpush')}</option>
@@ -192,20 +192,22 @@ function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[
             value={value}
             onChange={(e) => { setValue(e.target.value); setErr(false) }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+            aria-label={type === 'email' ? t('rules.channels.email') : t('rules.channels.telegram')}
             placeholder={type === 'email' ? t('rules.channels.emailPlaceholder') : t('rules.channels.telegramPlaceholder')}
             data-testid="rule-ch-value" className="w-52"
           />
         )}
         <AdminButton variant="ghost" size="sm" onClick={add} data-testid="rule-ch-add">{t('rules.channels.add')}</AdminButton>
       </div>
-      {err && <span className="text-xs" style={{ color: 'var(--admin-danger)' }} data-testid="rule-ch-error">{t('rules.channels.invalid')}</span>}
+      {err && <span role="alert" className="text-xs" style={{ color: 'var(--admin-danger)' }} data-testid="rule-ch-error">{t('rules.channels.invalid')}</span>}
       {channels.length > 0 && (
         <ul className="flex flex-wrap gap-1" data-testid="rule-ch-list">
           {channels.map((c) => (
             <li key={channelLabel(c)}>
               <Badge tone="neutral" className="gap-1">
-                {channelLabel(c)}
-                <button type="button" className="opacity-70 transition-opacity hover:opacity-100 hover:text-[var(--admin-danger)]" data-testid={`rule-ch-remove-${channelLabel(c)}`} onClick={() => onChange(channels.filter((x) => channelLabel(x) !== channelLabel(c)))}>×</button>
+                {channelDisplay(t, c)}
+                {/* dedupe key + testid stay on the PURE channelLabel — locale changes must not move testids */}
+                <button type="button" aria-label={t('rules.channels.remove', { target: channelDisplay(t, c) })} className="opacity-70 transition-opacity hover:opacity-100 hover:text-[var(--admin-danger)]" data-testid={`rule-ch-remove-${channelLabel(c)}`} onClick={() => onChange(channels.filter((x) => channelLabel(x) !== channelLabel(c)))}>×</button>
               </Badge>
             </li>
           ))}
@@ -231,7 +233,7 @@ function RuleChannelsEdit({ rule, onSaved, onCancel }: { rule: Rule; onSaved: ()
       <div className="mt-2 flex items-center gap-2">
         <AdminButton size="sm" disabled={busy} data-testid={`rule-ch-save-${rule.id}`} onClick={save}>{t('rules.channels.save')}</AdminButton>
         <AdminButton size="sm" variant="ghost" onClick={onCancel}>{t('rules.channels.cancel')}</AdminButton>
-        {error && <span className="text-xs" style={{ color: 'var(--admin-danger)' }}>{t('rules.error')}</span>}
+        {error && <span role="alert" className="text-xs" style={{ color: 'var(--admin-danger)' }}>{t('rules.error')}</span>}
       </div>
     </div>
   )

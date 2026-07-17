@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/AdminKit'
 import { listDevices } from '@/lib/devices'
-import { EVENT_KINDS, eventSummary, listEvents, type EventRow } from '@/lib/events'
+import { EVENT_KINDS, listEvents, localizedEventSummary, type EventRow } from '@/lib/events'
 
 const PAGE = 50
 const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
@@ -110,9 +110,9 @@ export function EventsPage() {
                       <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{fmt.format(new Date(r.at))}</td>
                       <td className="px-3 py-2"><Badge tone={TONE[severityOf(r.kind)]}>{t(`events.k.${r.kind}`, r.kind)}</Badge></td>
                       <td className="px-3 py-2">{deviceName(r.deviceId)}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--admin-ink-soft)' }}>{eventSummary(r)}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--admin-ink-soft)' }}>{localizedEventSummary(t, r)}</td>
                       <td className="px-3 py-2 text-right">
-                        <AdminButton variant="ghost" size="sm" data-testid={`event-expand-${r.id}`} onClick={() => setOpen((o) => (o === r.id ? null : r.id))}>
+                        <AdminButton variant="ghost" size="sm" data-testid={`event-expand-${r.id}`} aria-expanded={open === r.id} onClick={() => setOpen((o) => (o === r.id ? null : r.id))}>
                           {open === r.id ? t('events.hide') : t('events.details')}
                         </AdminButton>
                       </td>

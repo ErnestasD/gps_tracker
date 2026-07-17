@@ -77,10 +77,11 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6" data-testid="settings-page">
+    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6" data-testid="settings-page">
       <PageHeader className="mb-0" title={t('settings.title')} />
 
-      {/* hand-rolled tab bar (no Radix): anchor-jumps, active gets the brand underline */}
+      {/* hand-rolled tab bar (no Radix): anchor-jumps, active gets the brand underline.
+          ARIA: tabs point at id'd tabpanels (all stay mounted — anchor navigation by design). */}
       <div className="admin-hairline-b flex gap-1" role="tablist" aria-label={t('settings.title')}>
         {tabs.map((id) => {
           const active = activeTab === id
@@ -89,6 +90,8 @@ export function SettingsPage() {
               key={id}
               type="button"
               role="tab"
+              id={`settings-tab-${id}`}
+              aria-controls={`settings-panel-${id}`}
               aria-selected={active}
               onClick={() => goTo(id)}
               className="-mb-px rounded-t-md px-3 py-2 text-sm font-medium transition-colors"
@@ -105,7 +108,7 @@ export function SettingsPage() {
       </div>
 
       {/* Profile: identity + appearance (locale/theme) */}
-      <div ref={(el) => { sectionRefs.current.profile = el }} className="admin-card scroll-mt-4">
+      <div ref={(el) => { sectionRefs.current.profile = el }} role="tabpanel" id="settings-panel-profile" aria-labelledby="settings-tab-profile" className="admin-card scroll-mt-4">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('settings.profile')}
         </div>
@@ -116,7 +119,7 @@ export function SettingsPage() {
           </div>
           <div className="flex items-center justify-between">
             <span style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.role')}</span>
-            <Badge tone="neutral">{user?.role ?? '—'}</Badge>
+            <Badge tone="neutral">{user?.role != null ? t(`roles.${user.role}`, user.role) : '—'}</Badge>
           </div>
           <div className="admin-hairline-t flex items-center justify-between pt-4">
             <label htmlFor="locale" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.locale')}</label>
@@ -153,7 +156,7 @@ export function SettingsPage() {
       </div>
 
       {/* Security: password change */}
-      <div ref={(el) => { sectionRefs.current.security = el }} className="admin-card scroll-mt-4">
+      <div ref={(el) => { sectionRefs.current.security = el }} role="tabpanel" id="settings-panel-security" aria-labelledby="settings-tab-security" className="admin-card scroll-mt-4">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('settings.password.title')}
         </div>
@@ -162,6 +165,7 @@ export function SettingsPage() {
             <AdminInput
               type="password"
               autoComplete="current-password"
+              aria-label={t('settings.password.current')}
               placeholder={t('settings.password.current')}
               value={current}
               onChange={(e) => setCurrent(e.target.value)}
@@ -171,6 +175,7 @@ export function SettingsPage() {
             <AdminInput
               type="password"
               autoComplete="new-password"
+              aria-label={t('settings.password.new')}
               placeholder={t('settings.password.new')}
               value={next}
               onChange={(e) => setNext(e.target.value)}
@@ -191,13 +196,13 @@ export function SettingsPage() {
       </div>
 
       {/* Notifications: browser push */}
-      <div ref={(el) => { sectionRefs.current.notifications = el }} className="scroll-mt-4">
+      <div ref={(el) => { sectionRefs.current.notifications = el }} role="tabpanel" id="settings-panel-notifications" aria-labelledby="settings-tab-notifications" className="scroll-mt-4">
         <PushSection />
       </div>
 
       {/* Data: GDPR export (admins only — the server enforces it too) */}
       {isAdmin && (
-        <div ref={(el) => { sectionRefs.current.data = el }} className="scroll-mt-4">
+        <div ref={(el) => { sectionRefs.current.data = el }} role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" className="scroll-mt-4">
           <ExportSection />
         </div>
       )}

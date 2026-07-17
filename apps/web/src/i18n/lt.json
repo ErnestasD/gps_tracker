@@ -58,7 +58,20 @@
     "noPlans": "Planų kol kas nesukonfigūruota.",
     "interval": {
       "month": "mėn.",
-      "year": "m."
+      "year": "m.",
+      "week": "sav.",
+      "day": "d."
+    },
+    "loading": "Įkeliami planai…",
+    "st": {
+      "active": "Aktyvi",
+      "trialing": "Bandomasis laikotarpis",
+      "past_due": "Pradelstas mokėjimas",
+      "canceled": "Atšaukta",
+      "unpaid": "Neapmokėta",
+      "incomplete": "Nebaigta",
+      "incomplete_expired": "Nebegalioja",
+      "paused": "Pristabdyta"
     }
   },
   "branding": {
@@ -85,7 +98,8 @@
     "dupDomain": "Toks domenas jau užregistruotas.",
     "badDomain": "Įveskite tinkamą domeną (pvz. fleet.example.com).",
     "txtInstruction": "Pridėkite šį TXT įrašą prie {{domain}}, tada spauskite Patvirtinti:",
-    "certNote": "HTTPS sertifikatai išduodami automatiškai per pirmą saugų užklausimą po domeno patvirtinimo."
+    "certNote": "HTTPS sertifikatai išduodami automatiškai per pirmą saugų užklausimą po domeno patvirtinimo.",
+    "domainLabel": "Domenas"
   },
   "audit": {
     "title": "Audito žurnalas",
@@ -112,7 +126,16 @@
       "webhook": "Webhook",
       "domain": "Domenas",
       "branding": "Prekės ženklas",
-      "tenant": "Nuomininkas"
+      "tenant": "Nuomininkas",
+      "geofence": "Geozona",
+      "trip": "Kelionė",
+      "apiKey": "API raktas",
+      "command": "Komanda",
+      "driver": "Vairuotojas",
+      "export": "Duomenų eksportas",
+      "maintenance": "Techninė priežiūra",
+      "scheduledReport": "Suplanuota ataskaita",
+      "shareLink": "Bendrinimo nuoroda"
     },
     "a": {
       "create": "Sukurta",
@@ -192,11 +215,14 @@
       "edit": "Kanalai",
       "save": "Išsaugoti",
       "cancel": "Atšaukti",
-      "webpush": "Naršyklės pranešimai"
-    }
+      "webpush": "Naršyklės pranešimai",
+      "chipTelegram": "Telegram {{chatId}}",
+      "remove": "Pašalinti {{target}}"
+    },
+    "cooldownValue": "{{s}} s"
   },
   "playback": {
-    "title": "Istorijos peržiaura",
+    "title": "Istorijos peržiūra",
     "desc": "Kelionių atkūrimas su greičio ir kuro grafikais.",
     "device": "Įrenginys",
     "from": "Nuo",
@@ -207,7 +233,10 @@
     "trips": "{{n}} kelionės",
     "distance": "{{km}} km",
     "fuel": "Kuro lygis",
-    "fuelLiters": "{{l}} l"
+    "fuelLiters": "{{l}} l",
+    "skipStart": "Į pradžią",
+    "skipEnd": "Į pabaigą",
+    "scrub": "Atkūrimo pozicija"
   },
   "geofences": {
     "title": "Geozonos",
@@ -448,7 +477,9 @@
       "copy": "Kopijuoti",
       "copied": "Nukopijuota",
       "caveat": "Šio įrenginio šeima gali naudoti kitus parametrus — pasitikrinkite Teltonikos wiki savo modeliui."
-    }
+    },
+    "imeiPh": "15 skaitmenų",
+    "actions": "Veiksmai"
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",
@@ -496,6 +527,20 @@
       "critical": "Kritiniai",
       "warning": "Įspėjimai",
       "info": "Informaciniai"
+    },
+    "s": {
+      "overspeed": "{{speed}} km/val > {{limit}}",
+      "low_battery": "{{volts}} V < {{threshold}}",
+      "ignition_on": "degimas įjungtas",
+      "ignition_off": "degimas išjungtas",
+      "din_on": "DIN1 įjungtas",
+      "din_off": "DIN1 išjungtas",
+      "geofence_enter": "{{name}} · įvažiavimas",
+      "geofence_exit": "{{name}} · išvažiavimas",
+      "geofence": "{{name}} · {{transition}}",
+      "device_offline": "neprisijungęs {{hours}} val. (≥ {{threshold}} val.)",
+      "panic": "SOS pavojaus signalas",
+      "power_cut": "dingo išorinis maitinimas"
     }
   },
   "reports": {
@@ -537,7 +582,8 @@
       "maxSpeed": "Maks. greitis"
     },
     "account": "Paskyra",
-    "exportPdf": "Eksportuoti PDF"
+    "exportPdf": "Eksportuoti PDF",
+    "pdfTitle": "{{type}} ataskaita"
   },
   "apiKeys": {
     "title": "API raktai",
@@ -637,7 +683,8 @@
       "distance": "Atstumas",
       "overspeed": "Greičio viršij.",
       "score": "Balas"
-    }
+    },
+    "actions": "Veiksmai"
   },
   "maint": {
     "title": "Techninė priežiūra",
@@ -670,7 +717,8 @@
       "due_soon": "Netrukus",
       "overdue": "Pradelsta",
       "unknown": "Nėra duomenų"
-    }
+    },
+    "actionError": "Veiksmas nepavyko — bandykite dar kartą."
   },
   "scheduled": {
     "title": "Suplanuotos ataskaitos",
@@ -722,6 +770,13 @@
     "recent": "Paskutiniai įvykiai",
     "viewAll": "Rodyti visus",
     "empty": "Duomenų dar nėra",
-    "noAccount": "Nėra paskyros ataskaitai"
+    "noAccount": "Nėra paskyros ataskaitai",
+    "error": "Nepavyko įkelti duomenų."
+  },
+  "roles": {
+    "platform_admin": "Platformos administratorius",
+    "tsp_admin": "Organizacijos administratorius",
+    "account_manager": "Paskyros vadybininkas",
+    "viewer": "Žiūrėtojas"
   }
 }

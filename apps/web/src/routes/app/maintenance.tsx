@@ -25,6 +25,10 @@ export function MaintenancePage() {
   const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
   const refresh = () => void qc.invalidateQueries({ queryKey: ['maintenance'] })
   const deviceName = (id: string) => (devices.data ?? []).find((d) => d.id === id)?.name ?? id
+  // row actions (mark serviced / delete) surface failures instead of swallowing them (rules.tsx idiom)
+  const [actionError, setActionError] = useState(false)
+  const onActionErr = () => setActionError(true)
+  const clearErr = () => setActionError(false)
 
   const list = items.data ?? []
   const okCount = list.filter((m) => m.due.status === 'ok').length
@@ -58,6 +62,7 @@ export function MaintenancePage() {
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('maint.list')}
         </div>
+        {actionError && <p role="alert" className="px-4 pt-3 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="maint-action-error">{t('maint.actionError')}</p>}
         {items.isLoading ? (
           <p className="p-4 text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('maint.loading')}</p>
         ) : items.isError ? (
@@ -79,8 +84,8 @@ export function MaintenancePage() {
                 <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`maint-remaining-${m.id}`}>{remaining(m, t)}</span>
                 {canWrite && (
                   <span className="ml-auto flex gap-1">
-                    <AdminButton variant="ghost" size="sm" data-testid={`maint-serviced-${m.id}`} onClick={() => void markServiced(m.id, m.currentOdoKm).then(refresh).catch(() => undefined)}>{t('maint.markServiced')}</AdminButton>
-                    <AdminButton variant="ghost" size="sm" style={{ color: 'var(--admin-danger)' }} data-testid={`maint-del-${m.id}`} onClick={() => void deleteMaintenance(m.id).then(refresh).catch(() => undefined)}>{t('maint.delete')}</AdminButton>
+                    <AdminButton variant="ghost" size="sm" data-testid={`maint-serviced-${m.id}`} onClick={() => { clearErr(); void markServiced(m.id, m.currentOdoKm).then(refresh).catch(onActionErr) }}>{t('maint.markServiced')}</AdminButton>
+                    <AdminButton variant="ghost" size="sm" style={{ color: 'var(--admin-danger)' }} data-testid={`maint-del-${m.id}`} onClick={() => { clearErr(); void deleteMaintenance(m.id).then(refresh).catch(onActionErr) }}>{t('maint.delete')}</AdminButton>
                   </span>
                 )}
               </li>
@@ -149,7 +154,8 @@ function MaintForm({ devices, onCreated }: { devices: { id: string; name: string
           <Field label={t('maint.itemTitle')}><AdminInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} data-testid="maint-title" className="w-40" /></Field>
           <Field label={t('maint.intervalKm')}><AdminInput type="number" min={1} value={intervalKm} onChange={(e) => setIntervalKm(e.target.value)} data-testid="maint-km" className="w-28" /></Field>
           <Field label={t('maint.intervalDays')}><AdminInput type="number" min={1} value={intervalDays} onChange={(e) => setIntervalDays(e.target.value)} data-testid="maint-days" className="w-28" /></Field>
-          <Field label={t('maint.currentOdo')}><AdminInput type="number" min={0} value={odoKm} onChange={(e) => setOdoKm(e.target.value)} placeholder="0" data-testid="maint-odo" className="w-28" /></Field>
+          {/* no placeholder: a blank field baselines to the device's CURRENT odometer (never 0) */}
+          <Field label={t('maint.currentOdo')}><AdminInput type="number" min={0} value={odoKm} onChange={(e) => setOdoKm(e.target.value)} data-testid="maint-odo" className="w-28" /></Field>
           <AdminButton type="submit" disabled={busy} data-testid="maint-create">{t('maint.create')}</AdminButton>
           {error !== null && <p role="alert" className="w-full text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="maint-error">{error}</p>}
         </form>

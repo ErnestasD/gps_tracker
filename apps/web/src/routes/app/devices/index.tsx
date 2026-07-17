@@ -79,7 +79,7 @@ export function DevicesPage() {
         </p>
       )}
       {eraseQueued && (
-        <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="erase-queued">
+        <p role="status" className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="erase-queued">
           {t('devices.eraseQueued')}
         </p>
       )}
@@ -118,11 +118,11 @@ export function DevicesPage() {
             <table className="w-full text-sm" data-testid="devices-table">
               <thead>
                 <tr style={{ background: 'var(--admin-surface-sunken)' }}>
-                  <th className={th} style={thStyle}>{t('devices.name')}</th>
-                  <th className={th} style={thStyle}>{t('devices.imei')}</th>
-                  <th className={th} style={thStyle}>{t('devices.odometer')}</th>
-                  <th className={th} style={thStyle}>{t('devices.status')}</th>
-                  <th className={th} style={thStyle}></th>
+                  <th scope="col" className={th} style={thStyle}>{t('devices.name')}</th>
+                  <th scope="col" className={th} style={thStyle}>{t('devices.imei')}</th>
+                  <th scope="col" className={th} style={thStyle}>{t('devices.odometer')}</th>
+                  <th scope="col" className={th} style={thStyle}>{t('devices.status')}</th>
+                  <th scope="col" className={th} style={thStyle}><span className="sr-only">{t('devices.actions')}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -138,6 +138,7 @@ export function DevicesPage() {
                       <select
                         value={d.odometerSource}
                         disabled={d.retiredAt !== null}
+                        aria-label={t('devices.odometer')}
                         data-testid={`odometer-${d.imei}`}
                         onChange={(e) => void updateDevice(d.id, { odometerSource: e.target.value as OdometerSource }).then(refresh).catch(() => undefined)}
                         className="h-7 rounded-md border px-1 text-xs disabled:opacity-50"
@@ -300,7 +301,7 @@ function CreateDeviceForm({
       <div className="p-4">
         <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
           <FieldLabel label={t('devices.imei')}>
-            <AdminInput value={imei} onChange={(e) => setImei(e.target.value)} required pattern="\d{15}" placeholder="15 digits" data-testid="device-imei" className="w-48" />
+            <AdminInput value={imei} onChange={(e) => setImei(e.target.value)} required pattern="\d{15}" placeholder={t('devices.imeiPh')} data-testid="device-imei" className="w-48" />
           </FieldLabel>
           <FieldLabel label={t('devices.name')}>
             <AdminInput value={name} onChange={(e) => setName(e.target.value)} required data-testid="device-name" className="w-48" />
@@ -377,6 +378,7 @@ function ImportCard({ onImported }: { onImported: () => void }) {
           value={csv}
           onChange={(e) => setCsv(e.target.value)}
           rows={4}
+          aria-label={t('devices.import.title')}
           placeholder="imei,name,profileKey,accountId"
           data-testid="import-csv"
           className="mono w-full rounded-md border p-2 text-xs outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30"

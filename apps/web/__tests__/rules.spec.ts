@@ -1,7 +1,7 @@
 import { notificationChannelSchema, ruleKindSchema } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { RULE_KINDS, channelLabel, configFields, parseChannel } from '../src/lib/rules.js'
+import { RULE_KINDS, channelDisplay, channelLabel, configFields, parseChannel } from '../src/lib/rules.js'
 
 describe('E05-3 client/server contract', () => {
   it('RULE_KINDS is set-equal to the server ruleKindSchema (guards silent 400 on drift)', () => {
@@ -56,5 +56,20 @@ describe('E05-3 rule config fields', () => {
     // webpush carries no target — the label is constant so ChannelsEditor dedupes to one per rule
     expect(channelLabel({ type: 'webpush' })).toBe('Browser push')
     expect(notificationChannelSchema.safeParse({ type: 'webpush' }).success).toBe(true)
+  })
+
+  it('channelDisplay localizes chips through t, keeping channelLabel as the fallback identity', () => {
+    const calls: [string, Record<string, unknown> | undefined][] = []
+    const t = (key: string, options?: Record<string, unknown>) => {
+      calls.push([key, options])
+      return `T(${key})`
+    }
+    // email targets are verbatim — no catalog lookup
+    expect(channelDisplay(t, { type: 'email', to: 'x@y.z' })).toBe('x@y.z')
+    expect(calls).toHaveLength(0)
+    expect(channelDisplay(t, { type: 'telegram', chatId: '42' })).toBe('T(rules.channels.chipTelegram)')
+    expect(calls[0]).toEqual(['rules.channels.chipTelegram', { chatId: '42', defaultValue: 'Telegram 42' }])
+    expect(channelDisplay(t, { type: 'webpush' })).toBe('T(rules.channels.webpush)')
+    expect(calls[1]![1]!['defaultValue']).toBe('Browser push')
   })
 })

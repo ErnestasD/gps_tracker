@@ -60,17 +60,18 @@ export function BrandingPage() {
         <form onSubmit={submit}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <AdminLabel>{t('branding.productName')}</AdminLabel>
-              <AdminInput value={form.productName ?? ''} onChange={(e) => setForm((f) => ({ ...f, productName: e.target.value }))} data-testid="branding-productName" />
+              <AdminLabel htmlFor="branding-productName">{t('branding.productName')}</AdminLabel>
+              <AdminInput id="branding-productName" value={form.productName ?? ''} onChange={(e) => setForm((f) => ({ ...f, productName: e.target.value }))} data-testid="branding-productName" />
             </div>
             <div>
-              <AdminLabel>{t('branding.supportEmail')}</AdminLabel>
-              <AdminInput type="email" value={form.supportEmail ?? ''} onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))} data-testid="branding-supportEmail" />
+              <AdminLabel htmlFor="branding-supportEmail">{t('branding.supportEmail')}</AdminLabel>
+              <AdminInput id="branding-supportEmail" type="email" value={form.supportEmail ?? ''} onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))} data-testid="branding-supportEmail" />
             </div>
             <div>
-              <AdminLabel>{t('branding.primary')}</AdminLabel>
+              <AdminLabel htmlFor="branding-primary">{t('branding.primary')}</AdminLabel>
               <div className="flex items-center gap-2">
                 <input
+                  id="branding-primary"
                   type="color"
                   value={form.primary ?? '#7c7df5'}
                   onChange={(e) => setForm((f) => ({ ...f, primary: e.target.value }))}
@@ -82,9 +83,10 @@ export function BrandingPage() {
               </div>
             </div>
             <div>
-              <AdminLabel>{t('branding.accent')}</AdminLabel>
+              <AdminLabel htmlFor="branding-accent">{t('branding.accent')}</AdminLabel>
               <div className="flex items-center gap-2">
                 <input
+                  id="branding-accent"
                   type="color"
                   value={form.accent ?? '#7c5cfc'}
                   onChange={(e) => setForm((f) => ({ ...f, accent: e.target.value }))}
@@ -96,14 +98,14 @@ export function BrandingPage() {
               </div>
             </div>
             <div className="md:col-span-2">
-              <AdminLabel>{t('branding.logoUrl')}</AdminLabel>
-              <AdminInput value={form.logoUrl ?? ''} onChange={(e) => setForm((f) => ({ ...f, logoUrl: e.target.value }))} placeholder="https://…" data-testid="branding-logoUrl" />
+              <AdminLabel htmlFor="branding-logoUrl">{t('branding.logoUrl')}</AdminLabel>
+              <AdminInput id="branding-logoUrl" value={form.logoUrl ?? ''} onChange={(e) => setForm((f) => ({ ...f, logoUrl: e.target.value }))} placeholder="https://…" data-testid="branding-logoUrl" />
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <AdminButton type="submit" data-testid="branding-save">{t('branding.save')}</AdminButton>
             {saved && (
-              <span className="text-sm" style={{ color: 'var(--admin-success)' }} data-testid="branding-saved">
+              <span role="status" className="text-sm" style={{ color: 'var(--admin-success)' }} data-testid="branding-saved">
                 {t('branding.savedMsg')}
               </span>
             )}
@@ -196,7 +198,7 @@ function AddDomain({ onAdded }: { onAdded: () => void }) {
   return (
     <div className="space-y-2">
       <form onSubmit={add} className="flex gap-2">
-        <AdminInput value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="fleet.example.com" data-testid="domain-input" className="max-w-xs" />
+        <AdminInput aria-label={t('branding.domainLabel')} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="fleet.example.com" data-testid="domain-input" className="max-w-xs" />
         <AdminButton type="submit" disabled={domain.trim() === ''} data-testid="domain-add">{t('branding.addDomain')}</AdminButton>
       </form>
       {error !== null && (

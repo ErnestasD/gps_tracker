@@ -62,6 +62,47 @@ export function eventSummary(e: EventRow): string {
   }
 }
 
+/** i18n descriptor for an event summary: a key under events.s.* plus interpolation params.
+ * Pure — unit-tested. Render via localizedEventSummary (falls back to eventSummary for
+ * unknown kinds / missing catalog entries so nothing regresses to an empty cell). */
+export function eventSummaryT(e: EventRow): { key: string; params: Record<string, string> } | null {
+  const p = e.payload ?? {}
+  switch (e.kind) {
+    case 'overspeed':
+      return { key: 'events.s.overspeed', params: { speed: num(p['speedKmh']), limit: num(p['limitKmh']) } }
+    case 'low_battery':
+      return { key: 'events.s.low_battery', params: { volts: num(p['volts']), threshold: num(p['thresholdV']) } }
+    case 'ignition':
+      return { key: p['ignition'] ? 'events.s.ignition_on' : 'events.s.ignition_off', params: {} }
+    case 'din_change':
+      return { key: p['din1'] ? 'events.s.din_on' : 'events.s.din_off', params: {} }
+    case 'geofence': {
+      const transition = str(p['transition'])
+      const key = transition === 'enter' || transition === 'exit' ? `events.s.geofence_${transition}` : 'events.s.geofence'
+      return { key, params: { name: str(p['name']), transition } }
+    }
+    case 'device_offline':
+      return { key: 'events.s.device_offline', params: { hours: num(p['offlineH']), threshold: num(p['thresholdH']) } }
+    case 'panic':
+      return { key: 'events.s.panic', params: {} }
+    case 'power_cut':
+      return { key: 'events.s.power_cut', params: {} }
+    default:
+      return null
+  }
+}
+
+/** Translator shape we need from react-i18next's t (kept structural so the lib stays UI-free). */
+export type TFn = (key: string, options?: Record<string, unknown>) => string
+
+/** Localized one-line event summary: eventSummaryT rendered through t(), with the pure
+ * English eventSummary as the defaultValue fallback. */
+export function localizedEventSummary(t: TFn, e: EventRow): string {
+  const d = eventSummaryT(e)
+  if (d === null) return eventSummary(e)
+  return t(d.key, { ...d.params, defaultValue: eventSummary(e) })
+}
+
 function num(v: unknown): string {
   return typeof v === 'number' ? String(Math.round(v * 100) / 100) : '—'
 }

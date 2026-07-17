@@ -41,6 +41,7 @@ export function AdminButton({
   variant = 'primary',
   size = 'md',
   className,
+  style: styleOverride,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
@@ -57,8 +58,9 @@ export function AdminButton({
         : variant === 'danger'
           ? { background: 'var(--admin-danger)', color: '#fff' }
           : { background: 'transparent', color: 'var(--admin-ink)' }
-  // default type="button" — these compose inside forms; a bare <button> would submit
-  return <button type="button" className={cn(base, sz, className)} style={style} {...props} />
+  // default type="button" — these compose inside forms; a bare <button> would submit.
+  // Caller style MERGES over the variant style (a bare override used to wipe the whole variant).
+  return <button type="button" className={cn(base, sz, className)} style={{ ...style, ...styleOverride }} {...props} />
 }
 
 export function Badge({
