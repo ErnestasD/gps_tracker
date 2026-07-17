@@ -336,7 +336,12 @@
   },
   "units": {
     "kmh": "km/h",
-    "km": "{{n}} km"
+    "km": "{{n}} km",
+    "mph": "mph",
+    "mi": "mi",
+    "gal": "gal",
+    "l": "l",
+    "kmLabel": "km"
   },
   "settings": {
     "title": "Settings",
@@ -390,6 +395,23 @@
       "off": "Off",
       "denied": "Permission denied — allow notifications in your browser settings.",
       "error": "Could not update notifications."
+    },
+    "display": {
+      "title": "Display preferences",
+      "timeFormat": "Time format",
+      "h24": "24-hour",
+      "h12": "12-hour (AM/PM)",
+      "timeZone": "Time zone",
+      "tzAuto": "Automatic (browser)",
+      "dateFormat": "Date format",
+      "dfAuto": "Locale default",
+      "speed": "Speed",
+      "distance": "Distance",
+      "volume": "Volume",
+      "km": "Kilometers (km)",
+      "mi": "Miles (mi)",
+      "l": "Liters (l)",
+      "gal": "US gallons (gal)"
     }
   },
   "devices": {
@@ -592,7 +614,7 @@
       "info": "Info"
     },
     "s": {
-      "overspeed": "{{speed}} km/h > {{limit}}",
+      "overspeed": "{{speed}} > {{limit}}",
       "low_battery": "{{volts}} V < {{threshold}}",
       "ignition_on": "ignition on",
       "ignition_off": "ignition off",
@@ -642,7 +664,10 @@
       "exits": "Exits",
       "startTime": "Start",
       "endTime": "End",
-      "maxSpeed": "Max speed"
+      "maxSpeed": "Max speed",
+      "distanceKm": "Distance (km)",
+      "distanceMi": "Distance (mi)",
+      "maxSpeedMph": "Max mph"
     },
     "account": "Account",
     "exportPdf": "Export PDF",
@@ -800,7 +825,9 @@
       "unknown": "No data"
     },
     "actionError": "Action failed — try again.",
-    "actions": "Actions"
+    "actions": "Actions",
+    "everyMi": "every {{n}} mi",
+    "miLeft": "{{n}} mi left"
   },
   "scheduled": {
     "title": "Scheduled reports",

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, AdminInput, PageHeader } from '@/components/admin/AdminKit'
@@ -10,10 +10,63 @@ import { useFmt } from '@/lib/datetime'
 import { listAccounts } from '@/lib/devices'
 import { downloadExport, hasPendingExport, listExports, requestExport } from '@/lib/gdpr'
 import { ApiError } from '@/lib/http'
-import { getTheme, onThemeChange, setStoredLocale, setTheme, type Theme } from '@/lib/prefs'
+import {
+  getDisplayPrefs,
+  getTheme,
+  onPrefsChange,
+  onThemeChange,
+  setDisplayPref,
+  setStoredLocale,
+  setTheme,
+  type DisplayPrefs,
+  type Theme,
+} from '@/lib/prefs'
 import { disablePush, enablePush, pushEnabled, pushSupported } from '@/lib/push'
 
 const LOCALES = ['en', 'lt', 'pl', 'de'] as const
+
+/** Curated common IANA zones for the time-zone picker ('auto' = browser zone). The Combobox
+ * search makes the list navigable; rendering goes through Intl's timeZone option. */
+const COMMON_TIMEZONES = [
+  'UTC',
+  'Europe/Vilnius',
+  'Europe/Riga',
+  'Europe/Tallinn',
+  'Europe/Warsaw',
+  'Europe/Berlin',
+  'Europe/Prague',
+  'Europe/Vienna',
+  'Europe/Amsterdam',
+  'Europe/Brussels',
+  'Europe/Paris',
+  'Europe/Madrid',
+  'Europe/Rome',
+  'Europe/London',
+  'Europe/Dublin',
+  'Europe/Lisbon',
+  'Europe/Stockholm',
+  'Europe/Oslo',
+  'Europe/Copenhagen',
+  'Europe/Helsinki',
+  'Europe/Kyiv',
+  'Europe/Bucharest',
+  'Europe/Athens',
+  'Europe/Istanbul',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Toronto',
+  'America/Mexico_City',
+  'America/Sao_Paulo',
+  'Asia/Dubai',
+  'Asia/Kolkata',
+  'Asia/Shanghai',
+  'Asia/Singapore',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+  'Pacific/Auckland',
+] as const
 
 const th = 'py-2 pr-4 text-left text-[11px] font-semibold uppercase tracking-wider'
 const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
@@ -144,6 +197,7 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
+          <DisplayPrefsSection />
         </div>
       </div>
 
@@ -198,6 +252,65 @@ export function SettingsPage() {
           <ExportSection />
         </div>
       )}
+    </div>
+  )
+}
+
+/** Global display preferences (Rodymo nustatymai): time/date format, time zone, and units.
+ * Device-local (prefs.ts localStorage) with instant apply — every subscribed formatter
+ * (useFmt/useUnits) re-renders on change, so reports, tables and maps update live. */
+function DisplayPrefsSection() {
+  const { t } = useTranslation()
+  const prefs = useSyncExternalStore(onPrefsChange, getDisplayPrefs)
+  const set = <K extends keyof DisplayPrefs>(key: K) => (v: string) => setDisplayPref(key, v as DisplayPrefs[K])
+
+  // a stored zone outside the curated list (e.g. set on another device build) must still render
+  const tzOptions = [
+    { value: 'auto', label: t('settings.display.tzAuto') },
+    ...COMMON_TIMEZONES.map((z) => ({ value: z, label: z })),
+    ...(prefs.timeZone !== 'auto' && !(COMMON_TIMEZONES as readonly string[]).includes(prefs.timeZone)
+      ? [{ value: prefs.timeZone, label: prefs.timeZone }]
+      : []),
+  ]
+
+  const row = (label: string, testid: string, value: string, onChange: (v: string) => void, options: { value: string; label: string }[], wide = false) => (
+    <div className="flex items-center justify-between gap-3">
+      <span style={{ color: 'var(--admin-ink-soft)' }}>{label}</span>
+      <div className={wide ? 'w-56' : 'w-44'}>
+        <Combobox data-testid={testid} aria-label={label} value={value} onChange={onChange} options={options} />
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="admin-hairline-t space-y-4 pt-4">
+      <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }} data-testid="display-prefs">
+        {t('settings.display.title')}
+      </div>
+      {row(t('settings.display.timeFormat'), 'pref-timeformat', prefs.timeFormat, set('timeFormat'), [
+        { value: '24h', label: t('settings.display.h24') },
+        { value: '12h', label: t('settings.display.h12') },
+      ])}
+      {row(t('settings.display.timeZone'), 'pref-timezone', prefs.timeZone, set('timeZone'), tzOptions, true)}
+      {/* pattern literals are locale-neutral — they ARE the format being picked */}
+      {row(t('settings.display.dateFormat'), 'pref-dateformat', prefs.dateFormat, set('dateFormat'), [
+        { value: 'auto', label: t('settings.display.dfAuto') },
+        { value: 'ymd', label: 'YYYY-MM-DD' },
+        { value: 'dmy', label: 'DD.MM.YYYY' },
+        { value: 'mdy', label: 'MM/DD/YYYY' },
+      ])}
+      {row(t('settings.display.speed'), 'pref-speed', prefs.unitSpeed, set('unitSpeed'), [
+        { value: 'kmh', label: t('units.kmh') },
+        { value: 'mph', label: t('units.mph') },
+      ])}
+      {row(t('settings.display.distance'), 'pref-distance', prefs.unitDistance, set('unitDistance'), [
+        { value: 'km', label: t('settings.display.km') },
+        { value: 'mi', label: t('settings.display.mi') },
+      ])}
+      {row(t('settings.display.volume'), 'pref-volume', prefs.unitVolume, set('unitVolume'), [
+        { value: 'l', label: t('settings.display.l') },
+        { value: 'gal', label: t('settings.display.gal') },
+      ])}
     </div>
   )
 }

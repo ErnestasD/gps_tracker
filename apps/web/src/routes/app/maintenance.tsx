@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { listDevices } from '@/lib/devices'
 import { createMaintenance, deleteMaintenance, dueVariant, listMaintenance, markServiced, type MaintenanceView } from '@/lib/maintenance'
+import { kmToMi, useUnits, type Units } from '@/lib/units'
 
 /** row model for the DataTable: the view plus the resolved device name (searchable/sortable). */
 type MaintRow = MaintenanceView & { deviceName: string }
@@ -27,6 +28,7 @@ const STATUS_RANK: Record<string, number> = { overdue: 0, due_soon: 1, ok: 2, un
  * and the serviced/delete row actions behind ConfirmDialog (both change data). */
 export function MaintenancePage() {
   const { t } = useTranslation()
+  const u = useUnits()
   const qc = useQueryClient()
   const items = useQuery({ queryKey: ['maintenance'], queryFn: listMaintenance })
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
@@ -68,7 +70,8 @@ export function MaintenancePage() {
       cell: (r) => (
         <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
           {[
-            r.intervalKm !== null ? t('maint.everyKm', { n: r.intervalKm }) : null,
+            // display-only conversion: the stored interval stays km (input fields too)
+            r.intervalKm !== null ? (u.prefs.unitDistance === 'mi' ? t('maint.everyMi', { n: Math.round(kmToMi(r.intervalKm)) }) : t('maint.everyKm', { n: r.intervalKm })) : null,
             r.intervalDays !== null ? t('maint.everyDays', { n: r.intervalDays }) : null,
           ]
             .filter((p) => p !== null)
@@ -82,7 +85,7 @@ export function MaintenancePage() {
       align: 'right', // numeric column (reference right-aligns dueKm/currentKm)
       cell: (r) => (
         <span className="text-xs tabular-nums" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`maint-remaining-${r.id}`}>
-          {remaining(r, t) || '—'}
+          {remaining(r, t, u) || '—'}
         </span>
       ),
     },
@@ -266,10 +269,13 @@ function MaintRowMenu({ item, onServiced, onDelete }: { item: MaintRow; onServic
   )
 }
 
-/** The remaining-until-due label (km and/or days), from the computed due. */
-function remaining(m: MaintenanceView, t: (k: string, o?: Record<string, unknown>) => string): string {
+/** The remaining-until-due label (km/mi and/or days), from the computed due. Distance is
+ * display-converted per the unit pref; the underlying values stay km. */
+function remaining(m: MaintenanceView, t: (k: string, o?: Record<string, unknown>) => string, u: Units): string {
   const parts: string[] = []
-  if (m.due.kmRemaining !== null) parts.push(t('maint.kmLeft', { n: m.due.kmRemaining }))
+  if (m.due.kmRemaining !== null) {
+    parts.push(u.prefs.unitDistance === 'mi' ? t('maint.miLeft', { n: Math.round(kmToMi(m.due.kmRemaining)) }) : t('maint.kmLeft', { n: m.due.kmRemaining }))
+  }
   if (m.due.daysRemaining !== null) parts.push(t('maint.daysLeft', { n: m.due.daysRemaining }))
   return parts.join(' · ')
 }

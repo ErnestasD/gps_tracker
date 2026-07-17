@@ -56,7 +56,13 @@ describe('E05-6 eventSummary', () => {
 
 describe('i18n eventSummaryT / localizedEventSummary', () => {
   it('maps every kind to an events.s.* key with rounded params', () => {
-    expect(eventSummaryT(ev('overspeed', { speedKmh: 95.4, limitKmh: 90 }))).toEqual({ key: 'events.s.overspeed', params: { speed: '95.4', limit: '90' } })
+    // speed params carry their unit label (the events.s.overspeed key is unit-agnostic so
+    // the value renders as km/h or mph per the display prefs)
+    expect(eventSummaryT(ev('overspeed', { speedKmh: 95.4, limitKmh: 90 }))).toEqual({ key: 'events.s.overspeed', params: { speed: '95.4 km/h', limit: '90 km/h' } })
+    expect(eventSummaryT(ev('overspeed', { speedKmh: 95.4, limitKmh: 90 }), { fmtSpeed: (kmh) => `${Math.round(kmh / 1.609344)} mph` })).toEqual({
+      key: 'events.s.overspeed',
+      params: { speed: '59 mph', limit: '56 mph' },
+    })
     expect(eventSummaryT(ev('low_battery', { volts: 10.523, thresholdV: 11 }))).toEqual({ key: 'events.s.low_battery', params: { volts: '10.52', threshold: '11' } })
     expect(eventSummaryT(ev('ignition', { ignition: true }))!.key).toBe('events.s.ignition_on')
     expect(eventSummaryT(ev('ignition', { ignition: false }))!.key).toBe('events.s.ignition_off')

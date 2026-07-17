@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger
 import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { listAccounts } from '@/lib/devices'
+import { useUnits } from '@/lib/units'
 import {
   createDriver,
   deleteDriver,
@@ -271,6 +272,7 @@ type ScoreRow = DriverScoreView & { id: string }
 
 function DriverScores() {
   const { t } = useTranslation()
+  const u = useUnits()
   const scores = useQuery({ queryKey: ['driver-scores'], queryFn: listDriverScores })
   // only drivers with driving in the window; DataTable rows need an `id`
   const rows: ScoreRow[] = (scores.data ?? []).filter((s) => s.trips > 0).map((s) => ({ ...s, id: s.driverId }))
@@ -297,7 +299,7 @@ function DriverScores() {
       sortable: true,
       sortValue: (r) => r.distanceKm,
       align: 'right',
-      cell: (r) => <span className="tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{t('units.km', { n: r.distanceKm })}</span>,
+      cell: (r) => <span className="tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{u.distanceKm(r.distanceKm)}</span>,
     },
     {
       key: 'overspeed',

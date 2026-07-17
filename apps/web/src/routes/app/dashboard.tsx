@@ -12,6 +12,7 @@ import { useFmt } from '@/lib/datetime'
 import { listAccounts, listDevices } from '@/lib/devices'
 import { listEvents, localizedEventSummary } from '@/lib/events'
 import { runReport } from '@/lib/reports'
+import { useUnits } from '@/lib/units'
 
 /**
  * Apžvalga — overview dashboard (ADR-028 design's app.index, built from REAL data only:
@@ -28,6 +29,7 @@ type RangeDays = (typeof RANGES)[number]
 export function DashboardPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
+  const u = useUnits()
   const navigate = useNavigate()
   const [rangeDays, setRangeDays] = useState<RangeDays>(7)
   const now = Date.now()
@@ -120,7 +122,7 @@ export function DashboardPage() {
           data-testid="dash-today"
           label={t('dash.today')}
           value={accounts.isError || mileage.isError ? '—' : acc === undefined && !accounts.isLoading ? '—' : mileage.data === undefined ? skel('w-20') : (
-            <>{todayKm} <span className="text-base font-normal opacity-50">km</span></>
+            <>{u.toDistance(todayKm)} <span className="text-base font-normal opacity-50">{u.distanceLabel}</span></>
           )}
           hint={accounts.isError || mileage.isError ? t('dash.error') : acc === undefined && !accounts.isLoading ? t('dash.noAccount') : t('dash.vsYesterday')}
           {...(kmDelta !== null ? { delta: kmDelta } : {})}
@@ -159,7 +161,7 @@ export function DashboardPage() {
               <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('dash.fleetActivityDesc')}</p>
             </div>
             <div className="flex items-center gap-2">
-              {acc !== undefined && series.length > 0 && <Badge tone="brand">{t('units.km', { n: rangeKm })}</Badge>}
+              {acc !== undefined && series.length > 0 && <Badge tone="brand">{u.distanceKm(rangeKm)}</Badge>}
               <div className="flex gap-1">
                 {RANGES.map((r) => (
                   <button
@@ -191,7 +193,7 @@ export function DashboardPage() {
             ) : series.length === 0 ? (
               <p className="py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="dash-mileage-empty">{t('dash.empty')}</p>
             ) : (
-              <AreaChartSvg series={series} unit="km" data-testid="dash-mileage-chart" aria-label={t('dash.fleetActivity')} />
+              <AreaChartSvg series={series.map((s) => ({ day: s.day, km: u.toDistance(s.km) }))} unit={u.distanceLabel} data-testid="dash-mileage-chart" aria-label={t('dash.fleetActivity')} />
             )}
           </div>
         </section>
@@ -260,7 +262,7 @@ export function DashboardPage() {
               const age = now - p.fixTimeMs
               const tone = age <= 60_000 ? 'success' : age <= 600_000 ? 'warning' : 'neutral'
               const plate = devicePlate.get(p.deviceId)
-              const sub = [plate ?? null, p.speed !== null ? `${Math.round(p.speed)} ${t('units.kmh')}` : null].filter((s) => s !== null).join(' · ')
+              const sub = [plate ?? null, p.speed !== null ? u.speed(p.speed) : null].filter((s) => s !== null).join(' · ')
               return (
                 <li key={p.deviceId} className="admin-hairline-b flex items-center justify-between gap-3 px-4 py-2.5 text-sm last:border-b-0">
                   <div className="min-w-0">
@@ -303,7 +305,7 @@ export function DashboardPage() {
                   <Icon className="h-3.5 w-3.5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate" style={{ color: 'var(--admin-ink)' }}>{localizedEventSummary(t, e)}</div>
+                  <div className="truncate" style={{ color: 'var(--admin-ink)' }}>{localizedEventSummary(t, e, { fmtSpeed: u.speed })}</div>
                   <div className="truncate text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
                     {deviceName.get(String(e.deviceId)) ?? e.deviceId} · {dt(e.at)}
                   </div>

@@ -8,7 +8,8 @@ import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { ApiError } from '@/lib/http'
 import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 import { optimizeRoute, parseStopsText } from '@/lib/routing'
-import { fmtDuration, fmtKm } from '@/lib/trips'
+import { fmtDuration } from '@/lib/trips'
+import { useUnits } from '@/lib/units'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 // ADR-028 palette (PlaybackMap COLORS): route = --accent, stop markers = cursor purple
@@ -31,6 +32,7 @@ function stopFeatures(stops: { lat: number; lon: number; label?: string }[]): Ge
 /** Route planner (ADR-029): paste/click stops, OSRM-optimize the visiting order, see the road path. */
 export function RoutePlannerPage() {
   const { t } = useTranslation()
+  const u = useUnits()
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MbMap | null>(null)
   // bumps on EVERY style.load (initial + theme swaps, ADR-030) so the stops/route
@@ -195,14 +197,14 @@ export function RoutePlannerPage() {
                       <td className="px-2 py-1.5">{s.visitOrder + 1}</td>
                       <td className="px-2 py-1.5">{s.label ?? `${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`}</td>
                       <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: 'var(--admin-ink-soft)' }}>
-                        {leg !== undefined ? `${fmtDuration(leg.durationS * 1000)} · ${fmtKm(leg.distanceM)}` : '—'}
+                        {leg !== undefined ? `${fmtDuration(leg.durationS * 1000)} · ${u.distanceM(leg.distanceM)}` : '—'}
                       </td>
                     </tr>
                   )
                 })}
                 <tr className="admin-hairline-t font-medium" data-testid="routing-total">
                   <td className="px-2 py-1.5" colSpan={2}>{t('routing.total')}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{`${fmtDuration(result.totalDurationS * 1000)} · ${fmtKm(result.totalDistanceM)}`}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{`${fmtDuration(result.totalDurationS * 1000)} · ${u.distanceM(result.totalDistanceM)}`}</td>
                 </tr>
               </tbody>
             </table>

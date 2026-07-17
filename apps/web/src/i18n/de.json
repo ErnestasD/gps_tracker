@@ -336,7 +336,12 @@
   },
   "units": {
     "kmh": "km/h",
-    "km": "{{n}} km"
+    "km": "{{n}} km",
+    "mph": "mph",
+    "mi": "mi",
+    "gal": "gal",
+    "l": "l",
+    "kmLabel": "km"
   },
   "settings": {
     "title": "Einstellungen",
@@ -390,6 +395,23 @@
       "off": "Aus",
       "denied": "Berechtigung verweigert — Benachrichtigungen in den Browsereinstellungen erlauben.",
       "error": "Benachrichtigungen konnten nicht aktualisiert werden."
+    },
+    "display": {
+      "title": "Anzeigeeinstellungen",
+      "timeFormat": "Zeitformat",
+      "h24": "24-Stunden",
+      "h12": "12-Stunden (AM/PM)",
+      "timeZone": "Zeitzone",
+      "tzAuto": "Automatisch (Browser)",
+      "dateFormat": "Datumsformat",
+      "dfAuto": "Sprachstandard",
+      "speed": "Geschwindigkeit",
+      "distance": "Entfernung",
+      "volume": "Volumen",
+      "km": "Kilometer (km)",
+      "mi": "Meilen (mi)",
+      "l": "Liter (l)",
+      "gal": "US-Gallonen (gal)"
     }
   },
   "devices": {
@@ -592,7 +614,7 @@
       "info": "Info"
     },
     "s": {
-      "overspeed": "{{speed}} km/h > {{limit}}",
+      "overspeed": "{{speed}} > {{limit}}",
       "low_battery": "{{volts}} V < {{threshold}}",
       "ignition_on": "Zündung ein",
       "ignition_off": "Zündung aus",
@@ -642,7 +664,10 @@
       "exits": "Ausfahrten",
       "startTime": "Start",
       "endTime": "Ende",
-      "maxSpeed": "Max Tempo"
+      "maxSpeed": "Max Tempo",
+      "distanceKm": "Entfernung (km)",
+      "distanceMi": "Entfernung (mi)",
+      "maxSpeedMph": "Max. mph"
     },
     "account": "Konto",
     "exportPdf": "PDF exportieren",
@@ -800,7 +825,9 @@
       "unknown": "Keine Daten"
     },
     "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen.",
-    "actions": "Aktionen"
+    "actions": "Aktionen",
+    "everyMi": "alle {{n}} mi",
+    "miLeft": "noch {{n}} mi"
   },
   "scheduled": {
     "title": "Geplante Berichte",

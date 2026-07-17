@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { DeviceLive } from '@/lib/liveStore'
+import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
 /** Relative time for Live contexts only (spec §3 time rule); Intl, no date math. */
@@ -34,6 +35,7 @@ export function InfoCard({
   onClose: () => void
 }) {
   const { t, i18n } = useTranslation()
+  const { speed } = useUnits()
   const { ev, status } = device
   return (
     <Card data-testid="info-card" className="absolute bottom-4 left-[352px] z-10 w-72 bg-surface/95 backdrop-blur">
@@ -50,9 +52,7 @@ export function InfoCard({
         <dl className="grid grid-cols-3 gap-2 text-xs">
           <div>
             <dt className="text-muted">{t('info.speed')}</dt>
-            <dd className="tabular-nums text-text">
-              {ev.speed ?? 0} {t('units.kmh')}
-            </dd>
+            <dd className="tabular-nums text-text">{speed(ev.speed ?? 0)}</dd>
           </div>
           <div>
             <dt className="text-muted">{t('info.ignition')}</dt>

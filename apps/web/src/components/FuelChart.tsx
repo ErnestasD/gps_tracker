@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/admin/AdminKit'
 import { fuelChartPoints, fuelCursorX, type FuelPoint } from '@/lib/fuel'
+import { useUnits } from '@/lib/units'
 
 /**
  * Fuel-level line for playback (E08-3). Same hand-rolled SVG approach as SpeedChart
@@ -31,6 +32,7 @@ export function FuelChart({
   value?: number | null
 }) {
   const { t } = useTranslation()
+  const { volumeL } = useUnits()
   const pts = useMemo(() => fuelChartPoints(points, W, H, PAD), [points])
   const path = pts.length > 0 ? 'M' + pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(' L') : ''
   const shown = value ?? points[points.length - 1]?.v
@@ -42,7 +44,8 @@ export function FuelChart({
         <span style={{ color: 'var(--admin-ink-soft)' }}>{t('playback.fuel')}</span>
         {shown !== undefined && (
           <Badge tone="brand" data-testid="fuel-last">
-            <span className="tabular-nums">{unit === 'pct' ? `${shown}%` : t('playback.fuelLiters', { l: shown.toFixed(1) })}</span>
+            {/* percentages stay % — only litre readings convert to the volume pref */}
+            <span className="tabular-nums">{unit === 'pct' ? `${shown}%` : volumeL(shown)}</span>
           </Badge>
         )}
       </div>

@@ -9,6 +9,7 @@ import { eventSeverity } from '@/lib/dashboard'
 import { useFmt } from '@/lib/datetime'
 import { listEvents, localizedEventSummary } from '@/lib/events'
 import { markAllRead, markRead, readIds, unreadCount } from '@/lib/notifications'
+import { useUnits } from '@/lib/units'
 
 const SEVERITY_TONE = {
   critical: 'var(--admin-danger)',
@@ -24,6 +25,7 @@ const SEVERITY_TONE = {
 export function NotificationsBell() {
   const { t } = useTranslation()
   const { dt } = useFmt()
+  const u = useUnits()
   const navigate = useNavigate()
   const [open, setOpen] = React.useState(false)
   const [read, setRead] = React.useState<Set<string>>(() => readIds())
@@ -93,7 +95,7 @@ export function NotificationsBell() {
                   <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SEVERITY_TONE[eventSeverity(e.kind)] }} aria-hidden />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm" style={{ color: 'var(--admin-ink)', fontWeight: isRead ? 400 : 600 }}>
-                      {localizedEventSummary(t, e)}
+                      {localizedEventSummary(t, e, { fmtSpeed: u.speed })}
                     </div>
                     <div className="text-[11px]" style={{ color: 'var(--admin-ink-soft)' }}>
                       {t(`events.k.${e.kind}`, e.kind)} · {dt(e.at)}

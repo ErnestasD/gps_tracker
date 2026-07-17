@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
 import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { DeviceLive } from '@/lib/liveStore'
+import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
 /**
@@ -75,7 +76,7 @@ const DeviceRow = memo(function DeviceRow({
   selected: boolean
   onSelect: (id: string) => void
 }) {
-  const { t } = useTranslation()
+  const { speed } = useUnits()
   const { ev, status } = device
   return (
     <button
@@ -91,9 +92,7 @@ const DeviceRow = memo(function DeviceRow({
     >
       <StatusDot status={status} />
       <span className="min-w-0 flex-1 truncate font-mono text-xs text-text">{ev.deviceId}</span>
-      <span className="shrink-0 text-xs tabular-nums text-muted">
-        {ev.speed ?? 0} {t('units.kmh')}
-      </span>
+      <span className="shrink-0 text-xs tabular-nums text-muted">{speed(ev.speed ?? 0)}</span>
     </button>
   )
 })

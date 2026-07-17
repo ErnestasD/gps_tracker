@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { COLUMNS, REPORT_TYPES, toCsv, toPdfTable } from '../src/lib/reports.js'
+import { COLUMNS, REPORT_TYPES, toCsv, toPdfTable, unitColumns } from '../src/lib/reports.js'
 
 describe('E06-2 toCsv', () => {
   const cols = COLUMNS.mileage // day, deviceId, trips, distanceM
@@ -28,6 +28,44 @@ describe('E06-2 toCsv', () => {
 
   it('every report type has a column layout', () => {
     for (const t of REPORT_TYPES) expect(COLUMNS[t].length).toBeGreaterThan(0)
+  })
+})
+
+describe('unitColumns (display-pref unit conversion)', () => {
+  const metric = { distance: 'km', speed: 'kmh' } as const
+  const imperial = { distance: 'mi', speed: 'mph' } as const
+
+  it('metric: distanceM renders as km with a unit-suffixed header; speeds stay km/h', () => {
+    const csv = toCsv(unitColumns(COLUMNS.mileage, metric), [{ day: '2026-07-09', deviceId: '42', trips: 3, distanceM: 12340 }])
+    expect(csv).toBe('day,deviceId,trips,distanceKm\r\n2026-07-09,42,3,12.3')
+    const over = toCsv(unitColumns(COLUMNS.overspeed, metric), [{ day: 'd', deviceId: '42', count: 1, maxSpeedKmh: 97 }])
+    expect(over).toContain('maxSpeedKmh')
+    expect(over).toContain('97')
+  })
+
+  it('imperial: distance converts to mi and speed to mph, headers say so', () => {
+    const csv = toCsv(unitColumns(COLUMNS.mileage, imperial), [{ day: '2026-07-09', deviceId: '42', trips: 3, distanceM: 160934.4 }])
+    expect(csv).toBe('day,deviceId,trips,distanceMi\r\n2026-07-09,42,3,100')
+    const over = toCsv(unitColumns(COLUMNS.overspeed, imperial), [{ day: 'd', deviceId: '42', count: 1, maxSpeedKmh: 97 }])
+    expect(over).toContain('maxSpeedMph')
+    expect(over.endsWith('60')).toBe(true) // 97 km/h → 60 mph
+  })
+
+  it("the trips report's maxSpeed column converts too, and the PDF matrix matches the CSV", () => {
+    const cols = unitColumns(COLUMNS.trips, imperial)
+    const row = { day: 'd', deviceId: '42', startTime: 's', endTime: 'e', distanceM: 1609.344, maxSpeed: 80.4672, idleS: 5 }
+    const t = toPdfTable(cols, [row])
+    expect(t.head[0]).toContain('distanceMi')
+    expect(t.head[0]).toContain('maxSpeedMph')
+    expect(t.body[0]).toContain('1') // 1609.344 m → 1 mi
+    expect(t.body[0]).toContain('50') // 80.4672 km/h → 50 mph
+  })
+
+  it('non-numeric cells pass through unconverted and label→i18n keys stay in sync', () => {
+    const cols = unitColumns(COLUMNS.mileage, imperial)
+    expect(toCsv(cols, [{ day: 'd', deviceId: '42', trips: 1, distanceM: null }])).toContain('distanceMi\r\nd,42,1,')
+    const dist = cols.find((c) => c.key === 'distanceM')!
+    expect(dist.label).toBe('distanceMi') // reports.col.distanceMi exists in all 4 catalogs
   })
 })
 
