@@ -541,6 +541,8 @@
     "from": "From",
     "to": "To",
     "when": "When",
+    "severity": "Severity",
+    "allSeverities": "All severities",
     "detail": "Detail",
     "hide": "Hide",
     "details": "Details",
@@ -560,6 +562,11 @@
     "stat": {
       "critical": "Critical",
       "warning": "Warnings",
+      "info": "Info"
+    },
+    "sev": {
+      "critical": "Critical",
+      "warning": "Warning",
       "info": "Info"
     },
     "s": {
@@ -690,6 +697,7 @@
     "list": "Driver roster",
     "addTitle": "Add driver",
     "editTitle": "Edit driver",
+    "add": "Add driver",
     "name": "Name",
     "license": "License no.",
     "ibutton": "iButton / RFID",
@@ -710,6 +718,7 @@
     "nameRequired": "Name is required.",
     "ibuttonInvalid": "iButton must be 8–32 hex characters.",
     "ibuttonTaken": "That iButton is already assigned to another driver.",
+    "deleteSure": "Delete driver {{name}}? This cannot be undone.",
     "scores": {
       "title": "Safety scores (30 days)",
       "empty": "No driving in the last 30 days.",
@@ -730,6 +739,7 @@
     },
     "list": "Service schedule",
     "add": "Add reminder",
+    "addTitle": "New maintenance reminder",
     "device": "Device",
     "itemTitle": "Service",
     "intervalKm": "Every (km)",
@@ -746,6 +756,13 @@
     "delete": "Delete",
     "kmLeft": "{{n}} km left",
     "daysLeft": "{{n}} d left",
+    "interval": "Interval",
+    "remaining": "Remaining",
+    "statusHeader": "Status",
+    "everyKm": "every {{n}} km",
+    "everyDays": "every {{n}} d",
+    "deleteSure": "Delete reminder {{title}}? This cannot be undone.",
+    "servicedSure": "Mark {{title}} as serviced? The countdown restarts from the current odometer/date.",
     "status": {
       "ok": "OK",
       "due_soon": "Due soon",

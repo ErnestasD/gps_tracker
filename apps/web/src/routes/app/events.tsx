@@ -25,6 +25,9 @@ const SEVERITY: Record<string, Severity> = {
 }
 const severityOf = (kind: string): Severity => SEVERITY[kind] ?? 'info'
 const TONE: Record<Severity, 'danger' | 'warning' | 'info'> = { critical: 'danger', warning: 'warning', info: 'info' }
+const SEV_ICON: Record<Severity, typeof Activity> = { critical: AlertOctagon, warning: TrendingUp, info: Activity }
+const SEV_COLOR: Record<Severity, string> = { critical: 'var(--admin-danger)', warning: 'var(--admin-warning)', info: 'var(--admin-info)' }
+const SEVERITIES: Severity[] = ['critical', 'warning', 'info']
 
 /** Events timeline (E05-6): the pipeline's rule/geofence output. Filter by kind, device,
  * and time range; expand a row for the raw payload. Cursor-paginated (newest first). */
@@ -32,6 +35,7 @@ export function EventsPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
   const [kind, setKind] = useState('')
+  const [severity, setSeverity] = useState<'' | Severity>('')
   const [deviceId, setDeviceId] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -61,6 +65,9 @@ export function EventsPage() {
   })
 
   const rows = (query.data?.pages ?? []).flat()
+  // severity is a client-side lens over the LOADED rows only — the cursor query is untouched
+  // (severity is derived from kind, so the server cannot filter it)
+  const shown = severity === '' ? rows : rows.filter((r) => severityOf(r.kind) === severity)
   const deviceName = (id: string): string => devices.data?.find((d) => d.id === id)?.name ?? id
 
   // stat row counts what is currently loaded (it's an infinite query — not a server aggregate)
@@ -74,6 +81,10 @@ export function EventsPage() {
         <select aria-label={t('events.kind')} value={kind} onChange={(e) => setKind(e.target.value)} data-testid="events-kind" className={selectCls} style={selectStyle}>
           <option value="">{t('events.allKinds')}</option>
           {EVENT_KINDS.map((k) => <option key={k} value={k}>{t(`events.k.${k}`)}</option>)}
+        </select>
+        <select aria-label={t('events.severity')} value={severity} onChange={(e) => setSeverity(e.target.value as '' | Severity)} data-testid="events-severity" className={selectCls} style={selectStyle}>
+          <option value="">{t('events.allSeverities')}</option>
+          {SEVERITIES.map((s) => <option key={s} value={s}>{t(`events.sev.${s}`)}</option>)}
         </select>
         <select aria-label={t('events.device')} value={deviceId} onChange={(e) => setDeviceId(e.target.value)} data-testid="events-device" className={selectCls} style={selectStyle}>
           <option value="">{t('events.allDevices')}</option>
@@ -90,7 +101,7 @@ export function EventsPage() {
       </div>
 
       <div className="admin-card overflow-hidden">
-        {rows.length === 0 && !query.isLoading ? (
+        {shown.length === 0 && !query.isLoading ? (
           <p className="py-10 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="events-empty">{t('events.empty')}</p>
         ) : (
           <div className="overflow-x-auto">
@@ -101,17 +112,30 @@ export function EventsPage() {
                   <th className="px-3 py-2 font-medium">{t('events.kind')}</th>
                   <th className="px-3 py-2 font-medium">{t('events.device')}</th>
                   <th className="px-3 py-2 font-medium">{t('events.detail')}</th>
+                  <th className="hidden px-3 py-2 font-medium md:table-cell">{t('events.severity')}</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody style={{ color: 'var(--admin-ink)' }}>
-                {rows.map((r) => (
+                {shown.map((r) => (
                   <Fragment key={r.id}>
                     <tr className="border-t" style={{ borderColor: 'var(--admin-hairline)' }} data-testid={`event-row-${r.id}`}>
                       <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{dt(r.at)}</td>
                       <td className="px-3 py-2"><Badge tone={TONE[severityOf(r.kind)]}>{t(`events.k.${r.kind}`, r.kind)}</Badge></td>
                       <td className="px-3 py-2">{deviceName(r.deviceId)}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--admin-ink-soft)' }}>{localizedEventSummary(t, r)}</td>
+                      <td className="hidden px-3 py-2 md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>
+                        {(() => {
+                          const sev = severityOf(r.kind)
+                          const Icon = SEV_ICON[sev]
+                          return (
+                            <span className="inline-flex items-center gap-1.5 text-xs">
+                              <Icon className="h-3.5 w-3.5" style={{ color: SEV_COLOR[sev] }} aria-hidden />
+                              {t(`events.sev.${sev}`)}
+                            </span>
+                          )
+                        })()}
+                      </td>
                       <td className="px-3 py-2 text-right">
                         <AdminButton variant="ghost" size="sm" data-testid={`event-expand-${r.id}`} aria-expanded={open === r.id} onClick={() => setOpen((o) => (o === r.id ? null : r.id))}>
                           {open === r.id ? t('events.hide') : t('events.details')}
@@ -120,7 +144,7 @@ export function EventsPage() {
                     </tr>
                     {open === r.id && (
                       <tr data-testid={`event-detail-${r.id}`}>
-                        <td colSpan={5} className="p-3" style={{ background: 'var(--admin-surface-sunken)' }}>
+                        <td colSpan={6} className="p-3" style={{ background: 'var(--admin-surface-sunken)' }}>
                           <pre className="max-h-64 overflow-auto rounded-md border p-2 text-xs" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }}>{JSON.stringify(r.payload, null, 2)}</pre>
                         </td>
                       </tr>
