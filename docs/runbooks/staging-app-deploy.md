@@ -65,4 +65,8 @@ ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
 - Ingest is the only app port published beside Caddy (5027 — devices). Internal
   services stay loopback/compose-network only (PR #11: Docker bypasses UFW).
 - The `exports` volume is mounted on BOTH worker (writes) and api (download streams).
+- Route optimization (ADR-029): PREP the osrm volume (`infra/osrm/README.md` — download
+  the LT extract + osrm-extract/partition/customize, off-peak: prep peaks 4–6 GB RAM)
+  BEFORE setting `OSRM_URL=http://osrm:5000` in `/opt/orbetra/.env` and enabling
+  `COMPOSE_PROFILES=osrm`. Without the prepared volume the container crash-loops.
 - No CD pipeline yet — this runbook IS the deploy. GitHub Actions CD = follow-up.

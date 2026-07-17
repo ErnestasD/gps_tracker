@@ -81,6 +81,20 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
     responses: RESPONSES.read,
   })
   add('get', '/v1/driver-scores', { tags: ['driver'], summary: 'Driver safety scores over a window (V2)', security: READ_SEC, responses: RESPONSES.read })
+  add('post', '/v1/routing/optimize', {
+    tags: ['routing'],
+    summary: 'Optimize a multi-stop route (self-hosted OSRM trip, ADR-029)',
+    security: WRITE_SEC,
+    responses: {
+      '200': { description: 'OK' },
+      '400': { description: 'Bad request' },
+      '401': { description: 'Unauthenticated' },
+      '422': { description: 'Unroutable stops (outside the covered region)' },
+      '429': { description: 'Rate limited' },
+      '502': { description: 'Routing engine unreachable' },
+      '503': { description: 'Routing not configured' },
+    },
+  })
   // api-key management is tenant-admin only (an API key can't reach it) → JWT security only
   add('get', '/v1/api-keys', { ...op('apiKey', 'get', '/v1/api-keys', []), security: WRITE_SEC })
   add('post', '/v1/api-keys', op('apiKey', 'post', '/v1/api-keys', []))
