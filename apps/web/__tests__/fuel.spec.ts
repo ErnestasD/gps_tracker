@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fuelChartPoints, fuelSeries } from '../src/lib/fuel.js'
+import { fuelAtTime, fuelChartPoints, fuelSeries } from '../src/lib/fuel.js'
 
 const T0 = Date.UTC(2026, 6, 1, 12, 0, 0)
 const iso = (min: number) => new Date(T0 + min * 60_000).toISOString()
@@ -24,6 +24,25 @@ describe('E08-3 fuelSeries (pure)', () => {
 
   it('empty in → empty out (chart hidden, AVL-gated)', () => {
     expect(fuelSeries([]).points).toEqual([])
+  })
+})
+
+describe('playback overlay fuelAtTime (pure)', () => {
+  const pts = [
+    { tMs: T0, v: 80 },
+    { tMs: T0 + 60_000, v: 79 },
+    { tMs: T0 + 10 * 60_000, v: 70 },
+  ]
+
+  it('returns the latest sample at-or-before t (sparse reporting holds the last value)', () => {
+    expect(fuelAtTime(pts, T0)).toBe(80) // exactly on a sample
+    expect(fuelAtTime(pts, T0 + 90_000)).toBe(79) // between samples → previous holds
+    expect(fuelAtTime(pts, T0 + 60 * 60_000)).toBe(70) // past the end → last
+  })
+
+  it('returns null before the first sample and for an empty series', () => {
+    expect(fuelAtTime(pts, T0 - 1)).toBeNull()
+    expect(fuelAtTime([], T0)).toBeNull()
   })
 })
 

@@ -261,7 +261,11 @@
     "fuelLiters": "{{l}} l",
     "skipStart": "Na początek",
     "skipEnd": "Na koniec",
-    "scrub": "Pozycja odtwarzania"
+    "scrub": "Pozycja odtwarzania",
+    "play": "Odtwórz",
+    "pause": "Pauza",
+    "point": "punkt {{i}} / {{n}}",
+    "speed": "Prędkość"
   },
   "geofences": {
     "title": "Geostrefy",
@@ -393,7 +397,8 @@
       "create": "{{n}} do utworzenia",
       "update": "{{n}} istniejących",
       "errors": "{{n}} błędów",
-      "rowError": "Wiersz {{row}} ({{imei}}): {{reason}}"
+      "rowError": "Wiersz {{row}} ({{imei}}): {{reason}}",
+      "open": "Importuj CSV"
     },
     "retireError": "Nie udało się wycofać urządzenia {{imei}}.",
     "odometer": "Licznik",
@@ -504,7 +509,11 @@
       "caveat": "Ta rodzina urządzeń może używać innych parametrów — sprawdź w wiki Teltonika dla swojego modelu."
     },
     "imeiPh": "15 cyfr",
-    "actions": "Akcje"
+    "actions": "Akcje",
+    "addTitle": "Nowe urządzenie",
+    "plate": "Nr rejestracyjny (opcjonalnie)",
+    "retireSure": "Wycofać {{name}} ({{imei}})? Od teraz ten IMEI będzie odrzucany.",
+    "eraseSure": "Trwale usunąć wszystkie dane {{name}}? Historia, trasy, zdarzenia i polecenia zostaną usunięte. Tego nie można cofnąć."
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",

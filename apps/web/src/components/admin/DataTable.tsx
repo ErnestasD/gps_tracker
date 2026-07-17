@@ -18,11 +18,29 @@ export type Column<T> = {
   hideOnMobile?: boolean
 }
 
+/** md-breakpoint mirror: the table renders EITHER the desktop layout OR the mobile cards.
+ * Rendering both (CSS-hidden) would duplicate every per-row control/testid in the DOM —
+ * Playwright strict mode and screen readers both see the hidden copy. */
+function useIsDesktop(): boolean {
+  const [desktop, setDesktop] = React.useState<boolean>(
+    () => typeof window.matchMedia !== 'function' || window.matchMedia('(min-width: 768px)').matches,
+  )
+  React.useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia('(min-width: 768px)')
+    const onChange = (e: MediaQueryListEvent) => setDesktop(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return desktop
+}
+
 /**
  * Client-side data table (ADR-028, ported from orbetra_design_new; labels i18n-ized):
  * free-text search, per-column dropdown filters, single-column sort, pagination, and a
- * stacked mobile card layout. For cursor-paginated server data (events/audit) keep the
- * page's own table + load-more — this component is for fully-loaded lists.
+ * stacked mobile card layout (one layout at a time, see useIsDesktop). For cursor-paginated
+ * server data (events/audit) keep the page's own table + load-more — this component is for
+ * fully-loaded lists.
  */
 export function DataTable<T extends { id: string }>({
   data,
@@ -51,6 +69,7 @@ export function DataTable<T extends { id: string }>({
   'data-testid'?: string
 }) {
   const { t } = useTranslation()
+  const isDesktop = useIsDesktop()
   const [q, setQ] = React.useState('')
   const [sort, setSort] = React.useState<{ key: string; dir: 'asc' | 'desc' } | null>(null)
   const [filters, setFilters] = React.useState<Record<string, string>>({})
@@ -159,7 +178,8 @@ export function DataTable<T extends { id: string }>({
       </div>
 
       {/* desktop table */}
-      <div className="hidden overflow-x-auto md:block">
+      {isDesktop && (
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--admin-surface-sunken)' }}>
@@ -229,9 +249,11 @@ export function DataTable<T extends { id: string }>({
           </tbody>
         </table>
       </div>
+      )}
 
       {/* mobile cards */}
-      <div className="md:hidden">
+      {!isDesktop && (
+      <div>
         {paged.length === 0 && (
           <div className="px-4 py-12 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>
             {empty}
@@ -255,6 +277,7 @@ export function DataTable<T extends { id: string }>({
           </div>
         ))}
       </div>
+      )}
 
       {/* pagination */}
       <div className="admin-hairline-t flex items-center justify-between gap-2 px-4 py-2.5 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>

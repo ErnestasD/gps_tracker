@@ -179,6 +179,8 @@ test('devices: create in UI → appears → retire → ingest rejects that IMEI 
   await page.waitForURL('**/app/map')
 
   await page.goto('/app/devices')
+  // design round 2: the create form lives in a right Sheet behind "Add device"
+  await page.getByTestId('device-add-open').click()
   await page.getByTestId('device-imei').fill(IMEI)
   await page.getByTestId('device-name').fill('E2E Truck')
   await page.getByTestId('device-create').click()
@@ -196,8 +198,11 @@ test('devices: create in UI → appears → retire → ingest rejects that IMEI 
   )
   expect(accepted).toBe(0) // exit 0 = not rejected
 
-  // retire → registry teardown → the same IMEI is now REJECTED (0x00 → exit 1)
+  // retire → registry teardown → the same IMEI is now REJECTED (0x00 → exit 1).
+  // Retire sits in the per-row "..." menu and is gated by a ConfirmDialog (round 2).
+  await page.getByTestId(`row-menu-${IMEI}`).click()
   await page.getByTestId(`retire-${IMEI}`).click()
+  await page.getByTestId('confirm-ok').click()
   await expect(page.getByTestId(`device-${IMEI}`).getByText(/Retired|Išregistruotas|Wycofane|Stillgelegt/)).toBeVisible({ timeout: 15_000 })
   const rejected = await runToExit(
     TSX_BIN,
@@ -216,17 +221,22 @@ test('devices: CSV import dry-run shows per-row errors then applies (E03-3 AC[1]
   await page.goto('/app/devices')
 
   // a tenant-wide caller must name the account per row — read it from the create form
+  // (which now lives in the "Add device" Sheet; close it again before importing)
+  await page.getByTestId('device-add-open').click()
   const accountId = await page.locator('[data-testid="device-account"] option').first().getAttribute('value')
   expect(accountId).toBeTruthy()
+  await page.keyboard.press('Escape')
 
   // one valid (Luhn), one bad-checksum → preview reports 1 create + 1 error
   const csv = `imei,name,profileKey,accountId\n356307042441013,Good,fmb1xx,${accountId}\n356307042441011,Bad,fmb1xx,${accountId}`
+  await page.getByTestId('import-open').click()
   await page.getByTestId('import-csv').fill(csv)
   await page.getByTestId('import-preview').click()
   await expect(page.getByTestId('import-summary')).toContainText(/1 to create|1 kurti|1 do utworzenia|1 zu erstellen/)
   await expect(page.getByTestId('import-summary')).toContainText(/Luhn|IMEI/)
   await page.getByTestId('import-apply').click()
   await expect(page.getByTestId('import-done')).toBeVisible({ timeout: 15_000 })
+  await page.keyboard.press('Escape') // close the import sheet to reveal the table
   await expect(page.getByTestId('device-356307042441013')).toBeVisible()
 })
 
@@ -241,6 +251,7 @@ test('commands: preset queues in history; destructive needs a second confirming 
 
   await page.goto('/app/devices')
   for (const [imei, name] of [[IMEI, 'E2E Cmd Van'], [IMEI2, 'E2E Cmd Van 2']] as const) {
+    await page.getByTestId('device-add-open').click() // create form Sheet (closes on success)
     await page.getByTestId('device-imei').fill(imei)
     await page.getByTestId('device-name').fill(name)
     await page.getByTestId('device-create').click()
@@ -254,7 +265,9 @@ test('commands: preset queues in history; destructive needs a second confirming 
     if (req.method() === 'POST' && /\/v1\/devices\/[^/]+\/commands$/.test(req.url())) commandPosts++
   })
 
-  // open the per-device command panel and send a read-only preset — one click, no gate
+  // open the per-device command panel (via the row "..." menu) and send a read-only
+  // preset — one click, no gate
+  await page.getByTestId(`row-menu-${IMEI}`).click()
   await page.getByTestId(`commands-${IMEI}`).click()
   await expect(page.getByTestId('commands-card')).toBeVisible()
   await page.getByTestId('preset-getinfo').click()
@@ -272,11 +285,13 @@ test('commands: preset queues in history; destructive needs a second confirming 
 
   // …switching to ANOTHER device must fully disarm (armed state may never carry over —
   // one click here would otherwise wipe a device the operator never confirmed)
+  await page.getByTestId(`row-menu-${IMEI2}`).click()
   await page.getByTestId(`commands-${IMEI2}`).click()
   await expect(page.getByTestId('command-armed')).not.toBeVisible()
   await expect(page.getByTestId('command-text')).toHaveValue('')
 
   // back on the first device: re-arm, then the second (post-dwell) click actually sends
+  await page.getByTestId(`row-menu-${IMEI}`).click()
   await page.getByTestId(`commands-${IMEI}`).click()
   await page.getByTestId('preset-deleterecords').click()
   await page.getByTestId('command-send').click()
@@ -415,12 +430,20 @@ test('playback: history page loads a device trail with a scrubbable speed chart 
   await expect(page.getByTestId('playback-map')).toBeVisible()
 
   // pick the DB device that owns BASE_IMEI ("Good", created by the CSV-import test) — the
-  // dropdown auto-selects the FIRST device, which is a retired one with no positions. The
-  // old `.or(playback-empty)` tolerance silently skipped every assertion below (review LOW).
-  await page.getByTestId('playback-device').selectOption({ label: 'Good' })
+  // dropdown auto-selects the FIRST device, which may have no positions. The old
+  // `.or(playback-empty)` tolerance silently skipped every assertion below (review LOW).
+  // The device picker is a Combobox (design round 2): open it, click the option.
+  await page.getByTestId('playback-device').click()
+  await page.getByRole('button', { name: 'Good', exact: true }).click()
 
   // we DROVE BASE_IMEI above, so its history must load — an empty state here is a failure
   await expect(page.getByTestId('speed-chart')).toBeVisible({ timeout: 20_000 })
+
+  // Play animates the scrub index forward; Pause stops it (round 2 "Groti")
+  await page.getByTestId('playback-start').click()
+  await page.getByTestId('playback-play').click()
+  await expect.poll(async () => Number(await page.getByTestId('playback-scrub').inputValue())).toBeGreaterThan(0)
+  await page.getByTestId('playback-play').click() // pause
 
   // scrubbing updates the current-sample readout without crashing
   await page.getByTestId('playback-end').click()

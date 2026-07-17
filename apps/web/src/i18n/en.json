@@ -261,7 +261,11 @@
     "fuelLiters": "{{l}} l",
     "skipStart": "Skip to start",
     "skipEnd": "Skip to end",
-    "scrub": "Playback position"
+    "scrub": "Playback position",
+    "play": "Play",
+    "pause": "Pause",
+    "point": "point {{i}} / {{n}}",
+    "speed": "Speed"
   },
   "geofences": {
     "title": "Geofences",
@@ -393,7 +397,8 @@
       "create": "{{n}} to create",
       "update": "{{n}} existing",
       "errors": "{{n}} errors",
-      "rowError": "Row {{row}} ({{imei}}): {{reason}}"
+      "rowError": "Row {{row}} ({{imei}}): {{reason}}",
+      "open": "Import CSV"
     },
     "retireError": "Could not retire device {{imei}}.",
     "odometer": "Odometer",
@@ -504,7 +509,11 @@
       "caveat": "This device family may use different parameters — verify on the Teltonika wiki for your model."
     },
     "imeiPh": "15 digits",
-    "actions": "Actions"
+    "actions": "Actions",
+    "addTitle": "New device",
+    "plate": "Plate (optional)",
+    "retireSure": "Retire {{name}} ({{imei}})? Ingest will reject this IMEI from now on.",
+    "eraseSure": "Permanently erase all data of {{name}}? History, trips, events and commands will be deleted. This cannot be undone."
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",
