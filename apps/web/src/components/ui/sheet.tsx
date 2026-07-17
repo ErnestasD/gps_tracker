@@ -46,6 +46,10 @@ const SheetContent = React.forwardRef<
         ref={ref}
         className={cn('fixed z-50 flex flex-col gap-4 overflow-y-auto bg-surface p-6 text-text', SIDE_CLASSES[side], className)}
         style={{ boxShadow: 'var(--admin-shadow-md)' }}
+        // most sheets have a Title but no Description; an explicit undefined silences Radix's
+        // "Missing Description or aria-describedby" console warning (ConfirmDialog precedent).
+        // Callers that render a SheetDescription pass their own aria-describedby via props.
+        aria-describedby={undefined}
         {...props}
       >
         <SheetPrimitive.Close

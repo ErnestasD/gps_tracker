@@ -40,7 +40,9 @@ export function NotificationsBell() {
           type="button"
           className="relative grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-surface-2"
           style={{ color: 'var(--admin-ink)' }}
-          aria-label={t('bell.title')}
+          // aria-label WINS over descendant text in accname computation, so the unread count
+          // must live inside it — the visual badge alone is invisible to screen readers
+          aria-label={unread > 0 ? t('bell.titleUnread', { n: unread > 99 ? '99+' : unread }) : t('bell.title')}
           data-testid="bell"
         >
           <Bell className="h-4 w-4" aria-hidden />

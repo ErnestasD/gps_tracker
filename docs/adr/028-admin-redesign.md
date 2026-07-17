@@ -50,9 +50,19 @@ design. Sheet/dialog are restyled to our tokens with the animation classes dropp
 
 **Deliberately NOT added** (design uses them; we don't need them): `recharts` (we have
 hand-rolled SVG charts pinned by e2e testids; AdminKit's Sparkline covers the rest),
-`react-day-picker`+`date-fns` (native `datetime-local` inputs are testid-pinned and work),
 `sonner` (inline success/error patterns are testid-pinned), `@radix-ui/react-tabs`
 (trivial hand-rolled tabs), `tw-animate-css`, `framer-motion` (marketing-only).
+
+**Amendment (2026-07-17, redesign round 2 — verify sweep):** `react-day-picker@8` + `date-fns@3`
+moved from the excluded list to the table above (founder mandate: native `date`/`datetime-local`
+inputs read as legacy widgets, and every form control must use the Lovable component idiom).
+The design's `admin/DatePicker.tsx` (Radix Popover + DayPicker single mode, Monday week start,
+admin-token `.rdp-*` style overrides) is ported; date filters become date-only per the
+reference — pages convert a picked day to `[00:00:00.000, 23:59:59.999]` LOCAL bounds at the
+query edge. v8 is pinned (not v9) because the ported style overrides target v8 class names.
+The same sweep swaps the remaining native `<select>`/checkbox controls to the ported
+Combobox/AdminCheckbox/AdminSwitch primitives (testids move onto the component triggers; e2e
+spec interactions updated in lockstep). `sonner` stays excluded.
 
 ## Consequences
 

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, PageHeader, StatCard } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { DataTable, type Column } from '@/components/admin/DataTable'
 import { Badge } from '@/components/ui/badge'
@@ -13,12 +14,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { listDevices } from '@/lib/devices'
 import { createMaintenance, deleteMaintenance, dueVariant, listMaintenance, markServiced, type MaintenanceView } from '@/lib/maintenance'
-
-const selectStyle: React.CSSProperties = {
-  borderColor: 'var(--admin-hairline)',
-  background: 'var(--admin-surface)',
-  color: 'var(--admin-ink)',
-}
 
 /** row model for the DataTable: the view plus the resolved device name (searchable/sortable). */
 type MaintRow = MaintenanceView & { deviceName: string }
@@ -64,11 +59,12 @@ export function MaintenancePage() {
       sortValue: (r) => r.deviceName.toLowerCase(),
       cell: (r) => <span className="font-medium">{r.deviceName}</span>,
     },
-    { key: 'service', header: t('maint.itemTitle'), cell: (r) => r.title },
+    { key: 'service', header: t('maint.itemTitle'), sortable: true, sortValue: (r) => r.title.toLowerCase(), cell: (r) => r.title },
     {
       key: 'interval',
       header: t('maint.interval'),
       hideOnMobile: true,
+      align: 'right', // numeric column (reference right-aligns dueKm/currentKm)
       cell: (r) => (
         <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
           {[
@@ -83,6 +79,7 @@ export function MaintenancePage() {
     {
       key: 'remaining',
       header: t('maint.remaining'),
+      align: 'right', // numeric column (reference right-aligns dueKm/currentKm)
       cell: (r) => (
         <span className="text-xs tabular-nums" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`maint-remaining-${r.id}`}>
           {remaining(r, t) || '—'}
@@ -95,10 +92,13 @@ export function MaintenancePage() {
       sortable: true,
       sortValue: (r) => STATUS_RANK[r.due.status] ?? 9,
       filterValue: (r) => r.due.status,
+      // every MaintenanceStatus value is filterable — 'unknown' is a real state (shared
+      // entities default) and must be isolatable like the rest
       filterOptions: [
         { value: 'ok', label: t('maint.status.ok') },
         { value: 'due_soon', label: t('maint.status.due_soon') },
         { value: 'overdue', label: t('maint.status.overdue') },
+        { value: 'unknown', label: t('maint.status.unknown') },
       ],
       // dueVariant is the unit-tested ui/badge mapping — keep ui/badge here
       cell: (r) => <Badge variant={dueVariant(r.due.status)} data-testid={`maint-status-${r.id}`}>{t(`maint.status.${r.due.status}`)}</Badge>,
@@ -134,22 +134,24 @@ export function MaintenancePage() {
         )}
       </PageHeader>
 
-      {list.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-          <StatCard
-            label={t('maint.stat.ok')}
-            value={<><CheckCircle2 className="mr-2 inline h-5 w-5" style={{ color: 'var(--admin-success)' }} />{okCount}</>}
-          />
-          <StatCard
-            label={t('maint.stat.due')}
-            value={<><Wrench className="mr-2 inline h-5 w-5" style={{ color: 'var(--admin-warning)' }} />{dueCount}</>}
-          />
-          <StatCard
-            label={t('maint.stat.overdue')}
-            value={<><AlertTriangle className="mr-2 inline h-5 w-5" style={{ color: 'var(--admin-danger)' }} />{overdueCount}</>}
-          />
-        </div>
-      )}
+      {/* always rendered (reference shows the stat row even at zero) with the per-card hints */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <StatCard
+          label={t('maint.stat.ok')}
+          hint={t('maint.stat.okHint')}
+          value={<><CheckCircle2 className="mr-2 inline h-5 w-5" style={{ color: 'var(--admin-success)' }} />{okCount}</>}
+        />
+        <StatCard
+          label={t('maint.stat.due')}
+          hint={t('maint.stat.dueHint')}
+          value={<><Wrench className="mr-2 inline h-5 w-5" style={{ color: 'var(--admin-warning)' }} />{dueCount}</>}
+        />
+        <StatCard
+          label={t('maint.stat.overdue')}
+          hint={t('maint.stat.overdueHint')}
+          value={<><AlertTriangle className="mr-2 inline h-5 w-5" style={{ color: 'var(--admin-danger)' }} />{overdueCount}</>}
+        />
+      </div>
 
       {actionError && (
         <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="maint-action-error">
@@ -249,7 +251,7 @@ function MaintRowMenu({ item, onServiced, onDelete }: { item: MaintRow; onServic
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={t('maint.itemTitle')}
+          aria-label={t('maint.actions')}
           data-testid={`maint-menu-${item.id}`}
           className="grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-[var(--admin-surface-sunken)]"
         >
@@ -273,7 +275,7 @@ function remaining(m: MaintenanceView, t: (k: string, o?: Record<string, unknown
 }
 
 function MaintForm({ devices, onCreated, onCancel }: {
-  devices: { id: string; name: string }[]
+  devices: { id: string; name: string; plate?: string | null }[]
   onCreated: () => void
   onCancel: () => void
 }) {
@@ -312,9 +314,14 @@ function MaintForm({ devices, onCreated, onCancel }: {
   return (
     <form onSubmit={(e) => void submit(e)} className="mt-2 flex flex-col gap-3" data-testid="maint-form">
       <Field label={t('maint.device')}>
-        <select value={dev} onChange={(e) => setDeviceId(e.target.value)} data-testid="maint-device" className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle}>
-          {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
+        {/* Combobox with plate hint (reference device-picker idiom) */}
+        <Combobox
+          value={dev}
+          onChange={setDeviceId}
+          data-testid="maint-device"
+          aria-label={t('maint.device')}
+          options={devices.map((d) => ({ value: d.id, label: d.name, ...(d.plate != null && d.plate !== '' ? { hint: d.plate } : {}) }))}
+        />
       </Field>
       <Field label={t('maint.itemTitle')}><AdminInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} data-testid="maint-title" /></Field>
       <div className="grid grid-cols-2 gap-2">

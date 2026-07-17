@@ -72,6 +72,9 @@ export function BrandingPage() {
               <AdminLabel htmlFor="branding-supportEmail">{t('branding.supportEmail')}</AdminLabel>
               <AdminInput id="branding-supportEmail" type="email" value={form.supportEmail ?? ''} onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))} data-testid="branding-supportEmail" />
             </div>
+            {/* native color inputs are the Lovable idiom here (OS pickers; e2e fills them) —
+                each is paired with an EDITABLE mono hex field (reference app.branding) that
+                commits only valid #rrggbb values back into the form */}
             <div>
               <AdminLabel htmlFor="branding-primary">{t('branding.primary')}</AdminLabel>
               <div className="flex items-center gap-2">
@@ -84,7 +87,7 @@ export function BrandingPage() {
                   style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)' }}
                   data-testid="branding-primary"
                 />
-                <span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{form.primary ?? '#7c7df5'}</span>
+                <HexInput value={form.primary ?? '#7c7df5'} onCommit={(v) => setForm((f) => ({ ...f, primary: v }))} testid="branding-primary-hex" label={t('branding.primary')} />
               </div>
             </div>
             <div>
@@ -99,7 +102,7 @@ export function BrandingPage() {
                   style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)' }}
                   data-testid="branding-accent"
                 />
-                <span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{form.accent ?? '#7c5cfc'}</span>
+                <HexInput value={form.accent ?? '#7c5cfc'} onCommit={(v) => setForm((f) => ({ ...f, accent: v }))} testid="branding-accent-hex" label={t('branding.accent')} />
               </div>
             </div>
             <div className="md:col-span-2">
@@ -119,9 +122,11 @@ export function BrandingPage() {
                 {error}
               </span>
             )}
-            {/* preview swatch reflects the live --accent custom property */}
+            {/* preview chip: primary straight from the form (reference shows both), accent
+                bound to the LIVE --accent custom property applyBranding writes */}
             <span className="ml-auto inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs" style={{ background: 'var(--admin-surface-sunken)', color: 'var(--admin-ink-soft)' }}>
               {t('branding.preview')}
+              <span className="h-4 w-4 rounded-full" style={{ background: form.primary ?? '#7c7df5' }} data-testid="branding-swatch-primary" />
               <span className="h-4 w-4 rounded-full" style={{ background: 'var(--accent)' }} data-testid="branding-swatch" />
             </span>
           </div>
@@ -196,6 +201,32 @@ export function BrandingPage() {
         }}
       />
     </div>
+  )
+}
+
+/** Editable mono hex field, two-way synced with its color picker: external changes replace the
+ * draft; typed values commit to the form only once they are a full valid #rrggbb. */
+function HexInput({ value, onCommit, testid, label }: { value: string; onCommit: (v: string) => void; testid: string; label: string }) {
+  const [draft, setDraft] = useState(value)
+  // picker (or server load) changed the color → adopt it as the new draft
+  useEffect(() => setDraft(value), [value])
+  const valid = /^#[0-9a-fA-F]{6}$/.test(draft)
+  return (
+    <AdminInput
+      value={draft}
+      onChange={(e) => {
+        const v = e.target.value
+        setDraft(v)
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) onCommit(v)
+      }}
+      maxLength={7}
+      aria-label={label}
+      aria-invalid={!valid}
+      data-testid={testid}
+      className="mono w-28 text-xs"
+      // caller style REPLACES AdminInput's base style object — restate all three tokens
+      style={valid ? undefined : { borderColor: 'var(--admin-danger)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }}
+    />
   )
 }
 

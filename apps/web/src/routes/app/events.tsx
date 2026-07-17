@@ -1,17 +1,22 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Activity, AlertOctagon, TrendingUp } from 'lucide-react'
-import { Fragment, useState, type CSSProperties } from 'react'
+import { Fragment, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
+import { DatePicker } from '@/components/admin/DatePicker'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { EVENT_KINDS, listEvents, localizedEventSummary, type EventRow } from '@/lib/events'
+import { dayEndIso, dayStartIso } from '@/lib/playback'
 
 const PAGE = 50
 
-const selectCls = 'h-8 rounded-md border px-2 text-xs outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30'
-const selectStyle: CSSProperties = { borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }
+// adopted DataTable skin for the cursor-paginated table (audit.tsx precedent — the shared
+// DataTable component cannot page a server cursor, so only the styling is shared)
+const th = 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
+const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
 
 /** Severity per kind — safety-critical events read as danger; degraded ones warn; the rest inform.
  * Drives both the badge tone and the StatCard counts over the currently loaded rows. */
@@ -37,28 +42,26 @@ export function EventsPage() {
   const [kind, setKind] = useState('')
   const [severity, setSeverity] = useState<'' | Severity>('')
   const [deviceId, setDeviceId] = useState('')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
+  // DatePicker filters are date-only (ADR-028 round-2 amendment): an unset day leaves the
+  // bound open; a picked day queries its full local day
+  const [from, setFrom] = useState<Date | undefined>(undefined)
+  const [to, setTo] = useState<Date | undefined>(undefined)
   const [open, setOpen] = useState<string | null>(null)
 
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
-  // datetime-local → ISO; an empty/partial value is dropped so it never bounds the query
-  const iso = (v: string): string | undefined => {
-    if (v === '') return undefined
-    const d = new Date(v)
-    return Number.isNaN(d.getTime()) ? undefined : d.toISOString()
-  }
+  const fromIso = from !== undefined ? dayStartIso(from) : undefined
+  const toIso = to !== undefined ? dayEndIso(to) : undefined
 
   const query = useInfiniteQuery({
-    queryKey: ['events', kind, deviceId, from, to],
+    queryKey: ['events', kind, deviceId, fromIso ?? '', toIso ?? ''],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       listEvents({
         limit: PAGE,
         ...(kind ? { kind } : {}),
         ...(deviceId ? { deviceId } : {}),
-        ...(iso(from) ? { from: iso(from) } : {}),
-        ...(iso(to) ? { to: iso(to) } : {}),
+        ...(fromIso !== undefined ? { from: fromIso } : {}),
+        ...(toIso !== undefined ? { to: toIso } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
     getNextPageParam: (last: EventRow[]) => (last.length === PAGE ? last[last.length - 1]!.id : undefined),
@@ -78,20 +81,20 @@ export function EventsPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader title={t('events.title')} description={t('events.desc')} className="mb-0">
-        <select aria-label={t('events.kind')} value={kind} onChange={(e) => setKind(e.target.value)} data-testid="events-kind" className={selectCls} style={selectStyle}>
-          <option value="">{t('events.allKinds')}</option>
-          {EVENT_KINDS.map((k) => <option key={k} value={k}>{t(`events.k.${k}`)}</option>)}
-        </select>
-        <select aria-label={t('events.severity')} value={severity} onChange={(e) => setSeverity(e.target.value as '' | Severity)} data-testid="events-severity" className={selectCls} style={selectStyle}>
-          <option value="">{t('events.allSeverities')}</option>
-          {SEVERITIES.map((s) => <option key={s} value={s}>{t(`events.sev.${s}`)}</option>)}
-        </select>
-        <select aria-label={t('events.device')} value={deviceId} onChange={(e) => setDeviceId(e.target.value)} data-testid="events-device" className={selectCls} style={selectStyle}>
-          <option value="">{t('events.allDevices')}</option>
-          {(devices.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-        <input type="datetime-local" aria-label={t('events.from')} value={from} onChange={(e) => setFrom(e.target.value)} data-testid="events-from" className={selectCls} style={selectStyle} />
-        <input type="datetime-local" aria-label={t('events.to')} value={to} onChange={(e) => setTo(e.target.value)} data-testid="events-to" className={selectCls} style={selectStyle} />
+        <div className="w-40">
+          <Combobox aria-label={t('events.kind')} value={kind} onChange={setKind} data-testid="events-kind"
+            options={[{ value: '', label: t('events.allKinds') }, ...EVENT_KINDS.map((k) => ({ value: k, label: t(`events.k.${k}`) }))]} />
+        </div>
+        <div className="w-40">
+          <Combobox aria-label={t('events.severity')} value={severity} onChange={(v) => setSeverity(v as '' | Severity)} data-testid="events-severity"
+            options={[{ value: '', label: t('events.allSeverities') }, ...SEVERITIES.map((sv) => ({ value: sv, label: t(`events.sev.${sv}`) }))]} />
+        </div>
+        <div className="w-40">
+          <Combobox aria-label={t('events.device')} value={deviceId} onChange={setDeviceId} data-testid="events-device"
+            options={[{ value: '', label: t('events.allDevices') }, ...(devices.data ?? []).map((d) => ({ value: d.id, label: d.name }))]} />
+        </div>
+        <div className="w-36"><DatePicker aria-label={t('events.from')} value={from} onChange={setFrom} data-testid="events-from" /></div>
+        <div className="w-36"><DatePicker aria-label={t('events.to')} value={to} onChange={setTo} data-testid="events-to" /></div>
       </PageHeader>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -106,25 +109,25 @@ export function EventsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="events-table">
-              <thead style={{ background: 'var(--admin-surface-sunken)' }}>
-                <tr className="text-left text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
-                  <th className="px-3 py-2 font-medium">{t('events.when')}</th>
-                  <th className="px-3 py-2 font-medium">{t('events.kind')}</th>
-                  <th className="px-3 py-2 font-medium">{t('events.device')}</th>
-                  <th className="px-3 py-2 font-medium">{t('events.detail')}</th>
-                  <th className="hidden px-3 py-2 font-medium md:table-cell">{t('events.severity')}</th>
-                  <th className="px-3 py-2" />
+              <thead>
+                <tr style={{ background: 'var(--admin-surface-sunken)' }}>
+                  <th className={th} style={thStyle}>{t('events.when')}</th>
+                  <th className={th} style={thStyle}>{t('events.kind')}</th>
+                  <th className={th} style={thStyle}>{t('events.device')}</th>
+                  <th className={th} style={thStyle}>{t('events.detail')}</th>
+                  <th className={`${th} hidden md:table-cell`} style={thStyle}>{t('events.severity')}</th>
+                  <th className="px-4 py-2.5"><span className="sr-only">{t('events.details')}</span></th>
                 </tr>
               </thead>
               <tbody style={{ color: 'var(--admin-ink)' }}>
                 {shown.map((r) => (
                   <Fragment key={r.id}>
-                    <tr className="border-t" style={{ borderColor: 'var(--admin-hairline)' }} data-testid={`event-row-${r.id}`}>
-                      <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{dt(r.at)}</td>
-                      <td className="px-3 py-2"><Badge tone={TONE[severityOf(r.kind)]}>{t(`events.k.${r.kind}`, r.kind)}</Badge></td>
-                      <td className="px-3 py-2">{deviceName(r.deviceId)}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--admin-ink-soft)' }}>{localizedEventSummary(t, r)}</td>
-                      <td className="hidden px-3 py-2 md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>
+                    <tr className="admin-hairline-b transition-colors hover:bg-[var(--admin-surface-sunken)]" data-testid={`event-row-${r.id}`}>
+                      <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{dt(r.at)}</td>
+                      <td className="px-4 py-2.5"><Badge tone={TONE[severityOf(r.kind)]}>{t(`events.k.${r.kind}`, r.kind)}</Badge></td>
+                      <td className="px-4 py-2.5">{deviceName(r.deviceId)}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink-soft)' }}>{localizedEventSummary(t, r)}</td>
+                      <td className="hidden px-4 py-2.5 md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>
                         {(() => {
                           const sev = severityOf(r.kind)
                           const Icon = SEV_ICON[sev]
@@ -136,7 +139,7 @@ export function EventsPage() {
                           )
                         })()}
                       </td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-4 py-2.5 text-right">
                         <AdminButton variant="ghost" size="sm" data-testid={`event-expand-${r.id}`} aria-expanded={open === r.id} onClick={() => setOpen((o) => (o === r.id ? null : r.id))}>
                           {open === r.id ? t('events.hide') : t('events.details')}
                         </AdminButton>

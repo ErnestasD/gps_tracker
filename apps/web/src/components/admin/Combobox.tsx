@@ -48,6 +48,11 @@ export function Combobox({
         <button
           type="button"
           disabled={disabled}
+          // e2e contract: native selects asserted value via toHaveValue; the Combobox trigger
+          // exposes the current value as data-value so specs assert it without opening the list
+          data-value={value ?? ''}
+          role="combobox"
+          aria-expanded={open}
           className={cn(
             'flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 text-sm outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50',
             className,
@@ -76,7 +81,9 @@ export function Combobox({
             style={{ color: 'var(--admin-ink)' }}
           />
         </div>
-        <div className="max-h-64 overflow-y-auto p-1">
+        {/* listbox/option roles: correct picker semantics for AT, and the e2e specs select
+            entries via getByRole('option', { name }) — unambiguous while the popover is open */}
+        <div className="max-h-64 overflow-y-auto p-1" role="listbox">
           {filtered.length === 0 && (
             <div className="px-3 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>
               {t('admin.nothingFound')}
@@ -88,6 +95,8 @@ export function Combobox({
               <button
                 key={o.value}
                 type="button"
+                role="option"
+                aria-selected={isActive}
                 onClick={() => {
                   onChange(o.value)
                   setOpen(false)

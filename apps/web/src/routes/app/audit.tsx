@@ -3,16 +3,11 @@ import { Fragment, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
 import { AUDIT_ACTIONS, AUDIT_ENTITIES, listAudit, type AuditRow } from '@/lib/audit'
 import { useFmt } from '@/lib/datetime'
 
 const PAGE = 50
-
-const selectStyle: React.CSSProperties = {
-  borderColor: 'var(--admin-hairline)',
-  background: 'var(--admin-surface)',
-  color: 'var(--admin-ink)',
-}
 
 const th = 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
 const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
@@ -41,14 +36,14 @@ export function AuditPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('audit.title')} description={t('audit.desc')}>
-        <select aria-label={t('audit.entity')} value={entity} onChange={(e) => setEntity(e.target.value)} data-testid="audit-entity" className="h-9 rounded-md border px-2 text-sm" style={selectStyle}>
-          <option value="">{t('audit.allEntities')}</option>
-          {AUDIT_ENTITIES.map((e) => <option key={e} value={e}>{t(`audit.e.${e}`)}</option>)}
-        </select>
-        <select aria-label={t('audit.action')} value={action} onChange={(e) => setAction(e.target.value)} data-testid="audit-action" className="h-9 rounded-md border px-2 text-sm" style={selectStyle}>
-          <option value="">{t('audit.allActions')}</option>
-          {AUDIT_ACTIONS.map((a) => <option key={a} value={a}>{t(`audit.a.${a}`)}</option>)}
-        </select>
+        <div className="w-44">
+          <Combobox aria-label={t('audit.entity')} value={entity} onChange={setEntity} data-testid="audit-entity"
+            options={[{ value: '', label: t('audit.allEntities') }, ...AUDIT_ENTITIES.map((e) => ({ value: e, label: t(`audit.e.${e}`) }))]} />
+        </div>
+        <div className="w-44">
+          <Combobox aria-label={t('audit.action')} value={action} onChange={setAction} data-testid="audit-action"
+            options={[{ value: '', label: t('audit.allActions') }, ...AUDIT_ACTIONS.map((a) => ({ value: a, label: t(`audit.a.${a}`) }))]} />
+        </div>
       </PageHeader>
 
       <div className="admin-card overflow-hidden">

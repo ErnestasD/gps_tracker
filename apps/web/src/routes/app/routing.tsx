@@ -3,7 +3,7 @@ import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { AdminButton, PageHeader } from '@/components/admin/AdminKit'
+import { AdminButton, AdminCheckbox, PageHeader } from '@/components/admin/AdminKit'
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { ApiError } from '@/lib/http'
 import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
@@ -152,10 +152,12 @@ export function RoutePlannerPage() {
           <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('routing.addByClick')}</p>
 
           <div className="flex flex-wrap items-center gap-3">
-            <label className="inline-flex cursor-pointer items-center gap-2 text-sm" style={{ color: 'var(--admin-ink)' }}>
-              <input type="checkbox" checked={roundtrip} onChange={(e) => { setRoundtrip(e.target.checked); setResult(null) }} data-testid="routing-roundtrip" />
-              {t('routing.roundtrip')}
-            </label>
+            <AdminCheckbox
+              checked={roundtrip}
+              onCheckedChange={(v) => { setRoundtrip(v); setResult(null) }}
+              label={t('routing.roundtrip')}
+              data-testid="routing-roundtrip"
+            />
             <AdminButton disabled={!canOptimize} data-testid="routing-optimize" onClick={optimize}>
               {t('routing.optimize')}
             </AdminButton>

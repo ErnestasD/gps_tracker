@@ -1,20 +1,31 @@
 import { describe, expect, it } from 'vitest'
 
 import { chartPoints } from '../src/components/SpeedChart.js'
-import { defaultRange, historyQuery } from '../src/lib/playback.js'
+import { dayEndIso, dayStartIso, defaultDayRange, historyQuery } from '../src/lib/playback.js'
 
 describe('E04-3 playback helpers', () => {
-  it('defaultRange round-trips through local Date parsing and always covers `now` (any timezone)', () => {
-    // regression ×2: (a) the old UTC-formatted datetime-local string re-parsed as LOCAL
-    // time — east of UTC the range ended hours in the past and fresh positions vanished;
-    // (b) minute-floored `to` excluded the current partial minute. `to` must be ≥ now.
+  it('defaultDayRange (yesterday→today) + day bounds always cover `now` in any timezone', () => {
+    // successor to the defaultRange regressions: date-only pickers (ADR-028 round-2
+    // amendment) query FULL local days, so the freshest positions must sit inside
+    // [dayStart(from), dayEnd(to)] — the old UTC-vs-local and minute-floor traps stay
+    // covered because bounds come from local Date components and `to` ends at 23:59:59.999.
     const now = Date.now()
-    const r = defaultRange(now)
-    const to = new Date(r.to).getTime()
-    const from = new Date(r.from).getTime()
-    expect(to).toBeGreaterThanOrEqual(now)
-    expect(to - now).toBeLessThanOrEqual(120_000) // ceiled ≤ 2 min ahead
-    expect(Math.floor(from / 60_000)).toBe(Math.floor((now - 24 * 3_600_000) / 60_000))
+    const r = defaultDayRange(now)
+    const from = new Date(dayStartIso(r.from)).getTime()
+    const to = new Date(dayEndIso(r.to)).getTime()
+    expect(from).toBeLessThanOrEqual(now - 24 * 3_600_000) // window start covered
+    expect(to).toBeGreaterThanOrEqual(now) // today's day-end is always ≥ now
+    expect(from).toBeLessThan(to)
+  })
+
+  it('dayStartIso/dayEndIso bound the same LOCAL calendar day', () => {
+    const d = new Date(2026, 6, 15, 13, 37, 11) // local wall-clock, mid-day
+    const start = new Date(dayStartIso(d))
+    const end = new Date(dayEndIso(d))
+    expect([start.getHours(), start.getMinutes(), start.getSeconds()]).toEqual([0, 0, 0])
+    expect([end.getHours(), end.getMinutes(), end.getSeconds()]).toEqual([23, 59, 59])
+    expect(end.getDate()).toBe(start.getDate()) // same local day
+    expect(end.getTime() - start.getTime()).toBe(24 * 3_600_000 - 1)
   })
 
   it('historyQuery omits empty params, encodes present ones', () => {

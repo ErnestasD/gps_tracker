@@ -186,9 +186,12 @@ test('devices: create in UI → appears → retire → ingest rejects that IMEI 
   await page.getByTestId('device-create').click()
   await expect(page.getByTestId(`device-${IMEI}`)).toBeVisible({ timeout: 15_000 })
 
-  // E04-5: change the per-device odometer source (PATCH → re-syncs the worker trip config)
-  await page.getByTestId(`odometer-${IMEI}`).selectOption('gps')
-  await expect(page.getByTestId(`odometer-${IMEI}`)).toHaveValue('gps')
+  // E04-5: change the per-device odometer source (PATCH → re-syncs the worker trip config).
+  // The cell is a Combobox (round-2 control sweep): open, pick the option, then assert the
+  // trigger's data-value — it reflects SERVER state, flipping only after the refetch lands.
+  await page.getByTestId(`odometer-${IMEI}`).click()
+  await page.getByRole('option', { name: 'GPS', exact: true }).click()
+  await expect(page.getByTestId(`odometer-${IMEI}`)).toHaveAttribute('data-value', 'gps')
 
   // the created device is registered → a simulator on that IMEI is ACCEPTED
   const accepted = await runToExit(
@@ -221,9 +224,12 @@ test('devices: CSV import dry-run shows per-row errors then applies (E03-3 AC[1]
   await page.goto('/app/devices')
 
   // a tenant-wide caller must name the account per row — read it from the create form
-  // (which now lives in the "Add device" Sheet; close it again before importing)
+  // (which now lives in the "Add device" Sheet; close it again before importing).
+  // The account picker is a Combobox: its trigger's data-value carries the resolved default
+  // account id (non-empty only once the accounts query lands — poll for it).
   await page.getByTestId('device-add-open').click()
-  const accountId = await page.locator('[data-testid="device-account"] option').first().getAttribute('value')
+  await expect(page.getByTestId('device-account')).toHaveAttribute('data-value', /.+/)
+  const accountId = await page.getByTestId('device-account').getAttribute('data-value')
   expect(accountId).toBeTruthy()
   await page.keyboard.press('Escape')
 
@@ -402,7 +408,9 @@ test('audit: an admin sees the mutation trail, filters it, and expands a snapsho
   await expect(page.getByTestId('audit-table')).toBeVisible({ timeout: 15_000 })
 
   // filter to branding entries and expand the newest one → before/after snapshot
-  await page.getByTestId('audit-entity').selectOption('branding')
+  // (entity filter is a Combobox: open the trigger, click the option)
+  await page.getByTestId('audit-entity').click()
+  await page.getByRole('option', { name: 'Branding', exact: true }).click()
   const firstRow = page.getByTestId('audit-table').locator('tbody tr[data-testid^="audit-row-"]').first()
   await expect(firstRow).toBeVisible({ timeout: 15_000 })
   await firstRow.getByRole('button').click()
@@ -432,9 +440,10 @@ test('playback: history page loads a device trail with a scrubbable speed chart 
   // pick the DB device that owns BASE_IMEI ("Good", created by the CSV-import test) — the
   // dropdown auto-selects the FIRST device, which may have no positions. The old
   // `.or(playback-empty)` tolerance silently skipped every assertion below (review LOW).
-  // The device picker is a Combobox (design round 2): open it, click the option.
+  // The device picker is a Combobox (design round 2): open it, click the option
+  // (options carry role=option since the round-2 ARIA pass).
   await page.getByTestId('playback-device').click()
-  await page.getByRole('button', { name: 'Good', exact: true }).click()
+  await page.getByRole('option', { name: 'Good', exact: true }).click()
 
   // we DROVE BASE_IMEI above, so its history must load — an empty state here is a failure
   await expect(page.getByTestId('speed-chart')).toBeVisible({ timeout: 20_000 })
@@ -486,11 +495,14 @@ test('geofences: the terra-draw editor mounts on the map and the list renders (E
   await expect(page.getByTestId('geofence-map')).toBeVisible()
   await expect(page.getByTestId('gf-mode-polygon')).toBeVisible()
   await expect(page.getByTestId('gf-mode-circle')).toBeVisible()
-  // switching draw modes doesn't throw; Save is disabled until a shape + name exist
-  await page.getByTestId('gf-mode-polygon').click()
-  await expect(page.getByTestId('gf-save')).toBeDisabled()
-  // list is present (empty for a fresh tenant, or shows rows)
+  // list is present (empty for a fresh tenant, or shows rows) — checked BEFORE drafting,
+  // because entering draft mode swaps the aside to the DraftPanel (round-2 idiom)
   await expect(page.getByTestId('gf-list').or(page.getByTestId('gf-empty'))).toBeVisible({ timeout: 15_000 })
+  // entering draw mode doesn't throw: the DraftPanel replaces the list and Save (now in the
+  // header) stays disabled until a shape + name exist
+  await page.getByTestId('gf-mode-polygon').click()
+  await expect(page.getByTestId('gf-draft-panel')).toBeVisible()
+  await expect(page.getByTestId('gf-save')).toBeDisabled()
 })
 
 test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', async ({ page }) => {
@@ -513,15 +525,16 @@ test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', as
   // it lands in the list, enabled by default
   const row = page.locator('li[data-testid^="rule-"]').filter({ hasText: 'Speeding' })
   await expect(row).toBeVisible({ timeout: 15_000 })
-  // controlled checkbox: `checked` reflects server state, which only flips after the
-  // PATCH + refetch round-trips. `.click()` fires onChange without asserting a
-  // synchronous state flip; the assertion below then polls until the refetch lands.
-  await row.getByRole('checkbox').click()
-  await expect(row.getByRole('checkbox')).not.toBeChecked()
+  // controlled AdminSwitch (round-2 control sweep): aria-checked reflects server state,
+  // which only flips after the PATCH + refetch round-trips — the assertion polls for it.
+  await row.getByRole('switch').click()
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
 
-  // switching kind to geofence swaps the config fields (form lives in the Sheet — reopen it)
+  // switching kind to geofence swaps the config fields (form lives in the Sheet — reopen it;
+  // the kind picker is a Combobox: open the trigger, click the option)
   await page.getByTestId('rule-add-open').click()
-  await page.getByTestId('rule-kind').selectOption('geofence')
+  await page.getByTestId('rule-kind').click()
+  await page.getByRole('option', { name: 'Geofence', exact: true }).click()
   await expect(page.getByTestId('rule-cfg-on')).toBeVisible()
   await page.keyboard.press('Escape') // close the sheet to uncover the list
 
@@ -544,7 +557,9 @@ test('events: timeline page loads with filters (E05-6)', async ({ page }) => {
   await expect(page.getByTestId('events-device')).toBeVisible()
   await expect(page.getByTestId('events-from')).toBeVisible()
   // a garbage-safe filter change must not error the page (repo sanitizes)
-  await page.getByTestId('events-kind').selectOption('panic')
+  // (kind filter is a Combobox: open the trigger, click the option)
+  await page.getByTestId('events-kind').click()
+  await page.getByRole('option', { name: 'Panic', exact: true }).click()
   await expect(page.getByTestId('events-table').or(page.getByTestId('events-empty'))).toBeVisible()
 })
 
@@ -560,8 +575,14 @@ test('reports: run a report over a range (E06-2)', async ({ page }) => {
   await expect(page.getByTestId('report-idle')).toBeVisible() // nothing run yet
   // Run is disabled until both bounds are set
   await expect(page.getByTestId('report-run')).toBeDisabled()
-  await page.getByTestId('report-from').fill('2026-07-01T00:00')
-  await page.getByTestId('report-to').fill('2026-07-31T00:00')
+  // date pickers are DayPicker popovers (round-2 amendment); day cells render as
+  // role=gridcell buttons carrying a full yyyy-MM-dd accessible name. Both dates sit in
+  // the CURRENT month (the suite runs in July 2026 — same assumption the old hardcoded
+  // datetime-local fills made).
+  await page.getByTestId('report-from').click()
+  await page.getByRole('gridcell', { name: '2026-07-01', exact: true }).click()
+  await page.getByTestId('report-to').click()
+  await page.getByRole('gridcell', { name: '2026-07-31', exact: true }).click()
   await page.getByTestId('report-run').click()
   // the result panel resolves to a table or the empty state (no trips required)
   await expect(page.getByTestId('report-table').or(page.getByTestId('report-empty'))).toBeVisible()
@@ -609,7 +630,9 @@ test('webhooks: create (secret shown once) → toggle → delete (E06-4 UI)', as
   await page.getByTestId('webhook-add-open').click()
   await expect(page.getByTestId('webhook-url')).toBeVisible()
   await page.getByTestId('webhook-url').fill('https://example.com/hook')
-  await page.getByTestId('webhook-kind-panic').check()
+  // AdminCheckbox (round-2 control sweep): a button with role=checkbox + aria-checked
+  await page.getByTestId('webhook-kind-panic').click()
+  await expect(page.getByTestId('webhook-kind-panic')).toHaveAttribute('aria-checked', 'true')
   await page.getByTestId('webhook-create').click()
 
   // the signing secret is shown once (48 hex chars)
@@ -620,8 +643,8 @@ test('webhooks: create (secret shown once) → toggle → delete (E06-4 UI)', as
 
   const row = page.locator('li[data-testid^="webhook-"]').filter({ hasText: 'example.com/hook' })
   await expect(row).toBeVisible({ timeout: 15_000 })
-  await row.getByRole('checkbox').click() // toggle enabled off
-  await expect(row.getByRole('checkbox')).not.toBeChecked()
+  await row.getByRole('switch').click() // AdminSwitch: toggle enabled off (polls server state)
+  await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
   // delete is gated by a danger ConfirmDialog (round 2)
   await row.getByTestId(/webhook-del-/).click()
   await page.getByTestId('confirm-ok').click()

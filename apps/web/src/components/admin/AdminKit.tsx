@@ -37,16 +37,15 @@ export function PageHeader({
   )
 }
 
-export function AdminButton({
-  variant = 'primary',
-  size = 'md',
-  className,
-  style: styleOverride,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
-  size?: 'sm' | 'md'
-}) {
+// forwardRef: SheetTrigger/PopoverTrigger asChild need the underlying <button> node — without
+// it Radix's triggerRef stays null and closing a Sheet drops keyboard focus to <body>.
+export const AdminButton = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+    size?: 'sm' | 'md'
+  }
+>(function AdminButton({ variant = 'primary', size = 'md', className, style: styleOverride, ...props }, ref) {
   const base =
     'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--admin-surface)]'
   const sz = size === 'sm' ? 'h-8 px-2.5 text-xs' : 'h-9 px-3.5 text-sm'
@@ -60,8 +59,8 @@ export function AdminButton({
           : { background: 'transparent', color: 'var(--admin-ink)' }
   // default type="button" — these compose inside forms; a bare <button> would submit.
   // Caller style MERGES over the variant style (a bare override used to wipe the whole variant).
-  return <button type="button" className={cn(base, sz, className)} style={{ ...style, ...styleOverride }} {...props} />
-}
+  return <button ref={ref} type="button" className={cn(base, sz, className)} style={{ ...style, ...styleOverride }} {...props} />
+})
 
 export function Badge({
   tone = 'neutral',

@@ -1,34 +1,39 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronsUpDown, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PlaybackMap } from '@/components/PlaybackMap'
 import { Badge, PageHeader } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
+import { DatePicker } from '@/components/admin/DatePicker'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { listDrivers } from '@/lib/drivers'
-import { defaultRange, listPositions } from '@/lib/playback'
-import { assignTripDriver, fmtDuration, fmtKm, listTrips, tripDurationMs } from '@/lib/trips'
+import { dayEndIso, dayStartIso, defaultDayRange, listPositions } from '@/lib/playback'
+import { assignTripDriver, fmtDuration, fmtKm, listTrips, tripAvgSpeedKmh, tripDurationMs } from '@/lib/trips'
 import type { TripView } from '@orbetra/shared'
-
-const fieldStyle: React.CSSProperties = {
-  borderColor: 'var(--admin-hairline)',
-  background: 'var(--admin-surface)',
-  color: 'var(--admin-ink)',
-}
 
 const th = 'px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
 const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)', background: 'var(--admin-surface-sunken)' }
 
+/** Sortable columns (Lovable app.trips idiom): start/device/distance/avg/max toggle a single
+ * page-local sort — the markup stays a hand-rolled table because row selection drives the
+ * detail map (DataTable has no row-click API). Mobile keeps the table (secondary columns
+ * hidden via md:table-cell) instead of DataTable's stacked cards: card rows would lose the
+ * row-click → detail-map affordance that is this page's whole point. */
+type SortKey = 'start' | 'device' | 'distance' | 'avg' | 'max'
+
 /** Trips list + detail (E04-4): filter trips, pick one to see its route + stats.
- * Admin re-skin (ADR-028): PageHeader carries the filters; list/detail are admin-cards. */
+ * Admin re-skin (ADR-028): PageHeader carries the filters (device Combobox + DatePicker
+ * day range per the round-2 amendment); list/detail are admin-cards. */
 export function TripsPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const [deviceId, setDeviceId] = useState('')
-  const [range, setRange] = useState(() => defaultRange(Date.now()))
+  const [range, setRange] = useState(() => defaultDayRange(Date.now()))
+  const [driverQ, setDriverQ] = useState('') // client-side driver filter (reference searchKeys)
   const [selected, setSelected] = useState<TripView | null>(null)
   const qc = useQueryClient()
   const drivers = useQuery({ queryKey: ['drivers'], queryFn: listDrivers })
@@ -40,10 +45,12 @@ export function TripsPage() {
     void qc.invalidateQueries({ queryKey: ['trips'] }) // refresh the table's driver column
   }
 
+  // date-only pickers → full-local-day ISO bounds (stable query-key form)
+  const fromIso = dayStartIso(range.from)
+  const toIso = dayEndIso(range.to)
   const trips = useQuery({
-    queryKey: ['trips', deviceId, range.from, range.to],
-    // a cleared datetime-local is '' → skip that bound rather than throw on new Date('')
-    queryFn: () => listTrips({ ...(deviceId ? { deviceId } : {}), ...isoOpt('from', range.from), ...isoOpt('to', range.to), limit: 500 }),
+    queryKey: ['trips', deviceId, fromIso, toIso],
+    queryFn: () => listTrips({ ...(deviceId ? { deviceId } : {}), from: fromIso, to: toIso, limit: 500 }),
   })
 
   // the selected trip's route = positions within its window
@@ -53,34 +60,92 @@ export function TripsPage() {
     enabled: selected !== null,
   })
 
-  // Pradžia column sort (Lovable polish): a plain toggle over the loaded rows — the markup
-  // stays a hand-rolled table because row selection drives the detail map (DataTable is not a fit)
-  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc')
-  const rows = useMemo(() => {
-    const list = trips.data ?? []
-    return [...list].sort((a, b) => {
-      const da = Date.parse(a.startTime)
-      const db = Date.parse(b.startTime)
-      return sortDir === 'asc' ? da - db : db - da
-    })
-  }, [trips.data, sortDir])
-
   const deviceLabel = (id: string): string => (devices.data ?? []).find((d) => d.id === id)?.name ?? id
+
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'start', dir: 'desc' })
+  const toggleSort = (key: SortKey) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
+  const rows = useMemo(() => {
+    const now = Date.now()
+    const ql = driverQ.trim().toLowerCase()
+    const list = (trips.data ?? []).filter((tr) => ql === '' || (tr.driverName ?? '').toLowerCase().includes(ql))
+    const val = (tr: TripView): number | string => {
+      switch (sort.key) {
+        case 'start': return Date.parse(tr.startTime)
+        case 'device': return deviceLabel(tr.deviceId).toLowerCase()
+        case 'distance': return tr.distanceM
+        case 'avg': return tripAvgSpeedKmh(tr, now)
+        case 'max': return tr.maxSpeed
+      }
+    }
+    return [...list].sort((a, b) => {
+      const va = val(a)
+      const vb = val(b)
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0
+      return sort.dir === 'asc' ? cmp : -cmp
+    })
+  }, [trips.data, sort, driverQ, devices.data]) // devices.data: deviceLabel input for 'device' sort
+
+  const sortTh = (key: SortKey, label: string, opts: { align?: 'right'; hide?: boolean } = {}) => (
+    <th
+      className={`${th} ${opts.hide === true ? 'hidden md:table-cell' : ''} ${opts.align === 'right' ? 'text-right' : ''}`}
+      style={thStyle}
+      aria-sort={sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+    >
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-[var(--admin-ink)]"
+        data-testid={`trips-sort-${key}`}
+      >
+        {label}
+        {sort.key === key ? (
+          sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" aria-hidden /> : <ArrowDown className="h-3 w-3" aria-hidden />
+        ) : (
+          <ChevronsUpDown className="h-3 w-3 opacity-40" aria-hidden />
+        )}
+      </button>
+    </th>
+  )
 
   return (
     <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('trips.title')} description={t('trips.desc')}>
         <FilterLabel label={t('trips.device')}>
-          <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)} data-testid="trips-device" className="h-9 rounded-md border px-2 text-sm" style={fieldStyle}>
-            <option value="">{t('trips.allDevices')}</option>
-            {(devices.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
+          <div className="w-44">
+            <Combobox
+              value={deviceId}
+              onChange={setDeviceId}
+              options={[
+                { value: '', label: t('trips.allDevices') },
+                ...(devices.data ?? []).map((d) => ({ value: d.id, label: d.name, ...(d.plate !== null && d.plate !== '' ? { hint: d.plate } : {}) })),
+              ]}
+              aria-label={t('trips.device')}
+              data-testid="trips-device"
+            />
+          </div>
         </FilterLabel>
+        <FilterLabel label={t('trips.driver')}>
+          {/* driver search (reference searchKeys) — a plain client filter over the loaded rows */}
+          <div className="flex h-9 w-44 items-center gap-2 rounded-md border px-3 text-sm" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }}>
+            <Search className="h-3.5 w-3.5 opacity-60" aria-hidden />
+            <input
+              value={driverQ}
+              onChange={(e) => setDriverQ(e.target.value)}
+              placeholder={t('trips.searchDriver')}
+              aria-label={t('trips.driver')}
+              data-testid="trips-driver-search"
+              className="w-full bg-transparent outline-none placeholder:opacity-60"
+              style={{ color: 'var(--admin-ink)' }}
+            />
+          </div>
+        </FilterLabel>
+        {/* unselecting a day is ignored — the range stays fully bounded */}
         <FilterLabel label={t('trips.from')}>
-          <input type="datetime-local" value={range.from} onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))} data-testid="trips-from" className="h-9 rounded-md border px-2 text-sm" style={fieldStyle} />
+          <div className="w-40"><DatePicker value={range.from} onChange={(d) => d && setRange((r) => ({ ...r, from: d }))} aria-label={t('trips.from')} data-testid="trips-from" /></div>
         </FilterLabel>
         <FilterLabel label={t('trips.to')}>
-          <input type="datetime-local" value={range.to} onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))} data-testid="trips-to" className="h-9 rounded-md border px-2 text-sm" style={fieldStyle} />
+          <div className="w-40"><DatePicker value={range.to} onChange={(d) => d && setRange((r) => ({ ...r, to: d }))} aria-label={t('trips.to')} data-testid="trips-to" /></div>
         </FilterLabel>
       </PageHeader>
 
@@ -99,21 +164,13 @@ export function TripsPage() {
               <table className="w-full text-sm" data-testid="trips-table">
                 <thead className="sticky top-0">
                   <tr>
-                    <th className={th} style={thStyle}>
-                      <button
-                        type="button"
-                        onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
-                        className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-[var(--admin-ink)]"
-                        data-testid="trips-sort-start"
-                      >
-                        {t('trips.start')}
-                        {sortDir === 'asc' ? <ArrowUp className="h-3 w-3" aria-hidden /> : <ArrowDown className="h-3 w-3" aria-hidden />}
-                      </button>
-                    </th>
-                    <th className={`${th} hidden md:table-cell`} style={thStyle}>{t('trips.device')}</th>
+                    {sortTh('start', t('trips.start'))}
+                    {sortTh('device', t('trips.device'), { hide: true })}
                     <th className={th} style={thStyle}>{t('trips.driver')}</th>
-                    <th className={th} style={thStyle}>{t('trips.distance')}</th>
-                    <th className={`${th} hidden md:table-cell`} style={thStyle}>{t('trips.duration')}</th>
+                    {sortTh('distance', t('trips.distance'), { align: 'right' })}
+                    {sortTh('avg', t('trips.avgSpeed'), { align: 'right', hide: true })}
+                    {sortTh('max', t('trips.maxSpeed'), { align: 'right', hide: true })}
+                    <th className={`${th} hidden text-right md:table-cell`} style={thStyle}>{t('trips.duration')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -140,11 +197,13 @@ export function TripsPage() {
                       </td>
                       <td className="hidden px-3 py-2.5 font-medium md:table-cell" style={{ color: 'var(--admin-ink)' }}>{deviceLabel(tr.deviceId)}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`trip-driver-${tr.id}`}>{tr.driverName ?? '—'}</td>
-                      <td className="px-3 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink)' }}>
+                      <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: 'var(--admin-ink)' }}>
                         {fmtKm(tr.distanceM)}
                         <span className="ml-1 text-[10px] uppercase" style={{ color: 'var(--admin-ink-soft)' }}>{tr.distanceSource === 'odometer' ? t('trips.odo') : t('trips.gps')}</span>
                       </td>
-                      <td className="hidden px-3 py-2.5 tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{fmtDuration(tripDurationMs(tr, Date.now()))}</td>
+                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{tripAvgSpeedKmh(tr, Date.now())} {t('units.kmh')}</td>
+                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{tr.maxSpeed} {t('units.kmh')}</td>
+                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>{fmtDuration(tripDurationMs(tr, Date.now()))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -171,16 +230,15 @@ export function TripsPage() {
                 </div>
                 <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
                   {t('trips.driver')}:
-                  <select
-                    value={selected.driverId ?? ''}
-                    data-testid="trip-driver-select"
-                    onChange={(e) => void assign(selected.id, e.target.value === '' ? null : e.target.value)}
-                    className="h-8 flex-1 rounded-md border px-2 text-sm"
-                    style={fieldStyle}
-                  >
-                    <option value="">{t('trips.noDriver')}</option>
-                    {(drivers.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
+                  <div className="flex-1">
+                    <Combobox
+                      value={selected.driverId ?? ''}
+                      onChange={(v) => void assign(selected.id, v === '' ? null : v)}
+                      options={[{ value: '', label: t('trips.noDriver') }, ...(drivers.data ?? []).map((d) => ({ value: d.id, label: d.name }))]}
+                      aria-label={t('trips.driver')}
+                      data-testid="trip-driver-select"
+                    />
+                  </div>
                 </label>
               </>
             )}
@@ -213,12 +271,4 @@ function Stat({ label, value }: { label: string; value: string }) {
 const iso2 = (s: string): string => {
   const d = new Date(s)
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
-}
-
-/** A datetime-local filter bound → a { from|to: ISO } fragment, or {} if empty/invalid
- * (a cleared input is '' and must not throw on new Date('')). */
-function isoOpt(key: 'from' | 'to', v: string): { from?: string } | { to?: string } {
-  if (v === '') return {}
-  const d = new Date(v)
-  return Number.isNaN(d.getTime()) ? {} : { [key]: d.toISOString() }
 }

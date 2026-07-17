@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fuelAtTime, fuelChartPoints, fuelSeries } from '../src/lib/fuel.js'
+import { fuelAtTime, fuelChartPoints, fuelCursorX, fuelSeries } from '../src/lib/fuel.js'
 
 const T0 = Date.UTC(2026, 6, 1, 12, 0, 0)
 const iso = (min: number) => new Date(T0 + min * 60_000).toISOString()
@@ -66,5 +66,28 @@ describe('E08-3 fuelChartPoints (time-scaled x)', () => {
     expect(pts[0]![1]).toBe(6) // max value → top
     expect(pts[1]![1]).toBe(100) // zero → bottom
     expect(fuelChartPoints([], 100, 100, 6)).toEqual([])
+  })
+})
+
+describe('playback fuel scrub cursor fuelCursorX (pure)', () => {
+  const pts = [
+    { tMs: T0, v: 80 },
+    { tMs: T0 + 10 * 60_000, v: 70 },
+  ]
+
+  it('places the cursor by TIME within the padded box', () => {
+    // span = 10 min, w=116 pad=8 → innerW=100
+    expect(fuelCursorX(pts, T0, 116, 8)).toBe(8) // at series start → left edge
+    expect(fuelCursorX(pts, T0 + 5 * 60_000, 116, 8)).toBe(58) // halfway
+    expect(fuelCursorX(pts, T0 + 10 * 60_000, 116, 8)).toBe(108) // at series end → right edge
+  })
+
+  it('clamps outside the series span (scrub before first / after last sample)', () => {
+    expect(fuelCursorX(pts, T0 - 60_000, 116, 8)).toBe(8)
+    expect(fuelCursorX(pts, T0 + 60 * 60_000, 116, 8)).toBe(108)
+  })
+
+  it('empty series → null (no cursor drawn)', () => {
+    expect(fuelCursorX([], T0, 116, 8)).toBeNull()
   })
 })

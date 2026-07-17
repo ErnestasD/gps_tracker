@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Fuel, Gauge, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FuelChart } from '@/components/FuelChart'
@@ -8,18 +8,17 @@ import { PlaybackMap } from '@/components/PlaybackMap'
 import { SpeedChart } from '@/components/SpeedChart'
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
+import { DatePicker } from '@/components/admin/DatePicker'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { fuelAtTime, fuelSeries, listFuel } from '@/lib/fuel'
-import { defaultRange, listDeviceTrips, listPositions } from '@/lib/playback'
+import { dayEndIso, dayStartIso, defaultDayRange, listDeviceTrips, listPositions } from '@/lib/playback'
 
 const km = (m: number) => (m / 1000).toFixed(1)
 
-const inputCls = 'h-9 rounded-md border px-2 text-sm outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30'
-const inputStyle: CSSProperties = { borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }
-
 /** History playback (E04-3), rebuilt on the orbetra_design_new app.history layout (ADR-028
- * round 2): device Combobox + range in the PageHeader; one big admin-card with the map (floating
+ * round 2): device Combobox + DatePicker range in the PageHeader (date-only per the reference —
+ * a picked day queries its full local day); one big admin-card with the map (floating
  * current-position overlay), transport controls (skip/play/pause, ~5 pos/s), point counter and a
  * full-width scrubber; speed + fuel chart cards side by side below. Queries and the invalid-fix /
  * AVL-gating rules are unchanged. */
@@ -28,7 +27,7 @@ export function PlaybackPage() {
   const { dt } = useFmt()
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const [deviceId, setDeviceId] = useState('')
-  const [range, setRange] = useState(() => defaultRange(Date.now()))
+  const [range, setRange] = useState(() => defaultDayRange(Date.now()))
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
 
@@ -37,20 +36,22 @@ export function PlaybackPage() {
     if (deviceId === '' && devices.data && devices.data.length > 0) setDeviceId(devices.data[0]!.id)
   }, [devices.data, deviceId])
 
-  const iso = (v: string) => new Date(v).toISOString()
+  // date-only pickers → full-local-day ISO bounds (also the stable query-key form)
+  const fromIso = dayStartIso(range.from)
+  const toIso = dayEndIso(range.to)
   const positions = useQuery({
-    queryKey: ['positions', deviceId, range.from, range.to],
-    queryFn: () => listPositions(deviceId, { from: iso(range.from), to: iso(range.to), limit: 10_000 }),
+    queryKey: ['positions', deviceId, fromIso, toIso],
+    queryFn: () => listPositions(deviceId, { from: fromIso, to: toIso, limit: 10_000 }),
     enabled: deviceId !== '',
   })
   const trips = useQuery({
-    queryKey: ['deviceTrips', deviceId, range.from, range.to],
-    queryFn: () => listDeviceTrips(deviceId, { from: iso(range.from), to: iso(range.to) }),
+    queryKey: ['deviceTrips', deviceId, fromIso, toIso],
+    queryFn: () => listDeviceTrips(deviceId, { from: fromIso, to: toIso }),
     enabled: deviceId !== '',
   })
   const fuel = useQuery({
-    queryKey: ['fuel', deviceId, range.from, range.to],
-    queryFn: () => listFuel(deviceId, { from: iso(range.from), to: iso(range.to) }),
+    queryKey: ['fuel', deviceId, fromIso, toIso],
+    queryFn: () => listFuel(deviceId, { from: fromIso, to: toIso }),
     enabled: deviceId !== '',
   })
 
@@ -84,29 +85,19 @@ export function PlaybackPage() {
           <Combobox
             value={deviceId}
             onChange={setDeviceId}
-            options={(devices.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
+            // plate as the option hint (Lovable app.history idiom) — searchable alongside the name
+            options={(devices.data ?? []).map((d) => ({ value: d.id, label: d.name, ...(d.plate !== null && d.plate !== '' ? { hint: d.plate } : {}) }))}
             aria-label={t('playback.device')}
             data-testid="playback-device"
           />
         </div>
-        <input
-          type="datetime-local"
-          value={range.from}
-          onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
-          aria-label={t('playback.from')}
-          data-testid="playback-from"
-          className={inputCls}
-          style={inputStyle}
-        />
-        <input
-          type="datetime-local"
-          value={range.to}
-          onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
-          aria-label={t('playback.to')}
-          data-testid="playback-to"
-          className={inputCls}
-          style={inputStyle}
-        />
+        {/* unselecting a day (undefined) is ignored — the range always stays fully bounded */}
+        <div className="w-40">
+          <DatePicker value={range.from} onChange={(d) => d && setRange((r) => ({ ...r, from: d }))} aria-label={t('playback.from')} data-testid="playback-from" />
+        </div>
+        <div className="w-40">
+          <DatePicker value={range.to} onChange={(d) => d && setRange((r) => ({ ...r, to: d }))} aria-label={t('playback.to')} data-testid="playback-to" />
+        </div>
       </PageHeader>
 
       <div className="admin-card overflow-hidden">
@@ -156,7 +147,16 @@ export function PlaybackPage() {
                   >
                     <SkipBack className="h-4 w-4" aria-hidden />
                   </AdminButton>
-                  <AdminButton size="sm" data-testid="playback-play" onClick={() => setPlaying((p) => !p)}>
+                  <AdminButton
+                    size="sm"
+                    data-testid="playback-play"
+                    onClick={() => {
+                      // Play at the last point restarts from the top — otherwise the auto-stop
+                      // effect below immediately clears `playing` and the button is inert
+                      if (!playing && pts.length > 0 && index >= pts.length - 1) setIndex(0)
+                      setPlaying((p) => !p)
+                    }}
+                  >
                     {playing ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
                     {playing ? t('playback.pause') : t('playback.play')}
                   </AdminButton>
@@ -210,7 +210,13 @@ export function PlaybackPage() {
           </div>
           {fuelData.points.length > 0 && (
             <div className="admin-card p-3 md:p-4">
-              <FuelChart points={fuelData.points} unit={fuelData.unit} />
+              {/* mirror SpeedChart: scrub cursor + at-position value (fuelNow = fuelAtTime) */}
+              <FuelChart
+                points={fuelData.points}
+                unit={fuelData.unit}
+                {...(current !== undefined ? { cursorMs: Date.parse(current.fixTime) } : {})}
+                value={fuelNow}
+              />
             </div>
           )}
         </div>
