@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Combobox } from '@/components/admin/Combobox'
 import { ApiError } from '@/lib/http'
 import {
   claimDevice,
@@ -117,21 +118,18 @@ function ClaimDialog({ entry, onClose, onClaimed }: { entry: QuarantineEntry; on
         <CardContent className="space-y-3">
           <label className="flex flex-col gap-1 text-xs text-muted">
             {t('quarantine.tenant')}
-            <select value={tid} onChange={(e) => { setTenantId(e.target.value); setAccountId('') }} className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text" data-testid="claim-tenant">
-              {(tenants.data ?? []).map((x) => (<option key={x.id} value={x.id}>{x.name}</option>))}
-            </select>
+            <Combobox value={tid} onChange={(v) => { setTenantId(v); setAccountId('') }} data-testid="claim-tenant" aria-label={t('quarantine.tenant')}
+              options={(tenants.data ?? []).map((x) => ({ value: x.id, label: x.name }))} />
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted">
             {t('quarantine.account')}
-            <select value={acc} onChange={(e) => setAccountId(e.target.value)} className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text" data-testid="claim-account">
-              {(accounts.data ?? []).map((x) => (<option key={x.id} value={x.id}>{x.name}</option>))}
-            </select>
+            <Combobox value={acc} onChange={setAccountId} data-testid="claim-account" aria-label={t('quarantine.account')}
+              options={(accounts.data ?? []).map((x) => ({ value: x.id, label: x.name }))} />
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted">
             {t('quarantine.profile')}
-            <select value={prof} onChange={(e) => setProfileId(e.target.value)} className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text" data-testid="claim-profile">
-              {(profiles.data ?? []).map((x) => (<option key={x.id} value={x.id}>{x.name}</option>))}
-            </select>
+            <Combobox value={prof} onChange={setProfileId} data-testid="claim-profile" aria-label={t('quarantine.profile')}
+              options={(profiles.data ?? []).map((x) => ({ value: x.id, label: x.name }))} />
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted">
             {t('quarantine.name')}

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, AdminInput, PageHeader } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
 import { changePassword } from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
@@ -13,12 +14,6 @@ import { getTheme, onThemeChange, setStoredLocale, setTheme, type Theme } from '
 import { disablePush, enablePush, pushEnabled, pushSupported } from '@/lib/push'
 
 const LOCALES = ['en', 'lt', 'pl', 'de'] as const
-
-const selectStyle: React.CSSProperties = {
-  borderColor: 'var(--admin-hairline)',
-  background: 'var(--admin-surface)',
-  color: 'var(--admin-ink)',
-}
 
 const th = 'py-2 pr-4 text-left text-[11px] font-semibold uppercase tracking-wider'
 const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
@@ -123,19 +118,16 @@ export function SettingsPage() {
             <Badge tone="neutral">{user?.role != null ? t(`roles.${user.role}`, user.role) : '—'}</Badge>
           </div>
           <div className="admin-hairline-t flex items-center justify-between pt-4">
-            <label htmlFor="locale" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.locale')}</label>
-            <select
-              id="locale"
-              data-testid="locale-select"
-              value={i18n.language.split('-')[0]}
-              onChange={(e) => onLocale(e.target.value)}
-              className="h-9 rounded-md border px-2 text-sm"
-              style={selectStyle}
-            >
-              {LOCALES.map((l) => (
-                <option key={l} value={l}>{l.toUpperCase()}</option>
-              ))}
-            </select>
+            <span style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.locale')}</span>
+            <div className="w-28">
+              <Combobox
+                data-testid="locale-select"
+                aria-label={t('settings.locale')}
+                value={i18n.language.split('-')[0]}
+                onChange={onLocale}
+                options={LOCALES.map((l) => ({ value: l, label: l.toUpperCase() }))}
+              />
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <span style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.theme')}</span>
@@ -302,11 +294,10 @@ function ExportSection() {
         <form onSubmit={submit} className="flex items-end gap-2">
           <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
             {t('settings.export.account')}
-            <select value={acc} onChange={(e) => setAccountId(e.target.value)} className="h-9 rounded-md border px-2 text-sm" style={selectStyle} data-testid="export-account">
-              {(accounts.data ?? []).map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
+            <div className="w-52">
+              <Combobox value={acc} onChange={setAccountId} data-testid="export-account" aria-label={t('settings.export.account')}
+                options={(accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))} />
+            </div>
           </label>
           <AdminButton type="submit" disabled={busy || acc === ''} data-testid="export-request">
             {t('settings.export.request')}

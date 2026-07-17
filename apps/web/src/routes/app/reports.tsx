@@ -1,14 +1,14 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useState, type CSSProperties } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, PageHeader } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
+import { DatePicker } from '@/components/admin/DatePicker'
 import { listAccounts, listDevices } from '@/lib/devices'
+import { dayEndIso, dayStartIso } from '@/lib/playback'
 import { COLUMNS, downloadCsv, downloadPdf, runReport, toCsv, REPORT_TYPES, type ReportResult, type ReportType } from '@/lib/reports'
 import { ScheduledReportsCard } from '@/routes/app/scheduledReports'
-
-const selectCls = 'h-9 rounded-md border px-2 text-sm outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30'
-const selectStyle: CSSProperties = { borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }
 
 /** Reports (E06-2): run a report over a date range and export CSV. Consumes the E06-1 sync
  * API; account timezone is applied server-side. Async server-side XLSX export is a follow-up. */
@@ -17,8 +17,10 @@ export function ReportsPage() {
   const [type, setType] = useState<ReportType>('mileage')
   const [account, setAccount] = useState('')
   const [deviceId, setDeviceId] = useState('')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
+  // DatePicker bounds are date-only (ADR-028 round-2 amendment): the report window spans the
+  // FULL local days [from 00:00, to 23:59:59.999]; account timezone still applies server-side
+  const [from, setFrom] = useState<Date | undefined>(undefined)
+  const [to, setTo] = useState<Date | undefined>(undefined)
 
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
@@ -26,15 +28,10 @@ export function ReportsPage() {
   // an account-scoped user's account is fixed server-side (the sent id is ignored) — so we
   // always send the resolved account, defaulting to the first in scope (review HIGH).
   const acc = account || accounts.data?.[0]?.id || ''
-  const iso = (v: string): string | undefined => {
-    if (v === '') return undefined
-    const d = new Date(v)
-    return Number.isNaN(d.getTime()) ? undefined : d.toISOString()
-  }
-  const canRun = iso(from) !== undefined && iso(to) !== undefined && acc !== ''
+  const canRun = from !== undefined && to !== undefined && acc !== ''
 
   const run = useMutation({
-    mutationFn: () => runReport(type, { from: iso(from)!, to: iso(to)!, accountId: acc, ...(deviceId ? { deviceId } : {}) }),
+    mutationFn: () => runReport(type, { from: dayStartIso(from!), to: dayEndIso(to!), accountId: acc, ...(deviceId ? { deviceId } : {}) }),
   })
   const result: ReportResult | undefined = run.data
   const cols = result ? COLUMNS[result.type] : COLUMNS[type]
@@ -66,28 +63,30 @@ export function ReportsPage() {
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <Field label={t('reports.type')}>
-            <select value={type} onChange={(e) => setType(e.target.value as ReportType)} data-testid="report-type" className={selectCls} style={selectStyle}>
-              {REPORT_TYPES.map((k) => <option key={k} value={k}>{t(`reports.t.${k}`)}</option>)}
-            </select>
+            <div className="w-44">
+              <Combobox value={type} onChange={(v) => setType(v as ReportType)} data-testid="report-type" aria-label={t('reports.type')}
+                options={REPORT_TYPES.map((k) => ({ value: k, label: t(`reports.t.${k}`) }))} />
+            </div>
           </Field>
           {(accounts.data ?? []).length > 1 && (
             <Field label={t('reports.account')}>
-              <select value={acc} onChange={(e) => setAccount(e.target.value)} data-testid="report-account" className={selectCls} style={selectStyle}>
-                {(accounts.data ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
+              <div className="w-44">
+                <Combobox value={acc} onChange={setAccount} data-testid="report-account" aria-label={t('reports.account')}
+                  options={(accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))} />
+              </div>
             </Field>
           )}
           <Field label={t('reports.device')}>
-            <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)} data-testid="report-device" className={selectCls} style={selectStyle}>
-              <option value="">{t('reports.allDevices')}</option>
-              {(devices.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
+            <div className="w-44">
+              <Combobox value={deviceId} onChange={setDeviceId} data-testid="report-device" aria-label={t('reports.device')}
+                options={[{ value: '', label: t('reports.allDevices') }, ...(devices.data ?? []).map((d) => ({ value: d.id, label: d.name }))]} />
+            </div>
           </Field>
           <Field label={t('reports.from')}>
-            <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="report-from" className={selectCls} style={selectStyle} />
+            <div className="w-40"><DatePicker value={from} onChange={setFrom} data-testid="report-from" aria-label={t('reports.from')} /></div>
           </Field>
           <Field label={t('reports.to')}>
-            <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} data-testid="report-to" className={selectCls} style={selectStyle} />
+            <div className="w-40"><DatePicker value={to} onChange={setTo} data-testid="report-to" aria-label={t('reports.to')} /></div>
           </Field>
         </div>
         {run.isError && <p role="alert" className="mt-2 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="report-error">{t('reports.error')}</p>}

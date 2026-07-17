@@ -3,7 +3,7 @@ import { Plus, Trash2, Webhook as WebhookIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { AdminButton, AdminCheckbox, AdminInput, AdminLabel, AdminSwitch, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { useFmt } from '@/lib/datetime'
@@ -11,14 +11,13 @@ import { createWebhook, deleteWebhook, generateSecret, listDeliveries, listWebho
 
 const th = 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
 const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
-// native checkboxes stay native (e2e drives them via role=checkbox); accent-color themes them
-const checkboxStyle: React.CSSProperties = { accentColor: 'var(--admin-brand)' }
 
 /** Webhooks (E06-4 UI): tenant-admin registers HMAC-signed delivery endpoints. The signing
  * secret is generated + shown ONCE on creation; it is redacted (`***`) in every list.
  * Rebuilt on the orbetra_design_new app.webhooks layout (ADR-028 round 2): the create form
  * lives in a right Sheet behind "Add a webhook", rows are Lovable tiles (icon chip, mono URL,
- * kind Badges), the enable toggle stays a native checkbox, delete goes through ConfirmDialog. */
+ * kind Badges), the enable toggle is the design's AdminSwitch (round-2 control sweep; the e2e
+ * spec drives it via role=switch + aria-checked), delete goes through ConfirmDialog. */
 export function WebhooksPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
@@ -111,16 +110,12 @@ export function WebhooksPage() {
                     )}
                   </div>
                 </div>
-                <label className="flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
-                  <input
-                    type="checkbox"
-                    checked={w.enabled}
-                    style={checkboxStyle}
-                    data-testid={`webhook-enabled-${w.id}`}
-                    onChange={(e) => toggle.mutate({ id: w.id, enabled: e.target.checked })}
-                  />
-                  {t('webhooks.enabled')}
-                </label>
+                <AdminSwitch
+                  checked={w.enabled}
+                  onCheckedChange={(v) => toggle.mutate({ id: w.id, enabled: v })}
+                  label={t('webhooks.enabled')}
+                  data-testid={`webhook-enabled-${w.id}`}
+                />
                 <button
                   type="button"
                   aria-label={t('webhooks.delete')}
@@ -159,9 +154,10 @@ export function WebhooksPage() {
                     <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{dt(d.at)}</td>
                     <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink)' }}>{t(`events.k.${d.kind}`, d.kind)}</td>
                     <td className="px-4 py-2.5">
-                      <span style={{ color: d.success ? 'var(--admin-success)' : 'var(--admin-danger)' }}>
+                      {/* Badge tone idiom (reference app.webhooks status cell) instead of the pre-redesign colored glyph */}
+                      <Badge tone={d.success ? 'success' : 'danger'}>
                         {d.success ? '✓' : '✗'} {d.statusCode ?? t('webhooks.noResponse')}
-                      </span>
+                      </Badge>
                     </td>
                   </tr>
                 ))}
@@ -228,18 +224,18 @@ function WebhookForm({ onCreated, onCancel }: { onCreated: (secret: string) => v
           {WEBHOOK_EVENT_KINDS.map((k) => {
             const on = kinds.includes(k)
             return (
-              <label
+              <div
                 key={k}
-                className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors"
+                className="flex items-center rounded-md border px-2 py-1 text-xs transition-colors"
                 style={{
                   borderColor: on ? 'var(--admin-brand)' : 'var(--admin-hairline)',
                   background: on ? 'var(--admin-brand-soft)' : 'var(--admin-surface)',
                   color: 'var(--admin-ink)',
                 }}
               >
-                <input type="checkbox" checked={on} onChange={() => toggleKind(k)} style={checkboxStyle} data-testid={`webhook-kind-${k}`} />
-                {t(`events.k.${k}`, k)}
-              </label>
+                {/* design AdminCheckbox (role=checkbox + aria-checked — Playwright check() contract) */}
+                <AdminCheckbox checked={on} onCheckedChange={() => toggleKind(k)} label={t(`events.k.${k}`, k)} data-testid={`webhook-kind-${k}`} />
+              </div>
             )
           })}
         </div>

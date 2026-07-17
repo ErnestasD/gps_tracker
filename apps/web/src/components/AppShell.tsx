@@ -1,4 +1,4 @@
-import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   BarChart3,
   Bell,
@@ -29,7 +29,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CommandPalette } from '@/components/admin/CommandPalette'
@@ -72,6 +72,8 @@ const SECTIONS: NavSection[] = [
       { key: 'shell.history', icon: BarChart3, to: '/app/playback' },
     ],
   },
+  // no separate 'Pranešimai' nav item (reference AdminSidebar has one): events IS our
+  // notifications store — the bell's "view all" lands on /app/events (see NotificationsBell)
   { key: 'shell.automation', items: [{ key: 'shell.geofences', icon: Hexagon, to: '/app/geofences' }, { key: 'shell.rules', icon: Settings2, to: '/app/rules' }, { key: 'shell.events', icon: Bell, to: '/app/events' }] },
   { key: 'shell.insights', items: [{ key: 'shell.reports', icon: FileText, to: '/app/reports' }] },
   { key: 'shell.ops', items: [{ key: 'shell.commands', icon: TerminalSquare }] },
@@ -128,6 +130,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [mobileOpen])
+
+  // modal focus contract for the hand-rolled drawer (aria-modal promises it): move focus INTO
+  // the dialog on open (its close button), and return it to the hamburger trigger on close —
+  // otherwise keyboard/SR users keep tabbing the inert page behind the overlay
+  const drawerCloseRef = useRef<HTMLButtonElement>(null)
+  const menuBtnRef = useRef<HTMLButtonElement>(null)
+  const wasOpenRef = useRef(false)
+  useEffect(() => {
+    if (mobileOpen) {
+      wasOpenRef.current = true
+      drawerCloseRef.current?.focus()
+    } else if (wasOpenRef.current) {
+      wasOpenRef.current = false
+      menuBtnRef.current?.focus()
+    }
   }, [mobileOpen])
 
   // stay in sync when the settings page (or anything else) changes the theme
@@ -262,7 +280,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label={t('shell.menu')}>
             <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
             <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-surface admin-hairline-r">
-              <button type="button" className="absolute right-2 top-3.5 p-1" style={{ color: 'var(--admin-ink-soft)' }} onClick={() => setMobileOpen(false)} aria-label={t('shell.close')}>
+              <button ref={drawerCloseRef} type="button" className="absolute right-2 top-3.5 p-1" style={{ color: 'var(--admin-ink-soft)' }} onClick={() => setMobileOpen(false)} aria-label={t('shell.close')}>
                 <X className="h-4 w-4" />
               </button>
               {sidebar(false)}
@@ -272,11 +290,14 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-14 shrink-0 items-center gap-2 bg-surface/80 px-4 backdrop-blur admin-hairline-b">
-            <button type="button" className="p-1 md:hidden" style={{ color: 'var(--admin-ink)' }} onClick={() => setMobileOpen(true)} aria-label={t('shell.menu')}>
+            <button ref={menuBtnRef} type="button" className="p-1 md:hidden" style={{ color: 'var(--admin-ink)' }} onClick={() => setMobileOpen(true)} aria-label={t('shell.menu')}>
               <Menu className="h-4 w-4" />
             </button>
             <div className="min-w-0 truncate text-sm" style={{ color: 'var(--admin-ink-soft)' }}>
-              {t('shell.admin')}
+              {/* breadcrumb root links home (reference AdminTopbar) */}
+              <Link to="/app" className="transition-colors hover:text-[var(--admin-ink)]">
+                {t('shell.admin')}
+              </Link>
               {crumbKey !== undefined && (
                 <>
                   {' '}
@@ -316,6 +337,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               {t('shell.logout')}
             </Button>
           </header>
+          {/* no sonner <Toaster/> here (reference app.tsx mounts one): ADR-028 deliberately
+              excludes sonner — success/error feedback stays inline and testid-pinned */}
           <main className="relative min-h-0 flex-1">{children}</main>
         </div>
 

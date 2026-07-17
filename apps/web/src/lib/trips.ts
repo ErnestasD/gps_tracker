@@ -42,3 +42,11 @@ export function fmtDuration(ms: number): string {
 
 /** Metres → km with one decimal. Pure. */
 export const fmtKm = (m: number): string => `${(m / 1000).toFixed(1)} km`
+
+/** Average moving speed in km/h over the trip window (distance / duration); open trips run
+ * to `now`. 0 for a zero-duration window — never NaN/Infinity. Pure. */
+export function tripAvgSpeedKmh(t: Pick<TripView, 'startTime' | 'endTime' | 'distanceM'>, now: number): number {
+  const ms = tripDurationMs(t, now)
+  if (ms === 0) return 0
+  return Math.round((t.distanceM / 1000) / (ms / 3_600_000))
+}

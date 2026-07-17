@@ -31,3 +31,24 @@ export function geofenceFeatures(geofences: GeofenceView[]): GeoJSON.FeatureColl
     })),
   }
 }
+
+/** [W,S,E,N] bounding box of a geofence's stored polygon — used to fit the map to a selected
+ * zone. Walks every ring/segment of a Polygon or MultiPolygon; null for anything else (the
+ * server stores every kind — circle/corridor included — as a buffered Polygon). Pure. */
+export function geofenceBounds(geometry: unknown): [number, number, number, number] | null {
+  const g = geometry as { type?: string; coordinates?: unknown } | null
+  if (g === null || typeof g !== 'object') return null
+  const rings: unknown =
+    g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? (g.coordinates as unknown[])?.flat(1) : null
+  if (!Array.isArray(rings)) return null
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity
+  for (const ring of rings) {
+    if (!Array.isArray(ring)) continue
+    for (const pos of ring) {
+      if (!Array.isArray(pos) || typeof pos[0] !== 'number' || typeof pos[1] !== 'number') continue
+      w = Math.min(w, pos[0]); e = Math.max(e, pos[0])
+      s = Math.min(s, pos[1]); n = Math.max(n, pos[1])
+    }
+  }
+  return Number.isFinite(w) && Number.isFinite(s) ? [w, s, e, n] : null
+}

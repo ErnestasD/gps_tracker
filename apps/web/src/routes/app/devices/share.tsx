@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Combobox } from '@/components/admin/Combobox'
 import type { Device } from '@/lib/devices'
 import { TTL_OPTIONS, createShare, expiryLabel, listShares, revokeShare, shareUrl, type CreatedShare } from '@/lib/share'
 
@@ -69,16 +70,15 @@ export function ShareCard({ device }: { device: Device }) {
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm">
             <span className="mb-1 block text-xs text-muted">{t('devices.share.ttl')}</span>
-            <select
-              value={ttl}
-              data-testid="share-ttl"
-              onChange={(e) => setTtl(Number(e.target.value))}
-              className="h-9 rounded-card border border-line bg-surface px-2 text-sm text-text"
-            >
-              {TTL_OPTIONS.map((o) => (
-                <option key={o.key} value={o.hours}>{t(`devices.share.ttlOpt.${o.key}`)}</option>
-              ))}
-            </select>
+            <div className="w-40">
+              <Combobox
+                value={String(ttl)}
+                data-testid="share-ttl"
+                aria-label={t('devices.share.ttl')}
+                onChange={(v) => setTtl(Number(v))}
+                options={TTL_OPTIONS.map((o) => ({ value: String(o.hours), label: t(`devices.share.ttlOpt.${o.key}`) }))}
+              />
+            </div>
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-xs text-muted">{t('devices.share.label')}</span>

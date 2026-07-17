@@ -1,20 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Plus } from 'lucide-react'
+import { KeyRound, Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { AdminButton, AdminInput, AdminLabel, Badge, EmptyState, PageHeader } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { createApiKey, listApiKeys, revokeApiKey } from '@/lib/apiKeys'
 import { useFmt } from '@/lib/datetime'
 import { listAccounts } from '@/lib/devices'
-
-const selectStyle: React.CSSProperties = {
-  borderColor: 'var(--admin-hairline)',
-  background: 'var(--admin-surface)',
-  color: 'var(--admin-ink)',
-}
 
 /** API keys (E06-3 UI): tenant-admin mints read-only integration keys. The plaintext key is
  * shown ONCE on creation — the operator must copy it before dismissing.
@@ -98,7 +93,8 @@ export function ApiKeysPage() {
           {t('apiKeys.list')}
         </div>
         {(keys.data ?? []).length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="apikeys-empty">{t('apiKeys.empty')}</p>
+          /* AdminKit EmptyState (reference app.api-keys zero-state); testid contract stays */
+          <EmptyState icon={<KeyRound className="h-5 w-5" />} title={t('apiKeys.empty')} description={t('apiKeys.emptyDesc')} data-testid="apikeys-empty" />
         ) : (
           <ul data-testid="apikeys-list">
             {(keys.data ?? []).map((k) => (
@@ -122,17 +118,18 @@ export function ApiKeysPage() {
                   {k.lastUsedAt ? `${t('apiKeys.lastUsed')}: ${dt(k.lastUsedAt)}` : t('apiKeys.neverUsed')}
                 </span>
                 {k.revokedAt === null && (
-                  <AdminButton
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto"
-                    style={{ color: 'var(--admin-danger)' }}
+                  /* danger icon-button idiom (reference + rules/webhooks siblings); testid kept */
+                  <button
+                    type="button"
+                    aria-label={t('apiKeys.revoke')}
                     data-testid={`apikey-revoke-${k.id}`}
                     disabled={revoke.isPending}
+                    className="ml-auto grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)] disabled:opacity-50"
+                    style={{ color: 'var(--admin-danger)' }}
                     onClick={() => setRevokeForId(k.id)}
                   >
-                    {t('apiKeys.revoke')}
-                  </AdminButton>
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                  </button>
                 )}
               </li>
             ))}
@@ -190,10 +187,13 @@ function ApiKeyForm({ accounts, onCreated, onCancel }: {
       {accounts.length > 1 && (
         <div>
           <AdminLabel htmlFor="apikey-account">{t('apiKeys.account')}</AdminLabel>
-          <select id="apikey-account" value={account} onChange={(e) => setAccount(e.target.value)} data-testid="apikey-account" className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle}>
-            <option value="">{t('apiKeys.tenantWide')}</option>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          <Combobox
+            value={account}
+            onChange={setAccount}
+            data-testid="apikey-account"
+            aria-label={t('apiKeys.account')}
+            options={[{ value: '', label: t('apiKeys.tenantWide') }, ...accounts.map((a) => ({ value: a.id, label: a.name }))]}
+          />
         </div>
       )}
       {create.isError && (

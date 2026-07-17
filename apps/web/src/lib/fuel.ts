@@ -56,3 +56,14 @@ export function fuelChartPoints(points: readonly FuelPoint[], w: number, h: numb
   const innerH = h - pad * 2
   return points.map((p) => [pad + innerW * ((p.tMs - t0) / span), pad + innerH * (1 - p.v / max)])
 }
+
+/** X coordinate of the playback scrub cursor on the time-scaled fuel chart. Clamped to the
+ * series span so scrubbing before the first / after the last sample pins the cursor to the
+ * chart edge instead of drawing outside the plot. Null for an empty series. Pure. */
+export function fuelCursorX(points: readonly FuelPoint[], tMs: number, w: number, pad: number): number | null {
+  if (points.length === 0) return null
+  const t0 = points[0]!.tMs
+  const span = Math.max(1, points[points.length - 1]!.tMs - t0)
+  const clamped = Math.min(Math.max(tMs, t0), t0 + span)
+  return pad + (w - pad * 2) * ((clamped - t0) / span)
+}

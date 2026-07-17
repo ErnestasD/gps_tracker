@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { DataTable, type Column } from '@/components/admin/DataTable'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -109,26 +110,36 @@ export function DevicesPage() {
         { value: 'active', label: t('devices.active') },
         { value: 'retired', label: t('devices.retired') },
       ],
+      // colored status dot inside the Badge (Lovable tile-row idiom)
       cell: (r) =>
-        r.retiredAt === null ? <Badge tone="success">{t('devices.active')}</Badge> : <Badge tone="neutral">{t('devices.retired')}</Badge>,
+        r.retiredAt === null ? (
+          <Badge tone="success">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }} aria-hidden />
+            {t('devices.active')}
+          </Badge>
+        ) : (
+          <Badge tone="neutral">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }} aria-hidden />
+            {t('devices.retired')}
+          </Badge>
+        ),
     },
     {
       key: 'odometer',
       header: t('devices.odometer'),
+      // round-2 control sweep: the inline cell select is a Combobox too; the e2e spec asserts
+      // the picked source via the trigger's data-value instead of selectOption/toHaveValue
       cell: (r) => (
-        <select
-          value={r.odometerSource}
-          disabled={r.retiredAt !== null}
-          aria-label={t('devices.odometer')}
-          data-testid={`odometer-${r.imei}`}
-          onChange={(e) => void updateDevice(r.id, { odometerSource: e.target.value as OdometerSource }).then(refresh).catch(() => undefined)}
-          className="h-7 rounded-md border px-1 text-xs disabled:opacity-50"
-          style={selectStyle}
-        >
-          {ODOMETER_SOURCES.map((s) => (
-            <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
-          ))}
-        </select>
+        <div className="w-32">
+          <Combobox
+            value={r.odometerSource}
+            disabled={r.retiredAt !== null}
+            aria-label={t('devices.odometer')}
+            data-testid={`odometer-${r.imei}`}
+            onChange={(v) => void updateDevice(r.id, { odometerSource: v as OdometerSource }).then(refresh).catch(() => undefined)}
+            options={ODOMETER_SOURCES.map((src) => ({ value: src, label: t(`devices.odo.${src}`) }))}
+          />
+        </div>
       ),
     },
   ]
@@ -400,26 +411,19 @@ function CreateDeviceForm({
       <Field label={t('devices.plate')}>
         <AdminInput value={plate} onChange={(e) => setPlate(e.target.value)} maxLength={32} data-testid="device-plate" />
       </Field>
+      {/* round-2 control sweep: Comboboxes (reference app.devices form); the CSV-import e2e
+          reads the default account id from the trigger's data-value */}
       <Field label={t('devices.account')}>
-        <select value={acc} onChange={(e) => setAccountId(e.target.value)} className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-account">
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))}
-        </select>
+        <Combobox value={acc} onChange={setAccountId} data-testid="device-account" aria-label={t('devices.account')}
+          options={accounts.map((a) => ({ value: a.id, label: a.name }))} />
       </Field>
       <Field label={t('devices.profile')}>
-        <select value={prof} onChange={(e) => setProfileId(e.target.value)} className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-profile">
-          {profiles.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
+        <Combobox value={prof} onChange={setProfileId} data-testid="device-profile" aria-label={t('devices.profile')}
+          options={profiles.map((pr) => ({ value: pr.id, label: pr.name }))} />
       </Field>
       <Field label={t('devices.odometer')}>
-        <select value={odometerSource} onChange={(e) => setOdometerSource(e.target.value as OdometerSource)} className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle} data-testid="device-odometer">
-          {ODOMETER_SOURCES.map((s) => (
-            <option key={s} value={s}>{t(`devices.odo.${s}`)}</option>
-          ))}
-        </select>
+        <Combobox value={odometerSource} onChange={(v) => setOdometerSource(v as OdometerSource)} data-testid="device-odometer" aria-label={t('devices.odometer')}
+          options={ODOMETER_SOURCES.map((src) => ({ value: src, label: t(`devices.odo.${src}`) }))} />
       </Field>
       {error !== null && (
         <p role="alert" data-testid="device-error" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>

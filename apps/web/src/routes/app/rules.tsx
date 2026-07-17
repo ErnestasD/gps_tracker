@@ -1,23 +1,24 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2 } from 'lucide-react'
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react'
+import { MoreHorizontal, Plus, Trash2 } from 'lucide-react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { AdminButton, AdminInput, AdminSwitch, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { listAccounts } from '@/lib/devices'
 import { listGeofences } from '@/lib/geofences'
 import { ApiError } from '@/lib/http'
 import { RULE_KINDS, channelDisplay, channelLabel, configFields, createRule, deleteRule, listRules, parseChannel, updateRule, type NotificationChannel, type Rule, type RuleKind } from '@/lib/rules'
 
-const selectCls = 'h-9 rounded-md border px-2 text-sm outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30'
-const selectStyle: CSSProperties = { borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }
-
 /** Rules CRUD (E05-3), rebuilt on the orbetra_design_new app.rules layout (ADR-028 round 2):
  * the create form lives in a right Sheet behind "Add rule", the list is Lovable card rows
- * (kind Badge + name, cooldown meta line, channel Badges), the enable toggle stays a native
- * checkbox (e2e pins rule-enabled-{id}), and delete goes through a danger ConfirmDialog. */
+ * (kind Badge + name, cooldown/account meta line, channel Badges), the enable toggle is the
+ * design's AdminSwitch (round-2 control sweep; e2e drives it via role=switch + aria-checked),
+ * and delete goes through a danger ConfirmDialog. Channel editing follows the drivers
+ * precedent: a per-row "..." menu opens the page-level edit Sheet (rule-ch-* testids kept). */
 export function RulesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -27,14 +28,18 @@ export function RulesPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [actionError, setActionError] = useState(false)
   const [editChannelsId, setEditChannelsId] = useState<string | null>(null)
-  // delete target resolves against the LIVE list (devices precedent) — a refetch never
-  // leaves the confirm pointed at a stale snapshot
+  // delete/edit targets resolve against the LIVE list (devices precedent) — a refetch never
+  // leaves the confirm or the channels Sheet pointed at a stale snapshot
   const [deleteForId, setDeleteForId] = useState<string | null>(null)
   const deleteFor = (rules.data ?? []).find((r) => r.id === deleteForId) ?? null
+  const editChannelsFor = (rules.data ?? []).find((r) => r.id === editChannelsId) ?? null
   const refresh = () => void qc.invalidateQueries({ queryKey: ['rules'] })
   const onActionErr = () => setActionError(true)
   // clear a stale error banner before each new toggle/delete so it isn't sticky
   const clearErr = () => setActionError(false)
+
+  const showAccount = (accounts.data ?? []).length > 1
+  const accountName = (id: string | null) => (accounts.data ?? []).find((a) => a.id === id)?.name ?? null
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
@@ -80,7 +85,13 @@ export function RulesPage() {
                     <Badge tone="brand">{t(`rules.kind.${r.kind}`)}</Badge>
                     <span className="truncate text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{r.name}</span>
                   </div>
-                  <div className="mt-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('rules.cooldown')}: {t('rules.cooldownValue', { s: r.cooldownS })}</div>
+                  {/* meta line (reference: cooldown · scope): the account segment shows which
+                      account a rule targets on multi-account tenants; the reference's
+                      triggered(30d) count has no API counterpart (no-mock-data) */}
+                  <div className="mt-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+                    {t('rules.cooldown')}: {t('rules.cooldownValue', { s: r.cooldownS })}
+                    {showAccount && accountName(r.accountId) !== null && <> · {t('rules.account')}: {accountName(r.accountId)}</>}
+                  </div>
                 </div>
                 {(r.channels ?? []).length > 0 ? (
                   <div className="flex flex-wrap gap-1" data-testid={`rule-ch-count-${r.id}`}>
@@ -89,16 +100,14 @@ export function RulesPage() {
                 ) : (
                   <span className="text-xs" style={{ color: 'var(--admin-warning)' }} data-testid={`rule-ch-none-${r.id}`}>{t('rules.channels.none')}</span>
                 )}
-                <AdminButton variant="ghost" size="sm" data-testid={`rule-ch-edit-btn-${r.id}`} onClick={() => setEditChannelsId((cur) => (cur === r.id ? null : r.id))}>{t('rules.channels.edit')}</AdminButton>
-                {/* enable toggle stays a real <input type=checkbox> (e2e pins rule-enabled-{id}) — styled, not swapped */}
-                <label className="flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
-                  <input
-                    type="checkbox" checked={r.enabled} data-testid={`rule-enabled-${r.id}`}
-                    className="h-4 w-4 cursor-pointer rounded accent-[var(--admin-brand)]"
-                    onChange={(e) => { clearErr(); void updateRule(r.id, { enabled: e.target.checked }).then(refresh).catch(onActionErr) }}
-                  />
-                  {t('rules.enabled')}
-                </label>
+                {/* enable toggle: AdminSwitch reflects SERVER state — it only flips after the
+                    PATCH + refetch round-trips (e2e polls aria-checked on role=switch) */}
+                <AdminSwitch
+                  checked={r.enabled}
+                  data-testid={`rule-enabled-${r.id}`}
+                  label={t('rules.enabled')}
+                  onCheckedChange={(v) => { clearErr(); void updateRule(r.id, { enabled: v }).then(refresh).catch(onActionErr) }}
+                />
                 <button
                   type="button"
                   aria-label={t('rules.delete')}
@@ -109,12 +118,30 @@ export function RulesPage() {
                 >
                   <Trash2 className="h-4 w-4" aria-hidden />
                 </button>
-                {editChannelsId === r.id && <RuleChannelsEdit rule={r} onSaved={refresh} onCancel={() => setEditChannelsId(null)} />}
+                <RuleRowMenu rule={r} onEditChannels={() => setEditChannelsId(r.id)} />
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      {/* channels edit-in-Sheet (drivers precedent: row menu → page-level Sheet, prefilled);
+          key remounts the editor per rule so channel drafts never leak across targets */}
+      <Sheet
+        open={editChannelsFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setEditChannelsId(null)
+        }}
+      >
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{t('rules.channels.edit')}</SheetTitle>
+          </SheetHeader>
+          {editChannelsFor !== null && (
+            <RuleChannelsEdit key={editChannelsFor.id} rule={editChannelsFor} onSaved={refresh} onCancel={() => setEditChannelsId(null)} />
+          )}
+        </SheetContent>
+      </Sheet>
 
       <ConfirmDialog
         open={deleteFor !== null}
@@ -136,8 +163,44 @@ export function RulesPage() {
   )
 }
 
+/** Per-row "..." actions menu (devices/drivers precedent): channel editing opens the
+ * page-level Sheet prefilled. Delete stays the inline danger icon (reference idiom). */
+function RuleRowMenu({ rule, onEditChannels }: { rule: Rule; onEditChannels: () => void }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={t('rules.actions')}
+          data-testid={`rule-menu-${rule.id}`}
+          className="grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-[var(--admin-surface-sunken)]"
+        >
+          <MoreHorizontal className="h-4 w-4" style={{ color: 'var(--admin-ink-soft)' }} aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-44 p-1">
+        <button
+          type="button"
+          data-testid={`rule-ch-edit-btn-${rule.id}`}
+          onClick={() => {
+            setOpen(false)
+            onEditChannels()
+          }}
+          className="block w-full rounded px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-[var(--admin-surface-sunken)]"
+          style={{ color: 'var(--admin-ink)' }}
+        >
+          {t('rules.channels.edit')}
+        </button>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 /** Create form inside the header Sheet (devices precedent): vertical fields, all rule-* testids
- * kept on the same element kinds; Cancel/Create sit in the SheetFooter. */
+ * kept (selects became Comboboxes in the round-2 control sweep — testids sit on the triggers);
+ * Cancel/Create sit in the SheetFooter. */
 function RuleForm({ accounts, geofences, onCreated, onCancel }: {
   accounts: { id: string; name: string }[]
   geofences: { id: string; name: string }[]
@@ -180,31 +243,46 @@ function RuleForm({ accounts, geofences, onCreated, onCancel }: {
   return (
     <form onSubmit={submit} className="mt-2 flex flex-col gap-3">
       <Field label={t('rules.kindLabel')}>
-        <select value={kind} onChange={(e) => { setKind(e.target.value as RuleKind); setCfg({}) }} data-testid="rule-kind" className={selectCls} style={selectStyle}>
-          {RULE_KINDS.map((k) => <option key={k} value={k}>{t(`rules.kind.${k}`)}</option>)}
-        </select>
+        <Combobox
+          value={kind}
+          onChange={(v) => { setKind(v as RuleKind); setCfg({}) }}
+          data-testid="rule-kind"
+          aria-label={t('rules.kindLabel')}
+          options={RULE_KINDS.map((k) => ({ value: k, label: t(`rules.kind.${k}`) }))}
+        />
       </Field>
       <Field label={t('rules.name')}>
         <AdminInput value={name} onChange={(e) => setName(e.target.value)} required data-testid="rule-name" />
       </Field>
       {accounts.length > 1 && (
         <Field label={t('rules.account')}>
-          <select value={acc} onChange={(e) => setAccountId(e.target.value)} data-testid="rule-account" className={selectCls} style={selectStyle}>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          <Combobox
+            value={acc}
+            onChange={setAccountId}
+            data-testid="rule-account"
+            aria-label={t('rules.account')}
+            options={accounts.map((a) => ({ value: a.id, label: a.name }))}
+          />
         </Field>
       )}
       {fields.map((f) => (
         <Field key={f.key} label={t(`rules.cfg.${f.key}`)}>
           {f.type === 'select' && f.key === 'geofenceId' ? (
-            <select value={cfg[f.key] ?? ''} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className={selectCls} style={selectStyle}>
-              <option value="">—</option>
-              {geofences.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
+            <Combobox
+              value={cfg[f.key] ?? ''}
+              onChange={(v) => setCfg((c) => ({ ...c, [f.key]: v }))}
+              data-testid={`rule-cfg-${f.key}`}
+              aria-label={t(`rules.cfg.${f.key}`)}
+              options={[{ value: '', label: '—' }, ...geofences.map((g) => ({ value: g.id, label: g.name }))]}
+            />
           ) : f.type === 'select' ? (
-            <select value={cfg[f.key] ?? String(f.default)} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className={selectCls} style={selectStyle}>
-              {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <Combobox
+              value={cfg[f.key] ?? String(f.default)}
+              onChange={(v) => setCfg((c) => ({ ...c, [f.key]: v }))}
+              data-testid={`rule-cfg-${f.key}`}
+              aria-label={t(`rules.cfg.${f.key}`)}
+              options={(f.options ?? []).map((o) => ({ value: o, label: o }))}
+            />
           ) : (
             <AdminInput type="number" min={f.min} max={f.max} value={cfg[f.key] ?? String(f.default)} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className="w-28" />
           )}
@@ -232,7 +310,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /** Reusable notification-channel editor (E05-5): add/remove email/telegram targets. Owns its draft
  * (type/value/error); the committed `channels` list is lifted via `onChange`. Used by the create
- * form and the per-rule inline editor. */
+ * form and the per-rule edit Sheet. */
 function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[]; onChange: (c: NotificationChannel[]) => void }) {
   const { t } = useTranslation()
   const [type, setType] = useState<'email' | 'telegram' | 'webpush'>('email')
@@ -252,11 +330,19 @@ function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[
     <div className="flex w-full flex-col gap-1">
       <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('rules.channels.label')}</span>
       <div className="flex flex-wrap items-end gap-2">
-        <select aria-label={t('rules.channels.label')} value={type} onChange={(e) => { setType(e.target.value as 'email' | 'telegram' | 'webpush'); setErr(false) }} data-testid="rule-ch-type" className={selectCls} style={selectStyle}>
-          <option value="email">{t('rules.channels.email')}</option>
-          <option value="telegram">{t('rules.channels.telegram')}</option>
-          <option value="webpush">{t('rules.channels.webpush')}</option>
-        </select>
+        <div className="w-36">
+          <Combobox
+            aria-label={t('rules.channels.label')}
+            value={type}
+            onChange={(v) => { setType(v as 'email' | 'telegram' | 'webpush'); setErr(false) }}
+            data-testid="rule-ch-type"
+            options={[
+              { value: 'email', label: t('rules.channels.email') },
+              { value: 'telegram', label: t('rules.channels.telegram') },
+              { value: 'webpush', label: t('rules.channels.webpush') },
+            ]}
+          />
+        </div>
         {type !== 'webpush' && (
           <AdminInput
             value={value}
@@ -287,7 +373,9 @@ function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[
   )
 }
 
-/** Per-rule inline channel editor: expands from the list, saves via updateRule({ channels }). */
+/** Per-rule channel editor body inside the page-level Sheet: prefilled from the LIVE rule,
+ * saves via updateRule({ channels }). rule-ch-edit-{id} / rule-ch-save-{id} testids kept on the
+ * Sheet body / save button. */
 function RuleChannelsEdit({ rule, onSaved, onCancel }: { rule: Rule; onSaved: () => void; onCancel: () => void }) {
   const { t } = useTranslation()
   const [channels, setChannels] = useState<NotificationChannel[]>(rule.channels ?? [])
@@ -298,13 +386,14 @@ function RuleChannelsEdit({ rule, onSaved, onCancel }: { rule: Rule; onSaved: ()
     updateRule(rule.id, { channels }).then(() => { onSaved(); onCancel() }).catch(() => setError(true)).finally(() => setBusy(false))
   }
   return (
-    <div className="mt-2 w-full rounded-md border p-3" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }} data-testid={`rule-ch-edit-${rule.id}`}>
+    <div className="mt-2 flex flex-col gap-3" data-testid={`rule-ch-edit-${rule.id}`}>
+      <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{rule.name}</p>
       <ChannelsEditor channels={channels} onChange={setChannels} />
-      <div className="mt-2 flex items-center gap-2">
+      {error && <span role="alert" className="text-xs" style={{ color: 'var(--admin-danger)' }}>{t('rules.error')}</span>}
+      <SheetFooter className="mt-2">
+        <AdminButton size="sm" variant="secondary" onClick={onCancel}>{t('rules.channels.cancel')}</AdminButton>
         <AdminButton size="sm" disabled={busy} data-testid={`rule-ch-save-${rule.id}`} onClick={save}>{t('rules.channels.save')}</AdminButton>
-        <AdminButton size="sm" variant="ghost" onClick={onCancel}>{t('rules.channels.cancel')}</AdminButton>
-        {error && <span role="alert" className="text-xs" style={{ color: 'var(--admin-danger)' }}>{t('rules.error')}</span>}
-      </div>
+      </SheetFooter>
     </div>
   )
 }

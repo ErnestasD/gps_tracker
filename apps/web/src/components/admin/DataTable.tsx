@@ -192,6 +192,8 @@ export function DataTable<T extends { id: string }>({
                     c.align === 'center' && 'text-center',
                   )}
                   style={{ color: 'var(--admin-ink-soft)' }}
+                  // reflect the active sort to assistive tech (arrows below are aria-hidden)
+                  aria-sort={sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
                 >
                   {c.sortable === true ? (
                     <button
@@ -217,7 +219,12 @@ export function DataTable<T extends { id: string }>({
                   )}
                 </th>
               ))}
-              {rowAction !== undefined && <th style={{ background: 'var(--admin-surface-sunken)' }} />}
+              {rowAction !== undefined && (
+                <th scope="col" style={{ background: 'var(--admin-surface-sunken)' }}>
+                  {/* actions column needs an accessible name even though it renders no visible header */}
+                  <span className="sr-only">{t('admin.actions')}</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>

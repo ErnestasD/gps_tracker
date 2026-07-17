@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, Badge as AdminBadge, PageHeader } from '@/components/admin/AdminKit'
+import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { DataTable, type Column } from '@/components/admin/DataTable'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -21,17 +22,8 @@ import {
   scoreVariant,
   updateDriver,
   type Driver,
+  type DriverScoreView,
 } from '@/lib/drivers'
-
-const selectStyle: React.CSSProperties = {
-  borderColor: 'var(--admin-hairline)',
-  background: 'var(--admin-surface)',
-  color: 'var(--admin-ink)',
-}
-
-const th = 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider'
-const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
-const rowCls = 'admin-hairline-b transition-colors hover:bg-[var(--admin-surface-sunken)]'
 
 /** scoreVariant (pure, unit-tested) → AdminBadge tone (1:1). */
 const SCORE_TONE = { success: 'success', warn: 'warning', danger: 'danger', outline: 'neutral' } as const
@@ -65,7 +57,11 @@ export function DriversPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteForId, setDeleteForId] = useState<string | null>(null)
   const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['drivers'] })
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['drivers'] })
+    // the scores table joins driverName server-side — a rename must not leave it stale
+    void qc.invalidateQueries({ queryKey: ['driver-scores'] })
+  }
 
   // targets resolve against the LIVE list (devices precedent) — a refetch/delete never leaves
   // the sheet or confirm pointed at a stale snapshot
@@ -269,58 +265,88 @@ function DriverRowMenu({ driver, onEdit, onDelete }: { driver: Driver; onEdit: (
 }
 
 /** Safety scores over the last 30 days (V2) — from assigned trips + overspeed events.
- * Lovable adds a thin score bar next to the badge; scoreVariant drives both colors. */
+ * Rendered with the shared DataTable (Lovable idiom): trips/distance/score are sortable and
+ * right-aligned; the thin score bar next to the badge stays, scoreVariant drives both colors. */
+type ScoreRow = DriverScoreView & { id: string }
+
 function DriverScores() {
   const { t } = useTranslation()
   const scores = useQuery({ queryKey: ['driver-scores'], queryFn: listDriverScores })
-  const rows = (scores.data ?? []).filter((s) => s.trips > 0) // only drivers with driving in the window
-  return (
-    <div className="admin-card overflow-hidden">
-      <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
-        {t('drivers.scores.title')}
-      </div>
-      {scores.isLoading ? (
-        <p className="p-4 text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('drivers.loading')}</p>
-      ) : rows.length === 0 ? (
-        <p className="p-4 text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('drivers.scores.empty')}</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-testid="driver-scores-table">
-            <thead>
-              <tr style={{ background: 'var(--admin-surface-sunken)' }}>
-                <th className={th} style={thStyle}>{t('drivers.name')}</th>
-                <th className={th} style={thStyle}>{t('drivers.scores.trips')}</th>
-                <th className={th} style={thStyle}>{t('drivers.scores.distance')}</th>
-                <th className={th} style={thStyle}>{t('drivers.scores.overspeed')}</th>
-                <th className={th} style={thStyle}>{t('drivers.scores.score')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((s) => (
-                <tr key={s.driverId} className={rowCls} data-testid={`driver-score-${s.driverId}`}>
-                  <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--admin-ink)' }}>{s.driverName}</td>
-                  <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{s.trips}</td>
-                  <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{t('units.km', { n: s.distanceKm })}</td>
-                  <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{s.overspeedEvents}</td>
-                  {/* scoreVariant stays the unit-tested pure mapping; its variants map 1:1 onto AdminBadge tones */}
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      {s.score !== null && (
-                        <div className="h-1.5 w-16 rounded-full" style={{ background: 'var(--admin-hairline)' }} aria-hidden>
-                          <div
-                            className="h-1.5 rounded-full"
-                            style={{ width: `${Math.max(0, Math.min(100, s.score))}%`, background: SCORE_BAR[scoreVariant(s.score)] }}
-                          />
-                        </div>
-                      )}
-                      <AdminBadge tone={SCORE_TONE[scoreVariant(s.score)]}>{s.score ?? '—'}</AdminBadge>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  // only drivers with driving in the window; DataTable rows need an `id`
+  const rows: ScoreRow[] = (scores.data ?? []).filter((s) => s.trips > 0).map((s) => ({ ...s, id: s.driverId }))
+
+  const columns: Column<ScoreRow>[] = [
+    {
+      key: 'name',
+      header: t('drivers.name'),
+      sortable: true,
+      sortValue: (r) => r.driverName.toLowerCase(),
+      cell: (r) => <span className="font-medium">{r.driverName}</span>,
+    },
+    {
+      key: 'trips',
+      header: t('drivers.scores.trips'),
+      sortable: true,
+      sortValue: (r) => r.trips,
+      align: 'right',
+      cell: (r) => <span className="tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{r.trips}</span>,
+    },
+    {
+      key: 'distance',
+      header: t('drivers.scores.distance'),
+      sortable: true,
+      sortValue: (r) => r.distanceKm,
+      align: 'right',
+      cell: (r) => <span className="tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{t('units.km', { n: r.distanceKm })}</span>,
+    },
+    {
+      key: 'overspeed',
+      header: t('drivers.scores.overspeed'),
+      align: 'right',
+      hideOnMobile: true,
+      cell: (r) => <span className="tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{r.overspeedEvents}</span>,
+    },
+    {
+      key: 'score',
+      header: t('drivers.scores.score'),
+      sortable: true,
+      // null scores sort below every real score
+      sortValue: (r) => r.score ?? -1,
+      align: 'right',
+      // scoreVariant stays the unit-tested pure mapping; its variants map 1:1 onto AdminBadge tones
+      cell: (r) => (
+        <div className="flex items-center justify-end gap-2">
+          {r.score !== null && (
+            <div className="h-1.5 w-16 rounded-full" style={{ background: 'var(--admin-hairline)' }} aria-hidden>
+              <div
+                className="h-1.5 rounded-full"
+                style={{ width: `${Math.max(0, Math.min(100, r.score))}%`, background: SCORE_BAR[scoreVariant(r.score)] }}
+              />
+            </div>
+          )}
+          <AdminBadge tone={SCORE_TONE[scoreVariant(r.score)]}>{r.score ?? '—'}</AdminBadge>
         </div>
+      ),
+    },
+  ]
+
+  return (
+    <div className="space-y-2">
+      <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('drivers.scores.title')}</h2>
+      {scores.isLoading ? (
+        <div className="admin-card p-4">
+          <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('drivers.loading')}</p>
+        </div>
+      ) : (
+        <DataTable
+          data-testid="driver-scores-table"
+          data={rows}
+          columns={columns}
+          searchable={false}
+          pageSize={10}
+          emptyLabel={t('drivers.scores.empty')}
+          rowTestId={(r) => `driver-score-${r.driverId}`}
+        />
       )}
     </div>
   )
@@ -385,9 +411,13 @@ function DriverForm({ accounts, editing, onDone, onCancel }: {
       </FieldLabel>
       {!editing && accounts.length > 1 && (
         <FieldLabel label={t('drivers.account')}>
-          <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="h-9 w-full rounded-md border px-2 text-sm" style={selectStyle} data-testid="driver-account">
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          <Combobox
+            value={accountId}
+            onChange={setAccountId}
+            data-testid="driver-account"
+            aria-label={t('drivers.account')}
+            options={accounts.map((a) => ({ value: a.id, label: a.name }))}
+          />
         </FieldLabel>
       )}
       {error !== null && <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="driver-error">{error}</p>}

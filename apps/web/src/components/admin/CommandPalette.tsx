@@ -77,6 +77,11 @@ export function CommandPalette({
       <button
         key={item.testid}
         type="button"
+        // combobox/listbox ARIA: the input's aria-activedescendant points at this id, and
+        // aria-selected mirrors the arrow-key highlight (was background-color only)
+        id={item.testid}
+        role="option"
+        aria-selected={i === active}
         data-testid={item.testid}
         onClick={item.pick}
         onMouseEnter={() => setActive(i)}
@@ -112,10 +117,16 @@ export function CommandPalette({
               placeholder={t('shell.searchHint')}
               className="w-full bg-transparent text-sm outline-none placeholder:opacity-60"
               style={{ color: 'var(--admin-ink)' }}
+              // reflect the arrow-key selection to AT: without this the active row is a
+              // background-color change only
+              role="combobox"
+              aria-expanded
+              aria-controls="cmdk-list"
+              aria-activedescendant={items[active]?.testid}
               data-testid="cmdk-input"
             />
           </div>
-          <div className="max-h-[50vh] overflow-y-auto p-1.5">
+          <div className="max-h-[50vh] overflow-y-auto p-1.5" role="listbox" id="cmdk-list">
             {items.length === 0 && (
               <div className="px-3 py-10 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>
                 {t('shell.paletteEmpty')}
