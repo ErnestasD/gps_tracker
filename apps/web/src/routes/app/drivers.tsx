@@ -395,7 +395,15 @@ function DriverForm({ accounts, editing, onDone, onCancel }: {
     try {
       const payload = { name: name.trim(), licenseNo: licenseNo.trim() || null, ibutton: ib, phone: phone.trim() || null }
       if (editing) await updateDriver(editing.id, payload)
-      else await createDriver({ ...payload, ...(accounts.length > 1 ? { accountId } : {}) })
+      // Always send the resolved account (not only when a picker is shown): the create route
+      // requires an accountId from a tenant-wide caller, so a single-account tenant admin — the
+      // common case — 400'd when this was gated on `accounts.length > 1`. Resolve from the loaded
+      // accounts at submit time so a slow accounts query can't leave it empty. Account-scoped
+      // users are unaffected (the API takes the account from their token and ignores this field).
+      else {
+        const acc = accountId !== '' ? accountId : (accounts[0]?.id ?? '')
+        await createDriver({ ...payload, ...(acc !== '' ? { accountId: acc } : {}) })
+      }
       onDone()
     } catch (err) {
       setError(isIbuttonConflict(err) ? t('drivers.ibuttonTaken') : t('drivers.saveError'))

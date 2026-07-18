@@ -653,6 +653,194 @@ test('webhooks: create (secret shown once) → toggle → delete (E06-4 UI)', as
   await expect(row).toHaveCount(0)
 })
 
+/** Shared login step for the coverage-gap tests below (mirrors the E2E flow above). */
+async function login(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+}
+
+test('dashboard: stat cards, 7/30/90 range toggle, charts and lists render (PR #100)', async ({ page }) => {
+  await login(page)
+  await page.goto('/app')
+  // the four stat cards render from real seeded data (devices/positions/events/mileage)
+  await expect(page.getByTestId('dash-devices')).toBeVisible()
+  await expect(page.getByTestId('dash-online')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('dash-today')).toBeVisible()
+  await expect(page.getByTestId('dash-events')).toBeVisible()
+  await expect(page.getByTestId('dash-critical')).toBeVisible()
+
+  // the 7/30/90 d range toggle: 7 d is active by default; clicking 30 d moves the active state
+  await expect(page.getByTestId('dash-range-7d')).toHaveAttribute('aria-pressed', 'true')
+  await page.getByTestId('dash-range-30d').click()
+  await expect(page.getByTestId('dash-range-30d')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('dash-range-7d')).toHaveAttribute('aria-pressed', 'false')
+
+  // fleet-activity area resolves to the chart or its explicit empty state (both have testids)
+  await expect(page.getByTestId('dash-mileage-chart').or(page.getByTestId('dash-mileage-empty'))).toBeVisible({ timeout: 20_000 })
+  // the donut + hourly widgets mount (headings are data-independent; the seeded stack fires no
+  // rule events, so the charts themselves may show their "No data yet" state — the section
+  // rendering is what regresses silently). The recent-events list always renders.
+  await expect(page.getByRole('heading', { name: 'Events (7 d)' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Activity by time of day' })).toBeVisible()
+  await expect(page.getByTestId('dash-recent')).toBeVisible()
+})
+
+test('drivers: full CRUD — add sheet → row → edit → delete via ConfirmDialog', async ({ page }) => {
+  await login(page)
+  await page.goto('/app/drivers')
+
+  // create through the right Sheet
+  await page.getByTestId('driver-add-open').click()
+  await page.getByTestId('driver-name').fill('E2E Driver Alpha')
+  await page.getByTestId('driver-license').fill('LIC-ALPHA-1')
+  const [createRes] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/v1/drivers') && r.request().method() === 'POST'),
+    page.getByTestId('driver-save').click(),
+  ])
+  expect(createRes.status()).toBe(201) // tenant-wide single-account create must succeed
+  const id = ((await createRes.json()) as { id: string }).id
+  await expect(page.getByTestId(`driver-${id}`)).toBeVisible({ timeout: 15_000 })
+
+  // edit via the per-row "..." menu → the header Sheet opens prefilled
+  await page.getByTestId(`driver-menu-${id}`).click()
+  await page.getByTestId(`driver-edit-${id}`).click()
+  await page.getByTestId('driver-name').fill('E2E Driver Renamed')
+  await page.getByTestId('driver-save').click()
+  await expect(page.getByTestId(`driver-${id}`)).toContainText('E2E Driver Renamed', { timeout: 15_000 })
+
+  // delete is gated by the danger ConfirmDialog
+  await page.getByTestId(`driver-menu-${id}`).click()
+  await page.getByTestId(`driver-delete-${id}`).click()
+  await page.getByTestId('confirm-ok').click()
+  await expect(page.getByTestId(`driver-${id}`)).toHaveCount(0, { timeout: 15_000 })
+})
+
+test('display prefs: changing speed→mph + time→12h flips a rendered value on another page (PR #101)', async ({ page }) => {
+  await login(page)
+
+  // prefs live on the Profile tab (default). Combobox: click the trigger, pick the option.
+  await page.goto('/app/settings')
+  await expect(page.getByTestId('settings-page')).toBeVisible()
+  await page.getByTestId('pref-speed').click()
+  await page.getByRole('option', { name: 'mph', exact: true }).click()
+  await expect(page.getByTestId('pref-speed')).toHaveAttribute('data-value', 'mph')
+  await page.getByTestId('pref-timeformat').click()
+  await page.getByRole('option', { name: '12-hour (AM/PM)', exact: true }).click()
+  await expect(page.getByTestId('pref-timeformat')).toHaveAttribute('data-value', '12h')
+
+  // give BASE_IMEI fresh history so playback has a device with samples to render
+  expect(
+    await runToExit(
+      TSX_BIN,
+      ['tools/simulator/src/main.ts', '--scenario', 'liveDrive', '--count', '15', '--hz', '4', '--port', String(INGEST_PORT), '--imei', BASE_IMEI],
+      {},
+    ),
+  ).toBe(0)
+
+  // the prefs are device-local (localStorage) → they survive the full-page nav to playback,
+  // where the overlay renders BOTH a speed (u.speed) and a time (dt) for the current sample
+  await page.goto('/app/playback')
+  await page.getByTestId('playback-device').click()
+  await page.getByRole('option', { name: 'Good', exact: true }).click()
+  await expect(page.getByTestId('speed-chart')).toBeVisible({ timeout: 20_000 })
+  await page.getByTestId('playback-start').click()
+
+  const overlay = page.getByTestId('playback-overlay')
+  await expect(overlay).toBeVisible()
+  await expect(overlay).toContainText('mph') // speed pref flowed through
+  await expect(overlay).not.toContainText('km/h')
+  // 12h time pref flowed through (uppercase AM/PM; no \b — the overlay flattens the time
+  // right up against the '24 mph' speed, e.g. "10:38 PM24 mph")
+  await expect(overlay).toContainText(/AM|PM/)
+})
+
+test('routing planner: page renders, parse errors surface, optimize degrades gracefully (no OSRM)', async ({ page }) => {
+  await login(page)
+  await page.goto('/app/routing')
+  await expect(page.getByTestId('routing-stops-input')).toBeVisible()
+  await expect(page.getByTestId('routing-optimize')).toBeVisible()
+
+  // a malformed line surfaces the per-line parse error and keeps optimize disabled
+  await page.getByTestId('routing-stops-input').fill('not-a-coordinate\n54.6872,25.2797')
+  await expect(page.getByTestId('routing-parse-error')).toBeVisible()
+  await expect(page.getByTestId('routing-optimize')).toBeDisabled()
+
+  // valid stops enable optimize; CI has no OSRM, so accept EITHER a result table OR the
+  // graceful "unavailable" error — never require a live route (per the coverage brief)
+  await page.getByTestId('routing-stops-input').fill('54.6872,25.2797\n54.8985,23.9036')
+  await expect(page.getByTestId('routing-optimize')).toBeEnabled()
+  await page.getByTestId('routing-optimize').click()
+  await expect(page.getByTestId('routing-result-table').or(page.getByTestId('routing-error'))).toBeVisible({ timeout: 20_000 })
+})
+
+test('geofences: create → list → delete+confirm round-trip', async ({ page }) => {
+  await login(page)
+
+  // Drawing a polygon on the terra-draw + Mapbox canvas is too flaky under headless
+  // swiftshader to assert deterministically (documented gap: the draw→finish→save path is
+  // covered only up to editor-mount in the E05-1 test above, and by geofences.spec.ts on the
+  // API side with hand-built GeoJSON). Here we exercise the create→list→delete round-trip via
+  // a deterministic API create (using the app's own bearer token), then the UI list + the
+  // ConfirmDialog-gated delete — the parts that had no e2e at all.
+  let bearer = ''
+  page.on('request', (req) => {
+    const a = req.headers()['authorization']
+    if (a?.startsWith('Bearer ') === true) bearer = a
+  })
+  await page.goto('/app/geofences')
+  await expect(page.getByTestId('geofence-map')).toBeVisible()
+  await expect.poll(() => bearer).not.toBe('')
+
+  const square = { type: 'Polygon', coordinates: [[[25.27, 54.68], [25.28, 54.68], [25.28, 54.69], [25.27, 54.69], [25.27, 54.68]]] }
+  const created = await page.request.post('/v1/geofences', {
+    headers: { authorization: bearer, 'content-type': 'application/json' },
+    data: { name: 'E2E Zone', kind: 'polygon', color: '#4F46E5', accountId: null, geometry: square },
+  })
+  expect(created.ok()).toBe(true)
+  const gfId = ((await created.json()) as { id: string }).id
+
+  // reload → the list query picks it up → row renders
+  await page.reload()
+  await expect(page.getByTestId('gf-list')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId(`gf-${gfId}`)).toBeVisible()
+
+  // delete via the row trash button → danger ConfirmDialog
+  await page.getByTestId(`gf-del-${gfId}`).click()
+  await page.getByTestId('confirm-ok').click()
+  await expect(page.getByTestId(`gf-${gfId}`)).toHaveCount(0, { timeout: 15_000 })
+})
+
+test('notifications bell + command palette: open, mark-all, keyboard + search nav', async ({ page }) => {
+  await login(page)
+
+  // ── bell: opens a popover; mark-all clears any unread badge without crashing ──
+  await page.getByTestId('bell').click()
+  await expect(page.getByTestId('bell-popover')).toBeVisible()
+  // the seeded stack fires no rule events, so an unread badge may or may not be present —
+  // handle both deterministically (documented: unread>0 needs seeded events, absent here)
+  const hadUnread = await page.getByTestId('bell-count').isVisible()
+  await page.getByTestId('bell-mark-all').click()
+  if (hadUnread) await expect(page.getByTestId('bell-count')).toHaveCount(0)
+  await expect(page.getByTestId('bell-popover')).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  // ── command palette: opens via ⌘/Ctrl-K, closes on Escape ──
+  await page.keyboard.press('ControlOrMeta+KeyK')
+  await expect(page.getByTestId('cmdk-palette')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('cmdk-palette')).toHaveCount(0)
+
+  // ── palette via the topbar search → type a page name → Enter navigates ──
+  await page.getByTestId('topbar-search').click()
+  await expect(page.getByTestId('cmdk-palette')).toBeVisible()
+  await page.getByTestId('cmdk-input').fill('Reports')
+  await page.keyboard.press('Enter')
+  await page.waitForURL('**/app/reports')
+})
+
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)
