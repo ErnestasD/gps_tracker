@@ -74,13 +74,28 @@ export class ShardLeaser {
     }
   }
 
-  /** Graceful release (SIGTERM path — E02-3 AC: lease released < 5 s). */
-  async release(): Promise<void> {
+  /** Stop the renew/re-acquire loop WITHOUT freeing the leases yet — so a draining worker
+   *  neither re-acquires a shard it's about to release nor lets a peer claim it mid-batch.
+   *  Call before consumers drain; then releaseLeases() once they've stopped. */
+  stopRenewing(): void {
     if (this.renewTimer) clearInterval(this.renewTimer)
+  }
+
+  /** Free the leases (SIGTERM path — E02-3 AC: lease released < 5 s). MUST run only after the
+   *  consumers have drained: releasing earlier lets a peer's next tick claim the shard and
+   *  process the same device's new records while this worker still persists the prior batch —
+   *  a per-device concurrency break (rule 5 / I2). */
+  async releaseLeases(): Promise<void> {
     for (const shard of this.owned) {
       const holder = await this.redis.get(`shards:lease:${shard}`)
       if (holder === this.workerId) await this.redis.del(`shards:lease:${shard}`)
     }
     this.owned.clear()
+  }
+
+  /** Full graceful release (stop renewing + free leases) — for callers with no separate drain. */
+  async release(): Promise<void> {
+    this.stopRenewing()
+    await this.releaseLeases()
   }
 }

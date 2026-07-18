@@ -390,8 +390,10 @@ async function main(): Promise<void> {
   // Graceful drain (§6.1 deploy protocol): finish current batch, XACK, release leases <5 s
   process.on('SIGTERM', () => {
     void (async () => {
-      await leaser.release() // stop renewing/reacquiring first so no new consumer starts mid-drain
-      await Promise.all([...consumersByShard.values()].map((c) => c.stop()))
+      leaser.stopRenewing() // stop re-acquiring so this worker doesn't re-grab a shard mid-drain
+      await Promise.all([...consumersByShard.values()].map((c) => c.stop())) // drain in-flight batches
+      await leaser.releaseLeases() // free leases AFTER draining — else a peer claims a shard we're
+      // still persisting and processes the same device concurrently (rule 5 / I2, review HIGH)
       await recomputeWorker.close() // finish the in-flight recompute job, stop taking new
       await recomputeQueue.close()
       await offlineWorker.close() // finish the in-flight sweep, stop taking new

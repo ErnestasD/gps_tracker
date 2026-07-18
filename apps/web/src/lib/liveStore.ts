@@ -160,11 +160,16 @@ export class LiveStore {
 
   /** Reconcile the live set to the authoritative active registry: drop any live device that is no
    * longer present (retired/erased/removed — possibly by another tab or admin). No-op when every
-   * live device is still present, so it never churns the snapshot needlessly. */
+   * live device is still present, so it never churns the snapshot needlessly. A device still
+   * streaming fresh fixes (≤ ONLINE_MS) is KEPT even if the ['devices'] cache hasn't refetched it
+   * yet — the WS stream is ground truth for presence; the stale registry cache is not. */
   retain(activeIds: Iterable<string>): void {
     const keep = activeIds instanceof Set ? activeIds : new Set(activeIds)
+    const now = this.now()
     let removed = false
     for (const id of [...this.byId.keys()]) {
+      const dev = this.byId.get(id)
+      if (dev !== undefined && now - dev.ev.fixTimeMs <= ONLINE_MS) continue // actively streaming — keep
       if (!keep.has(id) && this.byId.delete(id)) {
         if (this.snapshot.selectedId === id) {
           this.trailPoints = []
