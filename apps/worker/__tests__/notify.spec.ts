@@ -184,16 +184,42 @@ describe('ADR-026 webPushDriver.send (fan-out + prune)', () => {
 })
 
 describe('E05-5 notificationMessage', () => {
-  it('builds a subject + multi-line body with a kind-specific detail', () => {
+  it('builds a subject + multi-line body with a kind-specific detail (defaults: id, UTC, Orbetra)', () => {
     const m = notificationMessage('overspeed', '42', { speedKmh: 95, limitKmh: 90 }, new Date('2026-07-09T00:00:00Z'))
-    expect(m.subject).toBe('[Orbetra] Overspeed — device 42')
+    expect(m.subject).toBe('[Orbetra] Overspeed — 42')
     expect(m.text).toContain('Speed 95 km/h over limit 90 km/h')
     expect(m.text).toContain('Device: 42')
+    expect(m.text).toContain('When: 2026-07-09 00:00 (UTC)')
   })
 
-  it('falls back gracefully for a kind without a detail line', () => {
-    const m = notificationMessage('panic', '7', {}, new Date('2026-07-09T00:00:00Z'))
-    expect(m.subject).toContain('Panic')
+  it('uses the device NAME, tenant BRAND, and ACCOUNT timezone from the context', () => {
+    const m = notificationMessage('overspeed', '42', { speedKmh: 95, limitKmh: 90 }, new Date('2026-07-09T00:00:00Z'), {
+      deviceLabel: 'Vilnius Van 1',
+      timezone: 'Europe/Vilnius',
+      brand: 'Acme Fleet',
+    })
+    expect(m.subject).toBe('[Acme Fleet] Overspeed — Vilnius Van 1')
+    expect(m.text).toContain('Device: Vilnius Van 1')
+    // 00:00 UTC → 03:00 in Europe/Vilnius (UTC+3 in July)
+    expect(m.text).toContain('When: 2026-07-09 03:00 (Europe/Vilnius)')
+  })
+
+  it('renders fuel_theft with a proper title + amount detail (not the raw slug)', () => {
+    const m = notificationMessage('fuel_theft', '42', { unit: 'liters', baseline: 60, to: 40, drop: 20 }, new Date('2026-07-09T00:00:00Z'))
+    expect(m.subject).toContain('Fuel theft')
+    expect(m.subject).not.toContain('fuel_theft')
+    expect(m.text).toContain('Fuel dropped 20 L')
+    expect(m.text).toContain('baseline 60 L')
+  })
+
+  it('renders a percentage fuel_theft drop', () => {
+    const m = notificationMessage('fuel_theft', '42', { unit: 'pct', baseline: 80, to: 55, drop: 25 }, new Date('2026-07-09T00:00:00Z'))
+    expect(m.text).toContain('Fuel dropped 25 %')
+  })
+
+  it('humanizes an unknown kind instead of leaking the raw slug', () => {
+    const m = notificationMessage('some_new_kind', '7', {}, new Date('2026-07-09T00:00:00Z'))
+    expect(m.subject).toContain('Some new kind')
     expect(m.text).toContain('Device: 7')
   })
 })

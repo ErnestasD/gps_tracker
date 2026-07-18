@@ -8,6 +8,7 @@ import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { getCurrentUser } from '@/lib/auth'
 import { listAccounts } from '@/lib/devices'
 import { listGeofences } from '@/lib/geofences'
 import { ApiError } from '@/lib/http'
@@ -22,6 +23,9 @@ import { RULE_KINDS, channelDisplay, channelLabel, configFields, createRule, del
 export function RulesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  // rule writes require account_manager+ (WRITE_POLICY.rule) — viewers get 403s, so hide the
+  // write affordances (drivers/maintenance canWrite precedent). Reads stay open to all roles.
+  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
   const rules = useQuery({ queryKey: ['rules'], queryFn: listRules })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const geofences = useQuery({ queryKey: ['geofences'], queryFn: listGeofences })
@@ -44,6 +48,7 @@ export function RulesPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader title={t('rules.title')} description={t('rules.desc')} className="mb-0">
+        {canWrite && (
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton data-testid="rule-add-open">
@@ -67,6 +72,7 @@ export function RulesPage() {
             />
           </SheetContent>
         </Sheet>
+        )}
       </PageHeader>
 
       <section className="space-y-2">
@@ -105,24 +111,29 @@ export function RulesPage() {
                   <span className="text-xs" style={{ color: 'var(--admin-warning)' }} data-testid={`rule-ch-none-${r.id}`}>{t('rules.channels.none')}</span>
                 )}
                 {/* enable toggle: AdminSwitch reflects SERVER state — it only flips after the
-                    PATCH + refetch round-trips (e2e polls aria-checked on role=switch) */}
-                <AdminSwitch
-                  checked={r.enabled}
-                  data-testid={`rule-enabled-${r.id}`}
-                  label={t('rules.enabled')}
-                  onCheckedChange={(v) => { clearErr(); void updateRule(r.id, { enabled: v }).then(refresh).catch(onActionErr) }}
-                />
-                <button
-                  type="button"
-                  aria-label={t('rules.delete')}
-                  data-testid={`rule-del-${r.id}`}
-                  className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)]"
-                  style={{ color: 'var(--admin-danger)' }}
-                  onClick={() => setDeleteForId(r.id)}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden />
-                </button>
-                <RuleRowMenu rule={r} onEditChannels={() => setEditChannelsId(r.id)} />
+                    PATCH + refetch round-trips (e2e polls aria-checked on role=switch). Write
+                    controls are hidden for viewers (WRITE_POLICY.rule 403s them). */}
+                {canWrite && (
+                  <>
+                    <AdminSwitch
+                      checked={r.enabled}
+                      data-testid={`rule-enabled-${r.id}`}
+                      label={t('rules.enabled')}
+                      onCheckedChange={(v) => { clearErr(); void updateRule(r.id, { enabled: v }).then(refresh).catch(onActionErr) }}
+                    />
+                    <button
+                      type="button"
+                      aria-label={t('rules.delete')}
+                      data-testid={`rule-del-${r.id}`}
+                      className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)]"
+                      style={{ color: 'var(--admin-danger)' }}
+                      onClick={() => setDeleteForId(r.id)}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </button>
+                    <RuleRowMenu rule={r} onEditChannels={() => setEditChannelsId(r.id)} />
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -285,7 +296,8 @@ function RuleForm({ accounts, geofences, onCreated, onCancel }: {
               onChange={(v) => setCfg((c) => ({ ...c, [f.key]: v }))}
               data-testid={`rule-cfg-${f.key}`}
               aria-label={t(`rules.cfg.${f.key}`)}
-              options={(f.options ?? []).map((o) => ({ value: o, label: o }))}
+              // localize the option LABELS (enter/exit/both) while keeping the stored VALUES intact
+              options={(f.options ?? []).map((o) => ({ value: o, label: t(`rules.cfgOpt.${f.key}.${o}`, o) }))}
             />
           ) : (
             <AdminInput type="number" min={f.min} max={f.max} value={cfg[f.key] ?? String(f.default)} onChange={(e) => setCfg((c) => ({ ...c, [f.key]: e.target.value }))} data-testid={`rule-cfg-${f.key}`} className="w-28" />

@@ -59,6 +59,19 @@ describe('E05-6 eventSummary', () => {
     expect(eventSummary(ev('fuel_theft', { unit: 'liters', drop: 18.5 }))).toBe('fuel dropped 18.5 L')
     expect(eventSummaryT(ev('fuel_theft', { unit: 'liters', drop: 18.5 }))).toEqual({ key: 'events.s.fuel_theft', params: { drop: '18.5', unit: 'L' } })
   })
+
+  it('fuel_theft litres drop honors the volume-unit pref via fmtVolume', () => {
+    // gallons account: the litre drop is converted + carries its own localized unit label
+    expect(eventSummaryT(ev('fuel_theft', { unit: 'liters', drop: 18.5 }), { fmtVolume: (l) => `${(l / 3.785411784).toFixed(1)} gal` })).toEqual({
+      key: 'events.s.fuel_theft_vol',
+      params: { drop: '4.9 gal' },
+    })
+    // a percentage drop has no volume conversion — still the plain % key even with fmtVolume
+    expect(eventSummaryT(ev('fuel_theft', { unit: 'pct', drop: 22 }), { fmtVolume: (l) => `${l} l` })).toEqual({
+      key: 'events.s.fuel_theft',
+      params: { drop: '22', unit: '%' },
+    })
+  })
 })
 
 describe('i18n eventSummaryT / localizedEventSummary', () => {

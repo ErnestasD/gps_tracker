@@ -51,6 +51,12 @@ beforeAll(async () => {
   acct1 = (await db.accounts.list({ tenantId: t1 }))[0]!.id
   // account uses Warsaw so we can assert the local-day bucket
   await pool.query('UPDATE accounts SET timezone=$1 WHERE id=$2', ['Europe/Warsaw', acct1])
+  // a real device so the report's label JOIN returns name/plate (not null)
+  const prof = (await pool.query<{ id: string }>(`INSERT INTO device_profiles (id,key,name) VALUES (gen_random_uuid(),'reports-test','Reports Test') RETURNING id`)).rows[0]
+  await pool.query(
+    `INSERT INTO devices (id,"tenantId","accountId","profileId",imei,name,plate) VALUES (7,$1,$2,$3,'860000000000007','Fleet Van 7','FV-7')`,
+    [t1, acct1, prof!.id],
+  )
   await pool.query(
     `INSERT INTO trips ("tenantId","accountId","deviceId",status,"startTime","endTime","distanceM","distanceSource","maxSpeed","idleS")
      VALUES ($1,$2,7,'closed','2026-10-24T23:30:00Z','2026-10-25T00:10:00Z',4200,'gps',88,120)`,
@@ -88,10 +94,10 @@ describe('E06-1 reports API', () => {
   it('runs a mileage report bucketed by the account timezone', async () => {
     const res = await post('/v1/reports/mileage', t1Token, { ...range, accountId: acct1 })
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { type: string; rows: { day: string; deviceId: string; trips: number; distanceM: number }[] }
+    const body = (await res.json()) as { type: string; rows: { day: string; deviceId: string; deviceName: string | null; devicePlate: string | null; trips: number; distanceM: number }[] }
     expect(body.type).toBe('mileage')
-    // startTime 2026-10-24T23:30Z → 01:30 Warsaw (CEST) → local day 2026-10-25
-    expect(body.rows).toEqual([{ day: '2026-10-25', deviceId: '7', trips: 1, distanceM: 4200 }])
+    // startTime 2026-10-24T23:30Z → 01:30 Warsaw (CEST) → local day 2026-10-25; device labels joined
+    expect(body.rows).toEqual([{ day: '2026-10-25', deviceId: '7', deviceName: 'Fleet Van 7', devicePlate: 'FV-7', trips: 1, distanceM: 4200 }])
   })
 
   it('isolation: another tenant cannot report on account 1 (accountId not in scope → 400)', async () => {

@@ -28,36 +28,46 @@ export function isReportType(s: string): s is ReportType {
   return (REPORT_TYPES as readonly string[]).includes(s)
 }
 
-export interface DailyMileageRow {
+/** Human labels for a report row's device (E06-1 readability). Joined from `devices` within the
+ *  SAME tenant/account the query already scopes by (never a widened scope); LEFT JOIN so a
+ *  retired/deleted device still yields its row with null labels. The raw numeric `deviceId` is
+ *  always kept alongside so existing keys/links don't break. */
+export interface DeviceLabels {
+  /** device display name, or null if the device row is gone */
+  deviceName: string | null
+  /** device plate/registration, or null (column is nullable, and null for a missing device) */
+  devicePlate: string | null
+}
+export interface DailyMileageRow extends DeviceLabels {
   day: string
   deviceId: string
   trips: number
   distanceM: number
 }
-export interface DailyStopsRow {
+export interface DailyStopsRow extends DeviceLabels {
   day: string
   deviceId: string
   trips: number
   idleS: number
 }
-export interface DailyEngineHoursRow {
+export interface DailyEngineHoursRow extends DeviceLabels {
   day: string
   deviceId: string
   seconds: number
 }
-export interface DailyOverspeedRow {
+export interface DailyOverspeedRow extends DeviceLabels {
   day: string
   deviceId: string
   count: number
   maxSpeedKmh: number | null
 }
-export interface DailyGeofenceRow {
+export interface DailyGeofenceRow extends DeviceLabels {
   day: string
   deviceId: string
   enters: number
   exits: number
 }
-export interface TripRow {
+export interface TripRow extends DeviceLabels {
   id: string
   deviceId: string
   day: string
@@ -90,10 +100,13 @@ function safeTz(tz: string): string {
 }
 
 /** Common scaffolding: bound params + WHERE for a tenant/account/time/device-scoped query.
- * `timeCol` is the quoted column the range + device filter apply to. */
-function scopeWhere(scope: ReportScope, params: ReportParams, timeCol: string): { params: unknown[]; where: string; tzIndex: number; toIndex: number | null } {
+ * `timeCol` is the quoted column the range + device filter apply to. `alias` is the base
+ * table's alias (e.g. `t`/`e`) — every scope column is qualified with it so the devices JOIN
+ * (which also carries tenantId/accountId/deviceId) never makes a reference ambiguous. */
+function scopeWhere(scope: ReportScope, params: ReportParams, timeCol: string, alias: string): { params: unknown[]; where: string; tzIndex: number; toIndex: number | null } {
+  const q = `${alias}.`
   const p: unknown[] = [scope.tenantId, scope.accountId]
-  const where: string[] = ['"tenantId" = $1', '"accountId" = $2']
+  const where: string[] = [`${q}"tenantId" = $1`, `${q}"accountId" = $2`]
   // an out-of-range/garbage bound is dropped (never 500s); an absent bound just widens the range
   if (isPgSafeDate(params.from)) where.push(`${timeCol} >= $${p.push(new Date(params.from))}`)
   let toIndex: number | null = null
@@ -101,14 +114,22 @@ function scopeWhere(scope: ReportScope, params: ReportParams, timeCol: string): 
     toIndex = p.push(new Date(params.to))
     where.push(`${timeCol} < $${toIndex}`)
   }
-  if (validDeviceId(params.deviceId)) where.push(`"deviceId" = $${p.push(params.deviceId)}`)
+  if (validDeviceId(params.deviceId)) where.push(`${q}"deviceId" = $${p.push(params.deviceId)}`)
   const tzIndex = p.push(safeTz(params.timezone))
   return { params: p, where: where.join(' AND '), tzIndex, toIndex }
 }
 
+/** LEFT JOIN to devices, scoped to the SAME tenant/account as the base table `alias` (never
+ *  widened). Kept as a LEFT JOIN so a row survives even if the device was deleted (null labels). */
+const deviceJoin = (alias: string): string => `LEFT JOIN devices d ON d.id = ${alias}."deviceId" AND d."tenantId" = ${alias}."tenantId" AND d."accountId" = ${alias}."accountId"`
+/** The device-label projection shared by every report (raw id kept separately by each query). */
+const DEVICE_LABELS = 'd.name AS device_name, d.plate AS device_plate'
+
 interface PgDaily {
   day: string
   device_id: string
+  device_name: string | null
+  device_plate: string | null
   a: string
   b: string
 }
@@ -133,67 +154,69 @@ export async function runReport(pool: Pool, type: ReportType, scope: ReportScope
 const dayExpr = (col: string, tzIdx: number): string => `to_char(date_trunc('day', ${col} AT TIME ZONE $${tzIdx}), 'YYYY-MM-DD')`
 
 async function mileage(pool: Pool, scope: ReportScope, params: ReportParams): Promise<DailyMileageRow[]> {
-  const { params: p, where, tzIndex } = scopeWhere(scope, params, '"startTime"')
+  const { params: p, where, tzIndex } = scopeWhere(scope, params, 't."startTime"', 't')
   const res = await pool.query<PgDaily>(
-    `SELECT ${dayExpr('"startTime"', tzIndex)} AS day, "deviceId"::text AS device_id,
-            count(*)::text AS a, coalesce(sum("distanceM"),0)::text AS b
-     FROM trips WHERE ${where} GROUP BY 1,2 ORDER BY 1,2`,
+    `SELECT ${dayExpr('t."startTime"', tzIndex)} AS day, t."deviceId"::text AS device_id, ${DEVICE_LABELS},
+            count(*)::text AS a, coalesce(sum(t."distanceM"),0)::text AS b
+     FROM trips t ${deviceJoin('t')} WHERE ${where} GROUP BY 1,2,3,4 ORDER BY 1,2`,
     p,
   )
-  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, trips: Number(r.a), distanceM: Number(r.b) }))
+  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, deviceName: r.device_name, devicePlate: r.device_plate, trips: Number(r.a), distanceM: Number(r.b) }))
 }
 
 async function stops(pool: Pool, scope: ReportScope, params: ReportParams): Promise<DailyStopsRow[]> {
-  const { params: p, where, tzIndex } = scopeWhere(scope, params, '"startTime"')
+  const { params: p, where, tzIndex } = scopeWhere(scope, params, 't."startTime"', 't')
   const res = await pool.query<PgDaily>(
-    `SELECT ${dayExpr('"startTime"', tzIndex)} AS day, "deviceId"::text AS device_id,
-            count(*)::text AS a, coalesce(sum("idleS"),0)::text AS b
-     FROM trips WHERE ${where} GROUP BY 1,2 ORDER BY 1,2`,
+    `SELECT ${dayExpr('t."startTime"', tzIndex)} AS day, t."deviceId"::text AS device_id, ${DEVICE_LABELS},
+            count(*)::text AS a, coalesce(sum(t."idleS"),0)::text AS b
+     FROM trips t ${deviceJoin('t')} WHERE ${where} GROUP BY 1,2,3,4 ORDER BY 1,2`,
     p,
   )
-  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, trips: Number(r.a), idleS: Number(r.b) }))
+  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, deviceName: r.device_name, devicePlate: r.device_plate, trips: Number(r.a), idleS: Number(r.b) }))
 }
 
 async function engineHours(pool: Pool, scope: ReportScope, params: ReportParams): Promise<DailyEngineHoursRow[]> {
-  const { params: p, where, tzIndex, toIndex } = scopeWhere(scope, params, '"startTime"')
+  const { params: p, where, tzIndex, toIndex } = scopeWhere(scope, params, 't."startTime"', 't')
   // an open trip (endTime null) counts to the report's `to` bound if given (so a still-open
   // trip can't inflate a historical window), else to now(); GREATEST(...,0) guards clock skew
   const cap = toIndex !== null ? `LEAST(now(), $${toIndex})` : 'now()'
-  const res = await pool.query<{ day: string; device_id: string; a: string }>(
-    `SELECT ${dayExpr('"startTime"', tzIndex)} AS day, "deviceId"::text AS device_id,
-            coalesce(sum(GREATEST(EXTRACT(EPOCH FROM (coalesce("endTime", ${cap}) - "startTime")), 0)),0)::bigint::text AS a
-     FROM trips WHERE ${where} GROUP BY 1,2 ORDER BY 1,2`,
+  const res = await pool.query<{ day: string; device_id: string; device_name: string | null; device_plate: string | null; a: string }>(
+    `SELECT ${dayExpr('t."startTime"', tzIndex)} AS day, t."deviceId"::text AS device_id, ${DEVICE_LABELS},
+            coalesce(sum(GREATEST(EXTRACT(EPOCH FROM (coalesce(t."endTime", ${cap}) - t."startTime")), 0)),0)::bigint::text AS a
+     FROM trips t ${deviceJoin('t')} WHERE ${where} GROUP BY 1,2,3,4 ORDER BY 1,2`,
     p,
   )
-  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, seconds: Number(r.a) }))
+  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, deviceName: r.device_name, devicePlate: r.device_plate, seconds: Number(r.a) }))
 }
 
 async function overspeed(pool: Pool, scope: ReportScope, params: ReportParams): Promise<DailyOverspeedRow[]> {
-  const { params: p, where, tzIndex } = scopeWhere(scope, params, '"at"')
-  const res = await pool.query<{ day: string; device_id: string; a: string; b: string | null }>(
-    `SELECT ${dayExpr('"at"', tzIndex)} AS day, "deviceId"::text AS device_id,
-            count(*)::text AS a, max((payload->>'speedKmh')::float8)::text AS b
-     FROM events WHERE ${where} AND kind = 'overspeed' GROUP BY 1,2 ORDER BY 1,2`,
+  const { params: p, where, tzIndex } = scopeWhere(scope, params, 'e."at"', 'e')
+  const res = await pool.query<{ day: string; device_id: string; device_name: string | null; device_plate: string | null; a: string; b: string | null }>(
+    `SELECT ${dayExpr('e."at"', tzIndex)} AS day, e."deviceId"::text AS device_id, ${DEVICE_LABELS},
+            count(*)::text AS a, max((e.payload->>'speedKmh')::float8)::text AS b
+     FROM events e ${deviceJoin('e')} WHERE ${where} AND e.kind = 'overspeed' GROUP BY 1,2,3,4 ORDER BY 1,2`,
     p,
   )
-  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, count: Number(r.a), maxSpeedKmh: r.b === null ? null : Number(r.b) }))
+  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, deviceName: r.device_name, devicePlate: r.device_plate, count: Number(r.a), maxSpeedKmh: r.b === null ? null : Number(r.b) }))
 }
 
 async function geofence(pool: Pool, scope: ReportScope, params: ReportParams): Promise<DailyGeofenceRow[]> {
-  const { params: p, where, tzIndex } = scopeWhere(scope, params, '"at"')
-  const res = await pool.query<{ day: string; device_id: string; a: string; b: string }>(
-    `SELECT ${dayExpr('"at"', tzIndex)} AS day, "deviceId"::text AS device_id,
-            count(*) FILTER (WHERE payload->>'transition' = 'enter')::text AS a,
-            count(*) FILTER (WHERE payload->>'transition' = 'exit')::text AS b
-     FROM events WHERE ${where} AND kind = 'geofence' GROUP BY 1,2 ORDER BY 1,2`,
+  const { params: p, where, tzIndex } = scopeWhere(scope, params, 'e."at"', 'e')
+  const res = await pool.query<{ day: string; device_id: string; device_name: string | null; device_plate: string | null; a: string; b: string }>(
+    `SELECT ${dayExpr('e."at"', tzIndex)} AS day, e."deviceId"::text AS device_id, ${DEVICE_LABELS},
+            count(*) FILTER (WHERE e.payload->>'transition' = 'enter')::text AS a,
+            count(*) FILTER (WHERE e.payload->>'transition' = 'exit')::text AS b
+     FROM events e ${deviceJoin('e')} WHERE ${where} AND e.kind = 'geofence' GROUP BY 1,2,3,4 ORDER BY 1,2`,
     p,
   )
-  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, enters: Number(r.a), exits: Number(r.b) }))
+  return res.rows.map((r) => ({ day: r.day, deviceId: r.device_id, deviceName: r.device_name, devicePlate: r.device_plate, enters: Number(r.a), exits: Number(r.b) }))
 }
 
 interface PgTrip {
   id: string
   device_id: string
+  device_name: string | null
+  device_plate: string | null
   day: string
   start_time: Date
   end_time: Date | null
@@ -203,17 +226,19 @@ interface PgTrip {
   idle_s: number
 }
 async function trips(pool: Pool, scope: ReportScope, params: ReportParams): Promise<TripRow[]> {
-  const { params: p, where, tzIndex } = scopeWhere(scope, params, '"startTime"')
+  const { params: p, where, tzIndex } = scopeWhere(scope, params, 't."startTime"', 't')
   const res = await pool.query<PgTrip>(
-    `SELECT id::text, "deviceId"::text AS device_id, ${dayExpr('"startTime"', tzIndex)} AS day,
-            "startTime" AS start_time, "endTime" AS end_time, "distanceM" AS distance_m,
-            "distanceSource" AS distance_source, "maxSpeed" AS max_speed, "idleS" AS idle_s
-     FROM trips WHERE ${where} ORDER BY "startTime" DESC LIMIT ${TRIP_LIST_CAP}`,
+    `SELECT t.id::text, t."deviceId"::text AS device_id, ${DEVICE_LABELS}, ${dayExpr('t."startTime"', tzIndex)} AS day,
+            t."startTime" AS start_time, t."endTime" AS end_time, t."distanceM" AS distance_m,
+            t."distanceSource" AS distance_source, t."maxSpeed" AS max_speed, t."idleS" AS idle_s
+     FROM trips t ${deviceJoin('t')} WHERE ${where} ORDER BY t."startTime" DESC LIMIT ${TRIP_LIST_CAP}`,
     p,
   )
   return res.rows.map((r) => ({
     id: r.id,
     deviceId: r.device_id,
+    deviceName: r.device_name,
+    devicePlate: r.device_plate,
     day: r.day,
     startTime: r.start_time.toISOString(),
     endTime: r.end_time === null ? null : r.end_time.toISOString(),

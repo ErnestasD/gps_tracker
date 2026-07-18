@@ -6,7 +6,7 @@ import { notificationChannelSchema, type NotificationChannel } from '@orbetra/sh
 
 import { dispatchEvent } from '../notify/dispatch.js'
 import type { Drivers } from '../notify/drivers.js'
-import { notificationMessage } from '../notify/message.js'
+import { notificationMessage, type NotifyContext } from '../notify/message.js'
 import { NOTIFY_QUEUE, type NotifyJob } from './notifyQueue.js'
 
 /** Sent-set TTL: bounds the per-job idempotency key well past the max retry window. */
@@ -36,16 +36,50 @@ export async function loadRuleChannels(pool: Pool, ruleId: string): Promise<Noti
   return out
 }
 
+/**
+ * Resolve the human context for an alert: the device NAME/plate, the account TIMEZONE, and the
+ * tenant BRAND — so the message names the vehicle (not a raw IMEI), stamps the time in the account
+ * zone (rule 7), and uses the tenant's white-label brand. Derived from the device row itself (the
+ * authoritative tenant/account source), scoped by the device id — never a guessed scope. A lookup
+ * miss (retired/unknown device) yields safe defaults so a notification is never dropped.
+ */
+export async function resolveNotifyContext(pool: Pool, deviceId: string): Promise<NotifyContext> {
+  if (!/^\d+$/.test(deviceId)) return {}
+  try {
+    const res = await pool.query<{ device_name: string | null; device_plate: string | null; timezone: string | null; tenant_name: string | null; branding: unknown }>(
+      `SELECT d.name AS device_name, d.plate AS device_plate, a.timezone AS timezone, t.name AS tenant_name, t.branding AS branding
+         FROM devices d JOIN accounts a ON a.id = d."accountId" JOIN tenants t ON t.id = d."tenantId"
+        WHERE d.id = $1`,
+      [deviceId],
+    )
+    const row = res.rows[0]
+    if (row === undefined) return {}
+    const product = (row.branding as { productName?: unknown } | null)?.productName
+    const brand = typeof product === 'string' && product.trim() !== '' ? product : row.tenant_name ?? undefined
+    return {
+      deviceLabel: row.device_name ?? row.device_plate ?? undefined,
+      timezone: row.timezone ?? undefined,
+      brand: brand ?? undefined,
+    }
+  } catch {
+    return {} // context lookup must never suppress the alert — fall back to id/UTC/'Orbetra'
+  }
+}
+
 /** Run one notify job: load channels → build message → dispatch with per-channel dedup. */
 export async function runNotify(deps: NotifyWorkerDeps, job: Job<NotifyJob>): Promise<void> {
   const { ruleId, deviceId, kind, at, payload } = job.data
   const channels = await loadRuleChannels(deps.pool, ruleId)
   if (channels.length === 0) return
 
-  const msg = notificationMessage(kind, deviceId, payload, new Date(at))
+  // resolve the device's account (webpush fan-out) + the human context (name/zone/brand) together
+  const [tenantId, accountId, notifyCtx] = await Promise.all([
+    deps.redis.hget('device:tenant', deviceId),
+    deps.redis.hget('device:account', deviceId),
+    resolveNotifyContext(deps.pool, deviceId),
+  ])
+  const msg = notificationMessage(kind, deviceId, payload, new Date(at), notifyCtx)
   const sentKey = `notify:sent:${job.id ?? `${ruleId}:${deviceId}:${at}`}`
-  // resolve the device's account so a webpush channel can fan out to that account's subscriptions
-  const [tenantId, accountId] = await Promise.all([deps.redis.hget('device:tenant', deviceId), deps.redis.hget('device:account', deviceId)])
   const ctx = tenantId && accountId ? { tenantId, accountId } : undefined
   const result = await dispatchEvent(
     channels,

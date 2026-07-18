@@ -99,7 +99,10 @@
       "paused": "Pausiert"
     },
     "actionError": "Stripe konnte nicht erreicht werden — bitte erneut versuchen.",
-    "loadError": "Abrechnungsstatus konnte nicht geladen werden."
+    "loadError": "Abrechnungsstatus konnte nicht geladen werden.",
+    "ends": "Endet am",
+    "pastDue": "Überfällig",
+    "fixPayment": "Zahlung korrigieren"
   },
   "branding": {
     "title": "Branding",
@@ -254,7 +257,14 @@
       "remove": "{{target}} entfernen"
     },
     "cooldownValue": "{{s}} s",
-    "actions": "Aktionen"
+    "actions": "Aktionen",
+    "cfgOpt": {
+      "on": {
+        "enter": "Einfahrt",
+        "exit": "Ausfahrt",
+        "both": "Beide"
+      }
+    }
   },
   "playback": {
     "title": "Verlauf-Wiedergabe",
@@ -632,7 +642,8 @@
       "device_offline": "offline {{hours}} Std. (≥ {{threshold}} Std.)",
       "panic": "SOS ausgelöst",
       "power_cut": "externe Stromversorgung unterbrochen",
-      "fuel_theft": "Kraftstoff gesunken {{drop}} {{unit}}"
+      "fuel_theft": "Kraftstoff gesunken {{drop}} {{unit}}",
+      "fuel_theft_vol": "Kraftstoff gesunken {{drop}}"
     }
   },
   "reports": {
@@ -674,11 +685,13 @@
       "maxSpeed": "Max Tempo",
       "distanceKm": "Entfernung (km)",
       "distanceMi": "Entfernung (mi)",
-      "maxSpeedMph": "Max. mph"
+      "maxSpeedMph": "Max. mph",
+      "hoursH": "Motorstunden (Std.)"
     },
     "account": "Konto",
     "exportPdf": "PDF exportieren",
-    "pdfTitle": "{{type}}-Bericht"
+    "pdfTitle": "{{type}}-Bericht",
+    "pdfGenerated": "Erstellt {{at}}"
   },
   "apiKeys": {
     "title": "API-Schlüssel",
@@ -750,7 +763,8 @@
     "poweredBy": "Bereitgestellt von Orbetra",
     "expiredTitle": "Link abgelaufen",
     "expiredBody": "Dieser Tracking-Link ist nicht mehr aktiv.",
-    "noFix": "Warte auf die erste gültige Position…"
+    "noFix": "Warte auf die erste gültige Position…",
+    "updated": "Aktualisiert {{time}}"
   },
   "drivers": {
     "title": "Fahrer",
@@ -837,7 +851,9 @@
     "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen.",
     "actions": "Aktionen",
     "everyMi": "alle {{n}} mi",
-    "miLeft": "noch {{n}} mi"
+    "miLeft": "noch {{n}} mi",
+    "intervalMi": "Alle (mi)",
+    "currentOdoMi": "Aktueller Kilometerstand (mi)"
   },
   "scheduled": {
     "title": "Geplante Berichte",

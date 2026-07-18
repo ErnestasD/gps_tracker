@@ -18,7 +18,10 @@ export function BillingPage() {
   const { d } = useFmt()
   const billing = useQuery({ queryKey: ['billing'], queryFn: getBilling })
   const b = billing.data
-  const showPicker = b?.configured === true && !b.active
+  // a lapsed subscription (past_due/unpaid/canceled) is FIXED via the Stripe portal, not by
+  // subscribing to a new plan — don't show the plan picker for those; send them to Manage instead
+  const recoverable = ['past_due', 'unpaid', 'canceled'].includes(b?.status ?? '')
+  const showPicker = b?.configured === true && !b.active && !recoverable
   // only fetch the catalog when the picker is shown (each plan is a live Stripe price lookup);
   // catalog data is near-static, so cache it for the session
   const plans = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker, staleTime: 5 * 60 * 1000 })
@@ -36,6 +39,14 @@ export function BillingPage() {
   // Stripe's machine status (mirrors subscription.status) → catalog label; the raw value is the
   // defaultValue fallback so an unmapped future status still renders instead of a literal key
   const statusLabel = b?.status != null ? t(`billing.st.${b.status}`, b.status) : t('billing.none')
+  // the period-end date means different things per status: an active sub renews, a canceled one
+  // ends, a past_due/unpaid one is overdue — don't label them all "Renews"
+  const periodLabel =
+    b?.status === 'past_due' || b?.status === 'unpaid'
+      ? t('billing.pastDue')
+      : b?.status === 'canceled'
+        ? t('billing.ends')
+        : t('billing.renews')
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
@@ -68,13 +79,13 @@ export function BillingPage() {
               <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.pricingNote')}</p>
               {b?.currentPeriodEnd != null && (
                 <p className="text-sm" style={{ color: 'var(--admin-ink)' }} data-testid="billing-period">
-                  {t('billing.renews')}: {d(b.currentPeriodEnd)}
+                  {periodLabel}: {d(b.currentPeriodEnd)}
                 </p>
               )}
               {b?.hasCustomer === true && (
                 <div>
-                  <AdminButton variant={b.active ? 'primary' : 'secondary'} disabled={busy} data-testid="billing-manage" onClick={() => go(openPortal)}>
-                    {t('billing.manage')}
+                  <AdminButton variant={b.active ? 'primary' : recoverable ? 'primary' : 'secondary'} disabled={busy} data-testid="billing-manage" onClick={() => go(openPortal)}>
+                    {recoverable ? t('billing.fixPayment') : t('billing.manage')}
                   </AdminButton>
                 </div>
               )}

@@ -99,7 +99,10 @@
       "paused": "Pristabdyta"
     },
     "actionError": "Nepavyko pasiekti Stripe — bandykite dar kartą.",
-    "loadError": "Nepavyko įkelti atsiskaitymo būsenos."
+    "loadError": "Nepavyko įkelti atsiskaitymo būsenos.",
+    "ends": "Baigiasi",
+    "pastDue": "Pradelsta",
+    "fixPayment": "Sutvarkyti mokėjimą"
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -254,7 +257,14 @@
       "remove": "Pašalinti {{target}}"
     },
     "cooldownValue": "{{s}} s",
-    "actions": "Veiksmai"
+    "actions": "Veiksmai",
+    "cfgOpt": {
+      "on": {
+        "enter": "Įvažiavus",
+        "exit": "Išvažiavus",
+        "both": "Abu"
+      }
+    }
   },
   "playback": {
     "title": "Istorijos peržiūra",
@@ -632,7 +642,8 @@
       "device_offline": "neprisijungęs {{hours}} val. (≥ {{threshold}} val.)",
       "panic": "SOS pavojaus signalas",
       "power_cut": "dingo išorinis maitinimas",
-      "fuel_theft": "kuras krito {{drop}} {{unit}}"
+      "fuel_theft": "kuras krito {{drop}} {{unit}}",
+      "fuel_theft_vol": "kuras krito {{drop}}"
     }
   },
   "reports": {
@@ -674,11 +685,13 @@
       "maxSpeed": "Maks. greitis",
       "distanceKm": "Atstumas (km)",
       "distanceMi": "Atstumas (mi)",
-      "maxSpeedMph": "Maks. mph"
+      "maxSpeedMph": "Maks. mph",
+      "hoursH": "Variklio valandos (val.)"
     },
     "account": "Paskyra",
     "exportPdf": "Eksportuoti PDF",
-    "pdfTitle": "{{type}} ataskaita"
+    "pdfTitle": "{{type}} ataskaita",
+    "pdfGenerated": "Sugeneruota {{at}}"
   },
   "apiKeys": {
     "title": "API raktai",
@@ -750,7 +763,8 @@
     "poweredBy": "Sukurta su Orbetra",
     "expiredTitle": "Nuoroda nebegalioja",
     "expiredBody": "Ši sekimo nuoroda nebeaktyvi.",
-    "noFix": "Laukiama pirmos tikslios pozicijos…"
+    "noFix": "Laukiama pirmos tikslios pozicijos…",
+    "updated": "Atnaujinta {{time}}"
   },
   "drivers": {
     "title": "Vairuotojai",
@@ -837,7 +851,9 @@
     "actionError": "Veiksmas nepavyko — bandykite dar kartą.",
     "actions": "Veiksmai",
     "everyMi": "kas {{n}} mi",
-    "miLeft": "liko {{n}} mi"
+    "miLeft": "liko {{n}} mi",
+    "intervalMi": "Kas (mi)",
+    "currentOdoMi": "Dabartinė rida (mi)"
   },
   "scheduled": {
     "title": "Suplanuotos ataskaitos",

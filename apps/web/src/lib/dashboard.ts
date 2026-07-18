@@ -85,17 +85,45 @@ export function countDelta(current: number, prev: number): Delta {
   return d > 0 ? { value: `+${d}`, tone: 'up' } : { value: `−${-d}`, tone: 'down' }
 }
 
-/** Local calendar day (YYYY-MM-DD) for a Unix-ms timestamp. VIEWER-local on purpose: the whole
- *  web UI renders timestamps in the viewer's zone (see datetime.ts scope note); the report's
- *  account-tz day buckets line up except within a few boundary hours. */
+/** Local calendar day (YYYY-MM-DD) for a Unix-ms timestamp. VIEWER-local (browser zone). */
 export function localDayStr(ms: number): string {
   const d = new Date(ms)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** Calendar day (YYYY-MM-DD) for a timestamp in a specific IANA zone — so the dashboard's
+ *  today/yesterday and daily sparks bucket on the SAME timezone basis as the mileage report
+ *  (which buckets `day` by the account zone server-side) instead of the browser zone, killing the
+ *  off-by-one when the two differ. `timeZone` omitted (or 'auto' → undefined at the call site)
+ *  falls back to browser-local. Bad zone ids degrade to browser-local, never throw. */
+export function dayStrInTz(ms: number, timeZone?: string): string {
+  if (timeZone === undefined) return localDayStr(ms)
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms))
+    const g = (type: string): string => parts.find((p) => p.type === type)?.value ?? ''
+    return `${g('year')}-${g('month')}-${g('day')}`
+  } catch {
+    return localDayStr(ms)
+  }
+}
+
+/** Hour-of-day (0–23) for an ISO timestamp in a specific IANA zone (matches how event times are
+ *  rendered when a display-pref timezone is set). Omitted/`auto` → browser-local hour; NaN on
+ *  unparseable input or a bad zone (dropped by hourlyBuckets). */
+export function hourInTz(iso: string, timeZone?: string): number {
+  const ms = Date.parse(iso)
+  if (Number.isNaN(ms)) return Number.NaN
+  if (timeZone === undefined) return new Date(ms).getHours()
+  try {
+    return Number(new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', hourCycle: 'h23' }).format(new Date(ms)))
+  } catch {
+    return new Date(ms).getHours()
+  }
+}
+
 /** Count events per hour of day (0–23). `hourOf` defaults to the viewer-local hour, matching
- *  how every event timestamp on screen is rendered; injectable for deterministic tests.
- *  Unparseable timestamps (NaN hour) are dropped. */
+ *  how every event timestamp on screen is rendered; injectable for deterministic tests and for
+ *  bucketing in a chosen display-pref zone (hourInTz). Unparseable timestamps (NaN hour) are dropped. */
 export function hourlyBuckets(events: { at: string }[], hourOf: (iso: string) => number = (iso) => new Date(iso).getHours()): number[] {
   const out = new Array<number>(24).fill(0)
   for (const e of events) {
@@ -110,8 +138,11 @@ export function hourlyBuckets(events: { at: string }[], hourOf: (iso: string) =>
 export function dailyCounts(events: { at: string }[], days: number, nowMs: number, dayOf: (iso: string) => string = (iso) => localDayStr(Date.parse(iso))): number[] {
   const keys: string[] = []
   const d = new Date(nowMs)
+  // anchor to noon so the trailing-day keys, when resolved through a (possibly zoned) dayOf, never
+  // land on the neighbouring calendar day — keeps keys and event buckets on the same basis
+  d.setHours(12, 0, 0, 0)
   for (let i = 0; i < days; i++) {
-    keys.unshift(localDayStr(d.getTime()))
+    keys.unshift(dayOf(new Date(d).toISOString()))
     d.setDate(d.getDate() - 1)
   }
   const counts = new Map<string, number>(keys.map((k) => [k, 0]))
