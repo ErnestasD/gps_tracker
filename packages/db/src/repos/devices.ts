@@ -2,6 +2,7 @@ import type { Device, OdometerSource, PrismaClient } from '@prisma/client'
 
 import type { AuditRepo } from './audit.js'
 import { toInt8OrNull } from '../bigid.js'
+import { isUniqueViolation } from '../errors.js'
 import type { Actor, Scope } from '../scope.js'
 import { scopedWhere } from '../scope.js'
 
@@ -34,11 +35,6 @@ export class DuplicateImeiError extends Error {
     super(`IMEI already registered: ${imei}`)
     this.name = 'DuplicateImeiError'
   }
-}
-
-/** Prisma unique-violation code, duck-typed (avoids importing @prisma/client here). */
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002'
 }
 
 /**

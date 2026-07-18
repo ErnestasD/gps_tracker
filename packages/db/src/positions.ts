@@ -3,6 +3,7 @@ import type { Pool } from 'pg'
 import type { PositionView } from '@orbetra/shared'
 
 import { toInt8OrNull } from './bigid.js'
+import { isPgSafeDate, PG_MAX_MS, PG_MIN_MS } from './dateGuard.js'
 
 /**
  * Scoped positions history read (E04-3, §6.6). Raw SQL over the pool — positions are
@@ -22,15 +23,6 @@ export interface PositionsOpts {
 }
 
 const MAX_PAGE = 10_000
-// Postgres timestamptz range is 4713 BC … 294276 AD; JS Date spans far wider, so a
-// JS-valid date can still overflow pg (a 500). Keep bounds well inside both.
-const MIN_MS = Date.parse('0001-01-01T00:00:00Z')
-const MAX_MS = Date.parse('9999-12-31T23:59:59Z')
-const validDate = (s: string | undefined): boolean => {
-  if (s === undefined) return false
-  const t = new Date(s).getTime()
-  return !Number.isNaN(t) && t >= MIN_MS && t <= MAX_MS
-}
 /** cursor is "<fixTimeMs>_<recHash>"; recHash is a SIGNED int8. Reject anything that
  *  would overflow a pg timestamp/bigint (review MED-1) → treat as no cursor. */
 function parseCursor(c: string | undefined): { time: Date; hash: bigint } | null {
@@ -39,7 +31,7 @@ function parseCursor(c: string | undefined): { time: Date; hash: bigint } | null
   if (i <= 0) return null
   const ms = Number(c.slice(0, i))
   const hash = toInt8OrNull(c.slice(i + 1), true)
-  if (!/^\d+$/.test(c.slice(0, i)) || !Number.isFinite(ms) || ms < MIN_MS || ms > MAX_MS || hash === null) return null
+  if (!/^\d+$/.test(c.slice(0, i)) || !Number.isFinite(ms) || ms < PG_MIN_MS || ms > PG_MAX_MS || hash === null) return null
   return { time: new Date(ms), hash }
 }
 
@@ -59,8 +51,8 @@ export async function readPositions(pool: Pool, deviceId: bigint, opts: Position
   const limit = Math.min(Math.max(Number.isFinite(opts.limit) ? Number(opts.limit) : MAX_PAGE, 1), MAX_PAGE)
   const params: unknown[] = [deviceId.toString()]
   const where: string[] = ['device_id = $1']
-  if (validDate(opts.from)) where.push(`fix_time >= $${params.push(new Date(opts.from!))}`)
-  if (validDate(opts.to)) where.push(`fix_time <= $${params.push(new Date(opts.to!))}`)
+  if (isPgSafeDate(opts.from)) where.push(`fix_time >= $${params.push(new Date(opts.from!))}`)
+  if (isPgSafeDate(opts.to)) where.push(`fix_time <= $${params.push(new Date(opts.to!))}`)
   const cur = parseCursor(opts.cursor)
   if (cur !== null) {
     const t = params.push(cur.time)
@@ -96,8 +88,18 @@ export async function readPositions(pool: Pool, deviceId: bigint, opts: Position
 export async function readOdometersKm(pool: Pool, deviceIds: bigint[]): Promise<Map<string, number>> {
   const out = new Map<string, number>()
   if (deviceIds.length === 0) return out
+  // odometer is monotonic, so the CURRENT value = the latest non-null reading. Seek it per device
+  // via a LATERAL that rides the PK (device_id, fix_time DESC) — a bounded index scan — instead of
+  // `max(odometer_m)` which had NO usable index and aggregated each device's ENTIRE 13-month history,
+  // decompressing every compressed chunk on every maintenance-list request (perf, review MED).
   const res = await pool.query<{ device_id: string; odo_m: string | null }>(
-    `SELECT device_id, max(odometer_m) AS odo_m FROM positions WHERE device_id = ANY($1::int8[]) GROUP BY device_id`,
+    `SELECT d.device_id, p.odometer_m AS odo_m
+       FROM unnest($1::int8[]) AS d(device_id)
+       CROSS JOIN LATERAL (
+         SELECT odometer_m FROM positions
+          WHERE device_id = d.device_id AND odometer_m IS NOT NULL
+          ORDER BY fix_time DESC LIMIT 1
+       ) p`,
     [deviceIds.map((d) => d.toString())],
   )
   for (const r of res.rows) {

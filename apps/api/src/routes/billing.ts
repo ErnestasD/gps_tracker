@@ -4,7 +4,7 @@ import type { Db, SubscriptionUpdate } from '@orbetra/db'
 import type { BillingPlanView, BillingView, Role } from '@orbetra/shared'
 
 import type { StripeGateway } from '../billing/stripe.js'
-import { type AuthEnv } from '../auth/middleware.js'
+import { problem, type AuthEnv } from '../auth/middleware.js'
 
 /**
  * Billing API (Stripe, ADR-024). Tenant-self routes — tenant is taken from the JWT, NEVER a param
@@ -41,7 +41,7 @@ function baseUrl(configured: string | undefined, origin: string | undefined): st
 export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
   app.get('/v1/billing', async (c) => {
     const auth = c.get('auth')
-    if (!isAdmin(auth.role)) return c.json({ error: 'Forbidden' }, 403)
+    if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
     c.header('Cache-Control', 'no-store')
     if (deps.stripe === undefined) {
       const view: BillingView = { configured: false, hasCustomer: false, status: null, active: false, currentPeriodEnd: null }
@@ -60,7 +60,7 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
 
   app.get('/v1/billing/plans', async (c) => {
     const auth = c.get('auth')
-    if (!isAdmin(auth.role)) return c.json({ error: 'Forbidden' }, 403)
+    if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
     c.header('Cache-Control', 'no-store')
     if (deps.stripe === undefined) return c.json([] as BillingPlanView[])
     const plans = await deps.stripe.listPlans()
@@ -69,23 +69,23 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
 
   app.post('/v1/billing/checkout', async (c) => {
     const auth = c.get('auth')
-    if (!isAdmin(auth.role)) return c.json({ error: 'Forbidden' }, 403)
-    if (deps.stripe === undefined) return c.json({ error: 'billing_not_configured' }, 503)
+    if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
+    if (deps.stripe === undefined) return problem(c, 503, 'Service Unavailable', 'billing_not_configured')
     const base = baseUrl(deps.appBaseUrl, c.req.header('origin'))
-    if (base === null) return c.json({ error: 'no_return_url' }, 400)
+    if (base === null) return problem(c, 400, 'Bad Request', 'no_return_url')
     // the plan to subscribe to = a price id from the server allowlist; if exactly one is configured
     // it may be omitted (single-plan staging). An off-allowlist price is rejected (never trust the client).
     const body = (await c.req.json().catch(() => ({}))) as { priceId?: unknown }
     const prices = deps.stripe.prices
     const requested = typeof body.priceId === 'string' ? body.priceId : undefined
     const priceId = requested ?? (prices.length === 1 ? prices[0] : undefined)
-    if (priceId === undefined || !prices.includes(priceId)) return c.json({ error: 'invalid_price' }, 400)
+    if (priceId === undefined || !prices.includes(priceId)) return problem(c, 400, 'Bad Request', 'invalid_price')
 
     const tenant = await deps.db.tenants.get(auth.tenantId)
-    if (tenant === null) return c.json({ error: 'Not Found' }, 404)
+    if (tenant === null) return problem(c, 404, 'Not Found')
     // never create a SECOND subscription for an already-subscribed tenant (double-billing guard):
     // an active/trialing tenant is sent to the portal to manage, not through Checkout again
-    if (tenant.subscriptionStatus != null && ACTIVE.has(tenant.subscriptionStatus)) return c.json({ error: 'already_subscribed' }, 409)
+    if (tenant.subscriptionStatus != null && ACTIVE.has(tenant.subscriptionStatus)) return problem(c, 409, 'Conflict', 'already_subscribed')
     const customerId = await deps.stripe.ensureCustomer({ tenantId: tenant.id, name: tenant.name, existingCustomerId: tenant.stripeCustomerId })
     if (tenant.stripeCustomerId !== customerId) await deps.db.tenants.setStripeCustomer(tenant.id, customerId)
     const url = await deps.stripe.createCheckoutSession({
@@ -100,12 +100,12 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
 
   app.post('/v1/billing/portal', async (c) => {
     const auth = c.get('auth')
-    if (!isAdmin(auth.role)) return c.json({ error: 'Forbidden' }, 403)
-    if (deps.stripe === undefined) return c.json({ error: 'billing_not_configured' }, 503)
+    if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
+    if (deps.stripe === undefined) return problem(c, 503, 'Service Unavailable', 'billing_not_configured')
     const base = baseUrl(deps.appBaseUrl, c.req.header('origin'))
-    if (base === null) return c.json({ error: 'no_return_url' }, 400)
+    if (base === null) return problem(c, 400, 'Bad Request', 'no_return_url')
     const b = await deps.db.tenants.getBilling(auth.tenantId)
-    if (b?.stripeCustomerId == null) return c.json({ error: 'no_customer' }, 409)
+    if (b?.stripeCustomerId == null) return problem(c, 409, 'Conflict', 'no_customer')
     const url = await deps.stripe.createPortalSession({ customerId: b.stripeCustomerId, returnUrl: `${base}/app/billing` })
     return c.json({ url })
   })

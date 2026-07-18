@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   BarChart3,
@@ -97,6 +98,7 @@ const CRUMBS = new Map<string, string>(SECTIONS.flatMap((s) => s.items.filter((i
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -135,9 +137,31 @@ export function AppShell({ children }: { children: ReactNode }) {
   // modal focus contract for the hand-rolled drawer (aria-modal promises it): move focus INTO
   // the dialog on open (its close button), and return it to the hamburger trigger on close —
   // otherwise keyboard/SR users keep tabbing the inert page behind the overlay
+  const drawerRef = useRef<HTMLDivElement>(null)
   const drawerCloseRef = useRef<HTMLButtonElement>(null)
   const menuBtnRef = useRef<HTMLButtonElement>(null)
   const wasOpenRef = useRef(false)
+
+  // Focus containment for the hand-rolled modal drawer (a11y MED): aria-modal="true" promises
+  // AT that the page behind is inert, but nothing stopped Tab from walking out into it. Wrap Tab
+  // at the drawer's focus boundary so keyboard/SR focus matches what aria-modal announces.
+  const trapTab = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab' || drawerRef.current === null) return
+    const focusables = drawerRef.current.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )
+    if (focusables.length === 0) return
+    const first = focusables[0]!
+    const last = focusables[focusables.length - 1]!
+    const activeEl = document.activeElement
+    if (e.shiftKey && activeEl === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && activeEl === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
   useEffect(() => {
     if (mobileOpen) {
       wasOpenRef.current = true
@@ -175,6 +199,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       // without this, tenant A's markers survive into tenant B's session
       // (byId never evicts) — a client-side cross-tenant position leak
       liveStore.reset()
+      // same leak class for the TanStack Query cache (R4 HIGH): devices/events/trips/
+      // geofences/billing/audit/bell rows would otherwise be served to the next user who
+      // logs in on this tab (default 5-min gcTime) — clear it so nothing crosses tenants
+      qc.clear()
       void navigate({ to: '/login' })
     })()
   }
@@ -277,7 +305,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {/* mobile drawer */}
         {mobileOpen && (
-          <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label={t('shell.menu')}>
+          <div ref={drawerRef} onKeyDown={trapTab} className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label={t('shell.menu')}>
             <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
             <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-surface admin-hairline-r">
               <button ref={drawerCloseRef} type="button" className="absolute right-2 top-3.5 p-1" style={{ color: 'var(--admin-ink-soft)' }} onClick={() => setMobileOpen(false)} aria-label={t('shell.close')}>

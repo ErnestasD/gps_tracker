@@ -1,5 +1,7 @@
 import type { Pool } from 'pg'
 
+import { pgSafeDate } from './dateGuard.js'
+
 /**
  * Driver safety scoring (V2). Scoped raw SQL over drivers × their assigned trips (trips.driverId,
  * from the trip-driver assignment) + overspeed events that fall within those trips. Lives in
@@ -30,17 +32,9 @@ export interface DriverScoreAgg {
   overspeedEvents: number
 }
 
-const MIN_MS = Date.parse('0001-01-01T00:00:00Z')
-const MAX_MS = Date.parse('9999-12-31T23:59:59Z')
-function validDate(s: string | undefined): Date | null {
-  if (s === undefined) return null
-  const t = Date.parse(s)
-  return Number.isNaN(t) || t < MIN_MS || t > MAX_MS ? null : new Date(t)
-}
-
 export async function readDriverScores(pool: Pool, scope: DriverScoreScope, opts: DriverScoreOpts = {}): Promise<DriverScoreAgg[]> {
-  const to = validDate(opts.to) ?? new Date()
-  const from = validDate(opts.from) ?? new Date(to.getTime() - 30 * 86_400_000)
+  const to = pgSafeDate(opts.to) ?? new Date()
+  const from = pgSafeDate(opts.from) ?? new Date(to.getTime() - 30 * 86_400_000)
   // params: $1 tenant, $2 from, $3 to, [$4 account]
   const params: unknown[] = [scope.tenantId, from, to]
   const acct = scope.accountId !== undefined ? ` AND d."accountId" = $${params.push(scope.accountId)}` : ''

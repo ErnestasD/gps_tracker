@@ -41,16 +41,31 @@ export class RulePersister {
     if (snapshots.size === 0) return
     const pipe = this.redis.pipeline()
     for (const [id, io] of snapshots) {
+      const key = `rule:iostate:${id}`
       const fields: Record<string, string> = {}
-      if (io.ignition !== null) fields['ignition'] = io.ignition ? '1' : '0'
-      if (io.din1 !== null) fields['din1'] = io.din1 ? '1' : '0'
-      if (io.unplug !== null) fields['unplug'] = io.unplug ? '1' : '0'
-      if (io.alarm !== null) fields['alarm'] = io.alarm ? '1' : '0'
-      if (io.fuelPct !== null) fields['fuelPct'] = String(io.fuelPct)
-      if (io.fuelL !== null) fields['fuelL'] = String(io.fuelL)
-      if (io.fuelBasePct !== null) fields['fuelBasePct'] = String(io.fuelBasePct)
-      if (io.fuelBaseL !== null) fields['fuelBaseL'] = String(io.fuelBaseL)
-      if (Object.keys(fields).length > 0) pipe.hset(`rule:iostate:${id}`, fields)
+      const del: string[] = []
+      // A field that became null in the snapshot must be DELETED, not merely skipped — otherwise a
+      // stale value lingers. Critically, fuelBasePct/fuelBaseL are set to null WHILE DRIVING; if the
+      // old parked baseline is left in Redis, a restart/rebalance warm-starts it and fires a false
+      // fuel_theft for fuel legitimately burned while driving (review MED).
+      const bit = (name: string, v: boolean | null): void => {
+        if (v === null) del.push(name)
+        else fields[name] = v ? '1' : '0'
+      }
+      const numf = (name: string, v: number | null): void => {
+        if (v === null) del.push(name)
+        else fields[name] = String(v)
+      }
+      bit('ignition', io.ignition)
+      bit('din1', io.din1)
+      bit('unplug', io.unplug)
+      bit('alarm', io.alarm)
+      numf('fuelPct', io.fuelPct)
+      numf('fuelL', io.fuelL)
+      numf('fuelBasePct', io.fuelBasePct)
+      numf('fuelBaseL', io.fuelBaseL)
+      if (Object.keys(fields).length > 0) pipe.hset(key, fields)
+      if (del.length > 0) pipe.hdel(key, ...del)
     }
     await pipe.exec()
   }
@@ -71,31 +86,56 @@ export class RulePersister {
 
     // scope-resolvable events only; cooldown-gate the non-bypass ones atomically
     const scoped = events.filter((e) => scope.has(e.deviceId.toString()))
-    const gated = await this.cooldownGate(scoped)
+    const { survivors: gated, claimedKeys } = await this.cooldownGate(scoped)
     const rows: RuleEventRow[] = gated.map((e) => {
       const s = scope.get(e.deviceId.toString())!
       return { tenantId: s.tenantId, accountId: s.accountId, deviceId: e.deviceId, ruleId: e.ruleId, kind: e.kind, at: e.at, lat: e.lat, lon: e.lon, payload: e.payload }
     })
-    await writeRuleEvents(this.pool, rows)
+    try {
+      await writeRuleEvents(this.pool, rows)
+    } catch (err) {
+      // the cooldown key is claimed BEFORE this INSERT (so an ACK-replay of the same batch finds
+      // the key set ⇒ no duplicate row). But if the INSERT itself fails, that key would suppress
+      // the ACK-replay re-emission and the alert would be lost — so RELEASE the keys we just
+      // claimed here, letting the replay/retry re-emit (review MED). Bypass events claim no key.
+      if (claimedKeys.length > 0) await this.redis.del(...claimedKeys).catch(() => undefined)
+      throw err
+    }
     return gated
   }
 
-  /** Keep bypass events always; for the rest, `SET NX EX` decides (returns the survivors). */
-  private async cooldownGate(events: RuleEvent[]): Promise<RuleEvent[]> {
+  /** Keep bypass events always; for the rest, `SET NX EX` decides. Returns the survivors AND the
+   *  cooldown keys actually claimed on THIS call (so a failed insert can release them). */
+  private async cooldownGate(events: RuleEvent[]): Promise<{ survivors: RuleEvent[]; claimedKeys: string[] }> {
     const needsGate = events.filter((e) => !e.bypassCooldown && e.cooldownS > 0)
-    if (needsGate.length === 0) return events
+    if (needsGate.length === 0) return { survivors: events, claimedKeys: [] }
+    const keys = needsGate.map((e) => `rule:cd:${e.ruleId}:${e.deviceId.toString()}`)
     const pipe = this.redis.pipeline()
-    for (const e of needsGate) pipe.set(`rule:cd:${e.ruleId}:${e.deviceId.toString()}`, String(e.at.getTime()), 'EX', e.cooldownS, 'NX')
+    needsGate.forEach((e, i) => pipe.set(keys[i]!, String(e.at.getTime()), 'EX', e.cooldownS, 'NX'))
     const res = await pipe.exec()
     const passed = new Set<number>() // index into needsGate
+    const claimedKeys: string[] = []
     needsGate.forEach((_, i) => {
-      if (res?.[i]?.[1] === 'OK') passed.add(i)
+      const entry = res?.[i]
+      const cmdErr = entry?.[0]
+      const reply = entry?.[1]
+      if (reply === 'OK') {
+        passed.add(i) // freshly claimed → emit + remember the key for possible rollback
+        claimedKeys.push(keys[i]!)
+      } else if (cmdErr) {
+        // a Redis COMMAND error (OOM/LOADING/READONLY after failover) resolves as [Error, undefined]
+        // — it is NOT the same as a nil reply (key already existed). Do NOT silently drop the alert:
+        // emit it (no key claimed; a later retry may re-fire — "doubled beats missed", §6.5, review LOW).
+        passed.add(i)
+      }
+      // else: reply is null → the key already existed → genuinely gated → drop
     })
     let gi = 0
-    return events.filter((e) => {
+    const survivors = events.filter((e) => {
       if (e.bypassCooldown || e.cooldownS <= 0) return true
       return passed.has(gi++)
     })
+    return { survivors, claimedKeys }
   }
 }
 

@@ -314,6 +314,9 @@ model Trip {
 
   @@index([deviceId, startTime])
   @@index([tenantId, accountId, startTime])
+  // supports the drivers→trips ON DELETE SET NULL cascade + driver-filtered lookups. Declared here
+  // to match the index created in migration 20260714130000_trip_driver (schema/migration drift fix).
+  @@index([driverId])
   @@map("trips")
 }
 
@@ -369,6 +372,9 @@ model Event {
 
   @@index([tenantId, accountId, at])
   @@index([deviceId, at])
+  // the alerts feed paginates ORDER BY id DESC under a (tenantId, accountId) filter — the `at`
+  // index can't serve an id-ordered keyset scan, so add one that matches filter+order (perf, review MED)
+  @@index([tenantId, accountId, id])
   @@map("events")
 }
 
@@ -427,7 +433,9 @@ model Webhook {
 /// data at the configured UTC hour (daily, or weekly on `weekday`) and e-mails it to `recipients`.
 /// The report window is computed in `timezone` (account-local day boundaries, §7.7).
 model ScheduledReport {
-  id          String    @id @default(uuid()) @db.Uuid
+  // DB-side default (matches migration 20260715030000) — @default(uuid()) is client-side only and
+  // would make the next `prisma migrate dev` emit a spurious DROP DEFAULT (schema/migration drift fix).
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId    String    @db.Uuid
   accountId   String    @db.Uuid
   reportType  String
@@ -450,7 +458,8 @@ model ScheduledReport {
 /// Browser push subscriptions (Web Push, ADR-026). One row per subscribed browser; a `webpush` rule
 /// channel fans out to the account's rows. `endpoint` is globally unique (the push-service URL).
 model PushSubscription {
-  id        String   @id @default(uuid()) @db.Uuid
+  // DB-side default (matches migration 20260716120000) — see ScheduledReport.id (schema/migration drift fix).
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId  String   @db.Uuid
   accountId String   @db.Uuid
   userId    String   @db.Uuid
@@ -483,6 +492,9 @@ model WebhookDelivery {
   @@index([webhookId, at])
   // bare `at` supports the retention prune (WHERE at < cutoff, no tenant/webhook constraint)
   @@index([at])
+  // deliveries list paginates ORDER BY id DESC under the (tenantId, accountId) scope — match
+  // filter+order for a keyset scan instead of an id-pk backward walk (perf, review LOW)
+  @@index([tenantId, accountId, id])
   @@map("webhook_deliveries")
 }
 
@@ -546,6 +558,8 @@ model AuditLog {
   at       DateTime @default(now()) @db.Timestamptz()
 
   @@index([tenantId, at])
+  // audit UI paginates ORDER BY id DESC filtered by tenantId — match filter+order (perf, review LOW)
+  @@index([tenantId, id])
   @@map("audit_log")
 }
 

@@ -115,7 +115,19 @@ export async function runOfflineSweep(pool: Pool, redis: Redis, nowMs: number): 
   }
   const won = new Set(winners)
   const wonEvents = events.filter((e) => won.has(e.deviceId.toString()))
-  if (wonEvents.length > 0) await writeRuleEvents(pool, wonEvents)
+  if (wonEvents.length > 0) {
+    try {
+      await writeRuleEvents(pool, wonEvents)
+    } catch (err) {
+      // the fired-flag is claimed (SET NX, 30-day TTL) BEFORE this INSERT. If the INSERT fails,
+      // that flag would suppress every subsequent sweep for up to 30 days ⇒ the offline alert is
+      // stranded. Roll the just-claimed flags back so the next tick re-emits (review MED).
+      const rb = redis.pipeline()
+      for (const id of winners) rb.del(`rule:offline:${id}`)
+      await rb.exec().catch(() => undefined)
+      throw err
+    }
+  }
   if (toClear.length > 0) {
     const pipe = redis.pipeline()
     for (const id of toClear) pipe.del(`rule:offline:${id}`)

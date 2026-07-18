@@ -1,5 +1,6 @@
 import type { AuditLog, PrismaClient } from '@prisma/client'
 
+import { isPgSafeDate } from '../dateGuard.js'
 import type { Actor, Scope } from '../scope.js'
 
 /** Read filters for the audit UI (E03-6). All optional; combined with AND. */
@@ -33,9 +34,6 @@ export interface AuditRepo {
   get(scope: Scope, id: string): Promise<AuditLog | null>
 }
 
-/** True only for a parseable timestamp — guards `new Date('garbage')` (Invalid Date). */
-const validDate = (s: string | undefined): boolean => s !== undefined && !Number.isNaN(new Date(s).getTime())
-
 export function createAuditRepo(prisma: PrismaClient): AuditRepo {
   return {
     record: async (scope, actor, entry) => {
@@ -55,7 +53,7 @@ export function createAuditRepo(prisma: PrismaClient): AuditRepo {
     // All external params are sanitized here so malformed query strings can never
     // reach BigInt()/new Date()/Prisma and 500 (defense in depth for every caller).
     list: (scope, opts = {}) => {
-      const at = { ...(validDate(opts.from) ? { gte: new Date(opts.from!) } : {}), ...(validDate(opts.to) ? { lt: new Date(opts.to!) } : {}) }
+      const at = { ...(isPgSafeDate(opts.from) ? { gte: new Date(opts.from!) } : {}), ...(isPgSafeDate(opts.to) ? { lt: new Date(opts.to!) } : {}) }
       const take = Math.min(Math.max(Number.isFinite(opts.take) ? Number(opts.take) : 50, 1), 200)
       const cursorOk = opts.cursor !== undefined && /^\d+$/.test(opts.cursor)
       return prisma.auditLog.findMany({

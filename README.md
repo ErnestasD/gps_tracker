@@ -49,12 +49,14 @@ Every new variable must be added to the table here AND match the `.env` contract
 | Variable | Used by | Purpose |
 |---|---|---|
 | `DATABASE_URL` | packages/db (`make migrate`, Prisma, raw SQL pool) | PostgreSQL 16 + TimescaleDB + PostGIS connection string |
-| `REDIS_URL` | apps/ingest | Redis connection (streams + registry), default `redis://127.0.0.1:6379` |
+| `REDIS_URL` | apps/ingest + apps/worker + apps/api | Redis connection (streams + registry + BullMQ), default `redis://127.0.0.1:6379` |
 | `INGEST_TCP_PORT` | apps/ingest | Teltonika TCP listener port, default `5027` |
 | `INGEST_UDP_PORT` | apps/ingest | Teltonika UDP channel port, default = TCP port; `0` disables UDP |
 | `INGEST_UDP_MAX_DGRAMS_PER_IP_PER_MIN` | apps/ingest | Per-IP UDP datagram flood cap, default `6000` |
+| `INGEST_UDP_MAX_DGRAMS_PER_SEC` | apps/ingest | Global UDP datagram rate cap across all sources, default `50000` |
 | `INGEST_MAX_CONN` | apps/ingest | Total concurrent connection cap, default `20000` |
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
+| `INGEST_PUBLIC_HOST` | apps/api | Public ingest host shown to devices in onboarding config, default `orbetra.com` (paired with `INGEST_TCP_PORT`) |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
 | `EXPORT_DIR` | apps/worker | GDPR export output directory (E08-4), default `var/exports`; R2/S3 upload is the follow-up when creds exist |
 | `WEBHOOK_DELIVERY_RETENTION_DAYS` | apps/worker | Days to keep webhook delivery-log rows before the daily retention sweep prunes them, default `30` |
@@ -62,12 +64,15 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `SMTP_USER` / `SMTP_PASS` | apps/worker | SES SMTP credentials (paste raw, no encoding); all four SMTP vars + `MAIL_FROM` required or the email channel is skipped |
 | `MAIL_FROM` | apps/worker | e-mail sender, a DKIM-verified SES identity (e.g. `alerts@orbetra.com`) |
 | `SES_CONFIG_SET` | apps/worker | optional SES configuration set → `X-SES-CONFIGURATION-SET` header, routes bounces/complaints to SNS |
+| `VAPID_PUBLIC_KEY` | apps/worker + apps/api | Web Push VAPID public key (ADR-026); the worker signs pushes, the api serves it to the browser. All VAPID vars absent ⇒ webpush channel skipped |
+| `VAPID_PRIVATE_KEY` | apps/worker | Web Push VAPID private key (ADR-026); server `.env` only, never git (rule 12) |
+| `VAPID_SUBJECT` | apps/worker | Web Push VAPID subject (`mailto:`/URL), default `mailto:ops@orbetra.com` |
 | `STRIPE_SECRET_KEY` | apps/api | Stripe secret key (`sk_test_`/`sk_live_`); all three STRIPE vars required or billing routes report not-configured (ADR-024). Server `.env` only, never git |
 | `STRIPE_WEBHOOK_SECRET` | apps/api | Stripe webhook signing secret (`whsec_…`); verifies `POST /v1/webhooks/stripe` — invalid signature ⇒ 400, no state change |
 | `STRIPE_PRICES` | apps/api | comma-separated allowlist of subscribable BASE price ids (`price_…`); a checkout may target only one of these. Two-track catalog per PRICING_STRATEGY.md §7 (Direct flat tiers + TSP base) |
 | `STRIPE_OVERAGE_MAP` | apps/api | `basePriceId:overagePriceId,…` — TSP base plans get the metered overage price added as a 2nd checkout line item (Direct plans omit) |
-| `STRIPE_INCLUDED` | apps/api + apps/worker | `basePriceId:count,…` — included device count per TSP plan; the daily reporter bills devices beyond it |
-| `STRIPE_METER_EVENT` | apps/api + apps/worker | Stripe meter event name for overage; default `orbetra_device_overage` |
+| `STRIPE_INCLUDED` | apps/worker | `basePriceId:count,…` — included device count per TSP plan; the daily reporter bills devices beyond it |
+| `STRIPE_METER_EVENT` | apps/worker | Stripe meter event name for overage; default `orbetra_device_overage` |
 | `APP_BASE_URL` | apps/api | absolute base for Checkout/portal return URLs (e.g. `https://app.orbetra.com`); falls back to the request Origin |
 | `OSRM_URL` | apps/api | self-hosted OSRM base URL for route optimization (ADR-029), e.g. `http://osrm:5000`; unset ⇒ `POST /v1/routing/optimize` answers 503. Prep the data volume first (`infra/osrm/README.md`) |
 | `TELEGRAM_BOT_TOKEN` | apps/worker + infra/alertmanager | notification delivery (E05-5) AND ops alerts (W7-S1); unset = alerts visible in UI only, no push |
@@ -83,10 +88,13 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `JWT_TTL` | apps/api | Access-token TTL seconds, default `900` (15 min) |
 | `REFRESH_TTL` | apps/api | Refresh-token TTL seconds (sliding), default `1209600` (14 d) |
 | `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout (§6.1), defaults `5` / `900` |
+| `WS_TICKET_TTL` | apps/api | WS `/v1/stream` one-time ticket TTL seconds (§6.7), default `30` |
+| `ARGON2_MAX_CONCURRENT` | apps/api | Max concurrent argon2 password hashes (back-pressures login/CPU), default `8` |
+| `PUBLIC_API_URL` | apps/api | Absolute API base advertised in the generated OpenAPI `servers[]` (`GET /v1/openapi.json`, `/v1/docs`); unset = omitted |
 | `COOKIE_SECURE` | apps/api | `0` disables the Secure cookie flag (dev/e2e over http ONLY) |
 | `TRUST_PROXY` | apps/api | `1` = trust X-Forwarded-For for lockout + caddy-ask IPs (behind Caddy) |
 | `ASK_RATE_MAX` / `ASK_RATE_WINDOW_S` | apps/api | Caddy on-demand-TLS ask throttle per source IP (E03-5), defaults `10` / `60` |
-| `ORBETRA_PUBLIC` | infra/Caddyfile (staging/prod) | `true` enables the on-demand-TLS `https://` site block for tenant custom domains |
+| `ORBETRA_STAGING_HOST` | infra/Caddyfile | staging plain-HTTP host (e.g. the server IP) for the pre-TLS `http://` block; unset = inert locally |
 | `DATABASE_URL` | apps/api (E03-1+) | required — auth reads users/refresh tokens via @orbetra/db |
 | `VITE_MAPBOX_TOKEN` | apps/web (build-time) | Mapbox public `pk.` token (ADR-030). NOT in git (GitHub secret-scanning blocks Mapbox tokens): create untracked `apps/web/.env` locally; staging receives it via rsync. |
 | `VITE_MAPBOX_STYLE_DARK` | apps/web (build-time) | Map style for the dark theme, default `mapbox://styles/mapbox/dark-v11` (e2e points it at the offline `dev-style.json`) |
@@ -145,10 +153,11 @@ Every new variable must be added to the table here AND match the `.env` contract
   200 only for a **verified** tenant domain, 403 otherwise, throttled **per requested
   domain** (`ASK_RATE_MAX`/`ASK_RATE_WINDOW_S`; every ask shares Caddy's source IP, so
   a per-IP bucket would be one global choke point). Caddy's own `interval`/`burst` is the
-  coarse global bound. Set `ORBETRA_PUBLIC=true` to enable the
-  `https://` site block in `infra/Caddyfile`; certs are then minted automatically on the
-  first HTTPS hit to a verified domain. Full 2-domain TLS is exercised on staging (no
-  `:443`/real DNS locally).
+  coarse global bound. The on-demand-TLS `https://` site block in `infra/Caddyfile` becomes
+  active whenever Caddy publishes `:443` (the staging/prod compose does; the local infra-only
+  compose maps `:443`→`8449` and has no real DNS, so it stays inert); certs are then minted
+  automatically on the first HTTPS hit to a verified domain. Full 2-domain TLS is exercised on
+  staging.
 - **Pre-login branding**: public `GET /v1/branding` resolves the tenant by `Host`
   (`X-Forwarded-Host` behind Caddy) → verified domain → branding, so a custom-domain
   login page shows the tenant's logo before authentication; unknown host → `{}`.

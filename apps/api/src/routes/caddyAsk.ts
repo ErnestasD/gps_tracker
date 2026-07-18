@@ -4,6 +4,7 @@ import type { Redis } from 'ioredis'
 import { hashShareToken, readLatestValidPosition, type Db, type Pool } from '@orbetra/db'
 import type { PublicShareView } from '@orbetra/shared'
 
+import { problem } from '../auth/middleware.js'
 import { clientIp } from '../net.js'
 
 // atomic fixed-window (mirrors pilotRequest): INCR, set TTL on first hit OR re-arm a stranded
@@ -48,11 +49,10 @@ export function createPublicRoutes(deps: PublicDeps): Hono {
   app.get('/v1/internal/caddy-ask', async (c) => {
     const domain = (c.req.query('domain') ?? '').toLowerCase()
     if (!isHostname(domain)) return c.text('bad domain', 400)
-    // rate-limit per DOMAIN (fixed window) — bounds cert-issuance retries for any one
-    // domain without a shared bucket (all asks share Caddy's source IP)
+    // rate-limit per DOMAIN (fixed window, ATOMIC re-arm) — a stranded TTL-less key would else
+    // 429 this domain forever and Caddy would never mint/renew its cert (review LOW-2)
     const key = `caddyask:${domain}`
-    const n = await deps.redis.incr(key)
-    if (n === 1) await deps.redis.expire(key, deps.askRateLimit.windowS)
+    const n = (await deps.redis.eval(RL_SCRIPT, 1, key, String(deps.askRateLimit.windowS))) as number
     if (n > deps.askRateLimit.max) return c.text('rate limited', 429)
     // Caddy mints a cert iff 200
     return (await deps.db.tenantDomains.isVerifiedDomain(domain)) ? c.text('ok', 200) : c.text('denied', 403)
@@ -80,26 +80,26 @@ export function createPublicRoutes(deps: PublicDeps): Hono {
     const token = c.req.param('token')
     c.header('Cache-Control', 'no-store')
     // cheap shape gate before any Redis/DB work — a real token is 64 hex chars
-    if (!/^[0-9a-f]{64}$/.test(token)) return c.json({ error: 'not found' }, 404)
+    if (!/^[0-9a-f]{64}$/.test(token)) return problem(c, 404, 'Not Found')
     // config-missing → 503 before spending rate-limit budget or a DB query (review LOW-3)
-    if (deps.pool === undefined) return c.json({ error: 'unavailable' }, 503)
+    if (deps.pool === undefined) return problem(c, 503, 'Service Unavailable', 'positions store not configured')
     // rate-limit per REAL client IP (atomic) — caps an abusive IP's flood of distinct tokens
     // without penalising legitimate viewers of a shared link (each on its own IP)
     try {
       const ip = clientIp(c.req.header('x-forwarded-for'), deps.getRemoteAddr(c), deps.trustProxy)
       const n = (await deps.redis.eval(RL_SCRIPT, 1, `share:rl:${ip}`, String(deps.shareRateLimit.windowS))) as number
-      if (n > deps.shareRateLimit.max) return c.json({ error: 'rate limited' }, 429)
+      if (n > deps.shareRateLimit.max) return problem(c, 429, 'Too Many Requests')
     } catch {
       /* fail OPEN on a Redis blip — a public read is low-value; availability wins */
     }
 
     const hash = hashShareToken(token)
     const resolved = await deps.db.shareLinks.resolveByHash(hash)
-    if (resolved === null) return c.json({ error: 'not found' }, 404) // unknown / expired / revoked
+    if (resolved === null) return problem(c, 404, 'Not Found') // unknown / expired / revoked
     // existence + tenant-consistency check scoped to the RESOLVED tenant (never a client param):
     // if the device was reassigned/erased since minting, this 404s rather than leaking anything
     const device = await deps.db.devices.get({ tenantId: resolved.tenantId }, resolved.deviceId.toString())
-    if (device === null) return c.json({ error: 'not found' }, 404)
+    if (device === null) return problem(c, 404, 'Not Found')
     const pos = await readLatestValidPosition(deps.pool, resolved.deviceId)
     // NB: device.name (internal, may carry PII) is INTENTIONALLY not exposed — only the link's label
     const view: PublicShareView = {

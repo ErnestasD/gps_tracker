@@ -58,6 +58,12 @@ export interface AuthDb {
     claimForRotation(tokenHash: string, now: Date): Promise<{ familyId: string; userId: string } | null>
     findByTokenHash(tokenHash: string): Promise<RefreshTokenRow | null>
     revokeFamily(familyId: string, now: Date): Promise<void>
+    /** Revoke EVERY non-revoked refresh token for a user, across ALL families — the eviction a
+     *  password change / admin reset needs so every other live session is logged out. UNSCOPED BY
+     *  DESIGN (refresh-token rows hang off userId; the userId comes from the verified access token).
+     *  Optional on the interface so lightweight AuthDb doubles need not implement it; the api calls it
+     *  via a `typeof … === 'function'` guard (apps/api/src/auth/revoke.ts) and the real db provides it. */
+    revokeAllForUser?(userId: string, now: Date): Promise<void>
   }
   $disconnect(): Promise<void>
 }
@@ -102,6 +108,9 @@ export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnec
         }),
       revokeFamily: async (familyId, now) => {
         await prisma.refreshToken.updateMany({ where: { familyId, revokedAt: null }, data: { revokedAt: now } })
+      },
+      revokeAllForUser: async (userId, now) => {
+        await prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } })
       },
     },
   }

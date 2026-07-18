@@ -181,6 +181,35 @@ describe('E04-1 trip state machine (§6.4)', () => {
     expect([...moving, ...stop].every((r) => r.ignition === null)).toBe(true)
   })
 
+  it('trip-no-ignition: a slow-but-DISPLACING asset is NOT force-closed (displacement guard is live, not dead)', () => {
+    // regression: the stop check ran AFTER accumulate() overwrote trip.lastLat/lastLon, so the
+    // displacement was always self-distance 0 < parkedDisplaceM and a genuinely-moving low-speed
+    // asset (slow tow / speed-omitting packets) was force-closed regardless of parkedDisplaceM.
+    const t = { ...DEFAULT_THRESHOLDS, noIgnition: true, moveSpeedKmh: 6, movingSustainS: 60, parkedStopS: 300, parkedDisplaceM: 100 }
+    const moving = [
+      rec(0, { lat: 54.0, speed: 10 }),
+      rec(30, { lat: 54.001, speed: 10 }),
+      rec(70, { lat: 54.002, speed: 10 }), // ≥60 s sustained → open
+    ]
+    // crawling: speed BELOW moveSpeedKmh, but each step displaces ~166 m (> parkedDisplaceM 100)
+    const crawl = [
+      rec(140, { lat: 54.0035, speed: 2 }),
+      rec(320, { lat: 54.005, speed: 2 }),
+      rec(500, { lat: 54.0065, speed: 2 }),
+      rec(700, { lat: 54.008, speed: 2 }),
+    ]
+    const ev = new TripEngine(t).feed([...moving, ...crawl])
+    expect(ev.filter((e) => e.type === 'open')).toHaveLength(1)
+    expect(closes(ev)).toHaveLength(0) // still moving per the displacement guard → not stopped
+  })
+
+  it('trip-no-ignition: a genuinely STATIONARY low-speed asset still closes (guard does not defeat stops)', () => {
+    const t = { ...DEFAULT_THRESHOLDS, noIgnition: true, moveSpeedKmh: 6, movingSustainS: 60, parkedStopS: 300, parkedDisplaceM: 100 }
+    const moving = [rec(0, { lat: 54.0, speed: 10 }), rec(30, { lat: 54.001, speed: 10 }), rec(70, { lat: 54.002, speed: 10 })]
+    const stopped = [rec(140, { lat: 54.002, speed: 1 }), rec(500, { lat: 54.002, speed: 1 })] // no displacement, ≥300 s
+    expect(closes(new TripEngine(t).feed([...moving, ...stopped]))).toHaveLength(1)
+  })
+
   it('I5: trip distance is identical with and without interleaved invalid fixes (filtered at the seam)', () => {
     const moving = drive(0, 20)
     const lastLat = 54.0 + 19 * 0.0002

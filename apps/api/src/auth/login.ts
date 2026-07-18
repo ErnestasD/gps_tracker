@@ -9,6 +9,7 @@ import { loginRequestSchema, passwordChangeSchema, type AuthSession, type AuthUs
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from './passwords.js'
+import { revokeAllUserSessions } from './revoke.js'
 import { clientIp } from '../net.js'
 
 export interface AuthRouteDeps {
@@ -28,6 +29,13 @@ const COOKIE = 'orb_refresh'
 const COOKIE_PATH = '/v1/auth' // the cookie never rides on data requests
 
 const sha256 = (s: string | Buffer): string => createHash('sha256').update(s).digest('hex')
+
+// atomic fixed-window bump (mirrors caddyAsk RL_SCRIPT): INCR, set TTL on the first hit OR re-arm
+// a stranded TTL-less key — a failed one-shot EXPIRE must never leave a key that 429s forever
+// (review LOW-2: a Redis blip between INCR and EXPIRE would else permanently lock an IP+email pair)
+const LOCKOUT_SCRIPT = `local n = redis.call('INCR', KEYS[1])
+if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return n`
 
 
 const toAuthUser = (u: AuthUserRow): AuthUser => ({
@@ -107,8 +115,8 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     }
 
     if (verified.length === 0) {
-      const n = await deps.redis.incr(lockKey)
-      if (n === 1) await deps.redis.expire(lockKey, deps.lockout.windowS)
+      // atomic INCR + (re-armed) EXPIRE — never strands a TTL-less key (review LOW-2)
+      await deps.redis.eval(LOCKOUT_SCRIPT, 1, lockKey, String(deps.lockout.windowS))
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
     if (verified.length > 1) {
@@ -179,8 +187,9 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     return c.json(toAuthUser(user))
   })
 
-  // self-service password change (E03-2, Settings/Profile). Verify current, set
-  // new, revoke ALL of the user's refresh families so other sessions re-login.
+  // self-service password change (E03-2, Settings/Profile). Verify current, set new, then revoke
+  // ALL of the user's refresh families so EVERY other session must re-login (review HIGH: a stolen
+  // session must not outlive a password change).
   app.post('/password', authMiddleware({ jwtSecret: deps.jwtSecret }), async (c) => {
     const parsed = passwordChangeSchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return problem(c, 400, 'Bad Request')
@@ -191,13 +200,15 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       return problem(c, 401, 'Unauthorized', 'current password is wrong')
     }
     await deps.db.users.setPassword(user.id, await hashPassword(parsed.data.newPassword))
-    // invalidate the current refresh family (this session's cookie); other sessions
-    // continue until their access token expires, then fail to refresh (family gone)
+    // revoke EVERY family for this user (all sessions). The current cookie's family is the
+    // fallback used until packages/db ships refreshTokens.revokeAllForUser (see revoke.ts TODO).
     const raw = getCookie(c, COOKIE)
+    let currentFamily: string | undefined
     if (raw !== undefined && raw !== '') {
       const row = await deps.db.refreshTokens.findByTokenHash(sha256(raw))
-      if (row) await deps.db.refreshTokens.revokeFamily(row.familyId, new Date())
+      currentFamily = row?.familyId
     }
+    await revokeAllUserSessions(deps.db.refreshTokens, user.id, currentFamily)
     deleteCookie(c, COOKIE, { path: COOKIE_PATH })
     return c.json({ ok: true })
   })

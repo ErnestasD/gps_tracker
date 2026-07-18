@@ -30,6 +30,8 @@ export interface Column {
   csvKey?: string
   /** display-unit conversion applied to the cell value before render/export */
   convert?: (v: unknown) => unknown
+  /** cell is a UTC ISO timestamp — route it through dateColumns() so it honors the display prefs */
+  datetime?: boolean
 }
 
 /** Column layout per report type — drives both the table and the CSV. */
@@ -39,10 +41,22 @@ export const COLUMNS: Record<ReportType, Column[]> = {
   engine_hours: [c('day'), c('deviceId'), c('seconds')],
   overspeed: [c('day'), c('deviceId'), c('count'), c('maxSpeedKmh')],
   geofence: [c('day'), c('deviceId'), c('enters'), c('exits')],
-  trips: [c('day'), c('deviceId'), c('startTime'), c('endTime'), c('distanceM'), c('maxSpeed'), c('idleS')],
+  trips: [c('day'), c('deviceId'), ts('startTime'), ts('endTime'), c('distanceM'), c('maxSpeed'), c('idleS')],
 }
 function c(key: string): Column {
   return { key, label: key }
+}
+function ts(key: string): Column {
+  return { key, label: key, datetime: true }
+}
+
+/** Apply the datetime display formatter (useFmt().dt — honors timeZone/12h/dateFormat prefs) to
+ * every `datetime` column, for the table, CSV and PDF alike. Without this the trips report leaks
+ * raw UTC ISO strings ('2026-07-14T06:32:11.000Z') — the one display site the prefs never reached. */
+export function dateColumns(columns: Column[], fmt: (iso: string) => string): Column[] {
+  return columns.map((col) =>
+    col.datetime === true ? { ...col, convert: (v) => (typeof v === 'string' && v !== '' ? fmt(v) : v) } : col,
+  )
 }
 
 export interface ReportUnitPrefs {

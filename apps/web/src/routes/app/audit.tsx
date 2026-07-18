@@ -50,7 +50,9 @@ export function AuditPage() {
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('audit.trail')}
         </div>
-        {rows.length === 0 && !query.isLoading ? (
+        {query.isError ? (
+          <p role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="audit-error">{t('admin.loadError')}</p>
+        ) : rows.length === 0 && !query.isLoading ? (
           <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('audit.empty')}</p>
         ) : (
           <div className="overflow-x-auto">

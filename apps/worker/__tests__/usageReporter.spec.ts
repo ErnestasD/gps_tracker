@@ -50,6 +50,27 @@ describe('reportDailyOverage', () => {
     expect(reports).toEqual([{ customerId: 'cus_over', value: 5, identifier: 'overage:2026-07-13:cus_over' }])
   })
 
+  it('one tenant reportUsage failure does NOT skip the others, and rethrows so BullMQ retries', async () => {
+    const reports: { customerId: string; value: number; identifier: string }[] = []
+    const failing: StripeUsagePort = {
+      includedFor: (p) => (p === 'price_tsp' ? 200 : undefined),
+      reportUsage: (opts) => {
+        if (opts.customerId === 'cus_bad') return Promise.reject(new Error('stripe 500'))
+        reports.push({ customerId: opts.customerId, value: opts.value, identifier: opts.identifier })
+        return Promise.resolve()
+      },
+    }
+    const db = fakeDb(
+      [
+        { tenantId: 't-bad', stripeCustomerId: 'cus_bad', subscriptionPriceId: 'price_tsp' }, // 205 → throws
+        { tenantId: 't-good', stripeCustomerId: 'cus_good', subscriptionPriceId: 'price_tsp' }, // 210 → still reported
+      ],
+      { 't-bad': 205, 't-good': 210 },
+    )
+    await expect(reportDailyOverage({ db, stripe: failing }, '2026-07-13', 1_800_000_000)).rejects.toThrow(/1\/2 tenant/)
+    expect(reports).toEqual([{ customerId: 'cus_good', value: 10, identifier: 'overage:2026-07-13:cus_good' }])
+  })
+
   it('reports nothing when no tenant exceeds its allowance', async () => {
     const reports: { customerId: string; value: number; identifier: string }[] = []
     const db = fakeDb([{ tenantId: 't1', stripeCustomerId: 'cus_1', subscriptionPriceId: 'price_tsp' }], { t1: 200 })

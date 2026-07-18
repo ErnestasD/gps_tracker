@@ -1,6 +1,7 @@
 import type { Driver, PrismaClient } from '@prisma/client'
 
 import type { AuditRepo } from './audit.js'
+import { isUniqueViolation } from '../errors.js'
 import type { Actor, Scope } from '../scope.js'
 import { scopedWhere } from '../scope.js'
 
@@ -33,11 +34,6 @@ export class DriverIbuttonConflictError extends Error {
     this.name = 'DriverIbuttonConflictError'
   }
 }
-/** Prisma unique-violation code, duck-typed (avoids importing @prisma/client here). */
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002'
-}
-
 /**
  * Driver registry (V2). Account-scoped (non-null accountId), UUID PK — like rules, but a custom
  * repo (not generic) so the iButton unique-violation becomes a domain error the API can 409.

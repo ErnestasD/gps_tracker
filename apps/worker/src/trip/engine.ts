@@ -15,9 +15,9 @@ function recordIbutton(r: NormalizedRecord): string | null {
  * I5: invalid fixes never mutate trip distance/state) fed in fixTime order per
  * device. Emits open/close events; the worker persists them (no DB/Redis here).
  *
- * Thresholds come from device_profiles.presence_rules; E04-1 uses DEFAULT_THRESHOLDS
- * for every device — per-device profile selection (incl. asset/noIgnition trackers)
- * lands in E04-5 (odometer preference + per-device config). // TODO(E04-5)
+ * Thresholds come from device_profiles.presence_rules; a device with no per-device config
+ * falls back to DEFAULT_THRESHOLDS. Per-device profile selection (incl. asset/noIgnition
+ * trackers) + odometer-source preference are supplied via `configFor` (E04-5, implemented below).
  */
 export interface TripThresholds {
   /** km/h above which the device counts as moving. */
@@ -238,6 +238,10 @@ export class TripEngine {
 
     // ── moving ── (out-of-order already dropped by the lastSeen guard above)
     const trip = st.trip!
+    // capture the PREVIOUS in-trip position BEFORE accumulate() overwrites it — the noIgnition
+    // stop check needs the displacement from the last record to this one, not self-distance (0).
+    const prevLat = trip.lastLat
+    const prevLon = trip.lastLon
     this.accumulate(trip, r)
 
     // idle: ignition on (or noIgnition) and crawling
@@ -250,7 +254,7 @@ export class TripEngine {
 
     // stop detection
     const stopped = t.noIgnition
-      ? speed < t.moveSpeedKmh && haversineM(trip.lastLat, trip.lastLon, r.lat, r.lon) < t.parkedDisplaceM
+      ? speed < t.moveSpeedKmh && haversineM(prevLat, prevLon, r.lat, r.lon) < t.parkedDisplaceM
       : r.ignition === false
     const stopThreshold = t.noIgnition ? t.parkedStopS : t.parkedIgnitionOffS
     if (stopped) {

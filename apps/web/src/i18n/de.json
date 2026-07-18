@@ -97,7 +97,9 @@
       "incomplete": "Unvollständig",
       "incomplete_expired": "Abgelaufen",
       "paused": "Pausiert"
-    }
+    },
+    "actionError": "Stripe konnte nicht erreicht werden — bitte erneut versuchen.",
+    "loadError": "Abrechnungsstatus konnte nicht geladen werden."
   },
   "branding": {
     "title": "Branding",
@@ -125,7 +127,8 @@
     "badDomain": "Gültigen Hostnamen eingeben (z. B. fleet.example.com).",
     "txtInstruction": "Fügen Sie diesen TXT-Eintrag zu {{domain}} hinzu und klicken Sie dann auf Verifizieren:",
     "certNote": "HTTPS-Zertifikate werden nach der Domain-Verifizierung automatisch bei der ersten sicheren Anfrage ausgestellt.",
-    "domainLabel": "Domain"
+    "domainLabel": "Domain",
+    "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen."
   },
   "audit": {
     "title": "Audit-Log",
@@ -191,7 +194,8 @@
     "driver": "Fahrer",
     "noDriver": "Kein Fahrer",
     "avgSpeed": "Ø Geschw.",
-    "searchDriver": "Nach Fahrer filtern…"
+    "searchDriver": "Nach Fahrer filtern…",
+    "assignError": "Fahrer konnte nicht zugewiesen werden — bitte erneut versuchen."
   },
   "rules": {
     "title": "Regeln",
@@ -304,7 +308,8 @@
       "polygon": "Auf die Karte klicken, um Punkte zu setzen; Form schließen zum Abschluss.",
       "circle": "Klicken für das Zentrum, dann erneut für den Radius.",
       "corridor": "Entlang der Route klicken; Doppelklick beendet die Linie."
-    }
+    },
+    "deleteError": "Geofence konnte nicht gelöscht werden — bitte erneut versuchen."
   },
   "deviceList": {
     "title": "Geräte",
@@ -557,7 +562,8 @@
     "addTitle": "Neues Gerät",
     "plate": "Kennzeichen (optional)",
     "retireSure": "{{name}} ({{imei}}) stilllegen? Diese IMEI wird ab sofort abgelehnt.",
-    "eraseSure": "Alle Daten von {{name}} dauerhaft löschen? Verlauf, Fahrten, Ereignisse und Befehle werden gelöscht. Dies kann nicht rückgängig gemacht werden."
+    "eraseSure": "Alle Daten von {{name}} dauerhaft löschen? Verlauf, Fahrten, Ereignisse und Befehle werden gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "odoError": "Kilometerzähler-Quelle konnte nicht geändert werden — bitte erneut versuchen."
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",
@@ -625,7 +631,8 @@
       "geofence": "{{name}} · {{transition}}",
       "device_offline": "offline {{hours}} Std. (≥ {{threshold}} Std.)",
       "panic": "SOS ausgelöst",
-      "power_cut": "externe Stromversorgung unterbrochen"
+      "power_cut": "externe Stromversorgung unterbrochen",
+      "fuel_theft": "Kraftstoff gesunken {{drop}} {{unit}}"
     }
   },
   "reports": {
@@ -696,7 +703,8 @@
     "active": "Aktiv",
     "lastUsed": "zuletzt genutzt",
     "neverUsed": "nie genutzt",
-    "emptyDesc": "Erstellen Sie den ersten Schlüssel für die API-Integration."
+    "emptyDesc": "Erstellen Sie den ersten Schlüssel für die API-Integration.",
+    "actionError": "Schlüssel konnte nicht widerrufen werden — bitte erneut versuchen."
   },
   "webhooks": {
     "title": "Webhooks",
@@ -722,7 +730,8 @@
     "when": "Wann",
     "event": "Ereignis",
     "status": "Status",
-    "noResponse": "keine Antwort"
+    "noResponse": "keine Antwort",
+    "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen."
   },
   "platform": {
     "title": "Plattform",
@@ -779,7 +788,8 @@
       "overspeed": "Tempo",
       "score": "Punkte"
     },
-    "actions": "Aktionen"
+    "actions": "Aktionen",
+    "deleteError": "Fahrer konnte nicht gelöscht werden — bitte erneut versuchen."
   },
   "maint": {
     "title": "Wartung",
@@ -853,7 +863,8 @@
       "6": "Sa"
     },
     "addTitle": "Bericht planen",
-    "create": "Erstellen"
+    "create": "Erstellen",
+    "actionError": "Löschen fehlgeschlagen — bitte erneut versuchen."
   },
   "admin": {
     "search": "Suchen…",
@@ -869,7 +880,8 @@
     "cancel": "Abbrechen",
     "confirmTitle": "Sind Sie sicher?",
     "actions": "Aktionen",
-    "pickDate": "Datum wählen"
+    "pickDate": "Datum wählen",
+    "loadError": "Konnte nicht geladen werden — bitte erneut versuchen."
   },
   "dash": {
     "title": "Übersicht",
@@ -913,5 +925,10 @@
     "empty": "Keine Benachrichtigungen",
     "viewAll": "Alle Ereignisse",
     "titleUnread": "Benachrichtigungen ({{n}} ungelesen)"
+  },
+  "charts": {
+    "fuelTimeline": "Kraftstoffstand-Zeitachse",
+    "speedTimeline": "Wiedergabe-Geschwindigkeitszeitachse",
+    "voltageTimeline": "Spannungs-Zeitachse"
   }
 }

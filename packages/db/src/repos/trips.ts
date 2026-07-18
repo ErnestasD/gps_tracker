@@ -1,6 +1,7 @@
 import type { PrismaClient, Trip } from '@prisma/client'
 
 import { toInt8OrNull } from '../bigid.js'
+import { pgSafeDate } from '../dateGuard.js'
 import type { Actor, Scope } from '../scope.js'
 import { scopedWhere } from '../scope.js'
 import type { AuditRepo } from './audit.js'
@@ -34,12 +35,6 @@ const flat = <T extends Trip & { driver: { name: string } | null }>(r: T): TripW
   return { ...t, driverName: driver?.name ?? null }
 }
 
-const validDate = (s: string | undefined): Date | undefined => {
-  if (s === undefined) return undefined
-  const d = new Date(s)
-  return Number.isNaN(d.getTime()) ? undefined : d
-}
-
 /** Thrown when assignDriver is given a driver outside the caller's scope (→ API 400/404). */
 export class DriverNotInScopeError extends Error {
   constructor() {
@@ -57,15 +52,15 @@ export function createTripRepo(prisma: PrismaClient, audit: AuditRepo): TripRead
   }
   return {
     list: async (scope, opts = {}) => {
-      const from = validDate(opts.from)
-      const to = validDate(opts.to)
+      const from = pgSafeDate(opts.from)
+      const to = pgSafeDate(opts.to)
       const bid = opts.deviceId !== undefined ? (toInt8OrNull(opts.deviceId) ?? undefined) : undefined
       const rows = await prisma.trip.findMany({
         where: {
           ...scopedWhere(scope),
           ...(bid !== undefined ? { deviceId: bid } : {}),
-          ...(from !== undefined || to !== undefined
-            ? { startTime: { ...(from !== undefined ? { gte: from } : {}), ...(to !== undefined ? { lte: to } : {}) } }
+          ...(from !== null || to !== null
+            ? { startTime: { ...(from !== null ? { gte: from } : {}), ...(to !== null ? { lte: to } : {}) } }
             : {}),
         },
         orderBy: { startTime: 'desc' },

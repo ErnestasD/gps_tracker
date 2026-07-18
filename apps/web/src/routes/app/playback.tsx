@@ -127,7 +127,11 @@ export function PlaybackPage() {
 
         {/* transport controls + scrubber */}
         <div className="admin-hairline-t p-4">
-          {pts.length === 0 ? (
+          {positions.isError ? (
+            <p role="alert" className="py-6 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="playback-error">
+              {t('admin.loadError')}
+            </p>
+          ) : pts.length === 0 ? (
             <p className="py-6 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="playback-empty">
               {positions.isFetching ? t('playback.loading') : t('playback.empty')}
             </p>

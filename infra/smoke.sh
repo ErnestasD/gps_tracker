@@ -35,9 +35,11 @@ ok "timescaledb + postgis available"
 curl -fsS "http://localhost:${CADDY_HTTP_PORT:-8088}/healthz" >/dev/null 2>&1 || fail "caddy /healthz not responding"
 ok "caddy healthz"
 
-# Photon reverse geocode (tolerates long first-boot warmup — skip if still warming)
-if curl -fsS "http://localhost:2322/reverse?lat=54.6872&lon=25.2797" 2>/dev/null | grep -qi vilni; then
-  ok "photon reverse-geocodes Vilnius"
+# Photon reverse geocode (tolerates long first-boot warmup — skip if still warming).
+# Query Warsaw to match the loaded extract (docker-compose.yml COUNTRY_CODE: pl); querying
+# a Vilnius/LT point would never resolve until the LT extract is added.
+if curl -fsS "http://localhost:2322/reverse?lat=52.2297&lon=21.0122" 2>/dev/null | grep -qiE 'warsz|warsaw'; then
+  ok "photon reverse-geocodes Warsaw"
 else
   echo "  warn: photon still warming up (first boot downloads the index) — rerun smoke later"
 fi

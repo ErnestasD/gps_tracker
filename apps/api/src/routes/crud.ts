@@ -264,7 +264,18 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           ...rest,
           ...(password !== undefined ? { passwordHash: await hashPassword(password) } : {}),
         })
-        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+        if (row === null) return problem(c, 404, 'Not Found')
+        if (password !== undefined) {
+          // an admin password reset must evict the TARGET user's live sessions, same as the
+          // self-service change (review HIGH: else an admin cannot log out a compromised user).
+          // TODO(db): refreshTokens.revokeAllForUser(userId, now) — until it exists this is a
+          // best-effort no-op (there is no per-user family listing to loop from apps/api).
+          const rt = db.auth.refreshTokens as typeof db.auth.refreshTokens & {
+            revokeAllForUser?(userId: string, now: Date): Promise<void>
+          }
+          if (rt.revokeAllForUser !== undefined) await rt.revokeAllForUser(id(c), new Date())
+        }
+        return json(c, row)
       } },
     { method: 'delete', path: '/v1/users/:id', scopeClass: 'tenant', entity: 'user', shape: 'item',
       handler: async (c) => {
@@ -556,6 +567,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         }
         const st = await stat(info.path).catch(() => null)
         if (st === null) return problem(c, 410, 'Gone', 'export file removed')
+        // GDPR personal-data dump: never cacheable (parity with json(); this handler streams via
+        // c.body and so bypasses the json() helper that stamps no-store on every other read)
+        c.header('Cache-Control', 'no-store')
         c.header('content-type', 'application/gzip')
         c.header('content-disposition', `attachment; filename="orbetra-export-${id(c)}.ndjson.gz"`)
         c.header('content-length', String(st.size))
@@ -687,8 +701,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (data === null) return problem(c, 400, 'Bad Request')
         const a = auth(c)
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
-        if (accountId === undefined || (await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
-        return json(c, await db.scheduledReports.create(scopeOf(a), { userId: a.userId }, { ...data, accountId }), 201)
+        if (accountId === undefined) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        const account = await db.accounts.get(scopeOf(a), accountId)
+        if (account === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        // default to the ACCOUNT's timezone (§7.7 account-local day boundaries) — the DB column
+        // defaults to 'UTC', which would make emailed reports bucket days differently from the
+        // interactive report (POST /v1/reports/:type uses account.timezone). The form omits it.
+        return json(c, await db.scheduledReports.create(scopeOf(a), { userId: a.userId }, { ...data, accountId, timezone: data.timezone ?? account.timezone }), 201)
       } },
     { method: 'patch', path: '/v1/scheduled-reports/:id', scopeClass: 'account', entity: 'scheduledReport', shape: 'item',
       handler: async (c) => {

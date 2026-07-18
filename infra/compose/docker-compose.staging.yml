@@ -1,6 +1,8 @@
-# Staging overrides (Hetzner CPX31 per PROJECT_PLAN §5): TLS via Caddy, GlitchTip on,
-# services bound to localhost where Caddy fronts them.
-# Usage: docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+# Staging infra overrides: TLS via Caddy, GlitchTip on, services bound to localhost where
+# Caddy fronts them. NOTE: the real staging APP deploy layers docker-compose.apps.yml on the
+# base (see docs/runbooks/staging-app-deploy.md); this overlay only adds GlitchTip + the 80/443
+# port publish + the localhost bindings, and can be combined with apps.yml.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.apps.yml -f docker-compose.staging.yml up -d
 services:
   pg:
     ports: [] # not exposed publicly on staging
@@ -27,5 +29,7 @@ services:
       - '80:80'
       - '443:443'
     volumes:
-      - ../Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      # base compose already mounts ../Caddyfile; re-stated here so the staging TLS/site blocks
+      # (ORBETRA_STAGING_HOST http:// + on-demand https://) front the 80/443 publish above.
+      - ../Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

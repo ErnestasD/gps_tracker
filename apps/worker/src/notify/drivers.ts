@@ -3,7 +3,12 @@ import webpush from 'web-push'
 import type { PushSubscriptionRepo } from '@orbetra/db'
 import type { NotificationChannel } from '@orbetra/shared'
 
+import { assertPublicUrl } from '../webhook/guard.js'
 import type { NotifyMessage } from './message.js'
+
+/** A hanging notification endpoint must not pin BullMQ notify-worker concurrency indefinitely
+ *  (the same class the webhook worker guards with DELIVERY_TIMEOUT_MS). */
+const NOTIFY_TIMEOUT_MS = 10_000
 
 /** Per-send context — the account a `webpush` channel fans out to (email/telegram ignore it). */
 export interface DriverContext {
@@ -33,7 +38,7 @@ export interface Drivers {
   webpush?: Driver
 }
 
-/** Injected email transport — the real one (nodemailer/SES) lands with SES creds (ADR-022). */
+/** Injected email transport — the real one (nodemailer/SES) lands with SES creds (ADR-023). */
 export interface EmailTransport {
   send(to: string, subject: string, text: string): Promise<void>
 }
@@ -56,6 +61,7 @@ export function telegramDriver(botToken: string, fetchImpl: typeof fetch = fetch
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ chat_id: channel.chatId, text: msg.text }),
+        signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS), // no hanging endpoint pins the worker
       })
       if (!res.ok) throw new Error(`telegram sendMessage ${res.status}`)
     },
@@ -72,7 +78,7 @@ export function telegramDriver(botToken: string, fetchImpl: typeof fetch = fetch
  * Acceptable for alerts — same-tag notifications collapse on screen — and the alternative (per-
  * endpoint idempotency) buys little for a best-effort channel.
  */
-export function webPushDriver(subscriptions: PushSubscriptionRepo): Driver {
+export function webPushDriver(subscriptions: PushSubscriptionRepo, resolveHost?: Parameters<typeof assertPublicUrl>[1]): Driver {
   return {
     send: async (channel, msg, ctx) => {
       if (channel.type !== 'webpush' || ctx === undefined) return
@@ -81,8 +87,19 @@ export function webPushDriver(subscriptions: PushSubscriptionRepo): Driver {
       let transient: unknown = null
       for (const t of targets) {
         try {
-          await webpush.sendNotification({ endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } }, payload)
+          // Blind-SSRF guard: the endpoint is a browser-supplied URL and web-push POSTs to it from
+          // INSIDE the prod network carrying a VAPID Authorization header. Reject private/metadata
+          // hosts at send time (resolve → reject loopback/link-local/ULA/etc.), mirroring the
+          // hardened webhook path. A pruneable dead endpoint is left to the 404/410 handling below.
+          await (resolveHost ? assertPublicUrl(t.endpoint, resolveHost) : assertPublicUrl(t.endpoint))
+          await webpush.sendNotification({ endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } }, payload, { timeout: NOTIFY_TIMEOUT_MS })
         } catch (err) {
+          if (err instanceof Error && err.name === 'UnsafeUrlError') {
+            // an endpoint pointing at private infra is not a transient failure and never will be —
+            // prune it so it stops being attempted, and do NOT surface it as a retryable error
+            await subscriptions.deleteByEndpoint(t.endpoint)
+            continue
+          }
           const status = (err as { statusCode?: number }).statusCode
           if (status === 404 || status === 410) await subscriptions.deleteByEndpoint(t.endpoint) // gone → prune
           else transient = err // a real failure → surface after the loop (don't abort other targets)

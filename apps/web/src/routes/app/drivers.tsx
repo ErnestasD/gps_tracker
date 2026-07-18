@@ -57,6 +57,7 @@ export function DriversPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteForId, setDeleteForId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState(false) // a failed delete was swallowed
   const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['drivers'] })
@@ -187,6 +188,10 @@ export function DriversPage() {
       ) : drivers.isError ? (
         <p className="text-sm" style={{ color: 'var(--admin-danger)' }}>{t('drivers.loadError')}</p>
       ) : (
+        <>
+        {deleteError && (
+          <p role="alert" className="mb-2 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="drivers-action-error">{t('drivers.deleteError')}</p>
+        )}
         <DataTable
           data-testid="drivers-table"
           data={drivers.data ?? []}
@@ -201,6 +206,7 @@ export function DriversPage() {
               : undefined
           }
         />
+        </>
       )}
 
       <DriverScores />
@@ -217,7 +223,8 @@ export function DriversPage() {
         onConfirm={() => {
           const d = deleteFor
           if (d === null) return
-          void deleteDriver(d.id).then(refresh).catch(() => undefined)
+          setDeleteError(false)
+          void deleteDriver(d.id).then(refresh).catch(() => setDeleteError(true))
         }}
       />
     </div>

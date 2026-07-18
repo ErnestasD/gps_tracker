@@ -76,7 +76,11 @@ export function NotificationsBell() {
           </button>
         </div>
         <ul className="max-h-80 overflow-y-auto">
-          {recent.length === 0 && (
+          {events.isError ? (
+            <li role="alert" className="p-6 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="bell-error">
+              {t('admin.loadError')}
+            </li>
+          ) : recent.length === 0 && (
             <li className="p-6 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>
               {t('bell.empty')}
             </li>

@@ -149,7 +149,10 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
       if (sets.length === 0) return before
       const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
         UPDATE geofences SET ${Prisma.join(sets, ', ')} WHERE ${scopeSql(scope)} AND id = ${id}::uuid RETURNING ${COLS}`)
-      const view = toView(rows[0]!)
+      // a concurrent delete between the scoped pre-read and this UPDATE matches zero rows — return a
+      // clean 404 (null) instead of dereferencing undefined into a TypeError → 500 (review LOW)
+      if (rows[0] === undefined) return null
+      const view = toView(rows[0])
       await audit.record(scope, actor, { action: 'update', entity: 'geofence', entityId: id, before: { name: before.name, kind: before.kind }, after: { name: view.name, kind: view.kind } })
       return view
     },

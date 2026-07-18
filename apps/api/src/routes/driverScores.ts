@@ -3,7 +3,7 @@ import type { Hono } from 'hono'
 import { readDriverScores, type Db, type Pool } from '@orbetra/db'
 import { driverScore, type DriverScoreView } from '@orbetra/shared'
 
-import { type AuthEnv } from '../auth/middleware.js'
+import { problem, type AuthEnv } from '../auth/middleware.js'
 
 /**
  * Driver safety scoring API (V2). `GET /v1/driver-scores?from=&to=` returns a 0–100 score per
@@ -16,7 +16,7 @@ import { type AuthEnv } from '../auth/middleware.js'
 export function mountDriverScores(app: Hono<AuthEnv>, deps: { db: Db; pool?: Pool }): void {
   app.get('/v1/driver-scores', async (c) => {
     const auth = c.get('auth')
-    if (deps.pool === undefined) return c.json({ error: 'unavailable' }, 503)
+    if (deps.pool === undefined) return problem(c, 503, 'Service Unavailable', 'unavailable')
     const q = c.req.query.bind(c.req)
     const aggs = await readDriverScores(
       deps.pool,

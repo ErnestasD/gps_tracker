@@ -39,7 +39,9 @@ export function PlatformPage() {
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('platform.tenants')}
         </div>
-        {(tenants.data ?? []).length === 0 ? (
+        {tenants.isError ? (
+          <p role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="platform-error">{t('admin.loadError')}</p>
+        ) : (tenants.data ?? []).length === 0 ? (
           <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="platform-empty">{t('platform.empty')}</p>
         ) : (
           <div className="overflow-x-auto">

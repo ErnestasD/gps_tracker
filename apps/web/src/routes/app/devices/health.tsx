@@ -40,7 +40,7 @@ export function HealthCard({ device }: { device: Device }) {
             </div>
             <div>
               <div className="mb-1 text-xs text-muted">{t(volts.label === 'ext' ? 'devices.health.extV' : 'devices.health.battV')}</div>
-              <svg viewBox="0 0 600 80" className="h-20 w-full rounded-card border border-line bg-surface" role="img" aria-label="voltage timeline">
+              <svg viewBox="0 0 600 80" className="h-20 w-full rounded-card border border-line bg-surface" role="img" aria-label={t('charts.voltageTimeline')}>
                 {path !== '' && <path d={path} fill="none" stroke="var(--accent)" strokeWidth={1.5} />}
               </svg>
             </div>

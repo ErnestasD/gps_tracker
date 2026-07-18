@@ -106,7 +106,9 @@ export function EventsPage() {
       </div>
 
       <div className="admin-card overflow-hidden">
-        {shown.length === 0 && !query.isLoading ? (
+        {query.isError ? (
+          <p role="alert" className="py-10 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="events-error">{t('admin.loadError')}</p>
+        ) : shown.length === 0 && !query.isLoading ? (
           <p className="py-10 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="events-empty">{t('events.empty')}</p>
         ) : (
           <div className="overflow-x-auto">

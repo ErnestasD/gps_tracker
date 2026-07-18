@@ -49,7 +49,7 @@ export function FuelChart({
           </Badge>
         )}
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-20 w-full select-none rounded-card border border-line bg-surface" role="img" aria-label="fuel level timeline">
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-20 w-full select-none rounded-card border border-line bg-surface" role="img" aria-label={t('charts.fuelTimeline')}>
         {path !== '' && <path d={path} fill="none" stroke="var(--accent-2, #7c5cfc)" strokeWidth={1.5} />}
         {cursorX !== null && <line x1={cursorX} y1={PAD} x2={cursorX} y2={H - PAD} stroke="var(--accent)" strokeWidth={1} data-testid="fuel-cursor" />}
       </svg>

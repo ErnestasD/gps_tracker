@@ -8,6 +8,12 @@
  * here; this only catches the UNHANDLED ones — chiefly a non-UUID `:id` hitting a uuid column (P2023),
  * which otherwise surfaces as a raw 500 across every item route.
  */
+/** Prisma unique-violation code (P2002), duck-typed — avoids importing @prisma/client at call
+ *  sites and dedupes the copy that had been repeated verbatim in devices.ts + drivers.ts (review LOW). */
+export function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === 'P2002'
+}
+
 export function dbErrorHttp(err: unknown): { status: 404 | 409; title: string } | null {
   const code = typeof err === 'object' && err !== null && 'code' in err ? (err as { code?: unknown }).code : undefined
   switch (code) {

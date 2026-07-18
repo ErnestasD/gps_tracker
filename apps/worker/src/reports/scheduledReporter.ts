@@ -36,10 +36,30 @@ export function isDue(s: Pick<Schedule, 'cadence' | 'hourUtc' | 'weekday'>, nowM
   return true
 }
 
-/** The [from,to] ISO window a schedule reports over at `nowMs`. */
-export function reportWindow(cadence: string, nowMs: number): { from: string; to: string } {
-  const span = cadence === 'weekly' ? 7 * DAY_MS : DAY_MS
-  return { from: new Date(nowMs - span).toISOString(), to: new Date(nowMs).toISOString() }
+/**
+ * The [from,to] ISO window a schedule reports over. Two properties matter (review MED):
+ *  1. `to` is anchored to TODAY's scheduled UTC hour (≤ nowMs, guaranteed by isDue), NOT the actual
+ *     tick instant — so consecutive windows tile at the same boundary regardless of which catch-up
+ *     hour the cron happened to fire, and no boundary hour is dropped or double-reported.
+ *  2. `from` is normally `to - span`, but extends back to `lastRunAt` when the last successful run
+ *     was MORE than one span ago — so a period missed during an outage (including across UTC
+ *     midnight, and a weekly period skipped for a whole week) is still reported, not silently lost.
+ *
+ * KNOWN LIMITATION: the window is a UTC span, not an account-local (IANA) day span. The report engine
+ * still buckets ROWS by the account zone (§7.7), but the window edges are UTC — a full account-local
+ * alignment needs date-fns-tz in the worker (a new dep ⇒ ADR). Tracked for a follow-up.
+ */
+export function reportWindow(
+  s: Pick<Schedule, 'cadence' | 'hourUtc'>,
+  nowMs: number,
+  lastRunAtMs: number | null,
+): { from: string; to: string } {
+  const span = s.cadence === 'weekly' ? 7 * DAY_MS : DAY_MS
+  const d = new Date(nowMs)
+  const to = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), s.hourUtc, 0, 0)
+  const defaultFrom = to - span
+  const from = lastRunAtMs !== null && lastRunAtMs < defaultFrom ? lastRunAtMs : defaultFrom
+  return { from: new Date(from).toISOString(), to: new Date(to).toISOString() }
 }
 
 /** A plain-text summary of a report result (one line per daily/aggregate row). */
@@ -72,7 +92,7 @@ export async function runDueSchedules(deps: ScheduledReporterDeps): Promise<{ du
     // emails; a lost claim (already run this period) is skipped. Claim-before-send = at-most-once.
     if (!(await deps.db.scheduledReports.claimRun(s.id, new Date(nowMs), RUN_GUARD_MS))) continue
     try {
-      const window = reportWindow(s.cadence, nowMs)
+      const window = reportWindow(s, nowMs, s.lastRunAt ? s.lastRunAt.getTime() : null)
       const result = await runReport(deps.pool, s.reportType as ReportType, { tenantId: s.tenantId, accountId: s.accountId }, { ...window, timezone: s.timezone })
       const { subject, text } = formatReport(result, window)
       // each recipient independently: one bad address must NOT suppress the others

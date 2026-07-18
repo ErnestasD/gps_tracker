@@ -9,8 +9,10 @@ import { getJson } from './client'
  */
 export type EventRow = EventView
 
-/** Event kinds the pipeline emits (geofence + the E05-4 engine + sweeper kinds). */
-export const EVENT_KINDS = ['geofence', 'overspeed', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'device_offline'] as const
+/** Event kinds the pipeline emits (geofence + the E05-4 engine + sweeper kinds). Must stay in
+ * lockstep with the worker's ENGINE_RULE_KINDS + the Prisma RuleKind enum — a kind missing here
+ * is unfilterable on the events page and silently un-subscribable in the webhook UI. */
+export const EVENT_KINDS = ['geofence', 'overspeed', 'ignition', 'din_change', 'power_cut', 'low_battery', 'panic', 'device_offline', 'fuel_theft'] as const
 export type EventKind = (typeof EVENT_KINDS)[number]
 
 export interface EventFilters {
@@ -57,6 +59,8 @@ export function eventSummary(e: EventRow): string {
       return 'SOS triggered'
     case 'power_cut':
       return 'external power lost'
+    case 'fuel_theft':
+      return `fuel dropped ${num(p['drop'])} ${p['unit'] === 'liters' ? 'L' : '%'}`
     default:
       return ''
   }
@@ -94,6 +98,8 @@ export function eventSummaryT(e: EventRow, opts: SummaryOpts = {}): { key: strin
       return { key: 'events.s.panic', params: {} }
     case 'power_cut':
       return { key: 'events.s.power_cut', params: {} }
+    case 'fuel_theft':
+      return { key: 'events.s.fuel_theft', params: { drop: num(p['drop']), unit: p['unit'] === 'liters' ? 'L' : '%' } }
     default:
       return null
   }

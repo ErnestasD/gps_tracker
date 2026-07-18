@@ -14,6 +14,11 @@ export interface UdpConfig extends SessionConfig {
   maxDatagramsPerIpPerMin: number
   /** Global datagrams/sec ceiling — the primary spoof-flood defense (ADR-027). */
   maxDatagramsPerSec: number
+  /** Max concurrently in-flight datagram handlers. UDP can't pause the socket, so when Redis
+   *  is slow/down the unawaited handlers (and their pinned datagram Buffers + ioredis offline-
+   *  queue commands) would grow without bound → OOM (§10 failure #11). Above this we drop the
+   *  datagram without ACK (the device resends). Default 10_000. */
+  maxInFlightDatagrams?: number
 }
 
 export interface IngestUdpServer {
@@ -46,16 +51,31 @@ export function createIngestUdpServer(
   const global = new GlobalRateLimiter(config.maxDatagramsPerSec, now)
   const perIp = new HandshakeRateLimiter(config.maxDatagramsPerIpPerMin, now)
   const socket = createSocket('udp4')
+  const maxInFlight = config.maxInFlightDatagrams ?? 10_000
+  let inFlight = 0
   // bound the per-IP window map against a spoofed-source flood (ADR-027)
   const sweepTimer = setInterval(() => perIp.sweep(), 60_000)
   sweepTimer.unref()
 
   socket.on('message', (datagram, rinfo) => {
-    void handle(datagram, rinfo).catch((err: unknown) => {
-      // never a silent catch (§9.6): a datagram is fire-and-forget, so surface and move on
-      metrics.sessionErrorsTotal++
-      console.error('ingest udp error', { err: err instanceof Error ? err.message : String(err) })
-    })
+    // Hard in-flight cap FIRST: the handler is unawaited, so without this a slow/down Redis
+    // lets pending handlers (each pinning its datagram Buffer + a stalled ioredis command)
+    // grow unbounded until OOM — the load-shed depth-check downstream is itself a Redis call
+    // and can't fire when Redis is unavailable. Drop without ACK; the device resends (§10 #11).
+    if (inFlight >= maxInFlight) {
+      metrics.udpInflightDropsTotal++
+      return
+    }
+    inFlight++
+    void handle(datagram, rinfo)
+      .catch((err: unknown) => {
+        // never a silent catch (§9.6): a datagram is fire-and-forget, so surface and move on
+        metrics.sessionErrorsTotal++
+        console.error('ingest udp error', { err: err instanceof Error ? err.message : String(err) })
+      })
+      .finally(() => {
+        inFlight--
+      })
   })
   // an ICMP port-unreachable etc. must not crash the data plane
   socket.on('error', (err) => console.error('ingest udp socket error', err))
@@ -86,7 +106,9 @@ export function createIngestUdpServer(
     const deviceId = await registry.lookup(head.imei)
     if (deviceId === null) {
       metrics.rejectedImeiTotal++
-      await registry.quarantine(head.imei, now())
+      // countRejects:false — UDP IMEIs are attacker-chosen and the count is unused here, so never
+      // create one unbounded-TTL counter key per spoofed IMEI (the zset cap still bounds membership).
+      await registry.quarantine(head.imei, now(), { countRejects: false })
       return // unknown/retired device — nothing persisted ⇒ nothing acked (rule 4)
     }
 

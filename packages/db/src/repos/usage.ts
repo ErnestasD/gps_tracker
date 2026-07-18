@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 
 import type { Scope } from '../scope.js'
+import { isPgSafeDate } from '../dateGuard.js'
 
 /**
  * Usage metering reads (E07-4). `usage_daily` rows are written by the worker sweep (one row
@@ -29,16 +30,9 @@ export interface UsageRepo {
   tenantSummary(scope: Scope, opts?: UsageRangeOpts): Promise<TenantUsageRow[]>
 }
 
-const MIN_MS = Date.parse('0001-01-01T00:00:00Z')
-const MAX_MS = Date.parse('9999-12-31T23:59:59Z')
-const validDate = (s: string | undefined): boolean => {
-  if (s === undefined) return false
-  const t = new Date(s).getTime()
-  return !Number.isNaN(t) && t >= MIN_MS && t <= MAX_MS
-}
 const dayWhere = (opts: UsageRangeOpts) => ({
-  ...(validDate(opts.from) ? { gte: new Date(opts.from!) } : {}),
-  ...(validDate(opts.to) ? { lte: new Date(opts.to!) } : {}),
+  ...(isPgSafeDate(opts.from) ? { gte: new Date(opts.from!) } : {}),
+  ...(isPgSafeDate(opts.to) ? { lte: new Date(opts.to!) } : {}),
 })
 
 export function createUsageRepo(prisma: PrismaClient): UsageRepo {

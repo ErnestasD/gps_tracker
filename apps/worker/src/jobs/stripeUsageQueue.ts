@@ -18,6 +18,17 @@ export async function scheduleStripeUsage(queue: Queue): Promise<void> {
   await queue.add(
     'report',
     {},
-    { repeat: { every: STRIPE_USAGE_EVERY_MS }, jobId: 'stripe-usage-daily', removeOnComplete: true, removeOnFail: 100 },
+    {
+      repeat: { every: STRIPE_USAGE_EVERY_MS },
+      jobId: 'stripe-usage-daily',
+      removeOnComplete: true,
+      removeOnFail: 100,
+      // A single Stripe blip must NOT silently skip a day of overage billing: the next tick computes
+      // a NEW day, so the failed day would never be re-billed. Retry with backoff — reportUsage
+      // passes an idempotency `identifier` (overage:{day}:{customer}) so a re-fire is a Stripe-side
+      // no-op within 24 h (safe to retry). Mirrors enqueueNotify/enqueueWebhook (review MED).
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 30_000 },
+    },
   )
 }

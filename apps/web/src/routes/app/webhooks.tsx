@@ -79,11 +79,19 @@ export function WebhooksPage() {
         </div>
       )}
 
+      {(del.isError || toggle.isError) && (
+        <p role="alert" className="admin-card p-3 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="webhooks-action-error">
+          {t('webhooks.actionError')}
+        </p>
+      )}
+
       <div className="admin-card overflow-hidden">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('webhooks.list')}
         </div>
-        {(hooks.data ?? []).length === 0 ? (
+        {hooks.isError ? (
+          <p role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="webhooks-error">{t('admin.loadError')}</p>
+        ) : (hooks.data ?? []).length === 0 ? (
           <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="webhooks-empty">{t('webhooks.empty')}</p>
         ) : (
           <ul data-testid="webhooks-list">
@@ -136,7 +144,9 @@ export function WebhooksPage() {
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('webhooks.deliveries')}
         </div>
-        {(deliveries.data ?? []).length === 0 ? (
+        {deliveries.isError ? (
+          <p role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="deliveries-error">{t('admin.loadError')}</p>
+        ) : (deliveries.data ?? []).length === 0 ? (
           <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="deliveries-empty">{t('webhooks.noDeliveries')}</p>
         ) : (
           <div className="overflow-x-auto">
