@@ -34,9 +34,17 @@ export interface ScopedWhereOpts {
 export function scopedWhere(scope: Scope, opts: ScopedWhereOpts = {}): Record<string, unknown> {
   const where: Record<string, unknown> = { tenantId: scope.tenantId }
   if (scope.accountId !== undefined) {
-    where['accountId'] = opts.nullableAccount
-      ? { in: [scope.accountId, null] }
-      : scope.accountId
+    if (opts.nullableAccount) {
+      // "own account OR tenant-shared (null)". NOT `{ in: [id, null] }` — Prisma rejects a
+      // null inside `in` (`Expected ListStringFieldRefInput or Null`) and 500s the request,
+      // so an account-scoped user reading a nullableAccount entity (webhooks, api_keys,
+      // webhook_deliveries via the generic/typed repos) errored. This OR mirrors the raw-SQL
+      // geofence path (`"accountId" = $1 OR "accountId" IS NULL`). Top-level AND with any
+      // other spread-in where key (e.g. webhookId, id) is preserved.
+      where['OR'] = [{ accountId: scope.accountId }, { accountId: null }]
+    } else {
+      where['accountId'] = scope.accountId
+    }
   }
   return where
 }

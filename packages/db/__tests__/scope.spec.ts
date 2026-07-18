@@ -12,9 +12,12 @@ describe('scopedWhere (E03-2 — the tenant boundary)', () => {
   })
 
   it('nullable-account model: account user also sees tenant-shared (null) rows', () => {
+    // OR form (own account OR null), not `{ in: ['a1', null] }` — Prisma rejects a null
+    // inside `in` at runtime (500), so this must stay an OR so account-scoped reads of
+    // nullableAccount entities (webhooks/api_keys/webhook_deliveries) actually work.
     expect(scopedWhere({ tenantId: 't1', accountId: 'a1' }, { nullableAccount: true })).toEqual({
       tenantId: 't1',
-      accountId: { in: ['a1', null] },
+      OR: [{ accountId: 'a1' }, { accountId: null }],
     })
   })
 

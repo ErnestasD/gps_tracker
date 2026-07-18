@@ -37,8 +37,9 @@ describe('E06-4b WebhookDeliveryRepo', () => {
     const { prisma, captured } = fakePrisma()
     await createWebhookDeliveryRepo(prisma).list({ tenantId: 'ten-1', accountId: 'acc-A' })
     // an account_manager must NOT see a sibling account's delivery rows: account-scoped +
-    // null (tenant-shared) only — mirrors the webhooks repo (nullableAccount)
-    expect(captured()!.where).toEqual({ tenantId: 'ten-1', accountId: { in: ['acc-A', null] } })
+    // null (tenant-shared) only — mirrors the webhooks repo (nullableAccount). OR form, not
+    // `{ in: ['acc-A', null] }` — Prisma rejects a null inside `in` and 500s the real query.
+    expect(captured()!.where).toEqual({ tenantId: 'ten-1', OR: [{ accountId: 'acc-A' }, { accountId: null }] })
   })
 
   it('applies a valid webhookId filter but drops a malformed one', async () => {
