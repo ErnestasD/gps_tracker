@@ -10,6 +10,7 @@ import { TerraDrawMapboxGLAdapter } from 'terra-draw-mapbox-gl-adapter'
 import { AdminButton, AdminInput, AdminLabel, AdminRadio, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
+import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { ApiError } from '@/lib/http'
 import { createGeofence, deleteGeofence, geofenceBounds, geofenceFeatures, listGeofences } from '@/lib/geofences'
@@ -42,6 +43,9 @@ export function GeofencesPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
   const qc = useQueryClient()
+  // geofence writes require account_manager+ (WRITE_POLICY.geofence) — hide draw/save/delete from
+  // viewers (reads stay open); matches the drivers/maintenance canWrite precedent
+  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
   const geofences = useQuery({ queryKey: ['geofences'], queryFn: listGeofences })
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MbMap | null>(null)
@@ -250,7 +254,7 @@ export function GeofencesPage() {
   return (
     <div className="flex h-full flex-col gap-3 p-4 md:p-6">
       <PageHeader title={t('geofences.title')} description={t('geofences.desc')} className="mb-0">
-        {drafting ? (
+        {canWrite && (drafting ? (
           <>
             {/* draft header (reference): Cancel + Save; the form lives in the aside DraftPanel */}
             <AdminButton variant="secondary" data-testid="gf-clear" onClick={cancelDraft}>
@@ -270,7 +274,7 @@ export function GeofencesPage() {
             <AdminButton variant="secondary" size="sm" data-testid="gf-mode-circle" onClick={() => startDraft('circle')}>{t('geofences.circle')}</AdminButton>
             <AdminButton variant="secondary" size="sm" data-testid="gf-mode-corridor" onClick={() => startDraft('corridor')}>{t('geofences.corridor')}</AdminButton>
           </div>
-        )}
+        ))}
       </PageHeader>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,22rem)_1fr]">
@@ -379,19 +383,21 @@ export function GeofencesPage() {
                           </span>
                           <span className="truncate font-medium">{g.name}</span>
                           <Badge tone="neutral" className="ml-auto">{t(`geofences.${g.kind}`)}</Badge>
-                          <button
-                            type="button"
-                            aria-label={t('geofences.delete')}
-                            data-testid={`gf-del-${g.id}`}
-                            className="grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)]"
-                            style={{ color: 'var(--admin-danger)' }}
-                            onClick={(e) => {
-                              e.stopPropagation() // delete must not toggle row selection
-                              setDeleteForId(g.id)
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                          </button>
+                          {canWrite && (
+                            <button
+                              type="button"
+                              aria-label={t('geofences.delete')}
+                              data-testid={`gf-del-${g.id}`}
+                              className="grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)]"
+                              style={{ color: 'var(--admin-danger)' }}
+                              onClick={(e) => {
+                                e.stopPropagation() // delete must not toggle row selection
+                                setDeleteForId(g.id)
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+                          )}
                         </li>
                       )
                     })}
@@ -424,16 +430,18 @@ export function GeofencesPage() {
                       {t('geofences.createdAt', { date: dt(selected.createdAt) })} · {t(`geofences.${selected.kind}`)}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setDeleteForId(selected.id)}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors hover:bg-[var(--admin-danger-soft)]"
-                    style={{ color: 'var(--admin-danger)' }}
-                    data-testid="gf-detail-delete"
-                  >
-                    <Trash2 className="h-3 w-3" aria-hidden />
-                    {t('geofences.delete')}
-                  </button>
+                  {canWrite && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteForId(selected.id)}
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors hover:bg-[var(--admin-danger-soft)]"
+                      style={{ color: 'var(--admin-danger)' }}
+                      data-testid="gf-detail-delete"
+                    >
+                      <Trash2 className="h-3 w-3" aria-hidden />
+                      {t('geofences.delete')}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

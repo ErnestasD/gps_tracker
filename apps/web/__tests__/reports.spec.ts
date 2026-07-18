@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { COLUMNS, REPORT_TYPES, toCsv, toPdfTable, unitColumns } from '../src/lib/reports.js'
+import { cellValue, COLUMNS, deviceLabel, pdfSafe, REPORT_TYPES, toCsv, toPdfTable, unitColumns } from '../src/lib/reports.js'
 
 describe('E06-2 toCsv', () => {
   const cols = COLUMNS.mileage // day, deviceId, trips, distanceM
@@ -75,5 +75,67 @@ describe('toPdfTable (ADR-025)', () => {
     const t = toPdfTable(cols, [{ day: '2026-07-09', distanceM: 12000 }, { day: '2026-07-10', distanceM: null }])
     expect(t.head).toEqual([['day', 'distanceM']])
     expect(t.body).toEqual([['2026-07-09', '12000'], ['2026-07-10', '']]) // null → '', number → string
+  })
+})
+
+describe('localized export headers (founder-flagged PDF/CSV header bug)', () => {
+  const cols = COLUMNS.mileage // day, deviceId, trips, distanceM
+  const headers = ['Diena', 'Įrenginys', 'Kelionės', 'Atstumas (m)']
+
+  it('toCsv uses the injected localized headers instead of the raw slugs', () => {
+    const csv = toCsv(cols, [{ day: 'd', deviceId: '42', trips: 1, distanceM: 10 }], headers)
+    expect(csv.split('\r\n')[0]).toBe('Diena,Įrenginys,Kelionės,Atstumas (m)')
+  })
+
+  it('toPdfTable uses the injected localized headers', () => {
+    const t = toPdfTable(cols, [], headers)
+    expect(t.head).toEqual([headers])
+  })
+
+  it('omitted headers keep the legacy csvKey/key slugs (back-compat)', () => {
+    expect(toCsv(cols, []).split('\r\n')[0]).toBe('day,deviceId,trips,distanceM')
+  })
+})
+
+describe('device column shows the vehicle name, not the raw id', () => {
+  it('deviceLabel prefers name, appends plate, falls back to the id defensively', () => {
+    expect(deviceLabel({ deviceId: '42', deviceName: 'Van 1', devicePlate: 'ABC123' })).toBe('Van 1 (ABC123)')
+    expect(deviceLabel({ deviceId: '42', deviceName: 'Van 1' })).toBe('Van 1')
+    expect(deviceLabel({ deviceId: '42' })).toBe('42') // server hasn't joined the name yet
+    expect(deviceLabel({ deviceId: 42 })).toBe(42)
+  })
+
+  it("the report's deviceId column renders the resolved label in the table/CSV/PDF", () => {
+    const col = COLUMNS.mileage[1]! // deviceId
+    expect(cellValue(col, { deviceId: '42', deviceName: 'Truck 7' })).toBe('Truck 7')
+    const csv = toCsv(COLUMNS.mileage, [{ day: 'd', deviceId: '42', deviceName: 'Truck 7', trips: 1, distanceM: 0 }])
+    expect(csv).toContain('Truck 7')
+  })
+})
+
+describe('engine-hours report renders hours, not raw seconds', () => {
+  it('converts the seconds column to hours (1dp) under an (h) header', () => {
+    const col = COLUMNS.engine_hours[2]! // seconds → hours
+    expect(col.label).toBe('hoursH')
+    expect(cellValue(col, { seconds: 28800 })).toBe(8) // 8 h
+    expect(cellValue(col, { seconds: 3600 * 1.5 })).toBe(1.5)
+  })
+})
+
+describe('pdfSafe (jsPDF WinAnsi fallback)', () => {
+  it('transliterates LT/PL Latin-Extended letters, leaves WinAnsi (umlauts) untouched', () => {
+    expect(pdfSafe('Kelionės')).toBe('Keliones')
+    expect(pdfSafe('Grcio viršijimas'.replace('Grcio', 'Greičio'))).toBe('Greicio virsijimas')
+    expect(pdfSafe('Prędkość')).toBe('Predkosc')
+    expect(pdfSafe('Motorstunden Gerät ö ü ß')).toBe('Motorstunden Gerät ö ü ß')
+  })
+})
+
+describe('CSV formula-injection guard (review LOW)', () => {
+  it('prefixes a cell starting with = + - @ so spreadsheets treat it as text', () => {
+    const cols = COLUMNS.mileage
+    const csv = toCsv(cols, [{ day: '2026-07-18', deviceId: '=HYPERLINK("evil")', trips: 1, distanceM: 0 }])
+    expect(csv).toContain("'=HYPERLINK")
+    expect(csv).not.toMatch(/(^|,)=HYPERLINK/)
   })
 })

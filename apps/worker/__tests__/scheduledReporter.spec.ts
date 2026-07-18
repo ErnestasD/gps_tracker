@@ -60,12 +60,38 @@ describe('reportWindow', () => {
 })
 
 describe('formatReport', () => {
-  it('renders one line per row + a header; empty is explicit', () => {
-    const w = { from: '2026-07-14T06:00:00Z', to: '2026-07-15T06:00:00Z' }
-    const r = formatReport({ type: 'mileage', rows: [{ day: '2026-07-14', deviceId: '5', distanceKm: 42 } as never] }, w)
-    expect(r.subject).toContain('mileage')
-    expect(r.text).toContain('distanceKm: 42')
-    expect(formatReport({ type: 'trips', rows: [] }, w).text).toContain('(no data')
+  const w = { from: '2026-07-14T06:00:00Z', to: '2026-07-15T06:00:00Z' }
+  const opts = { timezone: 'Europe/Vilnius', brand: 'Acme Fleet' }
+
+  it('renders a labelled table with the tenant brand, device name, and km (not raw keys/meters)', () => {
+    const r = formatReport(
+      { type: 'mileage', rows: [{ day: '2026-07-14', deviceId: '5', deviceName: 'Vilnius Van 1', devicePlate: 'ABC-123', trips: 3, distanceM: 15234 }] },
+      w,
+      opts,
+    )
+    // branded subject with a human report title (not the raw slug, not hardcoded 'Orbetra')
+    expect(r.subject).toBe('Acme Fleet — Mileage report (2026-07-14 to 2026-07-15)')
+    // human column labels, not raw camelCase keys
+    expect(r.text).toContain('Distance (km)')
+    expect(r.text).not.toContain('distanceM')
+    // meters → km (1dp) and the device NAME, not the raw id
+    expect(r.text).toContain('15.2')
+    expect(r.text).toContain('Vilnius Van 1')
+  })
+
+  it('formats trip timestamps in the account timezone, not UTC ISO', () => {
+    const r = formatReport(
+      { type: 'trips', rows: [{ id: 't1', deviceId: '5', deviceName: 'Van', devicePlate: null, day: '2026-07-14', startTime: '2026-07-14T09:30:00.000Z', endTime: '2026-07-14T10:00:00.000Z', distanceM: 8000, distanceSource: 'gps', maxSpeed: 92, idleS: 600 }] },
+      w,
+      opts,
+    )
+    // 09:30 UTC → 12:30 in Europe/Vilnius (UTC+3 in July); no raw ...Z string
+    expect(r.text).toContain('2026-07-14 12:30')
+    expect(r.text).not.toContain('T09:30:00.000Z')
+  })
+
+  it('empty result is explicit', () => {
+    expect(formatReport({ type: 'trips', rows: [] }, w, opts).text).toContain('(no data')
   })
 })
 

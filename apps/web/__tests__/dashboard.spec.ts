@@ -1,7 +1,7 @@
 import type { LiveEvent } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { areaPath, countDelta, dailyActiveDevices, dailyCounts, dailyKmSeries, donutSegments, eventSeverity, fleetCounts, hourlyBuckets, kindBreakdown, localDayStr, pctDelta } from '../src/lib/dashboard.js'
+import { areaPath, countDelta, dailyActiveDevices, dailyCounts, dailyKmSeries, dayStrInTz, donutSegments, eventSeverity, fleetCounts, hourInTz, hourlyBuckets, kindBreakdown, localDayStr, pctDelta } from '../src/lib/dashboard.js'
 
 const NOW = Date.UTC(2026, 6, 16, 12, 0, 0)
 const pos = (ageMs: number): LiveEvent => ({ deviceId: '1', accountId: 'a', fixTimeMs: NOW - ageMs, lat: 54, lon: 25, speed: 10, course: 0, satellites: 8, fixValid: true, ignition: true, priority: 0 })
@@ -84,6 +84,22 @@ describe('event bucketing (donut / hourly / sparks)', () => {
     // constructed with the LOCAL Date ctor, so the expectation holds in any zone
     expect(localDayStr(new Date(2026, 6, 16, 12, 0).getTime())).toBe('2026-07-16')
     expect(localDayStr(new Date(2026, 0, 5, 0, 30).getTime())).toBe('2026-01-05')
+  })
+
+  it('dayStrInTz buckets by a specific IANA zone (matching the account-tz report), falls back to browser-local', () => {
+    // 2026-07-14T23:30:00Z is still July 14 in UTC but already July 15 in Vilnius (UTC+3 summer)
+    const ms = Date.parse('2026-07-14T23:30:00.000Z')
+    expect(dayStrInTz(ms, 'UTC')).toBe('2026-07-14')
+    expect(dayStrInTz(ms, 'Europe/Vilnius')).toBe('2026-07-15')
+    expect(dayStrInTz(ms, 'Not/AZone')).toBe(localDayStr(ms)) // bad zone → browser-local, no throw
+    expect(dayStrInTz(ms)).toBe(localDayStr(ms)) // omitted → browser-local
+  })
+
+  it('hourInTz resolves the hour-of-day in a given zone', () => {
+    const iso = '2026-07-14T23:30:00.000Z'
+    expect(hourInTz(iso, 'UTC')).toBe(23)
+    expect(hourInTz(iso, 'Europe/Vilnius')).toBe(2) // 02:30 next day, UTC+3
+    expect(Number.isNaN(hourInTz('garbage', 'UTC'))).toBe(true)
   })
 
   it('hourlyBuckets counts per hour of day (24 buckets), dropping unparseable timestamps', () => {

@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
+import { applyBranding, type Branding } from '@/lib/branding'
+import { useFmt } from '@/lib/datetime'
 import { mapboxgl, styleForTheme, watchMapLoad } from '@/lib/map'
-import { expiryLabel, fetchPublicShare, type PublicShare } from '@/lib/share'
+import { expiryLabel, fetchPublicBranding, fetchPublicShare, type PublicShare } from '@/lib/share'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 const POLL_MS = 15_000
@@ -16,12 +18,28 @@ const POLL_MS = 15_000
  */
 export function SharePage({ token }: { token: string }) {
   const { t } = useTranslation()
+  const { dt } = useFmt()
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MbMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
   const [share, setShare] = useState<PublicShare | null>(null)
   const [state, setState] = useState<'loading' | 'ok' | 'gone' | 'error'>('loading')
   const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
+  // white-label: wear the reseller tenant's product name/logo (resolved by Host) instead of the
+  // hardcoded Orbetra brand — the public link is served on the tenant's own custom domain
+  const [branding, setBranding] = useState<Branding | null>(null)
+  const [productName, setProductName] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void fetchPublicBranding().then((b) => {
+      if (!alive || b === null) return
+      applyBranding(b.branding) // accent colors (contrast-clamped) + document.title
+      setBranding(b.branding)
+      setProductName(b.productName ?? b.branding.productName ?? null)
+    })
+    return () => { alive = false }
+  }, [])
 
   // poll the public endpoint
   useEffect(() => {
@@ -97,8 +115,22 @@ export function SharePage({ token }: { token: string }) {
               {exp.expired ? t('devices.share.expired') : t(`devices.share.expiresIn.${exp.unit}`, { n: exp.value })}
             </span>
           )}
+          {/* last-updated: a shared marker can sit on a stale fix (device offline/parked) — show
+              the fix time so a viewer can tell a live position from an old one */}
+          {share?.position && (
+            <span className="text-xs text-muted" data-testid="share-updated">{t('share.updated', { time: dt(share.position.fixTime) })}</span>
+          )}
         </div>
-        <span className="text-xs text-muted">{t('share.poweredBy')}</span>
+        {/* white-label brand: tenant product name/logo when the Host resolves to a tenant, else the
+            platform's "Powered by Orbetra" attribution */}
+        {productName !== null ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted" data-testid="share-brand">
+            {branding?.logoUrl != null && branding.logoUrl !== '' && <img src={branding.logoUrl} alt="" className="h-4 w-4" />}
+            {productName}
+          </span>
+        ) : (
+          <span className="text-xs text-muted">{t('share.poweredBy')}</span>
+        )}
       </header>
 
       <div className="relative flex-1">

@@ -99,7 +99,10 @@
       "paused": "Paused"
     },
     "actionError": "Couldn't reach Stripe — please try again.",
-    "loadError": "Couldn't load billing status."
+    "loadError": "Couldn't load billing status.",
+    "ends": "Ends",
+    "pastDue": "Past due",
+    "fixPayment": "Fix payment"
   },
   "branding": {
     "title": "Branding",
@@ -254,7 +257,14 @@
       "remove": "Remove {{target}}"
     },
     "cooldownValue": "{{s}} s",
-    "actions": "Actions"
+    "actions": "Actions",
+    "cfgOpt": {
+      "on": {
+        "enter": "Enter",
+        "exit": "Exit",
+        "both": "Both"
+      }
+    }
   },
   "playback": {
     "title": "History playback",
@@ -632,7 +642,8 @@
       "device_offline": "offline {{hours}} h (≥ {{threshold}} h)",
       "panic": "SOS triggered",
       "power_cut": "external power lost",
-      "fuel_theft": "fuel dropped {{drop}} {{unit}}"
+      "fuel_theft": "fuel dropped {{drop}} {{unit}}",
+      "fuel_theft_vol": "fuel dropped {{drop}}"
     }
   },
   "reports": {
@@ -674,11 +685,13 @@
       "maxSpeed": "Max speed",
       "distanceKm": "Distance (km)",
       "distanceMi": "Distance (mi)",
-      "maxSpeedMph": "Max mph"
+      "maxSpeedMph": "Max mph",
+      "hoursH": "Engine hours (h)"
     },
     "account": "Account",
     "exportPdf": "Export PDF",
-    "pdfTitle": "{{type}} report"
+    "pdfTitle": "{{type}} report",
+    "pdfGenerated": "Generated {{at}}"
   },
   "apiKeys": {
     "title": "API keys",
@@ -750,7 +763,8 @@
     "poweredBy": "Powered by Orbetra",
     "expiredTitle": "Link expired",
     "expiredBody": "This tracking link is no longer active.",
-    "noFix": "Waiting for the first valid position…"
+    "noFix": "Waiting for the first valid position…",
+    "updated": "Updated {{time}}"
   },
   "drivers": {
     "title": "Drivers",
@@ -837,7 +851,9 @@
     "actionError": "Action failed — try again.",
     "actions": "Actions",
     "everyMi": "every {{n}} mi",
-    "miLeft": "{{n}} mi left"
+    "miLeft": "{{n}} mi left",
+    "intervalMi": "Every (mi)",
+    "currentOdoMi": "Current odometer (mi)"
   },
   "scheduled": {
     "title": "Scheduled reports",

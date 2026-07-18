@@ -24,6 +24,12 @@ export interface BillingDeps {
 }
 
 const ACTIVE = new Set(['active', 'trialing'])
+/** Subscription statuses that mean the tenant has NO live subscription and may start a FRESH one.
+ *  Everything else (active, trialing, but ALSO past_due, unpaid, incomplete, paused) is an EXISTING
+ *  subscription — a payment problem is fixed in the Customer Portal, never by opening a second
+ *  subscription (which would double-bill). Only a fully ended one is re-subscribable. */
+const RESUBSCRIBABLE = new Set(['canceled', 'incomplete_expired'])
+const hasLiveSubscription = (status: string | null | undefined): boolean => status != null && !RESUBSCRIBABLE.has(status)
 
 /** A safe absolute http(s) base URL from the configured value or the request Origin, else null. */
 function baseUrl(configured: string | undefined, origin: string | undefined): string | null {
@@ -83,9 +89,12 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
 
     const tenant = await deps.db.tenants.get(auth.tenantId)
     if (tenant === null) return problem(c, 404, 'Not Found')
-    // never create a SECOND subscription for an already-subscribed tenant (double-billing guard):
-    // an active/trialing tenant is sent to the portal to manage, not through Checkout again
-    if (tenant.subscriptionStatus != null && ACTIVE.has(tenant.subscriptionStatus)) return problem(c, 409, 'Conflict', 'already_subscribed')
+    // never create a SECOND subscription for a tenant that already has a live one (double-billing
+    // guard). Status is read server-side (never trusted from the browser). This covers not just
+    // active/trialing but ALSO past_due/unpaid/incomplete/paused: those keep the existing
+    // subscription, so the tenant is sent to the Customer Portal to FIX PAYMENT, not through
+    // Checkout again. The UI reads `already_subscribed` → opens the portal (POST /v1/billing/portal).
+    if (hasLiveSubscription(tenant.subscriptionStatus)) return problem(c, 409, 'Conflict', 'already_subscribed')
     const customerId = await deps.stripe.ensureCustomer({ tenantId: tenant.id, name: tenant.name, existingCustomerId: tenant.stripeCustomerId })
     if (tenant.stripeCustomerId !== customerId) await deps.db.tenants.setStripeCustomer(tenant.id, customerId)
     const url = await deps.stripe.createCheckoutSession({

@@ -99,7 +99,10 @@
       "paused": "Wstrzymana"
     },
     "actionError": "Nie udało się połączyć ze Stripe — spróbuj ponownie.",
-    "loadError": "Nie udało się załadować statusu płatności."
+    "loadError": "Nie udało się załadować statusu płatności.",
+    "ends": "Kończy się",
+    "pastDue": "Zaległa",
+    "fixPayment": "Napraw płatność"
   },
   "branding": {
     "title": "Marka",
@@ -254,7 +257,14 @@
       "remove": "Usuń {{target}}"
     },
     "cooldownValue": "{{s}} s",
-    "actions": "Akcje"
+    "actions": "Akcje",
+    "cfgOpt": {
+      "on": {
+        "enter": "Wjazd",
+        "exit": "Wyjazd",
+        "both": "Oba"
+      }
+    }
   },
   "playback": {
     "title": "Odtwarzanie historii",
@@ -632,7 +642,8 @@
       "device_offline": "offline {{hours}} godz. (≥ {{threshold}} godz.)",
       "panic": "Alarm SOS",
       "power_cut": "utrata zasilania zewnętrznego",
-      "fuel_theft": "spadek paliwa {{drop}} {{unit}}"
+      "fuel_theft": "spadek paliwa {{drop}} {{unit}}",
+      "fuel_theft_vol": "spadek paliwa {{drop}}"
     }
   },
   "reports": {
@@ -674,11 +685,13 @@
       "maxSpeed": "Maks prędkość",
       "distanceKm": "Dystans (km)",
       "distanceMi": "Dystans (mi)",
-      "maxSpeedMph": "Maks. mph"
+      "maxSpeedMph": "Maks. mph",
+      "hoursH": "Godziny pracy (h)"
     },
     "account": "Konto",
     "exportPdf": "Eksportuj PDF",
-    "pdfTitle": "Raport: {{type}}"
+    "pdfTitle": "Raport: {{type}}",
+    "pdfGenerated": "Wygenerowano {{at}}"
   },
   "apiKeys": {
     "title": "Klucze API",
@@ -750,7 +763,8 @@
     "poweredBy": "Obsługiwane przez Orbetra",
     "expiredTitle": "Link wygasł",
     "expiredBody": "Ten link śledzenia nie jest już aktywny.",
-    "noFix": "Oczekiwanie na pierwszą prawidłową pozycję…"
+    "noFix": "Oczekiwanie na pierwszą prawidłową pozycję…",
+    "updated": "Zaktualizowano {{time}}"
   },
   "drivers": {
     "title": "Kierowcy",
@@ -837,7 +851,9 @@
     "actionError": "Akcja nie powiodła się — spróbuj ponownie.",
     "actions": "Akcje",
     "everyMi": "co {{n}} mi",
-    "miLeft": "pozostało {{n}} mi"
+    "miLeft": "pozostało {{n}} mi",
+    "intervalMi": "Co (mi)",
+    "currentOdoMi": "Aktualny przebieg (mi)"
   },
   "scheduled": {
     "title": "Zaplanowane raporty",

@@ -67,9 +67,12 @@ export function eventSummary(e: EventRow): string {
 }
 
 /** Display options for summaries: fmtSpeed renders a km/h value in the user's speed unit
- * (useUnits().speed) — overspeed summaries then read '45 mph > 56 mph' instead of km/h. */
+ * (useUnits().speed) — overspeed summaries then read '45 mph > 56 mph' instead of km/h. fmtVolume
+ * renders a litre value in the user's volume unit (useUnits().volumeL) so a litre fuel-theft drop
+ * reads in gallons for gallons accounts (and the unit label is localized, not a hardcoded 'L'). */
 export interface SummaryOpts {
   fmtSpeed?: (kmh: number) => string
+  fmtVolume?: (liters: number) => string
 }
 
 /** i18n descriptor for an event summary: a key under events.s.* plus interpolation params.
@@ -98,8 +101,15 @@ export function eventSummaryT(e: EventRow, opts: SummaryOpts = {}): { key: strin
       return { key: 'events.s.panic', params: {} }
     case 'power_cut':
       return { key: 'events.s.power_cut', params: {} }
-    case 'fuel_theft':
-      return { key: 'events.s.fuel_theft', params: { drop: num(p['drop']), unit: p['unit'] === 'liters' ? 'L' : '%' } }
+    case 'fuel_theft': {
+      // litres drop → honor the volume-unit pref (fmtVolume carries its own localized unit label);
+      // percentage drop has no volume conversion and keeps the '%' unit
+      const liters = p['unit'] === 'liters'
+      if (liters && typeof p['drop'] === 'number' && opts.fmtVolume !== undefined) {
+        return { key: 'events.s.fuel_theft_vol', params: { drop: opts.fmtVolume(p['drop']) } }
+      }
+      return { key: 'events.s.fuel_theft', params: { drop: num(p['drop']), unit: liters ? 'L' : '%' } }
+    }
     default:
       return null
   }

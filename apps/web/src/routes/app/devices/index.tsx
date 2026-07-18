@@ -70,6 +70,9 @@ export function DevicesPage() {
   const [eraseError, setEraseError] = useState(false)
   const refresh = () => void qc.invalidateQueries({ queryKey: ['devices'] })
   const isAdmin = ['platform_admin', 'tsp_admin'].includes(getCurrentUser()?.role ?? '')
+  // device writes require account_manager+ (WRITE_POLICY.device) — hide add/import and disable the
+  // inline odometer-source edit for viewers (they 403); reads stay open to all roles
+  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
   // derive the panel's device from the LIVE list (never a snapshot): a retire or refetch
   // closes/updates the panel instead of leaving a stale device you can still command
   const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
@@ -135,7 +138,7 @@ export function DevicesPage() {
         <div className="w-32">
           <Combobox
             value={r.odometerSource}
-            disabled={r.retiredAt !== null}
+            disabled={r.retiredAt !== null || !canWrite}
             aria-label={t('devices.odometer')}
             data-testid={`odometer-${r.imei}`}
             onChange={(v) => { setOdoError(false); void updateDevice(r.id, { odometerSource: v as OdometerSource }).then(refresh).catch(() => setOdoError(true)) }}
@@ -149,6 +152,7 @@ export function DevicesPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-4 py-6 md:px-8 md:py-8">
       <PageHeader className="mb-2" title={t('devices.title')} description={t('devices.desc')}>
+        {canWrite && (<>
         <Sheet open={importOpen} onOpenChange={setImportOpen}>
           <SheetTrigger asChild>
             <AdminButton variant="secondary" data-testid="import-open">
@@ -185,6 +189,7 @@ export function DevicesPage() {
             />
           </SheetContent>
         </Sheet>
+        </>)}
       </PageHeader>
 
       {retireError !== null && (

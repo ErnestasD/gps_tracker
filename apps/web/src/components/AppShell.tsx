@@ -81,7 +81,7 @@ const SECTIONS: NavSection[] = [
   {
     key: 'shell.admin',
     items: [
-      { key: 'shell.branding', icon: Palette, to: '/app/branding' },
+      { key: 'shell.branding', icon: Palette, to: '/app/branding', adminOnly: true },
       { key: 'shell.billing', icon: CreditCard, to: '/app/billing', adminOnly: true },
       { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true },
       { key: 'shell.webhooks', icon: Webhook, to: '/app/webhooks', adminOnly: true },

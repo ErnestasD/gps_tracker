@@ -7,7 +7,7 @@ import { Activity, AlertTriangle, Bell } from 'lucide-react'
 import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/AdminKit'
 import { AreaChartSvg, DonutSvg, HourlyBarsSvg, kindColor } from '@/components/admin/Charts'
 import { getLastPositions } from '@/lib/api'
-import { countDelta, dailyActiveDevices, dailyCounts, dailyKmSeries, eventSeverity, fleetCounts, hourlyBuckets, kindBreakdown, localDayStr, pctDelta } from '@/lib/dashboard'
+import { countDelta, dailyActiveDevices, dailyCounts, dailyKmSeries, dayStrInTz, eventSeverity, fleetCounts, hourInTz, hourlyBuckets, kindBreakdown, pctDelta } from '@/lib/dashboard'
 import { useFmt } from '@/lib/datetime'
 import { listAccounts, listDevices } from '@/lib/devices'
 import { listEvents, localizedEventSummary } from '@/lib/events'
@@ -74,9 +74,13 @@ export function DashboardPage() {
   const criticalPrev = rowsPrev.filter((e) => eventSeverity(e.kind) === 'critical').length
   const eventsDelta = trunc24 || truncPrev ? null : countDelta(rows24.length, rowsPrev.length)
   const criticalDelta = trunc24 || truncPrev ? null : countDelta(critical, criticalPrev)
-  const eventsSpark = dailyCounts(rows7, 7, now)
-  const criticalSpark = dailyCounts(rows7.filter((e) => eventSeverity(e.kind) === 'critical'), 7, now)
-  const hourly = hourlyBuckets(rows7)
+  // bucket days/hours on the display-pref timezone (not the browser zone) so the dashboard agrees
+  // with the account-tz report buckets and with the event times rendered everywhere else
+  const tz = u.prefs.timeZone !== 'auto' ? u.prefs.timeZone : undefined
+  const dayOfTz = (iso: string) => dayStrInTz(Date.parse(iso), tz)
+  const eventsSpark = dailyCounts(rows7, 7, now, dayOfTz)
+  const criticalSpark = dailyCounts(rows7.filter((e) => eventSeverity(e.kind) === 'critical'), 7, now, dayOfTz)
+  const hourly = hourlyBuckets(rows7, (iso) => hourInTz(iso, tz))
   const breakdown = kindBreakdown(rows7)
   const recent = rows24.slice(0, 6)
 
@@ -87,8 +91,12 @@ export function DashboardPage() {
   const activeSpark = dailyActiveDevices(mileage.data?.rows ?? []).slice(-7).map((s) => s.count)
   const yest = new Date(now)
   yest.setDate(yest.getDate() - 1)
-  const todayKm = series.find((s) => s.day === localDayStr(now))?.km ?? 0
-  const yesterdayKm = series.find((s) => s.day === localDayStr(yest.getTime()))?.km ?? 0
+  // the mileage series `day` is bucketed by the ACCOUNT timezone server-side (reports route forces
+  // account.timezone), so match today/yesterday on THAT zone — not the display-pref tz — or the
+  // lookup can miss by a day for a user whose display tz differs from their account (review MED)
+  const acctTz = accounts.data?.[0]?.timezone
+  const todayKm = series.find((s) => s.day === dayStrInTz(now, acctTz))?.km ?? 0
+  const yesterdayKm = series.find((s) => s.day === dayStrInTz(yest.getTime(), acctTz))?.km ?? 0
   const kmDelta = mileage.data !== undefined ? pctDelta(todayKm, yesterdayKm) : null
   // multi-account tenants: say WHICH account the mileage widgets cover (mirrors reports.tsx's
   // first-account default but had no scope indication)
@@ -305,7 +313,7 @@ export function DashboardPage() {
                   <Icon className="h-3.5 w-3.5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate" style={{ color: 'var(--admin-ink)' }}>{localizedEventSummary(t, e, { fmtSpeed: u.speed })}</div>
+                  <div className="truncate" style={{ color: 'var(--admin-ink)' }}>{localizedEventSummary(t, e, { fmtSpeed: u.speed, fmtVolume: u.volumeL })}</div>
                   <div className="truncate text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
                     {deviceName.get(String(e.deviceId)) ?? e.deviceId} · {dt(e.at)}
                   </div>

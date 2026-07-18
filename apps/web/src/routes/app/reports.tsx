@@ -8,7 +8,7 @@ import { DatePicker } from '@/components/admin/DatePicker'
 import { useFmt } from '@/lib/datetime'
 import { listAccounts, listDevices } from '@/lib/devices'
 import { dayEndIso, dayStartIso } from '@/lib/playback'
-import { cellValue, COLUMNS, dateColumns, downloadCsv, downloadPdf, runReport, toCsv, unitColumns, REPORT_TYPES, type ReportResult, type ReportType } from '@/lib/reports'
+import { cellValue, COLUMNS, dateColumns, downloadCsv, downloadPdf, runReport, toCsv, unitColumns, REPORT_TYPES, type Column, type ReportResult, type ReportType } from '@/lib/reports'
 import { useUnits } from '@/lib/units'
 import { ScheduledReportsCard } from '@/routes/app/scheduledReports'
 
@@ -44,16 +44,31 @@ export function ReportsPage() {
   // datetime columns (trips start/end) go through dt — display prefs are "effective everywhere" (PR #101)
   const exportCols = (rt: ReportType) => dateColumns(unitColumns(COLUMNS[rt], units), dt)
   const cols = dateColumns(unitColumns(result ? COLUMNS[result.type] : COLUMNS[type], units), dt)
+  // localized header labels (same lookup the on-screen table uses) — threaded into the CSV and PDF
+  // exports so the downloaded document's headers match the screen, not the raw column slugs
+  const headerLabels = (cs: Column[]) => cs.map((col) => t(`reports.col.${col.label}`, col.label))
 
   const exportCsv = () => {
     if (result === undefined) return
-    downloadCsv(`${result.type}-report.csv`, toCsv(exportCols(result.type), result.rows))
+    const cs = exportCols(result.type)
+    downloadCsv(`${result.type}-report.csv`, toCsv(cs, result.rows, headerLabels(cs)))
   }
   const exportPdf = () => {
     if (result === undefined) return
     // localized PDF title from the report-type label — no raw slug, no hardcoded brand
     // (white-label: the platform name doesn't belong in a tenant's export)
-    void downloadPdf(`${result.type}-report.pdf`, t('reports.pdfTitle', { type: t(`reports.t.${result.type}`) }), exportCols(result.type), result.rows)
+    const cs = exportCols(result.type)
+    void downloadPdf(
+      `${result.type}-report.pdf`,
+      {
+        title: t('reports.pdfTitle', { type: t(`reports.t.${result.type}`) }),
+        // generated timestamp rendered in the display-pref timezone/format (not hardcoded UTC/English)
+        subtitle: t('reports.pdfGenerated', { at: dt(new Date().toISOString()) }),
+        headers: headerLabels(cs),
+      },
+      cs,
+      result.rows,
+    )
   }
 
   return (

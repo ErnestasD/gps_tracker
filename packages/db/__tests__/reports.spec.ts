@@ -14,6 +14,7 @@ const IMAGE = 'timescale/timescaledb-ha:pg16'
 const T1 = '11111111-1111-1111-1111-111111111111'
 const A1 = 'aaaaaaaa-1111-1111-1111-111111111111'
 const A1B = 'aaaaaaaa-1111-1111-1111-1111111111bb' // a SECOND account under the same tenant T1
+const A3 = 'aaaaaaaa-1111-1111-1111-1111111111c3' // a THIRD account under T1 — its trip's device has NO devices row
 const T2 = '22222222-2222-2222-2222-222222222222'
 const A2 = 'aaaaaaaa-2222-2222-2222-222222222222'
 const scope1: ReportScope = { tenantId: T1, accountId: A1 }
@@ -53,6 +54,15 @@ beforeAll(async () => {
     "startTime" timestamptz, "endTime" timestamptz, "distanceM" int, "distanceSource" text, "maxSpeed" int, "idleS" int)`)
   await pool.query(`CREATE TABLE events (
     id bigserial PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "deviceId" bigint, "ruleId" uuid, kind text, at timestamptz, payload jsonb)`)
+  // devices table for the report label join (name/plate). Scoped to tenant/account like production.
+  await pool.query(`CREATE TABLE devices (id bigint PRIMARY KEY, "tenantId" uuid, "accountId" uuid, name text, plate text)`)
+  // device 5 (sibling account A1B) deliberately has a NULL plate to prove devicePlate can be null;
+  // A3's device (id 77) has NO devices row at all → the LEFT JOIN yields null name AND null plate.
+  await pool.query(
+    `INSERT INTO devices (id,"tenantId","accountId",name,plate) VALUES
+       (1,$1,$2,'Van One','ABC-123'), (9,$3,$4,'Truck Nine','ZZ-999'), (5,$1,$5,'Car Five',NULL)`,
+    [T1, A1, T2, A2, A1B],
+  )
 
   // DST straddle (Europe/Warsaw fall-back 2026-10-25): local days —
   //  C 2026-10-24T21:00Z → 23:00 CEST → 2026-10-24
@@ -65,6 +75,8 @@ beforeAll(async () => {
   await seedTrip(9, '2026-10-25T10:00:00Z', '2026-10-25T10:30:00Z', 9999, 0, { t: T2, a: A2 })
   // isolation within the tenant: a trip for a SIBLING account (T1/A1B) must not appear in A1's report
   await seedTrip(5, '2026-10-25T10:00:00Z', '2026-10-25T10:30:00Z', 7777, 0, { t: T1, a: A1B })
+  // A3: a trip whose device (77) has NO devices row → the label LEFT JOIN must still yield the row
+  await seedTrip(77, '2026-10-25T10:00:00Z', '2026-10-25T10:30:00Z', 555, 0, { t: T1, a: A3 })
 
   await seedEvent(1, 'overspeed', '2026-10-25T08:00:00Z', { speedKmh: 95, limitKmh: 90 })
   await seedEvent(1, 'overspeed', '2026-10-25T09:00:00Z', { speedKmh: 110, limitKmh: 90 })
@@ -106,12 +118,12 @@ describe('E06-1 mileage report — account-TZ day bucketing (§7.7 DST)', () => 
 describe('E06-1 other report types', () => {
   it('overspeed counts events + max speed per local day (device-scoped, isolated)', async () => {
     const rows = (await runReport(pool, 'overspeed', scope1, params('Europe/Warsaw'))).rows as DailyOverspeedRow[]
-    expect(rows).toEqual([{ day: '2026-10-25', deviceId: '1', count: 2, maxSpeedKmh: 110 }])
+    expect(rows).toEqual([{ day: '2026-10-25', deviceId: '1', deviceName: 'Van One', devicePlate: 'ABC-123', count: 2, maxSpeedKmh: 110 }])
   })
 
   it('geofence counts enters/exits', async () => {
     const rows = (await runReport(pool, 'geofence', scope1, params('Europe/Warsaw'))).rows as DailyGeofenceRow[]
-    expect(rows).toEqual([{ day: '2026-10-25', deviceId: '1', enters: 1, exits: 1 }])
+    expect(rows).toEqual([{ day: '2026-10-25', deviceId: '1', deviceName: 'Van One', devicePlate: 'ABC-123', enters: 1, exits: 1 }])
   })
 
   it('engine_hours sums trip durations per day', async () => {
@@ -146,14 +158,31 @@ describe('E06-1 other report types', () => {
 
   it('tenant/account isolation: scope2 sees only its own device-9 trip', async () => {
     const rows = (await runReport(pool, 'mileage', { tenantId: T2, accountId: A2 }, params('UTC'))).rows as DailyMileageRow[]
-    expect(rows).toEqual([{ day: '2026-10-25', deviceId: '9', trips: 1, distanceM: 9999 }])
+    expect(rows).toEqual([{ day: '2026-10-25', deviceId: '9', deviceName: 'Truck Nine', devicePlate: 'ZZ-999', trips: 1, distanceM: 9999 }])
   })
 
   it('cross-account isolation WITHIN a tenant: A1 report excludes the sibling A1B trip', async () => {
     const a1 = (await runReport(pool, 'mileage', scope1, params('UTC'))).rows as DailyMileageRow[]
     expect(a1.some((r) => r.deviceId === '5')).toBe(false) // device 5 lives in A1B
     const a1b = (await runReport(pool, 'mileage', { tenantId: T1, accountId: A1B }, params('UTC'))).rows as DailyMileageRow[]
-    expect(a1b).toEqual([{ day: '2026-10-25', deviceId: '5', trips: 1, distanceM: 7777 }])
+    // device 5's plate is NULL in the devices table → devicePlate comes back null, name still present
+    expect(a1b).toEqual([{ day: '2026-10-25', deviceId: '5', deviceName: 'Car Five', devicePlate: null, trips: 1, distanceM: 7777 }])
+  })
+
+  it('device name + plate are joined onto every report row (mileage + trips), raw id kept', async () => {
+    const mil = (await runReport(pool, 'mileage', scope1, params('Europe/Warsaw'))).rows as DailyMileageRow[]
+    expect(mil.length).toBeGreaterThan(0)
+    for (const r of mil) {
+      expect(r.deviceId).toBe('1') // raw id preserved
+      expect(r).toMatchObject({ deviceName: 'Van One', devicePlate: 'ABC-123' })
+    }
+    const trps = (await runReport(pool, 'trips', scope1, params('Europe/Warsaw'))).rows as { deviceId: string; deviceName: string | null; devicePlate: string | null }[]
+    expect(trps.every((r) => r.deviceName === 'Van One' && r.devicePlate === 'ABC-123')).toBe(true)
+  })
+
+  it('a report row for a device with NO devices row still returns, with null labels (LEFT JOIN)', async () => {
+    const rows = (await runReport(pool, 'mileage', { tenantId: T1, accountId: A3 }, params('UTC'))).rows as DailyMileageRow[]
+    expect(rows).toEqual([{ day: '2026-10-25', deviceId: '77', deviceName: null, devicePlate: null, trips: 1, distanceM: 555 }])
   })
 
   it('a numeric-but-oversized deviceId is dropped, not a 500 (bigint overflow guard)', async () => {

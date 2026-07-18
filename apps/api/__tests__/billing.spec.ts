@@ -218,6 +218,31 @@ describe('billing lifecycle (ADR-024)', () => {
     expect(second.status).toBe(409) // no second subscription created
   })
 
+  // a payment failure (past_due) leaves the subscription in place; a second Checkout would open a
+  // DUPLICATE subscription = double-billing. The guard must send these to the portal, not Checkout.
+  for (const status of ['past_due', 'unpaid', 'incomplete', 'paused'] as const) {
+    it(`checkout is refused for a live-but-nonactive subscription (${status}) → 409, no 2nd subscription`, async () => {
+      const { token, cus } = await freshTenant(`Live-${status}`)
+      await req(port, '/v1/billing/checkout', token, 'POST')
+      await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent(`evt_${status}`, cus, 'customer.subscription.updated', status, 100), { 'stripe-signature': 'valid' })
+      const before = calls.checkout
+      const second = await req(port, '/v1/billing/checkout', token, 'POST')
+      expect(second.status).toBe(409) // routed to portal, NOT a new subscription
+      expect(calls.checkout).toBe(before) // createCheckoutSession was never invoked
+    })
+  }
+
+  // a fully ENDED subscription (canceled / never-activated) IS re-subscribable — checkout proceeds.
+  for (const status of ['canceled', 'incomplete_expired'] as const) {
+    it(`checkout is allowed again after an ended subscription (${status}) → 200`, async () => {
+      const { token, cus } = await freshTenant(`Ended-${status}`)
+      await req(port, '/v1/billing/checkout', token, 'POST')
+      await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent(`evt_end_${status}`, cus, 'customer.subscription.updated', status, 100), { 'stripe-signature': 'valid' })
+      const res = await req(port, '/v1/billing/checkout', token, 'POST')
+      expect(res.status).toBe(200) // no live subscription → a fresh one is allowed
+    })
+  }
+
   it('checkout rejects a price id outside the server allowlist (never trust the client)', async () => {
     const { token } = await freshTenant('BadPrice')
     const res = await req(port, '/v1/billing/checkout', token, 'POST', { priceId: 'price_attacker_free' })

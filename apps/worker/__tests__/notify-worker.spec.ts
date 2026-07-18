@@ -3,7 +3,7 @@ import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 import { describe, expect, it, vi } from 'vitest'
 
-import { loadRuleChannels, runNotify, type NotifyWorkerDeps } from '../src/jobs/notifyWorker.js'
+import { loadRuleChannels, resolveNotifyContext, runNotify, type NotifyWorkerDeps } from '../src/jobs/notifyWorker.js'
 import type { NotifyJob } from '../src/jobs/notifyQueue.js'
 
 function fakePool(channels: unknown, enabled = true) {
@@ -54,6 +54,37 @@ describe('E05-5 loadRuleChannels', () => {
 
   it('returns [] for a disabled/absent rule', async () => {
     expect(await loadRuleChannels(fakePool(null, false), 'r1')).toEqual([])
+  })
+})
+
+describe('resolveNotifyContext', () => {
+  const rowPool = (row: Record<string, unknown> | undefined) =>
+    ({ query: vi.fn(() => Promise.resolve({ rows: row === undefined ? [] : [row], rowCount: row === undefined ? 0 : 1 })) }) as unknown as Pool
+
+  it('resolves the device name, account timezone, and productName brand', async () => {
+    const ctx = await resolveNotifyContext(rowPool({ device_name: 'Vilnius Van 1', device_plate: 'ABC-123', timezone: 'Europe/Vilnius', tenant_name: 'Acme', branding: { productName: 'Acme Fleet' } }), '42')
+    expect(ctx).toEqual({ deviceLabel: 'Vilnius Van 1', timezone: 'Europe/Vilnius', brand: 'Acme Fleet' })
+  })
+
+  it('falls back to the plate for the label and the tenant name for the brand', async () => {
+    const ctx = await resolveNotifyContext(rowPool({ device_name: null, device_plate: 'ABC-123', timezone: 'UTC', tenant_name: 'Acme', branding: {} }), '42')
+    expect(ctx).toEqual({ deviceLabel: 'ABC-123', timezone: 'UTC', brand: 'Acme' })
+  })
+
+  it('returns empty context for an unknown device (→ id/UTC/Orbetra defaults downstream)', async () => {
+    expect(await resolveNotifyContext(rowPool(undefined), '42')).toEqual({})
+  })
+
+  it('never queries for a non-numeric device id', async () => {
+    const query = vi.fn(() => Promise.resolve({ rows: [], rowCount: 0 }))
+    const pool = { query } as unknown as Pool
+    expect(await resolveNotifyContext(pool, 'not-a-number')).toEqual({})
+    expect(query).not.toHaveBeenCalled()
+  })
+
+  it('swallows a query error and returns empty context (an alert is never dropped)', async () => {
+    const pool = { query: vi.fn(() => Promise.reject(new Error('db down'))) } as unknown as Pool
+    expect(await resolveNotifyContext(pool, '42')).toEqual({})
   })
 })
 

@@ -99,7 +99,7 @@ export function NotificationsBell() {
                   <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SEVERITY_TONE[eventSeverity(e.kind)] }} aria-hidden />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm" style={{ color: 'var(--admin-ink)', fontWeight: isRead ? 400 : 600 }}>
-                      {localizedEventSummary(t, e, { fmtSpeed: u.speed })}
+                      {localizedEventSummary(t, e, { fmtSpeed: u.speed, fmtVolume: u.volumeL })}
                     </div>
                     <div className="text-[11px]" style={{ color: 'var(--admin-ink-soft)' }}>
                       {t(`events.k.${e.kind}`, e.kind)} · {dt(e.at)}

@@ -14,6 +14,7 @@ export const KM_PER_MI = 1.609344
 export const L_PER_GAL = 3.785411784 // US gallon
 
 export const kmToMi = (km: number): number => km / KM_PER_MI
+export const miToKm = (mi: number): number => mi * KM_PER_MI
 export const kmhToMph = (kmh: number): number => kmh / KM_PER_MI
 export const lToGal = (l: number): number => l / L_PER_GAL
 

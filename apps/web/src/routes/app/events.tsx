@@ -130,7 +130,7 @@ export function EventsPage() {
                       <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{dt(r.at)}</td>
                       <td className="px-4 py-2.5"><Badge tone={TONE[severityOf(r.kind)]}>{t(`events.k.${r.kind}`, r.kind)}</Badge></td>
                       <td className="px-4 py-2.5">{deviceName(r.deviceId)}</td>
-                      <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink-soft)' }}>{localizedEventSummary(t, r, { fmtSpeed: u.speed })}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink-soft)' }}>{localizedEventSummary(t, r, { fmtSpeed: u.speed, fmtVolume: u.volumeL })}</td>
                       <td className="hidden px-4 py-2.5 md:table-cell" style={{ color: 'var(--admin-ink-soft)' }}>
                         {(() => {
                           const sev = severityOf(r.kind)

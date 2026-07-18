@@ -1,3 +1,4 @@
+import type { Branding } from './branding'
 import { getJson, mutate } from './client'
 import { API_BASE } from './http'
 
@@ -35,6 +36,23 @@ export const createShare = (deviceId: string, ttlHours: number, label?: string) 
   mutate<CreatedShare>('POST', `/v1/devices/${encodeURIComponent(deviceId)}/shares`, { ttlHours, ...(label ? { label } : {}) })
 export const listShares = (deviceId: string) => getJson<ShareLinkView[]>(`/v1/devices/${encodeURIComponent(deviceId)}/shares`)
 export const revokeShare = (id: string) => mutate<{ ok: true }>('DELETE', `/v1/shares/${encodeURIComponent(id)}`)
+
+/** Public tenant branding for the requesting Host (custom domain) — no auth (GET /v1/branding,
+ * caddyAsk.ts). Lets the public share page wear the reseller's product name/logo instead of the
+ * hardcoded Orbetra brand (white-label). Returns null on any error / non-tenant host. */
+export interface PublicBranding {
+  branding: Branding
+  productName?: string
+}
+export async function fetchPublicBranding(): Promise<PublicBranding | null> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/branding`)
+    if (!res.ok) return null
+    return (await res.json()) as PublicBranding
+  } catch {
+    return null
+  }
+}
 
 /** Public resolve — NO auth (the token is the capability). 404 ⇒ expired/revoked/unknown. */
 export async function fetchPublicShare(token: string): Promise<PublicShare | null> {

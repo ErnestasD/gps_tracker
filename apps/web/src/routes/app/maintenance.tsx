@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { listDevices } from '@/lib/devices'
 import { createMaintenance, deleteMaintenance, dueVariant, listMaintenance, markServiced, type MaintenanceView } from '@/lib/maintenance'
-import { kmToMi, useUnits, type Units } from '@/lib/units'
+import { kmToMi, miToKm, useUnits, type Units } from '@/lib/units'
 
 /** row model for the DataTable: the view plus the resolved device name (searchable/sortable). */
 type MaintRow = MaintenanceView & { deviceName: string }
@@ -286,6 +286,10 @@ function MaintForm({ devices, onCreated, onCancel }: {
   onCancel: () => void
 }) {
   const { t } = useTranslation()
+  const u = useUnits()
+  // the form reads in the display distance unit; storage stays km, so convert mi → km on submit
+  const mi = u.prefs.unitDistance === 'mi'
+  const toKm = (v: string): number => (mi ? miToKm(Number(v)) : Number(v))
   const [deviceId, setDeviceId] = useState('')
   const [title, setTitle] = useState('')
   const [intervalKm, setIntervalKm] = useState('')
@@ -299,7 +303,7 @@ function MaintForm({ devices, onCreated, onCancel }: {
     e.preventDefault()
     setError(null)
     if (title.trim() === '' || dev === '') { setError(t('maint.needFields')); return }
-    const km = intervalKm.trim() === '' ? null : Number(intervalKm)
+    const km = intervalKm.trim() === '' ? null : toKm(intervalKm)
     const days = intervalDays.trim() === '' ? null : Number(intervalDays)
     if (km === null && days === null) { setError(t('maint.needInterval')); return }
     setBusy(true)
@@ -309,7 +313,7 @@ function MaintForm({ devices, onCreated, onCancel }: {
       await createMaintenance({
         deviceId: dev, title: title.trim(),
         intervalKm: km, intervalDays: days,
-        ...(km !== null && odoKm.trim() !== '' ? { lastServiceOdoKm: Number(odoKm) } : {}),
+        ...(km !== null && odoKm.trim() !== '' ? { lastServiceOdoKm: toKm(odoKm) } : {}),
       })
       onCreated() // parent closes the sheet; unmount resets the form
     } catch {
@@ -331,11 +335,11 @@ function MaintForm({ devices, onCreated, onCancel }: {
       </Field>
       <Field label={t('maint.itemTitle')}><AdminInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} data-testid="maint-title" /></Field>
       <div className="grid grid-cols-2 gap-2">
-        <Field label={t('maint.intervalKm')}><AdminInput type="number" min={1} value={intervalKm} onChange={(e) => setIntervalKm(e.target.value)} data-testid="maint-km" /></Field>
+        <Field label={mi ? t('maint.intervalMi') : t('maint.intervalKm')}><AdminInput type="number" min={1} value={intervalKm} onChange={(e) => setIntervalKm(e.target.value)} data-testid="maint-km" /></Field>
         <Field label={t('maint.intervalDays')}><AdminInput type="number" min={1} value={intervalDays} onChange={(e) => setIntervalDays(e.target.value)} data-testid="maint-days" /></Field>
       </div>
       {/* no placeholder: a blank field baselines to the device's CURRENT odometer (never 0) */}
-      <Field label={t('maint.currentOdo')}><AdminInput type="number" min={0} value={odoKm} onChange={(e) => setOdoKm(e.target.value)} data-testid="maint-odo" /></Field>
+      <Field label={mi ? t('maint.currentOdoMi') : t('maint.currentOdo')}><AdminInput type="number" min={0} value={odoKm} onChange={(e) => setOdoKm(e.target.value)} data-testid="maint-odo" /></Field>
       {error !== null && <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="maint-error">{error}</p>}
       <SheetFooter className="mt-2">
         <AdminButton variant="secondary" onClick={onCancel}>{t('admin.cancel')}</AdminButton>
