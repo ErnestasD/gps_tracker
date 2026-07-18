@@ -130,3 +130,12 @@ describe('pdfSafe (jsPDF WinAnsi fallback)', () => {
     expect(pdfSafe('Motorstunden Gerät ö ü ß')).toBe('Motorstunden Gerät ö ü ß')
   })
 })
+
+describe('CSV formula-injection guard (review LOW)', () => {
+  it('prefixes a cell starting with = + - @ so spreadsheets treat it as text', () => {
+    const cols = COLUMNS.mileage
+    const csv = toCsv(cols, [{ day: '2026-07-18', deviceId: '=HYPERLINK("evil")', trips: 1, distanceM: 0 }])
+    expect(csv).toContain("'=HYPERLINK")
+    expect(csv).not.toMatch(/(^|,)=HYPERLINK/)
+  })
+})

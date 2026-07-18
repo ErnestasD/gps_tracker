@@ -20,7 +20,11 @@ export function BillingPage() {
   const b = billing.data
   // a lapsed subscription (past_due/unpaid/canceled) is FIXED via the Stripe portal, not by
   // subscribing to a new plan — don't show the plan picker for those; send them to Manage instead
-  const recoverable = ['past_due', 'unpaid', 'canceled'].includes(b?.status ?? '')
+  // payment-repair statuses go to the portal (Fix payment); a terminally-canceled sub is NOT
+  // recoverable via the portal — it must re-subscribe through the picker (matches the server's
+  // RESUBSCRIBABLE allowlist, which permits checkout for 'canceled'). Review HIGH: dropping
+  // 'canceled' here left a canceled tenant with no working re-subscribe path.
+  const recoverable = ['past_due', 'unpaid'].includes(b?.status ?? '')
   const showPicker = b?.configured === true && !b.active && !recoverable
   // only fetch the catalog when the picker is shown (each plan is a live Stripe price lookup);
   // catalog data is near-static, so cache it for the session

@@ -114,7 +114,11 @@ export const runReport = (type: ReportType, req: ReportRequest) => mutate<Report
  * CSV matches the on-screen table; omitted ⇒ the legacy `csvKey ?? key` slugs. */
 export function toCsv(columns: Column[], rows: Record<string, unknown>[], headers?: string[]): string {
   const esc = (v: unknown): string => {
-    const s = typeof v === 'string' ? v : v === null || v === undefined ? '' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v)
+    let s = typeof v === 'string' ? v : v === null || v === undefined ? '' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v)
+    // CSV formula-injection guard: a cell starting with = + - @ (or a tab/CR) becomes a live
+    // formula in Excel/Sheets. Device/driver names are now free text in exports (review LOW) —
+    // neutralize by prefixing an apostrophe so spreadsheets treat it as literal text.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
     return /["\n\r,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   const header = columns.map((col, i) => esc(headers?.[i] ?? col.csvKey ?? col.key)).join(',')

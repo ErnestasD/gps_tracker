@@ -15,6 +15,8 @@ export interface Device {
 export interface Account {
   id: string
   name: string
+  /** IANA account timezone (day-boundary basis for reports/mileage) — the API returns it. */
+  timezone?: string
 }
 export interface Profile {
   id: string

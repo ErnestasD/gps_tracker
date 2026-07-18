@@ -91,8 +91,12 @@ export function DashboardPage() {
   const activeSpark = dailyActiveDevices(mileage.data?.rows ?? []).slice(-7).map((s) => s.count)
   const yest = new Date(now)
   yest.setDate(yest.getDate() - 1)
-  const todayKm = series.find((s) => s.day === dayStrInTz(now, tz))?.km ?? 0
-  const yesterdayKm = series.find((s) => s.day === dayStrInTz(yest.getTime(), tz))?.km ?? 0
+  // the mileage series `day` is bucketed by the ACCOUNT timezone server-side (reports route forces
+  // account.timezone), so match today/yesterday on THAT zone — not the display-pref tz — or the
+  // lookup can miss by a day for a user whose display tz differs from their account (review MED)
+  const acctTz = accounts.data?.[0]?.timezone
+  const todayKm = series.find((s) => s.day === dayStrInTz(now, acctTz))?.km ?? 0
+  const yesterdayKm = series.find((s) => s.day === dayStrInTz(yest.getTime(), acctTz))?.km ?? 0
   const kmDelta = mileage.data !== undefined ? pctDelta(todayKm, yesterdayKm) : null
   // multi-account tenants: say WHICH account the mileage widgets cover (mirrors reports.tsx's
   // first-account default but had no scope indication)
