@@ -73,19 +73,30 @@ export async function reportDailyOverage(
   const subs = await deps.db.tenants.listActiveSubscribers()
   let reported = 0
   let devicesOver = 0
+  let failures = 0
   for (const s of subs) {
-    if (s.subscriptionPriceId === null) continue
-    const included = deps.stripe.includedFor(s.subscriptionPriceId)
-    if (included === undefined) continue // Direct plan (or unknown price) — no metered overage
-    // active devices for the day = the tenant's usage_daily row count for that day (one row/device-day)
-    const rows = await deps.db.usage.tenantSummary({ tenantId: s.tenantId }, { from: dayIso, to: dayIso })
-    const active = rows[0]?.deviceDays ?? 0
-    const over = overageDevices(active, included)
-    if (over <= 0) continue
-    // idempotency key = one report per (customer, day); a re-fire is a Stripe-side no-op
-    await deps.stripe.reportUsage({ customerId: s.stripeCustomerId, value: over, timestampS, identifier: `overage:${dayIso}:${s.stripeCustomerId}` })
-    reported++
-    devicesOver += over
+    // per-tenant isolation: ONE tenant's Stripe/usage error must not abort the loop and leave
+    // every remaining tenant unbilled for the day (review MED). Collect failures and rethrow at
+    // the end so BullMQ retries — the idempotency `identifier` makes already-reported tenants a
+    // Stripe-side no-op on the re-run.
+    try {
+      if (s.subscriptionPriceId === null) continue
+      const included = deps.stripe.includedFor(s.subscriptionPriceId)
+      if (included === undefined) continue // Direct plan (or unknown price) — no metered overage
+      // active devices for the day = the tenant's usage_daily row count for that day (one row/device-day)
+      const rows = await deps.db.usage.tenantSummary({ tenantId: s.tenantId }, { from: dayIso, to: dayIso })
+      const active = rows[0]?.deviceDays ?? 0
+      const over = overageDevices(active, included)
+      if (over <= 0) continue
+      // idempotency key = one report per (customer, day); a re-fire is a Stripe-side no-op
+      await deps.stripe.reportUsage({ customerId: s.stripeCustomerId, value: over, timestampS, identifier: `overage:${dayIso}:${s.stripeCustomerId}` })
+      reported++
+      devicesOver += over
+    } catch (err) {
+      failures++
+      console.error('stripe overage report failed for tenant', s.tenantId, err instanceof Error ? err.message : String(err))
+    }
   }
+  if (failures > 0) throw new Error(`stripe overage: ${failures}/${subs.length} tenant(s) failed for ${dayIso}`)
   return { subscribers: subs.length, reported, devicesOver }
 }

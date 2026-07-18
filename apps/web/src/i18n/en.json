@@ -97,7 +97,9 @@
       "incomplete": "Incomplete",
       "incomplete_expired": "Expired",
       "paused": "Paused"
-    }
+    },
+    "actionError": "Couldn't reach Stripe — please try again.",
+    "loadError": "Couldn't load billing status."
   },
   "branding": {
     "title": "Branding",
@@ -125,7 +127,8 @@
     "badDomain": "Enter a valid hostname (e.g. fleet.example.com).",
     "txtInstruction": "Add this TXT record to {{domain}}, then click Verify:",
     "certNote": "HTTPS certificates are issued automatically on the first secure request after a domain is verified.",
-    "domainLabel": "Domain"
+    "domainLabel": "Domain",
+    "actionError": "Action failed — try again."
   },
   "audit": {
     "title": "Audit log",
@@ -191,7 +194,8 @@
     "driver": "Driver",
     "noDriver": "No driver",
     "avgSpeed": "Avg speed",
-    "searchDriver": "Filter by driver…"
+    "searchDriver": "Filter by driver…",
+    "assignError": "Couldn't assign the driver — try again."
   },
   "rules": {
     "title": "Rules",
@@ -304,7 +308,8 @@
       "polygon": "Click the map to add points; close the shape to finish.",
       "circle": "Click to set the centre, then click again for the radius.",
       "corridor": "Click along the route; double-click to finish the line."
-    }
+    },
+    "deleteError": "Couldn't delete the geofence — try again."
   },
   "deviceList": {
     "title": "Devices",
@@ -557,7 +562,8 @@
     "addTitle": "New device",
     "plate": "Plate (optional)",
     "retireSure": "Retire {{name}} ({{imei}})? Ingest will reject this IMEI from now on.",
-    "eraseSure": "Permanently erase all data of {{name}}? History, trips, events and commands will be deleted. This cannot be undone."
+    "eraseSure": "Permanently erase all data of {{name}}? History, trips, events and commands will be deleted. This cannot be undone.",
+    "odoError": "Couldn't change the odometer source — try again."
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",
@@ -625,7 +631,8 @@
       "geofence": "{{name}} · {{transition}}",
       "device_offline": "offline {{hours}} h (≥ {{threshold}} h)",
       "panic": "SOS triggered",
-      "power_cut": "external power lost"
+      "power_cut": "external power lost",
+      "fuel_theft": "fuel dropped {{drop}} {{unit}}"
     }
   },
   "reports": {
@@ -696,7 +703,8 @@
     "active": "Active",
     "lastUsed": "last used",
     "neverUsed": "never used",
-    "emptyDesc": "Create your first key to integrate with the API."
+    "emptyDesc": "Create your first key to integrate with the API.",
+    "actionError": "Couldn't revoke the key — try again."
   },
   "webhooks": {
     "title": "Webhooks",
@@ -722,7 +730,8 @@
     "when": "When",
     "event": "Event",
     "status": "Status",
-    "noResponse": "no response"
+    "noResponse": "no response",
+    "actionError": "Action failed — try again."
   },
   "platform": {
     "title": "Platform",
@@ -779,7 +788,8 @@
       "overspeed": "Overspeed",
       "score": "Score"
     },
-    "actions": "Actions"
+    "actions": "Actions",
+    "deleteError": "Couldn't delete the driver — try again."
   },
   "maint": {
     "title": "Maintenance",
@@ -853,7 +863,8 @@
       "6": "Sat"
     },
     "addTitle": "Schedule a report",
-    "create": "Create"
+    "create": "Create",
+    "actionError": "Couldn't delete — try again."
   },
   "admin": {
     "search": "Search…",
@@ -869,7 +880,8 @@
     "cancel": "Cancel",
     "confirmTitle": "Are you sure?",
     "actions": "Actions",
-    "pickDate": "Pick a date"
+    "pickDate": "Pick a date",
+    "loadError": "Couldn't load — please try again."
   },
   "dash": {
     "title": "Overview",
@@ -913,5 +925,10 @@
     "empty": "No notifications",
     "viewAll": "All events",
     "titleUnread": "Notifications ({{n}} unread)"
+  },
+  "charts": {
+    "fuelTimeline": "Fuel level timeline",
+    "speedTimeline": "Playback speed timeline",
+    "voltageTimeline": "Voltage timeline"
   }
 }

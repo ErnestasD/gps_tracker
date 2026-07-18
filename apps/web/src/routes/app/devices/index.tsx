@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
 import { eraseDevice } from '@/lib/gdpr'
+import { liveStore } from '@/lib/liveStore'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { HealthCard } from '@/routes/app/devices/health'
 import { CanCard } from '@/routes/app/devices/can'
@@ -56,6 +57,7 @@ export function DevicesPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [retireError, setRetireError] = useState<string | null>(null)
+  const [odoError, setOdoError] = useState(false) // inline odometer-source change failed (was swallowed)
   const [commandsForId, setCommandsForId] = useState<string | null>(null)
   const [healthForId, setHealthForId] = useState<string | null>(null)
   const [shareForId, setShareForId] = useState<string | null>(null)
@@ -136,7 +138,7 @@ export function DevicesPage() {
             disabled={r.retiredAt !== null}
             aria-label={t('devices.odometer')}
             data-testid={`odometer-${r.imei}`}
-            onChange={(v) => void updateDevice(r.id, { odometerSource: v as OdometerSource }).then(refresh).catch(() => undefined)}
+            onChange={(v) => { setOdoError(false); void updateDevice(r.id, { odometerSource: v as OdometerSource }).then(refresh).catch(() => setOdoError(true)) }}
             options={ODOMETER_SOURCES.map((src) => ({ value: src, label: t(`devices.odo.${src}`) }))}
           />
         </div>
@@ -188,6 +190,11 @@ export function DevicesPage() {
       {retireError !== null && (
         <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="retire-error">
           {t('devices.retireError', { imei: retireError })}
+        </p>
+      )}
+      {odoError && (
+        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="odometer-error">
+          {t('devices.odoError')}
         </p>
       )}
       {eraseQueued && (
@@ -257,7 +264,10 @@ export function DevicesPage() {
           if (d === null) return
           setRetireError(null)
           void retireDevice(d.id)
-            .then(refresh)
+            .then(() => {
+              liveStore.evict(d.id) // drop the retired device from the live map immediately
+              refresh()
+            })
             .catch(() => setRetireError(d.imei))
         }}
       />
@@ -276,7 +286,10 @@ export function DevicesPage() {
           setEraseQueued(false)
           setEraseError(false)
           void eraseDevice(d.id)
-            .then(() => setEraseQueued(true))
+            .then(() => {
+              liveStore.evict(d.id) // erased device leaves the live map at once
+              setEraseQueued(true)
+            })
             .catch(() => setEraseError(true))
         }}
       />

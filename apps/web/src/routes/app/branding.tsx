@@ -29,6 +29,7 @@ export function BrandingPage() {
   const [form, setForm] = useState<Branding>({})
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [domainError, setDomainError] = useState(false) // verify/remove failures were swallowed
   // remove target resolves against the LIVE list (devices precedent)
   const [removeForId, setRemoveForId] = useState<string | null>(null)
   const removeFor = (domains.data ?? []).find((d) => d.id === removeForId) ?? null
@@ -139,7 +140,12 @@ export function BrandingPage() {
         </h3>
         <div className="space-y-3">
           <AddDomain onAdded={() => void qc.invalidateQueries({ queryKey: ['domains'] })} />
-          {(domains.data ?? []).length === 0 ? (
+          {domainError && (
+            <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="domain-action-error">{t('branding.actionError')}</p>
+          )}
+          {domains.isError ? (
+            <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="domains-error">{t('admin.loadError')}</p>
+          ) : (domains.data ?? []).length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.noDomains')}</p>
           ) : (
             <ul className="flex flex-col gap-2" data-testid="domains-list">
@@ -161,7 +167,10 @@ export function BrandingPage() {
                           variant="secondary"
                           size="sm"
                           data-testid={`verify-${d.domain}`}
-                          onClick={() => void verifyDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => undefined)}
+                          onClick={() => {
+                            setDomainError(false)
+                            void verifyDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => setDomainError(true))
+                          }}
                         >
                           {t('branding.verify')}
                         </AdminButton>
@@ -197,7 +206,8 @@ export function BrandingPage() {
         onConfirm={() => {
           const d = removeFor
           if (d === null) return
-          void removeDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => undefined)
+          setDomainError(false)
+          void removeDomain(d.id).then(() => qc.invalidateQueries({ queryKey: ['domains'] })).catch(() => setDomainError(true))
         }}
       />
     </div>

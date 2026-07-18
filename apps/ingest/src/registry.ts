@@ -15,16 +15,27 @@ export class DeviceRegistry {
     return id === null ? null : BigInt(id)
   }
 
-  /** Records the rejected attempt; returns the count within the last hour. */
-  async quarantine(imei: string, nowMs: number): Promise<number> {
+  /**
+   * Records the rejected attempt; returns the count within the last hour.
+   *
+   * `countRejects` gates the per-IMEI counter key (`quarantine:rejects:{imei}`, 1 h TTL). On TCP the
+   * source IP is validated by the 3-way handshake + handshake-rate-limited, so the IMEI keyspace is
+   * bounded by real peers and the counter drives the ≥3-rejects/hr socket-close (§6.1). On UDP the
+   * source AND the IMEI are attacker-chosen and the count is unused (connectionless — no socket to
+   * close), so creating one counter key per spoofed IMEI is an unbounded-cardinality DoS (~180M
+   * keys/hr under the flood the zset cap already anticipates). UDP therefore passes false: the zset
+   * membership (capped at 10k for the admin claim flow) is kept, the per-IMEI counter is skipped.
+   */
+  async quarantine(imei: string, nowMs: number, opts: { countRejects?: boolean } = {}): Promise<number> {
+    const countRejects = opts.countRejects ?? true
     const key = `quarantine:rejects:${imei}`
-    const results = await this.redis
+    const multi = this.redis
       .multi()
       .zadd('quarantine:imei', nowMs, imei)
       .zremrangebyrank('quarantine:imei', 0, -10_001) // keep newest 10k — spoof-flood cap
-      .incr(key)
-      .expire(key, 3600, 'NX')
-      .exec()
+    if (countRejects) multi.incr(key).expire(key, 3600, 'NX')
+    const results = await multi.exec()
+    if (!countRejects) return 0
     const count = results?.[2]?.[1]
     return typeof count === 'number' ? count : Number(count ?? 1)
   }

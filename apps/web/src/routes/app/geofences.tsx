@@ -58,6 +58,8 @@ export function GeofencesPage() {
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('') // list search (client-side — the full list is already loaded)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState(false) // surfaces a failed delete (was swallowed)
+  const [saving, setSaving] = useState(false) // in-flight guard for the create POST (no double-submit)
   // delete target resolves against the LIVE list (devices precedent) — a refetch never
   // leaves the confirm pointed at a stale snapshot
   const [deleteForId, setDeleteForId] = useState<string | null>(null)
@@ -225,8 +227,9 @@ export function GeofencesPage() {
   }
 
   const save = () => {
-    if (drawn === null || name.trim() === '') return
+    if (drawn === null || name.trim() === '' || saving) return // in-flight guard: no duplicate geofences on double-click
     setError(null)
+    setSaving(true)
     // a corridor sends its route line + buffer half-width; polygon/circle send the drawn polygon
     const created = drawn.kind === 'corridor'
       ? createGeofence({ name: name.trim(), kind: 'corridor', color, line: drawn.geometry, bufferM })
@@ -237,6 +240,7 @@ export function GeofencesPage() {
         void qc.invalidateQueries({ queryKey: ['geofences'] })
       })
       .catch((err: unknown) => setError(err instanceof ApiError && err.status === 400 ? t('geofences.invalid') : t('geofences.error')))
+      .finally(() => setSaving(false))
   }
 
   const list = geofences.data ?? []
@@ -253,7 +257,7 @@ export function GeofencesPage() {
               <X className="h-4 w-4" aria-hidden />
               {t('admin.cancel')}
             </AdminButton>
-            <AdminButton disabled={drawn === null || name.trim() === ''} data-testid="gf-save" onClick={save}>
+            <AdminButton disabled={drawn === null || name.trim() === '' || saving} data-testid="gf-save" onClick={save}>
               <Check className="h-4 w-4" aria-hidden />
               {t('geofences.save')}
             </AdminButton>
@@ -332,7 +336,14 @@ export function GeofencesPage() {
                 </div>
               </div>
               <div className="min-h-0 flex-1 overflow-auto p-2">
-                {list.length === 0 ? (
+                {deleteError && (
+                  <p role="alert" className="mb-2 px-1 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="gf-action-error">
+                    {t('geofences.deleteError')}
+                  </p>
+                )}
+                {geofences.isError ? (
+                  <p role="alert" className="py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="gf-error">{t('admin.loadError')}</p>
+                ) : list.length === 0 ? (
                   <p className="py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="gf-empty">{t('geofences.empty')}</p>
                 ) : filtered.length === 0 ? (
                   <p className="py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="gf-no-results">{t('admin.nothingFound')}</p>
@@ -443,7 +454,10 @@ export function GeofencesPage() {
           const g = deleteFor
           if (g === null) return
           if (selectedId === g.id) setSelectedId(null) // never leave the detail card on a ghost
-          void deleteGeofence(g.id).then(() => qc.invalidateQueries({ queryKey: ['geofences'] })).catch(() => undefined)
+          setDeleteError(false)
+          void deleteGeofence(g.id)
+            .then(() => qc.invalidateQueries({ queryKey: ['geofences'] }))
+            .catch(() => setDeleteError(true)) // don't let a failed delete look like it succeeded
         }}
       />
     </div>

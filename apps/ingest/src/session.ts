@@ -296,6 +296,10 @@ export class Session {
     const tick = async (): Promise<void> => {
       if (this.socket.destroyed) return
       const depth = await getCachedShardDepth(this.deps.redis, this.shard, this.now(), true)
+      // re-check AFTER the await: a destroy() landing during the XLEN roundtrip already decremented
+      // the paused gauge + cleared this.paused, so proceeding would double-decrement it (gauge drifts
+      // negative forever) and resume() a destroyed socket (review LOW).
+      if (this.socket.destroyed || !this.paused) return
       if (depth <= this.deps.config.pauseAboveDepth) {
         this.paused = false
         this.deps.metrics.pausedSockets--

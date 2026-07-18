@@ -2,10 +2,22 @@ import { clearSession, getAccessToken, refreshSession } from './auth'
 import { API_BASE, ApiError } from './http'
 
 /**
+ * Global "session is truly dead" handler (R4 HIGH). Registered once by main.tsx to
+ * router.navigate({ to: '/login' }). Kept as an injected callback (not a direct router
+ * import) so this lib layer stays UI-free and cycle-free. Fires from the ONE place every
+ * REST call funnels through — so any page, not just the map's WS path, recovers on a
+ * mid-session refresh-cookie death instead of freezing on a stale/empty view.
+ */
+let onUnauthorized: (() => void) | null = null
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  onUnauthorized = fn
+}
+
+/**
  * Authenticated request core (E03-3): bearer = in-memory access JWT; on 401 refresh
- * ONCE (single-flight in refreshSession) then retry; a second 401 clears the session
- * and throws so the router bounces to /login. Shared by getJson (GET) and mutate
- * (POST/PATCH/DELETE) and by api.ts.
+ * ONCE (single-flight in refreshSession) then retry; a second 401 clears the session,
+ * fires the global unauthorized handler (→ /login) and throws. Shared by getJson (GET)
+ * and mutate (POST/PATCH/DELETE) and by api.ts.
  */
 export async function request(method: string, path: string, body?: unknown, retried = false): Promise<Response> {
   const token = getAccessToken()
@@ -20,6 +32,7 @@ export async function request(method: string, path: string, body?: unknown, retr
   if (res.status === 401) {
     if (!retried && (await refreshSession())) return request(method, path, body, true)
     clearSession()
+    onUnauthorized?.() // redirect to /login from wherever the dead session first surfaced
     throw new ApiError(401)
   }
   if (!res.ok) throw new ApiError(res.status)

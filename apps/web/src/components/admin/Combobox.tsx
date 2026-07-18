@@ -33,7 +33,9 @@ export function Combobox({
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
   const [q, setQ] = React.useState('')
+  const [activeIndex, setActiveIndex] = React.useState(0)
   const inputRef = React.useRef<HTMLInputElement>(null)
+  const listId = React.useId()
   const active = options.find((o) => o.value === value)
   const filtered = q ? options.filter((o) => (o.label + ' ' + (o.hint ?? '')).toLowerCase().includes(q.toLowerCase())) : options
 
@@ -41,6 +43,44 @@ export function Combobox({
     if (open) setTimeout(() => inputRef.current?.focus(), 20)
     else setQ('')
   }, [open])
+
+  // keep the active option in range as the filter narrows/widens (and start at the current value)
+  React.useEffect(() => {
+    if (!open) return
+    const cur = filtered.findIndex((o) => o.value === value)
+    setActiveIndex(cur >= 0 ? cur : 0)
+  }, [open]) // re-seed the active option only when the list opens
+  React.useEffect(() => {
+    setActiveIndex((i) => Math.min(i, Math.max(0, filtered.length - 1)))
+  }, [filtered.length])
+
+  const optionId = (i: number) => `${listId}-opt-${i}`
+
+  // full combobox keyboard contract (the role announces it): Arrow/Home/End move the active
+  // descendant, Enter commits it — previously options were reachable only by Tabbing each button
+  const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (filtered.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex((i) => (i + 1) % filtered.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex((i) => (i - 1 + filtered.length) % filtered.length)
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      setActiveIndex(0)
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      setActiveIndex(filtered.length - 1)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const opt = filtered[activeIndex]
+      if (opt !== undefined) {
+        onChange(opt.value)
+        setOpen(false)
+      }
+    }
+  }
 
   return (
     <Popover open={open} onOpenChange={disabled === true ? undefined : setOpen}>
@@ -53,6 +93,8 @@ export function Combobox({
           data-value={value ?? ''}
           role="combobox"
           aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-controls={open ? listId : undefined}
           className={cn(
             'flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 text-sm outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50',
             className,
@@ -76,6 +118,11 @@ export function Combobox({
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onInputKeyDown}
+            // the trigger owns role=combobox (e2e contract); this filter input drives the listbox
+            // via aria-controls + aria-activedescendant so Arrow/Enter navigation is announced
+            aria-controls={listId}
+            aria-activedescendant={filtered[activeIndex] !== undefined ? optionId(activeIndex) : undefined}
             placeholder={searchPlaceholder ?? t('admin.search')}
             className="w-full bg-transparent text-sm outline-none placeholder:opacity-60"
             style={{ color: 'var(--admin-ink)' }}
@@ -83,26 +130,29 @@ export function Combobox({
         </div>
         {/* listbox/option roles: correct picker semantics for AT, and the e2e specs select
             entries via getByRole('option', { name }) — unambiguous while the popover is open */}
-        <div className="max-h-64 overflow-y-auto p-1" role="listbox">
+        <div id={listId} className="max-h-64 overflow-y-auto p-1" role="listbox">
           {filtered.length === 0 && (
             <div className="px-3 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>
               {t('admin.nothingFound')}
             </div>
           )}
-          {filtered.map((o) => {
+          {filtered.map((o, i) => {
             const isActive = o.value === value
+            const isHighlighted = i === activeIndex
             return (
               <button
                 key={o.value}
+                id={optionId(i)}
                 type="button"
                 role="option"
                 aria-selected={isActive}
+                onPointerMove={() => setActiveIndex(i)}
                 onClick={() => {
                   onChange(o.value)
                   setOpen(false)
                 }}
                 className="flex w-full items-center justify-between gap-2 rounded px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-[var(--admin-surface-sunken)]"
-                style={{ color: 'var(--admin-ink)', background: isActive ? 'var(--admin-brand-soft)' : 'transparent' }}
+                style={{ color: 'var(--admin-ink)', background: isActive || isHighlighted ? 'var(--admin-brand-soft)' : 'transparent' }}
               >
                 <span className="min-w-0 flex-1 truncate">{o.label}</span>
                 {o.hint !== undefined && (

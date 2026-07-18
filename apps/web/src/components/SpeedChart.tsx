@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Hand-rolled SVG speed-vs-sample chart for playback (E04-3). No chart dependency —
@@ -20,6 +21,7 @@ export function chartPoints(speeds: readonly number[], w = W, h = H, pad = PAD):
 }
 
 export function SpeedChart({ speeds, index, onScrub }: { speeds: number[]; index: number; onScrub: (i: number) => void }) {
+  const { t } = useTranslation()
   const ref = useRef<SVGSVGElement>(null)
   const pts = useMemo(() => chartPoints(speeds), [speeds])
   const path = pts.length > 0 ? 'M' + pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(' L') : ''
@@ -39,7 +41,7 @@ export function SpeedChart({ speeds, index, onScrub }: { speeds: number[]; index
       viewBox={`0 0 ${W} ${H}`}
       className="h-28 w-full cursor-crosshair select-none rounded-card border border-line bg-surface"
       role="slider"
-      aria-label="playback speed timeline"
+      aria-label={t('charts.speedTimeline')}
       aria-valuenow={index}
       aria-valuemin={0}
       aria-valuemax={Math.max(0, speeds.length - 1)}

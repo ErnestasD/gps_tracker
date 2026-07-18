@@ -23,12 +23,14 @@ export function BillingPage() {
   // catalog data is near-static, so cache it for the session
   const plans = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker, staleTime: 5 * 60 * 1000 })
   const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState(false) // Stripe handoff failed (was invisible)
 
   const go = (fn: () => Promise<{ url: string }>) => {
     setBusy(true)
+    setActionError(false)
     fn()
       .then(({ url }) => { window.location.href = url }) // redirect to the Stripe-hosted page
-      .catch(() => setBusy(false))
+      .catch(() => { setBusy(false); setActionError(true) }) // 500/429/misconfig — tell the user instead of nothing
   }
 
   // Stripe's machine status (mirrors subscription.status) → catalog label; the raw value is the
@@ -39,7 +41,17 @@ export function BillingPage() {
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('billing.title')} description={t('billing.desc')} />
 
-      {b?.configured === false ? (
+      {actionError && (
+        <p role="alert" className="admin-card p-3 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="billing-action-error">
+          {t('billing.actionError')}
+        </p>
+      )}
+
+      {billing.isError ? (
+        <p role="alert" className="admin-card p-6 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="billing-error">
+          {t('billing.loadError')}
+        </p>
+      ) : b?.configured === false ? (
         <div className="admin-card p-6 text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="billing-unconfigured">
           {t('billing.unavailable')}
         </div>
@@ -92,6 +104,9 @@ export function BillingPage() {
               {/* the catalog is a live Stripe lookup — don't flash the empty state while it loads */}
               {plans.isLoading ? (
                 <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="plans-loading">{t('billing.loading')}</p>
+              ) : plans.isError ? (
+                /* a live Stripe lookup that fails is not "no plans configured" */
+                <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="plans-error">{t('admin.loadError')}</p>
               ) : (
                 (plans.data ?? []).length === 0 && (
                   <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="plans-empty">{t('billing.noPlans')}</p>

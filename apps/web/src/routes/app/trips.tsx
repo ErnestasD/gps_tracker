@@ -37,12 +37,17 @@ export function TripsPage() {
   const [range, setRange] = useState(() => defaultDayRange(Date.now()))
   const [driverQ, setDriverQ] = useState('') // client-side driver filter (reference searchKeys)
   const [selected, setSelected] = useState<TripView | null>(null)
+  const [assignError, setAssignError] = useState(false) // a failed driver assignment was silent
   const qc = useQueryClient()
   const drivers = useQuery({ queryKey: ['drivers'], queryFn: listDrivers })
 
   const assign = async (tripId: string, driverId: string | null) => {
+    setAssignError(false)
     const updated = await assignTripDriver(tripId, driverId).catch(() => null)
-    if (updated === null) return
+    if (updated === null) {
+      setAssignError(true) // the combobox snapping back needs an explanation, not a mystery
+      return
+    }
     setSelected((s) => (s?.id === tripId ? updated : s)) // reflect the new driver in the open detail
     void qc.invalidateQueries({ queryKey: ['trips'] }) // refresh the table's driver column
   }
@@ -242,6 +247,9 @@ export function TripsPage() {
                     />
                   </div>
                 </label>
+                {assignError && (
+                  <p role="alert" className="text-xs" style={{ color: 'var(--admin-danger)' }} data-testid="trip-assign-error">{t('trips.assignError')}</p>
+                )}
               </>
             )}
           </div>

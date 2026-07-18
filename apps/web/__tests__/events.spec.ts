@@ -50,7 +50,14 @@ describe('E05-6 eventSummary', () => {
   it('EVENT_KINDS includes geofence plus all engine + sweeper kinds', () => {
     expect(EVENT_KINDS).toContain('geofence')
     expect(EVENT_KINDS).toContain('device_offline')
-    expect(EVENT_KINDS).toHaveLength(8)
+    expect(EVENT_KINDS).toContain('fuel_theft') // worker emits it; must be filterable + webhook-subscribable
+    expect(EVENT_KINDS).toHaveLength(9)
+  })
+
+  it('summarizes fuel_theft (pct and litres)', () => {
+    expect(eventSummary(ev('fuel_theft', { unit: 'pct', drop: 22 }))).toBe('fuel dropped 22 %')
+    expect(eventSummary(ev('fuel_theft', { unit: 'liters', drop: 18.5 }))).toBe('fuel dropped 18.5 L')
+    expect(eventSummaryT(ev('fuel_theft', { unit: 'liters', drop: 18.5 }))).toEqual({ key: 'events.s.fuel_theft', params: { drop: '18.5', unit: 'L' } })
   })
 })
 

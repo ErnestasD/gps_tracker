@@ -30,7 +30,12 @@ export function OnboardingCard({ device }: { device: Device }) {
         <CardTitle className="text-base">{t('devices.onb.title', { name: device.name })}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-xs text-muted">{t('devices.onb.intro', { host: s?.host ?? 'orbetra.com', port: s?.port ?? 5027 })}</p>
+        {sheet.isError ? (
+          /* don't quote a (possibly wrong, white-label) fallback host as if it loaded — say it failed */
+          <p role="alert" className="text-xs text-danger" data-testid="onboarding-error">{t('admin.loadError')}</p>
+        ) : (
+          <p className="text-xs text-muted">{t('devices.onb.intro', { host: s?.host ?? 'orbetra.com', port: s?.port ?? 5027 })}</p>
+        )}
 
         <label className="flex flex-col gap-1 text-xs text-muted">
           {t('devices.onb.apn')}

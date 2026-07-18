@@ -3,7 +3,7 @@ import type { ManifestEntry } from './routes/registry.js'
 /**
  * OpenAPI 3.1 document for the public API (E06-5, §6.6). Generated from the route MANIFEST
  * (so new CRUD routes appear automatically and can't drift) plus the curated non-manifest
- * routes (auth, reports, api-keys, ws-ticket). Two security schemes: a Bearer JWT (web) and
+ * routes (auth, reports, api-keys, ws-ticket, billing, web push, public share). Two security schemes: a Bearer JWT (web) and
  * X-Api-Key (integrations). Read (GET) operations accept either; writes require the JWT (an
  * API key is read-only → 403). Served at /v1/openapi.json; the docs page renders it.
  */
@@ -65,10 +65,13 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
   // curated non-manifest routes (registered outside the CRUD manifest)
   add('post', '/v1/auth/login', { tags: ['auth'], summary: 'Log in (email + password)', security: [], responses: RESPONSES.publicPost })
   add('post', '/v1/auth/refresh', { tags: ['auth'], summary: 'Rotate the refresh token', security: [], responses: RESPONSES.publicPost })
-  add('post', '/v1/auth/logout', { tags: ['auth'], summary: 'Revoke the refresh family', security: WRITE_SEC, responses: RESPONSES.write })
+  // logout is PUBLIC (no auth middleware): it clears the refresh cookie and best-effort revokes
+  // its family, returning 200 to any caller — so it advertises no security requirement.
+  add('post', '/v1/auth/logout', { tags: ['auth'], summary: 'Revoke the refresh family', security: [], responses: { '200': { description: 'OK' } } })
   add('get', '/v1/auth/me', { tags: ['auth'], summary: 'Current user', security: WRITE_SEC, responses: RESPONSES.read })
   add('post', '/v1/auth/password', { tags: ['auth'], summary: 'Change own password', security: WRITE_SEC, responses: RESPONSES.write })
-  add('get', '/v1/ws-ticket', { tags: ['live'], summary: 'Single-use WebSocket ticket', security: WRITE_SEC, responses: RESPONSES.read })
+  // ws-ticket is mounted under /v1/* which accepts EITHER a JWT or an X-Api-Key → READ_SEC (both)
+  add('get', '/v1/ws-ticket', { tags: ['live'], summary: 'Single-use WebSocket ticket', security: READ_SEC, responses: RESPONSES.read })
   add('get', '/v1/devices/last', { tags: ['device'], summary: 'Last-known position snapshot', security: READ_SEC, responses: RESPONSES.read })
   add('get', '/v1/profiles', { tags: ['device'], summary: 'Device profiles (global reference data)', security: READ_SEC, responses: RESPONSES.read })
   add('get', '/v1/branding', { tags: ['tenant'], summary: 'Public branding by Host', security: [], responses: RESPONSES.read })
@@ -99,6 +102,28 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
   add('get', '/v1/api-keys', { ...op('apiKey', 'get', '/v1/api-keys', []), security: WRITE_SEC })
   add('post', '/v1/api-keys', op('apiKey', 'post', '/v1/api-keys', []))
   add('delete', '/v1/api-keys/{id}', op('apiKey', 'delete', '/v1/api-keys/:id', ['id']))
+
+  // billing (Stripe, ADR-024) — tenant-admin only, so JWT-only (an API key is 403). The webhook
+  // is public (Stripe carries no JWT; it is signature-verified instead).
+  add('get', '/v1/billing', { tags: ['billing'], summary: 'Billing/subscription status', security: WRITE_SEC, responses: RESPONSES.read })
+  add('get', '/v1/billing/plans', { tags: ['billing'], summary: 'Available subscription plans', security: WRITE_SEC, responses: RESPONSES.read })
+  add('post', '/v1/billing/checkout', { tags: ['billing'], summary: 'Start a Stripe Checkout session', security: WRITE_SEC, responses: { ...RESPONSES.write, '409': { description: 'Already subscribed' }, '503': { description: 'Billing not configured' } } })
+  add('post', '/v1/billing/portal', { tags: ['billing'], summary: 'Open the Stripe billing portal', security: WRITE_SEC, responses: { ...RESPONSES.write, '409': { description: 'No customer' }, '503': { description: 'Billing not configured' } } })
+  add('post', '/v1/webhooks/stripe', { tags: ['billing'], summary: 'Stripe webhook (signature-verified, no auth header)', security: [], responses: { '200': { description: 'OK' }, '400': { description: 'Invalid signature' }, '503': { description: 'Billing not configured' } } })
+
+  // web push (ADR-026) — subscribe/unsubscribe MUTATE → JWT writers only; vapid-key is a safe read.
+  add('get', '/v1/push/vapid-key', { tags: ['push'], summary: 'VAPID public key for PushManager.subscribe', security: READ_SEC, responses: RESPONSES.read })
+  add('post', '/v1/push/subscribe', { tags: ['push'], summary: 'Register a browser push subscription', security: WRITE_SEC, responses: RESPONSES.write })
+  add('post', '/v1/push/unsubscribe', { tags: ['push'], summary: 'Remove a browser push subscription', security: WRITE_SEC, responses: RESPONSES.write })
+
+  // PUBLIC temporary share-link resolver (E03-5) — the token IS the capability; no auth.
+  add('get', '/v1/public/share/{token}', {
+    tags: ['public'],
+    summary: 'Resolve a public share token → one device latest position',
+    security: [],
+    parameters: pathParams(['token']),
+    responses: { '200': { description: 'OK' }, '404': { description: 'Not found' }, '429': { description: 'Rate limited' }, '503': { description: 'Unavailable' } },
+  })
 
   const tags = [...new Set(Object.values(paths).flatMap((ops) => Object.values(ops).flatMap((o) => o.tags)))].sort().map((name) => ({ name }))
 

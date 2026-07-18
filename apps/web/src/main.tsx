@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 
 import i18n from './i18n'
 import './styles/index.css'
+import { setUnauthorizedHandler } from './lib/client'
 import { applyTheme, getStoredLocale, getTheme } from './lib/prefs'
 import { router } from './router'
 
@@ -12,6 +13,11 @@ import { router } from './router'
 applyTheme(getTheme())
 const storedLocale = getStoredLocale()
 if (storedLocale !== null) void i18n.changeLanguage(storedLocale)
+
+// Mid-session auth recovery (R4 HIGH): when a REST call's refresh finally fails, bounce the whole
+// app to /login. Previously only the map's WS path recovered — every other page froze on a
+// stale/empty view with no login prompt. router.navigate is idempotent under a burst of 401s.
+setUnauthorizedHandler(() => void router.navigate({ to: '/login' }))
 
 const queryClient = new QueryClient()
 

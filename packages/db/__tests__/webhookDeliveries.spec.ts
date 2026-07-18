@@ -33,6 +33,14 @@ describe('E06-4b WebhookDeliveryRepo', () => {
     expect(out[0]).toEqual({ id: '5', webhookId: row.webhookId, eventId: '42:panic:0:r1', kind: 'panic', statusCode: 200, success: true, error: null, at: '2026-07-09T00:00:00.000Z' })
   })
 
+  it('ACCOUNT-scopes an account caller (their account + tenant-shared), not just tenant (cross-account leak fix)', async () => {
+    const { prisma, captured } = fakePrisma()
+    await createWebhookDeliveryRepo(prisma).list({ tenantId: 'ten-1', accountId: 'acc-A' })
+    // an account_manager must NOT see a sibling account's delivery rows: account-scoped +
+    // null (tenant-shared) only — mirrors the webhooks repo (nullableAccount)
+    expect(captured()!.where).toEqual({ tenantId: 'ten-1', accountId: { in: ['acc-A', null] } })
+  })
+
   it('applies a valid webhookId filter but drops a malformed one', async () => {
     const { prisma, captured } = fakePrisma()
     await createWebhookDeliveryRepo(prisma).list({ tenantId: 't' }, { webhookId: 'aaaaaaaa-1111-1111-1111-111111111111' })

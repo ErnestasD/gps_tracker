@@ -1,5 +1,7 @@
 # Orbetra local/staging stack (E01-2, PROJECT_PLAN §5 infra + §2 links).
-# `make up` boots this; staging adds docker-compose.staging.yml overrides.
+# `make up` boots this (infra only). The staging APP deploy layers docker-compose.apps.yml
+# (the api/worker/ingest/web/site services — see docs/runbooks/staging-app-deploy.md);
+# docker-compose.staging.yml adds GlitchTip + the public 80/443 publish.
 # SECURITY: Docker publishes ports by inserting iptables rules that BYPASS UFW, so
 # every internal service binds 127.0.0.1 (reach via SSH tunnel). Only Caddy is public.
 name: orbetra

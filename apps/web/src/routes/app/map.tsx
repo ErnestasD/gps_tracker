@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -6,6 +7,7 @@ import { InfoCard } from '@/components/InfoCard'
 import { LiveMap } from '@/components/LiveMap'
 import { Badge } from '@/components/admin/AdminKit'
 import { getLastPositions, getWsTicket, wsUrl, ApiError } from '@/lib/api'
+import { listDevices } from '@/lib/devices'
 import { liveStore } from '@/lib/liveStore'
 import { LiveSocket } from '@/lib/ws'
 import { router } from '@/router'
@@ -24,6 +26,15 @@ const socket = new LiveSocket({
 export function MapPage() {
   const { t } = useTranslation()
   const snap = useSyncExternalStore(liveStore.subscribe, liveStore.getSnapshot)
+  // the device registry is the authoritative bound (E03-3): reconcile the live set to it so a
+  // device retired/removed here or in another tab drops off the map instead of decaying to
+  // 'offline' for the rest of the session (liveStore.byId never evicted on its own)
+  const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
+
+  useEffect(() => {
+    if (devices.data === undefined) return
+    liveStore.retain(devices.data.filter((d) => d.retiredAt === null).map((d) => d.id))
+  }, [devices.data])
 
   useEffect(() => {
     liveStore.start()

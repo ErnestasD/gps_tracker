@@ -1,6 +1,7 @@
 import type { PrismaClient, WebhookDelivery } from '@prisma/client'
 
 import type { Scope } from '../scope.js'
+import { scopedWhere } from '../scope.js'
 
 /**
  * Webhook delivery log — read-only over the API (E06-4b; rows are written by the worker via
@@ -50,7 +51,11 @@ export function createWebhookDeliveryRepo(prisma: PrismaClient): WebhookDelivery
     list: async (scope, opts = {}) => {
       const take = Math.min(Math.max(Number.isFinite(opts.take) ? Number(opts.take) : 100, 1), 500)
       const rows = await prisma.webhookDelivery.findMany({
-        where: { tenantId: scope.tenantId, ...(uuid(opts.webhookId) ? { webhookId: opts.webhookId } : {}) },
+        // ACCOUNT-scope, not just tenant: webhook_deliveries carries an accountId (stamped by the
+        // worker), and webhooks are account-scoped-with-tenant-shared. Without this an account_manager
+        // could read a sibling account's delivery logs in the same tenant (review MED cross-account
+        // leak). nullableAccount ⇒ an account user also sees tenant-shared (null-account) rows.
+        where: { ...scopedWhere(scope, { nullableAccount: true }), ...(uuid(opts.webhookId) ? { webhookId: opts.webhookId } : {}) },
         orderBy: { id: 'desc' },
         take,
         ...(numeric(opts.cursor) ? { cursor: { id: BigInt(opts.cursor!) }, skip: 1 } : {}),

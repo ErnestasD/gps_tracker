@@ -14,4 +14,5 @@ export class IngestMetrics {
   udpDatagramsTotal = 0 // datagrams received on the UDP channel (E-UDP)
   udpRateLimitedTotal = 0 // datagrams dropped by the per-IP flood guard
   udpBackpressureDropsTotal = 0 // datagrams shed because the shard was over depth (no ACK → resend)
+  udpInflightDropsTotal = 0 // datagrams dropped because the in-flight handler cap was reached (slow/down Redis)
 }

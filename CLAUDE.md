@@ -15,7 +15,8 @@ discrepancy in `docs/adr/` and tell the human.
 apps/ingest     raw TCP only: framing, handshake, CRC, parse, XADD, ACK. ZERO business logic.
 apps/worker     stream consumers (ordered pipeline) + BullMQ jobs (async).
 apps/api        Hono REST + WS gateway. Thin: validation, authz, calls packages/db repos.
-apps/web        React SPA (Vite, MapLibre, TanStack, shadcn).
+apps/web        React SPA (Vite, Mapbox GL, TanStack, shadcn) — the dashboard.
+apps/site       public marketing SPA (Vite, static; ADR-022/W9-S1) — orbetra.com.
 packages/codec  parser wrapper + AVL dictionaries (JSON, with source_url) + golden fixtures.
 packages/db     Prisma (relational) + raw SQL layer for positions (batched INSERT ON CONFLICT — NOT COPY) + SCOPED REPOSITORIES (the only DB API).
 packages/shared zod schemas — the single source of types for api/web/worker.
@@ -24,10 +25,10 @@ tools/replay    real-log replayer for load tests.
 ```
 
 ## Commands
-- `pnpm i` · `make up` (local infra) · `turbo run dev --filter=<app>`
+- `pnpm i` · `make up` (local infra) · `turbo run dev --filter=@orbetra/web` (only web/site have a `dev` server; api/ingest/worker run via `tsx`, e.g. `tsx apps/api/src/main.ts`)
 - `turbo run typecheck lint test --filter=<pkg>` — run after EVERY edit to that pkg (hook does this too)
-- `pnpm test:codec` — golden corpus; `pnpm test:isolation` — tenant isolation suite; `pnpm test:e2e` — compose+simulator
-- DB: `pnpm db:migrate` (Prisma) then `pnpm db:sql` (numbered SQL for hypertable/caggs). Never edit an applied migration.
+- `turbo run test --filter=@orbetra/codec` — golden corpus; `pnpm test:isolation` — tenant isolation suite; `pnpm --filter @orbetra/web e2e` — compose+simulator (Docker)
+- DB: `make migrate` — runs `prisma migrate deploy` then `tsx packages/db/sql/migrate.ts` (numbered SQL for hypertable/caggs). Never edit an applied migration.
 
 ## Hard rules (violations = do not merge)
 1. **No Prisma/ORM on `positions`.** Hot path uses the raw SQL layer in packages/db only: batched multi-row INSERT ... ON CONFLICT DO NOTHING. PostgreSQL COPY does NOT support ON CONFLICT — do not "optimize" to COPY without ADR-008 (staging-table pattern).

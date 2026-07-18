@@ -32,9 +32,30 @@ describe('isDue', () => {
 })
 
 describe('reportWindow', () => {
-  it('is 1 day for daily, 7 for weekly', () => {
-    expect(reportWindow('daily', NOW)).toEqual({ from: new Date(NOW - 86_400_000).toISOString(), to: new Date(NOW).toISOString() })
-    expect(reportWindow('weekly', NOW)).toEqual({ from: new Date(NOW - 7 * 86_400_000).toISOString(), to: new Date(NOW).toISOString() })
+  it('is 1 day for daily, 7 for weekly, anchored to the scheduled UTC hour', () => {
+    // NOW is exactly 06:00 UTC and hourUtc=6, so the anchored `to` equals NOW here
+    expect(reportWindow({ cadence: 'daily', hourUtc: 6 }, NOW, null)).toEqual({ from: new Date(NOW - 86_400_000).toISOString(), to: new Date(NOW).toISOString() })
+    expect(reportWindow({ cadence: 'weekly', hourUtc: 6 }, NOW, null)).toEqual({ from: new Date(NOW - 7 * 86_400_000).toISOString(), to: new Date(NOW).toISOString() })
+  })
+  it('anchors `to` to the scheduled hour on a CATCH-UP tick — no boundary drift (review MED)', () => {
+    const anchor = NOW // 06:00 UTC scheduled boundary
+    for (const lateHour of [7, 9, 11]) {
+      const late = anchor + lateHour * 3_600_000 - 6 * 3_600_000 // same day, later than 06:00
+      const w = reportWindow({ cadence: 'daily', hourUtc: 6 }, late, null)
+      expect(w.to).toBe(new Date(anchor).toISOString()) // to stays pinned to 06:00, not the fire instant
+      expect(w.from).toBe(new Date(anchor - 86_400_000).toISOString())
+    }
+  })
+  it('extends `from` back to lastRunAt when a period was missed (across-midnight catch-up, review MED)', () => {
+    const twoDaysAgo = NOW - 2 * 86_400_000 + 3_600_000 // last run ~47h ago (a full day was missed)
+    const w = reportWindow({ cadence: 'daily', hourUtc: 6 }, NOW, twoDaysAgo)
+    expect(w.from).toBe(new Date(twoDaysAgo).toISOString()) // covers the missed day, not just the last 24h
+    expect(w.to).toBe(new Date(NOW).toISOString())
+  })
+  it('does NOT extend `from` on a normal on-time run (last run ~1 span ago)', () => {
+    const oneDayAgo = NOW - 86_400_000 // exactly a span ago → not < defaultFrom
+    const w = reportWindow({ cadence: 'daily', hourUtc: 6 }, NOW, oneDayAgo)
+    expect(w.from).toBe(new Date(NOW - 86_400_000).toISOString())
   })
 })
 

@@ -159,6 +159,62 @@ describe('LiveStore', () => {
     expect(resumeInPlace.filter((f) => f.properties!['gap'] === false)).toHaveLength(2)
   })
 
+  it('evict: removes a retired device from the snapshot and clears it if selected', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0))
+    store.ingest(ev('2', T0))
+    store.flush()
+    store.select('2')
+    expect(store.evict('2')).toBe(true)
+    expect(store.getSnapshot().devices.map((d) => d.ev.deviceId)).toEqual(['1'])
+    expect(store.getSnapshot().selectedId).toBeNull() // selection cleared with the evicted device
+    expect(store.evict('nope')).toBe(false) // unknown id: no-op
+  })
+
+  it('evict: an evicted device does not reappear from a later stale flush', () => {
+    let now = T0
+    const store = makeStore(() => now)
+    store.ingest(ev('9', T0))
+    store.flush()
+    store.evict('9')
+    now = T0 + 700_000 // time passes — flush re-evaluates statuses
+    store.flush()
+    expect(store.getSnapshot().devices).toHaveLength(0)
+  })
+
+  it('retain: reconciles the live set to the authoritative active registry', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0))
+    store.ingest(ev('2', T0))
+    store.ingest(ev('3', T0 - 700_000)) // device 3 stale (offline) — safe to evict when absent
+    store.flush()
+    store.select('3')
+    store.retain(['1', '2']) // device 3 retired/removed in the registry
+    expect(store.getSnapshot().devices.map((d) => d.ev.deviceId)).toEqual(['1', '2'])
+    expect(store.getSnapshot().selectedId).toBeNull()
+  })
+
+  it('retain: keeps a device still streaming fresh fixes even if absent from the registry cache', () => {
+    // a device provisioned in another tab streams before the ['devices'] cache refetches — the WS
+    // stream is ground truth for presence, so retain must not evict it (review LOW)
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0))
+    store.ingest(ev('2', T0)) // fresh, but not yet in the registry list
+    store.flush()
+    store.retain(['1'])
+    expect(store.getSnapshot().devices.map((d) => d.ev.deviceId)).toEqual(['1', '2'])
+  })
+
+  it('retain: is a no-op (stable snapshot) when every live device is still present', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0))
+    store.ingest(ev('2', T0))
+    store.flush()
+    const snap = store.getSnapshot()
+    store.retain(['1', '2', '5']) // superset — nothing to drop
+    expect(store.getSnapshot()).toBe(snap)
+  })
+
   it('map frame carries selection + follow for the LiveMap sink', () => {
     const store = makeStore(() => T0)
     let frame: MapFrame | null = null

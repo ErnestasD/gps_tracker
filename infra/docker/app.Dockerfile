@@ -1,7 +1,8 @@
 # Orbetra app image (staging deploy, W7-D). ONE image for all four apps — the monorepo
 # runs via tsx (same as dev/e2e), each compose service overrides the command. The web SPA
 # is pre-built (vite build) and served with `vite preview` behind Caddy, mirroring the
-# e2e harness exactly (API_PROXY_TARGET carries /v1 + /ws to the api service).
+# e2e harness exactly (API_PROXY_TARGET carries /v1 — incl. the /v1/stream WS upgrade —
+# to the api service).
 FROM node:22-alpine
 
 # pinned versions — unpinned tsx made builds unreproducible (review LOW). Runs as root

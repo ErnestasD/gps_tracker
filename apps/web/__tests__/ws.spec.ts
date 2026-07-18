@@ -160,6 +160,66 @@ describe('LiveSocket', () => {
     expect(statuses.at(-1)).toBe('closed')
   })
 
+  it('start→stop→start while a ticket is in flight opens no orphan socket (generation token)', async () => {
+    const resolvers: Array<(t: string) => void> = []
+    let calls = 0
+    const s = new LiveSocket({
+      getTicket: () => new Promise<string>((res) => { calls++; resolvers.push(res) }),
+      buildUrl: (t) => `ws://x/v1/stream?ticket=${t}`,
+      onMessage: () => undefined,
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      random: () => 0.5,
+    })
+    s.start() // gen 1 — getTicket #1 in flight
+    await flushMicrotasks()
+    s.stop() // supersedes gen 1
+    s.start() // gen 3 — getTicket #2 in flight
+    await flushMicrotasks()
+    expect(calls).toBe(2)
+    // the STALE (superseded) ticket resolves first — it must NOT construct a socket
+    resolvers[0]!('ticket-stale')
+    await flushMicrotasks()
+    expect(FakeWebSocket.instances.length).toBe(0)
+    // the current-generation ticket resolves — exactly one live socket, no orphan
+    resolvers[1]!('ticket-live')
+    await flushMicrotasks()
+    expect(FakeWebSocket.instances.length).toBe(1)
+    expect(FakeWebSocket.instances[0]!.url).toContain('ticket-live')
+    // the stale path scheduled no reconnect loop
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(FakeWebSocket.instances.length).toBe(1)
+    s.stop()
+  })
+
+  it('an orphaned socket from a superseded generation neither reconnects nor flaps status', async () => {
+    const resolvers: Array<(t: string) => void> = []
+    const statuses: string[] = []
+    const s = new LiveSocket({
+      getTicket: () => new Promise<string>((res) => resolvers.push(res)),
+      buildUrl: (t) => `ws://x/v1/stream?ticket=${t}`,
+      onMessage: () => undefined,
+      onStatus: (st) => statuses.push(st),
+      WebSocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      random: () => 0.5,
+    })
+    s.start()
+    await flushMicrotasks()
+    resolvers[0]!('ticket-1') // gen-1 socket constructed + open
+    await flushMicrotasks()
+    FakeWebSocket.instances[0]!.open()
+    s.stop() // closes the gen-1 socket and supersedes it
+    s.start() // gen 3
+    await flushMicrotasks()
+    resolvers[1]!('ticket-2')
+    await flushMicrotasks()
+    const before = FakeWebSocket.instances.length
+    // the OLD (gen-1) socket dropping late must not schedule a reconnect
+    FakeWebSocket.instances[0]!.serverDrop()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(FakeWebSocket.instances.length).toBe(before)
+    s.stop()
+  })
+
   it('non-auth ticket failure keeps retrying', async () => {
     let calls = 0
     const s = makeSocket({

@@ -5,9 +5,10 @@ import { useTranslation } from 'react-i18next'
 import { AdminButton, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
+import { useFmt } from '@/lib/datetime'
 import { listAccounts, listDevices } from '@/lib/devices'
 import { dayEndIso, dayStartIso } from '@/lib/playback'
-import { cellValue, COLUMNS, downloadCsv, downloadPdf, runReport, toCsv, unitColumns, REPORT_TYPES, type ReportResult, type ReportType } from '@/lib/reports'
+import { cellValue, COLUMNS, dateColumns, downloadCsv, downloadPdf, runReport, toCsv, unitColumns, REPORT_TYPES, type ReportResult, type ReportType } from '@/lib/reports'
 import { useUnits } from '@/lib/units'
 import { ScheduledReportsCard } from '@/routes/app/scheduledReports'
 
@@ -16,6 +17,7 @@ import { ScheduledReportsCard } from '@/routes/app/scheduledReports'
 export function ReportsPage() {
   const { t } = useTranslation()
   const u = useUnits()
+  const { dt } = useFmt()
   const [type, setType] = useState<ReportType>('mileage')
   const [account, setAccount] = useState('')
   const [deviceId, setDeviceId] = useState('')
@@ -39,17 +41,19 @@ export function ReportsPage() {
   // display prefs applied to the RESULT table, CSV and PDF alike: distance/speed value
   // columns convert (unit-suffixed headers say which unit the numbers are in)
   const units = { distance: u.prefs.unitDistance, speed: u.prefs.unitSpeed }
-  const cols = unitColumns(result ? COLUMNS[result.type] : COLUMNS[type], units)
+  // datetime columns (trips start/end) go through dt — display prefs are "effective everywhere" (PR #101)
+  const exportCols = (rt: ReportType) => dateColumns(unitColumns(COLUMNS[rt], units), dt)
+  const cols = dateColumns(unitColumns(result ? COLUMNS[result.type] : COLUMNS[type], units), dt)
 
   const exportCsv = () => {
     if (result === undefined) return
-    downloadCsv(`${result.type}-report.csv`, toCsv(unitColumns(COLUMNS[result.type], units), result.rows))
+    downloadCsv(`${result.type}-report.csv`, toCsv(exportCols(result.type), result.rows))
   }
   const exportPdf = () => {
     if (result === undefined) return
     // localized PDF title from the report-type label — no raw slug, no hardcoded brand
     // (white-label: the platform name doesn't belong in a tenant's export)
-    void downloadPdf(`${result.type}-report.pdf`, t('reports.pdfTitle', { type: t(`reports.t.${result.type}`) }), unitColumns(COLUMNS[result.type], units), result.rows)
+    void downloadPdf(`${result.type}-report.pdf`, t('reports.pdfTitle', { type: t(`reports.t.${result.type}`) }), exportCols(result.type), result.rows)
   }
 
   return (

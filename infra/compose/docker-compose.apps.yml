@@ -43,7 +43,7 @@ services:
     command: ["tsx", "apps/worker/src/main.ts"]
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://postgres:${PG_PASSWORD:-orbetra_dev}@pg:5432/orbetra
+      DATABASE_URL: postgresql://postgres:${PG_PASSWORD:?PG_PASSWORD must be set in /opt/orbetra/.env}@pg:5432/orbetra
       REDIS_URL: redis://redis:6379
       PROMETHEUS_PORT: "9102"
       EXPORT_DIR: /var/orbetra/exports
@@ -77,11 +77,14 @@ services:
     command: ["tsx", "apps/api/src/main.ts"]
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://postgres:${PG_PASSWORD:-orbetra_dev}@pg:5432/orbetra
+      DATABASE_URL: postgresql://postgres:${PG_PASSWORD:?PG_PASSWORD must be set in /opt/orbetra/.env}@pg:5432/orbetra
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
       API_PORT: "3010"
       PUBLIC_API_URL: ${PUBLIC_API_URL:-http://185.80.129.33}
+      # Reverse geocoding (CLAUDE.md rule 13, self-hosted Photon). The photon service + index are
+      # provisioned and smoke-tested, but NO api code reads GEOCODER_URL yet — the consumer (address
+      # lookup for positions/reports) is a planned follow-up. Kept wired so it's live the day it lands.
       GEOCODER_URL: http://photon:2322
       TRUST_PROXY: "1"
       # staging is reachable over plain HTTP by IP until DNS lands — Secure cookies

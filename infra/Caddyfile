@@ -56,9 +56,7 @@
 		-Server
 	}
 	handle /v1/* {
-		reverse_proxy api:3010
-	}
-	handle /ws {
+		# /v1/* includes the WS upgrade at /v1/stream — the API rejects any other /ws path
 		reverse_proxy api:3010
 	}
 	handle {
@@ -81,9 +79,7 @@ http://{$ORBETRA_STAGING_HOST:staging-host.invalid} {
 		-Server
 	}
 	handle /v1/* {
-		reverse_proxy api:3010
-	}
-	handle /ws {
+		# /v1/* includes the WS upgrade at /v1/stream — the API rejects any other /ws path
 		reverse_proxy api:3010
 	}
 	handle {
@@ -93,11 +89,13 @@ http://{$ORBETRA_STAGING_HOST:staging-host.invalid} {
 
 # ── Tenant custom domains (staging/prod) ─────────────────────────────────────
 # Any hostname NOT matched above gets a cert on demand (gated by the ask above),
-# then proxies to web (SPA) with /v1 + /ws carved out to the api. The SPA reads
-# GET /v1/branding (Host-based) for the pre-login logo/colors. Enable by setting
-# ORBETRA_PUBLIC=true in the compose env; left off locally (no :443, no real DNS).
-# NOTE: requires `api` and `web` services reachable on this network — present in
-# the staging compose overlay, absent in the local infra-only compose.
+# then proxies to web (SPA) with /v1 carved out to the api (the /v1/stream WS upgrade
+# rides /v1/*). The SPA reads GET /v1/branding (Host-based) for the pre-login logo/colors.
+# This block self-activates whenever Caddy publishes :443 — left inert locally (the infra-only
+# compose maps :443→8449 and has no real DNS). There is NO ORBETRA_PUBLIC switch: that variable
+# is referenced nowhere in this file and nothing passes it to the container.
+# NOTE: requires `api` and `web` services reachable on this network — present in the staging
+# app layer (docker-compose.apps.yml), absent in the local infra-only compose.
 https:// {
 	tls {
 		on_demand
@@ -115,11 +113,9 @@ https:// {
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		-Server
 	}
-	# API + realtime first (longest-prefix wins in Caddy route ordering)
+	# API + realtime first (longest-prefix wins in Caddy route ordering).
+	# /v1/* includes the WS upgrade at /v1/stream — the API rejects any other /ws path.
 	handle /v1/* {
-		reverse_proxy api:3010
-	}
-	handle /ws {
 		reverse_proxy api:3010
 	}
 	# everything else is the SPA

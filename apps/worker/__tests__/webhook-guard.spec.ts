@@ -8,8 +8,15 @@ describe('E06-4 isPrivateIp', () => {
       expect(isPrivateIp(ip), ip).toBe(true)
     }
   })
+  it('flags IPv4-mapped IPv6 in HEX-compressed form (the form new URL() normalizes to) + NAT64', () => {
+    // new URL('http://[::ffff:127.0.0.1]/').hostname === '::ffff:7f00:1' — the dotted regex never
+    // matched this, so the guard classified loopback/metadata as public (review HIGH bypass)
+    for (const ip of ['::ffff:7f00:1', '::ffff:a9fe:a9fe', '::ffff:0a00:0001', '64:ff9b::7f00:1', '64:ff9b::a9fe:a9fe', '::127.0.0.1']) {
+      expect(isPrivateIp(ip), ip).toBe(true)
+    }
+  })
   it('allows genuine public addresses', () => {
-    for (const ip of ['93.184.216.34', '8.8.8.8', '1.1.1.1', '172.15.0.1', '172.32.0.1', '2606:4700:4700::1111']) {
+    for (const ip of ['93.184.216.34', '8.8.8.8', '1.1.1.1', '172.15.0.1', '172.32.0.1', '2606:4700:4700::1111', '::ffff:8.8.8.8', '::ffff:808:808', '64:ff9b::808:808']) {
       expect(isPrivateIp(ip), ip).toBe(false)
     }
   })
@@ -32,6 +39,11 @@ describe('E06-4 assertPublicUrl', () => {
   it('rejects a literal private-IP host without DNS', async () => {
     await expect(assertPublicUrl('http://169.254.169.254/latest/meta-data/', pub)).rejects.toThrow(/private/)
     await expect(assertPublicUrl('http://[::1]:6379/', pub)).rejects.toThrow(/private/)
+  })
+  it('rejects a bracketed IPv4-mapped IPv6 literal that URL normalizes to hex form', async () => {
+    // these are the exact SSRF payloads the old dotted-only regex let through
+    await expect(assertPublicUrl('http://[::ffff:127.0.0.1]:6379/', pub)).rejects.toThrow(/private/)
+    await expect(assertPublicUrl('http://[::ffff:169.254.169.254]/latest/meta-data/', pub)).rejects.toThrow(/private/)
   })
   it('rejects a public host that resolves to a private IP (rebinding defense)', async () => {
     await expect(assertPublicUrl('https://sneaky.test/x', priv)).rejects.toThrow(/private/)

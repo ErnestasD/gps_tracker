@@ -1,5 +1,7 @@
 import type { Pool } from 'pg'
 
+import { isPgSafeDate } from './dateGuard.js'
+
 /**
  * Report engine (E06-1, §6.6/§7.7). Scoped raw SQL over trips + events (aggregation that
  * Prisma can't express — date_trunc AT TIME ZONE). Lives in packages/db (rule 2) and is
@@ -72,17 +74,9 @@ export interface ReportResult {
   rows: ReportRow[]
 }
 
-// pg timestamptz spans 4713 BC…294276 AD; a JS-valid date can still overflow it (→ 500).
-const MIN_MS = Date.parse('0001-01-01T00:00:00Z')
-const MAX_MS = Date.parse('9999-12-31T23:59:59Z')
 const TRIP_LIST_CAP = 5_000
 
 const INT8_MAX = 9_223_372_036_854_775_807n
-const validDate = (s: string | undefined): boolean => {
-  if (s === undefined) return false
-  const t = new Date(s).getTime()
-  return !Number.isNaN(t) && t >= MIN_MS && t <= MAX_MS
-}
 /** A device id must be numeric AND fit int8, else binding it as "deviceId" overflows pg (500). */
 const validDeviceId = (s: string | undefined): boolean => s !== undefined && /^\d+$/.test(s) && BigInt(s) <= INT8_MAX
 /** Trust only a resolvable IANA zone — an unknown zone would make Postgres 500. */
@@ -101,9 +95,9 @@ function scopeWhere(scope: ReportScope, params: ReportParams, timeCol: string): 
   const p: unknown[] = [scope.tenantId, scope.accountId]
   const where: string[] = ['"tenantId" = $1', '"accountId" = $2']
   // an out-of-range/garbage bound is dropped (never 500s); an absent bound just widens the range
-  if (validDate(params.from)) where.push(`${timeCol} >= $${p.push(new Date(params.from))}`)
+  if (isPgSafeDate(params.from)) where.push(`${timeCol} >= $${p.push(new Date(params.from))}`)
   let toIndex: number | null = null
-  if (validDate(params.to)) {
+  if (isPgSafeDate(params.to)) {
     toIndex = p.push(new Date(params.to))
     where.push(`${timeCol} < $${toIndex}`)
   }

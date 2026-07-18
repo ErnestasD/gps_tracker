@@ -26,16 +26,34 @@ export class LiveState {
       if (!current || rec.fixTime > current.fixTime) newestPerDevice.set(key, rec)
     }
 
+    const pending: Promise<void>[] = []
     for (const [deviceId, rec] of newestPerDevice) {
       // per-device chaining: concurrent apply() callers cannot interleave the
       // read-compare-write below (review HIGH defense-in-depth; the consumer also
-      // awaits onBatch, so in the pipeline this is belt-and-suspenders)
+      // awaits onBatch, so in the pipeline this is belt-and-suspenders).
+      // Chain off the PRIOR promise with BOTH handlers so a rejected previous apply
+      // (any Redis blip) never poisons this device's chain — otherwise every future
+      // apply for the device would short-circuit on the still-rejected promise and the
+      // live marker would freeze until worker restart (review HIGH).
       const prev = this.inflight.get(deviceId) ?? Promise.resolve()
-      const next = prev.then(() => this.applyOne(deviceId, rec))
-      this.inflight.set(deviceId, next)
-      await next
-      if (this.inflight.get(deviceId) === next) this.inflight.delete(deviceId)
+      const tracked: Promise<void> = prev
+        .then(
+          () => this.applyOne(deviceId, rec),
+          () => this.applyOne(deviceId, rec),
+        )
+        .finally(() => {
+          // always clear the map slot when this is the tail — a rejected promise must
+          // never be left cached as the chain head
+          if (this.inflight.get(deviceId) === tracked) this.inflight.delete(deviceId)
+        })
+      this.inflight.set(deviceId, tracked)
+      pending.push(tracked)
     }
+    // await ALL devices before surfacing any failure: one device's Redis error must not
+    // skip the remaining devices' updates for this batch (the consumer/main.ts logs it).
+    const settled = await Promise.allSettled(pending)
+    const failed = settled.find((s): s is PromiseRejectedResult => s.status === 'rejected')
+    if (failed !== undefined) throw failed.reason
   }
 
   private async applyOne(deviceId: string, rec: NormalizedRecord): Promise<void> {

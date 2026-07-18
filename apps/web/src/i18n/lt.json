@@ -97,7 +97,9 @@
       "incomplete": "Nebaigta",
       "incomplete_expired": "Nebegalioja",
       "paused": "Pristabdyta"
-    }
+    },
+    "actionError": "Nepavyko pasiekti Stripe — bandykite dar kartą.",
+    "loadError": "Nepavyko įkelti atsiskaitymo būsenos."
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -125,7 +127,8 @@
     "badDomain": "Įveskite tinkamą domeną (pvz. fleet.example.com).",
     "txtInstruction": "Pridėkite šį TXT įrašą prie {{domain}}, tada spauskite Patvirtinti:",
     "certNote": "HTTPS sertifikatai išduodami automatiškai per pirmą saugų užklausimą po domeno patvirtinimo.",
-    "domainLabel": "Domenas"
+    "domainLabel": "Domenas",
+    "actionError": "Veiksmas nepavyko — bandykite dar kartą."
   },
   "audit": {
     "title": "Audito žurnalas",
@@ -191,7 +194,8 @@
     "driver": "Vairuotojas",
     "noDriver": "Nėra vairuotojo",
     "avgSpeed": "Vid. greitis",
-    "searchDriver": "Filtruoti pagal vairuotoją…"
+    "searchDriver": "Filtruoti pagal vairuotoją…",
+    "assignError": "Nepavyko priskirti vairuotojo — bandykite dar kartą."
   },
   "rules": {
     "title": "Taisyklės",
@@ -304,7 +308,8 @@
       "polygon": "Spauskite žemėlapyje — pridėkite taškus; užbaikite uždarydami kontūrą.",
       "circle": "Spustelėkite centrą, tada spustelėkite dar kartą — spinduliui.",
       "corridor": "Spauskite palei maršrutą; baikite dvigubu spustelėjimu."
-    }
+    },
+    "deleteError": "Nepavyko ištrinti geofence — bandykite dar kartą."
   },
   "deviceList": {
     "title": "Įrenginiai",
@@ -557,7 +562,8 @@
     "addTitle": "Naujas įrenginys",
     "plate": "Valst. numeris (nebūtina)",
     "retireSure": "Išregistruoti {{name}} ({{imei}})? Nuo šiol šis IMEI bus atmetamas.",
-    "eraseSure": "Negrįžtamai ištrinti visus {{name}} duomenis? Istorija, kelionės, įvykiai ir komandos bus ištrinti. To atšaukti negalima."
+    "eraseSure": "Negrįžtamai ištrinti visus {{name}} duomenis? Istorija, kelionės, įvykiai ir komandos bus ištrinti. To atšaukti negalima.",
+    "odoError": "Nepavyko pakeisti odometro šaltinio — bandykite dar kartą."
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",
@@ -625,7 +631,8 @@
       "geofence": "{{name}} · {{transition}}",
       "device_offline": "neprisijungęs {{hours}} val. (≥ {{threshold}} val.)",
       "panic": "SOS pavojaus signalas",
-      "power_cut": "dingo išorinis maitinimas"
+      "power_cut": "dingo išorinis maitinimas",
+      "fuel_theft": "kuras krito {{drop}} {{unit}}"
     }
   },
   "reports": {
@@ -696,7 +703,8 @@
     "active": "Aktyvus",
     "lastUsed": "naudotas",
     "neverUsed": "nenaudotas",
-    "emptyDesc": "Sukurkite pirmąjį raktą integracijai."
+    "emptyDesc": "Sukurkite pirmąjį raktą integracijai.",
+    "actionError": "Nepavyko atšaukti rakto — bandykite dar kartą."
   },
   "webhooks": {
     "title": "Webhooks",
@@ -722,7 +730,8 @@
     "when": "Kada",
     "event": "Įvykis",
     "status": "Būsena",
-    "noResponse": "nėra atsakymo"
+    "noResponse": "nėra atsakymo",
+    "actionError": "Veiksmas nepavyko — bandykite dar kartą."
   },
   "platform": {
     "title": "Platforma",
@@ -779,7 +788,8 @@
       "overspeed": "Greičio viršij.",
       "score": "Balas"
     },
-    "actions": "Veiksmai"
+    "actions": "Veiksmai",
+    "deleteError": "Nepavyko ištrinti vairuotojo — bandykite dar kartą."
   },
   "maint": {
     "title": "Techninė priežiūra",
@@ -853,7 +863,8 @@
       "6": "Št"
     },
     "addTitle": "Suplanuoti ataskaitą",
-    "create": "Sukurti"
+    "create": "Sukurti",
+    "actionError": "Nepavyko ištrinti — bandykite dar kartą."
   },
   "admin": {
     "search": "Ieškoti…",
@@ -869,7 +880,8 @@
     "cancel": "Atšaukti",
     "confirmTitle": "Ar tikrai?",
     "actions": "Veiksmai",
-    "pickDate": "Pasirinkti datą"
+    "pickDate": "Pasirinkti datą",
+    "loadError": "Nepavyko įkelti — bandykite dar kartą."
   },
   "dash": {
     "title": "Apžvalga",
@@ -913,5 +925,10 @@
     "empty": "Pranešimų nėra",
     "viewAll": "Visi įvykiai",
     "titleUnread": "Pranešimai ({{n}} neskaityti)"
+  },
+  "charts": {
+    "fuelTimeline": "Kuro lygio laiko juosta",
+    "speedTimeline": "Atkūrimo greičio laiko juosta",
+    "voltageTimeline": "Įtampos laiko juosta"
   }
 }

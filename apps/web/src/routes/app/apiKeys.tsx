@@ -88,11 +88,18 @@ export function ApiKeysPage() {
         </div>
       )}
 
+      {revoke.isError && (
+        <p role="alert" className="admin-card p-3 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="apikeys-action-error">{t('apiKeys.actionError')}</p>
+      )}
+
       <div className="admin-card overflow-hidden">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('apiKeys.list')}
         </div>
-        {(keys.data ?? []).length === 0 ? (
+        {keys.isError ? (
+          /* a failed load (incl. the 403 a viewer gets opening this by URL) is NOT "no keys" */
+          <p role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="apikeys-error">{t('admin.loadError')}</p>
+        ) : (keys.data ?? []).length === 0 ? (
           /* AdminKit EmptyState (reference app.api-keys zero-state); testid contract stays */
           <EmptyState icon={<KeyRound className="h-5 w-5" />} title={t('apiKeys.empty')} description={t('apiKeys.emptyDesc')} data-testid="apikeys-empty" />
         ) : (

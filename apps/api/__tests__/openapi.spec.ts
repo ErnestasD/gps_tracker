@@ -34,6 +34,27 @@ describe('E06-5 OpenAPI document', () => {
     expect(spec.paths['/v1/api-keys/{id}']?.['delete']).toBeDefined()
   })
 
+  it('documents the billing, web-push and public-share route groups', () => {
+    expect(spec.paths['/v1/billing']?.['get']).toBeDefined()
+    expect(spec.paths['/v1/billing/checkout']?.['post']).toBeDefined()
+    expect(spec.paths['/v1/billing/portal']?.['post']).toBeDefined()
+    expect(spec.paths['/v1/webhooks/stripe']?.['post']).toBeDefined()
+    expect(spec.paths['/v1/push/vapid-key']?.['get']).toBeDefined()
+    expect(spec.paths['/v1/push/subscribe']?.['post']).toBeDefined()
+    expect(spec.paths['/v1/push/unsubscribe']?.['post']).toBeDefined()
+    expect(spec.paths['/v1/public/share/{token}']?.['get']).toBeDefined()
+  })
+
+  it('billing is JWT-only; push writes are JWT-only; webhook + share are public', () => {
+    expect(spec.paths['/v1/billing']!['get']!.security).toEqual([{ bearerAuth: [] }])
+    expect(spec.paths['/v1/push/subscribe']!['post']!.security).toEqual([{ bearerAuth: [] }])
+    expect(spec.paths['/v1/webhooks/stripe']!['post']!.security).toEqual([])
+    expect(spec.paths['/v1/public/share/{token}']!['get']!.security).toEqual([])
+    // logout is public; ws-ticket accepts a JWT or an API key
+    expect(spec.paths['/v1/auth/logout']!['post']!.security).toEqual([])
+    expect(spec.paths['/v1/ws-ticket']!['get']!.security.map((s) => Object.keys(s)[0]).sort()).toEqual(['apiKeyAuth', 'bearerAuth'])
+  })
+
   it('GET accepts a JWT or an API key; writes require the JWT only', () => {
     const getDevices = spec.paths['/v1/devices']!['get']!
     expect(getDevices.security.map((s) => Object.keys(s)[0]).sort()).toEqual(['apiKeyAuth', 'bearerAuth'])

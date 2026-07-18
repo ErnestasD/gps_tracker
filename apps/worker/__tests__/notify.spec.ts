@@ -116,6 +116,9 @@ describe('ADR-026 webPushDriver.send (fan-out + prune)', () => {
   const chan: NotificationChannel = { type: 'webpush' }
   const ctx = { tenantId: 't1', accountId: 'a1' }
   const target = (endpoint: string): PushTarget => ({ endpoint, p256dh: 'p', auth: 'a' })
+  // stub DNS resolver for the SSRF guard: every non-IP host resolves to a public IP (tests use
+  // https://a etc. which don't resolve). Private-IP literals are still caught without DNS.
+  const pubResolve = (() => Promise.resolve([{ address: '93.184.216.34', family: 4 }])) as unknown as Parameters<typeof webPushDriver>[1]
   // a push-service error the way web-push surfaces it: an Error carrying the HTTP statusCode
   const pushErr = (statusCode: number) => Object.assign(new Error('push service error'), { statusCode })
 
@@ -130,7 +133,7 @@ describe('ADR-026 webPushDriver.send (fan-out + prune)', () => {
   it('fans out one push per subscription of the account, with the {title,body} payload', async () => {
     const send = vi.spyOn(webpush, 'sendNotification').mockResolvedValue({} as never)
     const { r, listByAccount } = repo([target('https://a'), target('https://b')])
-    await webPushDriver(r).send(chan, MSG, ctx)
+    await webPushDriver(r, pubResolve).send(chan, MSG, ctx)
     expect(listByAccount).toHaveBeenCalledWith('t1', 'a1')
     expect(send).toHaveBeenCalledTimes(2)
     expect(JSON.parse(send.mock.calls[0]![1] as string)).toEqual({ title: 's', body: 't' })
@@ -142,7 +145,7 @@ describe('ADR-026 webPushDriver.send (fan-out + prune)', () => {
       s.endpoint === 'https://dead' ? Promise.reject(pushErr(410)) : Promise.resolve({} as never),
     )
     const { r, deleteByEndpoint } = repo([target('https://dead'), target('https://live')])
-    await webPushDriver(r).send(chan, MSG, ctx) // resolves — a dead sub is not a failure
+    await webPushDriver(r, pubResolve).send(chan, MSG, ctx) // resolves — a dead sub is not a failure
     expect(deleteByEndpoint).toHaveBeenCalledWith('https://dead')
     expect(deleteByEndpoint).toHaveBeenCalledTimes(1)
     expect(send).toHaveBeenCalledTimes(2) // the dead one did not abort the loop
@@ -154,16 +157,26 @@ describe('ADR-026 webPushDriver.send (fan-out + prune)', () => {
       s.endpoint === 'https://flaky' ? Promise.reject(pushErr(503)) : Promise.resolve({} as never),
     )
     const { r, deleteByEndpoint } = repo([target('https://flaky'), target('https://ok')])
-    await expect(webPushDriver(r).send(chan, MSG, ctx)).rejects.toBeDefined()
+    await expect(webPushDriver(r, pubResolve).send(chan, MSG, ctx)).rejects.toBeDefined()
     expect(send).toHaveBeenCalledTimes(2) // transient on the first did not short-circuit the second
     expect(deleteByEndpoint).not.toHaveBeenCalled() // 503 ≠ Gone → never prune a live sub
+    send.mockRestore()
+  })
+
+  it('prunes an endpoint pointing at a private/metadata host and never POSTs to it (blind-SSRF guard)', async () => {
+    const send = vi.spyOn(webpush, 'sendNotification').mockResolvedValue({} as never)
+    const { r, deleteByEndpoint } = repo([target('http://169.254.169.254/push'), target('https://ok')])
+    await webPushDriver(r, pubResolve).send(chan, MSG, ctx) // resolves — an unsafe endpoint is not a retryable failure
+    expect(deleteByEndpoint).toHaveBeenCalledWith('http://169.254.169.254/push')
+    expect(send).toHaveBeenCalledTimes(1) // only the public endpoint was pushed
+    expect((send.mock.calls[0]![0] as { endpoint: string }).endpoint).toBe('https://ok')
     send.mockRestore()
   })
 
   it('does nothing without ctx — no account means no fan-out target', async () => {
     const send = vi.spyOn(webpush, 'sendNotification')
     const { r, listByAccount } = repo([target('https://a')])
-    await webPushDriver(r).send(chan, MSG, undefined)
+    await webPushDriver(r, pubResolve).send(chan, MSG, undefined)
     expect(listByAccount).not.toHaveBeenCalled()
     expect(send).not.toHaveBeenCalled()
     send.mockRestore()

@@ -24,8 +24,9 @@ eu-central-1, out of sandbox). Wiring real delivery needs an SMTP client — a n
   path (wrong creds → every send auth-fails, no signal), and other chars throw the URL parser
   (worker-wide crash). An options object sidesteps URL parsing entirely. Construction is also
   wrapped in try/catch → a bad email config degrades to "channel skipped", never a pipeline crash.
-- **Env-gated, like every other driver.** `buildEmailTransport(env)` returns `undefined` when
-  `SMTP_URL`/`MAIL_FROM` are absent, so the email channel is SKIPPED (a config gap, not a failure) —
+- **Env-gated, like every other driver.** `buildEmailTransport(env)` returns `undefined` when any
+  of `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`/`MAIL_FROM` are absent (the discrete vars decided above —
+  there is no `SMTP_URL`), so the email channel is SKIPPED (a config gap, not a failure) —
   identical to the Telegram token gate. No secret is ever in code (rule 12); creds live only in the
   server `.env`.
 - **Bounce/complaint handling** (AWS-required for reputation): the transport forwards an optional

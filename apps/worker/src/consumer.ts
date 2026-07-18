@@ -142,20 +142,23 @@ export class ShardConsumer {
   private async process(entries: [string, Buffer][]): Promise<void> {
     const records: NormalizedRecord[] = []
     const ids: string[] = []
-    const dead: string[] = []
+    const dead: [string, Buffer][] = []
     for (const [id, payload] of entries) {
       try {
         records.push(normalize(cbor.decode(payload), this.deps.hash))
         ids.push(id)
       } catch {
         // malformed entry → dead-letter, continue (E02-3 edge case)
-        dead.push(id)
+        dead.push([id, payload])
       }
     }
     if (dead.length > 0) {
       const pipe = this.deps.redis.pipeline()
-      for (const id of dead) {
-        pipe.xadd('raw:dead', 'MAXLEN', '~', 10_000, '*', 'ref', `${this.stream}:${id}`)
+      for (const [id, payload] of dead) {
+        // carry the ORIGINAL payload bytes, not just a ref: ingest trims raw:{shard} with
+        // MAXLEN ~100k, so a ref would dangle within minutes and the poison payload be
+        // unrecoverable/undiagnosable (review MED). Keep the ref too for provenance.
+        pipe.xadd('raw:dead', 'MAXLEN', '~', 10_000, '*', 'ref', `${this.stream}:${id}`, 'payload', payload)
         pipe.xack(this.stream, GROUP, id)
       }
       await pipe.exec()

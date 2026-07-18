@@ -58,10 +58,13 @@ ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
 
 ## Notes
 
-- HTTP-by-IP is TEMPORARY until DNS (`COOKIE_SECURE=0`). DNS day: set
-  `ORBETRA_PUBLIC=true`, `COOKIE_SECURE=1`, AND add the domain to
-  `apps/web/vite.config.ts` `preview.allowedHosts` (vite preview 403s unknown
-  Hosts — IPs pass by default, domains do not).
+- HTTP-by-IP is TEMPORARY until DNS (`COOKIE_SECURE=0`). DNS day: set `COOKIE_SECURE=1`,
+  point DNS at the server, set `ORBETRA_APP_HOST`/`ORBETRA_SITE_HOST` (+ `ORBETRA_SITE_WWW`),
+  AND add the domain to `apps/web/vite.config.ts` `preview.allowedHosts` (vite preview 403s
+  unknown Hosts — IPs pass by default, domains do not). Tenant custom domains need no flag:
+  the `https://` on-demand-TLS block in `infra/Caddyfile` self-activates once Caddy publishes
+  `:443` and the api's caddy-ask approves the verified domain (there is no `ORBETRA_PUBLIC`
+  switch — the variable was never wired).
 - Ingest is the only app port published beside Caddy (5027 — devices). Internal
   services stay loopback/compose-network only (PR #11: Docker bypasses UFW).
 - The `exports` volume is mounted on BOTH worker (writes) and api (download streams).

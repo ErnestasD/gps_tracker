@@ -97,7 +97,9 @@
       "incomplete": "Nieukończona",
       "incomplete_expired": "Wygasła",
       "paused": "Wstrzymana"
-    }
+    },
+    "actionError": "Nie udało się połączyć ze Stripe — spróbuj ponownie.",
+    "loadError": "Nie udało się załadować statusu płatności."
   },
   "branding": {
     "title": "Marka",
@@ -125,7 +127,8 @@
     "badDomain": "Podaj poprawną nazwę hosta (np. fleet.example.com).",
     "txtInstruction": "Dodaj ten rekord TXT do {{domain}}, następnie kliknij Zweryfikuj:",
     "certNote": "Certyfikaty HTTPS są wystawiane automatycznie przy pierwszym bezpiecznym żądaniu po weryfikacji domeny.",
-    "domainLabel": "Domena"
+    "domainLabel": "Domena",
+    "actionError": "Akcja nie powiodła się — spróbuj ponownie."
   },
   "audit": {
     "title": "Dziennik audytu",
@@ -191,7 +194,8 @@
     "driver": "Kierowca",
     "noDriver": "Brak kierowcy",
     "avgSpeed": "Śr. prędkość",
-    "searchDriver": "Filtruj wg kierowcy…"
+    "searchDriver": "Filtruj wg kierowcy…",
+    "assignError": "Nie udało się przypisać kierowcy — spróbuj ponownie."
   },
   "rules": {
     "title": "Reguły",
@@ -304,7 +308,8 @@
       "polygon": "Klikaj mapę, aby dodać punkty; zamknij kształt, aby zakończyć.",
       "circle": "Kliknij środek, potem ponownie, aby ustawić promień.",
       "corridor": "Klikaj wzdłuż trasy; podwójne kliknięcie kończy linię."
-    }
+    },
+    "deleteError": "Nie udało się usunąć geofence — spróbuj ponownie."
   },
   "deviceList": {
     "title": "Urządzenia",
@@ -557,7 +562,8 @@
     "addTitle": "Nowe urządzenie",
     "plate": "Nr rejestracyjny (opcjonalnie)",
     "retireSure": "Wycofać {{name}} ({{imei}})? Od teraz ten IMEI będzie odrzucany.",
-    "eraseSure": "Trwale usunąć wszystkie dane {{name}}? Historia, trasy, zdarzenia i polecenia zostaną usunięte. Tego nie można cofnąć."
+    "eraseSure": "Trwale usunąć wszystkie dane {{name}}? Historia, trasy, zdarzenia i polecenia zostaną usunięte. Tego nie można cofnąć.",
+    "odoError": "Nie udało się zmienić źródła licznika — spróbuj ponownie."
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",
@@ -625,7 +631,8 @@
       "geofence": "{{name}} · {{transition}}",
       "device_offline": "offline {{hours}} godz. (≥ {{threshold}} godz.)",
       "panic": "Alarm SOS",
-      "power_cut": "utrata zasilania zewnętrznego"
+      "power_cut": "utrata zasilania zewnętrznego",
+      "fuel_theft": "spadek paliwa {{drop}} {{unit}}"
     }
   },
   "reports": {
@@ -696,7 +703,8 @@
     "active": "Aktywny",
     "lastUsed": "ostatnio użyty",
     "neverUsed": "nieużywany",
-    "emptyDesc": "Utwórz pierwszy klucz do integracji z API."
+    "emptyDesc": "Utwórz pierwszy klucz do integracji z API.",
+    "actionError": "Nie udało się unieważnić klucza — spróbuj ponownie."
   },
   "webhooks": {
     "title": "Webhooki",
@@ -722,7 +730,8 @@
     "when": "Kiedy",
     "event": "Zdarzenie",
     "status": "Status",
-    "noResponse": "brak odpowiedzi"
+    "noResponse": "brak odpowiedzi",
+    "actionError": "Akcja nie powiodła się — spróbuj ponownie."
   },
   "platform": {
     "title": "Platforma",
@@ -779,7 +788,8 @@
       "overspeed": "Przekr. prędk.",
       "score": "Wynik"
     },
-    "actions": "Akcje"
+    "actions": "Akcje",
+    "deleteError": "Nie udało się usunąć kierowcy — spróbuj ponownie."
   },
   "maint": {
     "title": "Konserwacja",
@@ -853,7 +863,8 @@
       "6": "So"
     },
     "addTitle": "Zaplanuj raport",
-    "create": "Utwórz"
+    "create": "Utwórz",
+    "actionError": "Nie udało się usunąć — spróbuj ponownie."
   },
   "admin": {
     "search": "Szukaj…",
@@ -869,7 +880,8 @@
     "cancel": "Anuluj",
     "confirmTitle": "Czy na pewno?",
     "actions": "Akcje",
-    "pickDate": "Wybierz datę"
+    "pickDate": "Wybierz datę",
+    "loadError": "Nie udało się załadować — spróbuj ponownie."
   },
   "dash": {
     "title": "Przegląd",
@@ -913,5 +925,10 @@
     "empty": "Brak powiadomień",
     "viewAll": "Wszystkie zdarzenia",
     "titleUnread": "Powiadomienia ({{n}} nieprzeczytanych)"
+  },
+  "charts": {
+    "fuelTimeline": "Oś czasu poziomu paliwa",
+    "speedTimeline": "Oś czasu prędkości odtwarzania",
+    "voltageTimeline": "Oś czasu napięcia"
   }
 }

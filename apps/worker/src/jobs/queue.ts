@@ -37,12 +37,21 @@ export function createRecomputeQueue(connection: ConnectionOptions): Queue<Recom
  * Enqueue a recompute. The jobId buckets by device + hour so a burst of late signals
  * for the same region collapses into one job instead of piling up (dedupe).
  */
-export async function enqueueRecompute(queue: Queue<RecomputeJob>, deviceId: bigint, from: Date, to: Date): Promise<void> {
+export async function enqueueRecompute(
+  queue: Queue<RecomputeJob>,
+  deviceId: bigint,
+  from: Date,
+  to: Date,
+  opts: { delayMs?: number } = {},
+): Promise<void> {
   const bucket = from.toISOString().slice(0, 13) // yyyy-mm-ddThh
   await queue.add(
     'recompute',
     { deviceId: deviceId.toString(), from: from.toISOString(), to: to.toISOString() },
     {
+      // late data still within the live edge is deferred until its window settles (recompute
+      // only rebuilds CLOSED trips, never the live open row, so this never races streaming)
+      ...(opts.delayMs !== undefined && opts.delayMs > 0 ? { delay: Math.ceil(opts.delayMs) } : {}),
       // dedupe only collapses concurrent WAITING bursts for the same device+hour;
       // removeOnComplete:true frees the id immediately so a genuinely new later batch
       // touching the same bucket can re-enqueue (a retained id would block it — review MED)

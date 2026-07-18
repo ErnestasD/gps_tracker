@@ -2,6 +2,8 @@ import type { Pool } from 'pg'
 
 import type { FuelSampleView } from '@orbetra/shared'
 
+import { isPgSafeDate } from './dateGuard.js'
+
 /**
  * Scoped fuel-series read for the playback fuel graph (E08-3, §4 "fuel level graph where
  * AVL present"). Raw SQL over the pool — positions are NOT in Prisma (rule 1). The CALLER
@@ -21,14 +23,6 @@ export interface FuelOpts {
 }
 
 const MAX_PAGE = 10_000
-// same pg-safe date window as positions.ts (JS Date spans wider than pg timestamptz)
-const MIN_MS = Date.parse('0001-01-01T00:00:00Z')
-const MAX_MS = Date.parse('9999-12-31T23:59:59Z')
-const validDate = (s: string | undefined): boolean => {
-  if (s === undefined) return false
-  const t = new Date(s).getTime()
-  return !Number.isNaN(t) && t >= MIN_MS && t <= MAX_MS
-}
 
 const num = (v: string | null): number | null => {
   if (v === null) return null
@@ -50,8 +44,8 @@ export async function readFuelSeries(pool: Pool, deviceId: bigint, opts: FuelOpt
   const limit = Math.trunc(Math.min(Math.max(Number.isFinite(opts.limit) ? Number(opts.limit) : MAX_PAGE, 1), MAX_PAGE))
   const params: unknown[] = [deviceId.toString()]
   const where: string[] = ['device_id = $1', `attrs ?| array['io_89','io_48','io_84']`]
-  if (validDate(opts.from)) where.push(`fix_time >= $${params.push(new Date(opts.from!))}`)
-  if (validDate(opts.to)) where.push(`fix_time <= $${params.push(new Date(opts.to!))}`)
+  if (isPgSafeDate(opts.from)) where.push(`fix_time >= $${params.push(new Date(opts.from!))}`)
+  if (isPgSafeDate(opts.to)) where.push(`fix_time <= $${params.push(new Date(opts.to!))}`)
   const res = await pool.query<PgFuelRow>(
     `SELECT fix_time, attrs->>'io_89' AS pct89, attrs->>'io_48' AS pct48, attrs->>'io_84' AS l84
      FROM positions WHERE ${where.join(' AND ')}

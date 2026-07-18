@@ -22,6 +22,7 @@ export function ScheduledReportsCard({ accountId }: { accountId?: string }) {
   const qc = useQueryClient()
   const list = useQuery({ queryKey: ['scheduled-reports'], queryFn: listScheduledReports })
   const [addOpen, setAddOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState(false) // a failed delete was swallowed
   // delete target resolves against the LIVE list (devices precedent)
   const [deleteForId, setDeleteForId] = useState<string | null>(null)
   const deleteFor = (list.data ?? []).find((s) => s.id === deleteForId) ?? null
@@ -54,7 +55,13 @@ export function ScheduledReportsCard({ accountId }: { accountId?: string }) {
         </Sheet>
       </div>
 
-      {(list.data ?? []).length === 0 ? (
+      {deleteError && (
+        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="sr-action-error">{t('scheduled.actionError')}</p>
+      )}
+
+      {list.isError ? (
+        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="sr-error">{t('admin.loadError')}</p>
+      ) : (list.data ?? []).length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="sr-empty">{t('scheduled.empty')}</p>
       ) : (
         <ul className="space-y-2" data-testid="sr-list">
@@ -98,7 +105,10 @@ export function ScheduledReportsCard({ accountId }: { accountId?: string }) {
         onConfirm={() => {
           const s = deleteFor
           if (s === null) return
-          void deleteScheduledReport(s.id).then(() => qc.invalidateQueries({ queryKey: ['scheduled-reports'] })).catch(() => undefined)
+          setDeleteError(false)
+          void deleteScheduledReport(s.id)
+            .then(() => qc.invalidateQueries({ queryKey: ['scheduled-reports'] }))
+            .catch(() => setDeleteError(true))
         }}
       />
     </div>
@@ -119,12 +129,15 @@ function ScheduleForm({ accountId, onCreated, onCancel }: {
   const [weekday, setWeekday] = useState(1)
   const [recipients, setRecipients] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false) // in-flight guard: a double-click must not create duplicate schedules (which then double-email every tick)
 
   const emails = recipients.split(',').map((s) => s.trim()).filter((s) => s.length > 0)
   const canSave = emails.length > 0
 
   const save = () => {
+    if (busy) return
     setError(null)
+    setBusy(true)
     createScheduledReport({
       ...(accountId ? { accountId } : {}),
       reportType, cadence, hourUtc, recipients: emails,
@@ -132,6 +145,7 @@ function ScheduleForm({ accountId, onCreated, onCancel }: {
     })
       .then(() => onCreated()) // parent closes the sheet; unmount resets the form
       .catch(() => setError(t('scheduled.error')))
+      .finally(() => setBusy(false))
   }
 
   return (
@@ -159,7 +173,7 @@ function ScheduleForm({ accountId, onCreated, onCancel }: {
       {error !== null && <span role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</span>}
       <SheetFooter className="mt-2">
         <AdminButton variant="secondary" onClick={onCancel}>{t('admin.cancel')}</AdminButton>
-        <AdminButton disabled={!canSave} data-testid="sr-save" onClick={save}>{t('scheduled.create')}</AdminButton>
+        <AdminButton disabled={!canSave || busy} data-testid="sr-save" onClick={save}>{t('scheduled.create')}</AdminButton>
       </SheetFooter>
     </div>
   )

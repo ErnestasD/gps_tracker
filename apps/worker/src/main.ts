@@ -60,13 +60,27 @@ async function main(): Promise<void> {
   const hash = (data: Uint8Array): bigint => hasher.h64Raw(data)
 
   const consumersByShard = new Map<number, ShardConsumer>()
-  const leaser = new ShardLeaser(redis, workerId, 30_000, (shard) => {
-    // lease lost (stall/partition): stop the consumer NOW — another worker owns the
-    // shard and concurrent processing would violate I2 (adversarial review, E02-3)
-    console.error(`lease lost for shard ${shard} — stopping its consumer`)
-    void consumersByShard.get(shard)?.stop()
-    consumersByShard.delete(shard)
-  })
+  // wired below once the consumer factory + all its deps exist; the renew/reacquire timer only
+  // fires ~10 s after startup, so the holder is always populated before onGained can call it.
+  let startShardConsumer: (shard: number) => void = () => {}
+  const leaser = new ShardLeaser(
+    redis,
+    workerId,
+    30_000,
+    (shard) => {
+      // lease lost (stall/partition): stop the consumer NOW — another worker owns the
+      // shard and concurrent processing would violate I2 (adversarial review, E02-3)
+      console.error(`lease lost for shard ${shard} — stopping its consumer`)
+      void consumersByShard.get(shard)?.stop()
+      consumersByShard.delete(shard)
+    },
+    (shard) => {
+      // lease (re)acquired: a shard we lost to a stall, or a dead peer's expired lease, must
+      // resume consumption — otherwise ingest's MAXLEN trim destroys the backlog unread (review HIGH)
+      console.log(`shard ${shard} (re)acquired — starting its consumer`)
+      startShardConsumer(shard)
+    },
+  )
   const shards = await leaser.claimAll()
   console.log(`${workerId} owns shards: ${[...shards].join(',') || '(none)'}`)
 
@@ -234,16 +248,10 @@ async function main(): Promise<void> {
   })
   await scheduleExportSweep(gdprSweepQueue)
   const consumerConns: Redis[] = []
-  const consumers = [...shards].map((s) => {
-    // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued
-    // command behind it on a shared ioredis socket — 16 idle consumers made a full
-    // read round take ~16×blockMs (>30 s), starving the leaser's renewal GETs on the
-    // same socket until every lease expired on an IDLE worker (found live in E02-6;
-    // log signature: "lease lost" for shards 1..15 but never shard 0, loss count
-    // increasing with shard number = serial queue depth)
-    const conn = redis.duplicate()
-    consumerConns.push(conn)
-    const c = new ShardConsumer(s, {
+  // Create + start a consumer for ONE shard. Reused by the initial claim AND by the leaser's
+  // onGained callback (a shard recovered after a lost lease / a dead peer's expired one).
+  const makeConsumer = (s: number, conn: Redis): ShardConsumer =>
+    new ShardConsumer(s, {
       redis: conn,
       pool,
       hash,
@@ -332,12 +340,22 @@ async function main(): Promise<void> {
           // positions off the hot path (positions are already written by the consumer).
           // Bound recompute to SETTLED history (to = now − guard, guard > max stop window)
           // so it can never delete/clobber the live open trip the streaming persister owns.
-          const settledTo = new Date(Date.now() - RECOMPUTE_GUARD_MS)
+          const nowMs = Date.now()
+          const settledTo = new Date(nowMs - RECOMPUTE_GUARD_MS)
           for (const { deviceId, from } of motionFeed.tripEngine.takeLate()) {
-            if (from >= settledTo) continue // late data is within the live edge → streaming owns it
             // per-item guard: one enqueue failure must not drop the other devices' signals
             try {
-              await enqueueRecompute(recomputeQueue, deviceId, from, settledTo)
+              if (from >= settledTo) {
+                // late data still WITHIN the live edge: the streaming engine dropped it, so it
+                // would otherwise be reconciled by nothing (takeLate cleared the signal). Defer a
+                // recompute until its window settles (from+guard) instead of discarding it (review
+                // MED). recompute rebuilds only CLOSED trips, so the delayed job never races the
+                // live open trip the streaming persister owns.
+                const settleAt = new Date(from.getTime() + RECOMPUTE_GUARD_MS)
+                await enqueueRecompute(recomputeQueue, deviceId, from, settleAt, { delayMs: settleAt.getTime() - nowMs })
+              } else {
+                await enqueueRecompute(recomputeQueue, deviceId, from, settledTo)
+              }
             } catch (e) {
               prom.tripPersistErrors.inc()
               console.error('enqueueRecompute', e)
@@ -352,19 +370,30 @@ async function main(): Promise<void> {
         }
       },
     })
+  // dedicated connection PER consumer: XREADGROUP BLOCK serializes every queued command behind it
+  // on a shared ioredis socket — 16 idle consumers made a full read round take ~16×blockMs (>30 s),
+  // starving the leaser's renewal GETs on the same socket until every lease expired on an IDLE
+  // worker (found live in E02-6; log signature: "lease lost" for shards 1..15 but never shard 0).
+  startShardConsumer = (s: number): void => {
+    if (consumersByShard.has(s)) return // already running (idempotent against a duplicate onGained)
+    const conn = redis.duplicate()
+    consumerConns.push(conn)
+    const c = makeConsumer(s, conn)
     consumersByShard.set(s, c)
-    return c
-  })
-  for (const c of consumers) {
-    await c.ensureGroup()
-    c.start()
+    void c
+      .ensureGroup()
+      .then(() => c.start())
+      .catch((err: unknown) => console.error(`shard ${s} start failed`, err))
   }
+  for (const s of shards) startShardConsumer(s)
 
   // Graceful drain (§6.1 deploy protocol): finish current batch, XACK, release leases <5 s
   process.on('SIGTERM', () => {
     void (async () => {
-      await Promise.all(consumers.map((c) => c.stop()))
-      await leaser.release()
+      leaser.stopRenewing() // stop re-acquiring so this worker doesn't re-grab a shard mid-drain
+      await Promise.all([...consumersByShard.values()].map((c) => c.stop())) // drain in-flight batches
+      await leaser.releaseLeases() // free leases AFTER draining — else a peer claims a shard we're
+      // still persisting and processes the same device concurrently (rule 5 / I2, review HIGH)
       await recomputeWorker.close() // finish the in-flight recompute job, stop taking new
       await recomputeQueue.close()
       await offlineWorker.close() // finish the in-flight sweep, stop taking new

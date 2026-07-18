@@ -109,3 +109,47 @@ describe('LiveState (E02-4)', () => {
     expect(await redis.hget('device:42:last', 'fixTimeMs')).toBe('5000')
   })
 })
+
+describe('LiveState — a failed applyOne does not poison the device chain (review HIGH)', () => {
+  /** Minimal fake ioredis whose hget throws for the first N calls, then behaves. */
+  function flakyRedis(failFirst: number) {
+    const hashes = new Map<string, Record<string, string>>()
+    let hgetCalls = 0
+    return {
+      hget: (key: string, field: string) => {
+        if (key.endsWith(':last') && field === 'fixTimeMs') {
+          hgetCalls++
+          if (hgetCalls <= failFirst) return Promise.reject(new Error('redis blip'))
+          return Promise.resolve(hashes.get(key)?.[field] ?? null)
+        }
+        return Promise.resolve(null)
+      },
+      hmget: () => Promise.resolve([null]),
+      hset: (key: string, obj: Record<string, string>) => {
+        hashes.set(key, { ...(hashes.get(key) ?? {}), ...obj })
+        return Promise.resolve('OK')
+      },
+      publish: () => Promise.resolve(0),
+    } as unknown as Redis
+  }
+
+  it('recovers on the NEXT apply after a transient failure (chain not left rejected)', async () => {
+    const fake = flakyRedis(1) // first hget rejects, then works
+    const live = new LiveState(fake)
+    await expect(live.apply([rec(1_000)])).rejects.toThrow('redis blip') // surfaced, not swallowed
+    // the device's chain must NOT be poisoned — a later apply for the same device still runs + persists
+    await live.apply([rec(2_000)])
+    expect(await fake.hget('device:42:last', 'fixTimeMs')).toBe('2000')
+  })
+
+  it('one device failing does not skip OTHER devices in the same batch', async () => {
+    // fail exactly the first hget; device 42 sorts first alphabetically? order is Map insertion —
+    // fail the first-processed device and assert the second still lands
+    const fake = flakyRedis(1)
+    const recFor = (id: bigint, ms: number): NormalizedRecord => ({ ...rec(ms), deviceId: id })
+    const live = new LiveState(fake)
+    await expect(live.apply([recFor(42n, 1_000), recFor(99n, 1_000)])).rejects.toThrow()
+    // the non-failing device was still written despite the sibling's failure
+    expect(await fake.hget('device:99:last', 'fixTimeMs')).toBe('1000')
+  })
+})

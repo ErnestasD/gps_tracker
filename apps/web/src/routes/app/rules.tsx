@@ -72,7 +72,11 @@ export function RulesPage() {
       <section className="space-y-2">
         <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('rules.list')}</h2>
         {actionError && <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="rules-action-error">{t('rules.actionError')}</p>}
-        {(rules.data ?? []).length === 0 ? (
+        {rules.isError ? (
+          <div className="admin-card">
+            <p role="alert" className="py-10 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="rules-error">{t('admin.loadError')}</p>
+          </div>
+        ) : (rules.data ?? []).length === 0 ? (
           <div className="admin-card">
             <p className="py-10 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="rules-empty">{t('rules.empty')}</p>
           </div>

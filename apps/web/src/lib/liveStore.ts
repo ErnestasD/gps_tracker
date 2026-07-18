@@ -144,6 +144,46 @@ export class LiveStore {
     this.flush()
   }
 
+  /** Remove a single device (E03-3 device CRUD is the authoritative bound): retiring/erasing a
+   * device must drop its marker + DeviceList row immediately, not leave it decaying to 'offline'
+   * until logout. If it was the selected/trailed device, clear that too. Returns whether it existed. */
+  evict(deviceId: string): boolean {
+    if (!this.byId.delete(deviceId)) return false
+    if (this.snapshot.selectedId === deviceId) {
+      this.trailPoints = []
+      this.snapshot = { ...this.snapshot, selectedId: null, follow: false }
+    }
+    this.dirty = true
+    this.flush(true)
+    return true
+  }
+
+  /** Reconcile the live set to the authoritative active registry: drop any live device that is no
+   * longer present (retired/erased/removed — possibly by another tab or admin). No-op when every
+   * live device is still present, so it never churns the snapshot needlessly. A device still
+   * streaming fresh fixes (≤ ONLINE_MS) is KEPT even if the ['devices'] cache hasn't refetched it
+   * yet — the WS stream is ground truth for presence; the stale registry cache is not. */
+  retain(activeIds: Iterable<string>): void {
+    const keep = activeIds instanceof Set ? activeIds : new Set(activeIds)
+    const now = this.now()
+    let removed = false
+    for (const id of [...this.byId.keys()]) {
+      const dev = this.byId.get(id)
+      if (dev !== undefined && now - dev.ev.fixTimeMs <= ONLINE_MS) continue // actively streaming — keep
+      if (!keep.has(id) && this.byId.delete(id)) {
+        if (this.snapshot.selectedId === id) {
+          this.trailPoints = []
+          this.snapshot = { ...this.snapshot, selectedId: null, follow: false }
+        }
+        removed = true
+      }
+    }
+    if (removed) {
+      this.dirty = true
+      this.flush(true)
+    }
+  }
+
   // ── UI state ──────────────────────────────────────────────────────────────
   select(deviceId: string | null): void {
     if (deviceId === this.snapshot.selectedId) return

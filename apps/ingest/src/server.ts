@@ -39,6 +39,12 @@ export function createIngestServer(
   const registry = new DeviceRegistry(redis)
   const limiter = new IpLimiter(config.maxConnPerIp)
   const handshakes = new HandshakeRateLimiter(config.maxHandshakesPerIpPerMin)
+  // Sweep stale per-IP handshake windows every minute. Without this the map grows monotonically
+  // with every distinct source IP; once maxTrackedIps (200k) is reached, EVERY connection from a
+  // previously-unseen IP is refused until process restart — CGNAT/mobile fleets churn public IPs on
+  // reconnect, so a long-running process would silently lock out reconnecting devices (review MED).
+  const handshakeSweep = setInterval(() => handshakes.sweep(), 60_000)
+  handshakeSweep.unref()
   const liveByImei = new Map<string, Session>()
   let connections = 0
 

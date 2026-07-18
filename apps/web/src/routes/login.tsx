@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -18,6 +19,7 @@ import { liveStore } from '@/lib/liveStore'
 export function LoginPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const search = useSearch({ from: '/login' })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -38,6 +40,7 @@ export function LoginPage() {
     setBusy(true)
     setError(null)
     liveStore.reset() // no stale prior-session devices (E02-6 review HIGH)
+    qc.clear() // and no stale prior-session query cache (R4 HIGH cross-tenant leak) before a new login
     login(email, password)
       .then(async () => {
         liveStore.seed(await getLastPositions()) // warm the map before navigating
