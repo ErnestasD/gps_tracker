@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 
 import { attachWsGateway, createApp, issueTicket, type WsDeps } from '../src/index.js'
+import { markSessionsRevoked, WS_REVOKED_CLOSE } from '../src/ws.js'
 import { mintTestToken, testApiDeps } from './helpers/auth.js'
 
 let container: StartedTestContainer
@@ -121,6 +122,36 @@ describe('E02-4 ws-ticket + live gateway', () => {
     expect(t2.inbox).toHaveLength(0)
     t1.ws.close()
     t2.ws.close()
+  })
+
+  it('closes an already-established socket once its session is revoked (audit MED)', async () => {
+    // dedicated gateway with a fast re-validation interval so the test is quick + deterministic
+    const revDeps: WsDeps = { redis, redisSub, ticketTtlS: 30, revokeCheckIntervalMs: 150 }
+    const srv = serve({ fetch: createApp(testApiDeps(revDeps)).fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    const localWss = attachWsGateway(srv, revDeps)
+    try {
+      const uid = `revoke-${Date.now()}`
+      const ticket = await issueTicket(revDeps, { userId: uid, tenantId: 't1', role: 'tsp_admin' })
+      const ws = new WebSocket(`ws://127.0.0.1:${p}/v1/stream?ticket=${ticket}`)
+      const closed = new Promise<number>((resolve) => ws.on('close', (code) => resolve(code)))
+      await new Promise<void>((resolve, reject) => {
+        ws.once('open', () => resolve())
+        ws.once('error', reject)
+      })
+      // revoke every session of this user (as a password change / admin reset does) → the next
+      // re-validation tick must tear the live socket down with the revoked close code
+      await markSessionsRevoked(redis, uid)
+      const code = await Promise.race([
+        closed,
+        new Promise<number>((_, rej) => setTimeout(() => rej(new Error('socket was NOT closed on revoke')), 3_000)),
+      ])
+      expect(code).toBe(WS_REVOKED_CLOSE)
+    } finally {
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+      localWss.close()
+    }
   })
 
   it('account scope: user of account A never receives account B device events', async () => {

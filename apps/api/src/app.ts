@@ -1,7 +1,8 @@
-import { Hono } from 'hono'
+import { Hono, type Context, type MiddlewareHandler } from 'hono'
 import { Gauge, Registry } from 'prom-client'
 
 import { HTTPException } from 'hono/http-exception'
+import { bodyLimit } from 'hono/body-limit'
 
 import { dbErrorHttp, type Db, type Pool } from '@orbetra/db'
 import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
@@ -66,6 +67,8 @@ export interface ApiDeps extends WsDeps {
   osrm?: { url: string; fetchImpl?: typeof fetch }
   /** route-optimization per-user rate limit (ADR-029); default 30/min. */
   routingRateLimit?: { max: number; windowS: number }
+  /** reports per-user rate limit (audit MED); default 60/min. */
+  reportRateLimit?: { max: number; windowS: number }
 }
 
 export interface ApiProm {
@@ -158,6 +161,22 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   const apiKeyAuth = createApiKeyAuth({ apiKeys: deps.db.apiKeys, redis: deps.redis, perMin: deps.apiKeyRateLimitPerMin ?? 600 })
   app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret, apiKey: apiKeyAuth }))
 
+  // Global request-body cap (audit MED): every /v1 POST buffers the full JSON body before zod runs,
+  // so without this a single caller can amplify server memory with an arbitrarily large body. 1 MB
+  // covers every normal payload; the CSV import (its own 2 MB field cap) gets a higher ceiling. A
+  // single per-request choice (never two overlapping limits) → over-limit ⇒ 413.
+  const GLOBAL_BODY_LIMIT = 1024 * 1024
+  const IMPORT_BODY_LIMIT = 3 * 1024 * 1024 // holds a 2 MB CSV + JSON wrapper with margin
+  const onBodyTooLarge = (c: Context) => problem(c, 413, 'Payload Too Large', 'request body too large')
+  const globalLimiter = bodyLimit({ maxSize: GLOBAL_BODY_LIMIT, onError: onBodyTooLarge }) as MiddlewareHandler<AuthEnv>
+  const importLimiter = bodyLimit({ maxSize: IMPORT_BODY_LIMIT, onError: onBodyTooLarge }) as MiddlewareHandler<AuthEnv>
+  const pickBodyLimit: MiddlewareHandler<AuthEnv> = (c, next) => {
+    const p = c.req.path
+    const isImport = p === '/v1/devices/import' || p === '/v1/devices/import/preview'
+    return (isImport ? importLimiter : globalLimiter)(c, next)
+  }
+  app.use('/v1/*', pickBodyLimit)
+
   // §6.6: GET /v1/ws-ticket → single-use ticket for wss://…/v1/stream?ticket=
   // (any authenticated role — live map is viewer-accessible)
   app.get('/v1/ws-ticket', async (c) => {
@@ -214,7 +233,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
 
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.
-  mountReports(app, { db: deps.db, pool: deps.pool })
+  mountReports(app, { db: deps.db, pool: deps.pool, redis: deps.redis, ...(deps.reportRateLimit !== undefined ? { rateLimit: deps.reportRateLimit } : {}) })
 
   // Driver safety scoring (V2) — dedicated read route, EXEMPT from the manifest (aggregate result).
   mountDriverScores(app, { db: deps.db, pool: deps.pool })
@@ -226,7 +245,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     ...(deps.routingRateLimit !== undefined ? { rateLimit: deps.routingRateLimit } : {}),
   })
   // billing (ADR-024) — tenant-self, admin-only; manifest-exempt with a dedicated isolation test
-  mountBilling(app, { db: deps.db, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl })
+  mountBilling(app, { db: deps.db, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl, redis: deps.redis })
   // Web Push subscriptions (ADR-026) — tenant-self, manifest-exempt
   mountPush(app, { db: deps.db, vapidPublicKey: deps.vapidPublicKey })
 

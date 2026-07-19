@@ -20,6 +20,31 @@ export interface WsDeps {
   /** Separate connection: a subscribed ioredis client cannot run other commands. */
   redisSub: Redis
   ticketTtlS?: number // §6.7 WS_TICKET_TTL=30
+  /** How often the gateway re-validates live sockets against the revocation marker
+   *  (audit MED — revoked sessions must not keep a live stream). Default 15 s. */
+  revokeCheckIntervalMs?: number
+}
+
+/** Redis key prefix for the "all sessions revoked at" marker (audit MED). */
+export const WS_REVOKE_PREFIX = 'ws:revoke:'
+/** Marker TTL — comfortably longer than any access-token TTL / expected socket lifetime. */
+const WS_REVOKE_TTL_S = 24 * 3_600
+/** WS close code for a revoked session (application range; distinct from protocol codes). */
+export const WS_REVOKED_CLOSE = 4401
+
+/**
+ * Record that EVERY session of `userId` was revoked at `at` (ms). The WS gateway tears down any
+ * socket that was established BEFORE this instant on its next re-validation tick — a password
+ * change / admin reset revokes refresh families (HTTP), but a socket opened earlier would keep
+ * streaming live positions without this (audit MED). Best-effort: a Redis blip must never fail
+ * the password change itself, so it swallows errors (incl. a stub redis in unit tests).
+ */
+export async function markSessionsRevoked(redis: Redis, userId: string, at: number = Date.now()): Promise<void> {
+  try {
+    await redis.set(`${WS_REVOKE_PREFIX}${userId}`, String(at), 'EX', WS_REVOKE_TTL_S)
+  } catch {
+    /* best-effort */
+  }
 }
 
 /**
@@ -45,8 +70,46 @@ export function attachWsGateway(
   onClientCountChange?: (n: number) => void,
 ): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
-  const subscribers = new Map<string, Set<{ ws: WebSocket; ctx: WsAuthContext }>>()
+  const subscribers = new Map<string, Set<{ ws: WebSocket; ctx: WsAuthContext; establishedAt: number }>>()
   let subPromise: Promise<void> | null = null
+
+  // Periodically re-validate every live socket against the revocation marker (audit MED): a
+  // socket authorized before a password change / admin reset must be closed, else session
+  // revocation never reaches the one long-lived read credential. Cheap: one MGET over the
+  // DISTINCT user ids currently connected.
+  const revokeMs = deps.revokeCheckIntervalMs ?? 15_000
+  const revokeTimer = setInterval(() => {
+    void (async () => {
+      const entries: { ws: WebSocket; ctx: WsAuthContext; establishedAt: number }[] = []
+      for (const set of subscribers.values()) for (const e of set) entries.push(e)
+      if (entries.length === 0) return
+      const userIds = [...new Set(entries.map((e) => e.ctx.userId))]
+      let markers: (string | null)[]
+      try {
+        markers = await deps.redis.mget(...userIds.map((u) => `${WS_REVOKE_PREFIX}${u}`))
+      } catch {
+        return // Redis blip — try again next tick
+      }
+      const revokedAt = new Map<string, number>()
+      userIds.forEach((u, i) => {
+        const v = markers[i]
+        if (v != null) revokedAt.set(u, Number(v))
+      })
+      for (const e of entries) {
+        const t = revokedAt.get(e.ctx.userId)
+        // a socket opened at-or-before the revocation instant is no longer authorized
+        if (t !== undefined && t >= e.establishedAt) {
+          try {
+            e.ws.close(WS_REVOKED_CLOSE, 'session revoked')
+          } catch {
+            /* already closing */
+          }
+        }
+      }
+    })()
+  }, revokeMs)
+  revokeTimer.unref?.()
+  wss.on('close', () => clearInterval(revokeTimer))
 
   const ensureSubscription = (): Promise<void> => {
     // promise (not flag): a second concurrent upgrade awaits the ACTUAL subscription
@@ -94,7 +157,7 @@ export function attachWsGateway(
       const ctx = JSON.parse(raw) as WsAuthContext
       await ensureSubscription()
       wss.handleUpgrade(req, socket, head, (ws) => {
-        const entry = { ws, ctx }
+        const entry = { ws, ctx, establishedAt: Date.now() }
         const set = subscribers.get(ctx.tenantId) ?? new Set()
         set.add(entry)
         subscribers.set(ctx.tenantId, set)

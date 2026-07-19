@@ -51,11 +51,19 @@ export interface DriverRepo {
   listAllIbuttons(): Promise<{ tenantId: string; accountId: string; ibutton: string; driverId: string }[]>
 }
 
-/** Canonicalize an iButton to upper-case hex so 'a1b2c3d4' and 'A1B2C3D4' — the SAME physical key
- * — collide on the tenant-unique index (Postgres text compares case-sensitively). Without this,
- * two drivers could each "own" one key and tap-resolution would be ambiguous. */
-const canonIbutton = (v: string | null | undefined): string | null | undefined =>
-  typeof v === 'string' ? v.toUpperCase() : v
+/** Canonicalize an iButton to upper-case hex WITH leading zeros stripped, so every hex string that
+ * denotes the SAME physical key collides on the tenant-unique index. Tap-resolution reduces the key
+ * to its decimal value (`ibuttonKeyFromHex` = BigInt('0x'+hex)), so 'A1B2C3D4' and '00A1B2C3D4'
+ * resolve identically — but Postgres text compares case- and length-sensitively, so without this the
+ * unique index would let BOTH insert and the Redis resolution map would silently overwrite one with
+ * the other (ambiguous/mis-attributed taps). Stripping leading zeros + upper-casing yields the unique
+ * canonical hex for a value (BigInt(hex) is invariant to both), so the index now matches resolution.
+ * The stored form stays HEX (the API's ibuttonKeyFromHex reads this column as hex), just canonical. */
+const canonIbutton = (v: string | null | undefined): string | null | undefined => {
+  if (typeof v !== 'string') return v
+  const stripped = v.toUpperCase().replace(/^0+/, '')
+  return stripped === '' ? '0' : stripped // all-zero key → keep a single '0', never empty
+}
 
 export function createDriverRepo(prisma: PrismaClient, audit: AuditRepo): DriverRepo {
   const scopedById = (scope: Scope, id: string): Promise<Driver | null> =>

@@ -105,8 +105,37 @@ describe('E06-1 reports API', () => {
     expect(res.status).toBe(400)
   })
 
-  it('garbage dates do not 500 (repo sanitizes)', async () => {
+  it('garbage dates are rejected 400 (audit MED: they used to silently widen to full history)', async () => {
     const res = await post('/v1/reports/mileage', t1Token, { from: 'x', to: 'y', accountId: acct1 })
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(400)
+  })
+
+  it('a reversed range (from > to) is rejected 400 (audit MED)', async () => {
+    const res = await post('/v1/reports/mileage', t1Token, { from: '2026-10-27T00:00:00Z', to: '2026-10-24T00:00:00Z', accountId: acct1 })
+    expect(res.status).toBe(400)
+  })
+
+  it('an over-366-day range is rejected 400 (audit MED: unbounded full-scan aggregate)', async () => {
+    const res = await post('/v1/reports/mileage', t1Token, { from: '2020-01-01T00:00:00Z', to: '2026-01-01T00:00:00Z', accountId: acct1 })
+    expect(res.status).toBe(400)
+  })
+
+  it('rate-limits a caller who floods reports (audit MED: 429 over the per-user window)', async () => {
+    // dedicated app instance with a tiny limit so the flood is deterministic
+    const rlApp = createApp({ redis, redisSub: redis, db, pool, jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30, lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '127.0.0.1', reportRateLimit: { max: 3, windowS: 60 } })
+    const rlServer = serve({ fetch: rlApp.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const rlPort = await new Promise<number>((r) => rlServer.on('listening', () => r((rlServer.address() as { port: number }).port)))
+    // a fresh user id ⇒ a fresh per-user RL counter (deterministic: 3 pass, then 429)
+    const rlToken = await mintTestToken({ userId: `rl-flood-${Date.now()}`, tenantId: t1, role: 'tsp_admin' })
+    try {
+      const hit = () => fetch(`http://127.0.0.1:${rlPort}/v1/reports/mileage`, { method: 'POST', headers: { authorization: `Bearer ${rlToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ ...range, accountId: acct1 }) })
+      const statuses: number[] = []
+      for (let i = 0; i < 5; i++) statuses.push((await hit()).status)
+      expect(statuses.filter((s) => s === 200).length).toBe(3)
+      expect(statuses.filter((s) => s === 429).length).toBe(2)
+    } finally {
+      rlServer.closeAllConnections?.()
+      await new Promise<void>((r) => rlServer.close(() => r()))
+    }
   })
 })

@@ -44,11 +44,18 @@ export function sweepOffline(
     if (rules === undefined || rules.length === 0) continue // no offline rule for this account
     if (d.lastFixMs === null) continue // never reported — cannot classify
 
-    // the rule that trips first (smallest effective threshold) is the one that fires
+    // the rule that trips first (smallest effective threshold) is the one that fires.
+    // Rule config is `z.unknown` upstream (no numeric bound), and a device profile can carry any
+    // value too — so sanitize here: a non-positive / non-finite afterH is IGNORED (falls back to
+    // profile → default), never taken literally. afterH=0 would otherwise mark a device that
+    // reported one second ago as offline, fire one bogus alert, then permanently suppress genuine
+    // offline detection (isOffline stays true ⇒ the fired-flag never clears). Review LOW.
+    const posH = (v: number | undefined): number | undefined => (v !== undefined && Number.isFinite(v) && v > 0 ? v : undefined)
+    const profileH = posH(d.profileOfflineAfterH)
     let firing: OfflineRule | undefined
     let thresholdH = Infinity
     for (const r of rules) {
-      const th = r.afterH ?? d.profileOfflineAfterH ?? DEFAULT_OFFLINE_H
+      const th = posH(r.afterH) ?? profileH ?? DEFAULT_OFFLINE_H
       if (th < thresholdH) {
         thresholdH = th
         firing = r

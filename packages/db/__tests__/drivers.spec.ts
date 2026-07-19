@@ -85,6 +85,22 @@ describe('V2 drivers repo', () => {
     expect((await db.drivers.findByIbutton(aScope, 'A1B2C3D4'))?.id).toBe(d.id)
   })
 
+  it('canonicalizes iButton leading zeros so a value-equal key collides + resolves identically (review MED)', async () => {
+    const { aScope, accountId } = await seedTenant('LZ Co')
+    // AVL 78 resolves an iButton to its DECIMAL value (BigInt), so 'A1B2C3D4' and '00A1B2C3D4' are the
+    // SAME physical key. Without stripping leading zeros the tenant-unique index (on the hex string)
+    // would let both insert, and the Redis tap-resolution map (keyed on the shared decimal) would
+    // silently overwrite one with the other. Uniqueness must match resolution.
+    const d = await db.drivers.create(aScope, actor, { accountId, name: 'Z1', ibutton: '00A1B2C3D4' })
+    expect(d.ibutton).toBe('A1B2C3D4') // stored canonical (leading zeros stripped, upper-cased)
+    // a value-equal key in any zero-padding / case must NOT create a second row
+    await expect(db.drivers.create(aScope, actor, { accountId, name: 'Z2', ibutton: 'A1B2C3D4' })).rejects.toBeInstanceOf(DriverIbuttonConflictError)
+    await expect(db.drivers.create(aScope, actor, { accountId, name: 'Z3', ibutton: '0000a1b2c3d4' })).rejects.toBeInstanceOf(DriverIbuttonConflictError)
+    // findByIbutton resolves the tap regardless of the padding/case it arrives in
+    expect((await db.drivers.findByIbutton(aScope, 'A1B2C3D4'))?.id).toBe(d.id)
+    expect((await db.drivers.findByIbutton(aScope, '00A1B2C3D4'))?.id).toBe(d.id)
+  })
+
   it('allows multiple keyless drivers (NULL iButtons are distinct)', async () => {
     const { aScope, accountId } = await seedTenant('Keyless Co')
     await db.drivers.create(aScope, actor, { accountId, name: 'K1' })

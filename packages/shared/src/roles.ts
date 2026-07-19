@@ -29,3 +29,16 @@ export function canGrantRole(actor: Role, target: Role): boolean {
   if (target === 'platform_admin') return actor === 'platform_admin'
   return ROLE_TIER[actor] >= ROLE_TIER[target]
 }
+
+/**
+ * May `actor` mutate or delete a user who CURRENTLY holds `targetCurrent`? A caller may only
+ * act on a user of a STRICTLY LOWER tier — never a peer or higher — EXCEPT platform_admin (the
+ * top tier), which may manage anyone. Without this, `canGrantRole` alone let a tsp_admin
+ * password-reset/demote/delete a co-tenant platform_admin (no `role` in the body ⇒ the grant
+ * check was skipped) → account takeover (audit HIGH). Self-edits are the caller's own concern
+ * (an id match), not this function's.
+ */
+export function canManageUser(actor: Role, targetCurrent: Role): boolean {
+  if (actor === 'platform_admin') return true
+  return ROLE_TIER[actor] > ROLE_TIER[targetCurrent]
+}

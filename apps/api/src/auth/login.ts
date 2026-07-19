@@ -10,7 +10,34 @@ import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from './passwords.js'
 import { revokeAllUserSessions } from './revoke.js'
+import { markSessionsRevoked } from '../ws.js'
 import { clientIp } from '../net.js'
+
+/**
+ * CSRF defence for the cookie-bearing auth POSTs (audit LOW). The refresh cookie is the
+ * capability; a cross-site page must not be able to drive login (session fixation) / refresh /
+ * logout / password with it. Same-origin check relative to the request's OWN host (works under
+ * multi-domain white-label — app + API are same-origin behind Caddy): if the browser sent an
+ * Origin (or Referer) it MUST match the served host. A non-browser client (no Origin/Referer)
+ * is allowed — cookie CSRF requires a browser, and a browser always sends one on a cross-site
+ * POST. The attacker's `text/plain` "simple request" still carries a cross-site Origin ⇒ blocked.
+ */
+function sameOriginOk(c: Context): boolean {
+  const host = (c.req.header('x-forwarded-host') ?? c.req.header('host') ?? '').split(',')[0]!.trim().toLowerCase()
+  const check = (raw: string | undefined): boolean | null => {
+    if (raw === undefined || raw === '' || raw === 'null') return null
+    try {
+      return new URL(raw).host.toLowerCase() === host
+    } catch {
+      return false
+    }
+  }
+  const byOrigin = check(c.req.header('origin'))
+  if (byOrigin !== null) return byOrigin
+  const byReferer = check(c.req.header('referer'))
+  if (byReferer !== null) return byReferer
+  return true
+}
 
 export interface AuthRouteDeps {
   /** The auth surface (createDb().auth or createAuthDb()); $disconnect not needed. */
@@ -88,6 +115,7 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
   }
 
   app.post('/login', async (c) => {
+    if (!sameOriginOk(c)) return problem(c, 403, 'Forbidden', 'cross-origin request rejected')
     const body = loginRequestSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return problem(c, 400, 'Bad Request', 'email and password required')
     const email = body.data.email.trim().toLowerCase()
@@ -135,6 +163,7 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
   })
 
   app.post('/refresh', async (c) => {
+    if (!sameOriginOk(c)) return problem(c, 403, 'Forbidden', 'cross-origin request rejected')
     const raw = getCookie(c, COOKIE)
     if (raw === undefined || raw === '') return problem(c, 401, 'Unauthorized')
     const now = new Date()
@@ -163,6 +192,7 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
   })
 
   app.post('/logout', async (c) => {
+    if (!sameOriginOk(c)) return problem(c, 403, 'Forbidden', 'cross-origin request rejected')
     // clear the cookie UNCONDITIONALLY first (review LOW: a revoke throw must not
     // leave a live cookie while the SPA believes it logged out)
     deleteCookie(c, COOKIE, { path: COOKIE_PATH })
@@ -191,6 +221,7 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
   // ALL of the user's refresh families so EVERY other session must re-login (review HIGH: a stolen
   // session must not outlive a password change).
   app.post('/password', authMiddleware({ jwtSecret: deps.jwtSecret }), async (c) => {
+    if (!sameOriginOk(c)) return problem(c, 403, 'Forbidden', 'cross-origin request rejected')
     const parsed = passwordChangeSchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return problem(c, 400, 'Bad Request')
     const auth = c.get('auth')
@@ -209,6 +240,9 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       currentFamily = row?.familyId
     }
     await revokeAllUserSessions(deps.db.refreshTokens, user.id, currentFamily)
+    // …and tear down any LIVE WebSocket stream this user holds — a socket opened before the
+    // change would otherwise keep streaming positions past the password change (audit MED).
+    await markSessionsRevoked(deps.redis, user.id)
     deleteCookie(c, COOKIE, { path: COOKIE_PATH })
     return c.json({ ok: true })
   })

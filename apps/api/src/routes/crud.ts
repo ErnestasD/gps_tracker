@@ -8,6 +8,7 @@ import {
   accountUpdateSchema,
   brandingSchema,
   canGrantRole,
+  canManageUser,
   deviceCreateSchema,
   domainCreateSchema,
   deviceImportSchema,
@@ -45,7 +46,8 @@ import { activateDevice, deactivateDevice, syncDeviceConfig } from './deviceRegi
 import { removeGeofence, syncGeofence } from './geofenceRegistry.js'
 import { removeDriverIbutton, syncDriverIbutton } from './driverRegistry.js'
 import { removeRule, syncRule } from './ruleRegistry.js'
-import { applyImport, dryRun, parseCsv, rowsToImport } from './deviceImport.js'
+import { applyImport, dryRun, parseCsv, rowsToImport, MAX_IMPORT_ROWS } from './deviceImport.js'
+import { markSessionsRevoked } from '../ws.js'
 import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
 import { expectedTxt, newTxtToken, verifyDomainTxt, type TxtResolver } from './tenantSelf.js'
@@ -245,6 +247,15 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const data = await body(c, userUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const a = auth(c)
+        // TIER GUARD (audit HIGH): load the TARGET's CURRENT role and refuse a caller acting on a
+        // peer-or-higher-tier user (except on THEMSELVES). Without this, a tsp_admin could reset a
+        // co-tenant platform_admin's password (no `role` in the body ⇒ the grant check below is
+        // skipped) → log in as them → cross-tenant god access. Self-edits (locale/password) are ok.
+        const target = await db.users.get(scopeOf(a), id(c))
+        if (target === null) return problem(c, 404, 'Not Found')
+        if (target.id !== a.userId && !canManageUser(a.role, target.role)) {
+          return problem(c, 403, 'Forbidden', 'cannot modify a user of equal or higher privilege')
+        }
         // role grant authorization on update too (review HIGH: self-promotion vector)
         if (data.role !== undefined && !canGrantRole(a.role, data.role)) {
           return problem(c, 403, 'Forbidden', 'cannot grant that role')
@@ -274,12 +285,25 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
             revokeAllForUser?(userId: string, now: Date): Promise<void>
           }
           if (rt.revokeAllForUser !== undefined) await rt.revokeAllForUser(id(c), new Date())
+          // …and tear down the target's LIVE WebSocket streams: revoking refresh families kills
+          // HTTP access but a socket opened before the reset keeps streaming positions otherwise
+          // (audit MED). Best-effort marker; the WS gateway re-validates on an interval.
+          await markSessionsRevoked(deps.redis, id(c))
         }
         return json(c, row)
       } },
     { method: 'delete', path: '/v1/users/:id', scopeClass: 'tenant', entity: 'user', shape: 'item',
       handler: async (c) => {
-        const ok = await db.users.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        const a = auth(c)
+        const scope = scopeOf(a)
+        // TIER GUARD (audit HIGH): a caller may not delete a peer-or-higher-tier user (DELETE had
+        // NO tier check at all — a tsp_admin could delete a co-tenant platform_admin).
+        const target = await db.users.get(scope, id(c))
+        if (target === null) return problem(c, 404, 'Not Found')
+        if (target.id !== a.userId && !canManageUser(a.role, target.role)) {
+          return problem(c, 403, 'Forbidden', 'cannot delete a user of equal or higher privilege')
+        }
+        const ok = await db.users.remove(scope, { userId: a.userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
 
@@ -585,6 +609,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const profileKeys = new Set((await db.profiles.map()).keys())
         const rows = rowsToImport(parseCsv(parsed.csv))
+        if (rows.length > MAX_IMPORT_ROWS) return problem(c, 400, 'Bad Request', `too many rows (max ${MAX_IMPORT_ROWS})`)
         const result = await dryRun(db, scopeOf(a), rows, profileKeys, a.accountId)
         return json(c, result)
       } },
@@ -595,6 +620,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const profiles = await db.profiles.map()
         const rows = rowsToImport(parseCsv(parsed.csv))
+        if (rows.length > MAX_IMPORT_ROWS) return problem(c, 400, 'Bad Request', `too many rows (max ${MAX_IMPORT_ROWS})`)
         const result = await applyImport(db, deps.redis, scopeOf(a), { userId: a.userId }, rows, profiles, a.accountId)
         return json(c, result, 201)
       } },

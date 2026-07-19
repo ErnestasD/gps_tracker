@@ -1,4 +1,5 @@
 import type { Hono } from 'hono'
+import type { Redis } from 'ioredis'
 
 import type { Db, SubscriptionUpdate } from '@orbetra/db'
 import type { BillingPlanView, BillingView, Role } from '@orbetra/shared'
@@ -21,7 +22,13 @@ export interface BillingDeps {
   stripe?: StripeGateway | undefined
   /** absolute base for Checkout success/cancel + portal return; falls back to the request Origin */
   appBaseUrl?: string | undefined
+  /** used for a short-lived per-tenant checkout lock (audit LOW TOCTOU mitigation); optional. */
+  redis?: Redis | undefined
 }
+
+// how long the per-tenant checkout-creation lock is held (audit LOW): long enough to serialize a
+// double-click / concurrent-tab burst, short enough to not block a legitimate later re-subscribe.
+const CHECKOUT_LOCK_TTL_S = 30
 
 const ACTIVE = new Set(['active', 'trialing'])
 /** Subscription statuses that mean the tenant has NO live subscription and may start a FRESH one.
@@ -95,16 +102,40 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     // subscription, so the tenant is sent to the Customer Portal to FIX PAYMENT, not through
     // Checkout again. The UI reads `already_subscribed` → opens the portal (POST /v1/billing/portal).
     if (hasLiveSubscription(tenant.subscriptionStatus)) return problem(c, 409, 'Conflict', 'already_subscribed')
-    const customerId = await deps.stripe.ensureCustomer({ tenantId: tenant.id, name: tenant.name, existingCustomerId: tenant.stripeCustomerId })
-    if (tenant.stripeCustomerId !== customerId) await deps.db.tenants.setStripeCustomer(tenant.id, customerId)
-    const url = await deps.stripe.createCheckoutSession({
-      customerId,
-      tenantId: tenant.id,
-      priceId,
-      successUrl: `${base}/app/billing?checkout=success`,
-      cancelUrl: `${base}/app/billing?checkout=cancel`,
-    })
-    return c.json({ url })
+
+    // TOCTOU mitigation (audit LOW): subscriptionStatus lags the webhook, so two CONCURRENT
+    // checkouts both read "no live sub" and could each create a subscription. A per-tenant lock
+    // held ONLY across the create critical section serializes that burst → the loser gets 409.
+    // Held only during creation (not for the lock TTL) so a legitimate LATER re-subscribe after an
+    // ended subscription is never blocked; the TTL is just a self-heal if the handler dies mid-flight.
+    // Combined with the Stripe idempotency key below, a double-submit yields ONE session. Residual:
+    // a fully SEQUENTIAL re-attempt during the webhook-lag window is not covered (would need a live
+    // Stripe subscription-list read at checkout) — documented + accepted for a LOW.
+    const lockKey = deps.redis !== undefined ? `billing:checkout:${tenant.id}` : null
+    if (deps.redis !== undefined && lockKey !== null) {
+      try {
+        const locked = await deps.redis.set(lockKey, '1', 'EX', CHECKOUT_LOCK_TTL_S, 'NX')
+        if (locked === null) return problem(c, 409, 'Conflict', 'checkout_in_progress')
+      } catch {
+        /* Redis blip — fall through (the idempotency key still guards a true double-submit) */
+      }
+    }
+    try {
+      const customerId = await deps.stripe.ensureCustomer({ tenantId: tenant.id, name: tenant.name, existingCustomerId: tenant.stripeCustomerId })
+      if (tenant.stripeCustomerId !== customerId) await deps.db.tenants.setStripeCustomer(tenant.id, customerId)
+      const url = await deps.stripe.createCheckoutSession({
+        customerId,
+        tenantId: tenant.id,
+        priceId,
+        successUrl: `${base}/app/billing?checkout=success`,
+        cancelUrl: `${base}/app/billing?checkout=cancel`,
+        // stable within a 30 s bucket so a rapid retry of the SAME plan dedupes to one Stripe session
+        idempotencyKey: `co:${tenant.id}:${priceId}:${Math.floor(Date.now() / (CHECKOUT_LOCK_TTL_S * 1_000))}`,
+      })
+      return c.json({ url })
+    } finally {
+      if (deps.redis !== undefined && lockKey !== null) await deps.redis.del(lockKey).catch(() => undefined)
+    }
   })
 
   app.post('/v1/billing/portal', async (c) => {

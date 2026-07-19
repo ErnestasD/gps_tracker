@@ -927,7 +927,8 @@
     "viewAll": "Rodyti visus",
     "empty": "Duomenų dar nėra",
     "noAccount": "Nėra paskyros ataskaitai",
-    "error": "Nepavyko įkelti duomenų."
+    "error": "Nepavyko įkelti duomenų.",
+    "sampled": "Pagal tipą · naujausi {{n}} (imtis)"
   },
   "roles": {
     "platform_admin": "Platformos administratorius",
