@@ -2,6 +2,20 @@ import type { Redis } from 'ioredis'
 
 export const SHARD_COUNT = 16 // CLAUDE.md rule 5
 
+/** The single source of truth for a shard's lease key (used by the leaser AND the consumer's
+ *  fencing check, so the two can never drift on the key format). */
+export const leaseKey = (shard: number): string => `shards:lease:${shard}`
+
+/** Fencing check (I2 / rule 5): true while `workerId` STILL holds `shard`'s lease. The consumer
+ *  consults this before applying each batch's durable effects — a stalled worker that lost its
+ *  lease to a peer during a GC pause/partition must stop, or it would run the trip/geofence/rule
+ *  engines concurrently with the new owner (per-device double-effect). Cheap GET on the caller's
+ *  own connection; the leaser's renew loop is the primary owner-tracking, this is the safety net
+ *  that closes the up-to-one-renew-interval window between lease loss and onLost firing. */
+export async function ownsShardLease(redis: Redis, shard: number, workerId: string): Promise<boolean> {
+  return (await redis.get(leaseKey(shard))) === workerId
+}
+
 /** Atomic compare-and-extend: renew the lease ONLY if it is still ours. A non-atomic
  *  GET-then-PEXPIRE could extend a lease a peer just claimed in the gap → two consumers on
  *  one shard (rule 5 / I2 violation, review MED). Returns 1 when renewed, 0 when lost. */
@@ -39,7 +53,7 @@ export class ShardLeaser {
 
   /** Attempt to grab a shard's lease with SET NX; records ownership on success. */
   private async tryClaim(shard: number): Promise<boolean> {
-    const got = await this.redis.set(`shards:lease:${shard}`, this.workerId, 'PX', this.leaseTtlMs, 'NX')
+    const got = await this.redis.set(leaseKey(shard), this.workerId, 'PX', this.leaseTtlMs, 'NX')
     if (got === 'OK') {
       this.owned.add(shard)
       return true
@@ -60,7 +74,7 @@ export class ShardLeaser {
     for (let shard = 0; shard < SHARD_COUNT; shard++) {
       try {
         if (this.owned.has(shard)) {
-          const renewed = await this.redis.eval(RENEW_LUA, 1, `shards:lease:${shard}`, this.workerId, String(this.leaseTtlMs))
+          const renewed = await this.redis.eval(RENEW_LUA, 1, leaseKey(shard), this.workerId, String(this.leaseTtlMs))
           if (renewed !== 1) {
             this.owned.delete(shard) // lost the lease — stop touching that shard
             this.onLost?.(shard)
@@ -87,8 +101,8 @@ export class ShardLeaser {
    *  a per-device concurrency break (rule 5 / I2). */
   async releaseLeases(): Promise<void> {
     for (const shard of this.owned) {
-      const holder = await this.redis.get(`shards:lease:${shard}`)
-      if (holder === this.workerId) await this.redis.del(`shards:lease:${shard}`)
+      const holder = await this.redis.get(leaseKey(shard))
+      if (holder === this.workerId) await this.redis.del(leaseKey(shard))
     }
     this.owned.clear()
   }

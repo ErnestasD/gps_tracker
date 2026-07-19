@@ -209,7 +209,10 @@ export function DashboardPage() {
         <section className="admin-card">
           <div className="admin-hairline-b px-4 py-3">
             <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('dash.events7')}</h2>
-            <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('dash.byType')}</p>
+            {/* the 7d event widgets are computed from the latest EVENTS_CAP rows; when that window is
+                full the per-kind/hour numbers are a SAMPLE (like the donut center's "300+"), so say so
+                — otherwise they silently disagree with the events page/reports (audit3 MED) */}
+            <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{trunc7 ? t('dash.sampled', { n: EVENTS_CAP }) : t('dash.byType')}</p>
           </div>
           <div className="p-4">
             {events7.isError ? (
@@ -243,7 +246,7 @@ export function DashboardPage() {
         <section className="admin-card lg:col-span-2">
           <div className="admin-hairline-b px-4 py-3">
             <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('dash.hourly')}</h2>
-            <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('dash.byHour')}</p>
+            <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{trunc7 ? t('dash.sampled', { n: EVENTS_CAP }) : t('dash.byHour')}</p>
           </div>
           <div className="p-4">
             {events7.isError ? (

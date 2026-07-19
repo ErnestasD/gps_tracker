@@ -63,6 +63,27 @@ describe('E05-4b device_offline sweeper', () => {
     expect(r.toFlag).toEqual([])
   })
 
+  it('ignores a non-positive afterH (0/negative) — no spurious immediate offline + permanent suppression (review LOW)', () => {
+    const devices = [dev({ deviceId: '42', lastFixMs: NOW - 1 * H })] // reported 1h ago → healthy
+    // afterH=0 would classify it offline (offlineMs >= 0) and then never clear the flag; must be ignored
+    const zero = sweepOffline(devices, rulesFor([{ ruleId: 'ro', accountId: 'acc-1', afterH: 0 }]), new Set(), NOW)
+    expect(zero.events).toHaveLength(0)
+    expect(zero.toFlag).toEqual([])
+    const neg = sweepOffline(devices, rulesFor([{ ruleId: 'ro', accountId: 'acc-1', afterH: -5 }]), new Set(), NOW)
+    expect(neg.events).toHaveLength(0)
+    // falls back to the default: the SAME device 27h silent DOES fire (proves fallback, not blanket-off)
+    const stale = [dev({ deviceId: '42', lastFixMs: NOW - 27 * H })]
+    const back = sweepOffline(stale, rulesFor([{ ruleId: 'ro', accountId: 'acc-1', afterH: 0 }]), new Set(), NOW)
+    expect(back.events).toHaveLength(1)
+    expect(back.events[0]!.payload).toMatchObject({ thresholdH: DEFAULT_OFFLINE_H })
+  })
+
+  it('ignores a non-positive profile offlineAfterH too (falls back to default)', () => {
+    const devices = [dev({ deviceId: '42', lastFixMs: NOW - 1 * H, profileOfflineAfterH: 0 })]
+    const r = sweepOffline(devices, rulesFor([{ ruleId: 'ro', accountId: 'acc-1' }]), new Set(), NOW)
+    expect(r.events).toHaveLength(0) // not fired at 1h; default 26h applies
+  })
+
   it('when multiple offline rules exist, the smallest threshold fires', () => {
     const devices = [dev({ deviceId: '42', lastFixMs: NOW - 5 * H })]
     const rules: OfflineRule[] = [

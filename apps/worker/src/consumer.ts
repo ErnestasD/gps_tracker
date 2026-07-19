@@ -24,6 +24,14 @@ export interface ConsumerDeps {
   blockMs?: number
   /** XAUTOCLAIM min-idle (§6.1: 60 s; tests shrink it). */
   autoclaimMinIdleMs?: number
+  /** Fencing (I2 / rule 5): returns true while this worker still holds the shard's lease. Consulted
+   *  BEFORE applying each batch's durable effects — a stalled worker that lost its lease to a peer
+   *  stops instead of double-processing the same device concurrently with the new owner. Omitted ⇒
+   *  always-owned (deterministic tests that drive tick() directly without a leaser). */
+  ownsShard?: () => Promise<boolean>
+  /** Fired when ownsShard() reports the lease lost mid-flight — the owner drops this consumer so a
+   *  later re-acquire (leaser onGained) starts a fresh one. Coordinated with ShardLeaser.onLost. */
+  onLostOwnership?: (shard: number) => void
 }
 
 export interface ShardStats {
@@ -79,8 +87,25 @@ export class ShardConsumer {
     const fresh = await this.read()
     const entries = [...claimed, ...fresh]
     if (entries.length === 0) return 0
+    // fencing (I2 / rule 5): never apply a batch's durable effects if we've lost the lease. The
+    // already-read entries stay PENDING to us and are reclaimed by the new owner via XAUTOCLAIM
+    // (no lost effect); we simply don't process them here (no double effect).
+    if (!(await this.ownsShard())) return 0
     await this.process(entries)
     return entries.length
+  }
+
+  /** Fencing check (I2 / rule 5). Omitted dep ⇒ assumed owned (tests driving tick() with no leaser). */
+  private async ownsShard(): Promise<boolean> {
+    return this.deps.ownsShard ? this.deps.ownsShard() : true
+  }
+
+  /** Lost the lease mid-flight: stop this consumer's loop and tell the owner to drop it (so a later
+   *  re-acquire starts a fresh consumer instead of skipping a still-mapped, dead one). */
+  private fence(): void {
+    this.running = false
+    console.error(`shard ${this.shard} fenced — lease lost, stopping consumer`)
+    this.deps.onLostOwnership?.(this.shard)
   }
 
   private async loop(): Promise<void> {
@@ -92,11 +117,19 @@ export class ShardConsumer {
         if (now - lastAutoclaim > 30_000) {
           // §6.1: XAUTOCLAIM on start + every 30 s to recover a crashed peer's pending
           const claimed = await this.autoclaim()
-          if (claimed.length > 0) await this.process(claimed)
+          if (claimed.length > 0) {
+            if (!(await this.ownsShard())) return void this.fence()
+            await this.process(claimed)
+          }
           lastAutoclaim = now
         }
         const entries = await this.read(this.deps.blockMs ?? 2_000)
-        if (entries.length > 0) await this.process(entries)
+        if (entries.length > 0) {
+          // fencing BEFORE process(): a lease lost during a stall/partition must not let this worker
+          // run the downstream engines concurrently with the peer that already claimed the shard.
+          if (!(await this.ownsShard())) return void this.fence()
+          await this.process(entries)
+        }
       } catch (err) {
         console.error(`shard ${this.shard} consumer error`, err)
         await new Promise((r) => setTimeout(r, 1_000))

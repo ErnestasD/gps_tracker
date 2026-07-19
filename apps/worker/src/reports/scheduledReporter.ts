@@ -42,9 +42,13 @@ export function isDue(s: Pick<Schedule, 'cadence' | 'hourUtc' | 'weekday'>, nowM
  *  1. `to` is anchored to TODAY's scheduled UTC hour (≤ nowMs, guaranteed by isDue), NOT the actual
  *     tick instant — so consecutive windows tile at the same boundary regardless of which catch-up
  *     hour the cron happened to fire, and no boundary hour is dropped or double-reported.
- *  2. `from` is normally `to - span`, but extends back to `lastRunAt` when the last successful run
- *     was MORE than one span ago — so a period missed during an outage (including across UTC
- *     midnight, and a weekly period skipped for a whole week) is still reported, not silently lost.
+ *  2. `from` is normally `to - span`, but extends back to cover the missed periods when the last
+ *     successful run was MORE than one span ago — so a period missed during an outage (including
+ *     across UTC midnight, and a weekly period skipped for a whole week) is still reported, not
+ *     silently lost. Crucially `from` is anchored to a SCHEDULED boundary (a whole number of spans
+ *     back from `to`), NOT the raw `lastRunAt` fire instant: a catch-up tick stamps lastRunAt at
+ *     whatever hour it happened to run (isDue only requires hour ≥ hourUtc), so using it verbatim
+ *     would drop the sub-span slice [alignedBoundary, lastRunAt] from the report (review MED).
  *
  * KNOWN LIMITATION: the window is a UTC span, not an account-local (IANA) day span. The report engine
  * still buckets ROWS by the account zone (§7.7), but the window edges are UTC — a full account-local
@@ -59,7 +63,13 @@ export function reportWindow(
   const d = new Date(nowMs)
   const to = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), s.hourUtc, 0, 0)
   const defaultFrom = to - span
-  const from = lastRunAtMs !== null && lastRunAtMs < defaultFrom ? lastRunAtMs : defaultFrom
+  // When a run was missed (lastRunAt older than one span), step whole spans back from `to` until we
+  // cover lastRunAt — anchoring `from` to the previous scheduled boundary, not the raw fire instant.
+  let from = defaultFrom
+  if (lastRunAtMs !== null && lastRunAtMs < defaultFrom) {
+    const spansBack = Math.ceil((to - lastRunAtMs) / span)
+    from = to - spansBack * span
+  }
   return { from: new Date(from).toISOString(), to: new Date(to).toISOString() }
 }
 

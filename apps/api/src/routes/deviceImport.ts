@@ -11,6 +11,15 @@ import { activateDevice } from './deviceRegistry.js'
  * < 10 s with a per-row error report. IMEI leading zeros preserved (String).
  */
 
+/**
+ * Hard cap on rows per import request (audit HIGH). The 2 MB byte cap on the CSV field alone
+ * bounds nothing useful: a 2 MB file of tiny rows is ~60k IMEIs, and applyImport does ONE
+ * sequential DB insert + Redis activate PER row, so an unbounded row count lets a single request
+ * hold a pooled connection for minutes and starve every other tenant. AC[1] targets 1,000 rows,
+ * so that is the supported ceiling; anything larger is rejected 400 before any work.
+ */
+export const MAX_IMPORT_ROWS = 1_000
+
 export interface ImportRow {
   imei: string
   name: string

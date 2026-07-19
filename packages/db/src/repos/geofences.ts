@@ -80,9 +80,20 @@ const toView = (r: Row): GeofenceView => ({
 })
 
 const COLS = Prisma.sql`id, "tenantId", "accountId", name, color, kind::text AS kind, ST_AsGeoJSON(geom) AS geojson, "createdAt"`
+// READ scope: an account-scoped caller sees their own account's fences PLUS tenant-shared (null) ones.
 const scopeSql = (scope: Scope): Prisma.Sql =>
   scope.accountId !== undefined
     ? Prisma.sql`"tenantId" = ${scope.tenantId}::uuid AND ("accountId" = ${scope.accountId}::uuid OR "accountId" IS NULL)`
+    : Prisma.sql`"tenantId" = ${scope.tenantId}::uuid`
+
+// MUTATION scope (update/remove): an account-scoped caller may mutate ONLY its OWN account's fences —
+// NOT the tenant-shared (null) ones. Reusing the read scope here let an account_manager PATCH/DELETE a
+// shared geofence, disabling enforcement for EVERY sibling account in the tenant (cross-account
+// sabotage). Create already pins accountId to the caller's account, so account users cannot make shared
+// fences either — mutation now matches that asymmetry. A tenant-scoped caller is unchanged (all rows).
+const mutateScopeSql = (scope: Scope): Prisma.Sql =>
+  scope.accountId !== undefined
+    ? Prisma.sql`"tenantId" = ${scope.tenantId}::uuid AND "accountId" = ${scope.accountId}::uuid`
     : Prisma.sql`"tenantId" = ${scope.tenantId}::uuid`
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -147,9 +158,11 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
       if (data.color !== undefined) sets.push(Prisma.sql`color = ${data.color}`)
       if (data.geometry !== undefined) sets.push(Prisma.sql`geom = ST_GeomFromGeoJSON(${JSON.stringify(data.geometry)})::geography`)
       if (sets.length === 0) return before
+      // mutateScopeSql (NOT scopeSql): an account-scoped caller must not mutate a tenant-shared fence.
+      // `before` may be a shared fence they can READ, but the UPDATE then matches zero rows → 404.
       const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
-        UPDATE geofences SET ${Prisma.join(sets, ', ')} WHERE ${scopeSql(scope)} AND id = ${id}::uuid RETURNING ${COLS}`)
-      // a concurrent delete between the scoped pre-read and this UPDATE matches zero rows — return a
+        UPDATE geofences SET ${Prisma.join(sets, ', ')} WHERE ${mutateScopeSql(scope)} AND id = ${id}::uuid RETURNING ${COLS}`)
+      // an account caller targeting a shared fence (or a concurrent delete) matches zero rows — return a
       // clean 404 (null) instead of dereferencing undefined into a TypeError → 500 (review LOW)
       if (rows[0] === undefined) return null
       const view = toView(rows[0])
@@ -159,7 +172,10 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
     remove: async (scope, actor, id) => {
       const before = await one(scope, id)
       if (before === null) return false
-      await prisma.$executeRaw(Prisma.sql`DELETE FROM geofences WHERE ${scopeSql(scope)} AND id = ${id}::uuid`)
+      // mutateScopeSql (NOT scopeSql): an account-scoped caller can READ a tenant-shared fence but must
+      // not DELETE it (that would disable it for every sibling account). affected==0 ⇒ not theirs → 404.
+      const affected = await prisma.$executeRaw(Prisma.sql`DELETE FROM geofences WHERE ${mutateScopeSql(scope)} AND id = ${id}::uuid`)
+      if (affected === 0) return false
       await audit.record(scope, actor, { action: 'delete', entity: 'geofence', entityId: id, before: { name: before.name, kind: before.kind } })
       return true
     },

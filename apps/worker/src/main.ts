@@ -8,7 +8,7 @@ import { ShardConsumer } from './consumer.js'
 import { LiveState } from './liveState.js'
 import { MotionFeed } from './motion.js'
 import { startWorkerProm } from './prom.js'
-import { ShardLeaser } from './shards.js'
+import { ShardLeaser, ownsShardLease } from './shards.js'
 import { createRecomputeQueue, enqueueRecompute, redisConnection } from './jobs/queue.js'
 import { createOfflineQueue, scheduleOfflineSweep } from './jobs/offlineQueue.js'
 import { startOfflineWorker } from './jobs/offlineWorker.js'
@@ -256,6 +256,15 @@ async function main(): Promise<void> {
       pool,
       hash,
       workerId,
+      // fencing (I2 / rule 5): before applying each batch the consumer confirms it STILL owns the
+      // shard's lease — a stall/partition that let a peer claim the shard stops this consumer instead
+      // of double-processing the same device. Checked on the consumer's own conn (serial with its reads).
+      ownsShard: () => ownsShardLease(conn, s, workerId),
+      onLostOwnership: (shard) => {
+        // fenced mid-flight: drop from the map so a later re-acquire (onGained) starts a fresh consumer
+        // rather than short-circuiting on a still-mapped, dead one. Idempotent with the leaser's onLost.
+        consumersByShard.delete(shard)
+      },
       onBatch: async (records) => {
         prom.batchRows.observe(records.length)
         const newestMs = records[records.length - 1]?.fixTime.getTime()
@@ -285,11 +294,12 @@ async function main(): Promise<void> {
             prom.tripsClosed.inc(closed)
           }
           if (transitions.length > 0) {
-            const written = await geofenceEvents.persist(transitions)
-            prom.geofenceEvents.inc(written)
-            // E06-4: geofence transitions are webhook-deliverable events too (no rule/notify
-            // path — geofence events carry no ruleId). Enqueue after they're persisted.
-            for (const tr of transitions) {
+            // persist() dedups a redelivered/replayed crossing and returns ONLY the freshly-written
+            // transitions — enqueue a webhook per returned one so a replay re-fires neither the event
+            // row nor its webhook (E06-4). Geofence events carry no ruleId → no rule/notify path.
+            const persisted = await geofenceEvents.persist(transitions)
+            prom.geofenceEvents.inc(persisted.length)
+            for (const tr of persisted) {
               await emitWebhook({ deviceId: tr.deviceId, kind: 'geofence', at: tr.at, payload: { geofenceId: tr.geofenceId, name: tr.geofenceName, transition: tr.type }, dedupe: `${tr.geofenceId}:${tr.type}` })
             }
           }

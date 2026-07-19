@@ -130,6 +130,23 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     expect(ids).toContain(fx.t1.geofenceId) // own account's — visible
     expect(ids).toContain(fx.t1.geofenceSharedId) // tenant-shared (accountId null) — visible
   })
+
+  it('geofences: an A1 account_manager can READ a tenant-shared fence but cannot MUTATE it (PATCH/DELETE → 404, review MED)', async () => {
+    const shared = fx.t1.geofenceSharedId
+    const authJson = (token: string) => ({ authorization: `Bearer ${token}`, 'content-type': 'application/json' })
+    // an account-scoped caller must NOT alter/redraw or delete a tenant-shared fence — that would
+    // disable enforcement for every sibling account in the tenant (cross-account sabotage). It is
+    // READABLE (enumerable id) but the mutation must match zero rows → 404.
+    const patch = await fetch(`${fx.baseUrl}/v1/geofences/${shared}`, { method: 'PATCH', headers: authJson(fx.t1.tokenAccountA1), body: JSON.stringify({ name: 'hijacked' }) })
+    expect(patch.status).toBe(404)
+    const del = await fetch(`${fx.baseUrl}/v1/geofences/${shared}`, { method: 'DELETE', headers: { authorization: `Bearer ${fx.t1.tokenAccountA1}` } })
+    expect(del.status).toBe(404)
+    // positive controls: the account_manager CAN mutate its OWN fence, and a tenant admin CAN mutate the shared one
+    const own = await fetch(`${fx.baseUrl}/v1/geofences/${fx.t1.geofenceId}`, { method: 'PATCH', headers: authJson(fx.t1.tokenAccountA1), body: JSON.stringify({ name: 'own-renamed' }) })
+    expect(own.status).toBe(200)
+    const admin = await fetch(`${fx.baseUrl}/v1/geofences/${shared}`, { method: 'PATCH', headers: authJson(fx.t1.tokenTenant), body: JSON.stringify({ name: 'admin-renamed' }) })
+    expect(admin.status).toBe(200)
+  })
 })
 
 describe('E03-2 write authorization / RBAC (review HIGH)', () => {

@@ -13,7 +13,7 @@ import { runScenario, liveDrive, bufferedFlood } from '@orbetra/simulator'
 import { migrate } from '@orbetra/db/sql/migrate.js'
 
 import { ShardConsumer } from '../src/consumer.js'
-import { ShardLeaser } from '../src/shards.js'
+import { ShardLeaser, leaseKey, ownsShardLease } from '../src/shards.js'
 
 const IMEI = '356307042441013'
 const SHARD = Number(BigInt(IMEI) % BigInt(SHARD_COUNT))
@@ -196,6 +196,41 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     expect((pending as [number, ...unknown[]])[0]).toBe(0)
     expect(await redis.exists(`shards:lease:${SHARD}`)).toBe(0)
   }, 60_000)
+
+  it('fencing (I2/rule 5): a consumer that lost its lease processes NOTHING; records stay claimable by the owner', async () => {
+    await ingestRecords(20)
+    // a peer holds the shard's lease — our worker "stalledA" lost it during a stall/partition
+    await redis.set(leaseKey(SHARD), 'ownerB', 'PX', 60_000)
+
+    const a = consumerFor('stalledA', { ownsShard: () => ownsShardLease(redis, SHARD, 'stalledA') })
+    await a.ensureGroup()
+    expect(await a.tick()).toBe(0) // fenced: it must NOT apply the batch's durable effects
+    expect(a.stats.processed).toBe(0)
+    expect(Number((await pool.query<{ n: string }>('SELECT count(*) n FROM positions')).rows[0]!.n)).toBe(0) // no double-effect
+
+    // no lost-effect: the rightful owner B reclaims the pending entries (XAUTOCLAIM) and processes them
+    await new Promise((r) => setTimeout(r, 150)) // exceed autoclaimMinIdleMs (100)
+    const b = consumerFor('ownerB', { ownsShard: () => ownsShardLease(redis, SHARD, 'ownerB') })
+    while ((await b.tick()) > 0) void 0
+    expect(Number((await pool.query<{ n: string }>('SELECT count(*) n FROM positions')).rows[0]!.n)).toBe(20)
+  }, 60_000)
+
+  it('fencing (loop): a running consumer that discovers a lost lease fires onLostOwnership and stops', async () => {
+    await ingestRecords(10)
+    await redis.set(leaseKey(SHARD), 'peer', 'PX', 60_000) // someone else owns it
+    const dropped: number[] = []
+    const c = consumerFor('meNotOwner', {
+      blockMs: 100,
+      ownsShard: () => ownsShardLease(redis, SHARD, 'meNotOwner'),
+      onLostOwnership: (s) => dropped.push(s),
+    })
+    await c.ensureGroup()
+    c.start()
+    await new Promise((r) => setTimeout(r, 500))
+    expect(dropped).toContain(SHARD) // the consumer fenced itself and told the owner to drop it
+    expect(c.stats.processed).toBe(0) // never processed a record while not the owner
+    await c.stop()
+  }, 30_000)
 
   it('lease loss fires onLost so the owner can stop its consumer (split-brain guard)', async () => {
     const lost: number[] = []

@@ -35,8 +35,10 @@ export interface StripeGateway {
   listPlans(): Promise<StripePlan[]>
   /** Return the existing customer id, or create one for the tenant. */
   ensureCustomer(opts: { tenantId: string; name: string; email?: string; existingCustomerId?: string | null }): Promise<string>
-  /** Create a subscription Checkout Session for the chosen price; returns the hosted URL to redirect to. */
-  createCheckoutSession(opts: { customerId: string; tenantId: string; priceId: string; successUrl: string; cancelUrl: string }): Promise<string>
+  /** Create a subscription Checkout Session for the chosen price; returns the hosted URL to redirect to.
+   *  `idempotencyKey` (audit LOW) dedupes near-simultaneous identical checkout creations so a
+   *  double-submit yields ONE session, not two subscriptions on the one customer. */
+  createCheckoutSession(opts: { customerId: string; tenantId: string; priceId: string; successUrl: string; cancelUrl: string; idempotencyKey?: string }): Promise<string>
   /** Create a Customer Portal session; returns the hosted URL. */
   createPortalSession(opts: { customerId: string; returnUrl: string }): Promise<string>
   /** Verify the webhook signature and parse the event. THROWS on an invalid signature. */
@@ -105,21 +107,25 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
       return customer.id
     },
     overageFor: (basePriceId) => cfg.overageMap[basePriceId],
-    createCheckoutSession: async ({ customerId, tenantId, priceId, successUrl, cancelUrl }) => {
+    createCheckoutSession: async ({ customerId, tenantId, priceId, successUrl, cancelUrl, idempotencyKey }) => {
       // TSP plans carry a metered overage price as a 2nd line item (no quantity — usage-reported);
       // Direct plans have none. The base is always flat quantity 1.
       const overage = cfg.overageMap[priceId]
       const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [{ price: priceId, quantity: 1 }]
       if (overage !== undefined) lineItems.push({ price: overage })
-      const session = await stripe.checkout.sessions.create({
-        mode: 'subscription',
-        customer: customerId,
-        line_items: lineItems,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        client_reference_id: tenantId,
-        subscription_data: { metadata: { tenantId } },
-      })
+      const session = await stripe.checkout.sessions.create(
+        {
+          mode: 'subscription',
+          customer: customerId,
+          line_items: lineItems,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          client_reference_id: tenantId,
+          subscription_data: { metadata: { tenantId } },
+        },
+        // Stripe dedupes identical creates under the same key (audit LOW double-subscribe guard)
+        ...(idempotencyKey !== undefined ? [{ idempotencyKey }] : []),
+      )
       if (!session.url) throw new Error('stripe checkout session returned no url')
       return session.url
     },

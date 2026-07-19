@@ -46,11 +46,26 @@ describe('reportWindow', () => {
       expect(w.from).toBe(new Date(anchor - 86_400_000).toISOString())
     }
   })
-  it('extends `from` back to lastRunAt when a period was missed (across-midnight catch-up, review MED)', () => {
-    const twoDaysAgo = NOW - 2 * 86_400_000 + 3_600_000 // last run ~47h ago (a full day was missed)
+  it('extends `from` to the SCHEDULED boundary covering a missed period — not the raw fire instant (review MED)', () => {
+    // lastRunAt is a catch-up fire ~47h ago at 07:00 (an unaligned hour, NOT the 06:00 boundary).
+    // Anchoring to lastRunAt verbatim would drop the [06:00, 07:00] hour that the prior window
+    // (to-aligned at 06:00) never covered. The fix steps whole days back → from = 06:00 two days ago.
+    const twoDaysAgo = NOW - 2 * 86_400_000 + 3_600_000 // 07:00 two days ago
     const w = reportWindow({ cadence: 'daily', hourUtc: 6 }, NOW, twoDaysAgo)
-    expect(w.from).toBe(new Date(twoDaysAgo).toISOString()) // covers the missed day, not just the last 24h
+    expect(w.from).toBe(new Date(NOW - 2 * 86_400_000).toISOString()) // 06:00 boundary, covers the FULL missed day
     expect(w.to).toBe(new Date(NOW).toISOString())
+  })
+
+  it('catch-up window math: a delayed run after an outage tiles at the hourUtc boundary, dropping no slice (review MED)', () => {
+    // hourUtc=6. A prior CATCH-UP fired at 18:00 on DayA (lastRunAt), then the worker was down for
+    // days; the next fire is DayA+4 06:00. Anchoring `from` to lastRunAt (18:00) would silently drop
+    // the [DayA 06:00, DayA 18:00] slice. The boundary-aligned window must start at DayA 06:00.
+    const dayA6 = Date.UTC(2026, 6, 10, 6, 0, 0)
+    const lastRun = dayA6 + 12 * 3_600_000 // DayA 18:00 — a catch-up fire instant
+    const now = dayA6 + 4 * 86_400_000 // DayA+4 06:00
+    const w = reportWindow({ cadence: 'daily', hourUtc: 6 }, now, lastRun)
+    expect(w.to).toBe(new Date(now).toISOString())
+    expect(w.from).toBe(new Date(dayA6).toISOString()) // aligned back to DayA 06:00, no dropped 12h
   })
   it('does NOT extend `from` on a normal on-time run (last run ~1 span ago)', () => {
     const oneDayAgo = NOW - 86_400_000 // exactly a span ago → not < defaultFrom

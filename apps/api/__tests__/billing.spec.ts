@@ -218,6 +218,23 @@ describe('billing lifecycle (ADR-024)', () => {
     expect(second.status).toBe(409) // no second subscription created
   })
 
+  it('a CONCURRENT checkout is blocked by the per-tenant lock → 409 (audit LOW TOCTOU)', async () => {
+    // status stays null (no webhook) so the double-billing status guard does NOT fire — this is the
+    // exact TOCTOU window. A held lock (another in-flight checkout for this tenant) must 409 the racer.
+    const { token, tenantId } = await freshTenant('Toctou')
+    await redis.set(`billing:checkout:${tenantId}`, '1', 'EX', 30, 'NX') // simulate the in-flight peer
+    const res = await req(port, '/v1/billing/checkout', token, 'POST')
+    expect(res.status).toBe(409)
+    expect((await res.json() as { detail?: string }).detail).toBe('checkout_in_progress')
+  })
+
+  it('the lock is RELEASED after creation so a later legit re-subscribe is not blocked', async () => {
+    const { token } = await freshTenant('LockRelease')
+    expect((await req(port, '/v1/billing/checkout', token, 'POST')).status).toBe(200)
+    // no lock lingering → an immediate sequential attempt still creates a session (status still null)
+    expect((await req(port, '/v1/billing/checkout', token, 'POST')).status).toBe(200)
+  })
+
   // a payment failure (past_due) leaves the subscription in place; a second Checkout would open a
   // DUPLICATE subscription = double-billing. The guard must send these to the portal, not Checkout.
   for (const status of ['past_due', 'unpaid', 'incomplete', 'paused'] as const) {
