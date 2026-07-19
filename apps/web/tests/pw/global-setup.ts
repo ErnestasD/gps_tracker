@@ -65,7 +65,9 @@ async function setup(): Promise<void> {
   spawnChild(
     TSX_BIN,
     ['apps/api/src/main.ts'],
-    { ...env, API_PORT: String(API_PORT), JWT_SECRET: E2E_JWT_SECRET, COOKIE_SECURE: '0' },
+    // the SPA is served on WEB_PORT and its /v1 calls are proxied to the API on API_PORT, so the
+    // browser Origin (WEB_PORT) differs from the API Host (API_PORT) — trust it for the CSRF guard
+    { ...env, API_PORT: String(API_PORT), JWT_SECRET: E2E_JWT_SECRET, COOKIE_SECURE: '0', AUTH_TRUSTED_ORIGINS: `127.0.0.1:${WEB_PORT},localhost:${WEB_PORT}` },
     'api',
   )
   await Promise.all([waitTcp(INGEST_PORT), waitHttp(`http://127.0.0.1:${API_PORT}/healthz`)])

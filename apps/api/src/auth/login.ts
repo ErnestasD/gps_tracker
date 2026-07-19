@@ -16,18 +16,28 @@ import { clientIp } from '../net.js'
 /**
  * CSRF defence for the cookie-bearing auth POSTs (audit LOW). The refresh cookie is the
  * capability; a cross-site page must not be able to drive login (session fixation) / refresh /
- * logout / password with it. Same-origin check relative to the request's OWN host (works under
- * multi-domain white-label — app + API are same-origin behind Caddy): if the browser sent an
- * Origin (or Referer) it MUST match the served host. A non-browser client (no Origin/Referer)
- * is allowed — cookie CSRF requires a browser, and a browser always sends one on a cross-site
- * POST. The attacker's `text/plain` "simple request" still carries a cross-site Origin ⇒ blocked.
+ * logout / password with it. The refresh cookie is already SameSite=Strict (the primary CSRF
+ * defense — a cross-site POST never carries it); this Origin check is defense-in-depth.
+ *
+ * A browser Origin/Referer is accepted when it matches the request's OWN host (app + API
+ * same-origin behind Caddy — the production topology) OR any host in AUTH_TRUSTED_ORIGINS
+ * (comma-separated hosts; for split-host deployments and the e2e harness where the SPA and API
+ * are served on different ports). A non-browser client (no Origin/Referer) is allowed — cookie
+ * CSRF requires a browser, which always sends an Origin on a cross-site POST.
  */
+const TRUSTED_ORIGIN_HOSTS = new Set(
+  (process.env['AUTH_TRUSTED_ORIGINS'] ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s !== ''),
+)
 function sameOriginOk(c: Context): boolean {
   const host = (c.req.header('x-forwarded-host') ?? c.req.header('host') ?? '').split(',')[0]!.trim().toLowerCase()
   const check = (raw: string | undefined): boolean | null => {
     if (raw === undefined || raw === '' || raw === 'null') return null
     try {
-      return new URL(raw).host.toLowerCase() === host
+      const oh = new URL(raw).host.toLowerCase()
+      return oh === host || TRUSTED_ORIGIN_HOSTS.has(oh)
     } catch {
       return false
     }
