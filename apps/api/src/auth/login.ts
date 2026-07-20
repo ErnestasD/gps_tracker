@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import type { Redis } from 'ioredis'
 
 import type { AuthDb, AuthUserRow } from '@orbetra/db'
-import { loginRequestSchema, passwordChangeSchema, planEntitlements, type AuthSession, type AuthUser } from '@orbetra/shared'
+import { forgotPasswordSchema, loginRequestSchema, passwordChangeSchema, planEntitlements, resetPasswordSchema, type AuthSession, type AuthUser } from '@orbetra/shared'
 
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
@@ -60,6 +60,23 @@ export interface AuthRouteDeps {
   secureCookies: boolean
   /** Trust X-Forwarded-For (prod behind Caddy only). */
   trustProxy: boolean
+  /** Password-reset token lifetime (ADR-031); default 3600 s (1 h). */
+  resetTokenTtlS?: number
+  /** Absolute base URL the reset link is built from (APP_BASE_URL). Absent ⇒ forgot-password still
+   *  answers 200 (no enumeration) but sends nothing (email link can't be built). */
+  appBaseUrl?: string
+  /** Transactional auth-email enqueuer (ADR-031) — the API can't send email, so it hands the branded
+   *  send to the worker's `auth-email` queue. Absent ⇒ forgot-password is a no-op (still 200). */
+  mail?: {
+    enqueueResetEmail(job: {
+      kind: 'password-reset'
+      email: string
+      tenantId: string
+      locale: string
+      resetUrl: string
+      expiresMinutes: number
+    }): Promise<void>
+  }
 }
 
 const COOKIE = 'orb_refresh'
@@ -73,6 +90,12 @@ const sha256 = (s: string | Buffer): string => createHash('sha256').update(s).di
 const LOCKOUT_SCRIPT = `local n = redis.call('INCR', KEYS[1])
 if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return n`
+
+// forgot-password rate limit (ADR-031): max reset requests per IP+email per window. Generous enough
+// for a real user retrying, tight enough that the send path can't mail-bomb or probe for accounts.
+const RESET_RL_MAX = 5
+const RESET_RL_WINDOW_S = 3_600
+const DEFAULT_RESET_TTL_S = 3_600 // reset link lifetime (1 h)
 
 
 const toAuthUser = (u: AuthUserRow): AuthUser => ({
@@ -214,7 +237,13 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     if (raw !== undefined && raw !== '') {
       try {
         const row = await deps.db.refreshTokens.findByTokenHash(sha256(raw))
-        if (row) await deps.db.refreshTokens.revokeFamily(row.familyId, new Date())
+        if (row) {
+          await deps.db.refreshTokens.revokeFamily(row.familyId, new Date())
+          // …and tear down any LIVE WS stream this user holds — without this a socket opened before
+          // logout keeps streaming positions past it (audit R2-5). Marks by userId: a still-valid
+          // session on another device simply reconnects with a fresh ticket (self-healing blip).
+          await markSessionsRevoked(deps.redis, row.userId)
+        }
       } catch {
         // best-effort server revoke; the cookie is already cleared
       }
@@ -258,6 +287,79 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     // change would otherwise keep streaming positions past the password change (audit MED).
     await markSessionsRevoked(deps.redis, user.id)
     deleteCookie(c, COOKIE, { path: COOKIE_PATH })
+    return c.json({ ok: true })
+  })
+
+  // ── forgot password (ADR-031) ──────────────────────────────────────────────
+  // Step 1: request a reset link. ALWAYS answers 200 with the same body — existence of the email is
+  // never revealed (no enumeration). Rate-limited per IP+email so the send path can't spam a mailbox
+  // or probe for accounts. The actual send is handed to the worker (auth-email queue); a missing
+  // transport / APP_BASE_URL degrades to "nothing sent", still 200.
+  app.post('/forgot-password', async (c) => {
+    if (!sameOriginOk(c)) return problem(c, 403, 'Forbidden', 'cross-origin request rejected')
+    const body = forgotPasswordSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) return problem(c, 400, 'Bad Request', 'email required')
+    const email = body.data.email.trim().toLowerCase()
+    const ip = clientIp(c.req.header('x-forwarded-for'), getRemoteAddr(c), deps.trustProxy)
+    c.header('Cache-Control', 'no-store')
+
+    // atomic per IP+email rate limit — over the cap we STILL return the generic 200 (no signal) but
+    // do no work, so a flood can neither mail-bomb a victim nor time-probe for account existence.
+    const rlKey = `auth:reset:${ip}:${sha256(email).slice(0, 16)}`
+    const attempts = Number(await deps.redis.eval(LOCKOUT_SCRIPT, 1, rlKey, String(RESET_RL_WINDOW_S)))
+    if (attempts > RESET_RL_MAX) return c.json({ ok: true })
+
+    if (deps.mail !== undefined && deps.appBaseUrl !== undefined) {
+      const ttlS = deps.resetTokenTtlS ?? DEFAULT_RESET_TTL_S
+      const base = deps.appBaseUrl.replace(/\/+$/, '')
+      // an email may exist in >1 tenant (ambiguous identity) — mint + mail one per tenant so the
+      // right branded link reaches the user; each token is independent + single-use.
+      for (const u of await deps.db.users.findByEmailAllTenants(email)) {
+        try {
+          await deps.db.passwordResetTokens.invalidateAllForUser(u.id, new Date()) // only the newest link stays valid
+          const rawToken = randomBytes(32).toString('hex')
+          await deps.db.passwordResetTokens.create({
+            id: randomUUID(),
+            userId: u.id,
+            tokenHash: sha256(rawToken),
+            expiresAt: new Date(Date.now() + ttlS * 1000),
+          })
+          await deps.mail.enqueueResetEmail({
+            kind: 'password-reset',
+            email: u.email,
+            tenantId: u.tenantId,
+            locale: u.locale,
+            resetUrl: `${base}/reset-password?token=${rawToken}`,
+            expiresMinutes: Math.round(ttlS / 60),
+          })
+        } catch (err) {
+          // one candidate's failure must not reveal (via a 500) that the email exists — log + continue
+          console.error('forgot-password send failed', err instanceof Error ? err.message : String(err))
+        }
+      }
+    }
+    return c.json({ ok: true })
+  })
+
+  // Step 2: redeem the token + set the new password. The token is consumed atomically (single-use);
+  // an invalid/expired/used token is a flat 400 with no detail. A successful reset revokes EVERY
+  // session (refresh families + live WS) so a stolen/other session cannot outlive the reset.
+  app.post('/reset-password', async (c) => {
+    if (!sameOriginOk(c)) return problem(c, 403, 'Forbidden', 'cross-origin request rejected')
+    const body = resetPasswordSchema.safeParse(await c.req.json().catch(() => null))
+    if (!body.success) return problem(c, 400, 'Bad Request', 'invalid token or password')
+    const now = new Date()
+    const consumed = await deps.db.passwordResetTokens.consume(sha256(body.data.token), now)
+    if (consumed === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
+    const user = await deps.db.users.findByIdForAuth(consumed.userId)
+    if (user === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
+    await deps.db.users.setPassword(user.id, await hashPassword(body.data.newPassword))
+    await deps.db.passwordResetTokens.invalidateAllForUser(user.id, now) // burn any sibling tokens
+    // kill every session: all refresh families + any live WS stream (parity with password change)
+    await revokeAllUserSessions(deps.db.refreshTokens, user.id)
+    await markSessionsRevoked(deps.redis, user.id)
+    deleteCookie(c, COOKIE, { path: COOKIE_PATH })
+    c.header('Cache-Control', 'no-store')
     return c.json({ ok: true })
   })
 

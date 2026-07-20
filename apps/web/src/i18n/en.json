@@ -8,7 +8,27 @@
     "tooManyAttempts": "Too many attempts — try again in a few minutes.",
     "ambiguousIdentity": "Your account is ambiguous across organizations — contact your administrator.",
     "networkError": "Could not reach the server. Is the API running?",
-    "forgotHint": "Forgot your password? Password reset is handled by your administrator in v1."
+    "forgotLink": "Forgot your password?"
+  },
+  "forgot": {
+    "title": "Reset your password",
+    "intro": "Enter your email and we'll send you a link to reset your password.",
+    "submit": "Send reset link",
+    "sent": "If an account exists for {{email}}, a reset link is on its way. Check your inbox and spam folder.",
+    "backToLogin": "Back to sign in",
+    "error": "Something went wrong. Please try again."
+  },
+  "reset": {
+    "title": "Choose a new password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "submit": "Set new password",
+    "tooShort": "Password must be at least {{min}} characters.",
+    "mismatch": "Passwords do not match.",
+    "invalidToken": "This reset link is invalid or has expired.",
+    "requestNew": "Request a new link",
+    "done": "Your password has been changed. Sign in with your new password.",
+    "toLogin": "Go to sign in"
   },
   "shell": {
     "live": "Live",

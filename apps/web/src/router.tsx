@@ -11,6 +11,8 @@ import { type EntitlementKey } from '@orbetra/shared'
 import { AppShell } from '@/components/AppShell'
 import { getAccessToken, getCurrentUser, refreshSession } from '@/lib/auth'
 import { LoginPage } from '@/routes/login'
+import { ForgotPasswordPage } from '@/routes/forgotPassword'
+import { ResetPasswordPage } from '@/routes/resetPassword'
 import { MapPage } from '@/routes/app/map'
 import { DashboardPage } from './routes/app/dashboard'
 import { AuditPage } from '@/routes/app/audit'
@@ -75,6 +77,24 @@ const loginRoute = createRoute({
     return typeof r === 'string' && r.startsWith('/') && !r.startsWith('//') ? { redirect: r } : {}
   },
   component: LoginPage,
+})
+
+// PUBLIC password-reset flow (ADR-031) — no auth, no app shell. Step 1 emails a link; step 2
+// redeems the ?token= and sets a new password.
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/forgot-password',
+  component: ForgotPasswordPage,
+})
+
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset-password',
+  validateSearch: (search: Record<string, unknown>): { token?: string } => {
+    const tk = search['token']
+    return typeof tk === 'string' && tk !== '' ? { token: tk } : {}
+  },
+  component: ResetPasswordPage,
 })
 
 // PUBLIC temporary share page (V1-nice) — no auth, no app shell; the token is the capability.
@@ -223,6 +243,8 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  forgotPasswordRoute,
+  resetPasswordRoute,
   shareRoute,
   appRoute.addChildren([appIndexRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
 ])

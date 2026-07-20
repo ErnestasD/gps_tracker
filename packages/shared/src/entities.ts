@@ -338,6 +338,19 @@ export const passwordChangeSchema = z.object({
   newPassword: z.string().min(8).max(1024),
 })
 
+// ── forgot password (ADR-031) ────────────────────────────────────────────────
+/** Step 1: request a reset link. The response is identical whether or not the email exists
+ *  (no enumeration), so only the shape is validated here. */
+export const forgotPasswordSchema = z.object({
+  email: z.string().email().max(320),
+})
+/** Step 2: redeem the emailed token and set a new password. `token` is the raw 32B CSPRNG
+ *  hex (64 chars); newPassword mirrors the create/change min length. */
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1).max(256),
+  newPassword: z.string().min(8).max(1024),
+})
+
 // ── geofences (E05-1) ──────────────────────────────────────────────────────────
 const lngLat = z.tuple([z.number().gte(-180).lte(180), z.number().gte(-90).lte(90)])
 /** A GeoJSON Polygon: ≥1 linear ring, each ≥4 positions and closed (first === last).

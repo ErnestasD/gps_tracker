@@ -8,7 +8,27 @@
     "tooManyAttempts": "Zu viele Versuche — bitte in einigen Minuten erneut versuchen.",
     "ambiguousIdentity": "Ihr Konto ist über Organisationen hinweg mehrdeutig — wenden Sie sich an Ihren Administrator.",
     "networkError": "Server nicht erreichbar. Läuft die API?",
-    "forgotHint": "Passwort vergessen? In v1 setzt der Administrator es zurück."
+    "forgotLink": "Passwort vergessen?"
+  },
+  "forgot": {
+    "title": "Passwort zurücksetzen",
+    "intro": "Geben Sie Ihre E-Mail ein und wir senden Ihnen einen Link zum Zurücksetzen.",
+    "submit": "Link senden",
+    "sent": "Falls ein Konto für {{email}} existiert, ist ein Link unterwegs. Prüfen Sie Posteingang und Spam-Ordner.",
+    "backToLogin": "Zurück zur Anmeldung",
+    "error": "Etwas ist schiefgelaufen. Bitte erneut versuchen."
+  },
+  "reset": {
+    "title": "Neues Passwort wählen",
+    "newPassword": "Neues Passwort",
+    "confirmPassword": "Passwort bestätigen",
+    "submit": "Passwort speichern",
+    "tooShort": "Das Passwort muss mindestens {{min}} Zeichen lang sein.",
+    "mismatch": "Die Passwörter stimmen nicht überein.",
+    "invalidToken": "Dieser Link ist ungültig oder abgelaufen.",
+    "requestNew": "Neuen Link anfordern",
+    "done": "Ihr Passwort wurde geändert. Melden Sie sich mit dem neuen Passwort an.",
+    "toLogin": "Zur Anmeldung"
   },
   "shell": {
     "live": "Live",

@@ -18,6 +18,9 @@ export const UNSCOPED_AUTH_METHODS = [
   'users.findByEmailAllTenants',
   'users.findByIdForAuth',
   'refreshTokens.*',
+  // forgot-password: the raw token IS the capability (precedes any session/tenant knowledge);
+  // rows hang off userId and are only ever addressed by tokenHash. UNSCOPED BY DESIGN.
+  'passwordResetTokens.*',
 ] as const
 
 export interface AuthUserRow {
@@ -66,6 +69,19 @@ export interface AuthDb {
      *  Optional on the interface so lightweight AuthDb doubles need not implement it; the api calls it
      *  via a `typeof … === 'function'` guard (apps/api/src/auth/revoke.ts) and the real db provides it. */
     revokeAllForUser?(userId: string, now: Date): Promise<void>
+  }
+  /** Forgot-password one-time tokens (raw = 32B CSPRNG, sha256-stored, single-use, short TTL). */
+  passwordResetTokens: {
+    create(row: { id: string; userId: string; tokenHash: string; expiresAt: Date }): Promise<void>
+    /**
+     * Atomic single-use consume: marks the token used iff it is live (not used, not expired) and
+     * returns its userId. Exactly ONE of two concurrent consumes wins (row-level lock on the
+     * conditional UPDATE, no transaction) — mirrors refreshTokens.claimForRotation.
+     */
+    consume(tokenHash: string, now: Date): Promise<{ userId: string } | null>
+    /** Invalidate a user's outstanding (unused) reset tokens — called when a NEW reset is requested
+     *  (only the latest link stays valid) and after a successful reset. */
+    invalidateAllForUser(userId: string, now: Date): Promise<void>
   }
   $disconnect(): Promise<void>
 }
@@ -123,6 +139,22 @@ export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnec
       },
       revokeAllForUser: async (userId, now) => {
         await prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } })
+      },
+    },
+    passwordResetTokens: {
+      create: async (row) => {
+        await prisma.passwordResetToken.create({ data: row })
+      },
+      consume: async (tokenHash, now) => {
+        const claimed = await prisma.passwordResetToken.updateManyAndReturn({
+          where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
+          data: { usedAt: now },
+          select: { userId: true },
+        })
+        return claimed[0] ?? null
+      },
+      invalidateAllForUser: async (userId, now) => {
+        await prisma.passwordResetToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: now } })
       },
     },
   }

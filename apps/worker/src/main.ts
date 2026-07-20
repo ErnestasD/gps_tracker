@@ -32,6 +32,7 @@ import { startWebhookWorker } from './jobs/webhookWorker.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
 import { driversFromEnv } from './notify/drivers.js'
 import { buildEmailTransport } from './notify/emailTransport.js'
+import { startAuthEmailWorker } from './jobs/authEmailWorker.js'
 import { GeofenceCache } from './geofence/cache.js'
 import { GeofenceEventPersister } from './geofence/persister.js'
 import { RuleCache } from './rules/cache.js'
@@ -131,6 +132,9 @@ async function main(): Promise<void> {
     onFailed: (ch) => prom.notificationFailed.inc({ channel: ch }),
     onSkipped: (reason) => prom.notificationSkipped.inc({ reason }),
   })
+  // ADR-031: transactional auth emails (password-reset) — the API enqueues, the worker renders the
+  // tenant-branded message and sends it via the SAME transport. Env-gated: no transport ⇒ no-op.
+  const authEmailWorker = startAuthEmailWorker({ connection: recomputeConn, pool, transport: emailTransport })
   // E06-4: webhook delivery — every persisted event (rule/geofence/offline) is POSTed,
   // HMAC-signed, to the account's subscribed webhooks with BullMQ retry.
   const webhookQueue = createWebhookQueue(recomputeConn)
@@ -410,6 +414,7 @@ async function main(): Promise<void> {
       await offlineQueue.close()
       await notifyWorker.close() // finish the in-flight notification, stop taking new
       await notifyQueue.close()
+      await authEmailWorker.close() // finish the in-flight auth email, stop taking new (ADR-031)
       await webhookWorker.close() // finish the in-flight webhook delivery, stop taking new
       await webhookQueue.close()
       await usageWorker.close() // finish the in-flight usage sweep, stop taking new

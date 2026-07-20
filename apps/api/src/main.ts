@@ -49,6 +49,15 @@ const gdpr = {
   },
 }
 
+// Transactional auth email (ADR-031): the api enqueues the branded password-reset mail, the worker
+// sends it (SES/SMTP transport lives there). No jobId — two real reset requests are distinct sends.
+const authEmailQueue = new Queue('auth-email', { connection: gdprConn })
+const mail = {
+  enqueueResetEmail: async (job: { kind: 'password-reset'; email: string; tenantId: string; locale: string; resetUrl: string; expiresMinutes: number }): Promise<void> => {
+    await authEmailQueue.add('auth-email', job, { attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 })
+  },
+}
+
 // Stripe billing (ADR-024): configured only when all three keys are present; otherwise the
 // billing routes report not-configured / 503 (staging + CI run keyless).
 const stripeConfig = stripeConfigFromEnv()
@@ -67,6 +76,8 @@ const deps = {
   db,
   pool,
   gdpr,
+  mail,
+  resetTokenTtlS: Number(process.env['RESET_TOKEN_TTL'] ?? 3_600),
   jwtSecret,
   jwtTtlS: Number(process.env['JWT_TTL'] ?? 900),
   refreshTtlS: Number(process.env['REFRESH_TTL'] ?? 1_209_600),

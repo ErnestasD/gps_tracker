@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useSearch } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -13,8 +13,8 @@ import { liveStore } from '@/lib/liveStore'
 
 /**
  * Login (E03-1, spec §4 Auth screens): email + password against POST /v1/auth/login.
- * Tenant branding by Host arrives with E03-5; password reset is manual in v1
- * (forgot-password stub note below the form).
+ * Tenant branding by Host arrives with E03-5; self-service password reset (ADR-031) is
+ * reached via the "forgot password" link below the form (→ /forgot-password).
  */
 export function LoginPage() {
   const { t } = useTranslation()
@@ -103,7 +103,11 @@ export function LoginPage() {
             >
               {t('login.submit')}
             </Button>
-            <p className="text-center text-xs text-muted">{t('login.forgotHint')}</p>
+            <p className="text-center text-xs">
+              <Link to="/forgot-password" className="text-muted underline-offset-2 hover:text-text hover:underline" data-testid="forgot-link">
+                {t('login.forgotLink')}
+              </Link>
+            </p>
           </form>
         </CardContent>
       </Card>
