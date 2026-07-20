@@ -1,7 +1,7 @@
 import { hash } from '@node-rs/argon2'
 import { PrismaClient } from '@prisma/client'
 
-import { ARGON2ID_PARAMS, ROLES, type Role } from '@orbetra/shared'
+import { ARGON2ID_PARAMS, ROLES, TENANT_PLANS, type Role, type TenantPlan } from '@orbetra/shared'
 
 /**
  * Dev/e2e user seed (E03-1): converges a tenant (+optional account) and upserts a
@@ -33,6 +33,9 @@ export interface SeedUserOpts {
   tenantName: string
   accountName?: string
   locale?: string
+  /** entitlement tier for a NEWLY created tenant (default tsp_grow, preserving current behavior); lets the
+   *  seeder stand up Direct demo tenants. An EXISTING tenant of the same name keeps its stored plan. */
+  plan?: TenantPlan
 }
 
 export async function seedUser(opts: SeedUserOpts): Promise<{ tenantId: string; accountId: string | null; userId: string }> {
@@ -43,7 +46,10 @@ export async function seedUser(opts: SeedUserOpts): Promise<{ tenantId: string; 
   try {
     const tenant =
       (await prisma.tenant.findFirst({ where: { name: opts.tenantName } })) ??
-      (await prisma.tenant.create({ data: { name: opts.tenantName, branding: {} } }))
+      (await prisma.tenant.create({
+        // plan applies to NEW tenants only; the DB default (tsp_grow) covers the common case
+        data: { name: opts.tenantName, branding: {}, ...(opts.plan !== undefined ? { plan: opts.plan } : {}) },
+      }))
 
     // The named account is created if given (device create form / fixtures need one),
     // but a TENANT-WIDE role (platform_admin/tsp_admin) keeps accountId null — only
@@ -81,6 +87,11 @@ async function main(): Promise<void> {
     console.error(`--role must be one of: ${ROLES.join(', ')}`)
     process.exit(2)
   }
+  const planArg = arg('plan', 'tsp_grow')
+  if (!(TENANT_PLANS as readonly string[]).includes(planArg)) {
+    console.error(`--plan must be one of: ${TENANT_PLANS.join(', ')}`)
+    process.exit(2)
+  }
   const accountName = arg('account-name', '')
   const result = await seedUser({
     databaseUrl: arg('database-url', process.env['DATABASE_URL'] ?? 'postgresql://postgres:orbetra_dev@127.0.0.1:5432/orbetra'),
@@ -88,6 +99,7 @@ async function main(): Promise<void> {
     password: arg('password'),
     role: roleArg as Role,
     tenantName: arg('tenant-name', 'Dev Tenant'),
+    plan: planArg as TenantPlan,
     ...(accountName !== '' ? { accountName } : {}),
   })
   console.log(JSON.stringify(result))

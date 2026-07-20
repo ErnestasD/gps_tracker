@@ -2,6 +2,7 @@ import type { Redis } from 'ioredis'
 
 import type { Actor, Db } from '@orbetra/db'
 import { DuplicateImeiError } from '@orbetra/db'
+import { planEntitlements } from '@orbetra/shared'
 
 import { activateDevice } from './deviceRegistry.js'
 
@@ -46,7 +47,7 @@ export interface ClaimInput {
 
 export type ClaimResult =
   | { ok: true; deviceId: string }
-  | { ok: false; status: 400 | 409; reason: string }
+  | { ok: false; status: 400 | 403 | 409; reason: string }
 
 /**
  * Claim: create the device in the TARGET tenant's scope (NOT the admin's own),
@@ -58,6 +59,13 @@ export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: Cla
   const scope = { tenantId: input.tenantId } // platform admin acts on the target tenant
   if ((await db.accounts.get(scope, input.accountId)) === null) {
     return { ok: false, status: 400, reason: 'accountId not in the target tenant' }
+  }
+  // tenant-plan device cap (WP2): a claim assigns a device INTO the target tenant, so it is bound
+  // by THAT tenant's plan (not the platform admin's). Direct plans cap non-retired devices; TSP
+  // plans are uncapped (deviceLimit null).
+  const cap = planEntitlements(await db.tenants.getPlan(input.tenantId)).deviceLimit
+  if (cap !== null && (await db.devices.countActive(scope)) + 1 > cap) {
+    return { ok: false, status: 403, reason: 'device_limit_reached' }
   }
   // validate the (global) profile so a bad uuid is a clean 400, not a P2003 500 (review MED)
   const profile = await db.profiles.get(input.profileId)

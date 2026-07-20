@@ -102,7 +102,21 @@
     "loadError": "Abrechnungsstatus konnte nicht geladen werden.",
     "ends": "Endet am",
     "pastDue": "Überfällig",
-    "fixPayment": "Zahlung korrigieren"
+    "fixPayment": "Zahlung korrigieren",
+    "upgrade": {
+      "badge": "White-Label / TSP",
+      "title": "White-Label- und Reseller-Funktionen freischalten",
+      "desc": "Ihr Tarif gehört zum Direct-Track. Wechseln Sie zu einem White-Label-/TSP-Tarif, um Orbetra unter Ihrer eigenen Marke zu betreiben und an Ihre Kunden weiterzuverkaufen.",
+      "cta": "Für ein Upgrade kontaktieren",
+      "note": "Wir helfen Ihnen bei der Migration — es gehen keine Daten verloren.",
+      "features": {
+        "whiteLabel": "White-Label-Branding — Ihr Logo, Ihre Farben und Ihr Produktname",
+        "customDomains": "Eigene Domains für Ihr Kundenportal",
+        "subAccounts": "Unterkonten zur Organisation von Kundenflotten",
+        "api": "REST-API-Zugriff für Integrationen",
+        "webhooks": "Webhooks für die Echtzeit-Ereignisübermittlung"
+      }
+    }
   },
   "branding": {
     "title": "Branding",

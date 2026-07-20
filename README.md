@@ -71,6 +71,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `STRIPE_WEBHOOK_SECRET` | apps/api | Stripe webhook signing secret (`whsec_…`); verifies `POST /v1/webhooks/stripe` — invalid signature ⇒ 400, no state change |
 | `STRIPE_PRICES` | apps/api | comma-separated allowlist of subscribable BASE price ids (`price_…`); a checkout may target only one of these. Two-track catalog per PRICING_STRATEGY.md §7 (Direct flat tiers + TSP base) |
 | `STRIPE_OVERAGE_MAP` | apps/api | `basePriceId:overagePriceId,…` — TSP base plans get the metered overage price added as a 2nd checkout line item (Direct plans omit) |
+| `STRIPE_PLAN_MAP` | apps/api | `basePriceId:plan,…` — maps each BASE price to the entitlement tier (`TenantPlan`, e.g. `price_direct10:direct_10,price_tspstart:tsp_start`); the signature-verified webhook writes it as the tenant plan. Values that aren't a real `TenantPlan` are dropped (never written) |
 | `STRIPE_INCLUDED` | apps/worker | `basePriceId:count,…` — included device count per TSP plan; the daily reporter bills devices beyond it |
 | `STRIPE_METER_EVENT` | apps/worker | Stripe meter event name for overage; default `orbetra_device_overage` |
 | `APP_BASE_URL` | apps/api | absolute base for Checkout/portal return URLs (e.g. `https://app.orbetra.com`); falls back to the request Origin |

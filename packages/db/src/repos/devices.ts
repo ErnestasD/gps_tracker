@@ -47,6 +47,8 @@ export class DuplicateImeiError extends Error {
  */
 export interface DeviceRepo {
   list(scope: Scope): Promise<Device[]>
+  /** Count of NON-retired devices in scope — the denominator for the plan deviceLimit cap check. */
+  countActive(scope: Scope): Promise<number>
   get(scope: Scope, id: string): Promise<Device | null>
   getByImei(scope: Scope, imei: string): Promise<Device | null>
   create(scope: Scope, actor: Actor, data: DeviceCreate): Promise<Device>
@@ -66,6 +68,7 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo): Device
   }
   return {
     list: (scope) => prisma.device.findMany({ where: scopedWhere(scope), orderBy: { createdAt: 'desc' } }),
+    countActive: (scope) => prisma.device.count({ where: { ...scopedWhere(scope), retiredAt: null } }),
     get: (scope, id) => scopedById(scope, id),
     getByImei: (scope, imei) => prisma.device.findFirst({ where: { ...scopedWhere(scope), imei } }),
     create: async (scope, actor, data) => {

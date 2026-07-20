@@ -215,7 +215,16 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
     if (SUBSCRIPTION_EVENTS.has(event.type)) {
       const mapped = subscriptionFrom(event.data.object, deps.stripe.prices)
       // event.created is the Unix-seconds ordering key; the DB guard applies it only if strictly newer
-      if (mapped !== null) await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
+      if (mapped !== null) {
+        // resolve the entitlement tier from the (allowlisted) base price id — this is the ONLY place
+        // the tenant plan is written, and only from the signature-verified webhook (never the browser).
+        // planFor undefined (unmapped/unknown price) ⇒ leave plan unchanged; the monotonic guard in
+        // applySubscriptionEvent handles ordering. Covers both Direct + TSP checkout (same map).
+        const basePriceId = mapped.update.subscriptionPriceId
+        const plan = basePriceId != null ? deps.stripe.planFor(basePriceId) : undefined
+        if (plan !== undefined) mapped.update.plan = plan
+        await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
+      }
     }
     // other event types (checkout.session.completed, invoice.*) are acked; subscription.* is authoritative
     return c.text('ok', 200)

@@ -6,8 +6,10 @@ import {
   redirect,
 } from '@tanstack/react-router'
 
+import { type EntitlementKey } from '@orbetra/shared'
+
 import { AppShell } from '@/components/AppShell'
-import { getAccessToken, refreshSession } from '@/lib/auth'
+import { getAccessToken, getCurrentUser, refreshSession } from '@/lib/auth'
 import { LoginPage } from '@/routes/login'
 import { MapPage } from '@/routes/app/map'
 import { DashboardPage } from './routes/app/dashboard'
@@ -34,6 +36,20 @@ import { SharePage } from '@/routes/share/index'
  * cookie is not — try a refresh before deciding the user is logged out. */
 const hasSession = async (): Promise<boolean> =>
   getAccessToken() !== null || (await refreshSession())
+
+/**
+ * Tenant-plan route guard (WP3, defense-in-depth): a deep link / typed URL to a plan-gated page
+ * (branding, api-keys, webhooks) must not reach the page for a tenant whose plan lacks the
+ * entitlement — the parent /app beforeLoad already established the session, so getCurrentUser() is
+ * populated here. Absent entitlement ⇒ bounce to /app (the nav item is hidden for the same reason).
+ */
+const requireEntitlement = (key: EntitlementKey) => (): void => {
+  const user = getCurrentUser()
+  if (user === null || user.entitlements[key] !== true) {
+    // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+    throw redirect({ to: '/app' })
+  }
+}
 
 // Code-based route tree (no codegen plugin — nothing generated for typed eslint
 // to choke on). /app/* is guarded: no stub token ⇒ bounce to /login (E03-1 swaps
@@ -120,6 +136,7 @@ const maintenanceRoute = createRoute({
 const brandingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/branding',
+  beforeLoad: requireEntitlement('whiteLabel'),
   component: BrandingPage,
 })
 
@@ -174,12 +191,14 @@ const reportsRoute = createRoute({
 const apiKeysRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/api-keys',
+  beforeLoad: requireEntitlement('apiAccess'),
   component: ApiKeysPage,
 })
 
 const webhooksRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/webhooks',
+  beforeLoad: requireEntitlement('webhooks'),
   component: WebhooksPage,
 })
 

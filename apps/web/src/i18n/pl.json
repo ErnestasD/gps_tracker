@@ -102,7 +102,21 @@
     "loadError": "Nie udało się załadować statusu płatności.",
     "ends": "Kończy się",
     "pastDue": "Zaległa",
-    "fixPayment": "Napraw płatność"
+    "fixPayment": "Napraw płatność",
+    "upgrade": {
+      "badge": "White-label / TSP",
+      "title": "Odblokuj funkcje white-label i odsprzedaży",
+      "desc": "Twój plan należy do ścieżki Direct. Przejdź na plan White-label / TSP, aby prowadzić Orbetra pod własną marką i odsprzedawać go swoim klientom.",
+      "cta": "Skontaktuj się, aby przejść na wyższy plan",
+      "note": "Pomożemy w migracji — żadne dane nie zostaną utracone.",
+      "features": {
+        "whiteLabel": "Marka white-label — Twoje logo, kolory i nazwa produktu",
+        "customDomains": "Własne domeny dla portalu klienta",
+        "subAccounts": "Subkonta do organizacji flot klientów",
+        "api": "Dostęp do REST API dla integracji",
+        "webhooks": "Webhooki do dostarczania zdarzeń w czasie rzeczywistym"
+      }
+    }
   },
   "branding": {
     "title": "Marka",

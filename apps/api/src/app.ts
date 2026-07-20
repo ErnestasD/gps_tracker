@@ -11,6 +11,7 @@ import { problem } from './auth/middleware.js'
 
 import { createAuthRoutes } from './auth/login.js'
 import { createApiKeyAuth } from './auth/apiKey.js'
+import { hasEntitlement } from './auth/entitlements.js'
 import { authMiddleware, type AuthEnv } from './auth/middleware.js'
 import { mountApiKeys } from './routes/apiKeys.js'
 import { mountDocs } from './routes/docs.js'
@@ -159,7 +160,8 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   mountDocs(app, { manifest: apiManifest(), ...(process.env['PUBLIC_API_URL'] ? { serverUrl: process.env['PUBLIC_API_URL'] } : {}) })
 
   const apiKeyAuth = createApiKeyAuth({ apiKeys: deps.db.apiKeys, redis: deps.redis, perMin: deps.apiKeyRateLimitPerMin ?? 600 })
-  app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret, apiKey: apiKeyAuth }))
+  // REST-API access is a TSP-plus entitlement — reject a resolved key whose tenant lacks apiAccess
+  app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret, apiKey: apiKeyAuth, apiKeyEntitled: (tenantId) => hasEntitlement(deps.db, tenantId, 'apiAccess') }))
 
   // Global request-body cap (audit MED): every /v1 POST buffers the full JSON body before zod runs,
   // so without this a single caller can amplify server memory with an arbitrarily large body. 1 MB
@@ -229,7 +231,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
-  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding }))
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding }), deps.db)
 
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.

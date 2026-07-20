@@ -1,15 +1,21 @@
 import type { PrismaClient, Tenant } from '@prisma/client'
 
+import type { TenantPlan } from '@orbetra/shared'
+
 import type { AuditRepo } from './audit.js'
 import type { Actor } from '../scope.js'
 
 export interface TenantCreate {
   name: string
   branding?: unknown
+  /** entitlement tier; omitted ⇒ DB default (tsp_grow). platform_admin sets TSP tiers at create. */
+  plan?: TenantPlan
 }
 export interface TenantUpdate {
   name?: string
   branding?: unknown
+  /** entitlement tier (platform_admin only; the browser never reaches this repo). */
+  plan?: TenantPlan
 }
 
 /** Stripe billing state (ADR-024). currentPeriodEnd is an ISO string for the API view. */
@@ -25,6 +31,9 @@ export interface SubscriptionUpdate {
   subscriptionStatus: string | null
   /** the subscribed BASE price id (which plan) — for the usage reporter's included-device lookup */
   subscriptionPriceId: string | null
+  /** entitlement tier resolved from the subscribed price; written under the SAME monotonic guard as
+   *  subscriptionPriceId, and ONLY when the event actually carried one (null ⇒ leave the plan intact). */
+  plan?: TenantPlan | null
   currentPeriodEnd: Date | null
 }
 
@@ -44,6 +53,8 @@ export interface ActiveSubscriber {
 export interface TenantRepo {
   list(): Promise<Tenant[]>
   get(id: string): Promise<Tenant | null>
+  /** The tenant's entitlement tier — the plan-gating helpers read this to compute entitlements. */
+  getPlan(tenantId: string): Promise<TenantPlan>
   create(actor: Actor, data: TenantCreate): Promise<Tenant>
   update(actor: Actor, id: string, data: TenantUpdate): Promise<Tenant | null>
   remove(actor: Actor, id: string): Promise<boolean>
@@ -68,9 +79,18 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
   return {
     list: () => prisma.tenant.findMany({ orderBy: { name: 'asc' } }),
     get: (id) => prisma.tenant.findUnique({ where: { id } }),
+    getPlan: async (tenantId) => {
+      const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } })
+      if (row === null) throw new Error(`tenant not found: ${tenantId}`)
+      return row.plan
+    },
     create: async (actor, data) => {
       const row = await prisma.tenant.create({
-        data: { name: data.name, branding: (data.branding ?? {}) as never },
+        data: {
+          name: data.name,
+          branding: (data.branding ?? {}) as never,
+          ...(data.plan !== undefined ? { plan: data.plan } : {}),
+        },
       })
       await audit.record({ tenantId: row.id }, actor, { action: 'create', entity: 'tenant', entityId: row.id, after: row })
       return row
@@ -83,6 +103,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         data: {
           ...(data.name !== undefined ? { name: data.name } : {}),
           ...(data.branding !== undefined ? { branding: data.branding as never } : {}),
+          ...(data.plan !== undefined ? { plan: data.plan } : {}),
         },
       })
       await audit.record({ tenantId: id }, actor, { action: 'update', entity: 'tenant', entityId: id, before, after: row })
@@ -130,6 +151,9 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           // only overwrite the base price when this event actually carried one (expanded items ∩
           // allowlist) — a malformed/unexpanded event must not null out a good plan → drop from billing
           ...(data.subscriptionPriceId !== null ? { subscriptionPriceId: data.subscriptionPriceId } : {}),
+          // the entitlement tier rides the SAME guard as the price: written only when the caller
+          // resolved a plan for this event; a missing/unmapped plan leaves the existing tier intact
+          ...(data.plan != null ? { plan: data.plan } : {}),
           currentPeriodEnd: data.currentPeriodEnd,
           lastBillingEventAt: eventAt,
         },

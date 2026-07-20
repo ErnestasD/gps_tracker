@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { entitlementsSchema, tenantPlanSchema } from './plans.js'
 import { roleSchema } from './roles.js'
 
 /**
@@ -32,6 +33,10 @@ export const authUserSchema = z.strictObject({
   tenantId: z.string(),
   accountId: z.string().nullable(),
   locale: z.string(),
+  /** the tenant's plan (entitlement axis, orthogonal to role) — carried in the session so the web can gate nav/routes. */
+  plan: tenantPlanSchema,
+  /** derived from `plan` by the server (planEntitlements) — the single source the web reads for feature gates. */
+  entitlements: entitlementsSchema,
 })
 export type AuthUser = z.infer<typeof authUserSchema>
 

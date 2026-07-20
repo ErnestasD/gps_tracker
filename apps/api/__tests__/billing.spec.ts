@@ -62,6 +62,8 @@ const fakeStripe: StripeGateway = {
     return JSON.parse(raw) as StripeEvent
   },
   overageFor: (b) => (b === 'price_test' ? 'price_over' : undefined),
+  // 'price_test' grants the direct_10 tier (≠ the seed default tsp_grow, so a write is observable)
+  planFor: (b) => (b === 'price_test' ? 'direct_10' : undefined),
 }
 
 const base = (p: number) => `http://127.0.0.1:${p}`
@@ -275,6 +277,17 @@ describe('billing lifecycle (ADR-024)', () => {
     expect(mine).toBeDefined()
     expect(mine?.subscriptionPriceId).toBe('price_test') // the base price from the subscription items
     expect(mine?.stripeCustomerId).toBe(cus)
+  })
+
+  it('webhook resolves the base price → tenant plan and persists it (planFor, WP4)', async () => {
+    const { token, tenantId, cus } = await freshTenant('PlanWire')
+    // a freshly seeded tenant starts on the DB default tier (tsp_grow), NOT the subscribed one
+    expect(await db.tenants.getPlan(tenantId)).toBe('tsp_grow')
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    // the subscription carries base price 'price_test' → planFor maps it to direct_10; only the
+    // signature-verified webhook writes it (a bad signature above never reaches here)
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_plan', cus, 'customer.subscription.updated', 'active', 100), { 'stripe-signature': 'valid' })
+    expect(await db.tenants.getPlan(tenantId)).toBe('direct_10')
   })
 
   it('an unknown customer id in a webhook is a safe no-op', async () => {

@@ -3,6 +3,7 @@ import type { Hono } from 'hono'
 import type { Db } from '@orbetra/db'
 import { apiKeyCreateSchema, type Role } from '@orbetra/shared'
 
+import { hasEntitlement } from '../auth/entitlements.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { scopeOf } from './registry.js'
 
@@ -18,14 +19,21 @@ const TENANT_ADMINS: Role[] = ['platform_admin', 'tsp_admin']
 export function mountApiKeys(app: Hono<AuthEnv>, deps: { db: Db }): void {
   const admin = (c: { get: (k: 'auth') => { role: Role } }): boolean => TENANT_ADMINS.includes(c.get('auth').role)
 
+  // apiAccess is a Track-B (TSP) entitlement: Direct plans get NO REST API. Gate INLINE next to
+  // the admin role check on every api-key route — both the role AND the plan gate must pass (WP2).
+  const apiAccess = (c: { get: (k: 'auth') => { tenantId: string } }): Promise<boolean> =>
+    hasEntitlement(deps.db, c.get('auth').tenantId, 'apiAccess')
+
   app.get('/v1/api-keys', async (c) => {
     if (!admin(c)) return problem(c, 403, 'Forbidden')
+    if (!(await apiAccess(c))) return problem(c, 403, 'Forbidden', 'plan_upgrade_required')
     c.header('Cache-Control', 'no-store')
     return c.json(await deps.db.apiKeys.list(scopeOf(c.get('auth'))))
   })
 
   app.post('/v1/api-keys', async (c) => {
     if (!admin(c)) return problem(c, 403, 'Forbidden')
+    if (!(await apiAccess(c))) return problem(c, 403, 'Forbidden', 'plan_upgrade_required')
     const parsed = apiKeyCreateSchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return problem(c, 400, 'Bad Request')
     const auth = c.get('auth')
@@ -41,6 +49,7 @@ export function mountApiKeys(app: Hono<AuthEnv>, deps: { db: Db }): void {
 
   app.delete('/v1/api-keys/:id', async (c) => {
     if (!admin(c)) return problem(c, 403, 'Forbidden')
+    if (!(await apiAccess(c))) return problem(c, 403, 'Forbidden', 'plan_upgrade_required')
     const ok = await deps.db.apiKeys.revoke(scopeOf(c.get('auth')), { userId: c.get('auth').userId }, c.req.param('id'))
     return ok ? c.json({ ok: true }) : problem(c, 404, 'Not Found')
   })

@@ -8,7 +8,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const session = (token: string) => ({
   accessToken: token,
   expiresInS: 900,
-  user: { id: 'u1', email: 'a@b.c', role: 'viewer', tenantId: 't1', accountId: 'acc-a', locale: 'en' },
+  user: {
+    id: 'u1',
+    email: 'a@b.c',
+    role: 'viewer',
+    tenantId: 't1',
+    accountId: 'acc-a',
+    locale: 'en',
+    // WP1 added plan+entitlements to the strict authUserSchema — the session fixture must carry them
+    plan: 'direct_5',
+    entitlements: {
+      whiteLabel: false,
+      customDomains: false,
+      subAccounts: false,
+      apiAccess: false,
+      webhooks: false,
+      prioritySupport: false,
+      sso: false,
+      dataResidency: false,
+      sla999: false,
+      deviceLimit: 5,
+    },
+  },
 })
 
 const jsonResponse = (status: number, body: unknown) =>

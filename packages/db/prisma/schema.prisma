@@ -21,6 +21,20 @@ enum Role {
   viewer
 }
 
+/// Tenant plan (entitlement axis, orthogonal to Role). MUST mirror @orbetra/shared TENANT_PLANS
+/// (packages/shared/src/plans.ts) — asserted by packages/shared/__tests__/plans.spec.ts.
+enum TenantPlan {
+  direct_5
+  direct_10
+  direct_25
+  direct_50
+  direct_100
+  tsp_start
+  tsp_grow
+  tsp_scale
+  tsp_enterprise
+}
+
 enum CommandStatus {
   queued
   sent
@@ -63,6 +77,10 @@ model Tenant {
   name                   String
   /// white-label: { logoUrl, primary, accent, productName, supportEmail } (E03-5)
   branding               Json     @default("{}")
+  /// tenant plan / entitlement tier (founder decision 2026-07-20). Existing tenants default to
+  /// tsp_grow (preserves all current behavior). Set by the signature-verified Stripe webhook for
+  /// self-service Direct, or by platform_admin for sales-led TSP. NEVER browser-trusted.
+  plan                   TenantPlan @default(tsp_grow)
   /// set once from pilot-lead ref, immutable afterwards (§6.9)
   referredByAffiliateId  String?  @db.Uuid
   /// Stripe billing (ADR-024). Set lazily on first checkout; subscription state is written

@@ -11,7 +11,7 @@ import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainer
 import { apiManifest, createApp, mintAccessToken } from '@orbetra/api'
 import { hashPassword } from '@orbetra/api'
 import { createDb, createPool, type Db } from '@orbetra/db'
-import type { Role } from '@orbetra/shared'
+import type { Role, TenantPlan } from '@orbetra/shared'
 
 import { seedProfiles } from '../../packages/db/seed/profiles.js'
 
@@ -21,6 +21,8 @@ export const JWT_SECRET = 'isolation-suite-secret-isolation-suite!' // ≥32
 
 export interface TenantFixture {
   id: string
+  /** entitlement tier (WP5) — tsp_grow (full) or a direct_N plan (feature-gated + device cap). */
+  plan: TenantPlan
   accounts: [string, string] // [A1, A2]
   ruleId: string
   ruleA2Id: string // a rule owned by A2 (for account cross-account tests)
@@ -56,6 +58,11 @@ export interface Fixtures {
   manifest: ReturnType<typeof apiManifest>
   t1: TenantFixture
   t2: TenantFixture
+  /** WP5 plan-gating: a Direct-plan tenant (direct_10) seeded AT its device cap (10 active
+   *  devices) — every TSP-only entitlement 403s, and creating device #11 hits the cap. */
+  directTenant: TenantFixture
+  /** the shared fmb1xx profile id — for device-create positive/negative controls in plan tests. */
+  profileId: string
   stop(): Promise<void>
 }
 
@@ -77,9 +84,10 @@ async function seedTenant(
   name: string,
   profileId: string,
   imei: string,
+  plan: TenantPlan,
 ): Promise<TenantFixture> {
   const actor = { userId: '00000000-0000-0000-0000-000000000000' } // audit userId is a uuid column
-  const tenant = await db.tenants.create(actor, { name })
+  const tenant = await db.tenants.create(actor, { name, plan })
   const scope = { tenantId: tenant.id }
   const a1 = await db.accounts.create(scope, actor, { name: `${name}-A1` })
   const a2 = await db.accounts.create(scope, actor, { name: `${name}-A2` })
@@ -113,6 +121,7 @@ async function seedTenant(
   const auditId = String((await db.audit.list(scope, { take: 1 }))[0]!.id)
   return {
     id: tenant.id,
+    plan,
     accounts: [a1.id, a2.id],
     ruleId: rule.id,
     ruleA2Id: ruleA2.id,
@@ -234,14 +243,31 @@ export async function setup(): Promise<Fixtures> {
 
   const profileIds = await seedProfiles(databaseUrl)
   const profileId = profileIds['fmb1xx']!
-  const t1 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, insertExport, 'T1', profileId, '356307042440000')
-  const t2 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, insertExport, 'T2', profileId, '356307042440001')
+  // t1/t2 are the full-entitlement (tsp_grow) tenants the isolation suite exercises. t1 doubles as
+  // the TSP positive control in the plan-gating tests (every entitlement-gated route SUCCEEDS for it).
+  const t1 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, insertExport, 'T1', profileId, '356307042440000', 'tsp_grow')
+  const t2 = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, insertExport, 'T2', profileId, '356307042440001', 'tsp_grow')
+  // WP5: a Direct-plan tenant. seedTenant creates 1 device; top it up to the direct_10 cap (10 active
+  // devices) so a plan test can prove device #11 is refused with `device_limit_reached`.
+  const directTenant = await seedTenant(db, insertEvent, insertTrip, insertGeofence, insertUsage, insertCommand, insertExport, 'Direct', profileId, '356307042440002', 'direct_10')
+  const actor = { userId: '00000000-0000-0000-0000-000000000000' }
+  const directScope = { tenantId: directTenant.id }
+  for (let i = 0; i < 9; i++) {
+    await db.devices.create(directScope, actor, {
+      accountId: directTenant.accounts[0],
+      profileId,
+      imei: `3563070424410${String(i).padStart(2, '0')}`, // 15-digit, distinct from every other fixture imei
+      name: `direct-dev-${i}`,
+    })
+  }
 
   return {
     baseUrl: `http://127.0.0.1:${port}`,
     manifest: apiManifest(),
     t1,
     t2,
+    directTenant,
+    profileId,
     stop: async () => {
       server.closeAllConnections?.()
       await new Promise<void>((r) => server.close(() => r()))
