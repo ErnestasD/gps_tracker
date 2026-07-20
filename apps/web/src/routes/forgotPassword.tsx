@@ -34,7 +34,7 @@ export function ForgotPasswordPage() {
     <div className="flex h-full items-center justify-center bg-[radial-gradient(ellipse_at_top,_#1A1F2C_0%,_#0A0E1A_60%)] p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center pt-8 text-center">
-          <img src="/orbetra-logo.svg" alt="Orbetra" className="mb-2 h-12 w-12" />
+          <img src="/orbetra-wordmark.svg" alt="Orbetra" className="mb-3 h-8 w-auto" />
           <CardTitle className="text-lg">{t('forgot.title')}</CardTitle>
         </CardHeader>
         <CardContent className="pb-8">
