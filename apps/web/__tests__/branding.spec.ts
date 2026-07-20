@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { clampForTheme, contrast, ensureContrast, SURFACE_LIGHT_REF, SURFACE_REF } from '../src/lib/branding.js'
+import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, contrast, ensureContrast, faviconLinks } from '../src/lib/branding.js'
 
 /**
  * White-label theming math (E03-5). No DOM: we test the pure WCAG contrast
@@ -73,5 +73,20 @@ describe('theme-aware clamping (white-label follow-up)', () => {
     const hex = '#fbbf24'
     expect(contrast(clampForTheme(hex, 'dark'), SURFACE_REF)).toBeGreaterThanOrEqual(3)
     expect(contrast(clampForTheme(hex, 'light'), SURFACE_LIGHT_REF)).toBeGreaterThanOrEqual(3)
+  })
+})
+
+describe('white-label favicon (faviconLinks)', () => {
+  it('uses the tenant logo for both icon + apple-touch when a logoUrl is set', () => {
+    const links = faviconLinks('https://cdn.example.com/tenant-logo.png')
+    expect(links.map((l) => l.href)).toEqual(['https://cdn.example.com/tenant-logo.png', 'https://cdn.example.com/tenant-logo.png'])
+    expect(links.map((l) => l.rel)).toEqual(['icon', 'apple-touch-icon'])
+  })
+  it('falls back to the Orbetra defaults when the logo is unset or empty', () => {
+    for (const v of [undefined, '']) {
+      const hrefs = faviconLinks(v).map((l) => l.href)
+      expect(hrefs).toContain('/favicon.ico')
+      expect(hrefs).toContain('/orbetra-logo.svg')
+    }
   })
 })
