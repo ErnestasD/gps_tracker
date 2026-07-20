@@ -1,7 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { OrbetraLogo } from "./OrbetraLogo";
 
 const NAV = [
   { to: "/", label: "Platform" },
@@ -31,9 +30,8 @@ export function NavBar() {
       )}
     >
       <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 font-display font-bold text-lg text-ink">
-          <OrbetraLogo className="h-10 w-10" />
-          <span>Orbetra</span>
+        <Link to="/" className="flex items-center" aria-label="Orbetra">
+          <img src="/orbetra-wordmark.svg" alt="Orbetra" className="h-8 w-auto" />
         </Link>
         <nav className="hidden md:flex items-center gap-8">
           {NAV.map((item) => {
