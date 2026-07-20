@@ -30,6 +30,9 @@ export function PlatformPage() {
 
   const usageByTenant = new Map((usage.data ?? []).map((u) => [u.tenantId, u]))
   const totalDays = (usage.data ?? []).reduce((s, u) => s + u.deviceDays, 0)
+  // a failed usage fetch used to render as an authoritative "0 device-days" for every tenant —
+  // show '—' + a banner instead so nobody reads billing usage as genuinely zero
+  const usageErr = usage.isError
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
@@ -39,8 +42,13 @@ export function PlatformPage() {
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('platform.tenants')}
         </div>
+        {usageErr && (
+          <p role="alert" className="admin-hairline-b px-4 py-2 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="platform-usage-error">{t('platform.usageError')}</p>
+        )}
         {tenants.isError ? (
           <p role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="platform-error">{t('admin.loadError')}</p>
+        ) : tenants.isLoading ? (
+          <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="platform-loading">{t('admin.loading')}</p>
         ) : (tenants.data ?? []).length === 0 ? (
           <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="platform-empty">{t('platform.empty')}</p>
         ) : (
@@ -62,8 +70,8 @@ export function PlatformPage() {
                         <div className="font-medium" style={{ color: 'var(--admin-ink)' }}>{tn.name}</div>
                         <div className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{tn.id}</div>
                       </td>
-                      <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink)' }}>{u?.deviceDays ?? 0}</td>
-                      <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink)' }}>{u?.activeDevices ?? 0}</td>
+                      <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink)' }}>{usageErr ? '—' : (u?.deviceDays ?? 0)}</td>
+                      <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink)' }}>{usageErr ? '—' : (u?.activeDevices ?? 0)}</td>
                     </tr>
                   )
                 })}
@@ -72,7 +80,7 @@ export function PlatformPage() {
                 <tr className="admin-hairline-t font-semibold" style={{ background: 'var(--admin-surface-sunken)' }}>
                   <td className="px-4 py-2.5" style={{ color: 'var(--admin-ink)' }}>{t('platform.monthTotal')}</td>
                   <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--admin-ink)' }}>
-                    <span data-testid="platform-total">{totalDays}</span>
+                    <span data-testid="platform-total">{usageErr ? '—' : totalDays}</span>
                   </td>
                   <td className="px-4 py-2.5" />
                 </tr>

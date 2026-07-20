@@ -82,6 +82,10 @@ export function RulesPage() {
           <div className="admin-card">
             <p role="alert" className="py-10 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="rules-error">{t('admin.loadError')}</p>
           </div>
+        ) : rules.isLoading ? (
+          <div className="admin-card">
+            <p className="py-10 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="rules-loading">{t('admin.loading')}</p>
+          </div>
         ) : (rules.data ?? []).length === 0 ? (
           <div className="admin-card">
             <p className="py-10 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="rules-empty">{t('rules.empty')}</p>

@@ -129,7 +129,8 @@ export function CommandPalette({
           <div className="max-h-[50vh] overflow-y-auto p-1.5" role="listbox" id="cmdk-list">
             {items.length === 0 && (
               <div className="px-3 py-10 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>
-                {t('shell.paletteEmpty')}
+                {/* devices load lazily on open — show loading, not a false "No results", while they arrive */}
+                {devices.isLoading ? t('admin.loading') : t('shell.paletteEmpty')}
               </div>
             )}
             {navMatches.length > 0 && (

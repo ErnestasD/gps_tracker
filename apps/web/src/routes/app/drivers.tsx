@@ -346,6 +346,10 @@ function DriverScores() {
         <div className="admin-card p-4">
           <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('drivers.loading')}</p>
         </div>
+      ) : scores.isError ? (
+        <div className="admin-card p-4">
+          <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="driver-scores-error">{t('drivers.loadError')}</p>
+        </div>
       ) : (
         <DataTable
           data-testid="driver-scores-table"

@@ -35,7 +35,10 @@ export function FuelChart({
   const { volumeL } = useUnits()
   const pts = useMemo(() => fuelChartPoints(points, W, H, PAD), [points])
   const path = pts.length > 0 ? 'M' + pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(' L') : ''
-  const shown = value ?? points[points.length - 1]?.v
+  // when the page passes an explicit `value` (fuelAtTime at the scrub position), honor a null as
+  // "unknown here" and hide the badge — matching the overlay pill — instead of falling back to the
+  // day's last reading; only fall back when no value prop was provided at all
+  const shown = value === undefined ? points[points.length - 1]?.v : (value ?? undefined)
   const cursorX = cursorMs !== undefined ? fuelCursorX(points, cursorMs, W, PAD) : null
 
   return (

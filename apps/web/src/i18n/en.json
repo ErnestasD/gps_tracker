@@ -131,7 +131,8 @@
     "txtInstruction": "Add this TXT record to {{domain}}, then click Verify:",
     "certNote": "HTTPS certificates are issued automatically on the first secure request after a domain is verified.",
     "domainLabel": "Domain",
-    "actionError": "Action failed — try again."
+    "actionError": "Action failed — try again.",
+    "limitDomain": "You've reached the maximum of {{max}} custom domains."
   },
   "audit": {
     "title": "Audit log",
@@ -457,7 +458,8 @@
       "update": "{{n}} existing",
       "errors": "{{n}} errors",
       "rowError": "Row {{row}} ({{imei}}): {{reason}}",
-      "open": "Import CSV"
+      "open": "Import CSV",
+      "error": "Import failed — check the CSV and try again."
     },
     "retireError": "Could not retire device {{imei}}.",
     "odometer": "Odometer",
@@ -553,7 +555,8 @@
         "min": "{{n}} min left",
         "hour": "{{n}} h left",
         "day": "{{n}} d left"
-      }
+      },
+      "actionError": "Couldn't create or revoke the link — try again."
     },
     "onboard": "Onboard",
     "onb": {
@@ -607,6 +610,8 @@
     "hide": "Hide",
     "details": "Details",
     "empty": "No events match these filters.",
+    "filteredEmpty": "No matching events in the loaded window — load more to keep looking.",
+    "statScope": "Counts reflect the {{n}} loaded events.",
     "loadMore": "Load more",
     "k": {
       "geofence": "Geofence",
@@ -756,13 +761,17 @@
     "activeDevices": "Active devices",
     "monthTotal": "Total device-days this month",
     "empty": "No tenants yet.",
-    "note": "A device-day = the device reported at least once during that UTC day (billing metric)."
+    "note": "A device-day = the device reported at least once during that UTC day (billing metric).",
+    "usageError": "Usage figures are unavailable right now."
   },
   "share": {
     "title": "Live tracking",
     "poweredBy": "Powered by Orbetra",
     "expiredTitle": "Link expired",
     "expiredBody": "This tracking link is no longer active.",
+    "errorTitle": "Can't load this link",
+    "errorBody": "Something went wrong reaching the server. Please try again shortly.",
+    "loading": "Loading…",
     "noFix": "Waiting for the first valid position…",
     "updated": "Updated {{time}}"
   },
@@ -897,7 +906,8 @@
     "confirmTitle": "Are you sure?",
     "actions": "Actions",
     "pickDate": "Pick a date",
-    "loadError": "Couldn't load — please try again."
+    "loadError": "Couldn't load — please try again.",
+    "loading": "Loading…"
   },
   "dash": {
     "title": "Overview",

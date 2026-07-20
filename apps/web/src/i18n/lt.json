@@ -131,7 +131,8 @@
     "txtInstruction": "Pridėkite šį TXT įrašą prie {{domain}}, tada spauskite Patvirtinti:",
     "certNote": "HTTPS sertifikatai išduodami automatiškai per pirmą saugų užklausimą po domeno patvirtinimo.",
     "domainLabel": "Domenas",
-    "actionError": "Veiksmas nepavyko — bandykite dar kartą."
+    "actionError": "Veiksmas nepavyko — bandykite dar kartą.",
+    "limitDomain": "Pasiekėte {{max}} tinkintų domenų ribą."
   },
   "audit": {
     "title": "Audito žurnalas",
@@ -457,7 +458,8 @@
       "update": "{{n}} esami",
       "errors": "{{n}} klaidų",
       "rowError": "Eilutė {{row}} ({{imei}}): {{reason}}",
-      "open": "Importuoti CSV"
+      "open": "Importuoti CSV",
+      "error": "Importas nepavyko — patikrinkite CSV ir bandykite dar kartą."
     },
     "retireError": "Nepavyko išregistruoti įrenginio {{imei}}.",
     "odometer": "Odometras",
@@ -553,7 +555,8 @@
         "min": "liko {{n}} min.",
         "hour": "liko {{n}} val.",
         "day": "liko {{n}} d."
-      }
+      },
+      "actionError": "Nepavyko sukurti ar atšaukti nuorodos — bandykite dar kartą."
     },
     "onboard": "Prijungti",
     "onb": {
@@ -607,6 +610,8 @@
     "hide": "Slėpti",
     "details": "Detalės",
     "empty": "Pagal šiuos filtrus įvykių nėra.",
+    "filteredEmpty": "Įkeltame lange atitinkančių įvykių nėra — įkelkite daugiau, kad ieškotumėte toliau.",
+    "statScope": "Skaičiai atspindi {{n}} įkeltų įvykių.",
     "loadMore": "Rodyti daugiau",
     "k": {
       "geofence": "Geozona",
@@ -756,13 +761,17 @@
     "activeDevices": "Aktyvūs įrenginiai",
     "monthTotal": "Viso įrenginio dienų šį mėnesį",
     "empty": "Nuomininkų dar nėra.",
-    "note": "Įrenginio diena = įrenginys bent kartą atsiskaitė tą UTC parą (atsiskaitymo metrika)."
+    "note": "Įrenginio diena = įrenginys bent kartą atsiskaitė tą UTC parą (atsiskaitymo metrika).",
+    "usageError": "Naudojimo duomenys šiuo metu nepasiekiami."
   },
   "share": {
     "title": "Gyvas sekimas",
     "poweredBy": "Sukurta su Orbetra",
     "expiredTitle": "Nuoroda nebegalioja",
     "expiredBody": "Ši sekimo nuoroda nebeaktyvi.",
+    "errorTitle": "Nepavyksta įkelti šios nuorodos",
+    "errorBody": "Susisiekiant su serveriu kažkas nutiko. Netrukus bandykite dar kartą.",
+    "loading": "Įkeliama…",
     "noFix": "Laukiama pirmos tikslios pozicijos…",
     "updated": "Atnaujinta {{time}}"
   },
@@ -897,7 +906,8 @@
     "confirmTitle": "Ar tikrai?",
     "actions": "Veiksmai",
     "pickDate": "Pasirinkti datą",
-    "loadError": "Nepavyko įkelti — bandykite dar kartą."
+    "loadError": "Nepavyko įkelti — bandykite dar kartą.",
+    "loading": "Įkeliama…"
   },
   "dash": {
     "title": "Apžvalga",

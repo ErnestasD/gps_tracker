@@ -24,7 +24,11 @@ export function BillingPage() {
   // recoverable via the portal — it must re-subscribe through the picker (matches the server's
   // RESUBSCRIBABLE allowlist, which permits checkout for 'canceled'). Review HIGH: dropping
   // 'canceled' here left a canceled tenant with no working re-subscribe path.
-  const recoverable = ['past_due', 'unpaid'].includes(b?.status ?? '')
+  // the picker only makes sense for statuses the server will actually checkout (RESUBSCRIBABLE =
+  // canceled / incomplete_expired, plus no-subscription-at-all). Every other inactive status —
+  // past_due, unpaid, incomplete, paused — is a LIVE sub the server 409s on checkout, so route it
+  // to the portal (Fix payment) instead of showing dead Subscribe buttons.
+  const recoverable = ['past_due', 'unpaid', 'incomplete', 'paused'].includes(b?.status ?? '')
   const showPicker = b?.configured === true && !b.active && !recoverable
   // only fetch the catalog when the picker is shown (each plan is a live Stripe price lookup);
   // catalog data is near-static, so cache it for the session

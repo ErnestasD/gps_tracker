@@ -149,6 +149,21 @@ export function SharePage({ token }: { token: string }) {
             {t('share.noFix')}
           </div>
         )}
+        {/* an initial 500/network failure used to leave a blank Vilnius map with no message —
+            distinguish it from the expired ('gone') notice with a visible error card */}
+        {state === 'error' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-bg/80" data-testid="share-error">
+            <div className="rounded-card border border-line bg-surface p-6 text-center">
+              <p className="text-lg font-semibold">{t('share.errorTitle')}</p>
+              <p className="mt-1 text-sm text-muted">{t('share.errorBody')}</p>
+            </div>
+          </div>
+        )}
+        {state === 'loading' && (
+          <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-card border border-line bg-surface px-3 py-2 text-sm text-muted" data-testid="share-loading">
+            {t('share.loading')}
+          </div>
+        )}
       </div>
     </div>
   )

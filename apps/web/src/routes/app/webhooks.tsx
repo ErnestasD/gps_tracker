@@ -91,6 +91,8 @@ export function WebhooksPage() {
         </div>
         {hooks.isError ? (
           <p role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="webhooks-error">{t('admin.loadError')}</p>
+        ) : hooks.isLoading ? (
+          <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="webhooks-loading">{t('admin.loading')}</p>
         ) : (hooks.data ?? []).length === 0 ? (
           <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="webhooks-empty">{t('webhooks.empty')}</p>
         ) : (
@@ -146,6 +148,8 @@ export function WebhooksPage() {
         </div>
         {deliveries.isError ? (
           <p role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="deliveries-error">{t('admin.loadError')}</p>
+        ) : deliveries.isLoading ? (
+          <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="deliveries-loading">{t('admin.loading')}</p>
         ) : (deliveries.data ?? []).length === 0 ? (
           <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="deliveries-empty">{t('webhooks.noDeliveries')}</p>
         ) : (

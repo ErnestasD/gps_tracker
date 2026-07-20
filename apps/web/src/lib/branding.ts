@@ -26,6 +26,18 @@ export interface TenantDomain {
   createdAt: string
 }
 
+/** Per-tenant custom-domain cap (server MAX_DOMAINS_PER_TENANT). Client guard mirrors it so the
+ * cap surfaces as a clear message instead of the server's ambiguous 409 (shared with a duplicate). */
+export const MAX_DOMAINS_PER_TENANT = 25
+
+// DNS TXT ownership record, mirrors apps/api tenantSelf.ts expectedTxt(): `orbetra-verify=<token>`.
+const TXT_PREFIX = 'orbetra-verify='
+/** The DNS TXT record a pending domain must publish — derivable from listDomains' txtToken so the
+ * value is retrievable after a reload, not only in the transient add-response. Pure. */
+export function expectedTxt(txtToken: string): string {
+  return `${TXT_PREFIX}${txtToken}`
+}
+
 const HEX = /^#[0-9a-fA-F]{6}$/
 // tokens.css --surface per theme (ADR-028 palette) — contrast references for the clamp guard.
 const SURFACE = '#10151f' // dark
@@ -111,6 +123,19 @@ export function resetBranding(): void {
   const root = document.documentElement
   root.style.removeProperty('--accent')
   root.style.removeProperty('--accent-2')
+}
+
+// Saved-branding change notifier: the always-mounted AppShell holds branding in local state (not
+// react-query), so a save on the Branding page must broadcast for the sidebar name/logo to refresh
+// without a full reload. Distinct from the live per-keystroke preview (applyBranding).
+const BRANDING_EVENT = 'orbetra:branding'
+export function emitBrandingChange(): void {
+  window.dispatchEvent(new Event(BRANDING_EVENT))
+}
+/** Subscribe to saved-branding changes (a Save on the Branding page). Returns the unsubscribe. */
+export function onBrandingChange(cb: () => void): () => void {
+  window.addEventListener(BRANDING_EVENT, cb)
+  return () => window.removeEventListener(BRANDING_EVENT, cb)
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────

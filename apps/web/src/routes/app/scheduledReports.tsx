@@ -61,6 +61,8 @@ export function ScheduledReportsCard({ accountId }: { accountId?: string }) {
 
       {list.isError ? (
         <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="sr-error">{t('admin.loadError')}</p>
+      ) : list.isLoading ? (
+        <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="sr-loading">{t('admin.loading')}</p>
       ) : (list.data ?? []).length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="sr-empty">{t('scheduled.empty')}</p>
       ) : (

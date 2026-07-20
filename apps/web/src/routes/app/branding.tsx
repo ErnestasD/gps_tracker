@@ -1,13 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { ApiError } from '@/lib/http'
 import {
+  MAX_DOMAINS_PER_TENANT,
   addDomain,
   applyBranding,
+  emitBrandingChange,
+  expectedTxt,
   getBranding,
   listDomains,
   removeDomain,
@@ -34,14 +37,28 @@ export function BrandingPage() {
   const [removeForId, setRemoveForId] = useState<string | null>(null)
   const removeFor = (domains.data ?? []).find((d) => d.id === removeForId) ?? null
 
+  // latest SAVED branding, kept for the leave-without-saving revert below
+  const savedRef = useRef<Branding | null>(null)
   useEffect(() => {
-    if (current.data) setForm(current.data.branding)
+    if (current.data) {
+      setForm(current.data.branding)
+      savedRef.current = current.data.branding
+    }
   }, [current.data])
 
   // live preview: apply as you type (validated inside applyBranding)
   useEffect(() => {
     applyBranding(form)
   }, [form])
+
+  // unmount = leaving the page: revert any unsaved preview so a red draft accent (and the tab
+  // title) doesn't leak app-wide for the rest of the session (a full reload was the only escape)
+  useEffect(
+    () => () => {
+      if (savedRef.current) applyBranding(savedRef.current)
+    },
+    [],
+  )
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -51,6 +68,7 @@ export function BrandingPage() {
       .then(() => {
         setSaved(true)
         void qc.invalidateQueries({ queryKey: ['branding'] })
+        emitBrandingChange() // refresh the always-mounted sidebar brand block (name/logo) without a reload
       })
       .catch((err: unknown) => setError(err instanceof ApiError && err.status === 400 ? t('branding.invalid') : t('branding.error')))
   }
@@ -139,12 +157,14 @@ export function BrandingPage() {
           {t('branding.domains')}
         </h3>
         <div className="space-y-3">
-          <AddDomain onAdded={() => void qc.invalidateQueries({ queryKey: ['domains'] })} />
+          <AddDomain count={(domains.data ?? []).length} onAdded={() => void qc.invalidateQueries({ queryKey: ['domains'] })} />
           {domainError && (
             <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="domain-action-error">{t('branding.actionError')}</p>
           )}
           {domains.isError ? (
             <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="domains-error">{t('admin.loadError')}</p>
+          ) : domains.isLoading ? (
+            <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="domains-loading">{t('admin.loading')}</p>
           ) : (domains.data ?? []).length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.noDomains')}</p>
           ) : (
@@ -186,6 +206,15 @@ export function BrandingPage() {
                       {t('branding.remove')}
                     </AdminButton>
                   </div>
+                  {/* pending domains keep their DNS TXT record visible (derived from txtToken) so a
+                      returning user who navigated away can still publish it and Verify (was reachable
+                      only in the transient add-response) */}
+                  {!d.verified && (
+                    <div className="w-full rounded-md border p-2 text-xs" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }} data-testid={`domain-txt-${d.domain}`}>
+                      <p style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.txtInstruction', { domain: d.domain })}</p>
+                      <code className="mono mt-1 block break-all" style={{ color: 'var(--admin-ink)' }}>{expectedTxt(d.txtToken)}</code>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -240,15 +269,22 @@ function HexInput({ value, onCommit, testid, label }: { value: string; onCommit:
   )
 }
 
-function AddDomain({ onAdded }: { onAdded: () => void }) {
+function AddDomain({ count, onAdded }: { count: number; onAdded: () => void }) {
   const { t } = useTranslation()
   const [domain, setDomain] = useState('')
   const [txt, setTxt] = useState<{ domain: string; record: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // the server 409s BOTH the cap and a duplicate — the client can't tell them apart from status
+  // alone, so guard the cap here and show the correct message instead of a false "already registered"
+  const atCap = count >= MAX_DOMAINS_PER_TENANT
 
   const add = (e: FormEvent) => {
     e.preventDefault()
     setError(null)
+    if (atCap) {
+      setError(t('branding.limitDomain', { max: MAX_DOMAINS_PER_TENANT }))
+      return
+    }
     addDomain(domain.trim().toLowerCase())
       .then((d) => {
         setTxt({ domain: d.domain, record: d.txtRecord })
@@ -262,8 +298,11 @@ function AddDomain({ onAdded }: { onAdded: () => void }) {
     <div className="space-y-2">
       <form onSubmit={add} className="flex gap-2">
         <AdminInput aria-label={t('branding.domainLabel')} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="fleet.example.com" data-testid="domain-input" className="max-w-xs" />
-        <AdminButton type="submit" disabled={domain.trim() === ''} data-testid="domain-add">{t('branding.addDomain')}</AdminButton>
+        <AdminButton type="submit" disabled={domain.trim() === '' || atCap} data-testid="domain-add">{t('branding.addDomain')}</AdminButton>
       </form>
+      {atCap && (
+        <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid="domain-limit">{t('branding.limitDomain', { max: MAX_DOMAINS_PER_TENANT })}</p>
+      )}
       {error !== null && (
         <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>
       )}
