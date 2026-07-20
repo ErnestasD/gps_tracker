@@ -94,6 +94,7 @@ return n`
 // forgot-password rate limit (ADR-031): max reset requests per IP+email per window. Generous enough
 // for a real user retrying, tight enough that the send path can't mail-bomb or probe for accounts.
 const RESET_RL_MAX = 5
+const RESET_REDEEM_RL_MAX = 30 // redeem attempts per IP per window (token guessing is infeasible; this caps floods)
 const RESET_RL_WINDOW_S = 3_600
 const DEFAULT_RESET_TTL_S = 3_600 // reset link lifetime (1 h)
 
@@ -312,9 +313,17 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     if (deps.mail !== undefined && deps.appBaseUrl !== undefined) {
       const ttlS = deps.resetTokenTtlS ?? DEFAULT_RESET_TTL_S
       const base = deps.appBaseUrl.replace(/\/+$/, '')
+      const users = await deps.db.users.findByEmailAllTenants(email)
+      // timing-enumeration defense (parity with login's dummy verifyPassword): the miss path must
+      // burn work comparable to a single mint (crypto + a DB write round-trip) so hit/miss latency
+      // distributions match — an UPDATE on a random userId touches 0 rows at ~the same cost.
+      if (users.length === 0) {
+        sha256(randomBytes(32).toString('hex'))
+        await deps.db.passwordResetTokens.invalidateAllForUser(randomUUID(), new Date()).catch(() => undefined)
+      }
       // an email may exist in >1 tenant (ambiguous identity) — mint + mail one per tenant so the
       // right branded link reaches the user; each token is independent + single-use.
-      for (const u of await deps.db.users.findByEmailAllTenants(email)) {
+      for (const u of users) {
         try {
           await deps.db.passwordResetTokens.invalidateAllForUser(u.id, new Date()) // only the newest link stays valid
           const rawToken = randomBytes(32).toString('hex')
@@ -346,6 +355,12 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
   // session (refresh families + live WS) so a stolen/other session cannot outlive the reset.
   app.post('/reset-password', async (c) => {
     if (!sameOriginOk(c)) return problem(c, 403, 'Forbidden', 'cross-origin request rejected')
+    // belt-and-suspenders per-IP throttle on the redeem endpoint (token guessing is already
+    // infeasible at 256-bit, but this caps DB-write abuse / brute-force floods)
+    const ip = clientIp(c.req.header('x-forwarded-for'), getRemoteAddr(c), deps.trustProxy)
+    if (Number(await deps.redis.eval(LOCKOUT_SCRIPT, 1, `auth:redeem:${ip}`, String(RESET_RL_WINDOW_S))) > RESET_REDEEM_RL_MAX) {
+      return problem(c, 429, 'Too Many Requests')
+    }
     const body = resetPasswordSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return problem(c, 400, 'Bad Request', 'invalid token or password')
     const now = new Date()
