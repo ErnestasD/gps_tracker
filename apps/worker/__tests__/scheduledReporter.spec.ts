@@ -108,6 +108,34 @@ describe('formatReport', () => {
   it('empty result is explicit', () => {
     expect(formatReport({ type: 'trips', rows: [] }, w, opts).text).toContain('(no data')
   })
+
+  it('emits a branded HTML report (logo/accent/productName + an HTML <table>) plus the plain-text fallback', () => {
+    const branding = { productName: 'Acme Fleet', primary: '#ff8800', logoUrl: 'https://cdn.acme.test/logo.png', supportEmail: 'help@acme.test' }
+    const r = formatReport(
+      { type: 'mileage', rows: [{ day: '2026-07-14', deviceId: '5', deviceName: 'Vilnius Van 1', devicePlate: 'ABC-123', trips: 3, distanceM: 15234 }] },
+      w,
+      { ...opts, branding, tenantName: 'Acme' },
+    )
+    // plain-text fallback still present
+    expect(r.text).toContain('Distance (km)')
+    // branded HTML shell + an HTML table with the human column + km value
+    expect(r.html).toBeDefined()
+    expect(r.html!).toContain('Acme Fleet')
+    expect(r.html!).toContain('https://cdn.acme.test/logo.png')
+    expect(r.html!).toContain('#ff8800')
+    expect(r.html!).toContain('<table')
+    expect(r.html!).toContain('Distance (km)')
+    expect(r.html!).toContain('15.2')
+    expect(r.html!).toContain('Vilnius Van 1')
+  })
+
+  it('FAIL SAFE: no branding still yields HTML from the brand name + default accent', () => {
+    const r = formatReport({ type: 'mileage', rows: [] }, w, opts) // opts has brand but no branding
+    expect(r.html).toBeDefined()
+    expect(r.html!).toContain('Acme Fleet') // brand used as the shell name fallback
+    expect(r.html!).toContain('#4DA3FF') // default accent
+    expect(r.html!).toContain('(no data in this period)')
+  })
 })
 
 // fake pool: every query returns no rows → runReport yields an empty result (orchestration test)

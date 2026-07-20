@@ -22,7 +22,9 @@ export function CanCard({ device }: { device: Device }) {
     <Card data-testid="can-card">
       <CardHeader><CardTitle className="text-base">{t('devices.can.title')}</CardTitle></CardHeader>
       <CardContent>
-        {can.isError ? (
+        {can.isLoading ? (
+          <p className="text-sm text-muted" data-testid="can-loading">{t('admin.loading')}</p>
+        ) : can.isError ? (
           <p className="text-sm text-danger">{t('devices.can.loadError')}</p>
         ) : (
           <div className="flex flex-wrap gap-6 text-sm">

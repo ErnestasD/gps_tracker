@@ -85,11 +85,17 @@ describe('E05-5 telegramDriver', () => {
 })
 
 describe('E05-5 emailDriver + driversFromEnv', () => {
-  it('emailDriver delegates to the injected transport', async () => {
+  it('emailDriver delegates to the injected transport, forwarding the branded html body', async () => {
     const send = vi.fn(() => Promise.resolve())
     const transport: EmailTransport = { send }
-    await emailDriver(transport).send(email('x@y.co'), { subject: 'S', text: 'B' })
-    expect(send).toHaveBeenCalledWith('x@y.co', 'S', 'B')
+    await emailDriver(transport).send(email('x@y.co'), { subject: 'S', text: 'B', html: '<p>H</p>' })
+    expect(send).toHaveBeenCalledWith('x@y.co', 'S', 'B', '<p>H</p>')
+  })
+
+  it('emailDriver passes html=undefined when a message has no html (plain-text only)', async () => {
+    const send = vi.fn(() => Promise.resolve())
+    await emailDriver({ send }).send(email('x@y.co'), { subject: 'S', text: 'B' })
+    expect(send).toHaveBeenCalledWith('x@y.co', 'S', 'B', undefined)
   })
 
   it('driversFromEnv exposes telegram only when the token is set', () => {
@@ -221,5 +227,43 @@ describe('E05-5 notificationMessage', () => {
     const m = notificationMessage('some_new_kind', '7', {}, new Date('2026-07-09T00:00:00Z'))
     expect(m.subject).toContain('Some new kind')
     expect(m.text).toContain('Device: 7')
+  })
+})
+
+describe('E05-4 notificationMessage branded HTML', () => {
+  const branding = { productName: 'Acme Fleet', primary: '#ff8800', logoUrl: 'https://cdn.acme.test/logo.png', supportEmail: 'help@acme.test' }
+
+  it('emits a white-label branded HTML body carrying the productName, logo, accent — plus the plain-text fallback', () => {
+    const m = notificationMessage('overspeed', '42', { speedKmh: 95, limitKmh: 90 }, new Date('2026-07-09T00:00:00Z'), {
+      deviceLabel: 'Vilnius Van 1', timezone: 'Europe/Vilnius', brand: 'Acme Fleet', branding, tenantName: 'Acme',
+    })
+    // plain-text fallback is always present (multipart/alternative text part)
+    expect(m.text).toContain('Device: Vilnius Van 1')
+    // branded shell: product name, logo, accent color, support email
+    expect(m.html).toBeDefined()
+    expect(m.html!).toContain('Acme Fleet')
+    expect(m.html!).toContain('https://cdn.acme.test/logo.png')
+    expect(m.html!).toContain('#ff8800')
+    expect(m.html!).toContain('help@acme.test')
+    // the alert content is present as escaped HTML paragraphs
+    expect(m.html!).toContain('Vilnius Van 1')
+    expect(m.html!).toContain('Speed 95 km/h over limit 90 km/h')
+    expect(m.html!).toContain('<!doctype html>')
+  })
+
+  it('FAIL SAFE: a missing/blank branding still renders HTML from the tenant name + default accent', () => {
+    const m = notificationMessage('panic', '42', {}, new Date('2026-07-09T00:00:00Z'), { tenantName: 'Bare Tenant' })
+    expect(m.html).toBeDefined()
+    expect(m.html!).toContain('Bare Tenant')
+    expect(m.html!).toContain('#4DA3FF') // default accent
+    expect(m.html!).not.toContain('<img')
+  })
+
+  it('escapes tenant + device strings in the HTML (no injection via device label)', () => {
+    const m = notificationMessage('panic', '42', {}, new Date('2026-07-09T00:00:00Z'), {
+      deviceLabel: '<script>alert(1)</script>', tenantName: 'T',
+    })
+    expect(m.html!).not.toContain('<script>alert(1)</script>')
+    expect(m.html!).toContain('&lt;script&gt;')
   })
 })

@@ -545,6 +545,7 @@
       "loading": "Kraunama…",
       "expired": "nebegalioja",
       "revoke": "Atšaukti",
+      "revokeSure": "Atšaukti šią bendrinimo nuorodą? Visi, turintys jos URL, iškart praras prieigą, ir to nebus galima atšaukti.",
       "ttlOpt": {
         "1h": "1 val.",
         "8h": "8 val.",

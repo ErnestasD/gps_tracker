@@ -55,7 +55,13 @@ export function MapPage() {
   return (
     <>
       <LiveMap />
-      <DeviceList devices={snap.devices} selectedId={snap.selectedId} onSelect={(id) => liveStore.select(id)} />
+      <DeviceList
+        devices={snap.devices}
+        selectedId={snap.selectedId}
+        onSelect={(id) => liveStore.select(id)}
+        // still connecting/seeding: show a loader rather than flash "No devices yet"
+        loading={devices.isLoading || (snap.devices.length === 0 && snap.connection !== 'open')}
+      />
       {selected && (
         <InfoCard
           device={selected}

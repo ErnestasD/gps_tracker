@@ -42,6 +42,10 @@ export function OnboardingCard({ device }: { device: Device }) {
           <Input value={apn} onChange={(e) => setApn(e.target.value)} placeholder={t('devices.onb.apnPlaceholder')} data-testid="onboarding-apn" className="w-56" maxLength={64} />
         </label>
 
+        {sheet.isLoading && (
+          <p className="text-xs text-muted" data-testid="onboarding-loading">{t('admin.loading')}</p>
+        )}
+
         {s !== undefined && (
           <div className="space-y-3">
             {s.smsApn !== null && (

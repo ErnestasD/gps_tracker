@@ -31,6 +31,7 @@ export function BrandingPage() {
 
   const [form, setForm] = useState<Branding>({})
   const [saved, setSaved] = useState(false)
+  const [busy, setBusy] = useState(false) // in-flight guard: no double-submit of the branding POST
   const [error, setError] = useState<string | null>(null)
   const [domainError, setDomainError] = useState(false) // verify/remove failures were swallowed
   // remove target resolves against the LIVE list (devices precedent)
@@ -62,8 +63,10 @@ export function BrandingPage() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
+    if (busy) return // in-flight guard: no double-submit
     setError(null)
     setSaved(false)
+    setBusy(true)
     saveBranding(clean(form))
       .then(() => {
         setSaved(true)
@@ -71,6 +74,7 @@ export function BrandingPage() {
         emitBrandingChange() // refresh the always-mounted sidebar brand block (name/logo) without a reload
       })
       .catch((err: unknown) => setError(err instanceof ApiError && err.status === 400 ? t('branding.invalid') : t('branding.error')))
+      .finally(() => setBusy(false))
   }
 
   return (
@@ -130,7 +134,7 @@ export function BrandingPage() {
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <AdminButton type="submit" data-testid="branding-save">{t('branding.save')}</AdminButton>
+            <AdminButton type="submit" disabled={busy} data-testid="branding-save">{t('branding.save')}</AdminButton>
             {saved && (
               <span role="status" className="text-sm" style={{ color: 'var(--admin-success)' }} data-testid="branding-saved">
                 {t('branding.savedMsg')}

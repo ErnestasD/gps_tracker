@@ -418,6 +418,9 @@ function ExportSection() {
             <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>
           )}
         </form>
+        {jobs.isLoading && (
+          <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid="exports-loading">{t('admin.loading')}</p>
+        )}
         {(jobs.data ?? []).length > 0 && (
           <table className="w-full text-sm" data-testid="exports-table">
             <thead>

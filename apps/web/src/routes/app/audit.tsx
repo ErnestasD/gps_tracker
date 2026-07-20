@@ -52,7 +52,9 @@ export function AuditPage() {
         </div>
         {query.isError ? (
           <p role="alert" className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="audit-error">{t('admin.loadError')}</p>
-        ) : rows.length === 0 && !query.isLoading ? (
+        ) : query.isLoading ? (
+          <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="audit-loading">{t('admin.loading')}</p>
+        ) : rows.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('audit.empty')}</p>
         ) : (
           <div className="overflow-x-auto">

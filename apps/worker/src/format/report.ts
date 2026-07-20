@@ -7,6 +7,8 @@
  * the unit in the column header. The per-user unit/language preference is device-local on the web
  * and unknown to the server — see format/localize.ts.
  */
+import { escapeHtml } from '@orbetra/shared'
+
 import { formatInZone, metersToKm, secondsToHours } from './localize.js'
 
 type Row = Record<string, unknown>
@@ -76,4 +78,21 @@ export function renderReportTable(type: string, rows: readonly Row[], timezone: 
   const header = line(cols.map((c) => c.label))
   const rule = widths.map((w) => '-'.repeat(w)).join('  ')
   return [header, rule, ...matrix.map(line)].join('\n')
+}
+
+/** Render the same report rows as an HTML `<table>` for the branded email body (E05-4). Cells reuse
+ *  the SAME column formatters as the plain-text table, then HTML-escape every value (rows carry
+ *  device names / free-text that could contain markup). An unknown type or empty result yields a
+ *  readable one-cell note rather than a broken table. */
+export function renderReportTableHtml(type: string, rows: readonly Row[], timezone: string): string {
+  const cols = COLUMNS[type]
+  const cell = (v: string): string => `<td style="padding:6px 10px;border-bottom:1px solid #e6ebf2">${escapeHtml(v)}</td>`
+  const note = (msg: string): string => `<p style="margin:0;color:#5b6b82">${escapeHtml(msg)}</p>`
+  if (cols === undefined) return note(renderReportTable(type, rows, timezone)) // unknown type → labelled dump, escaped
+  if (rows.length === 0) return note('(no data in this period)')
+  const th = cols.map((c) => `<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #cfd8e3;font-size:13px">${escapeHtml(c.label)}</th>`).join('')
+  const trs = rows
+    .map((row) => `<tr>${cols.map((c) => cell(c.cell(row, timezone))).join('')}</tr>`)
+    .join('')
+  return `<table style="border-collapse:collapse;width:100%;font-size:13px"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`
 }

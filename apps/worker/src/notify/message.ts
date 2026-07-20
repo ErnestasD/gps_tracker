@@ -11,11 +11,16 @@
  * unit (mph vs km/h) is device-local on the web (localStorage) and unknown to the server — when
  * accounts carry a locale + unit preference, thread it through here. See format/localize.ts.
  */
+import { escapeHtml, renderBrandedEmail, type Branding } from '@orbetra/shared'
+
 import { formatWithZone } from '../format/localize.js'
 
 export interface NotifyMessage {
   subject: string
   text: string
+  /** White-label branded HTML body for the email channel (E05-4). Absent when it could not be
+   *  built — the email then sends plain `text` only. Telegram/webpush ignore it. */
+  html?: string | undefined
 }
 
 /** Per-message context resolved by the worker from the device/account/tenant registry. */
@@ -26,6 +31,11 @@ export interface NotifyContext {
   timezone?: string | undefined
   /** tenant product brand for the subject (white-label); 'Orbetra' when unknown */
   brand?: string | undefined
+  /** full tenant branding (logo/color/productName/supportEmail) for the branded HTML email body.
+   *  Absent/blank ⇒ renderBrandedEmail falls back to `tenantName` + the default accent. */
+  branding?: Branding | undefined
+  /** tenant name — the fallback product name for renderBrandedEmail when branding has no productName. */
+  tenantName?: string | undefined
 }
 
 const TITLES: Record<string, string> = {
@@ -52,8 +62,39 @@ export function notificationMessage(kind: string, deviceId: string, payload: Rec
   const title = TITLES[kind] ?? humanize(kind)
   const detail = summarize(kind, payload)
   const subject = `[${brand}] ${title} — ${device}`
-  const text = [`${title} alert`, `Device: ${device}`, `When: ${formatWithZone(at, ctx.timezone)}`, ...(detail ? [detail] : [])].join('\n')
-  return { subject, text }
+  const when = formatWithZone(at, ctx.timezone)
+  const text = [`${title} alert`, `Device: ${device}`, `When: ${when}`, ...(detail ? [detail] : [])].join('\n')
+  const html = renderAlertHtml(subject, title, device, when, detail, ctx)
+  return { subject, text, html }
+}
+
+/**
+ * Build the white-label branded HTML body for an alert email — the same content as `text` (title,
+ * device, timestamp, detail) as escaped HTML paragraphs, wrapped in the tenant's brand shell.
+ * FAIL SAFE: a missing/blank branding falls back to the tenant name + default accent (handled by
+ * renderBrandedEmail); any render error returns `undefined` so the email still sends plain text and
+ * the worker never crashes (rule: a formatting fault must never drop the notification).
+ */
+function renderAlertHtml(subject: string, title: string, device: string, when: string, detail: string, ctx: NotifyContext): string | undefined {
+  try {
+    const p = (label: string, value: string): string =>
+      `<p style="margin:0 0 8px"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`
+    const bodyHtml = [
+      `<h2 style="margin:0 0 12px;font-size:16px">${escapeHtml(title)} alert</h2>`,
+      p('Device', device),
+      p('When', when),
+      ...(detail ? [`<p style="margin:0 0 8px">${escapeHtml(detail)}</p>`] : []),
+    ].join('')
+    const tenantName = ctx.tenantName && ctx.tenantName.trim() !== '' ? ctx.tenantName : brandName(ctx)
+    return renderBrandedEmail(ctx.branding ?? {}, tenantName, { subject, bodyHtml })
+  } catch {
+    return undefined // never let a template fault drop the email — fall back to plain text
+  }
+}
+
+/** Product/tenant name for the branded shell fallback (mirrors the subject brand). */
+function brandName(ctx: NotifyContext): string {
+  return ctx.brand && ctx.brand.trim() !== '' ? ctx.brand : 'Orbetra'
 }
 
 /** One-line, human-readable detail per kind (mirrors the web eventSummary). English for v1

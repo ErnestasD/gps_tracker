@@ -47,6 +47,20 @@ describe('E05-5 buildEmailTransport', () => {
     expect(f.calls[0]!.headers).toBeUndefined() // no config set → no header
   })
 
+  it('passes the branded html body through to sendMail alongside the text fallback (multipart)', async () => {
+    const f = fakeMailer()
+    const t = buildEmailTransport({ ...FULL }, f.create)!
+    await t.send('driver@fleet.test', 'Panic alert', 'Device 42 pressed panic.', '<p>Device 42 pressed panic.</p>')
+    expect(f.calls[0]).toMatchObject({ text: 'Device 42 pressed panic.', html: '<p>Device 42 pressed panic.</p>' })
+  })
+
+  it('omits html entirely when none is supplied (plain-text only, backwards-compatible)', async () => {
+    const f = fakeMailer()
+    const t = buildEmailTransport({ ...FULL }, f.create)!
+    await t.send('driver@fleet.test', 's', 'b')
+    expect(f.calls[0]!).not.toHaveProperty('html')
+  })
+
   it('a createTransport failure disables email (undefined) instead of crashing the worker', () => {
     const create = vi.fn(() => { throw new Error('boom') })
     expect(buildEmailTransport({ ...FULL }, create)).toBeUndefined() // must not throw

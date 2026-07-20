@@ -66,7 +66,11 @@ export function BillingPage() {
         </p>
       )}
 
-      {billing.isError ? (
+      {billing.isLoading ? (
+        <p className="admin-card p-6 text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="billing-loading">
+          {t('admin.loading')}
+        </p>
+      ) : billing.isError ? (
         <p role="alert" className="admin-card p-6 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="billing-error">
           {t('billing.loadError')}
         </p>

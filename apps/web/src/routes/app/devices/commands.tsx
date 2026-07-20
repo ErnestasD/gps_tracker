@@ -126,7 +126,9 @@ export function CommandsCard({ device }: { device: Device }) {
           )}
         </form>
 
-        {history.isError ? (
+        {history.isLoading ? (
+          <p className="text-sm text-muted" data-testid="commands-loading">{t('admin.loading')}</p>
+        ) : history.isError ? (
           <p className="text-sm text-danger">{t('devices.cmd.loadError')}</p>
         ) : (history.data ?? []).length === 0 ? (
           <p className="text-sm text-muted">{t('devices.cmd.empty')}</p>
