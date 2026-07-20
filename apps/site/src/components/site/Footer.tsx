@@ -1,14 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { OrbetraLogo } from "./OrbetraLogo";
 
 export function Footer() {
   return (
     <footer className="border-t border-[var(--hairline)] mt-32 bg-[var(--blueprint)]/40">
       <div className="mx-auto max-w-7xl px-6 py-16 grid gap-12 md:grid-cols-4">
         <div>
-          <div className="flex items-center gap-2 font-display font-bold text-lg text-ink">
-            <OrbetraLogo className="h-10 w-10" /> Orbetra
-          </div>
+          <img src="/orbetra-wordmark.svg" alt="Orbetra" className="h-9 w-auto" />
           <p className="mt-3 text-sm text-muted-foreground max-w-xs">
             White-label GPS tracking, purpose-built for Teltonika fleets. EU-hosted.
           </p>
