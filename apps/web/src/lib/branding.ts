@@ -116,6 +116,38 @@ export function applyBranding(branding: Branding): void {
     root.style.setProperty('--accent-2', clampForTheme(branding.accent, theme))
   }
   if (branding.productName !== undefined) document.title = branding.productName
+  // white-label favicon: a tenant's logo IS their favicon — no separate input, reuse logoUrl
+  // (brandingSchema pins it to an https URL). Falls back to the Orbetra icons when unset.
+  applyFavicon(branding.logoUrl)
+}
+
+export interface FaviconLink {
+  rel: string
+  href: string
+  type?: string
+}
+/** The static Orbetra favicon links (index.html), restored when a tenant clears its logo. */
+const DEFAULT_ICONS: FaviconLink[] = [
+  { rel: 'icon', href: '/favicon.ico' },
+  { rel: 'icon', href: '/orbetra-logo.svg', type: 'image/svg+xml' },
+  { rel: 'apple-touch-icon', href: '/icons/pwa-192.png' },
+]
+/** Which <link> icons to render for a given tenant logo (or the Orbetra defaults). Pure — tested. */
+export function faviconLinks(logoUrl: string | undefined): FaviconLink[] {
+  return logoUrl !== undefined && logoUrl !== '' ? [{ rel: 'icon', href: logoUrl }, { rel: 'apple-touch-icon', href: logoUrl }] : DEFAULT_ICONS
+}
+
+/** Point the browser-tab icon at `logoUrl` (tenant white-label) or restore the Orbetra defaults. */
+function applyFavicon(logoUrl: string | undefined): void {
+  const head = document.head
+  head.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]').forEach((el) => el.remove())
+  for (const l of faviconLinks(logoUrl)) {
+    const link = document.createElement('link')
+    link.rel = l.rel
+    link.href = l.href
+    if (l.type !== undefined) link.type = l.type
+    head.appendChild(link)
+  }
 }
 
 export function resetBranding(): void {
@@ -123,6 +155,7 @@ export function resetBranding(): void {
   const root = document.documentElement
   root.style.removeProperty('--accent')
   root.style.removeProperty('--accent-2')
+  applyFavicon(undefined)
 }
 
 // Saved-branding change notifier: the always-mounted AppShell holds branding in local state (not
