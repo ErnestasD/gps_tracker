@@ -32,6 +32,16 @@ const TENANT_NAME = 'Demo Logistics'
 const ACCOUNT_NAMES = ['Vilnius Fleet', 'Kaunas Fleet'] as const
 const SCENARIOS: Record<DemoDrive['scenario'], Scenario> = { liveDrive, panic, invalidFix, fuelTheft }
 
+// A SECOND demo tenant on a Direct (Track-A) plan (WP5) so staging can demo BOTH sides of the plan
+// axis: the primary 'Demo Logistics' tenant keeps the DB-default tsp_grow (full white-label + API +
+// webhooks + sub-accounts, uncapped); this one is direct_10 — single account, NO white-label / API /
+// webhooks, capped at 10 devices. Seeding 4 devices leaves room to demo the cap by adding 7 more.
+const DIRECT_TENANT_NAME = 'Demo Direct Fleet'
+const DIRECT_ACCOUNT_NAME = 'Direct Fleet'
+const DIRECT_ADMIN_EMAIL = 'demo-direct-admin@orbetra.test'
+const DIRECT_BASE_IMEI = 867000120000040n // distinct block from the 12 tsp_grow demo devices (…010–…021)
+const DIRECT_DEVICE_COUNT = 4
+
 const ACTOR = { userId: '00000000-0000-0000-0000-00000000d000' } // audit rows attribute to a fixed seed actor
 
 interface SeedResult {
@@ -40,6 +50,61 @@ interface SeedResult {
   devices: { created: number; existing: number; imeiConflicts: number }
   drives: { total: number; acked: number; rejected: number }
   password: string
+  /** the second (Direct-plan) demo tenant — WP5. */
+  direct: { tenantId: string; devices: { created: number; existing: number } }
+}
+
+/**
+ * Seed the SECOND demo tenant on a Direct (Track-A) plan (WP5) — direct_10: a single account, the
+ * feature-gated surfaces (white-label / API / webhooks / sub-accounts) all 403, and a 10-device cap.
+ * Provisioned through the SAME scoped repos + activateDevice sync as the primary demo. Idempotent:
+ * tenant/account/user looked up by name/email (the admin's password re-stamped so the printed one
+ * always works), devices by imei. No pipeline history — a few live devices are enough to show the
+ * Direct experience (and leave headroom under the cap).
+ */
+async function seedDirectDemo(
+  db: Db,
+  redis: Redis,
+  profile: { id: string; presenceRules: unknown },
+  passwordHash: string,
+  log: (line: string) => void,
+): Promise<SeedResult['direct']> {
+  const tenant =
+    (await db.tenants.list()).find((t) => t.name === DIRECT_TENANT_NAME) ??
+    (await db.tenants.create(ACTOR, { name: DIRECT_TENANT_NAME, plan: 'direct_10', branding: { productName: DIRECT_TENANT_NAME } }))
+  const scope: Scope = { tenantId: tenant.id }
+  const accountId =
+    (await db.accounts.list(scope)).find((a) => a.name === DIRECT_ACCOUNT_NAME)?.id ??
+    (await db.accounts.create(scope, ACTOR, { name: DIRECT_ACCOUNT_NAME, timezone: 'Europe/Vilnius' })).id
+
+  // its own admin — Direct plans still administer via the tsp_admin role (roles are ORTHOGONAL to
+  // plans); the plan, not the role, is what gates the TSP-only features.
+  const existingAdmin = (await db.users.list(scope)).find((u) => u.email === DIRECT_ADMIN_EMAIL)
+  if (existingAdmin === undefined) await db.users.create(scope, ACTOR, { email: DIRECT_ADMIN_EMAIL, role: 'tsp_admin', accountId: null, passwordHash })
+  else await db.users.update(scope, ACTOR, existingAdmin.id, { passwordHash })
+
+  let created = 0
+  let existing = 0
+  for (let i = 0; i < DIRECT_DEVICE_COUNT; i++) {
+    const imei = (DIRECT_BASE_IMEI + BigInt(i)).toString()
+    if ((await db.devices.getByImei(scope, imei)) !== null) {
+      existing++
+      continue
+    }
+    try {
+      const dev = await db.devices.create(scope, ACTOR, { accountId, profileId: profile.id, imei, name: `Direct Van ${String(i + 1).padStart(2, '0')}`, plate: `DIR ${100 + i}` })
+      await activateDevice(redis, { id: dev.id, imei, tenantId: tenant.id, accountId, config: { presenceRules: profile.presenceRules ?? {}, odometerSource: 'auto' } })
+      created++
+    } catch (err) {
+      if (err instanceof DuplicateImeiError) {
+        log(`  SKIP ${imei}: already registered in another tenant`)
+      } else throw err
+    }
+  }
+  log(`direct demo tenant ready: ${DIRECT_TENANT_NAME} (${tenant.id}) — plan direct_10`)
+  log(`  account: ${DIRECT_ACCOUNT_NAME}; devices: ${created} created, ${existing} already existed (cap 10)`)
+  log(`  login: ${DIRECT_ADMIN_EMAIL}  (same password as above)`)
+  return { tenantId: tenant.id, devices: { created, existing } }
 }
 
 export async function seedDemo(opts: {
@@ -206,6 +271,9 @@ export async function seedDemo(opts: {
       }
     }
 
+    // second demo tenant on a Direct plan (WP5) — so staging can demo the plan-gated experience too
+    const direct = await seedDirectDemo(db, redis, profile, passwordHash, log)
+
     log(`demo tenant ready: ${TENANT_NAME} (${tenant.id})`)
     log(`  accounts: ${ACCOUNT_NAMES.join(', ')}`)
     log(`  devices: ${created} created, ${existing} already existed${imeiConflicts > 0 ? `, ${imeiConflicts} imei conflicts SKIPPED` : ''}`)
@@ -214,7 +282,7 @@ export async function seedDemo(opts: {
       : `  history: skipped (devices already existed; pass --with-history to re-drive)`)
     log(`  login: demo-admin@orbetra.test / demo-manager@… / demo-viewer@…  password: ${password}`)
     log(`  NOTE: positions/trips appear once the worker drains the stream (seconds).`)
-    return { tenantId: tenant.id, accounts: accountIds, devices: { created, existing, imeiConflicts }, drives: { total: sendHistory ? drives.length : 0, acked, rejected }, password }
+    return { tenantId: tenant.id, accounts: accountIds, devices: { created, existing, imeiConflicts }, drives: { total: sendHistory ? drives.length : 0, acked, rejected }, password, direct }
   } finally {
     await redis.quit()
     await db.$disconnect()
