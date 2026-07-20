@@ -36,7 +36,14 @@ export function problem(
 /** X-Api-Key → c.set('auth') (read-only), else Bearer JWT → c.set('auth'); 401/429 otherwise.
  * The API-key path (E06-3) is tried first only when the header is present, so the web's JWT
  * flow is unchanged. */
-export function authMiddleware(cfg: { jwtSecret: string; apiKey?: ApiKeyAuth }): MiddlewareHandler<AuthEnv> {
+export function authMiddleware(cfg: {
+  jwtSecret: string
+  apiKey?: ApiKeyAuth
+  /** REST API access is a TSP-plus (Track-B) entitlement: a resolved key whose tenant lacks
+   *  `apiAccess` is rejected here, so a Direct tenant's pre-existing key can't keep REST access
+   *  after a downgrade (review HIGH — key CREATION being gated didn't cover already-minted keys). */
+  apiKeyEntitled?: (tenantId: string) => Promise<boolean>
+}): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
     const rawKey = c.req.header('x-api-key')?.trim()
     // only take the API-key branch for a NON-EMPTY key — an empty/whitespace header must not
@@ -45,6 +52,9 @@ export function authMiddleware(cfg: { jwtSecret: string; apiKey?: ApiKeyAuth }):
       const out = await cfg.apiKey.resolve(rawKey)
       if ('error' in out) {
         return out.error === 'rate_limited' ? problem(c, 429, 'Too Many Requests') : problem(c, 401, 'Unauthorized')
+      }
+      if (cfg.apiKeyEntitled !== undefined && !(await cfg.apiKeyEntitled(out.ok.tenantId))) {
+        return problem(c, 403, 'Forbidden', 'plan_upgrade_required')
       }
       c.set('auth', out.ok)
       await next()

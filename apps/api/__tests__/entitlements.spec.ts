@@ -43,9 +43,13 @@ function buildDb(plan: TenantPlan, activeCount = 0): Db {
   return db
 }
 
+// device-create serializes the cap check under a per-tenant Redis lock (SET NX / DEL) — a stub
+// that always grants the lock and no-ops the release, so the cap logic under it runs in tests.
+const fakeRedis = { set: () => Promise.resolve('OK'), del: () => Promise.resolve(1) } as never
+
 function makeApp(db: Db) {
   return createApp({
-    redis: {} as never, redisSub: {} as never, db,
+    redis: fakeRedis, redisSub: {} as never, db,
     jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600,
     lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
   })
@@ -129,6 +133,18 @@ describe('WP2 entitlements — device cap (deviceLimit)', () => {
   it('a tsp_grow tenant is uncapped: device create is NOT device-limit blocked', async () => {
     const res = await call(buildDb('tsp_grow', 9999), '/v1/devices', 'POST', await admin(), deviceBody)
     expect(res.status).toBe(400) // past the (skipped) cap gate → profile validation
+  })
+
+  it('concurrent capped create loses the per-tenant lock → 409 (no cap overshoot, review MED)', async () => {
+    // a Redis whose SET NX never grants (a create already holds the lock) → the racer is rejected
+    const app = createApp({
+      redis: { set: () => Promise.resolve(null), del: () => Promise.resolve(1) } as never, redisSub: {} as never,
+      db: buildDb('direct_5', 4), jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600,
+      lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
+    })
+    const res = await app.request('/v1/devices', { method: 'POST', headers: { authorization: `Bearer ${await admin()}`, 'content-type': 'application/json' }, body: JSON.stringify(deviceBody) })
+    expect(res.status).toBe(409)
+    expect((await res.json() as { detail?: string }).detail).toBe('device_create_in_progress')
   })
 
   it('quarantine claim enforces the TARGET tenant cap → 403 device_limit_reached', async () => {

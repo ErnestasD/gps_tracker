@@ -44,7 +44,7 @@ export const entitlementsSchema = z.strictObject({
   dataResidency: z.boolean(),
   sla999: z.boolean(),
   /** max non-retired devices; null = uncapped (all TSP plans). */
-  deviceLimit: z.number().int().positive().nullable(),
+  deviceLimit: z.number().int().nonnegative().nullable(), // 0 = fail-closed cap; null = uncapped (TSP)
 })
 export type Entitlements = z.infer<typeof entitlementsSchema>
 
@@ -84,6 +84,8 @@ export function planEntitlements(plan: TenantPlan): Entitlements {
     sso: scalePlus,
     dataResidency: scalePlus,
     sla999: scalePlus,
-    deviceLimit: tsp ? null : (DIRECT_DEVICE_LIMIT[plan] ?? null),
+    // FAIL-CLOSED on the cap: an unmapped direct_* plan (e.g. a future enum value added without a
+    // DIRECT_DEVICE_LIMIT entry) caps at 0 rather than silently uncapping (review LOW). tsp_* = null (uncapped).
+    deviceLimit: tsp ? null : (DIRECT_DEVICE_LIMIT[plan] ?? 0),
   }
 }

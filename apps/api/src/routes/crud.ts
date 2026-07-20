@@ -324,29 +324,39 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if ((await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
         // tenant-plan device cap (WP2): Direct plans cap non-retired devices; TSP plans are uncapped
-        // (deviceLimit null). Counted at TENANT scope — the cap is a tenant-level entitlement.
+        // (deviceLimit null). Counted at TENANT scope. The count-then-create is serialized per tenant
+        // by a short Redis lock so concurrent creates can't each pass at limit-1 and overshoot the
+        // hard cap (review MED). A concurrent create loses the lock → 409, retry (rare admin path).
         const cap = planEntitlements(await db.tenants.getPlan(a.tenantId)).deviceLimit
-        if (cap !== null && (await db.devices.countActive({ tenantId: a.tenantId })) + 1 > cap) {
-          return problem(c, 403, 'Forbidden', 'device_limit_reached')
+        const capLock = cap === null ? null : `device:create:${a.tenantId}`
+        if (capLock !== null && (await deps.redis.set(capLock, '1', 'EX', 10, 'NX')) === null) {
+          return problem(c, 409, 'Conflict', 'device_create_in_progress')
         }
-        // validate the (global) profile — a bad uuid would else be a P2003 500 (review MED)
-        const profile = await db.profiles.get(data.profileId)
-        if (profile === null) return problem(c, 400, 'Bad Request', 'unknown profileId')
-        // IMEI is GLOBALLY unique — the repo throws DuplicateImeiError on ANY clash
-        // (including another tenant's), translated to 409 here so a cross-tenant clash
-        // is not a 500 and does not reveal the other tenant's row (review HIGH)
-        let device
         try {
-          device = await db.devices.create(scopeOf(a), { userId: a.userId }, { ...data, accountId })
-        } catch (err) {
-          if (err instanceof DuplicateImeiError) return problem(c, 409, 'Conflict', 'IMEI already registered')
-          throw err
+          if (cap !== null && (await db.devices.countActive({ tenantId: a.tenantId })) + 1 > cap) {
+            return problem(c, 403, 'Forbidden', 'device_limit_reached')
+          }
+          // validate the (global) profile — a bad uuid would else be a P2003 500 (review MED)
+          const profile = await db.profiles.get(data.profileId)
+          if (profile === null) return problem(c, 400, 'Bad Request', 'unknown profileId')
+          // IMEI is GLOBALLY unique — the repo throws DuplicateImeiError on ANY clash
+          // (including another tenant's), translated to 409 here so a cross-tenant clash
+          // is not a 500 and does not reveal the other tenant's row (review HIGH)
+          let device
+          try {
+            device = await db.devices.create(scopeOf(a), { userId: a.userId }, { ...data, accountId })
+          } catch (err) {
+            if (err instanceof DuplicateImeiError) return problem(c, 409, 'Conflict', 'IMEI already registered')
+            throw err
+          }
+          await activateDevice(deps.redis, {
+            id: device.id, imei: device.imei, tenantId: a.tenantId, accountId,
+            config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
+          })
+          return json(c, device, 201)
+        } finally {
+          if (capLock !== null) await deps.redis.del(capLock)
         }
-        await activateDevice(deps.redis, {
-          id: device.id, imei: device.imei, tenantId: a.tenantId, accountId,
-          config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
-        })
-        return json(c, device, 201)
       } },
     { method: 'patch', path: '/v1/devices/:id', scopeClass: 'account', entity: 'device', shape: 'item',
       handler: async (c) => {
@@ -619,13 +629,14 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (rows.length > MAX_IMPORT_ROWS) return problem(c, 400, 'Bad Request', `too many rows (max ${MAX_IMPORT_ROWS})`)
         const result = await dryRun(db, scopeOf(a), rows, profileKeys, a.accountId)
         // tenant-plan device cap (WP2): preview surfaces an over-cap batch as a BLOCKING error
-        // row (not a 403) so the UI can show the diff and the reason together. Counted against
-        // the NEW-device rows only (updates to existing devices don't grow the fleet).
+        // row (not a 403) so the UI can show the diff and the reason together. Uses the SAME
+        // conservative denominator as the apply path (raw rows.length) so a preview that passes
+        // can never be followed by an apply that 403s (review LOW: preview/apply mismatch).
         const cap = planEntitlements(await db.tenants.getPlan(a.tenantId)).deviceLimit
         if (cap !== null) {
           const active = await db.devices.countActive({ tenantId: a.tenantId })
-          if (active + result.create.length > cap) {
-            result.errors.push({ row: 0, imei: '', reason: `device_limit_reached (plan allows ${cap}; ${active} active + ${result.create.length} new)` })
+          if (active + rows.length > cap) {
+            result.errors.push({ row: 0, imei: '', reason: `device_limit_reached (plan allows ${cap}; ${active} active + ${rows.length} rows)` })
           }
         }
         return json(c, result)
