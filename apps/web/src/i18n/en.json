@@ -330,10 +330,14 @@
       "corridor": "route line + buffer"
     },
     "hint": {
-      "polygon": "Click the map to add points; close the shape to finish.",
-      "circle": "Click to set the centre, then click again for the radius.",
-      "corridor": "Click along the route; double-click to finish the line."
+      "polygon": "Click the map to drop each corner. Click the first point (or double-click) to close the shape.",
+      "circle": "Click once for the centre, then click again to set the size.",
+      "corridor": "Click each point along the route. Double-click to finish the line."
     },
+    "drawing": "Drawing…",
+    "drawnTitle": "Shape drawn",
+    "drawnNeedName": "Now enter a name, then click Save.",
+    "drawnReady": "Ready — click Save to create it.",
     "deleteError": "Couldn't delete the geofence — try again."
   },
   "deviceList": {

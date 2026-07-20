@@ -330,10 +330,14 @@
       "corridor": "linia trasy + bufor"
     },
     "hint": {
-      "polygon": "Klikaj mapę, aby dodać punkty; zamknij kształt, aby zakończyć.",
-      "circle": "Kliknij środek, potem ponownie, aby ustawić promień.",
-      "corridor": "Klikaj wzdłuż trasy; podwójne kliknięcie kończy linię."
+      "polygon": "Klikaj każdy narożnik na mapie. Zamknij kształt, klikając pierwszy punkt (lub podwójne kliknięcie).",
+      "circle": "Kliknij środek, potem ponownie, aby ustawić rozmiar.",
+      "corridor": "Klikaj każdy punkt trasy. Podwójne kliknięcie kończy linię."
     },
+    "drawing": "Rysowanie…",
+    "drawnTitle": "Kształt narysowany",
+    "drawnNeedName": "Teraz wpisz nazwę i kliknij Zapisz.",
+    "drawnReady": "Gotowe — kliknij Zapisz, aby utworzyć.",
     "deleteError": "Nie udało się usunąć geofence — spróbuj ponownie."
   },
   "deviceList": {

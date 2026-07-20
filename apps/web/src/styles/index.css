@@ -98,3 +98,22 @@ samp {
   content-visibility: auto;
   contain-intrinsic-size: 44px;
 }
+
+/* Tailwind v4 Preflight no longer sets cursor:pointer on <button>/[role=button]
+ * (breaking change from v3), so every enabled button showed the default arrow.
+ * Restore the expected affordance app-wide; disabled controls keep not-allowed. */
+button:not(:disabled):not([disabled]):not([aria-disabled='true']),
+[role='button']:not([aria-disabled='true']),
+label:has(> input[type='radio']:not(:disabled)),
+label:has(> input[type='checkbox']:not(:disabled)),
+summary {
+  cursor: pointer;
+}
+
+/* while drawing a geofence the map is a drawing surface — a crosshair makes that
+ * unmistakable (terra-draw sets it on the canvas; this guarantees it over the whole
+ * container, incl. the brief style-swap window where the canvas is rebuilt). */
+[data-drawing='true'] .mapboxgl-canvas,
+[data-drawing='true'] .mapboxgl-canvas-container {
+  cursor: crosshair;
+}

@@ -330,10 +330,14 @@
       "corridor": "maršruto linija + buferis"
     },
     "hint": {
-      "polygon": "Spauskite žemėlapyje — pridėkite taškus; užbaikite uždarydami kontūrą.",
-      "circle": "Spustelėkite centrą, tada spustelėkite dar kartą — spinduliui.",
-      "corridor": "Spauskite palei maršrutą; baikite dvigubu spustelėjimu."
+      "polygon": "Spauskite žemėlapyje kiekvieną kampą. Kontūrą uždarykite spustelėję pirmą tašką (arba dvigubu spustelėjimu).",
+      "circle": "Spustelėkite centrą, tada spustelėkite dar kartą dydžiui nustatyti.",
+      "corridor": "Spauskite kiekvieną maršruto tašką. Liniją baikite dvigubu spustelėjimu."
     },
+    "drawing": "Braižoma…",
+    "drawnTitle": "Figūra nubraižyta",
+    "drawnNeedName": "Dabar įveskite pavadinimą ir spauskite Išsaugoti.",
+    "drawnReady": "Paruošta — spauskite Išsaugoti, kad sukurtumėte.",
     "deleteError": "Nepavyko ištrinti geofence — bandykite dar kartą."
   },
   "deviceList": {

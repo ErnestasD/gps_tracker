@@ -1,6 +1,6 @@
 import type { GeofenceView } from '@orbetra/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Circle as CircleIcon, Hexagon, Route as RouteIcon, Search, Trash2, X } from 'lucide-react'
+import { Check, Circle as CircleIcon, Hexagon, MousePointerClick, Route as RouteIcon, Search, Trash2, X } from 'lucide-react'
 import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -412,13 +412,31 @@ export function GeofencesPage() {
 
         {/* map panel */}
         <div className="admin-card relative min-h-[320px] overflow-hidden lg:min-h-0">
-          <div ref={containerRef} className="h-full w-full" data-testid="geofence-map" />
+          <div ref={containerRef} className="h-full w-full" data-testid="geofence-map" data-drawing={drafting ? 'true' : undefined} />
           <MapErrorOverlay show={mapError} testId="geofence-map-error" />
-          {/* contextual draw hint while drafting (reference chip; terra-draw gives the cursor,
-              this gives the words) */}
+          {/* Contextual draw hint while drafting. Two states so "how do I finish?" is never a
+              mystery: (1) drawing → the per-shape gesture to CLOSE the shape; (2) once terra-draw
+              fires 'finish' (drawn !== null) → an explicit "done, now name it and Save" so the
+              user gets unambiguous closure and the next step. terra-draw supplies the crosshair. */}
           {drafting && (
-            <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-md px-3 py-2 text-xs" style={{ background: 'var(--admin-surface)', color: 'var(--admin-ink)', boxShadow: 'var(--admin-shadow)' }} data-testid="gf-draw-hint">
-              {t(`geofences.hint.${draftKind}`)}
+            <div className="pointer-events-none absolute left-4 top-4 z-10 max-w-[min(20rem,calc(100%-2rem))]" data-testid="gf-draw-hint" role="status" aria-live="polite">
+              {drawn === null ? (
+                <div className="flex items-start gap-2 rounded-lg px-3 py-2.5 text-xs" style={{ background: 'var(--admin-surface)', boxShadow: 'var(--admin-shadow-lg)', border: '1px solid var(--admin-brand)' }}>
+                  <MousePointerClick className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--admin-brand)' }} aria-hidden />
+                  <div>
+                    <div className="font-semibold" style={{ color: 'var(--admin-brand)' }}>{t('geofences.drawing')}</div>
+                    <div style={{ color: 'var(--admin-ink-soft)' }}>{t(`geofences.hint.${draftKind}`)}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 rounded-lg px-3 py-2.5 text-xs" style={{ background: 'var(--admin-success-soft)', boxShadow: 'var(--admin-shadow-lg)', border: '1px solid var(--admin-success)' }} data-testid="gf-draw-done">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--admin-success)' }} aria-hidden />
+                  <div>
+                    <div className="font-semibold" style={{ color: 'var(--admin-success)' }}>{t('geofences.drawnTitle')}</div>
+                    <div style={{ color: 'var(--admin-ink-soft)' }}>{name.trim() === '' ? t('geofences.drawnNeedName') : t('geofences.drawnReady')}</div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {/* floating detail card for the selected zone (reference bottom-left overlay) */}

@@ -330,10 +330,14 @@
       "corridor": "Routenlinie + Puffer"
     },
     "hint": {
-      "polygon": "Auf die Karte klicken, um Punkte zu setzen; Form schließen zum Abschluss.",
-      "circle": "Klicken für das Zentrum, dann erneut für den Radius.",
-      "corridor": "Entlang der Route klicken; Doppelklick beendet die Linie."
+      "polygon": "Auf die Karte klicken, um jede Ecke zu setzen. Zum Schließen den ersten Punkt anklicken (oder Doppelklick).",
+      "circle": "Einmal für das Zentrum klicken, dann erneut für die Größe.",
+      "corridor": "Jeden Punkt entlang der Route anklicken. Doppelklick beendet die Linie."
     },
+    "drawing": "Zeichnen…",
+    "drawnTitle": "Form gezeichnet",
+    "drawnNeedName": "Jetzt einen Namen eingeben und Speichern klicken.",
+    "drawnReady": "Bereit — zum Erstellen Speichern klicken.",
     "deleteError": "Geofence konnte nicht gelöscht werden — bitte erneut versuchen."
   },
   "deviceList": {
