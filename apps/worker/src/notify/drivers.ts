@@ -38,16 +38,19 @@ export interface Drivers {
   webpush?: Driver
 }
 
-/** Injected email transport — the real one (nodemailer/SES) lands with SES creds (ADR-023). */
+/** Injected email transport — the real one (nodemailer/SES) lands with SES creds (ADR-023).
+ *  `html` is the white-label branded body (E05-4); `text` is the always-present plain-text
+ *  fallback for clients that don't render HTML. `html` is optional → backwards-compatible. */
 export interface EmailTransport {
-  send(to: string, subject: string, text: string): Promise<void>
+  send(to: string, subject: string, text: string, html?: string): Promise<void>
 }
 
 export function emailDriver(transport: EmailTransport): Driver {
   return {
     send: async (channel, msg) => {
       if (channel.type !== 'email') return
-      await transport.send(channel.to, msg.subject, msg.text)
+      // msg.html is the branded HTML (built by notificationMessage); msg.text is the fallback.
+      await transport.send(channel.to, msg.subject, msg.text, msg.html)
     },
   }
 }

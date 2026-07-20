@@ -19,10 +19,13 @@ export function DeviceList({
   devices,
   selectedId,
   onSelect,
+  loading = false,
 }: {
   devices: DeviceLive[]
   selectedId: string | null
   onSelect: (id: string) => void
+  // true during the initial connect/seed so we show a loader instead of flashing "No devices yet"
+  loading?: boolean
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
@@ -53,7 +56,9 @@ export function DeviceList({
         </div>
       </div>
       <div className="flex-1 overflow-y-auto" role="listbox" aria-label={t('deviceList.title')}>
-        {devices.length === 0 ? (
+        {loading && devices.length === 0 ? (
+          <p className="p-4 text-sm text-muted" data-testid="device-list-loading">{t('admin.loading')}</p>
+        ) : devices.length === 0 ? (
           <p className="p-4 text-sm text-muted">{t('deviceList.empty')}</p>
         ) : shown.length === 0 ? (
           <p className="p-4 text-sm text-muted">{t('deviceList.noMatch')}</p>

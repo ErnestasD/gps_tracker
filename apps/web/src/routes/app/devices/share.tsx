@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Combobox } from '@/components/admin/Combobox'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import type { Device } from '@/lib/devices'
 import { TTL_OPTIONS, createShare, expiryLabel, listShares, revokeShare, shareUrl, type CreatedShare } from '@/lib/share'
 
@@ -24,6 +25,8 @@ export function ShareCard({ device }: { device: Device }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState(false) // create/revoke failures were silent (403/500/offline)
+  // revoking a share link is irreversible (anyone holding the URL loses access) — gate behind a danger confirm
+  const [revokeForId, setRevokeForId] = useState<string | null>(null)
 
   const shares = useQuery({ queryKey: ['shares', device.id], queryFn: () => listShares(device.id) })
   const refresh = () => void qc.invalidateQueries({ queryKey: ['shares', device.id] })
@@ -136,7 +139,7 @@ export function ShareCard({ device }: { device: Device }) {
                         {exp.expired ? t('devices.share.expired') : t(`devices.share.expiresIn.${exp.unit}`, { n: exp.value })}
                       </Badge>
                     </span>
-                    <Button size="sm" variant="ghost" className="text-danger" data-testid={`share-revoke-${s.id}`} onClick={() => void revoke(s.id)}>
+                    <Button size="sm" variant="ghost" className="text-danger" data-testid={`share-revoke-${s.id}`} onClick={() => setRevokeForId(s.id)}>
                       {t('devices.share.revoke')}
                     </Button>
                   </li>
@@ -146,6 +149,22 @@ export function ShareCard({ device }: { device: Device }) {
           )}
         </div>
       </CardContent>
+
+      <ConfirmDialog
+        open={revokeForId !== null}
+        onOpenChange={(o) => {
+          if (!o) setRevokeForId(null)
+        }}
+        tone="danger"
+        title={t('devices.share.revoke')}
+        description={t('devices.share.revokeSure')}
+        confirmLabel={t('devices.share.revoke')}
+        onConfirm={() => {
+          const id = revokeForId
+          if (id === null) return
+          void revoke(id)
+        }}
+      />
     </Card>
   )
 }

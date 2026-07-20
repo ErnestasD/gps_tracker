@@ -61,14 +61,22 @@ describe('resolveNotifyContext', () => {
   const rowPool = (row: Record<string, unknown> | undefined) =>
     ({ query: vi.fn(() => Promise.resolve({ rows: row === undefined ? [] : [row], rowCount: row === undefined ? 0 : 1 })) }) as unknown as Pool
 
-  it('resolves the device name, account timezone, and productName brand', async () => {
-    const ctx = await resolveNotifyContext(rowPool({ device_name: 'Vilnius Van 1', device_plate: 'ABC-123', timezone: 'Europe/Vilnius', tenant_name: 'Acme', branding: { productName: 'Acme Fleet' } }), '42')
-    expect(ctx).toEqual({ deviceLabel: 'Vilnius Van 1', timezone: 'Europe/Vilnius', brand: 'Acme Fleet' })
+  it('resolves the device name, account timezone, productName brand, and FULL branding for HTML email', async () => {
+    const branding = { productName: 'Acme Fleet', primary: '#ff8800', logoUrl: 'https://cdn.acme.test/logo.png', supportEmail: 'help@acme.test' }
+    const ctx = await resolveNotifyContext(rowPool({ device_name: 'Vilnius Van 1', device_plate: 'ABC-123', timezone: 'Europe/Vilnius', tenant_name: 'Acme', branding }), '42')
+    // the full branding (logo/color/supportEmail) + tenant name now flow through for the branded HTML body
+    expect(ctx).toEqual({ deviceLabel: 'Vilnius Van 1', timezone: 'Europe/Vilnius', brand: 'Acme Fleet', branding, tenantName: 'Acme' })
   })
 
   it('falls back to the plate for the label and the tenant name for the brand', async () => {
     const ctx = await resolveNotifyContext(rowPool({ device_name: null, device_plate: 'ABC-123', timezone: 'UTC', tenant_name: 'Acme', branding: {} }), '42')
-    expect(ctx).toEqual({ deviceLabel: 'ABC-123', timezone: 'UTC', brand: 'Acme' })
+    expect(ctx).toEqual({ deviceLabel: 'ABC-123', timezone: 'UTC', brand: 'Acme', branding: {}, tenantName: 'Acme' })
+  })
+
+  it('ignores a MALFORMED branding jsonb (no crash) — brand falls back to the tenant name', async () => {
+    // a bad primary (not #rrggbb) fails brandingSchema → branding dropped, but the alert is never lost
+    const ctx = await resolveNotifyContext(rowPool({ device_name: 'Van', device_plate: null, timezone: 'UTC', tenant_name: 'Acme', branding: { primary: 'red', productName: 42 } }), '42')
+    expect(ctx).toEqual({ deviceLabel: 'Van', timezone: 'UTC', brand: 'Acme', branding: undefined, tenantName: 'Acme' })
   })
 
   it('returns empty context for an unknown device (→ id/UTC/Orbetra defaults downstream)', async () => {

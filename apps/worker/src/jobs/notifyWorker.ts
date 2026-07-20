@@ -2,7 +2,7 @@ import { Worker, type ConnectionOptions, type Job } from 'bullmq'
 import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 
-import { notificationChannelSchema, type NotificationChannel } from '@orbetra/shared'
+import { brandingSchema, notificationChannelSchema, type Branding, type NotificationChannel } from '@orbetra/shared'
 
 import { dispatchEvent } from '../notify/dispatch.js'
 import type { Drivers } from '../notify/drivers.js'
@@ -54,16 +54,29 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string): Promis
     )
     const row = res.rows[0]
     if (row === undefined) return {}
-    const product = (row.branding as { productName?: unknown } | null)?.productName
+    // parse the untrusted branding jsonb defensively — a malformed value must never crash the
+    // send path; a parse failure simply yields no branding (renderBrandedEmail then uses the name)
+    const branding = safeBranding(row.branding)
+    const product = branding?.productName
     const brand = typeof product === 'string' && product.trim() !== '' ? product : row.tenant_name ?? undefined
     return {
       deviceLabel: row.device_name ?? row.device_plate ?? undefined,
       timezone: row.timezone ?? undefined,
       brand: brand ?? undefined,
+      branding,
+      tenantName: row.tenant_name ?? undefined,
     }
   } catch {
     return {} // context lookup must never suppress the alert — fall back to id/UTC/'Orbetra'
   }
+}
+
+/** Parse the tenant `branding` jsonb into a validated Branding, or undefined on any malformed input
+ *  (defense in depth — the render path also re-escapes/re-validates). Never throws. */
+function safeBranding(raw: unknown): Branding | undefined {
+  if (raw === null || raw === undefined || typeof raw !== 'object') return undefined
+  const parsed = brandingSchema.safeParse(raw)
+  return parsed.success ? parsed.data : undefined
 }
 
 /** Run one notify job: load channels → build message → dispatch with per-channel dedup. */

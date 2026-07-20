@@ -80,6 +80,10 @@ export function NotificationsBell() {
             <li role="alert" className="p-6 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="bell-error">
               {t('admin.loadError')}
             </li>
+          ) : events.isLoading ? (
+            <li className="p-6 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="bell-loading">
+              {t('admin.loading')}
+            </li>
           ) : recent.length === 0 && (
             <li className="p-6 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }}>
               {t('bell.empty')}

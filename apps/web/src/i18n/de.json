@@ -545,6 +545,7 @@
       "loading": "Wird geladen…",
       "expired": "abgelaufen",
       "revoke": "Widerrufen",
+      "revokeSure": "Diesen Freigabelink widerrufen? Jeder mit der URL verliert sofort den Zugriff, und dies kann nicht rückgängig gemacht werden.",
       "ttlOpt": {
         "1h": "1 Stunde",
         "8h": "8 Stunden",

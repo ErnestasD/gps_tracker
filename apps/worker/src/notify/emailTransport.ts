@@ -18,7 +18,7 @@ import type { EmailTransport } from './drivers.js'
  * `createTransport` is injectable so tests exercise the send mapping without a live SMTP server.
  */
 export interface MailSender {
-  sendMail(opts: { from: string; to: string; subject: string; text: string; headers?: Record<string, string> }): Promise<unknown>
+  sendMail(opts: { from: string; to: string; subject: string; text: string; html?: string; headers?: Record<string, string> }): Promise<unknown>
 }
 export interface SmtpOptions {
   host: string
@@ -53,12 +53,14 @@ export function buildEmailTransport(
     return undefined
   }
   return {
-    send: async (to, subject, text) => {
+    send: async (to, subject, text, html) => {
       await mailer.sendMail({
         from,
         to,
         subject,
-        text,
+        text, // always-present plain-text fallback
+        // nodemailer sends multipart/alternative when both are present; text is the fallback part
+        ...(html ? { html } : {}),
         // route bounces/complaints to the SES config set's SNS destination when configured
         ...(configSet ? { headers: { 'X-SES-CONFIGURATION-SET': configSet } } : {}),
       })

@@ -545,6 +545,7 @@
       "loading": "Loading…",
       "expired": "expired",
       "revoke": "Revoke",
+      "revokeSure": "Revoke this share link? Anyone holding its URL loses access immediately, and this can't be undone.",
       "ttlOpt": {
         "1h": "1 hour",
         "8h": "8 hours",
