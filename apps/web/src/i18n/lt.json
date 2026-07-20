@@ -8,7 +8,27 @@
     "tooManyAttempts": "Per daug bandymų — pabandykite po kelių minučių.",
     "ambiguousIdentity": "Jūsų paskyra dviprasmiška tarp organizacijų — kreipkitės į administratorių.",
     "networkError": "Nepavyko pasiekti serverio. Ar API veikia?",
-    "forgotHint": "Pamiršote slaptažodį? v1 versijoje jį atstato administratorius."
+    "forgotLink": "Pamiršote slaptažodį?"
+  },
+  "forgot": {
+    "title": "Atstatykite slaptažodį",
+    "intro": "Įveskite el. paštą ir atsiųsime nuorodą slaptažodžiui atstatyti.",
+    "submit": "Siųsti nuorodą",
+    "sent": "Jei paskyra su {{email}} egzistuoja, atstatymo nuoroda jau pakeliui. Patikrinkite gautų ir šlamšto aplankus.",
+    "backToLogin": "Grįžti į prisijungimą",
+    "error": "Kažkas nutiko. Bandykite dar kartą."
+  },
+  "reset": {
+    "title": "Pasirinkite naują slaptažodį",
+    "newPassword": "Naujas slaptažodis",
+    "confirmPassword": "Pakartokite slaptažodį",
+    "submit": "Nustatyti slaptažodį",
+    "tooShort": "Slaptažodis turi būti bent {{min}} simbolių.",
+    "mismatch": "Slaptažodžiai nesutampa.",
+    "invalidToken": "Ši atstatymo nuoroda neteisinga arba nebegalioja.",
+    "requestNew": "Prašyti naujos nuorodos",
+    "done": "Slaptažodis pakeistas. Prisijunkite su nauju slaptažodžiu.",
+    "toLogin": "Eiti į prisijungimą"
   },
   "shell": {
     "live": "Gyvai",

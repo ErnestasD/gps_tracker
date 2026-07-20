@@ -8,7 +8,27 @@
     "tooManyAttempts": "Zbyt wiele prób — spróbuj za kilka minut.",
     "ambiguousIdentity": "Twoje konto jest niejednoznaczne między organizacjami — skontaktuj się z administratorem.",
     "networkError": "Nie można połączyć się z serwerem. Czy API działa?",
-    "forgotHint": "Zapomniałeś hasła? W v1 reset wykonuje administrator."
+    "forgotLink": "Nie pamiętasz hasła?"
+  },
+  "forgot": {
+    "title": "Zresetuj hasło",
+    "intro": "Podaj swój e-mail, a wyślemy Ci link do zresetowania hasła.",
+    "submit": "Wyślij link",
+    "sent": "Jeśli konto dla {{email}} istnieje, link jest już w drodze. Sprawdź skrzynkę odbiorczą i spam.",
+    "backToLogin": "Powrót do logowania",
+    "error": "Coś poszło nie tak. Spróbuj ponownie."
+  },
+  "reset": {
+    "title": "Wybierz nowe hasło",
+    "newPassword": "Nowe hasło",
+    "confirmPassword": "Potwierdź hasło",
+    "submit": "Ustaw hasło",
+    "tooShort": "Hasło musi mieć co najmniej {{min}} znaków.",
+    "mismatch": "Hasła nie są zgodne.",
+    "invalidToken": "Ten link jest nieprawidłowy lub wygasł.",
+    "requestNew": "Poproś o nowy link",
+    "done": "Twoje hasło zostało zmienione. Zaloguj się nowym hasłem.",
+    "toLogin": "Przejdź do logowania"
   },
   "shell": {
     "live": "Na żywo",

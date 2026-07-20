@@ -305,6 +305,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           return problem(c, 403, 'Forbidden', 'cannot delete a user of equal or higher privilege')
         }
         const ok = await db.users.remove(scope, { userId: a.userId }, id(c))
+        // a deleted user's live WS stream must not keep flowing — mark the session revoked so the
+        // gateway drops any socket they still hold (audit R2-5; parity with the password-change path)
+        if (ok) await markSessionsRevoked(deps.redis, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
 

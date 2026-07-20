@@ -151,9 +151,10 @@ model User {
   locale       String   @default("en")
   createdAt    DateTime @default(now()) @db.Timestamptz()
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  account       Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  refreshTokens RefreshToken[]
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account             Account?             @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
 
   @@unique([tenantId, email])
   @@index([accountId])
@@ -184,6 +185,26 @@ model RefreshToken {
   @@index([familyId])
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+/// One-time password-reset tokens (forgot-password flow): raw token = 32B CSPRNG,
+/// only its sha256 stored (same rationale as RefreshToken.tokenHash — 256-bit entropy
+/// makes offline brute force moot). Single-use (usedAt) and short-lived (expiresAt, 1 h).
+/// Rows are addressed only by tokenHash; a successful reset consumes the token AND
+/// invalidates the user's other outstanding tokens.
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz()
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+  /// set when the token is consumed by a successful reset (single-use)
+  usedAt    DateTime? @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 model DeviceProfile {

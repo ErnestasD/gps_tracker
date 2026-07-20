@@ -62,6 +62,13 @@ export interface ApiDeps extends WsDeps {
   stripe?: StripeGateway
   /** absolute base URL for Checkout/portal return URLs; falls back to the request Origin. */
   appBaseUrl?: string
+  /** Password-reset token lifetime (ADR-031); default 3600 s (1 h). */
+  resetTokenTtlS?: number
+  /** Transactional auth-email enqueuer (ADR-031): the API can't send email, so it hands the branded
+   *  reset mail to the worker's `auth-email` queue. Absent ⇒ forgot-password is a no-op (still 200). */
+  mail?: {
+    enqueueResetEmail(job: { kind: 'password-reset'; email: string; tenantId: string; locale: string; resetUrl: string; expiresMinutes: number }): Promise<void>
+  }
   /** VAPID public key for Web Push (ADR-026); absent ⇒ push unavailable (client sees a null key). */
   vapidPublicKey?: string
   /** self-hosted OSRM for route optimization (ADR-029); absent ⇒ /v1/routing/optimize 503s. */

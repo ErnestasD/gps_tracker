@@ -46,6 +46,11 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
         findByTokenHash: () => Promise.resolve(null),
         revokeFamily: () => Promise.resolve(),
       },
+      passwordResetTokens: {
+        create: () => Promise.resolve(),
+        consume: () => Promise.resolve(null),
+        invalidateAllForUser: () => Promise.resolve(),
+      },
     },
     tenants: { list: notImpl, get: notImpl, getPlan: notImpl, create: notImpl, update: notImpl, remove: notImpl, updateBranding: notImpl, getBilling: notImpl, setStripeCustomer: notImpl, applySubscriptionEvent: notImpl, listActiveSubscribers: notImpl },
     tenantDomains: { list: notImpl, get: notImpl, create: notImpl, remove: notImpl, setVerified: notImpl, isVerifiedDomain: notImpl, tenantIdForDomain: notImpl },

@@ -74,7 +74,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `STRIPE_PLAN_MAP` | apps/api | `basePriceId:plan,…` — maps each BASE price to the entitlement tier (`TenantPlan`, e.g. `price_direct10:direct_10,price_tspstart:tsp_start`); the signature-verified webhook writes it as the tenant plan. Values that aren't a real `TenantPlan` are dropped (never written) |
 | `STRIPE_INCLUDED` | apps/worker | `basePriceId:count,…` — included device count per TSP plan; the daily reporter bills devices beyond it |
 | `STRIPE_METER_EVENT` | apps/worker | Stripe meter event name for overage; default `orbetra_device_overage` |
-| `APP_BASE_URL` | apps/api | absolute base for Checkout/portal return URLs (e.g. `https://app.orbetra.com`); falls back to the request Origin |
+| `APP_BASE_URL` | apps/api | absolute base for Checkout/portal return URLs AND the password-reset link (ADR-031) (e.g. `https://app.orbetra.com`); falls back to the request Origin for Stripe. Unset ⇒ forgot-password still 200s but sends no email (link can't be built) |
 | `OSRM_URL` | apps/api | self-hosted OSRM base URL for route optimization (ADR-029), e.g. `http://osrm:5000`; unset ⇒ `POST /v1/routing/optimize` answers 503. Prep the data volume first (`infra/osrm/README.md`) |
 | `TELEGRAM_BOT_TOKEN` | apps/worker + infra/alertmanager | notification delivery (E05-5) AND ops alerts (W7-S1); unset = alerts visible in UI only, no push |
 | `TELEGRAM_ALERT_CHAT_ID` | infra/alertmanager | founders' chat id for ops alerts (W7-S1) |
@@ -88,6 +88,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `JWT_SECRET` | apps/api | HS256 access-token secret, **required**, min 32 chars |
 | `JWT_TTL` | apps/api | Access-token TTL seconds, default `900` (15 min) |
 | `REFRESH_TTL` | apps/api | Refresh-token TTL seconds (sliding), default `1209600` (14 d) |
+| `RESET_TOKEN_TTL` | apps/api | Password-reset link lifetime seconds (ADR-031), default `3600` (1 h) |
 | `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout (§6.1), defaults `5` / `900` |
 | `WS_TICKET_TTL` | apps/api | WS `/v1/stream` one-time ticket TTL seconds (§6.7), default `30` |
 | `ARGON2_MAX_CONCURRENT` | apps/api | Max concurrent argon2 password hashes (back-pressures login/CPU), default `8` |
