@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { AdminButton, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
+import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { listAccounts, listDevices } from '@/lib/devices'
 import { dayEndIso, dayStartIso } from '@/lib/playback'
@@ -33,6 +34,12 @@ export function ReportsPage() {
   // always send the resolved account, defaulting to the first in scope (review HIGH).
   const acc = account || accounts.data?.[0]?.id || ''
   const canRun = from !== undefined && to !== undefined && acc !== ''
+  // scheduled reports are account_manager+ (READ/WRITE_POLICY.scheduledReport) — hide the whole
+  // card for viewers instead of showing a permanent load-error + a dead '+ Add' that 403s
+  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
+  // scope the device dropdown to the chosen account — a device from another account silently
+  // yields an empty report (server scopes by accountId AND deviceId)
+  const accDevices = (devices.data ?? []).filter((d) => d.accountId === acc)
 
   const run = useMutation({
     mutationFn: () => runReport(type, { from: dayStartIso(from!), to: dayEndIso(to!), accountId: acc, ...(deviceId ? { deviceId } : {}) }),
@@ -95,7 +102,7 @@ export function ReportsPage() {
           {(accounts.data ?? []).length > 1 && (
             <Field label={t('reports.account')}>
               <div className="w-44">
-                <Combobox value={acc} onChange={setAccount} data-testid="report-account" aria-label={t('reports.account')}
+                <Combobox value={acc} onChange={(v) => { setAccount(v); setDeviceId('') }} data-testid="report-account" aria-label={t('reports.account')}
                   options={(accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))} />
               </div>
             </Field>
@@ -103,7 +110,7 @@ export function ReportsPage() {
           <Field label={t('reports.device')}>
             <div className="w-44">
               <Combobox value={deviceId} onChange={setDeviceId} data-testid="report-device" aria-label={t('reports.device')}
-                options={[{ value: '', label: t('reports.allDevices') }, ...(devices.data ?? []).map((d) => ({ value: d.id, label: d.name }))]} />
+                options={[{ value: '', label: t('reports.allDevices') }, ...accDevices.map((d) => ({ value: d.id, label: d.name }))]} />
             </div>
           </Field>
           <Field label={t('reports.from')}>
@@ -143,7 +150,7 @@ export function ReportsPage() {
         )}
       </div>
 
-      <ScheduledReportsCard {...(acc ? { accountId: acc } : {})} />
+      {canWrite && <ScheduledReportsCard {...(acc ? { accountId: acc } : {})} />}
     </div>
   )
 }

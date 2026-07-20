@@ -38,7 +38,7 @@ import { NotificationsBell } from '@/components/admin/NotificationsBell'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getCurrentUser, logout as authLogout } from '@/lib/auth'
-import { applyBranding, getBranding, type Branding } from '@/lib/branding'
+import { applyBranding, getBranding, onBrandingChange, type Branding } from '@/lib/branding'
 import { liveStore } from '@/lib/liveStore'
 import { isPaletteShortcut, shortcutLabel } from '@/lib/palette'
 import { getTheme, onThemeChange, setTheme, type Theme } from '@/lib/prefs'
@@ -123,6 +123,21 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // close the mobile drawer on navigation
   useEffect(() => setMobileOpen(false), [pathname])
+
+  // a Save on the Branding page broadcasts — re-fetch so the always-mounted sidebar name/logo
+  // (local state, not react-query) refresh without a full reload
+  useEffect(
+    () =>
+      onBrandingChange(() => {
+        void getBranding()
+          .then((b) => {
+            applyBranding(b.branding)
+            setBranding(b.branding)
+          })
+          .catch(() => undefined)
+      }),
+    [],
+  )
 
   // the drawer is a modal dialog — Escape must close it (a11y)
   useEffect(() => {
@@ -252,7 +267,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   : { color: enabled ? 'var(--admin-ink)' : 'var(--admin-ink-soft)' }
                 if (enabled) {
                   return (
-                    <button key={item.key} type="button" aria-current={active ? 'page' : undefined} className={cn(rowClass, !active && 'hover:bg-surface-2')} style={rowStyle} onClick={() => void navigate({ to: item.to! })}>
+                    <button key={item.key} type="button" aria-current={active ? 'page' : undefined} className={cn(rowClass, !active && 'hover:bg-surface-2')} style={rowStyle} onClick={() => { setMobileOpen(false); void navigate({ to: item.to! }) }}>
                       <Icon className="h-4 w-4 shrink-0" aria-hidden />
                       {!(collapsed && withCollapse) && <span>{t(item.key)}</span>}
                     </button>

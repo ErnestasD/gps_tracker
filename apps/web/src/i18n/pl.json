@@ -131,7 +131,8 @@
     "txtInstruction": "Dodaj ten rekord TXT do {{domain}}, następnie kliknij Zweryfikuj:",
     "certNote": "Certyfikaty HTTPS są wystawiane automatycznie przy pierwszym bezpiecznym żądaniu po weryfikacji domeny.",
     "domainLabel": "Domena",
-    "actionError": "Akcja nie powiodła się — spróbuj ponownie."
+    "actionError": "Akcja nie powiodła się — spróbuj ponownie.",
+    "limitDomain": "Osiągnięto maksymalną liczbę {{max}} domen niestandardowych."
   },
   "audit": {
     "title": "Dziennik audytu",
@@ -457,7 +458,8 @@
       "update": "{{n}} istniejących",
       "errors": "{{n}} błędów",
       "rowError": "Wiersz {{row}} ({{imei}}): {{reason}}",
-      "open": "Importuj CSV"
+      "open": "Importuj CSV",
+      "error": "Import nie powiódł się — sprawdź plik CSV i spróbuj ponownie."
     },
     "retireError": "Nie udało się wycofać urządzenia {{imei}}.",
     "odometer": "Licznik",
@@ -553,7 +555,8 @@
         "min": "pozostało {{n}} min",
         "hour": "pozostało {{n}} godz.",
         "day": "pozostało {{n}} dni"
-      }
+      },
+      "actionError": "Nie udało się utworzyć ani cofnąć linku — spróbuj ponownie."
     },
     "onboard": "Podłącz",
     "onb": {
@@ -607,6 +610,8 @@
     "hide": "Ukryj",
     "details": "Szczegóły",
     "empty": "Brak zdarzeń dla tych filtrów.",
+    "filteredEmpty": "Brak pasujących zdarzeń w załadowanym zakresie — wczytaj więcej, aby szukać dalej.",
+    "statScope": "Liczby dotyczą {{n}} załadowanych zdarzeń.",
     "loadMore": "Wczytaj więcej",
     "k": {
       "geofence": "Geostrefa",
@@ -756,13 +761,17 @@
     "activeDevices": "Aktywne urządzenia",
     "monthTotal": "Łącznie dni urządzeń w tym miesiącu",
     "empty": "Brak najemców.",
-    "note": "Dzień urządzenia = urządzenie zgłosiło się co najmniej raz w danym dniu UTC (metryka rozliczeniowa)."
+    "note": "Dzień urządzenia = urządzenie zgłosiło się co najmniej raz w danym dniu UTC (metryka rozliczeniowa).",
+    "usageError": "Dane o użyciu są obecnie niedostępne."
   },
   "share": {
     "title": "Śledzenie na żywo",
     "poweredBy": "Obsługiwane przez Orbetra",
     "expiredTitle": "Link wygasł",
     "expiredBody": "Ten link śledzenia nie jest już aktywny.",
+    "errorTitle": "Nie można załadować tego linku",
+    "errorBody": "Coś poszło nie tak podczas łączenia z serwerem. Spróbuj ponownie za chwilę.",
+    "loading": "Ładowanie…",
     "noFix": "Oczekiwanie na pierwszą prawidłową pozycję…",
     "updated": "Zaktualizowano {{time}}"
   },
@@ -897,7 +906,8 @@
     "confirmTitle": "Czy na pewno?",
     "actions": "Akcje",
     "pickDate": "Wybierz datę",
-    "loadError": "Nie udało się załadować — spróbuj ponownie."
+    "loadError": "Nie udało się załadować — spróbuj ponownie.",
+    "loading": "Ładowanie…"
   },
   "dash": {
     "title": "Przegląd",

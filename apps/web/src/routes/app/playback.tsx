@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Fuel, Gauge, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FuelChart } from '@/components/FuelChart'
@@ -13,6 +13,7 @@ import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { fuelAtTime, fuelSeries, listFuel } from '@/lib/fuel'
 import { dayEndIso, dayStartIso, defaultDayRange, listDeviceTrips, listPositions } from '@/lib/playback'
+import { getDisplayPrefs, onPrefsChange } from '@/lib/prefs'
 import { useUnits } from '@/lib/units'
 
 /** History playback (E04-3), rebuilt on the orbetra_design_new app.history layout (ADR-028
@@ -25,9 +26,15 @@ export function PlaybackPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
   const u = useUnits()
+  // day bounds follow the display-prefs time zone so the picked day matches the rendered labels
+  const prefs = useSyncExternalStore(onPrefsChange, getDisplayPrefs)
+  const tz = prefs.timeZone !== 'auto' ? prefs.timeZone : undefined
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const [deviceId, setDeviceId] = useState('')
-  const [range, setRange] = useState(() => defaultDayRange(Date.now()))
+  const [range, setRange] = useState(() => {
+    const p = getDisplayPrefs()
+    return defaultDayRange(Date.now(), p.timeZone !== 'auto' ? p.timeZone : undefined)
+  })
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
 
@@ -36,9 +43,9 @@ export function PlaybackPage() {
     if (deviceId === '' && devices.data && devices.data.length > 0) setDeviceId(devices.data[0]!.id)
   }, [devices.data, deviceId])
 
-  // date-only pickers → full-local-day ISO bounds (also the stable query-key form)
-  const fromIso = dayStartIso(range.from)
-  const toIso = dayEndIso(range.to)
+  // date-only pickers → full-day ISO bounds in the display-prefs zone (also the stable query-key form)
+  const fromIso = dayStartIso(range.from, tz)
+  const toIso = dayEndIso(range.to, tz)
   const positions = useQuery({
     queryKey: ['positions', deviceId, fromIso, toIso],
     queryFn: () => listPositions(deviceId, { from: fromIso, to: toIso, limit: 10_000 }),

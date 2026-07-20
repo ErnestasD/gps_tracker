@@ -1,4 +1,5 @@
 import { Crosshair, Route, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -37,6 +38,13 @@ export function InfoCard({
   const { t, i18n } = useTranslation()
   const { speed } = useUnits()
   const { ev, status } = device
+  // a quiet device only re-renders on store emits (which can be minutes apart), so the relative
+  // "last seen" froze between status buckets — tick every 30 s to keep the age honest
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const iv = setInterval(() => setTick((n) => n + 1), 30_000)
+    return () => clearInterval(iv)
+  }, [])
   return (
     <Card data-testid="info-card" className="absolute bottom-4 left-[352px] z-10 w-72 bg-surface/95 backdrop-blur">
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">

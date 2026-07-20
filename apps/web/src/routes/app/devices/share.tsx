@@ -23,19 +23,21 @@ export function ShareCard({ device }: { device: Device }) {
   const [fresh, setFresh] = useState<CreatedShare | null>(null)
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState(false) // create/revoke failures were silent (403/500/offline)
 
   const shares = useQuery({ queryKey: ['shares', device.id], queryFn: () => listShares(device.id) })
   const refresh = () => void qc.invalidateQueries({ queryKey: ['shares', device.id] })
 
   const create = async () => {
     setBusy(true)
+    setActionError(false)
     try {
       const created = await createShare(device.id, ttl, label.trim() || undefined)
       setFresh(created)
       setLabel('')
       refresh()
     } catch {
-      // surfaced via the disabled state; a hard failure leaves the form untouched
+      setActionError(true) // 403 for viewers / 500 / offline — tell the user instead of nothing
     } finally {
       setBusy(false)
     }
@@ -51,7 +53,13 @@ export function ShareCard({ device }: { device: Device }) {
   }
 
   const revoke = async (id: string) => {
-    await revokeShare(id).catch(() => undefined)
+    setActionError(false)
+    try {
+      await revokeShare(id)
+    } catch {
+      setActionError(true) // a failed revoke used to silently leave the link in the list
+      return
+    }
     if (fresh?.view.id === id) setFresh(null)
     refresh()
   }
@@ -89,6 +97,12 @@ export function ShareCard({ device }: { device: Device }) {
           </Button>
         </div>
 
+        {actionError && (
+          <p role="alert" className="text-sm text-danger" data-testid="share-action-error">
+            {t('devices.share.actionError')}
+          </p>
+        )}
+
         {fresh && (
           <div className="rounded-card border border-line bg-surface2 p-3" data-testid="share-fresh">
             <p className="mb-1 text-xs text-muted">{t('devices.share.freshHint')}</p>
@@ -105,6 +119,8 @@ export function ShareCard({ device }: { device: Device }) {
           <p className="mb-2 text-xs font-medium text-muted">{t('devices.share.active')}</p>
           {shares.isLoading ? (
             <p className="text-sm text-muted">{t('devices.share.loading')}</p>
+          ) : shares.isError ? (
+            <p role="alert" className="text-sm text-danger" data-testid="share-list-error">{t('admin.loadError')}</p>
           ) : active.length === 0 ? (
             <p className="text-sm text-muted">{t('devices.share.none')}</p>
           ) : (

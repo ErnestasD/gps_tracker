@@ -131,7 +131,8 @@
     "txtInstruction": "Fügen Sie diesen TXT-Eintrag zu {{domain}} hinzu und klicken Sie dann auf Verifizieren:",
     "certNote": "HTTPS-Zertifikate werden nach der Domain-Verifizierung automatisch bei der ersten sicheren Anfrage ausgestellt.",
     "domainLabel": "Domain",
-    "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen."
+    "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen.",
+    "limitDomain": "Sie haben die maximale Anzahl von {{max}} benutzerdefinierten Domains erreicht."
   },
   "audit": {
     "title": "Audit-Log",
@@ -457,7 +458,8 @@
       "update": "{{n}} vorhanden",
       "errors": "{{n}} Fehler",
       "rowError": "Zeile {{row}} ({{imei}}): {{reason}}",
-      "open": "CSV importieren"
+      "open": "CSV importieren",
+      "error": "Import fehlgeschlagen — CSV prüfen und erneut versuchen."
     },
     "retireError": "Gerät {{imei}} konnte nicht stillgelegt werden.",
     "odometer": "Kilometerzähler",
@@ -553,7 +555,8 @@
         "min": "noch {{n}} Min.",
         "hour": "noch {{n}} Std.",
         "day": "noch {{n}} Tage"
-      }
+      },
+      "actionError": "Link konnte nicht erstellt oder widerrufen werden — bitte erneut versuchen."
     },
     "onboard": "Einrichten",
     "onb": {
@@ -607,6 +610,8 @@
     "hide": "Ausblenden",
     "details": "Details",
     "empty": "Keine Ereignisse für diese Filter.",
+    "filteredEmpty": "Keine passenden Ereignisse im geladenen Bereich — mehr laden, um weiter zu suchen.",
+    "statScope": "Die Zahlen beziehen sich auf die {{n}} geladenen Ereignisse.",
     "loadMore": "Mehr laden",
     "k": {
       "geofence": "Geofence",
@@ -756,13 +761,17 @@
     "activeDevices": "Aktive Geräte",
     "monthTotal": "Gerätetage gesamt diesen Monat",
     "empty": "Noch keine Mandanten.",
-    "note": "Ein Gerätetag = das Gerät hat an diesem UTC-Tag mindestens einmal gemeldet (Abrechnungsmetrik)."
+    "note": "Ein Gerätetag = das Gerät hat an diesem UTC-Tag mindestens einmal gemeldet (Abrechnungsmetrik).",
+    "usageError": "Nutzungszahlen sind derzeit nicht verfügbar."
   },
   "share": {
     "title": "Live-Verfolgung",
     "poweredBy": "Bereitgestellt von Orbetra",
     "expiredTitle": "Link abgelaufen",
     "expiredBody": "Dieser Tracking-Link ist nicht mehr aktiv.",
+    "errorTitle": "Dieser Link kann nicht geladen werden",
+    "errorBody": "Beim Erreichen des Servers ist etwas schiefgelaufen. Bitte versuchen Sie es in Kürze erneut.",
+    "loading": "Wird geladen…",
     "noFix": "Warte auf die erste gültige Position…",
     "updated": "Aktualisiert {{time}}"
   },
@@ -897,7 +906,8 @@
     "confirmTitle": "Sind Sie sicher?",
     "actions": "Aktionen",
     "pickDate": "Datum wählen",
-    "loadError": "Konnte nicht geladen werden — bitte erneut versuchen."
+    "loadError": "Konnte nicht geladen werden — bitte erneut versuchen.",
+    "loading": "Wird geladen…"
   },
   "dash": {
     "title": "Übersicht",

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Activity, AlertTriangle, Bell } from 'lucide-react'
 
@@ -52,6 +52,9 @@ export function DashboardPage() {
     queryFn: () => runReport('mileage', { accountId: acc!, from: new Date(now - rangeDays * 24 * 3_600_000).toISOString(), to: new Date(now).toISOString() }),
     enabled: acc !== undefined,
     staleTime: 5 * 60_000,
+    // range-independent StatCards (today/vs-yesterday/active spark) also read this query — keep the
+    // last data during a range switch so they don't flash to skeletons on the chart's toggle
+    placeholderData: keepPreviousData,
   })
 
   const live = devices.data?.filter((d) => !d.retiredAt) ?? []

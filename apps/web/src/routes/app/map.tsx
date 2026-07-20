@@ -67,9 +67,16 @@ export function MapPage() {
         />
       )}
       <div className="absolute right-14 top-4 z-10">
-        {/* admin idiom (ADR-028) tone Badge; live region so AT hears the drop to reconnecting */}
-        <Badge tone={snap.connection === 'open' ? 'success' : 'warning'} role="status" aria-live="polite" data-testid="conn-badge">
-          {snap.connection === 'open' ? t('map.live') : t('map.reconnecting')}
+        {/* admin idiom (ADR-028) tone Badge; live region so AT hears the drop to reconnecting.
+            First-ever connect ('connecting') is a neutral "Connecting…", NOT the warning-tone
+            "Reconnecting…" — that stays for a 'closed' drop after we were open. */}
+        <Badge
+          tone={snap.connection === 'open' ? 'success' : snap.connection === 'connecting' ? 'neutral' : 'warning'}
+          role="status"
+          aria-live="polite"
+          data-testid="conn-badge"
+        >
+          {snap.connection === 'open' ? t('map.live') : snap.connection === 'connecting' ? t('map.connecting') : t('map.reconnecting')}
         </Badge>
       </div>
     </>

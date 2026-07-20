@@ -347,6 +347,8 @@ export function GeofencesPage() {
                 )}
                 {geofences.isError ? (
                   <p role="alert" className="py-8 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="gf-error">{t('admin.loadError')}</p>
+                ) : geofences.isLoading ? (
+                  <p className="py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="gf-loading">{t('admin.loading')}</p>
                 ) : list.length === 0 ? (
                   <p className="py-8 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="gf-empty">{t('geofences.empty')}</p>
                 ) : filtered.length === 0 ? (

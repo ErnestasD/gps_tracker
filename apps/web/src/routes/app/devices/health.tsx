@@ -27,6 +27,8 @@ export function HealthCard({ device }: { device: Device }) {
       <CardContent className="space-y-4">
         {health.isError ? (
           <p className="text-sm text-danger">{t('devices.health.loadError')}</p>
+        ) : health.isLoading ? (
+          <p className="text-sm text-muted" data-testid="health-loading">{t('admin.loading')}</p>
         ) : (health.data?.series ?? []).length === 0 ? (
           <p className="text-sm text-muted" data-testid="health-empty">{t('devices.health.empty')}</p>
         ) : (

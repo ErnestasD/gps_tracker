@@ -43,7 +43,10 @@ export function LoginPage() {
     qc.clear() // and no stale prior-session query cache (R4 HIGH cross-tenant leak) before a new login
     login(email, password)
       .then(async () => {
-        liveStore.seed(await getLastPositions()) // warm the map before navigating
+        // best-effort map warm-up: a failed snapshot must NOT block navigation or surface a
+        // misleading credentials/network error — the user is already authenticated, and the WS
+        // delivers positions anyway (map.tsx treats the same call as best-effort)
+        liveStore.seed(await getLastPositions().catch(() => []))
         void navigate({ to: search.redirect ?? '/app/map' })
       })
       .catch((err: unknown) => setError(t(errorKey(err))))

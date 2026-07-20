@@ -1,16 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, ChevronsUpDown, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PlaybackMap } from '@/components/PlaybackMap'
 import { Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
+import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { listDrivers } from '@/lib/drivers'
 import { dayEndIso, dayStartIso, defaultDayRange, listPositions } from '@/lib/playback'
+import { getDisplayPrefs, onPrefsChange } from '@/lib/prefs'
 import { assignTripDriver, fmtDuration, listTrips, tripAvgSpeedKmh, tripDurationMs } from '@/lib/trips'
 import { useUnits } from '@/lib/units'
 import type { TripView } from '@orbetra/shared'
@@ -32,9 +34,18 @@ export function TripsPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
   const u = useUnits()
+  // trip-driver assignment is account_manager+ (WRITE_POLICY.trip); the combobox 403s for viewers,
+  // so disable it for them (mirrors drivers/maintenance) instead of a dead control
+  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
+  // day bounds follow the display-prefs time zone so the picked day matches the rendered labels
+  const prefs = useSyncExternalStore(onPrefsChange, getDisplayPrefs)
+  const tz = prefs.timeZone !== 'auto' ? prefs.timeZone : undefined
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   const [deviceId, setDeviceId] = useState('')
-  const [range, setRange] = useState(() => defaultDayRange(Date.now()))
+  const [range, setRange] = useState(() => {
+    const p = getDisplayPrefs()
+    return defaultDayRange(Date.now(), p.timeZone !== 'auto' ? p.timeZone : undefined)
+  })
   const [driverQ, setDriverQ] = useState('') // client-side driver filter (reference searchKeys)
   const [selected, setSelected] = useState<TripView | null>(null)
   const [assignError, setAssignError] = useState(false) // a failed driver assignment was silent
@@ -52,9 +63,9 @@ export function TripsPage() {
     void qc.invalidateQueries({ queryKey: ['trips'] }) // refresh the table's driver column
   }
 
-  // date-only pickers → full-local-day ISO bounds (stable query-key form)
-  const fromIso = dayStartIso(range.from)
-  const toIso = dayEndIso(range.to)
+  // date-only pickers → full-day ISO bounds in the display-prefs zone (stable query-key form)
+  const fromIso = dayStartIso(range.from, tz)
+  const toIso = dayEndIso(range.to, tz)
   const trips = useQuery({
     queryKey: ['trips', deviceId, fromIso, toIso],
     queryFn: () => listTrips({ ...(deviceId ? { deviceId } : {}), from: fromIso, to: toIso, limit: 500 }),
@@ -240,6 +251,7 @@ export function TripsPage() {
                   <div className="flex-1">
                     <Combobox
                       value={selected.driverId ?? ''}
+                      disabled={!canWrite}
                       onChange={(v) => void assign(selected.id, v === '' ? null : v)}
                       options={[{ value: '', label: t('trips.noDriver') }, ...(drivers.data ?? []).map((d) => ({ value: d.id, label: d.name }))]}
                       aria-label={t('trips.driver')}

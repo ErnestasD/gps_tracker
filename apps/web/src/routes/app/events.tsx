@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Activity, AlertOctagon, TrendingUp } from 'lucide-react'
-import { Fragment, useState } from 'react'
+import { Fragment, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/AdminKit'
@@ -10,6 +10,7 @@ import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { EVENT_KINDS, listEvents, localizedEventSummary, type EventRow } from '@/lib/events'
 import { dayEndIso, dayStartIso } from '@/lib/playback'
+import { getDisplayPrefs, onPrefsChange } from '@/lib/prefs'
 import { useUnits } from '@/lib/units'
 
 const PAGE = 50
@@ -50,9 +51,12 @@ export function EventsPage() {
   const [to, setTo] = useState<Date | undefined>(undefined)
   const [open, setOpen] = useState<string | null>(null)
 
+  // day bounds follow the display-prefs time zone so the picked day matches the rendered `at` labels
+  const prefs = useSyncExternalStore(onPrefsChange, getDisplayPrefs)
+  const tz = prefs.timeZone !== 'auto' ? prefs.timeZone : undefined
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
-  const fromIso = from !== undefined ? dayStartIso(from) : undefined
-  const toIso = to !== undefined ? dayEndIso(to) : undefined
+  const fromIso = from !== undefined ? dayStartIso(from, tz) : undefined
+  const toIso = to !== undefined ? dayEndIso(to, tz) : undefined
 
   const query = useInfiniteQuery({
     queryKey: ['events', kind, deviceId, fromIso ?? '', toIso ?? ''],
@@ -104,12 +108,22 @@ export function EventsPage() {
         <StatCard label={t('events.stat.warning')} value={<span className="inline-flex items-center gap-2"><TrendingUp className="h-5 w-5" style={{ color: 'var(--admin-warning)' }} />{warning}</span>} />
         <StatCard label={t('events.stat.info')} value={<span className="inline-flex items-center gap-2"><Activity className="h-5 w-5" style={{ color: 'var(--admin-info)' }} />{info}</span>} />
       </div>
+      {/* the counts + the client severity lens tally only the LOADED rows (this is a cursor query,
+          not a server aggregate) — say so honestly when more pages exist so "Warning 0" isn't read
+          as a fleet total */}
+      {query.hasNextPage && (
+        <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid="events-stat-scope">{t('events.statScope', { n: rows.length })}</p>
+      )}
 
       <div className="admin-card overflow-hidden">
         {query.isError ? (
           <p role="alert" className="py-10 text-center text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="events-error">{t('admin.loadError')}</p>
         ) : shown.length === 0 && !query.isLoading ? (
-          <p className="py-10 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="events-empty">{t('events.empty')}</p>
+          // distinguish a genuinely empty result from the severity lens filtering out the loaded
+          // page — the latter isn't "no events", it's "none on this page; load more to keep looking"
+          <p className="py-10 text-center text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="events-empty">
+            {rows.length > 0 ? t('events.filteredEmpty') : t('events.empty')}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="events-table">

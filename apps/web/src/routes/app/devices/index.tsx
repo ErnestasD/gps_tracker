@@ -32,6 +32,7 @@ import {
   updateDevice,
   type Device,
   type DryRunResult,
+  type ImportError,
   type OdometerSource,
 } from '@/lib/devices'
 
@@ -234,6 +235,7 @@ export function DevicesPage() {
             <RowMenu
               device={d}
               isAdmin={isAdmin}
+              canWrite={canWrite}
               onHealth={() => setHealthForId((cur) => (cur === d.id ? null : d.id))}
               onOnboard={() => setOnboardForId((cur) => (cur === d.id ? null : d.id))}
               onCommands={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
@@ -307,6 +309,7 @@ export function DevicesPage() {
 function RowMenu({
   device,
   isAdmin,
+  canWrite,
   onHealth,
   onOnboard,
   onCommands,
@@ -316,6 +319,8 @@ function RowMenu({
 }: {
   device: Device
   isAdmin: boolean
+  /** account_manager+; gates the write items (commands/share/retire) that 403 for viewers */
+  canWrite: boolean
   onHealth: () => void
   onOnboard: () => void
   onCommands: () => void
@@ -358,12 +363,18 @@ function RowMenu({
       <PopoverContent align="end" className="w-48 p-1">
         {active ? (
           <>
+            {/* read-only items stay for viewers; the write items (commands/share/retire) 403 for
+                them, so gate them on canWrite — mirrors the page's add/import/odometer gating */}
             {item(`health-${device.imei}`, t('devices.healthBtn'), onHealth)}
             {item(`onboarding-${device.imei}`, t('devices.onboard'), onOnboard)}
-            {item(`commands-${device.imei}`, t('devices.commands'), onCommands)}
-            {item(`share-${device.imei}`, t('devices.share.button'), onShare)}
-            <div className="admin-hairline-t my-1" aria-hidden />
-            {item(`retire-${device.imei}`, t('devices.retire'), onRetire, true)}
+            {canWrite && (
+              <>
+                {item(`commands-${device.imei}`, t('devices.commands'), onCommands)}
+                {item(`share-${device.imei}`, t('devices.share.button'), onShare)}
+                <div className="admin-hairline-t my-1" aria-hidden />
+                {item(`retire-${device.imei}`, t('devices.retire'), onRetire, true)}
+              </>
+            )}
           </>
         ) : (
           item(`erase-${device.imei}`, t('devices.erase'), onErase, true)
@@ -463,26 +474,33 @@ function ImportSheetBody({ onImported }: { onImported: () => void }) {
   const [csv, setCsv] = useState('')
   const [preview, setPreview] = useState<DryRunResult | null>(null)
   const [applied, setApplied] = useState<number | null>(null)
+  // apply-time per-row errors were discarded; the server returns them even on a partial success
+  const [applyErrors, setApplyErrors] = useState<ImportError[]>([])
+  const [error, setError] = useState(false) // preview/apply request failure (400/500) was swallowed
   const [busy, setBusy] = useState(false)
 
   const runPreview = () => {
     setBusy(true)
     setApplied(null)
+    setApplyErrors([])
+    setError(false)
     importPreview(csv)
       .then(setPreview)
-      .catch(() => setPreview(null))
+      .catch(() => { setPreview(null); setError(true) })
       .finally(() => setBusy(false))
   }
   const apply = () => {
     setBusy(true)
+    setError(false)
     importApply(csv)
       .then((r) => {
         setApplied(r.created)
+        setApplyErrors(r.errors) // surface per-row failures instead of claiming every row succeeded
         setPreview(null)
         setCsv('')
         onImported()
       })
-      .catch(() => setApplied(null))
+      .catch(() => { setApplied(null); setError(true) })
       .finally(() => setBusy(false))
   }
 
@@ -512,6 +530,23 @@ function ImportSheetBody({ onImported }: { onImported: () => void }) {
           <span className="text-sm" style={{ color: 'var(--admin-success)' }} data-testid="import-done">{t('devices.import.done', { n: applied })}</span>
         )}
       </div>
+      {error && (
+        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="import-error">{t('devices.import.error')}</p>
+      )}
+      {/* apply-time per-row failures (e.g. an IMEI that became a duplicate between preview and apply) —
+          shown the same way the preview lists them, so 'Imported N' never hides dropped rows */}
+      {applied !== null && applyErrors.length > 0 && (
+        <div className="text-xs" data-testid="import-apply-errors">
+          <span style={{ color: 'var(--admin-danger)' }}>{t('devices.import.errors', { n: applyErrors.length })}</span>
+          <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto">
+            {applyErrors.slice(0, 50).map((e, i) => (
+              <li key={i} style={{ color: 'var(--admin-danger)' }}>
+                {t('devices.import.rowError', { row: e.row, imei: e.imei, reason: e.reason })}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {preview !== null && (
         <div className="text-xs" data-testid="import-summary">
           <div className="flex gap-4">

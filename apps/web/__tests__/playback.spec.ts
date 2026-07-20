@@ -28,6 +28,35 @@ describe('E04-3 playback helpers', () => {
     expect(end.getTime() - start.getTime()).toBe(24 * 3_600_000 - 1)
   })
 
+  it('dayStartIso/dayEndIso anchor the picked calendar day in an explicit time zone', () => {
+    // the picked day (local Y/M/D of the Date) is interpreted in the display-prefs zone, so the
+    // query window matches the day LABELS the user sees. Tokyo (UTC+9) / Honolulu (UTC-10): both
+    // DST-free, so the expected UTC instants are exact and machine-tz-independent.
+    const d = new Date(2026, 6, 15) // picked day = 2026-07-15 (local components)
+    expect(dayStartIso(d, 'Asia/Tokyo')).toBe('2026-07-14T15:00:00.000Z')
+    expect(dayEndIso(d, 'Asia/Tokyo')).toBe('2026-07-15T14:59:59.999Z')
+    expect(dayStartIso(d, 'Pacific/Honolulu')).toBe('2026-07-15T10:00:00.000Z')
+    expect(dayEndIso(d, 'Pacific/Honolulu')).toBe('2026-07-16T09:59:59.999Z')
+  })
+
+  it('day bounds fall back to browser-local for an invalid/omitted zone (no throw)', () => {
+    const d = new Date(2026, 6, 15, 9, 0, 0)
+    expect(dayStartIso(d, 'Not/AZone')).toBe(dayStartIso(d)) // bad zone → legacy local behavior
+    expect(dayEndIso(d, 'Not/AZone')).toBe(dayEndIso(d))
+  })
+
+  it('defaultDayRange resolves "today" in the given zone (yesterday→today calendar days)', () => {
+    // UTC 2026-07-15T05:00 is already 2026-07-15 14:00 in Tokyo → today=15, yesterday=14
+    const r = defaultDayRange(Date.UTC(2026, 6, 15, 5, 0, 0), 'Asia/Tokyo')
+    expect([r.to.getFullYear(), r.to.getMonth(), r.to.getDate()]).toEqual([2026, 6, 15])
+    expect([r.from.getFullYear(), r.from.getMonth(), r.from.getDate()]).toEqual([2026, 6, 14])
+    // the resulting window still brackets that instant when read back in the same zone
+    const from = new Date(dayStartIso(r.from, 'Asia/Tokyo')).getTime()
+    const to = new Date(dayEndIso(r.to, 'Asia/Tokyo')).getTime()
+    expect(from).toBeLessThanOrEqual(Date.UTC(2026, 6, 15, 5, 0, 0))
+    expect(to).toBeGreaterThanOrEqual(Date.UTC(2026, 6, 15, 5, 0, 0))
+  })
+
   it('historyQuery omits empty params, encodes present ones', () => {
     expect(historyQuery({})).toBe('')
     expect(historyQuery({ from: '2026-07-01T00:00', limit: 100 })).toContain('from=2026-07-01T00%3A00')
