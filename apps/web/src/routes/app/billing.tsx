@@ -1,8 +1,10 @@
+import { isDirectPlan } from '@orbetra/shared'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { getCurrentUser } from '@/lib/auth'
 import { fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from '@/lib/billing'
 import { useFmt } from '@/lib/datetime'
 
@@ -16,6 +18,11 @@ import { useFmt } from '@/lib/datetime'
 export function BillingPage() {
   const { t } = useTranslation()
   const { d } = useFmt()
+  // WP3: a Direct-plan tenant has the TSP-plus nav (branding/api-keys/webhooks) hidden entirely —
+  // this page is where the upgrade path stays discoverable, so surface a "what TSP unlocks" CTA.
+  const user = getCurrentUser()
+  const showUpgrade = user !== null && (isDirectPlan(user.plan) || !user.entitlements.whiteLabel)
+  const upgradeFeatures = ['whiteLabel', 'customDomains', 'subAccounts', 'api', 'webhooks'] as const
   const billing = useQuery({ queryKey: ['billing'], queryFn: getBilling })
   const b = billing.data
   // a lapsed subscription (past_due/unpaid/canceled) is FIXED via the Stripe portal, not by
@@ -59,6 +66,34 @@ export function BillingPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('billing.title')} description={t('billing.desc')} />
+
+      {showUpgrade && (
+        <div className="admin-card overflow-hidden" data-testid="billing-upgrade">
+          <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge tone="brand">{t('billing.upgrade.badge')}</Badge>
+                <span className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('billing.upgrade.title')}</span>
+              </div>
+              <p className="max-w-xl text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.upgrade.desc')}</p>
+              <ul className="grid grid-cols-1 gap-x-6 gap-y-1 pt-1 sm:grid-cols-2">
+                {upgradeFeatures.map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm" style={{ color: 'var(--admin-ink)' }}>
+                    <span aria-hidden style={{ color: 'var(--admin-brand)' }}>✓</span>
+                    <span>{t(`billing.upgrade.features.${f}`)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="shrink-0">
+              <a href="mailto:sales@orbetra.com?subject=Orbetra%20White-label%2FTSP%20upgrade" data-testid="billing-upgrade-cta">
+                <AdminButton variant="primary">{t('billing.upgrade.cta')}</AdminButton>
+              </a>
+              <p className="mt-2 max-w-[16rem] text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.upgrade.note')}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {actionError && (
         <p role="alert" className="admin-card p-3 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="billing-action-error">

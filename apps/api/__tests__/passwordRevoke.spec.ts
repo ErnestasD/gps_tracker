@@ -23,7 +23,7 @@ let currentHash = ''
 interface Row { familyId: string; userId: string; tokenHash: string; rotatedAt: Date | null; revokedAt: Date | null; expiresAt: Date }
 
 function makeUser(): AuthUserRow {
-  return { id: 'u1', tenantId: 't1', accountId: null, email: 'u@orbetra.test', passwordHash: currentHash, role: 'tsp_admin', locale: 'en' }
+  return { id: 'u1', tenantId: 't1', accountId: null, email: 'u@orbetra.test', passwordHash: currentHash, role: 'tsp_admin', locale: 'en', plan: 'tsp_grow' }
 }
 
 function makeDeps(withRevokeAll: boolean): { deps: AuthRouteDeps; rows: Map<string, Row>; revokeAllSpy: ReturnType<typeof vi.fn>; seed: (raw: string, familyId: string) => void } {

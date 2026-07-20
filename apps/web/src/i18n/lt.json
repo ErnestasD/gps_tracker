@@ -102,7 +102,21 @@
     "loadError": "Nepavyko įkelti atsiskaitymo būsenos.",
     "ends": "Baigiasi",
     "pastDue": "Pradelsta",
-    "fixPayment": "Sutvarkyti mokėjimą"
+    "fixPayment": "Sutvarkyti mokėjimą",
+    "upgrade": {
+      "badge": "White-label / TSP",
+      "title": "Atrakinkite baltos etiketės ir perpardavimo funkcijas",
+      "desc": "Jūsų planas priklauso Direct krypčiai. Pereikite prie White-label / TSP plano, kad valdytumėte Orbetra su savo prekės ženklu ir perparduotumėte jį savo klientams.",
+      "cta": "Susisiekite dėl atnaujinimo",
+      "note": "Padėsime migruoti — jokie duomenys neprarandami.",
+      "features": {
+        "whiteLabel": "Baltos etiketės prekės ženklas — jūsų logotipas, spalvos ir produkto pavadinimas",
+        "customDomains": "Individualūs domenai jūsų klientų portalui",
+        "subAccounts": "Antrinės paskyros klientų parkams tvarkyti",
+        "api": "REST API prieiga integracijoms",
+        "webhooks": "Webhook'ai realaus laiko įvykiams pristatyti"
+      }
+    }
   },
   "branding": {
     "title": "Prekės ženklas",

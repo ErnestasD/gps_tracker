@@ -1,5 +1,7 @@
 import Stripe from 'stripe'
 
+import { tenantPlanSchema, type TenantPlan } from '@orbetra/shared'
+
 /**
  * Stripe gateway (ADR-024). A THIN interface over just the Stripe calls billing uses, so the
  * API depends on this — not the SDK — and tests inject a fake (no network, no keys). The real
@@ -46,6 +48,9 @@ export interface StripeGateway {
   /** The metered overage price id for a base plan (TSP), added as a 2nd checkout line item;
    *  undefined for a Direct plan. (The daily usage push itself lives in the worker.) */
   overageFor(basePriceId: string): string | undefined
+  /** The entitlement plan a base price grants (both Direct + TSP), for the webhook to persist as
+   *  the tenant's tier; undefined for an unmapped/unknown price (leaves the plan unchanged). */
+  planFor(basePriceId: string): TenantPlan | undefined
 }
 
 export interface StripeConfig {
@@ -56,6 +61,9 @@ export interface StripeConfig {
   priceIds: string[]
   /** base price id → metered overage price id (TSP only) — added as a 2nd checkout line item. */
   overageMap: Record<string, string>
+  /** base price id → entitlement plan (TenantPlan). Only valid plans land here (garbage dropped);
+   *  the webhook persists this as the tenant's tier. */
+  planMap: Record<string, TenantPlan>
 }
 
 /** Parse a `a:b,c:d` env pair-map (base price → overage price). */
@@ -69,14 +77,32 @@ function parsePairMap(raw: string | undefined): Record<string, string> {
   return out
 }
 
+/** Parse `STRIPE_PLAN_MAP` (base price → plan), keeping ONLY entries whose value is a real
+ *  TenantPlan — an unknown/garbage plan string is dropped so an invalid plan can never be written. */
+function parsePlanMap(raw: string | undefined): Record<string, TenantPlan> {
+  const out: Record<string, TenantPlan> = {}
+  for (const [priceId, value] of Object.entries(parsePairMap(raw))) {
+    const parsed = tenantPlanSchema.safeParse(value)
+    if (parsed.success) out[priceId] = parsed.data
+  }
+  return out
+}
+
 /** Build config from env, or null when billing is not configured (no keys ⇒ routes 503).
- *  STRIPE_PRICES = allowlist; STRIPE_OVERAGE_MAP = base:overage,… (the worker owns STRIPE_INCLUDED). */
+ *  STRIPE_PRICES = allowlist; STRIPE_OVERAGE_MAP = base:overage,…; STRIPE_PLAN_MAP = base:plan,…
+ *  (the worker owns STRIPE_INCLUDED). */
 export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): StripeConfig | null {
   const secretKey = env['STRIPE_SECRET_KEY']
   const webhookSecret = env['STRIPE_WEBHOOK_SECRET']
   const priceIds = (env['STRIPE_PRICES'] ?? '').split(',').map((s) => s.trim()).filter((s) => s.length > 0)
   if (!secretKey || !webhookSecret || priceIds.length === 0) return null
-  return { secretKey, webhookSecret, priceIds, overageMap: parsePairMap(env['STRIPE_OVERAGE_MAP']) }
+  return {
+    secretKey,
+    webhookSecret,
+    priceIds,
+    overageMap: parsePairMap(env['STRIPE_OVERAGE_MAP']),
+    planMap: parsePlanMap(env['STRIPE_PLAN_MAP']),
+  }
 }
 
 export function createStripeGateway(cfg: StripeConfig): StripeGateway {
@@ -107,6 +133,7 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
       return customer.id
     },
     overageFor: (basePriceId) => cfg.overageMap[basePriceId],
+    planFor: (basePriceId) => cfg.planMap[basePriceId],
     createCheckoutSession: async ({ customerId, tenantId, priceId, successUrl, cancelUrl, idempotencyKey }) => {
       // TSP plans carry a metered overage price as a 2nd line item (no quantity — usage-reported);
       // Direct plans have none. The base is always flat quantity 1.

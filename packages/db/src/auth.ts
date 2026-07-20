@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 
-import type { Role } from '@orbetra/shared'
+import type { Role, TenantPlan } from '@orbetra/shared'
 
 /**
  * Auth DB surface (E03-1) — the FIRST PrismaClient in the repo and the seed of
@@ -28,6 +28,8 @@ export interface AuthUserRow {
   passwordHash: string
   role: Role
   locale: string
+  /** the owning tenant's plan (entitlement axis) — joined from tenant so the session can carry entitlements. */
+  plan: TenantPlan
 }
 
 export interface RefreshTokenRow {
@@ -76,15 +78,25 @@ const AUTH_USER_SELECT = {
   passwordHash: true,
   role: true,
   locale: true,
+  // join the owning tenant's plan so the row carries the entitlement axis (login computes entitlements)
+  tenant: { select: { plan: true } },
 } as const
+
+/** Flatten the joined `tenant.plan` into the flat AuthUserRow shape. */
+type AuthUserJoined = Omit<AuthUserRow, 'plan'> & { tenant: { plan: TenantPlan } }
+const flattenAuthRow = ({ tenant, ...rest }: AuthUserJoined): AuthUserRow => ({ ...rest, plan: tenant.plan })
 
 /** Auth methods over an existing PrismaClient — shared by createAuthDb and
  * createDb (E03-2) so both surfaces stay identical. */
 export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnect'> {
   return {
     users: {
-      findByEmailAllTenants: (email) => prisma.user.findMany({ where: { email }, select: AUTH_USER_SELECT }),
-      findByIdForAuth: (id) => prisma.user.findUnique({ where: { id }, select: AUTH_USER_SELECT }),
+      findByEmailAllTenants: async (email) =>
+        (await prisma.user.findMany({ where: { email }, select: AUTH_USER_SELECT })).map(flattenAuthRow),
+      findByIdForAuth: async (id) => {
+        const row = await prisma.user.findUnique({ where: { id }, select: AUTH_USER_SELECT })
+        return row === null ? null : flattenAuthRow(row)
+      },
       setPassword: async (id, passwordHash) => {
         await prisma.user.update({ where: { id }, data: { passwordHash } })
       },

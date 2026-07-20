@@ -1,3 +1,4 @@
+import { type EntitlementKey } from '@orbetra/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
@@ -53,6 +54,8 @@ interface NavItem {
   adminOnly?: boolean
   /** Only render for platform_admin (matches the route's platform scope gate). */
   platformOnly?: boolean
+  /** Tenant-plan gate: only render when the tenant's entitlements grant this feature (WP3). */
+  entitlement?: EntitlementKey
 }
 interface NavSection {
   key: string
@@ -81,10 +84,10 @@ const SECTIONS: NavSection[] = [
   {
     key: 'shell.admin',
     items: [
-      { key: 'shell.branding', icon: Palette, to: '/app/branding', adminOnly: true },
+      { key: 'shell.branding', icon: Palette, to: '/app/branding', adminOnly: true, entitlement: 'whiteLabel' },
       { key: 'shell.billing', icon: CreditCard, to: '/app/billing', adminOnly: true },
-      { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true },
-      { key: 'shell.webhooks', icon: Webhook, to: '/app/webhooks', adminOnly: true },
+      { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true, entitlement: 'apiAccess' },
+      { key: 'shell.webhooks', icon: Webhook, to: '/app/webhooks', adminOnly: true, entitlement: 'webhooks' },
       { key: 'shell.platform', icon: Building2, to: '/app/platform', platformOnly: true },
       { key: 'shell.audit', icon: ScrollText, to: '/app/audit', adminOnly: true },
       { key: 'shell.settings', icon: Settings, to: '/app/settings' },
@@ -107,6 +110,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const user = getCurrentUser()
   const role = user?.role
   const isAdmin = role === 'platform_admin' || role === 'tsp_admin'
+  // tenant-plan feature gates (WP3): a Direct tenant has all TSP-plus entitlements false, so
+  // branding/api-keys/webhooks nav is hidden entirely. Missing user ⇒ no entitlements ⇒ gated off.
+  const entitlements = user?.entitlements
+  const hasEntitlement = (item: NavItem) => item.entitlement === undefined || entitlements?.[item.entitlement] === true
   // white-label shell (E03-5): the sidebar brand block uses the tenant's productName/logoUrl
   // when present; Orbetra + the local svg are only the fallback
   const [branding, setBranding] = useState<Branding | null>(null)
@@ -226,7 +233,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const initials = (user?.email ?? '?').slice(0, 2).toUpperCase()
   // palette quick-nav: same items and role gates as the sidebar (real pages only)
   const paletteNav = SECTIONS.flatMap((s) => s.items)
-    .filter((i) => i.to !== undefined && (!i.adminOnly || isAdmin) && (!i.platformOnly || role === 'platform_admin'))
+    .filter((i) => i.to !== undefined && (!i.adminOnly || isAdmin) && (!i.platformOnly || role === 'platform_admin') && hasEntitlement(i))
     .map((i) => ({ key: i.key, to: i.to! }))
   const kbd = shortcutLabel(typeof navigator !== 'undefined' ? navigator.platform : '')
 
@@ -252,7 +259,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             )}
             {section.items
-              .filter((item) => (!item.adminOnly || isAdmin) && (!item.platformOnly || role === 'platform_admin'))
+              .filter((item) => (!item.adminOnly || isAdmin) && (!item.platformOnly || role === 'platform_admin') && hasEntitlement(item))
               .map((item) => {
                 const Icon = item.icon
                 const enabled = item.to !== undefined

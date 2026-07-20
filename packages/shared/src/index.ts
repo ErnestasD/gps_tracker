@@ -2,6 +2,7 @@
 export * from './records.js'
 export * from './liveEvents.js'
 export * from './roles.js'
+export * from './plans.js'
 export * from './auth.js'
 export * from './entities.js'
 export * from './onboarding.js'

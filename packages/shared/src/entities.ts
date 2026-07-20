@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { tenantPlanSchema } from './plans.js'
 import { roleSchema } from './roles.js'
 
 /** CRUD request contracts (E03-2). The single type source for api ↔ web. */
@@ -291,7 +292,11 @@ export const webhookUpdateSchema = z
 export const tenantCreateSchema = z.object({
   name: z.string().min(1).max(120),
   branding: z.record(z.string(), z.unknown()).optional(),
+  // platform_admin may set the entitlement tier at creation (e.g. a sales-provisioned TSP plan);
+  // the manifest handler spreads this into db.tenants.create, which is plan-aware (WP1).
+  plan: tenantPlanSchema.optional(),
 })
+// .partial() propagates `plan` as optional here too (PATCH /v1/tenants — platform_admin only).
 export const tenantUpdateSchema = tenantCreateSchema.partial()
 
 // ── white-label branding (E03-5) ─────────────────────────────────────────────

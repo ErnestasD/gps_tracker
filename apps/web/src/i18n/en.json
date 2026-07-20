@@ -102,7 +102,21 @@
     "loadError": "Couldn't load billing status.",
     "ends": "Ends",
     "pastDue": "Past due",
-    "fixPayment": "Fix payment"
+    "fixPayment": "Fix payment",
+    "upgrade": {
+      "badge": "White-label / TSP",
+      "title": "Unlock white-label and reseller features",
+      "desc": "Your plan is on the Direct track. Upgrade to a White-label / TSP plan to run Orbetra under your own brand and resell it to your customers.",
+      "cta": "Contact us to upgrade",
+      "note": "We'll help you migrate — no data is lost.",
+      "features": {
+        "whiteLabel": "White-label branding — your logo, colors and product name",
+        "customDomains": "Custom domains for your customer portal",
+        "subAccounts": "Sub-accounts to organize customer fleets",
+        "api": "REST API access for integrations",
+        "webhooks": "Webhooks for real-time event delivery"
+      }
+    }
   },
   "branding": {
     "title": "Branding",

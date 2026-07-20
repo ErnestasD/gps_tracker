@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import type { Redis } from 'ioredis'
 
 import type { AuthDb, AuthUserRow } from '@orbetra/db'
-import { loginRequestSchema, passwordChangeSchema, type AuthSession, type AuthUser } from '@orbetra/shared'
+import { loginRequestSchema, passwordChangeSchema, planEntitlements, type AuthSession, type AuthUser } from '@orbetra/shared'
 
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
@@ -82,6 +82,10 @@ const toAuthUser = (u: AuthUserRow): AuthUser => ({
   tenantId: u.tenantId,
   accountId: u.accountId,
   locale: u.locale,
+  // entitlements are computed ONCE, server-side, from the tenant plan carried on the row — the web
+  // reads these gates and never derives them itself (single source: planEntitlements).
+  plan: u.plan,
+  entitlements: planEntitlements(u.plan),
 })
 
 /**
