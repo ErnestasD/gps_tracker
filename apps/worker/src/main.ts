@@ -33,6 +33,8 @@ import { startRecomputeWorker } from './jobs/recomputeWorker.js'
 import { driversFromEnv } from './notify/drivers.js'
 import { buildEmailTransport } from './notify/emailTransport.js'
 import { startAuthEmailWorker } from './jobs/authEmailWorker.js'
+import { smsDriverFromEnv } from './sms/drivers.js'
+import { startSmsWorker } from './jobs/smsWorker.js'
 import { GeofenceCache } from './geofence/cache.js'
 import { GeofenceEventPersister } from './geofence/persister.js'
 import { RuleCache } from './rules/cache.js'
@@ -135,6 +137,20 @@ async function main(): Promise<void> {
   // ADR-031: transactional auth emails (password-reset) — the API enqueues, the worker renders the
   // tenant-branded message and sends it via the SAME transport. Env-gated: no transport ⇒ no-op.
   const authEmailWorker = startAuthEmailWorker({ connection: recomputeConn, pool, transport: emailTransport })
+  // SMS gateway: send Teltonika config/command SMS to a device SIM via the env-gated Twilio driver
+  // (TWILIO_ACCOUNT_SID + TWILIO_FROM + auth token OR API key pair). Absent creds ⇒ no driver ⇒ the
+  // worker isn't started; the API returns 503 (shared smsConfigured is the single source of truth).
+  const smsDriver = smsDriverFromEnv(process.env)
+  const smsWorker = smsDriver !== undefined
+    ? startSmsWorker({
+        connection: recomputeConn,
+        pool,
+        redis: offlineRedis,
+        driver: smsDriver,
+        onSent: () => prom.smsSent.inc(),
+        onFailed: () => prom.smsFailed.inc(),
+      })
+    : null
   // E06-4: webhook delivery — every persisted event (rule/geofence/offline) is POSTed,
   // HMAC-signed, to the account's subscribed webhooks with BullMQ retry.
   const webhookQueue = createWebhookQueue(recomputeConn)
@@ -415,6 +431,7 @@ async function main(): Promise<void> {
       await notifyWorker.close() // finish the in-flight notification, stop taking new
       await notifyQueue.close()
       await authEmailWorker.close() // finish the in-flight auth email, stop taking new (ADR-031)
+      await smsWorker?.close() // finish the in-flight SMS send, stop taking new (SMS gateway)
       await webhookWorker.close() // finish the in-flight webhook delivery, stop taking new
       await webhookQueue.close()
       await usageWorker.close() // finish the in-flight usage sweep, stop taking new

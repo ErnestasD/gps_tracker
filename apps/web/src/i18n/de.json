@@ -607,7 +607,26 @@
       "smsServer": "2. Server-SMS",
       "copy": "Kopieren",
       "copied": "Kopiert",
-      "caveat": "Diese Gerätefamilie verwendet evtl. andere Parameter — im Teltonika-Wiki für Ihr Modell prüfen."
+      "caveat": "Diese Gerätefamilie verwendet evtl. andere Parameter — im Teltonika-Wiki für Ihr Modell prüfen.",
+      "sim": {
+        "title": "SIM-Karte",
+        "msisdn": "SIM-Telefonnummer",
+        "iccid": "ICCID (optional)",
+        "save": "SIM speichern",
+        "saved": "Gespeichert",
+        "error": "SIM-Daten konnten nicht gespeichert werden — bitte erneut versuchen."
+      },
+      "sms": {
+        "send": "Konfig-SMS senden",
+        "sending": "Senden…",
+        "queued": "In Warteschlange",
+        "sent": "Gesendet",
+        "failed": "Fehlgeschlagen",
+        "notConfigured": "SMS-Versand ist auf dieser Plattform nicht eingerichtet — nutzen Sie die Kopier-SMS unten.",
+        "noMsisdn": "SIM-Telefonnummer oben eintragen und speichern, um die Konfig-SMS automatisch zu senden.",
+        "hint": "Wir senden die Serverkonfiguration per SMS an die SIM für Sie.",
+        "error": "SMS konnte nicht gesendet werden — bitte erneut versuchen."
+      }
     },
     "imeiPh": "15 Ziffern",
     "actions": "Aktionen",

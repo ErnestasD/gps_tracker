@@ -607,7 +607,26 @@
       "smsServer": "2. Serverio SMS",
       "copy": "Kopijuoti",
       "copied": "Nukopijuota",
-      "caveat": "Šio įrenginio šeima gali naudoti kitus parametrus — pasitikrinkite Teltonikos wiki savo modeliui."
+      "caveat": "Šio įrenginio šeima gali naudoti kitus parametrus — pasitikrinkite Teltonikos wiki savo modeliui.",
+      "sim": {
+        "title": "SIM kortelė",
+        "msisdn": "SIM telefono numeris",
+        "iccid": "ICCID (nebūtina)",
+        "save": "Išsaugoti SIM",
+        "saved": "Išsaugota",
+        "error": "Nepavyko išsaugoti SIM duomenų — bandykite dar kartą."
+      },
+      "sms": {
+        "send": "Siųsti konfig. SMS",
+        "sending": "Siunčiama…",
+        "queued": "Eilėje",
+        "sent": "Išsiųsta",
+        "failed": "Nepavyko",
+        "notConfigured": "SMS siuntimas šioje platformoje nesukonfigūruotas — naudokite kopijuojamą SMS žemiau.",
+        "noMsisdn": "Įveskite ir išsaugokite SIM telefono numerį viršuje, kad konfig. SMS būtų išsiųsta automatiškai.",
+        "hint": "Serverio konfigūraciją SMS žinute nusiųsime į SIM už jus.",
+        "error": "Nepavyko išsiųsti SMS — bandykite dar kartą."
+      }
     },
     "imeiPh": "15 skaitmenų",
     "actions": "Veiksmai",

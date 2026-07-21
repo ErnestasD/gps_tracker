@@ -16,6 +16,7 @@ import {
   geofenceUpdateSchema,
   deviceUpdateSchema,
   buildOnboarding,
+  smsSendRequestSchema,
   commandCreateSchema,
   ruleCreateSchema,
   ruleUpdateSchema,
@@ -87,6 +88,12 @@ export interface CrudDeps {
      * instant erase could be "resurrected" by in-flight positions). Default 60 min. */
     eraseMinRetiredMs?: number
   }
+  /** SMS gateway job enqueuer (SMS gateway feature) — a BullMQ producer wired in main.ts, present
+   * ONLY when Twilio is configured. Mirrors `gdpr`: absent ⇒ POST /v1/devices/:id/sms 503s and the
+   * onboarding sheet reports smsEnabled:false. */
+  sms?: {
+    enqueue(job: { smsDeliveryId: string; deviceId: string; tenantId: string; to: string; body: string; provider: string }): Promise<unknown>
+  }
 }
 
 // Per-resource authorization (review HIGH). Reads are broad; writes are restricted;
@@ -128,6 +135,7 @@ const WRITE_POLICY: Record<string, Role[]> = {
   gdpr: TENANT_ADMINS, // device erase — irreversible data destruction
   share: ACCOUNT_WRITERS, // minting/revoking a public link exposes device location → writers only
   scheduledReport: ACCOUNT_WRITERS,
+  sms: ACCOUNT_WRITERS, // sending a config SMS controls hardware onboarding → writers only (GET uses entity 'device')
 }
 function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
   if (scopeClass === 'platform') return ['platform_admin']
@@ -533,13 +541,67 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const profile = await db.profiles.get(device.profileId)
         const target = deps.onboarding ?? { host: 'orbetra.com', port: 5027 }
         const apnRaw = c.req.query('apn')
-        return json(c, buildOnboarding({
+        // smsEnabled: whether the platform can actually SEND this config SMS (Twilio configured) — the
+        // web hides the "Send config SMS" button when false and falls back to manual copy-paste.
+        return json(c, {
+          ...buildOnboarding({
+            imei: device.imei,
+            host: target.host,
+            port: target.port,
+            ...(apnRaw !== undefined ? { apn: apnRaw } : {}),
+            ...(profile !== null ? { family: profile.key } : {}),
+          }),
+          smsEnabled: deps.sms !== undefined,
+        })
+      } },
+
+    // ── SMS gateway (SMS gateway feature) — send Teltonika config SMS to a device's SIM ──
+    // POST enqueues a send (config SMS from buildOnboarding, or an explicit body); GET polls status.
+    // TSP-only (smsGateway entitlement). ACCOUNT_WRITERS on POST; GET reuses the device read policy.
+    { method: 'post', path: '/v1/devices/:id/sms', scopeClass: 'account', entity: 'sms', shape: 'item', entitlement: 'smsGateway',
+      handler: async (c) => {
+        const a = auth(c)
+        const scope = scopeOf(a)
+        const device = await db.devices.get(scope, id(c)) // scope gate FIRST (404 else)
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (device.retiredAt !== null) return problem(c, 400, 'Bad Request', 'device is retired')
+        // platform SMS not configured (no Twilio creds) → 503 BEFORE the msisdn check, so an
+        // unconfigured platform never masquerades as a per-device data problem (mirrors gdpr's 503)
+        if (deps.sms === undefined) return problem(c, 503, 'Unavailable', 'sms not configured')
+        if (!device.simMsisdn) return problem(c, 400, 'Bad Request', 'device has no SIM phone number')
+        const data = await body(c, smsSendRequestSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        // build the config SMS via buildOnboarding (the SAME generator as the onboarding sheet); a
+        // caller may override the generated text with an explicit body (future arbitrary command).
+        const profile = await db.profiles.get(device.profileId)
+        const target = deps.onboarding ?? { host: 'orbetra.com', port: 5027 }
+        const sheet = buildOnboarding({
           imei: device.imei,
           host: target.host,
           port: target.port,
-          ...(apnRaw !== undefined ? { apn: apnRaw } : {}),
+          ...(data.apn !== undefined ? { apn: data.apn } : {}),
           ...(profile !== null ? { family: profile.key } : {}),
-        }))
+        })
+        const bodyText = data.body ?? sheet.smsServer
+        // persist a 'queued' delivery FIRST (the id is the BullMQ jobId), then enqueue.
+        const delivery = await db.smsDeliveries.create(scope, { deviceId: device.id, accountId: device.accountId, to: device.simMsisdn, body: bodyText, provider: 'twilio' })
+        try {
+          await deps.sms.enqueue({ smsDeliveryId: delivery.id, deviceId: device.id.toString(), tenantId: a.tenantId, to: device.simMsisdn, body: bodyText, provider: 'twilio' })
+        } catch (err) {
+          // enqueue failed (e.g. Redis down) — mark the freshly-created row failed so it is not a
+          // stuck 'queued' ghost the worker never drains, and 503 so the caller can retry (review)
+          console.error('sms enqueue failed', err) // no secrets (to/body may carry a phone number → not logged)
+          await db.smsDeliveries.markFailed(delivery.id, 'enqueue failed')
+          return problem(c, 503, 'Unavailable', 'sms enqueue failed')
+        }
+        return json(c, delivery, 201)
+      } },
+    { method: 'get', path: '/v1/devices/:id/sms', scopeClass: 'account', entity: 'device', shape: 'item', entitlement: 'smsGateway',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c)) // scope gate FIRST (404 else)
+        if (device === null) return problem(c, 404, 'Not Found')
+        return json(c, await db.smsDeliveries.listForDevice(scope, device.id))
       } },
 
     // ── GDPR (E08-4): device-erase cascade + account data export ────────────────

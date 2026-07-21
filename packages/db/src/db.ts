@@ -15,6 +15,7 @@ import { createGeofenceRepo, type GeofenceRepo } from './repos/geofences.js'
 import { createProfileRepo, type ProfileRepo } from './repos/profiles.js'
 import { createRuleRepo, type RuleRepo } from './repos/rules.js'
 import { createShareLinkRepo, type ShareLinkRepo } from './repos/shareLinks.js'
+import { createSmsDeliveryRepo, type SmsDeliveryRepo } from './repos/smsDeliveries.js'
 import { createTenantDomainRepo, type TenantDomainRepo } from './repos/tenantDomains.js'
 import { createTenantRepo, type TenantRepo } from './repos/tenants.js'
 import { createTripRepo, type TripReadRepo } from './repos/trips.js'
@@ -41,6 +42,7 @@ export interface Db {
   drivers: DriverRepo
   maintenance: MaintenanceRepo
   commands: CommandRepo
+  smsDeliveries: SmsDeliveryRepo
   profiles: ProfileRepo
   rules: RuleRepo
   shareLinks: ShareLinkRepo
@@ -72,6 +74,7 @@ export function createDb(databaseUrl: string): Db {
     drivers: createDriverRepo(prisma, audit),
     maintenance: createMaintenanceRepo(prisma, audit),
     commands: createCommandRepo(prisma, audit),
+    smsDeliveries: createSmsDeliveryRepo(prisma),
     profiles: createProfileRepo(prisma),
     rules: createRuleRepo(prisma, audit),
     shareLinks: createShareLinkRepo(prisma, audit),

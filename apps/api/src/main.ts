@@ -5,6 +5,7 @@ import { Queue } from 'bullmq'
 import { Redis } from 'ioredis'
 
 import { createDb, createPool } from '@orbetra/db'
+import { smsConfigured } from '@orbetra/shared'
 
 import { createApiProm, createApp } from './app.js'
 import { rehydrateRegistries } from './rehydrate.js'
@@ -58,6 +59,20 @@ const mail = {
   },
 }
 
+// SMS gateway (SMS gateway feature): the api enqueues a config-SMS job; the worker's `sms` queue
+// sends it via Twilio. Built ONLY when Twilio is configured (smsConfigured, shared) — exactly like
+// email/Stripe: absent ⇒ the SMS routes 503 and the onboarding sheet reports smsEnabled:false.
+// jobId = `sms-<deliveryId>` dedupes a double-submit of the same delivery; removeOnFail keeps the
+// last 500 corpses for debugging (the API also marks the row failed if the enqueue itself throws).
+const smsQueue = smsConfigured(process.env) ? new Queue('sms', { connection: gdprConn }) : undefined
+const sms = smsQueue !== undefined
+  ? {
+      enqueue: (job: { smsDeliveryId: string; deviceId: string; tenantId: string; to: string; body: string; provider: string }) =>
+        smsQueue.add('sms', job, { jobId: `sms-${job.smsDeliveryId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 }),
+    }
+  : undefined
+if (sms === undefined) console.warn('SMS gateway not configured (TWILIO_ACCOUNT_SID/TWILIO_FROM + auth token or API key) — config-SMS routes disabled')
+
 // Stripe billing (ADR-024): configured only when all three keys are present; otherwise the
 // billing routes report not-configured / 503 (staging + CI run keyless).
 const stripeConfig = stripeConfigFromEnv()
@@ -77,6 +92,7 @@ const deps = {
   pool,
   gdpr,
   mail,
+  ...(sms !== undefined ? { sms } : {}),
   resetTokenTtlS: Number(process.env['RESET_TOKEN_TTL'] ?? 3_600),
   jwtSecret,
   jwtTtlS: Number(process.env['JWT_TTL'] ?? 900),
@@ -119,6 +135,7 @@ process.on('SIGTERM', () => {
       .then(() => redisSub.quit())
       .then(() => gdprEraseQueue.close())
       .then(() => gdprExportQueue.close())
+      .then(() => smsQueue?.close())
       .then(() => pool.end())
       .then(() => db.$disconnect())
       .then(() => process.exit(0))

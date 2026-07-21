@@ -40,6 +40,8 @@ export const entitlementsSchema = z.strictObject({
   apiAccess: z.boolean(),
   webhooks: z.boolean(),
   prioritySupport: z.boolean(),
+  /** SMS gateway: send Teltonika config SMS to a device's SIM (SMS gateway feature). TSP-only. */
+  smsGateway: z.boolean(),
   sso: z.boolean(),
   dataResidency: z.boolean(),
   sla999: z.boolean(),
@@ -81,6 +83,7 @@ export function planEntitlements(plan: TenantPlan): Entitlements {
     apiAccess: tsp,
     webhooks: tsp,
     prioritySupport: tsp,
+    smsGateway: tsp,
     sso: scalePlus,
     dataResidency: scalePlus,
     sla999: scalePlus,

@@ -13,12 +13,18 @@ export interface DeviceCreate {
   name: string
   plate?: string | null
   groupName?: string | null
+  /** SIM MSISDN (E.164) — the number config SMS are sent to (SMS gateway). */
+  simMsisdn?: string | null
+  /** SIM ICCID (18–22 digits) — informational. */
+  simIccid?: string | null
   odometerSource?: OdometerSource
 }
 export interface DeviceUpdate {
   name?: string
   plate?: string | null
   groupName?: string | null
+  simMsisdn?: string | null
+  simIccid?: string | null
   profileId?: string
   odometerSource?: OdometerSource
 }
@@ -83,6 +89,8 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo): Device
             name: data.name,
             plate: data.plate ?? null,
             groupName: data.groupName ?? null,
+            simMsisdn: data.simMsisdn ?? null,
+            simIccid: data.simIccid ?? null,
             ...(data.odometerSource !== undefined ? { odometerSource: data.odometerSource } : {}),
           },
         })

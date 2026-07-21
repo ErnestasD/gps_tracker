@@ -11,6 +11,7 @@ export { DuplicateImeiError, type DeviceRepo, type DeviceCreate, type DeviceUpda
 export { DriverIbuttonConflictError, type DriverRepo, type DriverCreate, type DriverUpdate } from './repos/drivers.js'
 export { toDeviceId, type MaintenanceRepo, type MaintenanceCreate, type MaintenanceUpdate } from './repos/maintenance.js'
 export { type CommandRepo, type CommandView, type CommandCreate } from './repos/commands.js'
+export { createSmsDeliveryRepo, type SmsDeliveryRepo, type SmsDeliveryCreate } from './repos/smsDeliveries.js'
 export { type ExportRepo, type ExportJobView } from './repos/exports.js'
 export { type LeadRepo, type LeadView, type LeadCreate } from './repos/leads.js'
 export { type ProfileRepo } from './repos/profiles.js'

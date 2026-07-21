@@ -9,6 +9,10 @@ export interface OnboardingSheet {
   smsApn: string | null
   steps: string[]
   familyCaveat: boolean
+  /** Whether the platform has an SMS gateway configured server-side (SMS gateway feature). When
+   * true (and the device has a SIM number) the card offers a one-click "Send config SMS". Optional
+   * — read defensively; WP-C adds it to the onboarding response in parallel. */
+  smsEnabled?: boolean
 }
 
 export const getOnboarding = (deviceId: string, apn?: string) => {

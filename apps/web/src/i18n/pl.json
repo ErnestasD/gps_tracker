@@ -607,7 +607,26 @@
       "smsServer": "2. SMS serwera",
       "copy": "Kopiuj",
       "copied": "Skopiowano",
-      "caveat": "Ta rodzina urządzeń może używać innych parametrów — sprawdź w wiki Teltonika dla swojego modelu."
+      "caveat": "Ta rodzina urządzeń może używać innych parametrów — sprawdź w wiki Teltonika dla swojego modelu.",
+      "sim": {
+        "title": "Karta SIM",
+        "msisdn": "Numer telefonu SIM",
+        "iccid": "ICCID (opcjonalnie)",
+        "save": "Zapisz SIM",
+        "saved": "Zapisano",
+        "error": "Nie udało się zapisać danych SIM — spróbuj ponownie."
+      },
+      "sms": {
+        "send": "Wyślij SMS konfig.",
+        "sending": "Wysyłanie…",
+        "queued": "W kolejce",
+        "sent": "Wysłano",
+        "failed": "Błąd",
+        "notConfigured": "Wysyłanie SMS nie jest skonfigurowane na tej platformie — użyj SMS-a do skopiowania poniżej.",
+        "noMsisdn": "Dodaj i zapisz numer telefonu SIM powyżej, aby wysłać SMS konfiguracyjny automatycznie.",
+        "hint": "Wyślemy konfigurację serwera SMS-em na kartę SIM za Ciebie.",
+        "error": "Nie udało się wysłać SMS-a — spróbuj ponownie."
+      }
     },
     "imeiPh": "15 cyfr",
     "actions": "Akcje",

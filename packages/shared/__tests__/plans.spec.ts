@@ -40,7 +40,7 @@ describe('tenant plans contract', () => {
 })
 
 describe('planEntitlements matrix (founder-locked 2026-07-20)', () => {
-  const TSP_PLUS = ['whiteLabel', 'customDomains', 'subAccounts', 'apiAccess', 'webhooks', 'prioritySupport'] as const
+  const TSP_PLUS = ['whiteLabel', 'customDomains', 'subAccounts', 'apiAccess', 'webhooks', 'prioritySupport', 'smsGateway'] as const
   const SCALE_PLUS = ['sso', 'dataResidency', 'sla999'] as const
 
   it('direct_5: deviceLimit 5 and every TSP-plus feature false', () => {
