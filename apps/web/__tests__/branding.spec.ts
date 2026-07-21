@@ -86,7 +86,7 @@ describe('white-label favicon (faviconLinks)', () => {
     for (const v of [undefined, '']) {
       const hrefs = faviconLinks(v).map((l) => l.href)
       expect(hrefs).toContain('/favicon.ico')
-      expect(hrefs).toContain('/orbetra-logo.svg')
+      expect(hrefs).toContain('/favicon.svg')
     }
   })
 })

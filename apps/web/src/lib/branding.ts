@@ -129,7 +129,9 @@ export interface FaviconLink {
 /** The static Orbetra favicon links (index.html), restored when a tenant clears its logo. */
 const DEFAULT_ICONS: FaviconLink[] = [
   { rel: 'icon', href: '/favicon.ico' },
-  { rel: 'icon', href: '/orbetra-logo.svg', type: 'image/svg+xml' },
+  // theme-reactive SVG: white mark on a dark browser tab, purple (default) on a light one —
+  // the SVG carries the prefers-color-scheme swap internally (index.html mirrors this link)
+  { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
   { rel: 'apple-touch-icon', href: '/icons/pwa-192.png' },
 ]
 /** Which <link> icons to render for a given tenant logo (or the Orbetra defaults). Pure — tested. */
