@@ -57,14 +57,20 @@ webpush) do not need.
    ties a send to its billable charge. Returning the send result synchronously would lose all three, so the
    table ships in V1 rather than being a follow-up.
 
-7. **At-most-once-ish redelivery guard (no double-charge).** Before calling Twilio, the sms worker does a
-   Redis `SETNX sms:sent:{smsDeliveryId}` (24 h TTL). If the key already exists, a previous attempt already
-   charged us and the job merely requeued (ack loss) — the worker skips the resend and reconciles status.
-   The guard is released only when the send provably did NOT happen (a permanent 4xx, or a transient throw
-   before the charge). A successful send leaves the guard set, so a duplicate job short-circuits. This
-   accepts the rare window where Twilio charged but our status UPDATE crashed — the guard still prevents the
-   resend on requeue. Sending the same config SMS twice is mostly harmless to the device, but it is a
-   duplicate charge, so at-most-once-ish is the right posture for a paid channel.
+7. **At-most-once redelivery guard (no double-charge).** Twilio's create-message is NOT idempotent, so the
+   guard's whole job is to guarantee a delivery is dispatched at most once. Before calling Twilio the sms
+   worker does `SETNX sms:sent:{smsDeliveryId}` (24 h TTL) with the value `attempting`; the value then tracks
+   the send's fate — `sent` once Twilio accepts (written to Redis BEFORE the DB row, so a crash after the
+   charge still reconciles), or `ambiguous` when the outcome is unknown. The guard is DELETED — permitting a
+   clean retry — ONLY when the provider PROVES no charge occurred: a 4xx (permanent reject) or a retryable
+   429/5xx (the HTTP request reached Twilio and it declined to create the message). Every other failure is
+   **ambiguous** — a request timeout, a network drop on the response, or a 2xx without a message `sid` — and
+   MAY have been charged; the worker keeps the guard (`ambiguous`), marks the row failed, and does NOT throw,
+   so BullMQ never retries a possibly-charged send. On redelivery (guard present) nothing is resent: `sent`
+   reconciles the row to sent, any other state marks it failed. The deliberate trade-off is that a genuinely
+   lost send is under-delivered (an operator resends via a NEW delivery) rather than ever double-charged —
+   the correct posture for a paid, non-idempotent channel. This corrects the earlier "release on any transient
+   throw" design, which could re-charge on a response-phase timeout after Twilio had already accepted.
 
 8. **`attempts: 3` (fewer than notify's 5).** The retry budget is deliberately smaller than the free notify
    channels: every retry is a potential charge, so exposure is bounded at three exponential-backoff attempts

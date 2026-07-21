@@ -591,7 +591,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           // enqueue failed (e.g. Redis down) — mark the freshly-created row failed so it is not a
           // stuck 'queued' ghost the worker never drains, and 503 so the caller can retry (review)
           console.error('sms enqueue failed', err) // no secrets (to/body may carry a phone number → not logged)
-          await db.smsDeliveries.markFailed(delivery.id, 'enqueue failed')
+          // best-effort breadcrumb: if markFailed itself throws (DB blip) the caller still gets the
+          // intended 503 (never a 500), and the row stays 'queued' — honest, since nothing was sent
+          await db.smsDeliveries.markFailed(delivery.id, 'enqueue failed').catch((e) => console.error('sms markFailed failed', e))
           return problem(c, 503, 'Unavailable', 'sms enqueue failed')
         }
         return json(c, delivery, 201)
