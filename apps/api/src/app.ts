@@ -69,6 +69,12 @@ export interface ApiDeps extends WsDeps {
   mail?: {
     enqueueResetEmail(job: { kind: 'password-reset'; email: string; tenantId: string; locale: string; resetUrl: string; expiresMinutes: number }): Promise<void>
   }
+  /** SMS gateway job enqueuer (SMS gateway feature): the API can't send SMS, so it hands a config-SMS
+   *  job to the worker's `sms` queue. Present ONLY when Twilio is configured (smsConfigured, shared) —
+   *  absent ⇒ POST /v1/devices/:id/sms 503s and the onboarding sheet reports smsEnabled:false. */
+  sms?: {
+    enqueue(job: { smsDeliveryId: string; deviceId: string; tenantId: string; to: string; body: string; provider: string }): Promise<unknown>
+  }
   /** VAPID public key for Web Push (ADR-026); absent ⇒ push unavailable (client sees a null key). */
   vapidPublicKey?: string
   /** self-hosted OSRM for route optimization (ADR-029); absent ⇒ /v1/routing/optimize 503s. */
@@ -238,7 +244,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
-  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding }), deps.db)
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding, sms: deps.sms }), deps.db)
 
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.

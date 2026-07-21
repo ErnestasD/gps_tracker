@@ -50,6 +50,7 @@ function idFor(f: TenantFixture, entity: string): string {
     scheduledReport: f.scheduledReportId,
     share: f.shareId,
     gdpr: f.deviceId, // /v1/devices/:id/erase — the :id is a device
+    sms: f.deviceId, // POST /v1/devices/:id/sms — the :id is a device (cross-tenant → 404 before any send)
     tenant: f.id,
     quarantine: '356307042440000', // a real 15-digit IMEI for the claim path param
   }

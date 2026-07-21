@@ -56,6 +56,11 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: ${MAIL_FROM:-}
       SES_CONFIG_SET: ${SES_CONFIG_SET:-}
+      # SMS gateway (ADR-032) — Twilio, values in /opt/orbetra/.env (rule 12); any of the three
+      # absent ⇒ SMS channel disabled: the worker holds no driver, the send route 503s, the button hides
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
       # Web Push (ADR-026) — VAPID_PRIVATE_KEY in /opt/orbetra/.env (rule 12); absent ⇒ webpush skipped
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -97,6 +102,13 @@ services:
       STRIPE_PRICES: ${STRIPE_PRICES:-}
       STRIPE_OVERAGE_MAP: ${STRIPE_OVERAGE_MAP:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
+      # SMS gateway (ADR-032) — the API does NOT send SMS (the worker does); it needs these three only
+      # to compute the `smsConfigured` boolean that gates the 503 / `smsEnabled` flag. Passing the token
+      # here too (not just a presence flag) is the V1 shortcut; a future refactor could hand the API a bare
+      # presence signal and keep TWILIO_AUTH_TOKEN in the worker alone (rule 12). Any absent ⇒ send route 503s.
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
       # Web Push (ADR-026) — the API serves the PUBLIC key to the browser; absent ⇒ push unavailable
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       # OSRM route optimization (ADR-029) — empty until staging preps the osrm volume

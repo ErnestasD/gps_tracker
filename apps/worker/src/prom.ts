@@ -24,6 +24,8 @@ export interface WorkerProm {
   notificationSent: Counter
   notificationFailed: Counter
   notificationSkipped: Counter
+  smsSent: Counter
+  smsFailed: Counter
   webhookDelivered: Counter
   webhookFailed: Counter
   usageDeviceDays: Counter
@@ -81,6 +83,8 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const notificationSent = new Counter({ name: 'notification_sent_total', help: 'notifications delivered by channel (E05-5)', labelNames: ['channel'], registers: [registry] })
   const notificationFailed = new Counter({ name: 'notification_failed_total', help: 'notification delivery failures by channel (retried by BullMQ)', labelNames: ['channel'], registers: [registry] })
   const notificationSkipped = new Counter({ name: 'notification_skipped_total', help: 'notifications skipped by reason (e.g. unconfigured channel)', labelNames: ['reason'], registers: [registry] })
+  const smsSent = new Counter({ name: 'sms_sent_total', help: 'config/command SMS delivered to the provider (SMS gateway)', registers: [registry] })
+  const smsFailed = new Counter({ name: 'sms_failed_total', help: 'SMS sends that failed (transient → retried by BullMQ; permanent → terminal)', registers: [registry] })
   const webhookDelivered = new Counter({ name: 'webhook_delivered_total', help: 'webhook deliveries that returned 2xx (E06-4)', registers: [registry] })
   const webhookFailed = new Counter({ name: 'webhook_failed_total', help: 'webhook delivery attempts that failed (retried by BullMQ)', registers: [registry] })
   const usageDeviceDays = new Counter({ name: 'usage_device_days_total', help: 'billable device-day rows written by the usage sweep (E07-4)', registers: [registry] })
@@ -111,5 +115,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

@@ -10,6 +10,10 @@ export interface Device {
   plate: string | null
   groupName: string | null
   odometerSource: string
+  /** device SIM number (E.164) — the destination for config/command SMS. Null until set. */
+  simMsisdn: string | null
+  /** device SIM ICCID (audit/support only) — never used to send. Null until set. */
+  simIccid: string | null
   retiredAt: string | null
 }
 export interface Account {
@@ -32,6 +36,14 @@ export interface DeviceCreateInput {
   name: string
   plate?: string | null
   odometerSource?: OdometerSource
+  simMsisdn?: string | null
+  simIccid?: string | null
+}
+/** Fields the device PATCH accepts. All optional — send only what changed. */
+export interface DeviceUpdateInput {
+  odometerSource?: OdometerSource
+  simMsisdn?: string | null
+  simIccid?: string | null
 }
 export interface ImportError {
   row: number
@@ -68,7 +80,7 @@ export const listTenants = () => getJson<Tenant[]>('/v1/tenants')
 export const listTenantAccounts = (tenantId: string) => getJson<Account[]>(`/v1/tenants/${tenantId}/accounts`)
 export const claimDevice = (imei: string, data: ClaimInput) => mutate<{ deviceId: string }>('POST', `/v1/quarantine/${imei}/claim`, data)
 export const createDevice = (data: DeviceCreateInput) => mutate<Device>('POST', '/v1/devices', data)
-export const updateDevice = (id: string, data: { odometerSource?: OdometerSource }) => mutate<Device>('PATCH', `/v1/devices/${encodeURIComponent(id)}`, data)
+export const updateDevice = (id: string, data: DeviceUpdateInput) => mutate<Device>('PATCH', `/v1/devices/${encodeURIComponent(id)}`, data)
 export const retireDevice = (id: string) => mutate<Device>('DELETE', `/v1/devices/${id}`)
 export const importPreview = (csv: string) => mutate<DryRunResult>('POST', '/v1/devices/import/preview', { csv })
 export const importApply = (csv: string) => mutate<{ created: number; errors: ImportError[] }>('POST', '/v1/devices/import', { csv })

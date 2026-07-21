@@ -43,6 +43,12 @@ enum CommandStatus {
   expired
 }
 
+enum SmsStatus {
+  queued
+  sent
+  failed
+}
+
 enum TripStatus {
   open
   closed
@@ -233,6 +239,10 @@ model Device {
   name           String
   plate          String?
   groupName      String?
+  /// SIM MSISDN (E.164, e.g. +37060000000) — the phone number config SMS are sent TO (SMS gateway)
+  simMsisdn      String?
+  /// SIM ICCID (18–22 digits) — operator-entered SIM serial, informational
+  simIccid       String?
   odometerSource OdometerSource  @default(auto)
   retiredAt      DateTime?       @db.Timestamptz()
   createdAt      DateTime        @default(now()) @db.Timestamptz()
@@ -433,6 +443,28 @@ model Command {
   @@index([deviceId, status])
   @@index([tenantId, accountId, createdAt])
   @@map("commands")
+}
+
+/// SMS gateway delivery audit (SMS gateway feature). One row per outbound SMS to a device's SIM.
+/// V1 uses the platform-default Twilio driver only (provider defaults 'twilio'); per-tenant creds
+/// are a follow-up. The worker drives status queued→sent|failed and stamps providerMessageId.
+model SmsDelivery {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @db.Uuid
+  accountId         String    @db.Uuid
+  deviceId          BigInt
+  to                String
+  body              String
+  provider          String    @default("twilio")
+  providerMessageId String?
+  status            SmsStatus @default(queued)
+  error             String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz()
+  sentAt            DateTime? @db.Timestamptz()
+
+  @@index([deviceId, status])
+  @@index([tenantId, accountId, createdAt])
+  @@map("sms_deliveries")
 }
 
 model ApiKey {

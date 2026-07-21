@@ -607,7 +607,26 @@
       "smsServer": "2. Server SMS",
       "copy": "Copy",
       "copied": "Copied",
-      "caveat": "This device family may use different parameters — verify on the Teltonika wiki for your model."
+      "caveat": "This device family may use different parameters — verify on the Teltonika wiki for your model.",
+      "sim": {
+        "title": "SIM card",
+        "msisdn": "SIM phone number",
+        "iccid": "ICCID (optional)",
+        "save": "Save SIM",
+        "saved": "Saved",
+        "error": "Couldn't save the SIM details — try again."
+      },
+      "sms": {
+        "send": "Send config SMS",
+        "sending": "Sending…",
+        "queued": "Queued",
+        "sent": "Sent",
+        "failed": "Failed",
+        "notConfigured": "SMS sending isn’t set up on this platform — use the copy-paste SMS below.",
+        "noMsisdn": "Add and save the SIM phone number above to send the config SMS automatically.",
+        "hint": "We’ll text the server config to the SIM for you.",
+        "error": "Couldn't send the SMS — try again."
+      }
     },
     "imeiPh": "15 digits",
     "actions": "Actions",

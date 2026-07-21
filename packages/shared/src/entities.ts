@@ -37,6 +37,10 @@ export const deviceCreateSchema = z.object({
   name: z.string().min(1).max(120),
   plate: z.string().max(32).nullable().optional(),
   groupName: z.string().max(64).nullable().optional(),
+  // SIM identity (SMS gateway): msisdn is E.164 (the number config SMS are sent TO); iccid is the
+  // 18–22-digit SIM serial. Both operator-entered + optional; the regexes keep them injection-inert.
+  simMsisdn: z.string().regex(/^\+[1-9]\d{6,14}$/).nullable().optional(),
+  simIccid: z.string().regex(/^\d{18,22}$/).nullable().optional(),
   odometerSource: odometerSourceSchema.optional(),
 })
 export const deviceUpdateSchema = z
@@ -44,6 +48,8 @@ export const deviceUpdateSchema = z
     name: z.string().min(1).max(120),
     plate: z.string().max(32).nullable(),
     groupName: z.string().max(64).nullable(),
+    simMsisdn: z.string().regex(/^\+[1-9]\d{6,14}$/).nullable().optional(),
+    simIccid: z.string().regex(/^\d{18,22}$/).nullable().optional(),
     profileId: z.string().uuid(),
     odometerSource: odometerSourceSchema,
   })

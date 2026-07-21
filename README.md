@@ -64,6 +64,9 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `SMTP_USER` / `SMTP_PASS` | apps/worker | SES SMTP credentials (paste raw, no encoding); all four SMTP vars + `MAIL_FROM` required or the email channel is skipped |
 | `MAIL_FROM` | apps/worker | e-mail sender, a DKIM-verified SES identity (e.g. `alerts@orbetra.com`) |
 | `SES_CONFIG_SET` | apps/worker | optional SES configuration set → `X-SES-CONFIGURATION-SET` header, routes bounces/complaints to SNS |
+| `TWILIO_ACCOUNT_SID` | apps/worker + apps/api | Twilio account SID for the SMS gateway (ADR-032); worker sends config SMS, api reads it to compute `smsConfigured`. All three `TWILIO_*` absent ⇒ SMS channel disabled, send route 503s, web button hidden |
+| `TWILIO_AUTH_TOKEN` | apps/worker + apps/api | Twilio auth token (ADR-032); HTTP Basic auth with the SID over native fetch, no `twilio` SDK. Server `.env` only, never git (rule 12) |
+| `TWILIO_FROM` | apps/worker + apps/api | Twilio sender phone number (E.164, e.g. `+3706…`) for outbound config SMS (ADR-032) |
 | `VAPID_PUBLIC_KEY` | apps/worker + apps/api | Web Push VAPID public key (ADR-026); the worker signs pushes, the api serves it to the browser. All VAPID vars absent ⇒ webpush channel skipped |
 | `VAPID_PRIVATE_KEY` | apps/worker | Web Push VAPID private key (ADR-026); server `.env` only, never git (rule 12) |
 | `VAPID_SUBJECT` | apps/worker | Web Push VAPID subject (`mailto:`/URL), default `mailto:ops@orbetra.com` |
