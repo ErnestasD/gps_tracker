@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { MoreHorizontal, Plus, Upload } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
@@ -82,6 +82,15 @@ export function DevicesPage() {
   const onboardFor: Device | null = (devices.data ?? []).find((d) => d.id === onboardForId && d.retiredAt === null) ?? null
   const retireFor: Device | null = (devices.data ?? []).find((d) => d.id === retireForId && d.retiredAt === null) ?? null
   const eraseFor: Device | null = (devices.data ?? []).find((d) => d.id === eraseForId && d.retiredAt !== null) ?? null
+
+  // The action-menu sub-cards (health/onboard/commands/share) render BELOW a 12-row table, so a
+  // click could land the panel off-screen — to the user the menu item looked dead. Scroll the
+  // freshly-opened panel into view (and focus it for a11y) whenever which panel is open changes.
+  const panelRef = useRef<HTMLDivElement>(null)
+  const openPanelId = healthFor?.id ?? onboardFor?.id ?? commandsFor?.id ?? shareFor?.id ?? null
+  useEffect(() => {
+    if (openPanelId !== null) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [openPanelId])
 
   const columns: Column<Device>[] = [
     {
@@ -248,12 +257,15 @@ export function DevicesPage() {
       )}
 
       {/* key remounts the panel per device — armed/text state must NEVER survive a device
-          switch (a confirm armed for device A must not send with one click on device B) */}
-      {healthFor !== null && <HealthCard key={healthFor.id} device={healthFor} />}
-      {healthFor !== null && <CanCard key={`can-${healthFor.id}`} device={healthFor} />}
-      {onboardFor !== null && <OnboardingCard key={onboardFor.id} device={onboardFor} />}
-      {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
-      {shareFor !== null && <ShareCard key={shareFor.id} device={shareFor} />}
+          switch (a confirm armed for device A must not send with one click on device B).
+          panelRef anchors the scroll-into-view so an opened panel is never off-screen. */}
+      <div ref={panelRef} className="scroll-mt-4">
+        {healthFor !== null && <HealthCard key={healthFor.id} device={healthFor} />}
+        {healthFor !== null && <CanCard key={`can-${healthFor.id}`} device={healthFor} />}
+        {onboardFor !== null && <OnboardingCard key={onboardFor.id} device={onboardFor} />}
+        {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
+        {shareFor !== null && <ShareCard key={shareFor.id} device={shareFor} />}
+      </div>
 
       {getCurrentUser()?.role === 'platform_admin' && <QuarantineSection />}
 
