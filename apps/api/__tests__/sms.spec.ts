@@ -128,6 +128,16 @@ describe('SMS gateway API — POST /v1/devices/:id/sms', () => {
     expect(list.some((d) => d.id === delivery.id)).toBe(true)
   })
 
+  it('201: an APN is combined into the sent SMS (2001 + server params in one setparam)', async () => {
+    const before = enqueued.length
+    const res = await req(port, `/v1/devices/${deviceId}/sms`, adminToken, 'POST', { apn: 'banga' })
+    expect(res.status).toBe(201)
+    const delivery = (await res.json()) as { body: string }
+    // the device with no auto-APN gets data AND the server address from this single SMS
+    expect(delivery.body).toBe('  setparam 2001:banga;2004:orbetra.com;2005:5027;2006:0')
+    expect(enqueued[before]!.body).toBe('  setparam 2001:banga;2004:orbetra.com;2005:5027;2006:0')
+  })
+
   it('201: an explicit body overrides the generated config SMS', async () => {
     const before = enqueued.length
     const res = await req(port, `/v1/devices/${deviceId}/sms`, adminToken, 'POST', { body: 'custom command' })

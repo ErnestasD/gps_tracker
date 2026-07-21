@@ -582,7 +582,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           ...(data.apn !== undefined ? { apn: data.apn } : {}),
           ...(profile !== null ? { family: profile.key } : {}),
         })
-        const bodyText = data.body ?? sheet.smsServer
+        // smsAuto = APN (when supplied) + server params in ONE setparam, so a device with no
+        // auto-APN gets data AND the server address from a single SMS (server-only when no APN)
+        const bodyText = data.body ?? sheet.smsAuto
         // persist a 'queued' delivery FIRST (the id is the BullMQ jobId), then enqueue.
         const delivery = await db.smsDeliveries.create(scope, { deviceId: device.id, accountId: device.accountId, to: device.simMsisdn, body: bodyText, provider: 'twilio' })
         try {

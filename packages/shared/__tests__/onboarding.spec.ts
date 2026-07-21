@@ -20,6 +20,26 @@ describe('V1-nice buildOnboarding (SMS device onboarding)', () => {
     expect(buildOnboarding({ imei: '1', host: 'h', port: 5027, apn: '   ' }).smsApn).toBeNull()
   })
 
+  it('smsAuto = the ONE SMS the gateway sends: APN + server combined (server-only without APN)', () => {
+    // no APN → identical to smsServer (the device must auto-detect the APN)
+    expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027 }).smsAuto).toBe('  setparam 2004:orbetra.com;2005:5027;2006:0')
+    // with APN → 2001 prepended into the SAME setparam so one SMS sets data + server atomically
+    expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto).toBe('  setparam 2001:banga;2004:orbetra.com;2005:5027;2006:0')
+    // still one 160-char GSM-7 segment
+    expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto.length).toBeLessThanOrEqual(160)
+    // empty login+password prefix preserved; APN password (2003) never touched
+    expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto.startsWith('  ')).toBe(true)
+    expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto).not.toContain('2003')
+  })
+
+  it('a bad/injecting APN drops out of smsAuto too (server-only, no second setparam)', () => {
+    for (const evil of ['x;2004:evil.com', 'a:b', 'x 2004:y']) {
+      const auto = buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: evil }).smsAuto
+      expect(auto, evil).toBe('  setparam 2004:orbetra.com;2005:5027;2006:0')
+      expect(auto).not.toContain('2001')
+    }
+  })
+
   it('sanitizes host/port (SMS field separators must not leak in)', () => {
     // ':' and ';' would break the SMS field structure → fall back to the safe default
     const s = buildOnboarding({ imei: '1', host: 'evil;setparam 9999:x', port: 5027 })

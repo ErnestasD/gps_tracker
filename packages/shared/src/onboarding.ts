@@ -34,6 +34,11 @@ export interface OnboardingSheet {
   smsServer: string
   /** the SMS that sets the carrier APN — only when an apn was given. */
   smsApn: string | null
+  /** the ONE SMS the automated gateway actually sends: APN (when given) + server params combined
+   * in a single setparam, so a device with no auto-APN gets data AND the server address at once
+   * (one charge, atomic). Falls back to server-only when no APN. Prefer this for programmatic sends;
+   * smsServer/smsApn stay split for the manual copy-paste sheet. */
+  smsAuto: string
   /** short operator checklist. */
   steps: string[]
   /** true when the family isn't a known FMB/FMC — the params may differ. */
@@ -56,7 +61,11 @@ export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
   const apn = input.apn?.trim()
   // reject any APN carrying a separator/space (';'/':' would inject a second setparam) — drop to
   // null on a bad value, exactly as host falls back; the {1,63} bound also caps length server-side
-  const smsApn = apn !== undefined && apn !== '' && SAFE_APN.test(apn) ? `  setparam 2001:${apn}` : null
+  const apnSafe = apn !== undefined && apn !== '' && SAFE_APN.test(apn) ? apn : null
+  const smsApn = apnSafe !== null ? `  setparam 2001:${apnSafe}` : null
+  // combined single SMS for the automated gateway: prepend the APN param (2001) to the server
+  // triplet in ONE setparam when an APN is given — ~55 chars, well under one 160-char segment.
+  const smsAuto = `  setparam ${apnSafe !== null ? `2001:${apnSafe};` : ''}2004:${host};2005:${port};2006:0`
 
   const familyCaveat = input.family !== undefined && !KNOWN_FAMILIES.has(input.family)
   const steps = [
@@ -69,5 +78,5 @@ export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
   ]
   if (familyCaveat) steps.push('NOTE: this device family may use different parameters — verify against the Teltonika wiki for your model.')
 
-  return { imei: input.imei, host, port, smsServer, smsApn, steps, familyCaveat }
+  return { imei: input.imei, host, port, smsServer, smsApn, smsAuto, steps, familyCaveat }
 }
