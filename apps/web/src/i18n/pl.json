@@ -7,7 +7,8 @@
     "invalidCredentials": "Błędny e-mail lub hasło.",
     "tooManyAttempts": "Zbyt wiele prób — spróbuj za kilka minut.",
     "ambiguousIdentity": "Twoje konto jest niejednoznaczne między organizacjami — skontaktuj się z administratorem.",
-    "networkError": "Nie można połączyć się z serwerem. Czy API działa?",
+    "networkError": "Brak połączenia. Sprawdź połączenie internetowe i spróbuj ponownie.",
+    "serverError": "Coś poszło nie tak po naszej stronie. Spróbuj ponownie za kilka minut.",
     "forgotLink": "Nie pamiętasz hasła?"
   },
   "forgot": {

@@ -7,7 +7,8 @@
     "invalidCredentials": "Falsche E-Mail oder falsches Passwort.",
     "tooManyAttempts": "Zu viele Versuche — bitte in einigen Minuten erneut versuchen.",
     "ambiguousIdentity": "Ihr Konto ist über Organisationen hinweg mehrdeutig — wenden Sie sich an Ihren Administrator.",
-    "networkError": "Server nicht erreichbar. Läuft die API?",
+    "networkError": "Keine Verbindung. Bitte prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.",
+    "serverError": "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuchen Sie es in einigen Minuten erneut.",
     "forgotLink": "Passwort vergessen?"
   },
   "forgot": {

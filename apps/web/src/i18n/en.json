@@ -7,7 +7,8 @@
     "invalidCredentials": "Wrong email or password.",
     "tooManyAttempts": "Too many attempts — try again in a few minutes.",
     "ambiguousIdentity": "Your account is ambiguous across organizations — contact your administrator.",
-    "networkError": "Could not reach the server. Is the API running?",
+    "networkError": "Can't connect. Check your internet connection and try again.",
+    "serverError": "Something went wrong on our end. Please try again in a few minutes.",
     "forgotLink": "Forgot your password?"
   },
   "forgot": {

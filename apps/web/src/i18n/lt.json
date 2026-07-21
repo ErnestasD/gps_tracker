@@ -7,7 +7,8 @@
     "invalidCredentials": "Neteisingas el. paštas arba slaptažodis.",
     "tooManyAttempts": "Per daug bandymų — pabandykite po kelių minučių.",
     "ambiguousIdentity": "Jūsų paskyra dviprasmiška tarp organizacijų — kreipkitės į administratorių.",
-    "networkError": "Nepavyko pasiekti serverio. Ar API veikia?",
+    "networkError": "Nepavyko prisijungti. Patikrinkite interneto ryšį ir bandykite dar kartą.",
+    "serverError": "Kažkas nutiko mūsų pusėje. Bandykite dar kartą po kelių minučių.",
     "forgotLink": "Pamiršote slaptažodį?"
   },
   "forgot": {
