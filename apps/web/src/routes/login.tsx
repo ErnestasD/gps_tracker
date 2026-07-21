@@ -31,8 +31,9 @@ export function LoginPage() {
       if (err.status === 401) return 'login.invalidCredentials'
       if (err.status === 429) return 'login.tooManyAttempts'
       if (err.status === 409) return 'login.ambiguousIdentity'
+      if (err.status >= 500) return 'login.serverError' // API reached but erroring — not a connectivity problem
     }
-    return 'login.networkError'
+    return 'login.networkError' // fetch threw (no response): offline / DNS / TLS — a real connectivity failure
   }
 
   const submit = (e: FormEvent) => {
