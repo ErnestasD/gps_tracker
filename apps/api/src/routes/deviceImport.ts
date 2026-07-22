@@ -27,7 +27,13 @@ export interface ImportRow {
   accountId?: string
   plate?: string
   groupName?: string
+  simMsisdn?: string
+  simIccid?: string
 }
+// SIM columns are optional; validated only when present. Same rules as the single-device schema
+// (entities.ts) so a bulk import and a manual add accept exactly the same values.
+const SIM_MSISDN_RE = /^\+[1-9]\d{6,14}$/
+const SIM_ICCID_RE = /^\d{18,22}$/
 export interface RowError {
   row: number
   imei: string
@@ -103,6 +109,8 @@ export function rowsToImport(records: Record<string, string>[]): ImportRow[] {
     ...(r['accountId'] ? { accountId: r['accountId'] } : {}),
     ...(r['plate'] ? { plate: r['plate'] } : {}),
     ...(r['groupName'] ? { groupName: r['groupName'] } : {}),
+    ...(r['simMsisdn'] ? { simMsisdn: r['simMsisdn'] } : {}),
+    ...(r['simIccid'] ? { simIccid: r['simIccid'] } : {}),
   }))
 }
 
@@ -127,6 +135,9 @@ export async function dryRun(
     if (!profileKeys.has(row.profileKey)) return fail(`unknown profile '${row.profileKey}'`)
     if (seenInFile.has(row.imei)) return fail('duplicate IMEI within the file')
     seenInFile.add(row.imei)
+    // optional SIM columns — validated only when supplied (same rules as the manual add)
+    if (row.simMsisdn !== undefined && !SIM_MSISDN_RE.test(row.simMsisdn)) return fail('invalid simMsisdn (E.164, e.g. +37060000000)')
+    if (row.simIccid !== undefined && !SIM_ICCID_RE.test(row.simIccid)) return fail('invalid simIccid (18–22 digits)')
     // account: account-scoped caller is pinned to their own; tenant-wide must name a valid one
     const accountId = callerAccountId ?? row.accountId
     if (accountId === undefined || accountId === '') return fail('accountId is required')
@@ -173,6 +184,8 @@ export async function applyImport(
         name: row.name,
         plate: row.plate ?? null,
         groupName: row.groupName ?? null,
+        simMsisdn: row.simMsisdn ?? null,
+        simIccid: row.simIccid ?? null,
       })
       await activateDevice(redis, {
         id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId,
