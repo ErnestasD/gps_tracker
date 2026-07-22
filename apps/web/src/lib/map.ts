@@ -54,6 +54,25 @@ export function emphasizeAdminBoundaries(map: mapboxgl.Map, theme: Theme): void 
   set('admin-1-boundary', 'line-opacity', 0.75)
 }
 
+/**
+ * Shrink the road-number shields (the red/yellow A2/M7/P45… route badges). The navigation styles
+ * render them large enough to crowd a fleet map (founder feedback). Scale every `*-shield` symbol
+ * layer's icon + text down ~35%. Guarded per layer/property — non-symbol layers or a style without
+ * shields (offline dev/e2e) are a silent no-op. Runs on every style.load like the boundary tune.
+ */
+export function shrinkRoadShields(map: mapboxgl.Map): void {
+  const layers = map.getStyle()?.layers ?? []
+  for (const layer of layers) {
+    if (!layer.id.includes('shield')) continue
+    try {
+      map.setLayoutProperty(layer.id, 'icon-size', ['interpolate', ['linear'], ['zoom'], 6, 0.6, 14, 0.72])
+      map.setLayoutProperty(layer.id, 'text-size', ['interpolate', ['linear'], ['zoom'], 6, 8, 14, 9])
+    } catch {
+      /* not a symbol layer / property absent — ignore */
+    }
+  }
+}
+
 export interface ThemedMap {
   /** null when the map could not even be constructed (e.g. a missing/empty token with a
    *  mapbox:// style throws SYNCHRONOUSLY from the constructor via normalizeStyleURL) —
@@ -101,7 +120,10 @@ export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions =
   }
   // lift country/region borders on the initial style AND after every theme swap (style.load
   // fires for both). Registered here so EVERY map surface gets it with zero per-surface code.
-  map.on('style.load', () => emphasizeAdminBoundaries(map, getTheme()))
+  map.on('style.load', () => {
+    emphasizeAdminBoundaries(map, getTheme())
+    shrinkRoadShields(map)
+  })
   let current: Theme = getTheme()
   const unsubscribe = onThemeChange(() => {
     const next = getTheme()
