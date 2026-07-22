@@ -50,9 +50,10 @@ export function MapPage() {
     }
   }, [])
 
-  // deviceId → name from the CRUD registry, so the live list shows names not raw ids
+  // deviceId → label from the CRUD registry: the name, plus the plate in parens when set, e.g.
+  // "Kaunas Truck 12 (LTV 177)". Shows names not raw ids; search matches name OR plate.
   const nameOf = useMemo(() => {
-    const m = new Map((devices.data ?? []).map((d) => [d.id, d.name]))
+    const m = new Map((devices.data ?? []).map((d) => [d.id, d.plate ? `${d.name} (${d.plate})` : d.name]))
     return (id: string) => m.get(id) ?? id
   }, [devices.data])
 
