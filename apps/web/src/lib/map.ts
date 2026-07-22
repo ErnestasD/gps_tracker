@@ -57,8 +57,8 @@ export function emphasizeAdminBoundaries(map: mapboxgl.Map, theme: Theme): void 
 /**
  * Shrink the road-number shields (the red/yellow A2/M7/P45… route badges), which the navigation
  * styles render large enough to crowd a fleet map (founder feedback). Rather than guess absolute
- * sizes (an earlier attempt overshot and INFLATED them), SCALE whatever the style set by 0.62 —
- * `['*', 0.62, <existing icon/text-size>]` — so it is always smaller regardless of the base zoom
+ * sizes (an earlier attempt overshot and INFLATED them), SCALE whatever the style set by 0.45 —
+ * `["*", 0.45, <existing icon/text-size>]` — so it is always smaller regardless of the base zoom
  * expression. Idempotent: setStyle resets to defaults before each style.load, so we scale the
  * original once, never compounding. Guarded per layer/property → shield-less styles are a no-op.
  */
@@ -69,7 +69,7 @@ export function shrinkRoadShields(map: mapboxgl.Map): void {
     for (const prop of ['icon-size', 'text-size'] as const) {
       try {
         const cur = map.getLayoutProperty(layer.id, prop) as unknown
-        if (cur != null) map.setLayoutProperty(layer.id, prop, ['*', 0.62, cur] as never)
+        if (cur != null) map.setLayoutProperty(layer.id, prop, ['*', 0.45, cur] as never)
       } catch {
         /* not a symbol layer / property absent — ignore */
       }
