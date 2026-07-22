@@ -185,6 +185,28 @@ describe('E03-3 CSV import', () => {
     expect(result.created).toBe(1)
     expect(await redis.hget('registry:imei', imei)).not.toBeNull()
   })
+
+  it('imports the optional SIM columns (simMsisdn/simIccid) — persisted on the device', async () => {
+    const imei = validImei(35630704251000n)
+    const csv = 'imei,name,profileKey,accountId,simMsisdn,simIccid\n' + `${imei},With SIM,fmb1xx,${accountId},+37060000000,8937060000000000001`
+    const res = await authed('/v1/devices/import', 'POST', { csv })
+    expect(res.status).toBe(201)
+    expect(((await res.json()) as { created: number }).created).toBe(1)
+    const list = (await (await authed('/v1/devices', 'GET')).json()) as { imei: string; simMsisdn: string | null }[]
+    expect(list.find((d) => d.imei === imei)?.simMsisdn).toBe('+37060000000')
+  })
+
+  it('dry-run rejects a bad simMsisdn / simIccid (same rules as the manual add)', async () => {
+    const badMsisdn = validImei(35630704252000n)
+    const badIccid = validImei(35630704253000n)
+    const csv =
+      'imei,name,profileKey,accountId,simMsisdn,simIccid\n' +
+      `${badMsisdn},Bad Msisdn,fmb1xx,${accountId},0037060000000,\n` + // no leading + → invalid E.164
+      `${badIccid},Bad Iccid,fmb1xx,${accountId},,12345` // too short → invalid ICCID
+    const dr = (await (await authed('/v1/devices/import/preview', 'POST', { csv })).json()) as { errors: { reason: string }[] }
+    expect(dr.errors.some((e) => /simMsisdn/.test(e.reason))).toBe(true)
+    expect(dr.errors.some((e) => /simIccid/.test(e.reason))).toBe(true)
+  })
 })
 
 describe('E03-3 import unit helpers', () => {

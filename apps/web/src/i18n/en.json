@@ -489,7 +489,7 @@
     "dupImei": "That IMEI is already registered.",
     "import": {
       "title": "Bulk import (CSV)",
-      "hint": "Columns: imei, name, profileKey, accountId. Preview validates every row before applying.",
+      "hint": "Columns: imei, name, profileKey, accountId (required) + simMsisdn, simIccid (optional). Preview validates every row before applying.",
       "preview": "Preview",
       "apply": "Apply ({{n}})",
       "done": "Imported {{n}} device(s).",

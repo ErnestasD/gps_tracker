@@ -489,7 +489,7 @@
     "dupImei": "Ten IMEI jest już zarejestrowany.",
     "import": {
       "title": "Import zbiorczy (CSV)",
-      "hint": "Kolumny: imei, name, profileKey, accountId. Podgląd sprawdza każdy wiersz przed zastosowaniem.",
+      "hint": "Kolumny: imei, name, profileKey, accountId (wymagane) + simMsisdn, simIccid (opcjonalne). Podgląd sprawdza każdy wiersz przed zastosowaniem.",
       "preview": "Podgląd",
       "apply": "Zastosuj ({{n}})",
       "done": "Zaimportowano {{n}} urządzeń.",
