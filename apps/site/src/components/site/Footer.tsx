@@ -42,6 +42,9 @@ export function Footer() {
             <li><Link to="/pilot" className="hover:text-ink text-muted-foreground">Request a pilot</Link></li>
           </ul>
           <p className="mt-6 text-xs text-muted-foreground">© {new Date().getFullYear()} Orbetra</p>
+          <p className="mt-1 text-xs text-muted-foreground/70">
+            Operated by <Link to="/impressum" className="hover:text-ink">MB Dokigo</Link>
+          </p>
           <p className="mt-1 text-xs text-muted-foreground/70">© OpenStreetMap contributors</p>
         </div>
       </div>
