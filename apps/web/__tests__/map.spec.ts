@@ -17,7 +17,7 @@ vi.mock('mapbox-gl', () => ({
   },
 }))
 
-import { createThemedMap, emphasizeAdminBoundaries, styleForTheme, watchMapLoad } from '../src/lib/map.js'
+import { createThemedMap, emphasizeAdminBoundaries, shrinkRoadShields, styleForTheme, watchMapLoad } from '../src/lib/map.js'
 
 type StyleLoadHandler = () => void
 /** Minimal stand-in for the two Map members watchMapLoad touches. */
@@ -63,6 +63,30 @@ describe('emphasizeAdminBoundaries (border legibility)', () => {
       },
     } as unknown as Parameters<typeof emphasizeAdminBoundaries>[0]
     expect(() => emphasizeAdminBoundaries(map, 'light')).not.toThrow()
+  })
+})
+
+describe('shrinkRoadShields (road-number badge size)', () => {
+  it('scales down icon + text only on *-shield symbol layers', () => {
+    const touched: { layer: string; prop: string }[] = []
+    const map = {
+      getStyle: () => ({ layers: [{ id: 'road-number-shield' }, { id: 'road-label' }, { id: 'admin-0-boundary' }] }),
+      setLayoutProperty: (layer: string, prop: string) => touched.push({ layer, prop }),
+    } as unknown as Parameters<typeof shrinkRoadShields>[0]
+    shrinkRoadShields(map)
+    expect(touched.every((tch) => tch.layer === 'road-number-shield')).toBe(true) // never a non-shield layer
+    expect(touched.some((tch) => tch.prop === 'icon-size')).toBe(true)
+    expect(touched.some((tch) => tch.prop === 'text-size')).toBe(true)
+  })
+
+  it('is a silent no-op when the style has no shield layers (offline dev/e2e style)', () => {
+    const map = {
+      getStyle: () => ({ layers: [{ id: 'background' }] }),
+      setLayoutProperty: () => {
+        throw new Error('should not be called')
+      },
+    } as unknown as Parameters<typeof shrinkRoadShields>[0]
+    expect(() => shrinkRoadShields(map)).not.toThrow()
   })
 })
 
