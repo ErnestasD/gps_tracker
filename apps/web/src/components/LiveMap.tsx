@@ -7,29 +7,46 @@ import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 
-// ADR-028 palette: online = --accent (dark), stale = --muted, stroke/labels = --bg
-const COLORS = { online: '#7C7DF5', stale: '#8B93A7', offline: '#5b6478', halo: '#7C5CFC' }
+// Device-marker palette: online = --accent, stale/offline stay muted but must remain LEGIBLE on the
+// dark basemap (the old #5b6478 offline blended in — founder feedback). A white outline + soft shadow
+// (in arrowImage) makes every state pop on both the dark and light navigation styles.
+const COLORS = { online: '#7C7DF5', stale: '#B9C0D0', offline: '#8A93A6', halo: '#7C5CFC' }
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
-/** Course-rotatable arrow glyph drawn at runtime — no binary assets in the repo. */
+/**
+ * Course-rotatable vehicle marker drawn at runtime — no binary assets in the repo. A filled
+ * navigation pointer (tip north; icon-rotate applies `course` clockwise) with a soft drop shadow
+ * for depth and a crisp white outline so it separates from ANY basemap instead of melting into it.
+ */
 function arrowImage(color: string): ImageData {
-  const size = 44
+  const size = 48
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')!
   ctx.translate(size / 2, size / 2)
-  ctx.beginPath()
-  ctx.moveTo(0, -16) // tip points north; icon-rotate applies `course` clockwise
-  ctx.lineTo(11, 13)
-  ctx.lineTo(0, 6)
-  ctx.lineTo(-11, 13)
-  ctx.closePath()
+  const pointer = () => {
+    ctx.beginPath()
+    ctx.moveTo(0, -18) // tip points north
+    ctx.lineTo(12, 15)
+    ctx.lineTo(0, 8) // concave tail → unambiguous heading
+    ctx.lineTo(-12, 15)
+    ctx.closePath()
+  }
+  // soft shadow under the filled body for depth on any tile colour
+  ctx.shadowColor = 'rgba(0,0,0,0.55)'
+  ctx.shadowBlur = 5
+  ctx.shadowOffsetY = 1
+  pointer()
   ctx.fillStyle = color
   ctx.fill()
-  ctx.lineWidth = 2
-  ctx.strokeStyle = '#0A0E1A'
+  // crisp white outline on top (no shadow) — the key to legibility on dark OR light basemaps
+  ctx.shadowColor = 'transparent'
+  ctx.lineWidth = 2.5
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = '#ffffff'
+  pointer()
   ctx.stroke()
   return ctx.getImageData(0, 0, size, size)
 }
@@ -152,7 +169,7 @@ export function LiveMap() {
           'icon-rotate': ['get', 'course'],
           'icon-rotation-alignment': 'map',
           'icon-allow-overlap': true,
-          'icon-size': 0.6,
+          'icon-size': 0.62,
         },
       })
     }

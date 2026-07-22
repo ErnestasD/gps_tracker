@@ -55,20 +55,42 @@ export function emphasizeAdminBoundaries(map: mapboxgl.Map, theme: Theme): void 
 }
 
 /**
- * Shrink the road-number shields (the red/yellow A2/M7/P45… route badges). The navigation styles
- * render them large enough to crowd a fleet map (founder feedback). Scale every `*-shield` symbol
- * layer's icon + text down ~35%. Guarded per layer/property — non-symbol layers or a style without
- * shields (offline dev/e2e) are a silent no-op. Runs on every style.load like the boundary tune.
+ * Shrink the road-number shields (the red/yellow A2/M7/P45… route badges), which the navigation
+ * styles render large enough to crowd a fleet map (founder feedback). Rather than guess absolute
+ * sizes (an earlier attempt overshot and INFLATED them), SCALE whatever the style set by 0.62 —
+ * `['*', 0.62, <existing icon/text-size>]` — so it is always smaller regardless of the base zoom
+ * expression. Idempotent: setStyle resets to defaults before each style.load, so we scale the
+ * original once, never compounding. Guarded per layer/property → shield-less styles are a no-op.
  */
 export function shrinkRoadShields(map: mapboxgl.Map): void {
   const layers = map.getStyle()?.layers ?? []
   for (const layer of layers) {
     if (!layer.id.includes('shield')) continue
+    for (const prop of ['icon-size', 'text-size'] as const) {
+      try {
+        const cur = map.getLayoutProperty(layer.id, prop) as unknown
+        if (cur != null) map.setLayoutProperty(layer.id, prop, ['*', 0.62, cur] as never)
+      } catch {
+        /* not a symbol layer / property absent — ignore */
+      }
+    }
+  }
+}
+
+/**
+ * Hide the live-traffic congestion overlay (the red/amber/green road tint the navigation styles
+ * paint on by default). On a fleet map it is visual noise that competes with the vehicles and their
+ * trails — the founder read the coloured roads as clutter. Every `traffic-*` layer (congestion tint +
+ * one-way direction arrows) is set invisible. Guarded; a style without traffic layers is a no-op.
+ */
+export function hideTrafficLayers(map: mapboxgl.Map): void {
+  const layers = map.getStyle()?.layers ?? []
+  for (const layer of layers) {
+    if (!layer.id.includes('traffic')) continue
     try {
-      map.setLayoutProperty(layer.id, 'icon-size', ['interpolate', ['linear'], ['zoom'], 6, 0.6, 14, 0.72])
-      map.setLayoutProperty(layer.id, 'text-size', ['interpolate', ['linear'], ['zoom'], 6, 8, 14, 9])
+      map.setLayoutProperty(layer.id, 'visibility', 'none')
     } catch {
-      /* not a symbol layer / property absent — ignore */
+      /* ignore */
     }
   }
 }
@@ -123,6 +145,7 @@ export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions =
   map.on('style.load', () => {
     emphasizeAdminBoundaries(map, getTheme())
     shrinkRoadShields(map)
+    hideTrafficLayers(map)
   })
   let current: Theme = getTheme()
   const unsubscribe = onThemeChange(() => {
