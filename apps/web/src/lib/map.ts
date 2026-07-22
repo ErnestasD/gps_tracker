@@ -16,11 +16,42 @@ mapboxgl.accessToken = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined)
 /**
  * Premium Mapbox style per theme (ADR-030 "premium in both themes"). Env overrides let
  * dev/e2e point at the offline `public/dev-style.json` — no tile network, zero code change.
+ * Defaults are the NAVIGATION styles (not the muted dark-v11/light-v11): clearer roads,
+ * more colour, and readable country/region borders — a better fit for a fleet map than the
+ * washed-out monochrome bases. `emphasizeAdminBoundaries` further lifts the borders.
  */
 export function styleForTheme(theme: Theme): string {
   return theme === 'dark'
-    ? ((import.meta.env.VITE_MAPBOX_STYLE_DARK as string | undefined) ?? 'mapbox://styles/mapbox/dark-v11')
-    : ((import.meta.env.VITE_MAPBOX_STYLE_LIGHT as string | undefined) ?? 'mapbox://styles/mapbox/light-v11')
+    ? ((import.meta.env.VITE_MAPBOX_STYLE_DARK as string | undefined) ?? 'mapbox://styles/mapbox/navigation-night-v1')
+    : ((import.meta.env.VITE_MAPBOX_STYLE_LIGHT as string | undefined) ?? 'mapbox://styles/mapbox/navigation-day-v1')
+}
+
+/**
+ * Lift administrative boundaries so country (admin-0) and region (admin-1) borders read
+ * clearly instead of nearly vanishing into the basemap (founder feedback). Runs on every
+ * `style.load` (initial + each theme swap). Every property write is guarded — a style
+ * without these layers (the offline dev/e2e style) is a silent no-op, never a throw.
+ */
+export function emphasizeAdminBoundaries(map: mapboxgl.Map, theme: Theme): void {
+  // per-theme border colours that read on both the dark and light navigation bases
+  const country = theme === 'dark' ? '#9fb0d6' : '#5b6a8c'
+  const region = theme === 'dark' ? '#5a6684' : '#9aa6c0'
+  const set = (layer: string, prop: 'line-color' | 'line-opacity' | 'line-width', value: unknown): void => {
+    try {
+      if (map.getLayer(layer)) map.setPaintProperty(layer, prop, value as never)
+    } catch {
+      /* layer/prop absent on this style — ignore */
+    }
+  }
+  // country borders: brighter colour, fully opaque, a touch wider so they stand out at any zoom
+  for (const id of ['admin-0-boundary', 'admin-0-boundary-disputed']) {
+    set(id, 'line-color', country)
+    set(id, 'line-opacity', 1)
+    set(id, 'line-width', ['interpolate', ['linear'], ['zoom'], 2, 0.9, 6, 1.6, 10, 2.4])
+  }
+  // region (state/province) borders: visible but subordinate to country lines
+  set('admin-1-boundary', 'line-color', region)
+  set('admin-1-boundary', 'line-opacity', 0.75)
 }
 
 export interface ThemedMap {
@@ -68,6 +99,9 @@ export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions =
     console.error('mapbox init failed', err)
     return { map: null, unsubscribe: () => {} }
   }
+  // lift country/region borders on the initial style AND after every theme swap (style.load
+  // fires for both). Registered here so EVERY map surface gets it with zero per-surface code.
+  map.on('style.load', () => emphasizeAdminBoundaries(map, getTheme()))
   let current: Theme = getTheme()
   const unsubscribe = onThemeChange(() => {
     const next = getTheme()

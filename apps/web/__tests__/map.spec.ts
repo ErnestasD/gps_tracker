@@ -17,7 +17,7 @@ vi.mock('mapbox-gl', () => ({
   },
 }))
 
-import { createThemedMap, styleForTheme, watchMapLoad } from '../src/lib/map.js'
+import { createThemedMap, emphasizeAdminBoundaries, styleForTheme, watchMapLoad } from '../src/lib/map.js'
 
 type StyleLoadHandler = () => void
 /** Minimal stand-in for the two Map members watchMapLoad touches. */
@@ -35,10 +35,34 @@ function fakeMap() {
 }
 
 describe('styleForTheme (ADR-030)', () => {
-  it('defaults to the premium mapbox styles per theme', () => {
+  it('defaults to the premium navigation styles per theme (clearer roads + borders)', () => {
     // VITE_MAPBOX_STYLE_DARK/_LIGHT are unset in the test env → library defaults
-    expect(styleForTheme('dark')).toBe('mapbox://styles/mapbox/dark-v11')
-    expect(styleForTheme('light')).toBe('mapbox://styles/mapbox/light-v11')
+    expect(styleForTheme('dark')).toBe('mapbox://styles/mapbox/navigation-night-v1')
+    expect(styleForTheme('light')).toBe('mapbox://styles/mapbox/navigation-day-v1')
+  })
+})
+
+describe('emphasizeAdminBoundaries (border legibility)', () => {
+  it('boosts country + region borders when the layers exist', () => {
+    const props: { layer: string; prop: string }[] = []
+    const map = {
+      getLayer: (id: string) => (id.startsWith('admin-') ? { id } : undefined),
+      setPaintProperty: (layer: string, prop: string) => props.push({ layer, prop }),
+    } as unknown as Parameters<typeof emphasizeAdminBoundaries>[0]
+    emphasizeAdminBoundaries(map, 'dark')
+    expect(props.some((p) => p.layer === 'admin-0-boundary' && p.prop === 'line-color')).toBe(true)
+    expect(props.some((p) => p.layer === 'admin-0-boundary' && p.prop === 'line-width')).toBe(true)
+    expect(props.some((p) => p.layer === 'admin-1-boundary')).toBe(true)
+  })
+
+  it('is a silent no-op when the style has no admin layers (offline dev/e2e style)', () => {
+    const map = {
+      getLayer: () => undefined,
+      setPaintProperty: () => {
+        throw new Error('should not be called')
+      },
+    } as unknown as Parameters<typeof emphasizeAdminBoundaries>[0]
+    expect(() => emphasizeAdminBoundaries(map, 'light')).not.toThrow()
   })
 })
 
