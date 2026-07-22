@@ -17,7 +17,7 @@ vi.mock('mapbox-gl', () => ({
   },
 }))
 
-import { createThemedMap, emphasizeAdminBoundaries, shrinkRoadShields, styleForTheme, watchMapLoad } from '../src/lib/map.js'
+import { createThemedMap, emphasizeAdminBoundaries, hideTrafficLayers, shrinkRoadShields, styleForTheme, watchMapLoad } from '../src/lib/map.js'
 
 type StyleLoadHandler = () => void
 /** Minimal stand-in for the two Map members watchMapLoad touches. */
@@ -67,26 +67,44 @@ describe('emphasizeAdminBoundaries (border legibility)', () => {
 })
 
 describe('shrinkRoadShields (road-number badge size)', () => {
-  it('scales down icon + text only on *-shield symbol layers', () => {
-    const touched: { layer: string; prop: string }[] = []
+  it('scales down (×0.62) icon + text only on *-shield symbol layers', () => {
+    const touched: { layer: string; prop: string; value: unknown }[] = []
     const map = {
       getStyle: () => ({ layers: [{ id: 'road-number-shield' }, { id: 'road-label' }, { id: 'admin-0-boundary' }] }),
-      setLayoutProperty: (layer: string, prop: string) => touched.push({ layer, prop }),
+      getLayoutProperty: () => ['interpolate', ['linear'], ['zoom'], 6, 1], // pretend the style set a size
+      setLayoutProperty: (layer: string, prop: string, value: unknown) => touched.push({ layer, prop, value }),
     } as unknown as Parameters<typeof shrinkRoadShields>[0]
     shrinkRoadShields(map)
     expect(touched.every((tch) => tch.layer === 'road-number-shield')).toBe(true) // never a non-shield layer
     expect(touched.some((tch) => tch.prop === 'icon-size')).toBe(true)
     expect(touched.some((tch) => tch.prop === 'text-size')).toBe(true)
+    // scales the existing value rather than overwriting with an absolute size
+    expect(touched.every((tch) => Array.isArray(tch.value) && (tch.value as unknown[])[0] === '*')).toBe(true)
   })
 
   it('is a silent no-op when the style has no shield layers (offline dev/e2e style)', () => {
     const map = {
       getStyle: () => ({ layers: [{ id: 'background' }] }),
+      getLayoutProperty: () => undefined,
       setLayoutProperty: () => {
         throw new Error('should not be called')
       },
     } as unknown as Parameters<typeof shrinkRoadShields>[0]
     expect(() => shrinkRoadShields(map)).not.toThrow()
+  })
+})
+
+describe('hideTrafficLayers (fleet-map declutter)', () => {
+  it('hides every traffic-* layer, leaves the rest', () => {
+    const hidden: string[] = []
+    const map = {
+      getStyle: () => ({ layers: [{ id: 'traffic' }, { id: 'traffic-road-oneway-arrow' }, { id: 'road-label' }] }),
+      setLayoutProperty: (layer: string, prop: string, value: unknown) => {
+        if (prop === 'visibility' && value === 'none') hidden.push(layer)
+      },
+    } as unknown as Parameters<typeof hideTrafficLayers>[0]
+    hideTrafficLayers(map)
+    expect(hidden).toEqual(['traffic', 'traffic-road-oneway-arrow'])
   })
 })
 
