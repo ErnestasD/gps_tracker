@@ -16,11 +16,13 @@ import { canSendConfigSms, hasPendingSms, listSmsDeliveries, sendConfigSms, smsS
  * When the platform has an SMS gateway configured AND the device has a saved SIM number, the card
  * also offers a one-click "Send config SMS" (server sends it via Twilio); the copy-paste SMS below
  * always stays as the manual fallback. */
-export function OnboardingCard({ device }: { device: Device }) {
+export function OnboardingCard({ device, initialApn }: { device: Device; initialApn?: string }) {
   const { t } = useTranslation()
   const { dt } = useFmt()
   const qc = useQueryClient()
-  const [apn, setApn] = useState('')
+  // initialApn pre-fills the APN when the card is auto-opened right after a device is created
+  // with a SIM number (unified add flow), so the operator lands one click from "Send config SMS".
+  const [apn, setApn] = useState(initialApn ?? '')
   const sheet = useQuery({ queryKey: ['onboarding', device.id, apn], queryFn: () => getOnboarding(device.id, apn) })
   const [copied, setCopied] = useState<string | null>(null)
 

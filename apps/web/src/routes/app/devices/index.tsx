@@ -63,6 +63,9 @@ export function DevicesPage() {
   const [healthForId, setHealthForId] = useState<string | null>(null)
   const [shareForId, setShareForId] = useState<string | null>(null)
   const [onboardForId, setOnboardForId] = useState<string | null>(null)
+  // APN carried from the create form into an auto-opened onboarding card (unified add flow); '' for
+  // a manually-opened card. One-shot: reset when a card is opened from the row menu.
+  const [pendingApn, setPendingApn] = useState('')
   // destructive flows (retire / GDPR erase, E08-4) are gated by ConfirmDialog (ADR-028 round 2);
   // the pending target is an ID resolved against the LIVE list below, never a snapshot
   const [retireForId, setRetireForId] = useState<string | null>(null)
@@ -191,9 +194,15 @@ export function DevicesPage() {
             <CreateDeviceForm
               accounts={accounts.data ?? []}
               profiles={profiles.data ?? []}
-              onCreated={() => {
+              onCreated={(deviceId, apn, openOnboarding) => {
                 refresh()
                 setAddOpen(false)
+                // a device created WITH a SIM number → jump straight to its onboarding card (SIM
+                // already saved, APN pre-filled) so config-SMS is one click, not a separate flow
+                if (openOnboarding) {
+                  setPendingApn(apn)
+                  setOnboardForId(deviceId)
+                }
               }}
               onCancel={() => setAddOpen(false)}
             />
@@ -246,7 +255,10 @@ export function DevicesPage() {
               isAdmin={isAdmin}
               canWrite={canWrite}
               onHealth={() => setHealthForId((cur) => (cur === d.id ? null : d.id))}
-              onOnboard={() => setOnboardForId((cur) => (cur === d.id ? null : d.id))}
+              onOnboard={() => {
+                setPendingApn('') // manual open → no pre-filled APN (only the create flow carries one)
+                setOnboardForId((cur) => (cur === d.id ? null : d.id))
+              }}
               onCommands={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
               onShare={() => setShareForId((cur) => (cur === d.id ? null : d.id))}
               onRetire={() => setRetireForId(d.id)}
@@ -262,7 +274,7 @@ export function DevicesPage() {
       <div ref={panelRef} className="scroll-mt-4">
         {healthFor !== null && <HealthCard key={healthFor.id} device={healthFor} />}
         {healthFor !== null && <CanCard key={`can-${healthFor.id}`} device={healthFor} />}
-        {onboardFor !== null && <OnboardingCard key={onboardFor.id} device={onboardFor} />}
+        {onboardFor !== null && <OnboardingCard key={onboardFor.id} device={onboardFor} initialApn={pendingApn} />}
         {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
         {shareFor !== null && <ShareCard key={shareFor.id} device={shareFor} />}
       </div>
@@ -413,13 +425,17 @@ function CreateDeviceForm({
 }: {
   accounts: { id: string; name: string }[]
   profiles: { id: string; key: string; name: string }[]
-  onCreated: () => void
+  /** deviceId of the new device; apn as typed; openOnboarding=true when a SIM was entered (so the
+   *  parent auto-opens the onboarding card, one click from Send config SMS). */
+  onCreated: (deviceId: string, apn: string, openOnboarding: boolean) => void
   onCancel: () => void
 }) {
   const { t } = useTranslation()
   const [imei, setImei] = useState('')
   const [name, setName] = useState('')
   const [plate, setPlate] = useState('')
+  const [simMsisdn, setSimMsisdn] = useState('')
+  const [apn, setApn] = useState('')
   const [accountId, setAccountId] = useState('')
   const [profileId, setProfileId] = useState('')
   const [odometerSource, setOdometerSource] = useState<OdometerSource>('auto')
@@ -433,8 +449,17 @@ function CreateDeviceForm({
     e.preventDefault()
     setBusy(true)
     setError(null)
-    createDevice({ accountId: acc, profileId: prof, imei, name, plate: plate.trim() === '' ? null : plate.trim(), odometerSource })
-      .then(() => onCreated()) // parent closes the sheet; unmount resets the form
+    const sim = simMsisdn.trim()
+    createDevice({
+      accountId: acc,
+      profileId: prof,
+      imei,
+      name,
+      plate: plate.trim() === '' ? null : plate.trim(),
+      odometerSource,
+      ...(sim !== '' ? { simMsisdn: sim } : {}), // SIM saved at creation — no separate save step
+    })
+      .then((dev) => onCreated(dev.id, apn.trim(), sim !== '')) // parent closes the sheet + auto-opens onboarding when a SIM was set
       .catch((err: unknown) => {
         setError(err instanceof ApiError && err.status === 409 ? t('devices.dupImei') : t('devices.createError'))
       })
@@ -451,6 +476,14 @@ function CreateDeviceForm({
       </Field>
       <Field label={t('devices.plate')}>
         <AdminInput value={plate} onChange={(e) => setPlate(e.target.value)} maxLength={32} data-testid="device-plate" />
+      </Field>
+      {/* SIM number + APN entered upfront so onboarding is one step: on create, if a SIM is set the
+          parent auto-opens the onboarding card (SIM already saved, APN pre-filled) ready to send. */}
+      <Field label={t('devices.onb.sim.msisdn')}>
+        <AdminInput value={simMsisdn} onChange={(e) => setSimMsisdn(e.target.value)} pattern="\+[1-9]\d{6,14}" placeholder="+37060000000" maxLength={20} inputMode="tel" data-testid="device-sim-msisdn" />
+      </Field>
+      <Field label={t('devices.onb.apn')}>
+        <AdminInput value={apn} onChange={(e) => setApn(e.target.value)} maxLength={63} placeholder={t('devices.onb.apnPlaceholder')} data-testid="device-apn" />
       </Field>
       {/* round-2 control sweep: Comboboxes (reference app.devices form); the CSV-import e2e
           reads the default account id from the trigger's data-value */}
