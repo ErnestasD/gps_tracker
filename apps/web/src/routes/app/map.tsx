@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DeviceList } from '@/components/DeviceList'
@@ -50,6 +50,12 @@ export function MapPage() {
     }
   }, [])
 
+  // deviceId → name from the CRUD registry, so the live list shows names not raw ids
+  const nameOf = useMemo(() => {
+    const m = new Map((devices.data ?? []).map((d) => [d.id, d.name]))
+    return (id: string) => m.get(id) ?? id
+  }, [devices.data])
+
   const selected = snap.selectedId !== null ? snap.devices.find((d) => d.ev.deviceId === snap.selectedId) : undefined
 
   return (
@@ -59,6 +65,7 @@ export function MapPage() {
         devices={snap.devices}
         selectedId={snap.selectedId}
         onSelect={(id) => liveStore.select(id)}
+        nameOf={nameOf}
         // still connecting/seeding: show a loader rather than flash "No devices yet"
         loading={devices.isLoading || (snap.devices.length === 0 && snap.connection !== 'open')}
       />

@@ -13,27 +13,31 @@ import { cn } from '@/lib/utils'
  * re-render at most 1×/s and offscreen rows skip paint via content-visibility
  * (.device-row). Fallback if the founder-laptop check ever shows jank:
  * @tanstack/react-virtual — deliberately NOT added now (scope discipline).
- * Search filters on deviceId — names/groups arrive with E03-3 CRUD.
+ * Rows show the device NAME (via nameOf, joined from the CRUD list); search matches it.
  */
 export function DeviceList({
   devices,
   selectedId,
   onSelect,
+  nameOf,
   loading = false,
 }: {
   devices: DeviceLive[]
   selectedId: string | null
   onSelect: (id: string) => void
+  // deviceId → human label (device name). Falls back to the id when the CRUD list hasn't loaded.
+  nameOf?: (deviceId: string) => string
   // true during the initial connect/seed so we show a loader instead of flashing "No devices yet"
   loading?: boolean
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
+  const label = (deviceId: string) => nameOf?.(deviceId) ?? deviceId
 
-  const shown = useMemo(
-    () => (query === '' ? devices : devices.filter((d) => d.ev.deviceId.includes(query.trim()))),
-    [devices, query],
-  )
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return q === '' ? devices : devices.filter((d) => label(d.ev.deviceId).toLowerCase().includes(q))
+  }, [devices, query, nameOf])
 
   return (
     <div
@@ -64,7 +68,7 @@ export function DeviceList({
           <p className="p-4 text-sm text-muted">{t('deviceList.noMatch')}</p>
         ) : (
           shown.map((d) => (
-            <DeviceRow key={d.ev.deviceId} device={d} selected={d.ev.deviceId === selectedId} onSelect={onSelect} />
+            <DeviceRow key={d.ev.deviceId} device={d} label={label(d.ev.deviceId)} selected={d.ev.deviceId === selectedId} onSelect={onSelect} />
           ))
         )}
       </div>
@@ -74,10 +78,13 @@ export function DeviceList({
 
 const DeviceRow = memo(function DeviceRow({
   device,
+  label,
   selected,
   onSelect,
 }: {
   device: DeviceLive
+  // resolved device name (stable string → memo stays effective); falls back to the id upstream
+  label: string
   selected: boolean
   onSelect: (id: string) => void
 }) {
@@ -96,7 +103,7 @@ const DeviceRow = memo(function DeviceRow({
       )}
     >
       <StatusDot status={status} />
-      <span className="min-w-0 flex-1 truncate font-mono text-xs text-text">{ev.deviceId}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-text">{label}</span>
       <span className="shrink-0 text-xs tabular-nums text-muted">{speed(ev.speed ?? 0)}</span>
     </button>
   )
