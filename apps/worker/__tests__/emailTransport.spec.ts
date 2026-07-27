@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { buildEmailTransport, type MailSender, type SmtpOptions } from '../src/notify/emailTransport.js'
+import { buildEmailTransport, isDeliverableAddress, type MailSender, type SmtpOptions } from '../src/notify/emailTransport.js'
 
 /** A recording fake so we exercise env-gating + send mapping without a live SMTP server. */
 function fakeMailer() {
@@ -42,22 +42,22 @@ describe('E05-5 buildEmailTransport', () => {
   it('sends with MAIL_FROM as the sender and passes subject/text through', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create)!
-    await t.send('driver@fleet.test', 'Panic alert', 'Device 42 pressed panic.')
-    expect(f.calls[0]).toMatchObject({ from: 'alerts@orbetra.com', to: 'driver@fleet.test', subject: 'Panic alert', text: 'Device 42 pressed panic.' })
+    await t.send('driver@fleet.co', 'Panic alert', 'Device 42 pressed panic.')
+    expect(f.calls[0]).toMatchObject({ from: 'alerts@orbetra.com', to: 'driver@fleet.co', subject: 'Panic alert', text: 'Device 42 pressed panic.' })
     expect(f.calls[0]!.headers).toBeUndefined() // no config set → no header
   })
 
   it('passes the branded html body through to sendMail alongside the text fallback (multipart)', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create)!
-    await t.send('driver@fleet.test', 'Panic alert', 'Device 42 pressed panic.', '<p>Device 42 pressed panic.</p>')
+    await t.send('driver@fleet.co', 'Panic alert', 'Device 42 pressed panic.', '<p>Device 42 pressed panic.</p>')
     expect(f.calls[0]).toMatchObject({ text: 'Device 42 pressed panic.', html: '<p>Device 42 pressed panic.</p>' })
   })
 
   it('omits html entirely when none is supplied (plain-text only, backwards-compatible)', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create)!
-    await t.send('driver@fleet.test', 's', 'b')
+    await t.send('driver@fleet.co', 's', 'b')
     expect(f.calls[0]!).not.toHaveProperty('html')
   })
 
@@ -70,7 +70,32 @@ describe('E05-5 buildEmailTransport', () => {
   it('adds the SES config-set header for bounce/complaint routing when configured', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL, SES_CONFIG_SET: 'orbetra-notifications' }, f.create)!
-    await t.send('x@y.z', 's', 'b')
+    await t.send('driver@fleet.co', 's', 'b')
     expect(f.calls[0]!.headers).toEqual({ 'X-SES-CONFIGURATION-SET': 'orbetra-notifications' })
+  })
+
+  it('never sends to a reserved-use TLD (bounce-reputation guard) — .test/.invalid/.localhost skipped', async () => {
+    const f = fakeMailer()
+    const t = buildEmailTransport({ ...FULL }, f.create)!
+    await t.send('demo-admin@orbetra.test', 'Trips report', 'body') // the daily-bounce culprit
+    expect(f.calls).toHaveLength(0) // no SES attempt at all
+  })
+
+  it('filters a mixed recipient list to only the deliverable addresses', async () => {
+    const f = fakeMailer()
+    const t = buildEmailTransport({ ...FULL }, f.create)!
+    await t.send('real@fleet.co, demo-admin@orbetra.test', 's', 'b')
+    expect(f.calls[0]!.to).toBe('real@fleet.co') // the .test recipient dropped, the real one kept
+  })
+})
+
+describe('isDeliverableAddress', () => {
+  it('rejects RFC 6761/2606 reserved TLDs, accepts real domains', () => {
+    for (const bad of ['a@orbetra.test', 'x@fleet.invalid', 'y@example', 'z@localhost', 'q@x.localhost', 'nope']) {
+      expect(isDeliverableAddress(bad), bad).toBe(false)
+    }
+    for (const ok of ['a@orbetra.com', 'b@fleet.co', 'c@sub.company.lt', 'd@x.io']) {
+      expect(isDeliverableAddress(ok), ok).toBe(true)
+    }
   })
 })
