@@ -28,6 +28,17 @@ export interface SmtpOptions {
 }
 type CreateTransport = (opts: SmtpOptions) => MailSender
 
+// RFC 6761 / RFC 2606 special-use TLDs that never resolve → mail to them ALWAYS bounces. Sending to
+// them (e.g. a demo tenant's demo-admin@orbetra.test) racks up SES bounces, which damage sender
+// reputation and can get the whole account throttled/suspended. We never even attempt delivery.
+const RESERVED_TLDS = new Set(['test', 'example', 'invalid', 'localhost'])
+/** True when an address CAN be delivered (its domain's last label isn't a reserved-use TLD). */
+export function isDeliverableAddress(addr: string): boolean {
+  const domain = (addr.split('@')[1] ?? '').trim().toLowerCase().replace(/\.$/, '')
+  if (domain === '') return false
+  return !RESERVED_TLDS.has(domain.split('.').pop() ?? '')
+}
+
 export function buildEmailTransport(
   env: NodeJS.ProcessEnv,
   createTransport: CreateTransport = (opts) => nodemailer.createTransport(opts),
@@ -54,9 +65,16 @@ export function buildEmailTransport(
   }
   return {
     send: async (to, subject, text, html) => {
+      // drop reserved-TLD recipients before they reach SES (bounce-reputation guard). A comma-list
+      // keeps only its deliverable addresses; if none remain the send is a logged no-op, not an error.
+      const deliverable = to.split(',').map((s) => s.trim()).filter((s) => s !== '' && isDeliverableAddress(s))
+      if (deliverable.length === 0) {
+        console.warn('email skipped: no deliverable recipients (reserved/undeliverable TLD)') // count/addresses omitted (PII)
+        return
+      }
       await mailer.sendMail({
         from,
-        to,
+        to: deliverable.join(', '),
         subject,
         text, // always-present plain-text fallback
         // nodemailer sends multipart/alternative when both are present; text is the fallback part
