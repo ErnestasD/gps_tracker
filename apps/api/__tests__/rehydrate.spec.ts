@@ -26,8 +26,16 @@ function fakeRedis(store: Map<string, Record<string, string>>): Redis {
   } as unknown as Redis
 }
 
-function fakeDb(geofences: unknown[], ibuttons: { tenantId: string; accountId: string; ibutton: string; driverId: string }[]): Db {
+type FakeDevice = { id: bigint; imei: string; tenantId: string; accountId: string; profileId: string; odometerSource: string }
+function fakeDb(
+  geofences: unknown[],
+  ibuttons: { tenantId: string; accountId: string; ibutton: string; driverId: string }[],
+  devices: FakeDevice[] = [],
+  profiles: { id: string; presenceRules: unknown }[] = [],
+): Db {
   return {
+    devices: { listAllForRegistry: () => Promise.resolve(devices) },
+    profiles: { list: () => Promise.resolve(profiles) },
     geofences: { listAll: () => Promise.resolve(geofences) },
     drivers: { listAllIbuttons: () => Promise.resolve(ibuttons) },
   } as unknown as Db
@@ -40,7 +48,7 @@ describe('rehydrateRegistries', () => {
     const db = fakeDb([gf], [{ tenantId: T, accountId: A, ibutton: 'a1b2c3d4', driverId: 'drv-1' }])
     const res = await rehydrateRegistries(fakeRedis(store), db)
 
-    expect(res).toEqual({ geofences: 1, ibuttons: 1 })
+    expect(res).toEqual({ devices: 0, geofences: 1, ibuttons: 1 })
     // geofence published under geofence:tenant:{t} keyed by geofence id (matches syncGeofence / worker cache)
     expect(store.get(`geofence:tenant:${T}`)?.['gf-1']).toContain('Depot')
     // iButton map keyed by tenant AND account, field = the CANONICAL decimal (not the raw hex)
@@ -55,5 +63,18 @@ describe('rehydrateRegistries', () => {
     const res = await rehydrateRegistries(fakeRedis(store), db)
     expect(res.ibuttons).toBe(0)
     expect(store.size).toBe(0)
+  })
+
+  it('rebuilds the DEVICE registry (audit D1) — registry:imei + device:tenant/account/config', async () => {
+    const store = new Map<string, Record<string, string>>()
+    const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'prof-1', odometerSource: 'gps' }
+    const db = fakeDb([], [], [dev], [{ id: 'prof-1', presenceRules: { minStopS: 120 } }])
+    const res = await rehydrateRegistries(fakeRedis(store), db)
+
+    expect(res.devices).toBe(1)
+    expect(store.get('registry:imei')?.['356307042440000']).toBe('42') // ingest resolves the fleet again
+    expect(store.get('device:tenant')?.['42']).toBe(T)
+    expect(store.get('device:account')?.['42']).toBe(A)
+    expect(JSON.parse(store.get('device:config')?.['42'] ?? '{}')).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'gps' })
   })
 })

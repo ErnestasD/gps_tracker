@@ -125,7 +125,7 @@ console.log(`orbetra api listening on :${port} (auth live, ws_clients metric liv
 // Boot backfill (DB→Redis): repopulate the geofence + iButton caches in case Redis was flushed;
 // best-effort — a failure here must never block serving (CRUD re-syncs incrementally anyway).
 void rehydrateRegistries(redis, db)
-  .then((r) => console.log(`rehydrated Redis registries: ${r.geofences} geofences, ${r.ibuttons} iButtons`))
+  .then((r) => console.log(`rehydrated Redis registries: ${r.devices} devices, ${r.geofences} geofences, ${r.ibuttons} iButtons`))
   .catch((e: unknown) => console.error('rehydrate failed (non-fatal)', e))
 
 process.on('SIGTERM', () => {

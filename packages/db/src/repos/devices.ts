@@ -51,10 +51,23 @@ export class DuplicateImeiError extends Error {
  * IMEI. Redis registry sync (registry:imei / device:tenant / device:account) is
  * NOT here — it lives in the API layer (deviceRegistry.ts); this repo is pure DB.
  */
+/** The device fields the ingest/worker Redis registry needs (deviceRegistry.activateDevice shape). */
+export interface RegistryDeviceRow {
+  id: bigint
+  imei: string
+  tenantId: string
+  accountId: string
+  profileId: string
+  odometerSource: string
+}
+
 export interface DeviceRepo {
   list(scope: Scope): Promise<Device[]>
   /** Count of NON-retired devices in scope — the denominator for the plan deviceLimit cap check. */
   countActive(scope: Scope): Promise<number>
+  /** Boot registry-rehydrate ONLY (UNSCOPED, platform-level): every non-retired device with the
+   *  fields ingest/worker need in Redis. Never a request path — those are always tenant-scoped. */
+  listAllForRegistry(): Promise<RegistryDeviceRow[]>
   get(scope: Scope, id: string): Promise<Device | null>
   getByImei(scope: Scope, imei: string): Promise<Device | null>
   create(scope: Scope, actor: Actor, data: DeviceCreate): Promise<Device>
@@ -75,6 +88,11 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo): Device
   return {
     list: (scope) => prisma.device.findMany({ where: scopedWhere(scope), orderBy: { createdAt: 'desc' } }),
     countActive: (scope) => prisma.device.count({ where: { ...scopedWhere(scope), retiredAt: null } }),
+    listAllForRegistry: () =>
+      prisma.device.findMany({
+        where: { retiredAt: null },
+        select: { id: true, imei: true, tenantId: true, accountId: true, profileId: true, odometerSource: true },
+      }),
     get: (scope, id) => scopedById(scope, id),
     getByImei: (scope, imei) => prisma.device.findFirst({ where: { ...scopedWhere(scope), imei } }),
     create: async (scope, actor, data) => {
