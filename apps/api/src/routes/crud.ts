@@ -284,15 +284,24 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
             return problem(c, 400, 'Bad Request', 'accountId not in scope')
           }
         }
+        // snapshot the PRE-update scope so the change check is correct even if the repo returns the
+        // same row reference it then mutates (a role/account move must be measured against the OLD value)
+        const prevRole = target.role
+        const prevAccountId = target.accountId
         const { password, ...rest } = data
         const row = await db.users.update(scopeOf(a), { userId: a.userId }, id(c), {
           ...rest,
           ...(password !== undefined ? { passwordHash: await hashPassword(password) } : {}),
         })
         if (row === null) return problem(c, 404, 'Not Found')
-        if (password !== undefined) {
-          // an admin password reset must evict the TARGET user's live sessions, same as the
-          // self-service change (review HIGH: else an admin cannot log out a compromised user).
+        // Revoke the target's live sessions on a password reset OR a SCOPE change (role demotion /
+        // account move). Without the scope-change case, an open WebSocket kept the OLD, broader
+        // scope indefinitely — a tsp_admin narrowed to one account still streamed the whole tenant
+        // (audit B2). Compare against the target's PRE-update values so a no-op PATCH doesn't churn.
+        const scopeChanged =
+          (data.role !== undefined && data.role !== prevRole) ||
+          (data.accountId !== undefined && data.accountId !== prevAccountId)
+        if (password !== undefined || scopeChanged) {
           // TODO(db): refreshTokens.revokeAllForUser(userId, now) — until it exists this is a
           // best-effort no-op (there is no per-user family listing to loop from apps/api).
           const rt = db.auth.refreshTokens as typeof db.auth.refreshTokens & {
@@ -300,8 +309,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           }
           if (rt.revokeAllForUser !== undefined) await rt.revokeAllForUser(id(c), new Date())
           // …and tear down the target's LIVE WebSocket streams: revoking refresh families kills
-          // HTTP access but a socket opened before the reset keeps streaming positions otherwise
-          // (audit MED). Best-effort marker; the WS gateway re-validates on an interval.
+          // HTTP access but a socket opened before the change keeps streaming otherwise (audit MED/B2).
+          // Best-effort marker; the WS gateway re-validates on an interval AND ws-ticket issuance
+          // now refuses a token minted before this marker (B1).
           await markSessionsRevoked(deps.redis, id(c))
         }
         return json(c, row)

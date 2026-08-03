@@ -17,6 +17,7 @@ import { authMiddleware, requireRole, type AuthEnv } from '../src/auth/middlewar
 import { hashPassword, verifyPassword } from '../src/auth/passwords.js'
 import * as passwords from '../src/auth/passwords.js'
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
+import { markSessionsRevoked } from '../src/ws.js'
 
 const PG_IMAGE = 'timescale/timescaledb-ha:pg16'
 const DB_PKG = resolve(import.meta.dirname, '../../../packages/db')
@@ -264,9 +265,34 @@ describe('E03-1 AC[1]: refresh rotation + family revocation', () => {
     expect(out.status).toBe(200)
     expect(out.headers.get('set-cookie')).toContain('Max-Age=0')
   })
+
+  it('B1: an access token predating a session revocation is refused a ws-ticket (no fresh live stream)', async () => {
+    // A still-unexpired access token must NOT obtain a new ws-ticket once the user's sessions are
+    // revoked (logout / delete / scope change) — else it opens a live stream the gateway's
+    // establishedAt sweep never closes. A DEDICATED user (unique id) so the future-dated revoke
+    // marker can't bleed into the shared role-matrix users; revoke clearly AFTER issuance (iat is
+    // second-granular) so the check is deterministic, not a sub-second race with the login stamp.
+    const email = 'b1-revoke@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'viewer', tenantName: 'T1', accountName: 'A1' })
+    const session = (await (await login(email, PW)).json()) as AuthSession
+    const auth = { authorization: `Bearer ${session.accessToken}` }
+    expect((await fetch(`${base()}/v1/ws-ticket`, { headers: auth })).status).toBe(200)
+    await markSessionsRevoked(redis, session.user.id, Date.now() + 5000)
+    expect((await fetch(`${base()}/v1/ws-ticket`, { headers: auth })).status).toBe(401)
+  })
 })
 
 describe('E03-1 AC[2]: role matrix (4 roles × representative endpoints)', () => {
+  // Re-login for FRESH tokens: an earlier logout test set a ws:revoke marker for these users, and
+  // ws-ticket now refuses a token minted before that marker (audit B1). A re-login gives an iat
+  // after it, so the matrix exercises pure role gating, not stale-token revocation.
+  beforeAll(async () => {
+    for (const role of ROLES) {
+      const res = await login(seeded[role].email, PW)
+      tokens[role] = ((await res.json()) as AuthSession).accessToken
+    }
+  })
+
   const matrix: { path: string; expected: Record<Role, number> }[] = [
     { path: '/v1/auth/me', expected: { platform_admin: 200, tsp_admin: 200, account_manager: 200, viewer: 200 } },
     { path: '/v1/ws-ticket', expected: { platform_admin: 200, tsp_admin: 200, account_manager: 200, viewer: 200 } },
