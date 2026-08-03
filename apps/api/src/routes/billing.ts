@@ -244,9 +244,15 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
       const paid = paidInvoiceFrom(event.data.object, new Date(event.created * 1000))
       if (paid !== null) {
         try {
+          // returns null for a dedupe / nothing-owed (both fine, ack 200); THROWS only on a genuine
+          // fault (the repo no longer swallows non-dedupe errors)
           await deps.db.affiliates.accrueForPaidInvoice(paid)
         } catch (err) {
+          // a real fault (e.g. transient DB error). Return non-2xx so Stripe RETRIES this invoice —
+          // accrual is idempotent, so the retry recovers the commission instead of losing it forever
+          // (a 200 here would be final). This branch is isolated from the authoritative subscription.*.
           console.error('affiliate commission accrual failed', paid.invoiceId, err)
+          return c.text('accrual failed', 500)
         }
       }
     }

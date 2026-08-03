@@ -87,7 +87,7 @@ export interface AffiliateRepo {
   /**
    * Webhook path (F4): a referred tenant paid an invoice → accrue the partner's commission. Returns
    * the Commission, or null when nothing is owed: no referral, the affiliate isn't active, the payment
-   * falls OUTSIDE the commissionMonths window (measured from the tenant's createdAt), a non-positive
+   * falls OUTSIDE the commissionMonths window (measured from the tenant's FIRST payment), a non-positive
    * amount, or a duplicate invoice (idempotent). All lookups + window math live here (rule 2).
    */
   accrueForPaidInvoice(invoice: PaidInvoice): Promise<Commission | null>
@@ -99,7 +99,8 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
   return {
     list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' } }),
     get: (id) => prisma.affiliate.findUnique({ where: { id } }),
-    getActiveByCode: (code) => prisma.affiliate.findFirst({ where: { code, status: 'active' } }),
+    // case-INSENSITIVE (schema §code): a ?ref=whook1 link must attribute to a stored 'WHOOK1'
+    getActiveByCode: (code) => prisma.affiliate.findFirst({ where: { code: { equals: code, mode: 'insensitive' }, status: 'active' } }),
     create: async (_actor, data) => {
       try {
         return await prisma.affiliate.create({
@@ -133,22 +134,29 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
     accrueForPaidInvoice: async (invoice) => {
       const tenant = await prisma.tenant.findFirst({
         where: { stripeCustomerId: invoice.stripeCustomerId },
-        select: { id: true, referredByAffiliateId: true, createdAt: true },
+        select: { id: true, referredByAffiliateId: true },
       })
       if (tenant === null || tenant.referredByAffiliateId === null) return null // not a referred tenant
       const affiliate = await prisma.affiliate.findUnique({ where: { id: tenant.referredByAffiliateId } })
       if (affiliate === null || affiliate.status !== 'active') return null // suspended/pending ⇒ commissions stop
-      // window: commissions accrue for commissionMonths from the tenant's signup (createdAt)
-      if (invoice.paidAt > addMonthsUtc(tenant.createdAt, affiliate.commissionMonths)) return null
+      // window: commissionMonths from the tenant's FIRST accrued payment (schema §commissionMonths —
+      // a trial must not eat the window). The earliest existing commission is that anchor; if there is
+      // none yet, THIS invoice IS the first payment → always in-window.
+      const first = await prisma.commission.findFirst({ where: { affiliateId: affiliate.id, tenantId: tenant.id }, orderBy: { createdAt: 'asc' }, select: { createdAt: true } })
+      const anchor = first?.createdAt ?? invoice.paidAt
+      if (invoice.paidAt > addMonthsUtc(anchor, affiliate.commissionMonths)) return null
       const amountCents = Math.floor((invoice.amountPaidCents * Number(affiliate.commissionPct)) / 100)
       if (amountCents <= 0) return null // a $0 invoice / 100%-discount / zero-rate owes nothing
-      // idempotent on the invoice id — a webhook retry is a no-op
+      // idempotent on the invoice id — a DUPLICATE delivery is a no-op (null); any OTHER fault rethrows
+      // so a transient DB error is NOT mistaken for a dedupe (the webhook returns non-2xx → Stripe
+      // retries → idempotency makes the retry safe, recovering the commission rather than losing it).
       try {
         return await prisma.commission.create({
           data: { affiliateId: affiliate.id, tenantId: tenant.id, amountCents, currency: invoice.currency, sourceInvoiceId: invoice.invoiceId },
         })
-      } catch {
-        return null
+      } catch (err) {
+        if (isUniqueViolation(err)) return null
+        throw err
       }
     },
     listCommissions: (affiliateId) =>
