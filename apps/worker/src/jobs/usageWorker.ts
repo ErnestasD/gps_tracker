@@ -27,6 +27,13 @@ import { USAGE_QUEUE } from './usageQueue.js'
  * are billed their own device-day for that date (each used it — documented, §6.9).
  */
 const LOOKBACK_MS = 48 * 3_600_000
+// How far back a device's buffered fix_time may reach and still bill its usage day. Bounds the chunk
+// scan (chunk exclusion on fix_time) and rejects garbage device clocks (e.g. epoch 1970). A device
+// offline LONGER than this needs the manual wider-lookback reconciliation sweep (month-close).
+const FIX_TIME_CLAMP_MS = 35 * 24 * 3_600_000
+// The erase-time capture must reach the whole retained history (positions are dropped at ~13 months),
+// so its fix_time clamp is wider — still bounded to reject an epoch-clock garbage day.
+const RETENTION_CLAMP_MS = 400 * 24 * 3_600_000
 
 export interface UsageWorkerDeps {
   connection: ConnectionOptions
@@ -37,16 +44,50 @@ export interface UsageWorkerDeps {
 
 /** Run one sweep. Returns rows written (new device-days only). */
 export async function runUsageSweep(pool: Pool, nowMs: number, lookbackMs = LOOKBACK_MS): Promise<number> {
-  const since = new Date(nowMs - lookbackMs)
-  const until = new Date(nowMs + 3_600_000) // clamp absurd-future fix_time (clock skew ≤1 h tolerated)
+  // Window on server_time (ingest RECEIVE time) — a device that buffered while offline flushes
+  // old-fix_time records on reconnect; windowing on fix_time (audit P4) missed those beyond the
+  // lookback → silent under-billing. server_time is always ≈ ingestion time, so a recent flush is
+  // caught regardless of how old the fix is (BRIN-indexed: migration 003). The DAY still buckets by
+  // fix_time — the day the device was actually USED — so a multi-day buffer correctly bills each
+  // distinct day, not one lump. fix_time is clamped to a sane window (chunk exclusion + garbage-clock
+  // rejection); an event with an absurd fix_time never fabricates a device-day.
+  const serverSince = new Date(nowMs - lookbackMs)
+  const serverUntil = new Date(nowMs + 3_600_000) // tolerate ≤1h ingest-host clock skew
+  const fixFloor = new Date(nowMs - FIX_TIME_CLAMP_MS)
+  const fixCeil = new Date(nowMs + 3_600_000) // reject a future device clock fabricating tomorrow's day
   const res = await pool.query(
     `INSERT INTO usage_daily ("tenantId","accountId","deviceId",day)
      SELECT d."tenantId", d."accountId", p.device_id, p.day
      FROM (SELECT DISTINCT device_id, (fix_time AT TIME ZONE 'UTC')::date AS day
-           FROM positions WHERE fix_time >= $1 AND fix_time < $2) p
+           FROM positions
+           WHERE server_time >= $1 AND server_time < $2
+             AND fix_time >= $3 AND fix_time < $4) p
      JOIN devices d ON d.id = p.device_id
      ON CONFLICT ("deviceId",day) DO NOTHING`,
-    [since, until],
+    [serverSince, serverUntil, fixFloor, fixCeil],
+  )
+  return res.rowCount ?? 0
+}
+
+/**
+ * Capture ALL of one device's billable days BEFORE its positions are erased (audit P4 / GDPR). The
+ * hourly sweep sources from positions, so a device erased between sweeps would lose any day not yet
+ * swept — under-billing. usage_daily is intentionally KEPT past erase (legitimate-interest billing
+ * record, plain deviceId, no FK) and device ids are never reused, so this is safe + final. Idempotent
+ * (ON CONFLICT) and bounded by a retention-wide fix_time clamp (rejects an epoch-clock garbage day).
+ * MUST run while the devices row still exists (the JOIN resolves tenant/account).
+ */
+export async function captureDeviceUsage(pool: Pool, deviceId: bigint, nowMs: number): Promise<number> {
+  const fixFloor = new Date(nowMs - RETENTION_CLAMP_MS)
+  const fixCeil = new Date(nowMs + 3_600_000)
+  const res = await pool.query(
+    `INSERT INTO usage_daily ("tenantId","accountId","deviceId",day)
+     SELECT d."tenantId", d."accountId", p.device_id, p.day
+     FROM (SELECT DISTINCT device_id, (fix_time AT TIME ZONE 'UTC')::date AS day
+           FROM positions WHERE device_id = $1 AND fix_time >= $2 AND fix_time < $3) p
+     JOIN devices d ON d.id = p.device_id
+     ON CONFLICT ("deviceId",day) DO NOTHING`,
+    [deviceId, fixFloor, fixCeil],
   )
   return res.rowCount ?? 0
 }

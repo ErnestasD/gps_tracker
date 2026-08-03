@@ -5,6 +5,7 @@ import type { Pool } from 'pg'
 import { erasePositions } from '@orbetra/db'
 
 import { GDPR_ERASE_QUEUE, type EraseJobData } from './gdprQueue.js'
+import { captureDeviceUsage } from './usageWorker.js'
 
 /**
  * GDPR device-erase cascade (E08-4). The api only enqueues for a RETIRED device it has
@@ -56,6 +57,11 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
   }
   if (dev.rows[0]!.tenantId !== data.tenantId) throw new Error('erase job tenant mismatch') // never delete across tenants
   if (dev.rows[0]!.retiredAt === null) throw new Error('erase requires a retired device')
+
+  // bill any un-swept days BEFORE the positions vanish (audit P4): the hourly sweep reads positions,
+  // so erasing between sweeps would drop days used since the last one. usage_daily is kept past erase
+  // (billing record), so this is the last chance to attribute them. Runs while the devices row exists.
+  await captureDeviceUsage(pool, idNum, Date.now())
 
   const positions = await erasePositions(pool, idNum)
   await pool.query(`DELETE FROM trips WHERE "deviceId" = $1`, [data.deviceId])

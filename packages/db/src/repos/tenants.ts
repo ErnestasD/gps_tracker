@@ -157,8 +157,27 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       // last applied one. A reordered stale event (older `eventAt`) or a replay (equal `eventAt`) matches
       // zero rows → no-op. Concurrent duplicates collapse: the first write advances lastBillingEventAt,
       // the second's `lt` predicate then fails. An unknown customer id also matches zero rows.
+      //
+      // Per-SUBSCRIPTION guard (audit P4): the customer-level monotonic guard alone lets a late-delivered
+      // event for an OLD subscription overwrite the tenant's CURRENT live one — e.g. resubscribe (cancel
+      // A → create B), then a delayed "A deleted" (newer eventAt) would flip the tenant to canceled and
+      // strip entitlements despite an active B. So a write from a DIFFERENT subscription is allowed ONLY
+      // when the tenant currently has no LIVE subscription (none, or a lapsed one it's free to replace).
       const result = await prisma.tenant.updateMany({
-        where: { stripeCustomerId, OR: [{ lastBillingEventAt: null }, { lastBillingEventAt: { lt: eventAt } }] },
+        where: {
+          stripeCustomerId,
+          AND: [
+            { OR: [{ lastBillingEventAt: null }, { lastBillingEventAt: { lt: eventAt } }] },
+            {
+              OR: [
+                { stripeSubscriptionId: null },
+                ...(data.stripeSubscriptionId !== null ? [{ stripeSubscriptionId: data.stripeSubscriptionId }] : []),
+                { subscriptionStatus: null },
+                { subscriptionStatus: { notIn: ['active', 'trialing'] } },
+              ],
+            },
+          ],
+        },
         data: {
           stripeSubscriptionId: data.stripeSubscriptionId,
           subscriptionStatus: data.subscriptionStatus,
