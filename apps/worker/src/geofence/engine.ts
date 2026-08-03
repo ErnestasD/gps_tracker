@@ -75,7 +75,12 @@ export class GeofenceEngine {
    * released its dedup claim on the same failure, so the re-emitted event is written, not suppressed.
    */
   rollback(transitions: readonly GeofenceTransition[]): void {
-    for (const t of transitions) {
+    // Iterate in REVERSE so that when a pair flipped MORE THAN ONCE this batch (e.g. enter then exit
+    // through a small fence), the EARLIEST transition writes LAST — its pre-side is the true PRE-BATCH
+    // side. Forward order would leave the pair on the last transition's pre-side (wrong: a lost enter +
+    // a spurious bare exit / a suppressed real re-enter). review HIGH.
+    for (let i = transitions.length - 1; i >= 0; i--) {
+      const t = transitions[i]!
       const st = this.state.get(`${t.deviceId.toString()}:${t.geofenceId}`)
       if (st === undefined) continue
       st.inside = t.type === 'exit' // pre-enter side = outside(false); pre-exit side = inside(true)

@@ -119,6 +119,21 @@ describe('E05-2 GeofenceEngine (hysteresis)', () => {
     expect(e.feed([rec(30, 5, 5)], gfFor)).toHaveLength(0) // lost
   })
 
+  it('rollback of enter+exit in ONE batch restores the true PRE-BATCH side (review HIGH)', () => {
+    const e = new GeofenceEngine()
+    // pair starts OUTSIDE; one batch does 2-inside (enter) then 2-outside (exit)
+    const evs = e.feed([rec(0, 5, 5), rec(10, 5, 5), rec(20, 50, 50), rec(30, 50, 50)], gfFor)
+    expect(evs.map((t) => t.type)).toEqual(['enter', 'exit'])
+    // both writes failed → rollback must restore pre-batch side = OUTSIDE (not the last transition's)
+    e.rollback(evs)
+    // proof: the device returns inside → a fresh ENTER fires (a forward rollback would leave the pair
+    // "inside" and SUPPRESS this, losing the enter — the exact bug the reverse iteration fixes)
+    expect(e.feed([rec(40, 5, 5)], gfFor)).toHaveLength(0) // 1st inside
+    const re = e.feed([rec(50, 5, 5)], gfFor) // 2nd → enter
+    expect(re).toHaveLength(1)
+    expect(re[0]).toMatchObject({ type: 'enter' })
+  })
+
   it('rollback restores the exit side too (device still outside re-fires the exit)', () => {
     const e = new GeofenceEngine()
     // get it confirmed-inside first (persist assumed OK here — warm-start via insideFor)
