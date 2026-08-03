@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { Hono, type Context } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import type { Redis } from 'ioredis'
 
 import type { Db } from '@orbetra/db'
@@ -28,7 +29,9 @@ export interface PartnerRouteDeps {
   getRemoteAddr: (c: unknown) => string
 }
 
-type PartnerEnv = { Variables: { partnerId: string } }
+// the affiliate row shape, derived from the repo (avoids importing @prisma/client — rule 2)
+type Affiliate = NonNullable<Awaited<ReturnType<Db['affiliates']['get']>>>
+type PartnerEnv = { Variables: { partner: Affiliate } }
 
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex')
 const DEFAULT_TTL_S = 8 * 3_600
@@ -41,21 +44,28 @@ const LOGIN_RL_MAX = 10 // failed logins per IP+email per window
 const REDEEM_RL_MAX = 30 // set-password redeem attempts per IP per window
 const RL_WINDOW_S = 3_600
 
-/** Partner-only auth guard: a valid `typ:'partner'` token → sets the affiliate id on the context. */
-function partnerAuth(jwtSecret: string) {
+/** Partner-only auth guard: a valid `typ:'partner'` token → loads the affiliate and requires it to
+ *  still be ACTIVE (review MED — so suspending a partner takes effect immediately, not at token TTL,
+ *  and a deleted affiliate can't keep reading). The loaded row is put on the context for reuse. */
+function partnerAuth(deps: PartnerRouteDeps) {
   return async (c: Context<PartnerEnv>, next: () => Promise<void>) => {
     const header = c.req.header('authorization') ?? ''
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
     if (token === '') return problem(c, 401, 'Unauthorized')
-    const claims = await verifyPartnerToken(token, jwtSecret)
+    const claims = await verifyPartnerToken(token, deps.jwtSecret)
     if (claims === null) return problem(c, 401, 'Unauthorized')
-    c.set('partnerId', claims.sub)
+    const partner = await deps.db.affiliates.get(claims.sub)
+    if (partner === null || partner.status !== 'active') return problem(c, 401, 'Unauthorized')
+    c.set('partner', partner)
     await next()
   }
 }
 
 export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
   const app = new Hono<PartnerEnv>()
+  // tiny bodies (email/token/password) — cap the unauthenticated POSTs so an oversized body can't
+  // amplify memory (review LOW: these mount before the global /v1/* limiter, so they need their own)
+  app.use('/v1/partner/*', bodyLimit({ maxSize: 64 * 1024 }))
   const ttlS = deps.partnerTtlS ?? DEFAULT_TTL_S
   const ip = (c: Context) => clientIp(c.req.header('x-forwarded-for'), deps.getRemoteAddr(c), deps.trustProxy)
 
@@ -93,17 +103,19 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     }
     const parsed = partnerSetPasswordSchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return problem(c, 400, 'Bad Request', 'invalid token or password')
-    const affiliateId = await deps.db.affiliates.consumePwToken(sha256(parsed.data.token), new Date())
+    const now = new Date()
+    const affiliateId = await deps.db.affiliates.consumePwToken(sha256(parsed.data.token), now)
     if (affiliateId === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
     await deps.db.affiliates.setPassword(affiliateId, await hashPassword(parsed.data.password))
+    // burn any sibling outstanding tokens so only the newest link ever worked (review LOW)
+    await deps.db.affiliates.invalidatePwTokens(affiliateId, now)
     c.header('Cache-Control', 'no-store')
     return c.json({ ok: true })
   })
 
   // ── PARTNER-AUTH: the partner's own profile + commissions ────────────────────
-  app.get('/v1/partner/me', partnerAuth(deps.jwtSecret), async (c) => {
-    const partner = await deps.db.affiliates.get(c.get('partnerId'))
-    if (partner === null) return problem(c, 401, 'Unauthorized')
+  app.get('/v1/partner/me', partnerAuth(deps), (c) => {
+    const partner = c.get('partner')
     c.header('Cache-Control', 'no-store')
     // never leak the hash; expose only the partner-facing fields
     return c.json({
@@ -113,8 +125,8 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     })
   })
 
-  app.get('/v1/partner/commissions', partnerAuth(deps.jwtSecret), async (c) => {
-    const rows = await deps.db.affiliates.listCommissions(c.get('partnerId'))
+  app.get('/v1/partner/commissions', partnerAuth(deps), async (c) => {
+    const rows = await deps.db.affiliates.listCommissions(c.get('partner').id)
     c.header('Cache-Control', 'no-store')
     return c.json(rows.map((r) => ({
       id: r.id, amountCents: r.amountCents, currency: r.currency, status: r.status,

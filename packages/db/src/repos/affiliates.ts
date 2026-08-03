@@ -103,6 +103,8 @@ export interface AffiliateRepo {
   createPwToken(affiliateId: string, tokenHash: string, expiresAt: Date): Promise<void>
   /** Consume a token atomically (single-use, unexpired) → the affiliate id, or null. */
   consumePwToken(tokenHash: string, now: Date): Promise<string | null>
+  /** Burn every still-unused token for an affiliate (after a successful set, so no sibling link works). */
+  invalidatePwTokens(affiliateId: string, now: Date): Promise<void>
 }
 
 export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
@@ -192,6 +194,9 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
         select: { affiliateId: true },
       })
       return claimed[0]?.affiliateId ?? null
+    },
+    invalidatePwTokens: async (affiliateId, now) => {
+      await prisma.affiliatePasswordToken.updateMany({ where: { affiliateId, usedAt: null }, data: { usedAt: now } })
     },
   }
 }

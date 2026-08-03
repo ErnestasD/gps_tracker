@@ -132,6 +132,16 @@ describe('partner self-service auth (F5)', () => {
     expect((await login(sus.email, sus.password)).status).toBe(401)
   })
 
+  it('suspending a partner AFTER login revokes its live token immediately (review MED)', async () => {
+    const p = await makePartner('revoke@partner.co', 'partnerpass1')
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    expect((await j('/v1/partner/me', 'GET', undefined, bearer(tok))).status).toBe(200)
+    await admin(`/v1/affiliates/${p.id}`, 'PATCH', { status: 'suspended' })
+    // the still-unexpired token no longer works — the guard re-checks live status
+    expect((await j('/v1/partner/me', 'GET', undefined, bearer(tok))).status).toBe(401)
+    expect((await j('/v1/partner/commissions', 'GET', undefined, bearer(tok))).status).toBe(401)
+  })
+
   it('a set-password token is single-use and rejects garbage', async () => {
     const a = (await (await admin('/v1/affiliates', 'POST', { name: 'Once', email: 'once@partner.co' })).json()) as { id: string }
     const { token } = (await (await admin(`/v1/affiliates/${a.id}/set-password-token`, 'POST')).json()) as { token: string }

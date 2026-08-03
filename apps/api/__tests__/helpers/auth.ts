@@ -54,7 +54,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
       },
     },
     tenants: { list: notImpl, get: notImpl, getPlan: notImpl, getEntitlements: notImpl, create: notImpl, update: notImpl, remove: notImpl, updateBranding: notImpl, getBilling: notImpl, setStripeCustomer: notImpl, applySubscriptionEvent: notImpl, listActiveSubscribers: notImpl },
-    affiliates: { list: notImpl, get: notImpl, getActiveByCode: notImpl, create: notImpl, update: notImpl, accrueCommission: notImpl, accrueForPaidInvoice: notImpl, listCommissions: notImpl, setCommissionStatus: notImpl, findByEmailForAuth: notImpl, setPassword: notImpl, createPwToken: notImpl, consumePwToken: notImpl },
+    affiliates: { list: notImpl, get: notImpl, getActiveByCode: notImpl, create: notImpl, update: notImpl, accrueCommission: notImpl, accrueForPaidInvoice: notImpl, listCommissions: notImpl, setCommissionStatus: notImpl, findByEmailForAuth: notImpl, setPassword: notImpl, createPwToken: notImpl, consumePwToken: notImpl, invalidatePwTokens: notImpl },
     tenantDomains: { list: notImpl, get: notImpl, create: notImpl, remove: notImpl, setVerified: notImpl, isVerifiedDomain: notImpl, tenantIdForDomain: notImpl },
     accounts: repo,
     users: repo,
