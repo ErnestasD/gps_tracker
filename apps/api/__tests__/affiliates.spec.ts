@@ -137,4 +137,19 @@ describe('affiliate management API (platform)', () => {
   it('404s marking an unknown commission paid', async () => {
     expect((await req('/v1/commissions/00000000-0000-0000-0000-0000000000ff', platformToken, 'PATCH', { status: 'paid' })).status).toBe(404)
   })
+
+  it('attributes a new tenant to an ACTIVE referral code; an unknown/inactive code attributes to no one', async () => {
+    const created = (await (await req('/v1/affiliates', platformToken, 'POST', { name: 'Attr Co', email: 'attr@partner.co', code: 'ATTR-1' })).json()) as { id: string }
+    // pending code → no attribution (getActiveByCode only matches active)
+    const pendingRef = (await (await req('/v1/tenants', platformToken, 'POST', { name: 'T pending ref', ref: 'ATTR-1' })).json()) as { referredByAffiliateId: string | null }
+    expect(pendingRef.referredByAffiliateId).toBeNull()
+    // activate → the same code now attributes
+    await req(`/v1/affiliates/${created.id}`, platformToken, 'PATCH', { status: 'active' })
+    const active = (await (await req('/v1/tenants', platformToken, 'POST', { name: 'T active ref', ref: 'ATTR-1' })).json()) as { referredByAffiliateId: string | null }
+    expect(active.referredByAffiliateId).toBe(created.id)
+    // an unknown code is NOT an error — the tenant is created, attributed to no one
+    const unknown = await req('/v1/tenants', platformToken, 'POST', { name: 'T no ref', ref: 'NOSUCHCODE' })
+    expect(unknown.status).toBe(201)
+    expect(((await unknown.json()) as { referredByAffiliateId: string | null }).referredByAffiliateId).toBeNull()
+  })
 })

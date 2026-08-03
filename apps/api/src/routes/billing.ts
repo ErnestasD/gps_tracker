@@ -1,7 +1,7 @@
 import type { Hono } from 'hono'
 import type { Redis } from 'ioredis'
 
-import type { Db, SubscriptionUpdate } from '@orbetra/db'
+import type { Db, PaidInvoice, SubscriptionUpdate } from '@orbetra/db'
 import type { BillingPlanView, BillingView, Role } from '@orbetra/shared'
 
 import type { StripeGateway } from '../billing/stripe.js'
@@ -192,6 +192,17 @@ function subscriptionFrom(obj: Record<string, unknown>, allowlist: readonly stri
 
 const SUBSCRIPTION_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted'])
 
+/** Map a Stripe Invoice resource → the fields the affiliate accrual needs. Null when any required
+ *  field is missing/zero (a $0 invoice owes no commission) so we never accrue on garbage. */
+function paidInvoiceFrom(obj: Record<string, unknown>, paidAt: Date): PaidInvoice | null {
+  const stripeCustomerId = typeof obj['customer'] === 'string' && obj['customer'] !== '' ? obj['customer'] : null
+  const invoiceId = typeof obj['id'] === 'string' && obj['id'] !== '' ? obj['id'] : null
+  const amountPaidCents = typeof obj['amount_paid'] === 'number' ? obj['amount_paid'] : 0
+  const currency = typeof obj['currency'] === 'string' && obj['currency'] !== '' ? obj['currency'] : 'eur'
+  if (stripeCustomerId === null || invoiceId === null || amountPaidCents <= 0) return null
+  return { stripeCustomerId, invoiceId, amountPaidCents, currency, paidAt }
+}
+
 /**
  * PUBLIC Stripe webhook — MUST be registered before the /v1/* auth guard (Stripe carries no JWT).
  * The raw body is required for signature verification; an invalid signature ⇒ 400 with NO state
@@ -225,8 +236,22 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
         if (plan !== undefined) mapped.update.plan = plan
         await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
       }
+    } else if (event.type === 'invoice.payment_succeeded') {
+      // affiliate commissions (F4): a referred tenant paid → accrue the partner's cut. BEST-EFFORT —
+      // a failure here must NOT 500 the webhook (that would make Stripe retry the whole event and, more
+      // importantly, isn't the authoritative subscription path). Idempotent on the invoice id, so the
+      // occasional retry is safe. The repo owns the referral/window/rate resolution (rule 2).
+      const paid = paidInvoiceFrom(event.data.object, new Date(event.created * 1000))
+      if (paid !== null) {
+        try {
+          await deps.db.affiliates.accrueForPaidInvoice(paid)
+        } catch (err) {
+          console.error('affiliate commission accrual failed', paid.invoiceId, err)
+        }
+      }
     }
-    // other event types (checkout.session.completed, invoice.*) are acked; subscription.* is authoritative
+    // other event types (checkout.session.completed, invoice.payment_failed, …) are acked; the
+    // subscription.* events remain authoritative for plan/status.
     return c.text('ok', 200)
   })
 }

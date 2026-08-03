@@ -48,6 +48,27 @@ export interface CommissionAccrual {
   sourceInvoiceId: string
 }
 
+/** A settled Stripe invoice for a referred tenant — the webhook hands this to accrueForPaidInvoice,
+ *  which resolves the referral + window + rate and accrues a commission idempotently. */
+export interface PaidInvoice {
+  stripeCustomerId: string
+  invoiceId: string
+  amountPaidCents: number
+  currency: string
+  /** the payment time (Stripe event.created) — the window is measured against THIS, not the server clock */
+  paidAt: Date
+}
+
+/** Add whole months in UTC, clamping to the last valid day (e.g. Jan-31 +1mo → Feb-28). The commission
+ *  window is month-coarse, so UTC month math is exact enough (no DST/render-zone concern — rule #7). */
+function addMonthsUtc(d: Date, months: number): Date {
+  const y = d.getUTCFullYear()
+  const m = d.getUTCMonth() + months
+  const day = d.getUTCDate()
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate() // day 0 of next month = last day of target
+  return new Date(Date.UTC(y, m, Math.min(day, lastDay), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()))
+}
+
 /**
  * Affiliate/partner program repo (W9) — PLATFORM level (only platform_admin reaches the management
  * routes), so like the tenants repo it takes an Actor for audit but NO tenant scope. `getByCode` is
@@ -63,6 +84,13 @@ export interface AffiliateRepo {
   update(actor: Actor, id: string, data: AffiliateUpdate): Promise<Affiliate | null>
   /** Accrue a commission, idempotent on sourceInvoiceId (a webhook retry is a no-op → returns null). */
   accrueCommission(data: CommissionAccrual): Promise<Commission | null>
+  /**
+   * Webhook path (F4): a referred tenant paid an invoice → accrue the partner's commission. Returns
+   * the Commission, or null when nothing is owed: no referral, the affiliate isn't active, the payment
+   * falls OUTSIDE the commissionMonths window (measured from the tenant's createdAt), a non-positive
+   * amount, or a duplicate invoice (idempotent). All lookups + window math live here (rule 2).
+   */
+  accrueForPaidInvoice(invoice: PaidInvoice): Promise<Commission | null>
   listCommissions(affiliateId?: string): Promise<Commission[]>
   setCommissionStatus(id: string, status: CommissionStatus): Promise<Commission | null>
 }
@@ -100,6 +128,27 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
         return await prisma.commission.create({ data })
       } catch {
         return null // unique violation on sourceInvoiceId ⇒ already accrued
+      }
+    },
+    accrueForPaidInvoice: async (invoice) => {
+      const tenant = await prisma.tenant.findFirst({
+        where: { stripeCustomerId: invoice.stripeCustomerId },
+        select: { id: true, referredByAffiliateId: true, createdAt: true },
+      })
+      if (tenant === null || tenant.referredByAffiliateId === null) return null // not a referred tenant
+      const affiliate = await prisma.affiliate.findUnique({ where: { id: tenant.referredByAffiliateId } })
+      if (affiliate === null || affiliate.status !== 'active') return null // suspended/pending ⇒ commissions stop
+      // window: commissions accrue for commissionMonths from the tenant's signup (createdAt)
+      if (invoice.paidAt > addMonthsUtc(tenant.createdAt, affiliate.commissionMonths)) return null
+      const amountCents = Math.floor((invoice.amountPaidCents * Number(affiliate.commissionPct)) / 100)
+      if (amountCents <= 0) return null // a $0 invoice / 100%-discount / zero-rate owes nothing
+      // idempotent on the invoice id — a webhook retry is a no-op
+      try {
+        return await prisma.commission.create({
+          data: { affiliateId: affiliate.id, tenantId: tenant.id, amountCents, currency: invoice.currency, sourceInvoiceId: invoice.invoiceId },
+        })
+      } catch {
+        return null
       }
     },
     listCommissions: (affiliateId) =>

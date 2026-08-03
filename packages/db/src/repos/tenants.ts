@@ -10,6 +10,9 @@ export interface TenantCreate {
   branding?: unknown
   /** entitlement tier; omitted ⇒ DB default (tsp_grow). platform_admin sets TSP tiers at create. */
   plan?: TenantPlan
+  /** referral attribution (item 5): the affiliate this tenant signed up under. Resolved from an
+   *  ACTIVE referral code by the caller; commissions accrue from this tenant's payments (F4). */
+  referredByAffiliateId?: string | null
 }
 export interface TenantUpdate {
   name?: string
@@ -100,6 +103,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           name: data.name,
           branding: (data.branding ?? {}) as never,
           ...(data.plan !== undefined ? { plan: data.plan } : {}),
+          ...(data.referredByAffiliateId != null ? { referredByAffiliateId: data.referredByAffiliateId } : {}),
         },
       })
       await audit.record({ tenantId: row.id }, actor, { action: 'create', entity: 'tenant', entityId: row.id, after: row })
