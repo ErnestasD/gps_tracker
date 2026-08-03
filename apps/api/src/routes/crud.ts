@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { AccountHasUsersError, DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { AccountHasUsersError, AffiliateConflictError, DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -1253,12 +1253,21 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, affiliateCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
-        try {
-          const created = await db.affiliates.create({ userId: auth(c).userId }, { ...data, code: data.code ?? genAffiliateCode() })
-          return json(c, created, 201)
-        } catch {
-          // unique violation on email or code (P2002) — a partner/code already exists
-          return problem(c, 409, 'Conflict', 'affiliate_exists')
+        const autoCode = data.code === undefined // an auto-generated code collision is retryable
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const created = await db.affiliates.create({ userId: auth(c).userId }, { ...data, code: data.code ?? genAffiliateCode() })
+            return json(c, created, 201)
+          } catch (err) {
+            // ONLY a real unique clash → 409; any other error propagates to the 500 net (review MED:
+            // a bare catch masked DB outages as "already exists"). An email clash is never retryable;
+            // an auto-generated-code clash is (regenerate a few times before giving up — review LOW).
+            if (err instanceof AffiliateConflictError) {
+              if (err.field === 'code' && autoCode && attempt < 4) continue
+              return problem(c, 409, 'Conflict', err.field === 'email' ? 'email_in_use' : 'code_in_use')
+            }
+            throw err
+          }
         }
       } },
     { method: 'patch', path: '/v1/affiliates/:id', scopeClass: 'platform', entity: 'affiliate', shape: 'item',

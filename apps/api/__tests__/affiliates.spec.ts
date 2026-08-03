@@ -112,6 +112,13 @@ describe('affiliate management API (platform)', () => {
     expect((await req('/v1/affiliates', platformToken, 'POST', { name: 'Dup2', email: 'beta@partner.co', code: 'OTHER-1' })).status).toBe(409)
   })
 
+  it('rejects out-of-range commission terms (400, not a silent clamp)', async () => {
+    expect((await req('/v1/affiliates', platformToken, 'POST', { name: 'Bad', email: 'bad@partner.co', commissionPct: 150 })).status).toBe(400)
+    expect((await req('/v1/affiliates', platformToken, 'POST', { name: 'Bad', email: 'bad2@partner.co', commissionMonths: 0 })).status).toBe(400)
+    // a bad code charset is also rejected
+    expect((await req('/v1/affiliates', platformToken, 'POST', { name: 'Bad', email: 'bad3@partner.co', code: 'has space' })).status).toBe(400)
+  })
+
   it('activates a partner (status change) and 404s an unknown id', async () => {
     const a = (await (await req('/v1/affiliates', platformToken, 'POST', { name: 'Gamma', email: 'gamma@partner.co' })).json()) as { id: string }
     const patched = await req(`/v1/affiliates/${a.id}`, platformToken, 'PATCH', { status: 'active' })

@@ -1,6 +1,29 @@
 import type { Affiliate, AffiliateStatus, Commission, CommissionStatus, PrismaClient } from '@prisma/client'
 
+import { isUniqueViolation } from '../errors.js'
 import type { Actor } from '../scope.js'
+
+/**
+ * A unique-constraint clash on create: `field` says WHICH one (email/code) so the caller can react
+ * — an auto-generated code collision is retryable (regenerate), an email clash never is. Mapped to
+ * 409 by the route; ANY other error propagates to the API's 500 net (rule 2 — apps/* can't import
+ * @prisma/client, so the repo owns the P2002 → domain-error translation, mirroring DuplicateImeiError).
+ */
+export class AffiliateConflictError extends Error {
+  constructor(readonly field: 'email' | 'code' | 'other') {
+    super(`affiliate ${field} already in use`)
+    this.name = 'AffiliateConflictError'
+  }
+}
+// P2002 tells us which unique index clashed via meta.target — inspect it to pick the field
+const conflictField = (err: unknown): 'email' | 'code' | 'other' => {
+  // Prisma P2002 meta.target is a string OR string[] (e.g. ['email'] or 'affiliates_code_key')
+  const raw = (err as { meta?: { target?: unknown } }).meta?.target
+  const target = (Array.isArray(raw) ? raw.join(',') : typeof raw === 'string' ? raw : '').toLowerCase()
+  if (target.includes('email')) return 'email'
+  if (target.includes('code')) return 'code'
+  return 'other'
+}
 
 export interface AffiliateCreate {
   name: string
@@ -49,16 +72,22 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
     list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' } }),
     get: (id) => prisma.affiliate.findUnique({ where: { id } }),
     getActiveByCode: (code) => prisma.affiliate.findFirst({ where: { code, status: 'active' } }),
-    create: (_actor, data) =>
-      prisma.affiliate.create({
-        data: {
-          name: data.name,
-          email: data.email,
-          code: data.code,
-          ...(data.commissionPct !== undefined ? { commissionPct: data.commissionPct } : {}),
-          ...(data.commissionMonths !== undefined ? { commissionMonths: data.commissionMonths } : {}),
-        },
-      }),
+    create: async (_actor, data) => {
+      try {
+        return await prisma.affiliate.create({
+          data: {
+            name: data.name,
+            email: data.email,
+            code: data.code,
+            ...(data.commissionPct !== undefined ? { commissionPct: data.commissionPct } : {}),
+            ...(data.commissionMonths !== undefined ? { commissionMonths: data.commissionMonths } : {}),
+          },
+        })
+      } catch (err) {
+        if (isUniqueViolation(err)) throw new AffiliateConflictError(conflictField(err))
+        throw err // a real DB fault must reach the API's 500 net, NOT masquerade as a conflict
+      }
+    },
     update: async (_actor, id, data) => {
       const before = await prisma.affiliate.findUnique({ where: { id } })
       if (before === null) return null
