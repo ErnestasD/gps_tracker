@@ -5,7 +5,7 @@ export { createAuthDb, buildAuthMethods, UNSCOPED_AUTH_METHODS, type AuthDb, typ
 export { createDb, type Db } from './db.js'
 
 export { type Scope, type Actor, scopedWhere, NotInScopeError } from './scope.js'
-export { type AccountRepo, type AccountCreate, type AccountUpdate } from './repos/accounts.js'
+export { AccountHasUsersError, type AccountRepo, type AccountCreate, type AccountUpdate } from './repos/accounts.js'
 export { type UserRepo, type UserView, type UserCreate, type UserUpdate } from './repos/users.js'
 export { DuplicateImeiError, type DeviceRepo, type DeviceCreate, type DeviceUpdate } from './repos/devices.js'
 export { DriverIbuttonConflictError, type DriverRepo, type DriverCreate, type DriverUpdate } from './repos/drivers.js'
