@@ -106,6 +106,23 @@ export class RuleEngine {
     return this.io.get(deviceId.toString())
   }
 
+  /**
+   * Roll the in-memory last-IO back to a captured PRE-feed snapshot when this batch's rule-event
+   * persist FAILED (audit C1). Without it the engine's last-IO has advanced past durable state, so a
+   * SUSTAINED edge (power_cut still cut, unplug still out, low_battery still low) is never re-detected
+   * and the alert is lost. `preFeed` holds the pre-feed value for devices already tracked; a device
+   * first-seen THIS batch has no prior → delete it so the next batch re-warm-starts from durable
+   * state (which was NOT advanced, since saveIoState is skipped on failure). lastSeen is intentionally
+   * NOT rewound — the records really were processed; only edge detection must re-run.
+   */
+  rollbackIo(preFeed: ReadonlyMap<string, DeviceIo>, devices: readonly string[]): void {
+    for (const dev of devices) {
+      const prior = preFeed.get(dev)
+      if (prior !== undefined) this.io.set(dev, prior)
+      else this.io.delete(dev)
+    }
+  }
+
   private evaluate(rule: RuleDef, r: NormalizedRecord, prev: DeviceIo, cur: DeviceIo, firedLevel: Set<string>, dev: string): RuleEvent | null {
     const levelKey = `${rule.id}:${dev}`
     switch (rule.kind) {

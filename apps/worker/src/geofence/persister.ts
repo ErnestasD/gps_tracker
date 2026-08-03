@@ -99,7 +99,17 @@ export class GeofenceEventPersister {
       if (claimedKeys.length > 0) await this.redis.del(...claimedKeys).catch(() => undefined)
       throw err
     }
-    await statePipe.exec()
+    // the authoritative `events` rows are now DURABLE. The durable confirmed-side marker is a
+    // best-effort restart optimisation (MED-1 warm-start) — a failure updating it must NOT propagate
+    // as a persist failure, or the caller would roll the engine back and RE-FIRE this crossing next
+    // batch at a new instant → a SECOND event row + webhook for the same physical crossing (review
+    // MED). The stale marker self-reconciles on the next successful crossing; only a restart in the
+    // gap would warm-start stale, which the in-memory (correct) state already covers until then.
+    try {
+      await statePipe.exec()
+    } catch (err) {
+      console.error('geofenceState', err)
+    }
     return fresh
   }
 }

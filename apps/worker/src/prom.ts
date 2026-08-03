@@ -21,6 +21,9 @@ export interface WorkerProm {
   tripRecomputeDeleted: Counter
   geofenceEvents: Counter
   ruleEvents: Counter
+  /** geofence/rule transition writes that failed → in-memory engine state rolled back so a
+   *  sustained crossing/edge re-fires from the next batch (audit C1). Non-zero rate ⇒ alert. */
+  enginePersistErrors: Counter
   notificationSent: Counter
   notificationFailed: Counter
   notificationSkipped: Counter
@@ -80,6 +83,9 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const tripRecomputeDeleted = new Counter({ name: 'trip_recompute_deleted_total', help: 'trip rows deleted-and-replayed by recompute', registers: [registry] })
   const geofenceEvents = new Counter({ name: 'geofence_events_total', help: 'geofence enter/exit transition events written (E05-2)', registers: [registry] })
   const ruleEvents = new Counter({ name: 'rule_events_total', help: 'rule events written by kind (E05-4)', labelNames: ['kind'], registers: [registry] })
+  // a transient DB error persisting a geofence/rule transition rolls back in-memory engine state so
+  // a SUSTAINED crossing/edge re-fires next batch (audit C1). Non-zero rate ⇒ investigate the DB.
+  const enginePersistErrors = new Counter({ name: 'engine_persist_errors_total', help: 'geofence/rule transition writes that failed → engine state rolled back for re-fire (audit C1)', labelNames: ['engine'], registers: [registry] })
   const notificationSent = new Counter({ name: 'notification_sent_total', help: 'notifications delivered by channel (E05-5)', labelNames: ['channel'], registers: [registry] })
   const notificationFailed = new Counter({ name: 'notification_failed_total', help: 'notification delivery failures by channel (retried by BullMQ)', labelNames: ['channel'], registers: [registry] })
   const notificationSkipped = new Counter({ name: 'notification_skipped_total', help: 'notifications skipped by reason (e.g. unconfigured channel)', labelNames: ['reason'], registers: [registry] })
@@ -115,5 +121,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }
