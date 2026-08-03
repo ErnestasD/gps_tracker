@@ -81,6 +81,12 @@ const subEvent = (id: string, customer: string, type: string, status: string, cr
   data: { object: { id: `sub_${customer}`, customer, status, current_period_end: periodEnd, items: { data: [{ price: { id: 'price_test' } }] } } },
 })
 
+// an invoice.payment_succeeded event (F4 affiliate accrual): amount_paid in cents, one per invoice id
+const invoiceEvent = (id: string, customer: string, invoiceId: string, amountPaid: number, created = 1_700_000_000): StripeEvent => ({
+  id, type: 'invoice.payment_succeeded', created,
+  data: { object: { id: invoiceId, customer, amount_paid: amountPaid, currency: 'eur' } },
+})
+
 beforeAll(async () => {
   ;[pg, redisC] = await Promise.all([
     new GenericContainer(PG_IMAGE)
@@ -293,6 +299,31 @@ describe('billing lifecycle (ADR-024)', () => {
   it('an unknown customer id in a webhook is a safe no-op', async () => {
     const res = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_unknown', 'cus_ghost', 'customer.subscription.updated', 'active'), { 'stripe-signature': 'valid' })
     expect(res.status).toBe(200) // acked, but nothing to update
+  })
+
+  it('invoice.payment_succeeded accrues the affiliate commission for a referred tenant (F4), idempotently', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-0000000000f4' }
+    const aff = await db.affiliates.create(actor, { name: 'Webhook Partner', email: 'wh@partner.co', code: 'WHOOK1', commissionPct: 20, commissionMonths: 12 })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
+    const tenant = await db.tenants.create(actor, { name: 'Referred via webhook', referredByAffiliateId: aff.id })
+    await db.tenants.setStripeCustomer(tenant.id, 'cus_whook')
+
+    const ok = await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_inv_1', 'cus_whook', 'in_whook_1', 5_000), { 'stripe-signature': 'valid' })
+    expect(ok.status).toBe(200)
+    const after = await db.affiliates.listCommissions(aff.id)
+    expect(after).toHaveLength(1)
+    expect(after[0]).toMatchObject({ amountCents: 1_000, tenantId: tenant.id, sourceInvoiceId: 'in_whook_1', status: 'pending' }) // 20% of 50.00
+
+    // a duplicate delivery of the SAME invoice does NOT double-accrue
+    await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_inv_1b', 'cus_whook', 'in_whook_1', 5_000), { 'stripe-signature': 'valid' })
+    expect(await db.affiliates.listCommissions(aff.id)).toHaveLength(1)
+  })
+
+  it('invoice.payment_succeeded for an UNREFERRED tenant accrues nothing (safe no-op)', async () => {
+    const tenant = await db.tenants.create({ userId: '00000000-0000-0000-0000-0000000000f4' }, { name: 'Plain via webhook' })
+    await db.tenants.setStripeCustomer(tenant.id, 'cus_plainwh')
+    const ok = await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_inv_2', 'cus_plainwh', 'in_plain_1', 5_000), { 'stripe-signature': 'valid' })
+    expect(ok.status).toBe(200) // acked, no commission anywhere
   })
 
   it('billing is admin-only — a viewer is forbidden', async () => {

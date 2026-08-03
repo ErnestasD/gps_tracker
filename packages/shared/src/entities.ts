@@ -338,6 +338,10 @@ export const tenantCreateSchema = z.object({
   // platform_admin may set the entitlement tier at creation (e.g. a sales-provisioned TSP plan);
   // the manifest handler spreads this into db.tenants.create, which is plan-aware (WP1).
   plan: tenantPlanSchema.optional(),
+  // affiliate attribution (item 5): a referral code the tenant signed up under. The handler resolves
+  // it to an ACTIVE affiliate → referredByAffiliateId; an unknown/inactive code attributes to no one
+  // (never an error — a bad ref must not block provisioning, esp. on the future public signup path).
+  ref: affiliateCodeSchema.optional(),
 })
 // .partial() propagates `plan` as optional here too (PATCH /v1/tenants — platform_admin only).
 export const tenantUpdateSchema = tenantCreateSchema.partial()

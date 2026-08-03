@@ -1203,7 +1203,11 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, tenantCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
-        return json(c, await db.tenants.create({ userId: auth(c).userId }, data), 201)
+        const { ref, ...rest } = data
+        // resolve a referral code → an ACTIVE affiliate; an unknown/inactive code attributes to no one
+        // (never a 400 — a bad ref must not block tenant provisioning, incl. the future public signup)
+        const referredByAffiliateId = ref !== undefined ? (await db.affiliates.getActiveByCode(ref))?.id ?? null : null
+        return json(c, await db.tenants.create({ userId: auth(c).userId }, { ...rest, referredByAffiliateId }), 201)
       } },
     { method: 'patch', path: '/v1/tenants/:id', scopeClass: 'platform', entity: 'tenant', shape: 'item',
       handler: async (c) => {

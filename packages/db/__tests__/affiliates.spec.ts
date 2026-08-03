@@ -84,4 +84,69 @@ describe('affiliates repo', () => {
     const paid = await db.affiliates.setCommissionStatus(c1!.id, 'paid')
     expect(paid?.status).toBe('paid')
   })
+
+  describe('accrueForPaidInvoice (F4 webhook path)', () => {
+    it('accrues the partner cut for a referred tenant within the window, idempotently', async () => {
+      const aff = await db.affiliates.create(actor, { name: 'Win Co', email: 'win@partner.co', code: 'WINC1', commissionPct: 20, commissionMonths: 12 })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Win Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_win')
+
+      const now = new Date()
+      const c = await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_win', invoiceId: 'in_win_1', amountPaidCents: 10_000, currency: 'eur', paidAt: now })
+      expect(c?.amountCents).toBe(2_000) // 20% of 100.00
+      expect(c?.affiliateId).toBe(aff.id)
+      expect(c?.tenantId).toBe(tenant.id)
+      // a duplicate invoice delivery is a no-op
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_win', invoiceId: 'in_win_1', amountPaidCents: 10_000, currency: 'eur', paidAt: now })).toBeNull()
+      expect(await db.affiliates.listCommissions(aff.id)).toHaveLength(1)
+    })
+
+    it('windows from the FIRST payment: the first always accrues; a later one past commissionMonths does not', async () => {
+      const aff = await db.affiliates.create(actor, { name: 'Exp Co', email: 'exp@partner.co', code: 'EXPC1', commissionMonths: 6 })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Exp Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_exp')
+      // the FIRST payment always accrues (a trial delaying it must NOT shrink the window)
+      const firstPaidAt = new Date(Date.now() + 2 * 31 * 24 * 3600 * 1000) // 2 months after signup
+      const c1 = await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_exp', invoiceId: 'in_exp_1', amountPaidCents: 10_000, currency: 'eur', paidAt: firstPaidAt })
+      expect(c1?.amountCents).toBe(2_000)
+      // a payment 7 months AFTER the first is outside the 6-month window (anchored on the first)
+      const late = new Date(c1!.createdAt.getTime() + 7 * 31 * 24 * 3600 * 1000)
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_exp', invoiceId: 'in_exp_2', amountPaidCents: 10_000, currency: 'eur', paidAt: late })).toBeNull()
+    })
+
+    it('resolves a referral code case-insensitively (?ref=whook1 → stored WHOOK1)', async () => {
+      const aff = await db.affiliates.create(actor, { name: 'Case Co', email: 'case@partner.co', code: 'WHOOK1' })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      expect((await db.affiliates.getActiveByCode('whook1'))?.id).toBe(aff.id)
+      expect((await db.affiliates.getActiveByCode('WhOoK1'))?.id).toBe(aff.id)
+    })
+
+    it('floors a fractional commission rate in the platform’s favour', async () => {
+      const aff = await db.affiliates.create(actor, { name: 'Frac Co', email: 'frac@partner.co', code: 'FRACC1', commissionPct: 33.33, commissionMonths: 12 })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Frac Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_frac')
+      // 33.33% of 100.00 = 33.33 → floor to 3333 cents
+      const c = await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_frac', invoiceId: 'in_frac_1', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })
+      expect(c?.amountCents).toBe(3_333)
+    })
+
+    it('does NOT accrue for an unreferred tenant, a suspended affiliate, or a $0 invoice', async () => {
+      // unreferred tenant
+      const plain = await db.tenants.create(actor, { name: 'Plain Tenant' })
+      await db.tenants.setStripeCustomer(plain.id, 'cus_plain')
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_plain', invoiceId: 'in_p_1', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })).toBeNull()
+      // unknown customer
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_nope', invoiceId: 'in_x', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })).toBeNull()
+      // suspended affiliate ⇒ commissions stop
+      const aff = await db.affiliates.create(actor, { name: 'Sus Co', email: 'sus@partner.co', code: 'SUSC1' })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Sus Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_sus')
+      await db.affiliates.update(actor, aff.id, { status: 'suspended' })
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_sus', invoiceId: 'in_sus_1', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })).toBeNull()
+    })
+  })
 })
