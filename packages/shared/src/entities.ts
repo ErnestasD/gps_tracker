@@ -230,7 +230,7 @@ export const pilotRequestSchema = z.object({
   deviceCount: z.string().max(40).optional().or(z.literal('')),
   message: z.string().max(2000).optional().or(z.literal('')),
   hp_field: z.string().max(200).optional().or(z.literal('')),
-  ref: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
+  ref: z.string().regex(/^[a-zA-Z0-9-]{1,64}$/).optional(), // no `_`: LIKE wildcard, see affiliateCodeSchema
 })
 export type PilotRequestInput = z.infer<typeof pilotRequestSchema>
 
@@ -238,7 +238,11 @@ export type PilotRequestInput = z.infer<typeof pilotRequestSchema>
 // Platform-level (platform_admin) partner management. Invite-only: an admin creates the affiliate
 // (a `code` is auto-generated when omitted) then flips status → active to make it attribute.
 // Same charset as pilotRequest `ref` so a referral code is a legal ?ref value end-to-end.
-export const affiliateCodeSchema = z.string().regex(/^[a-zA-Z0-9_-]{3,64}$/)
+// No `_`: it is a SQL LIKE single-character wildcard, and referral codes are matched against the
+// database. The lookup uses exact `lower(code) =` equality (not ILIKE) so this is belt-and-braces,
+// but a code that can never be a wildcard is one less way to misroute commission money. `-` is kept
+// (not a LIKE metacharacter) and the auto-generated alphabet is alphanumeric anyway.
+export const affiliateCodeSchema = z.string().regex(/^[a-zA-Z0-9-]{3,64}$/)
 export const affiliateStatusSchema = z.enum(['pending', 'active', 'suspended'])
 export const commissionStatusSchema = z.enum(['pending', 'paid', 'void'])
 

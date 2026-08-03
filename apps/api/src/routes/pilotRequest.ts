@@ -11,7 +11,8 @@ import { clientIp } from '../net.js'
 
 /**
  * PUBLIC pilot-request endpoint (W9-S1, §6.6/§6.9) — the marketing site's only form and
- * the platform's ONLY unauthenticated write. Registered BEFORE the auth middleware;
+ * one of the platform's two unauthenticated writes (the other is /v1/public/signup).
+ * Registered BEFORE the auth middleware;
  * manifest-EXEMPT. Abuse posture:
  *  - HONEYPOT: a non-empty `hp_field` gets the SAME 201 shape as success (random id,
  *    nothing stored) so a bot can't A/B-detect the trap or its field name (review MED).

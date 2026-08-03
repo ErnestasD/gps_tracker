@@ -114,7 +114,7 @@ const toAuthUser = (u: AuthUserRow): AuthUser => ({
   plan: u.plan,
   // TRIAL-AWARE hint: the same helper the authoritative server gate uses, so an expired self-serve
   // trial (or a lapsed subscription) never advertises a feature the API would then 403.
-  entitlements: effectiveEntitlementsAt(u.plan, u.subscriptionStatus, u.currentPeriodEnd),
+  entitlements: effectiveEntitlementsAt(u.plan, u.subscriptionStatus, u.currentPeriodEnd, u.stripeSubscriptionId),
 })
 
 /**

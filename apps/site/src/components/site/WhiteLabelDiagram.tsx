@@ -136,7 +136,7 @@ export function WhiteLabelDiagram() {
                   {t(tenant.labelKey)}
                 </div>
                 <div className="mono text-[10px] text-muted-foreground truncate">
-                  {t("diagram.vehicles", { n: tenant.vehicles })}
+                  {t("diagram.vehicles", { count: tenant.vehicles })}
                 </div>
               </div>
               <span className="mono text-[8px] tracking-widest uppercase text-muted-foreground shrink-0">
@@ -202,7 +202,7 @@ export function WhiteLabelDiagram() {
             <div className="flex-1 min-w-0">
               <div className="font-display font-semibold text-ink text-sm">{t(tenant.labelKey)}</div>
               <div className="mono text-[10px] text-muted-foreground">
-                {t("diagram.vehicles", { n: tenant.vehicles })} · {tenant.code}
+                {t("diagram.vehicles", { count: tenant.vehicles })} · {tenant.code}
               </div>
             </div>
           </div>

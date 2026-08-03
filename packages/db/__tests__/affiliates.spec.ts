@@ -147,6 +147,24 @@ describe('affiliates repo', () => {
       expect((await db.affiliates.getActiveByCode('WhOoK1'))?.id).toBe(aff.id)
     })
 
+    it('matches EXACTLY — LIKE wildcards in a ?ref never hijack another partner (review HIGH)', async () => {
+      const aff = await db.affiliates.create(actor, { name: 'Wild Co', email: 'wild@partner.co', code: 'AUTUMN1' })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      // `_` is a LIKE single-char wildcard and `%` matches anything — under the old ILIKE lookup
+      // `AUTUMN_` matched AUTUMN1 and credited a partner the visitor never referenced. Attribution is
+      // now reachable anonymously (public signup), so this is real commission money.
+      expect(await db.affiliates.getActiveByCode('AUTUMN_')).toBeNull()
+      expect(await db.affiliates.getActiveByCode('______')).toBeNull()
+      expect(await db.affiliates.getActiveByCode('%')).toBeNull()
+      expect(await db.affiliates.getActiveByCode('AUTUMN%')).toBeNull()
+      expect((await db.affiliates.getActiveByCode('autumn1'))?.id).toBe(aff.id) // the real code still resolves
+    })
+
+    it('rejects a second affiliate whose code differs only by case (functional unique index)', async () => {
+      await db.affiliates.create(actor, { name: 'Dup A', email: 'dupa@partner.co', code: 'PROMO9' })
+      await expect(db.affiliates.create(actor, { name: 'Dup B', email: 'dupb@partner.co', code: 'promo9' })).rejects.toThrow()
+    })
+
     it('floors a fractional commission rate in the platform’s favour', async () => {
       const aff = await db.affiliates.create(actor, { name: 'Frac Co', email: 'frac@partner.co', code: 'FRACC1', commissionPct: 33.33, commissionMonths: 12 })
       await db.affiliates.update(actor, aff.id, { status: 'active' })

@@ -63,7 +63,9 @@ export const TSP_PLANS: TspPlan[] = [
 const INHERITS: Record<string, string> = { "TSP Grow": "Start", "TSP Scale": "Grow" };
 
 export function TspPricing() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  /** Thousands separators differ per locale (2,500 vs 2.500 vs 2 500). */
+  const num = (v: number) => v.toLocaleString(i18n.resolvedLanguage);
   return (
     <>
       <div className="grid gap-5 md:grid-cols-3">
@@ -91,14 +93,14 @@ export function TspPricing() {
             </div>
             <div className="mt-2 space-y-1 text-sm">
               <div className="text-ink/85">
-                {t("tspPlans.included", { n: p.included.toLocaleString() })}
+                {t("tspPlans.included", { n: num(p.included) })}
                 <span className="text-muted-foreground">{t("tspPlans.perDevice", { price: p.perDevice })}</span>
               </div>
               <div className="mono text-xs text-muted-foreground">
                 {t("tspPlans.overage", { price: p.overage })}
               </div>
               <div className="mono text-xs text-[var(--brand-green)]">
-                {t("tspPlans.yearly", { total: p.baseYearly.toLocaleString() })}
+                {t("tspPlans.yearly", { total: num(p.baseYearly) })}
               </div>
             </div>
             <ul className="mt-5 space-y-2 text-sm flex-1">

@@ -12,19 +12,19 @@ import { clientIp } from '../net.js'
 
 /**
  * PUBLIC self-serve signup (F2, item 5/W9): a direct small-fleet customer creates their own tenant +
- * admin user on a 14-day trial — the second unauthenticated write after pilot-request, with the same
- * abuse posture:
+ * admin user on a 30-day trial — the second unauthenticated write after pilot-request, hardened for
+ * the fact that it creates real tenants:
  *  - HONEYPOT: a non-empty `hp_field` gets the SAME 201 shape as success (random id, nothing stored).
- *  - RATE LIMIT per real client IP (rightmost XFF behind Caddy), atomic INCR+EXPIRE, fails OPEN.
+ *  - RATE LIMIT per real client IP + a platform-wide circuit breaker, atomic INCR+EXPIRE, fails CLOSED.
  *  - zod-validated; body size capped here (mounted before the global /v1 limiter).
  *
  * Trial mechanics: tenant gets plan `direct_10`, subscriptionStatus 'trialing' and currentPeriodEnd =
- * now + 14 days. The AUTHORITATIVE entitlement gate (db.tenants.getEntitlements) floors a `trialing`
+ * now + 30 days (the publicly advertised length). The AUTHORITATIVE entitlement gate (db.tenants.getEntitlements) floors a `trialing`
  * tenant past that instant — no sweep needed, expiry is immediate. Upgrading via Stripe replaces the
  * status through the ordinary webhook path. NO session is returned — the web app sends the user through
  * the normal login (single auth path; signup never mints tokens).
  *
- * Attribution: `ref` resolves via getActiveByCode (case-insensitive, ACTIVE only) → referredByAffiliateId;
+ * Attribution: `ref` resolves via getActiveByCode (EXACT lower(code) match, ACTIVE only) → referredByAffiliateId;
  * an unknown/inactive code attributes to no one and never blocks the signup.
  */
 export interface SignupRouteDeps {
@@ -32,7 +32,8 @@ export interface SignupRouteDeps {
   redis: Redis
   getRemoteAddr: (c: unknown) => string
   trustProxy: boolean
-  rateLimit?: { max: number; windowS: number }
+  /** per-IP cap + a platform-wide circuit breaker; both fail CLOSED. */
+  rateLimit?: { max: number; windowS: number; globalMax?: number }
 }
 
 // 30 days — the publicly advertised trial. The marketing site AND the Terms of Service both state
@@ -48,7 +49,8 @@ return n`
 
 export function createSignupRoute(deps: SignupRouteDeps): Hono {
   const app = new Hono()
-  const limit = deps.rateLimit ?? { max: 5, windowS: 3600 }
+  const cfg = deps.rateLimit ?? { max: 5, windowS: 3600 }
+  const limit = { ...cfg, globalMax: cfg.globalMax ?? Math.max(cfg.max * 40, 200) }
   // tiny payload — cap the unauthenticated POST before it buffers (parity with partner routes)
   app.use('/v1/public/signup', bodyLimit({ maxSize: 64 * 1024 }))
 
@@ -57,15 +59,30 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
     if (!parsed.success) return c.json({ error: 'invalid request' }, 400)
     const body = parsed.data
 
-    // honeypot: indistinguishable fake success — random id, store nothing
-    if (body.hp_field !== undefined && body.hp_field !== '') return c.json({ ok: true, id: randomUUID() }, 201)
+    // HONEYPOT: a fake success indistinguishable from the real thing — same body shape, random id,
+    // nothing stored. It also burns the SAME argon2 work a real signup does: returning instantly
+    // would let a bot A/B the trap by timing (~1 ms vs ~200 ms) even though the JSON matches.
+    if (body.hp_field !== undefined && body.hp_field !== '') {
+      await hashPassword(body.password)
+      return c.json({ ok: true, id: randomUUID() }, 201)
+    }
 
+    // FAIL CLOSED (unlike pilot-request, which fails open because a lost lead is unrecoverable).
+    // This route creates a tenant + account + admin user + billing object, and it is the only thing
+    // standing between the open internet and mass tenant creation — a Redis blip must not turn it
+    // into an unlimited endpoint. A signup the user can simply retry is the cheaper failure.
+    // A GLOBAL bucket sits behind the per-IP one as a circuit breaker: a distributed flood spreads
+    // across IPs but still has to fit under the platform-wide ceiling, which also protects the
+    // shared argon2 semaphore (hashPassword) that login depends on.
     try {
       const ip = clientIp(c.req.header('x-forwarded-for'), deps.getRemoteAddr(c), deps.trustProxy)
-      const n = (await deps.redis.eval(RL_SCRIPT, 1, `signup:rl:${ip}`, String(limit.windowS))) as number
-      if (n > limit.max) return c.json({ error: 'rate limited' }, 429)
-    } catch {
-      /* fail OPEN on a Redis blip — a lost signup costs more than rare spam */
+      const perIp = (await deps.redis.eval(RL_SCRIPT, 1, `signup:rl:${ip}`, String(limit.windowS))) as number
+      if (perIp > limit.max) return c.json({ error: 'rate limited' }, 429)
+      const global = (await deps.redis.eval(RL_SCRIPT, 1, 'signup:rl:global', String(limit.windowS))) as number
+      if (global > limit.globalMax) return c.json({ error: 'rate limited' }, 429)
+    } catch (err) {
+      console.error('signup rate-limit unavailable', err)
+      return c.json({ error: 'temporarily unavailable' }, 503)
     }
 
     const email = body.email.trim().toLowerCase()

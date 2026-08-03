@@ -165,6 +165,52 @@ describe('public self-serve signup (F2)', () => {
     expect((await db.tenants.get(u.id))!.referredByAffiliateId).toBeNull()
   })
 
+  it('rate-limits per IP (429) and FAILS CLOSED when Redis is unavailable (503, never unlimited)', async () => {
+    // a dedicated app with a tight limit — the suite app deliberately raises it
+    const tightApp = createApp({
+      redis, redisSub, db,
+      jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
+      lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+      getRemoteAddr: () => '127.0.0.1',
+      signupRateLimit: { max: 2, windowS: 3600 },
+    })
+    const srv = serve({ fetch: tightApp.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    const post = (email: string) =>
+      fetch(`http://127.0.0.1:${p}/v1/public/signup`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'RL', email, password: 'password12' }),
+      })
+    try {
+      await redis.del('signup:rl:127.0.0.1', 'signup:rl:global')
+      expect((await post('rl1@fleet.test')).status).toBe(201)
+      expect((await post('rl2@fleet.test')).status).toBe(201)
+      expect((await post('rl3@fleet.test')).status).toBe(429) // over the per-IP cap
+
+      // Redis down ⇒ 503, NOT an unlimited endpoint (unlike pilot-request, which fails open)
+      const brokenApp = createApp({
+        redis: { eval: () => Promise.reject(new Error('redis down')) } as unknown as Redis,
+        redisSub, db,
+        jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
+        lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+        getRemoteAddr: () => '127.0.0.1',
+      })
+      const srv2 = serve({ fetch: brokenApp.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+      const p2 = await new Promise<number>((r) => srv2.on('listening', () => r((srv2.address() as { port: number }).port)))
+      const res = await fetch(`http://127.0.0.1:${p2}/v1/public/signup`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'X', email: 'closed@fleet.test', password: 'password12' }),
+      })
+      expect(res.status).toBe(503)
+      srv2.closeAllConnections?.()
+      await new Promise<void>((r) => srv2.close(() => r()))
+    } finally {
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+      await redis.del('signup:rl:127.0.0.1', 'signup:rl:global')
+    }
+  })
+
   it('a weak/invalid body → 400; the new tenant is invisible to other tenants (isolation)', async () => {
     expect((await signup({ name: 'X', email: 'not-an-email', password: 'password12' })).status).toBe(400)
     expect((await signup({ name: 'X', email: 'x@y.test', password: 'short' })).status).toBe(400)

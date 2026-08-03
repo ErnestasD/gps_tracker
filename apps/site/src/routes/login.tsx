@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { DASH_URL } from "@/lib/api";
 
@@ -26,17 +27,18 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto max-w-md px-6 pt-24 md:pt-32 pb-24">
       <span className="section-label">
         <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-        — SIGN IN
+        {t("login.label")}
       </span>
       <h1 className="display text-3xl md:text-4xl font-bold mt-5 text-ink leading-[1.05]">
-        Welcome back
+        {t("login.h1")}
       </h1>
       <p className="mt-3 text-sm text-muted-foreground">
-        Your Orbetra workspace lives in the fleet dashboard.
+        {t("login.sub")}
       </p>
 
       <div className="surface-card p-7 mt-8 grid gap-4">
@@ -44,25 +46,25 @@ function LoginPage() {
           href={DASH_URL}
           className="inline-flex h-11 items-center justify-center gap-2 rounded bg-[var(--brand-blue)] text-white mono text-xs tracking-[0.18em] uppercase hover:opacity-90"
         >
-          Open the fleet dashboard <ArrowRight className="h-4 w-4" />
+          {t("login.dashboard")} <ArrowRight className="h-4 w-4" />
         </a>
         <p className="text-xs text-muted-foreground text-center">
-          You'll sign in there with your Orbetra account.
+          {t("login.note")}
         </p>
         <p className="text-xs text-muted-foreground border-t border-[var(--hairline)] pt-4">
-          Partner or reseller?{" "}
+          {t("login.partnerAsk")}{" "}
           <Link to="/partner/login" className="text-[color:var(--brand-cyan)] hover:underline">
-            Partner sign in
+            {t("login.partnerLink")}
           </Link>
         </p>
         <p className="text-xs text-muted-foreground">
-          No account yet?{" "}
+          {t("login.noAccount")}{" "}
           <Link to="/signup" className="text-[color:var(--brand-cyan)] hover:underline">
-            Start a free trial
+            {t("login.trialLink")}
           </Link>
           {" · "}
           <Link to="/demo" className="text-[color:var(--brand-cyan)] hover:underline">
-            Open live demo
+            {t("login.demoLink")}
           </Link>
         </p>
       </div>

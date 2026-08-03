@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiPost } from "@/lib/api";
 import { setPartnerToken } from "@/lib/partner-auth";
 
@@ -26,6 +27,7 @@ function formVal(fd: FormData, k: string): string {
 }
 
 function PartnerLogin() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,7 +45,7 @@ function PartnerLogin() {
       setPartnerToken(res.accessToken);
       void navigate({ to: "/partner/dashboard" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
+      setError(err instanceof Error ? err.message : t("partner.login.error"));
       setLoading(false);
     }
   }
@@ -52,30 +54,30 @@ function PartnerLogin() {
     <div className="mx-auto max-w-md px-6 pt-28 md:pt-36 pb-28">
       <span className="section-label">
         <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-        — PARTNER PORTAL
+        {t("partner.portal")}
       </span>
-      <h1 className="display text-3xl md:text-4xl font-bold mt-4 text-ink">Partner sign in</h1>
+      <h1 className="display text-3xl md:text-4xl font-bold mt-4 text-ink">{t("partner.login.title")}</h1>
       <form onSubmit={(e) => void onSubmit(e)} className="surface-card p-7 mt-8 grid gap-4">
         <label className="grid gap-1.5">
-          <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Email</span>
+          <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.login.email")}</span>
           <input name="email" type="email" required autoComplete="email"
             className="h-11 rounded px-3 bg-[rgba(10,20,40,0.6)] border border-[var(--hairline)] text-ink text-sm outline-none focus:border-[color:var(--brand-blue)]" />
         </label>
         <label className="grid gap-1.5">
-          <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Password</span>
+          <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.login.password")}</span>
           <input name="password" type="password" required autoComplete="current-password"
             className="h-11 rounded px-3 bg-[rgba(10,20,40,0.6)] border border-[var(--hairline)] text-ink text-sm outline-none focus:border-[color:var(--brand-blue)]" />
         </label>
         {error && <p className="text-sm text-[#DC2626]">{error}</p>}
         <button type="submit" disabled={loading}
           className="h-11 rounded bg-[var(--brand-blue)] text-white mono text-xs tracking-[0.18em] uppercase hover:opacity-90 disabled:opacity-60 cursor-pointer">
-          {loading ? "Signing in…" : "Sign in"}
+          {loading ? t("partner.login.submitting") : t("partner.login.submit")}
         </button>
         <p className="text-xs text-muted-foreground border-t border-[var(--hairline)] pt-4">
-          Got an invite link but no password yet?{" "}
-          <Link to="/partner/set-password" className="text-[color:var(--brand-cyan)] hover:underline">Set your password</Link>
-          . Not a partner yet?{" "}
-          <Link to="/partners" className="text-[color:var(--brand-cyan)] hover:underline">Apply here</Link>.
+          {t("partner.login.inviteAsk")}{" "}
+          <Link to="/partner/set-password" className="text-[color:var(--brand-cyan)] hover:underline">{t("partner.login.inviteLink")}</Link>
+          . {t("partner.login.applyAsk")}{" "}
+          <Link to="/partners" className="text-[color:var(--brand-cyan)] hover:underline">{t("partner.login.applyLink")}</Link>.
         </p>
       </form>
     </div>

@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Copy, LogOut } from "lucide-react";
 import { ApiError, apiGet } from "@/lib/api";
 import { usePartnerToken, setPartnerToken } from "@/lib/partner-auth";
@@ -19,24 +20,32 @@ export const Route = createFileRoute("/partner/dashboard")({
   component: PartnerDashboard,
 });
 
+/** These MUST mirror the wire shape of GET /v1/partner/me and /v1/partner/commissions
+ *  (apps/api/src/routes/partner.ts). Fields are REQUIRED on purpose: optional fields let a rename
+ *  silently render "—" everywhere instead of failing the typecheck — which is exactly how the whole
+ *  dashboard shipped blank (review HIGH). `commissionPct` is a Decimal serialized as a STRING. */
 type PartnerMe = {
-  name?: string;
-  email?: string;
-  referralCode?: string;
-  commissionRate?: number;
-  commissionWindowMonths?: number;
+  id: string;
+  name: string;
+  email: string;
+  code: string;
+  commissionPct: string;
+  commissionMonths: number;
+  status: string;
+  createdAt: string;
 };
 
 type Commission = {
-  id?: string;
-  createdAt?: string;
-  customer?: string;
-  amount?: number;
-  currency?: string;
-  status?: string;
+  id: string;
+  amountCents: number;
+  currency: string;
+  status: string;
+  sourceInvoiceId: string;
+  createdAt: string;
 };
 
 function PartnerDashboard() {
+  const { t, i18n } = useTranslation();
   const token = usePartnerToken();
   const navigate = useNavigate();
   const [me, setMe] = useState<PartnerMe | null>(null);
@@ -68,18 +77,19 @@ function PartnerDashboard() {
           void navigate({ to: "/partner/login" });
           return;
         }
-        setError(err instanceof Error ? err.message : "Could not load your data");
+        setError(err instanceof Error ? err.message : t("partner.dashboard.loadError"));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [token, navigate]);
+  }, [token, navigate, t]);
 
   if (!token) return null;
 
-  const code = me?.referralCode ?? "—";
-  const link = me?.referralCode ? `https://orbetra.com/?ref=${me.referralCode}` : "—";
+  const code = me?.code ?? "—";
+  // the shareable link the partner actually gives out; origin-relative so it works on any deploy
+  const link = me?.code ? `${typeof window !== "undefined" ? window.location.origin : "https://orbetra.com"}/?ref=${me.code}` : "—";
 
   return (
     <div className="mx-auto max-w-5xl px-6 pt-24 md:pt-32 pb-24">
@@ -87,10 +97,10 @@ function PartnerDashboard() {
         <div>
           <span className="section-label">
             <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-            — PARTNER DASHBOARD
+            {t("partner.dashboard.label")}
           </span>
           <h1 className="display text-3xl md:text-4xl font-bold mt-4 text-ink">
-            {me?.name ? `Hi, ${me.name}` : "Your partner account"}
+            {me?.name ? t("partner.dashboard.hi", { name: me.name }) : t("partner.dashboard.fallbackTitle")}
           </h1>
         </div>
         <button
@@ -100,7 +110,7 @@ function PartnerDashboard() {
           }}
           className="pill-ghost cursor-pointer inline-flex items-center gap-2"
         >
-          <LogOut className="h-4 w-4" /> Sign out
+          <LogOut className="h-4 w-4" /> {t("partner.dashboard.signout")}
         </button>
       </div>
 
@@ -108,10 +118,10 @@ function PartnerDashboard() {
 
       <div className="mt-10 grid gap-5 md:grid-cols-3">
         <div className="surface-card p-6 md:col-span-2">
-          <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Referral link</div>
+          <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.referralLink")}</div>
           <div className="mt-3 flex items-center gap-3 flex-wrap">
             <code className="mono text-sm text-ink break-all">{link}</code>
-            {me?.referralCode && (
+            {me?.code && (
               <button
                 onClick={() => {
                   void navigator.clipboard.writeText(link);
@@ -120,54 +130,56 @@ function PartnerDashboard() {
                 }}
                 className="h-8 px-3 inline-flex items-center gap-2 rounded border border-[var(--hairline)] mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-ink cursor-pointer"
               >
-                <Copy className="h-3 w-3" /> {copied ? "Copied" : "Copy"}
+                <Copy className="h-3 w-3" /> {copied ? t("partner.dashboard.copied") : t("partner.dashboard.copy")}
               </button>
             )}
           </div>
-          <div className="mt-3 mono text-[11px] text-muted-foreground">Code · {code}</div>
+          <div className="mt-3 mono text-[11px] text-muted-foreground">{t("partner.dashboard.code", { code })}</div>
         </div>
         <div className="surface-card p-6">
-          <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Your terms</div>
+          <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.terms")}</div>
           <div className="mt-3 display text-3xl font-bold text-ink">
-            {me?.commissionRate != null ? `${me.commissionRate}%` : "—"}
+            {me?.commissionPct != null ? `${Number(me.commissionPct)}%` : "—"}
           </div>
           <div className="mono text-[11px] text-muted-foreground mt-1">
-            {me?.commissionWindowMonths != null ? `${me.commissionWindowMonths} months per referral` : "Recurring, limited window"}
+            {me?.commissionMonths != null
+              ? t("partner.dashboard.window", { count: me.commissionMonths })
+              : t("partner.dashboard.windowFallback")}
           </div>
         </div>
       </div>
 
       <div className="mt-10 surface-card overflow-x-auto">
         <div className="px-5 py-4 mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground border-b border-[var(--hairline)]">
-          Commission history
+          {t("partner.dashboard.history")}
         </div>
         {rows.length === 0 ? (
           <p className="px-5 py-8 text-sm text-muted-foreground">
-            No commissions yet. Share your link to get started.
+            {t("partner.dashboard.empty")}
           </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                <th className="text-left px-5 py-3">Date</th>
-                <th className="text-left px-5 py-3">Customer</th>
-                <th className="text-left px-5 py-3">Amount</th>
-                <th className="text-left px-5 py-3">Status</th>
+                <th className="text-left px-5 py-3">{t("partner.dashboard.date")}</th>
+                <th className="text-left px-5 py-3">{t("partner.dashboard.invoice")}</th>
+                <th className="text-left px-5 py-3">{t("partner.dashboard.amount")}</th>
+                <th className="text-left px-5 py-3">{t("partner.dashboard.status")}</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.id ?? i} className="border-t border-[var(--hairline)]">
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-[var(--hairline)]">
                   <td className="px-5 py-3 mono text-[12px] text-muted-foreground">
-                    {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "—"}
+                    {new Date(r.createdAt).toLocaleDateString(i18n.resolvedLanguage)}
                   </td>
-                  <td className="px-5 py-3 text-ink">{r.customer ?? "—"}</td>
+                  <td className="px-5 py-3 mono text-[12px] text-muted-foreground">{r.sourceInvoiceId}</td>
                   <td className="px-5 py-3 mono text-ink">
-                    {r.amount != null ? `${r.amount.toFixed(2)} ${r.currency ?? "EUR"}` : "—"}
+                    {(r.amountCents / 100).toFixed(2)} {r.currency.toUpperCase()}
                   </td>
                   <td className="px-5 py-3">
                     <span className="mono text-[10px] uppercase tracking-widest text-[color:var(--brand-cyan)]">
-                      {r.status ?? "pending"}
+                      {r.status}
                     </span>
                   </td>
                 </tr>
@@ -178,9 +190,9 @@ function PartnerDashboard() {
       </div>
 
       <p className="mt-8 text-sm text-muted-foreground">
-        Questions about payouts?{" "}
+        {t("partner.dashboard.payoutAsk")}{" "}
         <a href="mailto:hello@orbetra.com" className="text-[color:var(--brand-cyan)] hover:underline">hello@orbetra.com</a>{" "}
-        · <Link to="/partners" className="text-[color:var(--brand-cyan)] hover:underline">Program details</Link>
+        · <Link to="/partners" className="text-[color:var(--brand-cyan)] hover:underline">{t("partner.dashboard.programLink")}</Link>
       </p>
     </div>
   );

@@ -119,19 +119,28 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       return row.plan
     },
     getEntitlements: async (tenantId) => {
-      const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, subscriptionStatus: true, currentPeriodEnd: true } })
+      const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, subscriptionStatus: true, currentPeriodEnd: true, stripeSubscriptionId: true } })
       if (row === null) throw new Error(`tenant not found: ${tenantId}`)
       // trial-aware (F2): a `trialing` tenant past currentPeriodEnd floors immediately. Shared with the
       // session hint the web nav reads, so UI and server can never disagree.
-      return effectiveEntitlementsAt(row.plan, row.subscriptionStatus, row.currentPeriodEnd)
+      return effectiveEntitlementsAt(row.plan, row.subscriptionStatus, row.currentPeriodEnd, row.stripeSubscriptionId)
     },
     createSelfServeSignup: async (data) => {
-      // advisory pre-check: an email already in a tenant would make login ambiguous (409). A race
-      // between two brand-new signups on the same email is a rare accepted edge (email is unique only
-      // per-tenant by design, to allow the same person across TSP sub-tenants).
+      // An email already present in ANY tenant would make login ambiguous (two matches ⇒ the 409
+      // ambiguous-identity trap), so signup refuses it. `email` is unique only PER TENANT by design
+      // (the same person may exist across a TSP's sub-tenants), so uniqueness here has to be enforced
+      // by us, not by a constraint.
+      //
+      // The race is real and wide: hashPassword runs before this call and can take hundreds of ms
+      // under argon2 contention, so two concurrent signups for one email would both pass a plain
+      // check and both insert (READ COMMITTED cannot see the other's uncommitted row) — leaving two
+      // tenants that share an email, i.e. a permanently 409-ing login. A transaction-scoped ADVISORY
+      // LOCK keyed on the email serializes them: the loser blocks until the winner commits, then sees
+      // the row and gets a clean SignupEmailInUseError.
       const existing = await prisma.user.findFirst({ where: { email: data.email }, select: { id: true } })
       if (existing !== null) throw new SignupEmailInUseError()
       return prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${data.email}))`
         if (await tx.user.findFirst({ where: { email: data.email }, select: { id: true } })) throw new SignupEmailInUseError()
         const tenant = await tx.tenant.create({
           data: {

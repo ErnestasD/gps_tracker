@@ -6,6 +6,7 @@ import {
   FLOOR_ENTITLEMENTS,
   TENANT_PLANS,
   effectiveEntitlements,
+  effectiveEntitlementsAt,
   isDirectPlan,
   planEntitlements,
   tenantPlanSchema,
@@ -110,5 +111,38 @@ describe('effectiveEntitlements — subscription-status gating (revenue-leak fix
 
   it('flooring is plan-independent — a lapsed direct_50 also gets nothing', () => {
     expect(effectiveEntitlements('direct_50', 'canceled')).toEqual(FLOOR_ENTITLEMENTS)
+  })
+})
+
+describe('effectiveEntitlementsAt — the F2 trial window (review HIGH: never floor a PAYING trial)', () => {
+  const past = new Date('2026-01-01T00:00:00Z')
+  const future = new Date('2099-01-01T00:00:00Z')
+  const now = new Date('2026-06-01T00:00:00Z')
+
+  it('floors an EXPIRED local trial (no Stripe subscription behind it)', () => {
+    expect(effectiveEntitlementsAt('direct_10', 'trialing', past, null, now)).toEqual(FLOOR_ENTITLEMENTS)
+  })
+
+  it('keeps the plan matrix while a local trial is still running', () => {
+    expect(effectiveEntitlementsAt('direct_10', 'trialing', future, null, now)).toEqual(planEntitlements('direct_10'))
+  })
+
+  it('NEVER floors a STRIPE-side trial, even past its period end — that is a paying customer', () => {
+    // a Stripe trial carries a subscription id; between trial end and the subscription.updated
+    // webhook the old code stripped white-label/API/webhooks and set deviceLimit 0 on a live account
+    expect(effectiveEntitlementsAt('tsp_grow', 'trialing', past, 'sub_123', now)).toEqual(planEntitlements('tsp_grow'))
+    expect(effectiveEntitlementsAt('tsp_grow', 'trialing', future, 'sub_123', now)).toEqual(planEntitlements('tsp_grow'))
+  })
+
+  it('an unknown discriminator (undefined) is fail-safe — never floors', () => {
+    expect(effectiveEntitlementsAt('tsp_grow', 'trialing', past, undefined, now)).toEqual(planEntitlements('tsp_grow'))
+  })
+
+  it('still floors a LAPSED subscription regardless of the trial logic', () => {
+    expect(effectiveEntitlementsAt('tsp_scale', 'canceled', future, 'sub_1', now)).toEqual(FLOOR_ENTITLEMENTS)
+  })
+
+  it('a never-subscribed tenant (null status) keeps its plan', () => {
+    expect(effectiveEntitlementsAt('tsp_scale', null, null, null, now)).toEqual(planEntitlements('tsp_scale'))
   })
 })

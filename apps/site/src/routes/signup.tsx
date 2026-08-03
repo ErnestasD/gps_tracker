@@ -1,12 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { ApiError, apiPost, DASH_URL } from "@/lib/api";
 import { readRefCode } from "@/lib/consent";
 
 // signupSchema (packages/shared) accepts ref only as a 3–64 url-safe slug; a shorter/
 // junk code must not 400 the whole signup, so it is dropped client-side too.
-const REF_RE = /^[a-zA-Z0-9_-]{3,64}$/;
+const REF_RE = /^[a-zA-Z0-9-]{3,64}$/; // mirrors affiliateCodeSchema (no `_` — LIKE wildcard)
 
 /** Text-input form values only — a File can never appear in these forms. */
 function formVal(fd: FormData, k: string): string {
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/signup")({
 });
 
 function SignupPage() {
+  const { t } = useTranslation();
   const [ref, setRef] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -53,11 +55,11 @@ function SignupPage() {
       setState("done");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setError("That email is already in use — sign in at the dashboard instead.");
+        setError(t("signup.errConflict"));
       } else if (err instanceof ApiError && err.status === 429) {
-        setError("Too many attempts — please wait a bit and try again.");
+        setError(t("signup.errRate"));
       } else {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(err instanceof Error ? err.message : t("signup.errGeneric"));
       }
       setState("idle");
     }
@@ -68,31 +70,26 @@ function SignupPage() {
       <div>
         <span className="section-label">
           <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-          — CREATE ACCOUNT
+          {t("signup.label")}
         </span>
         <h1 className="display text-4xl md:text-5xl font-bold mt-5 text-ink leading-[1.05]">
-          Start tracking today.<br />
-          <span className="text-gradient">30 days, on us.</span>
+          {t("signup.h1")}<br />
+          <span className="text-gradient">{t("signup.h2")}</span>
         </h1>
         <ul className="mt-8 grid gap-3 text-sm text-ink/90">
-          {[
-            "No credit card — cancel anytime",
-            "One SMS points your Teltonika device at Orbetra",
-            "EU-hosted · GDPR export & erase built in",
-            "Flat per-vehicle pricing when the trial ends",
-          ].map((f) => (
+          {(["signup.b1", "signup.b2", "signup.b3", "signup.b4"] as const).map((f) => (
             <li key={f} className="flex items-center gap-3">
               <span className="grid place-items-center h-5 w-5 rounded-full bg-[rgba(76,77,207,0.1)] border border-[rgba(76,77,207,0.3)] shrink-0">
                 <Check className="h-3 w-3 text-[#4c4dcf]" strokeWidth={2.5} />
               </span>
-              {f}
+              {t(f)}
             </li>
           ))}
         </ul>
         <p className="mt-8 text-sm text-muted-foreground">
-          Running a tracking business instead?{" "}
+          {t("signup.tspAsk")}{" "}
           <Link to="/tsp" className="text-[color:var(--brand-cyan)] hover:underline">
-            See the white-label track →
+            {t("signup.tspLink")}
           </Link>
         </p>
       </div>
@@ -101,23 +98,22 @@ function SignupPage() {
         {state === "done" ? (
           <div>
             <div className="mono text-[10px] tracking-[0.22em] uppercase text-[var(--brand-green,#10B981)]">
-              — YOU'RE IN
+              {t("signup.doneLabel")}
             </div>
-            <h2 className="display text-2xl font-bold text-ink mt-3">Workspace created</h2>
+            <h2 className="display text-2xl font-bold text-ink mt-3">{t("signup.doneTitle")}</h2>
             <p className="mt-3 text-sm text-muted-foreground">
-              Your trial workspace is ready. Sign in at the fleet dashboard with the email
-              and password you just chose, then add your first device.
+              {t("signup.doneBody")}
             </p>
             <a href={DASH_URL} className="mt-6 pill-primary hover:pill-primary-hover">
-              Sign in at the dashboard <ArrowRight className="h-4 w-4" />
+              {t("signup.doneCta")} <ArrowRight className="h-4 w-4" />
             </a>
           </div>
         ) : (
           <form onSubmit={(e) => void onSubmit(e)} className="relative grid gap-4">
-            <Field name="name" label="Full name" autoComplete="name" required />
-            <Field name="email" label="Work email" type="email" autoComplete="email" required />
-            <Field name="password" label="Password" type="password" autoComplete="new-password" required minLength={8} />
-            <Field name="company" label="Company (optional)" autoComplete="organization" />
+            <Field name="name" label={t("signup.name")} autoComplete="name" required />
+            <Field name="email" label={t("signup.email")} type="email" autoComplete="email" required />
+            <Field name="password" label={t("signup.password")} type="password" autoComplete="new-password" required minLength={8} />
+            <Field name="company" label={t("signup.company")} autoComplete="organization" />
             {/* honeypot: off-screen + aria-hidden; the api answers a fake 201 when filled.
                 Name avoids 'website'/'url' so a real user's browser autofill skips it. */}
             <div aria-hidden="true" className="absolute left-[-9999px] top-auto h-px w-px overflow-hidden">
@@ -128,7 +124,7 @@ function SignupPage() {
             </div>
             {ref && (
               <p className="mono text-[10px] tracking-widest uppercase text-[color:var(--brand-cyan)]">
-                Referral applied · {ref}
+                {t("signup.referral", { code: ref })}
               </p>
             )}
             {error && (
@@ -139,17 +135,22 @@ function SignupPage() {
               disabled={state === "loading"}
               className="mt-1 h-11 rounded bg-[var(--brand-blue)] text-white mono text-xs tracking-[0.18em] uppercase hover:opacity-90 disabled:opacity-60 cursor-pointer"
             >
-              {state === "loading" ? "Creating…" : "Create account"}
+              {state === "loading" ? t("signup.submitting") : t("signup.submit")}
             </button>
             <p className="text-xs text-muted-foreground">
-              By creating an account you agree to our{" "}
-              <Link to="/terms" className="text-[color:var(--brand-cyan)] hover:underline">Terms</Link> and{" "}
-              <Link to="/privacy" className="text-[color:var(--brand-cyan)] hover:underline">Privacy Policy</Link>.
+              {/* the links sit mid-sentence — Trans keeps each language's word order intact */}
+              <Trans
+                i18nKey="signup.terms"
+                components={{
+                  terms: <Link to="/terms" className="text-[color:var(--brand-cyan)] hover:underline" />,
+                  privacy: <Link to="/privacy" className="text-[color:var(--brand-cyan)] hover:underline" />,
+                }}
+              />
             </p>
             <p className="text-xs text-muted-foreground border-t border-[var(--hairline)] pt-4">
-              Already have an account?{" "}
+              {t("signup.haveAccount")}{" "}
               <Link to="/login" className="text-[color:var(--brand-cyan)] hover:underline">
-                Sign in
+                {t("signup.signin")}
               </Link>
             </p>
           </form>

@@ -154,19 +154,16 @@ type DeckSlide = {
   key: string;
   /** i18n key for the visible slide label (alt text, dots aria-label, caption strip). */
   labelKey: string;
-  /** Mirrors the screenshot's own chrome — the captures are of the Lithuanian app, so
-   *  this stays as-is in every language rather than contradicting the image. */
-  caption: string;
   path: string;
   src: string;
 };
 
 const DECK_SLIDES: DeckSlide[] = [
-  { key: "map",       labelKey: "hero.deck.map",       caption: "app.orbetra.com · ŽEMĖLAPIS",   path: "/app/map",       src: heroMap },
-  { key: "overview",  labelKey: "hero.deck.overview",  caption: "app.orbetra.com · APŽVALGA",    path: "/app",           src: heroIndex },
-  { key: "events",    labelKey: "hero.deck.events",    caption: "app.orbetra.com · ĮVYKIAI",     path: "/app/events",    src: heroEvents },
-  { key: "geofences", labelKey: "hero.deck.geofences", caption: "app.orbetra.com · GEOZONOS",    path: "/app/geofences", src: heroGeofences },
-  { key: "reports",   labelKey: "hero.deck.reports",   caption: "app.orbetra.com · ATASKAITOS",  path: "/app/reports",   src: heroReports },
+  { key: "map",       labelKey: "hero.deck.map",       path: "/app/map",       src: heroMap },
+  { key: "overview",  labelKey: "hero.deck.overview",  path: "/app",           src: heroIndex },
+  { key: "events",    labelKey: "hero.deck.events",    path: "/app/events",    src: heroEvents },
+  { key: "geofences", labelKey: "hero.deck.geofences", path: "/app/geofences", src: heroGeofences },
+  { key: "reports",   labelKey: "hero.deck.reports",   path: "/app/reports",   src: heroReports },
 ];
 
 function HeroConsoleDeck() {
@@ -247,7 +244,7 @@ function HeroConsoleDeck() {
               <span className="h-2 w-2 rounded-full bg-[#059669]/70" />
             </div>
             <span className="mono text-[9px] tracking-[0.22em] uppercase text-[#B8CDEB] truncate max-w-[60%]">
-              {current.caption}
+              {`app.orbetra.com · ${t(current.labelKey)}`}
             </span>
             <span className="mono text-[9px] tracking-[0.22em] uppercase text-[#4c4dcf] flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-[#4c4dcf] animate-pulse-dot" />

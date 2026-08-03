@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ApiError, apiPost } from "@/lib/api";
 import { SectionHeading } from "@/components/site/SectionHeading";
 
@@ -19,10 +20,10 @@ export const Route = createFileRoute("/partners")({
 });
 
 const HOW = [
-  { n: "01", t: "Apply", b: "Tell us who you work with — installers, workshops, dealers, consultants and content creators all qualify. The program is invite-only, so we review every application." },
-  { n: "02", t: "Get your link", b: "You receive a referral code and a shareable link (orbetra.com/?ref=YOURCODE). It sets one cookie for 60 days, only if the visitor accepts cookies." },
-  { n: "03", t: "They sign up", b: "Any trial started from your link is attributed to you, including signups completed later within the attribution window." },
-  { n: "04", t: "You get paid", b: "Recurring commission on that account's subscription for a limited window, paid monthly. Every event is visible in your partner dashboard." },
+  { n: "01", k: "s1" },
+  { n: "02", k: "s2" },
+  { n: "03", k: "s3" },
+  { n: "04", k: "s4" },
 ];
 
 
@@ -33,6 +34,7 @@ function formVal(fd: FormData, k: string): string {
 }
 
 function PartnersPage() {
+  const { t } = useTranslation();
   const [state, setState] = useState<"idle" | "loading" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -60,9 +62,9 @@ function PartnersPage() {
       setState("done");
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
-        setError("Too many attempts — please wait a bit and try again.");
+        setError(t("partners.errRate"));
       } else {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(err instanceof Error ? err.message : t("partners.errGeneric"));
       }
       setState("idle");
     }
@@ -73,37 +75,35 @@ function PartnersPage() {
       <div className="max-w-3xl">
         <span className="section-label">
           <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-          — PARTNER & AFFILIATE PROGRAM
+          {t("partners.label")}
         </span>
         <h1 className="display text-4xl md:text-6xl font-bold mt-5 text-ink leading-[1.03]">
-          Send us fleets.<br />
-          <span className="text-gradient">Earn recurring commission.</span>
+          {t("partners.h1")}<br />
+          <span className="text-gradient">{t("partners.h2")}</span>
         </h1>
         <p className="mt-6 text-lg text-muted-foreground">
-          An invite-only program for people who already talk to fleet owners: installers,
-          workshops, Teltonika dealers, consultants. You refer, we onboard and support, you
-          earn a recurring share of the subscription for a limited window.
+          {t("partners.sub")}
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <a href="#apply" className="pill-primary hover:pill-primary-hover">
-            Become a partner <ArrowRight className="h-4 w-4" />
+            {t("partners.cta")} <ArrowRight className="h-4 w-4" />
           </a>
           <Link to="/partner/login" className="pill-ghost hover:border-[color:var(--brand-cyan)]">
-            Partner sign in
+            {t("partners.signin")}
           </Link>
         </div>
       </div>
 
       <section className="mt-24">
-        <SectionHeading label="— HOW IT WORKS" className="mb-12 max-w-3xl">
-          Four steps.<br /><span className="text-gradient">No spreadsheets.</span>
+        <SectionHeading label={t("partners.howLabel")} className="mb-12 max-w-3xl">
+          {t("partners.howH1")}<br /><span className="text-gradient">{t("partners.howH2")}</span>
         </SectionHeading>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {HOW.map((s) => (
             <div key={s.n} className="surface-card p-6 flex flex-col">
               <span className="mono text-2xl font-medium text-gradient">{s.n}</span>
-              <div className="font-display font-semibold text-ink mt-3">{s.t}</div>
-              <p className="text-sm text-muted-foreground mt-2">{s.b}</p>
+              <div className="font-display font-semibold text-ink mt-3">{t(`partners.${s.k}t`)}</div>
+              <p className="text-sm text-muted-foreground mt-2">{t(`partners.${s.k}b`)}</p>
             </div>
           ))}
         </div>
@@ -111,48 +111,41 @@ function PartnersPage() {
 
       <section className="mt-20 grid gap-10 lg:grid-cols-[1fr_minmax(0,460px)] items-start" id="apply">
         <div>
-          <SectionHeading label="— WHAT YOU GET" className="mb-8 max-w-2xl">
-            Straightforward terms.
+          <SectionHeading label={t("partners.getLabel")} className="mb-8 max-w-2xl">
+            {t("partners.getTitle")}
           </SectionHeading>
           <ul className="grid gap-3 text-sm">
-            {[
-              "Recurring commission on referred subscriptions for a limited window (terms shared on approval)",
-              "Your own referral code and link, with attribution visible in real time",
-              "Commission history — pending and paid — in the partner dashboard",
-              "We handle onboarding, support and billing for the customer",
-              "Reselling under your own brand instead? That's the white-label track, not this one",
-            ].map((f) => (
+            {(["partners.g1", "partners.g2", "partners.g3", "partners.g4", "partners.g5"] as const).map((f) => (
               <li key={f} className="flex gap-3 items-start">
                 <span className="grid place-items-center h-5 w-5 rounded-full bg-[rgba(76,77,207,0.1)] border border-[rgba(76,77,207,0.3)] shrink-0 mt-0.5">
                   <Check className="h-3 w-3 text-[#4c4dcf]" strokeWidth={2.5} />
                 </span>
-                <span className="text-ink/85">{f}</span>
+                <span className="text-ink/85">{t(f)}</span>
               </li>
             ))}
           </ul>
           <p className="mt-6 text-sm text-muted-foreground">
-            Want the full platform under your own brand?{" "}
-            <Link to="/tsp" className="text-[color:var(--brand-cyan)] hover:underline">See the white-label track →</Link>
+            {t("partners.wlAsk")}{" "}
+            <Link to="/tsp" className="text-[color:var(--brand-cyan)] hover:underline">{t("partners.wlLink")}</Link>
           </p>
         </div>
 
         <div className="surface-card p-7">
           {state === "done" ? (
             <div>
-              <div className="mono text-[10px] tracking-[0.22em] uppercase text-[var(--brand-green,#10B981)]">— APPLICATION RECEIVED</div>
-              <h2 className="display text-2xl font-bold text-ink mt-3">Thanks — we'll be in touch</h2>
+              <div className="mono text-[10px] tracking-[0.22em] uppercase text-[var(--brand-green,#10B981)]">{t("partners.doneLabel")}</div>
+              <h2 className="display text-2xl font-bold text-ink mt-3">{t("partners.doneTitle")}</h2>
               <p className="mt-3 text-sm text-muted-foreground">
-                We review applications manually and reply within a few business days with your
-                terms and a link to set your partner password.
+                {t("partners.doneBody")}
               </p>
             </div>
           ) : (
             <form onSubmit={(e) => void onSubmit(e)} className="relative grid gap-4">
-              <div className="mono text-[10px] tracking-[0.22em] uppercase text-muted-foreground">— BECOME A PARTNER</div>
-              <F name="name" label="Your name" required />
-              <F name="email" label="Email" type="email" required />
-              <F name="company" label="Company" />
-              <F name="website" label="Website or profile" />
+              <div className="mono text-[10px] tracking-[0.22em] uppercase text-muted-foreground">{t("partners.formLabel")}</div>
+              <F name="name" label={t("partners.name")} required />
+              <F name="email" label={t("partners.email")} type="email" required />
+              <F name="company" label={t("partners.company")} />
+              <F name="website" label={t("partners.website")} />
               {/* honeypot: off-screen + aria-hidden; the api answers a fake 201 when filled */}
               <div aria-hidden="true" className="absolute left-[-9999px] top-auto h-px w-px overflow-hidden">
                 <label>
@@ -161,7 +154,7 @@ function PartnersPage() {
                 </label>
               </div>
               <label className="grid gap-1.5">
-                <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Who do you work with?</span>
+                <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partners.message")}</span>
                 <textarea
                   name="message"
                   rows={4}
@@ -174,7 +167,7 @@ function PartnersPage() {
                 disabled={state === "loading"}
                 className="h-11 rounded bg-[var(--brand-blue)] text-white mono text-xs tracking-[0.18em] uppercase hover:opacity-90 disabled:opacity-60 cursor-pointer"
               >
-                {state === "loading" ? "Sending…" : "Apply"}
+                {state === "loading" ? t("partners.submitting") : t("partners.submit")}
               </button>
             </form>
           )}

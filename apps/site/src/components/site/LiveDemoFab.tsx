@@ -1,8 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export function LiveDemoFab() {
   const { location } = useRouterState();
+  const { t } = useTranslation();
   if (location.pathname.startsWith("/app")) return null;
 
   return (
@@ -14,10 +16,10 @@ export function LiveDemoFab() {
           border: "1px solid rgba(76,77,207,0.35)",
           backdropFilter: "blur(8px)",
         }}
-        title="Web & mobile app launching soon"
+        title={t("fab.soonTitle")}
       >
         <span className="h-1.5 w-1.5 rounded-full bg-[#4c4dcf] animate-pulse-dot" />
-        App · Soon
+        {t("fab.soon")}
       </span>
       <Link
         to="/app"
@@ -30,14 +32,14 @@ export function LiveDemoFab() {
             "0 0 0 1px rgba(76,77,207,0.15) inset, 0 12px 32px -12px rgba(76,77,207,0.75)",
           backdropFilter: "blur(8px)",
         }}
-        title="Interactive read-only admin demo with example data"
+        title={t("fab.demoTitle")}
       >
         <span
           aria-hidden
           className="h-1.5 w-1.5 rounded-full bg-[#B45309] animate-pulse-dot"
           style={{ boxShadow: "0 0 8px rgba(180,83,9,0.9)" }}
         />
-        <span>Live demo</span>
+        <span>{t("nav.demo")}</span>
         <ArrowRight className="h-3.5 w-3.5 text-[color:var(--brand-cyan)] transition-transform group-hover:translate-x-0.5" />
       </Link>
     </div>

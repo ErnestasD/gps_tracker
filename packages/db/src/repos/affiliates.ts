@@ -111,8 +111,20 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
   return {
     list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' } }),
     get: (id) => prisma.affiliate.findUnique({ where: { id } }),
-    // case-INSENSITIVE (schema §code): a ?ref=whook1 link must attribute to a stored 'WHOOK1'
-    getActiveByCode: (code) => prisma.affiliate.findFirst({ where: { code: { equals: code, mode: 'insensitive' }, status: 'active' } }),
+    // EXACT, case-insensitive match (audit HIGH). Prisma's `mode:'insensitive'` compiles to ILIKE
+    // with the value bound UNESCAPED, so `_` — a LIKE single-char wildcard that the code charset
+    // permits — let `?ref=______` match ANY 6-char active code and credit a nondeterministic
+    // partner. Now attribution is reachable ANONYMOUSLY (public signup), so this is real money:
+    // match on lower(code) = lower($1), backed by the functional unique index (migration
+    // 20260803220000), with a deterministic order for safety.
+    getActiveByCode: async (code) => {
+      const rows = await prisma.$queryRaw<Affiliate[]>`
+        SELECT * FROM "affiliates"
+        WHERE lower("code") = lower(${code}) AND "status" = 'active'::"AffiliateStatus"
+        ORDER BY "createdAt" ASC
+        LIMIT 1`
+      return rows[0] ?? null
+    },
     create: async (_actor, data) => {
       try {
         return await prisma.affiliate.create({

@@ -18,6 +18,7 @@ export const Route = createFileRoute("/subprocessors")({
 const LIST = [
   { name: "Hetzner Online GmbH", purpose: "Primary application, database and telemetry hosting", location: "Germany (EU)" },
   { name: "Mapbox, Inc.", purpose: "Map tiles rendered in the web and mobile app", location: "USA — request metadata only, SCCs in place" },
+  { name: "CARTO (Mapbox-independent)", purpose: "Basemap style and tiles on the public marketing site only (no customer data)", location: "USA/EU CDN — request metadata only, SCCs in place" },
   { name: "Self-hosted Photon & OSRM", purpose: "Geocoding and routing (operated by Orbetra, no third party)", location: "Germany (EU)" },
   { name: "Stripe Payments Europe, Ltd.", purpose: "Subscription billing and payment processing", location: "Ireland (EU)" },
   { name: "Postmark (ActiveCampaign, LLC)", purpose: "Transactional email (alerts, reports, account emails)", location: "EU region endpoint" },

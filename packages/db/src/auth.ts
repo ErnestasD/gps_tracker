@@ -36,6 +36,8 @@ export interface AuthUserRow {
   /** live Stripe/trial status + window, joined so the session hint matches the server's trial-aware gate. */
   subscriptionStatus: string | null
   currentPeriodEnd: Date | null
+  /** null for an F2 LOCAL trial; set for a Stripe-side subscription (the trial discriminator). */
+  stripeSubscriptionId: string | null
 }
 
 export interface RefreshTokenRow {
@@ -104,18 +106,19 @@ const AUTH_USER_SELECT = {
   // join the owning tenant's plan + live billing window so the session hint can be TRIAL-AWARE
   // (an expired F2 trial must not advertise features the server already floors) — login computes
   // entitlements with effectiveEntitlementsAt, the same helper the authoritative gate uses.
-  tenant: { select: { plan: true, subscriptionStatus: true, currentPeriodEnd: true } },
+  tenant: { select: { plan: true, subscriptionStatus: true, currentPeriodEnd: true, stripeSubscriptionId: true } },
 } as const
 
 /** Flatten the joined tenant billing fields into the flat AuthUserRow shape. */
-type AuthUserJoined = Omit<AuthUserRow, 'plan' | 'subscriptionStatus' | 'currentPeriodEnd'> & {
-  tenant: { plan: TenantPlan; subscriptionStatus: string | null; currentPeriodEnd: Date | null }
+type AuthUserJoined = Omit<AuthUserRow, 'plan' | 'subscriptionStatus' | 'currentPeriodEnd' | 'stripeSubscriptionId'> & {
+  tenant: { plan: TenantPlan; subscriptionStatus: string | null; currentPeriodEnd: Date | null; stripeSubscriptionId: string | null }
 }
 const flattenAuthRow = ({ tenant, ...rest }: AuthUserJoined): AuthUserRow => ({
   ...rest,
   plan: tenant.plan,
   subscriptionStatus: tenant.subscriptionStatus,
   currentPeriodEnd: tenant.currentPeriodEnd,
+  stripeSubscriptionId: tenant.stripeSubscriptionId,
 })
 
 /** Auth methods over an existing PrismaClient — shared by createAuthDb and
