@@ -8,6 +8,15 @@ import type { Actor } from '../scope.js'
 /** A self-serve signup whose email already belongs to a user (in any tenant) — mapped to 409 by the
  *  route. Blocking it keeps the login lookup unambiguous (an email in two tenants → the 409 ambiguous
  *  identity trap). */
+/** A tenant that still carries commission rows cannot be hard-deleted — the ledger is a financial
+ *  record (audit HIGH). Mapped to 409 by the route, mirroring AccountHasUsersError. */
+export class TenantHasCommissionsError extends Error {
+  constructor(readonly commissionCount: number) {
+    super(`tenant has ${commissionCount} commission record(s); the payout ledger must not be destroyed`)
+    this.name = 'TenantHasCommissionsError'
+  }
+}
+
 export class SignupEmailInUseError extends Error {
   constructor() {
     super('email already in use')
@@ -189,6 +198,10 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
     remove: async (actor, id) => {
       const before = await prisma.tenant.findUnique({ where: { id } })
       if (before === null) return false
+      // the commission ledger outlives the tenant (money owed//paid must stay reconcilable). The FK is
+      // RESTRICT, so this check turns an opaque 500 into an explicit, actionable 409.
+      const commissionCount = await prisma.commission.count({ where: { tenantId: id } })
+      if (commissionCount > 0) throw new TenantHasCommissionsError(commissionCount)
       await prisma.tenant.delete({ where: { id } })
       await audit.record({ tenantId: id }, actor, { action: 'delete', entity: 'tenant', entityId: id, before })
       return true

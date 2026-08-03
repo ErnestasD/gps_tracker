@@ -174,10 +174,10 @@ enum CommissionStatus {
 model Commission {
   id          String     @id @default(uuid()) @db.Uuid
   affiliateId String     @db.Uuid
-  affiliate   Affiliate  @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  affiliate   Affiliate  @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
   tenantId    String     @db.Uuid
   /// the referred tenant whose payment generated this commission
-  tenant      Tenant     @relation("TenantCommissions", fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant     @relation("TenantCommissions", fields: [tenantId], references: [id], onDelete: Restrict)
   /// commission amount in MINOR units (cents), same currency as the source customer payment
   amountCents Int
   currency    String     @default("eur")
@@ -185,6 +185,13 @@ model Commission {
   sourceInvoiceId String @unique
   status      CommissionStatus @default(pending)
   createdAt   DateTime   @default(now()) @db.Timestamptz()
+  /// the commission rate AGREED AT ACCRUAL — snapshotted so editing the affiliate never re-prices history (§6.9)
+  ratePct     Decimal?   @db.Decimal(5, 2)
+  /// the customer payment this was computed from, in minor units (the `amount_paid` of the source invoice)
+  baseAmountCents Int?
+  /// when the source invoice was actually PAID (Stripe's clock) — the earning window anchors on the
+  /// tenant's earliest paidAt, not on a row's DB insert time
+  paidAt      DateTime?  @db.Timestamptz()
 
   @@index([affiliateId, status])
   @@map("commissions")
