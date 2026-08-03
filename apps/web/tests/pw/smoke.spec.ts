@@ -578,13 +578,16 @@ test('reports: run a report over a range (E06-2)', async ({ page }) => {
   // Run is disabled until both bounds are set
   await expect(page.getByTestId('report-run')).toBeDisabled()
   // date pickers are DayPicker popovers (round-2 amendment); day cells render as
-  // role=gridcell buttons carrying a full yyyy-MM-dd accessible name. Both dates sit in
-  // the CURRENT month (the suite runs in July 2026 — same assumption the old hardcoded
-  // datetime-local fills made).
+  // role=gridcell buttons carrying a full yyyy-MM-dd accessible name. The picker opens on the
+  // CURRENT month, so pick dates IN it (computed at run time, not hardcoded — a fixed July date
+  // became unreachable once wall-clock rolled past it). Day 01 + 28 exist in every month; the
+  // report only needs to RUN (result asserts table OR empty), so no seeded data in-range is needed.
+  const now = new Date()
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   await page.getByTestId('report-from').click()
-  await page.getByRole('gridcell', { name: '2026-07-01', exact: true }).click()
+  await page.getByRole('gridcell', { name: `${ym}-01`, exact: true }).click()
   await page.getByTestId('report-to').click()
-  await page.getByRole('gridcell', { name: '2026-07-31', exact: true }).click()
+  await page.getByRole('gridcell', { name: `${ym}-28`, exact: true }).click()
   await page.getByTestId('report-run').click()
   // the result panel resolves to a table or the empty state (no trips required)
   await expect(page.getByTestId('report-table').or(page.getByTestId('report-empty'))).toBeVisible()
