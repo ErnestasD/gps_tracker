@@ -70,7 +70,8 @@
     "searchHint": "Pereiti į puslapį ar rasti įrenginį…",
     "palettePages": "Puslapiai",
     "paletteDevices": "Įrenginiai",
-    "paletteEmpty": "Nieko nerasta"
+    "paletteEmpty": "Nieko nerasta",
+    "affiliates": "Partneriai"
   },
   "routing": {
     "title": "Maršrutų planuoklė",
@@ -1016,5 +1017,45 @@
     "fuelTimeline": "Kuro lygio laiko juosta",
     "speedTimeline": "Atkūrimo greičio laiko juosta",
     "voltageTimeline": "Įtampos laiko juosta"
+  },
+  "affiliates": {
+    "title": "Partneriai",
+    "desc": "Partnerių rekomendacijų programa — kvieskite partnerius, nustatykite komisijos sąlygas, tvarkykite išmokas.",
+    "denied": "Tik platformos administratoriams.",
+    "invite": "Pakviesti partnerį",
+    "inviteTitle": "Pakviesti partnerį",
+    "list": "Partneriai",
+    "empty": "Partnerių dar nėra",
+    "emptyDesc": "Pakvieskite pirmą partnerį.",
+    "note": "Tik pagal kvietimą. Partnerio rekomendacijos kodas priskiria naujas registracijas, kai partneris aktyvus; komisiniai kaupiami nustatytą mėnesių skaičių nuo kiekvieno rekomenduoto kliento mokėjimų.",
+    "terms": "{{pct}}% · {{months}} mėn.",
+    "status": {
+      "label": "Būsena",
+      "pending": "Laukiama",
+      "active": "Aktyvus",
+      "suspended": "Sustabdytas"
+    },
+    "activate": "Aktyvuoti",
+    "suspend": "Sustabdyti",
+    "commissions": "Komisiniai",
+    "noCommissions": "Komisinių dar nėra.",
+    "date": "Data",
+    "amount": "Suma",
+    "invoice": "Sąskaita",
+    "markPaid": "Pažymėti apmokėta",
+    "commissionStatus": {
+      "pending": "Laukiama",
+      "paid": "Apmokėta",
+      "void": "Anuliuota"
+    },
+    "name": "Vardas",
+    "email": "El. paštas",
+    "code": "Rekomendacijos kodas",
+    "codeAuto": "Sugeneruojamas automatiškai, jei tuščia",
+    "pct": "Komisija %",
+    "months": "Trukmė (mėn.)",
+    "create": "Siųsti kvietimą",
+    "createError": "Nepavyko sukurti partnerio. Kodas arba el. paštas jau naudojamas.",
+    "actionError": "Veiksmas nepavyko. Bandykite dar kartą."
   }
 }

@@ -23,6 +23,7 @@ import { TripsPage } from '@/routes/app/trips'
 import { GeofencesPage } from '@/routes/app/geofences'
 import { RoutePlannerPage } from '@/routes/app/routing'
 import { ApiKeysPage } from '@/routes/app/apiKeys'
+import { AffiliatesPage } from '@/routes/app/affiliates'
 import { PlatformPage } from '@/routes/app/platform'
 import { EventsPage } from '@/routes/app/events'
 import { ReportsPage } from '@/routes/app/reports'
@@ -228,6 +229,12 @@ const platformRoute = createRoute({
   component: PlatformPage,
 })
 
+const affiliatesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/affiliates',
+  component: AffiliatesPage,
+})
+
 const auditRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/audit',
@@ -246,7 +253,7 @@ const routeTree = rootRoute.addChildren([
   forgotPasswordRoute,
   resetPasswordRoute,
   shareRoute,
-  appRoute.addChildren([appIndexRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([appIndexRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

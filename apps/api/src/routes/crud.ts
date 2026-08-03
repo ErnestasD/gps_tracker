@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto'
+
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
@@ -6,6 +8,9 @@ import {
   ROLES,
   accountCreateSchema,
   accountUpdateSchema,
+  affiliateCreateSchema,
+  affiliateUpdateSchema,
+  commissionStatusUpdateSchema,
   brandingSchema,
   canGrantRole,
   canManageUser,
@@ -144,6 +149,16 @@ function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
 
 /** :id is always present on an item route; narrow the noUncheckedIndexedAccess string|undefined. */
 const id = (c: Context): string => c.req.param('id') ?? ''
+
+// A readable, URL-safe affiliate referral code (default when the admin doesn't pick one). Ambiguous
+// glyphs (0/O, 1/I/L) dropped so a partner can dictate it over the phone; CSPRNG so it's unguessable.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+const genAffiliateCode = (): string => {
+  const bytes = randomBytes(8)
+  let out = ''
+  for (const b of bytes) out += CODE_ALPHABET[b % CODE_ALPHABET.length]
+  return out
+}
 
 const body = async <T>(c: Context, schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } }): Promise<T | null> => {
   const parsed = schema.safeParse(await c.req.json().catch(() => null))
@@ -1222,6 +1237,46 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           return problem(c, result.status, title, result.reason)
         }
         return json(c, result, 201)
+      } },
+
+    // ── affiliates / partner program (PLATFORM, item 5 / W9) ──────────────────
+    // Invite-only management: platform_admin creates a partner (code auto-generated when omitted),
+    // then flips status → active so its referral code starts attributing new tenants (F4).
+    { method: 'get', path: '/v1/affiliates', scopeClass: 'platform', entity: 'affiliate', shape: 'collection',
+      handler: async (c) => json(c, await db.affiliates.list()) },
+    { method: 'get', path: '/v1/affiliates/:id', scopeClass: 'platform', entity: 'affiliate', shape: 'item',
+      handler: async (c) => {
+        const row = await db.affiliates.get(id(c))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'post', path: '/v1/affiliates', scopeClass: 'platform', entity: 'affiliate', shape: 'collection',
+      handler: async (c) => {
+        const data = await body(c, affiliateCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        try {
+          const created = await db.affiliates.create({ userId: auth(c).userId }, { ...data, code: data.code ?? genAffiliateCode() })
+          return json(c, created, 201)
+        } catch {
+          // unique violation on email or code (P2002) — a partner/code already exists
+          return problem(c, 409, 'Conflict', 'affiliate_exists')
+        }
+      } },
+    { method: 'patch', path: '/v1/affiliates/:id', scopeClass: 'platform', entity: 'affiliate', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, affiliateUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const row = await db.affiliates.update({ userId: auth(c).userId }, id(c), data)
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    // commissions accrued for ONE affiliate (payout review); PATCH marks one paid/void
+    { method: 'get', path: '/v1/affiliates/:id/commissions', scopeClass: 'platform', entity: 'affiliate', shape: 'item',
+      handler: async (c) => json(c, await db.affiliates.listCommissions(id(c))) },
+    { method: 'patch', path: '/v1/commissions/:id', scopeClass: 'platform', entity: 'commission', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, commissionStatusUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const row = await db.affiliates.setCommissionStatus(id(c), data.status)
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
   ]
   // attach the allowed-roles policy uniformly (review HIGH)

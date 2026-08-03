@@ -70,7 +70,8 @@
     "searchHint": "Przejdź do strony lub znajdź urządzenie…",
     "palettePages": "Strony",
     "paletteDevices": "Urządzenia",
-    "paletteEmpty": "Brak wyników"
+    "paletteEmpty": "Brak wyników",
+    "affiliates": "Partnerzy"
   },
   "routing": {
     "title": "Planer tras",
@@ -1016,5 +1017,45 @@
     "fuelTimeline": "Oś czasu poziomu paliwa",
     "speedTimeline": "Oś czasu prędkości odtwarzania",
     "voltageTimeline": "Oś czasu napięcia"
+  },
+  "affiliates": {
+    "title": "Partnerzy",
+    "desc": "Program poleceń partnerskich — zapraszaj partnerów, ustalaj prowizje, przeglądaj wypłaty.",
+    "denied": "Tylko dla administratorów platformy.",
+    "invite": "Zaproś partnera",
+    "inviteTitle": "Zaproś partnera",
+    "list": "Partnerzy",
+    "empty": "Brak partnerów",
+    "emptyDesc": "Zaproś pierwszego partnera.",
+    "note": "Tylko na zaproszenie. Kod polecający partnera przypisuje nowe rejestracje, gdy partner jest aktywny; prowizje naliczane są przez ustaloną liczbę miesięcy od płatności każdego poleconego najemcy.",
+    "terms": "{{pct}}% · {{months}} mies.",
+    "status": {
+      "label": "Status",
+      "pending": "Oczekujący",
+      "active": "Aktywny",
+      "suspended": "Zawieszony"
+    },
+    "activate": "Aktywuj",
+    "suspend": "Zawieś",
+    "commissions": "Prowizje",
+    "noCommissions": "Brak prowizji.",
+    "date": "Data",
+    "amount": "Kwota",
+    "invoice": "Faktura",
+    "markPaid": "Oznacz jako opłacone",
+    "commissionStatus": {
+      "pending": "Oczekująca",
+      "paid": "Opłacona",
+      "void": "Anulowana"
+    },
+    "name": "Nazwa",
+    "email": "E-mail",
+    "code": "Kod polecający",
+    "codeAuto": "Generowany automatycznie, gdy puste",
+    "pct": "Prowizja %",
+    "months": "Czas trwania (mies.)",
+    "create": "Wyślij zaproszenie",
+    "createError": "Nie udało się utworzyć partnera. Kod lub e-mail jest już używany.",
+    "actionError": "Akcja nie powiodła się. Spróbuj ponownie."
   }
 }

@@ -70,7 +70,8 @@
     "searchHint": "Jump to a page or find a device…",
     "palettePages": "Pages",
     "paletteDevices": "Devices",
-    "paletteEmpty": "No results"
+    "paletteEmpty": "No results",
+    "affiliates": "Affiliates"
   },
   "routing": {
     "title": "Route planner",
@@ -1016,5 +1017,45 @@
     "fuelTimeline": "Fuel level timeline",
     "speedTimeline": "Playback speed timeline",
     "voltageTimeline": "Voltage timeline"
+  },
+  "affiliates": {
+    "title": "Affiliates",
+    "desc": "Partner referral program — invite partners, set commission terms, review payouts.",
+    "denied": "Platform administrators only.",
+    "invite": "Invite a partner",
+    "inviteTitle": "Invite a partner",
+    "list": "Partners",
+    "empty": "No partners yet",
+    "emptyDesc": "Invite your first partner to start referrals.",
+    "note": "Invite-only. A partner’s referral code attributes new sign-ups once the partner is active; commissions accrue for the set number of months from each referred tenant’s payments.",
+    "terms": "{{pct}}% · {{months}} mo",
+    "status": {
+      "label": "Status",
+      "pending": "Pending",
+      "active": "Active",
+      "suspended": "Suspended"
+    },
+    "activate": "Activate",
+    "suspend": "Suspend",
+    "commissions": "Commissions",
+    "noCommissions": "No commissions yet.",
+    "date": "Date",
+    "amount": "Amount",
+    "invoice": "Invoice",
+    "markPaid": "Mark paid",
+    "commissionStatus": {
+      "pending": "Pending",
+      "paid": "Paid",
+      "void": "Void"
+    },
+    "name": "Name",
+    "email": "Email",
+    "code": "Referral code",
+    "codeAuto": "Auto-generated if blank",
+    "pct": "Commission %",
+    "months": "Duration (months)",
+    "create": "Send invite",
+    "createError": "Could not create the partner. The code or email may already be in use.",
+    "actionError": "Action failed. Try again."
   }
 }

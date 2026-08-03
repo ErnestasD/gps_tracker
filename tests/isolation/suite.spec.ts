@@ -53,6 +53,10 @@ function idFor(f: TenantFixture, entity: string): string {
     sms: f.deviceId, // POST /v1/devices/:id/sms — the :id is a device (cross-tenant → 404 before any send)
     tenant: f.id,
     quarantine: '356307042440000', // a real 15-digit IMEI for the claim path param
+    // affiliate/commission are PLATFORM-scoped (no tenant fixture) — any non-empty UUID makes the
+    // path match so the tsp_admin RBAC gate fires (403) BEFORE the handler ever looks the id up
+    affiliate: '00000000-0000-0000-0000-0000000000a1',
+    commission: '00000000-0000-0000-0000-0000000000c1',
   }
   return map[entity] ?? ''
 }
