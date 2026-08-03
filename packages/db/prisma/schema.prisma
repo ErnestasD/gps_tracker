@@ -134,11 +134,32 @@ model Affiliate {
   commissionMonths Int             @default(12)
   status           AffiliateStatus @default(pending)
   createdAt        DateTime        @default(now()) @db.Timestamptz()
+  /// argon2id hash for the partner self-service login (F5); null until the partner sets a password
+  passwordHash     String?
 
-  referrals   Tenant[]     @relation("AffiliateReferrals")
+  referrals   Tenant[]                 @relation("AffiliateReferrals")
   commissions Commission[]
+  pwTokens    AffiliatePasswordToken[]
 
   @@map("affiliates")
+}
+
+/// One-time token for a partner to SET (initial) or RESET their self-service password (F5). Mirrors
+/// PasswordResetToken: only the SHA-256 hash is stored, single-use, expiring. An admin issues one and
+/// conveys the link to the partner (email wiring is a follow-up).
+model AffiliatePasswordToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  affiliateId String    @db.Uuid
+  tokenHash   String    @unique
+  expiresAt   DateTime  @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @db.Timestamptz()
+  /// set when the token is consumed by a successful set/reset (single-use)
+  usedAt      DateTime? @db.Timestamptz()
+
+  affiliate Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId])
+  @@map("affiliate_password_tokens")
 }
 
 enum CommissionStatus {

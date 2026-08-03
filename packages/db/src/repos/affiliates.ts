@@ -93,6 +93,18 @@ export interface AffiliateRepo {
   accrueForPaidInvoice(invoice: PaidInvoice): Promise<Commission | null>
   listCommissions(affiliateId?: string): Promise<Commission[]>
   setCommissionStatus(id: string, status: CommissionStatus): Promise<Commission | null>
+
+  // ── partner self-service auth (F5) — UNSCOPED by design (a partner is not a tenant user) ──────────
+  /** Login lookup by email (partner sign-in). Returns the hash + status so the caller can argon2-verify
+   *  and refuse a non-active partner. Null when no such affiliate. */
+  findByEmailForAuth(email: string): Promise<{ id: string; email: string; passwordHash: string | null; status: AffiliateStatus } | null>
+  setPassword(id: string, passwordHash: string): Promise<void>
+  /** Issue a one-time set/reset-password token (store only its hash). */
+  createPwToken(affiliateId: string, tokenHash: string, expiresAt: Date): Promise<void>
+  /** Consume a token atomically (single-use, unexpired) → the affiliate id, or null. */
+  consumePwToken(tokenHash: string, now: Date): Promise<string | null>
+  /** Burn every still-unused token for an affiliate (after a successful set, so no sibling link works). */
+  invalidatePwTokens(affiliateId: string, now: Date): Promise<void>
 }
 
 export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
@@ -165,6 +177,26 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
       const before = await prisma.commission.findUnique({ where: { id } })
       if (before === null) return null
       return prisma.commission.update({ where: { id }, data: { status } })
+    },
+    findByEmailForAuth: (email) =>
+      prisma.affiliate.findUnique({ where: { email }, select: { id: true, email: true, passwordHash: true, status: true } }),
+    setPassword: async (id, passwordHash) => {
+      await prisma.affiliate.update({ where: { id }, data: { passwordHash } })
+    },
+    createPwToken: async (affiliateId, tokenHash, expiresAt) => {
+      await prisma.affiliatePasswordToken.create({ data: { affiliateId, tokenHash, expiresAt } })
+    },
+    consumePwToken: async (tokenHash, now) => {
+      // atomic single-use claim: only an unused, unexpired token matches (mirrors passwordResetTokens)
+      const claimed = await prisma.affiliatePasswordToken.updateManyAndReturn({
+        where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
+        data: { usedAt: now },
+        select: { affiliateId: true },
+      })
+      return claimed[0]?.affiliateId ?? null
+    },
+    invalidatePwTokens: async (affiliateId, now) => {
+      await prisma.affiliatePasswordToken.updateMany({ where: { affiliateId, usedAt: null }, data: { usedAt: now } })
     },
   }
 }

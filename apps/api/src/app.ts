@@ -17,6 +17,7 @@ import { mountApiKeys } from './routes/apiKeys.js'
 import { mountDocs } from './routes/docs.js'
 import { createPublicRoutes } from './routes/caddyAsk.js'
 import { createPilotRequestRoute } from './routes/pilotRequest.js'
+import { createPartnerRoutes } from './routes/partner.js'
 import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { mountReports } from './routes/reports.js'
@@ -171,6 +172,11 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // middleware applies only to handlers registered after it)
   // PUBLIC API docs (E06-5) — the OpenAPI document + docs page, before the /v1/* auth guard.
   mountDocs(app, { manifest: apiManifest(), ...(process.env['PUBLIC_API_URL'] ? { serverUrl: process.env['PUBLIC_API_URL'] } : {}) })
+
+  // PARTNER (affiliate) self-service (F5) — a SEPARATE auth surface, mounted before the tenant /v1/*
+  // guard: login/set-password are public, me/commissions carry their OWN partner-token guard. A
+  // partner is never a tenant user, so the tenant middleware must not see these. Manifest-EXEMPT.
+  app.route('/', createPartnerRoutes({ db: deps.db, redis: deps.redis, jwtSecret: deps.jwtSecret, trustProxy: deps.trustProxy, getRemoteAddr }))
 
   const apiKeyAuth = createApiKeyAuth({ apiKeys: deps.db.apiKeys, redis: deps.redis, perMin: deps.apiKeyRateLimitPerMin ?? 600 })
   // REST-API access is a TSP-plus entitlement — reject a resolved key whose tenant lacks apiAccess

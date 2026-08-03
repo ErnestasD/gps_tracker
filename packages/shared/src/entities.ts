@@ -265,6 +265,17 @@ export const commissionStatusUpdateSchema = z.object({ status: commissionStatusS
 export type AffiliateCreateInput = z.infer<typeof affiliateCreateSchema>
 export type AffiliateUpdateInput = z.infer<typeof affiliateUpdateSchema>
 
+// Partner self-service auth (F5): a partner is NOT a tenant user — a separate login against the
+// Affiliate row. Set-password consumes a one-time admin-issued token (email wiring is a follow-up).
+export const partnerLoginSchema = z.object({
+  email: z.string().email().max(320),
+  password: z.string().min(1).max(1024),
+})
+export const partnerSetPasswordSchema = z.object({
+  token: z.string().min(1).max(200),
+  password: z.string().min(8).max(1024),
+})
+
 // ── reports (E06-1) ──────────────────────────────────────────────────────────
 // POST /v1/reports/:type body. `accountId` is required only for a tenant-wide caller
 // (an account-scoped user's account is fixed by their token). from/to are ISO; the engine
