@@ -64,6 +64,7 @@ function makeDeps(withRevokeAll: boolean): { deps: AuthRouteDeps; rows: Map<stri
       findByEmailAllTenants: () => Promise.resolve([user]),
       findByIdForAuth: (id: string) => Promise.resolve(id === user.id ? user : null),
       setPassword: (_id: string, hash: string) => { user.passwordHash = hash; return Promise.resolve() },
+      setLocale: () => Promise.resolve(),
     },
     refreshTokens,
   }

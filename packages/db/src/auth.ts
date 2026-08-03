@@ -52,6 +52,10 @@ export interface AuthDb {
     /** Self-service password change (E03-2): the userId comes from the verified
      * access token, so no tenant scope is needed. UNSCOPED BY DESIGN. */
     setPassword(id: string, passwordHash: string): Promise<void>
+    /** Self-service locale change (PATCH /v1/auth/me): userId from the verified token,
+     * so the language choice follows the user across devices + localizes server emails.
+     * UNSCOPED BY DESIGN. */
+    setLocale(id: string, locale: string): Promise<void>
   }
   refreshTokens: {
     create(row: { id: string; familyId: string; userId: string; tokenHash: string; expiresAt: Date }): Promise<void>
@@ -115,6 +119,9 @@ export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnec
       },
       setPassword: async (id, passwordHash) => {
         await prisma.user.update({ where: { id }, data: { passwordHash } })
+      },
+      setLocale: async (id, locale) => {
+        await prisma.user.update({ where: { id }, data: { locale } })
       },
     },
     refreshTokens: {

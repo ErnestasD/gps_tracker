@@ -62,6 +62,7 @@ function makeDeps(users: AuthUserRow[]): {
         if (u) u.passwordHash = hash
         return Promise.resolve()
       },
+      setLocale: () => Promise.resolve(),
     },
     refreshTokens: {
       create: () => Promise.resolve(),

@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import type { Redis } from 'ioredis'
 
 import type { AuthDb, AuthUserRow } from '@orbetra/db'
-import { forgotPasswordSchema, loginRequestSchema, passwordChangeSchema, planEntitlements, resetPasswordSchema, type AuthSession, type AuthUser } from '@orbetra/shared'
+import { forgotPasswordSchema, localeUpdateSchema, loginRequestSchema, passwordChangeSchema, planEntitlements, resetPasswordSchema, type AuthSession, type AuthUser } from '@orbetra/shared'
 
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
@@ -258,6 +258,21 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
   // identity after reload-refresh (web needs it; all roles)
   app.get('/me', authMiddleware({ jwtSecret: deps.jwtSecret }), async (c) => {
     const auth = c.get('auth')
+    const user = await deps.db.users.findByIdForAuth(auth.userId)
+    if (user === null) return problem(c, 401, 'Unauthorized')
+    c.header('Cache-Control', 'no-store')
+    return c.json(toAuthUser(user))
+  })
+
+  // self-service profile update (any authenticated user): persist the UI language to the user's
+  // record so it follows them across devices and the server can localize their emails/reports.
+  // Locale-only for now (theme stays client-local); the userId is the verified token's, never a param.
+  app.patch('/me', authMiddleware({ jwtSecret: deps.jwtSecret }), async (c) => {
+    if (!sameOriginOk(c)) return problem(c, 403, 'Forbidden', 'cross-origin request rejected')
+    const parsed = localeUpdateSchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return problem(c, 400, 'Bad Request')
+    const auth = c.get('auth')
+    await deps.db.users.setLocale(auth.userId, parsed.data.locale)
     const user = await deps.db.users.findByIdForAuth(auth.userId)
     if (user === null) return problem(c, 401, 'Unauthorized')
     c.header('Cache-Control', 'no-store')

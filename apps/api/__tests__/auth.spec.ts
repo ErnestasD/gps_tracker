@@ -324,6 +324,19 @@ describe('E03-1 AC[2]: role matrix (4 roles × representative endpoints)', () =>
     })
     expect(((await res.json()) as { email: string }).email).toBe(seeded.viewer.email)
   })
+
+  it('PATCH /v1/auth/me persists the self-service locale (any role) and rejects an unsupported one', async () => {
+    const session = (await (await login(seeded.viewer.email, PW)).json()) as AuthSession
+    const hdr = { authorization: `Bearer ${session.accessToken}`, 'content-type': 'application/json' }
+    const ok = await fetch(`${base()}/v1/auth/me`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ locale: 'lt' }) })
+    expect(ok.status).toBe(200)
+    expect(((await ok.json()) as { locale: string }).locale).toBe('lt')
+    // and it stuck: a fresh /me read reflects the persisted locale
+    const me = (await (await fetch(`${base()}/v1/auth/me`, { headers: hdr })).json()) as { locale: string }
+    expect(me.locale).toBe('lt')
+    // an unsupported locale is a 400 (enum-gated)
+    expect((await fetch(`${base()}/v1/auth/me`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ locale: 'zz' }) })).status).toBe(400)
+  })
 })
 
 describe('E03-1 lockout (§6.1: 5 fails → window per IP+email)', () => {

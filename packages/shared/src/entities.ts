@@ -28,6 +28,12 @@ export const userUpdateSchema = z
   })
   .partial()
 
+/** The UI languages Orbetra ships (web i18n + server-side email/report localization). Single source
+ * for the web switcher AND the self-service `PATCH /v1/auth/me` locale update. */
+export const SUPPORTED_LOCALES = ['en', 'lt', 'pl', 'de'] as const
+export type Locale = (typeof SUPPORTED_LOCALES)[number]
+export const localeUpdateSchema = z.object({ locale: z.enum(SUPPORTED_LOCALES) })
+
 // ── devices ──────────────────────────────────────────────────────────────────
 export const odometerSourceSchema = z.enum(['auto', 'device', 'gps'])
 export const deviceCreateSchema = z.object({
