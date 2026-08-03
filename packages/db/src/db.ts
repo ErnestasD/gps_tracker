@@ -17,6 +17,7 @@ import { createRuleRepo, type RuleRepo } from './repos/rules.js'
 import { createShareLinkRepo, type ShareLinkRepo } from './repos/shareLinks.js'
 import { createSmsDeliveryRepo, type SmsDeliveryRepo } from './repos/smsDeliveries.js'
 import { createTenantDomainRepo, type TenantDomainRepo } from './repos/tenantDomains.js'
+import { createAffiliateRepo, type AffiliateRepo } from './repos/affiliates.js'
 import { createTenantRepo, type TenantRepo } from './repos/tenants.js'
 import { createTripRepo, type TripReadRepo } from './repos/trips.js'
 import { createUsageRepo, type UsageRepo } from './repos/usage.js'
@@ -35,6 +36,7 @@ import { createWebhookDeliveryRepo, type WebhookDeliveryRepo } from './repos/web
 export interface Db {
   auth: Omit<AuthDb, '$disconnect'>
   tenants: TenantRepo
+  affiliates: AffiliateRepo
   tenantDomains: TenantDomainRepo
   accounts: AccountRepo
   users: UserRepo
@@ -67,6 +69,7 @@ export function createDb(databaseUrl: string): Db {
   return {
     auth: buildAuthMethods(prisma),
     tenants: createTenantRepo(prisma, audit),
+    affiliates: createAffiliateRepo(prisma),
     tenantDomains: createTenantDomainRepo(prisma, audit),
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),
