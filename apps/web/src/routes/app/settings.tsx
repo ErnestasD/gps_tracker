@@ -16,12 +16,12 @@ import {
   onPrefsChange,
   onThemeChange,
   setDisplayPref,
-  setStoredLocale,
   setTheme,
   type DisplayPrefs,
   type Theme,
 } from '@/lib/prefs'
 import { disablePush, enablePush, pushEnabled, pushSupported } from '@/lib/push'
+import { setLocale } from '@/lib/locale'
 
 const LOCALES = ['en', 'lt', 'pl', 'de'] as const
 
@@ -101,10 +101,7 @@ export function SettingsPage() {
     setThemeState(value)
     setTheme(value)
   }
-  const onLocale = (value: string) => {
-    setStoredLocale(value)
-    void i18n.changeLanguage(value)
-  }
+  const onLocale = (value: string) => setLocale(value) // instant + persisted server-side (lib/locale)
 
   const submitPassword = (e: FormEvent) => {
     e.preventDefault()

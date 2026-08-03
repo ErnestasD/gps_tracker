@@ -39,6 +39,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
         findByEmailAllTenants: (email: string) => Promise.resolve(users.filter((u) => u.email === email)),
         findByIdForAuth: (id: string) => Promise.resolve(users.find((u) => u.id === id) ?? null),
         setPassword: () => Promise.resolve(),
+        setLocale: () => Promise.resolve(),
       },
       refreshTokens: {
         create: () => Promise.resolve(),

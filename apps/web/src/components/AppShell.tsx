@@ -36,6 +36,7 @@ import { useTranslation } from 'react-i18next'
 
 import { CommandPalette } from '@/components/admin/CommandPalette'
 import { NotificationsBell } from '@/components/admin/NotificationsBell'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getCurrentUser, logout as authLogout } from '@/lib/auth'
@@ -379,6 +380,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Search className="h-4 w-4" aria-hidden />
             </button>
             <NotificationsBell />
+            <LanguageSwitcher />
             <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t('shell.theme')} data-testid="topbar-theme">
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
