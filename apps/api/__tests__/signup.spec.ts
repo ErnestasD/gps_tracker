@@ -88,7 +88,11 @@ describe('public self-serve signup (F2)', () => {
     // the tenant exists on the trial plan, trialing, with a future window
     const tenant = await db.tenants.get(id)
     expect(tenant).toMatchObject({ name: 'Jonas Logistics', plan: 'direct_10', subscriptionStatus: 'trialing' })
-    expect(tenant!.currentPeriodEnd!.getTime()).toBeGreaterThan(Date.now())
+    // the trial window must match the PUBLIC promise (site copy + Terms of Service say 30 days) —
+    // a drift here would break a contractual claim, so assert the length, not just "in the future"
+    const days = (tenant!.currentPeriodEnd!.getTime() - Date.now()) / 86_400_000
+    expect(days).toBeGreaterThan(29.5)
+    expect(days).toBeLessThan(30.5)
     // trial entitlements: direct matrix (deviceLimit 10, no white-label)
     const ents = await db.tenants.getEntitlements(id)
     expect(ents).toMatchObject({ deviceLimit: 10, whiteLabel: false, apiAccess: false })
@@ -110,6 +114,26 @@ describe('public self-serve signup (F2)', () => {
     expect((await db.tenants.getEntitlements(past.tenantId)).deviceLimit).toBe(0) // floored — expired trial keeps nothing
     // while the fresh (unexpired) one keeps its plan matrix
     expect((await db.tenants.getEntitlements(id)).deviceLimit).toBe(10)
+  })
+
+  it('the SESSION hint is trial-aware — an expired trial never advertises what the server would 403', async () => {
+    // a tenant whose trial has already elapsed, created through the repo, with a real login password
+    const pw = 'password12'
+    const hashed = (await (await signup({ name: 'Hint', email: 'hint-live@fleet.test', password: pw })).json()) as { id: string }
+    void hashed
+    // reuse the live signup path for the UNEXPIRED case, and drive the expired case through login on a
+    // tenant created with a past window (same argon2 hash as the live user so login succeeds)
+    const liveUser = await db.auth.users.findByEmailAllTenants('hint-live@fleet.test')
+    const expired = await db.tenants.createSelfServeSignup({
+      tenantName: 'Hint Expired', accountName: 'My fleet', email: 'hint-expired@fleet.test',
+      passwordHash: liveUser[0]!.passwordHash, plan: 'direct_10',
+      trialEndsAt: new Date(Date.now() - 1000), referredByAffiliateId: null,
+    })
+    void expired
+    const liveSession = (await (await login('hint-live@fleet.test', pw)).json()) as { user: { entitlements: { deviceLimit: number } } }
+    const deadSession = (await (await login('hint-expired@fleet.test', pw)).json()) as { user: { entitlements: { deviceLimit: number } } }
+    expect(liveSession.user.entitlements.deviceLimit).toBe(10) // in-trial → plan matrix
+    expect(deadSession.user.entitlements.deviceLimit).toBe(0) // expired → floored, matching the server gate
   })
 
   it('a duplicate email (any tenant) → 409 email_in_use', async () => {

@@ -1,6 +1,6 @@
 import type { PrismaClient, Tenant } from '@prisma/client'
 
-import { effectiveEntitlements, FLOOR_ENTITLEMENTS, type Entitlements, type TenantPlan } from '@orbetra/shared'
+import { effectiveEntitlementsAt, type Entitlements, type TenantPlan } from '@orbetra/shared'
 
 import type { AuditRepo } from './audit.js'
 import type { Actor } from '../scope.js'
@@ -121,11 +121,9 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
     getEntitlements: async (tenantId) => {
       const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, subscriptionStatus: true, currentPeriodEnd: true } })
       if (row === null) throw new Error(`tenant not found: ${tenantId}`)
-      // a self-serve trial (status 'trialing') floors once its window elapses — enforced HERE at the
-      // authoritative gate so an expired trial can't keep its plan features without a subscription. We
-      // never mint 'trialing' from Stripe, so this only ever governs F2 trials.
-      if (row.subscriptionStatus === 'trialing' && row.currentPeriodEnd !== null && row.currentPeriodEnd < new Date()) return FLOOR_ENTITLEMENTS
-      return effectiveEntitlements(row.plan, row.subscriptionStatus)
+      // trial-aware (F2): a `trialing` tenant past currentPeriodEnd floors immediately. Shared with the
+      // session hint the web nav reads, so UI and server can never disagree.
+      return effectiveEntitlementsAt(row.plan, row.subscriptionStatus, row.currentPeriodEnd)
     },
     createSelfServeSignup: async (data) => {
       // advisory pre-check: an email already in a tenant would make login ambiguous (409). A race

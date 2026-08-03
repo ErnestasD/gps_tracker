@@ -97,7 +97,7 @@ function DocsPage() {
             <h2 className="display text-2xl font-semibold text-ink">Authentication</h2>
             <p className="mt-3 text-ink/75">
               All requests use a bearer token over HTTPS. Requests without a valid key return
-              <span className="mono text-[13px]"> 401</span>. Rate limit is 120 requests per minute
+              <span className="mono text-[13px]"> 401</span>. Rate limit is 600 requests per minute
               per key; exceeding it returns <span className="mono text-[13px]">429</span> with a
               <span className="mono text-[13px]"> Retry-After</span> header.
             </p>

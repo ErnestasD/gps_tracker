@@ -35,7 +35,10 @@ export interface SignupRouteDeps {
   rateLimit?: { max: number; windowS: number }
 }
 
-const TRIAL_DAYS = 14
+// 30 days — the publicly advertised trial. The marketing site AND the Terms of Service both state
+// "free trials run for 30 days without a card", so the backend must grant exactly that; a shorter
+// window would break a contractual promise.
+const TRIAL_DAYS = 30
 const TRIAL_PLAN = 'direct_10' as const
 
 // atomic fixed-window (mirrors pilotRequest): INCR, TTL on first hit, re-arm a stranded key

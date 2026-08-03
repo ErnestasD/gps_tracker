@@ -685,6 +685,13 @@ export interface BillingView {
   active: boolean
   /** ISO end of the current paid period, or null */
   currentPeriodEnd: string | null
+  /** true when the tenant may start Stripe Checkout — computed SERVER-SIDE with the same predicate
+   *  the checkout route enforces, so the UI can never offer (or hide) a plan picker that disagrees
+   *  with the API. True for: never subscribed, a terminally-ended subscription, and an F2 self-serve
+   *  LOCAL trial (trialing with no Stripe subscription — the trial must be able to convert to paid). */
+  canSubscribe: boolean
+  /** true while an F2 self-serve trial is running (local trial, not a Stripe-side trial). */
+  localTrial: boolean
 }
 /** POST /v1/billing/checkout and /portal both return a Stripe-hosted URL to redirect to. */
 export interface BillingRedirectView {

@@ -88,6 +88,24 @@ export function effectiveEntitlements(plan: TenantPlan, subscriptionStatus: stri
   return subscriptionStatus !== null && LAPSED_SUBSCRIPTION_STATUSES.has(subscriptionStatus) ? FLOOR_ENTITLEMENTS : planEntitlements(plan)
 }
 
+/**
+ * The SINGLE source of entitlement truth including the F2 self-serve TRIAL window: a tenant on
+ * `trialing` past its `currentPeriodEnd` floors immediately (no sweep — expiry is enforced at read
+ * time). We never mint `trialing` from Stripe checkout, so this only governs self-serve trials; an
+ * upgrade replaces the status through the ordinary webhook. Used by BOTH the authoritative server
+ * gate (db.tenants.getEntitlements) and the session hint the web nav reads, so the UI can never show
+ * a feature the server would 403 — pass the same clock to both.
+ */
+export function effectiveEntitlementsAt(
+  plan: TenantPlan,
+  subscriptionStatus: string | null,
+  currentPeriodEnd: Date | null,
+  now: Date = new Date(),
+): Entitlements {
+  if (subscriptionStatus === 'trialing' && currentPeriodEnd !== null && currentPeriodEnd < now) return FLOOR_ENTITLEMENTS
+  return effectiveEntitlements(plan, subscriptionStatus)
+}
+
 /** Per-Direct-plan device cap; the plan suffix IS the cap. */
 const DIRECT_DEVICE_LIMIT: Record<string, number> = {
   direct_5: 5,
