@@ -2338,3 +2338,30 @@
   "totalTokens": 3444619,
   "totalToolCalls": 797
 }
+---
+
+## REMEDIATION PLAN (decided 2026-08-03, to apply after the site PR ships)
+
+### HIGH-1 — commission ledger must survive tenant/affiliate deletion
+Both `commissions` FKs are `ON DELETE CASCADE`, so `DELETE /v1/tenants/:id` silently destroys paid and
+owed commission rows (unrecoverable financial trail).
+**Fix:** new migration recreating both FKs as `ON DELETE RESTRICT`; `tenants.remove` catches the FK
+violation and throws `TenantHasCommissionsError` → 409, mirroring the existing
+`AccountHasUsersError` precedent. Ledger rows then cannot be orphaned or erased.
+
+### HIGH-2 — referral-code lookup must be exact, not ILIKE
+`getActiveByCode` uses Prisma `mode:'insensitive'` → `ILIKE` with the value bound UNESCAPED, over a
+case-SENSITIVE unique index. Two money-misrouting bugs: `_` in a `?ref` acts as a single-char
+wildcard (`?ref=AUTUMN_` matches `AUTUMN1`), and `promo`/`PROMO` can coexist with a nondeterministic
+`findFirst`.
+**Fix:** `CREATE UNIQUE INDEX affiliates_code_lower_key ON affiliates (lower(code))` + look up with
+real equality on `lower(code)`; add an explicit `orderBy` for determinism.
+
+### MED (same pass)
+- **Snapshot the terms** on `Commission` (`ratePct`, `baseAmountCents`) per PROJECT_PLAN §6.9, and pin
+  the window end at attribution — today editing an affiliate's `commissionPct`/`commissionMonths`
+  re-prices history and can reopen a closed window.
+- **Anchor the window on the real first payment** (persist `firstPaidAt`) instead of the earliest
+  commission row's DB insert time (clock drift + a floored-to-zero first invoice extend the window).
+- **Self-referral guard** (§6.9, currently absent): refuse attribution when the tenant admin's email
+  domain matches the affiliate's.
