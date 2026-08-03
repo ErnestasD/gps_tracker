@@ -11,13 +11,13 @@ export function CodeCard() {
       </div>
       <pre className="p-5 leading-relaxed text-ink/85 overflow-x-auto text-[13px] mono">
 {`$ curl -H "Authorization: Bearer $ORBETRA_KEY" \\
-    https://api.orbetra.eu/v1/devices?tenant=acme
+    https://api.orbetra.com/v1/devices?tenant=your-tenant
 
 {
   "data": [
     {
-      "id": "353173094123456",
-      "name": "MB Sprinter — VIN…9F42",
+      "id": "<device-id>",
+      "name": "Van 01",
       "position": { "lat": 52.229, "lng": 21.012 },
       "speed_kmh": 48,
       "ignition": true,

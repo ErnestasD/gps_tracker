@@ -38,6 +38,19 @@ const ACTIVE = new Set(['active', 'trialing'])
 const RESUBSCRIBABLE = new Set(['canceled', 'incomplete_expired'])
 const hasLiveSubscription = (status: string | null | undefined): boolean => status != null && !RESUBSCRIBABLE.has(status)
 
+/**
+ * An F2 SELF-SERVE trial: we mint `trialing` locally at signup with NO Stripe subscription behind it.
+ * A Stripe-side trial always carries a subscription id, so the absence of one is the discriminator.
+ * Such a tenant has no live Stripe subscription to double-bill, and MUST be able to convert to paid —
+ * without this the trial user hits `already_subscribed` (409) and can never subscribe.
+ */
+const isLocalTrial = (status: string | null | undefined, stripeSubscriptionId: string | null | undefined): boolean =>
+  status === 'trialing' && (stripeSubscriptionId === null || stripeSubscriptionId === undefined)
+
+/** The ONE predicate both GET /v1/billing (canSubscribe) and POST /checkout enforce. */
+const canStartCheckout = (status: string | null | undefined, stripeSubscriptionId: string | null | undefined): boolean =>
+  !hasLiveSubscription(status) || isLocalTrial(status, stripeSubscriptionId)
+
 /** A safe absolute http(s) base URL from the configured value or the request Origin, else null. */
 function baseUrl(configured: string | undefined, origin: string | undefined): string | null {
   const candidate = configured ?? origin
@@ -57,7 +70,7 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
     c.header('Cache-Control', 'no-store')
     if (deps.stripe === undefined) {
-      const view: BillingView = { configured: false, hasCustomer: false, status: null, active: false, currentPeriodEnd: null }
+      const view: BillingView = { configured: false, hasCustomer: false, status: null, active: false, currentPeriodEnd: null, canSubscribe: false, localTrial: false }
       return c.json(view)
     }
     const b = await deps.db.tenants.getBilling(auth.tenantId)
@@ -67,6 +80,9 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
       status: b?.subscriptionStatus ?? null,
       active: b?.subscriptionStatus != null && ACTIVE.has(b.subscriptionStatus),
       currentPeriodEnd: b?.currentPeriodEnd ?? null,
+      // same predicate the checkout route enforces — the picker can never disagree with the API
+      canSubscribe: canStartCheckout(b?.subscriptionStatus, b?.stripeSubscriptionId),
+      localTrial: isLocalTrial(b?.subscriptionStatus, b?.stripeSubscriptionId),
     }
     return c.json(view)
   })
@@ -101,7 +117,10 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     // active/trialing but ALSO past_due/unpaid/incomplete/paused: those keep the existing
     // subscription, so the tenant is sent to the Customer Portal to FIX PAYMENT, not through
     // Checkout again. The UI reads `already_subscribed` → opens the portal (POST /v1/billing/portal).
-    if (hasLiveSubscription(tenant.subscriptionStatus)) return problem(c, 409, 'Conflict', 'already_subscribed')
+    // …EXCEPT an F2 self-serve local trial (trialing with no Stripe subscription): it has nothing to
+    // double-bill and must be able to convert to paid, so the same predicate GET /v1/billing reports
+    // as `canSubscribe` decides here.
+    if (!canStartCheckout(tenant.subscriptionStatus, tenant.stripeSubscriptionId)) return problem(c, 409, 'Conflict', 'already_subscribed')
 
     // TOCTOU mitigation (audit LOW): subscriptionStatus lags the webhook, so two CONCURRENT
     // checkouts both read "no live sub" and could each create a subscription. A per-tenant lock

@@ -1,9 +1,32 @@
 import type { PrismaClient, Tenant } from '@prisma/client'
 
-import { effectiveEntitlements, type Entitlements, type TenantPlan } from '@orbetra/shared'
+import { effectiveEntitlementsAt, type Entitlements, type TenantPlan } from '@orbetra/shared'
 
 import type { AuditRepo } from './audit.js'
 import type { Actor } from '../scope.js'
+
+/** A self-serve signup whose email already belongs to a user (in any tenant) — mapped to 409 by the
+ *  route. Blocking it keeps the login lookup unambiguous (an email in two tenants → the 409 ambiguous
+ *  identity trap). */
+export class SignupEmailInUseError extends Error {
+  constructor() {
+    super('email already in use')
+    this.name = 'SignupEmailInUseError'
+  }
+}
+
+/** Direct self-serve signup payload (F2). The route resolves `referredByAffiliateId` from a ?ref code
+ *  and hashes the password before calling this. Creates tenant + default account + tenant-admin user. */
+export interface SelfServeSignup {
+  tenantName: string
+  accountName: string
+  email: string
+  passwordHash: string
+  plan: TenantPlan
+  /** trial end — stored as currentPeriodEnd; getEntitlements floors a `trialing` tenant past it. */
+  trialEndsAt: Date
+  referredByAffiliateId: string | null
+}
 
 export interface TenantCreate {
   name: string
@@ -63,6 +86,9 @@ export interface TenantRepo {
    *  non-paying tenant can't keep billable features. This is the authoritative gate; prefer it over
    *  `getPlan` + `planEntitlements` (which ignores billing status). */
   getEntitlements(tenantId: string): Promise<Entitlements>
+  /** F2 self-serve signup: atomically create a tenant (on `plan`, trialing until `trialEndsAt`) + a
+   *  default account + a tenant-admin user. Throws SignupEmailInUseError if the email already exists. */
+  createSelfServeSignup(data: SelfServeSignup): Promise<{ tenantId: string; userId: string }>
   create(actor: Actor, data: TenantCreate): Promise<Tenant>
   update(actor: Actor, id: string, data: TenantUpdate): Promise<Tenant | null>
   remove(actor: Actor, id: string): Promise<boolean>
@@ -93,9 +119,46 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       return row.plan
     },
     getEntitlements: async (tenantId) => {
-      const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, subscriptionStatus: true } })
+      const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, subscriptionStatus: true, currentPeriodEnd: true, stripeSubscriptionId: true } })
       if (row === null) throw new Error(`tenant not found: ${tenantId}`)
-      return effectiveEntitlements(row.plan, row.subscriptionStatus)
+      // trial-aware (F2): a `trialing` tenant past currentPeriodEnd floors immediately. Shared with the
+      // session hint the web nav reads, so UI and server can never disagree.
+      return effectiveEntitlementsAt(row.plan, row.subscriptionStatus, row.currentPeriodEnd, row.stripeSubscriptionId)
+    },
+    createSelfServeSignup: async (data) => {
+      // An email already present in ANY tenant would make login ambiguous (two matches ⇒ the 409
+      // ambiguous-identity trap), so signup refuses it. `email` is unique only PER TENANT by design
+      // (the same person may exist across a TSP's sub-tenants), so uniqueness here has to be enforced
+      // by us, not by a constraint.
+      //
+      // The race is real and wide: hashPassword runs before this call and can take hundreds of ms
+      // under argon2 contention, so two concurrent signups for one email would both pass a plain
+      // check and both insert (READ COMMITTED cannot see the other's uncommitted row) — leaving two
+      // tenants that share an email, i.e. a permanently 409-ing login. A transaction-scoped ADVISORY
+      // LOCK keyed on the email serializes them: the loser blocks until the winner commits, then sees
+      // the row and gets a clean SignupEmailInUseError.
+      const existing = await prisma.user.findFirst({ where: { email: data.email }, select: { id: true } })
+      if (existing !== null) throw new SignupEmailInUseError()
+      return prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${data.email}))`
+        if (await tx.user.findFirst({ where: { email: data.email }, select: { id: true } })) throw new SignupEmailInUseError()
+        const tenant = await tx.tenant.create({
+          data: {
+            name: data.tenantName,
+            branding: {},
+            plan: data.plan,
+            subscriptionStatus: 'trialing',
+            currentPeriodEnd: data.trialEndsAt,
+            ...(data.referredByAffiliateId != null ? { referredByAffiliateId: data.referredByAffiliateId } : {}),
+          },
+        })
+        await tx.account.create({ data: { tenantId: tenant.id, name: data.accountName, timezone: 'UTC' } })
+        // the owner is a TENANT-WIDE admin (accountId null) — a tsp_admin manages the whole tenant
+        const user = await tx.user.create({
+          data: { tenantId: tenant.id, accountId: null, email: data.email, passwordHash: data.passwordHash, role: 'tsp_admin', locale: 'en' },
+        })
+        return { tenantId: tenant.id, userId: user.id }
+      })
     },
     create: async (actor, data) => {
       const row = await prisma.tenant.create({

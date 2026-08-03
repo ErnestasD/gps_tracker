@@ -100,10 +100,12 @@ export function TabShowcase() {
                 <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-[#0B1020] border border-[#22304C]">
                   <Circle className="h-2 w-2 fill-[#10B981] text-[#10B981]" />
                   <span className="mono text-[10px] tracking-wider text-slate-300">
-                    app.orbetra.eu / {current.label.toLowerCase()}
+                    app.orbetra.com / {current.label.toLowerCase()}
                   </span>
                 </div>
-                <div className="mono text-[10px] text-slate-500">v1.4.2</div>
+                {/* transparency: this panel is an interactive ILLUSTRATION with a sample fleet, not a
+                    customer screenshot — say so instead of letting invented numbers read as real */}
+                <div className="mono text-[10px] tracking-wider text-slate-500 uppercase">Sample data</div>
               </div>
               <CurrentPanel />
             </div>
@@ -204,7 +206,8 @@ function LiveMapPanel() {
       <aside className="border-r border-[rgba(76,77,207,0.18)] bg-[rgba(10,20,40,0.6)] overflow-hidden">
         <div className="px-3 py-2.5 border-b border-[rgba(76,77,207,0.18)] flex items-center justify-between">
           <span className="mono text-[10px] tracking-wider text-slate-400 uppercase">Devices</span>
-          <span className="mono text-[10px] text-slate-500">6 / 132</span>
+          {/* the real count of the sample fleet — an invented "of 132" would read as a platform stat */}
+          <span className="mono text-[10px] text-slate-500">{DEVICES.length}</span>
         </div>
         <ul>
           {DEVICES.map((d) => {
@@ -603,9 +606,9 @@ function ReportsPanel() {
     <div className="h-[440px] p-5 text-slate-200 flex flex-col gap-4 min-h-0">
       <div className="grid grid-cols-3 gap-3 shrink-0">
         {[
-          { l: "Distance · 30d", v: "24,812", u: "km", trend: "+12.4%", color: "#10B981" },
-          { l: "Idle · 30d", v: "42:18", u: "h", trend: "-8.1%", color: "#10B981" },
-          { l: "Geofence events", v: "1,204", u: "", trend: "+3.2%", color: "#B45309" },
+          { l: "Distance · 30d", v: "—", u: "km", trend: "—", color: "#10B981" },
+          { l: "Idle · 30d", v: "—", u: "h", trend: "—", color: "#10B981" },
+          { l: "Geofence events", v: "—", u: "", trend: "—", color: "#B45309" },
         ].map((s, i) => (
           <div key={i} className="rounded-lg border border-[#22304C] bg-[#0F172A] p-3.5">
             <div className="mono text-[9px] uppercase tracking-wider text-slate-400">{s.l}</div>
@@ -614,7 +617,7 @@ function ReportsPanel() {
               {s.u && <span className="mono text-[10px] text-slate-500">{s.u}</span>}
             </div>
             <div className="mono text-[10px] mt-1" style={{ color: s.color }}>
-              ▲ {s.trend} vs prev
+              {s.trend} vs prev
             </div>
           </div>
         ))}
@@ -685,12 +688,15 @@ function ReportsPanel() {
 // COMMANDS
 // ─────────────────────────────────────────────
 function CommandsPanel() {
+  // REAL Codec-12 presets only (packages/shared COMMAND_PRESETS) — the illustration must never
+  // advertise a command the platform does not ship (no "immobilize"/"engine-cut"/"unlock-door").
+  // Device ids are masked: a plausible-looking IMEI would read as real customer hardware.
   const queue = [
-    { id: "cmd_01H7…9K", type: "immobilize", device: "353173094", status: "delivered", time: "10:22:15Z", color: "#10B981" },
-    { id: "cmd_01H7…4M", type: "request-position", device: "353173094", status: "delivered", time: "10:24:02Z", color: "#10B981" },
-    { id: "cmd_01H7…7P", type: "unlock-door", device: "358921471", status: "queued", time: "10:25:41Z", color: "#B45309" },
-    { id: "cmd_01H7…2R", type: "output-set", device: "358921471", status: "failed", time: "10:19:08Z", color: "#DC2626" },
-    { id: "cmd_01H7…8T", type: "engine-cut", device: "352094811", status: "delivered", time: "10:15:37Z", color: "#10B981" },
+    { id: "cmd_01H7…9K", type: "getgps", device: "<device-id>", status: "delivered", time: "10:22:15Z", color: "#10B981" },
+    { id: "cmd_01H7…4M", type: "getinfo", device: "<device-id>", status: "delivered", time: "10:24:02Z", color: "#10B981" },
+    { id: "cmd_01H7…7P", type: "dout_on", device: "<device-id>", status: "queued", time: "10:25:41Z", color: "#B45309" },
+    { id: "cmd_01H7…2R", type: "setparam", device: "<device-id>", status: "failed", time: "10:19:08Z", color: "#DC2626" },
+    { id: "cmd_01H7…8T", type: "getver", device: "<device-id>", status: "delivered", time: "10:15:37Z", color: "#10B981" },
   ];
   return (
     <div className="h-[440px] grid grid-rows-1 grid-cols-[1fr_320px] text-slate-200">
@@ -698,7 +704,7 @@ function CommandsPanel() {
         <div className="text-slate-500">
           <span className="text-[#7C5CFC]">$</span> orbetra cmd send{" "}
           <span className="text-[#3a3b8f]">--device</span>{" "}
-          <span className="text-[#B45309]">353173094</span>{" "}
+          <span className="text-[#B45309]">{"<device-id>"}</span>{" "}
           <span className="text-[#3a3b8f]">--type</span>{" "}
           <span className="text-slate-100">immobilize</span>
         </div>
@@ -718,7 +724,7 @@ function CommandsPanel() {
         <div className="text-slate-500 mt-4">
           <span className="text-[#7C5CFC]">$</span> orbetra cmd send{" "}
           <span className="text-[#3a3b8f]">--device</span>{" "}
-          <span className="text-[#B45309]">353173094</span>{" "}
+          <span className="text-[#B45309]">{"<device-id>"}</span>{" "}
           <span className="text-[#3a3b8f]">--type</span>{" "}
           <span className="text-slate-100">request-position</span>
         </div>
@@ -729,7 +735,7 @@ function CommandsPanel() {
         <div className="text-slate-500 mt-4">
           <span className="text-[#7C5CFC]">$</span> orbetra cmd list{" "}
           <span className="text-[#3a3b8f]">--device</span>{" "}
-          <span className="text-[#B45309]">353173094</span>{" "}
+          <span className="text-[#B45309]">{"<device-id>"}</span>{" "}
           <span className="text-[#3a3b8f]">--last</span>{" "}
           <span className="text-slate-100">24h</span>
         </div>

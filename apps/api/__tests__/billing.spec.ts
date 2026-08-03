@@ -260,6 +260,36 @@ describe('billing lifecycle (ADR-024)', () => {
     expect(((await (await req(port, '/v1/billing', a.token)).json()) as BillingView).active).toBe(false) // A untouched
   })
 
+  it('an F2 self-serve LOCAL trial can still subscribe (canSubscribe + checkout allowed)', async () => {
+    // a signup-created tenant: status 'trialing' with NO Stripe subscription behind it
+    const signed = await db.tenants.createSelfServeSignup({
+      tenantName: 'Trial Co', accountName: 'My fleet', email: 'trial-billing@fleet.test',
+      passwordHash: 'x', plan: 'direct_10', trialEndsAt: new Date(Date.now() + 86_400_000), referredByAffiliateId: null,
+    })
+    const token = await mintTestToken({ userId: signed.userId, tenantId: signed.tenantId, role: 'tsp_admin' })
+    const view = (await (await req(port, '/v1/billing', token)).json()) as BillingView
+    expect(view.status).toBe('trialing')
+    expect(view.active).toBe(true) // trialing counts as active for the badge…
+    expect(view.localTrial).toBe(true)
+    expect(view.canSubscribe).toBe(true) // …but the trial MUST be able to convert to paid
+    // and checkout actually succeeds (no 409 already_subscribed)
+    const res = await req(port, '/v1/billing/checkout', token, 'POST')
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { url: string }).url).toContain('https://checkout.test/')
+  })
+
+  it('a STRIPE-side trial (has a subscription id) is still protected from double-subscribe', async () => {
+    const { token, cus } = await freshTenant('StripeTrial')
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    // a real Stripe trial arrives via the webhook and carries sub_<customer>
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_st', cus, 'customer.subscription.updated', 'trialing', 100), { 'stripe-signature': 'valid' })
+    const view = (await (await req(port, '/v1/billing', token)).json()) as BillingView
+    expect(view.status).toBe('trialing')
+    expect(view.localTrial).toBe(false) // has a Stripe subscription id
+    expect(view.canSubscribe).toBe(false)
+    expect((await req(port, '/v1/billing/checkout', token, 'POST')).status).toBe(409)
+  })
+
   it('checkout while already subscribed is refused (double-billing guard) → 409', async () => {
     const { token, cus } = await freshTenant('Double')
     await req(port, '/v1/billing/checkout', token, 'POST')

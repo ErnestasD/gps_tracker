@@ -12,12 +12,41 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TspRouteImport } from './routes/tsp'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SubprocessorsRouteImport } from './routes/subprocessors'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PilotRouteImport } from './routes/pilot'
+import { Route as PartnersRouteImport } from './routes/partners'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as ImpressumRouteImport } from './routes/impressum'
 import { Route as DpaRouteImport } from './routes/dpa'
+import { Route as DocsRouteImport } from './routes/docs'
+import { Route as DemoRouteImport } from './routes/demo'
+import { Route as CookiesRouteImport } from './routes/cookies'
+import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as PartnerSetPasswordRouteImport } from './routes/partner.set-password'
+import { Route as PartnerLoginRouteImport } from './routes/partner.login'
+import { Route as PartnerDashboardRouteImport } from './routes/partner.dashboard'
+import { Route as AppWebhooksRouteImport } from './routes/app.webhooks'
+import { Route as AppTripsRouteImport } from './routes/app.trips'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
+import { Route as AppRulesRouteImport } from './routes/app.rules'
+import { Route as AppReportsRouteImport } from './routes/app.reports'
+import { Route as AppNotificationsRouteImport } from './routes/app.notifications'
+import { Route as AppMapRouteImport } from './routes/app.map'
+import { Route as AppMaintenanceRouteImport } from './routes/app.maintenance'
+import { Route as AppHistoryRouteImport } from './routes/app.history'
+import { Route as AppGeofencesRouteImport } from './routes/app.geofences'
+import { Route as AppEventsRouteImport } from './routes/app.events'
+import { Route as AppDriversRouteImport } from './routes/app.drivers'
+import { Route as AppDevicesRouteImport } from './routes/app.devices'
+import { Route as AppCommandsRouteImport } from './routes/app.commands'
+import { Route as AppBrandingRouteImport } from './routes/app.branding'
+import { Route as AppBillingRouteImport } from './routes/app.billing'
+import { Route as AppAuditRouteImport } from './routes/app.audit'
+import { Route as AppApiKeysRouteImport } from './routes/app.api-keys'
 
 const TspRoute = TspRouteImport.update({
   id: '/tsp',
@@ -32,6 +61,11 @@ const TermsRoute = TermsRouteImport.update({
 const SubprocessorsRoute = SubprocessorsRouteImport.update({
   id: '/subprocessors',
   path: '/subprocessors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -49,6 +83,16 @@ const PilotRoute = PilotRouteImport.update({
   path: '/pilot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PartnersRoute = PartnersRouteImport.update({
+  id: '/partners',
+  path: '/partners',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ImpressumRoute = ImpressumRouteImport.update({
   id: '/impressum',
   path: '/impressum',
@@ -59,92 +103,404 @@ const DpaRoute = DpaRouteImport.update({
   path: '/dpa',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocsRoute = DocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DemoRoute = DemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CookiesRoute = CookiesRouteImport.update({
+  id: '/cookies',
+  path: '/cookies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const PartnerSetPasswordRoute = PartnerSetPasswordRouteImport.update({
+  id: '/partner/set-password',
+  path: '/partner/set-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PartnerLoginRoute = PartnerLoginRouteImport.update({
+  id: '/partner/login',
+  path: '/partner/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PartnerDashboardRoute = PartnerDashboardRouteImport.update({
+  id: '/partner/dashboard',
+  path: '/partner/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppWebhooksRoute = AppWebhooksRouteImport.update({
+  id: '/webhooks',
+  path: '/webhooks',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTripsRoute = AppTripsRouteImport.update({
+  id: '/trips',
+  path: '/trips',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRulesRoute = AppRulesRouteImport.update({
+  id: '/rules',
+  path: '/rules',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReportsRoute = AppReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNotificationsRoute = AppNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMapRoute = AppMapRouteImport.update({
+  id: '/map',
+  path: '/map',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMaintenanceRoute = AppMaintenanceRouteImport.update({
+  id: '/maintenance',
+  path: '/maintenance',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHistoryRoute = AppHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGeofencesRoute = AppGeofencesRouteImport.update({
+  id: '/geofences',
+  path: '/geofences',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEventsRoute = AppEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDriversRoute = AppDriversRouteImport.update({
+  id: '/drivers',
+  path: '/drivers',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDevicesRoute = AppDevicesRouteImport.update({
+  id: '/devices',
+  path: '/devices',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCommandsRoute = AppCommandsRouteImport.update({
+  id: '/commands',
+  path: '/commands',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBrandingRoute = AppBrandingRouteImport.update({
+  id: '/branding',
+  path: '/branding',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBillingRoute = AppBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuditRoute = AppAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppApiKeysRoute = AppApiKeysRouteImport.update({
+  id: '/api-keys',
+  path: '/api-keys',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/app': typeof AppRouteWithChildren
+  '/cookies': typeof CookiesRoute
+  '/demo': typeof DemoRoute
+  '/docs': typeof DocsRoute
   '/dpa': typeof DpaRoute
   '/impressum': typeof ImpressumRoute
+  '/login': typeof LoginRoute
+  '/partners': typeof PartnersRoute
   '/pilot': typeof PilotRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/signup': typeof SignupRoute
   '/subprocessors': typeof SubprocessorsRoute
   '/terms': typeof TermsRoute
   '/tsp': typeof TspRoute
+  '/app/api-keys': typeof AppApiKeysRoute
+  '/app/audit': typeof AppAuditRoute
+  '/app/billing': typeof AppBillingRoute
+  '/app/branding': typeof AppBrandingRoute
+  '/app/commands': typeof AppCommandsRoute
+  '/app/devices': typeof AppDevicesRoute
+  '/app/drivers': typeof AppDriversRoute
+  '/app/events': typeof AppEventsRoute
+  '/app/geofences': typeof AppGeofencesRoute
+  '/app/history': typeof AppHistoryRoute
+  '/app/maintenance': typeof AppMaintenanceRoute
+  '/app/map': typeof AppMapRoute
+  '/app/notifications': typeof AppNotificationsRoute
+  '/app/reports': typeof AppReportsRoute
+  '/app/rules': typeof AppRulesRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/trips': typeof AppTripsRoute
+  '/app/webhooks': typeof AppWebhooksRoute
+  '/partner/dashboard': typeof PartnerDashboardRoute
+  '/partner/login': typeof PartnerLoginRoute
+  '/partner/set-password': typeof PartnerSetPasswordRoute
+  '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cookies': typeof CookiesRoute
+  '/demo': typeof DemoRoute
+  '/docs': typeof DocsRoute
   '/dpa': typeof DpaRoute
   '/impressum': typeof ImpressumRoute
+  '/login': typeof LoginRoute
+  '/partners': typeof PartnersRoute
   '/pilot': typeof PilotRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/signup': typeof SignupRoute
   '/subprocessors': typeof SubprocessorsRoute
   '/terms': typeof TermsRoute
   '/tsp': typeof TspRoute
+  '/app/api-keys': typeof AppApiKeysRoute
+  '/app/audit': typeof AppAuditRoute
+  '/app/billing': typeof AppBillingRoute
+  '/app/branding': typeof AppBrandingRoute
+  '/app/commands': typeof AppCommandsRoute
+  '/app/devices': typeof AppDevicesRoute
+  '/app/drivers': typeof AppDriversRoute
+  '/app/events': typeof AppEventsRoute
+  '/app/geofences': typeof AppGeofencesRoute
+  '/app/history': typeof AppHistoryRoute
+  '/app/maintenance': typeof AppMaintenanceRoute
+  '/app/map': typeof AppMapRoute
+  '/app/notifications': typeof AppNotificationsRoute
+  '/app/reports': typeof AppReportsRoute
+  '/app/rules': typeof AppRulesRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/trips': typeof AppTripsRoute
+  '/app/webhooks': typeof AppWebhooksRoute
+  '/partner/dashboard': typeof PartnerDashboardRoute
+  '/partner/login': typeof PartnerLoginRoute
+  '/partner/set-password': typeof PartnerSetPasswordRoute
+  '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/app': typeof AppRouteWithChildren
+  '/cookies': typeof CookiesRoute
+  '/demo': typeof DemoRoute
+  '/docs': typeof DocsRoute
   '/dpa': typeof DpaRoute
   '/impressum': typeof ImpressumRoute
+  '/login': typeof LoginRoute
+  '/partners': typeof PartnersRoute
   '/pilot': typeof PilotRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/signup': typeof SignupRoute
   '/subprocessors': typeof SubprocessorsRoute
   '/terms': typeof TermsRoute
   '/tsp': typeof TspRoute
+  '/app/api-keys': typeof AppApiKeysRoute
+  '/app/audit': typeof AppAuditRoute
+  '/app/billing': typeof AppBillingRoute
+  '/app/branding': typeof AppBrandingRoute
+  '/app/commands': typeof AppCommandsRoute
+  '/app/devices': typeof AppDevicesRoute
+  '/app/drivers': typeof AppDriversRoute
+  '/app/events': typeof AppEventsRoute
+  '/app/geofences': typeof AppGeofencesRoute
+  '/app/history': typeof AppHistoryRoute
+  '/app/maintenance': typeof AppMaintenanceRoute
+  '/app/map': typeof AppMapRoute
+  '/app/notifications': typeof AppNotificationsRoute
+  '/app/reports': typeof AppReportsRoute
+  '/app/rules': typeof AppRulesRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/trips': typeof AppTripsRoute
+  '/app/webhooks': typeof AppWebhooksRoute
+  '/partner/dashboard': typeof PartnerDashboardRoute
+  '/partner/login': typeof PartnerLoginRoute
+  '/partner/set-password': typeof PartnerSetPasswordRoute
+  '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/app'
+    | '/cookies'
+    | '/demo'
+    | '/docs'
     | '/dpa'
     | '/impressum'
+    | '/login'
+    | '/partners'
     | '/pilot'
     | '/pricing'
     | '/privacy'
+    | '/signup'
     | '/subprocessors'
     | '/terms'
     | '/tsp'
+    | '/app/api-keys'
+    | '/app/audit'
+    | '/app/billing'
+    | '/app/branding'
+    | '/app/commands'
+    | '/app/devices'
+    | '/app/drivers'
+    | '/app/events'
+    | '/app/geofences'
+    | '/app/history'
+    | '/app/maintenance'
+    | '/app/map'
+    | '/app/notifications'
+    | '/app/reports'
+    | '/app/rules'
+    | '/app/settings'
+    | '/app/trips'
+    | '/app/webhooks'
+    | '/partner/dashboard'
+    | '/partner/login'
+    | '/partner/set-password'
+    | '/app/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/cookies'
+    | '/demo'
+    | '/docs'
     | '/dpa'
     | '/impressum'
+    | '/login'
+    | '/partners'
     | '/pilot'
     | '/pricing'
     | '/privacy'
+    | '/signup'
     | '/subprocessors'
     | '/terms'
     | '/tsp'
+    | '/app/api-keys'
+    | '/app/audit'
+    | '/app/billing'
+    | '/app/branding'
+    | '/app/commands'
+    | '/app/devices'
+    | '/app/drivers'
+    | '/app/events'
+    | '/app/geofences'
+    | '/app/history'
+    | '/app/maintenance'
+    | '/app/map'
+    | '/app/notifications'
+    | '/app/reports'
+    | '/app/rules'
+    | '/app/settings'
+    | '/app/trips'
+    | '/app/webhooks'
+    | '/partner/dashboard'
+    | '/partner/login'
+    | '/partner/set-password'
+    | '/app'
   id:
     | '__root__'
     | '/'
+    | '/app'
+    | '/cookies'
+    | '/demo'
+    | '/docs'
     | '/dpa'
     | '/impressum'
+    | '/login'
+    | '/partners'
     | '/pilot'
     | '/pricing'
     | '/privacy'
+    | '/signup'
     | '/subprocessors'
     | '/terms'
     | '/tsp'
+    | '/app/api-keys'
+    | '/app/audit'
+    | '/app/billing'
+    | '/app/branding'
+    | '/app/commands'
+    | '/app/devices'
+    | '/app/drivers'
+    | '/app/events'
+    | '/app/geofences'
+    | '/app/history'
+    | '/app/maintenance'
+    | '/app/map'
+    | '/app/notifications'
+    | '/app/reports'
+    | '/app/rules'
+    | '/app/settings'
+    | '/app/trips'
+    | '/app/webhooks'
+    | '/partner/dashboard'
+    | '/partner/login'
+    | '/partner/set-password'
+    | '/app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  CookiesRoute: typeof CookiesRoute
+  DemoRoute: typeof DemoRoute
+  DocsRoute: typeof DocsRoute
   DpaRoute: typeof DpaRoute
   ImpressumRoute: typeof ImpressumRoute
+  LoginRoute: typeof LoginRoute
+  PartnersRoute: typeof PartnersRoute
   PilotRoute: typeof PilotRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
+  SignupRoute: typeof SignupRoute
   SubprocessorsRoute: typeof SubprocessorsRoute
   TermsRoute: typeof TermsRoute
   TspRoute: typeof TspRoute
+  PartnerDashboardRoute: typeof PartnerDashboardRoute
+  PartnerLoginRoute: typeof PartnerLoginRoute
+  PartnerSetPasswordRoute: typeof PartnerSetPasswordRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -170,6 +526,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubprocessorsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacy': {
       id: '/privacy'
       path: '/privacy'
@@ -191,6 +554,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PilotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/partners': {
+      id: '/partners'
+      path: '/partners'
+      fullPath: '/partners'
+      preLoaderRoute: typeof PartnersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/impressum': {
       id: '/impressum'
       path: '/impressum'
@@ -205,6 +582,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DpaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/demo': {
+      id: '/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof DemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cookies': {
+      id: '/cookies'
+      path: '/cookies'
+      fullPath: '/cookies'
+      preLoaderRoute: typeof CookiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -212,19 +617,229 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/': {
+      id: '/app/'
+      path: '/'
+      fullPath: '/app/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/partner/set-password': {
+      id: '/partner/set-password'
+      path: '/partner/set-password'
+      fullPath: '/partner/set-password'
+      preLoaderRoute: typeof PartnerSetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/partner/login': {
+      id: '/partner/login'
+      path: '/partner/login'
+      fullPath: '/partner/login'
+      preLoaderRoute: typeof PartnerLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/partner/dashboard': {
+      id: '/partner/dashboard'
+      path: '/partner/dashboard'
+      fullPath: '/partner/dashboard'
+      preLoaderRoute: typeof PartnerDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app/webhooks': {
+      id: '/app/webhooks'
+      path: '/webhooks'
+      fullPath: '/app/webhooks'
+      preLoaderRoute: typeof AppWebhooksRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/trips': {
+      id: '/app/trips'
+      path: '/trips'
+      fullPath: '/app/trips'
+      preLoaderRoute: typeof AppTripsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/rules': {
+      id: '/app/rules'
+      path: '/rules'
+      fullPath: '/app/rules'
+      preLoaderRoute: typeof AppRulesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/reports': {
+      id: '/app/reports'
+      path: '/reports'
+      fullPath: '/app/reports'
+      preLoaderRoute: typeof AppReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/notifications': {
+      id: '/app/notifications'
+      path: '/notifications'
+      fullPath: '/app/notifications'
+      preLoaderRoute: typeof AppNotificationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/map': {
+      id: '/app/map'
+      path: '/map'
+      fullPath: '/app/map'
+      preLoaderRoute: typeof AppMapRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/maintenance': {
+      id: '/app/maintenance'
+      path: '/maintenance'
+      fullPath: '/app/maintenance'
+      preLoaderRoute: typeof AppMaintenanceRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/history': {
+      id: '/app/history'
+      path: '/history'
+      fullPath: '/app/history'
+      preLoaderRoute: typeof AppHistoryRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/geofences': {
+      id: '/app/geofences'
+      path: '/geofences'
+      fullPath: '/app/geofences'
+      preLoaderRoute: typeof AppGeofencesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/events': {
+      id: '/app/events'
+      path: '/events'
+      fullPath: '/app/events'
+      preLoaderRoute: typeof AppEventsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/drivers': {
+      id: '/app/drivers'
+      path: '/drivers'
+      fullPath: '/app/drivers'
+      preLoaderRoute: typeof AppDriversRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/devices': {
+      id: '/app/devices'
+      path: '/devices'
+      fullPath: '/app/devices'
+      preLoaderRoute: typeof AppDevicesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/commands': {
+      id: '/app/commands'
+      path: '/commands'
+      fullPath: '/app/commands'
+      preLoaderRoute: typeof AppCommandsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/branding': {
+      id: '/app/branding'
+      path: '/branding'
+      fullPath: '/app/branding'
+      preLoaderRoute: typeof AppBrandingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/billing': {
+      id: '/app/billing'
+      path: '/billing'
+      fullPath: '/app/billing'
+      preLoaderRoute: typeof AppBillingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/audit': {
+      id: '/app/audit'
+      path: '/audit'
+      fullPath: '/app/audit'
+      preLoaderRoute: typeof AppAuditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/api-keys': {
+      id: '/app/api-keys'
+      path: '/api-keys'
+      fullPath: '/app/api-keys'
+      preLoaderRoute: typeof AppApiKeysRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
+interface AppRouteChildren {
+  AppApiKeysRoute: typeof AppApiKeysRoute
+  AppAuditRoute: typeof AppAuditRoute
+  AppBillingRoute: typeof AppBillingRoute
+  AppBrandingRoute: typeof AppBrandingRoute
+  AppCommandsRoute: typeof AppCommandsRoute
+  AppDevicesRoute: typeof AppDevicesRoute
+  AppDriversRoute: typeof AppDriversRoute
+  AppEventsRoute: typeof AppEventsRoute
+  AppGeofencesRoute: typeof AppGeofencesRoute
+  AppHistoryRoute: typeof AppHistoryRoute
+  AppMaintenanceRoute: typeof AppMaintenanceRoute
+  AppMapRoute: typeof AppMapRoute
+  AppNotificationsRoute: typeof AppNotificationsRoute
+  AppReportsRoute: typeof AppReportsRoute
+  AppRulesRoute: typeof AppRulesRoute
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppTripsRoute: typeof AppTripsRoute
+  AppWebhooksRoute: typeof AppWebhooksRoute
+  AppIndexRoute: typeof AppIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppApiKeysRoute: AppApiKeysRoute,
+  AppAuditRoute: AppAuditRoute,
+  AppBillingRoute: AppBillingRoute,
+  AppBrandingRoute: AppBrandingRoute,
+  AppCommandsRoute: AppCommandsRoute,
+  AppDevicesRoute: AppDevicesRoute,
+  AppDriversRoute: AppDriversRoute,
+  AppEventsRoute: AppEventsRoute,
+  AppGeofencesRoute: AppGeofencesRoute,
+  AppHistoryRoute: AppHistoryRoute,
+  AppMaintenanceRoute: AppMaintenanceRoute,
+  AppMapRoute: AppMapRoute,
+  AppNotificationsRoute: AppNotificationsRoute,
+  AppReportsRoute: AppReportsRoute,
+  AppRulesRoute: AppRulesRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppTripsRoute: AppTripsRoute,
+  AppWebhooksRoute: AppWebhooksRoute,
+  AppIndexRoute: AppIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  CookiesRoute: CookiesRoute,
+  DemoRoute: DemoRoute,
+  DocsRoute: DocsRoute,
   DpaRoute: DpaRoute,
   ImpressumRoute: ImpressumRoute,
+  LoginRoute: LoginRoute,
+  PartnersRoute: PartnersRoute,
   PilotRoute: PilotRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
+  SignupRoute: SignupRoute,
   SubprocessorsRoute: SubprocessorsRoute,
   TermsRoute: TermsRoute,
   TspRoute: TspRoute,
+  PartnerDashboardRoute: PartnerDashboardRoute,
+  PartnerLoginRoute: PartnerLoginRoute,
+  PartnerSetPasswordRoute: PartnerSetPasswordRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -88,6 +88,35 @@ export function effectiveEntitlements(plan: TenantPlan, subscriptionStatus: stri
   return subscriptionStatus !== null && LAPSED_SUBSCRIPTION_STATUSES.has(subscriptionStatus) ? FLOOR_ENTITLEMENTS : planEntitlements(plan)
 }
 
+/**
+ * The SINGLE source of entitlement truth including the F2 self-serve TRIAL window.
+ *
+ * A tenant on `trialing` past its `currentPeriodEnd` floors immediately (no sweep — expiry is
+ * enforced at read time). This MUST only ever apply to a LOCAL trial: one we mint at self-serve
+ * signup, which has NO Stripe subscription behind it. A Stripe-side trial (a price with
+ * trial_period_days) also reports `trialing` with `currentPeriodEnd` = the trial end, and between
+ * that instant and the `customer.subscription.updated` webhook a PAYING customer would otherwise be
+ * floored to zero — losing white-label, API, webhooks and their whole device cap, permanently if
+ * that webhook were lost (review HIGH). `stripeSubscriptionId` is the discriminator: local trials
+ * have none. Callers that cannot supply it must pass `undefined`, which is treated as "not a local
+ * trial" (fail-safe: never floor what we can't prove is local).
+ *
+ * Used by BOTH the authoritative server gate (db.tenants.getEntitlements) and the session hint the
+ * web nav reads, so the UI can never show a feature the server would 403 — pass the same clock.
+ */
+export function effectiveEntitlementsAt(
+  plan: TenantPlan,
+  subscriptionStatus: string | null,
+  currentPeriodEnd: Date | null,
+  stripeSubscriptionId: string | null | undefined,
+  now: Date = new Date(),
+): Entitlements {
+  // `undefined` (caller couldn't supply it) is deliberately NOT treated as a local trial — see header.
+  const isLocalTrial = subscriptionStatus === 'trialing' && stripeSubscriptionId === null
+  if (isLocalTrial && currentPeriodEnd !== null && currentPeriodEnd < now) return FLOOR_ENTITLEMENTS
+  return effectiveEntitlements(plan, subscriptionStatus)
+}
+
 /** Per-Direct-plan device cap; the plan suffix IS the cap. */
 const DIRECT_DEVICE_LIMIT: Record<string, number> = {
   direct_5: 5,

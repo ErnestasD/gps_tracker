@@ -230,7 +230,7 @@ export const pilotRequestSchema = z.object({
   deviceCount: z.string().max(40).optional().or(z.literal('')),
   message: z.string().max(2000).optional().or(z.literal('')),
   hp_field: z.string().max(200).optional().or(z.literal('')),
-  ref: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
+  ref: z.string().regex(/^[a-zA-Z0-9-]{1,64}$/).optional(), // no `_`: LIKE wildcard, see affiliateCodeSchema
 })
 export type PilotRequestInput = z.infer<typeof pilotRequestSchema>
 
@@ -238,7 +238,11 @@ export type PilotRequestInput = z.infer<typeof pilotRequestSchema>
 // Platform-level (platform_admin) partner management. Invite-only: an admin creates the affiliate
 // (a `code` is auto-generated when omitted) then flips status → active to make it attribute.
 // Same charset as pilotRequest `ref` so a referral code is a legal ?ref value end-to-end.
-export const affiliateCodeSchema = z.string().regex(/^[a-zA-Z0-9_-]{3,64}$/)
+// No `_`: it is a SQL LIKE single-character wildcard, and referral codes are matched against the
+// database. The lookup uses exact `lower(code) =` equality (not ILIKE) so this is belt-and-braces,
+// but a code that can never be a wildcard is one less way to misroute commission money. `-` is kept
+// (not a LIKE metacharacter) and the auto-generated alphabet is alphanumeric anyway.
+export const affiliateCodeSchema = z.string().regex(/^[a-zA-Z0-9-]{3,64}$/)
 export const affiliateStatusSchema = z.enum(['pending', 'active', 'suspended'])
 export const commissionStatusSchema = z.enum(['pending', 'paid', 'void'])
 
@@ -264,6 +268,18 @@ export const commissionStatusUpdateSchema = z.object({ status: commissionStatusS
 
 export type AffiliateCreateInput = z.infer<typeof affiliateCreateSchema>
 export type AffiliateUpdateInput = z.infer<typeof affiliateUpdateSchema>
+
+// Direct self-service signup (F2): a small-fleet customer creates their own tenant + admin user on a
+// trial. `ref` carries the affiliate attribution (?ref cookie); `hp_field` is an anti-bot honeypot.
+export const signupSchema = z.object({
+  name: z.string().min(1).max(160),
+  email: z.string().email().max(320),
+  password: z.string().min(8).max(1024),
+  company: z.string().min(1).max(160).optional().or(z.literal('')),
+  ref: affiliateCodeSchema.optional(),
+  hp_field: z.string().max(200).optional().or(z.literal('')),
+})
+export type SignupInput = z.infer<typeof signupSchema>
 
 // Partner self-service auth (F5): a partner is NOT a tenant user — a separate login against the
 // Affiliate row. Set-password consumes a one-time admin-issued token (email wiring is a follow-up).
@@ -673,6 +689,13 @@ export interface BillingView {
   active: boolean
   /** ISO end of the current paid period, or null */
   currentPeriodEnd: string | null
+  /** true when the tenant may start Stripe Checkout — computed SERVER-SIDE with the same predicate
+   *  the checkout route enforces, so the UI can never offer (or hide) a plan picker that disagrees
+   *  with the API. True for: never subscribed, a terminally-ended subscription, and an F2 self-serve
+   *  LOCAL trial (trialing with no Stripe subscription — the trial must be able to convert to paid). */
+  canSubscribe: boolean
+  /** true while an F2 self-serve trial is running (local trial, not a Stripe-side trial). */
+  localTrial: boolean
 }
 /** POST /v1/billing/checkout and /portal both return a Stripe-hosted URL to redirect to. */
 export interface BillingRedirectView {

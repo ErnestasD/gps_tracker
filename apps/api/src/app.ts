@@ -18,6 +18,7 @@ import { mountDocs } from './routes/docs.js'
 import { createPublicRoutes } from './routes/caddyAsk.js'
 import { createPilotRequestRoute } from './routes/pilotRequest.js'
 import { createPartnerRoutes } from './routes/partner.js'
+import { createSignupRoute } from './routes/signup.js'
 import { buildRoutes } from './routes/crud.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { mountReports } from './routes/reports.js'
@@ -78,6 +79,8 @@ export interface ApiDeps extends WsDeps {
   }
   /** VAPID public key for Web Push (ADR-026); absent ⇒ push unavailable (client sees a null key). */
   vapidPublicKey?: string
+  /** self-serve signup per-IP rate limit (F2); default 5/hour. Tests raise it. */
+  signupRateLimit?: { max: number; windowS: number }
   /** self-hosted OSRM for route optimization (ADR-029); absent ⇒ /v1/routing/optimize 503s. */
   osrm?: { url: string; fetchImpl?: typeof fetch }
   /** route-optimization per-user rate limit (ADR-029); default 30/min. */
@@ -163,6 +166,9 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
 
   // PUBLIC pilot-request (W9-S1) — the marketing site's form; honeypot + per-IP limit
   app.route('/', createPilotRequestRoute({ db: deps.db, redis: deps.redis, getRemoteAddr, trustProxy: deps.trustProxy }))
+
+  // PUBLIC self-serve signup (F2) — direct trial tenant creation; honeypot + per-IP limit + ?ref
+  app.route('/', createSignupRoute({ db: deps.db, redis: deps.redis, getRemoteAddr, trustProxy: deps.trustProxy, ...(deps.signupRateLimit !== undefined ? { rateLimit: deps.signupRateLimit } : {}) }))
 
   // PUBLIC Stripe webhook (ADR-024) — before the /v1/* auth guard (Stripe carries no JWT);
   // raw body + signature verified inside. Manifest-exempt.

@@ -36,7 +36,10 @@ export function BillingPage() {
   // past_due, unpaid, incomplete, paused — is a LIVE sub the server 409s on checkout, so route it
   // to the portal (Fix payment) instead of showing dead Subscribe buttons.
   const recoverable = ['past_due', 'unpaid', 'incomplete', 'paused'].includes(b?.status ?? '')
-  const showPicker = b?.configured === true && !b.active && !recoverable
+  // the SERVER decides eligibility (`canSubscribe`, same predicate the checkout route enforces) so the
+  // picker can never disagree with the API. This is what lets an F2 self-serve trial — which reports
+  // active:true because status is `trialing` — still see plans and convert to paid.
+  const showPicker = b?.configured === true && b.canSubscribe === true && !recoverable
   // only fetch the catalog when the picker is shown (each plan is a live Stripe price lookup);
   // catalog data is near-static, so cache it for the session
   const plans = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker, staleTime: 5 * 60 * 1000 })

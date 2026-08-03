@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import type { Redis } from 'ioredis'
 
 import type { AuthDb, AuthUserRow } from '@orbetra/db'
-import { forgotPasswordSchema, localeUpdateSchema, loginRequestSchema, passwordChangeSchema, planEntitlements, resetPasswordSchema, type AuthSession, type AuthUser } from '@orbetra/shared'
+import { effectiveEntitlementsAt, forgotPasswordSchema, localeUpdateSchema, loginRequestSchema, passwordChangeSchema, resetPasswordSchema, type AuthSession, type AuthUser } from '@orbetra/shared'
 
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
@@ -112,7 +112,9 @@ const toAuthUser = (u: AuthUserRow): AuthUser => ({
   // plan-based (loading live billing status into a sync row-mapper isn't worth it; worst case the
   // web shows an item that then 403s with plan_upgrade_required).
   plan: u.plan,
-  entitlements: planEntitlements(u.plan),
+  // TRIAL-AWARE hint: the same helper the authoritative server gate uses, so an expired self-serve
+  // trial (or a lapsed subscription) never advertises a feature the API would then 403.
+  entitlements: effectiveEntitlementsAt(u.plan, u.subscriptionStatus, u.currentPeriodEnd, u.stripeSubscriptionId),
 })
 
 /**

@@ -85,8 +85,9 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `ORBETRA_SITE_HOST` / `ORBETRA_SITE_WWW` | infra/Caddyfile | public site apex + www hosts (W9-S1); www 301s to apex; unset = inert |
 | `ORBETRA_APP_HOST` | infra/Caddyfile | dashboard host (dash.<domain>) for the app SPA |
 | `VITE_DASH_URL` | apps/site (build-time) | dashboard URL the site's Sign-in links point to, default `https://dash.orbetra.com` |
+| `VITE_DEMO_URL` | apps/site (build-time) | where "Live demo" points; default `/app` (built-in read-only mock admin). An `https://` value links out instead |
 | `API_PROXY_TARGET` | apps/site + apps/web vite dev/preview | where the `/v1` proxy forwards, default `http://localhost:3010` |
-| `VITE_TILES_STYLE_URL` | apps/site (build-time) | MapLibre style URL, default OpenFreeMap `liberty` (rule 13) |
+| `VITE_TILES_STYLE_URL` | apps/site (build-time) | MapLibre style URL, default Carto `dark-matter` (free CDN style; the Lovable v2 design needs a dark basemap — rule 13 still bans paid geo APIs) |
 | `API_PORT` | apps/api | HTTP+WS port, default `3010` |
 | `JWT_SECRET` | apps/api | HS256 access-token secret, **required**, min 32 chars |
 | `JWT_TTL` | apps/api | Access-token TTL seconds, default `900` (15 min) |
@@ -291,17 +292,31 @@ Every new variable must be added to the table here AND match the `.env` contract
 
 ## Public site (W9-S1, apps/site)
 
-Static Vite SPA built from the founder's Lovable design (`orbetra_design/` stays the
-design source; syncs are manual with review — ADR-022). Served as **orbetra.com** behind
-Caddy (`ORBETRA_SITE_HOST`/`ORBETRA_SITE_WWW` env; the app lives at **dash.orbetra.com**,
-`ORBETRA_APP_HOST`). Pages: home, pricing, TSP, pilot + the legal pack (terms/privacy/
-DPA/subprocessors/impressum). The pilot form POSTs to the public
-`POST /v1/public/pilot-request` (honeypot field + 5/h per-IP limit, fails open on a Redis
-blip — a lost lead costs more than rare spam); leads land in the `leads` table, readable
-via `GET /v1/platform/leads` (platform_admin). The affiliate `?ref=` code is stored as
-the `tc_ref` cookie (60 d) only after a one-line consent and rides along in the form
-payload (§6.9 last-touch). EN-only until the W8 S3 i18n pass (the design's fake language
-switcher was removed, not shipped).
+Static Vite SPA ported from the founder's Lovable design (the `orbetra_*` export dirs stay the
+design source and are gitignored; syncs are manual with review — ADR-022/ADR-033). Served as
+**orbetra.com** behind Caddy (`ORBETRA_SITE_HOST`/`ORBETRA_SITE_WWW`; the product app lives at
+**dash.orbetra.com**, `ORBETRA_APP_HOST`).
+
+Pages: home, pricing (Direct + TSP tracks), `/tsp` (reseller track), `/pilot`, `/signup`,
+`/login` (a chooser — the site never authenticates tenant users), `/demo`, `/docs`, `/cookies`,
+`/partners` + the partner portal (`/partner/login`, `/partner/set-password`,
+`/partner/dashboard`), the legal pack (terms/privacy/DPA/subprocessors/impressum), and a
+read-only mock-admin demo under `/app/*` (pure client-side fixtures, no API).
+
+Public endpoints it calls:
+- `POST /v1/public/pilot-request` — the pilot/partner-application form (honeypot + 5/h per-IP,
+  fails OPEN on a Redis blip: a lost lead is unrecoverable).
+- `POST /v1/public/signup` — self-serve trial: creates a tenant + account + tenant-admin user on
+  `direct_10`, `trialing` for 30 days (the length promised in the Terms). Honeypot + per-IP limit
+  + a platform-wide circuit breaker, and it FAILS CLOSED (503) if Redis is down — unlike a lead, a
+  signup is retryable, and this endpoint creates real tenants. No session is minted; the user signs
+  in through the normal login.
+- `POST /v1/partner/{login,set-password}` + `GET /v1/partner/{me,commissions}` — the partner
+  portal (separate `typ:'partner'` token, held in memory only).
+
+The affiliate `?ref=` code is stored as the `tc_ref` cookie (60 d) only after consent (cookie
+banner) and rides along in the signup/lead payload (§6.9 last-touch). The site ships **EN/PL/DE/LT**
+with a working language switcher; legal pages and the mock-admin demo stay English.
 
 ## Demo data (E08-5, `pnpm seed:demo`)
 

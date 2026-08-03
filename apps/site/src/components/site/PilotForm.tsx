@@ -91,7 +91,7 @@ export function PilotForm() {
       </button>
       {state === "error" && (
         <p role="alert" className="text-xs text-center text-[color:var(--brand-amber,#F59E0B)]">
-          Something went wrong — please retry, or write to hello@orbetra.eu.
+          Something went wrong — please retry, or write to hello@orbetra.com.
         </p>
       )}
       <p className="text-xs text-muted-foreground text-center">

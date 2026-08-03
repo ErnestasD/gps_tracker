@@ -9,99 +9,27 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface Vertical {
   icon: LucideIcon;
-  title: string;
-  pain: string;
-  outcome: string;
   color: string;
   code: string;
-  metric: { label: string; value: string }[];
+  /** i18n sub-key under `verticals.` — title / pain / outcome / metric labels live there. */
+  k: string;
 }
 
 const VERTICALS: Vertical[] = [
-  {
-    code: "V-01",
-    icon: Truck,
-    title: "Fleet ops",
-    pain: "Where are my vehicles right now?",
-    outcome: "Live map, trips, ignition — one screen.",
-    color: "#4c4dcf",
-    metric: [
-      { label: "Live units", value: "128" },
-      { label: "Latency", value: "42ms" },
-      { label: "Uptime", value: "99.98%" },
-    ],
-  },
-  {
-    code: "V-02",
-    icon: Package,
-    title: "Logistics",
-    pain: "ETAs slip and no one knows why.",
-    outcome: "Route replay, geofence entry/exit, driver logs.",
-    color: "#5B21B6",
-    metric: [
-      { label: "ETA delta", value: "±3m" },
-      { label: "Replays/day", value: "8,412" },
-      { label: "Geofences", value: "1.2k" },
-    ],
-  },
-  {
-    code: "V-03",
-    icon: HardHat,
-    title: "Construction",
-    pain: "Machines idle on rented sites.",
-    outcome: "Engine hours, idle alerts, site geofences.",
-    color: "#B45309",
-    metric: [
-      { label: "Idle saved", value: "18%" },
-      { label: "Sites", value: "342" },
-      { label: "Alerts/wk", value: "1,048" },
-    ],
-  },
-  {
-    code: "V-04",
-    icon: Wheat,
-    title: "Agriculture",
-    pain: "Tractors work offline for hours.",
-    outcome: "Store-and-forward, low-power, PTO events.",
-    color: "#059669",
-    metric: [
-      { label: "Offline buffer", value: "72h" },
-      { label: "PTO events", value: "24k" },
-      { label: "Power draw", value: "8mA" },
-    ],
-  },
-  {
-    code: "V-05",
-    icon: Wrench,
-    title: "Equipment rental",
-    pain: "Assets vanish between contracts.",
-    outcome: "Geofence lockout, immobilizer, alerts.",
-    color: "#4338CA",
-    metric: [
-      { label: "Recovery", value: "97%" },
-      { label: "Lockouts", value: "512" },
-      { label: "Contracts", value: "3.4k" },
-    ],
-  },
-  {
-    code: "V-06",
-    icon: Snowflake,
-    title: "Cold chain",
-    pain: "Temperature excursions kill loads.",
-    outcome: "Probe integration, alarms, audit-ready exports.",
-    color: "#6a6bdf",
-    metric: [
-      { label: "Probes", value: "4 ch" },
-      { label: "Excursions", value: "0.4%" },
-      { label: "Exports", value: "PDF/CSV" },
-    ],
-  },
+  { code: "V-01", k: "v01", icon: Truck, color: "#4c4dcf" },
+  { code: "V-02", k: "v02", icon: Package, color: "#5B21B6" },
+  { code: "V-03", k: "v03", icon: HardHat, color: "#B45309" },
+  { code: "V-04", k: "v04", icon: Wheat, color: "#059669" },
+  { code: "V-05", k: "v05", icon: Wrench, color: "#4338CA" },
+  { code: "V-06", k: "v06", icon: Snowflake, color: "#6a6bdf" },
 ];
 
 export function VerticalsGrid() {
+  const { t } = useTranslation();
   return (
     <div className="relative">
       {/* Subtle orbit backdrop — hints at the "one platform, six industries" idea without a table. */}
@@ -127,13 +55,7 @@ export function VerticalsGrid() {
       <div className="relative mb-8 flex flex-wrap items-end justify-between gap-4">
         <div className="text-[12px] font-semibold tracking-[0.1em] uppercase text-[#4c4dcf] flex items-center gap-3">
           <span className="h-[1px] w-8 bg-[#4c4dcf]" />
-          Six industries · One orbit
-        </div>
-        <div className="flex items-center gap-4 text-[12px] font-medium tracking-[0.06em] uppercase text-[#9FB3D3]">
-          <span className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#059669] animate-pulse-dot" />
-            Platform live
-          </span>
+          {t("verticals.strip")}
         </div>
       </div>
 
@@ -148,14 +70,20 @@ export function VerticalsGrid() {
 }
 
 function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }) {
+  const { t } = useTranslation();
   const Icon = vertical.icon;
+  const title = t(`verticals.${vertical.k}.title`);
+  const metric = [1, 2, 3].map((n) => ({
+    label: t(`verticals.${vertical.k}.m${n}l`),
+    value: t(`verticals.${vertical.k}.m${n}v`),
+  }));
   return (
     <motion.article
       initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.5, delay: index * 0.06, ease: "easeOut" }}
-      className="group relative flex flex-col"
+      className="group relative flex flex-col h-full"
       style={{
         background: "linear-gradient(180deg, rgba(10,20,40,0.75) 0%, rgba(4,7,15,0.9) 100%)",
         border: "1px solid rgba(76,77,207,0.18)",
@@ -200,7 +128,7 @@ function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }
               {vertical.code} · ORBIT
             </div>
             <h3 className="mt-1.5 font-display text-lg font-semibold text-ink leading-tight">
-              {vertical.title}
+              {title}
             </h3>
           </div>
         </div>
@@ -210,21 +138,21 @@ function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }
       <div className="relative mt-5 space-y-3">
         <div>
           <div className="mono text-[9px] tracking-[0.22em] uppercase text-[#7A8CAA]">
-            THE PROBLEM
+            {t("verticals.said")}
           </div>
-          <p className="mt-1 text-[14px] text-ink/90 leading-snug">"{vertical.pain}"</p>
+          <p className="mt-1 text-[14px] text-ink/90 leading-snug">"{t(`verticals.${vertical.k}.pain`)}"</p>
         </div>
         <div>
           <div className="mono text-[9px] tracking-[0.22em] uppercase text-[#7A8CAA]">
-            WHAT ORBETRA DOES
+            {t("verticals.helps")}
           </div>
-          <p className="mt-1 text-[14px] text-ink leading-snug">{vertical.outcome}</p>
+          <p className="mt-1 text-[14px] text-ink leading-snug">{t(`verticals.${vertical.k}.outcome`)}</p>
         </div>
       </div>
 
       {/* Metric strip */}
-      <div className="relative mt-5 grid grid-cols-3 gap-2">
-        {vertical.metric.map((m) => (
+      <div className="relative mt-auto pt-5 grid grid-cols-3 gap-2">
+        {metric.map((m) => (
           <div
             key={m.label}
             className="px-2.5 py-2"
@@ -253,7 +181,7 @@ function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }
         className="relative mt-5 inline-flex items-center gap-1.5 text-sm font-medium hover:gap-2.5 transition-all"
         style={{ color: vertical.color }}
       >
-        Discover {vertical.title.toLowerCase()} <ArrowUpRight className="h-4 w-4" />
+        {t("verticals.discover", { name: title })} <ArrowUpRight className="h-4 w-4" />
       </a>
     </motion.article>
   );

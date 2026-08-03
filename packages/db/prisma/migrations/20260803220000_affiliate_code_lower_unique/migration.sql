@@ -1,0 +1,11 @@
+-- Referral-code lookup must be EXACT and case-insensitive (audit HIGH-2, escalated by the public
+-- self-serve signup: attribution is now reachable anonymously, so a sloppy match misroutes real
+-- commission money).
+--
+-- The repo previously matched with Prisma `mode:'insensitive'`, which compiles to `ILIKE` with the
+-- value bound UNESCAPED — so `_` (a LIKE single-character wildcard, and a legal character in the
+-- code charset) let `?ref=______` match ANY six-character active code, with `findFirst` picking a
+-- nondeterministic winner. The lookup is now `lower(code) = lower($1)`, and this functional unique
+-- index both backs that query and stops two affiliates differing only by case from coexisting
+-- (which the plain case-sensitive unique index allowed).
+CREATE UNIQUE INDEX IF NOT EXISTS "affiliates_code_lower_key" ON "affiliates" (lower("code"));

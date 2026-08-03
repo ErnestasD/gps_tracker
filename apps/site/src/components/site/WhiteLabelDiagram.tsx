@@ -1,22 +1,23 @@
 import { Building2, Globe, Palette, Link2, Users, Server, ArrowRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface Tenant {
   code: string;
-  label: string;
-  sub: string;
+  labelKey: string;
+  vehicles: number;
   color: string;
 }
 
 const TENANTS: Tenant[] = [
-  { code: "T-01", label: "Client A", sub: "142 vehicles", color: "#2563EB" },
-  { code: "T-02", label: "Client B", sub: "68 vehicles", color: "#7C5CFC" },
-  { code: "T-03", label: "Client C", sub: "231 vehicles", color: "#3a3b8f" },
+  { code: "T-01", labelKey: "diagram.clientA", vehicles: 142, color: "#2563EB" },
+  { code: "T-02", labelKey: "diagram.clientB", vehicles: 68, color: "#7C5CFC" },
+  { code: "T-03", labelKey: "diagram.clientC", vehicles: 231, color: "#3a3b8f" },
 ];
 
 const BRAND_ATTRS = [
-  { icon: Globe, label: "Domain" },
-  { icon: Palette, label: "Theme" },
-  { icon: Link2, label: "API" },
+  { icon: Globe, labelKey: "diagram.domain" },
+  { icon: Palette, labelKey: "diagram.theme" },
+  { icon: Link2, labelKey: "diagram.api" },
 ];
 
 /**
@@ -25,20 +26,21 @@ const BRAND_ATTRS = [
  *   invisible layer      what YOU deliver          what THEY see
  */
 export function WhiteLabelDiagram() {
+  const { t } = useTranslation();
   return (
     <div className="relative w-full">
       {/* Column headers */}
       <div className="hidden md:grid grid-cols-[1fr_auto_1.1fr_auto_1fr] items-center gap-4 mb-4">
         <div className="mono text-[10px] tracking-[0.22em] uppercase text-muted-foreground text-center">
-          Layer 1 · Platform
+          {t("diagram.layer1")}
         </div>
         <div />
         <div className="mono text-[10px] tracking-[0.22em] uppercase text-[var(--brand-cyan)] text-center">
-          Layer 2 · Your brand
+          {t("diagram.layer2")}
         </div>
         <div />
         <div className="mono text-[10px] tracking-[0.22em] uppercase text-muted-foreground text-center">
-          Layer 3 · End clients
+          {t("diagram.layer3")}
         </div>
       </div>
 
@@ -54,20 +56,20 @@ export function WhiteLabelDiagram() {
           }}
         >
           <div className="mono text-[9px] tracking-[0.22em] uppercase text-muted-foreground">
-            Invisible to end clients
+            {t("diagram.invisible")}
           </div>
           <div className="mt-3 flex items-center justify-center gap-2">
             <Server className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} />
             <span className="font-display font-semibold text-ink text-base">Orbetra</span>
           </div>
-          <div className="mono text-[9px] text-muted-foreground mt-1">EU hosted · per-device</div>
+          <div className="mono text-[9px] text-muted-foreground mt-1">{t("diagram.coreSub")}</div>
           <div className="mt-4 pt-3 border-t border-[var(--hairline)] text-[11px] text-muted-foreground leading-relaxed">
-            Ingest, storage, APIs,<br />reports, alerts, uptime
+            {t("diagram.coreBody1")}<br />{t("diagram.coreBody2")}
           </div>
         </div>
 
         {/* Arrow 1 */}
-        <FlowArrow label="powers" />
+        <FlowArrow label={t("diagram.powers")} />
 
         {/* ── Column 2: Your brand (TSP) ── */}
         <div
@@ -81,7 +83,7 @@ export function WhiteLabelDiagram() {
         >
           <div className="flex items-center justify-between mb-3">
             <span className="mono text-[9px] tracking-[0.2em] uppercase text-[var(--brand-cyan)] px-2 py-0.5 rounded bg-[rgba(76,77,207,0.12)] border border-[rgba(76,77,207,0.3)]">
-              Your brand
+              {t("diagram.yourBrand")}
             </span>
             <span className="mono text-[9px] text-muted-foreground">TSP</span>
           </div>
@@ -98,65 +100,67 @@ export function WhiteLabelDiagram() {
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-[var(--hairline)] grid grid-cols-3 gap-2">
-            {BRAND_ATTRS.map(({ icon: Icon, label }) => (
-              <div key={label} className="flex flex-col items-center gap-1">
+            {BRAND_ATTRS.map(({ icon: Icon, labelKey }) => (
+              <div key={labelKey} className="flex flex-col items-center gap-1">
                 <Icon className="h-4 w-4 text-[var(--brand-cyan)]" strokeWidth={1.75} />
-                <span className="mono text-[9px] text-muted-foreground uppercase tracking-wider">{label}</span>
+                <span className="mono text-[9px] text-muted-foreground uppercase tracking-wider">{t(labelKey)}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Arrow 2 */}
-        <FlowArrow label="serves" />
+        <FlowArrow label={t("diagram.serves")} />
 
         {/* ── Column 3: End clients ── */}
-        <div className="flex flex-col gap-2.5">
-          {TENANTS.map((t) => (
+        <div className="flex flex-col gap-2.5 h-full">
+          {TENANTS.map((tenant) => (
             <div
-              key={t.code}
-              className="rounded-lg p-3 flex items-center gap-2.5 h-[60px]"
+              key={tenant.code}
+              className="rounded-lg p-3 flex items-center gap-2.5 flex-1 min-h-[60px]"
               style={{
                 background: "rgba(10,20,40,0.75)",
                 border: "1px solid var(--hairline)",
-                borderLeft: `3px solid ${t.color}`,
+                borderLeft: `3px solid ${tenant.color}`,
                 boxShadow: "0 10px 24px -16px rgba(0,0,0,0.55)",
               }}
             >
               <span
                 className="h-8 w-8 rounded-md grid place-items-center shrink-0"
-                style={{ background: `${t.color}18`, border: `1px solid ${t.color}40` }}
+                style={{ background: `${tenant.color}18`, border: `1px solid ${tenant.color}40` }}
               >
-                <Users className="h-4 w-4" style={{ color: t.color }} strokeWidth={1.75} />
+                <Users className="h-4 w-4" style={{ color: tenant.color }} strokeWidth={1.75} />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="font-display font-semibold text-ink text-sm leading-tight truncate">
-                  {t.label}
+                  {t(tenant.labelKey)}
                 </div>
-                <div className="mono text-[10px] text-muted-foreground truncate">{t.sub}</div>
+                <div className="mono text-[10px] text-muted-foreground truncate">
+                  {t("diagram.vehicles", { count: tenant.vehicles })}
+                </div>
               </div>
               <span className="mono text-[8px] tracking-widest uppercase text-muted-foreground shrink-0">
-                {t.code}
+                {tenant.code}
               </span>
             </div>
           ))}
-          <div className="mono text-[9px] tracking-[0.2em] uppercase text-muted-foreground text-center mt-1">
-            Sees only your brand
-          </div>
         </div>
       </div>
+
+
+
 
       {/* Mobile fallback: vertical stack with down arrows */}
       <div className="md:hidden grid gap-3">
         <div className="mono text-[9px] tracking-[0.22em] uppercase text-muted-foreground">
-          Layer 1 · Platform
+          {t("diagram.layer1")}
         </div>
         <div
           className="rounded-xl bg-[rgba(10,20,40,0.75)] p-4 text-center"
           style={{ border: "1px dashed rgba(148,163,184,0.35)" }}
         >
           <div className="mono text-[9px] tracking-[0.22em] uppercase text-muted-foreground">
-            Invisible to end clients
+            {t("diagram.invisible")}
           </div>
           <div className="mt-2 flex items-center justify-center gap-1.5">
             <Server className="h-4 w-4 text-muted-foreground" />
@@ -164,10 +168,10 @@ export function WhiteLabelDiagram() {
           </div>
         </div>
 
-        <DownArrow label="powers" />
+        <DownArrow label={t("diagram.powers")} />
 
         <div className="mono text-[9px] tracking-[0.22em] uppercase text-[var(--brand-cyan)]">
-          Layer 2 · Your brand
+          {t("diagram.layer2")}
         </div>
         <div
           className="rounded-xl p-4"
@@ -177,28 +181,28 @@ export function WhiteLabelDiagram() {
           }}
         >
           <div className="mono text-[9px] tracking-[0.2em] uppercase text-[var(--brand-cyan)]">
-            Your brand
+            {t("diagram.yourBrand")}
           </div>
           <div className="font-display font-semibold text-ink mt-1">Fleet.YourCo</div>
           <div className="mono text-[10px] text-muted-foreground">app.fleet.yourco.eu</div>
         </div>
 
-        <DownArrow label="serves" />
+        <DownArrow label={t("diagram.serves")} />
 
         <div className="mono text-[9px] tracking-[0.22em] uppercase text-muted-foreground">
-          Layer 3 · End clients
+          {t("diagram.layer3")}
         </div>
-        {TENANTS.map((t) => (
+        {TENANTS.map((tenant) => (
           <div
-            key={t.code}
+            key={tenant.code}
             className="rounded bg-[rgba(10,20,40,0.75)] p-3 flex items-center gap-2.5"
-            style={{ border: "1px solid var(--hairline)", borderLeft: `3px solid ${t.color}` }}
+            style={{ border: "1px solid var(--hairline)", borderLeft: `3px solid ${tenant.color}` }}
           >
-            <Users className="h-4 w-4" style={{ color: t.color }} />
+            <Users className="h-4 w-4" style={{ color: tenant.color }} />
             <div className="flex-1 min-w-0">
-              <div className="font-display font-semibold text-ink text-sm">{t.label}</div>
+              <div className="font-display font-semibold text-ink text-sm">{t(tenant.labelKey)}</div>
               <div className="mono text-[10px] text-muted-foreground">
-                {t.sub} · {t.code}
+                {t("diagram.vehicles", { count: tenant.vehicles })} · {tenant.code}
               </div>
             </div>
           </div>
@@ -208,13 +212,13 @@ export function WhiteLabelDiagram() {
       {/* Legend */}
       <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mono text-[10px] uppercase tracking-widest text-muted-foreground">
         <span className="flex items-center gap-2">
-          <Server className="h-3 w-3" /> Platform core
+          <Server className="h-3 w-3" /> {t("diagram.legendCore")}
         </span>
         <span className="flex items-center gap-2">
-          <Building2 className="h-3 w-3 text-[var(--brand-cyan)]" /> White-label tenant
+          <Building2 className="h-3 w-3 text-[var(--brand-cyan)]" /> {t("diagram.legendTenant")}
         </span>
         <span className="flex items-center gap-2">
-          <Users className="h-3 w-3" /> End customers
+          <Users className="h-3 w-3" /> {t("diagram.legendClients")}
         </span>
       </div>
     </div>
