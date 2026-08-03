@@ -5,17 +5,17 @@ import { Mail } from "lucide-react";
 export const Route = createFileRoute("/pilot")({
   head: () => ({
     meta: [
-      { title: "Request a pilot — Orbetra" },
-      { name: "description", content: "Start a free 60-day shadow-mode pilot of Orbetra. Bring your Teltonika devices, keep your current platform." },
+      { title: "Start free trial — Orbetra GPS for small fleets" },
+      { name: "description", content: "Start a 30-day free trial of Orbetra. Plug in your Teltonika device, open the app on your phone, done. No credit card, cancel anytime." },
     ],
   }),
   component: PilotPage,
 });
 
 const NEXT = [
-  { n: "01", t: "You submit the form", b: "Takes about 90 seconds. We only ask what we actually need." },
-  { n: "02", t: "We reply within 1 business day", b: "Real human, real answers. No SDR sequences." },
-  { n: "03", t: "Devices point at Orbetra", b: "One SMS per device. Data lands in shadow mode by end of week." },
+  { n: "01", t: "Tell us about your fleet", b: "Takes about 90 seconds. Only what we actually need to help." },
+  { n: "02", t: "We reply within 1 business day", b: "Real human, real answers. No sales sequences, no pressure." },
+  { n: "03", t: "You're live the same week", b: "One SMS per device points it at Orbetra. Open the app, done." },
 ];
 
 function PilotPage() {
@@ -25,14 +25,14 @@ function PilotPage() {
         <div>
           <span className="section-label">
             <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-            — REQUEST A PILOT
+            — START FREE TRIAL
           </span>
           <h1 className="display text-5xl md:text-6xl font-bold leading-[1.02] mt-6 text-ink">
             Try Orbetra<br />
-            <span className="text-gradient">on your fleet.</span>
+            <span className="text-gradient">on your vans.</span>
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-lg">
-            60 days, shadow mode, free. Point up to 500 Teltonika devices at Orbetra alongside your current platform — see side-by-side data before committing.
+            30 days free, up to 5 vehicles, no credit card. Plug in your Teltonika device and open the app on your phone — you're live the same day.
           </p>
 
           <div className="mt-12">
@@ -52,7 +52,7 @@ function PilotPage() {
 
           <div className="mt-12 flex items-center gap-3 text-sm">
             <Mail className="h-4 w-4 text-[var(--brand-blue)]" />
-            <a href="mailto:hello@orbetra.eu" className="hover:text-ink text-muted-foreground">hello@orbetra.eu</a>
+            <a href="mailto:hello@orbetra.com" className="hover:text-ink text-muted-foreground">hello@orbetra.com</a>
           </div>
         </div>
 

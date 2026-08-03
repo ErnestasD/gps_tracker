@@ -255,3 +255,173 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ============================================================
+   ADMIN PANEL — scoped light/dark theme.
+   Applied via <div data-admin-theme="light|dark"> wrapper so the
+   marketing site palette is untouched.
+   ============================================================ */
+
+[data-admin-theme] { color-scheme: light dark; }
+
+[data-admin-theme="light"] {
+  --background: #F7F8FA;
+  --foreground: #0B1220;
+  --card: #FFFFFF;
+  --card-foreground: #0B1220;
+  --popover: #FFFFFF;
+  --popover-foreground: #0B1220;
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F1F3F8;
+  --secondary-foreground: #0B1220;
+  --muted: #F1F3F8;
+  --muted-foreground: #5B6478;
+  --accent: #EEF0FF;
+  --accent-foreground: #3A38B8;
+  --destructive: #E11D48;
+  --destructive-foreground: #FFFFFF;
+  --border: #E5E8EF;
+  --input: #E5E8EF;
+  --ring: #4F46E5;
+  --admin-surface: #FFFFFF;
+  --admin-surface-2: #F7F8FA;
+  --admin-surface-sunken: #F1F3F8;
+  --admin-ink: #0B1220;
+  --admin-ink-soft: #5B6478;
+  --admin-hairline: #E5E8EF;
+  --admin-hairline-soft: #EEF0F4;
+  --admin-brand: #4F46E5;
+  --admin-brand-soft: #EEF0FF;
+  --admin-success: #059669;
+  --admin-success-soft: #E7F7EF;
+  --admin-warning: #B45309;
+  --admin-warning-soft: #FEF3E2;
+  --admin-danger: #E11D48;
+  --admin-danger-soft: #FEECEF;
+  --admin-info: #0284C7;
+  --admin-info-soft: #E4F3FC;
+  --admin-shadow-sm: 0 1px 2px rgba(11,18,32,0.04), 0 1px 1px rgba(11,18,32,0.03);
+  --admin-shadow-md: 0 4px 12px -2px rgba(11,18,32,0.08), 0 2px 4px -1px rgba(11,18,32,0.04);
+  --admin-shadow-lg: 0 20px 40px -12px rgba(11,18,32,0.12), 0 8px 16px -8px rgba(11,18,32,0.06);
+}
+
+[data-admin-theme="dark"] {
+  --background: #0A0E1A;
+  --foreground: #E6EAF2;
+  --card: #10151F;
+  --card-foreground: #E6EAF2;
+  --popover: #10151F;
+  --popover-foreground: #E6EAF2;
+  --primary: #7C7DF5;
+  --primary-foreground: #0A0E1A;
+  --secondary: #1A1F2C;
+  --secondary-foreground: #E6EAF2;
+  --muted: #1A1F2C;
+  --muted-foreground: #8B93A7;
+  --accent: #1E2237;
+  --accent-foreground: #B4B8FF;
+  --destructive: #F43F5E;
+  --destructive-foreground: #0A0E1A;
+  --border: #232838;
+  --input: #232838;
+  --ring: #7C7DF5;
+  --admin-surface: #10151F;
+  --admin-surface-2: #0A0E1A;
+  --admin-surface-sunken: #070A12;
+  --admin-ink: #E6EAF2;
+  --admin-ink-soft: #8B93A7;
+  --admin-hairline: #232838;
+  --admin-hairline-soft: #1A1F2C;
+  --admin-brand: #7C7DF5;
+  --admin-brand-soft: #1E2237;
+  --admin-success: #34D399;
+  --admin-success-soft: #0F2A22;
+  --admin-warning: #FBBF24;
+  --admin-warning-soft: #2A2010;
+  --admin-danger: #F87171;
+  --admin-danger-soft: #2A1216;
+  --admin-info: #38BDF8;
+  --admin-info-soft: #0E2230;
+  --admin-shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+  --admin-shadow-md: 0 6px 20px -6px rgba(0,0,0,0.5);
+  --admin-shadow-lg: 0 24px 48px -16px rgba(0,0,0,0.6);
+}
+
+[data-admin-theme] { background-color: var(--admin-surface-2); color: var(--admin-ink); }
+[data-admin-theme] .admin-card {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-hairline);
+  border-radius: 12px;
+  box-shadow: var(--admin-shadow-sm);
+}
+[data-admin-theme] .admin-hairline-b { border-bottom: 1px solid var(--admin-hairline); }
+[data-admin-theme] .admin-hairline-t { border-top: 1px solid var(--admin-hairline); }
+[data-admin-theme] .admin-hairline-r { border-right: 1px solid var(--admin-hairline); }
+
+@keyframes adminShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+[data-admin-theme] .admin-skeleton {
+  background: linear-gradient(90deg, var(--admin-hairline-soft) 0%, var(--admin-hairline) 50%, var(--admin-hairline-soft) 100%);
+  background-size: 200% 100%;
+  animation: adminShimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Ensure every interactive control inside the admin surface uses a pointer cursor. */
+[data-admin-theme] button:not(:disabled),
+[data-admin-theme] [role="button"]:not([aria-disabled="true"]),
+[data-admin-theme] [role="radio"]:not([aria-disabled="true"]),
+[data-admin-theme] [role="switch"]:not([aria-disabled="true"]),
+[data-admin-theme] [role="checkbox"]:not([aria-disabled="true"]),
+[data-admin-theme] [role="tab"]:not([aria-disabled="true"]),
+[data-admin-theme] [role="menuitem"]:not([aria-disabled="true"]),
+[data-admin-theme] [role="option"]:not([aria-disabled="true"]),
+[data-admin-theme] input[type="radio"]:not(:disabled),
+[data-admin-theme] input[type="checkbox"]:not(:disabled),
+[data-admin-theme] input[type="submit"]:not(:disabled),
+[data-admin-theme] input[type="button"]:not(:disabled),
+[data-admin-theme] label:has(> input[type="radio"]:not(:disabled)),
+[data-admin-theme] label:has(> input[type="checkbox"]:not(:disabled)),
+[data-admin-theme] summary,
+[data-admin-theme] select:not(:disabled) {
+  cursor: pointer;
+}
+
+[data-admin-theme] button:disabled,
+[data-admin-theme] [aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+
+
+
+/* Fix tw-animate-css `enter`/`exit` keyframes missing a 100% stop,
+   which left Radix popovers/dialogs/sheets stuck at opacity 0. */
+@keyframes enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
+      scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1))
+      rotate(var(--tw-enter-rotate, 0));
+    filter: blur(var(--tw-enter-blur, 0));
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1) rotate(0);
+    filter: blur(0);
+  }
+}
+@keyframes exit {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1) rotate(0);
+    filter: blur(0);
+  }
+  to {
+    opacity: var(--tw-exit-opacity, 1);
+    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)
+      scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1))
+      rotate(var(--tw-exit-rotate, 0));
+    filter: blur(var(--tw-exit-blur, 0));
+  }
+}

@@ -111,11 +111,11 @@ export function WhiteLabelDiagram() {
         <FlowArrow label="serves" />
 
         {/* ── Column 3: End clients ── */}
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5 h-full">
           {TENANTS.map((t) => (
             <div
               key={t.code}
-              className="rounded-lg p-3 flex items-center gap-2.5 h-[60px]"
+              className="rounded-lg p-3 flex items-center gap-2.5 flex-1 min-h-[60px]"
               style={{
                 background: "rgba(10,20,40,0.75)",
                 border: "1px solid var(--hairline)",
@@ -140,11 +140,11 @@ export function WhiteLabelDiagram() {
               </span>
             </div>
           ))}
-          <div className="mono text-[9px] tracking-[0.2em] uppercase text-muted-foreground text-center mt-1">
-            Sees only your brand
-          </div>
         </div>
       </div>
+
+
+
 
       {/* Mobile fallback: vertical stack with down arrows */}
       <div className="md:hidden grid gap-3">

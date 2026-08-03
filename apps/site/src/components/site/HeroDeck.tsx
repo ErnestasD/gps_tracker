@@ -1,19 +1,13 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  Users,
-  TrendingUp,
-  LayoutDashboard,
-  Truck,
-  Bell,
-  Settings,
-  MapPin,
-  Search,
-  Check,
-} from "lucide-react";
-import { TabMap } from "./TabMap";
+import { ArrowRight, Check } from "lucide-react";
+import heroMap from "@/assets/hero/map.png";
+import heroIndex from "@/assets/hero/index.png";
+import heroEvents from "@/assets/hero/events.png";
+import heroGeofences from "@/assets/hero/geofences.png";
+import heroReports from "@/assets/hero/reports.png";
+
 
 const HERO_MAP_NODES = [
   { lng: 21.012, lat: 52.229, label: "Warsaw",   color: "#4c4dcf" },
@@ -49,7 +43,7 @@ export function HeroDeck() {
             >
               <span className="h-2 w-2 rounded-full bg-[#059669] animate-pulse-dot" />
               <span className="text-[13px] font-medium tracking-[0.04em] uppercase text-[#D4E3F6]">
-                White-label GPS · EU-hosted
+                Teltonika GPS · for fleets &amp; resellers · EU-hosted
               </span>
             </motion.div>
 
@@ -60,9 +54,9 @@ export function HeroDeck() {
               className="display font-bold text-ink leading-[0.98] tracking-tight mt-6"
               style={{ fontSize: "clamp(2.75rem, 5.6vw, 4.75rem)" }}
             >
-              Your fleet platform.
+              Know where every van is.
               <br />
-              <span className="text-gradient">Under your brand.</span>
+              <span className="text-gradient">Down to the minute.</span>
             </motion.h1>
 
             <motion.p
@@ -71,8 +65,9 @@ export function HeroDeck() {
               transition={{ duration: 0.5, delay: 0.15 }}
               className="mt-6 text-lg text-muted-foreground max-w-xl leading-relaxed"
             >
-              Point your Teltonika devices at Orbetra and ship a complete tracking
-              product to your customers — multi-tenant, per-device pricing, real REST API.
+              Live map, trip history, idle & speeding alerts, driver reports. Plug in
+              your Teltonika device, open the dashboard on your phone, done — no IT team required.
+              Running a tracking business? White-label the whole platform under your brand.
             </motion.p>
 
             <motion.ul
@@ -82,9 +77,9 @@ export function HeroDeck() {
               className="mt-7 grid gap-2.5"
             >
               {[
-                "Native Teltonika ingest — no middleware",
-                "Multi-tenant with per-customer branding",
-                "EU data residency, GDPR by design",
+                "Setup in an afternoon — one SMS per device",
+                "Flat per-vehicle price · no seat fees, no surprises",
+                "Works on phone, tablet, laptop · EU-hosted",
               ].map((f) => (
                 <li key={f} className="flex items-center gap-3 text-sm text-ink/90">
                   <span className="grid place-items-center h-5 w-5 rounded-full bg-[rgba(76,77,207,0.1)] border border-[rgba(76,77,207,0.3)] shrink-0">
@@ -101,21 +96,54 @@ export function HeroDeck() {
               transition={{ duration: 0.5, delay: 0.3 }}
               className="mt-9 flex flex-wrap items-center gap-3"
             >
-              <Link to="/pilot" className="pill-primary hover:pill-primary-hover">
-                Request a pilot <ArrowRight className="h-4 w-4" />
+              <Link to="/signup" className="pill-primary hover:pill-primary-hover">
+                Start free trial <ArrowRight className="h-4 w-4" />
               </Link>
               <Link to="/pricing" className="pill-ghost hover:border-[color:var(--brand-cyan)]">
                 See pricing
               </Link>
+              <Link
+                to="/tsp"
+                className="inline-flex items-center gap-1.5 text-sm text-[color:var(--brand-purple,#7C5CFC)] hover:text-ink transition-colors"
+              >
+                White-label it <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
             </motion.div>
 
             <div className="mt-8 flex items-center gap-6 mono text-[10.5px] tracking-[0.2em] uppercase text-[#7A8CAA]">
-              <span>Free during pilot</span>
+              <span>30-day free trial</span>
               <span className="h-1 w-1 rounded-full bg-[#7A8CAA]/50" />
-              <span>Shadow mode</span>
+              <span>No card required</span>
               <span className="h-1 w-1 rounded-full bg-[#7A8CAA]/50" />
-              <span>No lock-in</span>
+              <span>Cancel anytime</span>
             </div>
+
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              className="mt-5 flex flex-wrap items-center gap-2.5 text-[12.5px]"
+            >
+              <span
+                className="mono text-[9.5px] tracking-[0.22em] uppercase px-1.5 py-0.5 rounded"
+                style={{
+                  color: "var(--brand-cyan)",
+                  background: "rgba(76,77,207,0.1)",
+                  border: "1px solid rgba(76,77,207,0.3)",
+                }}
+              >
+                TSP
+              </span>
+              <span className="text-muted-foreground">
+                Reselling GPS to your customers?
+              </span>
+              <Link
+                to="/tsp"
+                className="text-[color:var(--brand-cyan)] hover:underline inline-flex items-center gap-1 font-medium"
+              >
+                White-label the platform <ArrowRight className="h-3 w-3" />
+              </Link>
+            </motion.div>
           </div>
 
           {/* RIGHT — rotating admin console deck, tilted sideways */}
@@ -126,29 +154,45 @@ export function HeroDeck() {
   );
 }
 
-const DECK_PAGES: { key: AdminPage; caption: string }[] = [
-  { key: "map",       caption: "admin.orbetra.eu · LIVE MAP" },
-  { key: "analytics", caption: "admin.orbetra.eu · ANALYTICS" },
-  { key: "alerts",    caption: "admin.orbetra.eu · ALERTS" },
+type DeckSlide = {
+  key: string;
+  label: string;
+  caption: string;
+  path: string;
+  src: string;
+};
+
+const DECK_SLIDES: DeckSlide[] = [
+  { key: "map",       label: "Live map",   caption: "app.orbetra.com · ŽEMĖLAPIS",   path: "/app/map",       src: heroMap },
+  { key: "overview",  label: "Overview",   caption: "app.orbetra.com · APŽVALGA",    path: "/app",           src: heroIndex },
+  { key: "events",    label: "Events",     caption: "app.orbetra.com · ĮVYKIAI",     path: "/app/events",    src: heroEvents },
+  { key: "geofences", label: "Geofences",  caption: "app.orbetra.com · GEOZONOS",    path: "/app/geofences", src: heroGeofences },
+  { key: "reports",   label: "Reports",    caption: "app.orbetra.com · ATASKAITOS",  path: "/app/reports",   src: heroReports },
 ];
 
 function HeroConsoleDeck() {
   const [idx, setIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
+
   useEffect(() => {
-    const t = setInterval(() => setIdx((i) => (i + 1) % DECK_PAGES.length), 5200);
+    if (paused) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % DECK_SLIDES.length), 4600);
     return () => clearInterval(t);
-  }, []);
-  const current = DECK_PAGES[idx];
+  }, [paused]);
+
+  const current = DECK_SLIDES[idx];
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.7, delay: 0.2, ease: "easeOut" }}
-      className="relative lg:scale-110 lg:origin-left"
-      style={{ perspective: "1600px" }}
+      className="relative lg:scale-105 lg:origin-left"
+      style={{ perspective: "1100px" }}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
     >
-      {/* Soft cyan halo */}
+      {/* Soft halo */}
       <div
         aria-hidden
         className="pointer-events-none absolute -inset-10"
@@ -167,7 +211,7 @@ function HeroConsoleDeck() {
           transformStyle: "preserve-3d",
         }}
       >
-        {/* Back stack cards for depth */}
+        {/* Back stack for depth */}
         <div
           aria-hidden
           className="absolute inset-0 rounded-xl border border-[rgba(76,77,207,0.15)]"
@@ -186,455 +230,97 @@ function HeroConsoleDeck() {
           }}
         />
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={current.key}
-            initial={{ opacity: 0, rotateY: 22, x: 40, filter: "blur(6px)" }}
-            animate={{ opacity: 1, rotateY: 0,  x: 0,  filter: "blur(0px)" }}
-            exit={{    opacity: 0, rotateY: -22, x: -40, filter: "blur(6px)" }}
-            transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-            style={{ transformStyle: "preserve-3d", transformOrigin: "left center" }}
-          >
-            <AdminConsole page={current.key} caption={current.caption} />
-          </motion.div>
-        </AnimatePresence>
+        {/* Screen frame */}
+        <div
+          className="relative rounded-xl overflow-hidden border backdrop-blur-md"
+          style={{
+            borderColor: "rgba(76,77,207,0.28)",
+            background: "linear-gradient(180deg, rgba(10,20,40,0.92) 0%, rgba(4,7,15,0.94) 100%)",
+            boxShadow: "0 30px 80px -30px rgba(76,77,207,0.4), 0 0 0 1px rgba(76,77,207,0.05) inset",
+          }}
+        >
+          {/* Browser chrome */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-[rgba(76,77,207,0.15)] bg-[rgba(4,7,15,0.7)]">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-[#B45309]/70" />
+              <span className="h-2 w-2 rounded-full bg-[#4c4dcf]/70" />
+              <span className="h-2 w-2 rounded-full bg-[#059669]/70" />
+            </div>
+            <span className="mono text-[9px] tracking-[0.22em] uppercase text-[#B8CDEB] truncate max-w-[60%]">
+              {current.caption}
+            </span>
+            <span className="mono text-[9px] tracking-[0.22em] uppercase text-[#4c4dcf] flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#4c4dcf] animate-pulse-dot" />
+              LIVE
+            </span>
+          </div>
+
+          {/* Screenshot */}
+          <div className="relative aspect-[1440/900] w-full overflow-hidden bg-[#0b0f1c]">
+            <AnimatePresence mode="wait">
+              <motion.img
+                key={current.key}
+                src={current.src}
+                alt={`Orbetra admin — ${current.label}`}
+                loading="eager"
+                decoding="async"
+                initial={{ opacity: 0, scale: 1.02, filter: "blur(6px)" }}
+                animate={{ opacity: 1, scale: 1,   filter: "blur(0px)" }}
+                exit={{    opacity: 0, scale: 0.99, filter: "blur(6px)" }}
+                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0 h-full w-full object-cover object-left-top"
+                draggable={false}
+              />
+            </AnimatePresence>
+            {/* subtle vignette */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(180deg, transparent 70%, rgba(4,7,15,0.35) 100%)",
+              }}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Pagination dots */}
-      <div className="mt-5 flex items-center gap-2 justify-center lg:justify-start">
-        {DECK_PAGES.map((p, i) => (
-          <button
-            key={p.key}
-            onClick={() => setIdx(i)}
-            aria-label={`Show ${p.key}`}
-            className="group relative h-1.5 rounded-full transition-all"
-            style={{
-              width: i === idx ? 28 : 10,
-              background: i === idx ? "#4c4dcf" : "rgba(184,205,235,0.25)",
-              boxShadow: i === idx ? "0 0 10px rgba(76,77,207,0.6)" : "none",
-            }}
-          />
-        ))}
-        <span className="mono text-[10px] tracking-[0.22em] uppercase text-[#7A8CAA] ml-2">
-          {current.key}
+      {/* Slide controls — dots + active glowing pill, label to the right */}
+      <div className="mt-8 md:mt-10 flex items-center gap-3 justify-center lg:justify-start lg:ml-5">
+        <div className="flex items-center gap-2">
+          {DECK_SLIDES.map((s, i) => {
+            const active = i === idx;
+            return (
+              <button
+                key={s.key}
+                onClick={() => setIdx(i)}
+                aria-label={`Show ${s.label}`}
+                className="rounded-full transition-all"
+                style={{
+                  height: 10,
+                  width: active ? 34 : 10,
+                  background: active ? "#4c4dcf" : "rgba(184,205,235,0.28)",
+                  boxShadow: active
+                    ? "0 0 10px rgba(76,77,207,0.7), 0 0 20px rgba(76,77,207,0.35)"
+                    : "none",
+                }}
+              />
+            );
+          })}
+        </div>
+        <span
+          className="mono text-[10px] tracking-[0.28em] uppercase leading-none"
+          style={{ color: "rgba(184,205,235,0.7)" }}
+        >
+          {DECK_SLIDES[idx].label}
         </span>
       </div>
+
+
+
     </motion.div>
   );
 }
 
-type AdminPage = "map" | "analytics" | "alerts";
-
-const NAV = [
-  { key: "overview",  icon: LayoutDashboard, label: "Overview" },
-  { key: "map",       icon: MapPin,          label: "Live Map" },
-  { key: "fleet",     icon: Truck,           label: "Fleet",    badge: "128" },
-  { key: "analytics", icon: TrendingUp,      label: "Analytics" },
-  { key: "alerts",    icon: Bell,            label: "Alerts",   badge: "7", alert: true },
-  { key: "tenants",   icon: Users,           label: "Tenants" },
-  { key: "settings",  icon: Settings,        label: "Settings" },
-];
-
-function AdminConsole({
-  page,
-  caption,
-}: {
-  page: AdminPage;
-  caption?: string;
-}) {
-  const activeKey = page === "map" ? "map" : page === "analytics" ? "analytics" : "alerts";
-  const pageLabel =
-    page === "map" ? "LIVE MAP" : page === "analytics" ? "ANALYTICS · 30D" : "ALERTS · 07";
-
-  return (
-    <div
-      className="relative rounded-xl overflow-hidden border backdrop-blur-md flex flex-col h-[480px]"
-      style={{
-        borderColor: "rgba(76,77,207,0.28)",
-        background: "linear-gradient(180deg, rgba(10,20,40,0.92) 0%, rgba(4,7,15,0.94) 100%)",
-        boxShadow:
-          "0 30px 80px -30px rgba(76,77,207,0.4), 0 0 0 1px rgba(76,77,207,0.05) inset",
-      }}
-    >
-      {/* Chrome */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[rgba(76,77,207,0.15)] bg-[rgba(4,7,15,0.7)] shrink-0">
-        <div className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#B45309]/70" />
-          <span className="h-2 w-2 rounded-full bg-[#4c4dcf]/70" />
-          <span className="h-2 w-2 rounded-full bg-[#059669]/70" />
-        </div>
-        <span className="mono text-[9px] tracking-[0.22em] uppercase text-[#B8CDEB]">
-          admin.orbetra.eu / {page}
-        </span>
-        <span className="mono text-[9px] tracking-[0.22em] uppercase text-[#4c4dcf] flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#4c4dcf] animate-pulse-dot" />
-          LIVE
-        </span>
-      </div>
-
-      {/* Body */}
-      <div className="grid grid-cols-[112px_1fr] flex-1 min-h-0">
-        {/* Sidebar */}
-        <aside className="border-r border-[rgba(76,77,207,0.12)] bg-[rgba(4,7,15,0.55)] py-3 px-2 flex flex-col gap-0.5">
-          <div className="flex items-center gap-1.5 px-1.5 pb-3 mb-1 border-b border-[rgba(76,77,207,0.1)]">
-            <span
-              className="h-4 w-4 rounded-sm grid place-items-center"
-              style={{
-                background: "linear-gradient(135deg,#4c4dcf,#5B21B6)",
-                boxShadow: "0 0 8px rgba(76,77,207,0.5)",
-              }}
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-[#04070F]" />
-            </span>
-            <span className="mono text-[8.5px] tracking-[0.22em] uppercase text-ink font-semibold">
-              ORBETRA
-            </span>
-          </div>
-
-          {NAV.map((n) => {
-            const Icon = n.icon;
-            const active = n.key === activeKey;
-            return (
-              <div
-                key={n.key}
-                className="relative flex items-center gap-1.5 rounded-md px-1.5 py-1.5"
-                style={{
-                  background: active ? "rgba(76,77,207,0.14)" : "transparent",
-                  border: `1px solid ${active ? "rgba(76,77,207,0.35)" : "transparent"}`,
-                }}
-              >
-                {active && (
-                  <span
-                    className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-r"
-                    style={{ background: "#4c4dcf", boxShadow: "0 0 6px #4c4dcf" }}
-                  />
-                )}
-                <Icon
-                  className="h-3 w-3 shrink-0"
-                  style={{ color: active ? "#4c4dcf" : "#B8CDEB" }}
-                  strokeWidth={1.75}
-                />
-                <span
-                  className="text-[9.5px] leading-none flex-1 truncate"
-                  style={{ color: active ? "#4c4dcf" : "#B8CDEB" }}
-                >
-                  {n.label}
-                </span>
-                {n.badge && (
-                  <span
-                    className="mono text-[7.5px] tracking-wider px-1 py-[1px] rounded"
-                    style={{
-                      color: n.alert ? "#B45309" : "#4c4dcf",
-                      background: n.alert ? "rgba(180,83,9,0.15)" : "rgba(76,77,207,0.12)",
-                      border: `1px solid ${n.alert ? "rgba(180,83,9,0.35)" : "rgba(76,77,207,0.3)"}`,
-                    }}
-                  >
-                    {n.badge}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-
-          <div className="mt-auto pt-2 border-t border-[rgba(76,77,207,0.1)] flex items-center gap-1.5 px-1">
-            <span className="h-4 w-4 rounded-full bg-gradient-to-br from-[#5B21B6] to-[#4c4dcf] shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[8.5px] text-ink leading-tight truncate">L. Petrauskas</div>
-              <div className="mono text-[7px] tracking-[0.15em] uppercase text-[#7A8CAA] leading-tight">Admin</div>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main */}
-        <main className="p-3 flex flex-col gap-2.5 min-w-0">
-          {/* Topbar */}
-          <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-1.5 rounded-md px-2 py-1 border border-[rgba(76,77,207,0.15)] bg-[rgba(10,20,40,0.6)]">
-              <Search className="h-2.5 w-2.5 text-[#7A8CAA]" strokeWidth={2} />
-              <span className="text-[9px] text-[#7A8CAA]">Search vehicles, drivers, trips…</span>
-            </div>
-            <span className="mono text-[8.5px] tracking-[0.2em] uppercase text-[#4c4dcf]">
-              {pageLabel}
-            </span>
-          </div>
-
-          {page === "map" && <MapPageBody />}
-          {page === "analytics" && <AnalyticsPageBody />}
-          {page === "alerts" && <AlertsPageBody />}
-        </main>
-      </div>
-
-      {caption && (
-        <div className="flex items-center justify-between px-3 py-1.5 border-t border-[rgba(76,77,207,0.1)] bg-[rgba(4,7,15,0.5)] mono text-[8.5px] tracking-[0.22em] uppercase shrink-0">
-          <span className="text-[#4c4dcf]">{caption}</span>
-          <span className="text-[#B8CDEB]">WHITE-LABEL</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MapPageBody() {
-  const vehicles = [
-    { id: "N-06", name: "MAN TGX 26.510", status: "MOVING", speed: 87, tint: "#B45309" },
-    { id: "N-02", name: "Volvo FH16",     status: "MOVING", speed: 72, tint: "#4c4dcf" },
-    { id: "N-11", name: "Scania R500",    status: "IDLE",   speed: 0,  tint: "#5B21B6" },
-    { id: "N-08", name: "DAF XF 480",     status: "MOVING", speed: 64, tint: "#4c4dcf" },
-  ];
-  return (
-    <>
-      <div className="grid grid-cols-3 gap-1.5">
-        {[
-          { k: "ACTIVE",  v: "128", tint: "#4c4dcf" },
-          { k: "ALERTS",  v: "07",  tint: "#B45309" },
-          { k: "AVG SPD", v: "68",  tint: "#5B21B6" },
-        ].map((s) => <KpiTile key={s.k} {...s} />)}
-      </div>
-
-      <div
-        className="relative rounded-md overflow-hidden border border-[rgba(76,77,207,0.22)] h-[220px]"
-        style={{ background: "rgba(4,7,15,0.9)" }}
-      >
-        <TabMap
-          center={[18.5, 52.2]}
-          zoom={3.9}
-          markers={HERO_MAP_NODES}
-          routes={HERO_MAP_ROUTES}
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(closest-side, transparent 60%, rgba(4,7,15,0.45) 100%)",
-          }}
-        />
-        <div className="absolute bottom-1.5 left-2 mono text-[8px] tracking-[0.2em] uppercase text-[#B8CDEB] bg-[rgba(4,7,15,0.6)] px-1.5 py-0.5 rounded">
-          EU-CENTRAL · 128 UNITS
-        </div>
-      </div>
-
-      <div className="space-y-1">
-        {vehicles.map((v) => (
-          <div
-            key={v.id}
-            className="flex items-center gap-2 rounded-md px-2 py-1 border border-[rgba(76,77,207,0.08)] bg-[rgba(10,20,40,0.5)]"
-          >
-            <span
-              className="h-1.5 w-1.5 rounded-full shrink-0"
-              style={{ background: v.tint, boxShadow: `0 0 6px ${v.tint}` }}
-            />
-            <span className="mono text-[8.5px] tracking-[0.18em] font-semibold shrink-0" style={{ color: v.tint }}>
-              {v.id}
-            </span>
-            <span className="text-[9.5px] text-ink truncate flex-1 min-w-0">{v.name}</span>
-            <span
-              className="mono text-[7.5px] tracking-[0.18em] uppercase px-1 py-[1px] rounded shrink-0"
-              style={{
-                color: v.status === "IDLE" ? "#B8CDEB" : "#4c4dcf",
-                background: v.status === "IDLE" ? "rgba(184,205,235,0.08)" : "rgba(76,77,207,0.1)",
-                border: `1px solid ${v.status === "IDLE" ? "rgba(184,205,235,0.2)" : "rgba(76,77,207,0.25)"}`,
-              }}
-            >
-              {v.status}
-            </span>
-            <span className="mono text-[10px] font-semibold text-ink tabular-nums w-8 text-right shrink-0">
-              {v.speed}
-            </span>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function AnalyticsPageBody() {
-  const bars = [30, 42, 36, 55, 48, 62, 58, 72, 68, 84, 78, 92, 88, 96];
-  const max = Math.max(...bars);
-  const routes = [
-    { r: "Warsaw → Berlin",     v: "1,204", d: "+8.2%" },
-    { r: "Vilnius → Riga",      v: "892",   d: "+12.4%" },
-    { r: "Munich → Vienna",     v: "748",   d: "+3.1%" },
-    { r: "Gdańsk → Warsaw",     v: "612",   d: "−2.4%", down: true },
-    { r: "Kraków → Budapest",   v: "584",   d: "+5.7%" },
-    { r: "Riga → Tallinn",      v: "430",   d: "+1.2%" },
-    { r: "Berlin → Hamburg",    v: "398",   d: "−0.8%", down: true },
-    { r: "Vienna → Prague",     v: "356",   d: "+4.3%" },
-  ];
-  return (
-    <>
-      <div className="grid grid-cols-3 gap-1.5">
-        <KpiTile k="TRIPS 30D"  v="8,412" tint="#4c4dcf" />
-        <KpiTile k="Δ WoW"      v="+12.4%" tint="#059669" />
-        <KpiTile k="AVG DIST"   v="342 km" tint="#5B21B6" />
-      </div>
-
-      <div
-        className="rounded-md border border-[rgba(76,77,207,0.18)] px-2.5 py-2"
-        style={{ background: "linear-gradient(180deg, rgba(10,20,40,0.7), rgba(4,7,15,0.6))" }}
-      >
-        <div className="flex items-center justify-between mono text-[7.5px] tracking-[0.22em] uppercase">
-          <span className="text-[#B8CDEB]">TRIPS · DAILY</span>
-          <span className="text-[#059669]">+12.4% WoW</span>
-        </div>
-        <div className="mt-2 flex items-end gap-[3px] h-[140px]">
-          {bars.map((b, i) => (
-            <div
-              key={i}
-              className="flex-1 rounded-sm"
-              style={{
-                height: `${(b / max) * 100}%`,
-                background: "linear-gradient(180deg,#5B21B6 0%, #4c4dcf 100%)",
-                opacity: 0.55 + (i / bars.length) * 0.45,
-              }}
-            />
-          ))}
-        </div>
-        <div className="mt-1 flex items-center justify-between mono text-[7px] tracking-[0.18em] uppercase text-[#7A8CAA]">
-          <span>NOV 22</span>
-          <span>DEC 5</span>
-        </div>
-      </div>
-
-      <div className="space-y-1">
-        {routes.map((r) => (
-          <div
-            key={r.r}
-            className="flex items-center gap-2 rounded-md px-2 py-1 border border-[rgba(76,77,207,0.08)] bg-[rgba(10,20,40,0.5)]"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-[#4c4dcf] shrink-0" style={{ boxShadow: "0 0 6px #4c4dcf" }} />
-            <span className="text-[9.5px] text-ink truncate flex-1 min-w-0">{r.r}</span>
-            <span className="mono text-[10px] font-semibold text-ink tabular-nums shrink-0">{r.v}</span>
-            <span
-              className="mono text-[8px] tracking-[0.15em] font-semibold shrink-0 w-12 text-right"
-              style={{ color: r.down ? "#EF4444" : "#059669" }}
-            >
-              {r.d}
-            </span>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function AlertsPageBody() {
-  const alerts = [
-    { t: "02:41", c: "#B45309", tag: "GEOFENCE", txt: "N-06 exit — Vilnius DC" },
-    { t: "02:18", c: "#EF4444", tag: "SPEED",    txt: "N-11 · 112 km/h · A2" },
-    { t: "01:57", c: "#4c4dcf", tag: "IGNITION", txt: "N-08 on · Munich HUB" },
-    { t: "01:33", c: "#B45309", tag: "IDLE",     txt: "N-04 idle 42m · Vienna" },
-    { t: "01:12", c: "#5B21B6", tag: "PTO",      txt: "N-15 PTO engaged · Tallinn" },
-    { t: "00:58", c: "#059669", tag: "GEOFENCE", txt: "N-02 entry — Berlin DC" },
-    { t: "00:42", c: "#EF4444", tag: "SPEED",    txt: "N-09 · 94 km/h · A4" },
-    { t: "00:31", c: "#B45309", tag: "IDLE",     txt: "N-03 idle 28m · Riga" },
-    { t: "00:15", c: "#4c4dcf", tag: "IGNITION", txt: "N-12 off · Warsaw HUB" },
-  ];
-  return (
-    <>
-      <div className="grid grid-cols-3 gap-1.5">
-        <KpiTile k="OPEN"     v="07" tint="#B45309" />
-        <KpiTile k="CRITICAL" v="02" tint="#EF4444" />
-        <KpiTile k="RESOLVED" v="48" tint="#059669" />
-      </div>
-      <div className="space-y-1">
-        {alerts.map((a, i) => (
-          <div
-            key={i}
-            className="flex items-start gap-2 rounded-md px-2 py-1.5 border border-[rgba(180,83,9,0.12)] bg-[rgba(10,8,4,0.5)]"
-          >
-            <span
-              className="mt-1 h-1.5 w-1.5 rounded-full shrink-0"
-              style={{ background: a.c, boxShadow: `0 0 6px ${a.c}` }}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="mono text-[7.5px] tracking-[0.2em] uppercase px-1 py-[1px] rounded"
-                  style={{ color: a.c, background: `${a.c}18`, border: `1px solid ${a.c}55` }}
-                >
-                  {a.tag}
-                </span>
-                <span className="mono text-[8px] tracking-[0.18em] text-[#B8CDEB] ml-auto">{a.t}</span>
-              </div>
-              <div className="text-[10px] text-ink truncate mt-0.5">{a.txt}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function KpiTile({ k, v, tint }: { k: string; v: string; tint: string }) {
-  return (
-    <div
-      className="rounded-md px-2 py-1.5 border"
-      style={{
-        borderColor: `${tint}33`,
-        background: `linear-gradient(180deg, ${tint}12, transparent)`,
-      }}
-    >
-      <div className="mono text-[7.5px] tracking-[0.22em] uppercase text-[#B8CDEB]">{k}</div>
-      <div className="mono text-[14px] font-semibold" style={{ color: tint }}>{v}</div>
-    </div>
-  );
-}
-
-function AdminShowcase() {
-  return (
-    <div className="relative w-full min-h-[560px] lg:min-h-[600px]">
-      {/* Ambient orbital glow behind the stack */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -inset-10"
-        style={{
-          background:
-            "radial-gradient(closest-side, rgba(76,77,207,0.22), transparent 70%), radial-gradient(closest-side at 80% 20%, rgba(91,33,182,0.14), transparent 65%)",
-          filter: "blur(8px)",
-        }}
-      />
-
-      {/* Main: Live Map */}
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25, duration: 0.6, ease: "easeOut" }}
-        className="absolute left-0 right-8 top-8 z-10"
-        style={{ transform: "perspective(1400px) rotateY(-6deg) rotateX(2deg)" }}
-      >
-        <AdminConsole page="map" caption="FIG.A · LIVE MAP" />
-      </motion.div>
-
-      {/* Floating: Analytics — top right */}
-      <motion.div
-        initial={{ opacity: 0, y: -14, x: 12 }}
-        animate={{ opacity: 1, y: 0, x: 0 }}
-        transition={{ delay: 0.5, duration: 0.55, ease: "easeOut" }}
-        className="absolute -right-6 -top-4 z-20 origin-top-right"
-        style={{
-          width: 320,
-          transform: "perspective(1400px) rotateY(-12deg) rotateX(4deg) scale(0.78)",
-        }}
-      >
-        <AdminConsole page="analytics" caption="FIG.B · ANALYTICS" />
-      </motion.div>
-
-      {/* Floating: Alerts — bottom left */}
-      <motion.div
-        initial={{ opacity: 0, y: 20, x: -14 }}
-        animate={{ opacity: 1, y: 0, x: 0 }}
-        transition={{ delay: 0.65, duration: 0.55, ease: "easeOut" }}
-        className="absolute -left-10 -bottom-6 z-20 origin-bottom-left hidden sm:block"
-        style={{
-          width: 340,
-          transform: "perspective(1400px) rotateY(-4deg) rotateX(-3deg) scale(0.75)",
-        }}
-      >
-        <AdminConsole page="alerts" caption="FIG.C · ALERTS" />
-      </motion.div>
-    </div>
-  );
-}
 
 

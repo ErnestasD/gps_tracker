@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 // Free, CORS-friendly dark vector style (Carto Dark Matter).
 const DEFAULT_STYLE =
   (import.meta as any).env?.VITE_TILES_STYLE_URL ||
-  "https://tiles.openfreemap.org/styles/liberty"; // rule 13: OpenFreeMap, never a paid provider
+  "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
 export interface TabMapProps {
   styleUrl?: string | Record<string, any>;
@@ -178,7 +178,7 @@ export function TabMap({
         style: styleUrl || DEFAULT_STYLE,
         center,
         zoom,
-        attributionControl: { compact: true }, // rule 13: OSM attribution visible on every map
+        attributionControl: { compact: true }, // rule 13: OSM/Carto attribution stays visible on every map
         interactive: true,
         dragRotate: false,
         pitchWithRotate: false,
@@ -402,7 +402,6 @@ export function TabMap({
       if (map) map.remove();
       mapRef.current = null;
     };
-
   }, [JSON.stringify(center), zoom, markersSig, JSON.stringify(routes), JSON.stringify(circles), JSON.stringify(polygons), animSig]);
 
   // Lightweight restyle when only highlighted/color change — no map rebuild.
@@ -422,10 +421,11 @@ export function TabMap({
           map.setPaintProperty(`${v.id}-trail-line`, "line-color", v.color);
           map.setPaintProperty(`${v.id}-trail-line`, "line-width", v.highlighted ? 3 : 0);
           map.setPaintProperty(`${v.id}-trail-line`, "line-opacity", v.highlighted ? 0.78 : 0);
-        } catch { /* layer mid-teardown — repaint next frame */ }
+        } catch {
+          /* layer may be mid-teardown */
+        }
       }
     });
-
   }, [
     ready,
     // Signature of ONLY the visual bits that should trigger a restyle.

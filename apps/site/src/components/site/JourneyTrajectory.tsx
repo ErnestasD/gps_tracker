@@ -1,10 +1,10 @@
 import { motion } from "framer-motion";
 
 const STEPS = [
-  { n: "01", t: "Point your Teltonika device", b: "Change the server via SMS or FOTA. Data lands in Orbetra in seconds." },
-  { n: "02", t: "Run in shadow mode", b: "Data flows in parallel with your current platform. Compare side-by-side, no customer impact." },
-  { n: "03", t: "Switch clients to your brand", b: "White-label domain, colors, logo. Your customers see you — never us." },
-  { n: "04", t: "Scale per device", b: "Add tenants, add devices. Predictable per-device pricing, one contract." },
+  { n: "01", t: "Plug in your Teltonika device", b: "Wire it to the vehicle or use OBD. One SMS points it at Orbetra — no laptop, no installer needed." },
+  { n: "02", t: "Add your vehicles", b: "Name each van, add plate, driver, colour. Takes a couple of minutes per vehicle." },
+  { n: "03", t: "Open the app on your phone", b: "See live positions, get idle & speeding alerts, share a trip link with your customer." },
+  { n: "04", t: "Grow one vehicle at a time", b: "Add a device whenever you add a van. Same flat per-vehicle price — no contract to renegotiate." },
 ];
 
 export function JourneyTrajectory() {

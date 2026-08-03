@@ -24,78 +24,78 @@ const VERTICALS: Vertical[] = [
   {
     code: "V-01",
     icon: Truck,
-    title: "Fleet ops",
-    pain: "Where are my vehicles right now?",
-    outcome: "Live map, trips, ignition — one screen.",
+    title: "Delivery & courier",
+    pain: "Where's my driver? Did they finish the route?",
+    outcome: "Live map, stops, arrival times — check from your phone.",
     color: "#4c4dcf",
     metric: [
-      { label: "Live units", value: "128" },
-      { label: "Latency", value: "42ms" },
-      { label: "Uptime", value: "99.98%" },
+      { label: "Vehicles", value: "1–20" },
+      { label: "Map ping", value: "10s" },
+      { label: "Setup", value: "90 min" },
     ],
   },
   {
     code: "V-02",
     icon: Package,
-    title: "Logistics",
-    pain: "ETAs slip and no one knows why.",
-    outcome: "Route replay, geofence entry/exit, driver logs.",
+    title: "Owner-operators",
+    pain: "I need proof of delivery and hours worked.",
+    outcome: "Trip history, ignition, mileage — auto-generated.",
     color: "#5B21B6",
     metric: [
-      { label: "ETA delta", value: "±3m" },
-      { label: "Replays/day", value: "8,412" },
-      { label: "Geofences", value: "1.2k" },
+      { label: "History", value: "12 mo" },
+      { label: "Reports", value: "PDF/CSV" },
+      { label: "Users", value: "Unlimited" },
     ],
   },
   {
     code: "V-03",
     icon: HardHat,
-    title: "Construction",
-    pain: "Machines idle on rented sites.",
-    outcome: "Engine hours, idle alerts, site geofences.",
+    title: "Construction crews",
+    pain: "The van sat idle for hours on a rented site.",
+    outcome: "Idle alerts, engine hours, site geofences.",
     color: "#B45309",
     metric: [
-      { label: "Idle saved", value: "18%" },
-      { label: "Sites", value: "342" },
-      { label: "Alerts/wk", value: "1,048" },
+      { label: "Idle alerts", value: "Live" },
+      { label: "Geofences", value: "Unlimited" },
+      { label: "SMS/email", value: "Both" },
     ],
   },
   {
     code: "V-04",
     icon: Wheat,
-    title: "Agriculture",
-    pain: "Tractors work offline for hours.",
-    outcome: "Store-and-forward, low-power, PTO events.",
+    title: "Farm & rural",
+    pain: "Tractor goes offline in the field for hours.",
+    outcome: "Store-and-forward — no bars, no data lost.",
     color: "#059669",
     metric: [
       { label: "Offline buffer", value: "72h" },
-      { label: "PTO events", value: "24k" },
-      { label: "Power draw", value: "8mA" },
+      { label: "Coverage", value: "EU-wide" },
+      { label: "Battery", value: "Low-draw" },
     ],
   },
   {
     code: "V-05",
     icon: Wrench,
-    title: "Equipment rental",
-    pain: "Assets vanish between contracts.",
-    outcome: "Geofence lockout, immobilizer, alerts.",
+    title: "Rental & service",
+    pain: "Trailer went missing between jobs.",
+    outcome: "Geofence alerts, ignition lockout, instant SMS.",
     color: "#4338CA",
     metric: [
-      { label: "Recovery", value: "97%" },
-      { label: "Lockouts", value: "512" },
-      { label: "Contracts", value: "3.4k" },
+      { label: "Recovery aid", value: "SMS" },
+      { label: "Lockout", value: "Optional" },
+      { label: "Alerts", value: "Real-time" },
     ],
   },
   {
     code: "V-06",
     icon: Snowflake,
-    title: "Cold chain",
-    pain: "Temperature excursions kill loads.",
-    outcome: "Probe integration, alarms, audit-ready exports.",
+    title: "Refrigerated vans",
+    pain: "Cold-chain broke and you find out at the drop.",
+    outcome: "Temperature probe, alarms, audit trail.",
     color: "#6a6bdf",
     metric: [
       { label: "Probes", value: "4 ch" },
-      { label: "Excursions", value: "0.4%" },
+      { label: "Alarm", value: "±1°C" },
       { label: "Exports", value: "PDF/CSV" },
     ],
   },
@@ -127,13 +127,7 @@ export function VerticalsGrid() {
       <div className="relative mb-8 flex flex-wrap items-end justify-between gap-4">
         <div className="text-[12px] font-semibold tracking-[0.1em] uppercase text-[#4c4dcf] flex items-center gap-3">
           <span className="h-[1px] w-8 bg-[#4c4dcf]" />
-          Six industries · One orbit
-        </div>
-        <div className="flex items-center gap-4 text-[12px] font-medium tracking-[0.06em] uppercase text-[#9FB3D3]">
-          <span className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#059669] animate-pulse-dot" />
-            Platform live
-          </span>
+          Six kinds of small fleets · One app
         </div>
       </div>
 
@@ -155,7 +149,7 @@ function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.5, delay: index * 0.06, ease: "easeOut" }}
-      className="group relative flex flex-col"
+      className="group relative flex flex-col h-full"
       style={{
         background: "linear-gradient(180deg, rgba(10,20,40,0.75) 0%, rgba(4,7,15,0.9) 100%)",
         border: "1px solid rgba(76,77,207,0.18)",
@@ -210,20 +204,20 @@ function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }
       <div className="relative mt-5 space-y-3">
         <div>
           <div className="mono text-[9px] tracking-[0.22em] uppercase text-[#7A8CAA]">
-            THE PROBLEM
+            YOU'VE SAID THIS
           </div>
           <p className="mt-1 text-[14px] text-ink/90 leading-snug">"{vertical.pain}"</p>
         </div>
         <div>
           <div className="mono text-[9px] tracking-[0.22em] uppercase text-[#7A8CAA]">
-            WHAT ORBETRA DOES
+            HOW ORBETRA HELPS
           </div>
           <p className="mt-1 text-[14px] text-ink leading-snug">{vertical.outcome}</p>
         </div>
       </div>
 
       {/* Metric strip */}
-      <div className="relative mt-5 grid grid-cols-3 gap-2">
+      <div className="relative mt-auto pt-5 grid grid-cols-3 gap-2">
         {vertical.metric.map((m) => (
           <div
             key={m.label}

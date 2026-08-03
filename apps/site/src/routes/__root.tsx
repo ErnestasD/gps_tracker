@@ -4,13 +4,18 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
 } from "@tanstack/react-router";
+
 import { NavBar } from "@/components/site/NavBar";
 import { Footer } from "@/components/site/Footer";
 import { ScrollTrajectory } from "@/components/site/ScrollTrajectory";
 import { OrbitalFluidBg } from "@/components/site/OrbitalFluidBg";
-import { RefConsent } from "@/components/site/RefConsent";
+import { LiveDemoFab } from "@/components/site/LiveDemoFab";
+import { ConsentProvider } from "@/lib/consent";
+import { CookieBanner } from "@/components/site/CookieBanner";
+import "@/lib/i18n";
 
 function NotFoundComponent() {
   return (
@@ -70,15 +75,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Orbetra — White-label GPS tracking, precisely engineered" },
+      { title: "Orbetra — GPS tracking for small fleets" },
       {
         name: "description",
         content:
-          "Orbetra is a white-label, EU-hosted GPS tracking platform built for Teltonika fleets. Multi-tenant, per-device pricing, real REST API.",
+          "Simple, EU-hosted GPS tracking for small fleets and owner-operators (1–20 vehicles). Live map, trip history, alerts. Setup in an afternoon.",
       },
       { name: "author", content: "Orbetra" },
-      { property: "og:title", content: "Orbetra — White-label GPS tracking, precisely engineered" },
-      { property: "og:description", content: "White-label, EU-hosted GPS tracking for TSPs and fleet resellers. Multi-tenant, Teltonika-first." },
+      { property: "og:title", content: "Orbetra — GPS tracking for small fleets" },
+      { property: "og:description", content: "Simple GPS tracking for small fleets. Live map, alerts, reports. Setup in an afternoon. Flat per-vehicle pricing." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "theme-color", content: "#04070F" },
@@ -91,17 +96,34 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // /app.* is the self-contained mock-admin DEMO — it brings its own chrome/theme,
+  // so the marketing shell (nav, footer, cookie banner) stays out of its way.
+  const isAdmin = pathname.startsWith("/app");
+
+  if (isAdmin) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <HeadContent />
+        <Outlet />
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <HeadContent />
-      <OrbitalFluidBg />
-      <NavBar />
-      <ScrollTrajectory />
-      <main className="pt-16">
-        <Outlet />
-      </main>
-      <Footer />
-      <RefConsent />
+      <ConsentProvider>
+        <OrbitalFluidBg />
+        <NavBar />
+        <ScrollTrajectory />
+        <main className="pt-16">
+          <Outlet />
+        </main>
+        <Footer />
+        <LiveDemoFab />
+        <CookieBanner />
+      </ConsentProvider>
     </QueryClientProvider>
   );
 }

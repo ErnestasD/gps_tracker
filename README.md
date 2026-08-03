@@ -85,8 +85,9 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `ORBETRA_SITE_HOST` / `ORBETRA_SITE_WWW` | infra/Caddyfile | public site apex + www hosts (W9-S1); www 301s to apex; unset = inert |
 | `ORBETRA_APP_HOST` | infra/Caddyfile | dashboard host (dash.<domain>) for the app SPA |
 | `VITE_DASH_URL` | apps/site (build-time) | dashboard URL the site's Sign-in links point to, default `https://dash.orbetra.com` |
+| `VITE_DEMO_URL` | apps/site (build-time) | where "Live demo" points; default `/app` (built-in read-only mock admin). An `https://` value links out instead |
 | `API_PROXY_TARGET` | apps/site + apps/web vite dev/preview | where the `/v1` proxy forwards, default `http://localhost:3010` |
-| `VITE_TILES_STYLE_URL` | apps/site (build-time) | MapLibre style URL, default OpenFreeMap `liberty` (rule 13) |
+| `VITE_TILES_STYLE_URL` | apps/site (build-time) | MapLibre style URL, default Carto `dark-matter` (free CDN style; the Lovable v2 design needs a dark basemap — rule 13 still bans paid geo APIs) |
 | `API_PORT` | apps/api | HTTP+WS port, default `3010` |
 | `JWT_SECRET` | apps/api | HS256 access-token secret, **required**, min 32 chars |
 | `JWT_TTL` | apps/api | Access-token TTL seconds, default `900` (15 min) |

@@ -1,86 +1,124 @@
+import { useState } from "react";
 import { Check } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
-interface Plan {
-  name: string;
-  price: string;
-  cadence: string;
-  orgs: string;
-  devices: string;
-  features: string[];
+interface DirectTier {
+  devices: number;
+  monthly: number;
+  yearly: number;
+  perDevice: string;
   highlight?: boolean;
 }
 
-const PLANS: Plan[] = [
-  {
-    name: "Starter",
-    price: "€49",
-    cadence: "/ mo",
-    orgs: "1 organization",
-    devices: "200 devices pool",
-    features: ["Live map · trips · playback", "Geofences & alerts", "Email support", "€0.35 / device overage"],
-  },
-  {
-    name: "Growth",
-    price: "€149",
-    cadence: "/ mo",
-    orgs: "5 organizations",
-    devices: "2,000 devices pool",
-    features: ["Everything in Starter", "REST API + webhooks", "White-label domain & logo", "Scheduled reports", "Priority support"],
-    highlight: true,
-  },
-  {
-    name: "Scale",
-    price: "€399",
-    cadence: "/ mo",
-    orgs: "Unlimited organizations",
-    devices: "20,000 devices pool",
-    features: ["Everything in Growth", "SSO for tenant admins", "Regional data residency", "SLA 99.9%", "Named engineer"],
-  },
+const DIRECT: DirectTier[] = [
+  { devices: 5, monthly: 9, yearly: 90, perDevice: "€1.80" },
+  { devices: 10, monthly: 15, yearly: 150, perDevice: "€1.50" },
+  { devices: 25, monthly: 35, yearly: 350, perDevice: "€1.40", highlight: true },
+  { devices: 50, monthly: 65, yearly: 650, perDevice: "€1.30" },
+  { devices: 100, monthly: 119, yearly: 1190, perDevice: "€1.19" },
+];
+
+const DIRECT_FEATURES = [
+  "Live map & trip playback",
+  "Geofences & alerts",
+  "Reports (CSV / XLSX)",
+  "Unlimited users & drivers",
+  "Email support",
 ];
 
 export function PricingCards() {
+  const [annual, setAnnual] = useState(false);
+
   return (
-    <div className="grid gap-6 md:grid-cols-3">
-      {PLANS.map((p) => (
-        <div
-          key={p.name}
-          className={cn(
-            "surface-card p-8 relative flex flex-col",
-            p.highlight && "border-[color:var(--brand-blue)] shadow-[0_20px_50px_-30px_rgba(37,99,235,0.4)]"
-          )}
-        >
-          {p.highlight && (
-            <span className="absolute -top-3 left-8 mono text-[10px] tracking-[0.2em] uppercase bg-[var(--brand-blue)] text-white px-3 py-1 rounded-full">
-              Most chosen
-            </span>
-          )}
-          <div className="mono text-[11px] tracking-[0.2em] uppercase text-muted-foreground">— PLAN · {p.name.toUpperCase()}</div>
-          <div className="mt-5 flex items-baseline gap-1">
-            <span className="display text-5xl font-bold text-ink mono tabular-nums">{p.price}</span>
-            <span className="mono text-sm text-muted-foreground">{p.cadence}</span>
-          </div>
-          <div className="mt-5 space-y-1 text-sm">
-            <div className="text-ink">{p.orgs}</div>
-            <div className="text-muted-foreground">{p.devices}</div>
-          </div>
-          <ul className="mt-6 space-y-2.5 text-sm flex-1">
-            {p.features.map((f) => (
-              <li key={f} className="flex gap-2 text-ink/85">
-                <Check className="h-4 w-4 shrink-0 text-[color:var(--brand-green)] mt-0.5" strokeWidth={2} />
-                {f}
-              </li>
-            ))}
-          </ul>
-          <Link
-            to="/pilot"
-            className={cn("mt-8", p.highlight ? "pill-primary hover:pill-primary-hover" : "pill-ghost hover:border-[color:var(--brand-blue)] hover:text-[color:var(--brand-blue)]")}
+    <div>
+      {/* Billing toggle */}
+      <div className="flex justify-center mb-8">
+        <div className="inline-flex items-center gap-1 p-1 rounded-full border border-[var(--hairline)] bg-[rgba(10,20,40,0.5)]">
+          <button
+            onClick={() => setAnnual(false)}
+            className={cn(
+              "px-4 py-1.5 rounded-full text-xs mono tracking-wide transition-colors",
+              !annual ? "bg-[var(--brand-blue)] text-white" : "text-muted-foreground hover:text-ink"
+            )}
           >
-            Start pilot
-          </Link>
+            MONTHLY
+          </button>
+          <button
+            onClick={() => setAnnual(true)}
+            className={cn(
+              "px-4 py-1.5 rounded-full text-xs mono tracking-wide transition-colors inline-flex items-center gap-2",
+              annual ? "bg-[var(--brand-blue)] text-white" : "text-muted-foreground hover:text-ink"
+            )}
+          >
+            ANNUAL
+            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", annual ? "bg-white/20" : "bg-[var(--brand-green)]/20 text-[var(--brand-green)]")}>
+              −17%
+            </span>
+          </button>
         </div>
-      ))}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+        {DIRECT.map((p) => {
+          const price = annual ? Math.round(p.yearly / 12) : p.monthly;
+          return (
+            <div
+              key={p.devices}
+              className={cn(
+                "surface-card p-5 relative flex flex-col",
+                p.highlight && "border-[color:var(--brand-blue)] shadow-[0_20px_50px_-30px_rgba(37,99,235,0.4)]"
+              )}
+            >
+              {p.highlight && (
+                <span className="absolute -top-3 left-4 mono text-[9px] tracking-[0.2em] uppercase bg-[var(--brand-blue)] text-white px-2 py-1 rounded-full">
+                  Popular
+                </span>
+              )}
+              <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">
+                — UP TO {p.devices} DEVICES
+              </div>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="display text-3xl font-bold text-ink mono tabular-nums">€{price}</span>
+                <span className="mono text-xs text-muted-foreground">/mo</span>
+              </div>
+              <div className="mt-1 mono text-[11px] text-muted-foreground">
+                {p.perDevice} / device
+              </div>
+              {annual && (
+                <div className="mt-1 mono text-[10px] text-[var(--brand-green)]">
+                  €{p.yearly} billed yearly
+                </div>
+              )}
+              <Link
+                to="/signup"
+                className={cn(
+                  "mt-5 h-9 inline-flex items-center justify-center rounded text-xs mono tracking-wide transition-colors",
+                  p.highlight
+                    ? "bg-[var(--brand-blue)] text-white hover:opacity-90"
+                    : "border border-[var(--hairline)] text-ink hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]"
+                )}
+              >
+                START TRIAL
+              </Link>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-8 surface-card p-6">
+        <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-3">
+          — EVERY DIRECT PLAN INCLUDES
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+          {DIRECT_FEATURES.map((f) => (
+            <div key={f} className="flex items-center gap-2 text-sm text-ink/85">
+              <Check className="h-4 w-4 shrink-0 text-[color:var(--brand-green)]" strokeWidth={2} />
+              {f}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

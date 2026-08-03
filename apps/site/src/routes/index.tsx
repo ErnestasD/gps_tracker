@@ -11,8 +11,8 @@ import { HeroDeck } from "@/components/site/HeroDeck";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Orbetra — White-label GPS tracking, precisely engineered" },
-      { name: "description", content: "White-label, EU-hosted GPS tracking for Teltonika fleets. Multi-tenant, per-device pricing, real REST API." },
+      { title: "Orbetra — GPS tracking for small fleets (1–20 vehicles)" },
+      { name: "description", content: "Simple, EU-hosted GPS tracking for small fleets and owner-operators. Live map, trip history, alerts. Setup in an afternoon. Flat per-vehicle pricing." },
     ],
   }),
   component: HomePage,
@@ -23,43 +23,46 @@ function HomePage() {
     <>
       <Hero />
       <TrustStrip />
+      <TwoTracks />
 
-      <Section id="verticals" label="— FOR YOUR FLEET" heading={<>Every vertical.<br /><span className="text-gradient">One platform.</span></>}>
+      <Section id="verticals" label="— BUILT FOR SMALL FLEETS" heading={<>Whatever you drive.<br /><span className="text-gradient">One dashboard runs it.</span></>}>
         <VerticalsGrid />
       </Section>
 
-      <Section id="platform" label="— ONE PLATFORM · YOUR BRAND" heading={<>Everything they need.<br /><span className="text-gradient">Nothing they see is ours.</span></>}>
+      <Section id="platform" label="— ONE APP · EVERY SCREEN" heading={<>Everything you need.<br /><span className="text-gradient">Nothing you don't.</span></>}>
         <div className="grid gap-14">
           <TabShowcase />
           <div className="grid gap-5 md:grid-cols-3">
-            <StatTile label="Devices per tenant" value={20000} suffix="+" />
-            <StatTile label="Messages / second tested" value={12500} suffix="+" />
+            <StatTile label="Setup time" value={90} prefix="" suffix=" min" unit="from box to live" />
+            <StatTile label="Update rate" value={10} suffix="s" unit="live map ping" />
             <StatTile label="Uptime target" value={999} prefix="" suffix="" unit="99.9% · target" />
           </div>
         </div>
       </Section>
 
-      <Section id="how" label="— HOW IT WORKS" heading={<>From your first device<br /><span className="text-gradient">to your entire book.</span></>}>
+      <Section id="how" label="— HOW IT WORKS" heading={<>From box on the desk<br /><span className="text-gradient">to live map, same day.</span></>}>
         <JourneyTrajectory />
       </Section>
 
-      <Section id="api" label="— API & WEBHOOKS" heading={<>Real REST. Real webhooks.<br /><span className="text-gradient">Everything you can click, you can call.</span></>}>
+      <Section id="api" label="— OPTIONAL · API & WEBHOOKS" heading={<>Need to plug it into your tools?<br /><span className="text-gradient">Every screen has an API.</span></>}>
         <div className="grid gap-10 lg:grid-cols-[1.2fr_1fr] items-center">
           <CodeCard />
           <div>
             <p className="text-muted-foreground text-lg">
-              Every screen in Orbetra is a thin client over the same public API. Build integrations, wire it into your ERP, or ship your own mobile app on top.
+              Most small fleets never touch this — the app already does everything.
+              But if you run an ERP, dispatch tool or accounting system, Orbetra plugs in with real REST and signed webhooks.
             </p>
             <ul className="mt-6 space-y-3 text-sm">
-              <li className="flex items-center gap-3"><Dot color="#2563EB" /> REST endpoints for devices, trips, geofences, reports</li>
+              <li className="flex items-center gap-3"><Dot color="#2563EB" /> REST endpoints for vehicles, trips, geofences, reports</li>
               <li className="flex items-center gap-3"><Dot color="#7C5CFC" /> Signed webhook events (ignition, geofence, alert, low battery)</li>
-              <li className="flex items-center gap-3"><Dot color="#10B981" /> OpenAPI spec, typed SDKs on the way</li>
+              <li className="flex items-center gap-3"><Dot color="#10B981" /> Export to CSV, Excel or your accounting tool</li>
             </ul>
           </div>
         </div>
       </Section>
 
       <TrustBand />
+      <WhiteLabelBand />
       <FinalCTA />
     </>
   );
@@ -150,9 +153,9 @@ function TrustStrip() {
               >
                 ●
               </span>
-              <div className="min-w-0">
-                <div className="mono text-[11px] font-semibold text-ink leading-tight truncate">{d.code}</div>
-                <div className="mono text-[9.5px] tracking-wide uppercase text-[#7A8CAA] truncate">{d.role}</div>
+              <div className="min-w-0 flex-1">
+                <div className="mono text-[11px] font-semibold text-ink leading-tight">{d.code}</div>
+                <div className="mono text-[9.5px] tracking-wide uppercase text-[#7A8CAA] leading-snug break-words">{d.role}</div>
               </div>
             </div>
           ))}
@@ -173,11 +176,72 @@ function Section({ id, label, heading, children }: { id?: string; label: string;
   );
 }
 
+function TwoTracks() {
+  const tracks = [
+    {
+      label: "TRACK A · DIRECT",
+      title: "Run your own fleet",
+      body: "1–100 vehicles, Orbetra-branded, self-serve. Live map, trips and playback, geofences, rules & alerts, reports — from day one.",
+      points: ["Per-vehicle pricing from €9/mo", "Setup in an afternoon", "30-day trial, no card"],
+      cta: "Start free trial",
+      to: "/signup" as const,
+      accent: "var(--brand-blue)",
+    },
+    {
+      label: "TRACK B · WHITE-LABEL",
+      title: "Resell it as your own",
+      body: "Uncapped devices under your brand and domain, sub-accounts per customer, shadow-mode migration from your current platform.",
+      points: ["From €149/mo for 200 devices", "Custom domain + auto TLS, branded emails", "REST API, webhooks, sub-tenants"],
+      cta: "White-label platform",
+      to: "/tsp" as const,
+      accent: "var(--brand-purple, #7C5CFC)",
+    },
+  ];
+  return (
+    <section className="px-6 py-20 md:py-24">
+      <div className="mx-auto max-w-6xl">
+        <div className="section-label">
+          <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
+          — TWO WAYS TO USE ORBETRA
+        </div>
+        <div className="mt-8 grid gap-5 md:grid-cols-2 items-stretch">
+          {tracks.map((tr) => (
+            <div key={tr.title} className="surface-card p-8 flex flex-col h-full">
+              <div
+                className="mono text-[10px] tracking-[0.22em] uppercase"
+                style={{ color: tr.accent }}
+              >
+                {tr.label}
+              </div>
+              <h3 className="mt-3 font-display text-2xl font-bold text-ink">{tr.title}</h3>
+              <p className="mt-3 text-sm text-muted-foreground">{tr.body}</p>
+              <ul className="mt-5 space-y-2 text-sm flex-1">
+                {tr.points.map((pt) => (
+                  <li key={pt} className="flex items-start gap-3 text-ink/85">
+                    <span
+                      className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0"
+                      style={{ background: tr.accent }}
+                    />
+                    {pt}
+                  </li>
+                ))}
+              </ul>
+              <Link to={tr.to} className="mt-7 pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)] w-fit">
+                {tr.cta} <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function TrustBand() {
   const items = [
     { icon: Server, title: "EU data residency", body: "Hosted in Frankfurt and Warsaw regions." },
     { icon: Shield, title: "GDPR by design", body: "Data controller / processor separation baked in." },
-    { icon: GlobeIcon, title: "Open geodata", body: "OpenStreetMap tiles — no US map vendors in your stack." },
+    { icon: GlobeIcon, title: "Self-hosted geocoding & routing", body: "Photon + OSRM, EU-hosted. Map tiles are served by Mapbox." },
   ];
   return (
     <section className="py-16 px-6 border-y border-[var(--hairline)] bg-[var(--blueprint)]/50">
@@ -201,6 +265,66 @@ function TrustBand() {
   );
 }
 
+function WhiteLabelBand() {
+  return (
+    <section className="px-6 py-20 relative">
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none opacity-60"
+        style={{
+          background:
+            "radial-gradient(50% 60% at 20% 50%, rgba(124,92,252,0.10), transparent 70%), radial-gradient(50% 60% at 80% 50%, rgba(37,99,235,0.08), transparent 70%)",
+        }}
+      />
+      <div className="relative mx-auto max-w-6xl surface-card p-8 md:p-12 grid gap-8 md:grid-cols-[1.2fr_1fr] items-center">
+        <div>
+          <div className="mono text-[11px] tracking-[0.2em] uppercase text-[color:var(--brand-purple,#7C5CFC)] flex items-center gap-2">
+            <span className="h-[1px] w-6 bg-[color:var(--brand-purple,#7C5CFC)]" />
+            — RESELLERS · WHITE-LABEL · TSP
+          </div>
+          <h2 className="mt-4 display text-3xl md:text-4xl font-bold text-ink leading-[1.1]">
+            Reselling GPS to your own customers?{" "}
+            <span className="text-gradient">White-label the whole platform.</span>
+          </h2>
+          <p className="mt-4 text-muted-foreground max-w-xl">
+            Your domain, your logo, your customers. Sub-tenants, REST API and webhooks
+            included. From <span className="text-ink font-medium">€149/mo</span> for 200
+            devices — the lowest serious white-label entry in the market.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link to="/tsp" className="pill-primary hover:pill-primary-hover">
+              See partner program <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/pricing"
+              hash="tsp"
+              className="pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]"
+            >
+              TSP pricing
+            </Link>
+          </div>
+        </div>
+        <ul className="grid gap-3 text-sm">
+          {[
+            { k: "Your brand", v: "Custom domain, logo, colors — Orbetra never appears" },
+            { k: "Sub-tenants", v: "Isolated accounts per end customer" },
+            { k: "REST + webhooks", v: "Plug into your ERP or dispatch stack" },
+            { k: "60-day pilot", v: "Free · up to 500 devices · no card" },
+          ].map((f) => (
+            <li key={f.k} className="flex gap-3 items-start">
+              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[color:var(--brand-purple,#7C5CFC)] shrink-0" />
+              <div>
+                <div className="text-ink font-medium">{f.k}</div>
+                <div className="text-muted-foreground">{f.v}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 function FinalCTA() {
   return (
     <section className="px-6 py-24">
@@ -215,15 +339,20 @@ function FinalCTA() {
             — READY WHEN YOU ARE
           </span>
           <h2 className="display text-4xl md:text-5xl font-bold leading-[1.05] mt-4 text-ink">
-            Start with 10 devices.<br />
-            <span className="text-gradient">Ship to 10,000.</span>
+            Start with 1 vehicle.<br />
+            <span className="text-gradient">Grow to 20 without changing tools.</span>
           </h2>
           <p className="mt-6 text-muted-foreground max-w-xl mx-auto">
-            Free during pilot. Shadow mode next to your current platform. No customer disruption.
+            30-day free trial. No credit card. Cancel any time — your data exports in one click.
           </p>
-          <Link to="/pilot" className="mt-8 pill-primary hover:pill-primary-hover">
-            Request a pilot <ArrowRight className="h-4 w-4" />
-          </Link>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Link to="/signup" className="pill-primary hover:pill-primary-hover">
+              Start free trial <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link to="/tsp" className="pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]">
+              White-label it
+            </Link>
+          </div>
         </div>
       </div>
     </section>
