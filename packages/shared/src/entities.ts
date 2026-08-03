@@ -234,6 +234,37 @@ export const pilotRequestSchema = z.object({
 })
 export type PilotRequestInput = z.infer<typeof pilotRequestSchema>
 
+// ── affiliates / partner program (W9, item 5) ────────────────────────────────
+// Platform-level (platform_admin) partner management. Invite-only: an admin creates the affiliate
+// (a `code` is auto-generated when omitted) then flips status → active to make it attribute.
+// Same charset as pilotRequest `ref` so a referral code is a legal ?ref value end-to-end.
+export const affiliateCodeSchema = z.string().regex(/^[a-zA-Z0-9_-]{3,64}$/)
+export const affiliateStatusSchema = z.enum(['pending', 'active', 'suspended'])
+export const commissionStatusSchema = z.enum(['pending', 'paid', 'void'])
+
+const commissionPctSchema = z.number().min(0).max(100)
+const commissionMonthsSchema = z.number().int().min(1).max(120)
+
+export const affiliateCreateSchema = z.object({
+  name: z.string().min(1).max(160),
+  email: z.string().email().max(320),
+  code: affiliateCodeSchema.optional(),
+  commissionPct: commissionPctSchema.optional(),
+  commissionMonths: commissionMonthsSchema.optional(),
+})
+export const affiliateUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(160),
+    status: affiliateStatusSchema,
+    commissionPct: commissionPctSchema,
+    commissionMonths: commissionMonthsSchema,
+  })
+  .partial()
+export const commissionStatusUpdateSchema = z.object({ status: commissionStatusSchema })
+
+export type AffiliateCreateInput = z.infer<typeof affiliateCreateSchema>
+export type AffiliateUpdateInput = z.infer<typeof affiliateUpdateSchema>
+
 // ── reports (E06-1) ──────────────────────────────────────────────────────────
 // POST /v1/reports/:type body. `accountId` is required only for a tenant-wide caller
 // (an account-scoped user's account is fixed by their token). from/to are ISO; the engine

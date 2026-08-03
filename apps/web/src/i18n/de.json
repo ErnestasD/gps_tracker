@@ -70,7 +70,8 @@
     "searchHint": "Zu einer Seite springen oder Gerät finden…",
     "palettePages": "Seiten",
     "paletteDevices": "Geräte",
-    "paletteEmpty": "Keine Treffer"
+    "paletteEmpty": "Keine Treffer",
+    "affiliates": "Partner"
   },
   "routing": {
     "title": "Routenplaner",
@@ -1016,5 +1017,45 @@
     "fuelTimeline": "Kraftstoffstand-Zeitachse",
     "speedTimeline": "Wiedergabe-Geschwindigkeitszeitachse",
     "voltageTimeline": "Spannungs-Zeitachse"
+  },
+  "affiliates": {
+    "title": "Partner",
+    "desc": "Partner-Empfehlungsprogramm — Partner einladen, Provisionen festlegen, Auszahlungen prüfen.",
+    "denied": "Nur für Plattform-Administratoren.",
+    "invite": "Partner einladen",
+    "inviteTitle": "Partner einladen",
+    "list": "Partner",
+    "empty": "Noch keine Partner",
+    "emptyDesc": "Laden Sie Ihren ersten Partner ein.",
+    "note": "Nur auf Einladung. Der Empfehlungscode eines Partners wird neuen Anmeldungen zugeordnet, sobald der Partner aktiv ist; Provisionen fallen für die festgelegte Anzahl Monate aus den Zahlungen jedes geworbenen Mandanten an.",
+    "terms": "{{pct}} % · {{months}} Mon.",
+    "status": {
+      "label": "Status",
+      "pending": "Ausstehend",
+      "active": "Aktiv",
+      "suspended": "Gesperrt"
+    },
+    "activate": "Aktivieren",
+    "suspend": "Sperren",
+    "commissions": "Provisionen",
+    "noCommissions": "Noch keine Provisionen.",
+    "date": "Datum",
+    "amount": "Betrag",
+    "invoice": "Rechnung",
+    "markPaid": "Als bezahlt markieren",
+    "commissionStatus": {
+      "pending": "Ausstehend",
+      "paid": "Bezahlt",
+      "void": "Storniert"
+    },
+    "name": "Name",
+    "email": "E-Mail",
+    "code": "Empfehlungscode",
+    "codeAuto": "Automatisch, wenn leer",
+    "pct": "Provision %",
+    "months": "Dauer (Monate)",
+    "create": "Einladung senden",
+    "createError": "Partner konnte nicht erstellt werden. Code oder E-Mail wird bereits verwendet.",
+    "actionError": "Aktion fehlgeschlagen. Erneut versuchen."
   }
 }

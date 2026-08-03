@@ -45,6 +45,16 @@ describe('affiliates repo', () => {
     expect((await db.affiliates.get(a.id))?.email).toBe('acme@partner.co')
   })
 
+  it('throws a typed AffiliateConflictError naming the clashing field (email vs code)', async () => {
+    await db.affiliates.create(actor, { name: 'Uniq', email: 'uniq@partner.co', code: 'UNIQ1' })
+    // a duplicate email → field 'email' (a real DB fault would instead propagate, not masquerade as 409)
+    await expect(db.affiliates.create(actor, { name: 'X', email: 'uniq@partner.co', code: 'OTHER1' }))
+      .rejects.toMatchObject({ name: 'AffiliateConflictError', field: 'email' })
+    // a duplicate code → field 'code' (the route retries an AUTO-generated code clash on this signal)
+    await expect(db.affiliates.create(actor, { name: 'X', email: 'other@partner.co', code: 'UNIQ1' }))
+      .rejects.toMatchObject({ name: 'AffiliateConflictError', field: 'code' })
+  })
+
   it('getActiveByCode attributes ONLY an active affiliate (pending/suspended never attribute)', async () => {
     const a = await db.affiliates.create(actor, { name: 'Beta', email: 'beta@partner.co', code: 'BETA20', commissionPct: 25, commissionMonths: 6 })
     // pending → no attribution

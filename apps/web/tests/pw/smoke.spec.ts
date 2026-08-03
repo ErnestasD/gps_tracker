@@ -656,6 +656,40 @@ test('webhooks: create (secret shown once) → toggle → delete (E06-4 UI)', as
   await expect(row).toHaveCount(0)
 })
 
+test('affiliates: a platform_admin invites a partner → appears pending → activate (item 5 / W9)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(PLATFORM_EMAIL)
+  await page.getByTestId('password-input').fill(PLATFORM_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+
+  await page.goto('/app/affiliates')
+  await page.getByTestId('affiliate-add-open').click()
+  await expect(page.getByTestId('affiliate-name')).toBeVisible()
+  const email = `partner-${Date.now()}@e2e.test`
+  await page.getByTestId('affiliate-name').fill('E2E Partner')
+  await page.getByTestId('affiliate-email').fill(email)
+  await page.getByTestId('affiliate-create').click()
+
+  // it lands in the list, pending, with an auto-generated code; activating flips the badge
+  const row = page.locator('li[data-testid^="affiliate-"]').filter({ hasText: 'E2E Partner' })
+  await expect(row).toBeVisible({ timeout: 15_000 })
+  await expect(row.getByText(/Pending|Laukiama|Ausstehend|Oczekujący/)).toBeVisible()
+  await row.getByTestId(/affiliate-activate-/).click()
+  await expect(row.getByText(/Active|Aktyvus|Aktiv|Aktywny/)).toBeVisible({ timeout: 15_000 })
+})
+
+test('affiliates: a tenant admin cannot reach the affiliates panel (platform gate)', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL('**/app/map')
+  // nav link is platform-only; direct URL renders the in-page denied notice (server also 403s the API)
+  await page.goto('/app/affiliates')
+  await expect(page.getByTestId('affiliates-denied')).toBeVisible()
+})
+
 /** Shared login step for the coverage-gap tests below (mirrors the E2E flow above). */
 async function login(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/login')
