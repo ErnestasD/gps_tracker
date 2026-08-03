@@ -36,6 +36,7 @@ import { startAuthEmailWorker } from './jobs/authEmailWorker.js'
 import { smsDriverFromEnv } from './sms/drivers.js'
 import { startSmsWorker } from './jobs/smsWorker.js'
 import { GeofenceCache } from './geofence/cache.js'
+import type { GeofenceTransition } from './geofence/engine.js'
 import { GeofenceEventPersister } from './geofence/persister.js'
 import { RuleCache } from './rules/cache.js'
 import { RuleEngine, type DeviceIo } from './rules/engine.js'
@@ -317,10 +318,22 @@ async function main(): Promise<void> {
             // persist() dedups a redelivered/replayed crossing and returns ONLY the freshly-written
             // transitions — enqueue a webhook per returned one so a replay re-fires neither the event
             // row nor its webhook (E06-4). Geofence events carry no ruleId → no rule/notify path.
-            const persisted = await geofenceEvents.persist(transitions)
-            prom.geofenceEvents.inc(persisted.length)
-            for (const tr of persisted) {
-              await emitWebhook({ deviceId: tr.deviceId, kind: 'geofence', at: tr.at, payload: { geofenceId: tr.geofenceId, name: tr.geofenceName, transition: tr.type }, dedupe: `${tr.geofenceId}:${tr.type}` })
+            // OWN try (audit C1): a persist failure must roll the engine's in-memory side-flip back
+            // so a still-present crossing re-fires next batch — the outer swallow would instead lose
+            // it forever AND skip the rule engine below. persist() already released its dedup claim.
+            let persisted: GeofenceTransition[] | null = null
+            try {
+              persisted = await geofenceEvents.persist(transitions)
+            } catch (err) {
+              motionFeed.geofenceEngine.rollback(transitions)
+              prom.enginePersistErrors.inc({ engine: 'geofence' })
+              console.error('geofencePersist', err)
+            }
+            if (persisted !== null) {
+              prom.geofenceEvents.inc(persisted.length)
+              for (const tr of persisted) {
+                await emitWebhook({ deviceId: tr.deviceId, kind: 'geofence', at: tr.at, payload: { geofenceId: tr.geofenceId, name: tr.geofenceName, transition: tr.type }, dedupe: `${tr.geofenceId}:${tr.type}` })
+              }
             }
           }
           // E05-4: rule engine (overspeed + IO). Fed the FULL batch, NOT the motion-filtered
@@ -332,6 +345,14 @@ async function main(): Promise<void> {
             if (rules.size > 0) {
               const ruleDevices = [...rules.keys()]
               const ioStateFor = await rulePersister.loadIoState(ruleDevices.map(BigInt)) // warm-start (no restart re-fire)
+              // capture pre-feed in-memory IO so a persist failure can roll the batch's advance back
+              // (audit C1) — else the engine's last-IO advances past durable state and a SUSTAINED
+              // edge is never re-detected. Captured BEFORE feed() mutates the engine.
+              const preFeed = new Map<string, DeviceIo>()
+              for (const key of ruleDevices) {
+                const s = ruleEngine.snapshot(BigInt(key))
+                if (s !== undefined) preFeed.set(key, s)
+              }
               const ruleEvents = ruleEngine.feed(records, (id) => rules.get(id.toString()) ?? [], ioStateFor)
               // Persist events BEFORE saving IO state. If the worker crashes in the
               // ACK-replay window, un-saved IO state means the replay warm-starts the OLD
@@ -339,29 +360,44 @@ async function main(): Promise<void> {
               // already-set cooldown key ⇒ idempotent; panic/power_cut may double-fire —
               // "doubled beats missed", §6.5). Saving IO state first would instead SUPPRESS
               // the replay edge → a missed panic. Order matters (review HIGH-1).
+              let persistOk = true
               if (ruleEvents.length > 0) {
-                const persisted = await rulePersister.persist(ruleEvents)
-                for (const e of persisted) {
-                  prom.ruleEvents.inc({ kind: e.kind })
-                  // E05-5: enqueue notification AFTER the event is durably persisted (§6.5).
-                  // Best-effort per event — a notify-enqueue failure must not stall the shard,
-                  // but it IS a silent-alert-drop, so surface it via a metric (review MED-2).
-                  try {
-                    await enqueueNotify(notifyQueue, { ruleId: e.ruleId, deviceId: e.deviceId, kind: e.kind, at: e.at, payload: e.payload })
-                  } catch (err) {
-                    prom.notificationFailed.inc({ channel: 'enqueue' })
-                    console.error('enqueueNotify', err)
+                try {
+                  const persisted = await rulePersister.persist(ruleEvents)
+                  for (const e of persisted) {
+                    prom.ruleEvents.inc({ kind: e.kind })
+                    // E05-5: enqueue notification AFTER the event is durably persisted (§6.5).
+                    // Best-effort per event — a notify-enqueue failure must not stall the shard,
+                    // but it IS a silent-alert-drop, so surface it via a metric (review MED-2).
+                    try {
+                      await enqueueNotify(notifyQueue, { ruleId: e.ruleId, deviceId: e.deviceId, kind: e.kind, at: e.at, payload: e.payload })
+                    } catch (err) {
+                      prom.notificationFailed.inc({ channel: 'enqueue' })
+                      console.error('enqueueNotify', err)
+                    }
+                    await emitWebhook({ deviceId: e.deviceId, kind: e.kind, at: e.at, payload: e.payload, dedupe: e.ruleId })
                   }
-                  await emitWebhook({ deviceId: e.deviceId, kind: e.kind, at: e.at, payload: e.payload, dedupe: e.ruleId })
+                } catch (err) {
+                  // persist failed → roll the in-memory IO advance back so a sustained edge re-fires
+                  // next batch (audit C1). Skip saveIoState so durable state stays pre-batch too —
+                  // else in-memory (rolled back) and durable (advanced) diverge and suppress re-fire.
+                  persistOk = false
+                  ruleEngine.rollbackIo(preFeed, ruleDevices)
+                  prom.enginePersistErrors.inc({ engine: 'rule' })
+                  console.error('rulePersist', err)
                 }
               }
-              // now advance durable IO state so the NEXT batch / a clean restart warm-starts
-              const snapshots = new Map<string, DeviceIo>()
-              for (const key of ruleDevices) {
-                const snap = ruleEngine.snapshot(BigInt(key))
-                if (snap !== undefined) snapshots.set(key, snap)
+              // advance durable IO state so the NEXT batch / a clean restart warm-starts — but ONLY
+              // when the batch's events were durably persisted (or there were none). On a persist
+              // failure we rolled the in-memory advance back, so durable must NOT advance either.
+              if (persistOk) {
+                const snapshots = new Map<string, DeviceIo>()
+                for (const key of ruleDevices) {
+                  const snap = ruleEngine.snapshot(BigInt(key))
+                  if (snap !== undefined) snapshots.set(key, snap)
+                }
+                await rulePersister.saveIoState(snapshots)
               }
-              await rulePersister.saveIoState(snapshots)
             }
           } catch (err) {
             console.error('ruleEngine', err)

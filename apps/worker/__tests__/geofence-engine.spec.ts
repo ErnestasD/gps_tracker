@@ -95,4 +95,41 @@ describe('E05-2 GeofenceEngine (hysteresis)', () => {
     expect(ev.filter((t) => t.deviceId === 1n && t.geofenceId === 'gf1' && t.type === 'enter')).toHaveLength(1)
     expect(ev.filter((t) => t.deviceId === 2n && t.geofenceId === 'gf2' && t.type === 'enter')).toHaveLength(1)
   })
+
+  it('rollback re-fires a crossing whose durable persist FAILED (audit C1)', () => {
+    const e = new GeofenceEngine()
+    e.feed([rec(0, 5, 5)], gfFor)
+    const ev = e.feed([rec(10, 5, 5)], gfFor) // enter confirmed + emitted
+    expect(ev).toHaveLength(1)
+    // the worker's persist() threw → roll the in-memory side-flip back
+    e.rollback(ev)
+    // the device is STILL inside; the next two fixes re-confirm the enter (would be LOST without rollback)
+    expect(e.feed([rec(20, 5, 5)], gfFor)).toHaveLength(0) // 1st inside after rollback
+    const re = e.feed([rec(30, 5, 5)], gfFor) // 2nd → RE-enter
+    expect(re).toHaveLength(1)
+    expect(re[0]).toMatchObject({ geofenceId: 'gf1', type: 'enter' })
+  })
+
+  it('WITHOUT rollback a failed-persist crossing is lost forever (proves the fix matters)', () => {
+    const e = new GeofenceEngine()
+    e.feed([rec(0, 5, 5)], gfFor)
+    expect(e.feed([rec(10, 5, 5)], gfFor)).toHaveLength(1) // enter emitted but "persist failed"
+    // no rollback: the engine believes it is inside, so subsequent inside fixes never re-fire
+    expect(e.feed([rec(20, 5, 5)], gfFor)).toHaveLength(0)
+    expect(e.feed([rec(30, 5, 5)], gfFor)).toHaveLength(0) // lost
+  })
+
+  it('rollback restores the exit side too (device still outside re-fires the exit)', () => {
+    const e = new GeofenceEngine()
+    // get it confirmed-inside first (persist assumed OK here — warm-start via insideFor)
+    const inside = () => true
+    e.feed([rec(0, 5, 5)], gfFor, inside) // already inside per warm-start → no enter
+    e.feed([rec(10, 50, 50)], gfFor) // 1st outside
+    const ex = e.feed([rec(20, 50, 50)], gfFor) // 2nd outside → exit
+    expect(ex).toHaveLength(1)
+    e.rollback(ex) // exit persist failed → back to inside
+    expect(e.feed([rec(30, 50, 50)], gfFor)).toHaveLength(0) // 1st outside again
+    const re = e.feed([rec(40, 50, 50)], gfFor) // 2nd → re-exit
+    expect(re[0]).toMatchObject({ type: 'exit' })
+  })
 })

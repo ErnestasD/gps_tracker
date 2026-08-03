@@ -165,6 +165,41 @@ describe('E05-4 RuleEngine — ordering & scope', () => {
   })
 })
 
+describe('E05-4 RuleEngine — rollbackIo (audit C1: a failed persist re-fires a SUSTAINED edge)', () => {
+  const emptyIo: DeviceIo = { ignition: null, din1: null, unplug: false, alarm: null, fuelPct: null, fuelL: null, fuelBasePct: null, fuelBaseL: null }
+
+  it('re-fires a power_cut whose persist FAILED, from the next still-cut batch', () => {
+    const e = new RuleEngine()
+    const r = rule('power_cut')
+    e.feed([rec(0, { attrs: { Unplug: 0 } })], only(r)) // baseline: in-memory unplug=false
+    // capture pre-feed IO (mirrors main.ts), THEN feed the rising edge
+    const preFeed = new Map<string, DeviceIo>()
+    const s = e.snapshot(42n)
+    if (s !== undefined) preFeed.set('42', s)
+    expect(e.feed([rec(10, { attrs: { Unplug: 1 } })], only(r))).toHaveLength(1) // 0→1 power_cut
+    e.rollbackIo(preFeed, ['42']) // "persist failed" → roll the in-memory advance back
+    const re = e.feed([rec(20, { attrs: { Unplug: 1 } })], only(r)) // signal STILL cut → re-detected
+    expect(re).toHaveLength(1)
+    expect(re[0]).toMatchObject({ kind: 'power_cut' })
+  })
+
+  it('WITHOUT rollback the sustained edge is never re-detected (proves the fix matters)', () => {
+    const e = new RuleEngine()
+    const r = rule('power_cut')
+    e.feed([rec(0, { attrs: { Unplug: 0 } })], only(r))
+    expect(e.feed([rec(10, { attrs: { Unplug: 1 } })], only(r))).toHaveLength(1) // fired but "persist failed"
+    expect(e.feed([rec(20, { attrs: { Unplug: 1 } })], only(r))).toHaveLength(0) // lost — in-memory already unplug=true
+  })
+
+  it('a device first-seen this batch is dropped on rollback → re-warm-starts from durable next time', () => {
+    const e = new RuleEngine()
+    const r = rule('power_cut')
+    e.feed([rec(0, { attrs: { Unplug: 1 } })], only(r), () => emptyIo) // first sight: warm-start unplug=false → 0→1 fires
+    e.rollbackIo(new Map(), ['42']) // no prior snapshot → delete
+    expect(e.snapshot(42n)).toBeUndefined()
+  })
+})
+
 describe('RuleEngine — fuel_theft (V2: confirmed drop from a parked baseline)', () => {
   const off = (tSec: number, pct: number) => rec(tSec, { ignition: false, attrs: { io_89: pct } })
   const drive = (tSec: number, pct: number) => rec(tSec, { ignition: true, attrs: { io_89: pct } })

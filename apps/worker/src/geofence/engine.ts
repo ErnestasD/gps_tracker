@@ -66,6 +66,24 @@ export class GeofenceEngine {
     return out
   }
 
+  /**
+   * Undo the in-memory side-flip for transitions whose durable persist FAILED (audit C1). Without
+   * this, the engine's confirmed side has advanced past durable state, so the next batch sees the
+   * device on the "already-confirmed" side and NEVER re-fires — the crossing is lost forever. The
+   * device is physically still on the new side, so resetting to the PRE-transition side (+ clearing
+   * any pending streak) makes the next batch's live fixes re-confirm and re-emit; the persister
+   * released its dedup claim on the same failure, so the re-emitted event is written, not suppressed.
+   */
+  rollback(transitions: readonly GeofenceTransition[]): void {
+    for (const t of transitions) {
+      const st = this.state.get(`${t.deviceId.toString()}:${t.geofenceId}`)
+      if (st === undefined) continue
+      st.inside = t.type === 'exit' // pre-enter side = outside(false); pre-exit side = inside(true)
+      st.pendingSide = null
+      st.pendingCount = 0
+    }
+  }
+
   /** Drop per-pair state for a device's geofences that are no longer in its set (bounds memory). */
   private prune(dev: string, fences: readonly GeofenceDef[]): void {
     const live = new Set(fences.map((g) => g.id))
