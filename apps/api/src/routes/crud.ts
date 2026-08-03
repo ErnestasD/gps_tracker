@@ -38,7 +38,6 @@ import {
   scheduledReportCreateSchema,
   scheduledReportUpdateSchema,
   webhookUpdateSchema,
-  planEntitlements,
   type Role,
 } from '@orbetra/shared'
 
@@ -338,7 +337,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // (deviceLimit null). Counted at TENANT scope. The count-then-create is serialized per tenant
         // by a short Redis lock so concurrent creates can't each pass at limit-1 and overshoot the
         // hard cap (review MED). A concurrent create loses the lock → 409, retry (rare admin path).
-        const cap = planEntitlements(await db.tenants.getPlan(a.tenantId)).deviceLimit
+        const cap = (await db.tenants.getEntitlements(a.tenantId)).deviceLimit
         const capLock = cap === null ? null : `device:create:${a.tenantId}`
         if (capLock !== null && (await deps.redis.set(capLock, '1', 'EX', 10, 'NX')) === null) {
           return problem(c, 409, 'Conflict', 'device_create_in_progress')
@@ -701,7 +700,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // row (not a 403) so the UI can show the diff and the reason together. Uses the SAME
         // conservative denominator as the apply path (raw rows.length) so a preview that passes
         // can never be followed by an apply that 403s (review LOW: preview/apply mismatch).
-        const cap = planEntitlements(await db.tenants.getPlan(a.tenantId)).deviceLimit
+        const cap = (await db.tenants.getEntitlements(a.tenantId)).deviceLimit
         if (cap !== null) {
           const active = await db.devices.countActive({ tenantId: a.tenantId })
           if (active + rows.length > cap) {
@@ -721,7 +720,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // tenant-plan device cap (WP2): reject the whole batch if it could push the fleet over the
         // cap. Conservative bound (rows.length, before dedup/updates) — Direct plans are small and
         // this admin path is low-frequency, so refusing a would-be-over batch is the safe default.
-        const cap = planEntitlements(await db.tenants.getPlan(a.tenantId)).deviceLimit
+        const cap = (await db.tenants.getEntitlements(a.tenantId)).deviceLimit
         if (cap !== null && (await db.devices.countActive({ tenantId: a.tenantId })) + rows.length > cap) {
           return problem(c, 403, 'Forbidden', 'device_limit_reached')
         }

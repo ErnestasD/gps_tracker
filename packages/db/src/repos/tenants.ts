@@ -1,6 +1,6 @@
 import type { PrismaClient, Tenant } from '@prisma/client'
 
-import type { TenantPlan } from '@orbetra/shared'
+import { effectiveEntitlements, type Entitlements, type TenantPlan } from '@orbetra/shared'
 
 import type { AuditRepo } from './audit.js'
 import type { Actor } from '../scope.js'
@@ -55,6 +55,11 @@ export interface TenantRepo {
   get(id: string): Promise<Tenant | null>
   /** The tenant's entitlement tier — the plan-gating helpers read this to compute entitlements. */
   getPlan(tenantId: string): Promise<TenantPlan>
+  /** The tenant's EFFECTIVE entitlements — the plan matrix gated on its live Stripe subscription
+   *  status. A lapsed subscription (canceled/unpaid/expired/paused) drops to the zero floor, so a
+   *  non-paying tenant can't keep billable features. This is the authoritative gate; prefer it over
+   *  `getPlan` + `planEntitlements` (which ignores billing status). */
+  getEntitlements(tenantId: string): Promise<Entitlements>
   create(actor: Actor, data: TenantCreate): Promise<Tenant>
   update(actor: Actor, id: string, data: TenantUpdate): Promise<Tenant | null>
   remove(actor: Actor, id: string): Promise<boolean>
@@ -83,6 +88,11 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } })
       if (row === null) throw new Error(`tenant not found: ${tenantId}`)
       return row.plan
+    },
+    getEntitlements: async (tenantId) => {
+      const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, subscriptionStatus: true } })
+      if (row === null) throw new Error(`tenant not found: ${tenantId}`)
+      return effectiveEntitlements(row.plan, row.subscriptionStatus)
     },
     create: async (actor, data) => {
       const row = await prisma.tenant.create({
