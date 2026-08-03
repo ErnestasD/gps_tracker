@@ -110,6 +110,31 @@ describe('audit HIGH: user-mutation privilege escalation / account takeover', ()
   })
 })
 
+describe('audit B2: a role/account change revokes the target’s live sessions', () => {
+  // a recording redis captures the ws:revoke marker markSessionsRevoked writes on a scope change
+  function recordingApp(users: Urow[]) {
+    const revoked: string[] = []
+    const rec = { ...stub, set: (k: string) => { if (String(k).startsWith('ws:revoke:')) revoked.push(String(k)); return Promise.resolve('OK') } } as unknown as Redis
+    const app = createApp({ redis: rec, redisSub: rec, db: buildDb(users), jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '127.0.0.1' })
+    return { app, revoked }
+  }
+  const adminTok = () => mintTestToken({ userId: 'ta', tenantId: 'T', role: 'tsp_admin' })
+
+  it('a role change sets the ws:revoke marker for the target (open WS keeps old scope otherwise)', async () => {
+    const { app, revoked } = recordingApp(seedUsers())
+    const res = await app.request('/v1/users/vw', { method: 'PATCH', headers: authHdr(await adminTok()), body: JSON.stringify({ role: 'account_manager' }) })
+    expect(res.status).toBe(200)
+    expect(revoked).toContain('ws:revoke:vw')
+  })
+
+  it('a locale-only change does NOT revoke (no scope change → no session churn)', async () => {
+    const { app, revoked } = recordingApp(seedUsers())
+    const res = await app.request('/v1/users/vw', { method: 'PATCH', headers: authHdr(await adminTok()), body: JSON.stringify({ locale: 'lt' }) })
+    expect(res.status).toBe(200)
+    expect(revoked).not.toContain('ws:revoke:vw')
+  })
+})
+
 describe('audit HIGH: device-import row cap (DoS via tens of thousands of sequential inserts)', () => {
   it('rejects an import over 1,000 rows with 400 (before any DB work)', async () => {
     const app = appFor(seedUsers())

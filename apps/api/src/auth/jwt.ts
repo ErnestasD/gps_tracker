@@ -45,13 +45,16 @@ export async function mintAccessToken(
 
 /** Verify signature+exp (hono/jwt) then the claim SHAPE (zod) — a token signed
  * with our secret but missing scope claims must not authenticate. */
-export async function verifyAccessToken(token: string, secret: string): Promise<AccessClaims | null> {
+export async function verifyAccessToken(token: string, secret: string): Promise<(AccessClaims & { iat: number }) | null> {
   try {
     const payload = await verify(token, secret, 'HS256')
     const parsed = claimsSchema.safeParse(payload)
     if (!parsed.success) return null
-    const { sub, ten, acc, role } = parsed.data
-    return acc !== undefined ? { sub, ten, acc, role } : { sub, ten, role }
+    const { sub, ten, acc, role, iat } = parsed.data
+    // iat (issued-at, seconds) is returned so a session-revocation marker newer than the token can
+    // reject it at ws-ticket issuance (audit B1) — a stale but unexpired access token must not open
+    // a fresh, long-lived WebSocket stream after logout / delete / scope change.
+    return acc !== undefined ? { sub, ten, acc, role, iat } : { sub, ten, role, iat }
   } catch {
     return null // bad signature / expired / malformed
   }

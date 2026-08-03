@@ -27,7 +27,7 @@ import { mountPush } from './routes/push.js'
 import type { StripeGateway } from './billing/stripe.js'
 import { defaultTxtResolver, type TxtResolver } from './routes/tenantSelf.js'
 import { securityHeaders } from './security.js'
-import { issueTicket, type WsDeps } from './ws.js'
+import { issueTicket, revokedAfter, type WsDeps } from './ws.js'
 
 export interface ApiDeps extends WsDeps {
   db: Db
@@ -196,6 +196,10 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // (any authenticated role — live map is viewer-accessible)
   app.get('/v1/ws-ticket', async (c) => {
     const auth = c.get('auth')
+    // B1: refuse a ticket for a token minted BEFORE the user's sessions were revoked (logout /
+    // delete / password reset / scope change) — else a stale-but-unexpired access token could open
+    // a fresh, long-lived WS stream that the gateway's establishedAt-based sweep never closes.
+    if (await revokedAfter(deps.redis, auth.userId, auth.tokenIssuedAtS)) return problem(c, 401, 'Unauthorized', 'session_revoked')
     const ticket = await issueTicket(deps, auth)
     c.header('Cache-Control', 'no-store') // single-use credential: never cacheable
     return c.json({ ticket, expiresInS: deps.ticketTtlS ?? 30 })

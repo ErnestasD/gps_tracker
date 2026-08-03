@@ -48,6 +48,29 @@ export async function markSessionsRevoked(redis: Redis, userId: string, at: numb
 }
 
 /**
+ * True when the user's sessions were revoked AFTER `tokenIssuedAtS` — i.e. this access token predates
+ * a logout / delete / password reset / scope change and must NOT be allowed to open a fresh WS stream
+ * (audit B1). Closes the gap where a still-unexpired token minted before the revocation opened a new
+ * socket whose establishedAt was NEWER than the revoke instant, so the gateway's periodic sweep never
+ * tore it down. The JWT `iat` is second-granular while the marker is ms, so we compare at SECOND
+ * granularity — a token minted in the SAME second as (even just after) a revoke is NOT rejected
+ * (it is a legitimately re-issued token; only a token from a STRICTLY earlier second is stale). The
+ * sub-second slip is harmless — the gateway's periodic sweep still tears down established sockets.
+ * Fail-open on a redis blip (matches markSessionsRevoked's best-effort posture; sweep is the backstop).
+ */
+export async function revokedAfter(redis: Redis, userId: string, tokenIssuedAtS: number | undefined): Promise<boolean> {
+  if (tokenIssuedAtS === undefined) return false
+  try {
+    const raw = await redis.get(`${WS_REVOKE_PREFIX}${userId}`)
+    if (raw === null) return false
+    const revokedAtMs = Number(raw)
+    return Number.isFinite(revokedAtMs) && Math.floor(revokedAtMs / 1000) > tokenIssuedAtS
+  } catch {
+    return false
+  }
+}
+
+/**
  * Single-use ws-ticket auth (PROJECT_PLAN §5 realtime, R8-6): `GET /v1/ws-ticket`
  * stores a random 32 B token via SETEX 30 s; the WS upgrade consumes it with GETDEL —
  * reuse or expiry ⇒ refused. Never a raw JWT in a query string (§10 failure #10).

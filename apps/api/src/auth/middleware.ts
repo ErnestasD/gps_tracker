@@ -13,6 +13,8 @@ export interface AuthContext {
   /** undefined ⇒ tenant-wide visibility; set ⇒ single-account scope (matches ws.ts). */
   accountId?: string
   role: Role
+  /** token issued-at (seconds) — ws-ticket issuance rejects a token older than a revoke marker (B1). */
+  tokenIssuedAtS?: number
 }
 
 export type AuthEnv = { Variables: { auth: AuthContext } }
@@ -69,6 +71,7 @@ export function authMiddleware(cfg: {
       tenantId: claims.ten,
       ...(claims.acc !== undefined ? { accountId: claims.acc } : {}),
       role: claims.role,
+      tokenIssuedAtS: claims.iat,
     })
     await next()
   }
