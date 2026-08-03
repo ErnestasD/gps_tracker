@@ -27,4 +27,8 @@ apps/web/test-results/
 
 # separate Lovable design project (deliberately untracked; see memory design-project)
 orbetra_design/
+# Lovable working copies of the public site — the source of truth is apps/site (ported per pass)
+orbetra_design_new/
+orbetra_frontend/
+orbetra_new_frontend/
 infra/pgbackrest/storagebox_*
