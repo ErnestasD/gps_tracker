@@ -120,6 +120,17 @@ describe('E07-4 runUsageSweep (positions → usage_daily)', () => {
     expect(rows[0]!.day).toBe('2026-07-06') // billed to the day it was USED, not the flush day
   })
 
+  it('month-close reconciliation of an OLD month works — the fix_time floor scales with the lookback (regression)', async () => {
+    // a record from 40 days ago (received then too): outside the default 48h server window, and OLDER
+    // than the previous FIXED 35d fix-clamp — a wide lookback must widen BOTH windows to recover it
+    await seedDevice(48)
+    await seedPosition(48, '2026-05-31T12:00:00Z') // 40 days before NOW, server_time defaults to fix
+    expect(await runUsageSweep(pool, NOW)).toBe(0) // default 48h misses it
+    expect(await runUsageSweep(pool, NOW, 60 * 24 * H)).toBe(1) // 60d reconciliation backfills (fix floor now −95d)
+    const rows = (await pool.query(`SELECT day::text AS day FROM usage_daily WHERE "deviceId"=48`)).rows as { day: string }[]
+    expect(rows[0]!.day).toBe('2026-05-31')
+  })
+
   it('a garbage device clock (absurd-past fix_time) never fabricates a device-day', async () => {
     await seedDevice(47)
     // received now, but the device clock is stuck at epoch → fix_time far outside the sanity clamp

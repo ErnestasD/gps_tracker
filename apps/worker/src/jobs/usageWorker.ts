@@ -27,10 +27,12 @@ import { USAGE_QUEUE } from './usageQueue.js'
  * are billed their own device-day for that date (each used it — documented, §6.9).
  */
 const LOOKBACK_MS = 48 * 3_600_000
-// How far back a device's buffered fix_time may reach and still bill its usage day. Bounds the chunk
-// scan (chunk exclusion on fix_time) and rejects garbage device clocks (e.g. epoch 1970). A device
-// offline LONGER than this needs the manual wider-lookback reconciliation sweep (month-close).
-const FIX_TIME_CLAMP_MS = 35 * 24 * 3_600_000
+// How much OLDER than the server_time (receive) window a buffered fix may reach. A record received in
+// the lookback window can carry a fix_time up to this much earlier (the device's on-board buffer), so
+// the fix_time floor = serverSince − this. It scales WITH the lookback: a wider month-close lookback
+// widens BOTH windows, so reconciliation of old months (and >35d buffered flushes via that sweep) is
+// recoverable. Also bounds the chunk scan + rejects garbage device clocks (e.g. epoch 1970).
+const FIX_TIME_BUFFER_MS = 35 * 24 * 3_600_000
 // The erase-time capture must reach the whole retained history (positions are dropped at ~13 months),
 // so its fix_time clamp is wider — still bounded to reject an epoch-clock garbage day.
 const RETENTION_CLAMP_MS = 400 * 24 * 3_600_000
@@ -53,7 +55,9 @@ export async function runUsageSweep(pool: Pool, nowMs: number, lookbackMs = LOOK
   // rejection); an event with an absurd fix_time never fabricates a device-day.
   const serverSince = new Date(nowMs - lookbackMs)
   const serverUntil = new Date(nowMs + 3_600_000) // tolerate ≤1h ingest-host clock skew
-  const fixFloor = new Date(nowMs - FIX_TIME_CLAMP_MS)
+  // scale the fix_time floor with the lookback so a wider (month-close) sweep reaches proportionally
+  // further back — a record received in [serverSince, now] can carry a fix up to FIX_TIME_BUFFER_MS older
+  const fixFloor = new Date(nowMs - lookbackMs - FIX_TIME_BUFFER_MS)
   const fixCeil = new Date(nowMs + 3_600_000) // reject a future device clock fabricating tomorrow's day
   const res = await pool.query(
     `INSERT INTO usage_daily ("tenantId","accountId","deviceId",day)
