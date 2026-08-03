@@ -106,8 +106,67 @@ model Tenant {
   accounts Account[]
   users    User[]
   domains  TenantDomain[]
+  /// affiliate attribution (W9): the partner who referred this tenant, set once at signup from ?ref
+  referredByAffiliate Affiliate?   @relation("AffiliateReferrals", fields: [referredByAffiliateId], references: [id])
+  commissions         Commission[] @relation("TenantCommissions")
 
   @@map("tenants")
+}
+
+/// Affiliate/partner program (W9). Invite-only in v1: platform_admin creates the affiliate, which
+/// gets a unique referral code. A tenant signing up via ?ref=code is attributed here, and recurring
+/// commissions accrue on that tenant's subscription payments for `commissionMonths` at `commissionPct`.
+enum AffiliateStatus {
+  pending
+  active
+  suspended
+}
+
+model Affiliate {
+  id               String          @id @default(uuid()) @db.Uuid
+  name             String
+  email            String          @unique
+  /// the referral code embedded in the partner's link (?ref=CODE) — unique, case-insensitive by convention
+  code             String          @unique
+  /// recurring commission as a percent of the referred tenant's subscription payment (e.g. 20.00)
+  commissionPct    Decimal         @default(20) @db.Decimal(5, 2)
+  /// how many months the recurring commission is paid, counted from the referred tenant's first payment
+  commissionMonths Int             @default(12)
+  status           AffiliateStatus @default(pending)
+  createdAt        DateTime        @default(now()) @db.Timestamptz()
+
+  referrals   Tenant[]     @relation("AffiliateReferrals")
+  commissions Commission[]
+
+  @@map("affiliates")
+}
+
+enum CommissionStatus {
+  /// accrued, not yet paid out to the affiliate
+  pending
+  /// marked paid by an admin (actual transfer is external)
+  paid
+  /// reversed (e.g. the customer refunded / charged back)
+  void
+}
+
+model Commission {
+  id          String     @id @default(uuid()) @db.Uuid
+  affiliateId String     @db.Uuid
+  affiliate   Affiliate  @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  tenantId    String     @db.Uuid
+  /// the referred tenant whose payment generated this commission
+  tenant      Tenant     @relation("TenantCommissions", fields: [tenantId], references: [id], onDelete: Cascade)
+  /// commission amount in MINOR units (cents), same currency as the source customer payment
+  amountCents Int
+  currency    String     @default("eur")
+  /// the Stripe invoice this was accrued from — UNIQUE so a webhook retry can't double-accrue (idempotency)
+  sourceInvoiceId String @unique
+  status      CommissionStatus @default(pending)
+  createdAt   DateTime   @default(now()) @db.Timestamptz()
+
+  @@index([affiliateId, status])
+  @@map("commissions")
 }
 
 model TenantDomain {
