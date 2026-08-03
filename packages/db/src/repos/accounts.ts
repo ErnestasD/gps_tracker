@@ -3,6 +3,19 @@ import type { Account, PrismaClient } from '@prisma/client'
 import type { AuditRepo } from './audit.js'
 import type { Actor, Scope } from '../scope.js'
 
+/**
+ * Deleting an account SetNull's its users' accountId (schema relation), which SILENTLY promotes an
+ * account-scoped user (viewer/account_manager bound to this account) to TENANT-WIDE scope — a
+ * privilege escalation (audit E1). We refuse to delete an account that still has users; the admin
+ * must first reassign or remove them (an explicit, intentional scope change), never a silent one.
+ */
+export class AccountHasUsersError extends Error {
+  constructor(public readonly userCount: number) {
+    super(`account has ${userCount} user(s); reassign or remove them before deleting`)
+    this.name = 'AccountHasUsersError'
+  }
+}
+
 export interface AccountCreate {
   name: string
   timezone?: string
@@ -58,6 +71,9 @@ export function createAccountRepo(prisma: PrismaClient, audit: AuditRepo): Accou
     remove: async (scope, actor, id) => {
       const before = await findScoped(scope, id)
       if (before === null) return false
+      // refuse to orphan users into tenant-wide scope (audit E1) — the caller must reassign first
+      const userCount = await prisma.user.count({ where: { accountId: id } })
+      if (userCount > 0) throw new AccountHasUsersError(userCount)
       await prisma.account.delete({ where: { id } })
       await audit.record(scope, actor, { action: 'delete', entity: 'account', entityId: id, before })
       return true

@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { AccountHasUsersError, DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -217,8 +217,14 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'delete', path: '/v1/accounts/:id', scopeClass: 'tenant', entity: 'account', shape: 'item',
       handler: async (c) => {
-        const ok = await db.accounts.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
-        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+        try {
+          const ok = await db.accounts.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+          return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+        } catch (err) {
+          // deleting an account with users would SetNull their accountId → tenant-wide privesc (E1)
+          if (err instanceof AccountHasUsersError) return problem(c, 409, 'Conflict', 'account_has_users')
+          throw err
+        }
       } },
 
     // ── users (tenant + account) ─────────────────────────────────────────────
