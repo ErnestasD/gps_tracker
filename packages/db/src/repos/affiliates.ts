@@ -163,20 +163,33 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
       if (tenant === null || tenant.referredByAffiliateId === null) return null // not a referred tenant
       const affiliate = await prisma.affiliate.findUnique({ where: { id: tenant.referredByAffiliateId } })
       if (affiliate === null || affiliate.status !== 'active') return null // suspended/pending ⇒ commissions stop
-      // window: commissionMonths from the tenant's FIRST accrued payment (schema §commissionMonths —
-      // a trial must not eat the window). The earliest existing commission is that anchor; if there is
-      // none yet, THIS invoice IS the first payment → always in-window.
-      const first = await prisma.commission.findFirst({ where: { affiliateId: affiliate.id, tenantId: tenant.id }, orderBy: { createdAt: 'asc' }, select: { createdAt: true } })
-      const anchor = first?.createdAt ?? invoice.paidAt
+      // Window: commissionMonths from the tenant's FIRST PAYMENT (schema §commissionMonths — a trial
+      // must not eat the window). The anchor is the earliest recorded `paidAt` (Stripe's clock), NOT a
+      // row's DB insert time: createdAt drifts later with webhook lag/retries, silently EXTENDING the
+      // earning window and over-paying (audit MED). Rows written before paidAt existed fall back to
+      // createdAt so historical anchors stay stable.
+      const first = await prisma.commission.findFirst({
+        where: { affiliateId: affiliate.id, tenantId: tenant.id },
+        orderBy: [{ paidAt: 'asc' }, { createdAt: 'asc' }],
+        select: { paidAt: true, createdAt: true },
+      })
+      const anchor = first?.paidAt ?? first?.createdAt ?? invoice.paidAt
       if (invoice.paidAt > addMonthsUtc(anchor, affiliate.commissionMonths)) return null
-      const amountCents = Math.floor((invoice.amountPaidCents * Number(affiliate.commissionPct)) / 100)
+      // SNAPSHOT the rate with the entry (§6.9): reading it live meant an admin editing commissionPct
+      // re-priced every still-open commission, and editing commissionMonths could reopen a closed window.
+      const ratePct = affiliate.commissionPct
+      const amountCents = Math.floor((invoice.amountPaidCents * Number(ratePct)) / 100)
       if (amountCents <= 0) return null // a $0 invoice / 100%-discount / zero-rate owes nothing
       // idempotent on the invoice id — a DUPLICATE delivery is a no-op (null); any OTHER fault rethrows
       // so a transient DB error is NOT mistaken for a dedupe (the webhook returns non-2xx → Stripe
       // retries → idempotency makes the retry safe, recovering the commission rather than losing it).
       try {
         return await prisma.commission.create({
-          data: { affiliateId: affiliate.id, tenantId: tenant.id, amountCents, currency: invoice.currency, sourceInvoiceId: invoice.invoiceId },
+          data: {
+            affiliateId: affiliate.id, tenantId: tenant.id, amountCents, currency: invoice.currency,
+            sourceInvoiceId: invoice.invoiceId,
+            ratePct, baseAmountCents: invoice.amountPaidCents, paidAt: invoice.paidAt,
+          },
         })
       } catch (err) {
         if (isUniqueViolation(err)) return null

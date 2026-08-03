@@ -165,6 +165,20 @@ describe('public self-serve signup (F2)', () => {
     expect((await db.tenants.get(u.id))!.referredByAffiliateId).toBeNull()
   })
 
+  it('drops SELF-REFERRAL attribution — a partner cannot earn commission on their own signup (§6.9)', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-0000000000f2' }
+    const aff = await db.affiliates.create(actor, { name: 'Selfie Ltd', email: 'owner@selfie-fleet.test', code: 'SELFIE1' })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
+    // same email DOMAIN as the affiliate ⇒ attribution dropped, but the signup still succeeds
+    const selfRes = await signup({ name: 'Owner', email: 'billing@selfie-fleet.test', password: 'password12', ref: 'SELFIE1' })
+    expect(selfRes.status).toBe(201)
+    const self = (await selfRes.json()) as { id: string }
+    expect((await db.tenants.get(self.id))!.referredByAffiliateId).toBeNull()
+    // an unrelated domain with the same code still attributes normally
+    const other = (await (await signup({ name: 'Real', email: 'real@othercorp.test', password: 'password12', ref: 'SELFIE1' })).json()) as { id: string }
+    expect((await db.tenants.get(other.id))!.referredByAffiliateId).toBe(aff.id)
+  })
+
   it('rate-limits per IP (429) and FAILS CLOSED when Redis is unavailable (503, never unlimited)', async () => {
     // a dedicated app with a tight limit — the suite app deliberately raises it
     const tightApp = createApp({

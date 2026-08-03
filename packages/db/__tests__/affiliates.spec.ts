@@ -135,8 +135,10 @@ describe('affiliates repo', () => {
       const firstPaidAt = new Date(Date.now() + 2 * 31 * 24 * 3600 * 1000) // 2 months after signup
       const c1 = await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_exp', invoiceId: 'in_exp_1', amountPaidCents: 10_000, currency: 'eur', paidAt: firstPaidAt })
       expect(c1?.amountCents).toBe(2_000)
-      // a payment 7 months AFTER the first is outside the 6-month window (anchored on the first)
-      const late = new Date(c1!.createdAt.getTime() + 7 * 31 * 24 * 3600 * 1000)
+      // a payment 7 months AFTER the first PAYMENT is outside the 6-month window. Measured from
+      // firstPaidAt (Stripe's clock — the anchor), never from the row's createdAt: that is the DB
+      // insert time, which drifts with webhook lag and would silently extend the window.
+      const late = new Date(firstPaidAt.getTime() + 7 * 31 * 24 * 3600 * 1000)
       expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_exp', invoiceId: 'in_exp_2', amountPaidCents: 10_000, currency: 'eur', paidAt: late })).toBeNull()
     })
 
@@ -163,6 +165,47 @@ describe('affiliates repo', () => {
     it('rejects a second affiliate whose code differs only by case (functional unique index)', async () => {
       await db.affiliates.create(actor, { name: 'Dup A', email: 'dupa@partner.co', code: 'PROMO9' })
       await expect(db.affiliates.create(actor, { name: 'Dup B', email: 'dupb@partner.co', code: 'promo9' })).rejects.toThrow()
+    })
+
+    it('SNAPSHOTS the terms with the entry — editing the affiliate never re-prices history (§6.9)', async () => {
+      const aff = await db.affiliates.create(actor, { name: 'Snap Co', email: 'snap@partner.co', code: 'SNAPC1', commissionPct: 20, commissionMonths: 12 })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Snap Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_snap')
+      const paidAt = new Date()
+      const c = await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_snap', invoiceId: 'in_snap_1', amountPaidCents: 10_000, currency: 'eur', paidAt })
+      expect(c?.amountCents).toBe(2_000)
+      expect(Number(c?.ratePct)).toBe(20) // the rate AGREED at accrual
+      expect(c?.baseAmountCents).toBe(10_000) // the payment it was computed from
+      expect(c?.paidAt?.getTime()).toBe(paidAt.getTime()) // Stripe's clock, not the DB insert time
+      // raising the rate later must NOT change what was already earned
+      await db.affiliates.update(actor, aff.id, { commissionPct: 90 })
+      const stored = (await db.affiliates.listCommissions(aff.id))[0]
+      expect(stored?.amountCents).toBe(2_000)
+      expect(Number(stored?.ratePct)).toBe(20)
+    })
+
+    it('the earning window anchors on the FIRST PAYMENT time, not the row insert time', async () => {
+      const aff = await db.affiliates.create(actor, { name: 'Anchor Co', email: 'anchor@partner.co', code: 'ANCHR1', commissionMonths: 6 })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Anchor Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_anchor')
+      // the first payment happened well in the PAST (a delayed/replayed webhook writes the row now)
+      const firstPaid = new Date(Date.now() - 5 * 31 * 24 * 3_600_000)
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_anchor', invoiceId: 'in_a1', amountPaidCents: 10_000, currency: 'eur', paidAt: firstPaid })).not.toBeNull()
+      // 7 months after that FIRST PAYMENT is outside the 6-month window — anchoring on createdAt
+      // (which is NOW) would have wrongly extended the window and over-paid
+      const late = new Date(firstPaid.getTime() + 7 * 31 * 24 * 3_600_000)
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_anchor', invoiceId: 'in_a2', amountPaidCents: 10_000, currency: 'eur', paidAt: late })).toBeNull()
+    })
+
+    it('a tenant carrying commissions cannot be hard-deleted — the ledger survives (audit HIGH)', async () => {
+      const aff = await db.affiliates.create(actor, { name: 'Ledger Co', email: 'ledger@partner.co', code: 'LEDGR1' })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Ledger Tenant', referredByAffiliateId: aff.id })
+      await db.affiliates.accrueCommission({ affiliateId: aff.id, tenantId: tenant.id, amountCents: 500, currency: 'eur', sourceInvoiceId: 'in_ledger_1' })
+      await expect(db.tenants.remove(actor, tenant.id)).rejects.toMatchObject({ name: 'TenantHasCommissionsError' })
+      expect(await db.affiliates.listCommissions(aff.id)).toHaveLength(1) // the money record is still there
     })
 
     it('floors a fractional commission rate in the platform’s favour', async () => {

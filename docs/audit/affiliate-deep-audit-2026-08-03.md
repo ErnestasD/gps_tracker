@@ -2365,3 +2365,17 @@ real equality on `lower(code)`; add an explicit `orderBy` for determinism.
   commission row's DB insert time (clock drift + a floored-to-zero first invoice extend the window).
 - **Self-referral guard** (§6.9, currently absent): refuse attribution when the tenant admin's email
   domain matches the affiliate's.
+
+---
+
+## REMEDIATION STATUS (2026-08-04)
+
+| Finding | Status |
+|---|---|
+| **HIGH-2 — ILIKE referral lookup** | ✅ **FIXED** (PR #141). Exact `lower(code) = lower($1)` + functional unique index `affiliates_code_lower_key`; `_` removed from both ref schemas. Escalated to ship-blocking because the new public signup made attribution anonymously reachable. Tests: wildcard-hijack + case-duplicate. |
+| **HIGH-1 — commission ledger cascade-deleted** | ✅ **FIXED**. Both `commissions` FKs are now `ON DELETE RESTRICT`; `tenants.remove` counts commissions first and throws `TenantHasCommissionsError` → **409 `tenant_has_commissions`** (mirrors the accounts-with-users guard). Test asserts the ledger survives a delete attempt. |
+| **MED — terms read live, not snapshotted** | ✅ **FIXED**. `Commission` gained `ratePct` + `baseAmountCents` (§6.9); accrual snapshots the rate, so editing an affiliate never re-prices history. Test: raising the rate afterwards leaves the earned row untouched. |
+| **MED — window anchored on the DB insert time** | ✅ **FIXED**. `Commission.paidAt` records Stripe's clock and the window anchors on the earliest `paidAt` (falling back to `createdAt` for pre-existing rows), so webhook lag can no longer extend the earning window. Test: a payment 7 months after the first payment is refused even when the row was inserted moments ago. |
+| **MED — self-referral guard absent** | ✅ **FIXED**. Public signup drops the attribution when the signup email's domain matches the affiliate's (§6.9). The tenant is still created — it simply earns nobody a commission. Test covers both the self and the unrelated-domain case. |
+
+Remaining from the original 29: the lower-severity items (refund/chargeback → `void` reversal has no consumer yet; a few coverage gaps). Not ship-blocking; the money-critical set is closed.

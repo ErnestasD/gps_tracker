@@ -87,7 +87,14 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
 
     const email = body.email.trim().toLowerCase()
     // attribution BEFORE the transaction (read-only): active code → affiliate, else none
-    const ref = body.ref !== undefined ? await deps.db.affiliates.getActiveByCode(body.ref) : null
+    const candidate = body.ref !== undefined ? await deps.db.affiliates.getActiveByCode(body.ref) : null
+    // SELF-REFERRAL GUARD (PROJECT_PLAN §6.9): a partner must not earn commission on their own
+    // subscription. Signing up with an email in the affiliate's own domain drops the attribution —
+    // the tenant is still created, it simply earns nobody a commission.
+    const domainOf = (e: string) => e.slice(e.lastIndexOf('@') + 1).toLowerCase()
+    const selfReferral = candidate !== null && domainOf(candidate.email) === domainOf(email)
+    if (selfReferral) console.warn('signup: self-referral attribution dropped', candidate.code)
+    const ref = selfReferral ? null : candidate
 
     try {
       const created = await deps.db.tenants.createSelfServeSignup({

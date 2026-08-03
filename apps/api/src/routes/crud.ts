@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { AccountHasUsersError, AffiliateConflictError, DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { AccountHasUsersError, AffiliateConflictError, TenantHasCommissionsError, DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -1219,8 +1219,15 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'delete', path: '/v1/tenants/:id', scopeClass: 'platform', entity: 'tenant', shape: 'item',
       handler: async (c) => {
-        const ok = await db.tenants.remove({ userId: auth(c).userId }, id(c))
-        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+        try {
+          const ok = await db.tenants.remove({ userId: auth(c).userId }, id(c))
+          return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+        } catch (err) {
+          // the commission ledger is a financial record — deleting a tenant that carries one would
+          // destroy paid/owed history (audit HIGH). Void the commissions deliberately first.
+          if (err instanceof TenantHasCommissionsError) return problem(c, 409, 'Conflict', 'tenant_has_commissions')
+          throw err
+        }
       } },
     // accounts of a SPECIFIC tenant (platform) — the claim dialog needs the target
     // tenant's accounts, which /v1/accounts (caller-scoped) can't give
