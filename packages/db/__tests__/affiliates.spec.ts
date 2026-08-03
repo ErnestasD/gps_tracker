@@ -85,6 +85,30 @@ describe('affiliates repo', () => {
     expect(paid?.status).toBe('paid')
   })
 
+  describe('partner auth (F5)', () => {
+    it('findByEmailForAuth + setPassword; consumePwToken is single-use and expiry-guarded', async () => {
+      const a = await db.affiliates.create(actor, { name: 'Auth Co', email: 'auth@partner.co', code: 'AUTHC1' })
+      const found = await db.affiliates.findByEmailForAuth('auth@partner.co')
+      expect(found).toMatchObject({ id: a.id, email: 'auth@partner.co', passwordHash: null, status: 'pending' })
+      expect(await db.affiliates.findByEmailForAuth('nobody@partner.co')).toBeNull()
+
+      await db.affiliates.setPassword(a.id, 'hash-value')
+      expect((await db.affiliates.findByEmailForAuth('auth@partner.co'))?.passwordHash).toBe('hash-value')
+
+      // a fresh token consumes ONCE
+      const now = new Date()
+      await db.affiliates.createPwToken(a.id, 'tokhash-1', new Date(now.getTime() + 3_600_000))
+      expect(await db.affiliates.consumePwToken('tokhash-1', now)).toBe(a.id)
+      expect(await db.affiliates.consumePwToken('tokhash-1', now)).toBeNull() // reused → no-op
+
+      // an EXPIRED token never consumes
+      await db.affiliates.createPwToken(a.id, 'tokhash-2', new Date(now.getTime() - 1_000))
+      expect(await db.affiliates.consumePwToken('tokhash-2', now)).toBeNull()
+      // an unknown token → null
+      expect(await db.affiliates.consumePwToken('nope', now)).toBeNull()
+    })
+  })
+
   describe('accrueForPaidInvoice (F4 webhook path)', () => {
     it('accrues the partner cut for a referred tenant within the window, idempotently', async () => {
       const aff = await db.affiliates.create(actor, { name: 'Win Co', email: 'win@partner.co', code: 'WINC1', commissionPct: 20, commissionMonths: 12 })

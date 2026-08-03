@@ -54,6 +54,7 @@ import { removeDriverIbutton, syncDriverIbutton } from './driverRegistry.js'
 import { removeRule, syncRule } from './ruleRegistry.js'
 import { applyImport, dryRun, parseCsv, rowsToImport, MAX_IMPORT_ROWS } from './deviceImport.js'
 import { markSessionsRevoked } from '../ws.js'
+import { issuePartnerSetPwToken } from './partner.js'
 import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
 import { expectedTxt, newTxtToken, verifyDomainTxt, type TxtResolver } from './tenantSelf.js'
@@ -1280,6 +1281,15 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (data === null) return problem(c, 400, 'Bad Request')
         const row = await db.affiliates.update({ userId: auth(c).userId }, id(c), data)
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    // issue a one-time set/reset-password link for the partner's self-service login (F5). The plaintext
+    // token is returned ONCE for the admin to convey to the partner (email wiring is a follow-up).
+    { method: 'post', path: '/v1/affiliates/:id/set-password-token', scopeClass: 'platform', entity: 'affiliate', shape: 'item',
+      handler: async (c) => {
+        const affiliate = await db.affiliates.get(id(c))
+        if (affiliate === null) return problem(c, 404, 'Not Found')
+        const token = await issuePartnerSetPwToken(db, affiliate.id)
+        return json(c, { token }, 201)
       } },
     // commissions accrued for ONE affiliate (payout review); PATCH marks one paid/void
     { method: 'get', path: '/v1/affiliates/:id/commissions', scopeClass: 'platform', entity: 'affiliate', shape: 'item',
