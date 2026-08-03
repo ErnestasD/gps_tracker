@@ -2,7 +2,6 @@ import type { Redis } from 'ioredis'
 
 import type { Actor, Db } from '@orbetra/db'
 import { DuplicateImeiError } from '@orbetra/db'
-import { planEntitlements } from '@orbetra/shared'
 
 import { activateDevice } from './deviceRegistry.js'
 
@@ -63,7 +62,7 @@ export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: Cla
   // tenant-plan device cap (WP2): a claim assigns a device INTO the target tenant, so it is bound
   // by THAT tenant's plan (not the platform admin's). Direct plans cap non-retired devices; TSP
   // plans are uncapped (deviceLimit null).
-  const cap = planEntitlements(await db.tenants.getPlan(input.tenantId)).deviceLimit
+  const cap = (await db.tenants.getEntitlements(input.tenantId)).deviceLimit
   if (cap !== null && (await db.devices.countActive(scope)) + 1 > cap) {
     return { ok: false, status: 403, reason: 'device_limit_reached' }
   }

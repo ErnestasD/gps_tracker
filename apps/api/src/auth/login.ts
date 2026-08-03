@@ -106,8 +106,11 @@ const toAuthUser = (u: AuthUserRow): AuthUser => ({
   tenantId: u.tenantId,
   accountId: u.accountId,
   locale: u.locale,
-  // entitlements are computed ONCE, server-side, from the tenant plan carried on the row — the web
-  // reads these gates and never derives them itself (single source: planEntitlements).
+  // UI hint only: the plan matrix the web reads to show/hide nav. The AUTHORITATIVE gate is
+  // server-side and subscription-status-aware (auth/entitlements.ts + the device-cap checks use
+  // db.tenants.getEntitlements) — a lapsed tenant is denied there even though this hint stays
+  // plan-based (loading live billing status into a sync row-mapper isn't worth it; worst case the
+  // web shows an item that then 403s with plan_upgrade_required).
   plan: u.plan,
   entitlements: planEntitlements(u.plan),
 })

@@ -3,7 +3,9 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
+  FLOOR_ENTITLEMENTS,
   TENANT_PLANS,
+  effectiveEntitlements,
   isDirectPlan,
   planEntitlements,
   tenantPlanSchema,
@@ -86,5 +88,27 @@ describe('planEntitlements matrix (founder-locked 2026-07-20)', () => {
       for (const k of TSP_PLUS) expect(e[k], `${plan}.${k}`).toBe(true)
       for (const k of SCALE_PLUS) expect(e[k], `${plan}.${k}`).toBe(true)
     }
+  })
+})
+
+describe('effectiveEntitlements — subscription-status gating (revenue-leak fix)', () => {
+  it('active / trialing / past_due(grace) / null keep the full plan matrix', () => {
+    for (const status of ['active', 'trialing', 'past_due', null]) {
+      expect(effectiveEntitlements('tsp_grow', status), String(status)).toEqual(planEntitlements('tsp_grow'))
+    }
+  })
+
+  it('a LAPSED subscription (canceled/unpaid/incomplete_expired/paused) drops to the zero floor', () => {
+    for (const status of ['canceled', 'unpaid', 'incomplete_expired', 'paused']) {
+      const e = effectiveEntitlements('tsp_grow', status)
+      expect(e, status).toEqual(FLOOR_ENTITLEMENTS)
+      expect(e.smsGateway, status).toBe(false) // billable feature is cut off
+      expect(e.apiAccess, status).toBe(false)
+      expect(e.deviceLimit, status).toBe(0) // no new devices while lapsed
+    }
+  })
+
+  it('flooring is plan-independent — a lapsed direct_50 also gets nothing', () => {
+    expect(effectiveEntitlements('direct_50', 'canceled')).toEqual(FLOOR_ENTITLEMENTS)
   })
 })

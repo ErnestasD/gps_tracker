@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from 'hono'
 
 import type { Db } from '@orbetra/db'
-import { planEntitlements, type EntitlementKey } from '@orbetra/shared'
+import { type EntitlementKey } from '@orbetra/shared'
 
 import { problem, type AuthEnv } from './middleware.js'
 
@@ -17,8 +17,10 @@ import { problem, type AuthEnv } from './middleware.js'
  */
 export function requireEntitlement(db: Db, key: EntitlementKey): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
-    const plan = await db.tenants.getPlan(c.get('auth').tenantId)
-    if (!planEntitlements(plan)[key]) return problem(c, 403, 'Forbidden', 'plan_upgrade_required')
+    // effective entitlements = plan matrix gated on live subscription status (a lapsed sub → floor),
+    // so a canceled/unpaid tenant is denied billable features immediately, not just after TTL.
+    const ent = await db.tenants.getEntitlements(c.get('auth').tenantId)
+    if (!ent[key]) return problem(c, 403, 'Forbidden', 'plan_upgrade_required')
     await next()
   }
 }
@@ -29,5 +31,5 @@ export function requireEntitlement(db: Db, key: EntitlementKey): MiddlewareHandl
  * tenant's plan and returns whether the boolean feature `key` is enabled.
  */
 export async function hasEntitlement(db: Db, tenantId: string, key: EntitlementKey): Promise<boolean> {
-  return planEntitlements(await db.tenants.getPlan(tenantId))[key]
+  return (await db.tenants.getEntitlements(tenantId))[key]
 }

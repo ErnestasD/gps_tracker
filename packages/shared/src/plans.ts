@@ -53,6 +53,41 @@ export type Entitlements = z.infer<typeof entitlementsSchema>
 /** The boolean feature gates only (everything except the numeric deviceLimit). */
 export type EntitlementKey = keyof Omit<Entitlements, 'deviceLimit'>
 
+/**
+ * Stripe subscription statuses that FORFEIT paid entitlements. A subscription that lapsed
+ * (canceled / final-retry unpaid / never-completed / paused) drops the tenant to the zero floor —
+ * regardless of what tier the `plan` column still records (the webhook re-asserts the price-derived
+ * tier even on `subscription.deleted`). `past_due` is deliberately NOT here: it is Stripe's dunning
+ * grace window, so a temporary card failure keeps access while retries run. `null` (admin-granted,
+ * never subscribed — e.g. seeded/onboarded tenants) also keeps its plan.
+ */
+export const LAPSED_SUBSCRIPTION_STATUSES = new Set(['canceled', 'unpaid', 'incomplete_expired', 'paused'])
+
+/** The zero-entitlement floor: a lapsed subscription grants no paid feature and a 0 device cap. */
+export const FLOOR_ENTITLEMENTS: Entitlements = {
+  whiteLabel: false,
+  customDomains: false,
+  subAccounts: false,
+  apiAccess: false,
+  webhooks: false,
+  prioritySupport: false,
+  smsGateway: false,
+  sso: false,
+  dataResidency: false,
+  sla999: false,
+  deviceLimit: 0,
+}
+
+/**
+ * The entitlements a tenant ACTUALLY gets, gated on its live Stripe subscription status. A lapsed
+ * subscription forfeits every paid feature (this is what stops a non-paying tenant keeping billable
+ * features like `smsGateway`, or an uncapped device count). Everything else — active / trialing /
+ * `past_due` (grace) / `null` (never subscribed / admin-granted) — keeps the plan's full matrix.
+ */
+export function effectiveEntitlements(plan: TenantPlan, subscriptionStatus: string | null): Entitlements {
+  return subscriptionStatus !== null && LAPSED_SUBSCRIPTION_STATUSES.has(subscriptionStatus) ? FLOOR_ENTITLEMENTS : planEntitlements(plan)
+}
+
 /** Per-Direct-plan device cap; the plan suffix IS the cap. */
 const DIRECT_DEVICE_LIMIT: Record<string, number> = {
   direct_5: 5,

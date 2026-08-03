@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Db } from '@orbetra/db'
-import type { TenantPlan } from '@orbetra/shared'
+import { effectiveEntitlements, type TenantPlan } from '@orbetra/shared'
 
 import { createApp } from '../src/app.js'
 import { fakeDb, mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
@@ -22,10 +22,12 @@ const ACC = '11111111-1111-4111-8111-111111111111'
 const TENANT = '22222222-2222-4222-8222-222222222222'
 const PROFILE = '33333333-3333-4333-8333-333333333333'
 
-/** fakeDb with getPlan/countActive + the minimal stubs the passing handlers reach (no redis). */
-function buildDb(plan: TenantPlan, activeCount = 0): Db {
+/** fakeDb with getEntitlements/countActive + the minimal stubs the passing handlers reach (no redis).
+ *  `status` gates the entitlements: null (default) = admin-granted plan; a lapsed status → floor. */
+function buildDb(plan: TenantPlan, activeCount = 0, status: string | null = null): Db {
   const db = fakeDb()
   db.tenants.getPlan = () => Promise.resolve(plan)
+  db.tenants.getEntitlements = () => Promise.resolve(effectiveEntitlements(plan, status))
   db.tenants.updateBranding = () => Promise.resolve({ id: TENANT, name: 'T', branding: {} } as never)
   db.tenantDomains.list = () => Promise.resolve([] as never)
   db.accounts.get = () => Promise.resolve({ id: ACC, name: 'A', timezone: 'UTC' } as never)
@@ -175,5 +177,26 @@ describe('WP2 entitlements — a TSP-plan (tsp_grow) tenant passes the plan gate
   it('GET /v1/api-keys → 200 and POST → 201 (apiAccess granted)', async () => {
     expect((await call(buildDb(plan), '/v1/api-keys', 'GET', await admin())).status).toBe(200)
     expect((await call(buildDb(plan), '/v1/api-keys', 'POST', await admin(), { name: 'CI' })).status).toBe(201)
+  })
+})
+
+describe('WP2 entitlements — a tsp_grow tenant whose subscription LAPSED is dropped to the floor', () => {
+  // same paid plan, but a canceled/unpaid Stripe status forfeits every paid feature (revenue-leak fix):
+  // the entitlement gate reads db.tenants.getEntitlements, which floors a lapsed subscription.
+  const plan: TenantPlan = 'tsp_grow'
+  for (const status of ['canceled', 'unpaid', 'incomplete_expired', 'paused']) {
+    it(`status=${status}: PATCH /v1/tenant/branding (whiteLabel) → 403 plan_upgrade_required`, async () => {
+      await expectPlanUpgrade(await call(buildDb(plan, 0, status), '/v1/tenant/branding', 'PATCH', await admin(), { branding: {} }))
+    })
+    it(`status=${status}: GET /v1/api-keys (apiAccess) → 403 plan_upgrade_required`, async () => {
+      await expectPlanUpgrade(await call(buildDb(plan, 0, status), '/v1/api-keys', 'GET', await admin()))
+    })
+  }
+  it('device cap: a floored (canceled) tenant is capped at 0 → device create 403', async () => {
+    const res = await call(buildDb(plan, 0, 'canceled'), '/v1/devices', 'POST', await admin(), deviceBody)
+    expect(res.status).toBe(403)
+  })
+  it('grace: a past_due tenant KEEPS access (dunning window) → PATCH branding 200', async () => {
+    expect((await call(buildDb(plan, 0, 'past_due'), '/v1/tenant/branding', 'PATCH', await admin(), { branding: {} })).status).toBe(200)
   })
 })
