@@ -9,99 +9,27 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface Vertical {
   icon: LucideIcon;
-  title: string;
-  pain: string;
-  outcome: string;
   color: string;
   code: string;
-  metric: { label: string; value: string }[];
+  /** i18n sub-key under `verticals.` — title / pain / outcome / metric labels live there. */
+  k: string;
 }
 
 const VERTICALS: Vertical[] = [
-  {
-    code: "V-01",
-    icon: Truck,
-    title: "Delivery & courier",
-    pain: "Where's my driver? Did they finish the route?",
-    outcome: "Live map, stops, arrival times — check from your phone.",
-    color: "#4c4dcf",
-    metric: [
-      { label: "Vehicles", value: "1–20" },
-      { label: "Map ping", value: "10s" },
-      { label: "Setup", value: "90 min" },
-    ],
-  },
-  {
-    code: "V-02",
-    icon: Package,
-    title: "Owner-operators",
-    pain: "I need proof of delivery and hours worked.",
-    outcome: "Trip history, ignition, mileage — auto-generated.",
-    color: "#5B21B6",
-    metric: [
-      { label: "History", value: "12 mo" },
-      { label: "Reports", value: "PDF/CSV" },
-      { label: "Users", value: "Unlimited" },
-    ],
-  },
-  {
-    code: "V-03",
-    icon: HardHat,
-    title: "Construction crews",
-    pain: "The van sat idle for hours on a rented site.",
-    outcome: "Idle alerts, engine hours, site geofences.",
-    color: "#B45309",
-    metric: [
-      { label: "Idle alerts", value: "Live" },
-      { label: "Geofences", value: "Unlimited" },
-      { label: "SMS/email", value: "Both" },
-    ],
-  },
-  {
-    code: "V-04",
-    icon: Wheat,
-    title: "Farm & rural",
-    pain: "Tractor goes offline in the field for hours.",
-    outcome: "Store-and-forward — no bars, no data lost.",
-    color: "#059669",
-    metric: [
-      { label: "Offline buffer", value: "72h" },
-      { label: "Coverage", value: "EU-wide" },
-      { label: "Battery", value: "Low-draw" },
-    ],
-  },
-  {
-    code: "V-05",
-    icon: Wrench,
-    title: "Rental & service",
-    pain: "Trailer went missing between jobs.",
-    outcome: "Geofence alerts, ignition lockout, instant SMS.",
-    color: "#4338CA",
-    metric: [
-      { label: "Recovery aid", value: "SMS" },
-      { label: "Lockout", value: "Optional" },
-      { label: "Alerts", value: "Real-time" },
-    ],
-  },
-  {
-    code: "V-06",
-    icon: Snowflake,
-    title: "Refrigerated vans",
-    pain: "Cold-chain broke and you find out at the drop.",
-    outcome: "Temperature probe, alarms, audit trail.",
-    color: "#6a6bdf",
-    metric: [
-      { label: "Probes", value: "4 ch" },
-      { label: "Alarm", value: "±1°C" },
-      { label: "Exports", value: "PDF/CSV" },
-    ],
-  },
+  { code: "V-01", k: "v01", icon: Truck, color: "#4c4dcf" },
+  { code: "V-02", k: "v02", icon: Package, color: "#5B21B6" },
+  { code: "V-03", k: "v03", icon: HardHat, color: "#B45309" },
+  { code: "V-04", k: "v04", icon: Wheat, color: "#059669" },
+  { code: "V-05", k: "v05", icon: Wrench, color: "#4338CA" },
+  { code: "V-06", k: "v06", icon: Snowflake, color: "#6a6bdf" },
 ];
 
 export function VerticalsGrid() {
+  const { t } = useTranslation();
   return (
     <div className="relative">
       {/* Subtle orbit backdrop — hints at the "one platform, six industries" idea without a table. */}
@@ -127,7 +55,7 @@ export function VerticalsGrid() {
       <div className="relative mb-8 flex flex-wrap items-end justify-between gap-4">
         <div className="text-[12px] font-semibold tracking-[0.1em] uppercase text-[#4c4dcf] flex items-center gap-3">
           <span className="h-[1px] w-8 bg-[#4c4dcf]" />
-          Six kinds of small fleets · One app
+          {t("verticals.strip")}
         </div>
       </div>
 
@@ -142,7 +70,13 @@ export function VerticalsGrid() {
 }
 
 function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }) {
+  const { t } = useTranslation();
   const Icon = vertical.icon;
+  const title = t(`verticals.${vertical.k}.title`);
+  const metric = [1, 2, 3].map((n) => ({
+    label: t(`verticals.${vertical.k}.m${n}l`),
+    value: t(`verticals.${vertical.k}.m${n}v`),
+  }));
   return (
     <motion.article
       initial={{ opacity: 0, y: 16 }}
@@ -194,7 +128,7 @@ function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }
               {vertical.code} · ORBIT
             </div>
             <h3 className="mt-1.5 font-display text-lg font-semibold text-ink leading-tight">
-              {vertical.title}
+              {title}
             </h3>
           </div>
         </div>
@@ -204,21 +138,21 @@ function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }
       <div className="relative mt-5 space-y-3">
         <div>
           <div className="mono text-[9px] tracking-[0.22em] uppercase text-[#7A8CAA]">
-            YOU'VE SAID THIS
+            {t("verticals.said")}
           </div>
-          <p className="mt-1 text-[14px] text-ink/90 leading-snug">"{vertical.pain}"</p>
+          <p className="mt-1 text-[14px] text-ink/90 leading-snug">"{t(`verticals.${vertical.k}.pain`)}"</p>
         </div>
         <div>
           <div className="mono text-[9px] tracking-[0.22em] uppercase text-[#7A8CAA]">
-            HOW ORBETRA HELPS
+            {t("verticals.helps")}
           </div>
-          <p className="mt-1 text-[14px] text-ink leading-snug">{vertical.outcome}</p>
+          <p className="mt-1 text-[14px] text-ink leading-snug">{t(`verticals.${vertical.k}.outcome`)}</p>
         </div>
       </div>
 
       {/* Metric strip */}
       <div className="relative mt-auto pt-5 grid grid-cols-3 gap-2">
-        {vertical.metric.map((m) => (
+        {metric.map((m) => (
           <div
             key={m.label}
             className="px-2.5 py-2"
@@ -247,7 +181,7 @@ function VerticalCard({ vertical, index }: { vertical: Vertical; index: number }
         className="relative mt-5 inline-flex items-center gap-1.5 text-sm font-medium hover:gap-2.5 transition-all"
         style={{ color: vertical.color }}
       >
-        Discover {vertical.title.toLowerCase()} <ArrowUpRight className="h-4 w-4" />
+        {t("verticals.discover", { name: title })} <ArrowUpRight className="h-4 w-4" />
       </a>
     </motion.article>
   );

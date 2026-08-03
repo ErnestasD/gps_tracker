@@ -1,13 +1,15 @@
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 
 const STEPS = [
-  { n: "01", t: "Plug in your Teltonika device", b: "Wire it to the vehicle or use OBD. One SMS points it at Orbetra — no laptop, no installer needed." },
-  { n: "02", t: "Add your vehicles", b: "Name each van, add plate, driver, colour. Takes a couple of minutes per vehicle." },
-  { n: "03", t: "Open the app on your phone", b: "See live positions, get idle & speeding alerts, share a trip link with your customer." },
-  { n: "04", t: "Grow one vehicle at a time", b: "Add a device whenever you add a van. Same flat per-vehicle price — no contract to renegotiate." },
+  { n: "01", k: "s1" },
+  { n: "02", k: "s2" },
+  { n: "03", k: "s3" },
+  { n: "04", k: "s4" },
 ];
 
 export function JourneyTrajectory() {
+  const { t } = useTranslation();
   return (
     <div className="relative">
       <svg className="pointer-events-none absolute inset-0 hidden md:block" viewBox="0 0 1200 380" preserveAspectRatio="none">
@@ -44,9 +46,9 @@ export function JourneyTrajectory() {
             transition={{ duration: 0.5, delay: i * 0.1 }}
             className="surface-card p-6 relative"
           >
-            <div className="mono text-xs tracking-[0.2em] text-[var(--brand-blue)]">— STEP {s.n}</div>
-            <h3 className="mt-4 display text-xl font-semibold text-ink">{s.t}</h3>
-            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{s.b}</p>
+            <div className="mono text-xs tracking-[0.2em] text-[var(--brand-blue)]">{t("journey.step", { n: s.n })}</div>
+            <h3 className="mt-4 display text-xl font-semibold text-ink">{t(`journey.${s.k}t`)}</h3>
+            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{t(`journey.${s.k}b`)}</p>
             <span className="absolute top-4 right-4 h-2 w-2 rounded-full bg-[var(--brand-blue)]" />
           </motion.li>
         ))}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 interface DirectTier {
@@ -20,14 +21,15 @@ const DIRECT: DirectTier[] = [
 ];
 
 const DIRECT_FEATURES = [
-  "Live map & trip playback",
-  "Geofences & alerts",
-  "Reports (CSV / XLSX)",
-  "Unlimited users & drivers",
-  "Email support",
+  "pricing.cards.f1",
+  "pricing.cards.f2",
+  "pricing.cards.f3",
+  "pricing.cards.f4",
+  "pricing.cards.f5",
 ];
 
 export function PricingCards() {
+  const { t } = useTranslation();
   const [annual, setAnnual] = useState(false);
 
   return (
@@ -42,7 +44,7 @@ export function PricingCards() {
               !annual ? "bg-[var(--brand-blue)] text-white" : "text-muted-foreground hover:text-ink"
             )}
           >
-            MONTHLY
+            {t("pricing.cards.monthly")}
           </button>
           <button
             onClick={() => setAnnual(true)}
@@ -51,7 +53,7 @@ export function PricingCards() {
               annual ? "bg-[var(--brand-blue)] text-white" : "text-muted-foreground hover:text-ink"
             )}
           >
-            ANNUAL
+            {t("pricing.cards.annual")}
             <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", annual ? "bg-white/20" : "bg-[var(--brand-green)]/20 text-[var(--brand-green)]")}>
               −17%
             </span>
@@ -72,22 +74,22 @@ export function PricingCards() {
             >
               {p.highlight && (
                 <span className="absolute -top-3 left-4 mono text-[9px] tracking-[0.2em] uppercase bg-[var(--brand-blue)] text-white px-2 py-1 rounded-full">
-                  Popular
+                  {t("pricing.cards.popular")}
                 </span>
               )}
               <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">
-                — UP TO {p.devices} DEVICES
+                {t("pricing.cards.upTo", { n: p.devices })}
               </div>
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="display text-3xl font-bold text-ink mono tabular-nums">€{price}</span>
-                <span className="mono text-xs text-muted-foreground">/mo</span>
+                <span className="mono text-xs text-muted-foreground">{t("pricing.cards.perMo")}</span>
               </div>
               <div className="mt-1 mono text-[11px] text-muted-foreground">
-                {p.perDevice} / device
+                {t("pricing.cards.perDevice", { price: p.perDevice })}
               </div>
               {annual && (
                 <div className="mt-1 mono text-[10px] text-[var(--brand-green)]">
-                  €{p.yearly} billed yearly
+                  {t("pricing.cards.billedYearly", { total: p.yearly })}
                 </div>
               )}
               <Link
@@ -99,7 +101,7 @@ export function PricingCards() {
                     : "border border-[var(--hairline)] text-ink hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]"
                 )}
               >
-                START TRIAL
+                {t("pricing.cards.start")}
               </Link>
             </div>
           );
@@ -108,13 +110,13 @@ export function PricingCards() {
 
       <div className="mt-8 surface-card p-6">
         <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-3">
-          — EVERY DIRECT PLAN INCLUDES
+          {t("pricing.cards.includes")}
         </div>
         <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-          {DIRECT_FEATURES.map((f) => (
-            <div key={f} className="flex items-center gap-2 text-sm text-ink/85">
+          {DIRECT_FEATURES.map((k) => (
+            <div key={k} className="flex items-center gap-2 text-sm text-ink/85">
               <Check className="h-4 w-4 shrink-0 text-[color:var(--brand-green)]" strokeWidth={2} />
-              {f}
+              {t(k)}
             </div>
           ))}
         </div>

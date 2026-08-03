@@ -1,16 +1,18 @@
 import { Link } from "@tanstack/react-router";
 import { Check, ArrowRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface TspPlan {
+  /** Plan names are product names — deliberately identical in every language. */
   name: string;
   base: number;
   baseYearly: number;
   included: number;
   perDevice: string;
   overage: string;
+  /** i18n keys (or a resolved string for the "Everything in X" roll-up). */
   features: string[];
   highlight?: boolean;
-  cta: string;
 }
 
 export const TSP_PLANS: TspPlan[] = [
@@ -22,12 +24,11 @@ export const TSP_PLANS: TspPlan[] = [
     perDevice: "€0.75",
     overage: "€0.60",
     features: [
-      "White-label domain & logo",
-      "Sub-tenants (Accounts)",
-      "REST API + webhooks",
-      "Email support",
+      "tspPlans.start.f1",
+      "tspPlans.start.f2",
+      "tspPlans.start.f3",
+      "tspPlans.start.f4",
     ],
-    cta: "Request pilot",
   },
   {
     name: "TSP Grow",
@@ -37,13 +38,11 @@ export const TSP_PLANS: TspPlan[] = [
     perDevice: "€0.53",
     overage: "€0.40",
     features: [
-      "Everything in Start",
-      "Priority support",
-      "Onboarding assistance",
-      "Custom AVL IDs",
+      "tspPlans.grow.f2",
+      "tspPlans.grow.f3",
+      "tspPlans.grow.f4",
     ],
     highlight: true,
-    cta: "Request pilot",
   },
   {
     name: "TSP Scale",
@@ -53,16 +52,18 @@ export const TSP_PLANS: TspPlan[] = [
     perDevice: "€0.36",
     overage: "€0.35",
     features: [
-      "Everything in Grow",
-      "SSO & custom roles",
-      "Regional data residency",
-      "99.9% SLA · named contact",
+      "tspPlans.scale.f2",
+      "tspPlans.scale.f3",
+      "tspPlans.scale.f4",
     ],
-    cta: "Request pilot",
   },
 ];
 
+/** "Everything in Start" / "Everything in Grow" — the roll-up bullet each tier opens with. */
+const INHERITS: Record<string, string> = { "TSP Grow": "Start", "TSP Scale": "Grow" };
+
 export function TspPricing() {
+  const { t } = useTranslation();
   return (
     <>
       <div className="grid gap-5 md:grid-cols-3">
@@ -78,7 +79,7 @@ export function TspPricing() {
           >
             {p.highlight && (
               <span className="absolute -top-3 left-8 mono text-[10px] tracking-[0.2em] uppercase bg-[var(--brand-blue)] text-white px-3 py-1 rounded-full">
-                Most partners
+                {t("tspPlans.badge")}
               </span>
             )}
             <div className="mono text-[11px] tracking-[0.2em] uppercase text-muted-foreground">
@@ -86,25 +87,31 @@ export function TspPricing() {
             </div>
             <div className="mt-5 flex items-baseline gap-1">
               <span className="display text-5xl font-bold text-ink mono tabular-nums">€{p.base}</span>
-              <span className="mono text-sm text-muted-foreground">/mo base</span>
+              <span className="mono text-sm text-muted-foreground">{t("tspPlans.base")}</span>
             </div>
             <div className="mt-2 space-y-1 text-sm">
               <div className="text-ink/85">
-                {p.included.toLocaleString()} devices included
-                <span className="text-muted-foreground"> · {p.perDevice}/device</span>
+                {t("tspPlans.included", { n: p.included.toLocaleString() })}
+                <span className="text-muted-foreground">{t("tspPlans.perDevice", { price: p.perDevice })}</span>
               </div>
               <div className="mono text-xs text-muted-foreground">
-                Overage {p.overage} / device
+                {t("tspPlans.overage", { price: p.overage })}
               </div>
               <div className="mono text-xs text-[var(--brand-green)]">
-                €{p.baseYearly.toLocaleString()} yearly (2 months free)
+                {t("tspPlans.yearly", { total: p.baseYearly.toLocaleString() })}
               </div>
             </div>
             <ul className="mt-5 space-y-2 text-sm flex-1">
+              {INHERITS[p.name] && (
+                <li className="flex gap-2 text-ink/85">
+                  <Check className="h-4 w-4 shrink-0 text-[color:var(--brand-green)] mt-0.5" strokeWidth={2} />
+                  {t("tspPlans.everythingIn", { plan: INHERITS[p.name] })}
+                </li>
+              )}
               {p.features.map((f) => (
                 <li key={f} className="flex gap-2 text-ink/85">
                   <Check className="h-4 w-4 shrink-0 text-[color:var(--brand-green)] mt-0.5" strokeWidth={2} />
-                  {f}
+                  {t(f)}
                 </li>
               ))}
             </ul>
@@ -117,7 +124,7 @@ export function TspPricing() {
                   : "pill-ghost hover:border-[color:var(--brand-blue)] hover:text-[color:var(--brand-blue)]")
               }
             >
-              {p.cta} <ArrowRight className="h-4 w-4" />
+              {t("tspPlans.cta")} <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         ))}
@@ -126,17 +133,17 @@ export function TspPricing() {
       <div className="mt-6 surface-card p-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="mono text-[11px] tracking-[0.2em] uppercase text-muted-foreground">
-            — TSP ENTERPRISE
+            {t("tspPlans.enterprise.label")}
           </div>
           <div className="mt-1 font-display font-semibold text-ink">
-            2,500+ devices · custom terms
+            {t("tspPlans.enterprise.title")}
           </div>
           <div className="text-sm text-muted-foreground">
-            Regional deployments, dedicated infra, custom SLA.
+            {t("tspPlans.enterprise.body")}
           </div>
         </div>
         <Link to="/pilot" className="pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]">
-          Contact sales <ArrowRight className="h-4 w-4" />
+          {t("tspPlans.enterprise.cta")} <ArrowRight className="h-4 w-4" />
         </Link>
       </div>
     </>

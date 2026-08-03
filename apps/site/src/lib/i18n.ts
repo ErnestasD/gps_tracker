@@ -2,9 +2,15 @@ import i18n from "i18next";
 import { useEffect } from "react";
 import { initReactI18next } from "react-i18next";
 
+import { en } from "./locales/en";
+import { pl } from "./locales/pl";
+import { de } from "./locales/de";
+import { lt } from "./locales/lt";
+
 /**
- * Lightweight i18n setup. EN is complete; PL / DE / LT contain the
- * navigation, footer, hero and CTA keys — remaining keys fall back to EN.
+ * i18n for the marketing surfaces. EN is the source of truth (`locales/en.ts`);
+ * pl/de/lt are typed against it, so a missing key is a typecheck error rather
+ * than a silent English fallback at runtime.
  */
 export const LANGUAGES = ["en", "pl", "de", "lt"] as const;
 export type Lang = (typeof LANGUAGES)[number];
@@ -14,89 +20,6 @@ export const LANGUAGE_NAMES: Record<Lang, string> = {
   pl: "Polski",
   de: "Deutsch",
   lt: "Lietuvių",
-};
-
-const en = {
-  nav: {
-    platform: "Platform",
-    pricing: "Pricing",
-    resellers: "Resellers",
-    partners: "Partners",
-    contact: "Contact",
-    docs: "Docs",
-    demo: "Live demo",
-    menu: "Menu",
-  },
-  cta: {
-    trial: "Start free trial",
-    signin: "Sign in",
-    pricing: "See pricing",
-    whitelabel: "White-label it",
-  },
-  hero: {
-    eyebrow: "Teltonika GPS · for fleets & resellers · EU-hosted",
-    title1: "Know where every van is.",
-    title2: "Down to the minute.",
-    sub: "Live map, trip history, idle & speeding alerts, driver reports. Plug in your Teltonika device, open the dashboard on your phone, done — no IT team required. Running a tracking business? White-label the whole platform under your brand.",
-    trial: "30-day free trial",
-    nocard: "No card required",
-    cancel: "Cancel anytime",
-  },
-  tracks: {
-    label: "— TWO WAYS TO USE ORBETRA",
-    ownTitle: "Run your own fleet",
-    ownBody: "1–100 vehicles, Orbetra-branded, self-serve. Live map, trips, geofences, alerts and reports from day one.",
-    resellTitle: "Resell it as your own",
-    resellBody: "Uncapped devices under your brand and domain, sub-accounts per customer, shadow-mode migration from your current platform.",
-    resellCta: "White-label platform",
-  },
-  footer: {
-    product: "Product",
-    legal: "Legal",
-    language: "Language",
-    tagline: "GPS tracking for small fleets and for resellers who white-label it. EU-hosted. Runs on Teltonika.",
-  },
-};
-
-type Deep = { [k: string]: string | Deep };
-
-const pl: Deep = {
-  nav: { platform: "Platforma", pricing: "Cennik", resellers: "Resellerzy", partners: "Partnerzy", contact: "Kontakt", docs: "Dokumentacja", demo: "Demo na żywo", menu: "Menu" },
-  cta: { trial: "Rozpocznij darmowy okres", signin: "Zaloguj się", pricing: "Zobacz cennik", whitelabel: "White-label" },
-  hero: {
-    eyebrow: "Teltonika GPS · dla flot i resellerów · hosting w UE",
-    title1: "Wiedz, gdzie jest każdy pojazd.",
-    title2: "Co do minuty.",
-    sub: "Mapa na żywo, historia tras, alerty postoju i prędkości, raporty kierowców. Podłącz urządzenie Teltonika i otwórz panel na telefonie — bez działu IT. Prowadzisz firmę GPS? Sprzedawaj całą platformę pod własną marką.",
-    trial: "30 dni za darmo", nocard: "Bez karty", cancel: "Anuluj kiedy chcesz",
-  },
-  footer: { product: "Produkt", legal: "Informacje prawne", language: "Język", tagline: "Monitoring GPS dla małych flot i dla resellerów w modelu white-label. Hosting w UE. Działa na Teltonika." },
-};
-
-const de: Deep = {
-  nav: { platform: "Plattform", pricing: "Preise", resellers: "Reseller", partners: "Partner", contact: "Kontakt", docs: "Doku", demo: "Live-Demo", menu: "Menü" },
-  cta: { trial: "Kostenlos testen", signin: "Anmelden", pricing: "Preise ansehen", whitelabel: "White-Label" },
-  hero: {
-    eyebrow: "Teltonika GPS · für Flotten & Reseller · EU-gehostet",
-    title1: "Wissen, wo jeder Transporter ist.",
-    title2: "Auf die Minute genau.",
-    sub: "Live-Karte, Fahrtenhistorie, Leerlauf- und Tempowarnungen, Fahrerberichte. Teltonika-Gerät anschließen, Dashboard am Handy öffnen — ohne IT-Team. Sie verkaufen Tracking? White-Labeln Sie die ganze Plattform unter Ihrer Marke.",
-    trial: "30 Tage kostenlos", nocard: "Keine Karte nötig", cancel: "Jederzeit kündbar",
-  },
-  footer: { product: "Produkt", legal: "Rechtliches", language: "Sprache", tagline: "GPS-Ortung für kleine Flotten und für Reseller im White-Label. EU-gehostet. Läuft auf Teltonika." },
-};
-
-const lt: Deep = {
-  nav: { platform: "Platforma", pricing: "Kainos", resellers: "Perpardavėjams", partners: "Partneriai", contact: "Kontaktai", docs: "Dokumentacija", demo: "Gyva demo", menu: "Meniu" },
-  cta: { trial: "Pradėti nemokamai", signin: "Prisijungti", pricing: "Žiūrėti kainas", whitelabel: "White-label" },
-  hero: {
-    eyebrow: "Teltonika GPS · autoparkams ir perpardavėjams · ES serveriai",
-    title1: "Žinok, kur kiekvienas mikroautobusas.",
-    title2: "Minutės tikslumu.",
-    sub: "Gyvas žemėlapis, kelionių istorija, prastovų ir greičio pranešimai, vairuotojų ataskaitos. Prijunk Teltonika įrenginį, atidaryk skydelį telefone — IT komandos nereikia. Turi GPS verslą? Perparduok visą platformą su savo prekės ženklu.",
-    trial: "30 d. nemokamai", nocard: "Kortelės nereikia", cancel: "Atšauk bet kada",
-  },
-  footer: { product: "Produktas", legal: "Teisinė info", language: "Kalba", tagline: "GPS sekimas mažiems autoparkams ir perpardavėjams su white-label. ES serveriai. Veikia su Teltonika." },
 };
 
 function detectLang(): Lang {
@@ -123,7 +46,13 @@ if (!i18n.isInitialized) {
     // The stored / browser language is applied after hydration.
     lng: "en",
     fallbackLng: "en",
-    interpolation: { escapeValue: false },
+    interpolation: {
+      escapeValue: false,
+      // `{{name, lowercase}}` lets EN keep its sentence-case-free phrasing
+      // ("Discover delivery & courier") while PL/DE/LT keep proper capitalisation.
+      format: (value: unknown, format?: string) =>
+        format === "lowercase" && typeof value === "string" ? value.toLowerCase() : String(value),
+    },
     react: { useSuspense: false },
   });
 }

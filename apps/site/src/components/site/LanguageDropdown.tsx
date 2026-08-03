@@ -15,7 +15,7 @@ export function LanguageDropdown({
   variant?: "compact" | "full";
 }) {
   useLanguageBootstrap();
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -44,7 +44,7 @@ export function LanguageDropdown({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label="Language"
+        aria-label={t("footer.language")}
         onClick={() => setOpen((v) => !v)}
         className={cn(
           "inline-flex items-center gap-1.5 h-8 rounded border transition-colors cursor-pointer",

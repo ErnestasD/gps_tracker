@@ -1,8 +1,10 @@
 import { useConsent } from "@/lib/consent";
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 export function CookieBanner() {
   const { bannerOpen, setChoice } = useConsent();
+  const { t } = useTranslation();
   if (!bannerOpen) return null;
 
   return (
@@ -18,12 +20,11 @@ export function CookieBanner() {
       >
         <div className="flex-1 text-sm text-muted-foreground">
           <div className="mono text-[10px] tracking-[0.22em] uppercase text-[#4c4dcf] mb-2">
-            — COOKIES
+            {t("cookie.label")}
           </div>
-          Orbetra uses minimal cookies — essential ones to run the site, and one optional
-          cookie to credit a partner referral. Analytics is cookieless.{" "}
+          {t("cookie.body")}{" "}
           <Link to="/cookies" className="text-[color:var(--brand-cyan)] hover:underline">
-            Cookie policy
+            {t("cookie.policy")}
           </Link>
           .
         </div>
@@ -32,19 +33,19 @@ export function CookieBanner() {
             onClick={() => setChoice("essential")}
             className="h-9 px-4 rounded mono text-[11px] tracking-wide uppercase border border-[var(--hairline)] text-muted-foreground hover:text-ink cursor-pointer"
           >
-            Reject non-essential
+            {t("cookie.reject")}
           </button>
           <Link
             to="/cookies"
             className="h-9 px-4 inline-flex items-center rounded mono text-[11px] tracking-wide uppercase border border-[var(--hairline)] text-muted-foreground hover:text-ink"
           >
-            Preferences
+            {t("cookie.prefs")}
           </Link>
           <button
             onClick={() => setChoice("accepted")}
             className="h-9 px-4 rounded mono text-[11px] tracking-wide uppercase bg-[var(--brand-blue)] text-white hover:opacity-90 cursor-pointer"
           >
-            Accept
+            {t("cookie.accept")}
           </button>
         </div>
       </div>

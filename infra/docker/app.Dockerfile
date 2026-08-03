@@ -36,9 +36,13 @@ RUN pnpm --filter @orbetra/db db:generate
 # UNTRACKED in git (GitHub push protection blocks Mapbox tokens) and reaches the build
 # host via rsync (see README env table); vite reads it at build time. Styles default to
 # mapbox dark-v11/light-v11 (override via VITE_MAPBOX_STYLE_DARK/_LIGHT if ever needed).
-# apps/site stays on MapLibre + OpenFreeMap — pin its style URL explicitly so a design
-# re-sync can't silently reintroduce a CDN.
-ENV VITE_TILES_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
+# apps/site stays on MapLibre, and its style URL is pinned EXPLICITLY so a design re-sync can't
+# silently swap the tile provider. Deliberately changed to Carto dark-matter (Lovable v2): the site
+# is a dark "mission-control" design and OpenFreeMap ships no dark style — liberty is light, so the
+# old pin rendered a white basemap inside a near-black page. Attribution stays visible on every map
+# (provider TOS). NOTE: tiles are third-party — the site must never claim self-hosted map tiles; the
+# honest claim is self-hosted geocoding (Photon) + routing (OSRM).
+ENV VITE_TILES_STYLE_URL=https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json
 RUN pnpm --filter @orbetra/web build && pnpm --filter @orbetra/site build
 
 # default command is a no-op; docker-compose.apps.yml sets one per service

@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, Shield, Globe as GlobeIcon, Server } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { VerticalsGrid } from "@/components/site/VerticalsGrid";
 import { TabShowcase } from "@/components/site/TabShowcase";
@@ -7,6 +8,11 @@ import { JourneyTrajectory } from "@/components/site/JourneyTrajectory";
 import { StatTile } from "@/components/site/StatTile";
 import { CodeCard } from "@/components/site/CodeCard";
 import { HeroDeck } from "@/components/site/HeroDeck";
+
+/** Prices are interpolated so the copy stays in one place per language. */
+const DIRECT_FROM_PRICE = 9;
+const TSP_FROM_PRICE = 149;
+const TSP_FROM_DEVICES = 200;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -19,43 +25,41 @@ export const Route = createFileRoute("/")({
 });
 
 function HomePage() {
+  const { t } = useTranslation();
   return (
     <>
       <Hero />
       <TrustStrip />
       <TwoTracks />
 
-      <Section id="verticals" label="— BUILT FOR SMALL FLEETS" heading={<>Whatever you drive.<br /><span className="text-gradient">One dashboard runs it.</span></>}>
+      <Section id="verticals" label={t("home.verticals.label")} heading={<>{t("home.verticals.h1")}<br /><span className="text-gradient">{t("home.verticals.h2")}</span></>}>
         <VerticalsGrid />
       </Section>
 
-      <Section id="platform" label="— ONE APP · EVERY SCREEN" heading={<>Everything you need.<br /><span className="text-gradient">Nothing you don't.</span></>}>
+      <Section id="platform" label={t("home.platform.label")} heading={<>{t("home.platform.h1")}<br /><span className="text-gradient">{t("home.platform.h2")}</span></>}>
         <div className="grid gap-14">
           <TabShowcase />
           <div className="grid gap-5 md:grid-cols-3">
-            <StatTile label="Setup time" value={90} prefix="" suffix=" min" unit="from box to live" />
-            <StatTile label="Update rate" value={10} suffix="s" unit="live map ping" />
-            <StatTile label="Uptime target" value={999} prefix="" suffix="" unit="99.9% · target" />
+            <StatTile label={t("home.platform.setupLabel")} value={90} prefix="" suffix=" min" unit={t("home.platform.setupUnit")} />
+            <StatTile label={t("home.platform.rateLabel")} value={10} suffix="s" unit={t("home.platform.rateUnit")} />
+            <StatTile label={t("home.platform.uptimeLabel")} value={999} prefix="" suffix="" unit={t("home.platform.uptimeUnit")} />
           </div>
         </div>
       </Section>
 
-      <Section id="how" label="— HOW IT WORKS" heading={<>From box on the desk<br /><span className="text-gradient">to live map, same day.</span></>}>
+      <Section id="how" label={t("home.how.label")} heading={<>{t("home.how.h1")}<br /><span className="text-gradient">{t("home.how.h2")}</span></>}>
         <JourneyTrajectory />
       </Section>
 
-      <Section id="api" label="— OPTIONAL · API & WEBHOOKS" heading={<>Need to plug it into your tools?<br /><span className="text-gradient">Every screen has an API.</span></>}>
+      <Section id="api" label={t("home.api.label")} heading={<>{t("home.api.h1")}<br /><span className="text-gradient">{t("home.api.h2")}</span></>}>
         <div className="grid gap-10 lg:grid-cols-[1.2fr_1fr] items-center">
           <CodeCard />
           <div>
-            <p className="text-muted-foreground text-lg">
-              Most small fleets never touch this — the app already does everything.
-              But if you run an ERP, dispatch tool or accounting system, Orbetra plugs in with real REST and signed webhooks.
-            </p>
+            <p className="text-muted-foreground text-lg">{t("home.api.body")}</p>
             <ul className="mt-6 space-y-3 text-sm">
-              <li className="flex items-center gap-3"><Dot color="#2563EB" /> REST endpoints for vehicles, trips, geofences, reports</li>
-              <li className="flex items-center gap-3"><Dot color="#7C5CFC" /> Signed webhook events (ignition, geofence, alert, low battery)</li>
-              <li className="flex items-center gap-3"><Dot color="#10B981" /> Export to CSV, Excel or your accounting tool</li>
+              <li className="flex items-center gap-3"><Dot color="#2563EB" /> {t("home.api.b1")}</li>
+              <li className="flex items-center gap-3"><Dot color="#7C5CFC" /> {t("home.api.b2")}</li>
+              <li className="flex items-center gap-3"><Dot color="#10B981" /> {t("home.api.b3")}</li>
             </ul>
           </div>
         </div>
@@ -77,15 +81,16 @@ function Hero() {
 }
 
 function TrustStrip() {
+  const { t } = useTranslation();
   const devices = [
-    { code: "FMB series", role: "Universal CAN + BLE", status: "certified" },
-    { code: "FMC series", role: "4G LTE Cat-1",         status: "certified" },
-    { code: "TAT series", role: "Asset trackers",       status: "certified" },
-    { code: "TFT100",     role: "Fuel + temperature",   status: "certified" },
-    { code: "FMP100",     role: "Personal / OBD",       status: "certified" },
+    { code: "FMB series", role: t("home.teltonika.fmb") },
+    { code: "FMC series", role: t("home.teltonika.fmc") },
+    { code: "TAT series", role: t("home.teltonika.tat") },
+    { code: "TFT100",     role: t("home.teltonika.tft") },
+    { code: "FMP100",     role: t("home.teltonika.fmp") },
   ];
   return (
-    <section aria-label="Runs on Teltonika" className="relative border-y border-[var(--hairline)] bg-[rgba(4,7,15,0.6)]">
+    <section aria-label={t("home.teltonika.aria")} className="relative border-y border-[var(--hairline)] bg-[rgba(4,7,15,0.6)]">
       {/* radial hairline */}
       <div
         aria-hidden
@@ -128,10 +133,10 @@ function TrustStrip() {
               INGEST · TCP:5027
             </div>
             <div className="font-display text-lg font-semibold text-ink leading-tight mt-1">
-              Runs on <span className="text-gradient">Teltonika</span>
+              {t("home.teltonika.runsOn")} <span className="text-gradient">Teltonika</span>
             </div>
             <div className="mono text-[11px] text-[#7A8CAA] mt-0.5">
-              Native AVL · store-and-forward · zero middleware
+              {t("home.teltonika.sub")}
             </div>
           </div>
         </div>
@@ -177,22 +182,31 @@ function Section({ id, label, heading, children }: { id?: string; label: string;
 }
 
 function TwoTracks() {
+  const { t } = useTranslation();
   const tracks = [
     {
-      label: "TRACK A · DIRECT",
-      title: "Run your own fleet",
-      body: "1–100 vehicles, Orbetra-branded, self-serve. Live map, trips and playback, geofences, rules & alerts, reports — from day one.",
-      points: ["Per-vehicle pricing from €9/mo", "Setup in an afternoon", "30-day trial, no card"],
-      cta: "Start free trial",
+      label: t("tracks.aLabel"),
+      title: t("tracks.ownTitle"),
+      body: t("tracks.ownBody"),
+      points: [
+        t("tracks.ownP1", { price: DIRECT_FROM_PRICE }),
+        t("tracks.ownP2"),
+        t("tracks.ownP3"),
+      ],
+      cta: t("cta.trial"),
       to: "/signup" as const,
       accent: "var(--brand-blue)",
     },
     {
-      label: "TRACK B · WHITE-LABEL",
-      title: "Resell it as your own",
-      body: "Uncapped devices under your brand and domain, sub-accounts per customer, shadow-mode migration from your current platform.",
-      points: ["From €149/mo for 200 devices", "Custom domain + auto TLS, branded emails", "REST API, webhooks, sub-tenants"],
-      cta: "White-label platform",
+      label: t("tracks.bLabel"),
+      title: t("tracks.resellTitle"),
+      body: t("tracks.resellBody"),
+      points: [
+        t("tracks.resellP1", { price: TSP_FROM_PRICE, devices: TSP_FROM_DEVICES }),
+        t("tracks.resellP2"),
+        t("tracks.resellP3"),
+      ],
+      cta: t("tracks.resellCta"),
       to: "/tsp" as const,
       accent: "var(--brand-purple, #7C5CFC)",
     },
@@ -202,7 +216,7 @@ function TwoTracks() {
       <div className="mx-auto max-w-6xl">
         <div className="section-label">
           <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-          — TWO WAYS TO USE ORBETRA
+          {t("tracks.label")}
         </div>
         <div className="mt-8 grid gap-5 md:grid-cols-2 items-stretch">
           {tracks.map((tr) => (
@@ -238,10 +252,11 @@ function TwoTracks() {
 }
 
 function TrustBand() {
+  const { t } = useTranslation();
   const items = [
-    { icon: Server, title: "EU data residency", body: "Hosted in Frankfurt and Warsaw regions." },
-    { icon: Shield, title: "GDPR by design", body: "Data controller / processor separation baked in." },
-    { icon: GlobeIcon, title: "Self-hosted geocoding & routing", body: "Photon + OSRM, EU-hosted. Map tiles are served by Mapbox." },
+    { icon: Server, title: t("home.trust.t1"), body: t("home.trust.b1") },
+    { icon: Shield, title: t("home.trust.t2"), body: t("home.trust.b2") },
+    { icon: GlobeIcon, title: t("home.trust.t3"), body: t("home.trust.b3") },
   ];
   return (
     <section className="py-16 px-6 border-y border-[var(--hairline)] bg-[var(--blueprint)]/50">
@@ -266,6 +281,7 @@ function TrustBand() {
 }
 
 function WhiteLabelBand() {
+  const { t } = useTranslation();
   return (
     <section className="px-6 py-20 relative">
       <div
@@ -280,36 +296,38 @@ function WhiteLabelBand() {
         <div>
           <div className="mono text-[11px] tracking-[0.2em] uppercase text-[color:var(--brand-purple,#7C5CFC)] flex items-center gap-2">
             <span className="h-[1px] w-6 bg-[color:var(--brand-purple,#7C5CFC)]" />
-            — RESELLERS · WHITE-LABEL · TSP
+            {t("home.wl.label")}
           </div>
           <h2 className="mt-4 display text-3xl md:text-4xl font-bold text-ink leading-[1.1]">
-            Reselling GPS to your own customers?{" "}
-            <span className="text-gradient">White-label the whole platform.</span>
+            {t("home.wl.h1")}{" "}
+            <span className="text-gradient">{t("home.wl.h2")}</span>
           </h2>
           <p className="mt-4 text-muted-foreground max-w-xl">
-            Your domain, your logo, your customers. Sub-tenants, REST API and webhooks
-            included. From <span className="text-ink font-medium">€149/mo</span> for 200
-            devices — the lowest serious white-label entry in the market.
+            <Trans
+              i18nKey="home.wl.body"
+              values={{ price: TSP_FROM_PRICE, devices: TSP_FROM_DEVICES }}
+              components={{ b: <span className="text-ink font-medium" /> }}
+            />
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link to="/tsp" className="pill-primary hover:pill-primary-hover">
-              See partner program <ArrowRight className="h-4 w-4" />
+              {t("home.wl.cta1")} <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               to="/pricing"
               hash="tsp"
               className="pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]"
             >
-              TSP pricing
+              {t("home.wl.cta2")}
             </Link>
           </div>
         </div>
         <ul className="grid gap-3 text-sm">
           {[
-            { k: "Your brand", v: "Custom domain, logo, colors — Orbetra never appears" },
-            { k: "Sub-tenants", v: "Isolated accounts per end customer" },
-            { k: "REST + webhooks", v: "Plug into your ERP or dispatch stack" },
-            { k: "60-day pilot", v: "Free · up to 500 devices · no card" },
+            { k: t("home.wl.f1k"), v: t("home.wl.f1v") },
+            { k: t("home.wl.f2k"), v: t("home.wl.f2v") },
+            { k: t("home.wl.f3k"), v: t("home.wl.f3v") },
+            { k: t("home.wl.f4k"), v: t("home.wl.f4v") },
           ].map((f) => (
             <li key={f.k} className="flex gap-3 items-start">
               <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[color:var(--brand-purple,#7C5CFC)] shrink-0" />
@@ -326,6 +344,7 @@ function WhiteLabelBand() {
 }
 
 function FinalCTA() {
+  const { t } = useTranslation();
   return (
     <section className="px-6 py-24">
       <div className="mx-auto max-w-6xl surface-card p-12 md:p-20 relative overflow-hidden text-center">
@@ -336,21 +355,21 @@ function FinalCTA() {
         <div className="relative">
           <span className="section-label justify-center">
             <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-            — READY WHEN YOU ARE
+            {t("home.final.label")}
           </span>
           <h2 className="display text-4xl md:text-5xl font-bold leading-[1.05] mt-4 text-ink">
-            Start with 1 vehicle.<br />
-            <span className="text-gradient">Grow to 20 without changing tools.</span>
+            {t("home.final.h1")}<br />
+            <span className="text-gradient">{t("home.final.h2")}</span>
           </h2>
           <p className="mt-6 text-muted-foreground max-w-xl mx-auto">
-            30-day free trial. No credit card. Cancel any time — your data exports in one click.
+            {t("home.final.body")}
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link to="/signup" className="pill-primary hover:pill-primary-hover">
-              Start free trial <ArrowRight className="h-4 w-4" />
+              {t("cta.trial")} <ArrowRight className="h-4 w-4" />
             </Link>
             <Link to="/tsp" className="pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]">
-              White-label it
+              {t("cta.whitelabel")}
             </Link>
           </div>
         </div>

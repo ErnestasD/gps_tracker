@@ -7,6 +7,7 @@ import {
   useRouterState,
   HeadContent,
 } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 import { NavBar } from "@/components/site/NavBar";
 import { Footer } from "@/components/site/Footer";
@@ -18,6 +19,7 @@ import { CookieBanner } from "@/components/site/CookieBanner";
 import "@/lib/i18n";
 
 function NotFoundComponent() {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-6 pt-24">
       <div className="max-w-lg text-center">
@@ -31,15 +33,13 @@ function NotFoundComponent() {
           <circle cx="90" cy="120" r="3" fill="#2563EB" />
           <circle cx="210" cy="80" r="3" fill="#3a3b8f" />
         </svg>
-        <div className="section-label justify-center">— FIG.404 · OFF-ROUTE</div>
+        <div className="section-label justify-center">{t("errors.notFound.label")}</div>
         <h1 className="display text-5xl font-bold mt-4">
-          Route <span className="text-gradient">not found</span>
+          {t("errors.notFound.title1")} <span className="text-gradient">{t("errors.notFound.title2")}</span>
         </h1>
-        <p className="mt-4 text-muted-foreground">
-          This node has drifted off its orbit. Let's get you back to base.
-        </p>
+        <p className="mt-4 text-muted-foreground">{t("errors.notFound.body")}</p>
         <Link to="/" className="mt-8 pill-primary hover:pill-primary-hover">
-          Go home
+          {t("errors.notFound.home")}
         </Link>
       </div>
     </div>
@@ -49,21 +49,20 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="max-w-md text-center">
-        <h1 className="display text-2xl font-bold">This page didn't load</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. Try again or head home.
-        </p>
+        <h1 className="display text-2xl font-bold">{t("errors.boundary.title")}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{t("errors.boundary.body")}</p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => { void router.invalidate(); reset(); }}
             className="pill-primary hover:pill-primary-hover"
           >
-            Try again
+            {t("errors.boundary.retry")}
           </button>
-          <a href="/" className="pill-ghost">Go home</a>
+          <a href="/" className="pill-ghost">{t("errors.boundary.home")}</a>
         </div>
       </div>
     </div>

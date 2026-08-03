@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { ArrowRight, Check } from "lucide-react";
 import heroMap from "@/assets/hero/map.png";
 import heroIndex from "@/assets/hero/index.png";
@@ -28,6 +29,7 @@ const HERO_MAP_ROUTES = [
 ];
 
 export function HeroDeck() {
+  const { t } = useTranslation();
   return (
     <section className="relative overflow-hidden">
 
@@ -43,7 +45,7 @@ export function HeroDeck() {
             >
               <span className="h-2 w-2 rounded-full bg-[#059669] animate-pulse-dot" />
               <span className="text-[13px] font-medium tracking-[0.04em] uppercase text-[#D4E3F6]">
-                Teltonika GPS · for fleets &amp; resellers · EU-hosted
+                {t("hero.eyebrow")}
               </span>
             </motion.div>
 
@@ -54,9 +56,9 @@ export function HeroDeck() {
               className="display font-bold text-ink leading-[0.98] tracking-tight mt-6"
               style={{ fontSize: "clamp(2.75rem, 5.6vw, 4.75rem)" }}
             >
-              Know where every van is.
+              {t("hero.title1")}
               <br />
-              <span className="text-gradient">Down to the minute.</span>
+              <span className="text-gradient">{t("hero.title2")}</span>
             </motion.h1>
 
             <motion.p
@@ -65,9 +67,7 @@ export function HeroDeck() {
               transition={{ duration: 0.5, delay: 0.15 }}
               className="mt-6 text-lg text-muted-foreground max-w-xl leading-relaxed"
             >
-              Live map, trip history, idle & speeding alerts, driver reports. Plug in
-              your Teltonika device, open the dashboard on your phone, done — no IT team required.
-              Running a tracking business? White-label the whole platform under your brand.
+              {t("hero.sub")}
             </motion.p>
 
             <motion.ul
@@ -76,16 +76,12 @@ export function HeroDeck() {
               transition={{ duration: 0.5, delay: 0.22 }}
               className="mt-7 grid gap-2.5"
             >
-              {[
-                "Setup in an afternoon — one SMS per device",
-                "Flat per-vehicle price · no seat fees, no surprises",
-                "Works on phone, tablet, laptop · EU-hosted",
-              ].map((f) => (
-                <li key={f} className="flex items-center gap-3 text-sm text-ink/90">
+              {(["hero.b1", "hero.b2", "hero.b3"] as const).map((k) => (
+                <li key={k} className="flex items-center gap-3 text-sm text-ink/90">
                   <span className="grid place-items-center h-5 w-5 rounded-full bg-[rgba(76,77,207,0.1)] border border-[rgba(76,77,207,0.3)] shrink-0">
                     <Check className="h-3 w-3 text-[#4c4dcf]" strokeWidth={2.5} />
                   </span>
-                  {f}
+                  {t(k)}
                 </li>
               ))}
             </motion.ul>
@@ -97,25 +93,25 @@ export function HeroDeck() {
               className="mt-9 flex flex-wrap items-center gap-3"
             >
               <Link to="/signup" className="pill-primary hover:pill-primary-hover">
-                Start free trial <ArrowRight className="h-4 w-4" />
+                {t("cta.trial")} <ArrowRight className="h-4 w-4" />
               </Link>
               <Link to="/pricing" className="pill-ghost hover:border-[color:var(--brand-cyan)]">
-                See pricing
+                {t("cta.pricing")}
               </Link>
               <Link
                 to="/tsp"
                 className="inline-flex items-center gap-1.5 text-sm text-[color:var(--brand-purple,#7C5CFC)] hover:text-ink transition-colors"
               >
-                White-label it <ArrowRight className="h-3.5 w-3.5" />
+                {t("cta.whitelabel")} <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </motion.div>
 
             <div className="mt-8 flex items-center gap-6 mono text-[10.5px] tracking-[0.2em] uppercase text-[#7A8CAA]">
-              <span>30-day free trial</span>
+              <span>{t("hero.trial")}</span>
               <span className="h-1 w-1 rounded-full bg-[#7A8CAA]/50" />
-              <span>No card required</span>
+              <span>{t("hero.nocard")}</span>
               <span className="h-1 w-1 rounded-full bg-[#7A8CAA]/50" />
-              <span>Cancel anytime</span>
+              <span>{t("hero.cancel")}</span>
             </div>
 
             <motion.div
@@ -135,13 +131,13 @@ export function HeroDeck() {
                 TSP
               </span>
               <span className="text-muted-foreground">
-                Reselling GPS to your customers?
+                {t("hero.tspAsk")}
               </span>
               <Link
                 to="/tsp"
                 className="text-[color:var(--brand-cyan)] hover:underline inline-flex items-center gap-1 font-medium"
               >
-                White-label the platform <ArrowRight className="h-3 w-3" />
+                {t("hero.tspCta")} <ArrowRight className="h-3 w-3" />
               </Link>
             </motion.div>
           </div>
@@ -156,21 +152,25 @@ export function HeroDeck() {
 
 type DeckSlide = {
   key: string;
-  label: string;
+  /** i18n key for the visible slide label (alt text, dots aria-label, caption strip). */
+  labelKey: string;
+  /** Mirrors the screenshot's own chrome — the captures are of the Lithuanian app, so
+   *  this stays as-is in every language rather than contradicting the image. */
   caption: string;
   path: string;
   src: string;
 };
 
 const DECK_SLIDES: DeckSlide[] = [
-  { key: "map",       label: "Live map",   caption: "app.orbetra.com · ŽEMĖLAPIS",   path: "/app/map",       src: heroMap },
-  { key: "overview",  label: "Overview",   caption: "app.orbetra.com · APŽVALGA",    path: "/app",           src: heroIndex },
-  { key: "events",    label: "Events",     caption: "app.orbetra.com · ĮVYKIAI",     path: "/app/events",    src: heroEvents },
-  { key: "geofences", label: "Geofences",  caption: "app.orbetra.com · GEOZONOS",    path: "/app/geofences", src: heroGeofences },
-  { key: "reports",   label: "Reports",    caption: "app.orbetra.com · ATASKAITOS",  path: "/app/reports",   src: heroReports },
+  { key: "map",       labelKey: "hero.deck.map",       caption: "app.orbetra.com · ŽEMĖLAPIS",   path: "/app/map",       src: heroMap },
+  { key: "overview",  labelKey: "hero.deck.overview",  caption: "app.orbetra.com · APŽVALGA",    path: "/app",           src: heroIndex },
+  { key: "events",    labelKey: "hero.deck.events",    caption: "app.orbetra.com · ĮVYKIAI",     path: "/app/events",    src: heroEvents },
+  { key: "geofences", labelKey: "hero.deck.geofences", caption: "app.orbetra.com · GEOZONOS",    path: "/app/geofences", src: heroGeofences },
+  { key: "reports",   labelKey: "hero.deck.reports",   caption: "app.orbetra.com · ATASKAITOS",  path: "/app/reports",   src: heroReports },
 ];
 
 function HeroConsoleDeck() {
+  const { t } = useTranslation();
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
 
@@ -261,7 +261,7 @@ function HeroConsoleDeck() {
               <motion.img
                 key={current.key}
                 src={current.src}
-                alt={`Orbetra admin — ${current.label}`}
+                alt={t("hero.deck.alt", { label: t(current.labelKey) })}
                 loading="eager"
                 decoding="async"
                 initial={{ opacity: 0, scale: 1.02, filter: "blur(6px)" }}
@@ -294,7 +294,7 @@ function HeroConsoleDeck() {
               <button
                 key={s.key}
                 onClick={() => setIdx(i)}
-                aria-label={`Show ${s.label}`}
+                aria-label={t("hero.deck.show", { label: t(s.labelKey) })}
                 className="rounded-full transition-all"
                 style={{
                   height: 10,
@@ -312,7 +312,7 @@ function HeroConsoleDeck() {
           className="mono text-[10px] tracking-[0.28em] uppercase leading-none"
           style={{ color: "rgba(184,205,235,0.7)" }}
         >
-          {DECK_SLIDES[idx].label}
+          {t(DECK_SLIDES[idx].labelKey)}
         </span>
       </div>
 
