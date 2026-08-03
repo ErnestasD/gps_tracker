@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { FAQAccordion } from "@/components/site/FAQAccordion";
 import { WhiteLabelDiagram } from "@/components/site/WhiteLabelDiagram";
@@ -17,53 +18,40 @@ export const Route = createFileRoute("/tsp")({
   component: TspPage,
 });
 
-const PAINS = [
-  { t: "Per-device pricing that scales", b: "No seat licenses, no per-tenant setup fees. Your margin doesn't get eaten as you grow." },
-  { t: "Migrate off legacy platforms", b: "Point Teltonika devices at Orbetra by SMS or FOTA. Shadow-mode side-by-side until you're ready to switch." },
-  { t: "Your clients never see our brand", b: "White-label domain, logo, colors. Orbetra never appears in-app or in emails to your end customers." },
+const PAIN_KEYS = ["p1", "p2", "p3"];
+const STEP_KEYS = [
+  { n: "01", k: "s1" },
+  { n: "02", k: "s2" },
+  { n: "03", k: "s3" },
+  { n: "04", k: "s4" },
 ];
+const FAQ_KEYS = [1, 2, 3, 4, 5, 6, 7, 8];
 
-const STEPS = [
-  { n: "01", t: "Inventory", b: "Send us your device list (IMEI, model, firmware). We confirm compatibility in 24h." },
-  { n: "02", t: "Shadow mode", b: "Point 10–500 devices at Orbetra. Data flows in parallel to your current platform for 60 days, free." },
-  { n: "03", t: "Cutover", b: "Migrate tenants at your own pace. No historical import in v1 — devices run in shadow mode until you cut over." },
-  { n: "04", t: "Scale", b: "Add tenants, add devices. One contract, per-device pricing, monthly billing." },
-];
-
-const FAQ = [
-  { q: "Who owns the data?", a: "Your customers own their data; you're the controller; Orbetra is the processor. Full export via API or CSV at any time." },
-  { q: "How does data export work?", a: "REST endpoints for devices, trips, geofences, and reports. Bulk CSV exports for reports and events. No lock-in — the schema is documented." },
-  { q: "What SLA do you offer?", a: "99.9% uptime on Scale and Enterprise plans, with monthly credits if we miss it. 24/7 status page and a named engineer on Scale." },
-  { q: "Which Teltonika devices are supported?", a: "FMB, FMC, FMP, TAT and TFT series out of the box. Custom AVL IDs and IO configs supported via the tenant admin." },
-  { q: "What are contract terms?", a: "Monthly, no minimum commitment during pilot. Annual pricing available with a 15% discount after your first paid tenant." },
-  { q: "Are you GDPR-compliant?", a: "Yes. DPA available on request, sub-processors listed publicly, EU-only hosting, and full data-subject request tooling per tenant." },
-  { q: "What happens if a device is offline?", a: "Teltonika devices buffer records locally. Orbetra ingests store-and-forward payloads on reconnect — nothing lost, nothing duplicated." },
-  { q: "Do you have an affiliate program?", a: "Yes — a ?ref= cookie attributes new pilot signups for 60 days. Revenue share is negotiated per partner." },
-];
+const TSP_BASE_PRICE = 149;
 
 function TspPage() {
+  const { t } = useTranslation();
+  const faq = FAQ_KEYS.map((n) => ({ q: t(`tsp.q${n}`), a: t(`tsp.a${n}`) }));
   return (
     <>
       <section className="mx-auto max-w-7xl px-6 pt-20 md:pt-28 pb-16">
         <span className="section-label">
           <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-          — PARTNER TRACK · FOR RESELLERS
+          {t("tsp.label")}
         </span>
         <h1 className="display text-5xl md:text-6xl font-bold leading-[1.02] mt-6 max-w-3xl text-ink">
-          Reselling GPS?<br />
-          <span className="text-gradient">White-label Orbetra.</span>
+          {t("tsp.h1")}<br />
+          <span className="text-gradient">{t("tsp.h2")}</span>
         </h1>
         <p className="mt-6 text-lg text-muted-foreground max-w-2xl">
-          Orbetra is two products in one: a tracking app for your own fleet, and a white-label
-          platform to resell under your brand. This is the reseller track — your domain, your logo,
-          sub-accounts per customer, and shadow-mode migration from your current platform.
+          {t("tsp.sub")}
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <a href="#tsp-pricing" className="pill-primary hover:pill-primary-hover">
-            See partner pricing <ArrowRight className="h-4 w-4" />
+            {t("tsp.cta1")} <ArrowRight className="h-4 w-4" />
           </a>
           <Link to="/pricing" hash="tsp" className="pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]">
-            Compare tracks
+            {t("tsp.cta2")}
           </Link>
         </div>
       </section>
@@ -72,26 +60,26 @@ function TspPage() {
 
 
       <section className="mx-auto max-w-7xl px-6 py-16 grid gap-6 md:grid-cols-3">
-        {PAINS.map((p, i) => (
+        {PAIN_KEYS.map((k, i) => (
           <motion.div
-            key={p.t}
+            key={k}
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: i * 0.08 }}
             className="surface-card p-6"
           >
-            <div className="mono text-[11px] tracking-[0.2em] uppercase text-[var(--brand-blue)]">— PAIN 0{i + 1}</div>
-            <h3 className="mt-4 display text-xl font-semibold text-ink">{p.t}</h3>
-            <p className="mt-2 text-sm text-muted-foreground">{p.b}</p>
+            <div className="mono text-[11px] tracking-[0.2em] uppercase text-[var(--brand-blue)]">{t("tsp.painLabel", { n: i + 1 })}</div>
+            <h3 className="mt-4 display text-xl font-semibold text-ink">{t(`tsp.${k}t`)}</h3>
+            <p className="mt-2 text-sm text-muted-foreground">{t(`tsp.${k}b`)}</p>
           </motion.div>
         ))}
       </section>
 
       <section className="px-6 py-20">
         <div className="mx-auto max-w-6xl">
-          <SectionHeading label="— WHITE-LABEL DIAGRAM">
-            One platform. <span className="text-gradient">Three brands away from us.</span>
+          <SectionHeading label={t("tsp.diagramLabel")}>
+            {t("tsp.diagramH1")} <span className="text-gradient">{t("tsp.diagramH2")}</span>
           </SectionHeading>
           <div className="mt-12 surface-card p-8 md:p-12 relative overflow-hidden">
             <div
@@ -103,7 +91,7 @@ function TspPage() {
             />
             <WhiteLabelDiagram />
             <p className="mt-8 text-sm text-muted-foreground text-center max-w-xl mx-auto">
-              Orbetra powers your platform. Your customers see only your brand — every screen, every email, every domain.
+              {t("tsp.diagramCaption")}
             </p>
           </div>
         </div>
@@ -111,14 +99,14 @@ function TspPage() {
 
       <section className="px-6 py-20">
         <div className="mx-auto max-w-6xl">
-          <SectionHeading label="— MIGRATION IN 4 STEPS">Move without touching your customers.</SectionHeading>
+          <SectionHeading label={t("tsp.stepsLabel")}>{t("tsp.stepsTitle")}</SectionHeading>
           <ol className="mt-12 grid gap-5 md:grid-cols-2">
-            {STEPS.map((s) => (
+            {STEP_KEYS.map((s) => (
               <li key={s.n} className="surface-card p-6 flex gap-5">
                 <div className="mono text-3xl font-medium text-gradient shrink-0">{s.n}</div>
                 <div>
-                  <div className="font-display font-semibold text-ink text-lg">{s.t}</div>
-                  <div className="text-sm text-muted-foreground mt-1">{s.b}</div>
+                  <div className="font-display font-semibold text-ink text-lg">{t(`tsp.${s.k}t`)}</div>
+                  <div className="text-sm text-muted-foreground mt-1">{t(`tsp.${s.k}b`)}</div>
                 </div>
               </li>
             ))}
@@ -138,21 +126,21 @@ function TspPage() {
         <div className="relative mx-auto max-w-7xl">
           <div className="mb-10 text-center">
             <div className="mono text-[11px] tracking-[0.2em] uppercase text-[color:var(--brand-purple,#7C5CFC)]">
-              — PARTNER PRICING · EXCL. VAT
+              {t("tsp.pricingLabel")}
             </div>
             <h2 className="display text-3xl md:text-4xl font-bold text-ink mt-3">
-              Per-device pricing.<br />
-              <span className="text-gradient">No seat fees. No lock-in.</span>
+              {t("tsp.pricingH1")}<br />
+              <span className="text-gradient">{t("tsp.pricingH2")}</span>
             </h2>
             <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-              From €149/mo — the lowest serious entry in the market. Wialon partner minimums start at €300–500.
+              {t("tsp.pricingBody", { price: TSP_BASE_PRICE })}
             </p>
           </div>
           <TspPricing />
           <p className="mt-8 text-center text-sm text-muted-foreground">
-            Full comparison with the Direct track →{" "}
+            {t("tsp.pricingMore")}{" "}
             <Link to="/pricing" hash="tsp" className="text-ink underline underline-offset-4 decoration-[var(--brand-blue)]/60 hover:decoration-[var(--brand-blue)]">
-              Pricing page
+              {t("tsp.pricingMoreLink")}
             </Link>
           </p>
         </div>
@@ -162,19 +150,19 @@ function TspPage() {
 
       <section className="px-6 py-20">
         <div className="mx-auto max-w-4xl">
-          <SectionHeading label="— FAQ">Real questions. <span className="text-gradient">Real answers.</span></SectionHeading>
+          <SectionHeading label={t("tsp.faqLabel")}>{t("tsp.faqH1")} <span className="text-gradient">{t("tsp.faqH2")}</span></SectionHeading>
           <div className="mt-10">
-            <FAQAccordion items={FAQ} />
+            <FAQAccordion items={faq} />
           </div>
         </div>
       </section>
 
       <section className="px-6 py-20">
         <div className="mx-auto max-w-4xl text-center surface-card p-12">
-          <h2 className="display text-3xl md:text-4xl font-bold text-ink">Talk to us before you sign anything.</h2>
-          <p className="mt-4 text-muted-foreground">Bring 10 devices. Run 60 days. Decide with data.</p>
+          <h2 className="display text-3xl md:text-4xl font-bold text-ink">{t("tsp.ctaTitle")}</h2>
+          <p className="mt-4 text-muted-foreground">{t("tsp.ctaBody")}</p>
           <Link to="/pilot" className="mt-8 pill-primary hover:pill-primary-hover">
-            Talk to partnerships <ArrowRight className="h-4 w-4" />
+            {t("tsp.ctaButton")} <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </section>
