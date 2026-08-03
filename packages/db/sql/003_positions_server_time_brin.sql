@@ -1,0 +1,15 @@
+-- Usage-metering accuracy (audit P4). The hourly billable-device-day sweep must count records that
+-- were RECEIVED recently even when their fix_time is old: a device that buffered while offline flushes
+-- old-timestamped fixes on reconnect (server_time = ingest receive time, fix_time = when it happened).
+-- The sweep previously windowed on fix_time and so MISSED any buffered day older than its lookback →
+-- the offline device's usage was silently under-billed. It now windows on server_time, which needs an
+-- index. BRIN is ideal: positions are append-ordered by server_time (`DEFAULT now()`), so a block-range
+-- index is tiny and nearly free to maintain, and the sweep's server_time range scan prunes to the last
+-- few blocks. TimescaleDB propagates the index to every chunk + defaults it on new chunks.
+--
+-- LOCK NOTE: CREATE INDEX CONCURRENTLY is NOT supported on TimescaleDB hypertables, so this builds
+-- non-concurrently — it takes a ShareLock per chunk (blocking writes to that chunk while it builds).
+-- BRIN builds are a single fast pass over tiny per-block summaries, so the lock is brief per chunk;
+-- on a large fleet, apply during a low-ingest window. (Buffered records land in Redis streams and are
+-- replayed after, so a short ingest stall does not lose data.)
+CREATE INDEX IF NOT EXISTS positions_server_time_brin ON positions USING brin (server_time);

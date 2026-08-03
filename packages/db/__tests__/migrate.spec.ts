@@ -52,7 +52,7 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
   it('applies from empty DB: 17 relational tables + hypertable + policies + cagg', async () => {
     prismaDeploy()
     const result = await migrate(url)
-    expect(result.applied).toEqual(['001_positions.sql', '002_daily_device_stats.sql'])
+    expect(result.applied).toEqual(['001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql'])
 
     const tables = await q<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`,
@@ -66,6 +66,13 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
       `SELECT hypertable_name FROM timescaledb_information.hypertables`,
     )
     expect(hyper.map((h) => h.hypertable_name)).toContain('positions')
+
+    // the usage-sweep BRIN index on server_time (003, audit P4) — windows the billable-day sweep on
+    // ingest RECEIVE time so a buffered offline device's flush is not under-billed
+    const idx = await q<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes WHERE tablename='positions' AND indexname='positions_server_time_brin'`,
+    )
+    expect(idx.map((i) => i.indexname)).toContain('positions_server_time_brin')
 
     const jobs = await q<{ proc_name: string }>(
       `SELECT proc_name FROM timescaledb_information.jobs`,
@@ -101,7 +108,7 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
     expect(out).toMatch(/No pending migrations|already in sync/i)
     const result = await migrate(url)
     expect(result.applied).toEqual([])
-    expect(result.skipped).toEqual(['001_positions.sql', '002_daily_device_stats.sql'])
+    expect(result.skipped).toEqual(['001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql'])
   }, 60_000)
 
   it('refuses to run when an applied file was edited (append-only, rule 11)', async () => {

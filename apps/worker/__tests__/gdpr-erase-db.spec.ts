@@ -49,7 +49,7 @@ beforeAll(async () => {
   await pool.query(`CREATE TABLE trips (id bigserial PRIMARY KEY, "deviceId" bigint, "tenantId" uuid)`)
   await pool.query(`CREATE TABLE events (id bigserial PRIMARY KEY, "deviceId" bigint, "tenantId" uuid)`)
   await pool.query(`CREATE TABLE commands (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "deviceId" bigint, "tenantId" uuid)`)
-  await pool.query(`CREATE TABLE usage_daily ("deviceId" bigint, day date, PRIMARY KEY ("deviceId", day))`)
+  await pool.query(`CREATE TABLE usage_daily ("tenantId" uuid, "accountId" uuid, "deviceId" bigint, day date, PRIMARY KEY ("deviceId", day))`)
 
   await pool.query(`INSERT INTO devices VALUES (7, $1, $1, '356307042440030', 'Erase me', now()), (8, $1, $1, '356307042440031', 'Keep me', NULL), (9, $2, $2, '356307042440032', 'Other tenant', now())`, [T1, T2])
   // 90 days of positions for device 7 (3 erase windows) + a few for device 8
@@ -61,7 +61,7 @@ beforeAll(async () => {
   await pool.query(`INSERT INTO trips ("deviceId","tenantId") VALUES (7,$1),(7,$1),(8,$1)`, [T1])
   await pool.query(`INSERT INTO events ("deviceId","tenantId") VALUES (7,$1),(8,$1)`, [T1])
   await pool.query(`INSERT INTO commands ("deviceId","tenantId") VALUES (7,$1),(8,$1)`, [T1])
-  await pool.query(`INSERT INTO usage_daily VALUES (7, '2026-04-01'), (8, '2026-04-01')`)
+  await pool.query(`INSERT INTO usage_daily ("tenantId","accountId","deviceId",day) VALUES ($1,$1,7,'2026-04-01'), ($1,$1,8,'2026-04-01')`, [T1])
 }, 240_000)
 
 afterAll(async () => {
@@ -87,8 +87,12 @@ describe('E08-4 runErase (cascade, real pg)', () => {
     expect(await count(`SELECT count(*) n FROM events WHERE "deviceId"=$1`, 7)).toBe(0)
     expect(await count(`SELECT count(*) n FROM commands WHERE "deviceId"=$1`, 7)).toBe(0)
     expect(await count(`SELECT count(*) n FROM devices WHERE id=$1`, 7)).toBe(0)
-    // usage_daily is billing data — deliberately KEPT
-    expect(await count(`SELECT count(*) n FROM usage_daily WHERE "deviceId"=$1`, 7)).toBe(1)
+    // usage_daily is billing data — deliberately KEPT, and (audit P4) every day the device REPORTED
+    // is captured BEFORE its positions are erased: 18 distinct position-days (the 2026-04-01 seed
+    // coincides with day 0), each attributed to the device's tenant/account.
+    expect(await count(`SELECT count(*) n FROM usage_daily WHERE "deviceId"=$1`, 7)).toBe(18)
+    const tenanted = Number((await pool.query<{ n: string }>(`SELECT count(*) n FROM usage_daily WHERE "deviceId"=7 AND "tenantId"=$1`, [T1])).rows[0]!.n)
+    expect(tenanted).toBe(18) // all captured days carry the device's tenant
     expect(ops.some((o) => o.startsWith('del'))).toBe(true)
     expect(ops).toContain('srem 7')
     // the OTHER device is untouched

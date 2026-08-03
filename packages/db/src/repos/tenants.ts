@@ -157,8 +157,35 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       // last applied one. A reordered stale event (older `eventAt`) or a replay (equal `eventAt`) matches
       // zero rows → no-op. Concurrent duplicates collapse: the first write advances lastBillingEventAt,
       // the second's `lt` predicate then fails. An unknown customer id also matches zero rows.
+      //
+      // Per-SUBSCRIPTION guard (audit P4): the customer-level monotonic guard alone lets a late-delivered
+      // "OLD subscription deleted" (newer eventAt) overwrite the tenant's CURRENT live one — e.g. cancel
+      // A → resubscribe B, then a delayed "A canceled" flips the tenant to canceled despite an active B.
+      // The guard applies ONLY to a NON-LIVE incoming event (a cancel/lapse): it may only touch the tenant
+      // when it is for the SAME subscription, or the tenant has no live sub to protect. A LIVE incoming
+      // event (a new/refreshed subscription) always wins under the monotonic guard, regardless of sub id —
+      // this preserves the mirror case where B-created is delivered BEFORE A-canceled (monotonic then
+      // drops the stale A-cancel), which a blanket different-sub block would break.
+      const incomingLive = data.subscriptionStatus === 'active' || data.subscriptionStatus === 'trialing'
       const result = await prisma.tenant.updateMany({
-        where: { stripeCustomerId, OR: [{ lastBillingEventAt: null }, { lastBillingEventAt: { lt: eventAt } }] },
+        where: {
+          stripeCustomerId,
+          AND: [
+            { OR: [{ lastBillingEventAt: null }, { lastBillingEventAt: { lt: eventAt } }] },
+            ...(incomingLive
+              ? []
+              : [
+                  {
+                    OR: [
+                      { stripeSubscriptionId: null },
+                      ...(data.stripeSubscriptionId !== null ? [{ stripeSubscriptionId: data.stripeSubscriptionId }] : []),
+                      { subscriptionStatus: null },
+                      { subscriptionStatus: { notIn: ['active', 'trialing'] } },
+                    ],
+                  },
+                ]),
+          ],
+        },
         data: {
           stripeSubscriptionId: data.stripeSubscriptionId,
           subscriptionStatus: data.subscriptionStatus,

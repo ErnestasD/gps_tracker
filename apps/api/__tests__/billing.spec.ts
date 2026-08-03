@@ -208,6 +208,48 @@ describe('billing lifecycle (ADR-024)', () => {
     expect(((await (await req(port, '/v1/billing', token)).json()) as BillingView).status).toBe('canceled')
   })
 
+  it('a late event for an OLD subscription never clobbers the current LIVE one (audit P4 per-sub guard)', async () => {
+    const { token, cus } = await freshTenant('Resub')
+    await req(port, '/v1/billing/checkout', token, 'POST') // establishes the tenant's stripeCustomerId
+    // an explicit-subscription-id event for one customer (resubscribe → two distinct sub ids)
+    const forSub = (subId: string, evtId: string, type: string, status: string, created: number): StripeEvent => ({
+      id: evtId, type, created,
+      data: { object: { id: subId, customer: cus, status, current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_test' } }] } } },
+    })
+    const post = (e: StripeEvent) => req(port, '/v1/webhooks/stripe', null, 'POST', e, { 'stripe-signature': 'valid' })
+    const view = async () => (await (await req(port, '/v1/billing', token)).json()) as BillingView
+
+    await post(forSub('sub_A', 'evt_a1', 'customer.subscription.updated', 'active', 100)) // A active
+    await post(forSub('sub_A', 'evt_a2', 'customer.subscription.deleted', 'canceled', 200)) // A canceled
+    await post(forSub('sub_B', 'evt_b1', 'customer.subscription.created', 'active', 300)) // resubscribed on B
+    expect((await view()).active).toBe(true)
+    // a LATE 'A deleted' with a NEWER timestamp than B — the per-customer monotonic guard alone would
+    // apply it and cancel the tenant; the per-subscription guard must reject it (A ≠ current sub_B)
+    const late = await post(forSub('sub_A', 'evt_a3', 'customer.subscription.deleted', 'canceled', 400))
+    expect(late.status).toBe(200) // acked...
+    expect((await view()).active).toBe(true) // ...but B's active subscription is preserved
+    expect((await view()).status).toBe('active')
+  })
+
+  it('resubscribe delivered OUT OF ORDER (new-sub-active before old-sub-cancel) still ends active (per-sub guard mirror)', async () => {
+    const { token, cus } = await freshTenant('Reorder')
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    const forSub = (subId: string, evtId: string, type: string, status: string, created: number): StripeEvent => ({
+      id: evtId, type, created,
+      data: { object: { id: subId, customer: cus, status, current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_test' } }] } } },
+    })
+    const post = (e: StripeEvent) => req(port, '/v1/webhooks/stripe', null, 'POST', e, { 'stripe-signature': 'valid' })
+    const view = async () => (await (await req(port, '/v1/billing', token)).json()) as BillingView
+
+    await post(forSub('sub_A', 'evt_a1', 'customer.subscription.updated', 'active', 100)) // A active
+    // B created (t=300) is delivered BEFORE A's cancel (t=200) — a LIVE event must win under monotonic
+    await post(forSub('sub_B', 'evt_b1', 'customer.subscription.created', 'active', 300))
+    expect((await view()).active).toBe(true)
+    // A's cancel (t=200) now arrives late: older than B's t=300 → the monotonic guard drops it
+    await post(forSub('sub_A', 'evt_a2', 'customer.subscription.deleted', 'canceled', 200))
+    expect((await view()).active).toBe(true) // NOT clobbered — B stays active (would fail a blanket different-sub block)
+  })
+
   it('webhook state is per-tenant — one customer event never touches another tenant', async () => {
     const a = await freshTenant('PerA')
     const b = await freshTenant('PerB')

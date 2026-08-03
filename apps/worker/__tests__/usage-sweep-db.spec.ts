@@ -30,10 +30,14 @@ async function seedDevice(id: number, retired = false): Promise<void> {
     [id, TEN, ACC, String(356307042440000 + id), `dev-${id}`, retired ? new Date(NOW) : null],
   )
 }
-async function seedPosition(deviceId: number, iso: string, fixValid = true): Promise<void> {
-  await pool.query(`INSERT INTO positions (device_id, fix_time, lat, lon, fix_valid, satellites, rec_hash) VALUES ($1,$2,54.7,25.3,$3,$4,$5)`, [
+/** `serverIso` defaults to the fix time (a real-time device: received ≈ recorded); pass it
+ * explicitly to model a BUFFERED flush (old fix_time, recent server_time). */
+async function seedPosition(deviceId: number, iso: string, opts: { fixValid?: boolean; serverIso?: string } = {}): Promise<void> {
+  const fixValid = opts.fixValid ?? true
+  await pool.query(`INSERT INTO positions (device_id, fix_time, server_time, lat, lon, fix_valid, satellites, rec_hash) VALUES ($1,$2,$3,54.7,25.3,$4,$5,$6)`, [
     deviceId,
     iso,
+    opts.serverIso ?? iso,
     fixValid,
     fixValid ? 9 : 0,
     BigInt(Date.parse(iso)), // unique-enough hash per row
@@ -80,7 +84,7 @@ describe('E07-4 runUsageSweep (positions → usage_daily)', () => {
 
   it('an INVALID fix still counts (presence semantics §3.4 — the device reported)', async () => {
     await seedDevice(43)
-    await seedPosition(43, '2026-07-10T08:00:00Z', false) // satellites=0, fix_valid=false
+    await seedPosition(43, '2026-07-10T08:00:00Z', { fixValid: false }) // satellites=0, fix_valid=false
     expect(await runUsageSweep(pool, NOW)).toBe(1)
     const rows = (await pool.query(`SELECT day::text AS day FROM usage_daily WHERE "deviceId"=43`)).rows
     expect(rows).toHaveLength(1)
@@ -97,12 +101,40 @@ describe('E07-4 runUsageSweep (positions → usage_daily)', () => {
     expect(await runUsageSweep(pool, NOW)).toBe(1)
   })
 
-  it('outside the lookback → skipped; a WIDER lookback backfills it (month-close reconciliation)', async () => {
+  it('outside the lookback (old SERVER_time) → skipped; a WIDER lookback backfills it (month-close)', async () => {
     await seedDevice(45)
-    await seedPosition(45, '2026-07-05T12:00:00Z') // 5 days old
-    expect(await runUsageSweep(pool, NOW)).toBe(0) // default 48h misses it
+    await seedPosition(45, '2026-07-05T12:00:00Z') // received 5 days ago (server_time defaults to fix)
+    expect(await runUsageSweep(pool, NOW)).toBe(0) // default 48h server window misses it
     expect(await runUsageSweep(pool, NOW, 7 * 24 * H)).toBe(1) // 7d lookback backfills
     const rows = (await pool.query(`SELECT day::text AS day, "tenantId" FROM usage_daily WHERE "deviceId"=45`)).rows as { day: string; tenantId: string }[]
     expect(rows[0]).toMatchObject({ day: '2026-07-05', tenantId: TEN })
+  })
+
+  it('a BUFFERED flush (old fix_time, RECENT server_time) bills the used day even beyond 48h (audit P4)', async () => {
+    // the device was offline 4 days, then reconnects NOW and flushes 4-day-old fixes: fix_time is old
+    // (outside the 48h fix window the old design used) but server_time is now → the day is billed.
+    await seedDevice(46)
+    await seedPosition(46, '2026-07-06T09:00:00Z', { serverIso: '2026-07-10T09:30:00Z' })
+    expect(await runUsageSweep(pool, NOW)).toBe(1) // default 48h server window CATCHES the recent flush
+    const rows = (await pool.query(`SELECT day::text AS day FROM usage_daily WHERE "deviceId"=46`)).rows as { day: string }[]
+    expect(rows[0]!.day).toBe('2026-07-06') // billed to the day it was USED, not the flush day
+  })
+
+  it('month-close reconciliation of an OLD month works — the fix_time floor scales with the lookback (regression)', async () => {
+    // a record from 40 days ago (received then too): outside the default 48h server window, and OLDER
+    // than the previous FIXED 35d fix-clamp — a wide lookback must widen BOTH windows to recover it
+    await seedDevice(48)
+    await seedPosition(48, '2026-05-31T12:00:00Z') // 40 days before NOW, server_time defaults to fix
+    expect(await runUsageSweep(pool, NOW)).toBe(0) // default 48h misses it
+    expect(await runUsageSweep(pool, NOW, 60 * 24 * H)).toBe(1) // 60d reconciliation backfills (fix floor now −95d)
+    const rows = (await pool.query(`SELECT day::text AS day FROM usage_daily WHERE "deviceId"=48`)).rows as { day: string }[]
+    expect(rows[0]!.day).toBe('2026-05-31')
+  })
+
+  it('a garbage device clock (absurd-past fix_time) never fabricates a device-day', async () => {
+    await seedDevice(47)
+    // received now, but the device clock is stuck at epoch → fix_time far outside the sanity clamp
+    await seedPosition(47, '1970-01-02T00:00:00Z', { serverIso: '2026-07-10T09:00:00Z' })
+    expect(await runUsageSweep(pool, NOW)).toBe(0)
   })
 })
