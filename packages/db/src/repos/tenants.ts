@@ -1,9 +1,32 @@
 import type { PrismaClient, Tenant } from '@prisma/client'
 
-import { effectiveEntitlements, type Entitlements, type TenantPlan } from '@orbetra/shared'
+import { effectiveEntitlements, FLOOR_ENTITLEMENTS, type Entitlements, type TenantPlan } from '@orbetra/shared'
 
 import type { AuditRepo } from './audit.js'
 import type { Actor } from '../scope.js'
+
+/** A self-serve signup whose email already belongs to a user (in any tenant) — mapped to 409 by the
+ *  route. Blocking it keeps the login lookup unambiguous (an email in two tenants → the 409 ambiguous
+ *  identity trap). */
+export class SignupEmailInUseError extends Error {
+  constructor() {
+    super('email already in use')
+    this.name = 'SignupEmailInUseError'
+  }
+}
+
+/** Direct self-serve signup payload (F2). The route resolves `referredByAffiliateId` from a ?ref code
+ *  and hashes the password before calling this. Creates tenant + default account + tenant-admin user. */
+export interface SelfServeSignup {
+  tenantName: string
+  accountName: string
+  email: string
+  passwordHash: string
+  plan: TenantPlan
+  /** trial end — stored as currentPeriodEnd; getEntitlements floors a `trialing` tenant past it. */
+  trialEndsAt: Date
+  referredByAffiliateId: string | null
+}
 
 export interface TenantCreate {
   name: string
@@ -63,6 +86,9 @@ export interface TenantRepo {
    *  non-paying tenant can't keep billable features. This is the authoritative gate; prefer it over
    *  `getPlan` + `planEntitlements` (which ignores billing status). */
   getEntitlements(tenantId: string): Promise<Entitlements>
+  /** F2 self-serve signup: atomically create a tenant (on `plan`, trialing until `trialEndsAt`) + a
+   *  default account + a tenant-admin user. Throws SignupEmailInUseError if the email already exists. */
+  createSelfServeSignup(data: SelfServeSignup): Promise<{ tenantId: string; userId: string }>
   create(actor: Actor, data: TenantCreate): Promise<Tenant>
   update(actor: Actor, id: string, data: TenantUpdate): Promise<Tenant | null>
   remove(actor: Actor, id: string): Promise<boolean>
@@ -93,9 +119,39 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       return row.plan
     },
     getEntitlements: async (tenantId) => {
-      const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, subscriptionStatus: true } })
+      const row = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, subscriptionStatus: true, currentPeriodEnd: true } })
       if (row === null) throw new Error(`tenant not found: ${tenantId}`)
+      // a self-serve trial (status 'trialing') floors once its window elapses — enforced HERE at the
+      // authoritative gate so an expired trial can't keep its plan features without a subscription. We
+      // never mint 'trialing' from Stripe, so this only ever governs F2 trials.
+      if (row.subscriptionStatus === 'trialing' && row.currentPeriodEnd !== null && row.currentPeriodEnd < new Date()) return FLOOR_ENTITLEMENTS
       return effectiveEntitlements(row.plan, row.subscriptionStatus)
+    },
+    createSelfServeSignup: async (data) => {
+      // advisory pre-check: an email already in a tenant would make login ambiguous (409). A race
+      // between two brand-new signups on the same email is a rare accepted edge (email is unique only
+      // per-tenant by design, to allow the same person across TSP sub-tenants).
+      const existing = await prisma.user.findFirst({ where: { email: data.email }, select: { id: true } })
+      if (existing !== null) throw new SignupEmailInUseError()
+      return prisma.$transaction(async (tx) => {
+        if (await tx.user.findFirst({ where: { email: data.email }, select: { id: true } })) throw new SignupEmailInUseError()
+        const tenant = await tx.tenant.create({
+          data: {
+            name: data.tenantName,
+            branding: {},
+            plan: data.plan,
+            subscriptionStatus: 'trialing',
+            currentPeriodEnd: data.trialEndsAt,
+            ...(data.referredByAffiliateId != null ? { referredByAffiliateId: data.referredByAffiliateId } : {}),
+          },
+        })
+        await tx.account.create({ data: { tenantId: tenant.id, name: data.accountName, timezone: 'UTC' } })
+        // the owner is a TENANT-WIDE admin (accountId null) — a tsp_admin manages the whole tenant
+        const user = await tx.user.create({
+          data: { tenantId: tenant.id, accountId: null, email: data.email, passwordHash: data.passwordHash, role: 'tsp_admin', locale: 'en' },
+        })
+        return { tenantId: tenant.id, userId: user.id }
+      })
     },
     create: async (actor, data) => {
       const row = await prisma.tenant.create({

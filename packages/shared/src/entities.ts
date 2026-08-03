@@ -265,6 +265,18 @@ export const commissionStatusUpdateSchema = z.object({ status: commissionStatusS
 export type AffiliateCreateInput = z.infer<typeof affiliateCreateSchema>
 export type AffiliateUpdateInput = z.infer<typeof affiliateUpdateSchema>
 
+// Direct self-service signup (F2): a small-fleet customer creates their own tenant + admin user on a
+// trial. `ref` carries the affiliate attribution (?ref cookie); `hp_field` is an anti-bot honeypot.
+export const signupSchema = z.object({
+  name: z.string().min(1).max(160),
+  email: z.string().email().max(320),
+  password: z.string().min(8).max(1024),
+  company: z.string().min(1).max(160).optional().or(z.literal('')),
+  ref: affiliateCodeSchema.optional(),
+  hp_field: z.string().max(200).optional().or(z.literal('')),
+})
+export type SignupInput = z.infer<typeof signupSchema>
+
 // Partner self-service auth (F5): a partner is NOT a tenant user — a separate login against the
 // Affiliate row. Set-password consumes a one-time admin-issued token (email wiring is a follow-up).
 export const partnerLoginSchema = z.object({
