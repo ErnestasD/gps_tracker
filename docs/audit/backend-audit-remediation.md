@@ -6,6 +6,10 @@ Ranked findings: **74** — critical: 2, high: 18, medium: 43, low: 11
 
 Status legend: **FIXED** (shipped + test) · **PLANNED** (assigned to a PR) · **OPEN** (triaged, not scheduled).
 
+Some OPEN rows are not code defects at all — the code does what it was told, and changing it changes
+the product, the price, or a promise to a customer. Those are collected in
+[`founder-decisions.md`](founder-decisions.md) with the concrete choice each one needs.
+
 Every PR gets its own hostile-reviewer pass in a fresh session; PR A's review found three further
 HIGHs inside the fixes themselves (UDP transport skipped, poison-batch *mechanism* untouched,
 `rejects` stream polluted) — all folded into PR A before merge.
