@@ -1,5 +1,5 @@
 import { Hono, type Context, type MiddlewareHandler } from 'hono'
-import { Counter, Gauge, Registry } from 'prom-client'
+import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom-client'
 
 import { HTTPException } from 'hono/http-exception'
 import { bodyLimit } from 'hono/body-limit'
@@ -103,10 +103,18 @@ export interface ApiProm {
   smsQuotaRejected: Counter
   /** Verified Stripe subscription webhooks that provisioned NOTHING — a paying customer with no plan. */
   billingWebhookUnmatched: Counter
+  /** Every HTTP response, by method / route TEMPLATE / status class. The route template (not the
+   *  raw path) keeps the label set bounded — `/v1/devices/:id` is one series, not one per device. */
+  httpRequests: Counter
+  httpDuration: Histogram
 }
 
 export function createApiProm(): ApiProm {
   const registry = new Registry()
+  // Process-level metrics (RSS, heap, event-loop lag, GC, fd count). The API exported ONE gauge —
+  // `ws_clients` — so `up == 1` held for a process that answered every request with a 500, and the
+  // only alert covering the api was `up == 0`. A dead port was visible; a dead SERVICE was not.
+  collectDefaultMetrics({ register: registry })
   const g = new Gauge({ name: 'ws_clients', help: 'live WS connections', registers: [registry] })
   // argon2 saturation. Every hashing route (login, password change/reset, signup, partner login)
   // queues behind ONE process-wide semaphore, so a rising queue IS an authentication outage in
@@ -132,7 +140,22 @@ export function createApiProm(): ApiProm {
     labelNames: ['reason'],
     registers: [registry],
   })
-  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched }
+  const httpRequests = new Counter({
+    name: 'http_requests_total',
+    help: 'HTTP responses by method, route template and status class',
+    labelNames: ['method', 'route', 'status'],
+    registers: [registry],
+  })
+  const httpDuration = new Histogram({
+    name: 'http_request_duration_seconds',
+    help: 'HTTP request latency by route template',
+    labelNames: ['method', 'route'],
+    // sub-ms to 10 s: the API's own SLA lives in the low hundreds of ms, and a report or an
+    // exhausted pg pool shows up in the long tail
+    buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+    registers: [registry],
+  })
+  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, httpRequests, httpDuration }
 }
 
 /**
@@ -178,6 +201,29 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // security headers on EVERY response, incl. 401/404/problem+json (E07-5) — registered
   // first so no route can be reached without them. HSTS only in TLS deployments.
   app.use('*', securityHeaders({ hsts: deps.hsts ?? deps.secureCookies }))
+
+  // Request metrics on EVERY response. Registered next to the headers so nothing can be served
+  // without being counted — a process that answers every request with a 500 used to keep `up == 1`
+  // and fire no alert, because `ws_clients` was the only series the API exported (audit MED).
+  //
+  // Labelled by the matched ROUTE TEMPLATE, never the raw path: `/v1/devices/:id` must be one
+  // series, not one per device id, or the label set grows with the fleet and takes Prometheus with
+  // it. Hono exposes the matched pattern as `c.req.routePath`; an unmatched request is `<unmatched>`.
+  if (prom) {
+    app.use('*', async (c, next) => {
+      const started = performance.now()
+      try {
+        await next()
+      } finally {
+        const route = c.req.routePath !== '/*' ? c.req.routePath : '<unmatched>'
+        const method = c.req.method
+        prom.httpDuration.observe({ method, route }, (performance.now() - started) / 1000)
+        // status CLASS, not the exact code: 2xx/4xx/5xx is what an alert asks about, and it keeps
+        // the cardinality flat while `problem()` details stay in the logs
+        prom.httpRequests.inc({ method, route, status: `${Math.floor(c.res.status / 100)}xx` })
+      }
+    })
+  }
 
   app.get('/healthz', (c) => c.text('ok'))
 

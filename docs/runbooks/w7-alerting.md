@@ -15,6 +15,15 @@ Alertmanager routes them to the founders' Telegram.
 | UnsupportedCodecSeen | `rate(ingest_unsupported_codec_total[15m])` > 0 for 15m | warn |
 | DeadLetteredRows | `rate(pipeline_dead_lettered_total[15m])` > 0 for 15m | warn |
 | BillingWebhookUnmatched | `increase(billing_webhook_unmatched_total{reason="no_tenant"}[1h])` > 0 for 5m | crit |
+| WorkerJobFailing | `increase(worker_job_failed_total[1h])` > 0 for 10m | crit |
+| UsageSweepFailing | `increase(usage_sweep_failed_total[1h])` > 0 for 10m | crit |
+| EnginePersistErrors / TripPersistErrors | non-zero over 15m/1h | warn |
+| NotificationsFailing / WebhooksFailing | `rate(...)` > 0.1/s for 15m | warn |
+| GdprJobFailing | `increase(gdpr_failed_total[1h])` > 0 for 10m | crit |
+| ExporterDown | `up{job=~"node\|postgres\|blackbox-tls\|prometheus"}` == 0 for 5m | crit |
+| EndpointDown | `probe_success` == 0 for 3m | crit |
+| ApiErrorRate | 5xx share > 5% for 5m | crit |
+| ApiLatencyHigh | p95 > 2s on a route for 10m | warn |
 | SmsQuotaTripped | `increase(sms_quota_rejected_total{scope="global"}[1h])` > 0 for 5m | crit |
 | DiskFillingUp / Critical | root FS < 15% / 5% free | warn / crit |
 | TargetDown | any of ingest/worker/api unscrapeable 2m | crit |
@@ -38,6 +47,36 @@ A record was dropped from the pipeline and quarantined in `raw:dead`. Check `rea
   Inspect the payload and add a bound in `normalize.ts` so the next one is nulled rather than dropped.
 
 Both are *customer-visible data loss for that record*, so any sustained rate deserves a fix, not a mute.
+
+### WorkerJobFailing / UsageSweepFailing
+
+The worker's failure counters existed for months with comments saying "non-zero rate ⇒ alert" and
+**not one alert rule referenced them** — a job throwing on every run looked exactly like a quiet
+system. These are the rules that were missing.
+
+`stripe_usage` and `usage_sweep` are the sharp ones: `usage_daily` is the only source for overage
+billing and the reporter submits `now − 24h` with **no backfill**, so every failed run is revenue
+lost permanently. Treat them as an incident, not a warning.
+
+`retention` failing means positions and webhook deliveries are growing past the policy we publish —
+a compliance problem, not just a disk one.
+
+### ExporterDown
+
+`node_exporter` and `postgres_exporter` feed the disk-full and WAL-archive rules. A Prometheus rule
+whose series **disappears** simply stops evaluating — it does not fire. So an exporter crash-loop
+did not merely lose its own metrics, it silently disarmed every safety net built on them. This rule
+watches the watchers.
+
+### ApiErrorRate / ApiLatencyHigh
+
+The API used to export exactly one metric (`ws_clients`), so `up == 1` held for a process answering
+every single request with a 500 — the only rule covering it was `up == 0`, which catches a dead port
+and nothing else. It now exports default process metrics plus request counters and latency by route
+template (never raw path — that would grow a series per device id).
+
+p95 above 2 s on a route is usually pg pool saturation (max 10, no acquire timeout) or an unbounded
+report query.
 
 ### BillingWebhookUnmatched
 
