@@ -89,12 +89,12 @@ describe('ADR-029 POST /v1/routing/optimize', () => {
     )
   })
 
-  it('422s an unroutable trip (NoSegment) and names the covered region', async () => {
+  it('422s an unroutable trip (NoSegment) without a region caveat — Mapbox covers the planet', async () => {
     const { app } = buildApp({ osrm: { url: 'http://osrm', fetchImpl: osrmJson({ code: 'NoSegment', message: 'x' }, 400) } })
     const res = await optimize(app, await token(), { stops: STOPS })
     expect(res.status).toBe(422)
     const body = (await res.json()) as { detail: string }
-    expect(body.detail).toContain('Lithuania')
+    expect(body.detail).toContain('NoSegment') // an island or a pedestrian-only address, not a coverage gap
   })
 
   it('502s when OSRM is unreachable (fetch rejects) or answers garbage', async () => {
@@ -113,5 +113,30 @@ describe('ADR-029 POST /v1/routing/optimize', () => {
     const res = await optimize(app, await token(), { stops: STOPS })
     expect(res.status).toBe(429)
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+
+  it('prefers Mapbox when a token is configured, and never leaks the token', async () => {
+    // Mapbox Optimization v1 IS OSRM's trip service, so the SAME response mapper reads both — one
+    // mapper means the two drivers cannot disagree about what a route is. The token travels as a
+    // query parameter (the only form the API accepts), so it must never reach a log or a response.
+    const seen: string[] = []
+    const spy = vi.fn((url: string) => {
+      seen.push(String(url))
+      return Promise.resolve(new Response(JSON.stringify(OSRM_OK), { status: 200, headers: { 'content-type': 'application/json' } }))
+    }) as unknown as typeof fetch
+    const { app } = buildApp({ mapboxToken: 'pk.test-token-must-not-leak', osrm: { url: 'http://osrm:5000', fetchImpl: spy } })
+    const res = await optimize(app, await token(), { stops: STOPS, roundtrip: true })
+    expect(res.status).toBe(200)
+    expect(seen[0]).toContain('api.mapbox.com/optimized-trips/v1/mapbox/driving')
+    expect(seen[0]).not.toContain('osrm:5000') // Mapbox wins when both are configured
+    expect(JSON.stringify(await res.json())).not.toContain('pk.test-token')
+  })
+
+  it('refuses more than 12 stops — the Mapbox ceiling is not configurable', async () => {
+    const { app } = buildApp({ mapboxToken: 'pk.x', osrm: { url: 'http://osrm', fetchImpl: osrmJson(OSRM_OK) } })
+    const many = Array.from({ length: 13 }, (_, i) => ({ lat: 54.6 + i * 0.01, lon: 25.2 }))
+    expect((await optimize(app, await token(), { stops: many })).status).toBe(400)
+    expect((await optimize(app, await token(), { stops: many.slice(0, 12) })).status).not.toBe(400)
   })
 })

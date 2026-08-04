@@ -87,6 +87,9 @@ const deps = {
   ...(process.env['APP_BASE_URL'] ? { appBaseUrl: process.env['APP_BASE_URL'] } : {}),
   ...(process.env['VAPID_PUBLIC_KEY'] ? { vapidPublicKey: process.env['VAPID_PUBLIC_KEY'] } : {}),
   // OSRM route optimization (ADR-029): unset ⇒ POST /v1/routing/optimize answers 503
+  // route optimization (ADR-034): Mapbox by default — worldwide, no dataset to build or refresh,
+  // $0 at our volume. OSRM stays wired as the alternative driver for the >12-stop case.
+  ...(process.env['MAPBOX_TOKEN'] ? { mapboxToken: process.env['MAPBOX_TOKEN'] } : {}),
   ...(process.env['OSRM_URL'] ? { osrm: { url: process.env['OSRM_URL'] } } : {}),
   redisSub,
   db,

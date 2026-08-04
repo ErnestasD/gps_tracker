@@ -153,8 +153,8 @@ export const en = {
       b1: "Servers in Germany. Your data never leaves the EU.",
       t2: "GDPR by design",
       b2: "Data controller / processor separation baked in.",
-      t3: "Self-hosted routing",
-      b3: "Route optimisation runs on our own OSRM servers. Map tiles are served by Mapbox.",
+      t3: "Your data stays with us",
+      b3: "Positions, trips and events live in our own EU database — we never resell them. Maps and route optimisation are served by Mapbox; address lookup runs on our own geocoder.",
     },
     wl: {
       label: "— RESELLERS · WHITE-LABEL · TSP",

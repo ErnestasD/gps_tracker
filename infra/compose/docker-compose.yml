@@ -63,6 +63,10 @@ services:
     image: ghcr.io/project-osrm/osrm-backend:v5.27.1
     profiles: [osrm]
     # --max-trip-size 100: the API caps requests at 50 stops, well below this
+    # UNUSED by default since ADR-034 — route optimization runs on the Mapbox Optimization API
+    # (worldwide, no dataset, $0 at our volume). This service stays defined behind its `osrm`
+    # profile as the documented alternative driver for the >12-stop case: prepare the volume per
+    # infra/osrm/README.md and set OSRM_URL (with MAPBOX_TOKEN unset) to switch back.
     command: osrm-routed --algorithm mld --max-trip-size 100 /data/lithuania-latest.osrm
     ports:
       - '127.0.0.1:5001:5000'

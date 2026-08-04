@@ -89,6 +89,9 @@ export interface ApiDeps extends WsDeps {
   /** self-serve signup per-IP rate limit (F2); default 5/hour. Tests raise it. */
   signupRateLimit?: { max: number; windowS: number }
   /** self-hosted OSRM for route optimization (ADR-029); absent ⇒ /v1/routing/optimize 503s. */
+  /** Route-optimization engine. `mapboxToken` is preferred (worldwide, no dataset); `osrm.url` is
+   *  the self-hosted alternative kept for >12 stops. Neither ⇒ the route 503s. ADR-034. */
+  mapboxToken?: string
   osrm?: { url: string; fetchImpl?: typeof fetch }
   /** route-optimization per-user rate limit (ADR-029); default 30/min. */
   routingRateLimit?: { max: number; windowS: number }
@@ -365,6 +368,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // Route optimization (ADR-029) — stateless OSRM proxy, no tenant data; manifest-EXEMPT.
   mountRouting(app, {
     redis: deps.redis,
+    ...(deps.mapboxToken !== undefined ? { mapboxToken: deps.mapboxToken } : {}),
     ...(deps.osrm !== undefined ? { osrmUrl: deps.osrm.url } : {}),
     ...(deps.osrm?.fetchImpl !== undefined ? { fetchImpl: deps.osrm.fetchImpl } : {}),
     ...(deps.routingRateLimit !== undefined ? { rateLimit: deps.routingRateLimit } : {}),
