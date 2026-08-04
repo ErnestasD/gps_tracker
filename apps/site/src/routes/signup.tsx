@@ -20,7 +20,7 @@ export const Route = createFileRoute("/signup")({
   head: () => ({
     meta: [
       { title: "Create your Orbetra account — 30-day free trial" },
-      { name: "description", content: "Start a free 30-day Orbetra trial. Live GPS tracking for small fleets on Teltonika devices. No credit card required." },
+      { name: "description", content: "Start a free 30-day Orbetra trial. Live GPS tracking for small fleets. No credit card required." },
       { property: "og:title", content: "Create your Orbetra account" },
       { property: "og:description", content: "Start a free 30-day Orbetra trial. No credit card required." },
       { property: "og:type", content: "website" },

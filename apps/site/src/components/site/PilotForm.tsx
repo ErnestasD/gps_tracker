@@ -79,7 +79,7 @@ export function PilotForm() {
           name="message"
           rows={4}
           className="mt-2 w-full rounded-lg border border-[var(--hairline)] bg-[rgba(10,20,40,0.6)] px-3 py-2 text-sm focus:border-[var(--brand-blue)] focus:ring-1 focus:ring-[var(--brand-blue)] outline-none"
-          placeholder="Which Teltonika models? Migrating from another platform?"
+          placeholder="Which tracker models? Migrating from another platform?"
         />
       </div>
       <button

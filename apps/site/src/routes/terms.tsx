@@ -22,7 +22,7 @@ export const Route = createFileRoute("/terms")({
 
       <h2>1. The service</h2>
       <p>
-        Orbetra is a GPS fleet-tracking platform for Teltonika devices: live tracking, trips and
+        Orbetra is a GPS fleet-tracking platform: live tracking, trips and
         playback, geofences, rules and alerts, reports, fuel level monitoring, driver records,
         maintenance reminders, device commands, webhooks and a REST API. Resellers may additionally
         licence the white-label platform with their own branding, domains and sub-accounts.
@@ -74,7 +74,7 @@ export const Route = createFileRoute("/terms")({
 
       <h2>8. Devices and third parties</h2>
       <p>
-        Orbetra depends on your Teltonika hardware, its SIM connectivity and GNSS availability. We
+        Orbetra depends on your tracking hardware, its SIM connectivity and GNSS availability. We
         are not responsible for gaps or inaccuracies caused by hardware, installation, network
         coverage or satellite conditions. Device identity is based on IMEI; the service is not
         tamper-proof and must not be relied on as sole evidence.

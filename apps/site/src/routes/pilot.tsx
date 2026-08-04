@@ -6,7 +6,7 @@ export const Route = createFileRoute("/pilot")({
   head: () => ({
     meta: [
       { title: "Start free trial — Orbetra GPS for small fleets" },
-      { name: "description", content: "Start a 30-day free trial of Orbetra. Plug in your Teltonika device, open the app on your phone, done. No credit card, cancel anytime." },
+      { name: "description", content: "Start a 30-day free trial of Orbetra. Plug in your tracker, open the app on your phone, done. No credit card, cancel anytime." },
     ],
   }),
   component: PilotPage,
@@ -32,7 +32,7 @@ function PilotPage() {
             <span className="text-gradient">on your vans.</span>
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-lg">
-            30 days free, up to 5 vehicles, no credit card. Plug in your Teltonika device and open the app on your phone — you're live the same day.
+            30 days free, up to 5 vehicles, no credit card. Plug in your tracker and open the app on your phone — you're live the same day.
           </p>
 
           <div className="mt-12">

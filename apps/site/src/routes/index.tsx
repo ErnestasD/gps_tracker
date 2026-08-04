@@ -83,14 +83,14 @@ function Hero() {
 function TrustStrip() {
   const { t } = useTranslation();
   const devices = [
-    { code: "FMB series", role: t("home.teltonika.fmb") },
-    { code: "FMC series", role: t("home.teltonika.fmc") },
-    { code: "TAT series", role: t("home.teltonika.tat") },
-    { code: "TFT100",     role: t("home.teltonika.tft") },
-    { code: "FMP100",     role: t("home.teltonika.fmp") },
+    { code: "FMB series", role: t("home.hardware.fmb") },
+    { code: "FMC series", role: t("home.hardware.fmc") },
+    { code: "TAT series", role: t("home.hardware.tat") },
+    { code: "TFT100",     role: t("home.hardware.tft") },
+    { code: "FMP100",     role: t("home.hardware.fmp") },
   ];
   return (
-    <section aria-label={t("home.teltonika.aria")} className="relative border-y border-[var(--hairline)] bg-[rgba(4,7,15,0.6)]">
+    <section aria-label={t("home.hardware.aria")} className="relative border-y border-[var(--hairline)] bg-[rgba(4,7,15,0.6)]">
       {/* radial hairline */}
       <div
         aria-hidden
@@ -133,10 +133,10 @@ function TrustStrip() {
               INGEST · TCP:5027
             </div>
             <div className="font-display text-lg font-semibold text-ink leading-tight mt-1">
-              {t("home.teltonika.runsOn")} <span className="text-gradient">Teltonika</span>
+              {t("home.hardware.supportedToday")} <span className="text-gradient">Teltonika</span>
             </div>
             <div className="mono text-[11px] text-[#7A8CAA] mt-0.5">
-              {t("home.teltonika.sub")}
+              {t("home.hardware.sub")}
             </div>
           </div>
         </div>

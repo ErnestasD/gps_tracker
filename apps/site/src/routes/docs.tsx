@@ -12,7 +12,7 @@ export const Route = createFileRoute("/docs")({
       {
         name: "description",
         content:
-          "Orbetra developer docs: authentication, devices, positions, trips and webhooks. REST endpoints, examples and hardware onboarding for Teltonika trackers.",
+          "Orbetra developer docs: authentication, devices, positions, trips and webhooks. REST endpoints, examples and hardware onboarding for supported trackers.",
       },
       { property: "og:title", content: "Docs & API Reference — Orbetra" },
       {
@@ -147,16 +147,17 @@ Content-Type: application/json`}</Code>
           <section id="devices">
             <h2 className="display text-2xl font-semibold text-ink">Device onboarding</h2>
             <p className="mt-3 text-ink/75">
-              Orbetra speaks the Teltonika protocol natively. Point the tracker at the ingest host
-              with your account port, power it up, and it appears in the app within a minute.
+              Teltonika trackers are supported today — Orbetra speaks their protocol natively. Point
+              the tracker at the ingest host with your account port, power it up, and it appears in
+              the app within a minute.
             </p>
             <Code>{`# Teltonika configurator
 Server:   ingest.orbetra.com
 Protocol: TCP
 Port:     <provided in app → Devices → Add device>`}</Code>
             <p className="mt-4 text-sm text-muted-foreground">
-              Using other hardware? <Link to="/demo" className="text-[var(--brand-blue)] hover:underline">Talk to us</Link> — most
-              common GPS protocols can be enabled per account.
+              Using other hardware? <Link to="/demo" className="text-[var(--brand-blue)] hover:underline">Talk to us</Link> — more
+              brands are being added, and we prioritise by what partners actually run.
             </p>
           </section>
         </div>
