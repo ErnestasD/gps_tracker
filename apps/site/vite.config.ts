@@ -22,8 +22,14 @@ export default defineConfig({
   },
   preview: {
     port: 4174,
-    // vite preview 403s unknown Hosts — the site serves orbetra.com behind Caddy
-    allowedHosts: ['orbetra.com', 'www.orbetra.com'],
-    proxy: { '/v1': { target: process.env['API_PROXY_TARGET'] ?? 'http://localhost:3010', changeOrigin: false } },
+    // reachable only from Caddy on the internal compose network, serving a static dist — the host
+    // check guards a DEV server against DNS rebinding and has nothing to protect here (see
+    // apps/web/vite.config.ts for the full reasoning)
+    allowedHosts: true,
+    // ONLY /v1/public — this proxy used to forward the whole /v1 prefix, which quietly undid the
+    // marketing host's Caddy allow-list: anything not matching `/v1/public/*` fell through to
+    // `site:4174`, and this proxy handed it to the api anyway. That is how `/v1/internal/caddy-ask`
+    // stayed reachable from the public site (audit high).
+    proxy: { '/v1/public': { target: process.env['API_PROXY_TARGET'] ?? 'http://localhost:3010', changeOrigin: false } },
   },
 })

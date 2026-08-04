@@ -33,7 +33,16 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) }, // mirrors tsconfig paths
   },
   server: { proxy },
-  // vite preview 403s unknown Hosts (IPs pass by default, domains do NOT) — the app is
-  // served as dash.<domain> behind Caddy on staging/prod (W9-S1)
-  preview: { proxy, allowedHosts: ['dash.orbetra.com'] },
+  // `allowedHosts: true` — NOT an allow-list (audit high). Vite's preview validator rejects any
+  // Host that is not an IP literal, localhost, or an exact/suffix match, and E03-5 white-label
+  // tenants reach this container under THEIR OWN verified domains, which are per-tenant data and
+  // cannot be enumerated at build time. With a fixed list, `track.customer.lt` got Caddy's cert,
+  // resolved, and then answered `403 Blocked request` — while `/v1/branding` kept working (Caddy
+  // routes it to the api), so the API and certificate looked perfectly healthy. V1-MUST
+  // white-labeling was broken by config alone, which no test could catch.
+  //
+  // The host check exists to stop DNS rebinding against a DEV server on a developer's machine.
+  // This is the preview server: reachable only from Caddy on the internal compose network, serving
+  // a static dist with no filesystem or HMR surface. There is nothing to rebind to.
+  preview: { proxy, allowedHosts: true },
 })

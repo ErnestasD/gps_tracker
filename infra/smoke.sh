@@ -44,4 +44,17 @@ else
   echo "  warn: photon still warming up (first boot downloads the index) — rerun smoke later"
 fi
 
+# WHITE-LABEL SERVING (audit high): vite preview 403s any Host that is not an IP literal,
+# localhost, or an exact/suffix match from allowedHosts — and E03-5 tenants reach the SPA under
+# THEIR OWN verified domains, which cannot be enumerated at build time. With a fixed list a
+# custom domain got a valid cert, resolved, and then answered "403 Blocked request", while
+# /v1/branding kept working (Caddy routes it to the api) so everything LOOKED healthy. Broken by
+# config alone, so nothing but a Host-spoofed request catches it.
+if docker compose ps --services 2>/dev/null | grep -q '^web$'; then
+  code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: track.some-tenant.example' \
+    "http://localhost:${CADDY_HTTP_PORT:-8088}/" || echo 000)
+  [ "$code" = "403" ] && fail "SPA rejects a tenant custom domain (vite allowedHosts) — white-label is dead"
+  ok "SPA serves an arbitrary tenant Host (got $code)"
+fi
+
 echo "smoke passed"
