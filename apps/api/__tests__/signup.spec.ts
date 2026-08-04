@@ -261,4 +261,28 @@ describe('public self-serve signup (F2)', () => {
     const names = ((await list.json()) as { name: string }[]).map((t) => t.name)
     expect(names).toContain('Jonas Logistics')
   })
+
+  it('the account is created in the SIGNUP-supplied reporting time zone, not hard-coded UTC', async () => {
+    // The account time zone is what the server buckets report days by (hard rule 7). It was pinned
+    // to UTC with no screen anywhere to change it, so a Lithuanian fleet's "yesterday" ran
+    // 00:00-24:00 UTC — three hours out in summer, and trips straddling 03:00 local landed in the
+    // wrong day. Every Direct customer had it wrong from the first report, invisibly.
+    const res = await signup({ name: 'TZ', email: 'tz@fleet.test', password: 'password12', timezone: 'Europe/Vilnius' })
+    expect(res.status).toBe(201)
+    const { id } = (await res.json()) as { id: string }
+    const accounts = await db.accounts.list({ tenantId: id })
+    expect(accounts[0]!.timezone).toBe('Europe/Vilnius')
+  })
+
+  it('an unusable time zone is refused rather than stored (it would throw at every report render)', async () => {
+    const res = await signup({ name: 'BadTZ', email: 'badtz@fleet.test', password: 'password12', timezone: 'Mars/Olympus' })
+    expect(res.status).toBe(400)
+  })
+
+  it('no time zone still works — UTC, the previous behaviour', async () => {
+    const res = await signup({ name: 'NoTZ', email: 'notz@fleet.test', password: 'password12' })
+    expect(res.status).toBe(201)
+    const { id } = (await res.json()) as { id: string }
+    expect((await db.accounts.list({ tenantId: id }))[0]!.timezone).toBe('UTC')
+  })
 })

@@ -1,5 +1,10 @@
 # Audit findings that are FOUNDER decisions, not code defects
 
+> **Status 2026-08-04:** the founder answered all eight. 1, 2, 3, 4, 5, 6 and 8 are DECIDED and
+> being implemented (see each section). **7 (routing coverage) is still open** — it turned into a
+> positioning question once it was clear OSRM serves only the stop-order optimizer, and the site
+> currently advertises self-hosted routing.
+
 Everything in `backend-audit-remediation.md` marked OPEN is something I can fix. These are the ones
 I should **not** decide alone: the code is doing what it was told to do, and changing it changes the
 product, the price, or a promise to a customer. Each one names the concrete choice.
@@ -17,9 +22,9 @@ paying for two features that are not implemented.
 honesty pass removed those claims), so the exposure is limited to the plan matrix itself — but a
 sales conversation that reads the matrix would promise them.
 
-**My recommendation:** (b) for now. Re-add when there is a signed customer asking, because SSO in
-particular is weeks of work (SAML/OIDC, per-tenant IdP config, JIT provisioning) and it should be
-scoped against a real IdP, not in the abstract.
+**DECIDED (b)** — both flags removed from the plan matrix 2026-08-04. Enterprise stays a
+quote-based tier (all TSP plans are already `deviceLimit: null`, so a custom 5000-device deal needs
+no code). Re-add each flag together with its implementation, never before.
 
 ---
 
@@ -30,11 +35,14 @@ screen exposes it. Reports bucket rows by the account timezone (hard rule 7), so
 "yesterday" report currently runs 00:00–24:00 UTC — three hours off in summer. Trips that straddle
 03:00 local land in the wrong day.
 
-**The choice:** (a) infer from the browser at signup and let the user confirm, (b) add it to the
-account settings screen and default to UTC, or (c) both. This is a real, visible wrongness for every
-Direct customer, so I would not ship a Direct launch without at least (b).
+**DECIDED (c)** — done 2026-08-04. Signup sends the browser's IANA zone, Settings gains an
+explicit **Reporting time zone** control (tenant admins), and the existing display-preference picker
+now says in words that it only changes rendering. Zones are validated against the runtime tz
+database, because a name `Intl` cannot resolve would throw at every report render.
 
-**Cost:** a day, including the settings UI and a migration for existing accounts.
+The trap worth remembering: Settings ALREADY had a time-zone picker, but it was the display
+preference. A customer could set it, watch every timestamp go local, and still get reports cut on
+UTC midnight — a control that looks like it works is worse than no control.
 
 ---
 

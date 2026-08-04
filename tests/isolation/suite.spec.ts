@@ -153,6 +153,23 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     expect(admin.status).toBe(200)
   })
 
+  it('account time zone is settable and validated — the setting reports actually bucket by', async () => {
+    // Two different "time zones" exist in the product and looked identical in the UI: this one (the
+    // ACCOUNT's, which the server buckets report days by — hard rule 7) and the browser display
+    // preference. The account one was pinned to UTC at signup with no screen to change it, so a
+    // customer could set the display zone, watch every timestamp go local, and still get reports
+    // cut on UTC midnight.
+    const authJson = { authorization: `Bearer ${fx.t1.tokenTenant}`, 'content-type': 'application/json' }
+    const [acct] = fx.t1.accounts
+    const ok = await fetch(`${fx.baseUrl}/v1/accounts/${acct}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ timezone: 'Europe/Warsaw' }) })
+    expect(ok.status).toBe(200)
+    const saved = (await ok.json()) as { timezone?: string }
+    expect(saved.timezone).toBe('Europe/Warsaw')
+    // …and a zone Intl cannot resolve is refused, not stored — it would throw at every report render
+    const bad = await fetch(`${fx.baseUrl}/v1/accounts/${acct}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ timezone: 'Mars/Olympus' }) })
+    expect(bad.status).toBe(400)
+  })
+
   it('audit: an ACCOUNT-SCOPED tenant admin is refused (403) — audit_log has no account partition', async () => {
     // REGRESSION (audit MED): `READ_POLICY.audit = TENANT_ADMINS` assumed every tenant admin is
     // tenant-WIDE — an assumption written into scope.ts but never enforced. `POST /v1/users`

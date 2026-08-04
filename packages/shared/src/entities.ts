@@ -3,12 +3,29 @@ import { z } from 'zod'
 import { tenantPlanSchema } from './plans.js'
 import { roleSchema } from './roles.js'
 
+/**
+ * IANA time-zone id (e.g. `Europe/Vilnius`). Validated against the runtime's own tz database rather
+ * than a regex — a name that `Intl` cannot resolve would make every report throw at render.
+ */
+export const ianaTimezoneSchema = z.string().min(1).max(64).refine(
+  (tz) => {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: tz })
+      return true
+    } catch {
+      return false
+    }
+  },
+  { message: 'not a valid IANA time zone' },
+)
+
 /** CRUD request contracts (E03-2). The single type source for api ↔ web. */
 
 // ── accounts ─────────────────────────────────────────────────────────────────
 export const accountCreateSchema = z.object({
   name: z.string().min(1).max(120),
-  timezone: z.string().min(1).max(64).optional(),
+  /** Reporting time zone — the server buckets report days by THIS, not by the viewer's browser. */
+  timezone: ianaTimezoneSchema.optional(),
 })
 export const accountUpdateSchema = accountCreateSchema.partial()
 
@@ -277,6 +294,13 @@ export const signupSchema = z.object({
   password: z.string().min(8).max(1024),
   company: z.string().min(1).max(160).optional().or(z.literal('')),
   ref: affiliateCodeSchema.optional(),
+  /**
+   * The account's REPORTING time zone — the one the server buckets report days by (hard rule 7),
+   * NOT the browser display preference. Hard-coded to UTC before, with no UI anywhere to change it,
+   * so a Lithuanian fleet's "yesterday" ran 00:00-24:00 UTC — three hours out in summer, and trips
+   * straddling 03:00 local landed in the wrong day. The signup form sends the browser's zone.
+   */
+  timezone: ianaTimezoneSchema.optional(),
   hp_field: z.string().max(200).optional().or(z.literal('')),
 })
 export type SignupInput = z.infer<typeof signupSchema>

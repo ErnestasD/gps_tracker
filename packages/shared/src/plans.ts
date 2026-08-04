@@ -42,8 +42,11 @@ export const entitlementsSchema = z.strictObject({
   prioritySupport: z.boolean(),
   /** SMS gateway: send Teltonika config SMS to a device's SIM (SMS gateway feature). TSP-only. */
   smsGateway: z.boolean(),
-  sso: z.boolean(),
-  dataResidency: z.boolean(),
+  // NOTE: `sso` and `dataResidency` were here and granted on Scale/Enterprise, but NOTHING in the
+  // codebase read them — there is no SSO code path and no residency routing. An entitlement that
+  // grants nothing is a promise the product cannot keep, and a sales conversation reading this
+  // matrix would have promised both. Removed 2026-08-04 (founder decision, audit finding).
+  // Re-add together with the implementation, not before it.
   sla999: z.boolean(),
   /** max non-retired devices; null = uncapped (all TSP plans). */
   deviceLimit: z.number().int().nonnegative().nullable(), // 0 = fail-closed cap; null = uncapped (TSP)
@@ -88,8 +91,6 @@ export const FLOOR_ENTITLEMENTS: Entitlements = {
   webhooks: false,
   prioritySupport: false,
   smsGateway: false,
-  sso: false,
-  dataResidency: false,
   sla999: false,
   deviceLimit: 0,
 }
@@ -150,7 +151,7 @@ export function isDirectPlan(p: TenantPlan): boolean {
 /**
  * The full entitlement matrix for a plan (founder-locked 2026-07-20):
  *   - whiteLabel/customDomains/subAccounts/apiAccess/webhooks/prioritySupport → true for ALL tsp_*, false for all direct_*.
- *   - sso/dataResidency/sla999 → true ONLY for tsp_scale + tsp_enterprise.
+ *   - sla999 → true ONLY for tsp_scale + tsp_enterprise (a support commitment, not a code path).
  *   - deviceLimit → 5/10/25/50/100 for direct_N, null (uncapped) for all tsp_*.
  */
 export function planEntitlements(plan: TenantPlan): Entitlements {
@@ -164,8 +165,6 @@ export function planEntitlements(plan: TenantPlan): Entitlements {
     webhooks: tsp,
     prioritySupport: tsp,
     smsGateway: tsp,
-    sso: scalePlus,
-    dataResidency: scalePlus,
     sla999: scalePlus,
     // FAIL-CLOSED on the cap: an unmapped direct_* plan (e.g. a future enum value added without a
     // DIRECT_DEVICE_LIMIT entry) caps at 0 rather than silently uncapping (review LOW). tsp_* = null (uncapped).

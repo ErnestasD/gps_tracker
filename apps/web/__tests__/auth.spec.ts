@@ -25,8 +25,6 @@ const session = (token: string) => ({
       webhooks: false,
       prioritySupport: false,
       smsGateway: false,
-      sso: false,
-      dataResidency: false,
       sla999: false,
       deviceLimit: 5,
     },
