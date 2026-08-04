@@ -31,7 +31,7 @@ tests:
           - exp_labels: { severity: critical, component: stream_depth }
             exp_annotations:
               summary: "Redis stream depth CRITICAL (95k)"
-              description: "A shard is near the 100k MAXLEN cap — backpressure/eviction imminent. Scale or restart workers now."
+              description: "A shard's unconsumed backlog is near the 100k MAXLEN cap — unprocessed entries will be evicted (data loss). Scale or restart workers now."
 
   - interval: 1m
     input_series:
@@ -182,3 +182,68 @@ tests:
       - eval_time: 16m
         alertname: WalArchiveFailing
         exp_alerts: []
+
+  # ── the failure counters that had NO rule at all until the observability pass ──
+  # a job throwing on every run must page; a quiet system must stay silent.
+  - interval: 1m
+    input_series:
+      - series: 'worker_job_failed_total{job="stripe_usage"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WorkerJobFailing
+        exp_alerts:
+          - exp_labels: { severity: critical, component: worker, job: stripe_usage }
+            exp_annotations:
+              summary: "Worker job failing: stripe_usage"
+              description: "A background job has thrown in the last hour. `stripe_usage` is silent under-billing (no backfill exists); `retention` means data is growing past policy."
+
+  - interval: 1m
+    input_series:
+      - series: 'worker_job_failed_total{job="retention"}'
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WorkerJobFailing
+        exp_alerts: []
+
+  # an API that is UP but answering 5xx — the case `up == 0` could never catch
+  - interval: 1m
+    input_series:
+      - series: 'http_requests_total{status="5xx",route="/v1/devices",method="GET"}'
+        values: '0+10x20'
+      - series: 'http_requests_total{status="2xx",route="/v1/devices",method="GET"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ApiErrorRate
+        exp_alerts:
+          - exp_labels: { severity: critical, component: api }
+            exp_annotations:
+              summary: "API 5xx rate above 5% (90.91%)"
+              description: "The process is alive and failing. Check the api log for `unhandled API error` and the pg pool."
+
+  # a healthy API stays silent (and the clamp_min guard must not divide by zero on no traffic)
+  - interval: 1m
+    input_series:
+      - series: 'http_requests_total{status="2xx",route="/v1/devices",method="GET"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ApiErrorRate
+        exp_alerts: []
+
+  # an exporter the disk/WAL rules depend on going away must page — those rules stop
+  # EVALUATING when their series disappear, so this is the only signal
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node"}'
+        values: '1 1 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: ExporterDown
+        exp_alerts:
+          - exp_labels: { severity: critical, component: observability, job: node }
+            exp_annotations:
+              summary: "Exporter down: node"
+              description: "Every rule built on this exporter's series has stopped evaluating — the safety nets it feeds (disk, WAL archive, TLS) are now blind, not quiet."

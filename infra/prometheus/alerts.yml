@@ -123,6 +123,66 @@ groups:
           summary: "Sockets paused by backpressure for 10m"
           description: "ingest_paused_sockets > 0 sustained — a shard is not draining. Check worker throughput."
 
+      # EVERY worker failure counter, in one rule. The counters existed and several comments
+      # explicitly said "non-zero rate ⇒ alert" — but grep over alerts.yml found not a single
+      # reference to any of them, so a job throwing on every run was indistinguishable from a quiet
+      # system. Split by `job` so the notification names what broke. Audit MED.
+      - alert: WorkerJobFailing
+        expr: increase(worker_job_failed_total[1h]) > 0
+        for: 10m
+        labels: { severity: critical, component: worker }
+        annotations:
+          summary: "Worker job failing: {{ $labels.job }}"
+          description: "A background job has thrown in the last hour. `stripe_usage` is silent under-billing (no backfill exists); `retention` means data is growing past policy."
+
+      - alert: UsageSweepFailing
+        expr: increase(usage_sweep_failed_total[1h]) > 0
+        for: 10m
+        labels: { severity: critical, component: billing }
+        annotations:
+          summary: "Usage sweep failing — device-days are not being recorded"
+          description: "usage_daily is the ONLY source for overage billing and there is no backfill. Every failed sweep is revenue lost for good."
+
+      - alert: EnginePersistErrors
+        expr: increase(engine_persist_errors_total[15m]) > 0
+        for: 10m
+        labels: { severity: warning, component: worker }
+        annotations:
+          summary: "Geofence/rule transitions failing to persist ({{ $labels.engine }})"
+          description: "In-memory engine state is rolled back so the crossing re-fires next batch — but a sustained rate means alerts are being delayed or lost. Check the DB."
+
+      - alert: NotificationsFailing
+        expr: rate(notification_failed_total[15m]) > 0.1
+        for: 15m
+        labels: { severity: warning, component: notify }
+        annotations:
+          summary: "Notifications failing ({{ $labels.channel }}, {{ $value | humanize }}/s)"
+          description: "Alerts are not reaching customers. BullMQ retries, but a sustained rate means the channel is down (SMTP creds, Telegram token, VAPID keys)."
+
+      - alert: WebhooksFailing
+        expr: rate(webhook_failed_total[15m]) > 0.1
+        for: 15m
+        labels: { severity: warning, component: webhooks }
+        annotations:
+          summary: "Webhook deliveries failing ({{ $value | humanize }}/s)"
+          description: "A tenant's integration is not receiving events. Check webhook_deliveries for the failing URL."
+
+      - alert: TripPersistErrors
+        expr: increase(trip_persist_errors_total[1h]) > 0
+        for: 15m
+        labels: { severity: warning, component: worker }
+        annotations:
+          summary: "Trip open/close writes failing"
+          description: "Streaming trip persistence is advisory (recompute reconciles), but a non-zero rate means trips are being dropped from the live path."
+
+      - alert: GdprJobFailing
+        expr: increase(gdpr_failed_total[1h]) > 0
+        for: 10m
+        labels: { severity: critical, component: gdpr }
+        annotations:
+          summary: "GDPR job failing ({{ $labels.job }})"
+          description: "An erase or export request is not completing. These carry a legal deadline — investigate immediately."
+
   - name: backups
     rules:
       # archive_mode=on (W7-S2): if archive-push fails, WAL piles up in pg_wal → disk fills
@@ -146,6 +206,49 @@ groups:
 
   - name: infra
     rules:
+      # `up` for EVERY scraped job, not just the three apps. The disk and WAL rules read
+      # node_exporter and postgres_exporter series — and a Prometheus rule whose series DISAPPEARS
+      # simply stops evaluating, it does not fire. So an exporter crash-looping took the disk-full
+      # and WAL-archive safety nets down with it, silently. Audit MED.
+      - alert: ExporterDown
+        expr: up{job=~"node|postgres|blackbox-tls|prometheus"} == 0
+        for: 5m
+        labels: { severity: critical, component: observability }
+        annotations:
+          summary: "Exporter down: {{ $labels.job }}"
+          description: "Every rule built on this exporter's series has stopped evaluating — the safety nets it feeds (disk, WAL archive, TLS) are now blind, not quiet."
+
+      # the customer-facing probe. CertExpiringSoon was deliberately guarded so it would NOT fire
+      # during an outage (correct), which removed the last incidental outage signal — this is its
+      # replacement.
+      - alert: EndpointDown
+        expr: probe_success == 0
+        for: 3m
+        labels: { severity: critical, component: availability }
+        annotations:
+          summary: "Endpoint unreachable: {{ $labels.instance }}"
+          description: "The blackbox probe cannot reach a customer-facing endpoint. This is an outage, not a warning."
+
+      # a process that answers EVERY request with a 500 keeps up == 1. Before the API exported
+      # request metrics there was no rule that could tell the difference.
+      - alert: ApiErrorRate
+        expr: |
+          sum(rate(http_requests_total{status="5xx"}[5m]))
+            / clamp_min(sum(rate(http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: { severity: critical, component: api }
+        annotations:
+          summary: "API 5xx rate above 5% ({{ $value | humanizePercentage }})"
+          description: "The process is alive and failing. Check the api log for `unhandled API error` and the pg pool."
+
+      - alert: ApiLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route)) > 2
+        for: 10m
+        labels: { severity: warning, component: api }
+        annotations:
+          summary: "API p95 latency > 2s on {{ $labels.route }}"
+          description: "Usually pg pool saturation (max 10, no acquire timeout) or an unbounded report query."
+
       - alert: TargetDown
         expr: up{job=~"ingest|worker|api"} == 0
         for: 2m

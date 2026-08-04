@@ -38,6 +38,9 @@ export interface WorkerProm {
   /** Entries moved to `raw:dead` by reason. A poison row is otherwise indistinguishable from a
    *  quiet fleet — the audit's "catch-and-continue with no signal" pattern. Non-zero ⇒ alert. */
   deadLettered: Counter
+  /** Background jobs that THREW, by job name. Several workers exposed an onFailed hook that
+   *  nothing wired, and several exposed none at all — a job failing every run was invisible. */
+  jobFailed: Counter
   /** Fields normalization had to null because the value did not fit its column. Non-zero ⇒ a
    *  firmware quirk or spoofed frames; the position is kept, the field is not. */
   fieldNulled: Counter
@@ -149,6 +152,7 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   // a stalled metering pipeline is silent under-billing — alert on any non-zero rate
   const deadLettered = new Counter({ name: 'pipeline_dead_lettered_total', help: 'stream entries quarantined to raw:dead by reason (malformed payload | rejected by postgres)', labelNames: ['reason'], registers: [registry] })
   const fieldNulled = new Counter({ name: 'positions_field_nulled_total', help: 'position fields nulled because the value did not fit its column (firmware quirk / spoof)', labelNames: ['field'], registers: [registry] })
+  const jobFailed = new Counter({ name: 'worker_job_failed_total', help: 'background job runs that threw, by job (retention | scheduled_reports | stripe_usage | …)', labelNames: ['job'], registers: [registry] })
   const clockSkewed = new Counter({ name: 'positions_clock_skewed_total', help: 'records whose device clock ran ahead of server time — kept in positions, excluded from live state and the motion engines', registers: [registry] })
   const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })
   const stripeOverageReported = new Counter({ name: 'stripe_overage_reported_total', help: 'tenants for which device overage was reported to the Stripe meter (ADR-024 PR B2)', registers: [registry] })
@@ -176,5 +180,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

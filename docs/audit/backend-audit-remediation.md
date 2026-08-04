@@ -49,7 +49,7 @@ HIGHs inside the fixes themselves (UDP transport skipped, poison-batch *mechanis
 
 | # | Subsystem | Finding | File | Status |
 |---|---|---|---|---|
-| 20 | observability / alerting | Nothing alerts on any failure counter: the API exports one metric, worker failure counters are unwired, and exporters/endpoints have no up alert | `infra/prometheus/alerts.yml:92` | OPEN |
+| 20 | observability / alerting | Nothing alerts on any failure counter: the API exports one metric, worker failure counters are unwired, and exporters/endpoints have no up alert | `infra/prometheus/alerts.yml:92` | **FIXED** — PR H — every worker failure counter now has an alert rule (`WorkerJobFailing`, `UsageSweepFailing`, `EnginePersistErrors`, `NotificationsFailing`, `WebhooksFailing`, `TripPersistErrors`, `GdprJobFailing`), the API exports default process metrics + request/latency by route template (`ApiErrorRate`, `ApiLatencyHigh`), `up` covers ALL scraped jobs and `probe_success` is alerted; the rules are now unit-tested IN CI, which is why they had rotted unnoticed |
 | 21 | billing / usage metering | The daily Stripe overage job has no settle delay, no record of which days were reported, and no backfill — late device-days and failed days are lost forever | `apps/worker/src/jobs/stripeUsageWorker.ts:33` | OPEN |
 | 22 | billing / entitlements | The zero-entitlement floor is enforced only at device CREATE, so a lapsed subscription or expired trial never actually stops the billable product | `packages/shared/src/plans.ts:78` | OPEN |
 | 23 | billing / Stripe configuration | A base price missing from the worker's STRIPE_INCLUDED map silently disables overage billing for every tenant on that plan | `apps/worker/src/billing/usageReporter.ts:85` | OPEN |

@@ -44,6 +44,17 @@ jobs:
       - name: Hook script tests
         run: sh scripts/__tests__/hooks.spec.sh
 
+      # The alert rules had no gate at all, so `make alerts-test` silently rotted: an alert
+      # description edited in one PR left the expectation stale, and nobody found out until someone
+      # happened to run it by hand months later. Alert rules ARE production behaviour — a typo in a
+      # promql expression is an outage nobody gets paged for.
+      - name: Prometheus alert rules (syntax + unit tests)
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/infra/prometheus":/w \
+            prom/prometheus:v3.1.0 check rules /w/alerts.yml
+          docker run --rm --entrypoint promtool -v "$PWD/infra/prometheus":/w \
+            prom/prometheus:v3.1.0 test rules /w/alerts.test.yml
+
   # E02-6 full-stack smoke: testcontainers redis+timescale, ingest/worker/api,
   # simulator fleet → built web app in chromium. Runs in parallel with gates.
   web-e2e:

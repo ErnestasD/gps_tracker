@@ -12,6 +12,8 @@ export interface StripeUsageWorkerDeps {
   /** current time (ms) source — injectable for tests; the job bills the PREVIOUS UTC day. */
   now?: () => number
   onReported?: (r: { subscribers: number; reported: number; devicesOver: number }) => void
+  /** the run THREW — a stalled overage reporter is silent UNDER-BILLING, so it must be visible */
+  onFailed?: () => void
 }
 
 /** UTC day (YYYY-MM-DD) N days before the given ms instant. */
@@ -34,8 +36,16 @@ export function createStripeUsageWorker(deps: StripeUsageWorkerDeps): Worker {
       // stamp the meter event at NOON of the billed day (not report-time): a 00:00-aligned run must not
       // push yesterday's usage into today's billing period at a subscription-renewal boundary.
       const timestampS = Math.floor(Date.parse(`${day}T12:00:00Z`) / 1000)
-      const r = await reportDailyOverage({ db: deps.db, stripe: deps.stripe }, day, timestampS)
-      deps.onReported?.(r)
+      try {
+        const r = await reportDailyOverage({ db: deps.db, stripe: deps.stripe }, day, timestampS)
+        deps.onReported?.(r)
+      } catch (err) {
+        // a stalled metering pipeline is silent UNDER-BILLING: usage_daily keeps the truth but
+        // nothing reaches Stripe, and the reporter only ever submits `now − 24h` with no backfill,
+        // so every failed run is revenue lost for good. It must page.
+        deps.onFailed?.()
+        throw err
+      }
     },
     { connection: deps.connection, concurrency: 1 },
   )

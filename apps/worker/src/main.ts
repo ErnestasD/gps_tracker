@@ -256,14 +256,14 @@ async function main(): Promise<void> {
   const stripeUsagePort = stripeUsagePortFromEnv()
   const stripeUsageQueue = stripeUsagePort !== null ? createStripeUsageQueue(recomputeConn) : null
   const stripeUsageWorker = stripeUsagePort !== null
-    ? createStripeUsageWorker({ connection: recomputeConn, db, stripe: stripeUsagePort, onReported: (r) => prom.stripeOverageReported.inc(r.reported) })
+    ? createStripeUsageWorker({ connection: recomputeConn, db, stripe: stripeUsagePort, onReported: (r) => prom.stripeOverageReported.inc(r.reported), onFailed: () => prom.jobFailed.inc({ job: 'stripe_usage' }) })
     : null
   if (stripeUsageQueue !== null) await scheduleStripeUsage(stripeUsageQueue)
   // V1-nice: scheduled emailed reports — hourly cron runs due schedules + e-mails them. Only when
   // email is configured (no transport ⇒ nothing to send); reuses the same SES SMTP as notifications.
   const scheduledReportQueue = emailTransport !== undefined ? createScheduledReportQueue(recomputeConn) : null
   const scheduledReportWorker = emailTransport !== undefined
-    ? startScheduledReportWorker({ connection: recomputeConn, db, pool, transport: emailTransport, onRun: (r) => prom.scheduledReportsSent.inc(r.emailed) })
+    ? startScheduledReportWorker({ connection: recomputeConn, db, pool, transport: emailTransport, onRun: (r) => prom.scheduledReportsSent.inc(r.emailed), onFailed: () => prom.jobFailed.inc({ job: 'scheduled_reports' }) })
     : null
   if (scheduledReportQueue !== null) await scheduleScheduledReports(scheduledReportQueue)
   // Data retention: daily prune of the webhook delivery-log (operational, grows unbounded)
@@ -275,6 +275,9 @@ async function main(): Promise<void> {
     db,
     retentionDays: Number.isFinite(retentionEnv) && retentionEnv > 0 ? retentionEnv : 30,
     onPruned: (n) => prom.retentionPruned.inc(n),
+    // the hook existed and nothing wired it: a retention sweep that throws every hour was
+    // completely invisible, while positions/webhook_deliveries grew past their policy (audit MED)
+    onFailed: () => prom.jobFailed.inc({ job: 'retention' }),
   })
   await scheduleRetentionSweep(retentionQueue)
   // E08-2: Codec-12 command dispatcher — ~15s reconcile of in-flight commands vs device
