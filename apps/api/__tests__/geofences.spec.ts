@@ -84,6 +84,44 @@ describe('E05-1 geofence CRUD', () => {
     expect(res.status).toBe(400)
   })
 
+  it('rejects a VERTEX-BOMB polygon that passes both existing guards (audit high)', async () => {
+    // Neither guard came close: a 10 000-vertex ring was valid, and as a tiny circle it is ~0.2 % of
+    // the area cap. The worker ray-casts every fence against every record with no bbox prefilter, on
+    // the ONE process hosting all 16 shard consumers plus every BullMQ job — 200 records × 100
+    // fences × 10k vertices measured at 459 ms of SYNCHRONOUS blocking per batch, from a body a
+    // free trial can POST. Small, valid, and a pipeline-wide stall.
+    const ring: [number, number][] = []
+    for (let i = 0; i < 5_000; i++) {
+      const a = (i / 5_000) * 2 * Math.PI
+      ring.push([25 + 0.01 * Math.cos(a), 54 + 0.01 * Math.sin(a)])
+    }
+    ring.push(ring[0]!)
+    const res = await req('/v1/geofences', t1Token, 'POST', { name: 'Bomb', kind: 'polygon', accountId: acct1, geometry: { type: 'Polygon', coordinates: [ring] } })
+    expect(res.status).toBe(400)
+    // …and a reasonable, genuinely detailed shape still goes through
+    const ok: [number, number][] = []
+    for (let i = 0; i < 400; i++) {
+      const a = (i / 400) * 2 * Math.PI
+      ok.push([25 + 0.01 * Math.cos(a), 54 + 0.01 * Math.sin(a)])
+    }
+    ok.push(ok[0]!)
+    expect((await req('/v1/geofences', t1Token, 'POST', { name: 'Detailed', kind: 'polygon', accountId: acct1, geometry: { type: 'Polygon', coordinates: [ok] } })).status).toBe(201)
+  })
+
+  it('a CORRIDOR is SIMPLIFIED to the vertex budget, not rejected — the bound is on what the worker evaluates', async () => {
+    // ST_Buffer emits ~8 segments per quarter-circle around EVERY vertex of the centre-line, so the
+    // effective centre-line limit swings by ~9× with `bufferM` — rejecting would quote a number the
+    // caller never submitted. The budget applies to the POST-buffer geometry (what the ray-cast
+    // actually walks), and the geometry is simplified to fit rather than refused.
+    const line: [number, number][] = []
+    for (let i = 0; i < 900; i++) line.push([25 + i * 0.0005, 54 + (i % 2) * 0.0005])
+    const res = await req('/v1/geofences', t1Token, 'POST', { name: 'Snake', kind: 'corridor', accountId: acct1, line: { type: 'LineString', coordinates: line }, bufferM: 500 })
+    expect(res.status).toBe(201)
+    const gf = (await res.json()) as { geometry: { coordinates: [number, number][][] } }
+    const vertices = gf.geometry.coordinates.reduce((n, ring) => n + ring.length, 0)
+    expect(vertices).toBeLessThanOrEqual(2_000) // what the caller drew would have been ~8k
+  }, 30_000) // ST_Buffer + ST_SimplifyPreserveTopology over a long line is slow on a cold CI runner
+
   it('rejects a self-intersecting (invalid) polygon with 400', async () => {
     const bowtie = { type: 'Polygon', coordinates: [[[25.0, 54.0], [25.1, 54.1], [25.1, 54.0], [25.0, 54.1], [25.0, 54.0]]] }
     const res = await req('/v1/geofences', t1Token, 'POST', { name: 'Bowtie', kind: 'polygon', accountId: acct1, geometry: bowtie })

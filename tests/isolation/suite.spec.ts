@@ -152,6 +152,48 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     const admin = await fetch(`${fx.baseUrl}/v1/geofences/${shared}`, { method: 'PATCH', headers: authJson(fx.t1.tokenTenant), body: JSON.stringify({ name: 'admin-renamed' }) })
     expect(admin.status).toBe(200)
   })
+
+  it('POSITIVE CONTROL: an in-scope empty PATCH still 200s on every generic-repo entity', async () => {
+    // The cross-tenant assertions above PATCH `{}` and expect 404. If an empty patch 404s for the
+    // OWNER too, those assertions pass for the wrong reason and stop proving anything about scope —
+    // which is exactly what happened when the generic repo moved to `updateMany` (it returns
+    // count 0 for empty `data` where `update` returned the row). This is the control that catches it.
+    const authJson = { authorization: `Bearer ${fx.t1.tokenTenant}`, 'content-type': 'application/json' }
+    for (const path of [`/v1/webhooks/${fx.t1.webhookId}`, `/v1/rules/${fx.t1.ruleId}`, `/v1/scheduled-reports/${fx.t1.scheduledReportId}`]) {
+      const res = await fetch(`${fx.baseUrl}${path}`, { method: 'PATCH', headers: authJson, body: '{}' })
+      expect(res.status, path).toBe(200)
+    }
+  })
+
+  it('webhooks: an A1 account_manager can READ a tenant-shared webhook but cannot MUTATE it (audit high)', async () => {
+    // REGRESSION: createGenericRepo built ONE scoped predicate from the READ scope and used it for
+    // the mutate pre-check too, then issued `update({ where: { id } })` with no scope at all.
+    // Webhooks are registered `nullableAccount: true`, so an account-scoped tenant admin could
+    // re-point or delete a TENANT-SHARED hook it merely had visibility of — and the worker loads
+    // webhooks with `accountId = $1 OR accountId IS NULL` for every device, so a re-pointed shared
+    // hook streamed every SIBLING account's events (device ids, kinds, geofence names, timestamps)
+    // to the attacker's URL. Creation was already pinned, so it could be hijacked but not created.
+    const shared = fx.t1.webhookSharedId
+    const authJson = (token: string) => ({ authorization: `Bearer ${token}`, 'content-type': 'application/json' })
+    const list = (await (await req('/v1/webhooks', fx.t1.tokenAccountAdminA1)).json()) as { id: string }[]
+    expect(list.map((w) => w.id)).toContain(shared) // readable — that is the whole trap
+
+    const patch = await fetch(`${fx.baseUrl}/v1/webhooks/${shared}`, { method: 'PATCH', headers: authJson(fx.t1.tokenAccountAdminA1), body: JSON.stringify({ url: 'https://attacker.test/collect' }) })
+    expect(patch.status).toBe(404)
+    const del = await fetch(`${fx.baseUrl}/v1/webhooks/${shared}`, { method: 'DELETE', headers: { authorization: `Bearer ${fx.t1.tokenAccountAdminA1}` } })
+    expect(del.status).toBe(404)
+    // the row is untouched — not merely "the response said 404"
+    const after = (await (await req(`/v1/webhooks/${shared}`, fx.t1.tokenTenant)).json()) as { url: string }
+    expect(after.url).toBe('https://shared.test/h')
+    // positive controls: own-account mutation works, and a tenant admin CAN mutate the shared one
+    const own = await fetch(`${fx.baseUrl}/v1/webhooks/${fx.t1.webhookId}`, { method: 'PATCH', headers: authJson(fx.t1.tokenAccountAdminA1), body: JSON.stringify({ url: 'https://x.test/renamed' }) })
+    expect(own.status).toBe(200)
+    const admin = await fetch(`${fx.baseUrl}/v1/webhooks/${shared}`, { method: 'PATCH', headers: authJson(fx.t1.tokenTenant), body: JSON.stringify({ url: 'https://shared.test/h2' }) })
+    expect(admin.status).toBe(200)
+    // …and the PATCH response must not carry the PLAINTEXT HMAC signing secret (rule 12):
+    // `readRedact` masked it on list/get, but this path returned the row straight from the write
+    expect(((await admin.json()) as { secret: string }).secret).toBe('***')
+  })
 })
 
 describe('E03-2 write authorization / RBAC (review HIGH)', () => {

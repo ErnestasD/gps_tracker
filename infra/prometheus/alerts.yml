@@ -79,6 +79,16 @@ groups:
           summary: "Records quarantined to raw:dead ({{ $value | humanize }}/s, reason={{ $labels.reason }})"
           description: "Positions are being dropped from the pipeline. Inspect raw:dead payloads — rejected_by_db means a value no column accepts."
 
+      # the platform-wide SMS breaker refuses config SMS for EVERY tenant until the window rolls,
+      # so it must page rather than sit in a log line. device/tenant rejections are informational.
+      - alert: SmsQuotaTripped
+        expr: increase(sms_quota_rejected_total{scope="global"}[1h]) > 0
+        for: 5m
+        labels: { severity: critical, component: sms }
+        annotations:
+          summary: "Platform-wide SMS breaker tripped"
+          description: "Config-SMS onboarding is refused for ALL tenants. Investigate the source, then `DEL sms:q:global` in Redis to reset — see the runbook."
+
       # I4 backpressure sustained = a shard can't drain.
       - alert: BackpressureSustained
         expr: max(ingest_paused_sockets) > 0

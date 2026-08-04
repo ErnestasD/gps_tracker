@@ -95,10 +95,18 @@ export function createApiKeyRepo(prisma: PrismaClient, audit: AuditRepo): ApiKey
       return { key, view: toView(row) }
     },
     revoke: async (scope, actor, id) => {
-      // scoped update: only a key in the caller's tenant/account is reachable
-      const found = await prisma.apiKey.findFirst({ where: { ...scopedWhere(scope, { nullableAccount: true }), id } })
+      // MUTATION scope, deliberately without `nullableAccount` (audit high): an account-scoped
+      // admin can SEE tenant-shared keys (accountId null) but must not be able to kill one — that
+      // would take down the tenant's API integration for every sibling account. Creation is already
+      // pinned to the caller's account, so a shared key is never theirs to revoke.
+      const found = await prisma.apiKey.findFirst({ where: { ...scopedWhere(scope), id } })
       if (found === null || found.revokedAt !== null) return false
-      const row = await prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } })
+      // the predicate travels WITH the write, not just the pre-check: `where: { id }` unscoped is
+      // one refactor away from being the only guard, and `revokedAt: null` makes a double-revoke
+      // race return false instead of writing a second timestamp and a second audit row
+      const revoked = await prisma.apiKey.updateMany({ where: { ...scopedWhere(scope), id, revokedAt: null }, data: { revokedAt: new Date() } })
+      if (revoked.count === 0) return false
+      const row = await prisma.apiKey.findFirstOrThrow({ where: { id } })
       await audit.record(scope, actor, { action: 'update', entity: 'apiKey', entityId: id, before: toView(found), after: toView(row) })
       return true
     },

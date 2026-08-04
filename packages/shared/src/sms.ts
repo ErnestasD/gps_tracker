@@ -23,6 +23,28 @@ export const smsSendRequestSchema = z.object({
 })
 export type SmsSendRequest = z.infer<typeof smsSendRequestSchema>
 
+/**
+ * Allow-list for a caller-supplied SMS body.
+ *
+ * The route sends from the PLATFORM's Twilio sender to a caller-chosen E.164 number, so free-form
+ * text is a smishing relay wearing a device-command costume — and every message is unrecoverable
+ * platform spend. Until an arbitrary-command feature is actually designed, a supplied body must be
+ * a Teltonika configuration command of the same shape the onboarding sheet generates:
+ * `  setparam <id>:<value>[;<id>:<value>…]` (two leading spaces = empty SMS login+password, the
+ * Teltonika SMS contract — https://wiki.teltonika-gps.com/view/FMB_SMS/GPRS_Commands), or one of
+ * the parameterless diagnostics. `;` and `:` inside a value would inject a second command, so the
+ * value charset excludes them, exactly as the APN sanitizer does.
+ */
+const SETPARAM = /^ {2}setparam (?:\d{1,5}:[A-Za-z0-9._@/\-+]{1,64})(?:;\d{1,5}:[A-Za-z0-9._@/\-+]{1,64})*$/
+const BARE_COMMANDS = new Set(['  getinfo', '  getstatus', '  getgps', '  getver', '  cpureset'])
+/** `getparam` takes a parameter id — the bare form does nothing on the device, so require the id. */
+const GETPARAM = /^ {2}getparam \d{1,5}$/
+
+export function isAllowedSmsCommand(body: string): boolean {
+  if (body.length > 320) return false
+  return SETPARAM.test(body) || GETPARAM.test(body) || BARE_COMMANDS.has(body)
+}
+
 /** What an SmsDriver returns on a successful send — the provider's message id (for audit + status). */
 export interface SmsDriverResult {
   providerMessageId: string

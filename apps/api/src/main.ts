@@ -8,6 +8,7 @@ import { createDb, createPool } from '@orbetra/db'
 import { smsConfigured } from '@orbetra/shared'
 
 import { createApiProm, createApp } from './app.js'
+import { DEFAULT_SMS_QUOTA } from './routes/crud.js'
 import { rehydrateRegistries } from './rehydrate.js'
 import { createStripeGateway, stripeConfigFromEnv } from './billing/stripe.js'
 import { attachWsGateway } from './ws.js'
@@ -98,6 +99,14 @@ const deps = {
   jwtTtlS: Number(process.env['JWT_TTL'] ?? 900),
   refreshTtlS: Number(process.env['REFRESH_TTL'] ?? 1_209_600),
   ticketTtlS: Number(process.env['WS_TICKET_TTL'] ?? 30),
+  // SMS ceilings (config SMS is an onboarding action, not a messaging product). Every send is a
+  // real billable message from the platform's Twilio sender, so these bound unrecoverable cost.
+  smsQuota: {
+    perDevicePerDay: Number(process.env['SMS_QUOTA_DEVICE_PER_DAY'] ?? DEFAULT_SMS_QUOTA.perDevicePerDay),
+    perTenantPerDay: Number(process.env['SMS_QUOTA_TENANT_PER_DAY'] ?? DEFAULT_SMS_QUOTA.perTenantPerDay),
+    globalPerDay: Number(process.env['SMS_QUOTA_GLOBAL_PER_DAY'] ?? DEFAULT_SMS_QUOTA.globalPerDay),
+  },
+  onSmsQuotaRejected: (scope: 'device' | 'tenant' | 'global') => prom.smsQuotaRejected.inc({ scope }),
   // hard ceiling on one live socket (default 4 h). A stream is authorized only at connect, so this
   // is what makes a plan downgrade / role change eventually reach an already-open one; clients
   // reconnect with a fresh ticket, which re-authorizes.
