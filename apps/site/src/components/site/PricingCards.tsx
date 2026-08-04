@@ -2,22 +2,23 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { cn } from "@/lib/utils";
+import { cn, eur } from "@/lib/utils";
 
 interface DirectTier {
   devices: number;
   monthly: number;
   yearly: number;
-  perDevice: string;
+  /** Plan price ÷ devices — formatted per locale at render (see `eur`). */
+  perDevice: number;
   highlight?: boolean;
 }
 
 const DIRECT: DirectTier[] = [
-  { devices: 5, monthly: 9, yearly: 90, perDevice: "€1.80" },
-  { devices: 10, monthly: 15, yearly: 150, perDevice: "€1.50" },
-  { devices: 25, monthly: 35, yearly: 350, perDevice: "€1.40", highlight: true },
-  { devices: 50, monthly: 65, yearly: 650, perDevice: "€1.30" },
-  { devices: 100, monthly: 119, yearly: 1190, perDevice: "€1.19" },
+  { devices: 5, monthly: 9, yearly: 90, perDevice: 1.8 },
+  { devices: 10, monthly: 15, yearly: 150, perDevice: 1.5 },
+  { devices: 25, monthly: 35, yearly: 350, perDevice: 1.4, highlight: true },
+  { devices: 50, monthly: 65, yearly: 650, perDevice: 1.3 },
+  { devices: 100, monthly: 119, yearly: 1190, perDevice: 1.19 },
 ];
 
 const DIRECT_FEATURES = [
@@ -29,7 +30,8 @@ const DIRECT_FEATURES = [
 ];
 
 export function PricingCards() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.resolvedLanguage;
   const [annual, setAnnual] = useState(false);
 
   return (
@@ -81,15 +83,15 @@ export function PricingCards() {
                 {t("pricing.cards.upTo", { n: p.devices })}
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="display text-3xl font-bold text-ink mono tabular-nums">€{price}</span>
+                <span className="display text-3xl font-bold text-ink mono tabular-nums">{eur(price, lang)}</span>
                 <span className="mono text-xs text-muted-foreground">{t("pricing.cards.perMo")}</span>
               </div>
               <div className="mt-1 mono text-[11px] text-muted-foreground">
-                {t("pricing.cards.perDevice", { price: p.perDevice })}
+                {t("pricing.cards.perDevice", { price: eur(p.perDevice, lang, 2) })}
               </div>
               {annual && (
                 <div className="mt-1 mono text-[10px] text-[var(--brand-green)]">
-                  {t("pricing.cards.billedYearly", { total: p.yearly })}
+                  {t("pricing.cards.billedYearly", { total: p.yearly.toLocaleString(lang) })}
                 </div>
               )}
               <Link

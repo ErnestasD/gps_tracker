@@ -11,13 +11,19 @@ import { HeroDeck } from "@/components/site/HeroDeck";
 
 /** Prices are interpolated so the copy stays in one place per language. */
 const DIRECT_FROM_PRICE = 9;
+const DIRECT_FROM_DEVICES = 5;
 const TSP_FROM_PRICE = 149;
 const TSP_FROM_DEVICES = 200;
+
+/** Direct device cap (plans.ts `direct_100`) and the default telemetry retention
+ * window (packages/db/sql/001_positions.sql) — both stated as facts on the page. */
+const DIRECT_MAX_VEHICLES = 100;
+const RETENTION_MONTHS = 13;
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Orbetra — GPS tracking for small fleets (1–20 vehicles)" },
+      { title: "Orbetra — GPS tracking for small fleets (1–100 vehicles)" },
       { name: "description", content: "Simple, EU-hosted GPS tracking for small fleets and owner-operators. Live map, trip history, alerts. Setup in an afternoon. Flat per-vehicle pricing." },
     ],
   }),
@@ -41,8 +47,8 @@ function HomePage() {
           <TabShowcase />
           <div className="grid gap-5 md:grid-cols-3">
             <StatTile label={t("home.platform.setupLabel")} value={90} prefix="" suffix=" min" unit={t("home.platform.setupUnit")} />
-            <StatTile label={t("home.platform.rateLabel")} value={10} suffix="s" unit={t("home.platform.rateUnit")} />
-            <StatTile label={t("home.platform.uptimeLabel")} value={999} prefix="" suffix="" unit={t("home.platform.uptimeUnit")} />
+            <StatTile label={t("home.platform.rateLabel")} value={DIRECT_MAX_VEHICLES} prefix="" suffix="" unit={t("home.platform.rateUnit")} />
+            <StatTile label={t("home.platform.uptimeLabel")} value={RETENTION_MONTHS} prefix="" suffix=" mo" unit={t("home.platform.uptimeUnit")} />
           </div>
         </div>
       </Section>
@@ -189,7 +195,7 @@ function TwoTracks() {
       title: t("tracks.ownTitle"),
       body: t("tracks.ownBody"),
       points: [
-        t("tracks.ownP1", { price: DIRECT_FROM_PRICE }),
+        t("tracks.ownP1", { price: DIRECT_FROM_PRICE, devices: DIRECT_FROM_DEVICES }),
         t("tracks.ownP2"),
         t("tracks.ownP3"),
       ],

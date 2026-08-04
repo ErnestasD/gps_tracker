@@ -128,7 +128,7 @@ export const Route = createFileRoute("/terms")({
       <p>
         You retain ownership of your data. We process personal data in it under the{" "}
         <a href="/dpa">Data Processing Addendum</a>, as processor on your instructions. You can
-        export via API, CSV, XLSX or PDF at any time. Telemetry is retained for 13 months by
+        export via the API, or as CSV or PDF, at any time. Telemetry is retained for 13 months by
         default. We do not sell customer data and do not use it to train models or for advertising.
       </p>
 
@@ -160,7 +160,7 @@ export const Route = createFileRoute("/terms")({
 
       <h2>13. Availability and maintenance</h2>
       <p>
-        We aim for high availability and publish incidents on our status page. Planned maintenance
+        We aim for high availability and notify you of incidents that affect your workspace. Planned maintenance
         is announced in advance where practical and scheduled outside European business hours where
         possible. Emergency maintenance may be carried out at any time; we will tell you as soon as
         we reasonably can. Downtime caused by your systems, your devices, mobile networks, GNSS

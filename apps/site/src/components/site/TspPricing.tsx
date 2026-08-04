@@ -2,14 +2,17 @@ import { Link } from "@tanstack/react-router";
 import { Check, ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { eur } from "@/lib/utils";
+
 interface TspPlan {
   /** Plan names are product names — deliberately identical in every language. */
   name: string;
   base: number;
   baseYearly: number;
   included: number;
-  perDevice: string;
-  overage: string;
+  /** Euro amounts — formatted per locale at render (see `eur`). */
+  perDevice: number;
+  overage: number;
   /** i18n keys (or a resolved string for the "Everything in X" roll-up). */
   features: string[];
   highlight?: boolean;
@@ -21,8 +24,8 @@ export const TSP_PLANS: TspPlan[] = [
     base: 149,
     baseYearly: 1490,
     included: 200,
-    perDevice: "€0.75",
-    overage: "€0.60",
+    perDevice: 0.75,
+    overage: 0.6,
     features: [
       "tspPlans.start.f1",
       "tspPlans.start.f2",
@@ -35,8 +38,8 @@ export const TSP_PLANS: TspPlan[] = [
     base: 399,
     baseYearly: 3990,
     included: 750,
-    perDevice: "€0.53",
-    overage: "€0.40",
+    perDevice: 0.53,
+    overage: 0.4,
     features: [
       "tspPlans.grow.f2",
       "tspPlans.grow.f3",
@@ -49,8 +52,8 @@ export const TSP_PLANS: TspPlan[] = [
     base: 899,
     baseYearly: 8990,
     included: 2500,
-    perDevice: "€0.36",
-    overage: "€0.35",
+    perDevice: 0.36,
+    overage: 0.35,
     features: [
       "tspPlans.scale.f2",
       "tspPlans.scale.f3",
@@ -88,16 +91,16 @@ export function TspPricing() {
               — {p.name.toUpperCase()}
             </div>
             <div className="mt-5 flex items-baseline gap-1">
-              <span className="display text-5xl font-bold text-ink mono tabular-nums">€{p.base}</span>
+              <span className="display text-5xl font-bold text-ink mono tabular-nums">{eur(p.base, i18n.resolvedLanguage)}</span>
               <span className="mono text-sm text-muted-foreground">{t("tspPlans.base")}</span>
             </div>
             <div className="mt-2 space-y-1 text-sm">
               <div className="text-ink/85">
                 {t("tspPlans.included", { n: num(p.included) })}
-                <span className="text-muted-foreground">{t("tspPlans.perDevice", { price: p.perDevice })}</span>
+                <span className="text-muted-foreground">{t("tspPlans.perDevice", { price: eur(p.perDevice, i18n.resolvedLanguage, 2) })}</span>
               </div>
               <div className="mono text-xs text-muted-foreground">
-                {t("tspPlans.overage", { price: p.overage })}
+                {t("tspPlans.overage", { price: eur(p.overage, i18n.resolvedLanguage, 2) })}
               </div>
               <div className="mono text-xs text-[var(--brand-green)]">
                 {t("tspPlans.yearly", { total: num(p.baseYearly) })}
