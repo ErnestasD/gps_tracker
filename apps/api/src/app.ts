@@ -60,6 +60,8 @@ export interface ApiDeps extends WsDeps {
   smsQuota?: { perDevicePerDay: number; perTenantPerDay: number; globalPerDay: number }
   /** Fired when a send is refused by a quota; wired to `sms_quota_rejected_total` in main.ts. */
   onSmsQuotaRejected?: (scope: 'device' | 'tenant' | 'global') => void
+  /** Fired when a verified Stripe subscription webhook provisioned nothing; wired to a counter. */
+  onWebhookUnmatched?: (reason: 'no_tenant' | 'unmappable') => void
   /** GDPR job enqueuers (E08-4, ADR-020 addendum); routes 503 when absent. */
   gdpr?: {
     enqueueErase(data: { deviceId: string; tenantId: string }): Promise<void>
@@ -99,6 +101,8 @@ export interface ApiProm {
   setWsClients: (n: number) => void
   /** Sends refused by an SMS quota, by which ceiling tripped. `global` = the platform breaker. */
   smsQuotaRejected: Counter
+  /** Verified Stripe subscription webhooks that provisioned NOTHING — a paying customer with no plan. */
+  billingWebhookUnmatched: Counter
 }
 
 export function createApiProm(): ApiProm {
@@ -122,7 +126,13 @@ export function createApiProm(): ApiProm {
     labelNames: ['scope'],
     registers: [registry],
   })
-  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected }
+  const billingWebhookUnmatched = new Counter({
+    name: 'billing_webhook_unmatched_total',
+    help: 'signature-verified Stripe subscription webhooks that matched no tenant (paying customer left unprovisioned)',
+    labelNames: ['reason'],
+    registers: [registry],
+  })
+  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched }
 }
 
 /**
@@ -226,7 +236,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
 
   // PUBLIC Stripe webhook (ADR-024) — before the /v1/* auth guard (Stripe carries no JWT);
   // raw body + signature verified inside. Manifest-exempt.
-  mountStripeWebhook(app, { db: deps.db, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl })
+  mountStripeWebhook(app, { db: deps.db, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl, ...(deps.onWebhookUnmatched !== undefined ? { onWebhookUnmatched: deps.onWebhookUnmatched } : {}) })
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)

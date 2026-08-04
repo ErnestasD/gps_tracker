@@ -1345,7 +1345,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const autoCode = data.code === undefined // an auto-generated code collision is retryable
         for (let attempt = 0; ; attempt++) {
           try {
-            const created = await db.affiliates.create({ userId: auth(c).userId }, { ...data, code: data.code ?? genAffiliateCode() })
+            const created = await db.affiliates.create(scopeOf(auth(c)), { userId: auth(c).userId }, { ...data, code: data.code ?? genAffiliateCode() })
             return json(c, created, 201)
           } catch (err) {
             // ONLY a real unique clash → 409; any other error propagates to the 500 net (review MED:
@@ -1363,7 +1363,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, affiliateUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
-        const row = await db.affiliates.update({ userId: auth(c).userId }, id(c), data)
+        const row = await db.affiliates.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
     // issue a one-time set/reset-password link for the partner's self-service login (F5). The plaintext
@@ -1382,7 +1382,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, commissionStatusUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
-        const row = await db.affiliates.setCommissionStatus(id(c), data.status)
+        const row = await db.affiliates.setCommissionStatus(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data.status)
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
   ]

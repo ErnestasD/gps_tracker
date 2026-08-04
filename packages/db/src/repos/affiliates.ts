@@ -9,7 +9,8 @@ import type { Affiliate, AffiliateStatus, Commission, CommissionStatus, PrismaCl
 export type AffiliateView = Omit<Affiliate, 'passwordHash'>
 
 import { isUniqueViolation } from '../errors.js'
-import type { Actor } from '../scope.js'
+import type { Actor, Scope } from '../scope.js'
+import type { AuditRepo } from './audit.js'
 
 /**
  * A unique-constraint clash on create: `field` says WHICH one (email/code) so the caller can react
@@ -91,8 +92,8 @@ export interface AffiliateRepo {
    *  `passwordHash`, so it must never be piped to a response. The API-facing reads return
    *  {@link AffiliateView}. */
   getActiveByCode(code: string): Promise<Affiliate | null>
-  create(actor: Actor, data: AffiliateCreate): Promise<AffiliateView>
-  update(actor: Actor, id: string, data: AffiliateUpdate): Promise<AffiliateView | null>
+  create(scope: Scope, actor: Actor, data: AffiliateCreate): Promise<AffiliateView>
+  update(scope: Scope, actor: Actor, id: string, data: AffiliateUpdate): Promise<AffiliateView | null>
   /** Accrue a commission, idempotent on sourceInvoiceId (a webhook retry is a no-op → returns null). */
   accrueCommission(data: CommissionAccrual): Promise<Commission | null>
   /**
@@ -103,7 +104,7 @@ export interface AffiliateRepo {
    */
   accrueForPaidInvoice(invoice: PaidInvoice): Promise<Commission | null>
   listCommissions(affiliateId?: string): Promise<Commission[]>
-  setCommissionStatus(id: string, status: CommissionStatus): Promise<Commission | null>
+  setCommissionStatus(scope: Scope, actor: Actor, id: string, status: CommissionStatus): Promise<Commission | null>
 
   // ── partner self-service auth (F5) — UNSCOPED by design (a partner is not a tenant user) ──────────
   /** Login lookup by email (partner sign-in). Returns the hash + status so the caller can argon2-verify
@@ -138,7 +139,15 @@ const PUBLIC_SELECT = {
   createdAt: true,
 } as const
 
-export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
+/**
+ * AUDIT (audit MED). This repo was the only mutating one constructed WITHOUT the audit repo, and it
+ * shows in the code it left behind: `create`/`update` accepted an `Actor` and ignored it, `update`
+ * read `before` and used it only for a null check, and `setCommissionStatus` took no actor at all.
+ * These are the money controls — the payout percentage, the commission window, and the paid/void
+ * mark on an individual accrual — and they were mutable with no trace of who or when. A commission
+ * dispute with a partner had nothing to reconstruct.
+ */
+export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): AffiliateRepo {
   return {
     list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' }, select: PUBLIC_SELECT }),
     get: (id) => prisma.affiliate.findUnique({ where: { id }, select: PUBLIC_SELECT }),
@@ -156,9 +165,9 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
         LIMIT 1`
       return rows[0] ?? null
     },
-    create: async (_actor, data) => {
+    create: async (scope, actor, data) => {
       try {
-        return await prisma.affiliate.create({
+        const created = await prisma.affiliate.create({
           select: PUBLIC_SELECT,
           data: {
             name: data.name,
@@ -168,15 +177,22 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
             ...(data.commissionMonths !== undefined ? { commissionMonths: data.commissionMonths } : {}),
           },
         })
+        await audit.record(scope, actor, { action: 'create', entity: 'affiliate', entityId: created.id, after: created })
+        return created
       } catch (err) {
         if (isUniqueViolation(err)) throw new AffiliateConflictError(conflictField(err))
         throw err // a real DB fault must reach the API's 500 net, NOT masquerade as a conflict
       }
     },
-    update: async (_actor, id, data) => {
-      const before = await prisma.affiliate.findUnique({ where: { id }, select: { id: true } })
+    update: async (scope, actor, id, data) => {
+      // `before` is the WHOLE point of an audit row on this table: commissionPct and
+      // commissionMonths are the payout terms, and a silent edit is the difference between a
+      // partner being paid 20% and 2% with nothing to point at afterwards.
+      const before = await prisma.affiliate.findUnique({ where: { id }, select: PUBLIC_SELECT })
       if (before === null) return null
-      return prisma.affiliate.update({ where: { id }, data, select: PUBLIC_SELECT })
+      const after = await prisma.affiliate.update({ where: { id }, data, select: PUBLIC_SELECT })
+      await audit.record(scope, actor, { action: 'update', entity: 'affiliate', entityId: id, before, after })
+      return after
     },
     accrueCommission: async (data) => {
       // ON CONFLICT (sourceInvoiceId) DO NOTHING semantics via a guarded create — a duplicate webhook
@@ -230,10 +246,19 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
     },
     listCommissions: (affiliateId) =>
       prisma.commission.findMany({ where: affiliateId !== undefined ? { affiliateId } : {}, orderBy: { createdAt: 'desc' } }),
-    setCommissionStatus: async (id, status) => {
+    setCommissionStatus: async (scope, actor, id, status) => {
       const before = await prisma.commission.findUnique({ where: { id } })
       if (before === null) return null
-      return prisma.commission.update({ where: { id }, data: { status } })
+      const after = await prisma.commission.update({ where: { id }, data: { status } })
+      // marking an accrual paid/void IS the payout decision — it must be attributable
+      await audit.record(scope, actor, {
+        action: 'update',
+        entity: 'commission',
+        entityId: id,
+        before: { status: before.status, amountCents: before.amountCents, affiliateId: before.affiliateId },
+        after: { status: after.status, amountCents: after.amountCents, affiliateId: after.affiliateId },
+      })
+      return after
     },
     findByEmailForAuth: (email) =>
       prisma.affiliate.findUnique({ where: { email }, select: { id: true, email: true, passwordHash: true, status: true } }),

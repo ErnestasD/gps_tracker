@@ -14,6 +14,12 @@ import { createApp } from '../src/app.js'
 import type { StripeEvent, StripeGateway } from '../src/billing/stripe.js'
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 
+/** Affiliates are platform-level; audit rows are filed under the acting admin's own tenant. */
+const AUDIT_USER = '00000000-0000-0000-0000-0000000000f2'
+let auditScope: { tenantId: string }
+/** reasons a verified webhook provisioned nothing — the signal that used to not exist at all */
+const unmatched: string[] = []
+
 /**
  * Billing API (ADR-024). A FAKE StripeGateway records calls and lets tests craft webhook events:
  * `constructEvent` treats the raw body as the event JSON and accepts only the signature 'valid', so
@@ -103,6 +109,7 @@ beforeAll(async () => {
   redis = new Redis(redisC.getMappedPort(6379), redisC.getHost(), opts)
   redisSub = new Redis(redisC.getMappedPort(6379), redisC.getHost(), opts)
   db = createDb(databaseUrl)
+  auditScope = { tenantId: (await db.tenants.create({ userId: AUDIT_USER }, { name: 'Platform (audit scope)' })).id }
 
   const s1 = await seedUser({ databaseUrl, email: 'a@t1.test', password: 'password12', role: 'tsp_admin', tenantName: 'T1' })
   t1 = s1.tenantId
@@ -115,7 +122,7 @@ beforeAll(async () => {
     lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
   }
-  const app = createApp({ ...common, stripe: fakeStripe })
+  const app = createApp({ ...common, stripe: fakeStripe, onWebhookUnmatched: (r) => unmatched.push(r) })
   const appOff = createApp({ ...common }) // no stripe → not configured
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
@@ -156,6 +163,18 @@ describe('billing lifecycle (ADR-024)', () => {
 
     const after = (await (await req(port, '/v1/billing', t1Token)).json()) as BillingView
     expect(after.hasCustomer).toBe(true) // customer id persisted by the route
+  })
+
+  it('a verified webhook that matches NO tenant is acked but LOUD (audit MED)', async () => {
+    // `applySubscriptionEvent` returns false when it matched no row — the repo returns it precisely
+    // so the caller can tell "applied" from "matched nothing", and the caller discarded it. Stripe
+    // saw 200, never retried, and a paying customer stayed unprovisioned forever with no log and no
+    // metric. Reachable for real: checkout creates the Stripe customer and persists it in two
+    // steps, and the per-tenant lock around them falls through on a Redis blip.
+    const before = unmatched.length
+    const res = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_orphan', 'cus_nobody_has_this', 'customer.subscription.updated', 'active', 900), { 'stripe-signature': 'valid' })
+    expect(res.status).toBe(200) // still acked — a retry cannot conjure a missing customer mapping
+    expect(unmatched.slice(before)).toEqual(['no_tenant']) // …but it is now countable and alertable
   })
 
   it('subscription state is set ONLY by a signature-verified webhook', async () => {
@@ -375,8 +394,8 @@ describe('billing lifecycle (ADR-024)', () => {
 
   it('invoice.payment_succeeded accrues the affiliate commission for a referred tenant (F4), idempotently', async () => {
     const actor = { userId: '00000000-0000-0000-0000-0000000000f4' }
-    const aff = await db.affiliates.create(actor, { name: 'Webhook Partner', email: 'wh@partner.co', code: 'WHOOK1', commissionPct: 20, commissionMonths: 12 })
-    await db.affiliates.update(actor, aff.id, { status: 'active' })
+    const aff = await db.affiliates.create(auditScope, actor, { name: 'Webhook Partner', email: 'wh@partner.co', code: 'WHOOK1', commissionPct: 20, commissionMonths: 12 })
+    await db.affiliates.update(auditScope, actor, aff.id, { status: 'active' })
     const tenant = await db.tenants.create(actor, { name: 'Referred via webhook', referredByAffiliateId: aff.id })
     await db.tenants.setStripeCustomer(tenant.id, 'cus_whook')
 

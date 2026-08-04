@@ -15,6 +15,8 @@ import { createDb, type Db } from '../src/index.js'
 const IMAGE = 'timescale/timescaledb-ha:pg16'
 const PKG_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const actor = { userId: '00000000-0000-0000-0000-00000000000f' }
+/** Affiliates are platform-level; the audit row is filed under the acting admin's own tenant. */
+let scope: { tenantId: string }
 
 let container: StartedTestContainer
 let db: Db
@@ -29,6 +31,8 @@ beforeAll(async () => {
   const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/orbetra`
   execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], { cwd: PKG_DIR, env: { ...process.env, DATABASE_URL: url }, encoding: 'utf8' })
   db = createDb(url)
+  // audit rows need a real tenant (FK-free but the column is meaningful) — a platform admin's own
+  scope = { tenantId: (await db.tenants.create(actor, { name: 'Platform' })).id }
 }, 300_000)
 
 afterAll(async () => {
@@ -38,7 +42,7 @@ afterAll(async () => {
 
 describe('affiliates repo', () => {
   it('creates an affiliate with a referral code + default commission terms', async () => {
-    const a = await db.affiliates.create(actor, { name: 'Acme Partners', email: 'acme@partner.co', code: 'ACME10' })
+    const a = await db.affiliates.create(scope, actor, { name: 'Acme Partners', email: 'acme@partner.co', code: 'ACME10' })
     expect(a.status).toBe('pending')
     expect(Number(a.commissionPct)).toBe(20)
     expect(a.commissionMonths).toBe(12)
@@ -46,30 +50,30 @@ describe('affiliates repo', () => {
   })
 
   it('throws a typed AffiliateConflictError naming the clashing field (email vs code)', async () => {
-    await db.affiliates.create(actor, { name: 'Uniq', email: 'uniq@partner.co', code: 'UNIQ1' })
+    await db.affiliates.create(scope, actor, { name: 'Uniq', email: 'uniq@partner.co', code: 'UNIQ1' })
     // a duplicate email → field 'email' (a real DB fault would instead propagate, not masquerade as 409)
-    await expect(db.affiliates.create(actor, { name: 'X', email: 'uniq@partner.co', code: 'OTHER1' }))
+    await expect(db.affiliates.create(scope, actor, { name: 'X', email: 'uniq@partner.co', code: 'OTHER1' }))
       .rejects.toMatchObject({ name: 'AffiliateConflictError', field: 'email' })
     // a duplicate code → field 'code' (the route retries an AUTO-generated code clash on this signal)
-    await expect(db.affiliates.create(actor, { name: 'X', email: 'other@partner.co', code: 'UNIQ1' }))
+    await expect(db.affiliates.create(scope, actor, { name: 'X', email: 'other@partner.co', code: 'UNIQ1' }))
       .rejects.toMatchObject({ name: 'AffiliateConflictError', field: 'code' })
   })
 
   it('getActiveByCode attributes ONLY an active affiliate (pending/suspended never attribute)', async () => {
-    const a = await db.affiliates.create(actor, { name: 'Beta', email: 'beta@partner.co', code: 'BETA20', commissionPct: 25, commissionMonths: 6 })
+    const a = await db.affiliates.create(scope, actor, { name: 'Beta', email: 'beta@partner.co', code: 'BETA20', commissionPct: 25, commissionMonths: 6 })
     // pending → no attribution
     expect(await db.affiliates.getActiveByCode('BETA20')).toBeNull()
-    await db.affiliates.update(actor, a.id, { status: 'active' })
+    await db.affiliates.update(scope, actor, a.id, { status: 'active' })
     const found = await db.affiliates.getActiveByCode('BETA20')
     expect(found?.id).toBe(a.id)
     expect(Number(found?.commissionPct)).toBe(25)
     // suspended → attribution stops
-    await db.affiliates.update(actor, a.id, { status: 'suspended' })
+    await db.affiliates.update(scope, actor, a.id, { status: 'suspended' })
     expect(await db.affiliates.getActiveByCode('BETA20')).toBeNull()
   })
 
   it('accrues a commission idempotently on the source invoice and marks it paid', async () => {
-    const aff = await db.affiliates.create(actor, { name: 'Ref Co', email: 'ref@partner.co', code: 'REF30' })
+    const aff = await db.affiliates.create(scope, actor, { name: 'Ref Co', email: 'ref@partner.co', code: 'REF30' })
     // a referred tenant generates the payment
     const tenant = await db.tenants.create(actor, { name: 'Referred Tenant' })
 
@@ -81,13 +85,13 @@ describe('affiliates repo', () => {
     expect(dup).toBeNull()
     expect(await db.affiliates.listCommissions(aff.id)).toHaveLength(1)
 
-    const paid = await db.affiliates.setCommissionStatus(c1!.id, 'paid')
+    const paid = await db.affiliates.setCommissionStatus(scope, actor, c1!.id, 'paid')
     expect(paid?.status).toBe('paid')
   })
 
   describe('partner auth (F5)', () => {
     it('findByEmailForAuth + setPassword; consumePwToken is single-use and expiry-guarded', async () => {
-      const a = await db.affiliates.create(actor, { name: 'Auth Co', email: 'auth@partner.co', code: 'AUTHC1' })
+      const a = await db.affiliates.create(scope, actor, { name: 'Auth Co', email: 'auth@partner.co', code: 'AUTHC1' })
       const found = await db.affiliates.findByEmailForAuth('auth@partner.co')
       expect(found).toMatchObject({ id: a.id, email: 'auth@partner.co', passwordHash: null, status: 'pending' })
       expect(await db.affiliates.findByEmailForAuth('nobody@partner.co')).toBeNull()
@@ -111,8 +115,8 @@ describe('affiliates repo', () => {
 
   describe('accrueForPaidInvoice (F4 webhook path)', () => {
     it('accrues the partner cut for a referred tenant within the window, idempotently', async () => {
-      const aff = await db.affiliates.create(actor, { name: 'Win Co', email: 'win@partner.co', code: 'WINC1', commissionPct: 20, commissionMonths: 12 })
-      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const aff = await db.affiliates.create(scope, actor, { name: 'Win Co', email: 'win@partner.co', code: 'WINC1', commissionPct: 20, commissionMonths: 12 })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'active' })
       const tenant = await db.tenants.create(actor, { name: 'Win Tenant', referredByAffiliateId: aff.id })
       await db.tenants.setStripeCustomer(tenant.id, 'cus_win')
 
@@ -127,8 +131,8 @@ describe('affiliates repo', () => {
     })
 
     it('windows from the FIRST payment: the first always accrues; a later one past commissionMonths does not', async () => {
-      const aff = await db.affiliates.create(actor, { name: 'Exp Co', email: 'exp@partner.co', code: 'EXPC1', commissionMonths: 6 })
-      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const aff = await db.affiliates.create(scope, actor, { name: 'Exp Co', email: 'exp@partner.co', code: 'EXPC1', commissionMonths: 6 })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'active' })
       const tenant = await db.tenants.create(actor, { name: 'Exp Tenant', referredByAffiliateId: aff.id })
       await db.tenants.setStripeCustomer(tenant.id, 'cus_exp')
       // the FIRST payment always accrues (a trial delaying it must NOT shrink the window)
@@ -143,15 +147,15 @@ describe('affiliates repo', () => {
     })
 
     it('resolves a referral code case-insensitively (?ref=whook1 → stored WHOOK1)', async () => {
-      const aff = await db.affiliates.create(actor, { name: 'Case Co', email: 'case@partner.co', code: 'WHOOK1' })
-      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const aff = await db.affiliates.create(scope, actor, { name: 'Case Co', email: 'case@partner.co', code: 'WHOOK1' })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'active' })
       expect((await db.affiliates.getActiveByCode('whook1'))?.id).toBe(aff.id)
       expect((await db.affiliates.getActiveByCode('WhOoK1'))?.id).toBe(aff.id)
     })
 
     it('matches EXACTLY — LIKE wildcards in a ?ref never hijack another partner (review HIGH)', async () => {
-      const aff = await db.affiliates.create(actor, { name: 'Wild Co', email: 'wild@partner.co', code: 'AUTUMN1' })
-      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const aff = await db.affiliates.create(scope, actor, { name: 'Wild Co', email: 'wild@partner.co', code: 'AUTUMN1' })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'active' })
       // `_` is a LIKE single-char wildcard and `%` matches anything — under the old ILIKE lookup
       // `AUTUMN_` matched AUTUMN1 and credited a partner the visitor never referenced. Attribution is
       // now reachable anonymously (public signup), so this is real commission money.
@@ -163,13 +167,13 @@ describe('affiliates repo', () => {
     })
 
     it('rejects a second affiliate whose code differs only by case (functional unique index)', async () => {
-      await db.affiliates.create(actor, { name: 'Dup A', email: 'dupa@partner.co', code: 'PROMO9' })
-      await expect(db.affiliates.create(actor, { name: 'Dup B', email: 'dupb@partner.co', code: 'promo9' })).rejects.toThrow()
+      await db.affiliates.create(scope, actor, { name: 'Dup A', email: 'dupa@partner.co', code: 'PROMO9' })
+      await expect(db.affiliates.create(scope, actor, { name: 'Dup B', email: 'dupb@partner.co', code: 'promo9' })).rejects.toThrow()
     })
 
     it('SNAPSHOTS the terms with the entry — editing the affiliate never re-prices history (§6.9)', async () => {
-      const aff = await db.affiliates.create(actor, { name: 'Snap Co', email: 'snap@partner.co', code: 'SNAPC1', commissionPct: 20, commissionMonths: 12 })
-      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const aff = await db.affiliates.create(scope, actor, { name: 'Snap Co', email: 'snap@partner.co', code: 'SNAPC1', commissionPct: 20, commissionMonths: 12 })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'active' })
       const tenant = await db.tenants.create(actor, { name: 'Snap Tenant', referredByAffiliateId: aff.id })
       await db.tenants.setStripeCustomer(tenant.id, 'cus_snap')
       const paidAt = new Date()
@@ -179,15 +183,15 @@ describe('affiliates repo', () => {
       expect(c?.baseAmountCents).toBe(10_000) // the payment it was computed from
       expect(c?.paidAt?.getTime()).toBe(paidAt.getTime()) // Stripe's clock, not the DB insert time
       // raising the rate later must NOT change what was already earned
-      await db.affiliates.update(actor, aff.id, { commissionPct: 90 })
+      await db.affiliates.update(scope, actor, aff.id, { commissionPct: 90 })
       const stored = (await db.affiliates.listCommissions(aff.id))[0]
       expect(stored?.amountCents).toBe(2_000)
       expect(Number(stored?.ratePct)).toBe(20)
     })
 
     it('the earning window anchors on the FIRST PAYMENT time, not the row insert time', async () => {
-      const aff = await db.affiliates.create(actor, { name: 'Anchor Co', email: 'anchor@partner.co', code: 'ANCHR1', commissionMonths: 6 })
-      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const aff = await db.affiliates.create(scope, actor, { name: 'Anchor Co', email: 'anchor@partner.co', code: 'ANCHR1', commissionMonths: 6 })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'active' })
       const tenant = await db.tenants.create(actor, { name: 'Anchor Tenant', referredByAffiliateId: aff.id })
       await db.tenants.setStripeCustomer(tenant.id, 'cus_anchor')
       // the first payment happened well in the PAST (a delayed/replayed webhook writes the row now)
@@ -200,8 +204,8 @@ describe('affiliates repo', () => {
     })
 
     it('a tenant carrying commissions cannot be hard-deleted — the ledger survives (audit HIGH)', async () => {
-      const aff = await db.affiliates.create(actor, { name: 'Ledger Co', email: 'ledger@partner.co', code: 'LEDGR1' })
-      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const aff = await db.affiliates.create(scope, actor, { name: 'Ledger Co', email: 'ledger@partner.co', code: 'LEDGR1' })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'active' })
       const tenant = await db.tenants.create(actor, { name: 'Ledger Tenant', referredByAffiliateId: aff.id })
       await db.affiliates.accrueCommission({ affiliateId: aff.id, tenantId: tenant.id, amountCents: 500, currency: 'eur', sourceInvoiceId: 'in_ledger_1' })
       await expect(db.tenants.remove(actor, tenant.id)).rejects.toMatchObject({ name: 'TenantHasCommissionsError' })
@@ -209,8 +213,8 @@ describe('affiliates repo', () => {
     })
 
     it('floors a fractional commission rate in the platform’s favour', async () => {
-      const aff = await db.affiliates.create(actor, { name: 'Frac Co', email: 'frac@partner.co', code: 'FRACC1', commissionPct: 33.33, commissionMonths: 12 })
-      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const aff = await db.affiliates.create(scope, actor, { name: 'Frac Co', email: 'frac@partner.co', code: 'FRACC1', commissionPct: 33.33, commissionMonths: 12 })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'active' })
       const tenant = await db.tenants.create(actor, { name: 'Frac Tenant', referredByAffiliateId: aff.id })
       await db.tenants.setStripeCustomer(tenant.id, 'cus_frac')
       // 33.33% of 100.00 = 33.33 → floor to 3333 cents
@@ -226,11 +230,11 @@ describe('affiliates repo', () => {
       // unknown customer
       expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_nope', invoiceId: 'in_x', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })).toBeNull()
       // suspended affiliate ⇒ commissions stop
-      const aff = await db.affiliates.create(actor, { name: 'Sus Co', email: 'sus@partner.co', code: 'SUSC1' })
-      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const aff = await db.affiliates.create(scope, actor, { name: 'Sus Co', email: 'sus@partner.co', code: 'SUSC1' })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'active' })
       const tenant = await db.tenants.create(actor, { name: 'Sus Tenant', referredByAffiliateId: aff.id })
       await db.tenants.setStripeCustomer(tenant.id, 'cus_sus')
-      await db.affiliates.update(actor, aff.id, { status: 'suspended' })
+      await db.affiliates.update(scope, actor, aff.id, { status: 'suspended' })
       expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_sus', invoiceId: 'in_sus_1', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })).toBeNull()
     })
   })
