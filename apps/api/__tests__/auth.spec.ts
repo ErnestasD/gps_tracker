@@ -236,6 +236,44 @@ describe('E03-1 AC[1]: refresh rotation + family revocation', () => {
     expect((await refresh(winner)).status).toBe(401)
   })
 
+  it('a password reset LANDING MID-REFRESH cannot be outrun — the family stays dead (audit high)', async () => {
+    // The eviction paths are all `UPDATE refresh_tokens SET revoked_at WHERE revoked_at IS NULL`,
+    // which cannot match a row inserted after they ran. So a refresh in flight during a reset used
+    // to write an UNREVOKED successor and rotate for the full 14-day TTL — the reset evicted nobody.
+    // A re-read after the insert does not fix it either: under READ COMMITTED a reader never sees an
+    // UNCOMMITTED eviction. Only `rotate`'s SELECT … FOR UPDATE on the user row serializes the two.
+    // Fired repeatedly so both lock orders (eviction-first and rotation-first) are exercised.
+    const email = seeded.viewer.email
+    const viewerId = (await db.auth.users.findByEmailAllTenants(email))[0]!.id
+    for (let i = 0; i < 6; i++) {
+      const c = cookieOf(await login(email, PW))
+      const [refreshed] = await Promise.all([
+        refresh(c),
+        db.auth.refreshTokens.revokeAllForUser!(viewerId, new Date()),
+      ])
+      if (refreshed.status === 200) {
+        // rotation won the lock: the eviction ran after it, so its sweep covered the successor
+        expect((await refresh(cookieOf(refreshed))).status).toBe(401)
+      } else {
+        expect(refreshed.status).toBe(401) // eviction won: no successor was ever handed out
+      }
+      // either way NOTHING in that family is live afterwards
+      expect((await refresh(c)).status).toBe(401)
+    }
+  })
+
+  it('an ordinary rotation is unaffected by the epoch (no self-inflicted logout)', async () => {
+    // the fence keys on User.sessionsRevokedAt, not on "any revoked sibling" — otherwise the
+    // reuse-detection path (two tabs restoring at once) would 401 the legitimate winner too
+    const c = cookieOf(await login(seeded.tsp_admin.email, PW))
+    let cur = c
+    for (let i = 0; i < 3; i++) {
+      const res = await refresh(cur)
+      expect(res.status).toBe(200)
+      cur = cookieOf(res)
+    }
+  })
+
   it('refresh returns a fresh session with current user data', async () => {
     const c = cookieOf(await login(seeded.tsp_admin.email, PW))
     const res = await refresh(c)

@@ -10,6 +10,7 @@ import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
 import { problem } from './auth/middleware.js'
 
 import { createAuthRoutes } from './auth/login.js'
+import { Argon2OverloadedError, argon2QueueDepth } from './auth/passwords.js'
 import { createApiKeyAuth } from './auth/apiKey.js'
 import { hasEntitlement } from './auth/entitlements.js'
 import { authMiddleware, type AuthEnv } from './auth/middleware.js'
@@ -97,6 +98,18 @@ export interface ApiProm {
 export function createApiProm(): ApiProm {
   const registry = new Registry()
   const g = new Gauge({ name: 'ws_clients', help: 'live WS connections', registers: [registry] })
+  // argon2 saturation. Every hashing route (login, password change/reset, signup, partner login)
+  // queues behind ONE process-wide semaphore, so a rising queue IS an authentication outage in
+  // progress — and past ARGON2_MAX_WAITING we shed with 503. A saturation signal nobody scrapes is
+  // not a signal, so it is registered here rather than merely exported (review LOW).
+  new Gauge({
+    name: 'argon2_queue_depth',
+    help: 'requests waiting for an argon2 slot (shed with 503 past the cap)',
+    registers: [registry],
+    collect() {
+      this.set(argon2QueueDepth())
+    },
+  })
   return { registry, setWsClients: (n) => g.set(n) }
 }
 
@@ -124,6 +137,12 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // this returns still carries the security headers (pinned by securityHeaders.spec).
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse()
+    // argon2 queue saturated: an honest, retryable 503 — never a 500, and never mistaken for
+    // "wrong password" (which would leak that the credential was even checked)
+    if (err instanceof Argon2OverloadedError) {
+      c.header('Retry-After', '5')
+      return problem(c, 503, 'Service Unavailable', 'password hashing is saturated, retry shortly')
+    }
     const mapped = dbErrorHttp(err)
     if (mapped !== null) {
       // log the code so a mis-mapped case (e.g. a would-be-400 P2023 from a body) is not silent
@@ -145,6 +164,29 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   }
 
   const getRemoteAddr = deps.getRemoteAddr ?? (() => '0.0.0.0')
+
+  // Global request-body cap. Every /v1 POST buffers the full body before zod runs, so without this a
+  // single caller can amplify server memory with an arbitrarily large one. 1 MB covers every normal
+  // payload; the CSV import (its own 2 MB field cap) gets a higher ceiling. Over-limit ⇒ 413.
+  //
+  // Registered BEFORE every route, not just the authenticated ones: Hono applies middleware only to
+  // handlers registered after it, so while this lived below the mounts, /v1/auth/login,
+  // /v1/public/pilot-request and the Stripe webhook were all UNCAPPED (audit high) — and those are
+  // exactly the unauthenticated ones. The Stripe handler reads c.req.text() before it can verify the
+  // signature, and none of them is behind Caddy's 64 KB cap (that applies only to the marketing
+  // host's /v1/public/*), so a few slow chunked uploads could OOM the process and take REST, the WS
+  // gateway and Caddy's on-demand-TLS ask down with it.
+  const GLOBAL_BODY_LIMIT = 1024 * 1024
+  const IMPORT_BODY_LIMIT = 3 * 1024 * 1024 // holds a 2 MB CSV + JSON wrapper with margin
+  const onBodyTooLarge = (c: Context) => problem(c, 413, 'Payload Too Large', 'request body too large')
+  const globalLimiter = bodyLimit({ maxSize: GLOBAL_BODY_LIMIT, onError: onBodyTooLarge }) as MiddlewareHandler<AuthEnv>
+  const importLimiter = bodyLimit({ maxSize: IMPORT_BODY_LIMIT, onError: onBodyTooLarge }) as MiddlewareHandler<AuthEnv>
+  const pickBodyLimit: MiddlewareHandler<AuthEnv> = (c, next) => {
+    const p = c.req.path
+    const isImport = p === '/v1/devices/import' || p === '/v1/devices/import/preview'
+    return (isImport ? importLimiter : globalLimiter)(c, next)
+  }
+  app.use('/v1/*', pickBodyLimit)
 
   // §6.6 auth routes (login/refresh/logout public; /me + /password guard themselves)
   app.route('/v1/auth', createAuthRoutes({ ...deps, db: deps.db.auth }, getRemoteAddr))
@@ -187,22 +229,6 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   const apiKeyAuth = createApiKeyAuth({ apiKeys: deps.db.apiKeys, redis: deps.redis, perMin: deps.apiKeyRateLimitPerMin ?? 600 })
   // REST-API access is a TSP-plus entitlement — reject a resolved key whose tenant lacks apiAccess
   app.use('/v1/*', authMiddleware({ jwtSecret: deps.jwtSecret, apiKey: apiKeyAuth, apiKeyEntitled: (tenantId) => hasEntitlement(deps.db, tenantId, 'apiAccess') }))
-
-  // Global request-body cap (audit MED): every /v1 POST buffers the full JSON body before zod runs,
-  // so without this a single caller can amplify server memory with an arbitrarily large body. 1 MB
-  // covers every normal payload; the CSV import (its own 2 MB field cap) gets a higher ceiling. A
-  // single per-request choice (never two overlapping limits) → over-limit ⇒ 413.
-  const GLOBAL_BODY_LIMIT = 1024 * 1024
-  const IMPORT_BODY_LIMIT = 3 * 1024 * 1024 // holds a 2 MB CSV + JSON wrapper with margin
-  const onBodyTooLarge = (c: Context) => problem(c, 413, 'Payload Too Large', 'request body too large')
-  const globalLimiter = bodyLimit({ maxSize: GLOBAL_BODY_LIMIT, onError: onBodyTooLarge }) as MiddlewareHandler<AuthEnv>
-  const importLimiter = bodyLimit({ maxSize: IMPORT_BODY_LIMIT, onError: onBodyTooLarge }) as MiddlewareHandler<AuthEnv>
-  const pickBodyLimit: MiddlewareHandler<AuthEnv> = (c, next) => {
-    const p = c.req.path
-    const isImport = p === '/v1/devices/import' || p === '/v1/devices/import/preview'
-    return (isImport ? importLimiter : globalLimiter)(c, next)
-  }
-  app.use('/v1/*', pickBodyLimit)
 
   // §6.6: GET /v1/ws-ticket → single-use ticket for wss://…/v1/stream?ticket=
   // (any authenticated role — live map is viewer-accessible)
@@ -281,7 +307,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   mountPush(app, { db: deps.db, vapidPublicKey: deps.vapidPublicKey })
 
   // API-key management (E06-3) — tenant-admin only; dedicated route, EXEMPT from the manifest.
-  mountApiKeys(app, { db: deps.db })
+  mountApiKeys(app, { db: deps.db, redis: deps.redis })
 
   return app
 }

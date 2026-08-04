@@ -93,6 +93,19 @@ describe('E06-3 API keys', () => {
     expect((await keyReq('/v1/devices', k.key!)).status).toBe(401) // now revoked
   })
 
+  it('revoking a key ALSO tears down the live WS stream it opened', async () => {
+    // REGRESSION (audit high): DELETE only stamped revokedAt. A key CAN open a stream (GET
+    // /v1/ws-ticket carries no role requirement and the OpenAPI spec lists apiKeyAuth for it), and
+    // the gateway's only teardown is a sweep on `ws:revoke:{userId}` — which for a key principal is
+    // the KEY id, and nothing ever wrote it. So REST 401'd and the UI showed the key revoked while
+    // the attacker's socket kept receiving every live position in the fleet until the API restarted.
+    const k = await createKey(t1Admin)
+    expect((await jwtReq(`/v1/api-keys/${k.id}`, t1Admin, 'DELETE')).status).toBe(200)
+    const marker = await redis.get(`ws:revoke:${k.id}`)
+    expect(marker).not.toBeNull() // the sweep's `t >= establishedAt` now closes the socket
+    expect(Number(marker)).toBeGreaterThan(0)
+  })
+
   it('isolation: tenant K2 admin cannot revoke a K1 key (404), and K1 cannot see K2 keys', async () => {
     const k = await createKey(t1Admin)
     expect((await jwtReq(`/v1/api-keys/${k.id}`, t2Admin, 'DELETE')).status).toBe(404)

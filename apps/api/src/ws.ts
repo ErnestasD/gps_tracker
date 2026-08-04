@@ -13,6 +13,10 @@ export interface WsAuthContext {
   /** carried for future per-role socket features (E08-2 commands); the fanout
    * filter keys on accountId presence only. Tickets live 30 s — no compat window. */
   role: Role
+  /** When the ticket was minted (ms). The socket's revocation clock starts HERE, not at redemption:
+   *  a holder who pre-fetches tickets in a loop would otherwise redeem one AFTER a revoke and get an
+   *  `establishedAt` newer than the marker, making the sweep a permanent miss (review high). */
+  issuedAtMs?: number
 }
 
 export interface WsDeps {
@@ -23,6 +27,9 @@ export interface WsDeps {
   /** How often the gateway re-validates live sockets against the revocation marker
    *  (audit MED — revoked sessions must not keep a live stream). Default 15 s. */
   revokeCheckIntervalMs?: number
+  /** Hard ceiling on one socket's lifetime (default 4 h). A stream is authorized only at connect,
+   *  so this is what makes plan/role/scope changes eventually reach an already-open one. */
+  maxSocketLifetimeMs?: number
 }
 
 /** Redis key prefix for the "all sessions revoked at" marker (audit MED). */
@@ -58,6 +65,17 @@ export async function markSessionsRevoked(redis: Redis, userId: string, at: numb
  * sub-second slip is harmless — the gateway's periodic sweep still tears down established sockets.
  * Fail-open on a redis blip (matches markSessionsRevoked's best-effort posture; sweep is the backstop).
  */
+export async function revokedAt(redis: Redis, userId: string, atMs: number): Promise<boolean> {
+  try {
+    const raw = await redis.get(`${WS_REVOKE_PREFIX}${userId}`)
+    if (raw === null) return false
+    const revokedAtMs = Number(raw)
+    return Number.isFinite(revokedAtMs) && revokedAtMs >= atMs
+  } catch {
+    return false // Redis blip: fail open here, the periodic sweep is the backstop
+  }
+}
+
 export async function revokedAfter(redis: Redis, userId: string, tokenIssuedAtS: number | undefined): Promise<boolean> {
   if (tokenIssuedAtS === undefined) return false
   try {
@@ -77,7 +95,7 @@ export async function revokedAfter(redis: Redis, userId: string, tokenIssuedAtS:
  */
 export async function issueTicket(deps: WsDeps, ctx: WsAuthContext): Promise<string> {
   const ticket = randomBytes(32).toString('hex')
-  await deps.redis.setex(`ticket:${ticket}`, deps.ticketTtlS ?? 30, JSON.stringify(ctx))
+  await deps.redis.setex(`ticket:${ticket}`, deps.ticketTtlS ?? 30, JSON.stringify({ ...ctx, issuedAtMs: Date.now() }))
   return ticket
 }
 
@@ -101,6 +119,7 @@ export function attachWsGateway(
   // revocation never reaches the one long-lived read credential. Cheap: one MGET over the
   // DISTINCT user ids currently connected.
   const revokeMs = deps.revokeCheckIntervalMs ?? 15_000
+  const maxLifetimeMs = deps.maxSocketLifetimeMs ?? 4 * 3_600_000
   const revokeTimer = setInterval(() => {
     void (async () => {
       const entries: { ws: WebSocket; ctx: WsAuthContext; establishedAt: number }[] = []
@@ -118,12 +137,18 @@ export function attachWsGateway(
         const v = markers[i]
         if (v != null) revokedAt.set(u, Number(v))
       })
+      const now = Date.now()
       for (const e of entries) {
         const t = revokedAt.get(e.ctx.userId)
-        // a socket opened at-or-before the revocation instant is no longer authorized
-        if (t !== undefined && t >= e.establishedAt) {
+        // A socket opened at-or-before the revocation instant is no longer authorized. The MAX
+        // LIFETIME is the second half of that guarantee (audit high): a stream is authorized exactly
+        // once, at connect, so without a ceiling nothing on an OPEN socket is ever re-evaluated — a
+        // plan downgrade to FLOOR_ENTITLEMENTS, an account move, a role change all keep streaming
+        // until the process restarts. Closing forces a reconnect with a fresh ticket, which
+        // re-authorizes; the SPA reconnects with backoff, so this is invisible in normal use.
+        if ((t !== undefined && t >= e.establishedAt) || now - e.establishedAt > maxLifetimeMs) {
           try {
-            e.ws.close(WS_REVOKED_CLOSE, 'session revoked')
+            e.ws.close(WS_REVOKED_CLOSE, t !== undefined && t >= e.establishedAt ? 'session revoked' : 'reauthorize')
           } catch {
             /* already closing */
           }
@@ -178,9 +203,21 @@ export function attachWsGateway(
         return
       }
       const ctx = JSON.parse(raw) as WsAuthContext
+      // A ticket authorizes as of the moment it was ISSUED. Refuse one that predates a revocation
+      // rather than letting the socket open and waiting for the sweep — and anchor `establishedAt`
+      // to issue time so a revoke landing in the redemption window is caught by the sweep too.
+      // Without this an API-key or JWT holder who kept a fresh ticket in hand simply redeemed it
+      // after the revoke and streamed on: `establishedAt > marker` made `t >= establishedAt` a
+      // permanent miss, so REST 401'd while the live feed kept flowing (review high).
+      const establishedAt = ctx.issuedAtMs ?? Date.now()
+      if (await revokedAt(deps.redis, ctx.userId, establishedAt)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+        socket.destroy()
+        return
+      }
       await ensureSubscription()
       wss.handleUpgrade(req, socket, head, (ws) => {
-        const entry = { ws, ctx, establishedAt: Date.now() }
+        const entry = { ws, ctx, establishedAt }
         const set = subscribers.get(ctx.tenantId) ?? new Set()
         set.add(entry)
         subscribers.set(ctx.tenantId, set)

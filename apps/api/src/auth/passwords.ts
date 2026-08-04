@@ -21,11 +21,37 @@ const OPTS = { algorithm: 2, ...ARGON2ID_PARAMS }
  * MAX_CONCURRENT×64 MB regardless of request shape; excess requests queue.
  */
 const MAX_CONCURRENT = Number(process.env['ARGON2_MAX_CONCURRENT'] ?? 8)
+/**
+ * Cap on the WAITING queue, not just the running slots (audit high). The semaphore bounded memory
+ * but the FIFO behind it was unbounded, so a flood on any hashing route grew an ever-longer queue
+ * and every legitimate login waited behind it — a slow, invisible authentication outage.
+ *
+ * Sized as a LATENCY budget, not a memory one: `slots × (targetWait / hashTime)`. At the measured
+ * ~115 ms/hash across 8 slots, 64 waiters ≈ 0.9 s of queueing before we shed. A memory-sized cap
+ * (thousands) technically bounds the queue while still making every login take half a minute —
+ * the outage survives, just with a 503 tail (review MED).
+ */
+const MAX_WAITING = Number(process.env['ARGON2_MAX_WAITING'] ?? 64)
+
+/** Thrown when the argon2 queue is saturated; callers map it to 503, never to "wrong password". */
+export class Argon2OverloadedError extends Error {
+  constructor() {
+    super('password hashing is saturated')
+    this.name = 'Argon2OverloadedError'
+  }
+}
+
 let active = 0
 const waiters: (() => void)[] = []
 
+/** Current queue depth — exported so the API can expose it as a metric (it is a saturation signal). */
+export const argon2QueueDepth = (): number => waiters.length
+
 async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (active >= MAX_CONCURRENT) await new Promise<void>((r) => waiters.push(r))
+  if (active >= MAX_CONCURRENT) {
+    if (waiters.length >= MAX_WAITING) throw new Argon2OverloadedError()
+    await new Promise<void>((r) => waiters.push(r))
+  }
   active++
   try {
     return await fn()
