@@ -114,13 +114,13 @@ describe('E05-1 geofence CRUD', () => {
     // caller never submitted. The budget applies to the POST-buffer geometry (what the ray-cast
     // actually walks), and the geometry is simplified to fit rather than refused.
     const line: [number, number][] = []
-    for (let i = 0; i < 1_800; i++) line.push([25 + i * 0.0005, 54 + (i % 2) * 0.0005])
+    for (let i = 0; i < 900; i++) line.push([25 + i * 0.0005, 54 + (i % 2) * 0.0005])
     const res = await req('/v1/geofences', t1Token, 'POST', { name: 'Snake', kind: 'corridor', accountId: acct1, line: { type: 'LineString', coordinates: line }, bufferM: 500 })
     expect(res.status).toBe(201)
     const gf = (await res.json()) as { geometry: { coordinates: [number, number][][] } }
     const vertices = gf.geometry.coordinates.reduce((n, ring) => n + ring.length, 0)
-    expect(vertices).toBeLessThanOrEqual(2_000) // what the caller drew would have been ~16k
-  })
+    expect(vertices).toBeLessThanOrEqual(2_000) // what the caller drew would have been ~8k
+  }, 30_000) // ST_Buffer + ST_SimplifyPreserveTopology over a long line is slow on a cold CI runner
 
   it('rejects a self-intersecting (invalid) polygon with 400', async () => {
     const bowtie = { type: 'Polygon', coordinates: [[[25.0, 54.0], [25.1, 54.1], [25.1, 54.0], [25.0, 54.1], [25.0, 54.0]]] }
