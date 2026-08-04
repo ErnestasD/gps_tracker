@@ -90,7 +90,14 @@ export class Session {
         })
     })
     socket.on('error', () => this.destroy())
-    socket.on('close', () => this.clearTimer())
+    // 'close' must release the paused accounting too, not just the timer. A GRACEFUL peer
+    // disconnect — the ordinary way a GPRS device drops a session — emits no 'error', so
+    // `destroy()` never ran, and `pollForDrain`'s tick returns early on `socket.destroyed`
+    // without decrementing either. So every paused socket whose peer hung up leaked +1 on
+    // `ingest_paused_sockets` forever. That gauge is the SOLE expression of the
+    // BackpressureSustained alert, so the leak turns it into a permanent false page — and, worse,
+    // hides a real one behind noise. Audit MED.
+    socket.on('close', () => this.releasePaused())
   }
 
   get authenticatedImei(): string {
@@ -99,12 +106,17 @@ export class Session {
 
   /** Old socket of the same IMEI is closed when a new one authenticates. */
   destroy(): void {
-    this.clearTimer()
-    if (this.paused) {
-      this.paused = false
-      this.deps.metrics.pausedSockets--
-    }
+    this.releasePaused()
     this.socket.destroy()
+  }
+
+  /** Drop the timer and give back the paused-socket count. Idempotent: 'close' fires after an
+   *  explicit destroy() too, and double-decrementing would drive the gauge negative forever. */
+  private releasePaused(): void {
+    this.clearTimer()
+    if (!this.paused) return
+    this.paused = false
+    this.deps.metrics.pausedSockets--
   }
 
   private armTimer(ms: number): void {
