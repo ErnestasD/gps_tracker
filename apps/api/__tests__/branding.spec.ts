@@ -184,6 +184,23 @@ describe('E03-5 public branding by Host + Caddy ask', () => {
     expect((await fetch(`${base()}/v1/internal/caddy-ask?domain=x.test`)).status).not.toBe(401)
     expect((await fetch(`${base()}/v1/branding`, { headers: { 'x-forwarded-host': 'x.test' } })).status).toBe(200)
   })
+
+  it('caddy-ask is INTERNAL: a request that came through the proxy is 404, not answered', async () => {
+    // Caddy calls the ask DIRECTLY over the compose network, so it carries no proxy headers.
+    // Anything arriving WITH them came from the internet — and this route is unauthenticated with a
+    // throttle keyed on the REQUESTED DOMAIN, so a stranger sending 10/min for someone else's
+    // white-label hostname makes it 429, which Caddy reads as "deny" and stops renewing that
+    // tenant's certificate. The Caddyfile 404s /v1/internal/* at every host block; this is the
+    // second lock, so a future host block that forgets it cannot silently re-open the door.
+    await verifiedDomain(t1Token, 'proxied.t1.test')
+    const proxied: Record<string, string>[] = [{ 'x-forwarded-for': '203.0.113.9' }, { 'x-forwarded-host': 'dash.orbetra.com' }]
+    for (const h of proxied) {
+      const res = await fetch(`${base()}/v1/internal/caddy-ask?domain=proxied.t1.test`, { headers: h })
+      expect(res.status, JSON.stringify(h)).toBe(404) // never 200/403 — not even the oracle
+    }
+    // …and the direct call Caddy actually makes still works
+    expect((await fetch(`${base()}/v1/internal/caddy-ask?domain=proxied.t1.test`)).status).toBe(200)
+  })
 })
 
 describe('E03-5 hardening (adversarial review)', () => {

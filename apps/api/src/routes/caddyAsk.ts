@@ -47,6 +47,18 @@ export function createPublicRoutes(deps: PublicDeps): Hono {
   const app = new Hono()
 
   app.get('/v1/internal/caddy-ask', async (c) => {
+    // INTERNAL ONLY. Caddy calls this DIRECTLY over the compose network
+    // (`ask http://api:3010/v1/internal/caddy-ask`), so the request carries no proxy headers. Any
+    // request that DID come through the proxy is by definition from the internet and must not be
+    // served: this route is unauthenticated by design and its throttle is keyed on the REQUESTED
+    // DOMAIN, so a stranger sending 10 requests/min for someone else's white-label hostname makes
+    // it 429 — and Caddy reads any non-2xx ask as "deny", so that tenant's certificate stops being
+    // issued or renewed. The 200/403 split is also an oracle for which hostnames are verified.
+    // The Caddyfile 404s /v1/internal/* at every public host block; this is the second lock, so a
+    // future host block that forgets it does not silently re-open the same door. Audit high.
+    if (c.req.header('x-forwarded-for') !== undefined || c.req.header('x-forwarded-host') !== undefined) {
+      return c.notFound()
+    }
     const domain = (c.req.query('domain') ?? '').toLowerCase()
     if (!isHostname(domain)) return c.text('bad domain', 400)
     // rate-limit per DOMAIN (fixed window, ATOMIC re-arm) — a stranded TTL-less key would else

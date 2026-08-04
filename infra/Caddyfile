@@ -55,6 +55,15 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		-Server
 	}
+	# INTERNAL-ONLY: /v1/internal/* (the on-demand-TLS ask) is called by Caddy over the compose
+	# network and must never be reachable from the internet. It is unauthenticated by design, and
+	# its throttle is keyed on the REQUESTED DOMAIN — which turned it into an anonymous kill-switch:
+	# 10 requests/min for someone else's white-label hostname makes the ask return 429, Caddy reads
+	# any non-2xx as "deny", and that tenant's certificate stops being issued or renewed. The 200/403
+	# split is also an unauthenticated oracle for which hostnames are verified. Audit high.
+	handle /v1/internal/* {
+		respond 404
+	}
 	handle /v1/* {
 		# /v1/* includes the WS upgrade at /v1/stream — the API rejects any other /ws path
 		reverse_proxy api:3010
@@ -77,6 +86,15 @@ http://{$ORBETRA_STAGING_HOST:staging-host.invalid} {
 		Referrer-Policy "no-referrer"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		-Server
+	}
+	# INTERNAL-ONLY: /v1/internal/* (the on-demand-TLS ask) is called by Caddy over the compose
+	# network and must never be reachable from the internet. It is unauthenticated by design, and
+	# its throttle is keyed on the REQUESTED DOMAIN — which turned it into an anonymous kill-switch:
+	# 10 requests/min for someone else's white-label hostname makes the ask return 429, Caddy reads
+	# any non-2xx as "deny", and that tenant's certificate stops being issued or renewed. The 200/403
+	# split is also an unauthenticated oracle for which hostnames are verified. Audit high.
+	handle /v1/internal/* {
+		respond 404
 	}
 	handle /v1/* {
 		# /v1/* includes the WS upgrade at /v1/stream — the API rejects any other /ws path
@@ -112,6 +130,11 @@ https:// {
 		Referrer-Policy "no-referrer"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		-Server
+	}
+	# INTERNAL-ONLY (see the app host block): the on-demand-TLS ask must not be reachable here
+	# either — a tenant custom domain is exactly where an attacker would look for it.
+	handle /v1/internal/* {
+		respond 404
 	}
 	# API + realtime first (longest-prefix wins in Caddy route ordering).
 	# /v1/* includes the WS upgrade at /v1/stream — the API rejects any other /ws path.
