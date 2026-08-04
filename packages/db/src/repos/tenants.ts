@@ -1,6 +1,6 @@
 import type { PrismaClient, Tenant } from '@prisma/client'
 
-import { effectiveEntitlementsAt, type Entitlements, type TenantPlan } from '@orbetra/shared'
+import { effectiveEntitlementsAt, isBillableSubscription, type Entitlements, type TenantPlan } from '@orbetra/shared'
 
 import type { AuditRepo } from './audit.js'
 import type { Actor } from '../scope.js'
@@ -114,7 +114,9 @@ export interface TenantRepo {
    *  delivery — this WHERE is atomic, so concurrent duplicates collapse). Returns false when nothing
    *  was updated (unknown customer, or a stale/replayed event). */
   applySubscriptionEvent(stripeCustomerId: string, eventAt: Date, data: SubscriptionUpdate): Promise<boolean>
-  /** Worker usage reporter (PR B2): tenants with an active/trialing subscription + a customer id. */
+  /** Worker usage reporter (PR B2): every tenant currently receiving PAID service — i.e. entitled,
+   *  by the SAME predicate entitlements use (isBillableSubscription), plus a Stripe customer id.
+   *  Includes `past_due`: dunning is a grace window for access, so it must be one for billing too. */
   listActiveSubscribers(): Promise<ActiveSubscriber[]>
 }
 
@@ -278,10 +280,15 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       return result.count > 0
     },
     listActiveSubscribers: async () => {
-      const rows = await prisma.tenant.findMany({
-        where: { stripeCustomerId: { not: null }, subscriptionStatus: { in: ['active', 'trialing'] } },
-        select: { id: true, stripeCustomerId: true, subscriptionPriceId: true },
-      })
+      // METERED == ENTITLED, by construction (audit high). Not a hand-kept `in [...]` list: the
+      // previous one omitted `past_due`, which entitlements deliberately treat as a grace window —
+      // so a card failure bought full service with zero billing for the entire dunning period.
+      const rows = (
+        await prisma.tenant.findMany({
+          where: { stripeCustomerId: { not: null }, subscriptionStatus: { not: null } },
+          select: { id: true, stripeCustomerId: true, subscriptionPriceId: true, subscriptionStatus: true },
+        })
+      ).filter((r) => isBillableSubscription(r.subscriptionStatus))
       // stripeCustomerId is non-null by the WHERE; assert for the type
       return rows.map((r) => ({ tenantId: r.id, stripeCustomerId: r.stripeCustomerId!, subscriptionPriceId: r.subscriptionPriceId }))
     },

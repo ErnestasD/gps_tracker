@@ -14,6 +14,7 @@ Alertmanager routes them to the founders' Telegram.
 | BackpressureSustained | `ingest_paused_sockets` > 0 for 10m | warn |
 | UnsupportedCodecSeen | `rate(ingest_unsupported_codec_total[15m])` > 0 for 15m | warn |
 | DeadLetteredRows | `rate(pipeline_dead_lettered_total[15m])` > 0 for 15m | warn |
+| SmsQuotaTripped | `increase(sms_quota_rejected_total{scope="global"}[1h])` > 0 for 5m | crit |
 | DiskFillingUp / Critical | root FS < 15% / 5% free | warn / crit |
 | TargetDown | any of ingest/worker/api unscrapeable 2m | crit |
 | CertExpiringSoon | TLS cert < 14d to expiry (Caddy renew safety net) | warn |
@@ -36,6 +37,22 @@ A record was dropped from the pipeline and quarantined in `raw:dead`. Check `rea
   Inspect the payload and add a bound in `normalize.ts` so the next one is nulled rather than dropped.
 
 Both are *customer-visible data loss for that record*, so any sustained rate deserves a fix, not a mute.
+
+### SmsQuotaTripped
+
+The platform-wide SMS breaker (`SMS_QUOTA_GLOBAL_PER_DAY`, default 1000/day) has refused a send.
+Every config SMS is a real billable message from **our** Twilio sender, so this ceiling is the last
+thing between a runaway loop and an unbounded bill — but while it is tripped, config-SMS onboarding
+returns 503 for **every** tenant.
+
+1. Find the source: `sms_quota_rejected_total{scope="device"|"tenant"}` and the `sms_deliveries`
+   table (`SELECT "tenantId", count(*) FROM sms_deliveries WHERE "createdAt" > now() - interval '1 day' GROUP BY 1 ORDER BY 2 DESC`).
+2. If it is legitimate growth, raise `SMS_QUOTA_GLOBAL_PER_DAY` in `/opt/orbetra/.env` and restart the api.
+3. Reset the window manually with `DEL sms:q:global` (the key is a fixed 24 h window anchored at the
+   first send, so it does not roll early on its own).
+
+Per-device (5/day) and per-tenant (100/day) rejections are informational — they mean a caller is
+retrying, not that the platform is at risk.
 
 ## Telegram (BLOCKED-INFO — founder must provision, like SES)
 

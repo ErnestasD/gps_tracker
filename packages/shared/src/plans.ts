@@ -63,6 +63,22 @@ export type EntitlementKey = keyof Omit<Entitlements, 'deviceLimit'>
  */
 export const LAPSED_SUBSCRIPTION_STATUSES = new Set(['canceled', 'unpaid', 'incomplete_expired', 'paused'])
 
+/**
+ * Is this tenant receiving PAID service right now — and therefore billable for overage?
+ *
+ * "Entitled" and "metered" MUST be the same set, derived from one predicate. They used to be two
+ * independent lists: entitlements deliberately excluded `past_due` from the lapsed set (dunning
+ * grace) while the usage reporter only selected `('active','trialing')`, so for the whole dunning
+ * window a tenant kept white-label, sub-accounts, API, webhooks, SMS and an uncapped device count
+ * while not a single device-day was billed. `usage_daily` still recorded the truth, but the reporter
+ * only ever submits `now − 24 h` and never backfills, so those days were lost permanently even after
+ * the card was fixed — roughly €283 per incident at TSP Grow scale. Audit high.
+ */
+export function isBillableSubscription(subscriptionStatus: string | null): boolean {
+  if (subscriptionStatus === null) return false // admin-granted / never subscribed — nothing to meter
+  return !LAPSED_SUBSCRIPTION_STATUSES.has(subscriptionStatus)
+}
+
 /** The zero-entitlement floor: a lapsed subscription grants no paid feature and a 0 device cap. */
 export const FLOOR_ENTITLEMENTS: Entitlements = {
   whiteLabel: false,

@@ -427,13 +427,25 @@ export const resetPasswordSchema = z.object({
 
 // ── geofences (E05-1) ──────────────────────────────────────────────────────────
 const lngLat = z.tuple([z.number().gte(-180).lte(180), z.number().gte(-90).lte(90)])
+/**
+ * TOTAL vertex budget for one geofence (audit high). The old per-ring cap of 10 000 was not a
+ * bound in any sense that mattered: the worker ray-casts every fence against every record on the
+ * ONE process that hosts all 16 shard consumers plus every BullMQ job, with no bounding-box
+ * prefilter — 200 records × 100 fences × 10k vertices measured at 459 ms of SYNCHRONOUS blocking
+ * per batch, from a body a free trial can POST. A 10k-vertex polygon is also only ~0.2 % of the
+ * 10 000 km² area cap, so neither existing guard came close to catching it. 2 000 positions is far
+ * more than any hand-drawn or municipal boundary needs after simplification.
+ */
+export const MAX_GEOFENCE_VERTICES = 2_000
+const totalVertices = (rings: unknown[][]): number => rings.reduce((n, r) => n + r.length, 0)
+
 /** A GeoJSON Polygon: ≥1 linear ring, each ≥4 positions and closed (first === last).
  * The server also enforces ST_IsValid + an area cap; this is the shape gate. */
 export const geoJsonPolygonSchema = z
   .object({
     type: z.literal('Polygon'),
     coordinates: z
-      .array(z.array(lngLat).min(4).max(10_000))
+      .array(z.array(lngLat).min(4).max(MAX_GEOFENCE_VERTICES))
       .min(1)
       .max(50),
   })
@@ -445,10 +457,13 @@ export const geoJsonPolygonSchema = z
     }),
     { message: 'each ring must be closed (first position === last)' },
   )
+  .refine((g) => totalVertices(g.coordinates) <= MAX_GEOFENCE_VERTICES, {
+    message: `polygon exceeds ${MAX_GEOFENCE_VERTICES} total vertices — simplify it`,
+  })
 /** A GeoJSON LineString: ≥2 positions — the centre-line of a corridor geofence (V2). */
 export const geoJsonLineStringSchema = z.object({
   type: z.literal('LineString'),
-  coordinates: z.array(lngLat).min(2).max(10_000),
+  coordinates: z.array(lngLat).min(2).max(MAX_GEOFENCE_VERTICES),
 })
 export const geofenceKindSchema = z.enum(['polygon', 'circle', 'corridor'])
 /** Corridor half-width in metres (the buffer around the route line). 10 m … 5 km. */

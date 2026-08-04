@@ -1,5 +1,5 @@
 import { Hono, type Context, type MiddlewareHandler } from 'hono'
-import { Gauge, Registry } from 'prom-client'
+import { Counter, Gauge, Registry } from 'prom-client'
 
 import { HTTPException } from 'hono/http-exception'
 import { bodyLimit } from 'hono/body-limit'
@@ -56,6 +56,10 @@ export interface ApiDeps extends WsDeps {
   hsts?: boolean
   /** SMS onboarding target (V1-nice); default orbetra.com:5027. */
   onboarding?: { host: string; port: number }
+  /** Per-device / per-tenant / platform-wide SMS ceilings; default DEFAULT_SMS_QUOTA. */
+  smsQuota?: { perDevicePerDay: number; perTenantPerDay: number; globalPerDay: number }
+  /** Fired when a send is refused by a quota; wired to `sms_quota_rejected_total` in main.ts. */
+  onSmsQuotaRejected?: (scope: 'device' | 'tenant' | 'global') => void
   /** GDPR job enqueuers (E08-4, ADR-020 addendum); routes 503 when absent. */
   gdpr?: {
     enqueueErase(data: { deviceId: string; tenantId: string }): Promise<void>
@@ -93,6 +97,8 @@ export interface ApiDeps extends WsDeps {
 export interface ApiProm {
   registry: Registry
   setWsClients: (n: number) => void
+  /** Sends refused by an SMS quota, by which ceiling tripped. `global` = the platform breaker. */
+  smsQuotaRejected: Counter
 }
 
 export function createApiProm(): ApiProm {
@@ -110,7 +116,13 @@ export function createApiProm(): ApiProm {
       this.set(argon2QueueDepth())
     },
   })
-  return { registry, setWsClients: (n) => g.set(n) }
+  const smsQuotaRejected = new Counter({
+    name: 'sms_quota_rejected_total',
+    help: 'SMS sends refused by a quota (device | tenant | global platform breaker)',
+    labelNames: ['scope'],
+    registers: [registry],
+  })
+  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected }
 }
 
 /**
@@ -286,7 +298,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
-  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding, sms: deps.sms }), deps.db)
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding, sms: deps.sms, smsQuota: deps.smsQuota, onSmsQuotaRejected: deps.onSmsQuotaRejected }), deps.db)
 
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.

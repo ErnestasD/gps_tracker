@@ -34,6 +34,7 @@ export interface TenantFixture {
   geofenceA2Id: string // an A2-owned geofence (cross-account tests)
   geofenceSharedId: string // a tenant-shared (accountId null) geofence
   webhookId: string
+  webhookSharedId: string
   userId: string // an account-scoped (A1) user
   amUserId: string // the account_manager's OWN user id (self-escalation test)
   eventId: string
@@ -49,6 +50,9 @@ export interface TenantFixture {
   tokenTenant: string
   /** account_manager token pinned to A1. */
   tokenAccountA1: string
+  /** a tsp_admin PINNED to account A1 — the account-scoped privileged caller the mutate-scope
+   *  tests need (account_manager lacks the role to write webhooks/api keys at all) */
+  tokenAccountAdminA1: string
   /** viewer token pinned to A1 (write-authorization tests). */
   tokenViewerA1: string
 }
@@ -97,6 +101,10 @@ async function seedTenant(
   const device = await db.devices.create(scope, actor, { accountId: a1.id, profileId, imei, name: 'dev' })
   const domain = await db.tenantDomains.create(scope, actor, `${name.toLowerCase()}.example.test`, 'tok')
   const webhook = await db.webhooks.create(scope, actor, { accountId: a1.id, url: 'https://x.test/h', secret: 'secret-secret-16' })
+  // TENANT-SHARED webhook (accountId null): readable by an account-scoped admin via the
+  // nullableAccount branch, but hijacking or deleting it would redirect/kill every sibling
+  // account's events — the mutate-scope test in the suite depends on this row existing.
+  const webhookShared = await db.webhooks.create({ tenantId: tenant.id }, actor, { accountId: null, url: 'https://shared.test/h', secret: 'secret-secret-16' })
   const driver = await db.drivers.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, name: `${name} Driver` })
   const maint = await db.maintenance.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, deviceId: device.id, title: 'Oil', intervalKm: 15000 })
   const sched = await db.scheduledReports.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, reportType: 'trips', cadence: 'daily', hourUtc: 6, recipients: ['ops@x.test'] })
@@ -106,6 +114,7 @@ async function seedTenant(
   const tsp = await db.users.create(scope, actor, { email: `${name}-ta@x.test`, passwordHash: pwHash, role: 'tsp_admin', accountId: null })
   const am = await db.users.create(scope, actor, { email: `${name}-am@x.test`, passwordHash: pwHash, role: 'account_manager', accountId: a1.id })
   const vw = await db.users.create(scope, actor, { email: `${name}-vw@x.test`, passwordHash: pwHash, role: 'viewer', accountId: a1.id })
+  const accountAdmin = await db.users.create(scope, actor, { email: `${name}-aa@x.test`, passwordHash: pwHash, role: 'tsp_admin', accountId: a1.id })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
   const commandId = await poolInsertCommand(tenant.id, a1.id, device.id.toString())
   const exportId = await poolInsertExport(tenant.id, a1.id)
@@ -133,6 +142,7 @@ async function seedTenant(
     geofenceA2Id,
     geofenceSharedId,
     webhookId: webhook.id,
+    webhookSharedId: webhookShared.id,
     userId: am.id,
     amUserId: am.id,
     eventId,
@@ -145,6 +155,7 @@ async function seedTenant(
     tokenPlatform: await token(platform.id, tenant.id, 'platform_admin'),
     tokenTenant: await token(tsp.id, tenant.id, 'tsp_admin'),
     tokenAccountA1: await token(am.id, tenant.id, 'account_manager', a1.id),
+    tokenAccountAdminA1: await token(accountAdmin.id, tenant.id, 'tsp_admin', a1.id),
     tokenViewerA1: await token(vw.id, tenant.id, 'viewer', a1.id),
   }
 }

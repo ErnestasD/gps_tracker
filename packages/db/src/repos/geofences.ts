@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 
-import type { GeofenceView } from '@orbetra/shared'
+import { MAX_GEOFENCE_VERTICES, type GeofenceView } from '@orbetra/shared'
 
 import type { AuditRepo } from './audit.js'
 import type { Actor, Scope } from '../scope.js'
@@ -15,6 +15,26 @@ import type { Actor, Scope } from '../scope.js'
  */
 export const MAX_AREA_M2 = 10_000 * 1_000_000 // 10,000 km²
 
+/**
+ * Per-tenant fence count cap (audit high). The worker evaluates EVERY fence of a tenant against
+ * EVERY record, so cost is vertices × fences × records on one event loop. Bounding vertices alone
+ * still lets a caller multiply by fence count instead — and POST /v1/geofences has no rate limit
+ * and is reachable on a free trial. 500 is far beyond any real fleet's zone list.
+ */
+export const MAX_GEOFENCES_PER_TENANT = 500
+
+/**
+ * Per-tenant TOTAL vertex budget — the bound that actually matters (review high).
+ *
+ * The per-fence cap and the count cap MULTIPLY: 500 fences × 2 000 vertices is 1 000 000, which is
+ * exactly the worst case the audit benchmarked at ~459 ms of synchronous blocking per 200-record
+ * batch. Capping the factors while leaving the product untouched reduces nothing, and a
+ * tenant-shared fence (accountId null) applies to every device in the tenant, so one caller really
+ * can build the whole set. 50 000 keeps the per-batch ray-cast cost ~20× below that worst case
+ * while still allowing e.g. 500 simple depots or 25 richly-drawn city zones.
+ */
+export const MAX_TENANT_GEOFENCE_VERTICES = 50_000
+
 export class GeofenceInvalidError extends Error {
   constructor() {
     super('geometry is not a valid polygon')
@@ -25,6 +45,20 @@ export class GeofenceTooLargeError extends Error {
   constructor() {
     super('geofence area exceeds the 10,000 km² cap')
     this.name = 'GeofenceTooLargeError'
+  }
+}
+/** Tenant is at MAX_GEOFENCES_PER_TENANT. */
+export class GeofenceLimitError extends Error {
+  constructor() {
+    super(`geofence limit reached (${MAX_GEOFENCES_PER_TENANT} per tenant)`)
+    this.name = 'GeofenceLimitError'
+  }
+}
+/** Vertex budget exceeded — the shape is fine, it is just too expensive to evaluate per record. */
+export class GeofenceTooComplexError extends Error {
+  constructor(message = `geofence exceeds ${MAX_GEOFENCE_VERTICES} vertices — simplify it`) {
+    super(message)
+    this.name = 'GeofenceTooComplexError'
   }
 }
 
@@ -114,12 +148,31 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
   /** Validate + area-check a geography expression in the DB before persisting (the SAME guard for a
    *  raw polygon and a buffered corridor — the resulting polygon must be valid + within the area cap). */
   const guardGeog = async (geog: Prisma.Sql): Promise<void> => {
-    const [chk] = await prisma.$queryRaw<{ valid: boolean; area: number }[]>(
-      Prisma.sql`SELECT ST_IsValid(g::geometry) AS valid, ST_Area(g) AS area FROM (SELECT ${geog} AS g) s`,
+    const [chk] = await prisma.$queryRaw<{ valid: boolean; area: number; npoints: number }[]>(
+      Prisma.sql`SELECT ST_IsValid(g::geometry) AS valid, ST_Area(g) AS area, ST_NPoints(g::geometry) AS npoints
+                 FROM (SELECT ${geog} AS g) s`,
     )
     if (chk === undefined || !chk.valid) throw new GeofenceInvalidError()
     if (Number(chk.area) > MAX_AREA_M2) throw new GeofenceTooLargeError()
+    // Vertex bound on the POST-BUFFER geography, so a corridor cannot smuggle in what the schema
+    // caps on input: ST_Buffer emits ~8 segments per quarter-circle around EVERY vertex of the
+    // centre-line, so a 2 000-point line becomes a ~16 000-point polygon. The worker ray-casts this
+    // per record per fence on the process that hosts all 16 shard consumers (audit high).
+    if (Number(chk.npoints) > MAX_GEOFENCE_VERTICES) throw new GeofenceTooComplexError()
   }
+  /**
+   * A buffered corridor's vertex count is a function of a DIFFERENT field than the one the schema
+   * caps: ST_Buffer emits ~8 segments per quarter-circle around every centre-line vertex, so the
+   * effective line cap swings between ~220 and ~650 points depending on `bufferM`. Rejecting with
+   * "exceeds 2000 vertices" then names a number the caller never submitted. Simplify instead —
+   * ST_SimplifyPreserveTopology keeps the shape valid and closed — and only fail if even that
+   * cannot get under the budget.
+   */
+  const simplifyToBudget = (geog: Prisma.Sql): Prisma.Sql =>
+    Prisma.sql`(
+      SELECT CASE WHEN ST_NPoints(g::geometry) <= ${MAX_GEOFENCE_VERTICES} THEN g
+                  ELSE ST_SimplifyPreserveTopology(g::geometry, 0.00005)::geography END
+      FROM (SELECT ${geog} AS g) s)`
   const one = async (scope: Scope, id: string): Promise<GeofenceView | null> => {
     if (!UUID.test(id)) return null
     const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`SELECT ${COLS} FROM geofences WHERE ${scopeSql(scope)} AND id = ${id}::uuid`)
@@ -137,13 +190,34 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
     },
     get: one,
     create: async (scope, actor, data) => {
-      const geog = geogFor(data) // polygon/circle → GeoJSON; corridor → buffered line
+      const raw = geogFor(data) // polygon/circle → GeoJSON; corridor → buffered line
+      const geog = data.kind === 'corridor' ? simplifyToBudget(raw) : raw
       await guardGeog(geog)
       const accountId = data.accountId ?? null
-      const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
-        INSERT INTO geofences (id,"tenantId","accountId",name,color,kind,geom)
-        VALUES (gen_random_uuid(), ${scope.tenantId}::uuid, ${accountId}::uuid, ${data.name}, ${data.color ?? '#4DA3FF'}, ${data.kind}::"GeofenceKind", ${geog})
-        RETURNING ${COLS}`)
+      // The count + vertex budgets and the INSERT run in ONE transaction under a per-tenant advisory
+      // lock: a plain read-then-insert lets two concurrent creates both see n = 499 and both write,
+      // so the cap is advisory at best (review MED). The lock is tenant-scoped, so it never
+      // serializes unrelated tenants.
+      const rows = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`gf:${scope.tenantId}`}))`)
+        const [budget] = await tx.$queryRaw<{ n: bigint; v: bigint | null }[]>(
+          Prisma.sql`SELECT count(*) AS n, sum(ST_NPoints(geom::geometry)) AS v
+                     FROM geofences WHERE "tenantId" = ${scope.tenantId}::uuid`,
+        )
+        if (Number(budget?.n ?? 0) >= MAX_GEOFENCES_PER_TENANT) throw new GeofenceLimitError()
+        const [added] = await tx.$queryRaw<{ n: number }[]>(
+          Prisma.sql`SELECT ST_NPoints(g::geometry) AS n FROM (SELECT ${geog} AS g) s`,
+        )
+        if (Number(budget?.v ?? 0) + Number(added?.n ?? 0) > MAX_TENANT_GEOFENCE_VERTICES) {
+          throw new GeofenceTooComplexError(
+            `tenant geofence vertex budget exhausted (${MAX_TENANT_GEOFENCE_VERTICES}) — simplify or remove existing zones`,
+          )
+        }
+        return tx.$queryRaw<Row[]>(Prisma.sql`
+          INSERT INTO geofences (id,"tenantId","accountId",name,color,kind,geom)
+          VALUES (gen_random_uuid(), ${scope.tenantId}::uuid, ${accountId}::uuid, ${data.name}, ${data.color ?? '#4DA3FF'}, ${data.kind}::"GeofenceKind", ${geog})
+          RETURNING ${COLS}`)
+      })
       const view = toView(rows[0]!)
       await audit.record(scope, actor, { action: 'create', entity: 'geofence', entityId: view.id, after: { id: view.id, name: view.name, kind: view.kind, accountId: view.accountId } })
       return view

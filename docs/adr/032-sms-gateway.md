@@ -93,3 +93,28 @@ webpush) do not need.
 - Requires `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` in the server `.env` for the channel to
   be live; all three absent ⇒ send route 503s and the web button is hidden (documented in the README env
   table and wired into `docker-compose.apps.yml`).
+
+## Amendment 2026-08-04 — quotas + a command allow-list (backend audit, finding #15)
+
+The route as shipped was, in the audit's words, an unmetered SMS relay: `body` fully replaced the
+generated config SMS with up to 320 characters of free text, and the destination came from
+`simMsisdn`, which the same role sets with only a syntactic E.164 regex — so any number worldwide,
+premium ranges included. There was no quota anywhere: not on the route, not in the repo insert. The
+worker's `sms:sent:{deliveryId}` claim is a per-row double-charge guard, so every POST minted a new
+row, a new claim and a new billable message from the platform's own sender id. SMS is never metered
+or re-billed to the tenant, making it 100% unrecoverable platform cost plus smishing and
+carrier-filtering risk against a shared sender.
+
+Two bounds, both in this PR:
+
+- **Quotas** — per device (default 5/day), per tenant (100/day) and a platform-wide breaker
+  (1000/day), as Redis fixed windows, checked **fail-closed**: a Redis blip refuses the send rather
+  than opening the tap. They are checked after the allow-list (a rejected body must not spend
+  budget) and refunded when the enqueue itself fails, so a Redis outage cannot burn a device's whole
+  daily allowance on retries that never sent anything. Tunable via `SMS_QUOTA_*`; rejections are
+  counted as `sms_quota_rejected_total{scope}` and the global one pages (`SmsQuotaTripped`).
+- **Allow-list** — a caller-supplied `body` must be a Teltonika configuration command of the shape
+  the onboarding sheet already generates (`  setparam <id>:<value>[;…]`, `  getparam <id>`, or a
+  parameterless diagnostic). The value charset excludes `;` and `:` so a value cannot chain a second
+  command, and non-ASCII is rejected. Arbitrary device commands remain a deliberate non-feature
+  until they are designed; Codec 12 already covers commands for a device that is online.

@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { AccountHasUsersError, AffiliateConflictError, TenantHasCommissionsError, DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { AccountHasUsersError, AffiliateConflictError, TenantHasCommissionsError, DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -18,6 +18,7 @@ import {
   domainCreateSchema,
   deviceImportSchema,
   geofenceCreateSchema,
+  isAllowedSmsCommand,
   geofenceUpdateSchema,
   deviceUpdateSchema,
   buildOnboarding,
@@ -71,8 +72,20 @@ const bestEffortSync = async (fn: () => Promise<void>, what = 'redis sync'): Pro
   }
 }
 
+/** Per-device / per-tenant / platform-wide SMS ceilings (audit high). Deliberately low: config
+ *  SMS is an onboarding action, not a messaging product. Override per deployment. */
+export const DEFAULT_SMS_QUOTA = { perDevicePerDay: 5, perTenantPerDay: 100, globalPerDay: 1_000 }
+
+const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
+if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return n`
+
 export interface CrudDeps {
   db: Db
+  /** SMS ceilings; defaults to DEFAULT_SMS_QUOTA. */
+  smsQuota?: { perDevicePerDay: number; perTenantPerDay: number; globalPerDay: number }
+  /** Fired when a send is refused by a quota — a rejection nobody can see is not a guard. */
+  onSmsQuotaRejected?: (scope: 'device' | 'tenant' | 'global') => void
   /** Device CRUD syncs the ingest/worker Redis registries (E03-3). */
   redis: Redis
   /** DNS TXT resolver for domain verification (E03-5); injectable for tests. */
@@ -602,6 +615,45 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (!device.simMsisdn) return problem(c, 400, 'Bad Request', 'device has no SIM phone number')
         const data = await body(c, smsSendRequestSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
+        // `body` overrides the generated text. Bound it to the ALLOW-LIST of Teltonika command
+        // templates until an arbitrary-command feature is actually designed: free-form text to an
+        // arbitrary MSISDN from the platform's sender is a smishing relay, not a device command.
+        // Checked BEFORE the quota — it is a pure function of the parsed body, so a rejected
+        // request must not spend a budget that then locks the device out of onboarding for a day.
+        if (data.body !== undefined && !isAllowedSmsCommand(data.body)) {
+          return problem(c, 400, 'Bad Request', 'body must be a supported device command')
+        }
+        // QUOTAS (audit high). Every send is a real, billable message from the PLATFORM's Twilio
+        // sender to a caller-chosen E.164 number — the destination comes from `simMsisdn`, which
+        // the same role sets with only a syntactic regex, so any number worldwide (premium ranges
+        // included) is reachable. Nothing here was metered or re-billed, so the cost was 100%
+        // unrecoverable platform spend plus smishing risk against a shared sender id. Three
+        // bounds: per device (stop a loop), per tenant (stop an account), and a platform-wide
+        // breaker (stop everyone at once). Fail CLOSED — a Redis blip must not open the tap.
+        const smsQuota = deps.smsQuota ?? DEFAULT_SMS_QUOTA
+        try {
+          const over = async (key: string, max: number, windowS: number): Promise<boolean> =>
+            ((await deps.redis.eval(RL_SCRIPT, 1, key, String(windowS))) as number) > max
+          if (await over(`sms:q:dev:${device.id}`, smsQuota.perDevicePerDay, 86_400)) {
+            deps.onSmsQuotaRejected?.('device')
+            return problem(c, 429, 'Too Many Requests', 'sms quota exceeded for this device')
+          }
+          if (await over(`sms:q:ten:${a.tenantId}`, smsQuota.perTenantPerDay, 86_400)) {
+            deps.onSmsQuotaRejected?.('tenant')
+            return problem(c, 429, 'Too Many Requests', 'sms quota exceeded for this account')
+          }
+          if (await over('sms:q:global', smsQuota.globalPerDay, 86_400)) {
+            // the platform-wide breaker refuses SMS for EVERY tenant until the window rolls, so it
+            // has to be visible: the counter is alerted on (SmsQuotaTripped) and the manual reset
+            // is `DEL sms:q:global` — see docs/runbooks/w7-alerting.md
+            deps.onSmsQuotaRejected?.('global')
+            console.error('sms platform-wide quota tripped — refusing all sends')
+            return problem(c, 503, 'Unavailable', 'sms temporarily unavailable')
+          }
+        } catch (err) {
+          console.error('sms quota check unavailable', err)
+          return problem(c, 503, 'Unavailable', 'sms temporarily unavailable')
+        }
         // build the config SMS via buildOnboarding (the SAME generator as the onboarding sheet); a
         // caller may override the generated text with an explicit body (future arbitrary command).
         const profile = await db.profiles.get(device.profileId)
@@ -627,6 +679,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           // best-effort breadcrumb: if markFailed itself throws (DB blip) the caller still gets the
           // intended 503 (never a 500), and the row stays 'queued' — honest, since nothing was sent
           await db.smsDeliveries.markFailed(delivery.id, 'enqueue failed').catch((e) => console.error('sms markFailed failed', e))
+          // nothing left the building, so give the budget back — otherwise a Redis outage burns the
+          // device's whole daily allowance on retries that never sent an SMS
+          await Promise.all([
+            deps.redis.decr(`sms:q:dev:${device.id}`),
+            deps.redis.decr(`sms:q:ten:${a.tenantId}`),
+            deps.redis.decr('sms:q:global'),
+          ]).catch(() => undefined)
           return problem(c, 503, 'Unavailable', 'sms enqueue failed')
         }
         return json(c, delivery, 201)
@@ -985,7 +1044,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           await bestEffortSync(() => syncGeofence(deps.redis, gf)) // publish to the worker's geom cache (E05-2)
           return json(c, gf, 201)
         } catch (err) {
-          if (err instanceof GeofenceTooLargeError || err instanceof GeofenceInvalidError) return problem(c, 400, 'Bad Request', err.message)
+          if (err instanceof GeofenceTooLargeError || err instanceof GeofenceInvalidError || err instanceof GeofenceTooComplexError) return problem(c, 400, 'Bad Request', err.message)
+          if (err instanceof GeofenceLimitError) return problem(c, 409, 'Conflict', err.message)
           throw err
         }
       } },
@@ -999,7 +1059,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           await bestEffortSync(() => syncGeofence(deps.redis, row)) // re-publish the updated geometry (E05-2)
           return json(c, row)
         } catch (err) {
-          if (err instanceof GeofenceTooLargeError || err instanceof GeofenceInvalidError) return problem(c, 400, 'Bad Request', err.message)
+          if (err instanceof GeofenceTooLargeError || err instanceof GeofenceInvalidError || err instanceof GeofenceTooComplexError) return problem(c, 400, 'Bad Request', err.message)
+          if (err instanceof GeofenceLimitError) return problem(c, 409, 'Conflict', err.message)
           throw err
         }
       } },

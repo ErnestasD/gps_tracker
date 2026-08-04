@@ -97,6 +97,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `WS_TICKET_TTL` | apps/api | WS `/v1/stream` one-time ticket TTL seconds (§6.7), default `30` |
 | `ARGON2_MAX_CONCURRENT` | apps/api | Max concurrent argon2 password hashes (back-pressures login/CPU), default `8` |
 | `ARGON2_MAX_WAITING` | apps/api | Max requests QUEUED for an argon2 slot before shedding with 503, default `64` (≈0.9 s of queueing). An unbounded queue turns a flood on any hashing route into a platform-wide login stall |
+| `SMS_QUOTA_DEVICE_PER_DAY` / `SMS_QUOTA_TENANT_PER_DAY` / `SMS_QUOTA_GLOBAL_PER_DAY` | apps/api | Config-SMS ceilings, default `5` / `100` / `1000`. Every send is a real billable message from the platform's Twilio sender; the global one is a breaker that 503s SMS for ALL tenants when tripped (alert `SmsQuotaTripped`, reset with `DEL sms:q:global`) |
 | `WS_MAX_SOCKET_LIFETIME_MS` | apps/api | Hard ceiling on one live WS socket, default `14400000` (4 h). A stream is authorized only at connect, so this is what makes a plan/role change reach an already-open one; clients reconnect automatically |
 | `PUBLIC_API_URL` | apps/api | Absolute API base advertised in the generated OpenAPI `servers[]` (`GET /v1/openapi.json`, `/v1/docs`); unset = omitted |
 | `COOKIE_SECURE` | apps/api | `0` disables the Secure cookie flag (dev/e2e over http ONLY) |

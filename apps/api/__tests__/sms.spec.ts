@@ -93,7 +93,7 @@ beforeAll(async () => {
       return Promise.resolve('job-id')
     },
   }
-  const common: Omit<ApiDeps, 'sms'> = { redis, redisSub: redis, db, pool, onboarding: { host: 'orbetra.com', port: 5027 }, jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30, lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '127.0.0.1' }
+  const common: Omit<ApiDeps, 'sms'> = { redis, redisSub: redis, db, pool, onboarding: { host: 'orbetra.com', port: 5027 }, jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30, lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '127.0.0.1', smsQuota: { perDevicePerDay: 10_000, perTenantPerDay: 10_000, globalPerDay: 10_000 } }
   const app = createApp({ ...common, sms })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
@@ -138,13 +138,60 @@ describe('SMS gateway API — POST /v1/devices/:id/sms', () => {
     expect(enqueued[before]!.body).toBe('  setparam 2001:banga;2004:orbetra.com;2005:5027;2006:0')
   })
 
-  it('201: an explicit body overrides the generated config SMS', async () => {
+  it('201: an explicit body overrides the generated config SMS — if it is a real device command', async () => {
     const before = enqueued.length
-    const res = await req(port, `/v1/devices/${deviceId}/sms`, adminToken, 'POST', { body: 'custom command' })
+    const cmd = '  setparam 2004:eu.orbetra.com;2005:5028'
+    const res = await req(port, `/v1/devices/${deviceId}/sms`, adminToken, 'POST', { body: cmd })
     expect(res.status).toBe(201)
     const delivery = (await res.json()) as { body: string }
-    expect(delivery.body).toBe('custom command')
-    expect(enqueued[before]!.body).toBe('custom command')
+    expect(delivery.body).toBe(cmd)
+    expect(enqueued[before]!.body).toBe(cmd)
+  })
+
+  it('400: free-form text is REFUSED — this route is not a messaging relay (audit high)', async () => {
+    // `body` fully replaces the generated SMS, and the destination is `simMsisdn`, which the same
+    // role sets with only a syntactic E.164 regex — so any number worldwide, premium ranges
+    // included. Unbounded text from the PLATFORM's shared Twilio sender is a smishing relay, and
+    // every message is unrecoverable platform spend. Until an arbitrary-command feature is
+    // designed, the body must be a Teltonika command of the shape the onboarding sheet generates.
+    const before = enqueued.length
+    for (const bad of [
+      'Your bank account is locked, click http://evil.test',
+      '  setparam 2004:host;evil injected',
+      'setparam 2004:host', // missing the two-space SMS login prefix
+      '  getinfo; rm -rf',
+    ]) {
+      const res = await req(port, `/v1/devices/${deviceId}/sms`, adminToken, 'POST', { body: bad })
+      expect(res.status, bad).toBe(400)
+    }
+    expect(enqueued).toHaveLength(before) // nothing left the building
+    // the parameterless diagnostics stay allowed
+    expect((await req(port, `/v1/devices/${deviceId}/sms`, adminToken, 'POST', { body: '  getinfo' })).status).toBe(201)
+  })
+
+  it('429: the per-device quota stops a send loop before it bills the platform', async () => {
+    // no quota existed anywhere: not on the route, not in the repo insert. Every POST minted a new
+    // row, a new claim and a new billable message. Three ceilings now — device, tenant, platform —
+    // and they FAIL CLOSED, because a Redis blip must not open the tap.
+    const quotaApp = createApp({
+      redis, redisSub: redis, db, pool, onboarding: { host: 'orbetra.com', port: 5027 },
+      jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
+      lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+      getRemoteAddr: () => '127.0.0.1',
+      sms: { enqueue: () => Promise.resolve('job-id') },
+      smsQuota: { perDevicePerDay: 2, perTenantPerDay: 10_000, globalPerDay: 10_000 },
+    })
+    const srv = serve({ fetch: quotaApp.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    try {
+      await redis.del(`sms:q:dev:${deviceId}`)
+      expect((await req(p, `/v1/devices/${deviceId}/sms`, adminToken, 'POST', {})).status).toBe(201)
+      expect((await req(p, `/v1/devices/${deviceId}/sms`, adminToken, 'POST', {})).status).toBe(201)
+      expect((await req(p, `/v1/devices/${deviceId}/sms`, adminToken, 'POST', {})).status).toBe(429)
+    } finally {
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+    }
   })
 
   it('403: a viewer cannot send (hardware onboarding is a write → ACCOUNT_WRITERS)', async () => {
