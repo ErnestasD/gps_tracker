@@ -21,7 +21,32 @@ export interface RecomputeScope {
 export interface RecomputeResult {
   deleted: number
   created: number
+  /** Set when the window fell entirely below the positions retention horizon and was declined. */
+  skipped?: 'below_retention'
+  /** Set when the requested window was WIDER than the cap and its tail was not rebuilt. An asset
+   *  tracker buffering for weeks is normal, so this is an operator-backfill signal, not an error. */
+  truncated?: true
 }
+
+/**
+ * `positions` is dropped at 13 months (`add_retention_policy('positions', drop_after => interval
+ * '13 months')`, packages/db/sql/001_positions.sql). Recompute is DELETE-then-rebuild, so below
+ * this horizon it can only destroy. Deliberately a few days SHORTER than the real policy so the
+ * floor sits inside surviving data even if the policy is later relaxed.
+ */
+const POSITIONS_RETENTION_MS = 13 * 30 * 24 * 3_600 * 1_000
+
+/**
+ * Hard cap on the WIDTH of one recompute (audit high, review high).
+ *
+ * The floor alone is not a bound: `to` is always ~now on the production path, so one ancient device
+ * timestamp still produced a 13-month window — a DELETE over that device's entire trip history plus
+ * a `SELECT … FROM positions` buffering ~1.1 M rows into memory, twice (pg rows + mapped records),
+ * inside the process that hosts every shard consumer. That is failure-map #11, and an OOM there
+ * takes the pipeline with it. A late record older than this is reconciled by an operator-run
+ * backfill, not by a job the device can trigger.
+ */
+const MAX_RECOMPUTE_WINDOW_MS = 14 * 24 * 3_600 * 1_000
 
 interface RecomputedTrip {
   status: 'open' | 'closed'
@@ -87,8 +112,25 @@ export async function recomputeTrips(
   // margin-bisection). READ is padded by a stop-threshold margin so a target trip's close
   // confirmation (positions after its stop moment) is seen — a closed target trip ends by
   // `hi` = coreTo, so coreTo+margin always covers it.
-  const coreFrom = lo !== null && lo < from ? lo : from
+  // FLOOR the window at the positions retention horizon (audit high). `from` is a raw device
+  // timestamp: ingest's §3.6 sanity accepts anything back to 2020-01-01, so an FMB whose RTC fell
+  // back after a flat backup battery emits one record stamped years ago, the trip engine files it
+  // as late, and `takeLate()` hands that date straight here. `positions` is dropped at 13 months
+  // while `trips` has no retention, so the DELETE would succeed over that whole span while the
+  // rebuild — fed only by surviving positions — produces nothing. The "run it twice, get the same
+  // trips" property silently becomes "wipe every trip older than the source data".
+  const retentionFloor = new Date(Date.now() - POSITIONS_RETENTION_MS)
+  const rawCoreFrom = lo !== null && lo < from ? lo : from
   const coreTo = hi !== null && hi > to ? hi : to
+  // a window entirely below the floor has no source data to rebuild from — deleting there is pure
+  // destruction, so decline instead
+  if (coreTo <= retentionFloor) return { deleted: 0, created: 0, skipped: 'below_retention' }
+  // …and bound the WIDTH, not just the lower edge: `to` is ~now on the production path, so the
+  // floor alone still allows a 13-month DELETE + read
+  const widthFloor = new Date(coreTo.getTime() - MAX_RECOMPUTE_WINDOW_MS)
+  const floor = widthFloor > retentionFloor ? widthFloor : retentionFloor
+  const truncated = rawCoreFrom < floor
+  const coreFrom = truncated ? floor : rawCoreFrom
   const marginMs = (Math.max(thresholds.parkedIgnitionOffS, thresholds.parkedStopS) + 120) * 1000
   const readFrom = new Date(coreFrom.getTime() - marginMs)
   const readTo = new Date(coreTo.getTime() + marginMs)
@@ -152,7 +194,7 @@ export async function recomputeTrips(
       )
     }
     await client.query('COMMIT')
-    return { deleted: del.rowCount ?? 0, created: trips.length }
+    return { deleted: del.rowCount ?? 0, created: trips.length, ...(truncated ? { truncated: true as const } : {}) }
   } catch (err) {
     await client.query('ROLLBACK')
     throw err

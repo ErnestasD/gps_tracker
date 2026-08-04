@@ -89,6 +89,29 @@ async function driverIdOfTrips(): Promise<(string | null)[]> {
 }
 
 describe('E04-2 trip recompute (idempotent, §6.4)', () => {
+  it('DECLINES a window below the positions retention horizon instead of wiping history', async () => {
+    // REGRESSION (audit high): `from` is a raw DEVICE timestamp — ingest's §3.6 sanity accepts
+    // anything back to 2020-01-01, so an FMB whose RTC fell back after a flat backup battery emits
+    // one ancient record, the trip engine files it as late, and takeLate() hands that date straight
+    // to recompute. `positions` is dropped at 13 months while `trips` has no retention, so the
+    // DELETE succeeded over the whole span while the rebuild — fed only by surviving positions —
+    // produced nothing. "Run it twice, get the same trips" quietly became "wipe everything older
+    // than the source data".
+    const ancient = new Date(Date.now() - 20 * 30 * 86_400_000) // ~20 months ago
+    await pool.query(
+      `INSERT INTO trips ("tenantId","accountId","deviceId",status,"startTime","endTime","distanceM","distanceSource")
+       VALUES ($1,$2,$3,'closed',$4,$5,1000,'gps')`,
+      [SCOPE.tenantId, SCOPE.accountId, DEV.toString(), ancient, new Date(ancient.getTime() + 600_000)],
+    )
+    const before = await pool.query('SELECT count(*) n FROM trips WHERE "deviceId"=$1', [DEV.toString()])
+    const res = await recomputeTrips(pool, DEV, ancient, new Date(ancient.getTime() + 3_600_000), SCOPE)
+    expect(res.skipped).toBe('below_retention')
+    expect(res.deleted).toBe(0)
+    const after = await pool.query('SELECT count(*) n FROM trips WHERE "deviceId"=$1', [DEV.toString()])
+    expect(after.rows[0]).toEqual(before.rows[0]) // the old trip survives
+    await pool.query('DELETE FROM trips WHERE "deviceId"=$1', [DEV.toString()])
+  })
+
   it('carries a driver assignment across a recompute (manual/auto driver is not wiped)', async () => {
     await pool.query(`INSERT INTO drivers (id,"tenantId","accountId",name) VALUES ($1,$2,$3,'Jonas')`, [DRIVER, SCOPE.tenantId, SCOPE.accountId])
     await insert(trip(0, 54.9))

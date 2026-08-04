@@ -2,6 +2,8 @@ import type { Redis } from 'ioredis'
 
 import type { NormalizedRecord } from '@orbetra/shared'
 
+import { isClockSkewed } from './normalize.js'
+
 /**
  * Live-state maintainer (PROJECT_PLAN §6.1 live path, E02-4):
  * - `device:{id}:last` hash updated ONLY when the incoming fix_time is newer than the
@@ -57,7 +59,27 @@ export class LiveState {
   }
 
   private async applyOne(deviceId: string, rec: NormalizedRecord): Promise<void> {
+    // A device clock running AHEAD is poison for a max-wins marker: one future-dated fix parks the
+    // marker at that timestamp, and every REAL fix afterwards loses the `stored >= incoming` compare
+    // until wall-clock catches up. The map marker, GET /v1/devices/last and the WS publish all
+    // freeze for hours. The row is still in `positions` — this seam only decides what moves LIVE
+    // state, exactly like I5 does for an invalid fix (audit high).
     const key = `device:${deviceId}:last`
+    // SERVER contact time is written FIRST and UNCONDITIONALLY — before the skew gate and before
+    // the max-wins compare. Both of those are about the DEVICE's opinion of time; presence is about
+    // whether we heard from the vehicle at all. Writing it behind either gate reintroduced the bug
+    // in two new shapes (review high): a device with a STUCK clock streams for hours while
+    // `stored >= incoming` short-circuits, so contact time freezes at first sight and a live vehicle
+    // is reported offline; and a device 6 min ahead never created the hash at all, so presence saw
+    // `lastFixMs === null` ("never onboarded") and excluded it from alerting entirely — the vehicle
+    // simply vanished, from the map AND from the alert that should have caught the vanishing.
+    await this.redis.hset(key, 'serverTimeMs', String(rec.serverTime.getTime()))
+    if (isClockSkewed(rec)) {
+      // …and leave a per-device breadcrumb so this is diagnosable as "device clock invalid" rather
+      // than as silence. The global counter says it is happening; this says WHICH device.
+      await this.redis.hset(key, 'clockSkewedAt', String(rec.serverTime.getTime()))
+      return
+    }
     const stored = await this.redis.hget(key, 'fixTimeMs')
     const incoming = rec.fixTime.getTime()
     if (stored !== null && Number(stored) >= incoming) return // max-wins

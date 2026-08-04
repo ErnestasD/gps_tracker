@@ -183,13 +183,17 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     // to their devices and dropped from their buffers — were never written. Nulling the known
     // overflow fields is not enough; the isolation mechanism is what bounds the class.
     await ingestRecords(5)
-    // a corrupt tsMs survives the schema but makes `new Date()` invalid ⇒ fix_time (NOT NULL) rejects
+    // A deviceId beyond int64 passes the schema and normalize (it comes from OUR registry, not the
+    // device, so normalize deliberately does not bound it) and `device_id bigint` rejects it 22003.
+    // Picked precisely because normalize does not clamp it: the point of the bisect is that it
+    // bounds the CLASS, including whatever the next firmware or schema change invents, not just the
+    // fields we already thought of.
     await redis.xadd(
       `raw:${SHARD}`,
       '*',
       'p',
       new Encoder().encode({
-        deviceId: 42n, imei: IMEI, serverTimeMs: Date.now(), tsMs: 1e18, priority: 0,
+        deviceId: 2n ** 63n, imei: IMEI, serverTimeMs: Date.now(), tsMs: Date.now() - 60_000, priority: 0,
         lat: 54.7, lon: 25.3, altitude: 100, angle: 90, satellites: 9, speed: 40,
         eventIoId: 0, io: [], raw: new Uint8Array([1, 2, 3]),
       }),

@@ -94,4 +94,27 @@ describe('E05-4b device_offline sweeper', () => {
     expect(r.events).toHaveLength(1)
     expect(r.events[0]!.ruleId).toBe('small')
   })
+
+  it('presence uses SERVER contact time, so a device clock ahead cannot suppress the alert', () => {
+    // REGRESSION (audit high): `offlineMs = now − lastFixMs` with a DEVICE clock. An RTC running
+    // 10 h ahead made that negative, so `isOffline` was false and a genuinely dead vehicle raised
+    // no device_offline for ~36 h. The fix keys on serverTimeMs — our clock, monotonic, unforgeable.
+    const devices = [dev({ deviceId: '42', lastFixMs: NOW + 10 * H, lastContactMs: NOW - 27 * H })]
+    const r = sweepOffline(devices, rulesFor([{ ruleId: 'r1', accountId: 'acc-1', afterH: 26 }]), new Set(), NOW)
+    expect(r.events).toHaveLength(1) // fires on real absence, not on the device's opinion of time
+  })
+
+  it('falls back to the device fix when no server contact time was recorded (pre-existing markers)', () => {
+    const devices = [dev({ deviceId: '42', lastFixMs: NOW - 27 * H })]
+    const r = sweepOffline(devices, rulesFor([{ ruleId: 'r1', accountId: 'acc-1', afterH: 26 }]), new Set(), NOW)
+    expect(r.events).toHaveLength(1)
+  })
+
+  it('a device with a SKEWED clock is still classified — contact time exists even when no fix does', () => {
+    // its live marker has serverTimeMs but no fixTimeMs, so keying "never reported" on lastFixMs
+    // excluded exactly the device class most likely to go quiet unnoticed
+    const devices = [dev({ deviceId: '42', lastFixMs: null, lastContactMs: NOW - 27 * H })]
+    const r = sweepOffline(devices, rulesFor([{ ruleId: 'r1', accountId: 'acc-1', afterH: 26 }]), new Set(), NOW)
+    expect(r.events).toHaveLength(1)
+  })
 })

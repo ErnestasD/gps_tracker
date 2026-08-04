@@ -26,6 +26,8 @@ function fakeRedis(opts: {
   account: Record<string, string>
   rules: Record<string, Record<string, unknown>> // ruleId → stored rule
   lastFixMs: Record<string, number | null> // null / absent ⇒ never reported (real hget → null)
+  /** SERVER contact time; absent ⇒ a marker written before the field existed (falls back to fix) */
+  lastContactMs?: Record<string, number | null>
   config?: Record<string, unknown>
   flagged?: string[]
   claimed?: string[] // deviceIds whose SET NX should FAIL (already claimed by a concurrent sweep)
@@ -42,6 +44,16 @@ function fakeRedis(opts: {
           const out: Record<string, string> = {}
           for (const [id, r] of Object.entries(opts.rules)) if ((r as { tenantId?: string }).tenantId === t) out[id] = JSON.stringify(r)
           return out
+        })
+        return pipe
+      },
+      // presence is read as an hmget of [fixTimeMs, serverTimeMs] — the server clock is what the
+      // sweep actually keys on (a device clock running ahead used to suppress the alert entirely)
+      hmget: (key: string) => {
+        ops.push(() => {
+          const v = opts.lastFixMs[key.replace('device:', '').replace(':last', '')]
+          const server = opts.lastContactMs?.[key.replace('device:', '').replace(':last', '')]
+          return [v == null ? null : String(v), server == null ? null : String(server)]
         })
         return pipe
       },

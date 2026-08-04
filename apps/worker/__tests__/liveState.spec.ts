@@ -33,10 +33,10 @@ beforeEach(async () => {
   await redis.flushall()
 })
 
-const rec = (fixTimeMs: number, lat = 54.7): NormalizedRecord => ({
+const rec = (fixTimeMs: number, lat = 54.7, serverTimeMs = Date.now()): NormalizedRecord => ({
   deviceId: 42n,
   fixTime: new Date(fixTimeMs),
-  serverTime: new Date(),
+  serverTime: new Date(serverTimeMs),
   lat,
   lon: 25.3,
   altitude: 100,
@@ -151,5 +151,51 @@ describe('LiveState — a failed applyOne does not poison the device chain (revi
     await expect(live.apply([recFor(42n, 1_000), recFor(99n, 1_000)])).rejects.toThrow()
     // the non-failing device was still written despite the sibling's failure
     expect(await fake.hget('device:99:last', 'fixTimeMs')).toBe('1000')
+  })
+})
+
+describe('LiveState clock-skew seam (audit high)', () => {
+  it('a device clock running AHEAD never parks the max-wins marker in the future', async () => {
+    // REGRESSION: the marker is max-wins on fix_time and guards only the past. ONE record from a
+    // device whose RTC drifted forward parked it at that timestamp, and every REAL fix afterwards
+    // lost the `stored >= incoming` compare — the map marker, GET /v1/devices/last and the WS
+    // publish all froze for the length of the drift, self-healing only when wall-clock caught up.
+    const ls = new LiveState(redis)
+    const now = Date.now()
+    await redis.hset('device:tenant', '42', 't1')
+    await ls.apply([rec(now - 1_000, 54.7, now)]) // a normal fix
+    await ls.apply([rec(now + 10 * 3_600_000, 99.9, now)]) // RTC 10 h ahead — must NOT take hold
+    expect(Number(await redis.hget('device:42:last', 'fixTimeMs'))).toBe(now - 1_000)
+    const stored = JSON.parse((await redis.hget('device:42:last', 'json'))!) as { lat: number }
+    expect(stored.lat).toBe(54.7) // still the real position, not the skewed one
+
+    // …and the next REAL fix still advances, because the marker was never poisoned
+    await ls.apply([rec(now + 1_000, 55.5, now)])
+    expect(Number(await redis.hget('device:42:last', 'fixTimeMs'))).toBe(now + 1_000)
+  })
+
+  it('records server contact time UNCONDITIONALLY — behind either gate it was still device-clock bound', async () => {
+    // Writing it after the skew gate / max-wins compare reintroduced the bug in two new shapes:
+    // (a) a device with a STUCK clock streams for hours while `stored >= incoming` short-circuits,
+    // so contact time freezes at first sight and a LIVE vehicle is reported offline; (b) a device
+    // 6 min ahead never created the hash at all, so presence read `lastFixMs === null` ("never
+    // onboarded") and excluded it from alerting — the vehicle vanished from the map AND from the
+    // alert that should have caught the vanishing.
+    const ls = new LiveState(redis)
+    const t0 = Date.UTC(2026, 6, 1, 12, 0, 0)
+    await ls.apply([rec(t0 - 3_600_000, 54.7, t0)]) // fix an hour old, contact is now
+    expect(Number(await redis.hget('device:42:last', 'serverTimeMs'))).toBe(t0)
+
+    // (a) STUCK device clock — same fixTime forever, but contact keeps advancing
+    await ls.apply([rec(t0 - 3_600_000, 54.7, t0 + 30 * 3_600_000)])
+    expect(Number(await redis.hget('device:42:last', 'serverTimeMs'))).toBe(t0 + 30 * 3_600_000)
+
+    // (b) a SKEWED record still records contact, and leaves a per-device breadcrumb
+    await redis.del('device:99:last')
+    const skewed = { ...rec(t0 + 6 * 60_000, 54.7, t0), deviceId: 99n }
+    await ls.apply([skewed])
+    expect(Number(await redis.hget('device:99:last', 'serverTimeMs'))).toBe(t0)
+    expect(await redis.hget('device:99:last', 'clockSkewedAt')).not.toBeNull()
+    expect(await redis.hget('device:99:last', 'fixTimeMs')).toBeNull() // …but never a live position
   })
 })

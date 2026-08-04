@@ -2,7 +2,7 @@ import type { NormalizedRecord } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
 import { GeofenceEngine, type GeofenceDef } from '../src/geofence/engine.js'
-import { pointInPolygon, type GeoPolygon } from '../src/geofence/point.js'
+import { bboxOf, pointInPolygon, type GeoPolygon } from '../src/geofence/point.js'
 
 const square: GeoPolygon = { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] }
 const withHole: GeoPolygon = { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]], [[3, 3], [7, 3], [7, 7], [3, 7], [3, 3]]] }
@@ -146,5 +146,47 @@ describe('E05-2 GeofenceEngine (hysteresis)', () => {
     expect(e.feed([rec(30, 50, 50)], gfFor)).toHaveLength(0) // 1st outside again
     const re = e.feed([rec(40, 50, 50)], gfFor) // 2nd → re-exit
     expect(re[0]).toMatchObject({ type: 'exit' })
+  })
+})
+
+describe('E05-2 GeofenceEngine hot-path cost (audit high)', () => {
+  it('prune() touches only the fed device, not the GLOBAL pair map', () => {
+    // REGRESSION: prune() ran once per RECORD and iterated `this.state.keys()` — every
+    // (device × fence) pair the process had ever seen. The engine is a process-wide singleton
+    // shared by all 16 shard consumers, so `state` grows with the whole fleet, and a 200-record
+    // batch against 5 000 devices × 5 fences did 5 000 000 synchronous iterations on the consumer's
+    // critical path between writePositions and the XACK — long enough to starve the ShardLeaser's
+    // renew timer, expire leases, and make shards flap.
+    const e = new GeofenceEngine()
+    // seed state for many OTHER devices (the global map the old prune walked per record)
+    for (let d = 1000; d < 1300; d++) {
+      const r = { ...rec(0, 5, 5), deviceId: BigInt(d) }
+      e.feed([r], () => [GF])
+    }
+    let scanned = 0
+    const counting: GeofenceDef[] = [{ ...GF, get geometry() { scanned++; return square } }]
+    // one device, many records: the per-device index means cost is O(records × THIS device's fences)
+    const many = Array.from({ length: 50 }, (_, i) => ({ ...rec(i * 10, 5, 5), deviceId: 42n }))
+    e.feed(many, () => counting)
+    expect(scanned).toBeLessThanOrEqual(50) // one geometry read per record, not per global pair
+  })
+
+  it('a fence dropped from a device STILL has its state pruned (behaviour preserved)', () => {
+    const e = new GeofenceEngine()
+    const two: GeofenceDef[] = [GF, { id: 'gf2', name: 'Yard', geometry: square }]
+    e.feed([rec(0, 5, 5), rec(10, 5, 5)], () => two) // both confirmed inside
+    // gf2 is removed from the device's set; its pair state must go, so a later re-add re-enters
+    e.feed([rec(20, 5, 5)], () => [GF])
+    const back = e.feed([rec(30, 5, 5), rec(40, 5, 5)], () => two)
+    expect(back.map((t) => t.geofenceId)).toContain('gf2') // fresh state ⇒ enter fires again
+  })
+
+  it('the bbox prefilter never changes the answer, only the cost', () => {
+    // exact rejection: outside the envelope is outside the polygon, always
+    const withBox: GeofenceDef = { ...GF, bbox: bboxOf(square) }
+    const e1 = new GeofenceEngine()
+    const e2 = new GeofenceEngine()
+    const path = [rec(0, 5, 5), rec(10, 5, 5), rec(20, 50, 50), rec(30, 50, 50), rec(40, 5, 5), rec(50, 5, 5)]
+    expect(e1.feed(path, () => [withBox])).toEqual(e2.feed(path, () => [GF]))
   })
 })

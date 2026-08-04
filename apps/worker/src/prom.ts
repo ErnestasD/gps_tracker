@@ -19,6 +19,8 @@ export interface WorkerProm {
   tripPersistErrors: Counter
   tripRecomputes: Counter
   tripRecomputeDeleted: Counter
+  /** Recomputes whose requested window exceeded the width cap — the tail was not rebuilt. */
+  tripRecomputeTruncated: Counter
   geofenceEvents: Counter
   ruleEvents: Counter
   /** geofence/rule transition writes that failed → in-memory engine state rolled back so a
@@ -39,6 +41,10 @@ export interface WorkerProm {
   /** Fields normalization had to null because the value did not fit its column. Non-zero ⇒ a
    *  firmware quirk or spoofed frames; the position is kept, the field is not. */
   fieldNulled: Counter
+  /** Records excluded from LIVE state / the motion engines because the device clock runs ahead of
+   *  the server's. The row is still written; it just does not move state. Non-zero ⇒ a fleet with a
+   *  drifting RTC, whose live map and offline alerts would otherwise be silently wrong. */
+  clockSkewed: Counter
   stripeOverageReported: Counter
   scheduledReportsSent: Counter
   retentionPruned: Counter
@@ -126,6 +132,7 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const tripPersistErrors = new Counter({ name: 'trip_persist_errors_total', help: 'trip open/close DB writes that failed (advisory; E04-2 recompute reconciles)', registers: [registry] })
   const tripRecomputes = new Counter({ name: 'trip_recompute_total', help: 'trip-recompute jobs applied (E04-2 late-batch reconciliation)', registers: [registry] })
   const tripRecomputeDeleted = new Counter({ name: 'trip_recompute_deleted_total', help: 'trip rows deleted-and-replayed by recompute', registers: [registry] })
+  const tripRecomputeTruncated = new Counter({ name: 'trip_recompute_truncated_total', help: 'recomputes whose window exceeded the width cap — the older tail was NOT rebuilt (operator backfill needed)', registers: [registry] })
   const geofenceEvents = new Counter({ name: 'geofence_events_total', help: 'geofence enter/exit transition events written (E05-2)', registers: [registry] })
   const ruleEvents = new Counter({ name: 'rule_events_total', help: 'rule events written by kind (E05-4)', labelNames: ['kind'], registers: [registry] })
   // a transient DB error persisting a geofence/rule transition rolls back in-memory engine state so
@@ -142,6 +149,7 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   // a stalled metering pipeline is silent under-billing — alert on any non-zero rate
   const deadLettered = new Counter({ name: 'pipeline_dead_lettered_total', help: 'stream entries quarantined to raw:dead by reason (malformed payload | rejected by postgres)', labelNames: ['reason'], registers: [registry] })
   const fieldNulled = new Counter({ name: 'positions_field_nulled_total', help: 'position fields nulled because the value did not fit its column (firmware quirk / spoof)', labelNames: ['field'], registers: [registry] })
+  const clockSkewed = new Counter({ name: 'positions_clock_skewed_total', help: 'records whose device clock ran ahead of server time — kept in positions, excluded from live state and the motion engines', registers: [registry] })
   const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })
   const stripeOverageReported = new Counter({ name: 'stripe_overage_reported_total', help: 'tenants for which device overage was reported to the Stripe meter (ADR-024 PR B2)', registers: [registry] })
   const scheduledReportsSent = new Counter({ name: 'scheduled_reports_sent_total', help: 'scheduled report emails sent (V1-nice)', registers: [registry] })
@@ -168,5 +176,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

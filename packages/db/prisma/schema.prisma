@@ -458,6 +458,8 @@ model Trip {
   // supports the drivers→trips ON DELETE SET NULL cascade + driver-filtered lookups. Declared here
   // to match the index created in migration 20260714130000_trip_driver (schema/migration drift fix).
   @@index([driverId])
+  // PARTIAL index on the open set (migration 20260804170000_trips_open_index) — Prisma cannot
+  // express a WHERE clause, so it is declared in SQL and noted here to document the drift.
   @@map("trips")
 }
 

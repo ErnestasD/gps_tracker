@@ -25,6 +25,12 @@ export interface SmtpOptions {
   port: number
   secure: boolean
   auth: { user: string; pass: string }
+  /** ms to establish the TCP connection */
+  connectionTimeout?: number
+  /** ms to wait for the SMTP greeting after connecting */
+  greetingTimeout?: number
+  /** ms of socket inactivity before the send is abandoned — the one that catches a half-open socket */
+  socketTimeout?: number
 }
 type CreateTransport = (opts: SmtpOptions) => MailSender
 
@@ -54,11 +60,28 @@ export function buildEmailTransport(
     return undefined
   }
   const configSet = env['SES_CONFIG_SET']
+  // `??` alone only catches undefined: SMTP_TIMEOUT_MS='' → 0 and garbage → NaN, both of which
+  // would silently mean "nodemailer default" rather than the bound we intend (same guard shape as
+  // main.ts's numeric env parsing)
+  const timeoutRaw = Number(env['SMTP_TIMEOUT_MS'])
+  const SMTP_TIMEOUT_MS = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 10_000
   // defensive: an options object shouldn't throw on validated primitives, but a bad email config
   // must NEVER crash the worker (it would take the whole pipeline — ingest/trips/geofences — down)
   let mailer: MailSender
   try {
-    mailer = createTransport({ host, port, secure: port === 465, auth: { user, pass } })
+    // TIMEOUTS (audit high): telegram and webpush both bound their sends, email did not — a wedged
+    // SMTP socket (half-open NAT, provider throttle) blocked the notify worker's concurrency slot
+    // indefinitely and stalled the whole alert queue behind it. nodemailer's three phases each need
+    // their own bound; without `socketTimeout` an established-but-silent connection hangs forever.
+    mailer = createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+      connectionTimeout: SMTP_TIMEOUT_MS,
+      greetingTimeout: SMTP_TIMEOUT_MS,
+      socketTimeout: SMTP_TIMEOUT_MS,
+    })
   } catch {
     console.error('email transport disabled: the SMTP client rejected the configuration') // static, no creds
     return undefined

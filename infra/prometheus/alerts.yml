@@ -89,6 +89,17 @@ groups:
           summary: "Platform-wide SMS breaker tripped"
           description: "Config-SMS onboarding is refused for ALL tenants. Investigate the source, then `DEL sms:q:global` in Redis to reset — see the runbook."
 
+      # a position field that did not fit its column, or a device clock running ahead of ours. Both
+      # mean the row is kept but does NOT drive live state / trips / geofences — customer-visible
+      # wrongness with no other signal (the audit's recurring "counter nobody alerts on" pattern).
+      - alert: PositionsDegraded
+        expr: rate(positions_field_nulled_total[15m]) > 0 or rate(positions_clock_skewed_total[15m]) > 0
+        for: 15m
+        labels: { severity: warning, component: pipeline }
+        annotations:
+          summary: "Positions arriving degraded ({{ $value | humanize }}/s)"
+          description: "Fields are being nulled or records excluded from live state (device clock ahead of server). Identify the device/firmware — the live map and offline alerts for it are not trustworthy."
+
       # I4 backpressure sustained = a shard can't drain.
       - alert: BackpressureSustained
         expr: max(ingest_paused_sockets) > 0

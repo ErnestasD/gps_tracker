@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import xxhash from 'xxhash-wasm'
 
-import { normalize } from '../src/normalize.js'
+import { isClockSkewed, normalize } from '../src/normalize.js'
 
 const hasher = await xxhash()
 const hash = (d: Uint8Array): bigint => hasher.h64Raw(d)
@@ -156,6 +156,37 @@ describe('normalize (E02-3)', () => {
     const rec = normalize({ ...basePayload, satellites: 99999 }, hash)
     expect(rec.satellites).toBe(0)
     expect(rec.fixValid).toBe(false)
+  })
+
+  it('a FUTURE-dated fix is KEPT verbatim but flagged — fix_time is part of the primary key', () => {
+    // The first attempt at this fix REWROTE fix_time to serverTime. That was wrong twice over:
+    // `serverTimeMs` is stamped once per FRAME and a drifted RTC ships a whole BUFFER, so an entire
+    // day's records collapsed onto one timestamp (the trail becomes a scribble and the trip engine
+    // sees secs()===0 forever); and fix_time is part of `(device_id, fix_time, rec_hash)`, so a
+    // device retransmit after a lost ACK gets a new serverTimeMs and therefore a SECOND row for one
+    // physical record — an I3 break. The record is stored as sent; consumers decide what to trust.
+    const serverTimeMs = Date.UTC(2026, 6, 1, 12, 0, 0)
+    const tsMs = serverTimeMs + 10 * 3_600_000
+    const rec = normalize({ ...basePayload, serverTimeMs, tsMs }, hash)
+    expect(rec.fixTime.getTime()).toBe(tsMs) // verbatim — history is preserved
+    expect(isClockSkewed(rec)).toBe(true) // …and the seam flags it for live state / the engines
+  })
+
+  it('ordinary jitter and buffered (past) records are NOT flagged', () => {
+    const serverTimeMs = Date.UTC(2026, 6, 1, 12, 0, 0)
+    // a minute ahead is normal clock/network skew
+    expect(isClockSkewed(normalize({ ...basePayload, serverTimeMs, tsMs: serverTimeMs + 60_000 }, hash))).toBe(false)
+    // a buffered flood is the WHOLE point of the protocol — the past is never suspect
+    expect(isClockSkewed(normalize({ ...basePayload, serverTimeMs, tsMs: serverTimeMs - 30 * 86_400_000 }, hash))).toBe(false)
+  })
+
+  it('a whole buffered frame keeps its DISTINCT timestamps', () => {
+    // the regression the clamp would have caused: one serverTimeMs per frame × 255 records
+    const serverTimeMs = Date.UTC(2026, 6, 1, 12, 0, 0)
+    const times = [0, 30, 60, 90, 120].map((s) =>
+      normalize({ ...basePayload, serverTimeMs, tsMs: serverTimeMs + 10 * 3_600_000 + s * 1000 }, hash).fixTime.getTime(),
+    )
+    expect(new Set(times).size).toBe(5)
   })
 
   it('malformed payload throws (consumer dead-letters it)', () => {

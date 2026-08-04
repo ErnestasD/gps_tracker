@@ -1,5 +1,7 @@
 import type { NormalizedRecord } from '@orbetra/shared'
 
+import { isClockSkewed } from '../normalize.js'
+
 import { alarmOf, batteryVoltsOf, din1Of, fuelLevelOf, ignitionOf, unplugOf } from './io.js'
 import type { EngineRuleKind, RuleDef, RuleEvent } from './types.js'
 
@@ -56,9 +58,19 @@ export class RuleEngine {
     const firedLevel = new Set<string>() // `${ruleId}:${deviceId}` — level kinds fire ≤1× per batch
     for (const r of records) {
       const dev = r.deviceId.toString()
-      const seen = this.lastSeen.get(dev)
-      if (seen !== undefined && r.fixTime.getTime() < seen) continue // out-of-order (I2)
-      this.lastSeen.set(dev, r.fixTime.getTime())
+      // A device clock running AHEAD must not move this max-wins marker: one future-dated record
+      // would make every REAL record afterwards look out-of-order and silently kill EVERY alert for
+      // that device — including panic and power_cut, the §6.5 priority-2 kinds that deliberately
+      // bypass cooldown precisely because they must never be lost (audit high).
+      //
+      // Unlike the trip and geofence engines this does NOT skip the record: an IO edge (panic
+      // pressed, power cut) is real regardless of what the RTC believes the time is. Only the
+      // ORDERING bookkeeping is withheld.
+      if (!isClockSkewed(r)) {
+        const seen = this.lastSeen.get(dev)
+        if (seen !== undefined && r.fixTime.getTime() < seen) continue // out-of-order (I2)
+        this.lastSeen.set(dev, r.fixTime.getTime())
+      }
 
       const rules = rulesFor(r.deviceId)
       if (rules.length === 0) continue

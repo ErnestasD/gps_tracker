@@ -1,6 +1,7 @@
 import { ibuttonKeyFromAvl, type NormalizedRecord } from '@orbetra/shared'
 
 import { haversineM } from '../geo.js'
+import { isClockSkewed } from '../normalize.js'
 
 /** The trip's driver iButton (V2, Part B): the canonical key of AVL 78 seen during the trip, or
  * null. PURE — the persister resolves it to a driverId via the Redis driver:ibutton map. */
@@ -166,6 +167,11 @@ export class TripEngine {
 
   private step(r: NormalizedRecord, out: TripEvent[], configFor?: (deviceId: bigint) => DeviceTripConfig | undefined): void {
     if (!r.fixValid) return // defensive: I5 — engine must never let an invalid fix count
+    // Same seam for a device clock running AHEAD (audit high): `lastSeen` is a max, so one
+    // future-dated fix makes every REAL record afterwards look out-of-order — the engine drops them
+    // all into `late` and enqueues a recompute per batch, producing no live trips for the whole
+    // drift. The record stays in `positions`; it just does not drive the state machine.
+    if (isClockSkewed(r)) return
     const key = r.deviceId.toString()
     const st = this.state.get(key) ?? {
       phase: 'parked' as const, cand: null, trip: null, lastSeen: null,
