@@ -1,0 +1,13 @@
+-- Session epoch per user (audit high: refresh rotation was not fenced against revocation).
+--
+-- Every eviction path is `UPDATE refresh_tokens SET revoked_at = now() WHERE revoked_at IS NULL`,
+-- which by definition cannot match a row inserted after it ran — so a refresh in flight during a
+-- password reset re-minted a LIVE token in the family that was just killed, and it kept rotating
+-- for the full refresh TTL. Re-reading the family afterwards is not enough either: under READ
+-- COMMITTED a reader never sees an UNCOMMITTED eviction, so the race just narrows.
+--
+-- The epoch is written in the SAME transaction as the revoke, and rotation reads it with
+-- SELECT ... FOR UPDATE on this row. That lock is the serialization point: either the eviction
+-- commits first and rotation sees the epoch, or rotation commits first and the eviction's
+-- `revoked_at IS NULL` sweep now covers the row it wrote.
+ALTER TABLE "users" ADD COLUMN "sessionsRevokedAt" TIMESTAMPTZ;

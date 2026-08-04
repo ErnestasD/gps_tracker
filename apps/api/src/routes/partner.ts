@@ -104,9 +104,12 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     const parsed = partnerSetPasswordSchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return problem(c, 400, 'Bad Request', 'invalid token or password')
     const now = new Date()
+    // hash BEFORE consuming — the token is single-use, so an argon2 overload (503) after the consume
+    // would permanently burn the invite link (parity with /v1/auth/reset-password)
+    const newHash = await hashPassword(parsed.data.password)
     const affiliateId = await deps.db.affiliates.consumePwToken(sha256(parsed.data.token), now)
     if (affiliateId === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
-    await deps.db.affiliates.setPassword(affiliateId, await hashPassword(parsed.data.password))
+    await deps.db.affiliates.setPassword(affiliateId, newHash)
     // burn any sibling outstanding tokens so only the newest link ever worked (review LOW)
     await deps.db.affiliates.invalidatePwTokens(affiliateId, now)
     c.header('Cache-Control', 'no-store')

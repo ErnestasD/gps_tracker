@@ -1,4 +1,5 @@
 import type { Hono } from 'hono'
+import type { Redis } from 'ioredis'
 
 import type { Db } from '@orbetra/db'
 import { apiKeyCreateSchema, type Role } from '@orbetra/shared'
@@ -6,6 +7,7 @@ import { apiKeyCreateSchema, type Role } from '@orbetra/shared'
 import { hasEntitlement } from '../auth/entitlements.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { scopeOf } from './registry.js'
+import { markSessionsRevoked } from '../ws.js'
 
 /**
  * API-key management (E06-3). Tenant-admin only — minting a key is privileged config, so an
@@ -16,7 +18,7 @@ import { scopeOf } from './registry.js'
  */
 const TENANT_ADMINS: Role[] = ['platform_admin', 'tsp_admin']
 
-export function mountApiKeys(app: Hono<AuthEnv>, deps: { db: Db }): void {
+export function mountApiKeys(app: Hono<AuthEnv>, deps: { db: Db; redis: Redis }): void {
   const admin = (c: { get: (k: 'auth') => { role: Role } }): boolean => TENANT_ADMINS.includes(c.get('auth').role)
 
   // apiAccess is a Track-B (TSP) entitlement: Direct plans get NO REST API. Gate INLINE next to
@@ -50,7 +52,16 @@ export function mountApiKeys(app: Hono<AuthEnv>, deps: { db: Db }): void {
   app.delete('/v1/api-keys/:id', async (c) => {
     if (!admin(c)) return problem(c, 403, 'Forbidden')
     if (!(await apiAccess(c))) return problem(c, 403, 'Forbidden', 'plan_upgrade_required')
-    const ok = await deps.db.apiKeys.revoke(scopeOf(c.get('auth')), { userId: c.get('auth').userId }, c.req.param('id'))
+    const id = c.req.param('id')
+    const ok = await deps.db.apiKeys.revoke(scopeOf(c.get('auth')), { userId: c.get('auth').userId }, id)
+    // …and tear down any LIVE WS stream the key already holds (audit high). Stamping revokedAt only
+    // made REST 401; a key CAN open a stream (GET /v1/ws-ticket carries no role requirement and the
+    // OpenAPI spec lists apiKeyAuth for it), and the gateway's only teardown is the sweep on
+    // `ws:revoke:{userId}` — which for a key is the KEY id, and was never written. So the UI showed
+    // the key revoked while the attacker's socket kept receiving every live position in the fleet
+    // until the API process restarted. For a key-authenticated principal `auth.userId` IS the key id
+    // (auth/apiKey.ts), so the existing `t >= establishedAt` sweep closes it on the next tick.
+    if (ok) await markSessionsRevoked(deps.redis, id)
     return ok ? c.json({ ok: true }) : problem(c, 404, 'Not Found')
   })
 }

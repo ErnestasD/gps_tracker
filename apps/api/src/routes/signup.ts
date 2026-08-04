@@ -39,6 +39,8 @@ export interface SignupRouteDeps {
 // 30 days — the publicly advertised trial. The marketing site AND the Terms of Service both state
 // "free trials run for 30 days without a card", so the backend must grant exactly that; a shorter
 // window would break a contractual promise.
+/** Jittered stand-in for a real signup's latency — timing equivalence WITHOUT touching argon2. */
+const HONEYPOT_DELAY_MS = 200
 const TRIAL_DAYS = 30
 const TRIAL_PLAN = 'direct_10' as const
 
@@ -59,14 +61,6 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
     if (!parsed.success) return c.json({ error: 'invalid request' }, 400)
     const body = parsed.data
 
-    // HONEYPOT: a fake success indistinguishable from the real thing — same body shape, random id,
-    // nothing stored. It also burns the SAME argon2 work a real signup does: returning instantly
-    // would let a bot A/B the trap by timing (~1 ms vs ~200 ms) even though the JSON matches.
-    if (body.hp_field !== undefined && body.hp_field !== '') {
-      await hashPassword(body.password)
-      return c.json({ ok: true, id: randomUUID() }, 201)
-    }
-
     // FAIL CLOSED (unlike pilot-request, which fails open because a lost lead is unrecoverable).
     // This route creates a tenant + account + admin user + billing object, and it is the only thing
     // standing between the open internet and mass tenant creation — a Redis blip must not turn it
@@ -74,6 +68,12 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
     // A GLOBAL bucket sits behind the per-IP one as a circuit breaker: a distributed flood spreads
     // across IPs but still has to fit under the platform-wide ceiling, which also protects the
     // shared argon2 semaphore (hashPassword) that login depends on.
+    //
+    // This runs BEFORE the honeypot branch (audit high): the honeypot also hashes, so while it sat
+    // above these buckets it was an unauthenticated, unlimited path straight into the process-wide
+    // 8-slot argon2 semaphore that tenant login, password change/reset and partner login all share.
+    // Sustained honeypot traffic from one host pinned every slot and queued real logins behind it —
+    // a platform-wide authentication outage triggered by setting one JSON field.
     try {
       const ip = clientIp(c.req.header('x-forwarded-for'), deps.getRemoteAddr(c), deps.trustProxy)
       const perIp = (await deps.redis.eval(RL_SCRIPT, 1, `signup:rl:${ip}`, String(limit.windowS))) as number
@@ -83,6 +83,16 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
     } catch (err) {
       console.error('signup rate-limit unavailable', err)
       return c.json({ error: 'temporarily unavailable' }, 503)
+    }
+
+    // HONEYPOT: a fake success indistinguishable from the real thing — same body shape, random id,
+    // nothing stored. It still has to SPEND time, because returning instantly would let a bot A/B
+    // the trap by timing even though the JSON matches — but it spends it SLEEPING, not hashing.
+    // Real argon2 here handed anonymous traffic a free path into the process-wide semaphore that
+    // login depends on; the trap only ever needed the latency, never the work (audit high).
+    if (body.hp_field !== undefined && body.hp_field !== '') {
+      await new Promise((r) => setTimeout(r, HONEYPOT_DELAY_MS * (0.85 + 0.3 * Math.random())))
+      return c.json({ ok: true, id: randomUUID() }, 201)
     }
 
     const email = body.email.trim().toLowerCase()

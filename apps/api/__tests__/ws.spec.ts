@@ -154,6 +154,49 @@ describe('E02-4 ws-ticket + live gateway', () => {
     }
   })
 
+  it('a ticket held ACROSS a revoke is refused at redemption — the sweep alone was a permanent miss', async () => {
+    // REGRESSION (review high): the sweep compares the revoke marker against `establishedAt`, which
+    // was stamped at REDEMPTION. A holder who kept a fresh ticket in hand simply redeemed it after
+    // the revoke: establishedAt > marker, so `t >= establishedAt` never matched and the socket
+    // streamed on. REST 401'd and the UI showed the credential revoked while the live feed flowed.
+    const uid = `held-ticket-${Date.now()}`
+    const ticket = await issueTicket(deps, { userId: uid, tenantId: 't1', role: 'tsp_admin' })
+    await new Promise((r) => setTimeout(r, 5)) // the revoke lands AFTER the ticket was minted
+    await markSessionsRevoked(redis, uid)
+    await expect(connect(ticket)).rejects.toThrow(/401/)
+  })
+
+  it('a socket is closed once it hits the max lifetime — the only re-authorization an open stream gets', async () => {
+    // A stream is authorized exactly once, at connect: without a ceiling a plan downgrade, account
+    // move or role change never reaches an already-open socket. The client reconnects with a fresh
+    // ticket, which re-authorizes; the close code is the same 4401 the SPA already handles.
+    const lifeDeps: WsDeps = { redis, redisSub, ticketTtlS: 30, revokeCheckIntervalMs: 40, maxSocketLifetimeMs: 60 }
+    const srv = serve({ fetch: createApp(testApiDeps(lifeDeps)).fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    const localWss = attachWsGateway(srv, lifeDeps)
+    try {
+      const ticket = await issueTicket(lifeDeps, { userId: `life-${Date.now()}`, tenantId: 't1', role: 'tsp_admin' })
+      const ws = new WebSocket(`ws://127.0.0.1:${p}/v1/stream?ticket=${ticket}`)
+      const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+        ws.on('close', (code, reason) => resolve({ code, reason: reason.toString() })),
+      )
+      await new Promise<void>((resolve, reject) => {
+        ws.once('open', () => resolve())
+        ws.once('error', reject)
+      })
+      const res = await Promise.race([
+        closed,
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('socket outlived its ceiling')), 3_000)),
+      ])
+      expect(res.code).toBe(WS_REVOKED_CLOSE)
+      expect(res.reason).toBe('reauthorize') // distinguishable from a real revocation
+    } finally {
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+      localWss.close()
+    }
+  })
+
   it('account scope: user of account A never receives account B device events', async () => {
     const a = await connect(await issueTicket(deps, CTX_A))
     const tenant = await connect(await issueTicket(deps, CTX_TENANT))

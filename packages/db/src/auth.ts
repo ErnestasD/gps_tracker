@@ -70,8 +70,40 @@ export interface AuthDb {
      * row-level lock on the conditional UPDATE, no transaction needed.
      */
     claimForRotation(tokenHash: string, now: Date): Promise<{ familyId: string; userId: string } | null>
+    /**
+     * Rotate a live refresh token to a successor ATOMICALLY, fenced against session eviction.
+     *
+     * claim → check → insert must be ONE transaction holding a lock the eviction paths also take,
+     * or the fence is a snapshot read that cannot see an uncommitted eviction (audit high). The
+     * transaction claims the token, takes `SELECT … FOR UPDATE` on the owning user — which BLOCKS
+     * behind any in-flight `revokeAllForUser` — and refuses if the claimed token predates the
+     * user's session epoch. If rotation wins the lock instead, the eviction's `revokedAt IS NULL`
+     * sweep runs afterwards and covers the successor we just wrote. Either order is safe.
+     *
+     * Returns null when the token is not live OR the family was evicted. UNSCOPED BY DESIGN.
+     */
+    rotate(
+      tokenHash: string,
+      now: Date,
+      successor: { id: string; tokenHash: string; expiresAt: Date },
+    ): Promise<{ familyId: string; userId: string } | null>
     findByTokenHash(tokenHash: string): Promise<RefreshTokenRow | null>
     revokeFamily(familyId: string, now: Date): Promise<void>
+    /**
+     * True when ANY row in the family carries `revokedAt` — i.e. the family was evicted (logout,
+     * password change/reset, admin role change, user delete). Read AFTER a rotation insert: every
+     * eviction path is an `updateMany WHERE revokedAt IS NULL`, which by definition cannot match a
+     * row inserted after it ran, so a refresh in flight during the eviction re-mints a LIVE token in
+     * the family that was just killed. Ordinary rotation sets `rotatedAt`, never `revokedAt`, so
+     * this predicate is exactly "was this family evicted". UNSCOPED BY DESIGN (familyId comes from
+     * the token we just claimed).
+     */
+    familyRevoked(familyId: string): Promise<boolean>
+    /**
+     * True when ANY row in the family carries `revokedAt`. Kept for the reuse-detection path;
+     * NOT a revocation fence — see `rotate`.
+     */
+    familyRevoked(familyId: string): Promise<boolean>
     /** Revoke EVERY non-revoked refresh token for a user, across ALL families — the eviction a
      *  password change / admin reset needs so every other live session is logged out. UNSCOPED BY
      *  DESIGN (refresh-token rows hang off userId; the userId comes from the verified access token).
@@ -159,9 +191,45 @@ export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnec
       revokeFamily: async (familyId, now) => {
         await prisma.refreshToken.updateMany({ where: { familyId, revokedAt: null }, data: { revokedAt: now } })
       },
+      familyRevoked: async (familyId) =>
+        (await prisma.refreshToken.findFirst({ where: { familyId, revokedAt: { not: null } }, select: { id: true } })) !== null,
       revokeAllForUser: async (userId, now) => {
-        await prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } })
+        // ONE transaction, user row FIRST: that write is the lock a concurrent rotation blocks on
+        // (see `rotate`). Stamping the epoch is what makes the eviction visible to a rotation that
+        // has already claimed its token — the row sweep alone cannot reach a row inserted later.
+        await prisma.$transaction([
+          prisma.user.update({ where: { id: userId }, data: { sessionsRevokedAt: now } }),
+          prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } }),
+        ])
       },
+      rotate: async (tokenHash, now, successor) =>
+        prisma.$transaction(async (tx) => {
+          // Whose token is this? An UNLOCKED read purely to learn the user id — correctness still
+          // rests entirely on the conditional claim below, which is atomic on its own.
+          const owner = await tx.refreshToken.findUnique({ where: { tokenHash }, select: { userId: true } })
+          if (owner === null) return null
+          // Lock the USER first, then the token. `revokeAllForUser` takes the same two in the same
+          // order; the reverse (claim, then lock the user) deadlocks against it under load — one
+          // transaction holds the token row and wants the user, the other holds the user and wants
+          // the token, and Postgres kills one with 40P01. Lock ordering is the whole fix here.
+          // This BLOCKS behind an in-flight eviction and releases at commit.
+          const locked = await tx.$queryRaw<{ sessionsRevokedAt: Date | null }[]>`
+            SELECT "sessionsRevokedAt" FROM "users" WHERE "id" = ${owner.userId}::uuid FOR UPDATE`
+          const epoch = locked[0]?.sessionsRevokedAt ?? null
+          const claimed = await tx.refreshToken.updateManyAndReturn({
+            where: { tokenHash, rotatedAt: null, revokedAt: null, expiresAt: { gt: now } },
+            data: { rotatedAt: now },
+            select: { familyId: true, userId: true, createdAt: true },
+          })
+          const row = claimed[0]
+          if (row === undefined) return null
+          // the token we consumed was minted before the eviction ⇒ this whole family is dead
+          if (epoch !== null && row.createdAt <= epoch) return null
+          await tx.refreshToken.create({
+            data: { id: successor.id, familyId: row.familyId, userId: row.userId, tokenHash: successor.tokenHash, expiresAt: successor.expiresAt },
+          })
+          return { familyId: row.familyId, userId: row.userId }
+        }),
     },
     passwordResetTokens: {
       create: async (row) => {

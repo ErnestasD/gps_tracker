@@ -151,6 +151,31 @@ describe('public self-serve signup (F2)', () => {
     expect((await login('bot@spam.test', 'password12')).status).toBe(401) // nothing was created
   })
 
+  it('the honeypot is rate-limited too — it must not be a free path into the argon2 semaphore', async () => {
+    // REGRESSION (audit high): the honeypot branch (which HASHES) sat ABOVE the per-IP and global
+    // buckets, so setting one JSON field bought unlimited, unauthenticated access to the process-wide
+    // 8-slot argon2 semaphore that tenant login, password change/reset and partner login all share.
+    // Sustained traffic pinned every slot and queued real logins behind it — an authentication
+    // outage from an endpoint that was never supposed to do work at all.
+    const tightApp = createApp({
+      redis, redisSub, db,
+      jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
+      lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+      getRemoteAddr: () => '127.0.0.2',
+      signupRateLimit: { max: 2, windowS: 3600 },
+    })
+    await redis.del('signup:rl:127.0.0.2', 'signup:rl:global')
+    const bot = () =>
+      tightApp.request('/v1/public/signup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Bot', email: 'bot2@spam.test', password: 'password12', hp_field: 'gotcha' }),
+      })
+    expect((await bot()).status).toBe(201) // still a convincing fake success…
+    expect((await bot()).status).toBe(201)
+    expect((await bot()).status).toBe(429) // …but it spends the same budget a real signup does
+  })
+
   it('an ACTIVE ?ref attributes the tenant; an unknown ref never blocks', async () => {
     const actor = { userId: '00000000-0000-0000-0000-0000000000f2' }
     const aff = await db.affiliates.create(actor, { name: 'Signup Partner', email: 'sp@partner.co', code: 'SIGNUP1' })

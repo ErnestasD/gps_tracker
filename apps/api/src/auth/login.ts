@@ -135,15 +135,8 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       secure: deps.secureCookies,
     })
 
-  const issueSession = async (user: AuthUserRow, familyId: string): Promise<{ session: AuthSession; rawRefresh: string }> => {
-    const rawRefresh = randomBytes(32).toString('hex')
-    await deps.db.refreshTokens.create({
-      id: randomUUID(),
-      familyId,
-      userId: user.id,
-      tokenHash: sha256(rawRefresh),
-      expiresAt: new Date(Date.now() + deps.refreshTtlS * 1000),
-    })
+  /** Access token only — the refresh row is written by the caller (login creates, refresh rotates). */
+  const mintSession = async (user: AuthUserRow): Promise<AuthSession> => {
     const accessToken = await mintAccessToken(
       {
         sub: user.id,
@@ -154,7 +147,18 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       deps.jwtSecret,
       deps.jwtTtlS,
     )
-    return { session: { accessToken, expiresInS: deps.jwtTtlS, user: toAuthUser(user) }, rawRefresh }
+    return { accessToken, expiresInS: deps.jwtTtlS, user: toAuthUser(user) }
+  }
+
+  const newRefresh = (): { raw: string; id: string; tokenHash: string; expiresAt: Date } => {
+    const raw = randomBytes(32).toString('hex')
+    return { raw, id: randomUUID(), tokenHash: sha256(raw), expiresAt: new Date(Date.now() + deps.refreshTtlS * 1000) }
+  }
+
+  const issueSession = async (user: AuthUserRow, familyId: string): Promise<{ session: AuthSession; rawRefresh: string }> => {
+    const next = newRefresh()
+    await deps.db.refreshTokens.create({ id: next.id, familyId, userId: user.id, tokenHash: next.tokenHash, expiresAt: next.expiresAt })
+    return { session: await mintSession(user), rawRefresh: next.raw }
   }
 
   app.post('/login', async (c) => {
@@ -210,7 +214,14 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     const raw = getCookie(c, COOKIE)
     if (raw === undefined || raw === '') return problem(c, 401, 'Unauthorized')
     const now = new Date()
-    const claimed = await deps.db.refreshTokens.claimForRotation(sha256(raw), now)
+    const next = newRefresh()
+    // ONE transaction: claim → lock the owning user → refuse if the token predates that user's
+    // session epoch → insert the successor (packages/db `rotate`). Doing this as separate statements
+    // is what let a refresh IN FLIGHT during a password reset resurrect the family — every eviction
+    // path is `updateMany WHERE revokedAt IS NULL`, which cannot match a row inserted after it ran,
+    // and a plain re-read afterwards is a snapshot that cannot see an UNCOMMITTED eviction either.
+    // The `FOR UPDATE` on the user row is the serialization point (audit high + review high).
+    const claimed = await deps.db.refreshTokens.rotate(sha256(raw), now, next)
     if (claimed === null) {
       const row = await deps.db.refreshTokens.findByTokenHash(sha256(raw))
       if (row && (row.rotatedAt !== null || row.revokedAt !== null)) {
@@ -228,7 +239,9 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       return problem(c, 401, 'Unauthorized')
     }
     // fresh user read ⇒ role/account changes propagate within one access-token TTL
-    const { session, rawRefresh } = await issueSession(user, claimed.familyId)
+    const session = await mintSession(user)
+    const rawRefresh = next.raw
+
     setRefreshCookie(c, rawRefresh)
     c.header('Cache-Control', 'no-store')
     return c.json(session)
@@ -384,11 +397,15 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     const body = resetPasswordSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success) return problem(c, 400, 'Bad Request', 'invalid token or password')
     const now = new Date()
+    // hash BEFORE consuming: the token is single-use and consumed ATOMICALLY, so hashing afterwards
+    // meant an argon2 overload (503) burned the reset link permanently — under exactly the load
+    // spike where the user retries. Wasted work on an invalid token is the cheaper failure.
+    const newHash = await hashPassword(body.data.newPassword)
     const consumed = await deps.db.passwordResetTokens.consume(sha256(body.data.token), now)
     if (consumed === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
     const user = await deps.db.users.findByIdForAuth(consumed.userId)
     if (user === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
-    await deps.db.users.setPassword(user.id, await hashPassword(body.data.newPassword))
+    await deps.db.users.setPassword(user.id, newHash)
     await deps.db.passwordResetTokens.invalidateAllForUser(user.id, now) // burn any sibling tokens
     // kill every session: all refresh families + any live WS stream (parity with password change)
     await revokeAllUserSessions(deps.db.refreshTokens, user.id)

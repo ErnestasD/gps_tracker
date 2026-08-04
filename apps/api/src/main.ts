@@ -98,6 +98,10 @@ const deps = {
   jwtTtlS: Number(process.env['JWT_TTL'] ?? 900),
   refreshTtlS: Number(process.env['REFRESH_TTL'] ?? 1_209_600),
   ticketTtlS: Number(process.env['WS_TICKET_TTL'] ?? 30),
+  // hard ceiling on one live socket (default 4 h). A stream is authorized only at connect, so this
+  // is what makes a plan downgrade / role change eventually reach an already-open one; clients
+  // reconnect with a fresh ticket, which re-authorizes.
+  maxSocketLifetimeMs: Number(process.env['WS_MAX_SOCKET_LIFETIME_MS'] ?? 4 * 3_600_000),
   lockout: {
     maxFails: Number(process.env['LOCKOUT_MAX_FAILS'] ?? 5),
     windowS: Number(process.env['LOCKOUT_WINDOW_S'] ?? 900),

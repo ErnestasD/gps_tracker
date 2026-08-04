@@ -96,6 +96,8 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout (§6.1), defaults `5` / `900` |
 | `WS_TICKET_TTL` | apps/api | WS `/v1/stream` one-time ticket TTL seconds (§6.7), default `30` |
 | `ARGON2_MAX_CONCURRENT` | apps/api | Max concurrent argon2 password hashes (back-pressures login/CPU), default `8` |
+| `ARGON2_MAX_WAITING` | apps/api | Max requests QUEUED for an argon2 slot before shedding with 503, default `64` (≈0.9 s of queueing). An unbounded queue turns a flood on any hashing route into a platform-wide login stall |
+| `WS_MAX_SOCKET_LIFETIME_MS` | apps/api | Hard ceiling on one live WS socket, default `14400000` (4 h). A stream is authorized only at connect, so this is what makes a plan/role change reach an already-open one; clients reconnect automatically |
 | `PUBLIC_API_URL` | apps/api | Absolute API base advertised in the generated OpenAPI `servers[]` (`GET /v1/openapi.json`, `/v1/docs`); unset = omitted |
 | `COOKIE_SECURE` | apps/api | `0` disables the Secure cookie flag (dev/e2e over http ONLY) |
 | `TRUST_PROXY` | apps/api | `1` = trust X-Forwarded-For for lockout + caddy-ask IPs (behind Caddy) |

@@ -243,6 +243,11 @@ model User {
   role         Role
   locale       String   @default("en")
   createdAt    DateTime @default(now()) @db.Timestamptz()
+  /// Session epoch: every credential minted BEFORE this instant is dead. Written by the eviction
+  /// paths (password change/reset, admin role or scope change, user delete) in the SAME transaction
+  /// that revokes the refresh rows, and read under `FOR UPDATE` by refresh rotation — that lock is
+  /// what serializes the two, so an eviction can never be invisible to a rotation in flight.
+  sessionsRevokedAt DateTime? @db.Timestamptz()
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   account             Account?             @relation(fields: [accountId], references: [id], onDelete: SetNull)

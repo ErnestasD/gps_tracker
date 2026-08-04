@@ -163,6 +163,24 @@ describe('audit MED: global request body-size limit', () => {
     expect(res.status).toBe(413)
   })
 
+  it('the UNAUTHENTICATED routes are capped too — they were the ones left uncapped', async () => {
+    // REGRESSION (audit high): Hono applies middleware only to handlers registered AFTER it, and the
+    // body limit sat below app.route('/v1/auth'), the pilot-request mount and the Stripe webhook. So
+    // every route reachable WITHOUT a token buffered an arbitrarily large body — and the Stripe
+    // handler reads c.req.text() before it can even verify the signature. Caddy's 64 KB cap covers
+    // only the marketing host's /v1/public/*, so nothing else stood in the way.
+    const app = appFor(seedUsers())
+    const big = JSON.stringify({ email: 'a@b.test', password: 'x'.repeat(2 * 1024 * 1024) })
+    for (const path of ['/v1/auth/login', '/v1/auth/forgot-password', '/v1/public/pilot-request']) {
+      const res = await app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: 'http://localhost' },
+        body: big,
+      })
+      expect(res.status, path).toBe(413)
+    }
+  })
+
   it('the import route gets a HIGHER ceiling — a 1.5 MB CSV is NOT 413 (row cap 400 instead)', async () => {
     const app = appFor(seedUsers())
     const tok = await mintTestToken({ userId: 'ta', tenantId: 'T', role: 'tsp_admin' })
