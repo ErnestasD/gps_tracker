@@ -467,7 +467,16 @@
       "km": "Kilometry (km)",
       "mi": "Mile (mi)",
       "l": "Litry (l)",
-      "gal": "Galony amerykańskie (gal)"
+      "gal": "Galony amerykańskie (gal)",
+      "tzNote": "Tylko wyświetlanie — zmienia sposób pokazywania czasu Tobie, a nie grupowanie raportów."
+    },
+    "accountTz": {
+      "title": "Strefa czasowa raportów",
+      "hint": "Raporty i przebieg są grupowane w dni według TEJ strefy — to ustawienie konta, a nie sposób wyświetlania czasu na Twoim ekranie.",
+      "save": "Zapisz",
+      "saved": "Zapisano",
+      "error": "Nie udało się zapisać strefy czasowej",
+      "display": "Tylko wyświetlanie — zmienia sposób pokazywania czasu Tobie, a nie grupowanie raportów."
     }
   },
   "devices": {

@@ -7,7 +7,7 @@ import { Combobox } from '@/components/admin/Combobox'
 import { changePassword } from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
-import { listAccounts } from '@/lib/devices'
+import { listAccounts, updateAccountTimezone } from '@/lib/devices'
 import { downloadExport, hasPendingExport, listExports, requestExport } from '@/lib/gdpr'
 import { ApiError } from '@/lib/http'
 import {
@@ -194,6 +194,7 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
+          <AccountTimezoneSection />
           <DisplayPrefsSection />
         </div>
       </div>
@@ -253,6 +254,70 @@ export function SettingsPage() {
   )
 }
 
+/**
+ * The ACCOUNT's reporting time zone — the one the server buckets report days by (hard rule 7).
+ *
+ * It was hard-coded to UTC at signup with no screen anywhere to change it, while Settings already
+ * showed a time-zone picker for the DISPLAY preference. So a customer could set "Europe/Vilnius",
+ * watch every timestamp switch to local time, and still get reports cut on UTC midnight — the
+ * control looked like it worked. Tenant admins only; account-scoped users see their zone read-only.
+ */
+function AccountTimezoneSection() {
+  const { t } = useTranslation()
+  const qc = useQueryClient()
+  const user = getCurrentUser()
+  const canEdit = user?.role === 'platform_admin' || user?.role === 'tsp_admin'
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
+  const account = accounts.data?.[0]
+  const [tz, setTz] = useState('')
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const value = tz || account?.timezone || 'UTC'
+
+  const options = [
+    ...COMMON_TIMEZONES.map((z) => ({ value: z, label: z })),
+    ...(!(COMMON_TIMEZONES as readonly string[]).includes(value) ? [{ value, label: value }] : []),
+  ]
+
+  const save = () => {
+    if (account === undefined) return
+    setBusy(true)
+    setMsg(null)
+    updateAccountTimezone(account.id, value)
+      .then(() => {
+        setMsg({ kind: 'ok', text: t('settings.accountTz.saved') })
+        void qc.invalidateQueries({ queryKey: ['accounts'] })
+      })
+      .catch(() => setMsg({ kind: 'err', text: t('settings.accountTz.error') }))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="admin-hairline-t space-y-3 pt-4" data-testid="account-tz">
+      <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+        {t('settings.accountTz.title')}
+      </div>
+      <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.accountTz.hint')}</p>
+      <div className="flex items-end gap-2">
+        <div className="w-56">
+          <Combobox data-testid="account-tz-select" aria-label={t('settings.accountTz.title')}
+            value={value} onChange={setTz} options={options} disabled={!canEdit || account === undefined} />
+        </div>
+        {canEdit && (
+          <AdminButton type="button" onClick={save} disabled={busy || account === undefined} data-testid="account-tz-save">
+            {t('settings.accountTz.save')}
+          </AdminButton>
+        )}
+        {msg !== null && (
+          <p role="status" className="text-sm" style={{ color: msg.kind === 'ok' ? 'var(--admin-ink-soft)' : 'var(--admin-danger)' }}>
+            {msg.text}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** Global display preferences (Rodymo nustatymai): time/date format, time zone, and units.
  * Device-local (prefs.ts localStorage) with instant apply — every subscribed formatter
  * (useFmt/useUnits) re-renders on change, so reports, tables and maps update live. */
@@ -289,6 +354,10 @@ function DisplayPrefsSection() {
         { value: '12h', label: t('settings.display.h12') },
       ])}
       {row(t('settings.display.timeZone'), 'pref-timezone', prefs.timeZone, set('timeZone'), tzOptions, true)}
+      {/* the two zones were indistinguishable in the UI: this one only changes RENDERING, while
+          reports are bucketed by the ACCOUNT zone below. Setting this one and expecting reports to
+          follow is the trap — say so where the control is. */}
+      <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.display.tzNote')}</p>
       {/* pattern literals are locale-neutral — they ARE the format being picked */}
       {row(t('settings.display.dateFormat'), 'pref-dateformat', prefs.dateFormat, set('dateFormat'), [
         { value: 'auto', label: t('settings.display.dfAuto') },

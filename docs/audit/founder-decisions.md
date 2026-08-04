@@ -1,5 +1,7 @@
 # Audit findings that are FOUNDER decisions, not code defects
 
+> **Status 2026-08-04:** all eight DECIDED. See each section for the answer and its consequence.
+
 Everything in `backend-audit-remediation.md` marked OPEN is something I can fix. These are the ones
 I should **not** decide alone: the code is doing what it was told to do, and changing it changes the
 product, the price, or a promise to a customer. Each one names the concrete choice.
@@ -17,9 +19,9 @@ paying for two features that are not implemented.
 honesty pass removed those claims), so the exposure is limited to the plan matrix itself — but a
 sales conversation that reads the matrix would promise them.
 
-**My recommendation:** (b) for now. Re-add when there is a signed customer asking, because SSO in
-particular is weeks of work (SAML/OIDC, per-tenant IdP config, JIT provisioning) and it should be
-scoped against a real IdP, not in the abstract.
+**DECIDED (b)** — both flags removed from the plan matrix 2026-08-04. Enterprise stays a
+quote-based tier (all TSP plans are already `deviceLimit: null`, so a custom 5000-device deal needs
+no code). Re-add each flag together with its implementation, never before.
 
 ---
 
@@ -30,11 +32,14 @@ screen exposes it. Reports bucket rows by the account timezone (hard rule 7), so
 "yesterday" report currently runs 00:00–24:00 UTC — three hours off in summer. Trips that straddle
 03:00 local land in the wrong day.
 
-**The choice:** (a) infer from the browser at signup and let the user confirm, (b) add it to the
-account settings screen and default to UTC, or (c) both. This is a real, visible wrongness for every
-Direct customer, so I would not ship a Direct launch without at least (b).
+**DECIDED (c)** — done 2026-08-04. Signup sends the browser's IANA zone, Settings gains an
+explicit **Reporting time zone** control (tenant admins), and the existing display-preference picker
+now says in words that it only changes rendering. Zones are validated against the runtime tz
+database, because a name `Intl` cannot resolve would throw at every report render.
 
-**Cost:** a day, including the settings UI and a migration for existing accounts.
+The trap worth remembering: Settings ALREADY had a time-zone picker, but it was the display
+preference. A customer could set it, watch every timestamp go local, and still get reports cut on
+UTC midnight — a control that looks like it works is worse than no control.
 
 ---
 
@@ -99,9 +104,28 @@ rather than half-working.
 Route-snapped distances work for LT and silently fall back to great-circle everywhere else. A Polish
 or German customer gets less accurate mileage with no indication why.
 
-**The choice:** load more extracts (disk + memory per country, and a rebuild on each), restrict
-selling to LT for now, or surface the fallback in the UI so the customer knows. Purely a
-cost-vs-market decision.
+**DECIDED: Mapbox for routing now, OSRM later — behind a driver seam.**
+
+The costing settled it. At the modelled scale (10 direct customers × 4 devices + one small
+white-label ≈ 90 devices, ~30 users) full Mapbox is **$0/month**: map loads ~10k against a 50k free
+tier, optimization ~2k against 100k. It only becomes a real line item at roughly 1,000 devices and
+300 users (~$1,000/month), which is a problem worth having.
+
+So routing moves to the Mapbox Optimization API — worldwide coverage today, no per-country extracts,
+no quarterly rebuilds, no disk. OSRM comes back when there is revenue to justify a bigger box, and
+because both sit behind a `RoutingDriver` interface, that migration is an env variable rather than a
+rewrite.
+
+**Geocoding deliberately stays on Photon.** This is where Mapbox's terms bite: *temporary*
+geocoding is free but the result may NOT be stored, and *permanent* geocoding has no free tier at
+all ($5/1,000, ≈$110/month at the modelled scale). Choosing the free tier would mean historical
+trips have no stored address — and if we later moved to Photon, those addresses would simply never
+have existed. Photon is already deployed, costs nothing, and lets us store. The one irreversible
+data decision in the whole comparison, so it goes the safe way.
+
+Two consequences to remember: OSRM and Mapbox use different routing engines, so mileage will shift
+by a few percent at the migration (visible to any customer who uses mileage for reimbursement), and
+the marketing site's "self-hosted routing" claim comes out now and goes back in later.
 
 ---
 

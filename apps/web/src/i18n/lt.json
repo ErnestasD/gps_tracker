@@ -467,7 +467,16 @@
       "km": "Kilometrai (km)",
       "mi": "Mylios (mi)",
       "l": "Litrai (l)",
-      "gal": "JAV galonai (gal)"
+      "gal": "JAV galonai (gal)",
+      "tzNote": "Tik rodymui — keičia, kaip laikas rodomas jums, o ne kaip grupuojamos ataskaitos."
+    },
+    "accountTz": {
+      "title": "Ataskaitų laiko juosta",
+      "hint": "Ataskaitos ir rida grupuojamos į dienas pagal ŠIĄ juostą — tai paskyros nustatymas, ne tai, kaip laikas rodomas jūsų ekrane.",
+      "save": "Išsaugoti",
+      "saved": "Išsaugota",
+      "error": "Nepavyko išsaugoti laiko juostos",
+      "display": "Tik rodymui — keičia, kaip laikas rodomas jums, o ne kaip grupuojamos ataskaitos."
     }
   },
   "devices": {

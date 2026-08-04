@@ -115,6 +115,10 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
         plan: TRIAL_PLAN,
         trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 3_600_000),
         referredByAffiliateId: ref?.id ?? null,
+        // the signup form sends the browser's IANA zone; it is the account's REPORTING zone (hard
+        // rule 7), not a display preference. Absent ⇒ UTC, the old behaviour, which was only ever
+        // right for a customer whose day genuinely starts at 00:00 UTC.
+        ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
       })
       return c.json({ ok: true, id: created.tenantId }, 201)
     } catch (err) {

@@ -467,7 +467,16 @@
       "km": "Kilometers (km)",
       "mi": "Miles (mi)",
       "l": "Liters (l)",
-      "gal": "US gallons (gal)"
+      "gal": "US gallons (gal)",
+      "tzNote": "Display only — changes how times are shown to you, not how reports are grouped."
+    },
+    "accountTz": {
+      "title": "Reporting time zone",
+      "hint": "Reports and mileage are grouped into days using THIS zone — it is the account's setting, not how times are shown on your screen.",
+      "save": "Save",
+      "saved": "Saved",
+      "error": "Could not save the time zone",
+      "display": "Display only — changes how times are shown to you, not how reports are grouped."
     }
   },
   "devices": {

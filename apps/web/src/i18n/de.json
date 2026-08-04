@@ -467,7 +467,16 @@
       "km": "Kilometer (km)",
       "mi": "Meilen (mi)",
       "l": "Liter (l)",
-      "gal": "US-Gallonen (gal)"
+      "gal": "US-Gallonen (gal)",
+      "tzNote": "Nur Anzeige — ändert, wie Zeiten Ihnen gezeigt werden, nicht wie Berichte gruppiert werden."
+    },
+    "accountTz": {
+      "title": "Zeitzone für Berichte",
+      "hint": "Berichte und Kilometerstände werden nach DIESER Zone in Tage gruppiert — eine Kontoeinstellung, nicht die Anzeige auf Ihrem Bildschirm.",
+      "save": "Speichern",
+      "saved": "Gespeichert",
+      "error": "Zeitzone konnte nicht gespeichert werden",
+      "display": "Nur Anzeige — ändert, wie Zeiten Ihnen gezeigt werden, nicht wie Berichte gruppiert werden."
     }
   },
   "devices": {

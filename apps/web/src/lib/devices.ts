@@ -74,6 +74,10 @@ export interface ClaimInput {
 
 export const listDevices = () => getJson<Device[]>('/v1/devices')
 export const listAccounts = () => getJson<Account[]>('/v1/accounts')
+/** The account's REPORTING time zone — the server buckets report days by it (hard rule 7). This is
+ *  NOT the display preference in Settings, which only changes how timestamps are rendered. */
+export const updateAccountTimezone = (id: string, timezone: string) =>
+  mutate<Account>('PATCH', `/v1/accounts/${encodeURIComponent(id)}`, { timezone })
 export const listProfiles = () => getJson<Profile[]>('/v1/profiles')
 export const listQuarantine = () => getJson<QuarantineEntry[]>('/v1/quarantine')
 export const listTenants = () => getJson<Tenant[]>('/v1/tenants')

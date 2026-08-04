@@ -55,8 +55,11 @@ const rec = (fixTimeMs: number, lat = 54.7, serverTimeMs = Date.now()): Normaliz
 describe('LiveState (E02-4)', () => {
   it('updates last-position and publishes to live:{tenant}', async () => {
     await redis.hset('device:tenant', '42', 't1')
+    // AWAIT the subscribe: `void`-ing it raced the publish below — on a loaded runner the
+    // subscription was not established yet, the message went nowhere and the test sat until the
+    // 5 s default timeout. The race was invisible on a fast machine.
+    await sub.subscribe('live:t1')
     const got = new Promise<string>((resolve) => {
-      void sub.subscribe('live:t1')
       sub.once('message', (_ch, msg) => resolve(msg))
     })
     await new LiveState(redis).apply([rec(1_000_000)])

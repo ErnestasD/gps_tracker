@@ -50,6 +50,11 @@ function SignupPage() {
         password: formVal(fd, "password"),
         company: formVal(fd, "company").trim() || undefined,
         ref: ref && REF_RE.test(ref) ? ref : undefined,
+        // the account's REPORTING zone (server buckets report days by it — hard rule 7), not a
+        // display preference. Hard-coded UTC before, so a Lithuanian fleet's "yesterday" ran on the
+        // wrong day boundary from day one, with no screen anywhere to correct it. Changeable later
+        // in Settings → Account.
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
         hp_field: formVal(fd, "hp_field"), // honeypot — must stay empty
       });
       setState("done");

@@ -44,7 +44,10 @@ describe('tenant plans contract', () => {
 
 describe('planEntitlements matrix (founder-locked 2026-07-20)', () => {
   const TSP_PLUS = ['whiteLabel', 'customDomains', 'subAccounts', 'apiAccess', 'webhooks', 'prioritySupport', 'smsGateway'] as const
-  const SCALE_PLUS = ['sso', 'dataResidency', 'sla999'] as const
+  // `sso` and `dataResidency` used to be here. They granted nothing — no SSO code path, no
+  // residency routing existed — so they were removed from the matrix rather than left as promises
+  // the product cannot keep. Re-add them WITH the implementation (audit finding, founder decision).
+  const SCALE_PLUS = ['sla999'] as const
 
   it('direct_5: deviceLimit 5 and every TSP-plus feature false', () => {
     const e = planEntitlements('direct_5')
@@ -68,21 +71,21 @@ describe('planEntitlements matrix (founder-locked 2026-07-20)', () => {
     }
   })
 
-  it('tsp_grow: all TSP-plus true, uncapped, but sso/residency/sla still false', () => {
+  it('tsp_grow: all TSP-plus true, uncapped, but sla999 still false', () => {
     const e = planEntitlements('tsp_grow')
     expect(e.deviceLimit).toBeNull()
     for (const k of TSP_PLUS) expect(e[k], k).toBe(true)
     for (const k of SCALE_PLUS) expect(e[k], k).toBe(false)
   })
 
-  it('tsp_start: TSP-plus true, sso/residency/sla false', () => {
+  it('tsp_start: TSP-plus true, sla999 false', () => {
     const e = planEntitlements('tsp_start')
     expect(e.deviceLimit).toBeNull()
     for (const k of TSP_PLUS) expect(e[k], k).toBe(true)
     for (const k of SCALE_PLUS) expect(e[k], k).toBe(false)
   })
 
-  it('tsp_scale + tsp_enterprise: sso/dataResidency/sla999 all true', () => {
+  it('tsp_scale + tsp_enterprise: sla999 all true', () => {
     for (const plan of ['tsp_scale', 'tsp_enterprise'] as const) {
       const e = planEntitlements(plan)
       expect(e.deviceLimit, plan).toBeNull()

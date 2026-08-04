@@ -35,6 +35,9 @@ export interface SelfServeSignup {
   /** trial end — stored as currentPeriodEnd; getEntitlements floors a `trialing` tenant past it. */
   trialEndsAt: Date
   referredByAffiliateId: string | null
+  /** Reporting time zone for the default account (IANA). Omitted ⇒ UTC, which is only right for a
+   *  caller whose day genuinely starts at 00:00 UTC — see the route. */
+  timezone?: string
 }
 
 export interface TenantCreate {
@@ -172,7 +175,9 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
             ...(data.referredByAffiliateId != null ? { referredByAffiliateId: data.referredByAffiliateId } : {}),
           },
         })
-        await tx.account.create({ data: { tenantId: tenant.id, name: data.accountName, timezone: 'UTC' } })
+        // the ACCOUNT time zone drives report day-bucketing (hard rule 7). Hard-coding UTC here
+        // meant every self-serve tenant's "yesterday" ran on the wrong day boundary, invisibly.
+        await tx.account.create({ data: { tenantId: tenant.id, name: data.accountName, timezone: data.timezone ?? 'UTC' } })
         // the owner is a TENANT-WIDE admin (accountId null) — a tsp_admin manages the whole tenant
         const user = await tx.user.create({
           data: { tenantId: tenant.id, accountId: null, email: data.email, passwordHash: data.passwordHash, role: 'tsp_admin', locale: 'en' },
