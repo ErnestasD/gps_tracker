@@ -57,12 +57,12 @@ HIGHs inside the fixes themselves (UDP transport skipped, poison-batch *mechanis
 | 29 | api / entitlements | The device-cap serialization lock is taken only by POST /v1/devices — CSV import and quarantine claim bypass it and overshoot the plan cap permanently | `apps/api/src/routes/crud.ts:756` | OPEN |
 | 30 | api / db reads | Unbounded aggregate and history reads can saturate the shared 10-connection pg pool, which has no acquire or statement timeout | `packages/db/src/reports.ts:161` | OPEN |
 | 31 | api / hot path | GET /v1/devices/last does a platform-wide HGETALL plus one Redis command per device, unrate-limited, on the shared API connection | `apps/api/src/app.ts:226` | OPEN |
-| 32 | api / audit + usage scoping | An account-scoped tenant admin reads the whole tenant's audit trail — audit.list ignores scope.accountId | `packages/db/src/repos/audit.ts:57` | OPEN |
+| 32 | api / audit + usage scoping | An account-scoped tenant admin reads the whole tenant's audit trail — audit.list ignores scope.accountId | `packages/db/src/repos/audit.ts:57` | **FIXED** — PR F — `/v1/audit` and `/v1/audit/:id` refuse an account-PINNED caller (403); `audit_log` has no account column, so the role gate alone was not a scope gate |
 | 33 | api / websocket gateway | WS ticket revocation is checked at issuance but not at redemption — a pre-fetched ticket survives logout, password reset and role demotion permanently | `apps/api/src/ws.ts:183` | OPEN |
 | 34 | api / websocket gateway | WS fanout has no send backpressure, no heartbeat and no client cap — a slow or half-open subscriber buffers the tenant's live feed in the API heap | `apps/api/src/ws.ts:154` | OPEN |
 | 35 | api / auth rate limiting | Login lockout is keyed on (IP, email) only — one host gets unlimited argon2 verifies via fresh emails, and distributed stuffing is unbounded | `apps/api/src/auth/login.ts:168` | OPEN |
 | 36 | api / partner auth | Partner login is permanently impossible for a mixed-case affiliate email, and a password reset does not invalidate outstanding partner JWTs | `packages/db/src/repos/affiliates.ts:133` | OPEN |
-| 37 | api / secrets handling | GET/POST/PATCH /v1/affiliates return every partner's argon2id passwordHash in the JSON response | `packages/db/src/repos/affiliates.ts:112` | OPEN |
+| 37 | api / secrets handling | GET/POST/PATCH /v1/affiliates return every partner's argon2id passwordHash in the JSON response | `packages/db/src/repos/affiliates.ts:112` | **FIXED** — PR F — affiliate reads go through an explicit `PUBLIC_SELECT` and an `AffiliateView` type that omits `passwordHash`, so a new model field is opt-IN and cannot leak by default |
 | 38 | worker / rules | Rule-event cooldown conflates rate limiting with replay dedup: it is skipped entirely at cooldownS=0 and its TTL is wall-clock while events are stamped in fix_time | `apps/worker/src/rules/persister.ts:110` | OPEN |
 | 39 | worker / trip reconciliation | A trip-persist error loses the close event and the late-signal that is supposed to compensate for it, and takeLate() clears before the enqueue | `apps/worker/src/main.ts:313` | OPEN |
 | 40 | worker / trip recompute | Recompute deletes closed trips by time range with status re-evaluated at DELETE time, so a trip closed mid-job is erased and never rebuilt | `apps/worker/src/trip/recompute.ts:133` | OPEN |
@@ -87,13 +87,13 @@ HIGHs inside the fixes themselves (UDP transport skipped, poison-batch *mechanis
 | 59 | reports / web | Report windows are built from BROWSER-local day bounds while the server buckets rows by the ACCOUNT timezone — every report has a partial first day and a spurious extra day | `apps/web/src/routes/app/reports.tsx:45` | OPEN |
 | 60 | api / db timezone handling | Self-serve signup hard-codes the account timezone to UTC, no UI can change it, and any string is accepted with a silent UTC fallback | `packages/db/src/repos/tenants.ts:164` | OPEN |
 | 61 | api / db events | Events are ordered by insertion id, not occurrence time — a buffered flush evicts genuinely recent alerts from every 'recent events' view | `packages/db/src/repos/events.ts:39` | OPEN |
-| 62 | packages/db / push subscriptions | pushSubscriptions.subscribe upserts on a globally unique endpoint with no tenant predicate | `packages/db/src/repos/pushSubscriptions.ts:34` | OPEN |
+| 62 | packages/db / push subscriptions | pushSubscriptions.subscribe upserts on a globally unique endpoint with no tenant predicate | `packages/db/src/repos/pushSubscriptions.ts:34` | **FIXED** — PR F — `pushSubscriptions.subscribe` claims within the tenant only; an endpoint held by another tenant is a 409, never a silent re-home |
 
 ## LOW (11)
 
 | # | Subsystem | Finding | File | Status |
 |---|---|---|---|---|
-| 63 | codec / ingest framing | parseCommandFrame reads past the buffer on short codec 12/13/14 frames — the RangeError escapes the ACK-0 contract | `packages/codec/src/parse.ts:164` | OPEN |
+| 63 | codec / ingest framing | parseCommandFrame reads past the buffer on short codec 12/13/14 frames — the RangeError escapes the ACK-0 contract | `packages/codec/src/parse.ts:164` | **FIXED** — PR F — `parseCommandFrame` bounds-checks the data field before reading it; a truncated codec-12/13/14 frame is a `FrameError` (ACK 0) instead of a RangeError that destroyed the socket |
 | 64 | ingest / command transport | drainPending LPOPs a command before recording it in-flight, so it can end up in neither queue — and the JSDoc claims the opposite | `apps/ingest/src/session.ts:186` | OPEN |
 | 65 | api / user profile validation | userUpdateSchema accepts any 2–10 char locale, which reaches an unguarded object-literal lookup and permanently breaks the target user's password-reset email | `packages/shared/src/entities.ts:26` | OPEN |
 | 66 | api / auth | Password reset consumes the single-use token and writes the new password before revoking sessions | `apps/api/src/auth/login.ts:391` | OPEN |

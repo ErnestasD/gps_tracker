@@ -183,6 +183,18 @@ export function normalizeIoValue(value: unknown): bigint | Buffer | null {
 function parseCommandFrame(bytes: Buffer, dataLen: number, codecId: number): ParsedPacket {
   // Codec 12/13/14 layout (wiki §Codec_12..14):
   // [1B codec][1B quantity][1B type 0x05|0x06|0x11][4B size][payload][1B quantity2][4B CRC]
+  //
+  // BOUNDS FIRST (audit MED). The framer accepts `dataLen` down to 1, and the only prior length
+  // check is `bytes.length === 8 + dataLen + 4` — so a 13-byte frame whose single data byte is
+  // 0x0C, with a matching CRC, reached here and `readUInt32BE(11)` threw a RangeError. That is not
+  // a FrameError, so the session's `catch (CrcError | FrameError)` missed it, it escaped to the
+  // chunk handler and DESTROYED the socket with no ACK at all — breaking rule 4 / §3.2, which
+  // requires ACKing the count actually persisted (0 for a whole-bad packet) rather than hanging up.
+  // It was also invisible: neither parseFailTotal nor frameViolationsTotal moved.
+  const HEADER = 7 // codec + quantity + type + 4B size, measured from the data field's start
+  if (dataLen < HEADER + 1) {
+    throw new FrameError(`command frame data field ${dataLen} too short for a ${HEADER}-byte header`, bytes)
+  }
   const type = bytes[10]!
   const size = bytes.readUInt32BE(11)
   const payloadEnd = 15 + size

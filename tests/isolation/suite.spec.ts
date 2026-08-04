@@ -153,6 +153,20 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     expect(admin.status).toBe(200)
   })
 
+  it('audit: an ACCOUNT-SCOPED tenant admin is refused (403) — audit_log has no account partition', async () => {
+    // REGRESSION (audit MED): `READ_POLICY.audit = TENANT_ADMINS` assumed every tenant admin is
+    // tenant-WIDE — an assumption written into scope.ts but never enforced. `POST /v1/users`
+    // accepts `{role:'tsp_admin', accountId}`, canGrantRole allows it, and scopeOf pins them. Every
+    // other repo honours the pin via scopedWhere; `audit.list` filters on tenantId ALONE because
+    // audit_log has no accountId column, so such an admin read the WHOLE tenant's trail — sibling
+    // accounts' device names, user emails, geofence changes. The suite covered the ROLE dimension
+    // (viewer/account_manager → 403) and never the scope one, so the gap was untested.
+    expect((await req('/v1/audit', fx.t1.tokenAccountAdminA1)).status).toBe(403)
+    expect((await req(`/v1/audit/${fx.t1.auditId}`, fx.t1.tokenAccountAdminA1)).status).toBe(403)
+    // …and a genuinely tenant-wide admin still reads it
+    expect((await req('/v1/audit', fx.t1.tokenTenant)).status).toBe(200)
+  })
+
   it('POSITIVE CONTROL: an in-scope empty PATCH still 200s on every generic-repo entity', async () => {
     // The cross-tenant assertions above PATCH `{}` and expect 404. If an empty patch 404s for the
     // OWNER too, those assertions pass for the wrong reason and stop proving anything about scope —

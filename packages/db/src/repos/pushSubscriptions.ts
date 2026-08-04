@@ -1,5 +1,15 @@
 import type { PrismaClient } from '@prisma/client'
 
+import { isUniqueViolation } from '../errors.js'
+
+/** The endpoint is already registered in ANOTHER tenant — never silently re-homed across tenants. */
+export class PushEndpointClaimedError extends Error {
+  constructor() {
+    super('push endpoint is registered to another tenant')
+    this.name = 'PushEndpointClaimedError'
+  }
+}
+
 import type { Scope } from '../scope.js'
 
 export interface PushSubscriptionInput {
@@ -30,12 +40,29 @@ export function createPushSubscriptionRepo(prisma: PrismaClient): PushSubscripti
     subscribe: async (scope, userId, sub) => {
       const accountId = scope.accountId ?? null
       if (accountId === null) throw new Error('push subscribe requires an account scope')
-      // idempotent by the globally-unique endpoint: re-subscribing re-homes it to the current user/scope
-      await prisma.pushSubscription.upsert({
-        where: { endpoint: sub.endpoint },
-        create: { tenantId: scope.tenantId, accountId, userId, endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-        update: { tenantId: scope.tenantId, accountId, userId, p256dh: sub.p256dh, auth: sub.auth },
+      // Idempotent by the globally-unique endpoint — but re-homing must stay INSIDE the tenant.
+      // `upsert({ where: { endpoint } })` had no tenant predicate at all, and its update branch
+      // rewrote tenantId/accountId/userId to the caller's: any account_manager in ANY tenant who
+      // learned another tenant's endpoint URL (a shared browser, a support-ticket paste of a
+      // PushSubscription JSON) could steal the row. The victim silently stopped receiving their own
+      // panic/geofence alerts, and the attacker started receiving them. This was the one mutation
+      // in the repo layer that could cross the tenant boundary. Audit MED.
+      const claimed = await prisma.pushSubscription.updateMany({
+        where: { endpoint: sub.endpoint, tenantId: scope.tenantId },
+        data: { accountId, userId, p256dh: sub.p256dh, auth: sub.auth },
       })
+      if (claimed.count > 0) return
+      try {
+        await prisma.pushSubscription.create({
+          data: { tenantId: scope.tenantId, accountId, userId, endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+        })
+      } catch (err) {
+        // the endpoint exists under ANOTHER tenant: refuse rather than steal it. A browser endpoint
+        // is per-installation, so this is either a genuine cross-tenant collision (the user moved
+        // employers on the same laptop — they must unsubscribe first) or an attempt.
+        if (isUniqueViolation(err)) throw new PushEndpointClaimedError()
+        throw err
+      }
     },
     unsubscribe: async (scope, endpoint) => {
       // scoped delete: a caller can only drop a subscription in their own tenant, and — when the

@@ -152,4 +152,22 @@ describe('affiliate management API (platform)', () => {
     expect(unknown.status).toBe(201)
     expect(((await unknown.json()) as { referredByAffiliateId: string | null }).referredByAffiliateId).toBeNull()
   })
+
+  it('the API never returns a partner password hash (rule 12)', async () => {
+    // REGRESSION (audit MED): list/get/create/update called findMany/findUnique with NO select, so
+    // the full model — including the argon2id `passwordHash` for partner self-service login —
+    // went straight to the client. Partners are THIRD PARTIES, not staff, and the codebase already
+    // solved this shape twice (webhooks' readRedact, partner.ts's hand-picked fields).
+    const created = await req('/v1/affiliates', platformToken, 'POST', { name: 'Hash Co', email: 'hash@partner.co', code: 'HASHCO1' })
+    expect(created.status).toBe(201)
+    const one = (await created.json()) as Record<string, unknown>
+    expect(one).not.toHaveProperty('passwordHash')
+
+    const list = (await (await req('/v1/affiliates', platformToken)).json()) as Record<string, unknown>[]
+    for (const a of list) expect(a).not.toHaveProperty('passwordHash')
+    const got = (await (await req(`/v1/affiliates/${String(one['id'])}`, platformToken)).json()) as Record<string, unknown>
+    expect(got).not.toHaveProperty('passwordHash')
+    const patched = await req(`/v1/affiliates/${String(one['id'])}`, platformToken, 'PATCH', { status: 'active' })
+    expect((await patched.json()) as Record<string, unknown>).not.toHaveProperty('passwordHash')
+  })
 })

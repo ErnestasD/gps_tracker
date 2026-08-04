@@ -164,6 +164,20 @@ function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
 /** :id is always present on an item route; narrow the noUncheckedIndexedAccess string|undefined. */
 const id = (c: Context): string => c.req.param('id') ?? ''
 
+/**
+ * True when the caller's scope really is tenant-WIDE (no accountId pin).
+ *
+ * `READ_POLICY.audit = TENANT_ADMINS` assumes every tenant admin is tenant-wide — an assumption
+ * written into scope.ts ("undefined ⇒ tenant-wide") but never enforced: `POST /v1/users` accepts
+ * `{role:'tsp_admin', accountId:<uuid>}`, `canGrantRole('tsp_admin','tsp_admin')` is true, and
+ * `scopeOf` then pins that admin to the account. Every other repo honours the pin via
+ * `scopedWhere` — but `audit_log` has NO accountId column, so `audit.list` filters on tenantId
+ * alone and such an admin read the whole tenant's trail, including sibling accounts' device
+ * names, user emails and geofence changes. A white-label TSP running unrelated customers as
+ * accounts is exactly the shape this breaks. Audit MED.
+ */
+const tenantWide = (c: Context<AuthEnv>): boolean => c.get('auth').accountId === undefined
+
 // A readable, URL-safe affiliate referral code (default when the admin doesn't pick one). Ambiguous
 // glyphs (0/O, 1/I/L) dropped so a partner can dictate it over the phone; CSPRNG so it's unguessable.
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
@@ -1179,6 +1193,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     // ── audit log (E03-6, tenant, read-only + admin-gated, append-only) ─────────
     { method: 'get', path: '/v1/audit', scopeClass: 'tenant', entity: 'audit', shape: 'collection',
       handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'audit is tenant-wide')
         const q = c.req.query.bind(c.req)
         return json(c, await db.audit.list(scopeOf(auth(c)), {
           take: Number(q('limit') ?? 50),
@@ -1191,6 +1206,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'get', path: '/v1/audit/:id', scopeClass: 'tenant', entity: 'audit', shape: 'item',
       handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'audit is tenant-wide')
         if (!/^\d+$/.test(id(c))) return problem(c, 404, 'Not Found') // BigInt() would throw on non-numeric
         const row = await db.audit.get(scopeOf(auth(c)), id(c))
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)

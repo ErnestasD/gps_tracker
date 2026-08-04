@@ -90,4 +90,20 @@ describe('protocol edge cases (synthetic mutations of wiki-spec packets)', () =>
     expect(early.records[0]!.tsMs).toBe(0)
     expect(late.records[0]!.tsMs).toBe(4102444800000)
   })
+
+  it('a TRUNCATED command frame is a FrameError, never a RangeError that kills the socket', () => {
+    // REGRESSION (audit MED): parseCommandFrame read bytes[10] and readUInt32BE(11) with no bounds
+    // check. The framer accepts dataLen down to 1, and the only prior length check is
+    // `length === 8 + dataLen + 4` — so a 13-byte frame whose single data byte is 0x0C, with a
+    // MATCHING CRC, sailed through the CRC gate and threw a RangeError. That is not a FrameError,
+    // so the ingest session's catch missed it: the socket was destroyed with NO ACK, breaking
+    // rule 4 / §3.2 (ACK the count actually persisted), and neither parse-fail counter moved.
+    for (const body of [Buffer.from([0x0c]), Buffer.from([0x0d, 0x01]), Buffer.from([0x0e, 0x01, 0x05, 0x00, 0x00])]) {
+      const pkt = Buffer.alloc(8 + body.length + 4)
+      pkt.writeUInt32BE(body.length, 4)
+      body.copy(pkt, 8)
+      pkt.writeUInt32BE(crc16ibm(body), 8 + body.length)
+      expect(() => parseFrame(frameOf(pkt)), body.toString('hex')).toThrow(FrameError)
+    }
+  })
 })

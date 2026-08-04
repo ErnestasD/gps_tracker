@@ -1,5 +1,13 @@
 import type { Affiliate, AffiliateStatus, Commission, CommissionStatus, PrismaClient } from '@prisma/client'
 
+/**
+ * An affiliate as the API may return it — the model MINUS `passwordHash` (argon2id, partner
+ * self-service login). Enforced by the type system rather than by remembering to redact: the read
+ * paths returned the raw model, so `GET /v1/affiliates` handed a platform_admin every partner's
+ * password hash. Partners are third parties, not staff. Audit MED.
+ */
+export type AffiliateView = Omit<Affiliate, 'passwordHash'>
+
 import { isUniqueViolation } from '../errors.js'
 import type { Actor } from '../scope.js'
 
@@ -76,12 +84,15 @@ function addMonthsUtc(d: Date, months: number): Date {
  * referral code — it returns only ACTIVE affiliates so a pending/suspended code never attributes.
  */
 export interface AffiliateRepo {
-  list(): Promise<Affiliate[]>
-  get(id: string): Promise<Affiliate | null>
+  list(): Promise<AffiliateView[]>
+  get(id: string): Promise<AffiliateView | null>
   /** Attribution lookup for public signup: an ACTIVE affiliate by referral code, else null. */
+  /** INTERNAL ONLY (signup attribution + commission accrual) — returns the FULL model including
+   *  `passwordHash`, so it must never be piped to a response. The API-facing reads return
+   *  {@link AffiliateView}. */
   getActiveByCode(code: string): Promise<Affiliate | null>
-  create(actor: Actor, data: AffiliateCreate): Promise<Affiliate>
-  update(actor: Actor, id: string, data: AffiliateUpdate): Promise<Affiliate | null>
+  create(actor: Actor, data: AffiliateCreate): Promise<AffiliateView>
+  update(actor: Actor, id: string, data: AffiliateUpdate): Promise<AffiliateView | null>
   /** Accrue a commission, idempotent on sourceInvoiceId (a webhook retry is a no-op → returns null). */
   accrueCommission(data: CommissionAccrual): Promise<Commission | null>
   /**
@@ -107,10 +118,30 @@ export interface AffiliateRepo {
   invalidatePwTokens(affiliateId: string, now: Date): Promise<void>
 }
 
+/**
+ * Every field the API may return for an affiliate. EXPLICIT, not `findMany()` — the model carries
+ * `passwordHash` (argon2id, for the partner self-service login), and the read paths piped the raw
+ * row straight to the client, so `GET /v1/affiliates` handed a platform_admin every partner's
+ * password hash in the JSON. Partners are THIRD PARTIES, not staff. The codebase already solved
+ * this shape twice (webhooks' `readRedact: ['secret']`, partner.ts's hand-picked fields); the
+ * affiliate repo was the one that forgot. A `select` rather than a delete-after-read, so a field
+ * added to the model later is opt-IN and cannot leak by default (rule 12). Audit MED.
+ */
+const PUBLIC_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  code: true,
+  commissionPct: true,
+  commissionMonths: true,
+  status: true,
+  createdAt: true,
+} as const
+
 export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
   return {
-    list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' } }),
-    get: (id) => prisma.affiliate.findUnique({ where: { id } }),
+    list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' }, select: PUBLIC_SELECT }),
+    get: (id) => prisma.affiliate.findUnique({ where: { id }, select: PUBLIC_SELECT }),
     // EXACT, case-insensitive match (audit HIGH). Prisma's `mode:'insensitive'` compiles to ILIKE
     // with the value bound UNESCAPED, so `_` — a LIKE single-char wildcard that the code charset
     // permits — let `?ref=______` match ANY 6-char active code and credit a nondeterministic
@@ -128,6 +159,7 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
     create: async (_actor, data) => {
       try {
         return await prisma.affiliate.create({
+          select: PUBLIC_SELECT,
           data: {
             name: data.name,
             email: data.email,
@@ -142,9 +174,9 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
       }
     },
     update: async (_actor, id, data) => {
-      const before = await prisma.affiliate.findUnique({ where: { id } })
+      const before = await prisma.affiliate.findUnique({ where: { id }, select: { id: true } })
       if (before === null) return null
-      return prisma.affiliate.update({ where: { id }, data })
+      return prisma.affiliate.update({ where: { id }, data, select: PUBLIC_SELECT })
     },
     accrueCommission: async (data) => {
       // ON CONFLICT (sourceInvoiceId) DO NOTHING semantics via a guarded create — a duplicate webhook

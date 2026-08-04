@@ -26,6 +26,8 @@ let httpServer: ReturnType<typeof createServer>
 let acct1: string
 let t1Admin: string // tenant-wide (no account) — push must reject (account_required)
 let amA1: string // account_manager pinned to acct1 — the valid push caller
+let amB1: string // account_manager in a SECOND tenant — the cross-tenant steal case
+let s1TenantId: string
 let readonlyKey: string // a read-only X-Api-Key (viewer scope)
 
 const base = () => `http://127.0.0.1:${port}`
@@ -48,9 +50,14 @@ beforeAll(async () => {
   pool = createPool(databaseUrl)
   const s1 = await seedUser({ databaseUrl, email: 'a@p1.test', password: 'password12', role: 'tsp_admin', tenantName: 'P1', accountName: 'Fleet' })
   const sam = await seedUser({ databaseUrl, email: 'am@p1.test', password: 'password12', role: 'account_manager', tenantName: 'P1', accountName: 'Fleet' })
+  // a SECOND tenant — the cross-tenant re-homing case had no coverage anywhere (push is manifest-EXEMPT)
+  const s2 = await seedUser({ databaseUrl, email: 'a@p2.test', password: 'password12', role: 'tsp_admin', tenantName: 'P2', accountName: 'Other' })
+  const acct2 = (await db.accounts.list({ tenantId: s2.tenantId }))[0]!.id
   acct1 = (await db.accounts.list({ tenantId: s1.tenantId }))[0]!.id
+  s1TenantId = s1.tenantId
   t1Admin = await mintTestToken({ userId: s1.userId, tenantId: s1.tenantId, role: 'tsp_admin' })
   amA1 = await mintTestToken({ userId: sam.userId, tenantId: s1.tenantId, accountId: acct1, role: 'account_manager' })
+  amB1 = await mintTestToken({ userId: s2.userId, tenantId: s2.tenantId, accountId: acct2, role: 'account_manager' })
 
   const app = createApp({ redis, redisSub: redis, db, pool, jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30, lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '127.0.0.1', vapidPublicKey: VAPID_PUBLIC })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
@@ -104,5 +111,30 @@ describe('ADR-026 push routes', () => {
     expect((await jwtReq('/v1/push/subscribe', amA1, 'POST', { endpoint: 'not-a-url' })).status).toBe(400)
     expect((await jwtReq('/v1/push/subscribe', amA1, 'POST', { endpoint: 'https://push.example.com/x' })).status).toBe(400) // keys missing
     expect((await jwtReq('/v1/push/unsubscribe', amA1, 'POST', {})).status).toBe(400) // endpoint missing
+  })
+
+  it('another tenant cannot STEAL a push endpoint (409, and the owner keeps receiving)', async () => {
+    // REGRESSION (audit MED): subscribe() upserted on the globally-unique endpoint with NO tenant
+    // predicate, and its update branch rewrote tenantId/accountId/userId to the caller's. Any
+    // account_manager in ANY tenant who learned an endpoint URL — a shared browser, a support
+    // ticket pasting a PushSubscription JSON — silently took the row: the real owner stopped
+    // receiving their own panic/geofence alerts, and the thief started receiving them. This was the
+    // one mutation in the repo layer that could cross the tenant boundary.
+    const endpoint = `https://push.example.com/steal-${Date.now()}`
+    expect((await jwtReq('/v1/push/subscribe', amA1, 'POST', sub(endpoint))).status).toBe(201)
+    expect((await jwtReq('/v1/push/subscribe', amB1, 'POST', sub(endpoint))).status).toBe(409)
+    // the row is untouched — still tenant 1's, still deliverable to it
+    const targets = await db.pushSubscriptions.listByAccount(s1TenantId, acct1)
+    expect(targets.map((t) => t.endpoint)).toContain(endpoint)
+  })
+
+  it('re-subscribing WITHIN the tenant is still idempotent (the guard must not break renewal)', async () => {
+    // browsers rotate push endpoints and re-subscribe on every load — a same-tenant repeat has to
+    // keep updating the keys in place, which is exactly what the upsert was there for
+    const endpoint = `https://push.example.com/rehome-${Date.now()}`
+    expect((await jwtReq('/v1/push/subscribe', amA1, 'POST', sub(endpoint))).status).toBe(201)
+    expect((await jwtReq('/v1/push/subscribe', amA1, 'POST', sub(endpoint))).status).toBe(201)
+    const targets = await db.pushSubscriptions.listByAccount(s1TenantId, acct1)
+    expect(targets.filter((t) => t.endpoint === endpoint)).toHaveLength(1) // one row, not two
   })
 })
