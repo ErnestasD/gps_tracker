@@ -12,7 +12,7 @@ export const Route = createFileRoute("/docs")({
       {
         name: "description",
         content:
-          "Orbetra developer docs: authentication, devices, positions, trips and webhooks. REST endpoints, examples and hardware onboarding for Teltonika trackers.",
+          "Orbetra developer docs: authentication, devices, positions, trips and webhooks. REST endpoints, examples and hardware onboarding for supported trackers.",
       },
       { property: "og:title", content: "Docs & API Reference — Orbetra" },
       {
@@ -40,7 +40,7 @@ const ENDPOINTS = [
   { method: "GET", path: "/v1/devices/{id}/positions", desc: "Positions for a device and time range." },
   { method: "GET", path: "/v1/trips", desc: "Trips grouped by device and day." },
   { method: "POST", path: "/v1/geofences", desc: "Create a polygon, circle or corridor geofence." },
-  { method: "GET", path: "/v1/events", desc: "Alerts: ignition, speeding, geofence, power cut." },
+  { method: "GET", path: "/v1/events", desc: "Alerts: ignition, overspeed, geofence, power cut." },
   { method: "POST", path: "/v1/webhooks", desc: "Register an HTTPS endpoint for push events." },
 ];
 
@@ -97,8 +97,8 @@ function DocsPage() {
             <h2 className="display text-2xl font-semibold text-ink">Authentication</h2>
             <p className="mt-3 text-ink/75">
               All requests use a bearer token over HTTPS. Requests without a valid key return
-              <span className="mono text-[13px]"> 401</span>. Rate limit is 600 requests per minute
-              per key; exceeding it returns <span className="mono text-[13px]">429</span> with a
+              <span className="mono text-[13px]"> 401</span>. Endpoints are rate-limited per key;
+              exceeding a limit returns <span className="mono text-[13px]">429</span> with a
               <span className="mono text-[13px]"> Retry-After</span> header.
             </p>
             <Code>{`Authorization: Bearer <your-api-key>
@@ -133,30 +133,45 @@ Content-Type: application/json`}</Code>
             <h2 className="display text-2xl font-semibold text-ink">Webhooks</h2>
             <p className="mt-3 text-ink/75">
               Register an HTTPS endpoint and Orbetra pushes events as they happen. Every delivery is
-              signed with HMAC-SHA256 in the <span className="mono text-[13px]">X-Orbetra-Signature</span> header —
-              verify it before trusting the payload. Failed deliveries retry with backoff for 24 hours.
+              signed with HMAC-SHA256 in the <span className="mono text-[13px]">X-Signature</span> header
+              (<span className="mono text-[13px]">sha256=&lt;hex&gt;</span> over the exact body bytes) and
+              carries an <span className="mono text-[13px]">X-Webhook-Id</span> for idempotency — verify the
+              signature before trusting the payload. Failed deliveries are retried with exponential backoff.
             </p>
             <Code>{`{
-  "type": "geofence.exit",
-  "device_id": "<device-id>",
-  "occurred_at": "2026-08-03T09:41:12Z",
-  "data": { "geofence": "Depot", "speed_kph": 42 }
+  "kind": "geofence",
+  "deviceId": "<device-id>",
+  "at": "2026-08-03T09:41:12Z",
+  "payload": { "geofence": "Depot", "direction": "exit" }
 }`}</Code>
+            <p className="mt-4 text-sm text-muted-foreground">
+              Event kinds: <span className="mono text-[12px]">geofence</span>,{" "}
+              <span className="mono text-[12px]">overspeed</span>,{" "}
+              <span className="mono text-[12px]">ignition</span>,{" "}
+              <span className="mono text-[12px]">din_change</span>,{" "}
+              <span className="mono text-[12px]">power_cut</span>,{" "}
+              <span className="mono text-[12px]">low_battery</span>,{" "}
+              <span className="mono text-[12px]">panic</span>,{" "}
+              <span className="mono text-[12px]">device_offline</span>,{" "}
+              <span className="mono text-[12px]">fuel_theft</span>. Subscribe to none and you get them all.
+            </p>
           </section>
 
           <section id="devices">
             <h2 className="display text-2xl font-semibold text-ink">Device onboarding</h2>
             <p className="mt-3 text-ink/75">
-              Orbetra speaks the Teltonika protocol natively. Point the tracker at the ingest host
-              with your account port, power it up, and it appears in the app within a minute.
+              Teltonika trackers are supported today — Orbetra speaks their protocol natively. Point
+              the tracker at the ingest host with your account port, power it up, and it appears in
+              the app within a minute.
             </p>
             <Code>{`# Teltonika configurator
 Server:   ingest.orbetra.com
 Protocol: TCP
 Port:     <provided in app → Devices → Add device>`}</Code>
             <p className="mt-4 text-sm text-muted-foreground">
-              Using other hardware? <Link to="/demo" className="text-[var(--brand-blue)] hover:underline">Talk to us</Link> — most
-              common GPS protocols can be enabled per account.
+              Running a model we haven't listed?{" "}
+              <Link to="/pilot" className="text-[var(--brand-blue)] hover:underline">Send us the list</Link> and
+              we'll confirm which IO values we decode by name.
             </p>
           </section>
         </div>

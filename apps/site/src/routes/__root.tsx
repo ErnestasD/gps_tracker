@@ -78,7 +78,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "Simple, EU-hosted GPS tracking for small fleets and owner-operators (1–20 vehicles). Live map, trip history, alerts. Setup in an afternoon.",
+          "Simple, EU-hosted GPS tracking for small fleets and owner-operators (1–100 vehicles). Live map, trip history, alerts. Setup in an afternoon.",
       },
       { name: "author", content: "Orbetra" },
       { property: "og:title", content: "Orbetra — GPS tracking for small fleets" },

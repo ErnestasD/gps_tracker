@@ -1,49 +1,55 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { PilotForm } from "@/components/site/PilotForm";
 import { Mail } from "lucide-react";
 
 export const Route = createFileRoute("/pilot")({
   head: () => ({
     meta: [
-      { title: "Start free trial — Orbetra GPS for small fleets" },
-      { name: "description", content: "Start a 30-day free trial of Orbetra. Plug in your Teltonika device, open the app on your phone, done. No credit card, cancel anytime." },
+      { title: "Request a pilot — Orbetra" },
+      { name: "description", content: "Run a free 60-day Orbetra pilot on up to 500 devices, in parallel with your current platform. Tell us what you run and we reply within one business day." },
     ],
   }),
   component: PilotPage,
 });
 
-const NEXT = [
-  { n: "01", t: "Tell us about your fleet", b: "Takes about 90 seconds. Only what we actually need to help." },
-  { n: "02", t: "We reply within 1 business day", b: "Real human, real answers. No sales sequences, no pressure." },
-  { n: "03", t: "You're live the same week", b: "One SMS per device points it at Orbetra. Open the app, done." },
-];
+const NEXT = ["s1", "s2", "s3"] as const;
 
 function PilotPage() {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto max-w-7xl px-6 pt-20 md:pt-28 pb-20">
       <div className="grid gap-16 lg:grid-cols-[1.1fr_1fr]">
         <div>
           <span className="section-label">
             <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
-            — START FREE TRIAL
+            {t("pilot.label")}
           </span>
           <h1 className="display text-5xl md:text-6xl font-bold leading-[1.02] mt-6 text-ink">
-            Try Orbetra<br />
-            <span className="text-gradient">on your vans.</span>
+            {t("pilot.h1")}<br />
+            <span className="text-gradient">{t("pilot.h2")}</span>
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-lg">
-            30 days free, up to 5 vehicles, no credit card. Plug in your Teltonika device and open the app on your phone — you're live the same day.
+            {t("pilot.sub")}
+          </p>
+          <p className="mt-4 text-sm text-muted-foreground">
+            {t("pilot.selfServeAsk")}{" "}
+            <Link to="/signup" className="text-[color:var(--brand-cyan)] hover:underline">
+              {t("pilot.selfServeLink")}
+            </Link>
           </p>
 
           <div className="mt-12">
-            <div className="mono text-[11px] tracking-[0.2em] uppercase text-muted-foreground mb-6">— WHAT HAPPENS NEXT</div>
+            <div className="mono text-[11px] tracking-[0.2em] uppercase text-muted-foreground mb-6">
+              {t("pilot.nextLabel")}
+            </div>
             <ol className="space-y-6">
-              {NEXT.map((s) => (
-                <li key={s.n} className="flex gap-4">
-                  <span className="mono text-2xl font-medium text-gradient shrink-0">{s.n}</span>
+              {NEXT.map((k, i) => (
+                <li key={k} className="flex gap-4">
+                  <span className="mono text-2xl font-medium text-gradient shrink-0">0{i + 1}</span>
                   <div>
-                    <div className="font-display font-semibold text-ink">{s.t}</div>
-                    <div className="text-sm text-muted-foreground">{s.b}</div>
+                    <div className="font-display font-semibold text-ink">{t(`pilot.${k}t`)}</div>
+                    <div className="text-sm text-muted-foreground">{t(`pilot.${k}b`)}</div>
                   </div>
                 </li>
               ))}

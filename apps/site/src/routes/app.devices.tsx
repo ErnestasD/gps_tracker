@@ -92,7 +92,7 @@ function DevicesPage() {
                   options={[
                     { value: "teltonika-fmb1xx", label: "Teltonika FMB1xx", hint: "vehicle" },
                     { value: "teltonika-fmc650", label: "Teltonika FMC650", hint: "asset" },
-                    { value: "queclink-gv75", label: "Queclink GV75" },
+                    { value: "teltonika-tat140", label: "Teltonika TAT140", hint: "asset" },
                   ]}
                 />
               </div>
