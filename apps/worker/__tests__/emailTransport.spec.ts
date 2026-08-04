@@ -28,7 +28,19 @@ describe('E05-5 buildEmailTransport', () => {
     const f = fakeMailer()
     buildEmailTransport({ ...FULL }, f.create)
     // the whole point of HIGH-3: the password is passed structurally, never URL-parsed
-    expect(f.opts[0]).toEqual({ host: FULL.SMTP_HOST, port: 587, secure: false, auth: { user: 'AKIA', pass: 'Bo+9vK/qR7xZ==' } })
+    expect(f.opts[0]).toMatchObject({ host: FULL.SMTP_HOST, port: 587, secure: false, auth: { user: 'AKIA', pass: 'Bo+9vK/qR7xZ==' } })
+  })
+
+  it('bounds every SMTP phase — telegram and webpush did, email did not (audit high)', () => {
+    // a wedged SMTP socket (half-open NAT, provider throttle) held the notify worker's concurrency
+    // slot indefinitely and stalled the whole alert queue behind it. `socketTimeout` is the one that
+    // matters: an ESTABLISHED but silent connection hangs forever without it.
+    const f = fakeMailer()
+    buildEmailTransport({ ...FULL }, f.create)
+    expect(f.opts[0]).toMatchObject({ connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 10_000 })
+    const custom = fakeMailer()
+    buildEmailTransport({ ...FULL, SMTP_TIMEOUT_MS: '2500' }, custom.create)
+    expect(custom.opts[0]).toMatchObject({ socketTimeout: 2_500 })
   })
 
   it('uses secure:true only for port 465; rejects a non-numeric/out-of-range SMTP_PORT (skip, no crash)', () => {

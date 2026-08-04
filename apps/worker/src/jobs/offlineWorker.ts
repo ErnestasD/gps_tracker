@@ -50,7 +50,12 @@ async function loadDeviceStates(
 ): Promise<{ states: DeviceState[]; flagged: Set<string> }> {
   const pipe = redis.pipeline()
   for (const d of candidates) {
-    pipe.hget(`device:${d.deviceId}:last`, 'fixTimeMs')
+    // BOTH: presence is decided on `serverTimeMs` (our clock, monotonic, unforgeable) while the
+    // event payload still reports the device's own last fix. Computing `now − fixTimeMs` let a
+    // device whose RTC ran ahead produce a NEGATIVE age, so a genuinely dead vehicle raised no
+    // device_offline alert for the whole drift (audit high). `serverTimeMs` is absent on rows
+    // written before this change — those fall back to fixTimeMs, i.e. the old behaviour.
+    pipe.hmget(`device:${d.deviceId}:last`, 'fixTimeMs', 'serverTimeMs')
     pipe.hget('device:config', d.deviceId)
     pipe.exists(`rule:offline:${d.deviceId}`)
   }
@@ -59,7 +64,7 @@ async function loadDeviceStates(
   const flagged = new Set<string>()
   candidates.forEach((d, i) => {
     const base = i * 3
-    const fixRaw = res?.[base]?.[1] as string | null | undefined
+    const [fixRaw, serverRaw] = (res?.[base]?.[1] as (string | null)[] | undefined) ?? [null, null]
     const cfgRaw = res?.[base + 1]?.[1] as string | null | undefined
     const exists = res?.[base + 2]?.[1] as number | undefined
     let profileOfflineAfterH: number | undefined
@@ -77,6 +82,7 @@ async function loadDeviceStates(
       tenantId: d.tenantId,
       accountId: d.accountId,
       lastFixMs: fixRaw != null ? Number(fixRaw) : null,
+      lastContactMs: serverRaw != null ? Number(serverRaw) : fixRaw != null ? Number(fixRaw) : null,
       ...(profileOfflineAfterH !== undefined ? { profileOfflineAfterH } : {}),
     })
     if (exists === 1) flagged.add(d.deviceId)

@@ -37,6 +37,30 @@ export type HashFn = (data: Uint8Array) => bigint
  * and every consumer already treats these as nullable. Bounds are semantic, not merely numeric —
  * a heading is 0-360, and 1000 km/h is already far beyond any road vehicle.
  */
+/** How far ahead of server_time a device clock may legitimately run before we distrust it. */
+export const MAX_CLOCK_SKEW_MS = 5 * 60_000
+
+/**
+ * A record whose device clock runs AHEAD of the server's — do not trust its `fix_time` for anything
+ * ORDERING or LIVENESS related (audit high).
+ *
+ * Ingest's §3.6 sanity accepts a fix up to 48 h in the future, and every downstream consumer guards
+ * only the past direction: live state is max-wins on fix_time, the motion engines drop anything
+ * older than `lastSeen`, offline detection computes `now − lastFixMs`. So one record from a device
+ * whose RTC drifted forward froze the map marker and the WS publish until wall-clock caught up,
+ * suppressed `device_offline` for the same span, and pushed every subsequent real record into the
+ * late map — enqueueing a recompute per batch. Nothing self-healed.
+ *
+ * The record is still WRITTEN: `fix_time` is part of the primary key
+ * `(device_id, fix_time, rec_hash)`, so rewriting it would (a) collapse a whole buffered frame onto
+ * one timestamp — `serverTimeMs` is stamped once per FRAME, and a bad RTC ships a whole buffer, not
+ * one record — and (b) break I3, because a device retransmit after a lost ACK gets a NEW
+ * serverTimeMs and therefore a second row for one physical record. This is the same seam as I5:
+ * the row is kept, it just does not move state.
+ */
+export const isClockSkewed = (r: { fixTime: Date; serverTime: Date }): boolean =>
+  r.fixTime.getTime() > r.serverTime.getTime() + MAX_CLOCK_SKEW_MS
+
 const SMALLINT_MIN = -32768
 const SMALLINT_MAX = 32767
 /** Postgres `bigint` = signed 64-bit; AVL id 16 is an unbounded N8 IO value in this pipeline. */
@@ -96,6 +120,7 @@ export function normalize(
   }
 
   const sats = smallintOrNull('satellites', p.satellites) ?? 0
+
 
   return {
     deviceId: p.deviceId,

@@ -97,6 +97,17 @@ export class ShardLeaser {
     }
   }
 
+  /**
+   * Release ONE shard's lease deliberately (a consumer that failed to start). Mutating `owned`
+   * alone would leave the Redis key holding our workerId, unrenewed — so no peer could claim it
+   * and we would not re-acquire until the full TTL expired. Holder-checked, like releaseLeases().
+   */
+  async giveUp(shard: number): Promise<void> {
+    this.owned.delete(shard)
+    const holder = await this.redis.get(leaseKey(shard))
+    if (holder === this.workerId) await this.redis.del(leaseKey(shard))
+  }
+
   /** Stop the renew/re-acquire loop WITHOUT freeing the leases yet — so a draining worker
    *  neither re-acquires a shard it's about to release nor lets a peer claim it mid-batch.
    *  Call before consumers drain; then releaseLeases() once they've stopped. */

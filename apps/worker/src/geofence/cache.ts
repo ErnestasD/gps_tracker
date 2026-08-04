@@ -1,7 +1,7 @@
 import type { Redis } from 'ioredis'
 
 import type { GeofenceDef } from './engine.js'
-import type { GeoPolygon } from './point.js'
+import { bboxOf, type GeoPolygon } from './point.js'
 
 /**
  * Geofence geom cache (E05-2). The transition engine's feed() is synchronous, so the
@@ -63,7 +63,8 @@ export class GeofenceCache {
     for (const [id, val] of Object.entries(raw)) {
       try {
         const j = JSON.parse(val) as { accountId: string | null; name: string; geometry: GeoPolygon }
-        if (j.geometry?.type === 'Polygon') defs.push({ id, name: j.name, geometry: j.geometry, accountId: j.accountId })
+        // bbox computed ONCE here, not per record per fence — the engine's O(1) prefilter
+        if (j.geometry?.type === 'Polygon') defs.push({ id, name: j.name, geometry: j.geometry, bbox: bboxOf(j.geometry), accountId: j.accountId })
       } catch {
         // malformed entry → skip, never crash the pipeline
       }

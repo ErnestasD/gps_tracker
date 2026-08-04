@@ -7,8 +7,16 @@ import { createDb, createPool } from '@orbetra/db'
 import { ShardConsumer } from './consumer.js'
 import { LiveState } from './liveState.js'
 import { MotionFeed } from './motion.js'
+import { isClockSkewed } from './normalize.js'
 import { startWorkerProm } from './prom.js'
-import { ShardLeaser, ownsShardLease } from './shards.js'
+
+/** An open trip whose device has been silent this long is never going to be closed by an engine
+ *  event — sweep it at startup rather than letting engineHours bill it to now(). 6 h ≫ any real
+ *  stop threshold (the longest parked window is minutes). */
+const ORPHAN_TRIP_MAX_IDLE_MS = Number(process.env['TRIP_ORPHAN_MAX_IDLE_MS'] ?? 6 * 3_600_000)
+/** How long to wait for a consumer's in-flight batch before abandoning its connection. */
+const SHARD_STOP_TIMEOUT_MS = Number(process.env['SHARD_STOP_TIMEOUT_MS'] ?? 15_000)
+import { SHARD_COUNT, ShardLeaser, ownsShardLease } from './shards.js'
 import { createRecomputeQueue, enqueueRecompute, redisConnection } from './jobs/queue.js'
 import { createOfflineQueue, scheduleOfflineSweep } from './jobs/offlineQueue.js'
 import { startOfflineWorker } from './jobs/offlineWorker.js'
@@ -64,6 +72,43 @@ async function main(): Promise<void> {
   const hash = (data: Uint8Array): bigint => hasher.h64Raw(data)
 
   const consumersByShard = new Map<number, ShardConsumer>()
+  /**
+   * Per-shard transition queue (I2 / rule 5). Start and stop for one shard MUST be serialized:
+   * `onLost` used to fire-and-forget `stop()` and delete the map slot immediately, so a re-acquire
+   * arriving milliseconds later found no entry and started a SECOND consumer while the first was
+   * still draining its batch — two live consumers on one shard, i.e. the same device processed
+   * concurrently, which is exactly what the lease exists to prevent. Chaining also bounds the
+   * duplicated Redis connections a flapping shard used to leak.
+   */
+  const shardOps = new Map<number, Promise<void>>()
+  /** Devices already warned about a clock skew — one line per device, not per record. */
+  const warnedSkew = new Set<string>()
+  const runShardOp = (shard: number, op: () => Promise<void>): void => {
+    const next = (shardOps.get(shard) ?? Promise.resolve())
+      .then(op)
+      .catch((err: unknown) => console.error(`shard ${shard} transition failed`, err))
+    shardOps.set(shard, next)
+    void next
+  }
+  const stopShardConsumer = (shard: number): void =>
+    runShardOp(shard, async () => {
+      const c = consumersByShard.get(shard)
+      consumersByShard.delete(shard) // drop the slot INSIDE the queued op, never before the await
+      // …and forget this shard's open-trip ids: the new owner is authoritative for them now, and a
+      // later re-gain would otherwise close rows it has already closed or replaced
+      tripPersister.forgetShard(shard)
+      // BOUNDED: every connection here is `maxRetriesPerRequest: null`, so during a Redis partition
+      // an in-flight blocking XREADGROUP queues forever — `stop()` would never resolve, the shard's
+      // op chain would block permanently, and the shard would stay dead even after Redis recovered.
+      // Serializing transitions must not trade a double-consumer risk for a zero-consumer one.
+      if (c !== undefined) {
+        await Promise.race([c.stop(), new Promise<void>((r) => setTimeout(r, SHARD_STOP_TIMEOUT_MS))])
+      }
+      // `disconnect()`, not `quit()`: quit() queues BEHIND the pending commands we just gave up on
+      consumerConnByShard.get(shard)?.disconnect()
+      consumerConnByShard.delete(shard)
+    })
+  const consumerConnByShard = new Map<number, Redis>()
   // wired below once the consumer factory + all its deps exist; the renew/reacquire timer only
   // fires ~10 s after startup, so the holder is always populated before onGained can call it.
   let startShardConsumer: (shard: number) => void = () => {}
@@ -75,8 +120,7 @@ async function main(): Promise<void> {
       // lease lost (stall/partition): stop the consumer NOW — another worker owns the
       // shard and concurrent processing would violate I2 (adversarial review, E02-3)
       console.error(`lease lost for shard ${shard} — stopping its consumer`)
-      void consumersByShard.get(shard)?.stop()
-      consumersByShard.delete(shard)
+      stopShardConsumer(shard)
     },
     (shard) => {
       // lease (re)acquired: a shard we lost to a stall, or a dead peer's expired lease, must
@@ -92,7 +136,6 @@ async function main(): Promise<void> {
   const prom = startWorkerProm(redis.duplicate(), Number(process.env['PROMETHEUS_PORT'] ?? 9102))
   const liveState = new LiveState(redis)
   const motionFeed = new MotionFeed() // I5 seam (E02-7): trip engine (E04-1) + geofence stub (E05-x)
-  const tripPersister = new TripPersister(pool, redis) // persists trip open/close events
   const configCache = new DeviceConfigCache(redis) // per-device trip thresholds/odometerSource (E04-5)
   const geofenceCache = new GeofenceCache(redis) // per-tenant geofence geoms (E05-2)
   const geofenceEvents = new GeofenceEventPersister(pool, redis) // geofence transitions → events
@@ -103,6 +146,11 @@ async function main(): Promise<void> {
   // hot path by trip-recompute jobs over durable positions (BullMQ, ADR-020).
   const recomputeConn = redisConnection(redisUrl)
   const recomputeQueue = createRecomputeQueue(recomputeConn)
+  // persists trip open/close events. A row it has to finalize without engine events (restart sweep,
+  // stale reopen) gets its distance/maxSpeed from the trip's own positions — NOT from a recompute:
+  // recompute DELETEs closed rows in its window and rebuilds only what the engine re-emits, and an
+  // orphan by definition has no ignition-off tail, so that would destroy the row, not repair it.
+  const tripPersister = new TripPersister(pool, redis)
   const recomputeWorker = startRecomputeWorker({
     connection: recomputeConn,
     pool,
@@ -110,6 +158,10 @@ async function main(): Promise<void> {
     onDone: (r) => {
       prom.tripRecomputes.inc()
       prom.tripRecomputeDeleted.inc(r.deleted)
+      // a device buffering for weeks is normal for asset trackers, and the window cap means its
+      // tail was NOT rebuilt — visible so an operator backfill happens, rather than counted a success
+      if (r.truncated === true) prom.tripRecomputeTruncated.inc()
+      if (r.skipped !== undefined) console.warn(`trip recompute skipped: ${r.skipped}`)
     },
   })
   // E05-4b: device_offline sweeper — a repeatable 60 s job scans presence against each
@@ -268,7 +320,6 @@ async function main(): Promise<void> {
     onSwept: (n) => console.log(`gdpr export sweep: removed ${n} expired file(s)`),
   })
   await scheduleExportSweep(gdprSweepQueue)
-  const consumerConns: Redis[] = []
   // Create + start a consumer for ONE shard. Reused by the initial claim AND by the leaser's
   // onGained callback (a shard recovered after a lost lease / a dead peer's expired one).
   const makeConsumer = (s: number, conn: Redis): ShardConsumer =>
@@ -284,13 +335,31 @@ async function main(): Promise<void> {
       // of double-processing the same device. Checked on the consumer's own conn (serial with its reads).
       ownsShard: () => ownsShardLease(conn, s, workerId),
       onLostOwnership: (shard) => {
-        // fenced mid-flight: drop from the map so a later re-acquire (onGained) starts a fresh consumer
-        // rather than short-circuiting on a still-mapped, dead one. Idempotent with the leaser's onLost.
-        consumersByShard.delete(shard)
+        // fenced mid-flight: tear down through the SAME per-shard queue the leaser uses, so a later
+        // re-acquire cannot start a second consumer while this one is still finishing its batch.
+        stopShardConsumer(shard)
       },
       onBatch: async (records) => {
         prom.batchRows.observe(records.length)
-        const newestMs = records[records.length - 1]?.fixTime.getTime()
+        // lag is measured on records the pipeline will actually ACT on — a clock-skewed record's
+        // fixTime is in the FUTURE, which would make the gauge negative and mask real lag
+        const usable = records.filter((r) => !isClockSkewed(r))
+        const skewed = records.length - usable.length
+        if (skewed > 0) {
+          prom.clockSkewed.inc(skewed)
+          // WHICH device — the counter alone cannot answer the alert's own instruction, and a
+          // skewed device is otherwise simply absent from the map with no per-device trace.
+          // Once per device per process lifetime: an episode is a firmware/RTC fault, not an event.
+          for (const r of records) {
+            const dev = r.deviceId.toString()
+            if (!isClockSkewed(r) || warnedSkew.has(dev)) continue
+            warnedSkew.add(dev)
+            console.warn(
+              `device ${dev} clock is ahead of server time (fix ${r.fixTime.toISOString()} vs ${r.serverTime.toISOString()}) — excluded from live state, trips and geofences until its RTC is fixed`,
+            )
+          }
+        }
+        const newestMs = usable[usable.length - 1]?.fixTime.getTime()
         if (newestMs !== undefined) prom.setLagMs(Math.max(0, Date.now() - newestMs))
         try {
           await liveState.apply(records) // live is best-effort: log, never stall the shard
@@ -442,23 +511,81 @@ async function main(): Promise<void> {
   // on a shared ioredis socket — 16 idle consumers made a full read round take ~16×blockMs (>30 s),
   // starving the leaser's renewal GETs on the same socket until every lease expired on an IDLE
   // worker (found live in E02-6; log signature: "lease lost" for shards 1..15 but never shard 0).
-  startShardConsumer = (s: number): void => {
-    if (consumersByShard.has(s)) return // already running (idempotent against a duplicate onGained)
-    const conn = redis.duplicate()
-    consumerConns.push(conn)
-    const c = makeConsumer(s, conn)
-    consumersByShard.set(s, c)
-    void c
-      .ensureGroup()
-      .then(() => c.start())
-      .catch((err: unknown) => console.error(`shard ${s} start failed`, err))
+  startShardConsumer = (s: number): void =>
+    runShardOp(s, async () => {
+      // re-checked INSIDE the queued op: by the time a pending stop() has drained, another
+      // onGained may already have started one (idempotent against a duplicate onGained)
+      if (consumersByShard.has(s)) return
+      const conn = redis.duplicate()
+      const c = makeConsumer(s, conn)
+      try {
+        // ensureGroup FIRST, and only then claim the slot: mapping the consumer before it is
+        // running meant a failed XGROUP CREATE (Redis blip, MISCONF) left the shard
+        // mapped-but-never-started. Every later start short-circuits on `has(s)`, onGained only
+        // fires on an unowned→owned TRANSITION, and the lease keeps renewing so onLost never
+        // fires either — the shard is silently dead forever while MAXLEN trims its backlog unread.
+        await c.ensureGroup()
+      } catch (err) {
+        conn.disconnect()
+        // RELEASE the lease (not just the local Set): the Redis key still names us and would stop
+        // being renewed, so neither we nor a peer could take the shard until the 30 s TTL expired.
+        // giveUp() DELs it holder-checked, so the next tick re-claims and re-fires onGained.
+        await leaser.giveUp(s)
+        throw err
+      }
+      consumerConnByShard.set(s, conn)
+      consumersByShard.set(s, c)
+      // A shard ACQUIRED later (peer died, our lease recovered) carries open trips whose ids this
+      // process does not hold — without this, every close for them is dropped ("no known open row")
+      // and the rows are stranded exactly as they were on a cold restart (review high).
+      await tripPersister.warmStart([s], SHARD_COUNT).catch((err: unknown) => {
+        console.error(`shard ${s} trip warm-start failed (continuing)`, err)
+        return 0
+      })
+      c.start()
+    })
+  // BEFORE any consumer runs: reload the open-trip ids this process is about to be responsible for,
+  // and finalize the ones whose device never came back. Without the warm start a close arriving
+  // after a restart finds no known id and is dropped, stranding the row; without the sweep, rows
+  // from devices that never return stay open forever and `engineHours` bills them to now() (audit
+  // high). Both are best-effort: a failure here must never stop the pipeline from starting.
+  const ownedShards = [...shards]
+  // WARM START before consuming: a close arriving for a trip this process did not open would
+  // otherwise be dropped ("no known open row") and strand the row. Bounded and per-shard.
+  try {
+    const warmed = await tripPersister.warmStart(ownedShards, SHARD_COUNT)
+    if (warmed > 0) console.log(`trips: warm-started ${warmed} open`)
+  } catch (err) {
+    console.error('trip warm-start failed (continuing)', err)
   }
+
   for (const s of shards) startShardConsumer(s)
+
+  // …and sweep the rows whose device never came back AFTER the pipeline is running: the first
+  // deploy carrying this sees every historically-stranded row at once, and nothing about it is
+  // urgent enough to hold ingest's backlog while it runs (review MED).
+  void (async () => {
+    try {
+      const swept = await tripPersister.closeOrphans(ORPHAN_TRIP_MAX_IDLE_MS, ownedShards, SHARD_COUNT)
+      if (swept > 0) console.log(`trips: closed ${swept} orphaned`)
+    } catch (err) {
+      console.error('trip orphan sweep failed (continuing)', err)
+    }
+  })()
 
   // Graceful drain (§6.1 deploy protocol): finish current batch, XACK, release leases <5 s
   process.on('SIGTERM', () => {
     void (async () => {
       leaser.stopRenewing() // stop re-acquiring so this worker doesn't re-grab a shard mid-drain
+      // settle any queued start/stop first — otherwise a start still sitting in the chain begins
+      // AFTER releaseLeases() and consumes a shard a peer now owns (the consumer's ownsShard()
+      // fencing catches it before any durable effect, but the drain contract should hold on its own)
+      // bounded: a queued stop can be waiting out SHARD_STOP_TIMEOUT_MS, which is longer than the
+      // §6.1 hard-exit budget — releasing the leases matters more than settling the queue
+      await Promise.race([
+        Promise.all([...shardOps.values()]),
+        new Promise<unknown>((r) => setTimeout(r, 2_000)),
+      ])
       await Promise.all([...consumersByShard.values()].map((c) => c.stop())) // drain in-flight batches
       await leaser.releaseLeases() // free leases AFTER draining — else a peer claims a shard we're
       // still persisting and processes the same device concurrently (rule 5 / I2, review HIGH)
@@ -487,7 +614,7 @@ async function main(): Promise<void> {
       await gdprSweepWorker.close()
       await gdprSweepQueue.close()
       offlineRedis.disconnect()
-      consumerConns.forEach((c) => c.disconnect())
+      consumerConnByShard.forEach((c) => c.disconnect())
       await redis.quit()
       await pool.end()
       process.exit(0)

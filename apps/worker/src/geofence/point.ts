@@ -11,6 +11,37 @@ export interface GeoPolygon {
   coordinates: number[][][]
 }
 
+/** [minLon, minLat, maxLon, maxLat] — the outer ring's envelope. */
+export type BBox = readonly [number, number, number, number]
+
+/**
+ * Envelope of a polygon's OUTER ring, computed ONCE per fence when it enters the cache.
+ *
+ * The ray-cast is O(vertices) and runs per record per fence on the process that hosts all 16 shard
+ * consumers, so without an O(1) rejection a detailed fence costs its full vertex count for every
+ * position on Earth. A vehicle is outside the great majority of a tenant's zones at any moment, so
+ * the bbox answers almost every test in four comparisons (audit high).
+ */
+export function bboxOf(poly: GeoPolygon): BBox {
+  let minLon = Infinity
+  let minLat = Infinity
+  let maxLon = -Infinity
+  let maxLat = -Infinity
+  for (const p of poly.coordinates[0] ?? []) {
+    const x = p[0]!
+    const y = p[1]!
+    if (x < minLon) minLon = x
+    if (x > maxLon) maxLon = x
+    if (y < minLat) minLat = y
+    if (y > maxLat) maxLat = y
+  }
+  return [minLon, minLat, maxLon, maxLat]
+}
+
+/** True when the point CANNOT be inside — a cheap, exact rejection (never a false negative). */
+export const outsideBBox = (lon: number, lat: number, b: BBox): boolean =>
+  lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]
+
 /** Ray-cast test: is (lon,lat) inside this single ring? */
 function inRing(lon: number, lat: number, ring: number[][]): boolean {
   let inside = false

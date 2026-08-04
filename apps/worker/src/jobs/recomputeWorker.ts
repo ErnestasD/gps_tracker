@@ -4,7 +4,7 @@ import type { Pool } from 'pg'
 
 import { deviceTripConfig } from '../trip/config.js'
 import type { DeviceTripConfig } from '../trip/engine.js'
-import { recomputeTrips, type RecomputeScope } from '../trip/recompute.js'
+import { recomputeTrips, type RecomputeResult, type RecomputeScope } from '../trip/recompute.js'
 import { TRIP_RECOMPUTE_QUEUE, type RecomputeJob } from './queue.js'
 
 /** Read a device's trip config from the registry (device:config); undefined ⇒ engine default. */
@@ -24,7 +24,7 @@ export interface RecomputeWorkerDeps {
   pool: Pool
   /** registry connection (device:tenant/device:account) for first-computation scope. */
   redis: Redis
-  onDone?: (r: { deleted: number; created: number }) => void
+  onDone?: (r: RecomputeResult) => void
 }
 
 /**

@@ -6,6 +6,8 @@ import type { RuleDef } from '../src/rules/types.js'
 
 const T0 = 1_751_600_000_000
 interface RecOpts {
+  /** server_time in seconds from T0 — set BELOW tSec to simulate a device clock running ahead */
+  serverSec?: number
   fixValid?: boolean
   speed?: number | null
   ignition?: boolean | null
@@ -14,7 +16,7 @@ interface RecOpts {
 const rec = (tSec: number, o: RecOpts = {}): NormalizedRecord => ({
   deviceId: 42n,
   fixTime: new Date(T0 + tSec * 1000),
-  serverTime: new Date(T0 + tSec * 1000),
+  serverTime: new Date(T0 + (o.serverSec ?? tSec) * 1000),
   lat: 54.6,
   lon: 25.2,
   altitude: null,
@@ -243,5 +245,33 @@ describe('RuleEngine — fuel_theft (V2: confirmed drop from a parked baseline)'
     const ev = e.feed([offL(0, 800), offL(60, 500), offL(120, 500)], only(rule('fuel_theft', { dropLiters: 20 })))
     expect(ev).toHaveLength(1)
     expect(ev[0]!.payload).toMatchObject({ unit: 'liters', baseline: 80, drop: 30 })
+  })
+})
+
+describe('E05-4 RuleEngine — device clock ahead (audit critical)', () => {
+  // REGRESSION: `lastSeen` is a max-wins marker and the engine dropped anything older. ONE
+  // future-dated record therefore made every REAL record afterwards look out-of-order, silently
+  // killing EVERY alert for that device for the whole drift — including panic and power_cut, the
+  // §6.5 priority-2 kinds that bypass cooldown precisely because they must never be lost. The
+  // trip and geofence engines got the seam; this one was missed in the first pass.
+  it('a skewed record does not freeze the marker — later REAL alerts still fire', () => {
+    const e = new RuleEngine()
+    const r = rule('overspeed', { limitKmh: 90 })
+    // device clock 10 h ahead on one record (server saw it now)
+    e.feed([rec(36_000, { serverSec: 0, speed: 30 })], only(r))
+    const ev = e.feed([rec(10, { speed: 120 }), rec(20, { speed: 120 })], only(r))
+    expect(ev.length).toBeGreaterThan(0)
+    expect(ev[0]).toMatchObject({ kind: 'overspeed' })
+  })
+
+  it('panic on a skewed record still fires — an IO edge is real whatever the RTC believes', () => {
+    // deliberately NOT the same treatment as the motion engines: a power cut or a pressed panic
+    // button is a physical event, so the record is processed; only the ORDERING clock is withheld
+    const e = new RuleEngine()
+    const r = rule('panic')
+    e.feed([rec(0, { attrs: { Alarm: 0 } })], only(r))
+    const ev = e.feed([rec(36_000, { serverSec: 10, attrs: { Alarm: 1 } })], only(r))
+    expect(ev).toHaveLength(1)
+    expect(ev[0]).toMatchObject({ kind: 'panic', bypassCooldown: true })
   })
 })

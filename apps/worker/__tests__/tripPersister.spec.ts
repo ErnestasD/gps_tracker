@@ -97,3 +97,85 @@ describe('E04-1 TripPersister', () => {
     expect(updates[1]!.params[0]).toBe('101') // device 2 → second insert id
   })
 })
+
+describe('E04-1 TripPersister crash posture (audit high)', () => {
+  /** Fake pool that answers the warm-start / orphan-sweep SELECTs with fixed rows. */
+  const poolWith = (openRows: Record<string, unknown>[], orphanRows: Record<string, unknown>[]) => {
+    const calls: { sql: string; params: unknown[] }[] = []
+    const query = vi.fn((sql: string, params: unknown[] = []) => {
+      calls.push({ sql, params })
+      if (/JOIN devices/.test(sql) && !/LEFT JOIN LATERAL/.test(sql)) return Promise.resolve({ rows: openRows, rowCount: openRows.length })
+      if (/ST_Length/.test(sql)) return Promise.resolve({ rows: [{ m: '4321.6' }], rowCount: 1 })
+      if (/ST_Length/.test(sql)) return Promise.resolve({ rows: [{ m: '4321.6' }], rowCount: 1 })
+      if (/LEFT JOIN LATERAL/.test(sql)) return Promise.resolve({ rows: orphanRows, rowCount: orphanRows.length })
+      if (/^INSERT INTO trips/.test(sql)) return Promise.resolve({ rows: [{ id: 900 }], rowCount: 1 })
+      return Promise.resolve({ rows: [], rowCount: 1 })
+    })
+    return { pool: { query } as unknown as Pool, calls }
+  }
+
+  it('warm-start lets a close after a restart finalize the RIGHT row', async () => {
+    // Before: the in-memory map was lost on every restart and lease transfer, the close was dropped
+    // ("no known open id"), and the row stayed `open` forever. Recompute does NOT reconcile those —
+    // its DELETE is status='closed'-scoped and it only runs when a LATE record appears, which a
+    // clean restart never produces. Reports aggregate trips with no status filter, so engineHours
+    // billed those devices for `now() - startTime`, growing every day.
+    const { pool, calls } = poolWith([{ id: '77', deviceId: '42', tenantId: 't1', accountId: 'a1' }], [])
+    const p = new TripPersister(pool, fakeRedis({ '42': { t: 't1', a: 'a1' } }))
+    expect(await p.warmStart([0, 1], 16)).toBe(1)
+    const res = await p.apply([closeEv(42n)])
+    expect(res.closed).toBe(1)
+    const upd = calls.find((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))
+    expect(upd?.params[0]).toBe('77') // the warm-started id, not a guess
+  })
+
+  it('a new open for a device that already has one closes the stale row first', async () => {
+    // otherwise a restart mid-trip leaves TWO open rows for one device and reports double-count
+    const { pool, calls } = poolWith([{ id: '77', deviceId: '42', tenantId: 't1', accountId: 'a1' }], [])
+    const p = new TripPersister(pool, fakeRedis({ '42': { t: 't1', a: 'a1' } }))
+    await p.warmStart([0, 1], 16)
+    await p.apply([openEv(42n)])
+    const closes = calls.filter((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))
+    expect(closes).toHaveLength(1)
+    expect(closes[0]!.params[0]).toBe('77')
+    expect(calls.filter((c) => /^INSERT INTO trips/.test(c.sql))).toHaveLength(1) // and one fresh open
+  })
+
+  it("closeOrphans finalizes with REAL figures from the trip's own positions, not placeholders", async () => {
+    // The first draft wrote distanceM: 0 and enqueued a recompute to "repair" it. But recompute
+    // DELETEs status='closed' rows in its window and rebuilds only what the engine re-emits — and
+    // the canonical orphan is a device that stopped mid-drive, so there is no ignition-off tail and
+    // no close is ever emitted. It deleted the row and inserted nothing: the placeholder was not
+    // repaired, the trip was destroyed. The figures are computed here instead.
+    const lastFix = new Date(1_700_000_000_000)
+    const { pool, calls } = poolWith([], [{ id: '55', deviceId: '9', startTime: new Date(1), startLat: 54.1, startLon: 25.1, lastFix, lat: 54.5, lon: 25.5, maxSpeed: 92 }])
+    const p = new TripPersister(pool, fakeRedis({}))
+    expect(await p.closeOrphans(6 * 3_600_000, [0, 1], 16)).toBe(1)
+    const upd = calls.find((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))!
+    expect(upd.params[0]).toBe('55')
+    expect(upd.params[1]).toEqual(lastFix) // engine-hours stops at the truth, not at now()
+    expect(upd.params[2]).toBe(54.5)
+    expect(upd.params[4]).toBe(4322) // the track's real length, rounded
+    expect(upd.params[6]).toBe(92) // and its real max speed
+  })
+
+  it('a swept trip with no positions ends where it STARTED, never at Null Island', async () => {
+    const { pool, calls } = poolWith([], [{ id: '56', deviceId: '9', startTime: new Date(1), startLat: 54.1, startLon: 25.1, lastFix: null, lat: null, lon: null, maxSpeed: null }])
+    const p = new TripPersister(pool, fakeRedis({}))
+    await p.closeOrphans(6 * 3_600_000, [0, 1], 16)
+    const upd = calls.find((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))!
+    expect(upd.params[2]).toBe(54.1) // (0,0) is the Gulf of Guinea and reverse-geocodes to nonsense
+    expect(upd.params[3]).toBe(25.1)
+  })
+
+  it('forgetShard drops the ids for a shard handed to a peer', async () => {
+    // the new owner warm-starts them and is authoritative; a later re-gain closing our stale id
+    // would land as a silent 0-row UPDATE (closeTrip is WHERE status='open')
+    const { pool, calls } = poolWith([{ id: '77', deviceId: '42', tenantId: 't1', accountId: 'a1', shard: 3 }], [])
+    const p = new TripPersister(pool, fakeRedis({ '42': { t: 't1', a: 'a1' } }))
+    await p.warmStart([3], 16)
+    p.forgetShard(3)
+    await p.apply([closeEv(42n)])
+    expect(calls.some((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))).toBe(false)
+  })
+})

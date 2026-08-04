@@ -24,6 +24,10 @@ export interface DeviceState {
   tenantId: string
   accountId: string
   lastFixMs: number | null
+  /** SERVER-side last contact. Presence is decided on this, never on the device clock — a forward
+   *  RTC drift made `now − lastFixMs` negative and silently suppressed the alert. Falls back to
+   *  lastFixMs for markers written before the field existed. */
+  lastContactMs?: number | null
   profileOfflineAfterH?: number
 }
 export interface OfflineSweepResult {
@@ -42,7 +46,11 @@ export function sweepOffline(
   for (const d of devices) {
     const rules = rulesByAccount.get(d.accountId)
     if (rules === undefined || rules.length === 0) continue // no offline rule for this account
-    if (d.lastFixMs === null) continue // never reported — cannot classify
+    // "never reported" is about CONTACT, not about the device's clock. Keying this on lastFixMs
+    // excluded a device whose clock is skewed (it has contact time but no accepted fix) from
+    // offline alerting altogether — the one class of device most likely to go quiet unnoticed.
+    const contactMs = d.lastContactMs ?? d.lastFixMs
+    if (contactMs === null) continue // never reported — cannot classify
 
     // the rule that trips first (smallest effective threshold) is the one that fires.
     // Rule config is `z.unknown` upstream (no numeric bound), and a device profile can carry any
@@ -63,7 +71,7 @@ export function sweepOffline(
     }
     if (firing === undefined) continue
 
-    const offlineMs = nowMs - d.lastFixMs
+    const offlineMs = nowMs - contactMs
     const isOffline = offlineMs >= thresholdH * 3_600_000
     const wasFlagged = flagged.has(d.deviceId)
 
