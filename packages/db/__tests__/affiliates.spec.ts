@@ -234,4 +234,16 @@ describe('affiliates repo', () => {
       expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_sus', invoiceId: 'in_sus_1', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })).toBeNull()
     })
   })
+
+  it('a mixed-case email is normalized on write and resolves at login (audit MED)', async () => {
+    // `email` is a case-sensitive @unique and `create` stored whatever was submitted, but the login
+    // handler lowercases before the lookup — so a partner created as `Jonas@Partner.lt` (the natural
+    // form pasted from a contract) could set a password via the emailed link and then NEVER log in.
+    // The tenant-user path already normalized on write; this one was missed on both sides.
+    const a = await db.affiliates.create(actor, { name: 'Mixed Case', email: 'Jonas@Partner.LT', code: 'MIXED1' })
+    expect(a.email).toBe('jonas@partner.lt')
+    expect((await db.affiliates.findByEmailForAuth('jonas@partner.lt'))?.id).toBe(a.id)
+    // …and the lookup itself is case-insensitive, so rows written before the migration also resolve
+    expect((await db.affiliates.findByEmailForAuth('JONAS@partner.lt'))?.id).toBe(a.id)
+  })
 })

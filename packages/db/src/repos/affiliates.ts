@@ -172,7 +172,10 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
           select: PUBLIC_SELECT,
           data: {
             name: data.name,
-            email: data.email,
+            // normalized on WRITE: the login handler lowercases before the lookup, and
+            // `email` is a case-sensitive @unique, so a mixed-case row could never log in
+            // (migration 20260804200000 collapses existing rows + adds a functional unique)
+            email: data.email.trim().toLowerCase(),
             code: data.code,
             ...(data.commissionPct !== undefined ? { commissionPct: data.commissionPct } : {}),
             ...(data.commissionMonths !== undefined ? { commissionMonths: data.commissionMonths } : {}),
@@ -264,8 +267,14 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
       })
       return after
     },
-    findByEmailForAuth: (email) =>
-      prisma.affiliate.findUnique({ where: { email }, select: { id: true, email: true, passwordHash: true, status: true } }),
+    findByEmailForAuth: async (email) => {
+      // case-insensitive by the functional unique index — rows created before the normalization
+      // migration, and any future mixed-case input, both resolve here
+      const rows = await prisma.$queryRaw<{ id: string; email: string; passwordHash: string | null; status: AffiliateStatus }[]>`
+        SELECT "id", "email", "passwordHash", "status" FROM "affiliates"
+        WHERE lower("email") = lower(${email}) LIMIT 1`
+      return rows[0] ?? null
+    },
     setPassword: async (id, passwordHash) => {
       await prisma.affiliate.update({ where: { id }, data: { passwordHash } })
     },
