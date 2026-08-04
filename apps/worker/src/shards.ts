@@ -2,6 +2,15 @@ import type { Redis } from 'ioredis'
 
 export const SHARD_COUNT = 16 // CLAUDE.md rule 5
 
+/**
+ * The consumer group the pipeline reads `raw:{shard}` with (PROJECT_PLAN §5). ONE definition:
+ * the consumer creates it and the stream_depth gauge probes it by name, and if those two ever
+ * disagree the backlog probe finds no group and falls back to XLEN — silently reinstating the
+ * permanent-backpressure-latch bug. `apps/ingest/src/session.ts` keeps its own copy (ingest does
+ * not depend on this package); `backlog.spec.ts` asserts the two files agree.
+ */
+export const PIPELINE_GROUP = 'pipeline'
+
 /** The single source of truth for a shard's lease key (used by the leaser AND the consumer's
  *  fencing check, so the two can never drift on the key format). */
 export const leaseKey = (shard: number): string => `shards:lease:${shard}`

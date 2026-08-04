@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { encodeAvlPacket, encodeCodec12, type EncodableRecord } from '@orbetra/codec'
 
 import { IngestMetrics } from '../src/metrics.js'
+import { UNSUPPORTED_STREAM } from '../src/persist.js'
 import { createIngestUdpServer, type IngestUdpServer, type UdpConfig } from '../src/udp.js'
 import { DEFAULT_CONFIG, SHARD_COUNT } from '../src/index.js'
 
@@ -119,6 +120,26 @@ describe('UDP ingest channel (e2e vs real redis)', () => {
     expect(Buffer.isBuffer(payload['raw'])).toBe(true)
     expect(metrics.ackedRecordsTotal).toBe(3)
     expect(metrics.udpDatagramsTotal).toBe(1)
+  })
+
+  it('codec 16 over UDP: parked + declared count ACKed, exactly like TCP', async () => {
+    // REGRESSION (review high): the codec-16 fix landed on the TCP session only. parseUdpAvl funnels
+    // through the same parser, so a raw-fallback returned an EMPTY avl batch here — persist wrote 0,
+    // the ACK said 0, and the device resent the same datagram forever with nothing parked and no
+    // counter moving. UDP is enabled by default, so the wedge stayed live in every deployment and
+    // was LESS visible than on TCP, because only one transport moved the new metric.
+    const metrics = new IngestMetrics()
+    const port = await start(metrics)
+    // bare codec-16 AVL data: codec id, NumberOfData1, body, NumberOfData2 (no CRC over UDP)
+    const ack = await sendAndAwaitAck(port, wrap(Buffer.from([0x10, 0x02, 0x00, 0x00, 0x02]), { packetId: 0x1234, avlPacketId: 0x07 }))
+
+    expect(ack).not.toBeNull()
+    expect(ack!.readUInt16BE(2)).toBe(0x1234)
+    expect(ack!.readUInt8(6)).toBe(2) // the DECLARED count, not 0
+    expect(metrics.unsupportedCodecTotal).toBe(1)
+    expect(metrics.ackedRecordsTotal).toBe(2)
+    expect(await redis.xlen(UNSUPPORTED_STREAM)).toBe(1)
+    expect(await redis.xlen(`raw:${SHARD}`)).toBe(0) // nothing decodable to persist
   })
 
   it('unknown IMEI: no ACK, and the IMEI is quarantined for the claim flow', async () => {

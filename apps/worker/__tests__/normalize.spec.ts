@@ -112,6 +112,52 @@ describe('normalize (E02-3)', () => {
     expect(rec.attrs['Fuel level']).toBeUndefined()
   })
 
+  it('uint16 speed/angle beyond smallint are NULLED, never written (audit critical #2)', () => {
+    // The protocol fields are uint16 (max 65535); positions.speed/course are smallint (max 32767).
+    // One such value used to make the whole multi-row INSERT raise 22003 — the batch was never ACKed,
+    // XAUTOCLAIM re-delivered it forever, and the ~199 OTHER tenants' records in it were lost.
+    const rec = normalize({ ...basePayload, speed: 65535, angle: 65535 }, hash)
+    expect(rec.speed).toBeNull()
+    expect(rec.course).toBeNull()
+    // the position itself survives — it is still useful without a heading
+    expect(rec.lat).toBe(basePayload.lat)
+    expect(rec.fixValid).toBe(true)
+  })
+
+  it('keeps ordinary readings and rejects only semantically impossible ones', () => {
+    const ok = normalize({ ...basePayload, speed: 90, angle: 359 }, hash)
+    expect(ok.speed).toBe(90)
+    expect(ok.course).toBe(359)
+    // a heading of 400 is not a heading
+    expect(normalize({ ...basePayload, angle: 400 }, hash).course).toBeNull()
+  })
+
+  it('an out-of-range odometer is nulled too — bigint overflows exactly as speed did', () => {
+    // REGRESSION (review high): only speed/course/altitude were bounded. AVL id 16 arrives as an
+    // unbounded N8 value and goes into `odometer_m bigint`, so ≥2^63 raises 22003 and poisons the
+    // batch by the identical mechanism the smallint clamp was added to stop.
+    const nulled: string[] = []
+    const rec = normalize({ ...basePayload, io: [[16, 2n ** 63n]] }, hash, undefined, (f) => nulled.push(f))
+    expect(rec.odometerM).toBeNull()
+    expect(nulled).toEqual(['odometerM'])
+    // the largest value the column DOES accept is kept
+    expect(normalize({ ...basePayload, io: [[16, 2n ** 63n - 1n]] }, hash).odometerM).toBe(2n ** 63n - 1n)
+  })
+
+  it('every nulled field is REPORTED — a silent null looks identical to a device that reports none', () => {
+    const nulled: string[] = []
+    normalize({ ...basePayload, speed: 65535, angle: 400, altitude: 40000 }, hash, undefined, (f) => nulled.push(f))
+    expect(nulled.sort()).toEqual(['altitude', 'course', 'speed'])
+  })
+
+  it('a garbage satellite count falls to 0, which marks the fix INVALID (I5 fail-safe)', () => {
+    // satellites is NOT NULL and rule 6 reads it, so it cannot simply be nulled. 0 ⇒ fix_valid=false,
+    // which keeps the record out of trips, geofences and overspeed — the conservative side.
+    const rec = normalize({ ...basePayload, satellites: 99999 }, hash)
+    expect(rec.satellites).toBe(0)
+    expect(rec.fixValid).toBe(false)
+  })
+
   it('malformed payload throws (consumer dead-letters it)', () => {
     expect(() => normalize({ nonsense: true }, hash)).toThrow()
   })

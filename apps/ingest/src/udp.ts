@@ -5,7 +5,7 @@ import { CrcError, decodeUdpHeader, encodeUdpAck, FrameError, parseUdpAvl } from
 
 import { GlobalRateLimiter, HandshakeRateLimiter } from './limits.js'
 import type { IngestMetrics } from './metrics.js'
-import { persistAvlBatch } from './persist.js'
+import { parkUndecodableFrame, persistAvlBatch } from './persist.js'
 import { DeviceRegistry } from './registry.js'
 import { getCachedShardDepth, SHARD_COUNT, type SessionConfig } from './session.js'
 
@@ -126,9 +126,23 @@ export function createIngestUdpServer(
     }
 
     // command responses over UDP = follow-up; ACK zero-persisted so the device doesn't resend a
-    // packet we deliberately ignore (a codec-16 raw-fallback instead parses as an empty avl batch).
+    // packet we deliberately ignore.
     if (parsed.kind !== 'avl') {
       send(encodeUdpAck(head.packetId, head.avlPacketId, 0), rinfo)
+      return
+    }
+
+    // codec 16 over UDP: identical treatment to TCP (session.ts) — a raw-fallback parses as an EMPTY
+    // avl batch, so without this branch persistAvlBatch returns 0, we ACK 0, and the device resends
+    // the same datagram forever with nothing parked and no counter moving. UDP is on by default, so
+    // handling only TCP would leave the wedge live in every deployment and make it LESS visible.
+    if (parsed.rawFallback === true) {
+      const declared = parsed.declaredCount ?? 0
+      await parkUndecodableFrame(redis, head.imei, head.avlData, now())
+      metrics.unsupportedCodecTotal++
+      metrics.ackedRecordsTotal += declared
+      send(encodeUdpAck(head.packetId, head.avlPacketId, declared), rinfo)
+      observeAckLatencyMs?.(now() - t0)
       return
     }
 

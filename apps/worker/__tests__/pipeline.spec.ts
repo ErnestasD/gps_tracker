@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { Encoder } from 'cbor-x'
 import { Redis } from 'ioredis'
 import pg from 'pg'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
@@ -173,6 +174,60 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     expect(c.stats.inserted).toBe(5)
     expect(c.stats.deadLettered).toBe(1)
     expect(await redis.xlen('raw:dead')).toBe(1)
+  }, 60_000)
+
+  it('poison row: quarantined to raw:dead, the REST of the batch is written, everything ACKed', async () => {
+    // REGRESSION (audit critical #2): a multi-row INSERT is ONE statement, so a single value the
+    // column refuses failed all 200 rows. The batch was then never ACKed, XAUTOCLAIM re-delivered it
+    // every 60 s forever, and the other ~199 records — OTHER tenants on the same shard, already ACKed
+    // to their devices and dropped from their buffers — were never written. Nulling the known
+    // overflow fields is not enough; the isolation mechanism is what bounds the class.
+    await ingestRecords(5)
+    // a corrupt tsMs survives the schema but makes `new Date()` invalid ⇒ fix_time (NOT NULL) rejects
+    await redis.xadd(
+      `raw:${SHARD}`,
+      '*',
+      'p',
+      new Encoder().encode({
+        deviceId: 42n, imei: IMEI, serverTimeMs: Date.now(), tsMs: 1e18, priority: 0,
+        lat: 54.7, lon: 25.3, altitude: 100, angle: 90, satellites: 9, speed: 40,
+        eventIoId: 0, io: [], raw: new Uint8Array([1, 2, 3]),
+      }),
+    )
+    const deadLetters: [string, number][] = []
+    const c = consumerFor('w1', { onDeadLetter: (reason, n) => deadLetters.push([reason, n]) })
+    await c.ensureGroup()
+    while ((await c.tick()) > 0) void 0
+
+    expect(c.stats.inserted).toBe(5) // the healthy records got through
+    expect(c.stats.deadLettered).toBe(1)
+    expect(deadLetters).toEqual([['rejected_by_db', 1]])
+    expect(await redis.xlen('raw:dead')).toBe(1) // quarantined WITH its original bytes
+    const pending = await redis.xpending(`raw:${SHARD}`, 'pipeline')
+    expect((pending as [number, ...unknown[]])[0]).toBe(0) // ACKed — no infinite redelivery
+  }, 60_000)
+
+  it('a TRANSIENT db error is retried, never quarantined', async () => {
+    // the mirror-image failure: treating a connection blip as poison would throw away good
+    // positions that ingest already ACKed. Only SQLSTATE classes 22/23 mean "this row is bad".
+    await ingestRecords(3)
+    let calls = 0
+    const flaky = {
+      query: (...args: unknown[]) => {
+        calls++
+        if (calls === 1) return Promise.reject(Object.assign(new Error('terminating connection'), { code: '57P01' }))
+        return (pool.query as (...a: unknown[]) => Promise<unknown>)(...args)
+      },
+    } as unknown as pg.Pool
+    const c = new ShardConsumer(SHARD, { redis, pool: flaky, hash, workerId: 'flaky-w', autoclaimMinIdleMs: 100 })
+    await c.ensureGroup()
+    await expect(c.tick()).rejects.toThrow(/terminating connection/)
+    expect(c.stats.deadLettered).toBe(0) // nothing thrown away
+    expect(await redis.xlen('raw:dead')).toBe(0)
+
+    await new Promise((r) => setTimeout(r, 150)) // let the pending entries pass autoclaim min-idle
+    while ((await c.tick()) > 0) void 0 // XAUTOCLAIM replays the still-pending batch
+    expect(c.stats.inserted).toBe(3)
   }, 60_000)
 
   it('SIGTERM path: stop() finishes the in-flight batch, XACKs, lease released < 5 s', async () => {

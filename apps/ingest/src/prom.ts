@@ -34,6 +34,11 @@ export function startIngestProm(metrics: IngestMetrics, port: number): IngestPro
     'framing violations (oversize/garbage)',
     () => metrics.frameViolationsTotal,
   )
+  reflect(
+    'ingest_unsupported_codec_total',
+    'frames verified but not decodable yet (codec 16) — parked in `rejects`, ACKed so the device advances',
+    () => metrics.unsupportedCodecTotal,
+  )
   reflect('ingest_acked_records_total', 'records ACKed after XADD', () => metrics.ackedRecordsTotal)
   reflect('ingest_rejected_imei_total', 'unknown-IMEI rejects', () => metrics.rejectedImeiTotal)
   reflect('ingest_sanity_rejects_total', 'records failing §3.6 sanity', () => metrics.sanityRejectsTotal)

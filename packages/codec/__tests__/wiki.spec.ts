@@ -65,6 +65,14 @@ describe('wiki golden corpus', () => {
           expect(parsed.codec).toBe(exp.codec === 142 ? 0x8e : exp.codec)
           if (exp.rawFallback) {
             expect(parsed.rawFallback).toBe(true)
+            // The count we ACK back to an undecodable-codec device is its record cursor — ACK the
+            // wrong number and it either resends forever or skips data. Cross-check the parsed value
+            // against the fixture bytes read INDEPENDENTLY (Number of Data 2, the last data byte —
+            // wiki Codec page), so the offset is pinned by the golden corpus, not by this parser.
+            const raw = hexBuf(c.hex)
+            const dataLen = raw.readUInt32BE(4)
+            expect(parsed.declaredCount).toBe(raw[8 + dataLen - 1])
+            expect(parsed.declaredCount).toBeGreaterThan(0)
             return
           }
           expect(parsed.records).toHaveLength(exp.recordCount!)

@@ -1,0 +1,112 @@
+# Backend deep audit — remediation tracker
+
+Source: `backend-deep-audit-2026-08-04.md` (268 agents, 2 rounds, adversarially verified).
+
+Ranked findings: **74** — critical: 2, high: 18, medium: 43, low: 11
+
+Status legend: **FIXED** (shipped + test) · **PLANNED** (assigned to a PR) · **OPEN** (triaged, not scheduled).
+
+Every PR gets its own hostile-reviewer pass in a fresh session; PR A's review found three further
+HIGHs inside the fixes themselves (UDP transport skipped, poison-batch *mechanism* untouched,
+`rejects` stream polluted) — all folded into PR A before merge.
+
+
+## CRITICAL (2)
+
+| # | Subsystem | Finding | File | Status |
+|---|---|---|---|---|
+| 0 | ingest / backpressure (I4) | Shard depth is XLEN of a stream nothing ever trims — backpressure latches on permanently and ingest stops accepting data | `apps/ingest/src/session.ts:327` | **FIXED** — PR A — `shardBacklog()` (XINFO GROUPS lag+pending) replaces XLEN in ingest + worker gauge |
+| 1 | worker / persistence (I1) | Unvalidated uint16 angle/speed written into smallint columns poisons the entire batch, and there is no dead-letter for write failures | `apps/worker/src/writer.ts:46` | **FIXED** — PR A — column-range clamps in `normalize.ts` (incl. `odometer_m` bigint) + a bisecting quarantine in `consumer.ts` that isolates any row Postgres rejects to `raw:dead` and ACKs the rest |
+
+## HIGH (18)
+
+| # | Subsystem | Finding | File | Status |
+|---|---|---|---|---|
+| 2 | codec / ingest | Codec 16 packets are silently discarded and ACKed 0 — permanent device resend wedge with zero metrics | `packages/codec/src/parse.ts:41` | **FIXED** — PR A — frame parked in `raw:unsupported`, DECLARED count ACKed, `ingest_unsupported_codec_total` + alert; BOTH transports (TCP + UDP) |
+| 3 | ingest / rate limiting | UDP per-IP flood guard is O(window) on its own reject path — the limiter saturates the event loop below its own ceiling | `apps/ingest/src/limits.ts:50` | **FIXED** — PR A — two-bucket sliding-window counter, O(1) and allocation-free on both paths |
+| 4 | worker / live state, presence, trips | No upper clamp of fix_time against server_time — one future-dated fix freezes live tracking, suppresses offline alerts, and stalls the motion engines | `apps/worker/src/normalize.ts:63` | PLANNED — PR D |
+| 5 | api / geofences → worker hot path | Geofence geometry has no vertex or count bound — an O(vertices) ray-cast runs per record per fence on the shared worker event loop | `packages/db/src/repos/geofences.ts:116` | PLANNED — PR C |
+| 6 | worker / geofence engine | prune() rescans the entire global cross-tenant pair-state map once per record, synchronously blocking the pipeline | `apps/worker/src/geofence/engine.ts:64` | PLANNED — PR D |
+| 7 | worker / shard leasing (I2, rule 5) | onLost frees the consumer map slot without awaiting stop(), so a re-acquire runs a SECOND live consumer for the same shard | `apps/worker/src/main.ts:78` | PLANNED — PR D |
+| 8 | worker / trip recompute (I3) | Recompute's DELETE window has no lower bound, so one stale device timestamp wipes every closed trip older than the 13-month positions retention | `apps/worker/src/trip/recompute.ts:90` | PLANNED — PR D |
+| 9 | worker / trips | Open trip rows are orphaned forever on every restart and lease transfer — the documented recompute reconciliation does not cover them | `apps/worker/src/trip/persister.ts:13` | PLANNED — PR D |
+| 10 | packages/db / tenant scoping | createGenericRepo mutates with the READ scope, so an account-scoped tenant admin can re-point or delete a TENANT-SHARED webhook or API key | `packages/db/src/repos/generic.ts:88` | PLANNED — PR C |
+| 11 | api / auth + WS gateway | Revoking an API key never terminates the live WebSocket stream it opened — the leaked key keeps streaming tenant-wide positions | `apps/api/src/routes/apiKeys.ts:53` | PLANNED — PR B |
+| 12 | api / session revocation | Refresh rotation is not fenced against revocation — a refresh in flight during a password reset re-mints a live token in the just-revoked family | `apps/api/src/auth/login.ts:231` | PLANNED — PR B |
+| 13 | api / HTTP surface | The global 1 MB body limit is registered after the auth, pilot-request and Stripe-webhook routes, so all of them buffer arbitrarily large bodies | `apps/api/src/app.ts:205` | PLANNED — PR B |
+| 14 | api / public signup | The signup honeypot runs a full argon2id hash BEFORE the rate limiter, letting anonymous traffic starve the shared semaphore that login depends on | `apps/api/src/routes/signup.ts:65` | PLANNED — PR B |
+| 15 | api / SMS gateway | POST /v1/devices/:id/sms is an unmetered SMS relay: arbitrary body text to an arbitrary E.164 number, billed to the platform's Twilio account | `apps/api/src/routes/crud.ts:618` | PLANNED — PR C |
+| 16 | billing / entitlements | past_due tenants keep full entitlements but are excluded from overage metering — free uncapped service for the whole dunning window | `packages/db/src/repos/tenants.ts:282` | PLANNED — PR C |
+| 17 | infra / TLS + api exposure | /v1/internal/caddy-ask is publicly reachable on every host block, and its per-domain rate bucket is an anonymous kill-switch for a tenant's white-label TLS | `apps/api/src/routes/caddyAsk.ts:54` | PLANNED — PR E |
+| 18 | web / serving | Tenant custom domains get a 403 from the SPA container — white-label domains are functionally dead in the deployed stack | `apps/web/vite.config.ts:38` | PLANNED — PR E |
+| 19 | worker / notifications | The email notification driver has no send timeout while telegram and webpush do — a wedged SMTP socket stalls the entire alert queue | `apps/worker/src/notify/emailTransport.ts:61` | PLANNED — PR D |
+
+## MEDIUM (43)
+
+| # | Subsystem | Finding | File | Status |
+|---|---|---|---|---|
+| 20 | observability / alerting | Nothing alerts on any failure counter: the API exports one metric, worker failure counters are unwired, and exporters/endpoints have no up alert | `infra/prometheus/alerts.yml:92` | OPEN |
+| 21 | billing / usage metering | The daily Stripe overage job has no settle delay, no record of which days were reported, and no backfill — late device-days and failed days are lost forever | `apps/worker/src/jobs/stripeUsageWorker.ts:33` | OPEN |
+| 22 | billing / entitlements | The zero-entitlement floor is enforced only at device CREATE, so a lapsed subscription or expired trial never actually stops the billable product | `packages/shared/src/plans.ts:78` | OPEN |
+| 23 | billing / Stripe configuration | A base price missing from the worker's STRIPE_INCLUDED map silently disables overage billing for every tenant on that plan | `apps/worker/src/billing/usageReporter.ts:85` | OPEN |
+| 24 | billing / Stripe webhook | A subscription webhook that matches no tenant is silently acked 200, leaving a paying customer permanently unprovisioned | `apps/api/src/routes/billing.ts:256` | OPEN |
+| 25 | billing / Stripe webhook ordering | The monotonic guard uses strict `lt` against second-granularity event.created, so a genuinely newer same-second event is dropped forever | `packages/db/src/repos/tenants.ts:250` | OPEN |
+| 26 | affiliate commissions | Commission window is anchored on the first ACCRUED commission and commissionMonths is read live — early non-accruing payments extend the window, and a terms edit reopens closed ones | `packages/db/src/repos/affiliates.ts:171` | OPEN |
+| 27 | affiliate commissions / audit | The entire affiliate + commission money ledger writes zero audit rows — payout rates and paid/void marks are mutable with no trace | `packages/db/src/repos/affiliates.ts:128` | OPEN |
+| 28 | api / entitlements | Revocation routes are gated behind the very entitlement they revoke — a lapsed or downgraded tenant keeps webhook egress and a live custom domain it can no longer see or delete | `apps/api/src/routes/crud.ts:1038` | OPEN |
+| 29 | api / entitlements | The device-cap serialization lock is taken only by POST /v1/devices — CSV import and quarantine claim bypass it and overshoot the plan cap permanently | `apps/api/src/routes/crud.ts:756` | OPEN |
+| 30 | api / db reads | Unbounded aggregate and history reads can saturate the shared 10-connection pg pool, which has no acquire or statement timeout | `packages/db/src/reports.ts:161` | OPEN |
+| 31 | api / hot path | GET /v1/devices/last does a platform-wide HGETALL plus one Redis command per device, unrate-limited, on the shared API connection | `apps/api/src/app.ts:226` | OPEN |
+| 32 | api / audit + usage scoping | An account-scoped tenant admin reads the whole tenant's audit trail — audit.list ignores scope.accountId | `packages/db/src/repos/audit.ts:57` | OPEN |
+| 33 | api / websocket gateway | WS ticket revocation is checked at issuance but not at redemption — a pre-fetched ticket survives logout, password reset and role demotion permanently | `apps/api/src/ws.ts:183` | OPEN |
+| 34 | api / websocket gateway | WS fanout has no send backpressure, no heartbeat and no client cap — a slow or half-open subscriber buffers the tenant's live feed in the API heap | `apps/api/src/ws.ts:154` | OPEN |
+| 35 | api / auth rate limiting | Login lockout is keyed on (IP, email) only — one host gets unlimited argon2 verifies via fresh emails, and distributed stuffing is unbounded | `apps/api/src/auth/login.ts:168` | OPEN |
+| 36 | api / partner auth | Partner login is permanently impossible for a mixed-case affiliate email, and a password reset does not invalidate outstanding partner JWTs | `packages/db/src/repos/affiliates.ts:133` | OPEN |
+| 37 | api / secrets handling | GET/POST/PATCH /v1/affiliates return every partner's argon2id passwordHash in the JSON response | `packages/db/src/repos/affiliates.ts:112` | OPEN |
+| 38 | worker / rules | Rule-event cooldown conflates rate limiting with replay dedup: it is skipped entirely at cooldownS=0 and its TTL is wall-clock while events are stamped in fix_time | `apps/worker/src/rules/persister.ts:110` | OPEN |
+| 39 | worker / trip reconciliation | A trip-persist error loses the close event and the late-signal that is supposed to compensate for it, and takeLate() clears before the enqueue | `apps/worker/src/main.ts:313` | OPEN |
+| 40 | worker / trip recompute | Recompute deletes closed trips by time range with status re-evaluated at DELETE time, so a trip closed mid-job is erased and never rebuilt | `apps/worker/src/trip/recompute.ts:133` | OPEN |
+| 41 | worker / trip recompute | Hour-bucketed recompute jobId silently discards a later, wider reconciliation request | `apps/worker/src/jobs/queue.ts:61` | OPEN |
+| 42 | worker / trip recompute | Recompute reads the device's whole position span into memory with no LIMIT, chunking or window clamp | `apps/worker/src/trip/recompute.ts:96` | OPEN |
+| 43 | worker / shard leasing | One Redis connection is leaked per shard re-acquire — consumerConns is append-only and only drained on SIGTERM | `apps/worker/src/main.ts:445` | OPEN |
+| 44 | worker / SMS dispatch | A successfully-sent (and charged) SMS whose local write fails is recorded as 'failed' and its 'sent' claim is destroyed | `apps/worker/src/jobs/smsWorker.ts:90` | OPEN |
+| 45 | worker / rules cache | Rule scope.deviceIds is an unvalidated arbitrary JSON array re-materialised with map(String) for every device in every batch | `apps/worker/src/rules/cache.ts:93` | OPEN |
+| 46 | ingest / rejects pipeline | Sanity-rejected records are ACKed as accepted, then written only to a capped Redis stream nobody consumes — raw_rejects is dead code | `apps/ingest/src/persist.ts:53` | OPEN |
+| 47 | ingest / observability | ingest_paused_sockets leaks permanently: a backpressure-paused socket closed by the peer never decrements it | `apps/ingest/src/session.ts:93` | OPEN |
+| 48 | ingest / backpressure | The drain poller has no error handling and bypasses the shard-depth cache, so it can kill the process and amplifies load on the contended Redis connection | `apps/ingest/src/session.ts:298` | OPEN |
+| 49 | codec / AVL dictionaries | Signed AVL parameters are decoded and surfaced as unsigned — sub-zero temperatures read as ~250 °C | `apps/worker/src/normalize.ts:52` | OPEN |
+| 50 | packages/db / schema FKs | Config tables have no FK to tenants/accounts — orphaned scheduled_reports keep emailing ex-customers forever, with no API surface to stop them | `packages/db/prisma/schema.prisma:593` | OPEN |
+| 51 | packages/db / schema FKs + push | push_subscriptions has no FK and no cleanup on user delete or account move — a removed employee's browser keeps receiving the account's alerts | `packages/db/prisma/schema.prisma:623` | OPEN |
+| 52 | packages/db / GDPR | GDPR erase misses sms_deliveries and the export omits drivers and trip.driverId — both drifted as tables were added after the feature shipped | `apps/worker/src/jobs/gdprEraseWorker.ts:67` | OPEN |
+| 53 | packages/db / retention | Retention covers only positions and webhook_deliveries — trips and events keep precise coordinates indefinitely, and the auth token tables are never pruned | `packages/db/sql/001_positions.sql:26` | OPEN |
+| 54 | packages/db / GDPR exports | Orphaned GDPR export .tmp files are never swept — every deploy landing during an export leaves a full personal-data dump on the shared volume forever | `apps/worker/src/jobs/gdprExportWorker.ts:53` | OPEN |
+| 55 | packages/db / device lifecycle | Retiring a device never frees its globally-unique IMEI, so a returned tracker can never be re-claimed and a misclick is unrecoverable | `packages/db/prisma/schema.prisma:325` | OPEN |
+| 56 | api / public share links | Retiring a device does not revoke its public share links — the unauthenticated endpoint keeps publishing the vehicle's last known position for up to 30 days | `apps/api/src/routes/crud.ts:417` | OPEN |
+| 57 | api / error mapping | Foreseeable DB constraint failures surface as raw 500s: account/tenant delete with devices, oversize numeric cursors, unknown profileId | `packages/db/src/errors.ts:19` | OPEN |
+| 58 | api / CSV import | CSV import skips deviceCreateSchema and aborts mid-loop on any non-duplicate error, committing devices while discarding the created-count report | `apps/api/src/routes/deviceImport.ts:195` | OPEN |
+| 59 | reports / web | Report windows are built from BROWSER-local day bounds while the server buckets rows by the ACCOUNT timezone — every report has a partial first day and a spurious extra day | `apps/web/src/routes/app/reports.tsx:45` | OPEN |
+| 60 | api / db timezone handling | Self-serve signup hard-codes the account timezone to UTC, no UI can change it, and any string is accepted with a silent UTC fallback | `packages/db/src/repos/tenants.ts:164` | OPEN |
+| 61 | api / db events | Events are ordered by insertion id, not occurrence time — a buffered flush evicts genuinely recent alerts from every 'recent events' view | `packages/db/src/repos/events.ts:39` | OPEN |
+| 62 | packages/db / push subscriptions | pushSubscriptions.subscribe upserts on a globally unique endpoint with no tenant predicate | `packages/db/src/repos/pushSubscriptions.ts:34` | OPEN |
+
+## LOW (11)
+
+| # | Subsystem | Finding | File | Status |
+|---|---|---|---|---|
+| 63 | codec / ingest framing | parseCommandFrame reads past the buffer on short codec 12/13/14 frames — the RangeError escapes the ACK-0 contract | `packages/codec/src/parse.ts:164` | OPEN |
+| 64 | ingest / command transport | drainPending LPOPs a command before recording it in-flight, so it can end up in neither queue — and the JSDoc claims the opposite | `apps/ingest/src/session.ts:186` | OPEN |
+| 65 | api / user profile validation | userUpdateSchema accepts any 2–10 char locale, which reaches an unguarded object-literal lookup and permanently breaks the target user's password-reset email | `packages/shared/src/entities.ts:26` | OPEN |
+| 66 | api / auth | Password reset consumes the single-use token and writes the new password before revoking sessions | `apps/api/src/auth/login.ts:391` | OPEN |
+| 67 | api / public signup | Public signup returns a distinct 409 email_in_use, giving an unauthenticated platform-wide account-existence oracle | `apps/api/src/routes/signup.ts:111` | OPEN |
+| 68 | affiliate attribution | The self-referral guard compares raw email domains, so a partner on a free-mail address silently loses commission on every referral using the same provider | `apps/api/src/routes/signup.ts:95` | OPEN |
+| 69 | packages/db / GDPR | GDPR device erase never invalidates already-produced account export files | `apps/worker/src/jobs/gdprEraseWorker.ts:66` | OPEN |
+| 70 | web / dashboard | 7-day event sparklines are built from a truncated 300-row page with no truncation guard, so older days silently render as zero | `apps/web/src/routes/app/dashboard.tsx:84` | OPEN |
+| 71 | worker / observability | pipeline_lag_ms measures device clock skew, not pipeline lag — a buffered device pages a false critical and a fast device clock zeroes the gauge | `apps/worker/src/main.ts:292` | OPEN |
+| 72 | api / shutdown | API graceful shutdown is dead code whenever a WebSocket client is connected | `apps/api/src/main.ts:132` | OPEN |
+| 73 | infra / compose | The documented three-file compose invocation publishes Caddy on 8088/8449 in addition to 80/443, and `ports: []` for pg/redis is a silent no-op | `infra/compose/docker-compose.yml:167` | OPEN |
+
+## Health summary (verbatim from the audit)
+
+> The core of this backend is genuinely well built. Ingest's framing/CRC/ACK contract, the ACK-after-XADD ordering, the invalid-fix seam (I5), idempotent position writes with ON CONFLICT, the scoped-repository layer with `scopedWhere`, the per-shard leasing with a fencing check before durable effects, the argon2 concurrency semaphore, the audit-coverage meta-test and the tenant isolation suite are all real engineering, and the in-code comments show the authors reasoning about the right invariants. Most of what follows is not sloppiness — it is a small number of recurring blind spots applied consistently across an ambitious surface area.
+> 
+> Five patterns account for nearly every finding. (1) **Guards measured on the wrong axis or clock**: shard depth measured as XLEN of a stream nothing trims, rule cooldowns in wall-clock against fix_time-stamped events, report windows built in the browser zone against account-zone buckets, Stripe ordering on second-granular `event.created`, offline detection as `now − device clock`, `pipeline_lag_ms` computed from fix_time. (2) **Non-atomic dual-write seams with no compensation**: Redis registry + Postgres, claim-then-write in SMS, revoke-then-insert in refresh rotation, delete-then-rebuild in trip recompute, LPOP-then-record in command dispatch. (3) **Unbounded caller input on hot paths**: geofence vertex counts, rule `scope.deviceIds`, angle/speed into smallint, report spans, CSV field lengths, request bodies on the pre-limiter routes. (4) **Fail-open, silently**: discarded return values, `catch`-and-continue with no counter, and — the biggest one — a dozen failure counters that exist in `prom.ts` but are exported by nothing and alerted on by nothing. (5) **Second-tier surfaces skip the conventions the core enforces**: affiliates/commissions have no audit rows, scheduled_reports/push_subscriptions/api_keys have no FKs, SMS and geofence creation have no rate limit or quota, and GDPR erase/export were never updated for tables added after they shipped. Before real customer traffic, fix in this order: the XLEN backpressure latch (#1 — this is a guaranteed total-ingest outage within days of go-live, not a risk), the poison-batch/no-dead-letter path (#2), the UDP limiter and codec-16 wedge, the fix_time clamp, then the auth/session-revocation cluster (API-key WS, refresh fencing, body limits, signup argon2), then the money bugs (past_due metering, unmetered SMS), and then observability — because today the API exports one metric and no worker failure counter is alerted on, so none of the above would page anyone.

@@ -37,7 +37,7 @@ export class IpLimiter {
  * caller-driven `sweep()` that drops windows with no activity in the last minute.
  */
 export class HandshakeRateLimiter {
-  private readonly windows = new Map<string, number[]>()
+  private readonly windows = new Map<string, Bucket>()
 
   constructor(
     private readonly maxPerMinute: number,
@@ -46,27 +46,38 @@ export class HandshakeRateLimiter {
   ) {}
 
   allow(ip: string): boolean {
-    const cutoff = this.now() - 60_000
-    const times = (this.windows.get(ip) ?? []).filter((t) => t > cutoff)
-    if (times.length >= this.maxPerMinute) {
-      this.windows.set(ip, times)
-      return false
+    const t = this.now()
+    const minute = Math.floor(t / 60_000)
+    let bucket = this.windows.get(ip)
+    if (bucket === undefined) {
+      // spoofed-source flood guard: never allocate a new key once the map is full
+      if (this.windows.size >= this.maxTrackedIps) return false
+      bucket = { minute, cur: 0, prev: 0 }
+      this.windows.set(ip, bucket)
+    } else if (bucket.minute !== minute) {
+      bucket.prev = bucket.minute === minute - 1 ? bucket.cur : 0
+      bucket.cur = 0
+      bucket.minute = minute
     }
-    // spoofed-source flood guard: never allocate a new key once the map is full
-    if (!this.windows.has(ip) && this.windows.size >= this.maxTrackedIps) return false
-    times.push(this.now())
-    this.windows.set(ip, times)
+    // trailing-60s estimate: the previous bucket decays out as this one fills (§6.1 sliding window)
+    const elapsed = (t % 60_000) / 60_000
+    if (bucket.prev * (1 - elapsed) + bucket.cur >= this.maxPerMinute) return false
+    bucket.cur++
     return true
   }
 
   /** Drop windows with no activity in the last minute (bounds steady-state memory). */
   sweep(): void {
-    const cutoff = this.now() - 60_000
-    for (const [ip, times] of this.windows) {
-      if (times.every((t) => t <= cutoff)) this.windows.delete(ip)
+    const minute = Math.floor(this.now() / 60_000)
+    // both counters are outside the trailing window, so the bucket contributes nothing
+    for (const [ip, bucket] of this.windows) {
+      if (bucket.minute < minute - 1) this.windows.delete(ip)
     }
   }
 }
+
+/** One IP's two-bucket sliding-window counter — fixed size, so a flood cannot grow it. */
+type Bucket = { minute: number; cur: number; prev: number }
 
 /**
  * Global fixed-window datagram ceiling (ADR-027). The PRIMARY UDP flood defense: source IPs are

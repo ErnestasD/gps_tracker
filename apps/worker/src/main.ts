@@ -273,6 +273,8 @@ async function main(): Promise<void> {
   // onGained callback (a shard recovered after a lost lease / a dead peer's expired one).
   const makeConsumer = (s: number, conn: Redis): ShardConsumer =>
     new ShardConsumer(s, {
+      onDeadLetter: (reason, n) => prom.deadLettered.inc({ reason }, n),
+      onFieldNulled: (field) => prom.fieldNulled.inc({ field }),
       redis: conn,
       pool,
       hash,
