@@ -79,7 +79,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     events: { list: notImpl, get: notImpl },
     trips: { list: notImpl, get: notImpl, assignDriver: notImpl },
     geofences: { list: notImpl, listAll: notImpl, get: notImpl, create: notImpl, update: notImpl, remove: notImpl },
-    audit: { record: () => Promise.resolve(), list: notImpl, get: notImpl },
+    audit: { record: () => Promise.resolve(), recordPlatform: () => Promise.resolve(), list: notImpl, listPlatform: notImpl, get: notImpl },
     $disconnect: () => Promise.resolve(),
   }
 }

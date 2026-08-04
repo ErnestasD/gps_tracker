@@ -1116,6 +1116,21 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
 
+    // ── platform audit trail (affiliates/commissions — no subject tenant) ─────
+    { method: 'get', path: '/v1/platform/audit', scopeClass: 'platform', entity: 'audit', shape: 'collection',
+      // The money trail for the partner programme. Filed with tenantId NULL and readable ONLY here:
+      // filing it under the acting admin's own tenant would split it across whichever tenants the
+      // platform admins belong to AND expose every partner's commercial terms to that tenant's own
+      // tsp_admins (READ_POLICY.audit = TENANT_ADMINS). Review MED.
+      handler: async (c) => json(c, await db.audit.listPlatform({
+        take: Number(c.req.query('limit') ?? 50),
+        ...(c.req.query('cursor') !== undefined ? { cursor: c.req.query('cursor')! } : {}),
+        ...(c.req.query('entity') !== undefined ? { entity: c.req.query('entity')! } : {}),
+        ...(c.req.query('action') !== undefined ? { action: c.req.query('action')! } : {}),
+        ...(c.req.query('from') !== undefined ? { from: c.req.query('from')! } : {}),
+        ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
+      })) },
+
     // ── usage metering (E07-4): platform panel + a tenant's own bill ──────────
     { method: 'get', path: '/v1/platform/usage', scopeClass: 'platform', entity: 'usage', shape: 'collection',
       // platformSummary is UNSCOPED by design — reachable ONLY here (platform_admin via scopeClass)
@@ -1124,10 +1139,17 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
       })) },
     { method: 'get', path: '/v1/usage', scopeClass: 'tenant', entity: 'usage', shape: 'collection',
-      handler: async (c) => json(c, await db.usage.tenantSummary(scopeOf(auth(c)), {
-        ...(c.req.query('from') !== undefined ? { from: c.req.query('from')! } : {}),
-        ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
-      })) },
+      handler: async (c) => {
+        // same shape as /v1/audit: `usage.tenantSummary` filters on tenantId alone, so an
+        // account-PINNED tsp_admin (which POST /v1/users can create) read the whole tenant's
+        // device-day totals — every sibling account's fleet size and activity. Fixing audit and
+        // leaving this was half a fix (review MED).
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'usage is tenant-wide')
+        return json(c, await db.usage.tenantSummary(scopeOf(auth(c)), {
+          ...(c.req.query('from') !== undefined ? { from: c.req.query('from')! } : {}),
+          ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
+        }))
+      } },
 
     // ── webhook deliveries (tenant, read-only log — E06-4b) ───────────────────
     { method: 'get', path: '/v1/webhook-deliveries', scopeClass: 'tenant', entity: 'webhookDelivery', shape: 'collection', entitlement: 'webhooks',
@@ -1345,7 +1367,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const autoCode = data.code === undefined // an auto-generated code collision is retryable
         for (let attempt = 0; ; attempt++) {
           try {
-            const created = await db.affiliates.create(scopeOf(auth(c)), { userId: auth(c).userId }, { ...data, code: data.code ?? genAffiliateCode() })
+            const created = await db.affiliates.create({ userId: auth(c).userId }, { ...data, code: data.code ?? genAffiliateCode() })
             return json(c, created, 201)
           } catch (err) {
             // ONLY a real unique clash → 409; any other error propagates to the 500 net (review MED:
@@ -1363,7 +1385,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, affiliateUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
-        const row = await db.affiliates.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
+        const row = await db.affiliates.update({ userId: auth(c).userId }, id(c), data)
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
     // issue a one-time set/reset-password link for the partner's self-service login (F5). The plaintext
@@ -1382,7 +1404,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, commissionStatusUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
-        const row = await db.affiliates.setCommissionStatus(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data.status)
+        const row = await db.affiliates.setCommissionStatus({ userId: auth(c).userId }, id(c), data.status)
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
   ]

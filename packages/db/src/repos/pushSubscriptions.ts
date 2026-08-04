@@ -1,7 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
 
-import { isUniqueViolation } from '../errors.js'
-
 /** The endpoint is already registered in ANOTHER tenant — never silently re-homed across tenants. */
 export class PushEndpointClaimedError extends Error {
   constructor() {
@@ -40,29 +38,31 @@ export function createPushSubscriptionRepo(prisma: PrismaClient): PushSubscripti
     subscribe: async (scope, userId, sub) => {
       const accountId = scope.accountId ?? null
       if (accountId === null) throw new Error('push subscribe requires an account scope')
-      // Idempotent by the globally-unique endpoint — but re-homing must stay INSIDE the tenant.
-      // `upsert({ where: { endpoint } })` had no tenant predicate at all, and its update branch
-      // rewrote tenantId/accountId/userId to the caller's: any account_manager in ANY tenant who
-      // learned another tenant's endpoint URL (a shared browser, a support-ticket paste of a
-      // PushSubscription JSON) could steal the row. The victim silently stopped receiving their own
-      // panic/geofence alerts, and the attacker started receiving them. This was the one mutation
-      // in the repo layer that could cross the tenant boundary. Audit MED.
-      const claimed = await prisma.pushSubscription.updateMany({
-        where: { endpoint: sub.endpoint, tenantId: scope.tenantId },
-        data: { accountId, userId, p256dh: sub.p256dh, auth: sub.auth },
-      })
-      if (claimed.count > 0) return
-      try {
-        await prisma.pushSubscription.create({
-          data: { tenantId: scope.tenantId, accountId, userId, endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-        })
-      } catch (err) {
-        // the endpoint exists under ANOTHER tenant: refuse rather than steal it. A browser endpoint
-        // is per-installation, so this is either a genuine cross-tenant collision (the user moved
-        // employers on the same laptop — they must unsubscribe first) or an attempt.
-        if (isUniqueViolation(err)) throw new PushEndpointClaimedError()
-        throw err
-      }
+      // ONE statement. Prisma's `upsert` compiled to a native INSERT … ON CONFLICT DO UPDATE, which
+      // is race-free — but it had no tenant predicate, so its update branch rewrote
+      // tenantId/accountId/userId to the caller's and any tenant that learned an endpoint URL could
+      // steal the row (the owner silently stopped receiving their own panic/geofence alerts).
+      //
+      // Splitting it into claim-then-create fixed the boundary but broke the legitimate path: two
+      // same-tenant subscribes race (two tabs, a double-clicked toggle, React StrictMode — every tab
+      // gets the SAME endpoint from pushManager.getSubscription()), the loser gets a spurious 409,
+      // and apps/web/src/lib/push.ts calls `sub.unsubscribe()` on any throw — destroying the browser
+      // subscription the winner just registered. Push then silently dead, DB row revoked. Review high.
+      //
+      // So: keep it atomic AND scoped, with the predicate Prisma cannot express, in raw SQL.
+      // An empty RETURNING means the conflicting row belongs to a DIFFERENT tenant.
+      const rows = await prisma.$queryRaw<{ id: string }[]>`
+        INSERT INTO "push_subscriptions" ("tenantId","accountId","userId","endpoint","p256dh","auth")
+        VALUES (${scope.tenantId}::uuid, ${accountId}::uuid, ${userId}::uuid,
+                ${sub.endpoint}, ${sub.p256dh}, ${sub.auth})
+        ON CONFLICT ("endpoint") DO UPDATE
+          SET "accountId" = EXCLUDED."accountId",
+              "userId"    = EXCLUDED."userId",
+              "p256dh"    = EXCLUDED."p256dh",
+              "auth"      = EXCLUDED."auth"
+          WHERE "push_subscriptions"."tenantId" = ${scope.tenantId}::uuid
+        RETURNING "id"`
+      if (rows.length === 0) throw new PushEndpointClaimedError()
     },
     unsubscribe: async (scope, endpoint) => {
       // scoped delete: a caller can only drop a subscription in their own tenant, and — when the

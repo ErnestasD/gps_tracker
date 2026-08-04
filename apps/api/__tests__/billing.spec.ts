@@ -14,9 +14,6 @@ import { createApp } from '../src/app.js'
 import type { StripeEvent, StripeGateway } from '../src/billing/stripe.js'
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 
-/** Affiliates are platform-level; audit rows are filed under the acting admin's own tenant. */
-const AUDIT_USER = '00000000-0000-0000-0000-0000000000f2'
-let auditScope: { tenantId: string }
 /** reasons a verified webhook provisioned nothing — the signal that used to not exist at all */
 const unmatched: string[] = []
 
@@ -109,7 +106,6 @@ beforeAll(async () => {
   redis = new Redis(redisC.getMappedPort(6379), redisC.getHost(), opts)
   redisSub = new Redis(redisC.getMappedPort(6379), redisC.getHost(), opts)
   db = createDb(databaseUrl)
-  auditScope = { tenantId: (await db.tenants.create({ userId: AUDIT_USER }, { name: 'Platform (audit scope)' })).id }
 
   const s1 = await seedUser({ databaseUrl, email: 'a@t1.test', password: 'password12', role: 'tsp_admin', tenantName: 'T1' })
   t1 = s1.tenantId
@@ -175,6 +171,21 @@ describe('billing lifecycle (ADR-024)', () => {
     const res = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_orphan', 'cus_nobody_has_this', 'customer.subscription.updated', 'active', 900), { 'stripe-signature': 'valid' })
     expect(res.status).toBe(200) // still acked — a retry cannot conjure a missing customer mapping
     expect(unmatched.slice(before)).toEqual(['no_tenant']) // …but it is now countable and alertable
+  })
+
+  it('a STALE or out-of-order event is NOT reported — the alert must not cry wolf', async () => {
+    // The repo returns "did not apply" for three different reasons and the first draft treated them
+    // all as no_tenant: the monotonic guard and the per-subscription guard drop replayed,
+    // out-of-order and same-second deliveries BY DESIGN. On this suite's own corpus that was a 67%
+    // false-positive rate on a `severity: critical` page — worse than having no alert.
+    const { token, cus } = await freshTenant('StaleNoise')
+    await req(port, '/v1/billing/checkout', token, 'POST') // persists the stripeCustomerId
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_new', cus, 'customer.subscription.updated', 'active', 5_000), { 'stripe-signature': 'valid' })
+    const before = unmatched.length
+    // an OLDER event for the same, existing customer — dropped by the monotonic guard
+    const older = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_old', cus, 'customer.subscription.updated', 'past_due', 1_000), { 'stripe-signature': 'valid' })
+    expect(older.status).toBe(200)
+    expect(unmatched.slice(before)).toEqual([]) // the tenant EXISTS — nothing to page anyone about
   })
 
   it('subscription state is set ONLY by a signature-verified webhook', async () => {
@@ -394,8 +405,8 @@ describe('billing lifecycle (ADR-024)', () => {
 
   it('invoice.payment_succeeded accrues the affiliate commission for a referred tenant (F4), idempotently', async () => {
     const actor = { userId: '00000000-0000-0000-0000-0000000000f4' }
-    const aff = await db.affiliates.create(auditScope, actor, { name: 'Webhook Partner', email: 'wh@partner.co', code: 'WHOOK1', commissionPct: 20, commissionMonths: 12 })
-    await db.affiliates.update(auditScope, actor, aff.id, { status: 'active' })
+    const aff = await db.affiliates.create(actor, { name: 'Webhook Partner', email: 'wh@partner.co', code: 'WHOOK1', commissionPct: 20, commissionMonths: 12 })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
     const tenant = await db.tenants.create(actor, { name: 'Referred via webhook', referredByAffiliateId: aff.id })
     await db.tenants.setStripeCustomer(tenant.id, 'cus_whook')
 

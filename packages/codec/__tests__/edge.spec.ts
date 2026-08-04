@@ -106,4 +106,23 @@ describe('protocol edge cases (synthetic mutations of wiki-spec packets)', () =>
       expect(() => parseFrame(frameOf(pkt)), body.toString('hex')).toThrow(FrameError)
     }
   })
+
+  it('a command payload shorter than its own mandatory prefix is a FrameError, not an empty response', () => {
+    // codec 13 carries a 4B timestamp before the text, codec 14 an 8B IMEI. A `size` smaller than
+    // that is malformed — without the check `payload.subarray(textStart)` clamps to '' and we hand
+    // the caller a silently EMPTY command result instead of saying the frame is broken.
+    for (const [codecId, size] of [[0x0e, 2], [0x0d, 1]] as const) {
+      const body = Buffer.concat([
+        Buffer.from([codecId, 0x01, 0x05]),
+        (() => { const b = Buffer.alloc(4); b.writeUInt32BE(size); return b })(),
+        Buffer.alloc(size),
+        Buffer.from([0x01]),
+      ])
+      const pkt = Buffer.alloc(8 + body.length + 4)
+      pkt.writeUInt32BE(body.length, 4)
+      body.copy(pkt, 8)
+      pkt.writeUInt32BE(crc16ibm(body), 8 + body.length)
+      expect(() => parseFrame(frameOf(pkt)), `codec ${codecId} size ${size}`).toThrow(/shorter than its/)
+    }
+  })
 })

@@ -128,6 +128,21 @@ describe('ADR-026 push routes', () => {
     expect(targets.map((t) => t.endpoint)).toContain(endpoint)
   })
 
+  it('CONCURRENT same-tenant subscribes all succeed — the tenant guard must not cost availability', async () => {
+    // The first attempt at the tenant guard split the atomic upsert into claim-then-create. That
+    // held the boundary but broke the legitimate path: two tabs, a double-clicked toggle or React
+    // StrictMode all hand back the SAME endpoint from pushManager.getSubscription(), so the loser
+    // got a spurious 409 — and apps/web/src/lib/push.ts calls `sub.unsubscribe()` on any throw,
+    // destroying the browser subscription the winner had just registered. Push silently dead.
+    const endpoint = `https://push.example.com/race-${Date.now()}`
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => jwtReq('/v1/push/subscribe', amA1, 'POST', sub(endpoint))),
+    )
+    expect(results.map((r) => r.status)).toEqual([201, 201, 201, 201])
+    const targets = await db.pushSubscriptions.listByAccount(s1TenantId, acct1)
+    expect(targets.filter((t) => t.endpoint === endpoint)).toHaveLength(1)
+  })
+
   it('re-subscribing WITHIN the tenant is still idempotent (the guard must not break renewal)', async () => {
     // browsers rotate push endpoints and re-subscribe on every load — a same-tenant repeat has to
     // keep updating the keys in place, which is exactly what the upsert was there for

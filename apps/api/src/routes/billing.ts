@@ -272,8 +272,10 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
         // on a Redis blip, so two concurrent checkouts can leave a customer id we never stored.
         // Still a 200 — a retry cannot fix a missing mapping, and a 500 would make Stripe hammer
         // the endpoint for days — but now it is loud. Audit MED.
-        const applied = await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
-        if (!applied) {
+        const outcome = await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
+        // `stale` is NORMAL — the monotonic and per-subscription guards drop replayed, out-of-order
+        // and same-second deliveries by design. Only `no_tenant` means a paying customer has no plan.
+        if (outcome === 'no_tenant') {
           console.error('stripe webhook: no tenant for customer — subscription NOT applied', {
             type: event.type,
             id: event.id,

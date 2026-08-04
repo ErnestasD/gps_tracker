@@ -12,9 +12,6 @@ import { seedUser } from '../../../packages/db/seed/users.js'
 import { createApp } from '../src/app.js'
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 
-/** Affiliates are platform-level; audit rows are filed under the acting admin's own tenant. */
-const AUDIT_USER = '00000000-0000-0000-0000-0000000000f2'
-let auditScope: { tenantId: string }
 
 /**
  * PUBLIC self-serve signup (F2). Proves: a direct customer creates a trial tenant + tenant-admin user
@@ -61,7 +58,6 @@ beforeAll(async () => {
   redis = new Redis(redisC.getMappedPort(6379), redisC.getHost(), opts)
   redisSub = new Redis(redisC.getMappedPort(6379), redisC.getHost(), opts)
   db = createDb(databaseUrl)
-  auditScope = { tenantId: (await db.tenants.create({ userId: AUDIT_USER }, { name: 'Platform (audit scope)' })).id }
   const seeded = await seedUser({ databaseUrl, email: 'pa@x.test', password: 'password12', role: 'platform_admin', tenantName: 'PlatCo' })
   platformToken = await mintTestToken({ userId: seeded.userId, tenantId: seeded.tenantId, role: 'platform_admin' })
 
@@ -183,8 +179,8 @@ describe('public self-serve signup (F2)', () => {
 
   it('an ACTIVE ?ref attributes the tenant; an unknown ref never blocks', async () => {
     const actor = { userId: '00000000-0000-0000-0000-0000000000f2' }
-    const aff = await db.affiliates.create(auditScope, actor, { name: 'Signup Partner', email: 'sp@partner.co', code: 'SIGNUP1' })
-    await db.affiliates.update(auditScope, actor, aff.id, { status: 'active' })
+    const aff = await db.affiliates.create(actor, { name: 'Signup Partner', email: 'sp@partner.co', code: 'SIGNUP1' })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
     const attributed = await signup({ name: 'Ref', email: 'ref@fleet.test', password: 'password12', ref: 'signup1' }) // case-insensitive
     const { id } = (await attributed.json()) as { id: string }
     expect((await db.tenants.get(id))!.referredByAffiliateId).toBe(aff.id)
@@ -197,8 +193,8 @@ describe('public self-serve signup (F2)', () => {
 
   it('drops SELF-REFERRAL attribution — a partner cannot earn commission on their own signup (§6.9)', async () => {
     const actor = { userId: '00000000-0000-0000-0000-0000000000f2' }
-    const aff = await db.affiliates.create(auditScope, actor, { name: 'Selfie Ltd', email: 'owner@selfie-fleet.test', code: 'SELFIE1' })
-    await db.affiliates.update(auditScope, actor, aff.id, { status: 'active' })
+    const aff = await db.affiliates.create(actor, { name: 'Selfie Ltd', email: 'owner@selfie-fleet.test', code: 'SELFIE1' })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
     // same email DOMAIN as the affiliate ⇒ attribution dropped, but the signup still succeeds
     const selfRes = await signup({ name: 'Owner', email: 'billing@selfie-fleet.test', password: 'password12', ref: 'SELFIE1' })
     expect(selfRes.status).toBe(201)

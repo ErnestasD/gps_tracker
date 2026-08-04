@@ -97,6 +97,16 @@ describe('E03-6 audit coverage — every mutation writes an audit row', () => {
     await db.tenants.update(actor, throwaway.id, { name: 'Throwaway 2' })
     await db.tenants.remove(actor, throwaway.id)
 
+    // PLATFORM-level money controls (affiliates + commissions). These write with tenantId NULL —
+    // the trail has no subject tenant and must not land in the acting admin's own tenant's log,
+    // where any co-resident tsp_admin would read every partner's commercial terms. This meta-test
+    // exists precisely to catch "a mutation forgot audit.record", and it did not know they existed.
+    const aff = await db.affiliates.create(actor, { name: 'Audit Partner', email: 'ap@partner.co', code: 'AUDITP1' })
+    await db.affiliates.update(actor, aff.id, { commissionPct: 30 })
+    const referred = await db.tenants.create(actor, { name: 'Referred For Audit' })
+    const comm = await db.affiliates.accrueCommission({ affiliateId: aff.id, tenantId: referred.id, amountCents: 500, currency: 'eur', sourceInvoiceId: 'in_audit_1' })
+    await db.affiliates.setCommissionStatus(actor, comm!.id, 'paid')
+
     // collect every (entity, action) pair recorded above (this fresh container has no
     // other writers; tenant:update/delete land under the throwaway tenant's id)
     const rows = await q<{ entity: string; action: string }>(`SELECT entity, action FROM audit_log`)
@@ -111,8 +121,23 @@ describe('E03-6 audit coverage — every mutation writes an audit row', () => {
       'webhook:create', 'webhook:update', 'webhook:delete',
       'domain:create', 'domain:update', 'domain:delete',
       'branding:update',
+      // the money path: payout terms and the paid/void mark must both be attributable
+      'affiliate:create', 'affiliate:update', 'commission:update',
     ]
     for (const pair of expected) expect(seen.has(pair), `missing audit row: ${pair}`).toBe(true)
+  })
+
+  it('platform-level audit rows carry NO tenantId, so no tenant can read the partner money trail', async () => {
+    const rows = await q<{ entity: string; tenantId: string | null }>(
+      `SELECT entity, "tenantId" FROM audit_log WHERE entity IN ('affiliate','commission')`,
+    )
+    expect(rows.length).toBeGreaterThan(0)
+    for (const r of rows) expect(r.tenantId, `${r.entity} leaked into a tenant's log`).toBeNull()
+    // …and the tenant-scoped reader cannot see them even from the platform admin's own tenant
+    const viaTenant = await db.audit.list({ tenantId: (await db.tenants.list())[0]!.id }, { take: 200 })
+    expect(viaTenant.some((r) => r.entity === 'affiliate' || r.entity === 'commission')).toBe(false)
+    // the platform reader does
+    expect((await db.audit.listPlatform({ take: 200 })).some((r) => r.entity === 'affiliate')).toBe(true)
   })
 
   it('secrets are redacted in audit snapshots (webhook signing secret never stored raw)', async () => {

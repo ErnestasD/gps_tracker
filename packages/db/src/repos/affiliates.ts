@@ -9,7 +9,7 @@ import type { Affiliate, AffiliateStatus, Commission, CommissionStatus, PrismaCl
 export type AffiliateView = Omit<Affiliate, 'passwordHash'>
 
 import { isUniqueViolation } from '../errors.js'
-import type { Actor, Scope } from '../scope.js'
+import type { Actor } from '../scope.js'
 import type { AuditRepo } from './audit.js'
 
 /**
@@ -92,8 +92,8 @@ export interface AffiliateRepo {
    *  `passwordHash`, so it must never be piped to a response. The API-facing reads return
    *  {@link AffiliateView}. */
   getActiveByCode(code: string): Promise<Affiliate | null>
-  create(scope: Scope, actor: Actor, data: AffiliateCreate): Promise<AffiliateView>
-  update(scope: Scope, actor: Actor, id: string, data: AffiliateUpdate): Promise<AffiliateView | null>
+  create(actor: Actor, data: AffiliateCreate): Promise<AffiliateView>
+  update(actor: Actor, id: string, data: AffiliateUpdate): Promise<AffiliateView | null>
   /** Accrue a commission, idempotent on sourceInvoiceId (a webhook retry is a no-op → returns null). */
   accrueCommission(data: CommissionAccrual): Promise<Commission | null>
   /**
@@ -104,7 +104,7 @@ export interface AffiliateRepo {
    */
   accrueForPaidInvoice(invoice: PaidInvoice): Promise<Commission | null>
   listCommissions(affiliateId?: string): Promise<Commission[]>
-  setCommissionStatus(scope: Scope, actor: Actor, id: string, status: CommissionStatus): Promise<Commission | null>
+  setCommissionStatus(actor: Actor, id: string, status: CommissionStatus): Promise<Commission | null>
 
   // ── partner self-service auth (F5) — UNSCOPED by design (a partner is not a tenant user) ──────────
   /** Login lookup by email (partner sign-in). Returns the hash + status so the caller can argon2-verify
@@ -165,9 +165,10 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
         LIMIT 1`
       return rows[0] ?? null
     },
-    create: async (scope, actor, data) => {
+    create: async (actor, data) => {
+      let created: AffiliateView
       try {
-        const created = await prisma.affiliate.create({
+        created = await prisma.affiliate.create({
           select: PUBLIC_SELECT,
           data: {
             name: data.name,
@@ -177,21 +178,24 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
             ...(data.commissionMonths !== undefined ? { commissionMonths: data.commissionMonths } : {}),
           },
         })
-        await audit.record(scope, actor, { action: 'create', entity: 'affiliate', entityId: created.id, after: created })
-        return created
       } catch (err) {
         if (isUniqueViolation(err)) throw new AffiliateConflictError(conflictField(err))
         throw err // a real DB fault must reach the API's 500 net, NOT masquerade as a conflict
       }
+      // OUTSIDE the try on purpose: a unique violation from the audit insert must never be
+      // translated into AffiliateConflictError, because the route RETRIES on that signal
+      // (auto-generated code collisions) and the affiliate already exists by then
+      await audit.recordPlatform(actor, { action: 'create', entity: 'affiliate', entityId: created.id, after: created })
+      return created
     },
-    update: async (scope, actor, id, data) => {
+    update: async (actor, id, data) => {
       // `before` is the WHOLE point of an audit row on this table: commissionPct and
       // commissionMonths are the payout terms, and a silent edit is the difference between a
       // partner being paid 20% and 2% with nothing to point at afterwards.
       const before = await prisma.affiliate.findUnique({ where: { id }, select: PUBLIC_SELECT })
       if (before === null) return null
       const after = await prisma.affiliate.update({ where: { id }, data, select: PUBLIC_SELECT })
-      await audit.record(scope, actor, { action: 'update', entity: 'affiliate', entityId: id, before, after })
+      await audit.recordPlatform(actor, { action: 'update', entity: 'affiliate', entityId: id, before, after })
       return after
     },
     accrueCommission: async (data) => {
@@ -246,12 +250,12 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
     },
     listCommissions: (affiliateId) =>
       prisma.commission.findMany({ where: affiliateId !== undefined ? { affiliateId } : {}, orderBy: { createdAt: 'desc' } }),
-    setCommissionStatus: async (scope, actor, id, status) => {
+    setCommissionStatus: async (actor, id, status) => {
       const before = await prisma.commission.findUnique({ where: { id } })
       if (before === null) return null
       const after = await prisma.commission.update({ where: { id }, data: { status } })
       // marking an accrual paid/void IS the payout decision — it must be attributable
-      await audit.record(scope, actor, {
+      await audit.recordPlatform(actor, {
         action: 'update',
         entity: 'commission',
         entityId: id,
