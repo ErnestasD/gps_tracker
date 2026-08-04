@@ -14,6 +14,7 @@ Alertmanager routes them to the founders' Telegram.
 | BackpressureSustained | `ingest_paused_sockets` > 0 for 10m | warn |
 | UnsupportedCodecSeen | `rate(ingest_unsupported_codec_total[15m])` > 0 for 15m | warn |
 | DeadLetteredRows | `rate(pipeline_dead_lettered_total[15m])` > 0 for 15m | warn |
+| BillingWebhookUnmatched | `increase(billing_webhook_unmatched_total{reason="no_tenant"}[1h])` > 0 for 5m | crit |
 | SmsQuotaTripped | `increase(sms_quota_rejected_total{scope="global"}[1h])` > 0 for 5m | crit |
 | DiskFillingUp / Critical | root FS < 15% / 5% free | warn / crit |
 | TargetDown | any of ingest/worker/api unscrapeable 2m | crit |
@@ -37,6 +38,27 @@ A record was dropped from the pipeline and quarantined in `raw:dead`. Check `rea
   Inspect the payload and add a bound in `normalize.ts` so the next one is nulled rather than dropped.
 
 Both are *customer-visible data loss for that record*, so any sustained rate deserves a fix, not a mute.
+
+### BillingWebhookUnmatched
+
+A Stripe subscription webhook passed signature verification and then provisioned nothing because
+**no tenant row carries that `stripeCustomerId`**. Someone is paying and has no plan.
+
+Only `reason="no_tenant"` pages. A `stale` outcome is normal — the monotonic and per-subscription
+guards drop replayed, out-of-order and same-second deliveries by design, and reporting those as
+failures made this alert fire on routine traffic in an earlier iteration.
+
+Stripe is acked 200 deliberately: a retry cannot conjure a missing customer mapping, and a 500 would
+make Stripe hammer the endpoint for days. So this alert is the only signal.
+
+1. Find the customer id in the api log line (`stripe webhook: no tenant for customer`).
+2. Look it up in Stripe → the customer's email → the tenant.
+3. `UPDATE tenants SET "stripeCustomerId" = '<cus_…>' WHERE id = '<tenant>'`, then resend the event
+   from the Stripe dashboard (Developers → Events → Resend) so the plan/status apply.
+
+The known way to get here: two concurrent checkouts during a Redis outage. The per-tenant lock falls
+through on a blip and `ensureCustomer` is not idempotency-keyed, so Stripe can end up holding a
+customer we never stored.
 
 ### SmsQuotaTripped
 

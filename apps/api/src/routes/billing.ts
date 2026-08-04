@@ -24,6 +24,10 @@ export interface BillingDeps {
   appBaseUrl?: string | undefined
   /** used for a short-lived per-tenant checkout lock (audit LOW TOCTOU mitigation); optional. */
   redis?: Redis | undefined
+  /** Fired when a signature-verified subscription webhook provisioned NOTHING. Stripe is acked
+   *  either way (a retry cannot conjure a missing customer mapping), so this counter is the only
+   *  way anyone learns a paying customer is unprovisioned. */
+  onWebhookUnmatched?: (reason: 'no_tenant' | 'unmappable') => void
 }
 
 // how long the per-tenant checkout-creation lock is held (audit LOW): long enough to serialize a
@@ -245,6 +249,13 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
     if (SUBSCRIPTION_EVENTS.has(event.type)) {
       const mapped = subscriptionFrom(event.data.object, deps.stripe.prices)
       // event.created is the Unix-seconds ordering key; the DB guard applies it only if strictly newer
+      if (mapped === null) {
+        // an unmappable subscription payload — we cannot provision anything from it. Ack (retrying
+        // will not make it mappable) but SAY SO: silence here means a paying customer sits
+        // unprovisioned with no trace anywhere. See the applied === false branch below.
+        console.error('stripe webhook: unmappable subscription payload', { type: event.type, id: event.id })
+        deps.onWebhookUnmatched?.('unmappable')
+      }
       if (mapped !== null) {
         // resolve the entitlement tier from the (allowlisted) base price id — this is the ONLY place
         // the tenant plan is written, and only from the signature-verified webhook (never the browser).
@@ -253,7 +264,25 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
         const basePriceId = mapped.update.subscriptionPriceId
         const plan = basePriceId != null ? deps.stripe.planFor(basePriceId) : undefined
         if (plan !== undefined) mapped.update.plan = plan
-        await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
+        // applySubscriptionEvent returns false when it matched NO tenant row — the repo returns it
+        // precisely so the caller can tell "applied" from "matched nothing", and the caller was
+        // discarding it. Stripe sees 200, never retries, and a paying customer stays unprovisioned
+        // forever with no log and no metric. Reachable for real: checkout creates the Stripe
+        // customer and persists it in two steps, and the per-tenant lock around them falls through
+        // on a Redis blip, so two concurrent checkouts can leave a customer id we never stored.
+        // Still a 200 — a retry cannot fix a missing mapping, and a 500 would make Stripe hammer
+        // the endpoint for days — but now it is loud. Audit MED.
+        const outcome = await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
+        // `stale` is NORMAL — the monotonic and per-subscription guards drop replayed, out-of-order
+        // and same-second deliveries by design. Only `no_tenant` means a paying customer has no plan.
+        if (outcome === 'no_tenant') {
+          console.error('stripe webhook: no tenant for customer — subscription NOT applied', {
+            type: event.type,
+            id: event.id,
+            customerId: mapped.customerId,
+          })
+          deps.onWebhookUnmatched?.('no_tenant')
+        }
       }
     } else if (event.type === 'invoice.payment_succeeded') {
       // affiliate commissions (F4): a referred tenant paid → accrue the partner's cut. BEST-EFFORT —

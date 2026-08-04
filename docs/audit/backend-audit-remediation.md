@@ -6,6 +6,10 @@ Ranked findings: **74** — critical: 2, high: 18, medium: 43, low: 11
 
 Status legend: **FIXED** (shipped + test) · **PLANNED** (assigned to a PR) · **OPEN** (triaged, not scheduled).
 
+Some OPEN rows are not code defects at all — the code does what it was told, and changing it changes
+the product, the price, or a promise to a customer. Those are collected in
+[`founder-decisions.md`](founder-decisions.md) with the concrete choice each one needs.
+
 Every PR gets its own hostile-reviewer pass in a fresh session; PR A's review found three further
 HIGHs inside the fixes themselves (UDP transport skipped, poison-batch *mechanism* untouched,
 `rejects` stream polluted) — all folded into PR A before merge.
@@ -49,26 +53,26 @@ HIGHs inside the fixes themselves (UDP transport skipped, poison-batch *mechanis
 | 21 | billing / usage metering | The daily Stripe overage job has no settle delay, no record of which days were reported, and no backfill — late device-days and failed days are lost forever | `apps/worker/src/jobs/stripeUsageWorker.ts:33` | OPEN |
 | 22 | billing / entitlements | The zero-entitlement floor is enforced only at device CREATE, so a lapsed subscription or expired trial never actually stops the billable product | `packages/shared/src/plans.ts:78` | OPEN |
 | 23 | billing / Stripe configuration | A base price missing from the worker's STRIPE_INCLUDED map silently disables overage billing for every tenant on that plan | `apps/worker/src/billing/usageReporter.ts:85` | OPEN |
-| 24 | billing / Stripe webhook | A subscription webhook that matches no tenant is silently acked 200, leaving a paying customer permanently unprovisioned | `apps/api/src/routes/billing.ts:256` | OPEN |
+| 24 | billing / Stripe webhook | A subscription webhook that matches no tenant is silently acked 200, leaving a paying customer permanently unprovisioned | `apps/api/src/routes/billing.ts:256` | **FIXED** — PR F — `applySubscriptionEvent` now returns `applied \| stale \| no_tenant`; only `no_tenant` logs, counts and pages, because a stale/replayed/same-second delivery is normal and paging on it made the alert fire on 67% of routine traffic |
 | 25 | billing / Stripe webhook ordering | The monotonic guard uses strict `lt` against second-granularity event.created, so a genuinely newer same-second event is dropped forever | `packages/db/src/repos/tenants.ts:250` | OPEN |
 | 26 | affiliate commissions | Commission window is anchored on the first ACCRUED commission and commissionMonths is read live — early non-accruing payments extend the window, and a terms edit reopens closed ones | `packages/db/src/repos/affiliates.ts:171` | OPEN |
-| 27 | affiliate commissions / audit | The entire affiliate + commission money ledger writes zero audit rows — payout rates and paid/void marks are mutable with no trace | `packages/db/src/repos/affiliates.ts:128` | OPEN |
+| 27 | affiliate commissions / audit | The entire affiliate + commission money ledger writes zero audit rows — payout rates and paid/void marks are mutable with no trace | `packages/db/src/repos/affiliates.ts:128` | **FIXED** — PR F — `audit.recordPlatform()` writes the affiliate/commission trail with `tenantId` NULL, readable only via the new platform-only `/v1/platform/audit`; filing it under the acting admin's tenant would have exposed every partner's commercial terms to that tenant's own admins |
 | 28 | api / entitlements | Revocation routes are gated behind the very entitlement they revoke — a lapsed or downgraded tenant keeps webhook egress and a live custom domain it can no longer see or delete | `apps/api/src/routes/crud.ts:1038` | OPEN |
 | 29 | api / entitlements | The device-cap serialization lock is taken only by POST /v1/devices — CSV import and quarantine claim bypass it and overshoot the plan cap permanently | `apps/api/src/routes/crud.ts:756` | OPEN |
 | 30 | api / db reads | Unbounded aggregate and history reads can saturate the shared 10-connection pg pool, which has no acquire or statement timeout | `packages/db/src/reports.ts:161` | OPEN |
 | 31 | api / hot path | GET /v1/devices/last does a platform-wide HGETALL plus one Redis command per device, unrate-limited, on the shared API connection | `apps/api/src/app.ts:226` | OPEN |
-| 32 | api / audit + usage scoping | An account-scoped tenant admin reads the whole tenant's audit trail — audit.list ignores scope.accountId | `packages/db/src/repos/audit.ts:57` | OPEN |
-| 33 | api / websocket gateway | WS ticket revocation is checked at issuance but not at redemption — a pre-fetched ticket survives logout, password reset and role demotion permanently | `apps/api/src/ws.ts:183` | OPEN |
+| 32 | api / audit + usage scoping | An account-scoped tenant admin reads the whole tenant's audit trail — audit.list ignores scope.accountId | `packages/db/src/repos/audit.ts:57` | **FIXED** — PR F — BOTH halves: `/v1/audit`, `/v1/audit/:id` AND `/v1/usage` refuse an account-PINNED caller (403); neither table has an account column, so the role gate was never a scope gate |
+| 33 | api / websocket gateway | WS ticket revocation is checked at issuance but not at redemption — a pre-fetched ticket survives logout, password reset and role demotion permanently | `apps/api/src/ws.ts:183` | **FIXED** — PR B (#145) — ticket redemption checks the revoke marker AND anchors `establishedAt` to ISSUE time, so a pre-fetched ticket cannot slip through the sweep |
 | 34 | api / websocket gateway | WS fanout has no send backpressure, no heartbeat and no client cap — a slow or half-open subscriber buffers the tenant's live feed in the API heap | `apps/api/src/ws.ts:154` | OPEN |
 | 35 | api / auth rate limiting | Login lockout is keyed on (IP, email) only — one host gets unlimited argon2 verifies via fresh emails, and distributed stuffing is unbounded | `apps/api/src/auth/login.ts:168` | OPEN |
-| 36 | api / partner auth | Partner login is permanently impossible for a mixed-case affiliate email, and a password reset does not invalidate outstanding partner JWTs | `packages/db/src/repos/affiliates.ts:133` | OPEN |
-| 37 | api / secrets handling | GET/POST/PATCH /v1/affiliates return every partner's argon2id passwordHash in the JSON response | `packages/db/src/repos/affiliates.ts:112` | OPEN |
+| 36 | api / partner auth | Partner login is permanently impossible for a mixed-case affiliate email, and a password reset does not invalidate outstanding partner JWTs | `packages/db/src/repos/affiliates.ts:133` | **FIXED** — PR F — affiliate emails are lowercased on write and looked up case-insensitively; migration 20260804200000 collapses existing rows and adds a functional unique index |
+| 37 | api / secrets handling | GET/POST/PATCH /v1/affiliates return every partner's argon2id passwordHash in the JSON response | `packages/db/src/repos/affiliates.ts:112` | **FIXED** — PR F — affiliate reads go through an explicit `PUBLIC_SELECT` and an `AffiliateView` type that omits `passwordHash`, so a new model field is opt-IN and cannot leak by default |
 | 38 | worker / rules | Rule-event cooldown conflates rate limiting with replay dedup: it is skipped entirely at cooldownS=0 and its TTL is wall-clock while events are stamped in fix_time | `apps/worker/src/rules/persister.ts:110` | OPEN |
 | 39 | worker / trip reconciliation | A trip-persist error loses the close event and the late-signal that is supposed to compensate for it, and takeLate() clears before the enqueue | `apps/worker/src/main.ts:313` | OPEN |
 | 40 | worker / trip recompute | Recompute deletes closed trips by time range with status re-evaluated at DELETE time, so a trip closed mid-job is erased and never rebuilt | `apps/worker/src/trip/recompute.ts:133` | OPEN |
 | 41 | worker / trip recompute | Hour-bucketed recompute jobId silently discards a later, wider reconciliation request | `apps/worker/src/jobs/queue.ts:61` | OPEN |
 | 42 | worker / trip recompute | Recompute reads the device's whole position span into memory with no LIMIT, chunking or window clamp | `apps/worker/src/trip/recompute.ts:96` | OPEN |
-| 43 | worker / shard leasing | One Redis connection is leaked per shard re-acquire — consumerConns is append-only and only drained on SIGTERM | `apps/worker/src/main.ts:445` | OPEN |
+| 43 | worker / shard leasing | One Redis connection is leaked per shard re-acquire — consumerConns is append-only and only drained on SIGTERM | `apps/worker/src/main.ts:445` | **FIXED** — PR D (#147) — the append-only `consumerConns` array is gone; connections live in a per-shard map and are `disconnect()`ed when the shard is released |
 | 44 | worker / SMS dispatch | A successfully-sent (and charged) SMS whose local write fails is recorded as 'failed' and its 'sent' claim is destroyed | `apps/worker/src/jobs/smsWorker.ts:90` | OPEN |
 | 45 | worker / rules cache | Rule scope.deviceIds is an unvalidated arbitrary JSON array re-materialised with map(String) for every device in every batch | `apps/worker/src/rules/cache.ts:93` | OPEN |
 | 46 | ingest / rejects pipeline | Sanity-rejected records are ACKed as accepted, then written only to a capped Redis stream nobody consumes — raw_rejects is dead code | `apps/ingest/src/persist.ts:53` | OPEN |
@@ -87,13 +91,13 @@ HIGHs inside the fixes themselves (UDP transport skipped, poison-batch *mechanis
 | 59 | reports / web | Report windows are built from BROWSER-local day bounds while the server buckets rows by the ACCOUNT timezone — every report has a partial first day and a spurious extra day | `apps/web/src/routes/app/reports.tsx:45` | OPEN |
 | 60 | api / db timezone handling | Self-serve signup hard-codes the account timezone to UTC, no UI can change it, and any string is accepted with a silent UTC fallback | `packages/db/src/repos/tenants.ts:164` | OPEN |
 | 61 | api / db events | Events are ordered by insertion id, not occurrence time — a buffered flush evicts genuinely recent alerts from every 'recent events' view | `packages/db/src/repos/events.ts:39` | OPEN |
-| 62 | packages/db / push subscriptions | pushSubscriptions.subscribe upserts on a globally unique endpoint with no tenant predicate | `packages/db/src/repos/pushSubscriptions.ts:34` | OPEN |
+| 62 | packages/db / push subscriptions | pushSubscriptions.subscribe upserts on a globally unique endpoint with no tenant predicate | `packages/db/src/repos/pushSubscriptions.ts:34` | **FIXED** — PR F — `pushSubscriptions.subscribe` claims within the tenant only; an endpoint held by another tenant is a 409, never a silent re-home |
 
 ## LOW (11)
 
 | # | Subsystem | Finding | File | Status |
 |---|---|---|---|---|
-| 63 | codec / ingest framing | parseCommandFrame reads past the buffer on short codec 12/13/14 frames — the RangeError escapes the ACK-0 contract | `packages/codec/src/parse.ts:164` | OPEN |
+| 63 | codec / ingest framing | parseCommandFrame reads past the buffer on short codec 12/13/14 frames — the RangeError escapes the ACK-0 contract | `packages/codec/src/parse.ts:164` | **FIXED** — PR F — `parseCommandFrame` bounds-checks the data field before reading it; a truncated codec-12/13/14 frame is a `FrameError` (ACK 0) instead of a RangeError that destroyed the socket |
 | 64 | ingest / command transport | drainPending LPOPs a command before recording it in-flight, so it can end up in neither queue — and the JSDoc claims the opposite | `apps/ingest/src/session.ts:186` | OPEN |
 | 65 | api / user profile validation | userUpdateSchema accepts any 2–10 char locale, which reaches an unguarded object-literal lookup and permanently breaks the target user's password-reset email | `packages/shared/src/entities.ts:26` | OPEN |
 | 66 | api / auth | Password reset consumes the single-use token and writes the new password before revoking sessions | `apps/api/src/auth/login.ts:391` | OPEN |

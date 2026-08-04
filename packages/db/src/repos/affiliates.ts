@@ -1,7 +1,16 @@
 import type { Affiliate, AffiliateStatus, Commission, CommissionStatus, PrismaClient } from '@prisma/client'
 
+/**
+ * An affiliate as the API may return it — the model MINUS `passwordHash` (argon2id, partner
+ * self-service login). Enforced by the type system rather than by remembering to redact: the read
+ * paths returned the raw model, so `GET /v1/affiliates` handed a platform_admin every partner's
+ * password hash. Partners are third parties, not staff. Audit MED.
+ */
+export type AffiliateView = Omit<Affiliate, 'passwordHash'>
+
 import { isUniqueViolation } from '../errors.js'
 import type { Actor } from '../scope.js'
+import type { AuditRepo } from './audit.js'
 
 /**
  * A unique-constraint clash on create: `field` says WHICH one (email/code) so the caller can react
@@ -76,12 +85,15 @@ function addMonthsUtc(d: Date, months: number): Date {
  * referral code — it returns only ACTIVE affiliates so a pending/suspended code never attributes.
  */
 export interface AffiliateRepo {
-  list(): Promise<Affiliate[]>
-  get(id: string): Promise<Affiliate | null>
+  list(): Promise<AffiliateView[]>
+  get(id: string): Promise<AffiliateView | null>
   /** Attribution lookup for public signup: an ACTIVE affiliate by referral code, else null. */
+  /** INTERNAL ONLY (signup attribution + commission accrual) — returns the FULL model including
+   *  `passwordHash`, so it must never be piped to a response. The API-facing reads return
+   *  {@link AffiliateView}. */
   getActiveByCode(code: string): Promise<Affiliate | null>
-  create(actor: Actor, data: AffiliateCreate): Promise<Affiliate>
-  update(actor: Actor, id: string, data: AffiliateUpdate): Promise<Affiliate | null>
+  create(actor: Actor, data: AffiliateCreate): Promise<AffiliateView>
+  update(actor: Actor, id: string, data: AffiliateUpdate): Promise<AffiliateView | null>
   /** Accrue a commission, idempotent on sourceInvoiceId (a webhook retry is a no-op → returns null). */
   accrueCommission(data: CommissionAccrual): Promise<Commission | null>
   /**
@@ -92,7 +104,7 @@ export interface AffiliateRepo {
    */
   accrueForPaidInvoice(invoice: PaidInvoice): Promise<Commission | null>
   listCommissions(affiliateId?: string): Promise<Commission[]>
-  setCommissionStatus(id: string, status: CommissionStatus): Promise<Commission | null>
+  setCommissionStatus(actor: Actor, id: string, status: CommissionStatus): Promise<Commission | null>
 
   // ── partner self-service auth (F5) — UNSCOPED by design (a partner is not a tenant user) ──────────
   /** Login lookup by email (partner sign-in). Returns the hash + status so the caller can argon2-verify
@@ -107,10 +119,38 @@ export interface AffiliateRepo {
   invalidatePwTokens(affiliateId: string, now: Date): Promise<void>
 }
 
-export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
+/**
+ * Every field the API may return for an affiliate. EXPLICIT, not `findMany()` — the model carries
+ * `passwordHash` (argon2id, for the partner self-service login), and the read paths piped the raw
+ * row straight to the client, so `GET /v1/affiliates` handed a platform_admin every partner's
+ * password hash in the JSON. Partners are THIRD PARTIES, not staff. The codebase already solved
+ * this shape twice (webhooks' `readRedact: ['secret']`, partner.ts's hand-picked fields); the
+ * affiliate repo was the one that forgot. A `select` rather than a delete-after-read, so a field
+ * added to the model later is opt-IN and cannot leak by default (rule 12). Audit MED.
+ */
+const PUBLIC_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  code: true,
+  commissionPct: true,
+  commissionMonths: true,
+  status: true,
+  createdAt: true,
+} as const
+
+/**
+ * AUDIT (audit MED). This repo was the only mutating one constructed WITHOUT the audit repo, and it
+ * shows in the code it left behind: `create`/`update` accepted an `Actor` and ignored it, `update`
+ * read `before` and used it only for a null check, and `setCommissionStatus` took no actor at all.
+ * These are the money controls — the payout percentage, the commission window, and the paid/void
+ * mark on an individual accrual — and they were mutable with no trace of who or when. A commission
+ * dispute with a partner had nothing to reconstruct.
+ */
+export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): AffiliateRepo {
   return {
-    list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' } }),
-    get: (id) => prisma.affiliate.findUnique({ where: { id } }),
+    list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' }, select: PUBLIC_SELECT }),
+    get: (id) => prisma.affiliate.findUnique({ where: { id }, select: PUBLIC_SELECT }),
     // EXACT, case-insensitive match (audit HIGH). Prisma's `mode:'insensitive'` compiles to ILIKE
     // with the value bound UNESCAPED, so `_` — a LIKE single-char wildcard that the code charset
     // permits — let `?ref=______` match ANY 6-char active code and credit a nondeterministic
@@ -125,12 +165,17 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
         LIMIT 1`
       return rows[0] ?? null
     },
-    create: async (_actor, data) => {
+    create: async (actor, data) => {
+      let created: AffiliateView
       try {
-        return await prisma.affiliate.create({
+        created = await prisma.affiliate.create({
+          select: PUBLIC_SELECT,
           data: {
             name: data.name,
-            email: data.email,
+            // normalized on WRITE: the login handler lowercases before the lookup, and
+            // `email` is a case-sensitive @unique, so a mixed-case row could never log in
+            // (migration 20260804200000 collapses existing rows + adds a functional unique)
+            email: data.email.trim().toLowerCase(),
             code: data.code,
             ...(data.commissionPct !== undefined ? { commissionPct: data.commissionPct } : {}),
             ...(data.commissionMonths !== undefined ? { commissionMonths: data.commissionMonths } : {}),
@@ -140,11 +185,21 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
         if (isUniqueViolation(err)) throw new AffiliateConflictError(conflictField(err))
         throw err // a real DB fault must reach the API's 500 net, NOT masquerade as a conflict
       }
+      // OUTSIDE the try on purpose: a unique violation from the audit insert must never be
+      // translated into AffiliateConflictError, because the route RETRIES on that signal
+      // (auto-generated code collisions) and the affiliate already exists by then
+      await audit.recordPlatform(actor, { action: 'create', entity: 'affiliate', entityId: created.id, after: created })
+      return created
     },
-    update: async (_actor, id, data) => {
-      const before = await prisma.affiliate.findUnique({ where: { id } })
+    update: async (actor, id, data) => {
+      // `before` is the WHOLE point of an audit row on this table: commissionPct and
+      // commissionMonths are the payout terms, and a silent edit is the difference between a
+      // partner being paid 20% and 2% with nothing to point at afterwards.
+      const before = await prisma.affiliate.findUnique({ where: { id }, select: PUBLIC_SELECT })
       if (before === null) return null
-      return prisma.affiliate.update({ where: { id }, data })
+      const after = await prisma.affiliate.update({ where: { id }, data, select: PUBLIC_SELECT })
+      await audit.recordPlatform(actor, { action: 'update', entity: 'affiliate', entityId: id, before, after })
+      return after
     },
     accrueCommission: async (data) => {
       // ON CONFLICT (sourceInvoiceId) DO NOTHING semantics via a guarded create — a duplicate webhook
@@ -198,13 +253,28 @@ export function createAffiliateRepo(prisma: PrismaClient): AffiliateRepo {
     },
     listCommissions: (affiliateId) =>
       prisma.commission.findMany({ where: affiliateId !== undefined ? { affiliateId } : {}, orderBy: { createdAt: 'desc' } }),
-    setCommissionStatus: async (id, status) => {
+    setCommissionStatus: async (actor, id, status) => {
       const before = await prisma.commission.findUnique({ where: { id } })
       if (before === null) return null
-      return prisma.commission.update({ where: { id }, data: { status } })
+      const after = await prisma.commission.update({ where: { id }, data: { status } })
+      // marking an accrual paid/void IS the payout decision — it must be attributable
+      await audit.recordPlatform(actor, {
+        action: 'update',
+        entity: 'commission',
+        entityId: id,
+        before: { status: before.status, amountCents: before.amountCents, affiliateId: before.affiliateId },
+        after: { status: after.status, amountCents: after.amountCents, affiliateId: after.affiliateId },
+      })
+      return after
     },
-    findByEmailForAuth: (email) =>
-      prisma.affiliate.findUnique({ where: { email }, select: { id: true, email: true, passwordHash: true, status: true } }),
+    findByEmailForAuth: async (email) => {
+      // case-insensitive by the functional unique index — rows created before the normalization
+      // migration, and any future mixed-case input, both resolve here
+      const rows = await prisma.$queryRaw<{ id: string; email: string; passwordHash: string | null; status: AffiliateStatus }[]>`
+        SELECT "id", "email", "passwordHash", "status" FROM "affiliates"
+        WHERE lower("email") = lower(${email}) LIMIT 1`
+      return rows[0] ?? null
+    },
     setPassword: async (id, passwordHash) => {
       await prisma.affiliate.update({ where: { id }, data: { passwordHash } })
     },

@@ -250,6 +250,14 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     } finally {
       clearInterval(drain)
     }
+    // The gauge SETTLES rather than being 0 the instant the scenario returns: the drain poller runs
+    // on a 500 ms timer, so a loaded runner can still be mid-poll here. Waiting is what makes the
+    // assertion meaningful — under the old XLEN signal the counter never comes back down at all,
+    // so this loop would time out rather than pass.
+    const deadline = Date.now() + 5_000
+    while (ingest!.metrics.pausedSockets !== 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100))
+    }
     expect(ingest!.metrics.pausedSockets).toBe(0)
     // the entries are all still IN the stream — proof the signal is backlog, not retention
     expect(await redis.xlen(`raw:${SHARD}`)).toBeGreaterThan(10)

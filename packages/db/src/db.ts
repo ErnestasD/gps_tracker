@@ -69,7 +69,7 @@ export function createDb(databaseUrl: string): Db {
   return {
     auth: buildAuthMethods(prisma),
     tenants: createTenantRepo(prisma, audit),
-    affiliates: createAffiliateRepo(prisma),
+    affiliates: createAffiliateRepo(prisma, audit),
     tenantDomains: createTenantDomainRepo(prisma, audit),
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),

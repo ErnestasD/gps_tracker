@@ -12,6 +12,7 @@ import { seedUser } from '../../../packages/db/seed/users.js'
 import { createApp } from '../src/app.js'
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 
+
 /**
  * PUBLIC self-serve signup (F2). Proves: a direct customer creates a trial tenant + tenant-admin user
  * and can immediately LOG IN through the normal auth path; the trial floors at expiry via the

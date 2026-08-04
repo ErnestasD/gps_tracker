@@ -107,6 +107,7 @@ const deps = {
     globalPerDay: Number(process.env['SMS_QUOTA_GLOBAL_PER_DAY'] ?? DEFAULT_SMS_QUOTA.globalPerDay),
   },
   onSmsQuotaRejected: (scope: 'device' | 'tenant' | 'global') => prom.smsQuotaRejected.inc({ scope }),
+  onWebhookUnmatched: (reason: 'no_tenant' | 'unmappable') => prom.billingWebhookUnmatched.inc({ reason }),
   // hard ceiling on one live socket (default 4 h). A stream is authorized only at connect, so this
   // is what makes a plan downgrade / role change eventually reach an already-open one; clients
   // reconnect with a fresh ticket, which re-authorizes.

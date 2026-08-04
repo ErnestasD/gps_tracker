@@ -14,6 +14,9 @@ import { createApp } from '../src/app.js'
 import type { StripeEvent, StripeGateway } from '../src/billing/stripe.js'
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 
+/** reasons a verified webhook provisioned nothing — the signal that used to not exist at all */
+const unmatched: string[] = []
+
 /**
  * Billing API (ADR-024). A FAKE StripeGateway records calls and lets tests craft webhook events:
  * `constructEvent` treats the raw body as the event JSON and accepts only the signature 'valid', so
@@ -115,7 +118,7 @@ beforeAll(async () => {
     lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
   }
-  const app = createApp({ ...common, stripe: fakeStripe })
+  const app = createApp({ ...common, stripe: fakeStripe, onWebhookUnmatched: (r) => unmatched.push(r) })
   const appOff = createApp({ ...common }) // no stripe → not configured
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
@@ -156,6 +159,33 @@ describe('billing lifecycle (ADR-024)', () => {
 
     const after = (await (await req(port, '/v1/billing', t1Token)).json()) as BillingView
     expect(after.hasCustomer).toBe(true) // customer id persisted by the route
+  })
+
+  it('a verified webhook that matches NO tenant is acked but LOUD (audit MED)', async () => {
+    // `applySubscriptionEvent` returns false when it matched no row — the repo returns it precisely
+    // so the caller can tell "applied" from "matched nothing", and the caller discarded it. Stripe
+    // saw 200, never retried, and a paying customer stayed unprovisioned forever with no log and no
+    // metric. Reachable for real: checkout creates the Stripe customer and persists it in two
+    // steps, and the per-tenant lock around them falls through on a Redis blip.
+    const before = unmatched.length
+    const res = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_orphan', 'cus_nobody_has_this', 'customer.subscription.updated', 'active', 900), { 'stripe-signature': 'valid' })
+    expect(res.status).toBe(200) // still acked — a retry cannot conjure a missing customer mapping
+    expect(unmatched.slice(before)).toEqual(['no_tenant']) // …but it is now countable and alertable
+  })
+
+  it('a STALE or out-of-order event is NOT reported — the alert must not cry wolf', async () => {
+    // The repo returns "did not apply" for three different reasons and the first draft treated them
+    // all as no_tenant: the monotonic guard and the per-subscription guard drop replayed,
+    // out-of-order and same-second deliveries BY DESIGN. On this suite's own corpus that was a 67%
+    // false-positive rate on a `severity: critical` page — worse than having no alert.
+    const { token, cus } = await freshTenant('StaleNoise')
+    await req(port, '/v1/billing/checkout', token, 'POST') // persists the stripeCustomerId
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_new', cus, 'customer.subscription.updated', 'active', 5_000), { 'stripe-signature': 'valid' })
+    const before = unmatched.length
+    // an OLDER event for the same, existing customer — dropped by the monotonic guard
+    const older = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_old', cus, 'customer.subscription.updated', 'past_due', 1_000), { 'stripe-signature': 'valid' })
+    expect(older.status).toBe(200)
+    expect(unmatched.slice(before)).toEqual([]) // the tenant EXISTS — nothing to page anyone about
   })
 
   it('subscription state is set ONLY by a signature-verified webhook', async () => {

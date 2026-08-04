@@ -1,6 +1,6 @@
 import type { Hono } from 'hono'
 
-import type { Db } from '@orbetra/db'
+import { PushEndpointClaimedError, type Db } from '@orbetra/db'
 import { pushSubscribeSchema } from '@orbetra/shared'
 
 import { problem, requireRole, type AuthEnv } from '../auth/middleware.js'
@@ -34,11 +34,18 @@ export function mountPush(app: Hono<AuthEnv>, deps: PushDeps): void {
     if (auth.accountId === undefined) return problem(c, 400, 'Bad Request', 'account_required') // push targets an account
     const data = pushSubscribeSchema.safeParse(await c.req.json().catch(() => null))
     if (!data.success) return problem(c, 400, 'Bad Request')
-    await deps.db.pushSubscriptions.subscribe(
-      { tenantId: auth.tenantId, accountId: auth.accountId },
-      auth.userId,
-      { endpoint: data.data.endpoint, p256dh: data.data.keys.p256dh, auth: data.data.keys.auth },
-    )
+    try {
+      await deps.db.pushSubscriptions.subscribe(
+        { tenantId: auth.tenantId, accountId: auth.accountId },
+        auth.userId,
+        { endpoint: data.data.endpoint, p256dh: data.data.keys.p256dh, auth: data.data.keys.auth },
+      )
+    } catch (err) {
+      // the endpoint belongs to another tenant — refuse rather than silently re-home it (which
+      // would stop the real owner's alerts and start delivering them to this caller)
+      if (err instanceof PushEndpointClaimedError) return problem(c, 409, 'Conflict', 'endpoint_claimed')
+      throw err
+    }
     return c.json({ ok: true }, 201)
   })
 

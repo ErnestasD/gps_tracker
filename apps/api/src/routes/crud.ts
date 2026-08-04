@@ -164,6 +164,20 @@ function rolesFor(entity: string, method: string, scopeClass: string): Role[] {
 /** :id is always present on an item route; narrow the noUncheckedIndexedAccess string|undefined. */
 const id = (c: Context): string => c.req.param('id') ?? ''
 
+/**
+ * True when the caller's scope really is tenant-WIDE (no accountId pin).
+ *
+ * `READ_POLICY.audit = TENANT_ADMINS` assumes every tenant admin is tenant-wide — an assumption
+ * written into scope.ts ("undefined ⇒ tenant-wide") but never enforced: `POST /v1/users` accepts
+ * `{role:'tsp_admin', accountId:<uuid>}`, `canGrantRole('tsp_admin','tsp_admin')` is true, and
+ * `scopeOf` then pins that admin to the account. Every other repo honours the pin via
+ * `scopedWhere` — but `audit_log` has NO accountId column, so `audit.list` filters on tenantId
+ * alone and such an admin read the whole tenant's trail, including sibling accounts' device
+ * names, user emails and geofence changes. A white-label TSP running unrelated customers as
+ * accounts is exactly the shape this breaks. Audit MED.
+ */
+const tenantWide = (c: Context<AuthEnv>): boolean => c.get('auth').accountId === undefined
+
 // A readable, URL-safe affiliate referral code (default when the admin doesn't pick one). Ambiguous
 // glyphs (0/O, 1/I/L) dropped so a partner can dictate it over the phone; CSPRNG so it's unguessable.
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
@@ -1102,6 +1116,21 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
 
+    // ── platform audit trail (affiliates/commissions — no subject tenant) ─────
+    { method: 'get', path: '/v1/platform/audit', scopeClass: 'platform', entity: 'audit', shape: 'collection',
+      // The money trail for the partner programme. Filed with tenantId NULL and readable ONLY here:
+      // filing it under the acting admin's own tenant would split it across whichever tenants the
+      // platform admins belong to AND expose every partner's commercial terms to that tenant's own
+      // tsp_admins (READ_POLICY.audit = TENANT_ADMINS). Review MED.
+      handler: async (c) => json(c, await db.audit.listPlatform({
+        take: Number(c.req.query('limit') ?? 50),
+        ...(c.req.query('cursor') !== undefined ? { cursor: c.req.query('cursor')! } : {}),
+        ...(c.req.query('entity') !== undefined ? { entity: c.req.query('entity')! } : {}),
+        ...(c.req.query('action') !== undefined ? { action: c.req.query('action')! } : {}),
+        ...(c.req.query('from') !== undefined ? { from: c.req.query('from')! } : {}),
+        ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
+      })) },
+
     // ── usage metering (E07-4): platform panel + a tenant's own bill ──────────
     { method: 'get', path: '/v1/platform/usage', scopeClass: 'platform', entity: 'usage', shape: 'collection',
       // platformSummary is UNSCOPED by design — reachable ONLY here (platform_admin via scopeClass)
@@ -1110,10 +1139,17 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
       })) },
     { method: 'get', path: '/v1/usage', scopeClass: 'tenant', entity: 'usage', shape: 'collection',
-      handler: async (c) => json(c, await db.usage.tenantSummary(scopeOf(auth(c)), {
-        ...(c.req.query('from') !== undefined ? { from: c.req.query('from')! } : {}),
-        ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
-      })) },
+      handler: async (c) => {
+        // same shape as /v1/audit: `usage.tenantSummary` filters on tenantId alone, so an
+        // account-PINNED tsp_admin (which POST /v1/users can create) read the whole tenant's
+        // device-day totals — every sibling account's fleet size and activity. Fixing audit and
+        // leaving this was half a fix (review MED).
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'usage is tenant-wide')
+        return json(c, await db.usage.tenantSummary(scopeOf(auth(c)), {
+          ...(c.req.query('from') !== undefined ? { from: c.req.query('from')! } : {}),
+          ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
+        }))
+      } },
 
     // ── webhook deliveries (tenant, read-only log — E06-4b) ───────────────────
     { method: 'get', path: '/v1/webhook-deliveries', scopeClass: 'tenant', entity: 'webhookDelivery', shape: 'collection', entitlement: 'webhooks',
@@ -1179,6 +1215,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     // ── audit log (E03-6, tenant, read-only + admin-gated, append-only) ─────────
     { method: 'get', path: '/v1/audit', scopeClass: 'tenant', entity: 'audit', shape: 'collection',
       handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'audit is tenant-wide')
         const q = c.req.query.bind(c.req)
         return json(c, await db.audit.list(scopeOf(auth(c)), {
           take: Number(q('limit') ?? 50),
@@ -1191,6 +1228,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'get', path: '/v1/audit/:id', scopeClass: 'tenant', entity: 'audit', shape: 'item',
       handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'audit is tenant-wide')
         if (!/^\d+$/.test(id(c))) return problem(c, 404, 'Not Found') // BigInt() would throw on non-numeric
         const row = await db.audit.get(scopeOf(auth(c)), id(c))
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
@@ -1366,7 +1404,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, commissionStatusUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
-        const row = await db.affiliates.setCommissionStatus(id(c), data.status)
+        const row = await db.affiliates.setCommissionStatus({ userId: auth(c).userId }, id(c), data.status)
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
   ]

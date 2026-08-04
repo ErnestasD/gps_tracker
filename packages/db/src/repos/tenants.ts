@@ -112,13 +112,22 @@ export interface TenantRepo {
   /** Webhook path: write subscription state, resolving the tenant by customer id. Applied ONLY when
    *  `eventAt` is strictly newer than the last applied event (monotonic guard vs out-of-order/duplicate
    *  delivery — this WHERE is atomic, so concurrent duplicates collapse). Returns false when nothing
-   *  was updated (unknown customer, or a stale/replayed event). */
-  applySubscriptionEvent(stripeCustomerId: string, eventAt: Date, data: SubscriptionUpdate): Promise<boolean>
+   *  was updated, and WHY — see SubscriptionApplyResult. */
+  applySubscriptionEvent(stripeCustomerId: string, eventAt: Date, data: SubscriptionUpdate): Promise<SubscriptionApplyResult>
   /** Worker usage reporter (PR B2): every tenant currently receiving PAID service — i.e. entitled,
    *  by the SAME predicate entitlements use (isBillableSubscription), plus a Stripe customer id.
    *  Includes `past_due`: dunning is a grace window for access, so it must be one for billing too. */
   listActiveSubscribers(): Promise<ActiveSubscriber[]>
 }
+
+/**
+ * Why a subscription webhook did or did not change anything.
+ * - `applied`  — the tenant row was updated.
+ * - `stale`    — the tenant EXISTS but a guard dropped the event (older/replayed/same-second, or a
+ *                late non-live event against a live subscription). Normal operation, not an error.
+ * - `no_tenant`— no row carries that `stripeCustomerId`: someone is paying and has no plan.
+ */
+export type SubscriptionApplyResult = 'applied' | 'stale' | 'no_tenant'
 
 export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): TenantRepo {
   return {
@@ -277,7 +286,15 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           lastBillingEventAt: eventAt,
         },
       })
-      return result.count > 0
+      if (result.count > 0) return 'applied'
+      // `false` used to mean three different things and the caller could see only one of them. A
+      // no-op is NORMAL for a stale/replayed/same-second delivery, or a late non-live event — the
+      // guards above exist to drop exactly those. `no_tenant` is the only outcome that means a
+      // paying customer is unprovisioned, and the only one worth logging, counting and paging on.
+      // Reporting all three as `no_tenant` made the new alert fire on routine Stripe traffic (67%
+      // false positives on this repo's own webhook corpus), which is worse than no alert at all.
+      const known = await prisma.tenant.count({ where: { stripeCustomerId } })
+      return known > 0 ? 'stale' : 'no_tenant'
     },
     listActiveSubscribers: async () => {
       // METERED == ENTITLED, by construction (audit high). Not a hand-kept `in [...]` list: the

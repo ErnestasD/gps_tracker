@@ -100,6 +100,20 @@ groups:
           summary: "Positions arriving degraded ({{ $value | humanize }}/s)"
           description: "Fields are being nulled or records excluded from live state (device clock ahead of server). Identify the device/firmware — the live map and offline alerts for it are not trustworthy."
 
+      # a signature-verified Stripe subscription webhook that matched NO TENANT. Stripe is acked
+      # either way (a retry cannot conjure a missing customer mapping), so without this a paying
+      # customer sits unprovisioned indefinitely and the first signal is their support ticket.
+      # ONLY reason="no_tenant" — a `stale` outcome is normal (the monotonic and per-subscription
+      # guards drop replayed / out-of-order / same-second deliveries by design), and paging on it
+      # made this alert fire on routine Stripe traffic.
+      - alert: BillingWebhookUnmatched
+        expr: increase(billing_webhook_unmatched_total{reason="no_tenant"}[1h]) > 0
+        for: 5m
+        labels: { severity: critical, component: billing }
+        annotations:
+          summary: "Stripe webhook provisioned nothing ({{ $labels.reason }})"
+          description: "A paying customer may have no plan. Find the customer id in the api log and reconcile `tenants.stripeCustomerId` by hand."
+
       # I4 backpressure sustained = a shard can't drain.
       - alert: BackpressureSustained
         expr: max(ingest_paused_sockets) > 0

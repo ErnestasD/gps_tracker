@@ -30,7 +30,22 @@ export interface AuditRepo {
     actor: Actor,
     entry: { action: 'create' | 'update' | 'delete'; entity: string; entityId: string; before?: unknown; after?: unknown },
   ): Promise<void>
+  /**
+   * Record a PLATFORM-level action (affiliates, commissions) — `tenantId` is null.
+   *
+   * These entities have no subject tenant, and filing them under the acting admin's own tenant
+   * (a) splits the money trail across whichever tenants the platform admins happen to belong to,
+   * and (b) exposes every partner's commercial terms — commissionPct, commissionMonths, and each
+   * payout decision — to any tenant-wide `tsp_admin` co-resident in that tenant, since
+   * `READ_POLICY.audit = TENANT_ADMINS`. Read back via `listPlatform`, which is platform-only.
+   */
+  recordPlatform(
+    actor: Actor,
+    entry: { action: 'create' | 'update' | 'delete'; entity: string; entityId: string; before?: unknown; after?: unknown },
+  ): Promise<void>
   list(scope: Scope, opts?: AuditListOpts): Promise<AuditLog[]>
+  /** The platform trail (`tenantId IS NULL`) — no tenant can reach it; the route is platform-only. */
+  listPlatform(opts?: AuditListOpts): Promise<AuditLog[]>
   get(scope: Scope, id: string): Promise<AuditLog | null>
 }
 
@@ -40,6 +55,19 @@ export function createAuditRepo(prisma: PrismaClient): AuditRepo {
       await prisma.auditLog.create({
         data: {
           tenantId: scope.tenantId,
+          userId: actor.userId,
+          action: entry.action,
+          entity: entry.entity,
+          entityId: entry.entityId,
+          before: (entry.before ?? null) as never,
+          after: (entry.after ?? null) as never,
+        },
+      })
+    },
+    recordPlatform: async (actor, entry) => {
+      await prisma.auditLog.create({
+        data: {
+          tenantId: null, // platform-level: no subject tenant, and no tenant may read it
           userId: actor.userId,
           action: entry.action,
           entity: entry.entity,
@@ -59,6 +87,22 @@ export function createAuditRepo(prisma: PrismaClient): AuditRepo {
       return prisma.auditLog.findMany({
         where: {
           tenantId: scope.tenantId,
+          ...(opts.entity !== undefined ? { entity: opts.entity } : {}),
+          ...(opts.action !== undefined ? { action: opts.action } : {}),
+          ...(Object.keys(at).length > 0 ? { at } : {}),
+        },
+        orderBy: { id: 'desc' },
+        take,
+        ...(cursorOk ? { cursor: { id: BigInt(opts.cursor!) }, skip: 1 } : {}),
+      })
+    },
+    listPlatform: (opts = {}) => {
+      const at = { ...(isPgSafeDate(opts.from) ? { gte: new Date(opts.from!) } : {}), ...(isPgSafeDate(opts.to) ? { lt: new Date(opts.to!) } : {}) }
+      const take = Math.min(Math.max(Number.isFinite(opts.take) ? Number(opts.take) : 50, 1), 200)
+      const cursorOk = opts.cursor !== undefined && /^\d+$/.test(opts.cursor)
+      return prisma.auditLog.findMany({
+        where: {
+          tenantId: null,
           ...(opts.entity !== undefined ? { entity: opts.entity } : {}),
           ...(opts.action !== undefined ? { action: opts.action } : {}),
           ...(Object.keys(at).length > 0 ? { at } : {}),
