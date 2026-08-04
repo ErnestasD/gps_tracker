@@ -178,6 +178,35 @@ const id = (c: Context): string => c.req.param('id') ?? ''
  */
 const tenantWide = (c: Context<AuthEnv>): boolean => c.get('auth').accountId === undefined
 
+/**
+ * Serialize a device-cap check-then-create for one tenant.
+ *
+ * `POST /v1/devices` took this lock precisely because a plain count-then-insert races — and then
+ * the two OTHER paths that create devices under the same cap did not take it at all: the CSV import
+ * and the quarantine claim. So the lock only ever serialized single-create against single-create.
+ * Two concurrent 5-row imports on a 10-device plan with 5 active devices each evaluated `5 + 5 > 10`
+ * as false and both proceeded — 15 devices on a 10-device plan, permanently, because nothing
+ * re-checks the cap after creation. Audit MED.
+ *
+ * `cap === null` (every TSP plan) needs no lock at all: there is nothing to overshoot.
+ */
+export async function withDeviceCapLock<T>(
+  redis: Redis,
+  tenantId: string,
+  cap: number | null,
+  run: () => Promise<T>,
+  onBusy: () => T,
+): Promise<T> {
+  if (cap === null) return run()
+  const key = `device:create:${tenantId}`
+  if ((await redis.set(key, '1', 'EX', 10, 'NX')) === null) return onBusy()
+  try {
+    return await run()
+  } finally {
+    await redis.del(key).catch(() => undefined)
+  }
+}
+
 // A readable, URL-safe affiliate referral code (default when the admin doesn't pick one). Ambiguous
 // glyphs (0/O, 1/I/L) dropped so a partner can dictate it over the phone; CSPRNG so it's unguessable.
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
@@ -397,11 +426,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // by a short Redis lock so concurrent creates can't each pass at limit-1 and overshoot the
         // hard cap (review MED). A concurrent create loses the lock → 409, retry (rare admin path).
         const cap = (await db.tenants.getEntitlements(a.tenantId)).deviceLimit
-        const capLock = cap === null ? null : `device:create:${a.tenantId}`
-        if (capLock !== null && (await deps.redis.set(capLock, '1', 'EX', 10, 'NX')) === null) {
-          return problem(c, 409, 'Conflict', 'device_create_in_progress')
-        }
-        try {
+        return withDeviceCapLock(deps.redis, a.tenantId, cap, async () => {
           if (cap !== null && (await db.devices.countActive({ tenantId: a.tenantId })) + 1 > cap) {
             return problem(c, 403, 'Forbidden', 'device_limit_reached')
           }
@@ -423,9 +448,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
             config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
           })
           return json(c, device, 201)
-        } finally {
-          if (capLock !== null) await deps.redis.del(capLock)
-        }
+        }, () => problem(c, 409, 'Conflict', 'device_create_in_progress'))
       } },
     { method: 'patch', path: '/v1/devices/:id', scopeClass: 'account', entity: 'device', shape: 'item',
       handler: async (c) => {
@@ -826,11 +849,15 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // cap. Conservative bound (rows.length, before dedup/updates) — Direct plans are small and
         // this admin path is low-frequency, so refusing a would-be-over batch is the safe default.
         const cap = (await db.tenants.getEntitlements(a.tenantId)).deviceLimit
-        if (cap !== null && (await db.devices.countActive({ tenantId: a.tenantId })) + rows.length > cap) {
-          return problem(c, 403, 'Forbidden', 'device_limit_reached')
-        }
-        const result = await applyImport(db, deps.redis, scopeOf(a), { userId: a.userId }, rows, profiles, a.accountId)
-        return json(c, result, 201)
+        // SAME lock as the single create (audit MED): two concurrent 5-row imports on a 10-device
+        // plan with 5 active devices both saw `5 + 5 > 10` as false and both proceeded.
+        return withDeviceCapLock(deps.redis, a.tenantId, cap, async () => {
+          if (cap !== null && (await db.devices.countActive({ tenantId: a.tenantId })) + rows.length > cap) {
+            return problem(c, 403, 'Forbidden', 'device_limit_reached')
+          }
+          const result = await applyImport(db, deps.redis, scopeOf(a), { userId: a.userId }, rows, profiles, a.accountId)
+          return json(c, result, 201)
+        }, () => problem(c, 409, 'Conflict', 'device_create_in_progress'))
       } },
 
     // ── rules (account) ──────────────────────────────────────────────────────
