@@ -1,9 +1,6 @@
 # Audit findings that are FOUNDER decisions, not code defects
 
-> **Status 2026-08-04:** the founder answered all eight. 1, 2, 3, 4, 5, 6 and 8 are DECIDED and
-> being implemented (see each section). **7 (routing coverage) is still open** — it turned into a
-> positioning question once it was clear OSRM serves only the stop-order optimizer, and the site
-> currently advertises self-hosted routing.
+> **Status 2026-08-04:** all eight DECIDED. See each section for the answer and its consequence.
 
 Everything in `backend-audit-remediation.md` marked OPEN is something I can fix. These are the ones
 I should **not** decide alone: the code is doing what it was told to do, and changing it changes the
@@ -107,9 +104,28 @@ rather than half-working.
 Route-snapped distances work for LT and silently fall back to great-circle everywhere else. A Polish
 or German customer gets less accurate mileage with no indication why.
 
-**The choice:** load more extracts (disk + memory per country, and a rebuild on each), restrict
-selling to LT for now, or surface the fallback in the UI so the customer knows. Purely a
-cost-vs-market decision.
+**DECIDED: Mapbox for routing now, OSRM later — behind a driver seam.**
+
+The costing settled it. At the modelled scale (10 direct customers × 4 devices + one small
+white-label ≈ 90 devices, ~30 users) full Mapbox is **$0/month**: map loads ~10k against a 50k free
+tier, optimization ~2k against 100k. It only becomes a real line item at roughly 1,000 devices and
+300 users (~$1,000/month), which is a problem worth having.
+
+So routing moves to the Mapbox Optimization API — worldwide coverage today, no per-country extracts,
+no quarterly rebuilds, no disk. OSRM comes back when there is revenue to justify a bigger box, and
+because both sit behind a `RoutingDriver` interface, that migration is an env variable rather than a
+rewrite.
+
+**Geocoding deliberately stays on Photon.** This is where Mapbox's terms bite: *temporary*
+geocoding is free but the result may NOT be stored, and *permanent* geocoding has no free tier at
+all ($5/1,000, ≈$110/month at the modelled scale). Choosing the free tier would mean historical
+trips have no stored address — and if we later moved to Photon, those addresses would simply never
+have existed. Photon is already deployed, costs nothing, and lets us store. The one irreversible
+data decision in the whole comparison, so it goes the safe way.
+
+Two consequences to remember: OSRM and Mapbox use different routing engines, so mileage will shift
+by a few percent at the migration (visible to any customer who uses mileage for reimbursement), and
+the marketing site's "self-hosted routing" claim comes out now and goes back in later.
 
 ---
 
