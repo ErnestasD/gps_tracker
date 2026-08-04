@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http'
 import type { Redis } from 'ioredis'
 import { Counter, Gauge, Histogram, Registry } from 'prom-client'
 
-import { SHARD_COUNT } from './shards.js'
+import { PIPELINE_GROUP, SHARD_COUNT } from './shards.js'
 
 /**
  * Prometheus exposition for the worker (E02-5). Frozen names per Appendix A:
@@ -33,6 +33,12 @@ export interface WorkerProm {
   webhookFailed: Counter
   usageDeviceDays: Counter
   usageSweepFailed: Counter
+  /** Entries moved to `raw:dead` by reason. A poison row is otherwise indistinguishable from a
+   *  quiet fleet — the audit's "catch-and-continue with no signal" pattern. Non-zero ⇒ alert. */
+  deadLettered: Counter
+  /** Fields normalization had to null because the value did not fit its column. Non-zero ⇒ a
+   *  firmware quirk or spoofed frames; the position is kept, the field is not. */
+  fieldNulled: Counter
   stripeOverageReported: Counter
   scheduledReportsSent: Counter
   retentionPruned: Counter
@@ -43,20 +49,59 @@ export interface WorkerProm {
   server: Server
 }
 
+/**
+ * Unconsumed backlog for a shard: `lag` (added but not yet delivered) + `pending` (delivered, not yet
+ * acked). Deliberately NOT XLEN — see the gauge comment. This mirrors `shardBacklog` in
+ * apps/ingest/src/session.ts, which drives backpressure; the two MUST agree or ingest will pause on a
+ * number the dashboard never shows. Duplicated rather than imported: the worker does not depend on
+ * the ingest package and a metric is not worth creating that coupling. `backlog.spec.ts` asserts the
+ * two copies and consumer.ts's GROUP stay identical — if the group name ever diverges BOTH fall
+ * through to XLEN, silently reinstating the permanent-latch bug this replaced.
+ */
+export async function shardBacklog(redis: Redis, shard: number): Promise<number> {
+  const stream = `raw:${shard}`
+  let groups: unknown[]
+  try {
+    groups = (await redis.xinfo('GROUPS', stream)) as unknown[]
+  } catch (err) {
+    if (err instanceof Error && /no such key/i.test(err.message)) return 0 // stream not created yet
+    throw err // WRONGTYPE / ACL / MISCONF must surface, not read as "no backlog"
+  }
+  for (const g of groups) {
+    const flat = g as unknown[]
+    // walk PAIRS — indexOf would also match a value (a group named `lag` breaks the lookup)
+    const at = (k: string): unknown => {
+      for (let i = 0; i + 1 < flat.length; i += 2) if (flat[i] === k) return flat[i + 1]
+      return undefined
+    }
+    if (at('name') !== PIPELINE_GROUP) continue
+    const lagRaw = at('lag')
+    const pendingRaw = Number(at('pending') ?? 0)
+    const pend = Number.isFinite(pendingRaw) ? pendingRaw : 0
+    if (lagRaw !== null && lagRaw !== undefined) return Number(lagRaw) + pend
+    return Math.max(pend, await redis.xlen(stream)) // lag uncomputable after XDEL / XGROUP SETID
+  }
+  return await redis.xlen(stream) // no group yet ⇒ nothing consuming ⇒ all retained is backlog
+}
+
 export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const registry = new Registry()
 
   new Gauge({
     name: 'stream_depth',
-    help: 'raw:{shard} XLEN',
+    // NOT XLEN: XACK does not delete stream entries and nothing trims raw:{shard} (it is written with
+    // MAXLEN ~100k), so XLEN climbs to that plateau and never returns — it measures retention, not
+    // backlog, and made both this alert and ingest's backpressure latch permanently. `lag` + pending
+    // is the real queue depth and returns to 0 when the worker keeps up. Same probe ingest uses.
+    help: 'raw:{shard} unconsumed backlog (consumer-group lag + pending)',
     labelNames: ['shard'],
     registers: [registry],
     async collect() {
-      const pipe = redis.pipeline()
-      for (let s = 0; s < SHARD_COUNT; s++) pipe.xlen(`raw:${s}`)
-      const res = await pipe.exec()
-      res?.forEach((r, s) => {
-        if (r[0] === null) this.set({ shard: String(s) }, Number(r[1]))
+      const depths = await Promise.all(
+        Array.from({ length: SHARD_COUNT }, (_, s) => shardBacklog(redis, s).catch(() => null)),
+      )
+      depths.forEach((d, s) => {
+        if (d !== null) this.set({ shard: String(s) }, d)
       })
     },
   })
@@ -95,6 +140,8 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const webhookFailed = new Counter({ name: 'webhook_failed_total', help: 'webhook delivery attempts that failed (retried by BullMQ)', registers: [registry] })
   const usageDeviceDays = new Counter({ name: 'usage_device_days_total', help: 'billable device-day rows written by the usage sweep (E07-4)', registers: [registry] })
   // a stalled metering pipeline is silent under-billing — alert on any non-zero rate
+  const deadLettered = new Counter({ name: 'pipeline_dead_lettered_total', help: 'stream entries quarantined to raw:dead by reason (malformed payload | rejected by postgres)', labelNames: ['reason'], registers: [registry] })
+  const fieldNulled = new Counter({ name: 'positions_field_nulled_total', help: 'position fields nulled because the value did not fit its column (firmware quirk / spoof)', labelNames: ['field'], registers: [registry] })
   const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })
   const stripeOverageReported = new Counter({ name: 'stripe_overage_reported_total', help: 'tenants for which device overage was reported to the Stripe meter (ADR-024 PR B2)', registers: [registry] })
   const scheduledReportsSent = new Counter({ name: 'scheduled_reports_sent_total', help: 'scheduled report emails sent (V1-nice)', registers: [registry] })
@@ -121,5 +168,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

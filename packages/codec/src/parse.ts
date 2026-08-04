@@ -39,9 +39,16 @@ export function parseFrame(frame: Frame): ParsedPacket {
     case 0x8e:
       return parseAvl(bytes, dataLen, codecId)
     case 0x10:
-      // v1 contract: Codec 16 = raw fallback after CRC/framing verify (PROJECT_PLAN §3.1).
-      // Callers needing the payload read frame.bytes; full 16 decode arrives with FMB6xx support.
-      return { kind: 'avl', codec: 16, records: [], rawFallback: true }
+      // v1 contract: Codec 16 = raw fallback after CRC/framing verify (PROJECT_PLAN §3.1). We cannot
+      // decode the records yet, but we MUST report how many the device claims to have sent: ACKing 0
+      // makes the device resend the identical packet forever (the protocol treats the count as the
+      // acknowledged-record cursor), so the data never advances and the loop is invisible.
+      // The caller parks the frame and ACKs this count.
+      // Number of Data 1 is bytes[9] and Number of Data 2 the last data byte, identical to codec 8/8E:
+      // https://wiki.teltonika-gps.com/view/Codec#Codec_16 — proven by __fixtures__/wiki/codec16.hex.json.
+      // The count is ACKed to a device, so validate it exactly as parseAvl does rather than trusting a
+      // single byte: a 13-byte frame (framer allows dataLen ≥ 1) would otherwise read a CRC byte.
+      return { kind: 'avl', codec: 16, records: [], rawFallback: true, declaredCount: declaredCount(bytes, dataLen) }
     case 0x0c:
     case 0x0d:
     case 0x0e:
@@ -49,6 +56,21 @@ export function parseFrame(frame: Frame): ParsedPacket {
     default:
       throw new FrameError(`unknown codec id 0x${codecId.toString(16)}`, bytes)
   }
+}
+
+/**
+ * Number of Data 1, cross-checked against Number of Data 2 (wiki: Codec page, packet structure —
+ * https://wiki.teltonika-gps.com/view/Codec). Used for codecs we cannot decode yet: the value is
+ * ACKed back to the device as its record cursor, so it must be structurally sound before we trust it.
+ */
+function declaredCount(bytes: Buffer, dataLen: number): number {
+  if (dataLen < 3) {
+    throw new FrameError(`codec 0x${bytes[8]!.toString(16)} data field ${dataLen} too short for a record count`, bytes)
+  }
+  const n1 = bytes[9]!
+  const n2 = bytes[8 + dataLen - 1]!
+  if (n1 !== n2) throw new FrameError(`NumberOfData mismatch: ${n1} != ${n2}`, bytes)
+  return n1
 }
 
 function parseAvl(bytes: Buffer, dataLen: number, codecId: 0x08 | 0x8e): ParsedPacket {

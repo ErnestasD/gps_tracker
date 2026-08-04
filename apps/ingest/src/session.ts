@@ -9,7 +9,7 @@ import {
   type TeltonikaCodec,
 } from '@orbetra/codec'
 
-import { persistAvlBatch } from './persist.js'
+import { parkUndecodableFrame, persistAvlBatch } from './persist.js'
 import type { DeviceRegistry } from './registry.js'
 import type { IngestMetrics } from './metrics.js'
 
@@ -258,6 +258,25 @@ export class Session {
     }
 
     if (this.deviceId === null) return // unreachable while STREAMING; narrows the type for persist
+
+    // codec 16: framing + CRC are verified but we cannot decode the records yet. ACKing 0 would make
+    // the device resend the identical packet FOREVER (the count is the acknowledged-record cursor),
+    // so the data never advances and nothing is observable. Park the frame for diagnosis, ACK what
+    // the device claims to have sent, and count it. The UDP listener does the SAME — see udp.ts.
+    if (parsed.rawFallback === true) {
+      const declared = parsed.declaredCount ?? 0
+      await parkUndecodableFrame(this.deps.redis, this.imei, frame.bytes, this.now())
+      this.deps.metrics.unsupportedCodecTotal++
+      // we told the device these records are accepted, so I1 reconciliation must see them too
+      this.deps.metrics.ackedRecordsTotal += declared
+      this.socket.write(this.codec.encodeAck(declared))
+      this.deps.observeAckLatencyMs?.(this.now() - t0)
+      await this.maybeBackpressure()
+      // an FMB6xx sends codec 16 for EVERY frame and can hold one socket for hours — skipping this
+      // would make Codec-12 command delivery (E08-2) silently dead for exactly that hardware
+      await this.drainPending()
+      return
+    }
     // persist to the device's shard stream, THEN ack (rule 4 / I1). The shared helper writes the
     // SAME payload as the UDP listener (udp.ts) and durably records sanity rejects — see persist.ts.
     const persisted = await persistAvlBatch(
@@ -295,7 +314,11 @@ export class Session {
   private pollForDrain(): void {
     const tick = async (): Promise<void> => {
       if (this.socket.destroyed) return
-      const depth = await getCachedShardDepth(this.deps.redis, this.shard, this.now(), true)
+      // a FAILED probe must never read as "drained" — that would resume a paused socket on a Redis
+      // blip, which is exactly the congestion the pause exists for. Stay paused and keep polling.
+      const depth = await getCachedShardDepth(this.deps.redis, this.shard, this.now(), true).catch(
+        () => Number.POSITIVE_INFINITY,
+      )
       // re-check AFTER the await: a destroy() landing during the XLEN roundtrip already decremented
       // the paused gauge + cleared this.paused, so proceeding would double-decrement it (gauge drifts
       // negative forever) and resume() a destroyed socket (review LOW).
@@ -312,9 +335,32 @@ export class Session {
   }
 }
 
-// per-shard XLEN cache, refreshed at most once per second (§6.1 "cached, refreshed 1 s")
+// per-shard BACKLOG cache, refreshed at most once per second (§6.1 "cached, refreshed 1 s")
 const depthCache = new Map<number, { at: number; depth: number }>()
 
+/** The consumer group the worker reads with (apps/worker/src/consumer.ts). */
+const PIPELINE_GROUP = 'pipeline'
+
+/**
+ * The backlog for a shard = entries the pipeline has NOT consumed yet.
+ *
+ * This must NOT be XLEN. XACK removes an entry from the group's pending list, it does NOT delete it
+ * from the stream, and nothing trims `raw:{shard}` — it is written with `MAXLEN ~ 100_000`, so XLEN
+ * climbs to that plateau and never comes back down. Using XLEN as the backpressure signal therefore
+ * latches PERMANENTLY the first time a shard has cumulatively carried `pauseAboveDepth` records
+ * (hours into a real fleet's life), after which every session pauses forever and UDP is dropped
+ * wholesale against a completely healthy, idle worker.
+ *
+ * `XINFO GROUPS` reports `lag` = entries added but not yet delivered to the group, which is the real
+ * queue depth and returns to 0 when the worker keeps up. Fallbacks, in order:
+ *   - group missing (no worker has ever run) → XLEN is the honest backlog, nothing is consuming
+ *   - `lag` null (Redis cannot compute it after XDEL / XGROUP SETID) → max(pending, XLEN)
+ *
+ * Every fallback deliberately errs HIGH. Under-reporting is the mirror-image outage: ingest keeps
+ * accepting while the worker falls behind, `raw:{shard}` hits `MAXLEN ~ 100_000` and silently evicts
+ * records that were never processed — I1 data loss with a green dashboard. Pausing a healthy socket
+ * costs a few seconds; evicting unprocessed positions is unrecoverable.
+ */
 export async function getCachedShardDepth(
   redis: Redis,
   shard: number,
@@ -324,7 +370,43 @@ export async function getCachedShardDepth(
 ): Promise<number> {
   const cached = depthCache.get(shard)
   if (!force && cached && nowMs - cached.at < ttlMs) return cached.depth
-  const depth = await redis.xlen(`raw:${shard}`)
+  const depth = await shardBacklog(redis, shard)
   depthCache.set(shard, { at: nowMs, depth })
   return depth
+}
+
+/** Uncached backlog probe — exported so the worker's stream_depth gauge reports the SAME number. */
+export async function shardBacklog(redis: Redis, shard: number): Promise<number> {
+  const stream = `raw:${shard}`
+  let groups: unknown[]
+  try {
+    groups = (await redis.xinfo('GROUPS', stream)) as unknown[]
+  } catch (err) {
+    // ONLY "the stream does not exist yet" is a real zero. Everything else — WRONGTYPE, an ACL
+    // denial, MISCONF, a dropped connection — must propagate: swallowing it would make the I4 guard
+    // fail OPEN, and pollForDrain would read 0 and resume an already-paused socket.
+    if (err instanceof Error && /no such key/i.test(err.message)) return 0
+    throw err
+  }
+  for (const g of groups) {
+    // ioredis returns a flat [key, value, key, value, …] array per group. Walk PAIRS: indexOf would
+    // also match a VALUE, so a group literally named `lag` would make the lookup return a field name.
+    const flat = g as unknown[]
+    const at = (k: string): unknown => {
+      for (let i = 0; i + 1 < flat.length; i += 2) if (flat[i] === k) return flat[i + 1]
+      return undefined
+    }
+    if (at('name') !== PIPELINE_GROUP) continue
+    const lagRaw = at('lag')
+    const pendingRaw = Number(at('pending') ?? 0)
+    const pending = Number.isFinite(pendingRaw) ? pendingRaw : 0
+    // lag counts undelivered entries; pending counts delivered-but-unacked — both are backlog
+    if (lagRaw !== null && lagRaw !== undefined) return Number(lagRaw) + pending
+    // Redis cannot compute lag after XDEL or XGROUP SETID — both are on-call actions for skipping a
+    // wedged batch. `pending` alone is ~0 exactly when the pipeline is stalled, so fall back to the
+    // conservative upper bound instead of silently disabling backpressure right when it is needed.
+    return Math.max(pending, await redis.xlen(stream))
+  }
+  // no `pipeline` group yet ⇒ nothing is consuming ⇒ everything retained is genuinely backlog
+  return await redis.xlen(stream)
 }

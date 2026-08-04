@@ -22,7 +22,15 @@ export interface AvlRecord {
 
 export type ParsedPacket =
   | { kind: 'imei'; imei: string }
-  | { kind: 'avl'; codec: 8 | 0x8e | 16; records: AvlRecord[]; rawFallback?: boolean }
+  | {
+      kind: 'avl'
+      codec: 8 | 0x8e | 16
+      records: AvlRecord[]
+      /** codec 16: framing+CRC verified but records are not decoded yet — park the frame, do not drop it */
+      rawFallback?: boolean
+      /** codec 16: NumberOfData1 the device claims. ACK this, or the device resends forever. */
+      declaredCount?: number
+    }
   | { kind: 'cmdResponse'; codec: 12 | 13 | 14; text: string; nack?: boolean }
 
 export interface TeltonikaCodec {

@@ -5,9 +5,10 @@ import type { Pool } from 'pg'
 import type { NormalizedRecord } from '@orbetra/shared'
 
 import { normalize, type HashFn } from './normalize.js'
+import { PIPELINE_GROUP } from './shards.js'
 import { writePositions } from './writer.js'
 
-const GROUP = 'pipeline' // PROJECT_PLAN §5: consumer group name
+const GROUP = PIPELINE_GROUP // PROJECT_PLAN §5: consumer group name
 const cbor = new Decoder()
 
 export interface ConsumerDeps {
@@ -32,6 +33,24 @@ export interface ConsumerDeps {
   /** Fired when ownsShard() reports the lease lost mid-flight — the owner drops this consumer so a
    *  later re-acquire (leaser onGained) starts a fresh one. Coordinated with ShardLeaser.onLost. */
   onLostOwnership?: (shard: number) => void
+  /** Fired per entry moved to `raw:dead`, with WHY. Without a counter a poison row looks exactly
+   *  like a quiet fleet — the audit's recurring "catch-and-continue with no signal" pattern. */
+  onDeadLetter?: (reason: 'malformed' | 'rejected_by_db', count: number) => void
+  /** Fired per field normalization had to null (out of column range). Non-zero ⇒ firmware quirk or
+   *  spoofed frames; without it a nulled speed is indistinguishable from a device that reports none. */
+  onFieldNulled?: (field: string) => void
+}
+
+/**
+ * Postgres SQLSTATE classes that mean "this ROW is bad", not "the database is unhappy":
+ * 22 = data exception (22003 numeric_value_out_of_range, 22P02 invalid_text_representation, …),
+ * 23 = integrity constraint violation. Anything else — connection loss, deadlock, MISCONF,
+ * 57P01 admin shutdown — is TRANSIENT and must be retried, never quarantined: quarantining on a
+ * blip would throw away perfectly good positions that ingest already ACKed to the devices.
+ */
+const isRowRejection = (err: unknown): boolean => {
+  const code = (err as { code?: unknown }).code
+  return typeof code === 'string' && (code.startsWith('22') || code.startsWith('23'))
 }
 
 export interface ShardStats {
@@ -176,9 +195,14 @@ export class ShardConsumer {
     const records: NormalizedRecord[] = []
     const ids: string[] = []
     const dead: [string, Buffer][] = []
+    // record → its stream entry, so a row Postgres rejects can be quarantined WITH its original
+    // bytes; `records` is sorted below, so positional correspondence with `ids` does not survive.
+    const entryOf = new Map<NormalizedRecord, [string, Buffer]>()
     for (const [id, payload] of entries) {
       try {
-        records.push(normalize(cbor.decode(payload), this.deps.hash))
+        const rec = normalize(cbor.decode(payload), this.deps.hash, undefined, this.deps.onFieldNulled)
+        records.push(rec)
+        entryOf.set(rec, [id, payload])
         ids.push(id)
       } catch {
         // malformed entry → dead-letter, continue (E02-3 edge case)
@@ -196,25 +220,88 @@ export class ShardConsumer {
       }
       await pipe.exec()
       this.stats.deadLettered += dead.length
+      this.deps.onDeadLetter?.('malformed', dead.length)
     }
     if (records.length === 0) return
 
     // Appendix A / R4: downstream handoff is fixTime-sorted (per shard batch)
     records.sort((a, b) => a.fixTime.getTime() - b.fixTime.getTime())
 
-    const inserted = await writePositions(this.deps.pool, records)
+    const { inserted, kept, rejected } = await this.writeIsolatingBadRows(records, entryOf)
     this.stats.inserted += inserted
-    this.stats.processed += records.length
+    this.stats.processed += kept.records.length
+
+    if (rejected.length > 0) {
+      // the rejected rows are quarantined AND acked below: leaving them un-acked is what made a
+      // single bad row replay forever, and it is the batch's other ~199 records that pay for it
+      const pipe = this.deps.redis.pipeline()
+      for (const [id, payload] of rejected) {
+        pipe.xadd('raw:dead', 'MAXLEN', '~', 10_000, '*', 'ref', `${this.stream}:${id}`, 'payload', payload)
+      }
+      await pipe.exec()
+      this.stats.deadLettered += rejected.length
+      this.deps.onDeadLetter?.('rejected_by_db', rejected.length)
+    }
 
     // awaited BEFORE XACK: shard serialization then serializes downstream applies per
     // device (review HIGH: fire-and-forget allowed two applies to race and regress the
     // live marker); crash before XACK replays the batch — apply is idempotent max-wins
-    await this.deps.onBatch?.(records)
+    if (kept.records.length > 0) await this.deps.onBatch?.(kept.records)
 
     // ACK only after durable insert (crash before this line ⇒ XAUTOCLAIM replays,
     // ON CONFLICT dedupes — zero loss, zero dupes)
     const pipe = this.deps.redis.pipeline()
     for (const id of ids) pipe.xack(this.stream, GROUP, id)
     await pipe.exec()
+  }
+
+  /**
+   * Insert the batch, isolating any row Postgres REJECTS on its own merits.
+   *
+   * A multi-row INSERT is one statement: one bad value (a uint16 speed into `smallint`, a ≥2^63
+   * odometer into `bigint`) fails all 200 rows. Without this the batch is never ACKed, XAUTOCLAIM
+   * re-delivers it every 60 s forever, and the ~199 records beside it — belonging to OTHER tenants
+   * on the same shard, already ACKed to their devices and dropped from their buffers — are never
+   * written. normalize() bounds the fields we know overflow; this bounds the whole class, including
+   * whatever the next firmware invents. Audit critical #2.
+   *
+   * Binary search: zero cost on the happy path, O(log n) extra statements when a row is poison.
+   * Transient errors are re-thrown untouched so the batch retries intact (see isRowRejection).
+   */
+  private async writeIsolatingBadRows(
+    records: NormalizedRecord[],
+    entryOf: Map<NormalizedRecord, [string, Buffer]>,
+  ): Promise<{ inserted: number; kept: { records: NormalizedRecord[] }; rejected: [string, Buffer][] }> {
+    const rejected: [string, Buffer][] = []
+    const bad = new Set<NormalizedRecord>()
+
+    const write = async (recs: NormalizedRecord[]): Promise<number> => {
+      if (recs.length === 0) return 0
+      try {
+        return await writePositions(this.deps.pool, recs)
+      } catch (err) {
+        if (!isRowRejection(err)) throw err
+        if (recs.length === 1) {
+          bad.add(recs[0]!)
+          console.error('worker: row rejected by postgres, quarantining', {
+            shard: this.shard,
+            deviceId: String(recs[0]!.deviceId),
+            code: (err as { code?: string }).code,
+          })
+          return 0
+        }
+        const mid = Math.floor(recs.length / 2)
+        return (await write(recs.slice(0, mid))) + (await write(recs.slice(mid)))
+      }
+    }
+
+    const inserted = await write(records)
+    if (bad.size === 0) return { inserted, kept: { records }, rejected }
+
+    for (const r of bad) {
+      const entry = entryOf.get(r)
+      if (entry !== undefined) rejected.push(entry)
+    }
+    return { inserted, kept: { records: records.filter((r) => !bad.has(r)) }, rejected }
   }
 }

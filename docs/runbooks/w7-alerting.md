@@ -7,14 +7,35 @@ Alertmanager routes them to the founders' Telegram.
 
 | Alert | Fires when | Severity |
 |---|---|---|
-| StreamDepthHigh / Critical | `stream_depth` > 50k /90k | warn / crit |
+| StreamDepthHigh / Critical | `stream_depth` (consumer-group lag + pending, **not** XLEN) > 50k / 90k | warn / crit |
 | PipelineLagHigh / Critical | `pipeline_lag_ms` > 30s / 120s | warn / crit |
 | ParseFailSpike | `rate(ingest_parse_fail_total[5m])` > 5/s for 10m | warn |
 | AckLatencyHigh | ACK p99 > 250ms (§5 SLA) | warn |
 | BackpressureSustained | `ingest_paused_sockets` > 0 for 10m | warn |
+| UnsupportedCodecSeen | `rate(ingest_unsupported_codec_total[15m])` > 0 for 15m | warn |
+| DeadLetteredRows | `rate(pipeline_dead_lettered_total[15m])` > 0 for 15m | warn |
 | DiskFillingUp / Critical | root FS < 15% / 5% free | warn / crit |
 | TargetDown | any of ingest/worker/api unscrapeable 2m | crit |
 | CertExpiringSoon | TLS cert < 14d to expiry (Caddy renew safety net) | warn |
+
+### UnsupportedCodecSeen
+
+Real hardware is sending a codec we verify but cannot decode (codec 16 today). The frame is parked
+in the `raw:unsupported` stream and the device is ACKed its declared record count, so it advances its
+buffer instead of resending forever — but **those positions are not in the pipeline**. This is a
+product gap, not an incident: identify the model/firmware from the parked frames
+(`XRANGE raw:unsupported - + COUNT 5`, the payload carries `imei` + the raw bytes) and open a codec
+story. `raw:unsupported` is a bounded 10k sample, not an archive — nothing replays it today.
+
+### DeadLetteredRows
+
+A record was dropped from the pipeline and quarantined in `raw:dead`. Check `reason`:
+- `malformed` — the stream payload did not decode/validate (CBOR or schema). Suspect a producer bug.
+- `rejected_by_db` — Postgres refused the row on its own merits (SQLSTATE class 22/23, e.g. a value
+  no column accepts). The batch's other records were still written and ACKed; only this row is lost.
+  Inspect the payload and add a bound in `normalize.ts` so the next one is nulled rather than dropped.
+
+Both are *customer-visible data loss for that record*, so any sustained rate deserves a fix, not a mute.
 
 ## Telegram (BLOCKED-INFO — founder must provision, like SES)
 

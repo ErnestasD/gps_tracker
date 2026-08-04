@@ -4,9 +4,11 @@ import { Decoder } from 'cbor-x'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
+import { crc16ibm } from '@orbetra/codec'
 import { runScenario, liveDrive, corruptCrc, oversize, slowLoris, bufferedFlood } from '@orbetra/simulator'
 
 import { createIngestServer, DEFAULT_CONFIG, SHARD_COUNT, type IngestServer } from '../src/index.js'
+import { UNSUPPORTED_STREAM } from '../src/persist.js'
 
 const IMEI = '356307042441013'
 const SHARD = Number(BigInt(IMEI) % BigInt(SHARD_COUNT))
@@ -94,6 +96,38 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     expect(ingest!.metrics.parseFailTotal).toBe(5)
   }, 30_000)
 
+  it('codec 16: frame is PARKED and the declared count ACKed — never an endless resend loop', async () => {
+    // REGRESSION (audit high): codec 16 returned records:[] and the session ACKed 0. Per the protocol
+    // the count is the acknowledged-record cursor, so the device resent the identical packet forever
+    // while its records were dropped — with no reject row and no counter, i.e. completely invisible.
+    const port = await startIngest()
+    const before = await redis.xlen(UNSUPPORTED_STREAM)
+    const sock = connect(port, '127.0.0.1')
+    await new Promise((r) => sock.once('connect', r))
+    // IMEI handshake
+    const imei = Buffer.from(IMEI, 'ascii')
+    sock.write(Buffer.concat([Buffer.from([0x00, imei.length]), imei]))
+    await new Promise((r) => sock.once('data', r)) // 0x01 accept
+    // a codec-16 AVL frame: preamble, len, codec 0x10, NumberOfData1 = 3, filler, count, CRC
+    const dataLen = 5
+    const body = Buffer.from([0x10, 0x03, 0x00, 0x00, 0x03])
+    const frame = Buffer.concat([
+      Buffer.from([0, 0, 0, 0]),
+      (() => { const b = Buffer.alloc(4); b.writeUInt32BE(dataLen); return b })(),
+      body,
+      (() => { const b = Buffer.alloc(4); b.writeUInt32BE(crc16ibm(body)); return b })(),
+    ])
+    sock.write(frame)
+    const ack = await new Promise<Buffer>((r) => sock.once('data', (d: Buffer) => r(d)))
+    sock.destroy()
+    expect(ack.readUInt32BE(0)).toBe(3) // the DECLARED count, not 0 — the device advances its buffer
+    // parked on its OWN stream: an FMB6xx sends codec 16 for EVERY frame, so sharing `rejects`
+    // would evict the §3.6 sanity-reject audit trail within minutes
+    expect(await redis.xlen(UNSUPPORTED_STREAM)).toBe(before + 1)
+    expect(await redis.xlen('rejects')).toBe(0)
+    expect(ingest!.metrics.unsupportedCodecTotal).toBe(1)
+  }, 30_000)
+
   it('oversize declared length: socket closed + frame violation counted', async () => {
     const port = await startIngest()
     const res = await runScenario(oversize, { ...base, count: 1, host: '127.0.0.1', port })
@@ -178,6 +212,47 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
       clearInterval(trimmer)
     }
     expect(ingest!.metrics.pausedSockets).toBe(0)
+  }, 30_000)
+
+  it('backpressure measures UNCONSUMED backlog, not stream length — a real consumer group unlatches it', async () => {
+    // REGRESSION (audit critical #1): depth used to be XLEN. XACK does not delete stream entries and
+    // nothing trims raw:{shard} (it is written MAXLEN ~100k), so XLEN only ever grew — once a shard
+    // had cumulatively carried `pauseAboveDepth` records, ingest paused FOREVER against a perfectly
+    // healthy worker. The old drain test hid this by calling `xtrim MAXLEN 0`, which no production
+    // code does. Here the shard is drained the way the worker really drains it: XREADGROUP + XACK,
+    // with every entry left in the stream.
+    const GROUP = 'pipeline'
+    await redis.xgroup('CREATE', `raw:${SHARD}`, GROUP, '0', 'MKSTREAM').catch(() => undefined)
+    const port = await startIngest({ pauseAboveDepth: 10, depthCacheMs: 0 })
+    const runPromise = runScenario(liveDrive, { ...base, count: 40, host: '127.0.0.1', port })
+    await new Promise<void>((resolve, reject) => {
+      const t0 = Date.now()
+      const tick = () => {
+        if (ingest!.metrics.pausedSockets > 0) return resolve()
+        if (Date.now() - t0 > 10_000) return reject(new Error('never paused'))
+        setTimeout(tick, 50)
+      }
+      tick()
+    })
+    // consume like the worker: read as the group, ack, never trim
+    const drain = setInterval(() => {
+      void (async () => {
+        const res = (await redis.xreadgroup('GROUP', GROUP, 'c1', 'COUNT', 100, 'STREAMS', `raw:${SHARD}`, '>')) as
+          | [string, [string, string[]][]][]
+          | null
+        const ids = res?.[0]?.[1]?.map(([id]) => id) ?? []
+        if (ids.length > 0) await redis.xack(`raw:${SHARD}`, GROUP, ...ids)
+      })()
+    }, 100)
+    try {
+      const res = await runPromise
+      expect(res.ackedRecords).toBe(40) // would hang/fail under the XLEN signal
+    } finally {
+      clearInterval(drain)
+    }
+    expect(ingest!.metrics.pausedSockets).toBe(0)
+    // the entries are all still IN the stream — proof the signal is backlog, not retention
+    expect(await redis.xlen(`raw:${SHARD}`)).toBeGreaterThan(10)
   }, 30_000)
 
   it('sanity-rejected record still ACKed (durable in rejects stream) - no eternal resend loop', async () => {

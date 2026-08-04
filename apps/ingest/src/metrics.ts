@@ -6,6 +6,9 @@ export class IngestMetrics {
   msgsTotal = 0 // ingest_msgs_total
   parseFailTotal = 0 // ingest_parse_fail_total
   frameViolationsTotal = 0 // ingest_frame_violations_total
+  /** frames we framed+CRC-verified but cannot decode yet (codec 16) — parked in `rejects`, ACKed so
+   *  the device advances. A non-zero rate means real hardware is sending data we silently shelve. */
+  unsupportedCodecTotal = 0 // ingest_unsupported_codec_total
   ackedRecordsTotal = 0
   rejectedImeiTotal = 0
   sanityRejectsTotal = 0

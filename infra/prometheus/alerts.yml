@@ -4,8 +4,10 @@
 groups:
   - name: pipeline
     rules:
-      # Redis Streams backlog: MAXLEN ~100k/shard (§5). 50% sustained = consumers
-      # falling behind; near the cap = imminent backpressure / data-loss risk.
+      # stream_depth = UNCONSUMED backlog (consumer-group lag + pending), not XLEN — XACK does not
+      # delete entries and nothing trims raw:{shard}, so XLEN measures retention and never falls.
+      # 50k = ingest's own pauseAboveDepth threshold; 90k approaches the 100k MAXLEN, where
+      # never-processed entries start being EVICTED (silent I1 loss).
       - alert: StreamDepthHigh
         expr: max(stream_depth) > 50000
         for: 5m
@@ -19,7 +21,7 @@ groups:
         labels: { severity: critical, component: stream_depth }
         annotations:
           summary: "Redis stream depth CRITICAL ({{ $value | humanize }})"
-          description: "A shard is near the 100k MAXLEN cap — backpressure/eviction imminent. Scale or restart workers now."
+          description: "A shard's unconsumed backlog is near the 100k MAXLEN cap — unprocessed entries will be evicted (data loss). Scale or restart workers now."
 
       # pipeline_lag_ms: age of the oldest unprocessed record. >30s risks the trip &
       # GDPR-erase guards (both assume lag << their windows).
@@ -55,6 +57,27 @@ groups:
         annotations:
           summary: "ACK p99 latency > 250ms"
           description: "Ingest p99 ACK latency breached the §5 SLA (250ms) for 5m."
+
+      # frames we verified but cannot DECODE (codec 16 today). Parked in raw:unsupported and ACKed
+      # so the device advances, but the records are NOT in the pipeline — real hardware sending data
+      # we shelve is a product gap, not a blip, and it is invisible without this rule.
+      - alert: UnsupportedCodecSeen
+        expr: rate(ingest_unsupported_codec_total[15m]) > 0
+        for: 15m
+        labels: { severity: warning, component: codec }
+        annotations:
+          summary: "Undecodable frames arriving ({{ $value | humanize }}/s)"
+          description: "A device is sending a codec we park instead of decode (codec 16). Inspect raw:unsupported and identify the model/firmware."
+
+      # a row Postgres refuses is quarantined so the batch survives — but the record is LOST to the
+      # customer, so any sustained rate is a real defect (firmware quirk, spoofing, or a schema gap).
+      - alert: DeadLetteredRows
+        expr: rate(pipeline_dead_lettered_total[15m]) > 0
+        for: 15m
+        labels: { severity: warning, component: pipeline }
+        annotations:
+          summary: "Records quarantined to raw:dead ({{ $value | humanize }}/s, reason={{ $labels.reason }})"
+          description: "Positions are being dropped from the pipeline. Inspect raw:dead payloads — rejected_by_db means a value no column accepts."
 
       # I4 backpressure sustained = a shard can't drain.
       - alert: BackpressureSustained

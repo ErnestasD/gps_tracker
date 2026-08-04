@@ -83,3 +83,38 @@ export async function persistAvlBatch(
   metrics.ackedRecordsTotal += persisted
   return persisted
 }
+
+/**
+ * Stream for frames we framed and CRC-verified but cannot DECODE yet. SEPARATE from `rejects` on
+ * purpose: an FMB6xx sends codec 16 for EVERY frame, and each entry is a whole frame (up to the
+ * framer's 4 KiB cap) versus ~45-100 B for a sanity reject's single record — parking these next to
+ * §3.6 sanity rejects would evict that audit trail within minutes and grow the stream ~40×.
+ * Sized like `raw:dead`: a bounded operator sample, NOT an archive. Nothing consumes it yet, so a
+ * parked frame is diagnostic evidence only — do not describe it as replayable until a reader exists.
+ */
+export const UNSUPPORTED_STREAM = 'raw:unsupported'
+const UNSUPPORTED_MAXLEN = 10_000
+
+/**
+ * Park an undecodable frame (codec 16) so the operator can see WHAT arrived. The caller then ACKs
+ * the count the device declared — ACKing 0 would make it resend the same frame forever.
+ * Shared by the TCP session and the UDP listener: both transports funnel through the same parser,
+ * so both must park + ACK identically or the wedge simply moves to the quieter channel.
+ */
+export async function parkUndecodableFrame(
+  redis: Redis,
+  imei: string,
+  raw: Uint8Array,
+  nowMs: number,
+  reason = 'codec16',
+): Promise<void> {
+  await redis.xadd(
+    UNSUPPORTED_STREAM,
+    'MAXLEN',
+    '~',
+    UNSUPPORTED_MAXLEN,
+    '*',
+    'p',
+    cbor.encode({ imei, tsMs: nowMs, raw, reason }),
+  )
+}
