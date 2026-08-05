@@ -332,7 +332,12 @@ model Device {
   accountId      String         @db.Uuid
   profileId      String         @db.Uuid
   /// 15-digit string — leading zeros preserved (E03-3 edge case)
-  imei           String         @unique
+  /// Unique among ACTIVE devices only — a partial unique index lives in SQL (migration
+  /// 20260805150000), because Prisma cannot express `WHERE "retiredAt" IS NULL`. Retiring frees the
+  /// IMEI so the SAME tenant can re-register returned hardware; `devices.create` refuses a reclaim
+  /// by any OTHER tenant, because the tracker may still be wired up and transmitting. A plain
+  /// lookup index lives in migration 20260805160000 (a partial index cannot serve these queries).
+  imei           String
   name           String
   plate          String?
   groupName      String?
@@ -350,6 +355,10 @@ model Device {
   maintenanceItems MaintenanceItem[]
 
   @@index([tenantId, accountId])
+  // plain lookup index (migration 20260805160000). Declared HERE so `prisma migrate dev` does not
+  // drop it: the partial UNIQUE index cannot serve a query that omits `WHERE "retiredAt" IS NULL`,
+  // and neither IMEI lookup does — without this one, `imeisIn` seq-scans on the pipeline's pool.
+  @@index([imei])
   @@map("devices")
 }
 
@@ -426,13 +435,18 @@ model MaintenanceItem {
 model RawReject {
   id        BigInt   @id @default(autoincrement())
   imei      String?
+  /// resolved by the drain from the IMEI; null on rows written before the column existed. GDPR
+  /// erase keys on THIS — by IMEI it would reach a different device's rows, since an IMEI is only
+  /// unique among ACTIVE devices (migration 20260805150000).
+  deviceId  BigInt?
   reason    String
   payload   Bytes?
   createdAt DateTime @default(now()) @db.Timestamptz()
 
   @@index([createdAt])
-  // GDPR device-erase deletes by IMEI (raw_rejects predates device resolution, so it has no deviceId)
+  // both are used: deviceId by the erase, imei by the legacy fallback and by support lookups
   @@index([imei])
+  @@index([deviceId])
   @@map("raw_rejects")
 }
 

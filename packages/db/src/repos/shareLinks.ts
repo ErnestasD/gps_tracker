@@ -50,6 +50,8 @@ export interface ShareLinkRepo {
   list(scope: Scope, deviceId?: bigint): Promise<ShareLinkView[]>
   create(scope: Scope, actor: Actor, data: ShareLinkCreate): Promise<CreatedShareLink>
   revoke(scope: Scope, actor: Actor, id: string): Promise<boolean>
+  /** Revoke every live link for one device. Returns how many were revoked (0 is normal). */
+  revokeForDevice(scope: Scope, actor: Actor, deviceId: bigint): Promise<number>
   /** UNSCOPED public lookup: SHA-256 hash → an ACTIVE (non-revoked, non-expired) link. */
   resolveByHash(hash: string): Promise<ShareLinkResolved | null>
 }
@@ -114,6 +116,25 @@ export function createShareLinkRepo(prisma: PrismaClient, audit: AuditRepo): Sha
       const row = await prisma.shareLink.update({ where: { id }, data: { revokedAt: new Date() } })
       await audit.record(scope, actor, { action: 'update', entity: 'shareLink', entityId: id, before: toView(found), after: toView(row) })
       return true
+    },
+    /**
+     * Revoke every live link for a device. Called when the device is retired (audit MED): retiring
+     * is how an operator says "this vehicle is no longer ours", and until now it left the
+     * UNAUTHENTICATED share endpoint publishing that vehicle's last known position to anyone
+     * holding the URL — for the link's full remaining life, up to 30 days. Nothing in the UI even
+     * listed those links once the device was gone from the device list.
+     */
+    revokeForDevice: async (scope, actor, deviceId) => {
+      const live = await prisma.shareLink.findMany({ where: { ...scopedWhere(scope), deviceId, revokedAt: null } })
+      if (live.length === 0) return 0
+      const now = new Date()
+      await prisma.shareLink.updateMany({ where: { id: { in: live.map((l) => l.id) } }, data: { revokedAt: now } })
+      // one audit row per link: the trail is per-entity everywhere else, and a bulk row would not
+      // say WHICH link stopped working when someone asks later
+      for (const l of live) {
+        await audit.record(scope, actor, { action: 'update', entity: 'shareLink', entityId: l.id, before: toView(l), after: toView({ ...l, revokedAt: now }) })
+      }
+      return live.length
     },
     resolveByHash: async (hash) => {
       // expiry + revoke enforced in the query — a revoked/expired hash never resolves. NB: the

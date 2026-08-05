@@ -1,5 +1,5 @@
 import { gunzipSync } from 'node:zlib'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -8,7 +8,7 @@ import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainer
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { migrate } from '../../../packages/db/sql/migrate.js'
-import { runExport } from '../src/jobs/gdprExportWorker.js'
+import { runExport, sweepOrphanTmp } from '../src/jobs/gdprExportWorker.js'
 
 /**
  * E08-4 account export against real pg: one NDJSON.gz with every section, scoped strictly
@@ -41,12 +41,16 @@ beforeAll(async () => {
   await pool.query(`CREATE TABLE accounts (id uuid PRIMARY KEY, "tenantId" uuid, name text, timezone text, "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE users (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, email text, role text, locale text, "passwordHash" text, "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE devices (id bigint PRIMARY KEY, "tenantId" uuid, "accountId" uuid, imei text, name text, plate text, "groupName" text, "odometerSource" text DEFAULT 'auto', "retiredAt" timestamptz, "createdAt" timestamptz DEFAULT now())`)
-  await pool.query(`CREATE TABLE trips (id bigserial PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "deviceId" bigint, status text, "startTime" timestamptz, "endTime" timestamptz, "startLat" float, "startLon" float, "endLat" float, "endLon" float, "distanceM" int DEFAULT 0, "distanceSource" text DEFAULT 'gps', "maxSpeed" int DEFAULT 0, "idleS" int DEFAULT 0)`)
+  await pool.query(`CREATE TABLE drivers (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, name text, "licenseNo" text, ibutton text, phone text, notes text, active bool DEFAULT true, "createdAt" timestamptz DEFAULT now())`)
+  await pool.query(`CREATE TABLE sms_deliveries (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "deviceId" bigint, "to" text, body text, provider text DEFAULT 'twilio', "providerMessageId" text, status text DEFAULT 'queued', error text, "createdAt" timestamptz DEFAULT now(), "sentAt" timestamptz)`)
+  await pool.query(`CREATE TABLE trips (id bigserial PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "deviceId" bigint, "driverId" uuid, status text, "startTime" timestamptz, "endTime" timestamptz, "startLat" float, "startLon" float, "endLat" float, "endLon" float, "distanceM" int DEFAULT 0, "distanceSource" text DEFAULT 'gps', "maxSpeed" int DEFAULT 0, "idleS" int DEFAULT 0)`)
   await pool.query(`CREATE TABLE events (id bigserial PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "deviceId" bigint, "ruleId" uuid, kind text, at timestamptz, lat float, lon float, payload jsonb DEFAULT '{}', "acknowledgedAt" timestamptz)`)
   await pool.query(`CREATE TABLE commands (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "deviceId" bigint, text text, status text, response text, "createdAt" timestamptz DEFAULT now(), "sentAt" timestamptz)`)
   await pool.query(`CREATE TABLE geofences (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, name text, color text, kind text, geom geography(Polygon,4326), "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE rules (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, kind text, name text, config jsonb DEFAULT '{}', scope jsonb DEFAULT '{}', "cooldownS" int DEFAULT 300, enabled bool DEFAULT true, "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE webhooks (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, url text, secret text, events text[] DEFAULT '{}', enabled bool DEFAULT true, "createdAt" timestamptz DEFAULT now())`)
+  await pool.query(`CREATE TABLE scheduled_reports (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "reportType" text, cadence text, "hourUtc" int, weekday int, recipients text[] DEFAULT '{}', timezone text DEFAULT 'UTC', enabled bool DEFAULT true, "lastRunAt" timestamptz, "createdAt" timestamptz DEFAULT now())`)
+  await pool.query(`CREATE TABLE push_subscriptions (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "userId" uuid, endpoint text, p256dh text, auth text, "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE export_jobs (id uuid PRIMARY KEY, "tenantId" uuid, "accountId" uuid, status text DEFAULT 'pending', path text, "sizeBytes" bigint, error text, "createdAt" timestamptz DEFAULT now(), "expiresAt" timestamptz)`)
 
   await pool.query(`INSERT INTO accounts VALUES ($1, $2, 'Fleet One', 'Europe/Vilnius')`, [A1, T1])
@@ -110,5 +114,32 @@ describe('E08-4 runExport (real pg)', () => {
 
   it('throws on an unknown job id (BullMQ retries; status untouched)', async () => {
     await expect(runExport(pool, exportDir, '00000000-0000-0000-0000-00000000dead')).rejects.toThrow(/not found/)
+  })
+
+  it('sweeps ABANDONED .tmp exports — a deploy mid-export left a full personal-data dump forever', async () => {
+    // The publish is write-to-temp-then-rename and the failure path unlinks — but only when the
+    // code REACHES it. A SIGKILL, an OOM or a deploy landing mid-export skips every catch and
+    // finally, and the row never reaches `done`, so the expiry sweep never looks at it. What is
+    // left on the shared volume is a complete export of one account — positions, drivers, phone
+    // numbers — with no owner, no expiry, and nothing that would ever delete it.
+    const dir = mkdtempSync(join(tmpdir(), 'orb-tmp-sweep-'))
+    const old = join(dir, 'abandoned.ndjson.gz.deadbeef.tmp')
+    const fresh = join(dir, 'in-flight.ndjson.gz.cafebabe.tmp')
+    const published = join(dir, 'real-export.ndjson.gz')
+    for (const f of [old, fresh, published]) writeFileSync(f, 'x')
+    // age the abandoned one past the ceiling; the other two are minutes old
+    const longAgo = new Date(Date.now() - 12 * 3_600_000)
+    utimesSync(old, longAgo, longAgo)
+
+    expect(await sweepOrphanTmp(dir)).toBe(1)
+    expect(existsSync(old)).toBe(false)
+    // a .tmp being written RIGHT NOW looks exactly like an abandoned one — deleting it would fail
+    // an export that was going to succeed, so the sweep is age-gated
+    expect(existsSync(fresh)).toBe(true)
+    expect(existsSync(published)).toBe(true) // and a published export is never touched
+  })
+
+  it('a missing export directory is not an error (no export has ever run)', async () => {
+    expect(await sweepOrphanTmp(join(tmpdir(), `orb-no-such-dir-${Date.now()}`))).toBe(0)
   })
 })

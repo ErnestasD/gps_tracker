@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { createWriteStream } from 'node:fs'
-import { mkdir, rename, stat, unlink } from 'node:fs/promises'
+import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { createGzip, type Gzip } from 'node:zlib'
@@ -30,6 +30,9 @@ export interface GdprExportDeps {
   onDone?: (r: { exportId: string; bytes: number }) => void
   onFailed?: () => void
   onSwept?: (removed: number) => void
+  /** Abandoned `.tmp` exports reaped — a personal-data dump left by a killed process, NOT a routine
+   *  expiry. Anything above zero means we are leaking one on every deploy. */
+  onOrphanTmp?: (removed: number) => void
 }
 
 const PAGE = 10_000
@@ -91,8 +94,14 @@ export async function runExport(pool: Pool, exportDir: string, exportId: string)
     // NO passwordHash — the single most dangerous column in the schema
     await scoped('user', `SELECT id, email, role, locale, "createdAt" FROM users WHERE "tenantId" = $1 AND "accountId" = $2`)
     await scoped('device', `SELECT id::text, imei, name, plate, "groupName", "odometerSource", "retiredAt", "createdAt" FROM devices WHERE "tenantId" = $1 AND "accountId" = $2`)
+    // drivers, and `trip.driverId` — both added after this export shipped and never folded in
+    // (audit MED). A driver row is personal data about a NAMED individual (licence number, phone,
+    // iButton) and a subject-access request that omits it is not complete; and without the trip's
+    // driverId the export cannot answer "which journeys were attributed to me", which is the
+    // question a driver actually asks.
+    await scoped('driver', `SELECT id, name, "licenseNo", ibutton, phone, notes, active, "createdAt" FROM drivers WHERE "tenantId" = $1 AND "accountId" = $2`)
     await scopedPaged('trip', 'trips', 'id',
-      `id::text, "deviceId"::text, status, "startTime", "endTime", "startLat", "startLon", "endLat", "endLon", "distanceM", "distanceSource", "maxSpeed", "idleS"`)
+      `id::text, "deviceId"::text, "driverId", status, "startTime", "endTime", "startLat", "startLon", "endLat", "endLon", "distanceM", "distanceSource", "maxSpeed", "idleS"`)
     await scopedPaged('event', 'events', 'id',
       `id::text, "deviceId"::text, "ruleId", kind, at, lat, lon, payload, "acknowledgedAt"`)
     await scopedPaged('command', 'commands', 'id::text',
@@ -101,6 +110,17 @@ export async function runExport(pool: Pool, exportDir: string, exportId: string)
     await scoped('rule', `SELECT id, kind, name, config, scope, "cooldownS", enabled, "createdAt" FROM rules WHERE "tenantId" = $1 AND "accountId" = $2`)
     // NO secret
     await scoped('webhook', `SELECT id, url, events, enabled, "createdAt" FROM webhooks WHERE "tenantId" = $1 AND "accountId" = $2`)
+    // config SMS carries a phone number and the message body — personal data by any reading, and
+    // the table postdates this export too
+    await scopedPaged('sms_delivery', 'sms_deliveries', 'id::text',
+      `id, "deviceId"::text, "to", body, provider, status, error, "createdAt", "sentAt"`)
+    // recipients[] is a list of named individuals' e-mail addresses; the API already treats it as
+    // sensitive (read gated to account writers) and the table postdates this export
+    await scoped('scheduled_report', `SELECT id, "reportType", cadence, "hourUtc", weekday, recipients, timezone, enabled, "lastRunAt", "createdAt" FROM scheduled_reports WHERE "tenantId" = $1 AND "accountId" = $2`)
+    // endpoint identifies one person's browser. p256dh/auth are CREDENTIALS for pushing to it and
+    // are deliberately omitted — an export is a copy of someone's data, not a way to hand an
+    // attacker the ability to impersonate a push sender.
+    await scoped('push_subscription', `SELECT id, "userId", endpoint, "createdAt" FROM push_subscriptions WHERE "tenantId" = $1 AND "accountId" = $2`)
 
     // positions per device, keyset-paged on the PK order
     const devices = await pool.query<{ id: string }>(`SELECT id::text FROM devices WHERE "tenantId" = $1 AND "accountId" = $2`, [tenantId, accountId])
@@ -146,7 +166,12 @@ export async function runExport(pool: Pool, exportDir: string, exportId: string)
 
 /** Delete expired export files + mark their rows (repeatable sweep; the DURABLE half of
  * MED-3 — the download route's lazy unlink only fires when someone hits an expired link). */
-export async function runExportSweep(pool: Pool): Promise<number> {
+export async function runExportSweep(
+  pool: Pool,
+  exportDir?: string,
+  nowMs = Date.now(),
+  onOrphan?: (n: number) => void,
+): Promise<number> {
   const expired = await pool.query<{ id: string; path: string | null }>(
     `SELECT id, path FROM export_jobs WHERE status = 'done' AND "expiresAt" < now()`,
   )
@@ -156,17 +181,66 @@ export async function runExportSweep(pool: Pool): Promise<number> {
     await pool.query(`UPDATE export_jobs SET status = 'expired', path = NULL WHERE id = $1 AND status = 'done'`, [row.id])
     removed++
   }
+  if (exportDir !== undefined) {
+    // reported SEPARATELY: an abandoned personal-data dump being reaped is not a routine expiry,
+    // and folding it into one number means "we leak a dump on every deploy" reads as normal traffic
+    const orphans = await sweepOrphanTmp(exportDir, nowMs)
+    if (orphans > 0) onOrphan?.(orphans)
+    removed += orphans
+  }
+  return removed
+}
+
+/**
+ * Ceiling on how long a `.tmp` can plausibly still be written. An export of the largest account this
+ * product sells is minutes, not hours; anything older than this belongs to a process that is gone.
+ */
+const TMP_ORPHAN_MS = 6 * 3_600_000
+
+/**
+ * Remove abandoned `.tmp` exports (audit MED).
+ *
+ * The publish is write-to-temp-then-rename, and the failure path unlinks — but only when the code
+ * reaches it. A SIGKILL, an OOM, or a deploy landing mid-export skips every `catch` and `finally`,
+ * and the row never reaches `done`, so the expiry sweep above never looks at it. What is left on
+ * the shared volume is a complete personal-data dump of one account — positions, drivers, phone
+ * numbers — with no owner, no expiry, and nothing that would ever delete it. Every restart during
+ * an export left another one.
+ *
+ * Age-gated rather than pattern-only: a `.tmp` being written RIGHT NOW by a live job looks exactly
+ * like an abandoned one, and deleting it would fail an export that was going to succeed.
+ */
+export async function sweepOrphanTmp(exportDir: string, nowMs = Date.now()): Promise<number> {
+  let names: string[]
+  try {
+    names = await readdir(exportDir)
+  } catch {
+    return 0 // directory not created yet (no export has ever run) — nothing to sweep
+  }
+  let removed = 0
+  for (const name of names) {
+    if (!name.endsWith('.tmp')) continue
+    const full = path.join(exportDir, name)
+    try {
+      const st = await stat(full)
+      if (nowMs - st.mtimeMs < TMP_ORPHAN_MS) continue
+      await unlink(full)
+      removed++
+    } catch {
+      // vanished between readdir and stat/unlink, or not ours to remove — either way, move on
+    }
+  }
   return removed
 }
 
 export const EXPORT_SWEEP_EVERY_MS = 60 * 60_000
 
 /** Repeatable sweep consumer — removes expired export files hourly. */
-export function startGdprSweepWorker(deps: Pick<GdprExportDeps, 'connection' | 'pool' | 'onSwept'>): Worker {
+export function startGdprSweepWorker(deps: Pick<GdprExportDeps, 'connection' | 'pool' | 'exportDir' | 'onSwept' | 'onOrphanTmp'>): Worker {
   return new Worker(
     GDPR_SWEEP_QUEUE,
     async () => {
-      const removed = await runExportSweep(deps.pool)
+      const removed = await runExportSweep(deps.pool, deps.exportDir, Date.now(), (n) => deps.onOrphanTmp?.(n))
       if (removed > 0) deps.onSwept?.(removed)
     },
     { connection: deps.connection, concurrency: 1 },

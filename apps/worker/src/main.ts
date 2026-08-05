@@ -342,7 +342,14 @@ async function main(): Promise<void> {
   const gdprSweepWorker = startGdprSweepWorker({
     connection: recomputeConn,
     pool,
-    onSwept: (n) => console.log(`gdpr export sweep: removed ${n} expired file(s)`),
+    // the sweep also removes abandoned .tmp exports — a deploy landing mid-export leaves a full
+    // personal-data dump on the shared volume that nothing else would ever delete
+    exportDir: process.env['EXPORT_DIR'] ?? 'var/exports',
+    onSwept: (n) => console.log(`gdpr export sweep: removed ${n} file(s)`),
+    onOrphanTmp: (n) => {
+      prom.gdprOrphanTmp.inc(n)
+      console.warn(`gdpr export sweep: reaped ${n} ABANDONED .tmp export(s) — a killed process left a full personal-data dump behind`)
+    },
   })
   await scheduleExportSweep(gdprSweepQueue)
   // Create + start a consumer for ONE shard. Reused by the initial claim AND by the leaser's

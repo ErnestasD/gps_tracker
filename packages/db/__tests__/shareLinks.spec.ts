@@ -114,4 +114,96 @@ describe('V1-nice shareLinks repo', () => {
     // but the resolve (public, unscoped) still works — the token is the capability
     expect(await db.shareLinks.resolveByHash(hashShareToken((await db.shareLinks.create(a.aScope, actor, { deviceId: a.deviceId, accountId: a.aScope.accountId, ttlHours: 24 })).token))).not.toBeNull()
   })
+
+  it('RETIRING the device revokes its live links — the public endpoint stops publishing', async () => {
+    // REGRESSION (audit MED). Retiring is how an operator says "this vehicle is no longer ours",
+    // and it left the UNAUTHENTICATED share endpoint serving that vehicle's last known position to
+    // anyone holding the URL for up to 30 more days — while the UI no longer listed the device, so
+    // nobody could find the link to revoke it by hand.
+    const a = await seedDevice('RetireShare', '356307042449001')
+    const live = await db.shareLinks.create(a.aScope, actor, { deviceId: a.deviceId, accountId: a.aScope.accountId, ttlHours: 24 * 30 })
+    expect(await db.shareLinks.resolveByHash(hashShareToken(live.token))).not.toBeNull()
+
+    await db.devices.retire(a.aScope, actor, a.deviceId.toString())
+    expect(await db.shareLinks.resolveByHash(hashShareToken(live.token))).toBeNull()
+    // …and the revocation is in the audit trail per link, not as one opaque bulk row
+    const rows = await q<{ n: string }>(
+      `SELECT count(*) n FROM audit_log WHERE entity='shareLink' AND "entityId"=$1 AND action='update'`,
+      [live.view.id],
+    )
+    expect(Number(rows[0]!.n)).toBe(1)
+  })
+
+  it('retiring a device with NO links is a no-op, and an already-revoked link is not re-revoked', async () => {
+    const a = await seedDevice('RetireNoShare', '356307042449002')
+    const link = await db.shareLinks.create(a.aScope, actor, { deviceId: a.deviceId, accountId: a.aScope.accountId, ttlHours: 24 })
+    expect(await db.shareLinks.revoke(a.aScope, actor, link.view.id)).toBe(true)
+    const before = await q<{ revokedAt: Date }>(`SELECT "revokedAt" FROM share_links WHERE id=$1`, [link.view.id])
+    await db.devices.retire(a.aScope, actor, a.deviceId.toString())
+    const after = await q<{ revokedAt: Date }>(`SELECT "revokedAt" FROM share_links WHERE id=$1`, [link.view.id])
+    expect(after[0]!.revokedAt.getTime()).toBe(before[0]!.revokedAt.getTime()) // timestamp untouched
+  })
+
+  it('retiring FREES the IMEI so returned hardware can be re-registered', async () => {
+    // REGRESSION (audit MED). `imei` was globally unique with no exception for retired rows, and
+    // retire is a soft delete — so a tracker that came back from a customer could never be
+    // registered again, by that tenant or any other, and a mis-clicked retire was unrecoverable.
+    const imei = '356307042449003'
+    const a = await seedDevice('ImeiReuse', imei)
+    await expect(
+      db.devices.create(a.aScope, actor, { accountId: a.account.id, profileId: (await q<{ id: string }>(`SELECT id FROM device_profiles LIMIT 1`))[0]!.id, imei, name: 'Dup' }),
+    ).rejects.toThrow(/already registered/i) // two ACTIVE devices still cannot share one
+
+    await db.devices.retire(a.aScope, actor, a.deviceId.toString())
+    const reclaimed = await db.devices.create(a.aScope, actor, {
+      accountId: a.account.id,
+      profileId: (await q<{ id: string }>(`SELECT id FROM device_profiles LIMIT 1`))[0]!.id,
+      imei,
+      name: 'Same tracker, new install',
+    })
+    expect(reclaimed.imei).toBe(imei)
+    // getByImei resolves the ACTIVE row, not the retired one
+    expect((await db.devices.getByImei(a.aScope, imei))?.id).toBe(reclaimed.id)
+  })
+
+  it('…and not by a sibling ACCOUNT either — the customer boundary in a TSP tenant is the account', async () => {
+    // REGRESSION (audit review HIGH). A tenant-only guard left the takeover one level down: a
+    // white-label TSP runs unrelated end-customers as accounts, `account_manager` can create
+    // devices, and the IMEI is caller-supplied text — so account B's manager could type the IMEI
+    // account A had just retired and start receiving A's vehicle. A TENANT-scoped caller may still
+    // move a device between accounts they both own; that is their fleet to reorganise.
+    const imei = '356307042449006'
+    const a = await seedDevice('AccountA', imei)
+    const otherAcct = await db.accounts.create(a.tScope, actor, { name: 'AccountB' })
+    await db.devices.retire(a.aScope, actor, a.deviceId.toString())
+    const profileId = (await q<{ id: string }>(`SELECT id FROM device_profiles LIMIT 1`))[0]!.id
+    const bScope = { tenantId: a.tenant.id, accountId: otherAcct.id }
+    await expect(
+      db.devices.create(bScope, actor, { accountId: otherAcct.id, profileId, imei, name: 'Sibling grab' }),
+    ).rejects.toThrow(/already registered/i)
+    // …while the tenant admin (no accountId pin) can move it
+    const moved = await db.devices.create(a.tScope, actor, { accountId: otherAcct.id, profileId, imei, name: 'Reassigned' })
+    expect(moved.accountId).toBe(otherAcct.id)
+  })
+
+  it('…but ONLY for the tenant that had it — a stranger cannot claim a retired IMEI', async () => {
+    // The physical tracker may still be wired to the vehicle and transmitting, and whoever holds
+    // the IMEI in `registry:imei` receives its live positions. Global uniqueness used to make this
+    // impossible; freeing the IMEI without this guard would make another company's vehicle report
+    // into your account after an ordinary self-service signup. §6.1 already notes device identity
+    // is IMEI-only and spoofable — this keeps it FORGEABLE rather than ACQUIRABLE.
+    const imei = '356307042449004'
+    const a = await seedDevice('OriginalOwner', imei)
+    await db.devices.retire(a.aScope, actor, a.deviceId.toString())
+
+    const b = await seedDevice('Stranger', '356307042449005')
+    const profileId = (await q<{ id: string }>(`SELECT id FROM device_profiles LIMIT 1`))[0]!.id
+    await expect(
+      db.devices.create(b.aScope, actor, { accountId: b.account.id, profileId, imei, name: 'Not yours' }),
+    ).rejects.toThrow(/already registered/i)
+    // …and the message says nothing about who holds it
+    await expect(
+      db.devices.create(b.aScope, actor, { accountId: b.account.id, profileId, imei, name: 'Not yours' }),
+    ).rejects.not.toThrow(/OriginalOwner|tenant/i)
+  })
 })

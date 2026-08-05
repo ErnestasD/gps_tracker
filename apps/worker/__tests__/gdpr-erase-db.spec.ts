@@ -49,8 +49,11 @@ beforeAll(async () => {
   await pool.query(`CREATE TABLE trips (id bigserial PRIMARY KEY, "deviceId" bigint, "tenantId" uuid)`)
   await pool.query(`CREATE TABLE events (id bigserial PRIMARY KEY, "deviceId" bigint, "tenantId" uuid)`)
   await pool.query(`CREATE TABLE commands (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "deviceId" bigint, "tenantId" uuid)`)
+  // sms_deliveries holds a phone number and the message body — the most directly identifying data
+  // a device produces, and the table postdates this job
+  await pool.query(`CREATE TABLE sms_deliveries (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "deviceId" bigint, "tenantId" uuid, "to" text, body text)`)
   // raw_rejects keys on IMEI, not deviceId — the erase has to reach it before the devices row goes
-  await pool.query(`CREATE TABLE raw_rejects (id bigserial PRIMARY KEY, imei text, reason text, payload bytea, "createdAt" timestamptz DEFAULT now())`)
+  await pool.query(`CREATE TABLE raw_rejects (id bigserial PRIMARY KEY, imei text, "deviceId" bigint, reason text, payload bytea, "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE usage_daily ("tenantId" uuid, "accountId" uuid, "deviceId" bigint, day date, PRIMARY KEY ("deviceId", day))`)
 
   await pool.query(`INSERT INTO devices VALUES (7, $1, $1, '356307042440030', 'Erase me', now()), (8, $1, $1, '356307042440031', 'Keep me', NULL), (9, $2, $2, '356307042440032', 'Other tenant', now())`, [T1, T2])
@@ -63,9 +66,14 @@ beforeAll(async () => {
   await pool.query(`INSERT INTO trips ("deviceId","tenantId") VALUES (7,$1),(7,$1),(8,$1)`, [T1])
   await pool.query(`INSERT INTO events ("deviceId","tenantId") VALUES (7,$1),(8,$1)`, [T1])
   await pool.query(`INSERT INTO commands ("deviceId","tenantId") VALUES (7,$1),(8,$1)`, [T1])
+  await pool.query(`INSERT INTO sms_deliveries ("deviceId","tenantId","to",body) VALUES (7,$1,'+37060000001','setparam'),(8,$1,'+37060000002','setparam')`, [T1])
   await pool.query(`INSERT INTO usage_daily ("tenantId","accountId","deviceId",day) VALUES ($1,$1,7,'2026-04-01'), ($1,$1,8,'2026-04-01')`, [T1])
   // rejections are keyed by IMEI (they predate any device resolution) and carry the raw AVL bytes
-  await pool.query(`INSERT INTO raw_rejects (imei, reason, payload) VALUES ('356307042440030','sanity','\\xdeadbeef'), ('356307042440031','sanity','\\xdeadbeef')`)
+  await pool.query(`INSERT INTO raw_rejects (imei, "deviceId", reason, payload) VALUES ('356307042440030', 7, 'sanity', '\\xdeadbeef'), ('356307042440031', 8, 'sanity', '\\xdeadbeef')`)
+  // a row from before the deviceId column existed — the erase's IMEI fallback must still reach it
+  await pool.query(`INSERT INTO raw_rejects (imei, reason, payload) VALUES ('356307042440030','sanity','\\xdeadbeef')`)
+  // …and a row for the SAME imei belonging to a different (later) device must NOT be touched
+  await pool.query(`INSERT INTO raw_rejects (imei, "deviceId", reason, payload) VALUES ('356307042440030', 99, 'sanity', '\\xdeadbeef')`)
 }, 240_000)
 
 afterAll(async () => {
@@ -90,12 +98,18 @@ describe('E08-4 runErase (cascade, real pg)', () => {
     expect(await count(`SELECT count(*) n FROM trips WHERE "deviceId"=$1`, 7)).toBe(0)
     expect(await count(`SELECT count(*) n FROM events WHERE "deviceId"=$1`, 7)).toBe(0)
     expect(await count(`SELECT count(*) n FROM commands WHERE "deviceId"=$1`, 7)).toBe(0)
+    expect(await count(`SELECT count(*) n FROM sms_deliveries WHERE "deviceId"=$1`, 7)).toBe(0)
+    expect(await count(`SELECT count(*) n FROM sms_deliveries WHERE "deviceId"=$1`, 8)).toBe(1) // the other device is untouched
     // raw_rejects keys on IMEI, so a device-id cascade misses it — and its payload embeds lat/lon
     // (§3.4), i.e. exactly the coordinates a right-to-erasure request is about
-    const rejects = await pool.query<{ n: string }>(`SELECT count(*) n FROM raw_rejects WHERE imei='356307042440030'`)
-    expect(Number(rejects.rows[0]!.n)).toBe(0)
-    const kept = await pool.query<{ n: string }>(`SELECT count(*) n FROM raw_rejects WHERE imei='356307042440031'`)
-    expect(Number(kept.rows[0]!.n)).toBe(1) // the other device's rejections are untouched
+    const mine = await pool.query<{ n: string }>(`SELECT count(*) n FROM raw_rejects WHERE "deviceId"=7 OR ("deviceId" IS NULL AND imei='356307042440030')`)
+    expect(Number(mine.rows[0]!.n)).toBe(0) // this device's rows, including the pre-column one
+    const kept = await pool.query<{ n: string }>(`SELECT count(*) n FROM raw_rejects WHERE "deviceId"=8`)
+    expect(Number(kept.rows[0]!.n)).toBe(1) // another device's rejections are untouched
+    // the SAME imei on a LATER device survives — deleting by imei would have taken it, and after a
+    // re-registration that row can belong to a different device entirely
+    const reissued = await pool.query<{ n: string }>(`SELECT count(*) n FROM raw_rejects WHERE "deviceId"=99`)
+    expect(Number(reissued.rows[0]!.n)).toBe(1)
     expect(await count(`SELECT count(*) n FROM devices WHERE id=$1`, 7)).toBe(0)
     // usage_daily is billing data — deliberately KEPT, and (audit P4) every day the device REPORTED
     // is captured BEFORE its positions are erased: 18 distinct position-days (the 2026-04-01 seed

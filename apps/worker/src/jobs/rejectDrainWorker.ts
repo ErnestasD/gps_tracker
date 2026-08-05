@@ -139,12 +139,13 @@ async function drainOnce(deps: RejectDrainDeps): Promise<{ read: number; written
       const p = decoded as RejectPayload
       rows.push({
         imei: typeof p.imei === 'string' ? p.imei : null,
+        deviceId: null, // resolved below, in one lookup for the whole window
         reason: typeof p.reason === 'string' ? p.reason : 'sanity',
         payload: p.raw instanceof Uint8Array ? p.raw : null,
       })
     } catch {
       // an undecodable entry is itself worth recording, and must not stop the drain
-      rows.push({ imei: null, reason: 'undecodable', payload: null })
+      rows.push({ imei: null, deviceId: null, reason: 'undecodable', payload: null })
     }
   }
 
@@ -152,7 +153,11 @@ async function drainOnce(deps: RejectDrainDeps): Promise<{ read: number; written
   // that passed the handshake, so a missing row means it was erased — and a GDPR erase that ran
   // while these entries were still in the stream would otherwise be undone by this very insert.
   const live = await deps.db.devices.imeisIn([...new Set(rows.map((r) => r.imei).filter((i): i is string => i !== null))])
-  const keep = rows.filter((r) => r.imei === null || live.has(r.imei))
+  const keep = rows
+    .filter((r) => r.imei === null || live.has(r.imei))
+    // stamp the resolved id: the erase keys on it, because an IMEI is unique among ACTIVE devices
+    // only and could otherwise match a retired device's rows too
+    .map((r) => (r.imei === null ? r : { ...r, deviceId: live.get(r.imei) ?? null }))
   const written = await deps.db.rawRejects.insertMany(keep)
   // The cursor advances ONLY after the insert commits — a crash in between re-reads the same window
   // and writes the rows twice, which for a diagnostic tail is the right way round.

@@ -111,7 +111,7 @@ describe('E03-3 device CRUD + registry sync', () => {
     expect(dup.status).toBe(409)
   })
 
-  it('cross-tenant IMEI clash → 409, NOT a 500 (imei is globally unique; review HIGH)', async () => {
+  it('cross-tenant IMEI clash → 409, NOT a 500 (another tenant holds it; review HIGH)', async () => {
     // seed a device under a DIFFERENT tenant directly, then try to create the same
     // IMEI in the caller's tenant — the global unique index must surface as 409
     const other = await seedUser({ databaseUrl, email: 'other@x.test', password: 'password12', role: 'tsp_admin', tenantName: 'OtherCo', accountName: 'OF' })
@@ -137,6 +137,23 @@ describe('E03-3 device CRUD + registry sync', () => {
     expect(await redis.hget('device:tenant', device.id)).toBeNull()
     // the index must shrink with it, or a retired device keeps appearing on the map
     expect(await redis.sismember(tenantDevicesKey(tenantId), device.id)).toBe(0)
+  })
+
+  it('a repeat DELETE cannot tear down the registry entry of the device that RECLAIMED the IMEI', async () => {
+    // REGRESSION (audit review HIGH). `deactivateDevice` runs before `retire` and HDELs by IMEI, and
+    // retire is idempotent — so a second DELETE on an already-retired device removed the mapping of
+    // whatever LIVE device had since taken that IMEI. That device stays retiredAt=NULL and looks
+    // active in the UI while ingest answers its handshake with 0x00 and quarantines it: no
+    // positions, no trips, no alerts, indistinguishable from a device that simply went offline.
+    const imei = '356307042440777'
+    const first = (await (await authed('/v1/devices', 'POST', { accountId, profileId, imei, name: 'Old' })).json()) as { id: string }
+    expect((await authed(`/v1/devices/${first.id}`, 'DELETE')).status).toBe(200)
+    const second = (await (await authed('/v1/devices', 'POST', { accountId, profileId, imei, name: 'Replacement' })).json()) as { id: string }
+    expect(await redis.hget('registry:imei', imei)).toBe(second.id)
+
+    // the operator (or a script) deletes the retired device again
+    expect((await authed(`/v1/devices/${first.id}`, 'DELETE')).status).toBe(200)
+    expect(await redis.hget('registry:imei', imei)).toBe(second.id) // …and the LIVE device survives
   })
 
   it('bad BigInt id → 404, not 500', async () => {

@@ -123,8 +123,15 @@ export async function dryRun(
 ): Promise<DryRunResult> {
   const result: DryRunResult = { create: [], update: [], errors: [] }
   const seenInFile = new Set<string>()
-  // one scoped read of existing devices → imei→id map (avoids N queries; AC[1] perf)
-  const existing = new Map((await db.devices.list(scope)).map((d) => [d.imei, d.id.toString()]))
+  // one scoped read of existing devices → imei→id map (avoids N queries; AC[1] perf).
+  // ACTIVE rows only: retiring frees an IMEI, so a retired row must not classify a returned tracker
+  // as an "update" — bulk re-registration is the whole point of freeing it, and it silently did
+  // nothing and reported `created: 0` with no error. `list` orders createdAt DESC and a later Map
+  // entry wins, so a retired row would also have beaten the live one and pointed the operator at a
+  // dead device id (audit review MED).
+  const existing = new Map(
+    (await db.devices.list(scope)).filter((d) => d.retiredAt === null).map((d) => [d.imei, d.id.toString()]),
+  )
   const validAccounts = new Set((await db.accounts.list(scope)).map((a) => a.id))
 
   rows.forEach((row, i) => {
