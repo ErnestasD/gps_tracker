@@ -103,7 +103,10 @@ beforeAll(async () => {
     // a loaded CI runner) — at windowS: 2 the counter expired mid-test and the 6th login answered
     // 200, which read as a lockout regression rather than a stopwatch problem. The unlock case
     // deletes the key instead of sleeping: that IS what expiry does, and it is deterministic.
-    lockout: { maxFails: 5, windowS: 30 },
+    // The per-IP / per-email ceilings are raised well out of the way here: EVERY test in this file
+    // shares one source IP, so the suite's own accumulated failures would otherwise trip an abuse
+    // ceiling meant for a stranger. The dedicated tests below build their own app with tight values.
+    lockout: { maxFails: 5, windowS: 30, maxFailsPerIp: 10_000, maxFailsPerEmail: 10_000 },
     secureCookies: false,
     trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
@@ -410,6 +413,86 @@ describe('E03-1 lockout (§6.1: 5 fails → window per IP+email)', () => {
     await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
     for (let i = 0; i < 5; i++) await login('someoneelse@orbetra.test', 'wrong')
     expect((await login(email, PW)).status).toBe(200)
+  })
+})
+
+/**
+ * The two holes the (IP, email) key shape left open (audit MED). Each gets its own app with tight
+ * ceilings and its own source IP, because the ceilings are per-IP and the rest of this file shares
+ * 127.0.0.1.
+ */
+describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
+  const servers: ReturnType<typeof createServer>[] = []
+
+  const appOn = async (
+    lockout: { maxFails: number; windowS: number; maxFailsPerIp?: number; maxFailsPerEmail?: number },
+    remoteAddr: string,
+    trustProxy = false,
+  ): Promise<string> => {
+    const app = createApp({ ...deps, lockout, trustProxy, getRemoteAddr: () => remoteAddr })
+    const srv = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    servers.push(srv)
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    return `http://127.0.0.1:${p}`
+  }
+
+  const post = (url: string, email: string, password: string, xff?: string): Promise<Response> =>
+    fetch(`${url}/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(xff !== undefined ? { 'x-forwarded-for': xff } : {}) },
+      body: JSON.stringify({ email, password }),
+    })
+
+  afterAll(async () => {
+    for (const s of servers) {
+      s.closeAllConnections?.()
+      await new Promise<void>((r) => s.close(() => r()))
+    }
+  })
+
+  it('one host cannot buy unlimited argon2 verifies by varying the email', async () => {
+    // The per-credential key is `auth:fail:<ip>:<sha256(email)>` — DIFFERENT for every address, so
+    // an attacker who never repeats an email never trips it, and each attempt still burns a full
+    // argon2id verify against the process-wide 8-slot semaphore that gates every login on the
+    // platform. Unlimited free CPU on the authentication path.
+    const url = await appOn({ maxFails: 5, windowS: 30, maxFailsPerIp: 8, maxFailsPerEmail: 10_000 }, '10.9.9.1')
+    for (let i = 0; i < 8; i++) {
+      expect((await post(url, `nobody-${i}@orbetra.test`, 'wrong')).status).toBe(401)
+    }
+    const blocked = await post(url, 'nobody-fresh@orbetra.test', 'wrong')
+    expect(blocked.status).toBe(429)
+    expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+  })
+
+  it('the per-IP budget is NOT refunded by a successful login of the attacker own account', async () => {
+    // Success clears the identity-scoped counters (a user who mistypes once must not be punished),
+    // but clearing the per-IP one too would let an attacker reset their budget by interleaving a
+    // login to an account they control.
+    const email = 'ownaccount@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn({ maxFails: 5, windowS: 30, maxFailsPerIp: 4, maxFailsPerEmail: 10_000 }, '10.9.9.2')
+    for (let i = 0; i < 3; i++) expect((await post(url, `x-${i}@orbetra.test`, 'wrong')).status).toBe(401)
+    expect((await post(url, email, PW)).status).toBe(200) // their own, valid
+    expect((await post(url, 'x-4@orbetra.test', 'wrong')).status).toBe(401) // 4th failure
+    expect((await post(url, 'x-5@orbetra.test', 'wrong')).status).toBe(429) // budget still spent
+  })
+
+  it('distributed stuffing against ONE account is capped, however many source IPs it uses', async () => {
+    // Conversely: with only a per-(IP,email) rule, every fresh source IP bought another `maxFails`
+    // attempts against the same victim, so a botnet made the rule meaningless for the one account
+    // that mattered. Each request here comes from a different address (trustProxy → rightmost XFF).
+    const email = 'stuffed@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn({ maxFails: 5, windowS: 30, maxFailsPerIp: 10_000, maxFailsPerEmail: 6 }, '10.9.9.3', true)
+    for (let i = 0; i < 6; i++) {
+      expect((await post(url, email, 'wrong', `203.0.113.${i}`)).status).toBe(401)
+    }
+    // a brand-new IP, still under BOTH the per-credential and per-IP rules — the account ceiling
+    // is the only thing standing between the victim and an unbounded guess rate
+    expect((await post(url, email, 'wrong', '203.0.113.200')).status).toBe(429)
+    // …and the victim's own correct password is refused too, which is the cost of this defence:
+    // an account under attack is temporarily locked rather than silently guessed
+    expect((await post(url, email, PW, '203.0.113.201')).status).toBe(429)
   })
 })
 

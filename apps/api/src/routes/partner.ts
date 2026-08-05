@@ -41,6 +41,11 @@ const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
 if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return n`
 const LOGIN_RL_MAX = 10 // failed logins per IP+email per window
+// Same abuse ceilings the tenant login carries (audit MED): the (IP, email) key is different for
+// every address tried, so on its own it caps nothing for an attacker willing to vary the email —
+// and it gives each source IP its own budget against one partner account.
+const LOGIN_RL_MAX_IP = 60 // failed logins per IP per window, whatever emails they name
+const LOGIN_RL_MAX_EMAIL = 30 // failed logins against ONE partner account, from anywhere
 const REDEEM_RL_MAX = 30 // set-password redeem attempts per IP per window
 const RL_WINDOW_S = 3_600
 
@@ -75,9 +80,17 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     if (!parsed.success) return problem(c, 400, 'Bad Request', 'email and password required')
     const email = parsed.data.email.trim().toLowerCase()
     // lockout gate BEFORE argon2 (attacker-driven CPU cap, parity with tenant login)
-    const lockKey = `partner:fail:${ip(c)}:${sha256(email).slice(0, 16)}`
-    if (Number((await deps.redis.get(lockKey)) ?? 0) >= LOGIN_RL_MAX) {
-      const ttl = await deps.redis.ttl(lockKey)
+    const emailHash = sha256(email).slice(0, 16)
+    const lockKey = `partner:fail:${ip(c)}:${emailHash}`
+    const gates: [string, number][] = [
+      [lockKey, LOGIN_RL_MAX],
+      [`partner:fail:ip:${ip(c)}`, LOGIN_RL_MAX_IP],
+      [`partner:fail:email:${emailHash}`, LOGIN_RL_MAX_EMAIL],
+    ]
+    const counts = await deps.redis.mget(...gates.map(([k]) => k))
+    const tripped = gates.find(([, max], i) => Number(counts[i] ?? 0) >= max)
+    if (tripped !== undefined) {
+      const ttl = await deps.redis.ttl(tripped[0])
       c.header('Retry-After', String(Math.max(1, ttl)))
       return problem(c, 429, 'Too Many Attempts', 'try again later')
     }
@@ -87,10 +100,12 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     const ok = await verifyPassword(hash, parsed.data.password)
     // only an ACTIVE partner with a set password + matching credential may sign in
     if (partner === null || partner.passwordHash === null || !ok || partner.status !== 'active') {
-      await deps.redis.eval(RL_SCRIPT, 1, lockKey, String(RL_WINDOW_S))
+      await Promise.all(gates.map(([k]) => deps.redis.eval(RL_SCRIPT, 1, k, String(RL_WINDOW_S))))
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
-    await deps.redis.del(lockKey)
+    // identity-scoped counters only: the per-IP budget deliberately survives a successful login, so
+    // it cannot be refunded by signing into an account the attacker controls
+    await deps.redis.del(lockKey, `partner:fail:email:${emailHash}`)
     const token = await mintPartnerToken(partner.id, deps.jwtSecret, ttlS)
     c.header('Cache-Control', 'no-store')
     return c.json({ accessToken: token, expiresInS: ttlS })

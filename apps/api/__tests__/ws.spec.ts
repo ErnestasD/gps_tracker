@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 
 import { attachWsGateway, createApp, issueTicket, type WsDeps } from '../src/index.js'
-import { markSessionsRevoked, WS_REVOKED_CLOSE } from '../src/ws.js'
+import { markSessionsRevoked, WS_REVOKED_CLOSE, WS_SLOW_CONSUMER_CLOSE } from '../src/ws.js'
 import { mintTestToken, testApiDeps } from './helpers/auth.js'
 
 let container: StartedTestContainer
@@ -190,6 +190,90 @@ describe('E02-4 ws-ticket + live gateway', () => {
       ])
       expect(res.code).toBe(WS_REVOKED_CLOSE)
       expect(res.reason).toBe('reauthorize') // distinguishable from a real revocation
+    } finally {
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+      localWss.close()
+    }
+  })
+
+  it('cuts a subscriber whose send buffer runs away — one dead peer must not buffer the tenant feed', async () => {
+    // REGRESSION (audit MED). The fanout was `if (OPEN) ws.send(message)` with no ceiling: `ws`
+    // queues everything the peer has not read into the process heap and Node's socket buffer is
+    // unbounded, so a phone that lost signal mid-handover accumulated its tenant's ENTIRE live feed
+    // in API memory. Here the client's TCP socket is PAUSED, which is exactly what a vanished peer
+    // looks like from the server: still OPEN, never reading, and never acknowledging anything —
+    // which is why the assertion is made on the SERVER's signal, not on a client close event that a
+    // stalled peer by definition cannot deliver.
+    let slowConsumers = 0
+    const bpDeps: WsDeps = { redis, redisSub, ticketTtlS: 30, maxBufferedBytes: 1 }
+    const srv = serve({ fetch: createApp(testApiDeps(bpDeps)).fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    const localWss = attachWsGateway(srv, bpDeps, undefined, () => { slowConsumers++ })
+    let ws: WebSocket | undefined
+    try {
+      const ticket = await issueTicket(bpDeps, { userId: `slow-${Date.now()}`, tenantId: 't-slow', role: 'tsp_admin' })
+      ws = new WebSocket(`ws://127.0.0.1:${p}/v1/stream?ticket=${ticket}`)
+      const closed = new Promise<number>((resolve) => ws!.on('close', (code) => resolve(code)))
+      await new Promise<void>((resolve, reject) => {
+        ws!.once('open', () => resolve())
+        ws!.once('error', reject)
+      })
+      // stop reading at the socket level: the kernel receive window closes, the server's writes
+      // stop draining, and its bufferedAmount climbs — no cooperation from the client library needed
+      const sock = (ws as unknown as { _socket: { pause: () => void; resume: () => void } })._socket
+      sock.pause()
+
+      const payload = JSON.stringify({ deviceId: '1', accountId: null, filler: 'x'.repeat(8_000) })
+      const t0 = Date.now()
+      while (slowConsumers === 0) {
+        if (Date.now() - t0 > 10_000) throw new Error('slow consumer was never cut')
+        for (let i = 0; i < 200; i++) await redis.publish('live:t-slow', payload)
+        await new Promise((r) => setTimeout(r, 25))
+      }
+      // the peer, once it reads again, learns WHY — a distinct code the SPA can act on
+      sock.resume()
+      expect(
+        await Promise.race([
+          closed,
+          new Promise<number>((_, rej) => setTimeout(() => rej(new Error('no close frame')), 5_000)),
+        ]),
+      ).toBe(WS_SLOW_CONSUMER_CLOSE)
+      // …and the server-side socket is released, not merely marked closing: everything queued on it
+      // is what we were trying to free
+      const t1 = Date.now()
+      while (localWss.clients.size > 0) {
+        if (Date.now() - t1 > 3_000) throw new Error('cut socket was never released')
+        await new Promise((r) => setTimeout(r, 25))
+      }
+    } finally {
+      ws?.terminate() // a stalled peer never completes the closing handshake; do not wait for it
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+      localWss.close()
+    }
+  })
+
+  it('terminates a socket that stops answering pings — a half-open TCP link is invisible otherwise', async () => {
+    // Without a heartbeat a connection whose peer vanished without a FIN stays readyState OPEN in
+    // `subscribers` until the OS keepalive fires (~2 h on Linux): it counts against ws_clients, and
+    // every fanout writes to it. `autoPong: false` makes the client behave exactly like that peer.
+    const hbDeps: WsDeps = { redis, redisSub, ticketTtlS: 30, pingIntervalMs: 60 }
+    const srv = serve({ fetch: createApp(testApiDeps(hbDeps)).fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    const localWss = attachWsGateway(srv, hbDeps)
+    try {
+      const ticket = await issueTicket(hbDeps, { userId: `hb-${Date.now()}`, tenantId: 't-hb', role: 'tsp_admin' })
+      const ws = new WebSocket(`ws://127.0.0.1:${p}/v1/stream?ticket=${ticket}`, { autoPong: false })
+      const closed = new Promise<void>((resolve) => ws.on('close', () => resolve()))
+      await new Promise<void>((resolve, reject) => {
+        ws.once('open', () => resolve())
+        ws.once('error', reject)
+      })
+      await Promise.race([
+        closed,
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('unresponsive socket was never reaped')), 5_000)),
+      ])
     } finally {
       srv.closeAllConnections?.()
       await new Promise<void>((r) => srv.close(() => r()))

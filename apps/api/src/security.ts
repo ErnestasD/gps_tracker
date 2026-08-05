@@ -33,3 +33,28 @@ export function securityHeaders(opts: { hsts: boolean }): MiddlewareHandler {
     if (opts.hsts) c.header('Strict-Transport-Security', hstsValue)
   }
 }
+
+/**
+ * Atomic fixed-window counter: INCR, and arm the TTL on the first hit OR whenever the key somehow
+ * lost one (`TTL < 0`) — an unexpiring counter would lock a caller out permanently. Returns the
+ * post-increment count; the caller compares it against its own ceiling.
+ *
+ * Fails OPEN (returns 0) on a Redis error: a rate limiter is a guard rail, and an availability
+ * blip in Redis must not take the whole API down with it.
+ */
+const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
+if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return n`
+
+export async function fixedWindowCount(
+  redis: { eval(script: string, numKeys: number, ...args: (string | number)[]): Promise<unknown> } | undefined,
+  key: string,
+  windowS: number,
+): Promise<number> {
+  if (redis === undefined) return 0
+  try {
+    return (await redis.eval(RL_SCRIPT, 1, key, String(windowS))) as number
+  } catch {
+    return 0
+  }
+}

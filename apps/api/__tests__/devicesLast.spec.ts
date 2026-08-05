@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { LiveEvent } from '@orbetra/shared'
 
 import { createApp, type WsDeps } from '../src/index.js'
+import { tenantDevicesKey } from '../src/routes/deviceRegistry.js'
 import { mintTestToken, testApiDeps } from './helpers/auth.js'
 
 let container: StartedTestContainer
@@ -39,6 +40,7 @@ const compact = (deviceId: string, accountId: string | null): LiveEvent => ({
 
 async function seedDevice(deviceId: string, tenant: string, account: string | null): Promise<void> {
   await redis.hset('device:tenant', deviceId, tenant)
+  await redis.sadd(tenantDevicesKey(tenant), deviceId) // per-tenant index — what the route reads
   if (account !== null) await redis.hset('device:account', deviceId, account)
   const event = compact(deviceId, account)
   await redis.hset(`device:${deviceId}:last`, {
@@ -118,7 +120,9 @@ describe('E02-6 GET /v1/devices/last snapshot', () => {
   it('devices mapped but never reported are omitted; malformed state is skipped not fatal', async () => {
     await seedDevice('dev-a', 't1', null)
     await redis.hset('device:tenant', 'dev-silent', 't1') // no :last hash
+    await redis.sadd(tenantDevicesKey('t1'), 'dev-silent')
     await redis.hset('device:tenant', 'dev-broken', 't1')
+    await redis.sadd(tenantDevicesKey('t1'), 'dev-broken')
     await redis.hset('device:dev-broken:last', { fixTimeMs: '1', json: '{not json' })
     const res = await getLast(tenantPort, TOKEN_TENANT)
     expect(res.status).toBe(200)
@@ -129,5 +133,40 @@ describe('E02-6 GET /v1/devices/last snapshot', () => {
   it('empty tenant → empty list (not an error)', async () => {
     const body = (await (await getLast(tenantPort, TOKEN_TENANT)).json()) as { devices: LiveEvent[] }
     expect(body.devices).toEqual([])
+  })
+
+  it('a STALE index member cannot leak another tenant device (index is a hint, not the authority)', async () => {
+    // The per-tenant set is derived state with several writers (CRUD activate/deactivate, boot
+    // rehydrate) — assume it CAN drift. `device:tenant` stays authoritative and the route
+    // re-verifies every candidate against it, so drift costs a wasted lookup, never a leak.
+    await seedDevice('dev-a', 't1', null)
+    await seedDevice('dev-x', 't2', null) // genuinely t2's
+    await redis.sadd(tenantDevicesKey('t1'), 'dev-x') // …but wrongly indexed under t1
+    await redis.sadd(tenantDevicesKey('t1'), 'dev-gone') // and one that no longer exists at all
+    const body = (await (await getLast(tenantPort, TOKEN_TENANT)).json()) as { devices: LiveEvent[] }
+    expect(body.devices.map((d) => d.deviceId)).toEqual(['dev-a'])
+  })
+
+  it('does not scan the platform: another tenant fleet costs the caller nothing', async () => {
+    // Regression guard for the audit finding. The route used to HGETALL `device:tenant` — every
+    // device on the platform — so this assertion is about the SHAPE of the read, not the output:
+    // the caller must touch only its own index.
+    await seedDevice('dev-a', 't1', null)
+    for (let i = 0; i < 200; i++) await seedDevice(`t2-dev-${i}`, 't2', null)
+    const body = (await (await getLast(tenantPort, TOKEN_TENANT)).json()) as { devices: LiveEvent[] }
+    expect(body.devices.map((d) => d.deviceId)).toEqual(['dev-a'])
+    expect(await redis.scard(tenantDevicesKey('t1'))).toBe(1) // caller's index stayed small
+    expect(await redis.hlen('device:tenant')).toBe(201) // the platform-wide hash did NOT
+  })
+
+  it('rate-limits per user (audit MED: unrate-limited snapshot was a free platform scan)', async () => {
+    await seedDevice('dev-a', 't1', null)
+    const port = await startApp()
+    // default is 60/min; drive one user past it and expect 429 rather than unbounded work
+    let last = 200
+    for (let i = 0; i < 62 && last === 200; i++) last = (await getLast(port, TOKEN_TENANT)).status
+    expect(last).toBe(429)
+    // …and a DIFFERENT user is unaffected (the window is keyed per user, not global)
+    expect((await getLast(port, TOKEN_ACC)).status).toBe(200)
   })
 })

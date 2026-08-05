@@ -54,6 +54,10 @@ async function main(): Promise<void> {
   for (const { imei, deviceId } of entries) {
     pipeline.hset('registry:imei', imei, deviceId)
     pipeline.hset('device:tenant', deviceId, tenant)
+    // per-tenant index — what `GET /v1/devices/last` reads. `device:tenant` alone is no longer
+    // enough: the snapshot stopped scanning the platform-wide hash (audit MED), so a device seeded
+    // without this is invisible on the map until it next reports over the WS feed.
+    pipeline.sadd(`tenant:${tenant}:devices`, deviceId)
     if (account !== '') pipeline.hset('device:account', deviceId, account)
   }
   await pipeline.exec()

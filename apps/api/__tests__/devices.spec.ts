@@ -12,6 +12,7 @@ import { seedProfiles } from '../../../packages/db/seed/profiles.js'
 import { seedUser } from '../../../packages/db/seed/users.js'
 import { createApp } from '../src/app.js'
 import { luhnValid, parseCsv } from '../src/routes/deviceImport.js'
+import { tenantDevicesKey } from '../src/routes/deviceRegistry.js'
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 
 const PG_IMAGE = 'timescale/timescaledb-ha:pg16'
@@ -100,6 +101,8 @@ describe('E03-3 device CRUD + registry sync', () => {
     expect(await redis.hget('registry:imei', '356307042440111')).toBe(device.id)
     expect(await redis.hget('device:tenant', device.id)).toBe(tenantId)
     expect(await redis.hget('device:account', device.id)).toBe(accountId)
+    // …and the per-tenant index the map snapshot reads (audit MED: it used to scan the platform)
+    expect(await redis.sismember(tenantDevicesKey(tenantId), device.id)).toBe(1)
   })
 
   it('duplicate IMEI → 409 (not a 500 from the unique constraint)', async () => {
@@ -132,6 +135,8 @@ describe('E03-3 device CRUD + registry sync', () => {
     expect(del.status).toBe(200)
     expect(await redis.hget('registry:imei', '356307042440333')).toBeNull()
     expect(await redis.hget('device:tenant', device.id)).toBeNull()
+    // the index must shrink with it, or a retired device keeps appearing on the map
+    expect(await redis.sismember(tenantDevicesKey(tenantId), device.id)).toBe(0)
   })
 
   it('bad BigInt id → 404, not 500', async () => {

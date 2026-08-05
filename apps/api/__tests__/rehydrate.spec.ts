@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { Db } from '@orbetra/db'
 import { ibuttonKeyFromHex } from '@orbetra/shared'
 
+import { tenantDevicesKey } from '../src/routes/deviceRegistry.js'
 import { rehydrateRegistries } from '../src/rehydrate.js'
 
 /**
@@ -14,13 +15,18 @@ import { rehydrateRegistries } from '../src/rehydrate.js'
 const T = '11111111-1111-1111-1111-111111111111'
 const A = '22222222-2222-2222-2222-222222222222'
 
-function fakeRedis(store: Map<string, Record<string, string>>): Redis {
+function fakeRedis(store: Map<string, Record<string, string>>, sets = new Map<string, Set<string>>()): Redis {
   const set = (k: string, f: string, v: string) => { const h = store.get(k) ?? {}; h[f] = v; store.set(k, h) }
+  const sadd = (k: string, m: string) => { const s = sets.get(k) ?? new Set<string>(); s.add(m); sets.set(k, s) }
   return {
     hset: (k: string, f: string, v: string) => { set(k, f, v); return Promise.resolve(1) },
-    // rehydrate uses a pipeline: a chainable hset + exec
+    // rehydrate uses a pipeline: a chainable hset/sadd + exec
     pipeline: () => {
-      const chain = { hset: (k: string, f: string, v: string) => { set(k, f, v); return chain }, exec: () => Promise.resolve([]) }
+      const chain = {
+        hset: (k: string, f: string, v: string) => { set(k, f, v); return chain },
+        sadd: (k: string, m: string) => { sadd(k, m); return chain },
+        exec: () => Promise.resolve([]),
+      }
       return chain
     },
   } as unknown as Redis
@@ -76,5 +82,22 @@ describe('rehydrateRegistries', () => {
     expect(store.get('device:tenant')?.['42']).toBe(T)
     expect(store.get('device:account')?.['42']).toBe(A)
     expect(JSON.parse(store.get('device:config')?.['42'] ?? '{}')).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'gps' })
+  })
+
+  it('rebuilds the per-tenant device INDEX too — else /v1/devices/last is empty after a Redis flush', async () => {
+    // The index is what makes the snapshot O(caller) instead of O(platform). It is derived state
+    // with no other writer on this path, so if the boot backfill forgets it the map silently shows
+    // nothing until each device is next EDITED — the same class of failure as audit D1 itself.
+    const store = new Map<string, Record<string, string>>()
+    const sets = new Map<string, Set<string>>()
+    const devs: FakeDevice[] = [
+      { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'p', odometerSource: 'gps' },
+      { id: 43n, imei: '356307042440001', tenantId: T, accountId: A, profileId: 'p', odometerSource: 'gps' },
+      { id: 99n, imei: '356307042440002', tenantId: 'other-tenant', accountId: A, profileId: 'p', odometerSource: 'gps' },
+    ]
+    await rehydrateRegistries(fakeRedis(store, sets), fakeDb([], [], devs, [{ id: 'p', presenceRules: {} }]))
+
+    expect([...(sets.get(tenantDevicesKey(T)) ?? [])].sort()).toEqual(['42', '43'])
+    expect([...(sets.get(tenantDevicesKey('other-tenant')) ?? [])]).toEqual(['99'])
   })
 })

@@ -8,6 +8,17 @@ import type { Redis } from 'ioredis'
  * runs (AC[2]). Lives in the API layer, NOT packages/db (that stays pure DB).
  */
 
+/**
+ * Per-tenant device index. `device:tenant` maps device→tenant, which answers "whose is this one?"
+ * but forces a PLATFORM-WIDE HGETALL to answer "which are mine?" — the shape `/v1/devices/last`
+ * used, so one tenant's snapshot request scaled with every other tenant's fleet (audit MED).
+ *
+ * A hint, never the authority: `device:tenant` stays the source of truth and the reader
+ * re-verifies ownership against it, so a stale member can only cost a wasted lookup, never a
+ * cross-tenant leak.
+ */
+export const tenantDevicesKey = (tenantId: string): string => `tenant:${tenantId}:devices`
+
 export interface RegistryDevice {
   id: bigint
   imei: string
@@ -20,11 +31,17 @@ export interface RegistryDevice {
 
 export async function activateDevice(redis: Redis, d: RegistryDevice): Promise<void> {
   const id = d.id.toString()
+  // If this device was previously registered to a DIFFERENT tenant, drop it from that tenant's
+  // index — otherwise the old owner keeps a member pointing at a device it no longer owns. Read
+  // first, outside the MULTI: a CRUD write, not a hot path.
+  const prevTenant = await redis.hget('device:tenant', id)
   const m = redis
     .multi()
     .hset('registry:imei', d.imei, id)
     .hset('device:tenant', id, d.tenantId)
     .hset('device:account', id, d.accountId)
+    .sadd(tenantDevicesKey(d.tenantId), id)
+  if (prevTenant !== null && prevTenant !== d.tenantId) m.srem(tenantDevicesKey(prevTenant), id)
   if (d.config !== undefined) {
     m.hset('device:config', id, JSON.stringify({ presenceRules: d.config.presenceRules ?? {}, odometerSource: d.config.odometerSource }))
   }
@@ -39,12 +56,15 @@ export async function syncDeviceConfig(redis: Redis, id: bigint, presenceRules: 
 
 export async function deactivateDevice(redis: Redis, d: { id: bigint; imei: string }): Promise<void> {
   const id = d.id.toString()
-  await redis
+  // the index entry is keyed by tenant, so it needs the mapping BEFORE the hash row is deleted
+  const tenantId = await redis.hget('device:tenant', id)
+  const m = redis
     .multi()
     .hdel('registry:imei', d.imei)
     .hdel('device:tenant', id)
     .hdel('device:account', id)
     .hdel('device:config', id)
     .del(`device:${id}:last`)
-    .exec()
+  if (tenantId !== null) m.srem(tenantDevicesKey(tenantId), id)
+  await m.exec()
 }

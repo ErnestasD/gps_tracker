@@ -132,6 +132,22 @@ describe('partner self-service auth (F5)', () => {
     expect((await login(sus.email, sus.password)).status).toBe(401)
   })
 
+  it('the per-IP ceiling stops an attacker who varies the email to dodge the per-credential key', async () => {
+    // The per-(IP,email) key is a different key for every address tried, so on its own it bounds
+    // nothing for someone who never repeats one — and each attempt still burns a full argon2id
+    // verify on the shared semaphore. Mirror of the tenant-login finding (audit MED). The ceiling
+    // is 60/h per IP and every test in this file shares 127.0.0.1, so the counter is cleared first
+    // to make the assertion about the RULE and not about what ran before it.
+    await redis.del('partner:fail:ip:127.0.0.1')
+    let blocked = 0
+    for (let i = 0; i < 61 && blocked === 0; i++) {
+      const res = await login(`ghost-${i}@partner.co`, 'partnerpass1') // never the same email twice
+      if (res.status === 429) blocked = i
+    }
+    expect(blocked).toBeGreaterThan(0)
+    await redis.del('partner:fail:ip:127.0.0.1') // leave the shared IP clean for the other tests
+  })
+
   it('suspending a partner AFTER login revokes its live token immediately (review MED)', async () => {
     const p = await makePartner('revoke@partner.co', 'partnerpass1')
     const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken

@@ -118,6 +118,11 @@ const deps = {
   lockout: {
     maxFails: Number(process.env['LOCKOUT_MAX_FAILS'] ?? 5),
     windowS: Number(process.env['LOCKOUT_WINDOW_S'] ?? 900),
+    // Deliberately far above maxFails: these are ABUSE ceilings, not the per-credential rule, and a
+    // whole office or a mobile carrier NAT shares one source IP. 50 failed logins per 15 min from a
+    // single address, or 20 against one account from anywhere, is not a human getting it wrong.
+    maxFailsPerIp: Number(process.env['LOCKOUT_MAX_FAILS_PER_IP'] ?? 50),
+    maxFailsPerEmail: Number(process.env['LOCKOUT_MAX_FAILS_PER_EMAIL'] ?? 20),
   },
   // Caddy on-demand-TLS ask throttle per source IP (E03-5); DNS TXT verify uses
   // the real resolver by default (no env — tests inject a mock).
@@ -136,7 +141,7 @@ const deps = {
 const app = createApp(deps, prom)
 
 const httpServer = serve({ fetch: app.fetch, port, createServer }) as ReturnType<typeof createServer>
-attachWsGateway(httpServer, deps, (n) => prom.setWsClients(n))
+attachWsGateway(httpServer, deps, (n) => prom.setWsClients(n), () => prom.wsSlowConsumer.inc())
 console.log(`orbetra api listening on :${port} (auth live, ws_clients metric live)`)
 
 // Boot backfill (DB→Redis): repopulate the geofence + iButton caches in case Redis was flushed;

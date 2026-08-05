@@ -3,6 +3,7 @@ import type { Redis } from 'ioredis'
 import type { Db } from '@orbetra/db'
 import { ibuttonKeyFromHex } from '@orbetra/shared'
 
+import { tenantDevicesKey } from './routes/deviceRegistry.js'
 import { geofenceCacheEntry } from './routes/geofenceRegistry.js'
 
 /**
@@ -27,6 +28,7 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
     pipe.hset('device:tenant', id, d.tenantId)
     pipe.hset('device:account', id, d.accountId)
     pipe.hset('device:config', id, JSON.stringify({ presenceRules: profileRules.get(d.profileId) ?? {}, odometerSource: d.odometerSource }))
+    pipe.sadd(tenantDevicesKey(d.tenantId), id)
     devices++
   }
   let geofences = 0

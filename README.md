@@ -93,7 +93,8 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `JWT_TTL` | apps/api | Access-token TTL seconds, default `900` (15 min) |
 | `REFRESH_TTL` | apps/api | Refresh-token TTL seconds (sliding), default `1209600` (14 d) |
 | `RESET_TOKEN_TTL` | apps/api | Password-reset link lifetime seconds (ADR-031), default `3600` (1 h) |
-| `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout (§6.1), defaults `5` / `900` |
+| `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout per (IP, email) (§6.1), defaults `5` / `900` |
+| `LOCKOUT_MAX_FAILS_PER_IP` / `LOCKOUT_MAX_FAILS_PER_EMAIL` | apps/api | Abuse ceilings in the same window, defaults `50` / `20`. The per-(IP,email) key alone caps nothing for one host varying the email, and gives every source IP its own budget against one account |
 | `WS_TICKET_TTL` | apps/api | WS `/v1/stream` one-time ticket TTL seconds (§6.7), default `30` |
 | `ARGON2_MAX_CONCURRENT` | apps/api | Max concurrent argon2 password hashes (back-pressures login/CPU), default `8` |
 | `ARGON2_MAX_WAITING` | apps/api | Max requests QUEUED for an argon2 slot before shedding with 503, default `64` (≈0.9 s of queueing). An unbounded queue turns a flood on any hashing route into a platform-wide login stall |

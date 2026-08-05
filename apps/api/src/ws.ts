@@ -30,6 +30,11 @@ export interface WsDeps {
   /** Hard ceiling on one socket's lifetime (default 4 h). A stream is authorized only at connect,
    *  so this is what makes plan/role/scope changes eventually reach an already-open one. */
   maxSocketLifetimeMs?: number
+  /** Heartbeat period (default 30 s). A socket that misses one round trip is terminated — without
+   *  it a half-open connection lingers until the OS keepalive, ~2 h on Linux. */
+  pingIntervalMs?: number
+  /** Send-buffer ceiling per socket before it is cut as a slow consumer (default 1 MB). */
+  maxBufferedBytes?: number
 }
 
 /** Redis key prefix for the "all sessions revoked at" marker (audit MED). */
@@ -38,6 +43,18 @@ export const WS_REVOKE_PREFIX = 'ws:revoke:'
 const WS_REVOKE_TTL_S = 24 * 3_600
 /** WS close code for a revoked session (application range; distinct from protocol codes). */
 export const WS_REVOKED_CLOSE = 4401
+/** WS close code for a subscriber that stopped reading fast enough to keep up with its feed. */
+export const WS_SLOW_CONSUMER_CLOSE = 4408
+/**
+ * How much unread data may sit in one socket's send buffer before we cut it.
+ *
+ * A live position payload is a few hundred bytes, so 1 MB is thousands of updates behind — far
+ * past "briefly busy" and squarely at "this peer is gone". Below this the socket is simply slow;
+ * above it, it is a memory leak with a URL.
+ */
+export const MAX_WS_BUFFERED_BYTES = 1024 * 1024
+/** Grace for a cut subscriber to complete the closing handshake before the socket is destroyed. */
+const SLOW_CONSUMER_TERMINATE_MS = 1_000
 
 /**
  * Record that EVERY session of `userId` was revoked at `at` (ms). The WS gateway tears down any
@@ -109,6 +126,9 @@ export function attachWsGateway(
   server: Server,
   deps: WsDeps,
   onClientCountChange?: (n: number) => void,
+  /** Fired when a socket is cut for falling too far behind its feed — a slow-consumer rate is a
+   *  client or network problem, and without a counter it is invisible. */
+  onSlowConsumer?: () => void,
 ): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
   const subscribers = new Map<string, Set<{ ws: WebSocket; ctx: WsAuthContext; establishedAt: number }>>()
@@ -157,7 +177,38 @@ export function attachWsGateway(
     })()
   }, revokeMs)
   revokeTimer.unref?.()
-  wss.on('close', () => clearInterval(revokeTimer))
+
+  // HEARTBEAT. Nothing pinged: `WebSocketServer` does not do it by itself, so a half-open TCP
+  // connection — laptop lid closed, mobile handover, NAT timeout — kept `readyState === OPEN` and
+  // stayed in `subscribers` until the OS keepalive fired, which on Linux defaults to ~2 hours. The
+  // API would happily write a fleet's entire position stream into a socket whose peer vanished
+  // ninety minutes ago. A socket that misses one round trip is terminated, not closed politely:
+  // there is no peer left to negotiate with. Audit MED.
+  const alive = new WeakSet<WebSocket>()
+  const pingMs = deps.pingIntervalMs ?? 30_000
+  const maxBuffered = deps.maxBufferedBytes ?? MAX_WS_BUFFERED_BYTES
+  const pingTimer = setInterval(() => {
+    for (const set of subscribers.values()) {
+      for (const { ws } of set) {
+        if (!alive.has(ws)) {
+          ws.terminate()
+          continue
+        }
+        alive.delete(ws)
+        try {
+          ws.ping()
+        } catch {
+          /* already closing */
+        }
+      }
+    }
+  }, pingMs)
+  pingTimer.unref?.()
+
+  wss.on('close', () => {
+    clearInterval(revokeTimer)
+    clearInterval(pingTimer)
+  })
 
   const ensureSubscription = (): Promise<void> => {
     // promise (not flag): a second concurrent upgrade awaits the ACTUAL subscription
@@ -178,7 +229,26 @@ export function attachWsGateway(
           // unmapped device (null) fails CLOSED for account-scoped users
           if (ctx.accountId !== undefined && accountId !== ctx.accountId) continue
           try {
-            if (ws.readyState === ws.OPEN) ws.send(message)
+            if (ws.readyState !== ws.OPEN) continue
+            // BACKPRESSURE. `ws` queues everything the peer has not read into the process heap, and
+            // Node's socket write buffer is unbounded — so a subscriber that stops reading (a phone
+            // that lost signal, a laptop lid closed mid-handover) had the tenant's ENTIRE live feed
+            // accumulate in API memory until the process died. There is no useful way to slow a
+            // position stream down, so the honest policy is to cut the socket: the client
+            // reconnects and re-reads current state, which is what it wanted anyway. Audit MED.
+            if (ws.bufferedAmount > maxBuffered) {
+              onSlowConsumer?.()
+              // close() first, so a client that IS reading learns why and can back off; but a peer
+              // that stalled will never complete the closing handshake, and `ws` then holds the
+              // socket — and everything already queued on it — for its full 30 s close timeout.
+              // That is the memory we are trying to release, so the wait is bounded to 1 s.
+              ws.close(WS_SLOW_CONSUMER_CLOSE, 'too slow')
+              setTimeout(() => {
+                if (ws.readyState !== ws.CLOSED) ws.terminate()
+              }, SLOW_CONSUMER_TERMINATE_MS).unref?.()
+              continue
+            }
+            ws.send(message)
           } catch {
             // one closing socket must not starve the rest of the fanout
           }
@@ -218,6 +288,9 @@ export function attachWsGateway(
       await ensureSubscription()
       wss.handleUpgrade(req, socket, head, (ws) => {
         const entry = { ws, ctx, establishedAt }
+        // a fresh socket counts as alive until it misses a heartbeat round trip
+        alive.add(ws)
+        ws.on('pong', () => alive.add(ws))
         const set = subscribers.get(ctx.tenantId) ?? new Set()
         set.add(entry)
         subscribers.set(ctx.tenantId, set)

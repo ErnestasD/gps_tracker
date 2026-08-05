@@ -56,7 +56,13 @@ export interface AuthRouteDeps {
   jwtSecret: string
   jwtTtlS: number
   refreshTtlS: number
-  lockout: { maxFails: number; windowS: number }
+  /**
+   * Failed-login ceilings inside `windowS`. `maxFails` is the documented per (IP, email) rule;
+   * the other two close the holes that key shape leaves open — one IP varying the email, and many
+   * IPs stuffing one account. Defaults derive from maxFails so a deployment that only sets it
+   * still gets all three.
+   */
+  lockout: { maxFails: number; windowS: number; maxFailsPerIp?: number; maxFailsPerEmail?: number }
   secureCookies: boolean
   /** Trust X-Forwarded-For (prod behind Caddy only). */
   trustProxy: boolean
@@ -168,11 +174,34 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     const email = body.data.email.trim().toLowerCase()
     const ip = clientIp(c.req.header('x-forwarded-for'), getRemoteAddr(c), deps.trustProxy)
 
-    // lockout gate BEFORE any DB/argon2 work (§6.1: 5 fails → 15 min per IP+email)
-    const lockKey = `auth:fail:${ip}:${sha256(email).slice(0, 16)}`
-    const fails = Number((await deps.redis.get(lockKey)) ?? 0)
-    if (fails >= deps.lockout.maxFails) {
-      const ttl = await deps.redis.ttl(lockKey)
+    // Lockout gates BEFORE any DB/argon2 work (§6.1). THREE keys, because the original single
+    // (IP, email) key left two holes open (audit MED):
+    //
+    //  - per (IP, email) — the documented 5-fails rule, unchanged.
+    //  - per IP — the (IP,email) key is DIFFERENT for every email, so one host could send unlimited
+    //    attempts simply by varying the address, and every one of them burned a full argon2id
+    //    verify against the shared 8-slot semaphore that every login queues on. Unlimited free CPU
+    //    on the endpoint that gates the whole product.
+    //  - per EMAIL — conversely, credential stuffing against one real account got `maxFails` free
+    //    attempts PER SOURCE IP with no account-level ceiling, so N hosts bought 5N attempts on the
+    //    same victim. A botnet made the per-IP rule meaningless for the account that mattered.
+    //
+    // Counted on FAILURE only and reset on success, so a legitimate user who mistypes once and then
+    // succeeds is never penalised, and a busy office behind one NAT is bounded by attempts that
+    // actually failed rather than by traffic.
+    const emailHash = sha256(email).slice(0, 16)
+    const lockKey = `auth:fail:${ip}:${emailHash}`
+    const ipKey = `auth:fail:ip:${ip}`
+    const emailKey = `auth:fail:email:${emailHash}`
+    const gates: [string, number][] = [
+      [lockKey, deps.lockout.maxFails],
+      [ipKey, deps.lockout.maxFailsPerIp ?? deps.lockout.maxFails * 10],
+      [emailKey, deps.lockout.maxFailsPerEmail ?? deps.lockout.maxFails * 4],
+    ]
+    const counts = await deps.redis.mget(...gates.map(([k]) => k))
+    const trippedIdx = gates.findIndex(([, max], i) => Number(counts[i] ?? 0) >= max)
+    if (trippedIdx >= 0) {
+      const ttl = await deps.redis.ttl(gates[trippedIdx]![0])
       c.header('Retry-After', String(Math.max(1, ttl)))
       return problem(c, 429, 'Too Many Attempts', 'try again later')
     }
@@ -191,7 +220,9 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
 
     if (verified.length === 0) {
       // atomic INCR + (re-armed) EXPIRE — never strands a TTL-less key (review LOW-2)
-      await deps.redis.eval(LOCKOUT_SCRIPT, 1, lockKey, String(deps.lockout.windowS))
+      await Promise.all(
+        gates.map(([k]) => deps.redis.eval(LOCKOUT_SCRIPT, 1, k, String(deps.lockout.windowS))),
+      )
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
     if (verified.length > 1) {
@@ -201,7 +232,9 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       return problem(c, 409, 'Ambiguous Identity', 'contact your administrator', 'https://orbetra.dev/problems/ambiguous-identity')
     }
 
-    await deps.redis.del(lockKey) // success resets the counter
+    // success clears the identity-scoped counters; the per-IP one deliberately SURVIVES, so an
+    // attacker cannot wipe their own budget by interleaving one valid login of their own
+    await deps.redis.del(lockKey, emailKey)
     const user = verified[0]!
     const { session, rawRefresh } = await issueSession(user, randomUUID())
     setRefreshCookie(c, rawRefresh)
