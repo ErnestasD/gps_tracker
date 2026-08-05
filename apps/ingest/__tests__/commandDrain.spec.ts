@@ -23,27 +23,30 @@ const CONFIG = {
   maxFutureMs: 48 * 3_600_000,
 } as unknown as SessionDeps['config']
 
-/** A socket that records writes and can be made to throw on the next one. */
-function fakeSocket() {
+/**
+ * A socket that records writes and can be marked dead the way a real one is.
+ *
+ * Deliberately NOT a socket whose `write` throws: `net.Socket.write()` does not throw synchronously
+ * on a dead peer — it returns false and emits `error` asynchronously — so a test built on a throwing
+ * write certifies behaviour that cannot occur, which is how the first version of this fix shipped a
+ * rollback path that could never run.
+ */
+function fakeSocket(state: { destroyed?: boolean; writableEnded?: boolean } = {}) {
   const writes: Buffer[] = []
-  let failNext = false
   const s = Object.assign(new EventEmitter(), {
     setKeepAlive: vi.fn(),
     setTimeout: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
     destroy: vi.fn(),
-    destroyed: false,
+    destroyed: state.destroyed ?? false,
+    writableEnded: state.writableEnded ?? false,
     write: vi.fn((b: Buffer) => {
-      if (failNext) {
-        failNext = false
-        throw new Error('EPIPE')
-      }
       writes.push(b)
-      return true
+      return true // false would be backpressure, not failure — the data is still buffered
     }),
   })
-  return { socket: s as unknown as Socket, writes, failOnNextWrite: () => (failNext = true) }
+  return { socket: s as unknown as Socket, writes }
 }
 
 /** Redis double with just the list ops the drain uses, plus an ordered op log. */
@@ -113,20 +116,26 @@ describe('drainPending records in flight BEFORE writing to the socket', () => {
     expect(lists.get('cmd:pending:42')).toHaveLength(0)
   })
 
-  it('a failed write returns the command to the HEAD of pending and drops the in-flight entry', async () => {
-    // a socket that died between the record and the write must not consume the command, and must
-    // not leave the dispatcher counting a timeout against an attempt that never left the process
-    const { socket } = fakeSocket()
+  it('a DEAD socket consumes nothing — the check is before the pop, because write() never throws', async () => {
+    // A destroyed socket silently accepts writes (returns false, emits `error` later), so a
+    // try/catch around the write is dead code and the loop would burn all 16 queued commands into
+    // a peer that is gone — each one recorded in flight and then failed by the dispatcher 30 s
+    // later without ever having left the process.
+    const { socket, writes } = fakeSocket({ destroyed: true })
     const { redis, lists } = fakeRedis([cmd('c1', 'first'), cmd('c2', 'second')])
-    const fs = socket as unknown as { write: (b: Buffer) => boolean }
-    fs.write = () => {
-      throw new Error('EPIPE')
-    }
     await drain(new Session(socket, deps(redis)))
 
-    expect(lists.get('cmd:inflight:42')).toHaveLength(0) // rolled back
-    // back at the head, in its original order, and the drain stopped rather than burning c2
-    expect(lists.get('cmd:pending:42')).toEqual([cmd('c1', 'first'), cmd('c2', 'second')])
+    expect(writes).toHaveLength(0)
+    expect(lists.get('cmd:inflight:42') ?? []).toHaveLength(0)
+    expect(lists.get('cmd:pending:42')).toEqual([cmd('c1', 'first'), cmd('c2', 'second')]) // untouched
+  })
+
+  it('a half-closed socket (writableEnded) is treated the same', async () => {
+    const { socket, writes } = fakeSocket({ writableEnded: true })
+    const { redis, lists } = fakeRedis([cmd('c1', 'first')])
+    await drain(new Session(socket, deps(redis)))
+    expect(writes).toHaveLength(0)
+    expect(lists.get('cmd:pending:42')).toEqual([cmd('c1', 'first')])
   })
 
   it('an unencodable command is dropped WITHOUT an in-flight record — nothing to time out', async () => {

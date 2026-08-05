@@ -91,10 +91,26 @@ describe('EventRepo.list ordering', () => {
   })
 
   it('a malformed cursor starts from the top rather than 500ing or returning the wrong slice', async () => {
-    for (const bad of ['not-a-cursor', '|', 'abc|def', '2026-13-45T99:99:99Z|1']) {
+    // the oversize-id cases are the point: `BigInt('99999999999999999999')` does NOT throw, it
+    // produces a value Postgres rejects at bind time as an unmappable Prisma error — i.e. a 500 from
+    // any authenticated caller. `bigid.ts` exists for exactly this.
+    for (const bad of [
+      'not-a-cursor',
+      '|',
+      'abc|def',
+      '2026-13-45T99:99:99Z|1',
+      '2026-08-05T12:00:00.000Z|99999999999999999999',
+      '99999999999999999999',
+      '2026-08-05T12:00:00.000Z|-1',
+    ]) {
       const page = await db.events.list(scope, { take: 1, cursor: bad })
       expect(page.map((e) => e.kind), bad).toEqual(['panic'])
     }
+  })
+
+  it('an oversize deviceId or event id is a 404/empty page, never a 500', async () => {
+    await expect(db.events.list(scope, { deviceId: '99999999999999999999' })).resolves.toBeInstanceOf(Array)
+    await expect(db.events.get(scope, '99999999999999999999')).resolves.toBeNull()
   })
 
   it('filters still apply on top of the order', async () => {

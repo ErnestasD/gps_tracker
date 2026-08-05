@@ -31,6 +31,9 @@ export interface ImportRow {
   simMsisdn?: string
   simIccid?: string
 }
+/** Consecutive unexpected row failures that mean the environment is broken, not the file. */
+const MAX_CONSECUTIVE_FAILURES = 5
+
 // SIM columns are optional; validated only when present. Same rules as the single-device schema
 // (entities.ts) so a bulk import and a manual add accept exactly the same values.
 const SIM_MSISDN_RE = /^\+[1-9]\d{6,14}$/
@@ -179,6 +182,9 @@ export async function dryRun(
 export interface ApplyResult {
   created: number
   errors: RowError[]
+  /** Set when the run stopped early on a run of unexpected failures — the environment is broken,
+   *  not the file, and the remaining rows were never attempted. */
+  aborted?: true
 }
 
 export async function applyImport(
@@ -193,6 +199,7 @@ export async function applyImport(
   const dr = await dryRun(db, scope, rows, new Set(profiles.keys()), callerAccountId)
   const errors = [...dr.errors]
   let created = 0
+  let consecutiveFailures = 0
   // profileId → presence_rules, resolved once for the worker trip config (E04-5)
   const rulesByProfile = new Map((await db.profiles.list()).map((p) => [p.id, p.presenceRules]))
   // Only the create-rows are applied; updates/errors are reported, not mutated (v1).
@@ -217,11 +224,21 @@ export async function applyImport(
         simMsisdn: row.simMsisdn ?? null,
         simIccid: row.simIccid ?? null,
       })
-      await activateDevice(redis, {
-        id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId,
-        config: { presenceRules: rulesByProfile.get(profileId) ?? {}, odometerSource: device.odometerSource }, // E04-5
-      })
-      created++
+      created++ // the row is real from here on — count it before the registry sync
+      // OUTSIDE the create's failure accounting: a Redis blip here leaves a device that exists in
+      // the DB (holding its IMEI) but is missing from `registry:imei`, so ingest quarantines it. The
+      // old catch reported that as "could not be created", and the operator's retry then hit
+      // "IMEI already registered" for a device they were told never existed. The API's boot
+      // rehydrate repairs the registry, so the honest report is "created, not yet reachable".
+      try {
+        await activateDevice(redis, {
+          id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId,
+          config: { presenceRules: rulesByProfile.get(profileId) ?? {}, odometerSource: device.odometerSource }, // E04-5
+        })
+      } catch (err) {
+        console.error('device import: created but not activated', { imei: row.imei, row: row.row }, err)
+        errors.push({ row: row.row, imei: row.imei, reason: 'created, but not yet reachable by the pipeline — retry not needed' })
+      }
     } catch (err) {
       if (err instanceof DuplicateImeiError) {
         errors.push({ row: row.row, imei: row.imei, reason: 'IMEI already registered' })
@@ -230,7 +247,13 @@ export async function applyImport(
         // generic reason — the message may name a constraint or another tenant's data
         console.error('device import row failed', { imei: row.imei, row: row.row }, err)
         errors.push({ row: row.row, imei: row.imei, reason: 'could not be created' })
+        // A run of these is an OUTAGE, not a data problem: a dead pool or a statement timeout would
+        // otherwise turn into 1000 per-row "could not be created" entries and an HTTP 201, telling
+        // the operator their CSV is bad when the database is down. Stop and hand back what landed.
+        if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return { created, errors, aborted: true }
+        continue
       }
+      consecutiveFailures = 0
     }
   }
   return { created, errors }

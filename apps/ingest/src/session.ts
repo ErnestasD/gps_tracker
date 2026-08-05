@@ -195,13 +195,25 @@ export class Session {
    * dispatcher had nothing to reconcile and the DB row sat forever. Recording first inverts the
    * failure into one the system already handles — "in flight but possibly not sent", which the
    * dispatcher times out and re-queues, and a Teltonika `setparam` is idempotent so a re-send is
-   * safe. A write failure also pushes the entry back to the HEAD of pending, so an ordinary error
-   * (a closing socket, an oversize frame) does not consume the command at all.
+   * safe.
+   *
+   * The socket is checked BEFORE popping, not caught after writing. `net.Socket.write()` does not
+   * throw synchronously on a dead peer — it returns false and emits `error` asynchronously — so a
+   * try/catch around it is dead code, and a review found the loop happily burning all 16 queued
+   * commands into a destroyed socket while a rollback that could never run claimed otherwise.
+   *
+   * Residual, stated rather than papered over: LPOP and the in-flight RPUSH are two round trips, so
+   * a crash or a Redis failure BETWEEN them still leaves the command in neither queue. Closing that
+   * needs an atomic LMOVE into a differently-shaped entry; the window is now microseconds wide and
+   * the command's 24 h DB expiry sweep is the backstop.
    */
   private async drainPending(): Promise<void> {
     if (this.deviceId === null) return
     const pendKey = `cmd:pending:${this.deviceId}`
     for (let i = 0; i < 16; i++) {
+      // A dead socket must not consume commands. `write()` reports this by RETURNING false and
+      // emitting `error` later, never by throwing, so the check has to come before the pop.
+      if (this.socket.destroyed || this.socket.writableEnded) return
       // bound per drain
       const raw = await this.deps.redis.lpop(pendKey)
       if (raw === null) return
@@ -241,20 +253,12 @@ export class Session {
         .expire(inflightKey, 24 * 3_600) // bound the list (dispatcher reconciles + trims it)
         .sadd('cmd:active', String(this.deviceId))
         .exec()
-      try {
-        this.socket.write(frame)
-      } catch {
-        // the socket died between the record and the write. Put the command BACK at the head of
-        // pending so the next connection sends it, and drop the in-flight entry we just made — the
-        // dispatcher would otherwise count a timeout against an attempt that never left the process.
-        await this.deps.redis
-          .multi()
-          .lpush(pendKey, raw)
-          .lrem(inflightKey, 1, inflightEntry)
-          .exec()
-          .catch(() => undefined)
-        return // the socket is gone; stop draining
-      }
+      // `write` returning false is backpressure, not failure — the data is buffered and the kernel
+      // will take it. A genuinely dead socket was caught by the check at the top of the loop, and
+      // anything that dies mid-drain is caught on the next iteration; the command already recorded
+      // in flight is then the dispatcher's to time out and re-queue, which is the whole point of the
+      // ordering above.
+      this.socket.write(frame)
     }
   }
 
