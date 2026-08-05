@@ -383,8 +383,9 @@ async function main(): Promise<void> {
       },
       onBatch: async (records) => {
         prom.batchRows.observe(records.length)
-        // lag is measured on records the pipeline will actually ACT on — a clock-skewed record's
-        // fixTime is in the FUTURE, which would make the gauge negative and mask real lag
+        // `usable` = records the pipeline will actually ACT on. A clock-skewed record's fixTime is
+        // in the FUTURE, so it must not feed anything derived from fix time — including the
+        // device_data_age gauge below, which would otherwise read 0 and mask a genuinely stale fleet.
         const usable = records.filter((r) => !isClockSkewed(r))
         const skewed = records.length - usable.length
         if (skewed > 0) {

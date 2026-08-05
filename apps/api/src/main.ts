@@ -228,15 +228,23 @@ process.on('SIGTERM', () => {
   wss.close()
   for (const client of wss.clients) client.terminate()
   httpServer.close(() => {
-    void redis
-      .quit()
+    // Every step is best-effort and the exit is in `finally`. This chain had never actually RUN
+    // before the line above made `close()` reachable — and with `enableOfflineQueue: false`, a
+    // `quit()` issued after Redis has already gone (a compose redeploy restarts it first) rejects
+    // immediately. Unhandled, that hits the process-level handler, logs a FATAL and exits 1: an
+    // orchestrator reads a graceful stop as a crash, and `pool.end()`/`$disconnect()` — the drains
+    // this whole change exists to enable — never run.
+    void Promise.resolve()
+      .then(() => redis.quit())
       .then(() => redisSub.quit())
       .then(() => gdprEraseQueue.close())
       .then(() => gdprExportQueue.close())
+      .then(() => authEmailQueue.close())
       .then(() => smsQueue?.close())
       .then(() => pool.end())
       .then(() => db.$disconnect())
-      .then(() => process.exit(0))
+      .catch((err: unknown) => console.error('shutdown step failed (continuing)', err))
+      .finally(() => process.exit(0))
   })
   // …and a plain HTTP keep-alive connection can outlast the close too. Give in-flight requests a
   // moment, then cut the idle ones; the hard exit stays as the last resort.

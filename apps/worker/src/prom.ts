@@ -13,6 +13,7 @@ export interface WorkerProm {
   registry: Registry
   batchRows: Histogram
   /** Call per processed batch with now − max(fix_time) of the batch. */
+  /** now − max(server_time): how long ingest→worker actually took. NOT the device's clock. */
   setLagMs: (ms: number) => void
   /** now − max(fix_time): device clock skew + buffering. Deliberately separate from pipeline lag. */
   setDataAgeMs: (ms: number) => void

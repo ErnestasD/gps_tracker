@@ -9,5 +9,5 @@ v1 honesty notes (recorded, revisit in E07-1):
 - Totals are exposed as monotonic gauges reflecting in-process counters (PromQL `rate()`
   handles them identically for our alert rules); histograms (`ack_latency_ms`,
   `pipeline_batch_rows`) are real prom-client Histograms observed at source.
-- `pipeline_lag_ms` is the last batch's `now − max(fix_time)` gauge — the spec's "p95"
+- `pipeline_lag_ms` is the last batch's `now − max(server_time)` gauge — the spec's "p95"
   materializes in Grafana via `quantile_over_time`, not in-process.

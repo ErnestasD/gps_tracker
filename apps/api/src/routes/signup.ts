@@ -59,6 +59,29 @@ const FREE_MAIL_DOMAINS = new Set([
   'yandex.ru', 'mail.ru', 'seznam.cz', 'zoho.com', 'fastmail.com', 'hushmail.com', 'tutanota.com', 'tuta.io',
 ])
 
+/**
+ * The mailbox an address actually delivers to, for the self-referral equality test.
+ *
+ * A literal string compare is not enough once the DOMAIN fallback is disabled for free-mail
+ * providers: `reseller+anything@gmail.com` and `res.eller@gmail.com` both land in
+ * `reseller@gmail.com`, and both were caught by the old domain rule. Without canonicalisation the
+ * carve-out would hand a partner a zero-effort way to earn commission on their own subscription —
+ * the anti-fraud floor PROJECT_PLAN §6.9 is there for.
+ *
+ * `+suffix` is stripped everywhere (universal among the providers in the list); dots are stripped
+ * only for Google, which is the only one that ignores them.
+ */
+function canonicalMailbox(raw: string): string {
+  const at = raw.trim().toLowerCase().lastIndexOf('@')
+  if (at === -1) return raw.trim().toLowerCase()
+  const domain = raw.trim().toLowerCase().slice(at + 1)
+  let local = raw.trim().toLowerCase().slice(0, at)
+  const plus = local.indexOf('+')
+  if (plus !== -1) local = local.slice(0, plus)
+  if (domain === 'gmail.com' || domain === 'googlemail.com') local = local.replaceAll('.', '')
+  return `${local}@${domain}`
+}
+
 const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
 if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return n`
@@ -124,7 +147,7 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
     const domainOf = (e: string) => e.slice(e.lastIndexOf('@') + 1).toLowerCase()
     const selfReferral =
       candidate !== null &&
-      (candidate.email.trim().toLowerCase() === email ||
+      (canonicalMailbox(candidate.email) === canonicalMailbox(email) ||
         (domainOf(candidate.email) === domainOf(email) && !FREE_MAIL_DOMAINS.has(domainOf(email))))
     if (selfReferral) console.warn('signup: self-referral attribution dropped', candidate.code)
     const ref = selfReferral ? null : candidate

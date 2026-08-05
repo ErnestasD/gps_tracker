@@ -69,6 +69,35 @@ async function eraseRawRejects(pool: Pool, data: EraseJobData): Promise<void> {
   }
 }
 
+/**
+ * Expire the account's produced exports.
+ *
+ * An export is a point-in-time NDJSON dump on the shared volume, downloadable for its full 7-day
+ * life by anyone with the link — and it CONTAINS the device being erased, so leaving one standing
+ * erases the database and not the data. The file is unlinked and the row marked, exactly as the
+ * hourly sweep does; the requester produces a fresh export that no longer holds the device.
+ *
+ * Runs BEFORE the devices row is deleted, because that row is this job's completion marker: the
+ * header's contract is "device row LAST, so a crash leaves it as 'erase still owed' and the retried
+ * job finishes the rest". Placed after it, a SIGKILL mid-unlink meant the retry found no device
+ * row, returned early, and BullMQ marked the erase complete with the dump still downloadable.
+ *
+ * `pending` as well as `done`: a large account's export pages every device and can be minutes in
+ * flight, so one enqueued just before the erase would otherwise complete afterwards carrying the
+ * data. The export worker's own finalise is scoped to `status = 'pending'` so it cannot resurrect a
+ * row this expired.
+ */
+async function expireAccountExports(pool: Pool, accountId: string): Promise<void> {
+  const stale = await pool.query<{ id: string; path: string | null }>(
+    `SELECT id, path FROM export_jobs WHERE "accountId" = $1 AND status IN ('done','pending')`,
+    [accountId],
+  )
+  for (const row of stale.rows) {
+    if (row.path !== null) await unlink(row.path).catch(() => undefined)
+    await pool.query(`UPDATE export_jobs SET status = 'expired', path = NULL WHERE id = $1 AND status IN ('done','pending')`, [row.id])
+  }
+}
+
 /** Run one erase. Idempotent: every step deletes only what still exists. */
 export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Promise<{ deviceId: string; positions: number }> {
   const idNum = BigInt(data.deviceId)
@@ -84,6 +113,7 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
     // without this pass nothing would ever remove them, and their raw AVL bytes embed lat/lon
     // (§3.4) — the exact coordinates the request is about.
     await eraseRawRejects(pool, data)
+    if (data.accountId !== undefined) await expireAccountExports(pool, data.accountId)
     await clearRedisState(redis, data.deviceId)
     return { deviceId: data.deviceId, positions: 0 }
   }
@@ -103,6 +133,7 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
   // number and the message body, so an erase that leaves them behind leaves the most directly
   // identifying data of all — the subject's own number.
   await pool.query(`DELETE FROM sms_deliveries WHERE "deviceId" = $1`, [data.deviceId])
+  await expireAccountExports(pool, dev.rows[0]!.accountId)
   await clearRedisState(redis, data.deviceId)
   await pool.query(`DELETE FROM devices WHERE id = $1`, [data.deviceId]) // LAST — see header
   // FINAL sweep (review HIGH-1): a session that outlived retire or stream backlog may have
@@ -119,19 +150,6 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
   // whose device row is ABSENT, which closes the window for anything arriving later still.
   await eraseRawRejects(pool, { ...data, imei: data.imei ?? dev.rows[0]!.imei })
 
-  // Already-produced account exports still CONTAIN this device (audit MED). An export is a
-  // point-in-time NDJSON dump on the shared volume, downloadable for its full 7-day life by anyone
-  // with the link — so a right-to-erasure request that leaves one standing has erased the database
-  // and not the data. Expire them: the file is unlinked and the row marked, exactly as the hourly
-  // sweep does, and the requester can produce a fresh export that no longer holds the device.
-  const stale = await pool.query<{ id: string; path: string | null }>(
-    `SELECT id, path FROM export_jobs WHERE "accountId" = $1 AND status = 'done'`,
-    [dev.rows[0]!.accountId],
-  )
-  for (const row of stale.rows) {
-    if (row.path !== null) await unlink(row.path).catch(() => undefined)
-    await pool.query(`UPDATE export_jobs SET status = 'expired', path = NULL WHERE id = $1 AND status = 'done'`, [row.id])
-  }
   return { deviceId: data.deviceId, positions: positions + late }
 }
 

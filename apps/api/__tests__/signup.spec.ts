@@ -298,8 +298,14 @@ describe('public self-serve signup (F2)', () => {
     const referred = (await (await signup({ name: 'Customer', email: 'customer@gmail.com', password: 'password12', ref: 'FREEMAIL1' })).json()) as { id: string }
     expect((await db.tenants.get(referred.id))!.referredByAffiliateId).toBe(aff.id)
 
-    // …and the literal case the guard exists for is still caught: the partner's OWN address
-    const same = (await (await signup({ name: 'Self', email: 'reseller@gmail.com', password: 'password12', ref: 'FREEMAIL1' })).json()) as { id: string; error?: string }
-    if (same.id !== undefined) expect((await db.tenants.get(same.id))?.referredByAffiliateId ?? null).toBeNull()
+    // …and the partner's OWN mailbox is still caught, in every form that DELIVERS to it. Without
+    // canonicalisation the carve-out would hand them a zero-effort way to earn 20% of their own
+    // subscription: `+anything` and dotted variants all land in the same inbox.
+    for (const [i, self] of ['reseller@gmail.com', 'reseller+orbetra@gmail.com', 'res.eller@gmail.com'].entries()) {
+      const r = await signup({ name: `Self${i}`, email: self, password: 'password12', ref: 'FREEMAIL1' })
+      expect(r.status, self).toBe(201)
+      const { id } = (await r.json()) as { id: string }
+      expect((await db.tenants.get(id))!.referredByAffiliateId, self).toBeNull()
+    }
   })
 })

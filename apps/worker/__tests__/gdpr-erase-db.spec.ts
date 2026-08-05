@@ -70,6 +70,9 @@ beforeAll(async () => {
   await pool.query(`INSERT INTO sms_deliveries ("deviceId","tenantId","to",body) VALUES (7,$1,'+37060000001','setparam'),(8,$1,'+37060000002','setparam')`, [T1])
   // a standing account export — it CONTAINS device 7's positions
   await pool.query(`INSERT INTO export_jobs ("tenantId","accountId",status,path) VALUES ($1,$1,'done','/tmp/orbetra-erase-test-export.ndjson.gz')`, [T1])
+  // an export still being written when the erase runs would otherwise finish AFTER it, carrying the
+  // erased device's data — a large account pages every device, so this is minutes wide
+  await pool.query(`INSERT INTO export_jobs ("tenantId","accountId",status) VALUES ($1,$1,'pending')`, [T1])
   await pool.query(`INSERT INTO usage_daily ("tenantId","accountId","deviceId",day) VALUES ($1,$1,7,'2026-04-01'), ($1,$1,8,'2026-04-01')`, [T1])
   // rejections are keyed by IMEI (they predate any device resolution) and carry the raw AVL bytes
   await pool.query(`INSERT INTO raw_rejects (imei, "deviceId", reason, payload) VALUES ('356307042440030', 7, 'sanity', '\\xdeadbeef'), ('356307042440031', 8, 'sanity', '\\xdeadbeef')`)
@@ -105,9 +108,9 @@ describe('E08-4 runErase (cascade, real pg)', () => {
     expect(await count(`SELECT count(*) n FROM sms_deliveries WHERE "deviceId"=$1`, 8)).toBe(1) // the other device is untouched
     // an already-produced export is a downloadable NDJSON dump that still holds this device, so an
     // erase leaving one standing has erased the database and not the data
-    const exports = await pool.query<{ status: string; path: string | null }>(`SELECT status, path FROM export_jobs`)
-    expect(exports.rows[0]!.status).toBe('expired')
-    expect(exports.rows[0]!.path).toBeNull()
+    const exports = await pool.query<{ status: string; path: string | null }>(`SELECT status, path FROM export_jobs ORDER BY status`)
+    expect(exports.rows.map((r) => r.status)).toEqual(['expired', 'expired']) // the done one AND the in-flight one
+    expect(exports.rows.every((r) => r.path === null)).toBe(true)
     // raw_rejects keys on IMEI, so a device-id cascade misses it — and its payload embeds lat/lon
     // (§3.4), i.e. exactly the coordinates a right-to-erasure request is about
     const mine = await pool.query<{ n: string }>(`SELECT count(*) n FROM raw_rejects WHERE "deviceId"=7 OR ("deviceId" IS NULL AND imei='356307042440030')`)
@@ -130,6 +133,20 @@ describe('E08-4 runErase (cascade, real pg)', () => {
     // the OTHER device is untouched
     expect(await count(`SELECT count(*) n FROM positions WHERE device_id=$1`, 8)).toBe(1)
     expect(await count(`SELECT count(*) n FROM trips WHERE "deviceId"=$1`, 8)).toBe(1)
+  })
+
+  it('a RETRIED job still expires the exports — the device row is the completion marker', async () => {
+    // REGRESSION (review HIGH). The expiry ran AFTER `DELETE FROM devices`, which the header calls
+    // the "erase still owed" marker. A SIGKILL mid-unlink meant the retry found no device row,
+    // returned early, and BullMQ marked the erase COMPLETE with a downloadable NDJSON dump of the
+    // erased device still live for its full 7-day life.
+    const { redis } = fakeRedis()
+    await pool.query(`INSERT INTO export_jobs ("tenantId","accountId",status,path) VALUES ($1,$1,'done','/tmp/orbetra-retry-export.ndjson.gz')`, [T1])
+    // device 7 is already gone (a prior pass completed) — this is exactly the retry shape
+    const r = await runErase(pool, redis, { deviceId: '7', tenantId: T1, imei: '356307042440030', accountId: T1 })
+    expect(r.positions).toBe(0)
+    const left = await pool.query<{ n: string }>(`SELECT count(*) n FROM export_jobs WHERE status = 'done'`)
+    expect(Number(left.rows[0]!.n)).toBe(0)
   })
 
   it('is idempotent: a retried job on a fully-erased device succeeds with 0 rows', async () => {

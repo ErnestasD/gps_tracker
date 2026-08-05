@@ -558,15 +558,23 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     if (consumed === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
     const user = await deps.db.users.findByIdForAuth(consumed.userId)
     if (user === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
-    // REVOKE FIRST, then write the password (audit MED). The point of a reset is usually that
-    // someone else is in the account, and nothing here is transactional — so with the password
-    // written first, a failure in the revoke left the victim's password changed and the ATTACKER'S
-    // session alive, which is the one outcome this flow exists to prevent. Reversed, every failure
-    // mode is safe: a revoke failure changes nothing (the user asks for a new link), and a
-    // setPassword failure leaves them logged out everywhere with the old password still valid.
+    // Revocation BRACKETS the password write (audit MED + review).
+    //
+    // The point of a reset is usually that someone else is in the account. Revoking only AFTER the
+    // write meant a failure there left the victim's password changed and the attacker's session
+    // alive. But revoking only BEFORE does not close the real race either: `/login` never consults
+    // the revocation marker, it mints a fresh family — so an attacker who still knows the old
+    // password only needs a login whose ~120 ms argon2 verify straddles the write, and the new
+    // family is stamped after the revocation epoch and survives.
+    //
+    // Both calls are idempotent, so running them on each side costs one extra write and closes the
+    // straddle: a session minted during the window is revoked by the second pass, and a failure in
+    // either pass leaves a state where the OLD password is the only thing that still works — which
+    // the attacker already had, and which the user can resolve with another link.
+    await revokeAllUserSessions(deps.db.refreshTokens, user.id)
+    await deps.db.users.setPassword(user.id, newHash)
     await revokeAllUserSessions(deps.db.refreshTokens, user.id)
     await markSessionsRevoked(deps.redis, user.id)
-    await deps.db.users.setPassword(user.id, newHash)
     await deps.db.passwordResetTokens.invalidateAllForUser(user.id, now) // burn any sibling tokens
     deleteCookie(c, COOKIE, { path: COOKIE_PATH })
     c.header('Cache-Control', 'no-store')

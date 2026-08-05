@@ -24,6 +24,14 @@ export interface EraseJobData {
    * row while it still exists.
    */
   imei?: string
+  /**
+   * The device's account. Like `imei`, carried in the payload rather than read from the row: the
+   * devices row is this job's completion marker and is deleted mid-erase, so the retried job (which
+   * finds no row and returns early) could otherwise not expire the account's produced exports —
+   * leaving a downloadable dump of the erased device while BullMQ marked the erase complete.
+   * Optional for jobs enqueued before this field existed.
+   */
+  accountId?: string
 }
 export interface ExportJobData {
   exportId: string // ExportJob row uuid
