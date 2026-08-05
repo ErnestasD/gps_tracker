@@ -30,6 +30,8 @@ import { createUsageQueue, scheduleUsageSweep } from './jobs/usageQueue.js'
 import { startUsageWorker } from './jobs/usageWorker.js'
 import { createRetentionQueue, scheduleRetentionSweep } from './jobs/retentionQueue.js'
 import { startRetentionWorker } from './jobs/retentionWorker.js'
+import { createRejectDrainQueue, scheduleRejectDrain } from './jobs/rejectDrainQueue.js'
+import { startRejectDrainWorker } from './jobs/rejectDrainWorker.js'
 import { createStripeUsageQueue, scheduleStripeUsage } from './jobs/stripeUsageQueue.js'
 import { createStripeUsageWorker } from './jobs/stripeUsageWorker.js'
 import { stripeUsagePortFromEnv } from './billing/usageReporter.js'
@@ -280,6 +282,21 @@ async function main(): Promise<void> {
     onFailed: () => prom.jobFailed.inc({ job: 'retention' }),
   })
   await scheduleRetentionSweep(retentionQueue)
+  // Reject drain: move §3.6 sanity failures from the `rejects` stream into `raw_rejects` so support
+  // can name the device instead of reading one global counter (audit MED). Ingest cannot reach
+  // Postgres (hard rule 3) and nothing was consuming the stream, so a rejection survived only until
+  // MAXLEN rolled over it — while `raw_rejects` sat in the schema from day one with no writer.
+  const rejectDrainQueue = createRejectDrainQueue(recomputeConn)
+  const rejectDrainWorker = startRejectDrainWorker({
+    connection: recomputeConn,
+    redis: offlineRedis,
+    db,
+    onDrained: (n) => {
+      if (n > 0) prom.rejectsDrained.inc(n)
+    },
+    onFailed: () => prom.jobFailed.inc({ job: 'reject-drain' }),
+  })
+  await scheduleRejectDrain(rejectDrainQueue)
   // E08-2: Codec-12 command dispatcher — ~15s reconcile of in-flight commands vs device
   // responses (transport seam written by ingest); drives the DB status machine.
   const commandQueue = createCommandDispatchQueue(recomputeConn)
@@ -674,6 +691,8 @@ async function main(): Promise<void> {
       await stripeUsageQueue?.close()
       await scheduledReportWorker?.close() // finish the in-flight scheduled-report run, stop taking new
       await scheduledReportQueue?.close()
+      await rejectDrainWorker.close()
+      await rejectDrainQueue.close()
       await retentionWorker.close() // finish the in-flight retention prune, stop taking new
       await retentionQueue.close()
       await commandWorker.close() // finish the in-flight command dispatch, stop taking new

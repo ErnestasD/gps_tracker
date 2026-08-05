@@ -59,6 +59,28 @@ describe('E05-4 RuleCache', () => {
     expect(out.get('43')).toBeUndefined() // 43 not in the allow-list
   })
 
+  it('an OVERSIZE allow-list degrades to account-wide, and numeric ids still match', async () => {
+    // The list is caller input consulted for every device in every batch, so the old
+    // `list.map(String).includes(id)` was work a tenant admin could ask the pipeline to do on their
+    // behalf indefinitely with one PATCH (audit MED). The API schema bounds it now; the cache reads
+    // whatever is ALREADY in Redis, including rules written before that schema existed. Oversize
+    // degrades to account-wide rather than dropping the rule: a rule firing too broadly is visible
+    // and fixable, one that silently stopped firing is neither.
+    const huge = Array.from({ length: 5_001 }, (_, i) => String(i))
+    const redis = fakeRedis(
+      { '42': 'ten-1' },
+      { '42': 'acc-1' },
+      {
+        'ten-1': {
+          big: { accountId: 'acc-1', kind: 'overspeed', name: 'Oversize', scope: { deviceIds: huge } },
+          num: { accountId: 'acc-1', kind: 'overspeed', name: 'Numeric', scope: { deviceIds: [42] } },
+        },
+      },
+    )
+    const out = await new RuleCache(redis).resolveBatch([42n], 1_000)
+    expect(out.get('42')?.map((r) => r.id).sort()).toEqual(['big', 'num'])
+  })
+
   it('caches tenant rule sets within the TTL and reloads after it', async () => {
     const redis = fakeRedis({ '42': 'ten-1' }, { '42': 'acc-1' }, { 'ten-1': { r1: { accountId: 'acc-1', kind: 'overspeed', name: 'S' } } })
     const cache = new RuleCache(redis, 1_000)

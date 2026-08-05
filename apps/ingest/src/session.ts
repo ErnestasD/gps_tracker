@@ -328,7 +328,12 @@ export class Session {
       if (this.socket.destroyed) return
       // a FAILED probe must never read as "drained" — that would resume a paused socket on a Redis
       // blip, which is exactly the congestion the pause exists for. Stay paused and keep polling.
-      const depth = await getCachedShardDepth(this.deps.redis, this.shard, this.now(), true).catch(
+      // CACHED, not forced (audit MED). Congestion pauses many sockets at once and they all poll
+      // the same shard every 500 ms, so a forced probe meant N XINFO round trips per shard per tick
+      // — piling load on the one Redis connection whose contention is the reason they are paused.
+      // The 1 s TTL bounds the staleness to one poll interval, and staleness here only ever delays
+      // a resume, which is the safe direction.
+      const depth = await getCachedShardDepth(this.deps.redis, this.shard, this.now()).catch(
         () => Number.POSITIVE_INFINITY,
       )
       // re-check AFTER the await: a destroy() landing during the XLEN roundtrip already decremented

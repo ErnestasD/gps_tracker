@@ -182,12 +182,24 @@ export const pushSubscribeSchema = z.object({
   keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(200) }),
 })
 
+/**
+ * A rule's scope. `deviceIds` is an ALLOW-LIST — absent or empty means the whole account.
+ *
+ * Bounded and typed because it is caller input that lands on the hot path: the worker consults it
+ * for every device in every batch, so an unvalidated array was work a tenant admin could ask the
+ * pipeline to do on their behalf, forever, with one PATCH (audit MED). 5000 is the largest fleet
+ * any plan sells; a rule that needs more is an account-wide rule.
+ */
+export const ruleScopeSchema = z
+  .object({ deviceIds: z.array(z.string().min(1).max(20)).max(5_000).optional() })
+  .strict()
+
 export const ruleCreateSchema = z.object({
   accountId: z.string().uuid(),
   kind: ruleKindSchema,
   name: z.string().min(1).max(120),
   config: z.record(z.string(), z.unknown()).optional(),
-  scope: z.record(z.string(), z.unknown()).optional(),
+  scope: ruleScopeSchema.optional(),
   channels: z.array(notificationChannelSchema).max(20).optional(),
   cooldownS: z.number().int().min(0).max(86_400).optional(),
   enabled: z.boolean().optional(),

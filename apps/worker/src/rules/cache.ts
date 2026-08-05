@@ -22,7 +22,8 @@ interface StoredRule {
   scope?: Record<string, unknown>
 }
 interface TenantRule extends RuleDef {
-  scope: Record<string, unknown>
+  /** device allow-list as a Set, resolved once at load; `null` = account-wide */
+  scopeIds: Set<string> | null
 }
 
 const ENGINE_KINDS = new Set<string>(ENGINE_RULE_KINDS)
@@ -53,7 +54,7 @@ export class RuleCache {
       const tenant = tenantOf.get(id)
       if (tenant === null || tenant === undefined) continue
       const account = accountOf.get(id) ?? null
-      const defs = (this.byTenant.get(tenant)?.defs ?? []).filter((r) => r.accountId === account && inScope(r.scope, id))
+      const defs = (this.byTenant.get(tenant)?.defs ?? []).filter((r) => r.accountId === account && inScope(r.scopeIds, id))
       if (defs.length > 0) out.set(id, defs.map(strip))
     }
     return out
@@ -79,7 +80,13 @@ export class RuleCache {
           name: j.name,
           config: j.config ?? {},
           cooldownS: typeof j.cooldownS === 'number' ? j.cooldownS : 300,
-          scope: j.scope ?? {},
+          // Normalised to a Set ONCE per cache load, not per device per batch (audit MED). The old
+          // `list.map(String).includes(id)` allocated a fresh string array for every device × rule ×
+          // batch, so an unvalidated `deviceIds` was work a tenant admin could ask the pipeline to
+          // do on their behalf indefinitely with one PATCH. Bounded here as well as in the API
+          // schema: the cache reads whatever is already in Redis, including rules written before
+          // that schema existed.
+          scopeIds: toScopeIds(j.scope),
         })
       } catch {
         // malformed entry → skip, never crash the pipeline
@@ -89,11 +96,22 @@ export class RuleCache {
   }
 }
 
+/** Largest allow-list the cache will honour — matches `ruleScopeSchema`. Beyond it the rule is
+ *  treated as account-wide rather than dropped: a rule that fires too broadly is visible and
+ *  fixable, one that silently stopped firing is neither. */
+const MAX_SCOPE_IDS = 5_000
+
+/** Allow-list as a Set, built once at load. `null` = account-wide (absent, empty, or oversize). */
+function toScopeIds(scope: unknown): Set<string> | null {
+  if (scope === null || typeof scope !== 'object') return null
+  const list = (scope as Record<string, unknown>)['deviceIds']
+  if (!Array.isArray(list) || list.length === 0 || list.length > MAX_SCOPE_IDS) return null
+  return new Set(list.map((v) => String(v)))
+}
+
 /** A rule applies to a device unless it declares a `deviceIds` allow-list that excludes it. */
-function inScope(scope: Record<string, unknown>, deviceId: string): boolean {
-  const list = scope['deviceIds']
-  if (!Array.isArray(list) || list.length === 0) return true // account-wide (v1 default)
-  return list.map(String).includes(deviceId)
+function inScope(scopeIds: Set<string> | null, deviceId: string): boolean {
+  return scopeIds === null || scopeIds.has(deviceId)
 }
 
 /** Drop the cache-only `scope` field before handing to the engine. */
