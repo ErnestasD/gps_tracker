@@ -62,31 +62,43 @@ export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: Cla
   // tenant-plan device cap (WP2): a claim assigns a device INTO the target tenant, so it is bound
   // by THAT tenant's plan (not the platform admin's). Direct plans cap non-retired devices; TSP
   // plans are uncapped (deviceLimit null).
+  // …and it takes the SAME per-tenant lock as POST /v1/devices and the CSV import. Without it the
+  // lock only serialized single-create against single-create, so a claim racing an import — or two
+  // claims — could each pass at limit-1 and overshoot the cap permanently, since nothing re-checks
+  // it after creation. Audit MED.
   const cap = (await db.tenants.getEntitlements(input.tenantId)).deviceLimit
-  if (cap !== null && (await db.devices.countActive(scope)) + 1 > cap) {
-    return { ok: false, status: 403, reason: 'device_limit_reached' }
+  const capLock = cap === null ? null : `device:create:${input.tenantId}`
+  if (capLock !== null && (await redis.set(capLock, '1', 'EX', 10, 'NX')) === null) {
+    return { ok: false, status: 409, reason: 'device_create_in_progress' }
   }
-  // validate the (global) profile so a bad uuid is a clean 400, not a P2003 500 (review MED)
-  const profile = await db.profiles.get(input.profileId)
-  if (profile === null) {
-    return { ok: false, status: 400, reason: 'unknown profileId' }
-  }
-  let device
   try {
-    device = await db.devices.create(scope, actor, {
-      accountId: input.accountId,
-      profileId: input.profileId,
-      imei: input.imei,
-      name: input.name,
+    if (cap !== null && (await db.devices.countActive(scope)) + 1 > cap) {
+      return { ok: false, status: 403, reason: 'device_limit_reached' }
+    }
+    // validate the (global) profile so a bad uuid is a clean 400, not a P2003 500 (review MED)
+    const profile = await db.profiles.get(input.profileId)
+    if (profile === null) {
+      return { ok: false, status: 400, reason: 'unknown profileId' }
+    }
+    let device
+    try {
+      device = await db.devices.create(scope, actor, {
+        accountId: input.accountId,
+        profileId: input.profileId,
+        imei: input.imei,
+        name: input.name,
+      })
+    } catch (err) {
+      if (err instanceof DuplicateImeiError) return { ok: false, status: 409, reason: 'IMEI already registered' }
+      throw err
+    }
+    await activateDevice(redis, {
+      id: device.id, imei: device.imei, tenantId: input.tenantId, accountId: input.accountId,
+      config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
     })
-  } catch (err) {
-    if (err instanceof DuplicateImeiError) return { ok: false, status: 409, reason: 'IMEI already registered' }
-    throw err
+    await redis.multi().zrem('quarantine:imei', input.imei).del(`quarantine:rejects:${input.imei}`).exec()
+    return { ok: true, deviceId: device.id.toString() }
+  } finally {
+    if (capLock !== null) await redis.del(capLock).catch(() => undefined)
   }
-  await activateDevice(redis, {
-    id: device.id, imei: device.imei, tenantId: input.tenantId, accountId: input.accountId,
-    config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
-  })
-  await redis.multi().zrem('quarantine:imei', input.imei).del(`quarantine:rejects:${input.imei}`).exec()
-  return { ok: true, deviceId: device.id.toString() }
 }

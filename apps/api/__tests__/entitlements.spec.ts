@@ -80,15 +80,16 @@ async function expectPlanUpgrade(res: Response): Promise<void> {
 
 describe('WP2 entitlements — a Direct-plan (direct_10) tenant is gated', () => {
   const plan: TenantPlan = 'direct_10'
+  // WRITES only. GET and DELETE are deliberately open — a lapsed or downgraded tenant must be able
+  // to SEE and REMOVE what the plan no longer covers, because the delivery side does not consult
+  // the plan: webhooks keep firing and a white-label domain keeps resolving. Being unable to turn
+  // off a paid feature you are no longer paying for is the worst shape of that bug (audit MED).
   const gated: [string, string, unknown?][] = [
     ['/v1/tenant/branding', 'PATCH', { branding: {} }], // whiteLabel
-    ['/v1/tenant/domains', 'GET'], // customDomains
-    ['/v1/tenant/domains', 'POST', { domain: 'x.example.com' }],
+    ['/v1/tenant/domains', 'POST', { domain: 'x.example.com' }], // customDomains
     ['/v1/accounts', 'POST', { name: 'Second' }], // subAccounts
-    ['/v1/webhooks', 'GET'], // webhooks
-    ['/v1/webhooks', 'POST', webhookBody],
-    ['/v1/webhook-deliveries', 'GET'],
-    ['/v1/api-keys', 'GET'], // apiAccess (inline)
+    ['/v1/webhooks', 'POST', webhookBody], // webhooks
+    ['/v1/api-keys', 'GET'], // apiAccess is gated INLINE in the route, not via the manifest
     ['/v1/api-keys', 'POST', { name: 'CI' }],
     ['/v1/api-keys/k1', 'DELETE'],
   ]
@@ -110,6 +111,28 @@ describe('WP2 entitlements — a Direct-plan (direct_10) tenant is gated', () =>
     db.accounts.list = () => Promise.resolve([{ id: ACC, name: 'A' }] as never)
     const res = await call(db, '/v1/accounts', 'GET', await admin())
     expect(res.status).toBe(200)
+  })
+
+  it('a non-entitled tenant can still SEE and REMOVE what the plan no longer covers', async () => {
+    // The gate used to be chained onto every method, so a lapsed tenant got 403 on GET and DELETE
+    // too — while the worker kept delivering their webhooks (its loader selects on tenant/account
+    // and `enabled`, never the plan) and their verified domain kept resolving. They could not even
+    // look at what was still running, let alone stop it.
+    const db = buildDb(plan)
+    db.webhooks.list = () => Promise.resolve([] as never)
+    db.webhooks.remove = () => Promise.resolve(true)
+    db.tenantDomains.list = () => Promise.resolve([] as never)
+    db.tenantDomains.remove = () => Promise.resolve(true)
+    for (const [path, method] of [
+      ['/v1/webhooks', 'GET'],
+      ['/v1/webhooks/w1', 'DELETE'],
+      ['/v1/webhook-deliveries', 'GET'],
+      ['/v1/tenant/domains', 'GET'],
+      ['/v1/tenant/domains/d1', 'DELETE'],
+    ] as const) {
+      const res = await call(db, path, method, await admin())
+      expect(res.status, `${method} ${path}`).not.toBe(403)
+    }
   })
 })
 

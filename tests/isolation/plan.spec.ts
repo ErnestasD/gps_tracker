@@ -58,13 +58,18 @@ describe('WP5 tenant-plan entitlement gating (real API+DB)', () => {
       await expect403(await call('/v1/tenant/branding', fx.directTenant.tokenTenant, 'PATCH', { productName: 'Nope' }), 'plan_upgrade_required', 'branding')
     })
 
-    it('GET + POST /v1/webhooks → 403 plan_upgrade_required (webhooks)', async () => {
-      await expect403(await call('/v1/webhooks', fx.directTenant.tokenTenant, 'GET'), 'plan_upgrade_required', 'webhooks GET')
+    it('POST /v1/webhooks → 403; GET and DELETE stay OPEN so a lapsed tenant can turn it off', async () => {
+      // The gate used to cover every method, which meant a tenant that lapsed or downgraded could
+      // neither SEE nor REMOVE webhooks that were still firing — the worker's loader never
+      // consulted the plan. Creating is gated; looking and removing must not be (audit MED).
       await expect403(
         await call('/v1/webhooks', fx.directTenant.tokenTenant, 'POST', { accountId: null, url: 'https://x.test/w', secret: 'secret-secret-16' }),
         'plan_upgrade_required',
         'webhooks POST',
       )
+      expect((await call('/v1/webhooks', fx.directTenant.tokenTenant, 'GET')).status, 'webhooks GET').toBe(200)
+      const del = await call('/v1/webhooks/00000000-0000-0000-0000-0000000000ff', fx.directTenant.tokenTenant, 'DELETE')
+      expect(del.status, 'webhooks DELETE').toBe(404) // reachable — 404 because the id is unknown, not 403
     })
 
     it('GET /v1/api-keys → 403 plan_upgrade_required (apiAccess — the REST surface gate)', async () => {
@@ -122,8 +127,13 @@ describe('WP5 tenant-plan entitlement gating (real API+DB)', () => {
 })
 
 describe('WP5 meta-test: every entitlement-tagged manifest route is plan-gated (mirrors the role/isolation meta-tests)', () => {
-  it('a plan LACKING an entitlement 403s (plan_upgrade_required) on EVERY manifest route tagged with it', async () => {
-    const tagged = fx.manifest.filter((m) => m.entitlement !== undefined)
+  it('a plan LACKING an entitlement 403s (plan_upgrade_required) on every tagged WRITE route', async () => {
+    // WRITE methods only. GET and DELETE on a tagged route are deliberately open, so that a tenant
+    // that lapsed or downgraded can still SEE and REMOVE what the plan no longer covers — the
+    // delivery side does not consult the plan, so being unable to turn a paid feature off is the
+    // worst shape of the bug. The meta-test still guarantees every tagged route's CREATE/MODIFY
+    // path is gated, which is the property that protects revenue (audit MED).
+    const tagged = fx.manifest.filter((m) => m.entitlement !== undefined && (m.method === 'post' || m.method === 'patch'))
     expect(tagged.length, 'at least one route must carry an entitlement tag').toBeGreaterThan(0)
     const directEnts = planEntitlements(fx.directTenant.plan)
     // itemPath: swap the first :param so param-carrying routes resolve; the plan gate runs BEFORE
