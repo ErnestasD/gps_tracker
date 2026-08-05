@@ -29,6 +29,18 @@ const LATE_FLUSH_S = 48 * 3_600
  * the emitted event — including backwards — because the rule is "not twice within N of each other",
  * not "not twice within N of the newest thing we have seen".
  */
+/** Short stable tag for an event's payload — enough to separate two same-millisecond events of one
+ *  rule, small enough to keep the key short. Collisions cost a dropped duplicate, never a wrong row. */
+function payloadTag(payload: Record<string, unknown>): string {
+  const json = JSON.stringify(payload, Object.keys(payload).sort())
+  let h = 0x811c9dc5
+  for (let i = 0; i < json.length; i++) {
+    h ^= json.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(36)
+}
+
 const COOLDOWN_SCRIPT = `local prev = redis.call('GET', KEYS[1])
 local at = tonumber(ARGV[1])
 if prev and math.abs(at - tonumber(prev)) < tonumber(ARGV[2]) then return 0 end
@@ -158,7 +170,14 @@ export class RulePersister {
     const claimedKeys: string[] = []
 
     // ── 1. replay dedup, on the event's own identity ──────────────────────────────────────────
-    const seenKeys = events.map((e) => `rule:seen:${e.ruleId}:${e.deviceId.toString()}:${e.kind}:${e.at.getTime()}`)
+    // The payload discriminator is not decoration: `positions` is keyed (device_id, fix_time,
+    // rec_hash), so two records CAN share a fix_time, and an ignition/din rule fires on any
+    // transition — a 1→0 and a 0→1 at the same millisecond are two genuine events that would
+    // otherwise share one key and lose the second. Exactly the `cooldownS: 0` case this dedup was
+    // added to protect; with a cooldown the second would be gated anyway.
+    const seenKeys = events.map(
+      (e) => `rule:seen:${e.ruleId}:${e.deviceId.toString()}:${e.kind}:${e.at.getTime()}:${payloadTag(e.payload)}`,
+    )
     const seenPipe = this.redis.pipeline()
     for (const k of seenKeys) seenPipe.set(k, '1', 'EX', REPLAY_TTL_S, 'NX')
     const seenRes = await seenPipe.exec()

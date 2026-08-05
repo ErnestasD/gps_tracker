@@ -392,9 +392,35 @@ async function main(): Promise<void> {
               // The engine has already emitted these events and dropped the trips from memory, so a
               // swallowed failure loses every CLOSE in the batch with nothing to notice — the trips
               // are simply absent from history (audit MED). The positions behind them ARE durable
-              // (I1/I3), so re-arm a reconcile signal per device and let recompute rebuild them
-              // authoritatively; the loop below turns these into jobs in this same batch.
-              for (const ev of tripEvents) motionFeed.tripEngine.markLate(ev.deviceId, ev.startTime)
+              // (I1/I3), so ask for a rebuild.
+              //
+              // Enqueued DIRECTLY, not via the late-signal drain below, because that drain caps `to`
+              // at `now − RECOMPUTE_GUARD_MS` and pads the read by only a stop-threshold margin — a
+              // close that just happened sits INSIDE that gap, so the compensating job would read no
+              // confirming records and rebuild nothing. Window: the batch's own span, out to the
+              // newest end plus the settle guard, deferred until that edge has settled.
+              // one job PER DEVICE — a batch spans a whole shard, and a window welded across
+              // several devices would be both wrong and enormous
+              const spans = new Map<string, { deviceId: bigint; first: Date; last: Date }>()
+              for (const ev of tripEvents) {
+                const end = ev.type === 'close' ? ev.endTime : ev.startTime
+                const cur = spans.get(ev.deviceId.toString())
+                if (cur === undefined) spans.set(ev.deviceId.toString(), { deviceId: ev.deviceId, first: ev.startTime, last: end })
+                else {
+                  if (ev.startTime < cur.first) cur.first = ev.startTime
+                  if (end > cur.last) cur.last = end
+                }
+              }
+              for (const sp of spans.values()) {
+                try {
+                  await enqueueRecompute(recomputeQueue, sp.deviceId, sp.first, new Date(sp.last.getTime() + RECOMPUTE_GUARD_MS), {
+                    delayMs: RECOMPUTE_GUARD_MS,
+                  })
+                } catch {
+                  // even the enqueue failed — fall back to the late signal so the NEXT batch retries
+                  motionFeed.tripEngine.markLate(sp.deviceId, sp.first)
+                }
+              }
               prom.tripPersistErrors.inc()
               console.error('tripPersist', err)
             }

@@ -113,23 +113,16 @@ export async function recomputeTrips(
   // Recompute reconciles SETTLED, CLOSED history only. It NEVER touches `open` rows: the
   // live streaming persister owns those and holds their ids (deleting one would strand its
   // close). So the core span is bounded by the CLOSED trips overlapping [from,to].
-  // Take the bounds AND the exact set of trip ids in one read. The DELETE below is keyed on those
-  // IDS, not on a time range with `status='closed'` re-evaluated at DELETE time (audit MED): the
-  // streaming persister can CLOSE a trip between this read and the transaction, and a range delete
-  // would erase a row this run never rebuilt — the rebuild only knows about the events its
-  // positions produced. That is silent data loss on an ordinary interleaving, and nothing retries
-  // it, because from the job's point of view the recompute succeeded.
-  const existing = await pool.query<{ id: string; startTime: Date; endTime: Date | null }>(
-    `SELECT id, "startTime", "endTime" FROM trips
-       WHERE "deviceId"=$1 AND status='closed' AND "startTime" <= $3 AND COALESCE("endTime","startTime") >= $2
-       ORDER BY "startTime"`,
+  // Aggregate, not a row set: `from` is an unvalidated device timestamp (ingest §3.6 accepts back to
+  // 2020), so materialising every overlapping trip here would let one device with a fallen-back RTC
+  // pull its entire history into memory — and then be declined below as `below_retention` anyway.
+  const bounds = await pool.query(
+    `SELECT MIN("startTime") AS lo, MAX(COALESCE("endTime","startTime")) AS hi
+       FROM trips WHERE "deviceId"=$1 AND status='closed' AND "startTime" <= $3 AND COALESCE("endTime","startTime") >= $2`,
     [dev, from, to],
   )
-  const lo = existing.rows[0]?.startTime ?? null
-  const hi = existing.rows.reduce<Date | null>((acc, r) => {
-    const end = r.endTime ?? r.startTime
-    return acc === null || end > acc ? end : acc
-  }, null)
+  const lo = (bounds.rows[0] as { lo: Date | null }).lo
+  const hi = (bounds.rows[0] as { hi: Date | null }).hi
   // CORE span = the exact time range whose trips we replace. DELETE + INSERT are both keyed
   // on startTime ∈ core, so a neighbour trip that starts OUTSIDE core is never deleted (no
   // margin-bisection). READ is padded by a stop-threshold margin so a target trip's close
@@ -176,6 +169,17 @@ export async function recomputeTrips(
     coreTo = clampedCoreTo
   }
   const records = rows.map((r) => toRecord(deviceId, r as Record<string, unknown>))
+
+  // The ids this run is entitled to delete, captured WITH the source data and bounded by the final
+  // (possibly clamped) core span. The DELETE below is keyed on these, not on a time range with
+  // `status='closed'` re-evaluated at DELETE time (audit MED): the streaming persister can CLOSE a
+  // trip between here and the transaction, and a range delete would erase a row this run never
+  // rebuilt — the rebuild only knows about the events its own positions produced. Silent data loss
+  // on an ordinary interleaving, with the job reporting success.
+  const existing = await pool.query<{ id: string }>(
+    `SELECT id FROM trips WHERE "deviceId"=$1 AND status='closed' AND "startTime" >= $2 AND "startTime" <= $3`,
+    [dev, coreFrom, coreTo],
+  )
   const engine = new TripEngine(thresholds)
   const events = engine.feed(motionRecords(records), () => config) // I5: invalid fixes filtered; per-device config (H2)
 
@@ -207,23 +211,35 @@ export async function recomputeTrips(
          ORDER BY "startTime"`,
       [dev, coreFrom, coreTo],
     )
-    // delete exactly the rows this run rebuilt from — by ID, captured with the source data, and
-    // filtered to the (possibly clamped) core span. A trip closed by streaming after that read is
-    // simply not in the list, so it survives instead of vanishing.
-    const doomed = existing.rows.filter((r) => r.startTime >= coreFrom && r.startTime <= coreTo).map((r) => r.id)
+    // delete exactly the rows this run read as its "before" picture. A trip closed by streaming
+    // after that read is simply not in the list, so it survives instead of vanishing.
+    const doomed = existing.rows.map((r) => r.id)
     const del =
       doomed.length === 0
         ? { rowCount: 0 }
-        : await client.query(`DELETE FROM trips WHERE id = ANY($1::int8[])`, [doomed]) // trips.id is bigint
+        : // deviceId + status repeated even though the ids came from a scoped read: an id list is
+          // implicit scoping, and hard rule 2 exists because implicit scoping is how leaks happen
+          await client.query(`DELETE FROM trips WHERE id = ANY($1::int8[]) AND "deviceId"=$2 AND status='closed'`, [doomed, dev])
+    // A survivor of the id-delete above may describe the SAME journey this rebuild just produced —
+    // the mid-job close, or a duplicate an older overlapping recompute left behind. Displace it:
+    // §6.4 makes the rebuild authoritative, and it is the one computed from the late records that
+    // triggered the job in the first place, so keeping the streamed row would silently discard the
+    // correction the job exists to make. Done as a DELETE rather than a unique index + upsert
+    // because that index would also constrain the streaming persister's open→closed UPDATE: a
+    // rebuilt row at the same startTime would make every later close of that device fail 23505,
+    // strand its id in `openIds` and poison the device permanently.
+    const rebuiltStarts = trips.map((t) => t.startTime)
+    const displaced =
+      rebuiltStarts.length === 0
+        ? { rowCount: 0 }
+        : await client.query(
+            `DELETE FROM trips WHERE "deviceId"=$1 AND status='closed' AND "startTime" = ANY($2::timestamptz[])`,
+            [dev, rebuiltStarts],
+          )
     for (const t of trips) {
-      // ON CONFLICT: the survivor above may describe the same journey the rebuild just produced.
-      // The partial unique index on (deviceId, startTime) WHERE status='closed' (migration
-      // 20260805090000) makes the streamed row win rather than the device ending up with two rows
-      // for one trip. Either row is correct; a duplicate is not.
       await client.query(
         `INSERT INTO trips ("tenantId","accountId","deviceId","status","startTime","endTime","startLat","startLon","endLat","endLon","distanceM","distanceSource","maxSpeed","idleS")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-         ON CONFLICT DO NOTHING`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [scope.tenantId, scope.accountId, dev, t.status, t.startTime, t.endTime, t.startLat, t.startLon, t.endLat, t.endLon, t.distanceM, t.distanceSource, t.maxSpeed, t.idleS],
       )
     }
@@ -238,7 +254,7 @@ export async function recomputeTrips(
       )
     }
     await client.query('COMMIT')
-    return { deleted: del.rowCount ?? 0, created: trips.length, ...(truncated || rowCapped ? { truncated: true as const } : {}) }
+    return { deleted: (del.rowCount ?? 0) + (displaced.rowCount ?? 0), created: trips.length, ...(truncated || rowCapped ? { truncated: true as const } : {}) }
   } catch (err) {
     await client.query('ROLLBACK')
     throw err

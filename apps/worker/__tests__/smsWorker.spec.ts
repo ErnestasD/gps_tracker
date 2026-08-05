@@ -75,6 +75,23 @@ describe('runSms', () => {
     expect(lastStatus(calls)).toBe('sent') // row reconciled
   })
 
+  it('a lost Redis claim cannot license a SECOND charged send — the delivery row is the backstop', async () => {
+    // The DB write now throws so a transient failure is retried instead of recorded as a lie. But
+    // the very events that break that write — a failover, a restart — can also lose the Redis key,
+    // and a fresh SET NX would then hand a delivered message straight back to the provider. The row
+    // is durable; the claim is not.
+    const sentRow = {
+      query: vi.fn((sql: string) =>
+        Promise.resolve({ rows: sql.startsWith('SELECT') ? [{ status: 'sent', providerMessageId: 'SM_already' }] : [], rowCount: 1 }),
+      ),
+    } as unknown as Pool
+    const { redis, store } = fakeRedis() // no claim at all — as if Redis had been flushed
+    const send = vi.fn()
+    await runSms({ connection: {}, pool: sentRow, redis, driver: { send } }, job())
+    expect(send).not.toHaveBeenCalled()
+    expect(store.has('sms:sent:d1')).toBe(false) // and no bogus 'attempting' left behind
+  })
+
   it('a DB failure after a charged send keeps the claim at sent and THROWS, so the retry reconciles', async () => {
     // REGRESSION (audit MED). `markSent` used to sit inside the send's try, so an ordinary pg error
     // — a container restart, a failover, a killed backend, a statement timeout — fell through to

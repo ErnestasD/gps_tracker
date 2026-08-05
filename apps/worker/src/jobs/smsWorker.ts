@@ -53,8 +53,21 @@ function claimKey(smsDeliveryId: string): string {
 async function markSent(pool: Pool, smsDeliveryId: string, providerMessageId: string): Promise<void> {
   await pool.query('UPDATE sms_deliveries SET status = $1, "providerMessageId" = $2, "sentAt" = now() WHERE id = $3', ['sent', providerMessageId, smsDeliveryId])
 }
+/** Never clobbers a row already proven `sent` — a delivered, charged message must not be
+ *  re-labelled failed by a later attempt that only knows the claim was missing. */
 async function markFailed(pool: Pool, smsDeliveryId: string, error: string): Promise<void> {
-  await pool.query('UPDATE sms_deliveries SET status = $1, error = $2 WHERE id = $3', ['failed', error, smsDeliveryId])
+  await pool.query(`UPDATE sms_deliveries SET status = $1, error = $2 WHERE id = $3 AND status <> 'sent'`, ['failed', error, smsDeliveryId])
+}
+
+/** The DURABLE half of the charge guard: the delivery row itself. Consulted when the Redis claim is
+ *  missing or unhelpful, so a Redis flush / failover cannot license a second charged send. */
+async function alreadySent(pool: Pool, smsDeliveryId: string): Promise<boolean> {
+  const r = await pool.query<{ status: string; providerMessageId: string | null }>(
+    'SELECT status, "providerMessageId" FROM sms_deliveries WHERE id = $1',
+    [smsDeliveryId],
+  )
+  const row = r.rows[0]
+  return row !== undefined && (row.status === 'sent' || row.providerMessageId !== null)
 }
 /**
  * Reconcile a redelivered (proven-sent) job to 'sent'. Restores the provider id when the claim
@@ -92,6 +105,14 @@ export async function runSms(deps: SmsWorkerDeps, job: Job<SmsJob>): Promise<voi
 
   const key = claimKey(smsDeliveryId)
   const claimed = await deps.redis.set(key, CLAIM.attempting, 'EX', CLAIM_TTL_S, 'NX')
+  // The claim alone is not a sufficient guard for a RETRY: the DB write below now throws (so that a
+  // transient failure is retried rather than recorded as a lie), and the very events that break that
+  // write — a failover, a restart — can also lose the Redis key. A fresh `SET NX` would then succeed
+  // and the message would be sent and CHARGED a second time. The durable row is the backstop.
+  if (claimed !== null && (await alreadySent(deps.pool, smsDeliveryId))) {
+    await deps.redis.del(key).catch(() => undefined) // do not leave a bogus 'attempting' behind
+    return
+  }
   if (claimed === null) {
     // a prior attempt already claimed this delivery — NEVER resend (it may already be charged).
     // Only a proven 'sent' reconciles the row to sent; every other state (attempting = crashed
@@ -99,6 +120,7 @@ export async function runSms(deps: SmsWorkerDeps, job: Job<SmsJob>): Promise<voi
     const state = await deps.redis.get(key)
     const prior = parseSent(state)
     if (prior.sent) await reconcileSent(deps.pool, smsDeliveryId, prior.providerMessageId)
+    else if (await alreadySent(deps.pool, smsDeliveryId)) await reconcileSent(deps.pool, smsDeliveryId, null)
     else await markFailed(deps.pool, smsDeliveryId, `not resent (prior attempt: ${state ?? 'expired'})`)
     return
   }
@@ -139,7 +161,12 @@ export async function runSms(deps: SmsWorkerDeps, job: Job<SmsJob>): Promise<voi
   //
   // Now the claim records the sid, and a DB failure THROWS: BullMQ retries, the redelivery path sees
   // `sent:<sid>` and reconciles the row without touching the provider.
-  await deps.redis.set(key, sentClaim(providerMessageId), 'EX', CLAIM_TTL_S)
+  // The claim write is best-effort and must NOT skip the row write: if it threw, the claim stayed
+  // `attempting`, the retry took the redelivery branch, and a delivered message was recorded failed
+  // with its sid discarded — the same defect this block describes, moved one line earlier.
+  await deps.redis.set(key, sentClaim(providerMessageId), 'EX', CLAIM_TTL_S).catch((e: unknown) => {
+    console.error('sms claim write failed (the row write below is the durable record)', e)
+  })
   await markSent(deps.pool, smsDeliveryId, providerMessageId)
   deps.onSent?.()
 }

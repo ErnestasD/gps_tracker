@@ -159,6 +159,29 @@ describe('E05-4 RulePersister — scope + cooldown', () => {
     expect(written.map((e) => e.kind)).toEqual(['panic', 'ignition', 'power_cut'])
   })
 
+  it('two genuinely different events at the SAME millisecond both survive the dedup', async () => {
+    // `positions` is keyed (device_id, fix_time, rec_hash), so two records can share a fix_time, and
+    // an ignition rule fires on ANY transition — a 1→0 and a 0→1 at one millisecond are two real
+    // events. Keying dedup on time alone would drop the second, in exactly the `cooldownS: 0`
+    // configuration the dedup exists to protect.
+    const { pool } = fakePool()
+    const shared = new Map<string, string>()
+    const persister = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    const written = await persister.persist([
+      ev({ kind: 'ignition', cooldownS: 0, payload: { on: false } }),
+      ev({ kind: 'ignition', cooldownS: 0, payload: { on: true } }),
+    ])
+    expect(written).toHaveLength(2)
+    // …and a redelivery of BOTH is still fully deduped
+    const p2 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    expect(
+      await p2.persist([
+        ev({ kind: 'ignition', cooldownS: 0, payload: { on: false } }),
+        ev({ kind: 'ignition', cooldownS: 0, payload: { on: true } }),
+      ]),
+    ).toHaveLength(0)
+  })
+
   it('a cooldownS of 0 disables the cooldown but STILL dedupes a redelivery', async () => {
     // REGRESSION (audit MED). Dedup used to be the cooldown key's second job, so `cooldownS: 0` — a
     // perfectly ordinary "alert on every occurrence" setting — had no dedup at all, and `onBatch`

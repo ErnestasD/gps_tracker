@@ -454,8 +454,6 @@ model Trip {
   driver Driver? @relation(fields: [driverId], references: [id], onDelete: SetNull)
 
   @@index([deviceId, startTime])
-  // Partial UNIQUE on the closed set lives in SQL (migration 20260805090000) — Prisma cannot
-  // express a partial index, and recompute's ON CONFLICT DO NOTHING depends on it.
   @@index([tenantId, accountId, startTime])
   // supports the drivers→trips ON DELETE SET NULL cascade + driver-filtered lookups. Declared here
   // to match the index created in migration 20260714130000_trip_driver (schema/migration drift fix).
