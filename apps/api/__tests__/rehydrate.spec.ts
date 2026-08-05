@@ -24,7 +24,14 @@ function fakeRedis(store: Map<string, Record<string, string>>, sets = new Map<st
     hset: (k: string, f: string, v: string) => { set(k, f, v); return Promise.resolve(1) },
     del: (...ks: string[]) => { del(...ks); return Promise.resolve(ks.length) },
     smembers: (k: string) => Promise.resolve([...(sets.get(k) ?? [])]),
-    srem: (k: string, ...ms: string[]) => { const t = sets.get(k); for (const m of ms) t?.delete(m); return Promise.resolve(ms.length) },
+    // real Redis drops a set once its last member is removed — which is why the reconcile does NOT
+    // DEL the key itself (that would wipe a member another replica added mid-sweep)
+    srem: (k: string, ...ms: string[]) => {
+      const t = sets.get(k)
+      for (const m of ms) t?.delete(m)
+      if (t !== undefined && t.size === 0) sets.delete(k)
+      return Promise.resolve(ms.length)
+    },
     hmget: (k: string, ...fs: string[]) => Promise.resolve(fs.map((f) => store.get(k)?.[f] ?? null)),
     // one page, then the terminating cursor — enough to exercise the orphan sweep
     scan: (cursor: string) =>
@@ -122,11 +129,11 @@ describe('rehydrateRegistries', () => {
     expect([...(sets.get(tenantDevicesKey(T)) ?? [])]).toEqual(['42'])
   })
 
-  it('never leaves a live index EMPTY while rebuilding — it builds a scratch key and RENAMEs it', async () => {
+  it('never leaves a live index EMPTY while repairing it', async () => {
     // `pipeline()` is command batching, not MULTI, and the API is already serving /v1/devices/last
     // while this runs. A DEL-then-SADD rebuild blanks every tenant's map for the duration, and a
-    // connection blip partway through blanks them until the NEXT successful boot. RENAME is atomic:
-    // the live key is never absent, so the worst a partial failure can do is keep the old contents.
+    // connection blip partway through blanks them until the NEXT successful boot. Repairing
+    // additively and then pruning stale MEMBERS means the key is never absent and never empty.
     const store = new Map<string, Record<string, string>>()
     const sets = new Map<string, Set<string>>([[tenantDevicesKey(T), new Set(['old'])]])
     const seen: (string | undefined)[] = []
@@ -158,6 +165,17 @@ describe('rehydrateRegistries', () => {
     expect([...(sets.get(tenantDevicesKey(T)) ?? [])]).toEqual(['42'])
   })
 
+  it('never DELs an index key: a member added mid-sweep survives even when every OLD member is stale', async () => {
+    // The reconcile deletes stale MEMBERS, never the key. Deleting a key whose snapshotted members
+    // were all stale would wipe whatever a concurrent activate wrote in between — reopening the
+    // exact race the additive design exists to close. Redis drops an emptied set by itself.
+    const store = new Map<string, Record<string, string>>([['device:tenant', { '123': 'tenant-a' }]])
+    const sets = new Map<string, Set<string>>([[tenantDevicesKey('tenant-a'), new Set(['999', '123'])]])
+    const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'p', odometerSource: 'gps' }
+    await rehydrateRegistries(fakeRedis(store, sets), fakeDb([], [], [dev], [{ id: 'p', presenceRules: {} }]))
+    expect([...(sets.get(tenantDevicesKey('tenant-a')) ?? [])]).toEqual(['123'])
+  })
+
   it('keeps a device another replica activated MID-rehydrate — the sweep judges members, not a snapshot', async () => {
     // REGRESSION. A rolling deploy rehydrates on one replica while the others serve CRUD. Deciding
     // "orphan" from the tenant list snapshotted before three DB reads and a keyspace scan wiped the
@@ -171,18 +189,18 @@ describe('rehydrateRegistries', () => {
     expect([...(sets.get(tenantDevicesKey('brand-new-tenant')) ?? [])]).toEqual(['77'])
   })
 
-  it('sweeps the index of a tenant whose LAST device is gone, and any scratch key a crash left', async () => {
+  it('sweeps the index of a tenant whose LAST device is gone, and any scratch key an older build left', async () => {
     // Such a tenant has no row in listAllForRegistry at all, so the rebuild never visits it — the
     // one place a stranded member could still outlive every restart.
     const store = new Map<string, Record<string, string>>()
     const sets = new Map<string, Set<string>>([
       [tenantDevicesKey('emptied-tenant'), new Set(['99'])],
-      [`${tenantDevicesKey('crashed-run')}:rebuild`, new Set(['1', '2'])],
+      [`${tenantDevicesKey('older-build')}:rebuild`, new Set(['1', '2'])],
     ])
     const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'p', odometerSource: 'gps' }
     await rehydrateRegistries(fakeRedis(store, sets), fakeDb([], [], [dev], [{ id: 'p', presenceRules: {} }]))
     expect(sets.has(tenantDevicesKey('emptied-tenant'))).toBe(false)
-    expect(sets.has(`${tenantDevicesKey('crashed-run')}:rebuild`)).toBe(false)
+    expect(sets.has(`${tenantDevicesKey('older-build')}:rebuild`)).toBe(false)
     expect([...(sets.get(tenantDevicesKey(T)) ?? [])]).toEqual(['42']) // the live one is untouched
   })
 })

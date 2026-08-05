@@ -100,7 +100,9 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
         await redis.srem(key, ...gone)
         pruned += gone.length
       }
-      if (gone.length === members.length) await redis.del(key) // emptied: do not leave the key behind
+      // NO `del(key)` when everything snapshotted was stale: that would wipe a member another
+      // replica added between the SMEMBERS and here — the exact race this whole design avoids.
+      // Redis drops a set when its last member is SREM'd, so there is nothing left to clean up.
     }
   } while (cursor !== '0')
   if (pruned > 0) console.log(`rehydrate: pruned ${pruned} stale device-index entries`)

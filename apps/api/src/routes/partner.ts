@@ -8,7 +8,7 @@ import { partnerLoginSchema, partnerSetPasswordSchema } from '@orbetra/shared'
 
 // one implementation of the lockout primitives for BOTH login surfaces — partner had its own
 // byte-identical copies, which is how two surfaces drift apart without anyone noticing
-import { count, gateRead, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, LOCKOUT_SCRIPT as RL_SCRIPT } from '../auth/gates.js'
+import { count, gateRead, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, KNOWN_GOOD_TTL_S, LOCKOUT_SCRIPT as RL_SCRIPT } from '../auth/gates.js'
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from '../auth/passwords.js'
 import { problem } from '../auth/middleware.js'
 import { mintPartnerToken, verifyPartnerToken } from '../auth/partnerJwt.js'
@@ -110,6 +110,7 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     const failIpKey = `partner:fail:ip:${src}`
     const attemptIpKey = `partner:attempt:ip:${src}`
     const emailIpsKey = `partner:fail:ips:${emailHash}`
+    const okIpKey = `partner:ok:ip:${src}`
     const w = String(RL_WINDOW_S)
     const tooMany = async (key: string, gate: 'credential' | 'ip' | 'email'): Promise<Response> => {
       deps.onLockout?.(gate)
@@ -119,9 +120,13 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     }
     // gateRead/count: identical degradation posture to the tenant login — an unevaluable gate
     // fails OPEN, deliberately and metered, rather than 500ing or hanging (see `auth/gates.ts`)
-    const pre = await gateRead(deps, () => deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).exec())
+    const pre = await gateRead(deps, () =>
+      deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).get(failIpKey).exists(okIpKey).exec(),
+    )
     if (count(pre?.[0]) >= maxAttemptsIpHard) return tooMany(attemptIpKey, 'ip')
     if (count(pre?.[1]) >= maxFailIps) return tooMany(emailIpsKey, 'email')
+    // soft ceiling pre-verify for a bucket no real partner has ever signed in from (see login.ts)
+    if (count(pre?.[2]) >= maxFailsIp && count(pre?.[3]) === 0) return tooMany(failIpKey, 'ip')
     const bumped = await gateRead(deps, () =>
       deps.redis.pipeline().eval(RL_SCRIPT, 1, lockKey, w).eval(RL_SCRIPT, 1, attemptIpKey, w).exec(),
     )
@@ -145,7 +150,11 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     }
     // the per-credential counter is cleared outright; the per-IP FAILURE budget only DECAYS by one,
     // and the ATTEMPT counter is untouched — a refundable volume shed sheds nothing
-    await Promise.all([deps.redis.del(lockKey), deps.redis.eval(DECAY_SCRIPT, 1, failIpKey)])
+    await Promise.all([
+      deps.redis.del(lockKey).catch(() => undefined),
+      deps.redis.eval(DECAY_SCRIPT, 1, failIpKey).catch(() => undefined),
+      deps.redis.setex(okIpKey, KNOWN_GOOD_TTL_S, '1').catch(() => undefined),
+    ])
     const token = await mintPartnerToken(partner.id, deps.jwtSecret, ttlS)
     c.header('Cache-Control', 'no-store')
     return c.json({ accessToken: token, expiresInS: ttlS })

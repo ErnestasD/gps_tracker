@@ -31,21 +31,57 @@ export function clientIp(headerXff: string | undefined, remoteAddr: string, trus
  * it never merges two customers the way a shorter prefix would.
  */
 export function ipBucket(addr: string): string {
-  const a = addr.split('%')[0]!.trim().toLowerCase() // drop any zone id (fe80::1%eth0)
-  // IPv4-mapped IPv6 (::ffff:203.0.113.7) is an IPv4 client arriving on a dual-stack socket
-  const mapped = /^(?:::ffff:)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(a)
-  if (mapped !== null) return mapped[1]!
+  // `[2001:db8::1]:443` — the bracketed authority form. Nothing in the deployed topology hands us
+  // one (Caddy appends a bare host), but a bracket that survived into a key would silently be a
+  // SECOND bucket for the same client.
+  const unbracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(addr.trim())
+  const a = (unbracketed?.[1] ?? addr).split('%')[0]!.trim().toLowerCase() // drop any zone id
   if (!a.includes(':')) return a // IPv4, or something we do not recognise: key it verbatim
+
   const halves = a.split('::')
   if (halves.length > 2) return a // malformed — never guess at a key that gates authentication
-  const left = halves[0] === '' ? [] : halves[0]!.split(':').filter((g) => g !== '')
-  const right = halves.length === 2 ? (halves[1] === '' ? [] : halves[1]!.split(':').filter((g) => g !== '')) : []
-  if ([...left, ...right].some((g) => g.includes('.'))) return a // embedded IPv4 form; leave it alone
+  const split = (part: string | undefined): string[] =>
+    part === undefined || part === '' ? [] : part.split(':').filter((g) => g !== '')
+  const left = split(halves[0])
+  const right = halves.length === 2 ? split(halves[1]) : []
+  // a dotted tail (::ffff:203.0.113.7, ::203.0.113.7) is the last TWO groups written as IPv4
+  const tail = [...left, ...right].filter((g) => g.includes('.'))
+  if (tail.length > 1) return a
+  let dotted: string | null = null
+  if (tail.length === 1) {
+    const quad = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(tail[0]!)
+    if (quad === null || quad.slice(1).some((n) => Number(n) > 255)) return a
+    dotted = tail[0]!
+  }
+  const flat = [...left, ...right].filter((g) => !g.includes('.'))
+  if (flat.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return a // not an address we understand
+  const explicit = flat.length + (dotted !== null ? 2 : 0)
   const groups =
     halves.length === 2
-      ? [...left, ...Array<string>(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right]
-      : left
-  if (groups.length < 4) return a
+      ? [
+          ...left.filter((g) => !g.includes('.')),
+          ...Array<string>(Math.max(0, 8 - explicit)).fill('0'),
+          ...right.filter((g) => !g.includes('.')),
+        ]
+      : flat
+  const dottedGroups =
+    dotted === null
+      ? []
+      : (() => {
+          const [b1, b2, b3, b4] = dotted.split('.').map(Number) as [number, number, number, number]
+          return [((b1 << 8) | b2).toString(16), ((b3 << 8) | b4).toString(16)]
+        })()
+  const full = [...groups, ...dottedGroups]
+  if (full.length !== 8) return a
+  // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d) are an IPv4 client on a dual-stack
+  // socket. Decided on the PARSED 96-bit prefix, not on the textual form: `::ffff:203.0.113.7` and
+  // `::ffff:cb00:7107` are the same address, and keying them apart hands one client two budgets.
+  const prefixZero = full.slice(0, 5).every((g) => Number.parseInt(g, 16) === 0)
+  if (prefixZero && Number.parseInt(full[5]!, 16) === 0xffff) {
+    const hi = Number.parseInt(full[6]!, 16)
+    const lo = Number.parseInt(full[7]!, 16)
+    return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`
+  }
   // strip leading zeros so 2001:0db8:… and 2001:db8:… are one bucket, not two
-  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`
+  return `${full.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`
 }

@@ -157,6 +157,16 @@ const app = createApp(deps, prom)
 const httpServer = serve({ fetch: app.fetch, port, createServer }) as ReturnType<typeof createServer>
 attachWsGateway(httpServer, deps, (n) => prom.setWsClients(n), () => prom.wsSlowConsumer.inc())
 console.log(`orbetra api listening on :${port} (auth live, ws_clients metric live)`)
+// Misconfiguring this now has a much larger blast radius than it used to. Without TRUST_PROXY the
+// client IP is the socket peer, which behind Caddy is ONE bucket for the entire platform — and the
+// hard per-IP ceiling (1000 attempts, pre-verify, never refunded) then applies to everybody at
+// once: 1000 logins platform-wide and the whole product 429s for the window.
+if (process.env['TRUST_PROXY'] !== '1') {
+  console.warn(
+    'WARNING: TRUST_PROXY is not "1". If this process sits behind a reverse proxy, every per-source ' +
+      'rate limit and lockout now counts the PROXY as the client — one shared bucket for all users.',
+  )
+}
 
 // Boot backfill (DB→Redis): repopulate the geofence + iButton caches in case Redis was flushed;
 // best-effort — a failure here must never block serving (CRUD re-syncs incrementally anyway).

@@ -8,7 +8,7 @@ import { effectiveEntitlementsAt, forgotPasswordSchema, localeUpdateSchema, logi
 
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
-import { count, gateRead, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, LOCKOUT_SCRIPT } from './gates.js'
+import { count, gateRead, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, KNOWN_GOOD_TTL_S, LOCKOUT_SCRIPT } from './gates.js'
 import { fixedWindowCount } from '../security.js'
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from './passwords.js'
 import { revokeAllUserSessions } from './revoke.js'
@@ -194,13 +194,22 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     //    five. It is deleted on success, so a legitimate user is never affected by counting
     //    attempts rather than failures.
     //  - per IP, in TWO tiers, on TWO different keys. One IP is not one person: a corporate NAT or
-    //    a carrier CGNAT is hundreds of people behind one address. The SOFT ceiling counts FAILURES
-    //    (`auth:fail:ip:`), decays by one per success, and is applied post-verify — so guessing
-    //    from that address stops while the office keeps working. The HARD ceiling counts EVERY
+    //    a carrier CGNAT is hundreds of people behind one address. The HARD ceiling counts EVERY
     //    ATTEMPT (`auth:attempt:ip:`), never decays, and is applied pre-verify: it is the CPU shed,
-    //    and it must not be refundable. Sharing one key made it exactly that — one free signup, and
-    //    an attacker who interleaved a login to their own account held the counter near zero
-    //    forever, buying unlimited argon2 from a single address.
+    //    and it must not be refundable. Sharing one key with the soft tier made it exactly that —
+    //    one free signup, and an attacker who interleaved a login to their own account held the
+    //    counter near zero forever, buying unlimited argon2 from a single address.
+    //
+    //    The SOFT ceiling counts FAILURES (`auth:fail:ip:`) and decays by one per success. Applied
+    //    only post-verify it enforced NOTHING — a correct password never reaches the check, so it
+    //    merely relabelled a wrong guess 401→429 while a full argon2 verify ran anyway, leaving
+    //    both the oracle and the CPU cost intact. Applied pre-verify it locks out a whole office
+    //    behind one NAT, with no way back, because the successful login that would repay the budget
+    //    is refused by the gate it would clear. So it is pre-verify ONLY for a bucket that has
+    //    never produced a successful login: a source we have never seen a real user come from is
+    //    refused once it has spent its failures, and a source that has is throttled but never
+    //    denied. An attacker can buy "known good" with one account of their own — and is then still
+    //    bounded by the hard ceiling, which no success ever refunds.
     //  - per ACCOUNT, counted as DISTINCT SOURCE IPs that have failed against it, pre-verify.
     //    Counting failed ATTEMPTS instead does not work, in either placement. Pre-verify it is an
     //    account-lockout weapon: emails are enumerable (admins, support addresses, and every
@@ -219,6 +228,7 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     const failIpKey = `auth:fail:ip:${ip}`
     const attemptIpKey = `auth:attempt:ip:${ip}`
     const emailIpsKey = `auth:fail:ips:${emailHash}` // HyperLogLog: bounded 12 KB whatever the botnet size
+    const okIpKey = `auth:ok:ip:${ip}` // "a real user has signed in from this bucket recently"
     const maxFailIpsPerEmail = deps.lockout.maxFailIpsPerEmail ?? 30
     const maxPerIp = deps.lockout.maxFailsPerIp ?? deps.lockout.maxFails * 10
     const maxAttemptsPerIpHard = deps.lockout.maxAttemptsPerIpHard ?? maxPerIp * 20
@@ -234,9 +244,12 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
 
     // read-only pre-checks first: a request refused here costs one pipeline and no argon2, and must
     // not add to the very counters that refused it (that would extend a lockout for free)
-    const pre = await gateRead(deps, () => deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).exec())
+    const pre = await gateRead(deps, () =>
+      deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).get(failIpKey).exists(okIpKey).exec(),
+    )
     if (count(pre?.[0]) >= maxAttemptsPerIpHard) return tooMany(attemptIpKey, 'ip')
     if (count(pre?.[1]) >= maxFailIpsPerEmail) return tooMany(emailIpsKey, 'email')
+    if (count(pre?.[2]) >= maxPerIp && count(pre?.[3]) === 0) return tooMany(failIpKey, 'ip')
 
     // then the per-credential rule, incremented and gated on the SAME atomic result. The attempt
     // counter is bumped here too and re-checked: the read above lets a spent budget drain (a
@@ -286,8 +299,9 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
           .eval(FAIL_SOURCE_SCRIPT, 1, emailIpsKey, ip, windowS)
           .exec(),
       )
-      // the SOFT per-IP ceiling is applied HERE, to a wrong password only, so a shared egress is
-      // never denied a valid credential. `>` not `>=`: it allows exactly `max` failures.
+      // For a KNOWN-GOOD bucket the soft ceiling only ever gets this far, and here it can do no
+      // more than relabel the answer — the office is throttled, never denied. Unknown buckets were
+      // already refused pre-verify above, before any argon2 ran.
       if (count(failed?.[0]) > maxPerIp) return tooMany(failIpKey, 'ip')
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
@@ -304,7 +318,15 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     // success to undo. The per-IP ATTEMPT counter is deliberately untouched — it is a volume shed,
     // and a refundable volume shed sheds nothing. The account's distinct-IP set is also untouched:
     // an attack in progress is not over because one person got in.
-    await Promise.all([deps.redis.del(lockKey), deps.redis.eval(DECAY_SCRIPT, 1, failIpKey)])
+    // guarded like every other Redis touch on this path: these are bookkeeping, and a write error
+    // (-MISCONF after a failed BGSAVE, -OOM, -READONLY on a replica) must not turn a CORRECT
+    // password into a 500. `onError` has no branch for it, so it would be a flat Internal Error.
+    await Promise.all([
+      deps.redis.del(lockKey).catch(() => undefined),
+      deps.redis.eval(DECAY_SCRIPT, 1, failIpKey).catch(() => undefined),
+      // remember this bucket as a source that has produced a real login — see the soft-ceiling note
+      deps.redis.setex(okIpKey, KNOWN_GOOD_TTL_S, '1').catch(() => undefined),
+    ])
     const user = verified[0]!
     const { session, rawRefresh } = await issueSession(user, randomUUID())
     setRefreshCookie(c, rawRefresh)

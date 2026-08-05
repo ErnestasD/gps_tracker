@@ -456,6 +456,40 @@ describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
     }
   })
 
+  it('the SOFT per-IP ceiling refuses BEFORE argon2 for a source no real user has ever come from', async () => {
+    // REGRESSION. Applied only post-verify, the soft ceiling enforced nothing: a correct password
+    // never reaches the check, so it merely relabelled a wrong guess 401→429 while a full 64 MB
+    // argon2 verify ran anyway — the oracle (200 means right) and the CPU cost both intact.
+    // Applied pre-verify for everyone, it locks out a whole office behind one NAT with no way back.
+    // So: pre-verify only for a bucket that has never produced a successful login.
+    const spy = vi.spyOn(passwords, 'verifyPassword')
+    const url = await appOn(
+      { maxFails: 100, windowS: 30, maxFailsPerIp: 3, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.10',
+    )
+    for (let i = 0; i < 3; i++) expect((await post(url, `stranger-${i}@orbetra.test`, 'wrong')).status).toBe(401)
+    const before = spy.mock.calls.length
+    expect((await post(url, 'stranger-x@orbetra.test', 'wrong')).status).toBe(429)
+    expect(spy.mock.calls.length, 'the refused attempt must not have run argon2').toBe(before)
+    spy.mockRestore()
+  })
+
+  it('…but a bucket a real user HAS signed in from is throttled, never denied', async () => {
+    // A corporate NAT or a carrier CGNAT is hundreds of people behind one address, and the success
+    // that repays the budget would be refused by the gate it is meant to clear. One real login
+    // marks the bucket known-good; an attacker can buy that with an account of their own, and is
+    // then still bounded by the hard ceiling, which no success ever refunds.
+    const email = 'officeworker@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn(
+      { maxFails: 100, windowS: 30, maxFailsPerIp: 3, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.11',
+    )
+    expect((await post(url, email, PW)).status).toBe(200) // the bucket is now known-good
+    for (let i = 0; i < 4; i++) await post(url, `colleague-${i}@orbetra.test`, 'wrong')
+    expect((await post(url, email, PW)).status).toBe(200) // …and the office still gets in
+  })
+
   it('one host cannot buy unlimited argon2 verifies by varying the email — soft, then hard', async () => {
     // The per-credential key is `auth:fail:<ip>:<sha256(email)>` — DIFFERENT for every address, so
     // an attacker who never repeats an email never trips it, and each attempt still burns a full
@@ -464,9 +498,10 @@ describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
     const email = 'softip@orbetra.test'
     await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
     const url = await appOn(
-      { maxFails: 100, windowS: 30, maxFailsPerIp: 4, maxAttemptsPerIpHard: 12, maxFailIpsPerEmail: 10_000 },
+      { maxFails: 100, windowS: 30, maxFailsPerIp: 4, maxAttemptsPerIpHard: 20, maxFailIpsPerEmail: 10_000 },
       '10.9.9.1',
     )
+    expect((await post(url, email, PW)).status).toBe(200) // a real user lives behind this address
     for (let i = 0; i < 4; i++) {
       expect((await post(url, `nobody-${i}@orbetra.test`, 'wrong')).status).toBe(401)
     }
@@ -478,7 +513,7 @@ describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
     // keep pushing and the HARD ceiling takes over: it counts every ATTEMPT, so past it nothing is
     // verified at all and even a correct password is refused — at that volume the address is
     // indistinguishable from an attack and shedding CPU has to win
-    for (let i = 0; i < 12; i++) await post(url, `flood-${i}@orbetra.test`, 'wrong')
+    for (let i = 0; i < 20; i++) await post(url, `flood-${i}@orbetra.test`, 'wrong')
     expect((await post(url, email, PW)).status).toBe(429)
   })
 
@@ -535,6 +570,7 @@ describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
       { maxFails: 5, windowS: 30, maxFailsPerIp: 4, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
       '10.9.9.2',
     )
+    expect((await post(url, email, PW)).status).toBe(200) // known-good bucket: the soft gate throttles, never denies
     for (let i = 0; i < 4; i++) expect((await post(url, `x-${i}@orbetra.test`, 'wrong')).status).toBe(401)
     expect(await redis.get('auth:fail:ip:10.9.9.2')).toBe('4')
     expect((await post(url, 'x-4@orbetra.test', 'wrong')).status).toBe(429) // budget spent

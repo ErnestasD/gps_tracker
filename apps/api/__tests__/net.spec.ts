@@ -25,11 +25,21 @@ describe('ipBucket', () => {
     expect(ipBucket('2001:db8:1234:5679::1')).not.toBe(one)
   })
 
-  it('leaves IPv4 alone and unwraps the IPv4-mapped form (dual-stack sockets)', () => {
+  it('leaves IPv4 alone and unwraps EVERY spelling of the IPv4-mapped form (dual-stack sockets)', () => {
     expect(ipBucket('203.0.113.7')).toBe('203.0.113.7')
     // ::ffff:203.0.113.7 is an IPv4 client on a dual-stack listener — the same host, so the same
-    // bucket, or it would get a second budget just by connecting differently
-    expect(ipBucket('::ffff:203.0.113.7')).toBe('203.0.113.7')
+    // bucket, or it would get a second budget just by connecting differently. The decision is made
+    // on the PARSED 96-bit prefix: ::ffff:cb00:7107 is the very same address written in hex, and
+    // matching only the dotted text would hand one client two budgets.
+    for (const form of ['::ffff:203.0.113.7', '::ffff:cb00:7107', '::FFFF:203.0.113.7']) {
+      expect(ipBucket(form), form).toBe('203.0.113.7')
+    }
+  })
+
+  it('strips the bracketed authority form — a stray bracket is a second bucket for one client', () => {
+    // nothing in the deployed topology produces `[host]:port` (Caddy appends a bare host), but a
+    // bracket that survived into a key would silently double an attacker's budget
+    expect(ipBucket('[2001:db8:1234:5678::1]:443')).toBe(ipBucket('2001:db8:1234:5678::9'))
   })
 
   it('never invents a key it cannot justify: zone ids stripped, malformed input passed through', () => {

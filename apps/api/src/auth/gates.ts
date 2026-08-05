@@ -6,6 +6,11 @@ import type { Redis } from 'ioredis'
  * matching the other.
  */
 
+/** How long a source bucket stays "known good" after a real login — see the soft-ceiling note in
+ *  `login.ts`. Long enough to cover a working week's rhythm, short enough that a network we no
+ *  longer see real users on ages out. */
+export const KNOWN_GOOD_TTL_S = 24 * 3_600
+
 /** One pipelined reply as a number. A FAILED command yields 0 — deliberately, see `gateRead`. */
 export const count = (entry: [Error | null, unknown] | undefined): number =>
   entry === undefined || entry[0] !== null ? 0 : Number(entry[1] ?? 0)

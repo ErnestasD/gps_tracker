@@ -263,7 +263,12 @@ export function attachWsGateway(
               // That is the memory we are trying to release, so the wait is bounded to 1 s.
               ws.close(WS_SLOW_CONSUMER_CLOSE, 'too slow')
               setTimeout(() => {
-                if (ws.readyState !== ws.CLOSED) ws.terminate()
+                try {
+                  if (ws.readyState !== ws.CLOSED) ws.terminate()
+                } catch {
+                  /* guarded like the heartbeat's terminate: a throw here has no handler, and
+                     main.ts now exits the process on an uncaught exception */
+                }
               }, SLOW_CONSUMER_TERMINATE_MS).unref?.()
               continue
             }
