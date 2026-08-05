@@ -180,6 +180,33 @@ describe('E03-5 public branding by Host + Caddy ask', () => {
     expect((await fetch(`${base()}/v1/internal/caddy-ask?domain=other.test`)).status).toBe(403)
   })
 
+  it('caddy-ask keeps answering when REDIS is down — a throttle blip must not expire a certificate', async () => {
+    // Caddy mints a certificate iff this answers 200, so ANY non-200 reads as "deny". An unhandled
+    // rejection from the rate limiter would therefore be a 500, and that tenant's certificate would
+    // silently stop renewing. The DB is the authority here; the throttle is a guard rail.
+    await verifiedDomain(t1Token, 'redisdown.t1.test')
+    const brokenRedis = new Proxy(redis, {
+      get: (t, prop, r) => (prop === 'eval' ? () => Promise.reject(new Error('OOM command not allowed')) : (Reflect.get(t, prop, r) as unknown)),
+    })
+    const app = createApp({
+      redis: brokenRedis, redisSub, db,
+      jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
+      lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+      getRemoteAddr: () => '127.0.0.1',
+      askRateLimit: { max: 5, windowS: 60 },
+    })
+    const srv = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    try {
+      expect((await fetch(`http://127.0.0.1:${p}/v1/internal/caddy-ask?domain=redisdown.t1.test`)).status).toBe(200)
+      // …and an unverified domain is still DENIED: failing the throttle open must not open the gate
+      expect((await fetch(`http://127.0.0.1:${p}/v1/internal/caddy-ask?domain=evil.test`)).status).toBe(403)
+    } finally {
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+    }
+  })
+
   it('public routes need NO auth (Caddy has no bearer)', async () => {
     expect((await fetch(`${base()}/v1/internal/caddy-ask?domain=x.test`)).status).not.toBe(401)
     expect((await fetch(`${base()}/v1/branding`, { headers: { 'x-forwarded-host': 'x.test' } })).status).toBe(200)

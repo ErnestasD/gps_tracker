@@ -93,7 +93,11 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `JWT_TTL` | apps/api | Access-token TTL seconds, default `900` (15 min) |
 | `REFRESH_TTL` | apps/api | Refresh-token TTL seconds (sliding), default `1209600` (14 d) |
 | `RESET_TOKEN_TTL` | apps/api | Password-reset link lifetime seconds (ADR-031), default `3600` (1 h) |
-| `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout (§6.1), defaults `5` / `900` |
+| `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout per (IP, email) (§6.1), defaults `5` / `900` |
+| `LOCKOUT_MAX_FAILS_PER_IP` | apps/api | **Soft** per-IP ceiling on FAILED logins in the window, default `50`. Past it, a source no successful login has ever come from is **throttled to one attempt in ten, before argon2** (never refused outright — the failures are not per-account, so cheap guesses at invented addresses would otherwise lock a whole shared egress with no way back, since the login that clears it is the one being refused). A source a real login HAS come from (24 h marker) is not throttled at all. Decays by one per success |
+| `LOCKOUT_MAX_ATTEMPTS_PER_IP_HARD` | apps/api | **Hard** per-IP ceiling on ALL login attempts, default `1000`. Applied before argon2 — the CPU shed — and never refunded by a success, or an attacker with one account of their own would hold it at zero |
+| `LOCKOUT_MAX_FAIL_IPS_PER_EMAIL` | apps/api | DISTINCT source IPs that may fail against ONE account before it locks for the window, default `30`. This is a real account lockout and a deliberate trade-off: counting attempts instead would let one host deny any named customer, and applying it after the verify would bound nothing at all. Sources are counted per IPv4 address / IPv6 **/64**, so one machine cannot be thirty. Raise it live if a customer is affected |
+| `PARTNER_LOCKOUT_MAX_FAILS_PER_IP` / `..._MAX_ATTEMPTS_PER_IP_HARD` / `..._MAX_FAIL_IPS_PER_EMAIL` | apps/api | The same three ceilings for the partner portal (1 h window); each falls back to its built-in default (`60` / `2000` / `30`) |
 | `WS_TICKET_TTL` | apps/api | WS `/v1/stream` one-time ticket TTL seconds (§6.7), default `30` |
 | `ARGON2_MAX_CONCURRENT` | apps/api | Max concurrent argon2 password hashes (back-pressures login/CPU), default `8` |
 | `ARGON2_MAX_WAITING` | apps/api | Max requests QUEUED for an argon2 slot before shedding with 503, default `64` (≈0.9 s of queueing). An unbounded queue turns a flood on any hashing route into a platform-wide login stall |

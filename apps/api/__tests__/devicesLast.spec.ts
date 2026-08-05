@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { LiveEvent } from '@orbetra/shared'
 
 import { createApp, type WsDeps } from '../src/index.js'
+import { tenantDevicesKey } from '../src/routes/deviceRegistry.js'
 import { mintTestToken, testApiDeps } from './helpers/auth.js'
 
 let container: StartedTestContainer
@@ -39,6 +40,7 @@ const compact = (deviceId: string, accountId: string | null): LiveEvent => ({
 
 async function seedDevice(deviceId: string, tenant: string, account: string | null): Promise<void> {
   await redis.hset('device:tenant', deviceId, tenant)
+  await redis.sadd(tenantDevicesKey(tenant), deviceId) // per-tenant index — what the route reads
   if (account !== null) await redis.hset('device:account', deviceId, account)
   const event = compact(deviceId, account)
   await redis.hset(`device:${deviceId}:last`, {
@@ -47,8 +49,8 @@ async function seedDevice(deviceId: string, tenant: string, account: string | nu
   })
 }
 
-async function startApp(): Promise<number> {
-  const app = createApp(testApiDeps(deps))
+async function startApp(d: WsDeps = deps): Promise<number> {
+  const app = createApp(testApiDeps(d))
   const server = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   servers.push(server)
   return new Promise<number>((resolve) => {
@@ -118,7 +120,9 @@ describe('E02-6 GET /v1/devices/last snapshot', () => {
   it('devices mapped but never reported are omitted; malformed state is skipped not fatal', async () => {
     await seedDevice('dev-a', 't1', null)
     await redis.hset('device:tenant', 'dev-silent', 't1') // no :last hash
+    await redis.sadd(tenantDevicesKey('t1'), 'dev-silent')
     await redis.hset('device:tenant', 'dev-broken', 't1')
+    await redis.sadd(tenantDevicesKey('t1'), 'dev-broken')
     await redis.hset('device:dev-broken:last', { fixTimeMs: '1', json: '{not json' })
     const res = await getLast(tenantPort, TOKEN_TENANT)
     expect(res.status).toBe(200)
@@ -129,5 +133,55 @@ describe('E02-6 GET /v1/devices/last snapshot', () => {
   it('empty tenant → empty list (not an error)', async () => {
     const body = (await (await getLast(tenantPort, TOKEN_TENANT)).json()) as { devices: LiveEvent[] }
     expect(body.devices).toEqual([])
+  })
+
+  it('a STALE index member cannot leak another tenant device (index is a hint, not the authority)', async () => {
+    // The per-tenant set is derived state with several writers (CRUD activate/deactivate, boot
+    // rehydrate) — assume it CAN drift. `device:tenant` stays authoritative and the route
+    // re-verifies every candidate against it, so drift costs a wasted lookup, never a leak.
+    await seedDevice('dev-a', 't1', null)
+    await seedDevice('dev-x', 't2', null) // genuinely t2's
+    await redis.sadd(tenantDevicesKey('t1'), 'dev-x') // …but wrongly indexed under t1
+    await redis.sadd(tenantDevicesKey('t1'), 'dev-gone') // and one that no longer exists at all
+    const body = (await (await getLast(tenantPort, TOKEN_TENANT)).json()) as { devices: LiveEvent[] }
+    expect(body.devices.map((d) => d.deviceId)).toEqual(['dev-a'])
+  })
+
+  it('does not scan the platform: the read touches the caller index, never the global hash', async () => {
+    // Regression guard for the audit finding, asserted on the SHAPE of the read rather than on the
+    // output — the old HGETALL implementation returned exactly the same body, so any assertion
+    // about `devices` would pass with the fix reverted and guard nothing. A counting proxy around
+    // the redis client is the only thing that fails on revert.
+    const calls: Record<string, number> = {}
+    const spyRedis = new Proxy(redis, {
+      get(target, prop, receiver) {
+        const v = Reflect.get(target, prop, receiver) as unknown
+        if (typeof v !== 'function' || typeof prop !== 'string') return v
+        return (...a: unknown[]) => {
+          calls[prop] = (calls[prop] ?? 0) + 1
+          return (v as (...x: unknown[]) => unknown).apply(target, a)
+        }
+      },
+    })
+    const spyPort = await startApp({ ...deps, redis: spyRedis })
+    await seedDevice('dev-a', 't1', null)
+    for (let i = 0; i < 200; i++) await seedDevice(`t2-dev-${i}`, 't2', null)
+
+    const body = (await (await getLast(spyPort, TOKEN_TENANT)).json()) as { devices: LiveEvent[] }
+    expect(body.devices.map((d) => d.deviceId)).toEqual(['dev-a'])
+    expect(calls['hgetall'] ?? 0).toBe(0) // the platform-wide scan is GONE, not merely filtered
+    expect(calls['smembers']).toBe(1) // …replaced by one read of the caller's own index
+    expect(await redis.hlen('device:tenant')).toBe(201) // and the global hash is still that large
+  })
+
+  it('rate-limits per user (audit MED: unrate-limited snapshot was a free platform scan)', async () => {
+    await seedDevice('dev-a', 't1', null)
+    const port = await startApp()
+    // default is 60/min; drive one user past it and expect 429 rather than unbounded work
+    let last = 200
+    for (let i = 0; i < 62 && last === 200; i++) last = (await getLast(port, TOKEN_TENANT)).status
+    expect(last).toBe(429)
+    // …and a DIFFERENT user is unaffected (the window is keyed per user, not global)
+    expect((await getLast(port, TOKEN_ACC)).status).toBe(200)
   })
 })

@@ -1,3 +1,5 @@
+import { writeSync } from 'node:fs'
+import { inspect } from 'node:util'
 import { createServer } from 'node:http'
 import { serve } from '@hono/node-server'
 import { getConnInfo } from '@hono/node-server/conninfo'
@@ -28,7 +30,15 @@ if (!databaseUrl) {
   process.exit(2)
 }
 
-const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
+// `enableOfflineQueue: false` is the root fix for a whole class of bug this API had. With the
+// default (true) plus `maxRetriesPerRequest: null`, a DISCONNECTED Redis makes every command WAIT
+// in an uncapped in-memory queue instead of rejecting — so a `.catch()` never runs and the request
+// HANGS. That produced a clean credential oracle during a Redis outage (a wrong password answered
+// 401 in ~130 ms through the timeout-bounded gates, a CORRECT one reached the unguarded success
+// bookkeeping and never answered at all), and pinned an HTTP socket plus queue entries per login
+// for the whole outage. Rejecting immediately makes every `.catch()` on this branch do what its
+// author believed it did. BullMQ's queues take their own connections, so they are unaffected.
+const redis = new Redis(redisUrl, { maxRetriesPerRequest: null, enableOfflineQueue: false })
 const redisSub = redis.duplicate()
 const db = createDb(databaseUrl)
 const pool = createPool(databaseUrl) // raw-SQL positions history reads (E04-3)
@@ -111,6 +121,13 @@ const deps = {
   },
   onSmsQuotaRejected: (scope: 'device' | 'tenant' | 'global') => prom.smsQuotaRejected.inc({ scope }),
   onWebhookUnmatched: (reason: 'no_tenant' | 'unmappable') => prom.billingWebhookUnmatched.inc({ reason }),
+  onLockout: (gate: 'credential' | 'ip' | 'email' | 'degraded') => prom.authLockoutTripped.inc({ gate }),
+  // partner-portal ceilings; unset entries fall back to the module defaults (1 h window there)
+  partnerLoginLimits: {
+    ...(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP'] !== undefined ? { maxFailsPerIp: Number(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP']) } : {}),
+    ...(process.env['PARTNER_LOCKOUT_MAX_ATTEMPTS_PER_IP_HARD'] !== undefined ? { maxAttemptsPerIpHard: Number(process.env['PARTNER_LOCKOUT_MAX_ATTEMPTS_PER_IP_HARD']) } : {}),
+    ...(process.env['PARTNER_LOCKOUT_MAX_FAIL_IPS_PER_EMAIL'] !== undefined ? { maxFailIpsPerEmail: Number(process.env['PARTNER_LOCKOUT_MAX_FAIL_IPS_PER_EMAIL']) } : {}),
+  },
   // hard ceiling on one live socket (default 4 h). A stream is authorized only at connect, so this
   // is what makes a plan downgrade / role change eventually reach an already-open one; clients
   // reconnect with a fresh ticket, which re-authorizes.
@@ -118,6 +135,17 @@ const deps = {
   lockout: {
     maxFails: Number(process.env['LOCKOUT_MAX_FAILS'] ?? 5),
     windowS: Number(process.env['LOCKOUT_WINDOW_S'] ?? 900),
+    // Abuse ceilings, not the per-credential rule. One source IP is a whole office or a carrier
+    // NAT, so the soft one refuses only wrong passwords: 50 FAILED logins per 15 min from one
+    // address is not a human getting it wrong, but it is no reason to deny a valid credential.
+    maxFailsPerIp: Number(process.env['LOCKOUT_MAX_FAILS_PER_IP'] ?? 50),
+    // The hard one counts every ATTEMPT and refuses before argon2 — the CPU shed. 1000 per 15 min
+    // is ~65/min sustained from one address: far beyond a 300-seat office arriving on a Monday
+    // (~5/min), and ~2 minutes of one core in argon2, which the 8-slot semaphore already bounds.
+    maxAttemptsPerIpHard: Number(process.env['LOCKOUT_MAX_ATTEMPTS_PER_IP_HARD'] ?? 1_000),
+    // DISTINCT source IPs failing against one account. A real user fails from one or two; needing
+    // 30 makes the account lockout cost a botnet, which is exactly when locking is the right call.
+    maxFailIpsPerEmail: Number(process.env['LOCKOUT_MAX_FAIL_IPS_PER_EMAIL'] ?? 30),
   },
   // Caddy on-demand-TLS ask throttle per source IP (E03-5); DNS TXT verify uses
   // the real resolver by default (no env — tests inject a mock).
@@ -136,14 +164,58 @@ const deps = {
 const app = createApp(deps, prom)
 
 const httpServer = serve({ fetch: app.fetch, port, createServer }) as ReturnType<typeof createServer>
-attachWsGateway(httpServer, deps, (n) => prom.setWsClients(n))
+attachWsGateway(httpServer, deps, (n) => prom.setWsClients(n), () => prom.wsSlowConsumer.inc())
 console.log(`orbetra api listening on :${port} (auth live, ws_clients metric live)`)
+// Misconfiguring this now has a much larger blast radius than it used to. Without TRUST_PROXY the
+// client IP is the socket peer, which behind Caddy is ONE bucket for the entire platform — and the
+// hard per-IP ceiling (1000 attempts, pre-verify, never refunded) then applies to everybody at
+// once: 1000 logins platform-wide and the whole product 429s for the window.
+if (process.env['TRUST_PROXY'] !== '1') {
+  console.warn(
+    'WARNING: TRUST_PROXY is not "1". If this process sits behind a reverse proxy, every per-source ' +
+      'rate limit and lockout now counts the PROXY as the client — one shared bucket for all users.',
+  )
+}
 
 // Boot backfill (DB→Redis): repopulate the geofence + iButton caches in case Redis was flushed;
 // best-effort — a failure here must never block serving (CRUD re-syncs incrementally anyway).
-void rehydrateRegistries(redis, db)
+// Waits for the connection: with the offline queue disabled, commands issued before the socket is
+// ready would reject rather than queue, and a boot backfill that silently did nothing is the
+// audit-D1 failure (an empty `registry:imei` quarantines the whole fleet) all over again.
+const redisReady = redis.status === 'ready' ? Promise.resolve() : new Promise<void>((r) => redis.once('ready', () => r()))
+void redisReady
+  .then(() => rehydrateRegistries(redis, db))
   .then((r) => console.log(`rehydrated Redis registries: ${r.devices} devices, ${r.geofences} geofences, ${r.ibuttons} iButtons`))
   .catch((e: unknown) => console.error('rehydrate failed (non-fatal)', e))
+
+// Last resort. Every known throw path is handled, but an unhandled 'error' event anywhere in a
+// long-lived listener (ws, ioredis, a pg pool client) is an uncaught exception, and the default
+// behaviour — die silently with a stack on stderr — makes a platform-wide outage look like a
+// container that "just restarted". Log it in a shape an operator can search for, then exit and let
+// the restart policy do its job: a process that has thrown from an unknown place is not trustworthy.
+const fatal = (kind: string, err: unknown): never => {
+  // writeSync, not console.error: stderr is ASYNCHRONOUS on a pipe (docker logs, journald) and
+  // process.exit does not flush it, so the diagnostic this handler exists to produce was truncated
+  // at one pipe buffer — losing precisely the stack that distinguishes an outage from "a container
+  // that just restarted". Measured: 64 KB kept of a 200 KB message.
+  // inspect(), not String(): a non-Error rejection renders as "[object Object]" otherwise, which
+  // is the opposite of a diagnostic
+  const msg = err instanceof Error ? (err.stack ?? err.message) : inspect(err, { depth: 4 })
+  // LOOP on the returned byte count. writeSync does SHORT writes on a pipe — measured 146176 of
+  // 200025 bytes in one call — so ignoring the count drops the tail of the stack, which is the part
+  // that names the throwing frame. EAGAIN on a full non-blocking pipe is retried, not swallowed.
+  const buf = Buffer.from(`FATAL ${kind} — exiting for restart\n${msg}\n`)
+  for (let off = 0, spins = 0; off < buf.length && spins < 10_000; spins++) {
+    try {
+      off += writeSync(2, buf, off)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EAGAIN') break
+    }
+  }
+  process.exit(1)
+}
+process.on('uncaughtException', (err) => fatal('uncaughtException', err))
+process.on('unhandledRejection', (reason) => fatal('unhandledRejection', reason))
 
 process.on('SIGTERM', () => {
   httpServer.close(() => {

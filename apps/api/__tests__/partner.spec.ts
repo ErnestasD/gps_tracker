@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { resolve } from 'node:path'
 import { serve } from '@hono/node-server'
@@ -130,6 +131,36 @@ describe('partner self-service auth (F5)', () => {
     // a suspended partner with a valid password still cannot log in
     const sus = await makePartner('sus@partner.co', 'partnerpass1', 'suspended')
     expect((await login(sus.email, sus.password)).status).toBe(401)
+  })
+
+  it('the per-IP ceiling stops an attacker who varies the email to dodge the per-credential key', async () => {
+    // The per-(IP,email) key is a different key for every address tried, so on its own it bounds
+    // nothing for someone who never repeats one — and each attempt still burns a full argon2id
+    // verify on the shared semaphore. Mirror of the tenant-login finding (audit MED). The soft
+    // ceiling is 60 failures/h per IP and every test in this file shares 127.0.0.1, so the counters
+    // are cleared first to make the assertion about the RULE and not about what ran before it.
+    await redis.del('partner:fail:ip:127.0.0.1', 'partner:attempt:ip:127.0.0.1')
+    let blocked = 0
+    for (let i = 0; i < 62 && blocked === 0; i++) {
+      const res = await login(`ghost-${i}@partner.co`, 'partnerpass1') // never the same email twice
+      if (res.status === 429) blocked = i
+    }
+    expect(blocked).toBeGreaterThan(0)
+    await redis.del('partner:fail:ip:127.0.0.1', 'partner:attempt:ip:127.0.0.1')
+  })
+
+  it('a partner is never locked out of the portal by someone guessing at their email from one host', async () => {
+    // Affiliate emails are the most public identifiers on the platform — they are printed on the
+    // referral pages. An attempt-counting account ceiling would let anyone deny a partner their
+    // portal for an hour; counting DISTINCT source IPs means it takes a botnet, not a script.
+    const p = await makePartner('publicemail@partner.co', 'partnerpass1')
+    await redis.del('partner:fail:ip:127.0.0.1', 'partner:attempt:ip:127.0.0.1')
+    for (let i = 0; i < 40; i++) await login(p.email, 'wrongpass1')
+    // the per-(IP,email) rule does throttle this host, so clear that one key and confirm the
+    // ACCOUNT itself was never locked: a different source signs in with the correct password
+    await redis.del(`partner:fail:127.0.0.1:${createHash('sha256').update(p.email).digest('hex').slice(0, 16)}`)
+    expect((await login(p.email, p.password)).status).toBe(200)
+    await redis.del('partner:fail:ip:127.0.0.1', 'partner:attempt:ip:127.0.0.1')
   })
 
   it('suspending a partner AFTER login revokes its live token immediately (review MED)', async () => {

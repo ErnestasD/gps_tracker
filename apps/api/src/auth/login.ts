@@ -8,6 +8,8 @@ import { effectiveEntitlementsAt, forgotPasswordSchema, localeUpdateSchema, logi
 
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
+import { count, gateRead, ADMIT_SCRIPT, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, KNOWN_GOOD_TTL_S, LOCKOUT_SCRIPT, UNMARKED_ADMIT_EVERY } from './gates.js'
+import { fixedWindowCount } from '../security.js'
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from './passwords.js'
 import { revokeAllUserSessions } from './revoke.js'
 import { markSessionsRevoked } from '../ws.js'
@@ -56,7 +58,27 @@ export interface AuthRouteDeps {
   jwtSecret: string
   jwtTtlS: number
   refreshTtlS: number
-  lockout: { maxFails: number; windowS: number }
+  /**
+   * Failed-login ceilings inside `windowS`. `maxFails` is the documented per (IP, email) rule;
+   * the other two close the holes that key shape leaves open — one IP varying the email, and many
+   * IPs stuffing one account. Defaults derive from maxFails so a deployment that only sets it
+   * still gets all three.
+   */
+  lockout: {
+    maxFails: number
+    windowS: number
+    /** Soft per-IP ceiling on FAILURES: past it a wrong password is refused, a correct one is not. */
+    maxFailsPerIp?: number
+    /** Hard per-IP ceiling on ATTEMPTS (successes included): past it nothing is verified at all. */
+    maxAttemptsPerIpHard?: number
+    /** Distinct source IPs that may fail against ONE account before it is locked for the window. */
+    maxFailIpsPerEmail?: number
+  }
+  /** A lockout gate refused a request, by which ceiling tripped. A customer locked out of the
+   *  product must be visible in Grafana, not merely in their own support ticket. */
+  onLockout?: (gate: 'credential' | 'ip' | 'email' | 'degraded') => void
+  /** Self-service password-change limit per user; default 10/h. Two argon2 ops per request. */
+  passwordChangeRateLimit?: { max: number; windowS: number }
   secureCookies: boolean
   /** Trust X-Forwarded-For (prod behind Caddy only). */
   trustProxy: boolean
@@ -83,13 +105,6 @@ const COOKIE = 'orb_refresh'
 const COOKIE_PATH = '/v1/auth' // the cookie never rides on data requests
 
 const sha256 = (s: string | Buffer): string => createHash('sha256').update(s).digest('hex')
-
-// atomic fixed-window bump (mirrors caddyAsk RL_SCRIPT): INCR, set TTL on the first hit OR re-arm
-// a stranded TTL-less key — a failed one-shot EXPIRE must never leave a key that 429s forever
-// (review LOW-2: a Redis blip between INCR and EXPIRE would else permanently lock an IP+email pair)
-const LOCKOUT_SCRIPT = `local n = redis.call('INCR', KEYS[1])
-if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
-return n`
 
 // forgot-password rate limit (ADR-031): max reset requests per IP+email per window. Generous enough
 // for a real user retrying, tight enough that the send path can't mail-bomb or probe for accounts.
@@ -168,30 +183,144 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     const email = body.data.email.trim().toLowerCase()
     const ip = clientIp(c.req.header('x-forwarded-for'), getRemoteAddr(c), deps.trustProxy)
 
-    // lockout gate BEFORE any DB/argon2 work (§6.1: 5 fails → 15 min per IP+email)
-    const lockKey = `auth:fail:${ip}:${sha256(email).slice(0, 16)}`
-    const fails = Number((await deps.redis.get(lockKey)) ?? 0)
-    if (fails >= deps.lockout.maxFails) {
-      const ttl = await deps.redis.ttl(lockKey)
+    // Lockout gates. THREE counters, because the original single (IP, email) key left two holes
+    // open (audit MED) — but they do NOT all gate at the same point, and that distinction is the
+    // whole design:
+    //
+    //  - per (IP, email) at `maxFails` — the documented §6.1 rule. INCREMENTED BEFORE the verify
+    //    and gated on the returned count, not read-then-written around a ~120 ms argon2 call: with
+    //    a check-then-act gate every concurrent request reads the same pre-increment value, so the
+    //    real bound was the argon2 admission queue (8 running + 64 waiting = 72 per replica), not
+    //    five. It is deleted on success, so a legitimate user is never affected by counting
+    //    attempts rather than failures.
+    //  - per IP, in TWO tiers, on TWO different keys. One IP is not one person: a corporate NAT or
+    //    a carrier CGNAT is hundreds of people behind one address. The HARD ceiling counts EVERY
+    //    ATTEMPT (`auth:attempt:ip:`), never decays, and is applied pre-verify: it is the CPU shed,
+    //    and it must not be refundable. Sharing one key with the soft tier made it exactly that —
+    //    one free signup, and an attacker who interleaved a login to their own account held the
+    //    counter near zero forever, buying unlimited argon2 from a single address.
+    //
+    //    The SOFT ceiling counts FAILURES (`auth:fail:ip:`) and decays by one per success. Applied
+    //    only post-verify it enforced NOTHING — a correct password never reaches the check, so it
+    //    merely relabelled a wrong guess 401→429 while a full argon2 verify ran anyway, leaving
+    //    both the oracle and the CPU cost intact. Applied pre-verify it locks out a whole office
+    //    behind one NAT, with no way back, because the successful login that would repay the budget
+    //    is refused by the gate it would clear. So it is pre-verify ONLY for a bucket that has
+    //    never produced a successful login: a source we have never seen a real user come from is
+    //    refused once it has spent its failures, and a source that has is throttled but never
+    //    denied. An attacker can buy "known good" with one account of their own — and is then still
+    //    bounded by the hard ceiling, which no success ever refunds.
+    //  - per ACCOUNT, counted as DISTINCT SOURCE IPs that have failed against it, pre-verify.
+    //    Counting failed ATTEMPTS instead does not work, in either placement. Pre-verify it is an
+    //    account-lockout weapon: emails are enumerable (admins, support addresses, and every
+    //    affiliate address is published), so ~20 wrong guesses from ONE host denied any named
+    //    customer their own product for a full window. Post-verify it bounds nothing at all: the
+    //    check only runs on the failure path, so a CORRECT password sails through and the
+    //    attacker's oracle — 200 means right, anything else means wrong — is untouched; it merely
+    //    relabels a wrong guess from 401 to 429 while argon2 still runs on every attempt.
+    //    Distinct IPs is the axis the threat actually lives on: a real user fails from one or two
+    //    addresses, distributed stuffing needs many. This IS a lockout — the owner cannot sign in
+    //    while it holds — and that is a deliberate, metered trade-off: it takes a botnet of
+    //    `maxFailIpsPerEmail` distinct hosts to trigger, which is precisely the case where refusing
+    //    everyone is the correct answer, and the ceiling is env-tunable so it can be raised live.
+    const emailHash = sha256(email).slice(0, 16)
+    const lockKey = `auth:fail:${ip}:${emailHash}`
+    const failIpKey = `auth:fail:ip:${ip}`
+    const attemptIpKey = `auth:attempt:ip:${ip}`
+    const emailIpsKey = `auth:fail:ips:${emailHash}` // HyperLogLog: bounded 12 KB whatever the botnet size
+    const okIpKey = `auth:ok:ip:${ip}` // "a real user has signed in from this bucket recently"
+    const maxFailIpsPerEmail = deps.lockout.maxFailIpsPerEmail ?? 30
+    const maxPerIp = deps.lockout.maxFailsPerIp ?? deps.lockout.maxFails * 10
+    const maxAttemptsPerIpHard = deps.lockout.maxAttemptsPerIpHard ?? maxPerIp * 20
+    const windowS = String(deps.lockout.windowS)
+    const tooMany = async (key: string, gate: 'credential' | 'ip' | 'email'): Promise<Response> => {
+      deps.onLockout?.(gate)
+      // the whole point of this path is to degrade gracefully — a Redis hiccup while reading a TTL
+      // must not turn the 429 into a 500
+      const ttl = await deps.redis.ttl(key).catch(() => deps.lockout.windowS)
       c.header('Retry-After', String(Math.max(1, ttl)))
       return problem(c, 429, 'Too Many Attempts', 'try again later')
+    }
+
+    // read-only pre-checks first: a request refused here costs one pipeline and no argon2, and must
+    // not add to the very counters that refused it (that would extend a lockout for free)
+    const pre = await gateRead(deps, () =>
+      deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).get(failIpKey).exists(okIpKey).exec(),
+    )
+    // `pre === null` means a gate could not be evaluated — skip ALL of them rather than reading the
+    // absent values as zero. Reading them would also invert the fail-open posture for a deployment
+    // that sets a ceiling to 0: `0 >= 0` refuses every login precisely when Redis is degraded.
+    if (pre !== null) {
+      if (count(pre[0]) >= maxAttemptsPerIpHard) return tooMany(attemptIpKey, 'ip')
+      if (count(pre[1]) >= maxFailIpsPerEmail) return tooMany(emailIpsKey, 'email')
+      // Soft ceiling on an UNMARKED bucket: throttle to one attempt in N rather than refuse. See
+      // UNMARKED_ADMIT_EVERY — a hard refusal here is a renewable lockout for a whole shared egress,
+      // because the login that would mark the bucket is itself refused.
+      if (count(pre[2]) >= maxPerIp && count(pre[3]) === 0) {
+        const admitted = await gateRead(deps, () =>
+          deps.redis
+            .pipeline()
+            .eval(ADMIT_SCRIPT, 1, `auth:admit:ip:${ip}`, String(UNMARKED_ADMIT_EVERY), windowS)
+            .exec(),
+        )
+        if (admitted !== null && count(admitted[0]) === 0) return tooMany(failIpKey, 'ip')
+      }
+    }
+
+    // then the per-credential rule, incremented and gated on the SAME atomic result. The attempt
+    // counter is bumped here too and re-checked: the read above lets a spent budget drain (a
+    // refused request must not extend its own lockout), while this catches a concurrent burst that
+    // all read the same sub-ceiling value.
+    const bumped = await gateRead(deps, () =>
+      deps.redis
+        .pipeline()
+        .eval(LOCKOUT_SCRIPT, 1, lockKey, windowS)
+        .eval(LOCKOUT_SCRIPT, 1, attemptIpKey, windowS)
+        .exec(),
+    )
+    if (bumped !== null) {
+      if (count(bumped[0]) > deps.lockout.maxFails) return tooMany(lockKey, 'credential')
+      if (count(bumped[1]) > maxAttemptsPerIpHard) return tooMany(attemptIpKey, 'ip')
     }
 
     // verify against ALL candidates, no short-circuit; unknown email burns one
     // dummy verify — response timing must not reveal email existence
     const candidates = await deps.db.users.findByEmailAllTenants(email)
     const verified: AuthUserRow[] = []
-    if (candidates.length === 0) {
-      await verifyPassword(await DUMMY_HASH_PROMISE, body.data.password)
-    } else {
-      for (const u of candidates) {
-        if (await verifyPassword(u.passwordHash, body.data.password)) verified.push(u)
+    try {
+      if (candidates.length === 0) {
+        await verifyPassword(await DUMMY_HASH_PROMISE, body.data.password)
+      } else {
+        for (const u of candidates) {
+          if (await verifyPassword(u.passwordHash, body.data.password)) verified.push(u)
+        }
       }
+    } catch (err) {
+      // An argon2 shed (503) means no password was ever compared — so the two counters bumped above
+      // must be REFUNDED. Without this a CPU spike converts into a lockout for people who typed the
+      // right password all along: five sheds and the sixth attempt is 429 for the rest of the
+      // window. The user never got it wrong; the server was busy.
+      await Promise.all([
+        deps.redis.eval(DECAY_SCRIPT, 1, lockKey).catch(() => undefined),
+        deps.redis.eval(DECAY_SCRIPT, 1, attemptIpKey).catch(() => undefined),
+      ])
+      throw err
     }
 
     if (verified.length === 0) {
-      // atomic INCR + (re-armed) EXPIRE — never strands a TTL-less key (review LOW-2)
-      await deps.redis.eval(LOCKOUT_SCRIPT, 1, lockKey, String(deps.lockout.windowS))
+      // atomic INCR + (re-armed) EXPIRE — never strands a TTL-less key (review LOW-2). PFADD marks
+      // this source against the account; its TTL is re-armed the same way for the same reason.
+      const failed = await gateRead(deps, () =>
+        deps.redis
+          .pipeline()
+          .eval(LOCKOUT_SCRIPT, 1, failIpKey, windowS)
+          .eval(FAIL_SOURCE_SCRIPT, 1, emailIpsKey, ip, windowS)
+          .exec(),
+      )
+      // For a KNOWN-GOOD bucket the soft ceiling only ever gets this far, and here it can do no
+      // more than relabel the answer — the office is throttled, never denied. Unknown buckets were
+      // already refused pre-verify above, before any argon2 ran.
+      if (failed !== null && count(failed[0]) > maxPerIp) return tooMany(failIpKey, 'ip')
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
     if (verified.length > 1) {
@@ -201,7 +330,21 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       return problem(c, 409, 'Ambiguous Identity', 'contact your administrator', 'https://orbetra.dev/problems/ambiguous-identity')
     }
 
-    await deps.redis.del(lockKey) // success resets the counter
+    // Success clears the per-credential counter outright. The per-IP FAILURE budget is only
+    // DECREMENTED: clearing it would let an attacker refund it by interleaving one login to an
+    // account they control, while never decaying it punishes a shared egress. One failure costs one
+    // success to undo. The per-IP ATTEMPT counter is deliberately untouched — it is a volume shed,
+    // and a refundable volume shed sheds nothing. The account's distinct-IP set is also untouched:
+    // an attack in progress is not over because one person got in.
+    // guarded like every other Redis touch on this path: these are bookkeeping, and a write error
+    // (-MISCONF after a failed BGSAVE, -OOM, -READONLY on a replica) must not turn a CORRECT
+    // password into a 500. `onError` has no branch for it, so it would be a flat Internal Error.
+    await Promise.all([
+      deps.redis.del(lockKey).catch(() => undefined),
+      deps.redis.eval(DECAY_SCRIPT, 1, failIpKey).catch(() => undefined),
+      // remember this bucket as a source that has produced a real login — see the soft-ceiling note
+      deps.redis.setex(okIpKey, KNOWN_GOOD_TTL_S, '1').catch(() => undefined),
+    ])
     const user = verified[0]!
     const { session, rawRefresh } = await issueSession(user, randomUUID())
     setRefreshCookie(c, rawRefresh)
@@ -302,6 +445,16 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     const parsed = passwordChangeSchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return problem(c, 400, 'Bad Request')
     const auth = c.get('auth')
+    // TWO 64 MB argon2 operations per request (verify current + hash new) behind nothing but a
+    // valid access token: any authenticated user of any tenant could saturate the process-wide
+    // 8-slot semaphore from one session, which sheds 503s across every login on the platform. The
+    // login route's own ceilings do not cover this one, so it carries its own — per user, because
+    // that is the identity the token already pins. Fails open like every other limiter.
+    const pwRl = deps.passwordChangeRateLimit ?? { max: 10, windowS: 3_600 }
+    if ((await fixedWindowCount(deps.redis, `auth:pwchange:${auth.userId}`, pwRl.windowS, () => deps.onLockout?.('degraded'))) > pwRl.max) {
+      c.header('Retry-After', String(pwRl.windowS))
+      return problem(c, 429, 'Too Many Requests')
+    }
     const user = await deps.db.users.findByIdForAuth(auth.userId)
     if (user === null) return problem(c, 401, 'Unauthorized')
     if (!(await verifyPassword(user.passwordHash, parsed.data.currentPassword))) {

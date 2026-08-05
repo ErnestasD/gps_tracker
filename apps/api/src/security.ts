@@ -33,3 +33,51 @@ export function securityHeaders(opts: { hsts: boolean }): MiddlewareHandler {
     if (opts.hsts) c.header('Strict-Transport-Security', hstsValue)
   }
 }
+
+/**
+ * Atomic fixed-window counter: INCR, and arm the TTL on the first hit OR whenever the key somehow
+ * lost one (`TTL < 0`) — an unexpiring counter would lock a caller out permanently. Returns the
+ * post-increment count; the caller compares it against its own ceiling.
+ *
+ * Fails OPEN (returns 0) on a Redis error OR a timeout: a rate limiter is a guard rail, and an
+ * availability blip in Redis must not take the whole API down with it. The timeout is not
+ * belt-and-braces — with `maxRetriesPerRequest: null` and the default offline queue, a
+ * DISCONNECTED Redis makes commands WAIT rather than reject, so the catch never runs and the
+ * request hangs instead of degrading. This is the first thing `GET /v1/devices/last` and
+ * `POST /v1/auth/password` do, so a hang here is the whole route.
+ */
+const RL_TIMEOUT_MS = 1_000
+const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
+if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return n`
+
+export async function fixedWindowCount(
+  redis: { eval(script: string, numKeys: number, ...args: (string | number)[]): Promise<unknown> } | undefined,
+  key: string,
+  windowS: number,
+  /** Fired when the limiter could not be evaluated and the caller was let through. `gateRead` has
+   *  the same hook for the same reason: a fail-open window must be an alert, not a silent hole —
+   *  `POST /v1/auth/password` losing its limiter means two 64 MB argon2 ops per request, unbounded,
+   *  into the process-wide semaphore, invisibly. */
+  onDegraded?: () => void,
+): Promise<number> {
+  if (redis === undefined) return 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const n = await Promise.race([
+      redis.eval(RL_SCRIPT, 1, key, String(windowS)),
+      new Promise<number>((resolve) => {
+        timer = setTimeout(() => {
+          onDegraded?.()
+          resolve(0)
+        }, RL_TIMEOUT_MS)
+      }),
+    ])
+    return Number(n ?? 0)
+  } catch {
+    onDegraded?.()
+    return 0
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}

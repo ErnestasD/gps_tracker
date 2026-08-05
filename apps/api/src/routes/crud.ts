@@ -472,7 +472,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const scope = scopeOf(auth(c))
         const device = await db.devices.get(scope, id(c))
         if (device === null) return problem(c, 404, 'Not Found')
-        await deactivateDevice(deps.redis, { id: device.id, imei: device.imei }) // ingest rejects next connect (AC[2])
+        await deactivateDevice(deps.redis, { id: device.id, imei: device.imei, tenantId: device.tenantId }) // ingest rejects next connect (AC[2])
         const row = await db.devices.retire(scope, { userId: auth(c).userId }, id(c))
         return json(c, row ?? device)
       } },

@@ -21,6 +21,7 @@ import { createPilotRequestRoute } from './routes/pilotRequest.js'
 import { createPartnerRoutes } from './routes/partner.js'
 import { createSignupRoute } from './routes/signup.js'
 import { buildRoutes } from './routes/crud.js'
+import { tenantDevicesKey } from './routes/deviceRegistry.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { mountReports } from './routes/reports.js'
 import { mountDriverScores } from './routes/driverScores.js'
@@ -29,7 +30,7 @@ import { mountBilling, mountStripeWebhook } from './routes/billing.js'
 import { mountPush } from './routes/push.js'
 import type { StripeGateway } from './billing/stripe.js'
 import { defaultTxtResolver, type TxtResolver } from './routes/tenantSelf.js'
-import { securityHeaders } from './security.js'
+import { fixedWindowCount, securityHeaders } from './security.js'
 import { issueTicket, revokedAfter, type WsDeps } from './ws.js'
 
 export interface ApiDeps extends WsDeps {
@@ -39,7 +40,28 @@ export interface ApiDeps extends WsDeps {
   jwtSecret: string
   jwtTtlS: number
   refreshTtlS: number
-  lockout: { maxFails: number; windowS: number }
+  /**
+   * Failed-login ceilings inside `windowS`. `maxFails` is the documented per (IP, email) rule;
+   * the other two close the holes that key shape leaves open — one IP varying the email, and many
+   * IPs stuffing one account. Defaults derive from maxFails so a deployment that only sets it
+   * still gets all three.
+   */
+  lockout: {
+    maxFails: number
+    windowS: number
+    /** Soft per-IP ceiling on FAILURES: past it a wrong password is refused, a correct one is not. */
+    maxFailsPerIp?: number
+    /** Hard per-IP ceiling on ATTEMPTS (successes included): past it nothing is verified at all. */
+    maxAttemptsPerIpHard?: number
+    /** Distinct source IPs that may fail against ONE account before it is locked for the window. */
+    maxFailIpsPerEmail?: number
+  }
+  /** A lockout gate refused a login, by which ceiling tripped (see `auth/login.ts`). */
+  onLockout?: (gate: 'credential' | 'ip' | 'email' | 'degraded') => void
+  /** Self-service password-change limit per user; default 10/h (two argon2 ops per request). */
+  passwordChangeRateLimit?: { max: number; windowS: number }
+  /** Partner-portal login ceilings; each falls back to the partner module's default. */
+  partnerLoginLimits?: { maxFails?: number; maxFailsPerIp?: number; maxAttemptsPerIpHard?: number; maxFailIpsPerEmail?: number }
   secureCookies: boolean
   trustProxy: boolean
   /** Remote socket address resolver (Node server adapter specific; tests inject). */
@@ -97,6 +119,8 @@ export interface ApiDeps extends WsDeps {
   routingRateLimit?: { max: number; windowS: number }
   /** reports per-user rate limit (audit MED); default 60/min. */
   reportRateLimit?: { max: number; windowS: number }
+  /** `GET /v1/devices/last` per-user rate limit (audit MED); default 60/min. */
+  deviceLastRateLimit?: { max: number; windowS: number }
 }
 
 export interface ApiProm {
@@ -106,6 +130,11 @@ export interface ApiProm {
   smsQuotaRejected: Counter
   /** Verified Stripe subscription webhooks that provisioned NOTHING — a paying customer with no plan. */
   billingWebhookUnmatched: Counter
+  /** Live sockets dropped for exceeding the send-buffer ceiling: a client that stopped reading. */
+  wsSlowConsumer: Counter
+  /** Logins refused by a lockout ceiling, by gate. A rising `email` rate is an account under
+   *  attack; a rising `ip` rate is either abuse or a shared egress that needs a higher ceiling. */
+  authLockoutTripped: Counter
   /** Every HTTP response, by method / route TEMPLATE / status class. The route template (not the
    *  raw path) keeps the label set bounded — `/v1/devices/:id` is one series, not one per device. */
   httpRequests: Counter
@@ -143,6 +172,17 @@ export function createApiProm(): ApiProm {
     labelNames: ['reason'],
     registers: [registry],
   })
+  const wsSlowConsumer = new Counter({
+    name: 'ws_slow_consumer_dropped_total',
+    help: 'WS connections closed because their send buffer exceeded the ceiling (client not reading)',
+    registers: [registry],
+  })
+  const authLockoutTripped = new Counter({
+    name: 'auth_lockout_tripped_total',
+    help: 'logins refused by a lockout ceiling (credential = per IP+email, ip = per source, email = per account) — plus degraded = a gate could not be evaluated and the request was allowed through',
+    labelNames: ['gate'],
+    registers: [registry],
+  })
   const httpRequests = new Counter({
     name: 'http_requests_total',
     help: 'HTTP responses by method, route template and status class',
@@ -158,7 +198,7 @@ export function createApiProm(): ApiProm {
     buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   })
-  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, httpRequests, httpDuration }
+  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, httpRequests, httpDuration }
 }
 
 /**
@@ -295,7 +335,17 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // PARTNER (affiliate) self-service (F5) — a SEPARATE auth surface, mounted before the tenant /v1/*
   // guard: login/set-password are public, me/commissions carry their OWN partner-token guard. A
   // partner is never a tenant user, so the tenant middleware must not see these. Manifest-EXEMPT.
-  app.route('/', createPartnerRoutes({ db: deps.db, redis: deps.redis, jwtSecret: deps.jwtSecret, trustProxy: deps.trustProxy, getRemoteAddr }))
+  app.route('/', createPartnerRoutes({
+    db: deps.db,
+    redis: deps.redis,
+    jwtSecret: deps.jwtSecret,
+    trustProxy: deps.trustProxy,
+    getRemoteAddr,
+    // the partner portal shares the tenant login's ceilings and its lockout counter — one
+    // authentication surface should not be invisible in Grafana because it lives in another file
+    loginLimits: deps.partnerLoginLimits,
+    onLockout: deps.onLockout,
+  }))
 
   const apiKeyAuth = createApiKeyAuth({ apiKeys: deps.db.apiKeys, redis: deps.redis, perMin: deps.apiKeyRateLimitPerMin ?? 600 })
   // REST-API access is a TSP-plus entitlement — reject a resolved key whose tenant lacks apiAccess
@@ -314,22 +364,54 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     return c.json({ ticket, expiresInS: deps.ticketTtlS ?? 30 })
   })
 
-  // TEMPORARY until E03-3 (founder-approved E02-6 addition): last-known snapshot so the
-  // web map isn't empty until each device next reports. Reads the Redis hashes LiveState
-  // maintains; E03-3 replaces this with a scoped repository in packages/db and deletes
-  // the direct hash walk (HGETALL is fine at stub scale, not at 5k devices).
+  /**
+   * Last-known snapshot for the caller's devices, so the web map is not empty until each device
+   * next reports. Reads the Redis hashes LiveState maintains — deliberately NO database: this is
+   * the map's first paint, and it keeps working while Postgres is degraded.
+   *
+   * It used to `HGETALL device:tenant` — a hash holding EVERY device on the platform — and filter
+   * in JS, then issue one `HGET` per surviving device on the shared connection (audit MED). Both
+   * halves scaled with the PLATFORM rather than with the caller: at 5k devices one request pulled
+   * ~5k field/value pairs across the wire to keep 40, and the N+1 round trips ran head-of-line on
+   * the connection every other request shares. Any authenticated user could repeat it as fast as
+   * they liked.
+   *
+   * Now 2 + N commands, and every one of them is bounded by the CALLER's own fleet instead of the
+   * platform: SMEMBERS on the per-tenant index, one HMGET to RE-VERIFY ownership against the
+   * authoritative `device:tenant` hash (so a stale index member costs a wasted lookup, never a
+   * cross-tenant leak), then a pipeline of N HGETs. Plus a per-user rate limit, like
+   * reports/routing/share already have. The N remains proportional to the tenant's device count —
+   * a map that shows every vehicle has to read every vehicle — so a very large fleet is still a
+   * heavy request; paginating the snapshot is a follow-up that changes the web client too.
+   */
   app.get('/v1/devices/last', async (c) => {
     const auth = c.get('auth')
-    const tenantMap = await deps.redis.hgetall('device:tenant')
-    const deviceIds = Object.keys(tenantMap)
-      .filter((id) => tenantMap[id] === auth.tenantId)
-      .sort()
-    const jsons = await Promise.all(
-      deviceIds.map((id) => deps.redis.hget(`device:${id}:last`, 'json')),
-    )
+    const rl = deps.deviceLastRateLimit ?? { max: 60, windowS: 60 }
+    if ((await fixedWindowCount(deps.redis, `devlast:rl:${auth.userId}`, rl.windowS, () => deps.onLockout?.('degraded'))) > rl.max) {
+      c.header('Retry-After', String(rl.windowS)) // a throttled client needs a basis for backoff
+      return problem(c, 429, 'Too Many Requests')
+    }
+
+    c.header('Cache-Control', 'no-store') // tenant-scoped positions: never cacheable
+    // Redis errors answer with an EMPTY snapshot, never a 500 and never a hang: the live WS feed
+    // fills the map within seconds anyway, so a blip is a briefly-late map rather than a broken
+    // dashboard. (`enableOfflineQueue: false` on the client is what makes these reject promptly
+    // instead of waiting in an uncapped queue — see main.ts.)
+    const candidates = (await deps.redis.smembers(tenantDevicesKey(auth.tenantId)).catch(() => [])).sort()
+    if (candidates.length === 0) return c.json({ devices: [] })
+
+    const owners = await deps.redis.hmget('device:tenant', ...candidates).catch(() => [])
+    const deviceIds = candidates.filter((_, i) => owners[i] === auth.tenantId)
+    if (deviceIds.length === 0) return c.json({ devices: [] })
+
+    const pipe = deps.redis.pipeline()
+    for (const id of deviceIds) pipe.hget(`device:${id}:last`, 'json')
+    const results = (await pipe.exec().catch(() => [])) ?? []
+
     const devices: LiveEvent[] = []
-    for (const raw of jsons) {
-      if (raw === null) continue // mapped but never reported
+    for (const entry of results) {
+      const [err, raw] = entry as [Error | null, string | null]
+      if (err !== null || typeof raw !== 'string') continue // never reported, or a per-command blip
       try {
         const parsed = liveEventSchema.safeParse(JSON.parse(raw))
         if (!parsed.success) continue // malformed state is skipped, not fatal
@@ -341,7 +423,6 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
         // broken JSON in the hash — skip
       }
     }
-    c.header('Cache-Control', 'no-store') // tenant-scoped positions: never cacheable
     return c.json({ devices })
   })
 

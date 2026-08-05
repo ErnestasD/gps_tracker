@@ -23,3 +23,29 @@ export const liveEventSchema = z.strictObject({
 })
 
 export type LiveEvent = z.infer<typeof liveEventSchema>
+
+/**
+ * WS close codes the gateway uses, in the application range (4000-4999) so they can never collide
+ * with a protocol code. Shared because BOTH ends need them: the server sends them, and the SPA's
+ * reconnect policy differs per reason. A code the client does not understand is a code that
+ * changes nothing — which is how a "back off" signal turns into a reconnect storm.
+ */
+export const WS_CLOSE = {
+  /** Session revoked, or the socket hit its max lifetime — reconnect immediately to re-authorize. */
+  REVOKED: 4401,
+  /** The client fell too far behind its feed and was cut. Reconnecting instantly just repeats it:
+   *  back off, then reconnect and re-read current state. */
+  SLOW_CONSUMER: 4408,
+} as const
+
+/**
+ * Redis key of the per-tenant device index — the set `GET /v1/devices/last` reads to answer "which
+ * devices are mine?" without scanning the platform-wide `device:tenant` hash (audit MED).
+ *
+ * Lives here rather than in the API because four things write it (device CRUD activate/deactivate,
+ * the boot rehydrate, and the simulator/e2e seed) and a drifting literal in any one of them shows
+ * up as a silently empty map, not as a failing build.
+ *
+ * It is a HINT, never the authority: readers re-verify each member against `device:tenant`.
+ */
+export const tenantDevicesKey = (tenantId: string): string => `tenant:${tenantId}:devices`

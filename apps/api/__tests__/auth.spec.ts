@@ -103,7 +103,10 @@ beforeAll(async () => {
     // a loaded CI runner) — at windowS: 2 the counter expired mid-test and the 6th login answered
     // 200, which read as a lockout regression rather than a stopwatch problem. The unlock case
     // deletes the key instead of sleeping: that IS what expiry does, and it is deterministic.
-    lockout: { maxFails: 5, windowS: 30 },
+    // The per-IP / per-email ceilings are raised well out of the way here: EVERY test in this file
+    // shares one source IP, so the suite's own accumulated failures would otherwise trip an abuse
+    // ceiling meant for a stranger. The dedicated tests below build their own app with tight values.
+    lockout: { maxFails: 5, windowS: 30, maxFailsPerIp: 10_000, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
     secureCookies: false,
     trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
@@ -410,6 +413,279 @@ describe('E03-1 lockout (§6.1: 5 fails → window per IP+email)', () => {
     await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
     for (let i = 0; i < 5; i++) await login('someoneelse@orbetra.test', 'wrong')
     expect((await login(email, PW)).status).toBe(200)
+  })
+})
+
+/**
+ * The two holes the (IP, email) key shape left open (audit MED). Each gets its own app with tight
+ * ceilings and its own source IP, because the ceilings are per-IP and the rest of this file shares
+ * 127.0.0.1.
+ */
+describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
+  const servers: ReturnType<typeof createServer>[] = []
+
+  const appOn = async (
+    lockout: {
+      maxFails: number
+      windowS: number
+      maxFailsPerIp?: number
+      maxAttemptsPerIpHard?: number
+      maxFailIpsPerEmail?: number
+    },
+    remoteAddr: string,
+    trustProxy = false,
+  ): Promise<string> => {
+    const app = createApp({ ...deps, lockout, trustProxy, getRemoteAddr: () => remoteAddr })
+    const srv = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    servers.push(srv)
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    return `http://127.0.0.1:${p}`
+  }
+
+  const post = (url: string, email: string, password: string, xff?: string): Promise<Response> =>
+    fetch(`${url}/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(xff !== undefined ? { 'x-forwarded-for': xff } : {}) },
+      body: JSON.stringify({ email, password }),
+    })
+
+  afterAll(async () => {
+    for (const s of servers) {
+      s.closeAllConnections?.()
+      await new Promise<void>((r) => s.close(() => r()))
+    }
+  })
+
+  it('the SOFT per-IP ceiling THROTTLES a source no real user has come from — 1 in N, not a wall', async () => {
+    // REGRESSION. Applied only post-verify, the soft ceiling enforced nothing: a correct password
+    // never reaches the check, so it merely relabelled a wrong guess 401→429 while a full 64 MB
+    // argon2 verify ran anyway — the oracle (200 means right) and the CPU cost both intact.
+    // Applied pre-verify for everyone, it locks out a whole office behind one NAT with no way back.
+    // So: pre-verify only for a bucket that has never produced a successful login.
+    // A hard refusal was itself a renewable lockout: the failures are not per-account, so 50 wrong
+    // guesses at 50 invented addresses spend the whole bucket's budget for free — and once spent,
+    // the successful login that would MARK the bucket is refused by the gate it would clear, so it
+    // never self-heals. One in ten still cuts an attacker's argon2 throughput tenfold.
+    const email = 'unmarked@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const spy = vi.spyOn(passwords, 'verifyPassword')
+    const url = await appOn(
+      { maxFails: 100, windowS: 30, maxFailsPerIp: 3, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.10',
+    )
+    for (let i = 0; i < 3; i++) expect((await post(url, `stranger-${i}@orbetra.test`, 'wrong')).status).toBe(401)
+
+    // past the ceiling most attempts are refused BEFORE argon2 — that is the CPU shed
+    const before = spy.mock.calls.length
+    const after: number[] = []
+    for (let i = 0; i < 9; i++) after.push((await post(url, `stranger-x${i}@orbetra.test`, 'wrong')).status)
+    expect(after.filter((s2) => s2 === 429).length).toBeGreaterThanOrEqual(8)
+    expect(spy.mock.calls.length - before).toBeLessThanOrEqual(1)
+
+    // …but a real user on that egress still gets through and MARKS the bucket, which restores
+    // normal service for everyone behind it — the self-heal a hard refusal makes impossible
+    let signedIn = false
+    for (let i = 0; i < 12 && !signedIn; i++) signedIn = (await post(url, email, PW)).status === 200
+    expect(signedIn).toBe(true)
+    expect((await post(url, email, PW)).status).toBe(200) // marked now: no throttle at all
+    spy.mockRestore()
+  })
+
+  it('…but a bucket a real user HAS signed in from is throttled, never denied', async () => {
+    // A corporate NAT or a carrier CGNAT is hundreds of people behind one address, and the success
+    // that repays the budget would be refused by the gate it is meant to clear. One real login
+    // marks the bucket known-good; an attacker can buy that with an account of their own, and is
+    // then still bounded by the hard ceiling, which no success ever refunds.
+    const email = 'officeworker@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn(
+      { maxFails: 100, windowS: 30, maxFailsPerIp: 3, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.11',
+    )
+    expect((await post(url, email, PW)).status).toBe(200) // the bucket is now known-good
+    for (let i = 0; i < 4; i++) await post(url, `colleague-${i}@orbetra.test`, 'wrong')
+    expect((await post(url, email, PW)).status).toBe(200) // …and the office still gets in
+  })
+
+  it('one host cannot buy unlimited argon2 verifies by varying the email — soft, then hard', async () => {
+    // The per-credential key is `auth:fail:<ip>:<sha256(email)>` — DIFFERENT for every address, so
+    // an attacker who never repeats an email never trips it, and each attempt still burns a full
+    // argon2id verify against the process-wide 8-slot semaphore that gates every login on the
+    // platform. Unlimited free CPU on the authentication path.
+    const email = 'softip@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn(
+      { maxFails: 100, windowS: 30, maxFailsPerIp: 4, maxAttemptsPerIpHard: 20, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.1',
+    )
+    expect((await post(url, email, PW)).status).toBe(200) // a real user lives behind this address
+    for (let i = 0; i < 4; i++) {
+      expect((await post(url, `nobody-${i}@orbetra.test`, 'wrong')).status).toBe(401)
+    }
+    const blocked = await post(url, 'nobody-fresh@orbetra.test', 'wrong')
+    expect(blocked.status).toBe(429) // soft ceiling: guessing from this address is closed…
+    expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+    expect((await post(url, email, PW)).status).toBe(200) // …but the office behind it still works
+
+    // keep pushing and the HARD ceiling takes over: it counts every ATTEMPT, so past it nothing is
+    // verified at all and even a correct password is refused — at that volume the address is
+    // indistinguishable from an attack and shedding CPU has to win
+    for (let i = 0; i < 20; i++) await post(url, `flood-${i}@orbetra.test`, 'wrong')
+    expect((await post(url, email, PW)).status).toBe(429)
+  })
+
+  it('the HARD ceiling cannot be refunded by logging into an account the attacker controls', async () => {
+    // REGRESSION. Both per-IP tiers once shared one key, and success decayed it — so one free
+    // signup bought unlimited argon2: interleave a login of your own and the counter never climbs.
+    // The hard tier counts ATTEMPTS on its own key and is never repaid, so a success COSTS budget.
+    const email = 'refunder@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn(
+      { maxFails: 100, windowS: 30, maxFailsPerIp: 10_000, maxAttemptsPerIpHard: 8, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.6',
+    )
+    for (let i = 0; i < 4; i++) {
+      expect((await post(url, `mix-${i}@orbetra.test`, 'wrong')).status).toBe(401)
+      expect((await post(url, email, PW)).status).toBe(200) // the interleaved "refund"
+    }
+    expect((await post(url, email, PW)).status).toBe(429) // 8 attempts spent, none refunded
+  })
+
+  it('distributed stuffing locks the account — one host guessing at it never can', async () => {
+    // The account ceiling counts DISTINCT SOURCE IPs that failed, not failed attempts. Counting
+    // attempts does not work in either placement: pre-verify, ~20 guesses from one host denied any
+    // named customer their own product; post-verify, it bounds nothing at all, because a correct
+    // password never reaches the check and the attacker's 200-means-right oracle is untouched.
+    const email = 'stuffed@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn(
+      { maxFails: 1_000, windowS: 30, maxFailsPerIp: 10_000, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 6 },
+      '10.9.9.3',
+      true,
+    )
+    // 40 guesses from ONE address: far past the ceiling's number, and the account stays usable —
+    // this is the account-lockout weapon the distinct-IP axis exists to disarm
+    for (let i = 0; i < 40; i++) await post(url, email, 'wrong', '198.51.100.7')
+    expect((await post(url, email, PW, '198.51.100.7')).status).toBe(200)
+
+    // the same 40 guesses spread over 6 addresses DO lock it: that is a botnet, and refusing
+    // everyone — the owner included — is the correct answer to one
+    for (let i = 0; i < 6; i++) await post(url, email, 'wrong', `203.0.113.${i}`)
+    const blocked = await post(url, email, 'wrong', '203.0.113.200')
+    expect(blocked.status).toBe(429)
+    expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+    expect((await post(url, email, PW, '203.0.113.201')).status).toBe(429)
+  })
+
+  it('a successful login does not REFUND the per-IP failure budget — it repays one, not all', async () => {
+    // Success clears the identity-scoped counter (a user who mistypes once must not be punished).
+    // Clearing the per-IP one too would let an attacker wipe their whole budget; never decaying it
+    // would punish a shared NAT. One-for-one.
+    const email = 'ownaccount@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn(
+      { maxFails: 5, windowS: 30, maxFailsPerIp: 4, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.2',
+    )
+    expect((await post(url, email, PW)).status).toBe(200) // known-good bucket: the soft gate throttles, never denies
+    for (let i = 0; i < 4; i++) expect((await post(url, `x-${i}@orbetra.test`, 'wrong')).status).toBe(401)
+    expect(await redis.get('auth:fail:ip:10.9.9.2')).toBe('4')
+    expect((await post(url, 'x-4@orbetra.test', 'wrong')).status).toBe(429) // budget spent
+    expect((await post(url, email, PW)).status).toBe(200) // their own, valid → repays exactly one
+    // 5 failures, 1 repaid: a refund would have zeroed it and handed the attacker the budget back
+    expect(await redis.get('auth:fail:ip:10.9.9.2')).toBe('4')
+  })
+
+  it('an argon2 SHED (503) refunds the budget — the server was busy, the user was not wrong', async () => {
+    // REGRESSION. Moving the credential counter to increment-before-verify fixed a concurrency
+    // hole but started charging requests that never compared a password: `verifyPassword` throws
+    // Argon2OverloadedError (→ 503) AFTER the increment, so a CPU spike converted into a
+    // 15-minute lockout for people whose password was right all along.
+    const email = 'shedvictim@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn(
+      { maxFails: 3, windowS: 30, maxFailsPerIp: 10_000, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.8',
+    )
+    const spy = vi.spyOn(passwords, 'verifyPassword').mockRejectedValue(new passwords.Argon2OverloadedError())
+    for (let i = 0; i < 5; i++) expect((await post(url, email, PW)).status).toBe(503)
+    spy.mockRestore()
+    // five sheds against a ceiling of three: unrefunded, the next attempt would be 429
+    expect((await post(url, email, PW)).status).toBe(200)
+  })
+
+  it('a lockout gate that cannot be evaluated fails OPEN, and says so (degraded is a metric, not a hole)', async () => {
+    // Fail-closed would mean a Redis hiccup logs the whole platform out of its own product, which
+    // for a fleet-tracking service is the worse outage. Fail-open costs brute-force protection for
+    // the duration — argon2 and the process-wide semaphore are still the backstop — and the point
+    // is that it is VISIBLE rather than emergent: ioredis reports per-command errors INSIDE the
+    // result array instead of throwing, so an unchecked read silently scores every gate as zero.
+    const gates: string[] = []
+    const brokenRedis = new Proxy(redis, {
+      get(t, prop, r) {
+        if (prop !== 'pipeline') return Reflect.get(t, prop, r) as unknown
+        return () => {
+          const chain: Record<string, unknown> = {}
+          for (const m of ['get', 'pfcount', 'eval']) chain[m] = () => chain
+          chain['exec'] = () => Promise.resolve([[new Error('OOM command not allowed'), undefined]])
+          return chain
+        }
+      },
+    })
+    const app = createApp({ ...deps, redis: brokenRedis, onLockout: (g) => gates.push(g), getRemoteAddr: () => '10.9.9.9' })
+    const srv = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    servers.push(srv)
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    // the login is still answered on its merits — not 500, not a blanket 429
+    expect((await post(`http://127.0.0.1:${p}`, 'anyone@orbetra.test', 'wrong')).status).toBe(401)
+    expect(gates).toContain('degraded')
+  })
+
+  it('the per-credential rule holds under a CONCURRENT burst, not just sequentially', async () => {
+    // REGRESSION. The gate read the counter, spent ~120 ms in argon2, then incremented — so every
+    // request in a burst read the same pre-increment value and none were refused. The real bound
+    // was the argon2 admission queue (8 + 64), not five. Incrementing and gating on the same atomic
+    // result is what makes the number mean anything.
+    const url = await appOn(
+      { maxFails: 5, windowS: 30, maxFailsPerIp: 10_000, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.7',
+    )
+    const burst = await Promise.all(
+      Array.from({ length: 30 }, () => post(url, 'burst@orbetra.test', 'wrong')),
+    )
+    const evaluated = burst.filter((r) => r.status === 401).length
+    expect(evaluated).toBeLessThanOrEqual(5) // …not 30
+    expect(burst.filter((r) => r.status === 429).length).toBe(30 - evaluated)
+  })
+})
+
+describe('E03-1 self-service password change', () => {
+  it('is rate-limited per user — two 64 MB argon2 ops behind nothing but a valid token', async () => {
+    // The login route's ceilings do not cover this one, and it runs TWO hashes per request (verify
+    // current + hash new), so any authenticated user of any tenant could saturate the process-wide
+    // 8-slot semaphore from one session and shed 503s across every login on the platform.
+    const email = 'pwchanger@orbetra.test'
+    const seededUser = await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const token = ((await (await login(email, PW)).json()) as AuthSession).accessToken
+    const app = createApp({ ...deps, passwordChangeRateLimit: { max: 3, windowS: 60 } })
+    const srv = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    try {
+      const change = (): Promise<Response> =>
+        fetch(`http://127.0.0.1:${p}/v1/auth/password`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ currentPassword: 'definitely-wrong', newPassword: 'newpassword123' }),
+        })
+      for (let i = 0; i < 3; i++) expect((await change()).status).toBe(401) // wrong current password
+      const blocked = await change()
+      expect(blocked.status).toBe(429)
+      expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+      expect(seededUser.userId).toBeTruthy()
+    } finally {
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+    }
   })
 })
 

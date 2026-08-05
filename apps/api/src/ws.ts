@@ -3,7 +3,7 @@ import type { IncomingMessage, Server } from 'node:http'
 import { Redis } from 'ioredis'
 import { WebSocketServer, type WebSocket } from 'ws'
 
-import type { Role } from '@orbetra/shared'
+import { WS_CLOSE, type Role } from '@orbetra/shared'
 
 export interface WsAuthContext {
   userId: string
@@ -30,14 +30,35 @@ export interface WsDeps {
   /** Hard ceiling on one socket's lifetime (default 4 h). A stream is authorized only at connect,
    *  so this is what makes plan/role/scope changes eventually reach an already-open one. */
   maxSocketLifetimeMs?: number
+  /** Heartbeat period (default 30 s). A socket that misses one round trip is terminated — without
+   *  it a half-open connection lingers until the OS keepalive, ~2 h on Linux. */
+  pingIntervalMs?: number
+  /** Send-buffer ceiling per socket before it is cut as a slow consumer (default 1 MB). */
+  maxBufferedBytes?: number
+  /** Consecutive unanswered pings before a socket is terminated (default 2 — see the note below). */
+  pingMissesBeforeTerminate?: number
 }
 
 /** Redis key prefix for the "all sessions revoked at" marker (audit MED). */
 export const WS_REVOKE_PREFIX = 'ws:revoke:'
 /** Marker TTL — comfortably longer than any access-token TTL / expected socket lifetime. */
 const WS_REVOKE_TTL_S = 24 * 3_600
+// Close codes live in @orbetra/shared: the SPA's reconnect policy branches on them, and a code
+// only the server knows is a signal the client cannot act on.
 /** WS close code for a revoked session (application range; distinct from protocol codes). */
-export const WS_REVOKED_CLOSE = 4401
+export const WS_REVOKED_CLOSE = WS_CLOSE.REVOKED
+/** WS close code for a subscriber that stopped reading fast enough to keep up with its feed. */
+export const WS_SLOW_CONSUMER_CLOSE = WS_CLOSE.SLOW_CONSUMER
+/**
+ * How much unread data may sit in one socket's send buffer before we cut it.
+ *
+ * A live position payload is a few hundred bytes, so 1 MB is thousands of updates behind — far
+ * past "briefly busy" and squarely at "this peer is gone". Below this the socket is simply slow;
+ * above it, it is a memory leak with a URL.
+ */
+export const MAX_WS_BUFFERED_BYTES = 1024 * 1024
+/** Grace for a cut subscriber to complete the closing handshake before the socket is destroyed. */
+const SLOW_CONSUMER_TERMINATE_MS = 1_000
 
 /**
  * Record that EVERY session of `userId` was revoked at `at` (ms). The WS gateway tears down any
@@ -109,8 +130,14 @@ export function attachWsGateway(
   server: Server,
   deps: WsDeps,
   onClientCountChange?: (n: number) => void,
+  /** Fired when a socket is cut for falling too far behind its feed — a slow-consumer rate is a
+   *  client or network problem, and without a counter it is invisible. */
+  onSlowConsumer?: () => void,
 ): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
+  // same reasoning as the per-socket handler below: an unhandled 'error' on the server object is an
+  // uncaught exception, and this one is not attached to any one tenant's connection
+  wss.on('error', () => undefined)
   const subscribers = new Map<string, Set<{ ws: WebSocket; ctx: WsAuthContext; establishedAt: number }>>()
   let subPromise: Promise<void> | null = null
 
@@ -157,10 +184,56 @@ export function attachWsGateway(
     })()
   }, revokeMs)
   revokeTimer.unref?.()
-  wss.on('close', () => clearInterval(revokeTimer))
+
+  // HEARTBEAT. Nothing pinged: `WebSocketServer` does not do it by itself, so a half-open TCP
+  // connection — laptop lid closed, mobile handover, NAT timeout — kept `readyState === OPEN` and
+  // stayed in `subscribers` until the OS keepalive fired, which on Linux defaults to ~2 hours. The
+  // API would happily write a fleet's entire position stream into a socket whose peer vanished
+  // ninety minutes ago. A socket is terminated rather than closed politely once it goes quiet:
+  // there is no peer left to negotiate with. Audit MED.
+  //
+  // TWO missed round trips, not one. At a 30 s interval a single-strike reaper kills any client
+  // that stalls for 30 s — a lift, a tunnel, an LTE handover — and the SPA reconnects into a fresh
+  // ticket + upgrade. Two strikes is the conventional 2×-interval tolerance. Because the strike is
+  // counted BEFORE the ping that would clear it, a socket that goes silent is reaped on the third
+  // tick — ~90 s at the default interval, which is the number to size an alert on.
+  const strikes = new WeakMap<WebSocket, number>()
+  const pingMs = deps.pingIntervalMs ?? 30_000
+  const maxBuffered = deps.maxBufferedBytes ?? MAX_WS_BUFFERED_BYTES
+  const missesBeforeTerminate = deps.pingMissesBeforeTerminate ?? 2
+  const pingTimer = setInterval(() => {
+    for (const set of subscribers.values()) {
+      for (const { ws } of set) {
+        const missed = (strikes.get(ws) ?? 0) + 1
+        if (missed > missesBeforeTerminate) {
+          try {
+            ws.terminate() // guarded like the ping below: a throw here kills the interval, and now the process
+          } catch {
+            /* already gone */
+          }
+          continue
+        }
+        strikes.set(ws, missed)
+        try {
+          ws.ping()
+        } catch {
+          /* already closing */
+        }
+      }
+    }
+  }, pingMs)
+  pingTimer.unref?.()
+
+  wss.on('close', () => {
+    clearInterval(revokeTimer)
+    clearInterval(pingTimer)
+  })
 
   const ensureSubscription = (): Promise<void> => {
-    // promise (not flag): a second concurrent upgrade awaits the ACTUAL subscription
+    // promise (not flag): a second concurrent upgrade awaits the ACTUAL subscription. A FAILED
+    // attempt clears the cache — `??=` never reassigns a rejected promise, so one Redis blip during
+    // the very first upgrade left every later upgrade awaiting that same rejection and the live
+    // feed permanently dead until a restart.
     subPromise ??= (async () => {
       await deps.redisSub.psubscribe('live:*')
       deps.redisSub.on('pmessage', (_pattern, channel, message) => {
@@ -178,17 +251,50 @@ export function attachWsGateway(
           // unmapped device (null) fails CLOSED for account-scoped users
           if (ctx.accountId !== undefined && accountId !== ctx.accountId) continue
           try {
-            if (ws.readyState === ws.OPEN) ws.send(message)
+            if (ws.readyState !== ws.OPEN) continue
+            // BACKPRESSURE. `ws` queues everything the peer has not read into the process heap, and
+            // Node's socket write buffer is unbounded — so a subscriber that stops reading (a phone
+            // that lost signal, a laptop lid closed mid-handover) had the tenant's ENTIRE live feed
+            // accumulate in API memory until the process died. There is no useful way to slow a
+            // position stream down, so the honest policy is to cut the socket: the client
+            // reconnects and re-reads current state, which is what it wanted anyway. Audit MED.
+            if (ws.bufferedAmount > maxBuffered) {
+              onSlowConsumer?.()
+              // close() first, so a client that IS reading learns why and can back off; but a peer
+              // that stalled will never complete the closing handshake, and `ws` then holds the
+              // socket — and everything already queued on it — for its full 30 s close timeout.
+              // That is the memory we are trying to release, so the wait is bounded to 1 s.
+              ws.close(WS_SLOW_CONSUMER_CLOSE, 'too slow')
+              setTimeout(() => {
+                try {
+                  if (ws.readyState !== ws.CLOSED) ws.terminate()
+                } catch {
+                  /* guarded like the heartbeat's terminate: a throw here has no handler, and
+                     main.ts now exits the process on an uncaught exception */
+                }
+              }, SLOW_CONSUMER_TERMINATE_MS).unref?.()
+              continue
+            }
+            ws.send(message)
           } catch {
             // one closing socket must not starve the rest of the fanout
           }
         }
       })
-    })()
+    })().catch((err: unknown) => {
+      subPromise = null
+      throw err
+    })
     return subPromise
   }
 
   server.on('upgrade', (req: IncomingMessage, socket, head) => {
+    // FIRST, before any await. Node removes its own socket error handler before emitting 'upgrade',
+    // so this is a bare EventEmitter: a client that resets the connection while we are awaiting
+    // Redis — or that has already gone when we write the 401 — emits 'error' with nothing listening,
+    // which is ERR_UNHANDLED_ERROR and kills the process. This variant needs no ticket at all, so it
+    // is cheaper than the post-upgrade one: an unauthenticated stranger could take the API down.
+    socket.on('error', () => socket.destroy())
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://localhost')
       if (url.pathname !== '/v1/stream') {
@@ -218,6 +324,22 @@ export function attachWsGateway(
       await ensureSubscription()
       wss.handleUpgrade(req, socket, head, (ws) => {
         const entry = { ws, ctx, establishedAt }
+        // A socket with NO 'error' listener is a process killer: `ws` emits 'error' on any protocol
+        // violation (a frame with RSV1 set, a bad mask, an oversized control frame), and Node's
+        // EventEmitter THROWS ERR_UNHANDLED_ERROR when nothing is listening. Any holder of a valid
+        // ws-ticket — i.e. any logged-in user of any tenant — could take the whole API down with one
+        // malformed frame, killing every tenant's REST, WS and login at once. Terminate that socket
+        // and let the rest of the platform carry on.
+        ws.on('error', () => {
+          try {
+            ws.terminate()
+          } catch {
+            /* already gone */
+          }
+        })
+        // a fresh socket starts with a clean slate; every pong clears the strikes it accrued
+        strikes.set(ws, 0)
+        ws.on('pong', () => strikes.set(ws, 0))
         const set = subscribers.get(ctx.tenantId) ?? new Set()
         set.add(entry)
         subscribers.set(ctx.tenantId, set)
