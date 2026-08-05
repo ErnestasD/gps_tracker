@@ -1,6 +1,7 @@
 import type { Device, OdometerSource, PrismaClient } from '@prisma/client'
 
 import type { AuditRepo } from './audit.js'
+import type { ShareLinkRepo } from './shareLinks.js'
 import { toInt8OrNull } from '../bigid.js'
 import { isUniqueViolation } from '../errors.js'
 import type { Actor, Scope } from '../scope.js'
@@ -47,7 +48,9 @@ export class DuplicateImeiError extends Error {
  * Devices repo (E03-3). Account-scoped (non-null accountId), like rules. NOT the
  * generic repo: `Device.id` is a BigInt PK, so the route `:id` string must be
  * coerced (a bad/overflowing id resolves to null → 404, never a 500). `imei` is
- * globally unique — `getByImei` is scoped so a caller can't probe another tenant's
+ * unique among ACTIVE devices (partial index, migration 20260805150000: retiring frees the IMEI so
+ * returned hardware can be re-registered) — `getByImei` is scoped so a caller can't probe another
+ * tenant's
  * IMEI. Redis registry sync (registry:imei / device:tenant / device:account) is
  * NOT here — it lives in the API layer (deviceRegistry.ts); this repo is pure DB.
  */
@@ -84,7 +87,7 @@ export interface DeviceRepo {
 /** Parse a route id to BigInt; non-numeric/out-of-int8-range → null (caller → 404). */
 const toBigId = (id: string): bigint | null => toInt8OrNull(id)
 
-export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo): DeviceRepo {
+export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLinks: Pick<ShareLinkRepo, 'revokeForDevice'>): DeviceRepo {
   const scopedById = async (scope: Scope, id: string): Promise<Device | null> => {
     const bid = toBigId(id)
     if (bid === null) return null
@@ -104,7 +107,10 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo): Device
         select: { id: true, imei: true, tenantId: true, accountId: true, profileId: true, odometerSource: true },
       }),
     get: (scope, id) => scopedById(scope, id),
-    getByImei: (scope, imei) => prisma.device.findFirst({ where: { ...scopedWhere(scope), imei } }),
+    // ACTIVE first: after a re-registration the same IMEI can exist on both a retired row and the
+    // new one, and every caller of this wants the device that is in service today
+    getByImei: (scope, imei) =>
+      prisma.device.findFirst({ where: { ...scopedWhere(scope), imei }, orderBy: [{ retiredAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }] }),
     create: async (scope, actor, data) => {
       let row
       try {
@@ -141,6 +147,11 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo): Device
       if (before === null) return null
       if (before.retiredAt !== null) return before // already retired — idempotent
       const row = await prisma.device.update({ where: { id: before.id }, data: { retiredAt: new Date() } })
+      // Public share links die with the device (audit MED). Retiring is how an operator says "this
+      // vehicle is no longer ours", and a live link keeps the UNAUTHENTICATED endpoint publishing
+      // its last known position to anyone holding the URL for up to 30 more days — while the UI no
+      // longer lists the device, so nobody can find the link to revoke it by hand.
+      await shareLinks.revokeForDevice(scope, actor, before.id)
       await audit.record(scope, actor, { action: 'update', entity: 'device', entityId: String(row.id), before, after: row })
       return row
     },

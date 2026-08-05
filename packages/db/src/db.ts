@@ -68,21 +68,24 @@ export interface Db {
 export function createDb(databaseUrl: string): Db {
   const prisma = new PrismaClient({ datasourceUrl: databaseUrl })
   const audit = createAuditRepo(prisma)
+  const shareLinksRepo = createShareLinkRepo(prisma, audit)
   return {
+    // built first: the device repo revokes a retired device's public share links, so it needs the
+    // same instance the API exposes (one audit trail, one code path)
     auth: buildAuthMethods(prisma),
     tenants: createTenantRepo(prisma, audit),
     affiliates: createAffiliateRepo(prisma, audit),
     tenantDomains: createTenantDomainRepo(prisma, audit),
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),
-    devices: createDeviceRepo(prisma, audit),
+    devices: createDeviceRepo(prisma, audit, shareLinksRepo),
     drivers: createDriverRepo(prisma, audit),
     maintenance: createMaintenanceRepo(prisma, audit),
     commands: createCommandRepo(prisma, audit),
     smsDeliveries: createSmsDeliveryRepo(prisma),
     profiles: createProfileRepo(prisma),
     rules: createRuleRepo(prisma, audit),
-    shareLinks: createShareLinkRepo(prisma, audit),
+    shareLinks: shareLinksRepo,
     webhooks: createWebhookRepo(prisma, audit),
     scheduledReports: createScheduledReportRepo(prisma, audit),
     pushSubscriptions: createPushSubscriptionRepo(prisma),

@@ -332,7 +332,10 @@ model Device {
   accountId      String         @db.Uuid
   profileId      String         @db.Uuid
   /// 15-digit string — leading zeros preserved (E03-3 edge case)
-  imei           String         @unique
+  /// Unique among ACTIVE devices only — a partial unique index lives in SQL (migration
+  /// 20260805150000), because Prisma cannot express `WHERE "retiredAt" IS NULL`. Retiring a device
+  /// frees its IMEI so returned hardware can be re-registered; two active devices still cannot share one.
+  imei           String
   name           String
   plate          String?
   groupName      String?

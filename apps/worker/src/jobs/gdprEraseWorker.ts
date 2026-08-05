@@ -15,6 +15,9 @@ import { captureDeviceUsage } from './usageWorker.js'
  *
  * DELIBERATELY KEPT (documented in the plan): usage_daily (billing, legitimate interest;
  * plain deviceId, no FK) and audit_log (append-only evidence trail; redaction is V2).
+ * Covers: positions, trips, events, commands, sms_deliveries, raw_rejects (by IMEI), the device
+ * row itself and the device's Redis state. A table added after this job ships must be added HERE —
+ * two already were not (sms_deliveries, raw_rejects), and nothing failed to say so.
  */
 export interface GdprEraseDeps {
   connection: ConnectionOptions
@@ -72,6 +75,10 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
   await pool.query(`DELETE FROM trips WHERE "deviceId" = $1`, [data.deviceId])
   await pool.query(`DELETE FROM events WHERE "deviceId" = $1`, [data.deviceId])
   await pool.query(`DELETE FROM commands WHERE "deviceId" = $1`, [data.deviceId])
+  // sms_deliveries postdates this job and was never folded in (audit MED): every row holds a phone
+  // number and the message body, so an erase that leaves them behind leaves the most directly
+  // identifying data of all — the subject's own number.
+  await pool.query(`DELETE FROM sms_deliveries WHERE "deviceId" = $1`, [data.deviceId])
   await clearRedisState(redis, data.deviceId)
   await pool.query(`DELETE FROM devices WHERE id = $1`, [data.deviceId]) // LAST — see header
   // FINAL sweep (review HIGH-1): a session that outlived retire or stream backlog may have

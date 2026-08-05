@@ -342,6 +342,9 @@ async function main(): Promise<void> {
   const gdprSweepWorker = startGdprSweepWorker({
     connection: recomputeConn,
     pool,
+    // the sweep also removes abandoned .tmp exports — a deploy landing mid-export leaves a full
+    // personal-data dump on the shared volume that nothing else would ever delete
+    exportDir: process.env['EXPORT_DIR'] ?? 'var/exports',
     onSwept: (n) => console.log(`gdpr export sweep: removed ${n} expired file(s)`),
   })
   await scheduleExportSweep(gdprSweepQueue)
