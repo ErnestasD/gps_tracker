@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url'
 
 import { Redis } from 'ioredis'
 
+import { tenantDevicesKey } from '@orbetra/shared'
+
 /**
  * Dev/e2e seed (E02-6): registers N fleet devices in the Redis registries the
  * pipeline reads — `registry:imei` (imei → deviceId, checked by ingest handshake)
@@ -56,8 +58,10 @@ async function main(): Promise<void> {
     pipeline.hset('device:tenant', deviceId, tenant)
     // per-tenant index — what `GET /v1/devices/last` reads. `device:tenant` alone is no longer
     // enough: the snapshot stopped scanning the platform-wide hash (audit MED), so a device seeded
-    // without this is invisible on the map until it next reports over the WS feed.
-    pipeline.sadd(`tenant:${tenant}:devices`, deviceId)
+    // without this is invisible on the map until it next reports over the WS feed. The key builder
+    // is imported, not retyped: apps/web/tests/pw/global-setup.ts seeds the e2e fleet through this
+    // path, so a drifting literal would show up as a blank map rather than a failing build.
+    pipeline.sadd(tenantDevicesKey(tenant), deviceId)
     if (account !== '') pipeline.hset('device:account', deviceId, account)
   }
   await pipeline.exec()

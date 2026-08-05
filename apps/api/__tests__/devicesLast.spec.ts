@@ -49,8 +49,8 @@ async function seedDevice(deviceId: string, tenant: string, account: string | nu
   })
 }
 
-async function startApp(): Promise<number> {
-  const app = createApp(testApiDeps(deps))
+async function startApp(d: WsDeps = deps): Promise<number> {
+  const app = createApp(testApiDeps(d))
   const server = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   servers.push(server)
   return new Promise<number>((resolve) => {
@@ -147,16 +147,31 @@ describe('E02-6 GET /v1/devices/last snapshot', () => {
     expect(body.devices.map((d) => d.deviceId)).toEqual(['dev-a'])
   })
 
-  it('does not scan the platform: another tenant fleet costs the caller nothing', async () => {
-    // Regression guard for the audit finding. The route used to HGETALL `device:tenant` — every
-    // device on the platform — so this assertion is about the SHAPE of the read, not the output:
-    // the caller must touch only its own index.
+  it('does not scan the platform: the read touches the caller index, never the global hash', async () => {
+    // Regression guard for the audit finding, asserted on the SHAPE of the read rather than on the
+    // output — the old HGETALL implementation returned exactly the same body, so any assertion
+    // about `devices` would pass with the fix reverted and guard nothing. A counting proxy around
+    // the redis client is the only thing that fails on revert.
+    const calls: Record<string, number> = {}
+    const spyRedis = new Proxy(redis, {
+      get(target, prop, receiver) {
+        const v = Reflect.get(target, prop, receiver) as unknown
+        if (typeof v !== 'function' || typeof prop !== 'string') return v
+        return (...a: unknown[]) => {
+          calls[prop] = (calls[prop] ?? 0) + 1
+          return (v as (...x: unknown[]) => unknown).apply(target, a)
+        }
+      },
+    })
+    const spyPort = await startApp({ ...deps, redis: spyRedis })
     await seedDevice('dev-a', 't1', null)
     for (let i = 0; i < 200; i++) await seedDevice(`t2-dev-${i}`, 't2', null)
-    const body = (await (await getLast(tenantPort, TOKEN_TENANT)).json()) as { devices: LiveEvent[] }
+
+    const body = (await (await getLast(spyPort, TOKEN_TENANT)).json()) as { devices: LiveEvent[] }
     expect(body.devices.map((d) => d.deviceId)).toEqual(['dev-a'])
-    expect(await redis.scard(tenantDevicesKey('t1'))).toBe(1) // caller's index stayed small
-    expect(await redis.hlen('device:tenant')).toBe(201) // the platform-wide hash did NOT
+    expect(calls['hgetall'] ?? 0).toBe(0) // the platform-wide scan is GONE, not merely filtered
+    expect(calls['smembers']).toBe(1) // …replaced by one read of the caller's own index
+    expect(await redis.hlen('device:tenant')).toBe(201) // and the global hash is still that large
   })
 
   it('rate-limits per user (audit MED: unrate-limited snapshot was a free platform scan)', async () => {

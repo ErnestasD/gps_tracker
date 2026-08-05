@@ -18,6 +18,7 @@ const A = '22222222-2222-2222-2222-222222222222'
 function fakeRedis(store: Map<string, Record<string, string>>, sets = new Map<string, Set<string>>()): Redis {
   const set = (k: string, f: string, v: string) => { const h = store.get(k) ?? {}; h[f] = v; store.set(k, h) }
   const sadd = (k: string, m: string) => { const s = sets.get(k) ?? new Set<string>(); s.add(m); sets.set(k, s) }
+  const del = (k: string) => { sets.delete(k); store.delete(k) }
   return {
     hset: (k: string, f: string, v: string) => { set(k, f, v); return Promise.resolve(1) },
     // rehydrate uses a pipeline: a chainable hset/sadd + exec
@@ -25,6 +26,7 @@ function fakeRedis(store: Map<string, Record<string, string>>, sets = new Map<st
       const chain = {
         hset: (k: string, f: string, v: string) => { set(k, f, v); return chain },
         sadd: (k: string, m: string) => { sadd(k, m); return chain },
+        del: (k: string) => { del(k); return chain },
         exec: () => Promise.resolve([]),
       }
       return chain
@@ -99,5 +101,16 @@ describe('rehydrateRegistries', () => {
 
     expect([...(sets.get(tenantDevicesKey(T)) ?? [])].sort()).toEqual(['42', '43'])
     expect([...(sets.get(tenantDevicesKey('other-tenant')) ?? [])]).toEqual(['99'])
+  })
+
+  it('REBUILDS the device index rather than adding to it — boot is the only place drift can be repaired', async () => {
+    // Every other key here is an hset, which self-heals by overwriting. A set only grows: a member
+    // stranded by a partially-applied teardown would survive every restart and keep a retired
+    // device on the map forever. Boot holds the authoritative list, so boot prunes.
+    const store = new Map<string, Record<string, string>>()
+    const sets = new Map<string, Set<string>>([[tenantDevicesKey(T), new Set(['42', 'ghost-1', 'ghost-2'])]])
+    const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'p', odometerSource: 'gps' }
+    await rehydrateRegistries(fakeRedis(store, sets), fakeDb([], [], [dev], [{ id: 'p', presenceRules: {} }]))
+    expect([...(sets.get(tenantDevicesKey(T)) ?? [])]).toEqual(['42'])
   })
 })

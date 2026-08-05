@@ -1,3 +1,5 @@
+import { WS_CLOSE } from '@orbetra/shared'
+
 export type ConnState = 'connecting' | 'open' | 'closed'
 
 export interface LiveSocketOpts {
@@ -23,6 +25,9 @@ export interface LiveSocketOpts {
  * and kill the first socket. Backoff: baseDelay·2^n, capped, ±20 % jitter, counter
  * resets on a successful open.
  */
+/** Backoff exponent a slow-consumer cut starts from: base·2^4 ≈ 16 s at the default 1 s base. */
+const SLOW_RETRY_FLOOR = 4
+
 export class LiveSocket {
   private ws: WebSocket | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
@@ -86,7 +91,7 @@ export class LiveSocket {
       if (gen !== this.generation) return // an orphaned socket must never feed the store
       this.opts.onMessage(typeof e.data === 'string' ? e.data : '')
     }
-    ws.onclose = () => {
+    ws.onclose = (e?: { code?: number }) => {
       if (settled) return
       settled = true
       if (this.ws === ws) this.ws = null
@@ -94,6 +99,11 @@ export class LiveSocket {
       // second reconnect loop — only the current generation drives status/reconnect
       if (gen !== this.generation) return
       this.opts.onStatus?.('closed')
+      // A slow-consumer cut (the server's send buffer for THIS client ran away) must not reconnect
+      // at the base delay: `attempts` was zeroed by the successful open, so an immediate retry
+      // re-subscribes, re-buffers and gets cut again — a ~1 Hz storm of ticket + upgrade + fanout,
+      // exactly when the API is already under memory pressure. Keep the accrued backoff instead.
+      if (e?.code === WS_CLOSE.SLOW_CONSUMER) this.attempts = Math.max(this.attempts, SLOW_RETRY_FLOOR)
       if (!this.stopped) this.scheduleReconnect(gen)
     }
     ws.onerror = () => {

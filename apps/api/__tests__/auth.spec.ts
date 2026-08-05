@@ -425,7 +425,7 @@ describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
   const servers: ReturnType<typeof createServer>[] = []
 
   const appOn = async (
-    lockout: { maxFails: number; windowS: number; maxFailsPerIp?: number; maxFailsPerEmail?: number },
+    lockout: { maxFails: number; windowS: number; maxFailsPerIp?: number; maxFailsPerIpHard?: number; maxFailsPerEmail?: number },
     remoteAddr: string,
     trustProxy = false,
   ): Promise<string> => {
@@ -450,49 +450,95 @@ describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
     }
   })
 
-  it('one host cannot buy unlimited argon2 verifies by varying the email', async () => {
+  it('one host cannot buy unlimited argon2 verifies by varying the email — soft, then hard', async () => {
     // The per-credential key is `auth:fail:<ip>:<sha256(email)>` — DIFFERENT for every address, so
     // an attacker who never repeats an email never trips it, and each attempt still burns a full
     // argon2id verify against the process-wide 8-slot semaphore that gates every login on the
     // platform. Unlimited free CPU on the authentication path.
-    const url = await appOn({ maxFails: 5, windowS: 30, maxFailsPerIp: 8, maxFailsPerEmail: 10_000 }, '10.9.9.1')
-    for (let i = 0; i < 8; i++) {
+    const email = 'softip@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn({ maxFails: 100, windowS: 30, maxFailsPerIp: 4, maxFailsPerIpHard: 8, maxFailsPerEmail: 10_000 }, '10.9.9.1')
+    for (let i = 0; i < 4; i++) {
       expect((await post(url, `nobody-${i}@orbetra.test`, 'wrong')).status).toBe(401)
     }
     const blocked = await post(url, 'nobody-fresh@orbetra.test', 'wrong')
-    expect(blocked.status).toBe(429)
+    expect(blocked.status).toBe(429) // soft ceiling: guessing from this address is closed…
     expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+    expect((await post(url, email, PW)).status).toBe(200) // …but the office behind it still works
+
+    // keep pushing and the HARD ceiling takes over: past it nothing is verified at all, and even a
+    // correct password is refused — at that volume the address is indistinguishable from an attack
+    for (let i = 0; i < 12; i++) await post(url, `flood-${i}@orbetra.test`, 'wrong')
+    expect((await post(url, email, PW)).status).toBe(429)
   })
 
-  it('the per-IP budget is NOT refunded by a successful login of the attacker own account', async () => {
-    // Success clears the identity-scoped counters (a user who mistypes once must not be punished),
-    // but clearing the per-IP one too would let an attacker reset their budget by interleaving a
-    // login to an account they control.
+  it('a successful login does not REFUND the per-IP budget — it repays one failure, not all of them', async () => {
+    // Success clears the identity-scoped counters (a user who mistypes once must not be punished).
+    // Clearing the per-IP one too would let an attacker wipe their whole budget by interleaving a
+    // login to an account they control; never decaying it would punish a shared NAT. One-for-one.
     const email = 'ownaccount@orbetra.test'
     await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
     const url = await appOn({ maxFails: 5, windowS: 30, maxFailsPerIp: 4, maxFailsPerEmail: 10_000 }, '10.9.9.2')
-    for (let i = 0; i < 3; i++) expect((await post(url, `x-${i}@orbetra.test`, 'wrong')).status).toBe(401)
-    expect((await post(url, email, PW)).status).toBe(200) // their own, valid
-    expect((await post(url, 'x-4@orbetra.test', 'wrong')).status).toBe(401) // 4th failure
-    expect((await post(url, 'x-5@orbetra.test', 'wrong')).status).toBe(429) // budget still spent
+    for (let i = 0; i < 4; i++) expect((await post(url, `x-${i}@orbetra.test`, 'wrong')).status).toBe(401)
+    expect(await redis.get('auth:fail:ip:10.9.9.2')).toBe('4')
+    expect((await post(url, 'x-4@orbetra.test', 'wrong')).status).toBe(429) // budget spent
+    expect((await post(url, email, PW)).status).toBe(200) // their own, valid → repays exactly one
+    // 5 failures, 1 repaid: a refund would have zeroed it and handed the attacker the budget back
+    expect(await redis.get('auth:fail:ip:10.9.9.2')).toBe('4')
   })
 
-  it('distributed stuffing against ONE account is capped, however many source IPs it uses', async () => {
-    // Conversely: with only a per-(IP,email) rule, every fresh source IP bought another `maxFails`
-    // attempts against the same victim, so a botnet made the rule meaningless for the one account
-    // that mattered. Each request here comes from a different address (trustProxy → rightmost XFF).
+  it('distributed stuffing against ONE account is capped — but the OWNER is never locked out', async () => {
+    // With only a per-(IP,email) rule, every fresh source IP bought another `maxFails` guesses at
+    // the same victim, so a botnet made the rule meaningless for the one account that mattered.
+    // Each request here comes from a different address (trustProxy → rightmost XFF).
+    //
+    // The second half is the point of the whole design. A naive account ceiling checked BEFORE the
+    // password verify is an account-lockout weapon: emails are enumerable, so anyone could deny a
+    // named customer their own product for a full window from a single host. Applying it only to a
+    // WRONG password, after the verify, caps guessing absolutely while the owner always gets in.
     const email = 'stuffed@orbetra.test'
     await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
     const url = await appOn({ maxFails: 5, windowS: 30, maxFailsPerIp: 10_000, maxFailsPerEmail: 6 }, '10.9.9.3', true)
     for (let i = 0; i < 6; i++) {
       expect((await post(url, email, 'wrong', `203.0.113.${i}`)).status).toBe(401)
     }
-    // a brand-new IP, still under BOTH the per-credential and per-IP rules — the account ceiling
-    // is the only thing standing between the victim and an unbounded guess rate
-    expect((await post(url, email, 'wrong', '203.0.113.200')).status).toBe(429)
-    // …and the victim's own correct password is refused too, which is the cost of this defence:
-    // an account under attack is temporarily locked rather than silently guessed
-    expect((await post(url, email, PW, '203.0.113.201')).status).toBe(429)
+    // a brand-new IP, still under BOTH the per-credential and per-IP rules: guessing is now closed
+    const blocked = await post(url, email, 'wrong', '203.0.113.200')
+    expect(blocked.status).toBe(429)
+    expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+    // …and the account owner, with the CORRECT password, still signs in
+    expect((await post(url, email, PW, '203.0.113.201')).status).toBe(200)
+  })
+
+  it('a single host cannot lock a named account out by guessing — the ceiling denies guesses, not the owner', async () => {
+    // REGRESSION. The first version of this fix checked the account ceiling before the verify, so
+    // 20 wrong guesses from ONE host (well under the per-IP ceiling) denied the account for the
+    // full window, correct password included — an availability attack on any customer whose email
+    // an attacker can guess, which is worse than the guessing risk it was meant to close.
+    const email = 'notlockable@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn({ maxFails: 100, windowS: 30, maxFailsPerIp: 10_000, maxFailsPerEmail: 3 }, '10.9.9.4')
+    for (let i = 0; i < 5; i++) await post(url, email, 'wrong')
+    expect((await post(url, email, 'wrong')).status).toBe(429) // guessing: closed
+    expect((await post(url, email, PW)).status).toBe(200) // the owner: unaffected
+  })
+
+  it('one success repays one failure on the per-IP budget, so a shared NAT recovers', async () => {
+    // The per-IP counter is not cleared on success (that would let an attacker refund a whole
+    // budget by logging into an account they control) — but never decaying it punishes a corporate
+    // NAT or a carrier CGNAT, where one address is hundreds of people and nothing they do clears it.
+    const email = 'natuser@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn({ maxFails: 100, windowS: 30, maxFailsPerIp: 3, maxFailsPerEmail: 10_000 }, '10.9.9.5')
+    expect((await post(url, 'colleague-a@orbetra.test', 'wrong')).status).toBe(401)
+    expect((await post(url, 'colleague-b@orbetra.test', 'wrong')).status).toBe(401)
+    expect(await redis.get('auth:fail:ip:10.9.9.5')).toBe('2')
+    expect((await post(url, email, PW)).status).toBe(200) // one good login…
+    expect(await redis.get('auth:fail:ip:10.9.9.5')).toBe('1') // …repays exactly one failure
+    // and it floors at zero rather than banking credit an attacker could spend later
+    expect((await post(url, email, PW)).status).toBe(200)
+    expect((await post(url, email, PW)).status).toBe(200)
+    expect(Number(await redis.get('auth:fail:ip:10.9.9.5'))).toBe(0)
   })
 })
 

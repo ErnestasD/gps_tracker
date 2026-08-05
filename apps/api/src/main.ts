@@ -111,6 +111,7 @@ const deps = {
   },
   onSmsQuotaRejected: (scope: 'device' | 'tenant' | 'global') => prom.smsQuotaRejected.inc({ scope }),
   onWebhookUnmatched: (reason: 'no_tenant' | 'unmappable') => prom.billingWebhookUnmatched.inc({ reason }),
+  onLockout: (gate: 'credential' | 'ip' | 'email') => prom.authLockoutTripped.inc({ gate }),
   // hard ceiling on one live socket (default 4 h). A stream is authorized only at connect, so this
   // is what makes a plan downgrade / role change eventually reach an already-open one; clients
   // reconnect with a fresh ticket, which re-authorizes.
@@ -119,9 +120,13 @@ const deps = {
     maxFails: Number(process.env['LOCKOUT_MAX_FAILS'] ?? 5),
     windowS: Number(process.env['LOCKOUT_WINDOW_S'] ?? 900),
     // Deliberately far above maxFails: these are ABUSE ceilings, not the per-credential rule, and a
-    // whole office or a mobile carrier NAT shares one source IP. 50 failed logins per 15 min from a
-    // single address, or 20 against one account from anywhere, is not a human getting it wrong.
+    // whole office or a mobile carrier NAT shares one source IP. 50 failed logins per 15 min from
+    // one address, or 20 against one account from anywhere, is not a human getting it wrong — but
+    // neither is grounds for denying a valid credential, so both refuse only wrong passwords. The
+    // HARD per-IP ceiling is what refuses everything up front, and it is set where the traffic
+    // stops being explicable as an office having a bad morning.
     maxFailsPerIp: Number(process.env['LOCKOUT_MAX_FAILS_PER_IP'] ?? 50),
+    maxFailsPerIpHard: Number(process.env['LOCKOUT_MAX_FAILS_PER_IP_HARD'] ?? 200),
     maxFailsPerEmail: Number(process.env['LOCKOUT_MAX_FAILS_PER_EMAIL'] ?? 20),
   },
   // Caddy on-demand-TLS ask throttle per source IP (E03-5); DNS TXT verify uses

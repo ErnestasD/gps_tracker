@@ -22,7 +22,15 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
   // and an incremental CRUD activate can never drift. profile presence_rules resolved once, in memory.
   const profileRules = new Map((await db.profiles.list()).map((p) => [p.id, p.presenceRules]))
   let devices = 0
-  for (const d of await db.devices.listAllForRegistry()) {
+  const registryRows = await db.devices.listAllForRegistry()
+  // The per-tenant index is REBUILT, not merely added to. Everything else here is an hset, which
+  // self-heals by overwriting; a set only grows, so a member stranded by a partial teardown would
+  // survive every restart forever and keep a retired device on the map. Boot is the one moment we
+  // hold the authoritative list, so it is the one place a true repair is possible. Only tenants
+  // present in the DB are cleared — a DEL of a key we are about to repopulate, in the same
+  // pipeline, so there is no window where a live tenant has an empty index.
+  for (const tenantId of new Set(registryRows.map((d) => d.tenantId))) pipe.del(tenantDevicesKey(tenantId))
+  for (const d of registryRows) {
     const id = d.id.toString()
     pipe.hset('registry:imei', d.imei, id)
     pipe.hset('device:tenant', id, d.tenantId)

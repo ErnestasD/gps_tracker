@@ -1,5 +1,7 @@
 import type { Redis } from 'ioredis'
 
+import { tenantDevicesKey } from '@orbetra/shared'
+
 /**
  * Redis registry sync (E03-3) — the bridge between device CRUD and the raw pipeline.
  * ingest reads `registry:imei` (imei→deviceId) on handshake; worker LiveState reads
@@ -8,16 +10,10 @@ import type { Redis } from 'ioredis'
  * runs (AC[2]). Lives in the API layer, NOT packages/db (that stays pure DB).
  */
 
-/**
- * Per-tenant device index. `device:tenant` maps device→tenant, which answers "whose is this one?"
- * but forces a PLATFORM-WIDE HGETALL to answer "which are mine?" — the shape `/v1/devices/last`
- * used, so one tenant's snapshot request scaled with every other tenant's fleet (audit MED).
- *
- * A hint, never the authority: `device:tenant` stays the source of truth and the reader
- * re-verifies ownership against it, so a stale member can only cost a wasted lookup, never a
- * cross-tenant leak.
- */
-export const tenantDevicesKey = (tenantId: string): string => `tenant:${tenantId}:devices`
+// Per-tenant device index (audit MED): `device:tenant` answers "whose is this one?" but forces a
+// platform-wide HGETALL to answer "which are mine?". The key builder lives in @orbetra/shared
+// because the simulator/e2e seed writes it too and cannot import from the API.
+export { tenantDevicesKey } from '@orbetra/shared'
 
 export interface RegistryDevice {
   id: bigint
@@ -54,17 +50,20 @@ export async function syncDeviceConfig(redis: Redis, id: bigint, presenceRules: 
   await redis.hset('device:config', id.toString(), JSON.stringify({ presenceRules: presenceRules ?? {}, odometerSource }))
 }
 
-export async function deactivateDevice(redis: Redis, d: { id: bigint; imei: string }): Promise<void> {
+export async function deactivateDevice(redis: Redis, d: { id: bigint; imei: string; tenantId: string }): Promise<void> {
   const id = d.id.toString()
-  // the index entry is keyed by tenant, so it needs the mapping BEFORE the hash row is deleted
-  const tenantId = await redis.hget('device:tenant', id)
-  const m = redis
+  // The index entry is keyed by tenant, and the caller ALWAYS knows the tenant — it just read the
+  // device row through a scoped repo. Deriving it from `device:tenant` instead would skip the SREM
+  // whenever that hash row was already gone (a partially-applied earlier teardown, a Redis flush
+  // before a rehydrate), stranding the member permanently: the index only ever grows, and nothing
+  // else prunes it.
+  await redis
     .multi()
     .hdel('registry:imei', d.imei)
     .hdel('device:tenant', id)
     .hdel('device:account', id)
     .hdel('device:config', id)
     .del(`device:${id}:last`)
-  if (tenantId !== null) m.srem(tenantDevicesKey(tenantId), id)
-  await m.exec()
+    .srem(tenantDevicesKey(d.tenantId), id)
+    .exec()
 }

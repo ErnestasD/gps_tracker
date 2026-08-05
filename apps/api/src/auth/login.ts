@@ -62,7 +62,18 @@ export interface AuthRouteDeps {
    * IPs stuffing one account. Defaults derive from maxFails so a deployment that only sets it
    * still gets all three.
    */
-  lockout: { maxFails: number; windowS: number; maxFailsPerIp?: number; maxFailsPerEmail?: number }
+  lockout: {
+    maxFails: number
+    windowS: number
+    /** Soft per-IP ceiling: past it a WRONG password is refused, a correct one still signs in. */
+    maxFailsPerIp?: number
+    /** Hard per-IP ceiling: past it everything is refused before any argon2 runs. */
+    maxFailsPerIpHard?: number
+    maxFailsPerEmail?: number
+  }
+  /** A lockout gate refused a request, by which ceiling tripped. A customer locked out of the
+   *  product must be visible in Grafana, not merely in their own support ticket. */
+  onLockout?: (gate: 'credential' | 'ip' | 'email') => void
   secureCookies: boolean
   /** Trust X-Forwarded-For (prod behind Caddy only). */
   trustProxy: boolean
@@ -95,6 +106,13 @@ const sha256 = (s: string | Buffer): string => createHash('sha256').update(s).di
 // (review LOW-2: a Redis blip between INCR and EXPIRE would else permanently lock an IP+email pair)
 const LOCKOUT_SCRIPT = `local n = redis.call('INCR', KEYS[1])
 if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return n`
+
+// One success repays one failure on the per-IP budget, floored at zero (never negative: a
+// long-running honest office must not bank credit an attacker could later spend). Leaves the TTL
+// alone — the window is the window.
+const DECAY_SCRIPT = `local n = tonumber(redis.call('GET', KEYS[1]) or '0')
+if n > 0 then redis.call('DECR', KEYS[1]) end
 return n`
 
 // forgot-password rate limit (ADR-031): max reset requests per IP+email per window. Generous enough
@@ -174,36 +192,52 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     const email = body.data.email.trim().toLowerCase()
     const ip = clientIp(c.req.header('x-forwarded-for'), getRemoteAddr(c), deps.trustProxy)
 
-    // Lockout gates BEFORE any DB/argon2 work (§6.1). THREE keys, because the original single
-    // (IP, email) key left two holes open (audit MED):
+    // Lockout gates. THREE counters, because the original single (IP, email) key left two holes
+    // open (audit MED) — but they do NOT all gate at the same point, and that distinction is the
+    // whole design:
     //
-    //  - per (IP, email) — the documented 5-fails rule, unchanged.
-    //  - per IP — the (IP,email) key is DIFFERENT for every email, so one host could send unlimited
-    //    attempts simply by varying the address, and every one of them burned a full argon2id
-    //    verify against the shared 8-slot semaphore that every login queues on. Unlimited free CPU
-    //    on the endpoint that gates the whole product.
-    //  - per EMAIL — conversely, credential stuffing against one real account got `maxFails` free
-    //    attempts PER SOURCE IP with no account-level ceiling, so N hosts bought 5N attempts on the
-    //    same victim. A botnet made the per-IP rule meaningless for the account that mattered.
-    //
-    // Counted on FAILURE only and reset on success, so a legitimate user who mistypes once and then
-    // succeeds is never penalised, and a busy office behind one NAT is bounded by attempts that
-    // actually failed rather than by traffic.
+    //  - per (IP, email) — the documented §6.1 rule, checked BEFORE any DB/argon2 work.
+    //  - per IP, in TWO tiers. The (IP,email) key is DIFFERENT for every email, so one host could
+    //    send unlimited attempts simply by varying the address, and every one of them burned a full
+    //    argon2id verify against the shared 8-slot semaphore that every login on the platform
+    //    queues on. But one IP is not one person: a corporate NAT or a carrier CGNAT is hundreds of
+    //    people behind one address, and a single pre-verify ceiling locks all of them out — with no
+    //    way back, because the successful login that would repay the budget is refused by the very
+    //    gate it would clear. So the SOFT ceiling refuses only wrong passwords (post-verify): the
+    //    office keeps working, guessing does not. The HARD ceiling, several times higher, refuses
+    //    everything before any argon2 runs — past that volume an address is indistinguishable from
+    //    an attack and shedding CPU has to win.
+    //  - per ACCOUNT, checked only AFTER the password was verified, and only on the FAILURE path.
+    //    Credential stuffing got `maxFails` free attempts PER SOURCE IP with no account ceiling, so
+    //    N hosts bought 5N guesses at one victim. A ceiling fixes that — but a ceiling placed
+    //    BEFORE the verify is an account-lockout weapon: anyone who knows an email (they are
+    //    enumerable — admins, support addresses) could deny that account for a full window from a
+    //    single host, and the owner's own correct password would be refused. That trades a guessing
+    //    risk for an availability attack on a named customer, which is worse. Placed after the
+    //    verify it still bounds GUESSING absolutely (every wrong password past the ceiling is 429,
+    //    so no attacker learns anything) while the account owner is never locked out of their own
+    //    product. The CPU an attacker can burn this way stays bounded by the per-IP gate above.
     const emailHash = sha256(email).slice(0, 16)
     const lockKey = `auth:fail:${ip}:${emailHash}`
     const ipKey = `auth:fail:ip:${ip}`
     const emailKey = `auth:fail:email:${emailHash}`
-    const gates: [string, number][] = [
+    const maxPerEmail = deps.lockout.maxFailsPerEmail ?? deps.lockout.maxFails * 4
+    const maxPerIp = deps.lockout.maxFailsPerIp ?? deps.lockout.maxFails * 10
+    const maxPerIpHard = deps.lockout.maxFailsPerIpHard ?? maxPerIp * 4
+    const preGates: [string, number][] = [
       [lockKey, deps.lockout.maxFails],
-      [ipKey, deps.lockout.maxFailsPerIp ?? deps.lockout.maxFails * 10],
-      [emailKey, deps.lockout.maxFailsPerEmail ?? deps.lockout.maxFails * 4],
+      [ipKey, maxPerIpHard],
     ]
-    const counts = await deps.redis.mget(...gates.map(([k]) => k))
-    const trippedIdx = gates.findIndex(([, max], i) => Number(counts[i] ?? 0) >= max)
-    if (trippedIdx >= 0) {
-      const ttl = await deps.redis.ttl(gates[trippedIdx]![0])
+    const tooMany = async (key: string): Promise<Response> => {
+      const ttl = await deps.redis.ttl(key)
       c.header('Retry-After', String(Math.max(1, ttl)))
       return problem(c, 429, 'Too Many Attempts', 'try again later')
+    }
+    const preCounts = await deps.redis.mget(...preGates.map(([k]) => k))
+    const tripped = preGates.find(([, max], i) => Number(preCounts[i] ?? 0) >= max)
+    if (tripped !== undefined) {
+      deps.onLockout?.(tripped[0] === ipKey ? 'ip' : 'credential')
+      return tooMany(tripped[0])
     }
 
     // verify against ALL candidates, no short-circuit; unknown email burns one
@@ -220,9 +254,22 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
 
     if (verified.length === 0) {
       // atomic INCR + (re-armed) EXPIRE — never strands a TTL-less key (review LOW-2)
-      await Promise.all(
-        gates.map(([k]) => deps.redis.eval(LOCKOUT_SCRIPT, 1, k, String(deps.lockout.windowS))),
+      const bumped = await Promise.all(
+        [lockKey, ipKey, emailKey].map((k) => deps.redis.eval(LOCKOUT_SCRIPT, 1, k, String(deps.lockout.windowS))),
       )
+      // The soft per-IP ceiling and the account ceiling are applied HERE, to a wrong password only
+      // — see the gate note above. `>` not `>=`: the pre-verify gates read the counter BEFORE their
+      // own increment, so they allow exactly `max` failures and refuse the next attempt; comparing
+      // a post-increment count with `>=` would trip one attempt earlier and make the ceilings mean
+      // different things.
+      if (Number(bumped[2] ?? 0) > maxPerEmail) {
+        deps.onLockout?.('email')
+        return tooMany(emailKey)
+      }
+      if (Number(bumped[1] ?? 0) > maxPerIp) {
+        deps.onLockout?.('ip')
+        return tooMany(ipKey)
+      }
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
     if (verified.length > 1) {
@@ -232,9 +279,12 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       return problem(c, 409, 'Ambiguous Identity', 'contact your administrator', 'https://orbetra.dev/problems/ambiguous-identity')
     }
 
-    // success clears the identity-scoped counters; the per-IP one deliberately SURVIVES, so an
-    // attacker cannot wipe their own budget by interleaving one valid login of their own
-    await deps.redis.del(lockKey, emailKey)
+    // Success clears the identity-scoped counters outright. The per-IP one is only DECREMENTED:
+    // clearing it would let an attacker refund their whole budget by interleaving one login to an
+    // account they control, while never decaying it punishes a shared egress — a corporate NAT or a
+    // carrier CGNAT is one address for hundreds of people, and nothing they did could clear it. One
+    // failure costs one success to undo, which decays honest traffic and buys an attacker nothing.
+    await Promise.all([deps.redis.del(lockKey, emailKey), deps.redis.eval(DECAY_SCRIPT, 1, ipKey)])
     const user = verified[0]!
     const { session, rawRefresh } = await issueSession(user, randomUUID())
     setRefreshCookie(c, rawRefresh)

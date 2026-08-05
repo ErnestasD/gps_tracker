@@ -609,6 +609,9 @@ importers:
       '@orbetra/codec':
         specifier: workspace:*
         version: link:../../packages/codec
+      '@orbetra/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
     devDependencies:
       eslint:
         specifier: ^9.30.0

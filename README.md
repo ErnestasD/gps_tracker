@@ -94,7 +94,8 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `REFRESH_TTL` | apps/api | Refresh-token TTL seconds (sliding), default `1209600` (14 d) |
 | `RESET_TOKEN_TTL` | apps/api | Password-reset link lifetime seconds (ADR-031), default `3600` (1 h) |
 | `LOCKOUT_MAX_FAILS` / `LOCKOUT_WINDOW_S` | apps/api | Login lockout per (IP, email) (§6.1), defaults `5` / `900` |
-| `LOCKOUT_MAX_FAILS_PER_IP` / `LOCKOUT_MAX_FAILS_PER_EMAIL` | apps/api | Abuse ceilings in the same window, defaults `50` / `20`. The per-(IP,email) key alone caps nothing for one host varying the email, and gives every source IP its own budget against one account |
+| `LOCKOUT_MAX_FAILS_PER_IP` / `LOCKOUT_MAX_FAILS_PER_EMAIL` | apps/api | **Soft** abuse ceilings in the same window, defaults `50` / `20`. Past them a WRONG password is refused; a correct one still signs in, so a shared egress (office NAT, carrier CGNAT) is never locked out and a named account cannot be denied by guessing at it |
+| `LOCKOUT_MAX_FAILS_PER_IP_HARD` | apps/api | **Hard** per-IP ceiling, default `200`. Past it every login from that address is refused before any argon2 runs — the CPU shed. Set where traffic stops being explicable as one office having a bad morning |
 | `WS_TICKET_TTL` | apps/api | WS `/v1/stream` one-time ticket TTL seconds (§6.7), default `30` |
 | `ARGON2_MAX_CONCURRENT` | apps/api | Max concurrent argon2 password hashes (back-pressures login/CPU), default `8` |
 | `ARGON2_MAX_WAITING` | apps/api | Max requests QUEUED for an argon2 slot before shedding with 503, default `64` (≈0.9 s of queueing). An unbounded queue turns a flood on any hashing route into a platform-wide login stall |

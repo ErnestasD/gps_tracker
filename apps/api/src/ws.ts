@@ -3,7 +3,7 @@ import type { IncomingMessage, Server } from 'node:http'
 import { Redis } from 'ioredis'
 import { WebSocketServer, type WebSocket } from 'ws'
 
-import type { Role } from '@orbetra/shared'
+import { WS_CLOSE, type Role } from '@orbetra/shared'
 
 export interface WsAuthContext {
   userId: string
@@ -35,16 +35,20 @@ export interface WsDeps {
   pingIntervalMs?: number
   /** Send-buffer ceiling per socket before it is cut as a slow consumer (default 1 MB). */
   maxBufferedBytes?: number
+  /** Consecutive unanswered pings before a socket is terminated (default 2 — see the note below). */
+  pingMissesBeforeTerminate?: number
 }
 
 /** Redis key prefix for the "all sessions revoked at" marker (audit MED). */
 export const WS_REVOKE_PREFIX = 'ws:revoke:'
 /** Marker TTL — comfortably longer than any access-token TTL / expected socket lifetime. */
 const WS_REVOKE_TTL_S = 24 * 3_600
+// Close codes live in @orbetra/shared: the SPA's reconnect policy branches on them, and a code
+// only the server knows is a signal the client cannot act on.
 /** WS close code for a revoked session (application range; distinct from protocol codes). */
-export const WS_REVOKED_CLOSE = 4401
+export const WS_REVOKED_CLOSE = WS_CLOSE.REVOKED
 /** WS close code for a subscriber that stopped reading fast enough to keep up with its feed. */
-export const WS_SLOW_CONSUMER_CLOSE = 4408
+export const WS_SLOW_CONSUMER_CLOSE = WS_CLOSE.SLOW_CONSUMER
 /**
  * How much unread data may sit in one socket's send buffer before we cut it.
  *
@@ -182,19 +186,26 @@ export function attachWsGateway(
   // connection — laptop lid closed, mobile handover, NAT timeout — kept `readyState === OPEN` and
   // stayed in `subscribers` until the OS keepalive fired, which on Linux defaults to ~2 hours. The
   // API would happily write a fleet's entire position stream into a socket whose peer vanished
-  // ninety minutes ago. A socket that misses one round trip is terminated, not closed politely:
+  // ninety minutes ago. A socket is terminated rather than closed politely once it goes quiet:
   // there is no peer left to negotiate with. Audit MED.
-  const alive = new WeakSet<WebSocket>()
+  //
+  // TWO missed round trips, not one. At a 30 s interval a single-strike reaper kills any client
+  // that stalls for 30 s — a lift, a tunnel, an LTE handover — and the SPA reconnects into a fresh
+  // ticket + upgrade. Two strikes is the conventional 2×-interval tolerance and costs one extra
+  // interval of holding a genuinely dead socket, which nothing depends on.
+  const strikes = new WeakMap<WebSocket, number>()
   const pingMs = deps.pingIntervalMs ?? 30_000
   const maxBuffered = deps.maxBufferedBytes ?? MAX_WS_BUFFERED_BYTES
+  const missesBeforeTerminate = deps.pingMissesBeforeTerminate ?? 2
   const pingTimer = setInterval(() => {
     for (const set of subscribers.values()) {
       for (const { ws } of set) {
-        if (!alive.has(ws)) {
+        const missed = (strikes.get(ws) ?? 0) + 1
+        if (missed > missesBeforeTerminate) {
           ws.terminate()
           continue
         }
-        alive.delete(ws)
+        strikes.set(ws, missed)
         try {
           ws.ping()
         } catch {
@@ -288,9 +299,9 @@ export function attachWsGateway(
       await ensureSubscription()
       wss.handleUpgrade(req, socket, head, (ws) => {
         const entry = { ws, ctx, establishedAt }
-        // a fresh socket counts as alive until it misses a heartbeat round trip
-        alive.add(ws)
-        ws.on('pong', () => alive.add(ws))
+        // a fresh socket starts with a clean slate; every pong clears the strikes it accrued
+        strikes.set(ws, 0)
+        ws.on('pong', () => strikes.set(ws, 0))
         const set = subscribers.get(ctx.tenantId) ?? new Set()
         set.add(entry)
         subscribers.set(ctx.tenantId, set)

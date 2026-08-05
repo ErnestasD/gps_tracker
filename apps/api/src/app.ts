@@ -46,7 +46,17 @@ export interface ApiDeps extends WsDeps {
    * IPs stuffing one account. Defaults derive from maxFails so a deployment that only sets it
    * still gets all three.
    */
-  lockout: { maxFails: number; windowS: number; maxFailsPerIp?: number; maxFailsPerEmail?: number }
+  lockout: {
+    maxFails: number
+    windowS: number
+    /** Soft per-IP ceiling: past it a WRONG password is refused, a correct one still signs in. */
+    maxFailsPerIp?: number
+    /** Hard per-IP ceiling: past it everything is refused before any argon2 runs. */
+    maxFailsPerIpHard?: number
+    maxFailsPerEmail?: number
+  }
+  /** A lockout gate refused a login, by which ceiling tripped (see `auth/login.ts`). */
+  onLockout?: (gate: 'credential' | 'ip' | 'email') => void
   secureCookies: boolean
   trustProxy: boolean
   /** Remote socket address resolver (Node server adapter specific; tests inject). */
@@ -117,6 +127,9 @@ export interface ApiProm {
   billingWebhookUnmatched: Counter
   /** Live sockets dropped for exceeding the send-buffer ceiling: a client that stopped reading. */
   wsSlowConsumer: Counter
+  /** Logins refused by a lockout ceiling, by gate. A rising `email` rate is an account under
+   *  attack; a rising `ip` rate is either abuse or a shared egress that needs a higher ceiling. */
+  authLockoutTripped: Counter
   /** Every HTTP response, by method / route TEMPLATE / status class. The route template (not the
    *  raw path) keeps the label set bounded — `/v1/devices/:id` is one series, not one per device. */
   httpRequests: Counter
@@ -159,6 +172,12 @@ export function createApiProm(): ApiProm {
     help: 'WS connections closed because their send buffer exceeded the ceiling (client not reading)',
     registers: [registry],
   })
+  const authLockoutTripped = new Counter({
+    name: 'auth_lockout_tripped_total',
+    help: 'logins refused by a lockout ceiling (credential = per IP+email, ip = per source, email = per account)',
+    labelNames: ['gate'],
+    registers: [registry],
+  })
   const httpRequests = new Counter({
     name: 'http_requests_total',
     help: 'HTTP responses by method, route template and status class',
@@ -174,7 +193,7 @@ export function createApiProm(): ApiProm {
     buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   })
-  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, httpRequests, httpDuration }
+  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, httpRequests, httpDuration }
 }
 
 /**
@@ -342,15 +361,19 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
    * the connection every other request shares. Any authenticated user could repeat it as fast as
    * they liked.
    *
-   * Now three commands, all bounded by the caller's own fleet: SMEMBERS on the per-tenant index,
-   * one HMGET to RE-VERIFY ownership against the authoritative `device:tenant` hash (so a stale
-   * index member costs a wasted lookup, never a cross-tenant leak), and one pipeline of HGETs.
-   * Plus a per-user rate limit, like reports/routing/share already have.
+   * Now 2 + N commands, and every one of them is bounded by the CALLER's own fleet instead of the
+   * platform: SMEMBERS on the per-tenant index, one HMGET to RE-VERIFY ownership against the
+   * authoritative `device:tenant` hash (so a stale index member costs a wasted lookup, never a
+   * cross-tenant leak), then a pipeline of N HGETs. Plus a per-user rate limit, like
+   * reports/routing/share already have. The N remains proportional to the tenant's device count —
+   * a map that shows every vehicle has to read every vehicle — so a very large fleet is still a
+   * heavy request; paginating the snapshot is a follow-up that changes the web client too.
    */
   app.get('/v1/devices/last', async (c) => {
     const auth = c.get('auth')
     const rl = deps.deviceLastRateLimit ?? { max: 60, windowS: 60 }
     if ((await fixedWindowCount(deps.redis, `devlast:rl:${auth.userId}`, rl.windowS)) > rl.max) {
+      c.header('Retry-After', String(rl.windowS)) // a throttled client needs a basis for backoff
       return problem(c, 429, 'Too Many Requests')
     }
 
