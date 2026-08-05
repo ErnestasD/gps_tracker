@@ -45,12 +45,21 @@ ALTER TABLE "usage_reports"
 --    after a lost response — passed the "different id" test and resurrected the canceled
 --    subscription as active and entitled. `billing_events` is that record; a redelivery of ANY
 --    previously applied event now collapses, however many events have landed since.
---  * a DETERMINISTIC order WITHIN the second, because Stripe does not guarantee delivery order.
---    Ranking by event type (created < updated < deleted) and admitting only `rank >= last` means
---    reverse delivery cannot undo a cancel, while two same-second `.updated`s (a plan change emits
---    exactly that) still both apply.
+--  * an order WITHIN the second that does not depend on arrival, because Stripe does not guarantee
+--    delivery order. Ranking by event type (created < updated < deleted) and admitting only
+--    `rank >= last` means a reordered `.updated` cannot undo a `.deleted`, while two same-second
+--    `.updated`s — what a plan change emits — still both apply. Equal ranks are still applied in
+--    arrival order: nothing in the event distinguishes them, and the last one to arrive wins.
 ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "lastBillingEventId"   TEXT;
 ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "lastBillingEventRank" INTEGER;
+
+-- BACKFILL THE RANK, or the fix opens the hole it closes. Every existing row would land here with a
+-- NULL rank, `billing_events` is empty at deploy, and a NULL rank admitted any same-second event —
+-- so for Stripe's ~3-day retry horizon (and 30 days of manual "Resend") a redelivered same-second
+-- `.updated`(active) would have walked back a cancel that the old strict `<` guard correctly
+-- dropped. 2 is the maximum rank: it admits nothing at an equal second, which is exactly the
+-- behaviour these rows were written under.
+UPDATE "tenants" SET "lastBillingEventRank" = 2 WHERE "lastBillingEventAt" IS NOT NULL AND "lastBillingEventRank" IS NULL;
 
 -- Applied Stripe events, for durable redelivery suppression. Deliberately NOT keyed on the tenant:
 -- the whole point is that it answers "have I already applied this event id" independently of what
@@ -83,16 +92,24 @@ ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "commissionMonthsAtAnchor" INTEGE
 -- which is the old code's own fallback. The term becomes the affiliate's CURRENT value — which is
 -- what the old code read live. Tenants with no commission yet stay NULL and anchor on their next
 -- payment.
+--
+-- Scoped by AFFILIATE as well as tenant, matching the old `where: { affiliateId, tenantId }`. Not
+-- reachable today (`referredByAffiliateId` is written once at tenant create and never updated), but
+-- a tenant carrying a previous partner's commissions would otherwise anchor on that partner's
+-- earliest payment — measured at 17 months early, closing the current partner's window before it
+-- opened.
 UPDATE "tenants" t
    SET "commissionAnchorAt"       = f.anchor,
        "commissionMonthsAtAnchor" = a."commissionMonths"
   FROM (
-         SELECT "tenantId",
-                COALESCE(MIN("paidAt"), MIN("createdAt")) AS anchor
-           FROM "commissions"
-          GROUP BY "tenantId"
+         SELECT c."tenantId",
+                c."affiliateId",
+                COALESCE(MIN(c."paidAt"), MIN(c."createdAt")) AS anchor
+           FROM "commissions" c
+          GROUP BY c."tenantId", c."affiliateId"
        ) f,
        "affiliates" a
  WHERE t.id = f."tenantId"
    AND a.id = t."referredByAffiliateId"
+   AND f."affiliateId" = t."referredByAffiliateId"
    AND t."commissionAnchorAt" IS NULL;

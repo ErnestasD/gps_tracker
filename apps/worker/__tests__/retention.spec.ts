@@ -61,6 +61,20 @@ describe('retention sweep', () => {
     expect(billingPrune.mock.calls[0]![0].getTime()).toBe(now - 90 * 24 * 3_600_000)
   })
 
+  it('billing_events has its OWN window, floored at 7 days — never the raw_rejects dial', async () => {
+    // RAW_REJECT_RETENTION_DAYS is documented as a personal-data minimisation knob (raw AVL bytes
+    // embed lat/lon), so shortening it to 1–2 days is a reasonable privacy decision. Sharing it with
+    // the applied-event ledger would prune inside Stripe's ~3-day retry horizon and silently reopen
+    // webhook redelivery — the exact bug the ledger exists to close.
+    const billingPrune = vi.fn<Prune>(() => Promise.resolve(0))
+    const db = fakeDb(() => Promise.resolve(0), () => Promise.resolve(0), billingPrune)
+    const now = Date.UTC(2026, 6, 16, 12, 0, 0)
+    await runRetentionSweep(db, 30, now, 1, undefined, 30) // raw_rejects shortened to 1 day
+    expect(billingPrune.mock.calls[0]![0].getTime()).toBe(now - 30 * 24 * 3_600_000) // its own 30
+    await runRetentionSweep(db, 30, now, 1, undefined, 2) // and a too-short ledger window is floored
+    expect(billingPrune.mock.calls[1]![0].getTime()).toBe(now - 7 * 24 * 3_600_000)
+  })
+
   it('one table failing still counts and reports what the others deleted', async () => {
     const seen: [string, number][] = []
     const db = fakeDb(() => Promise.resolve(1), () => Promise.reject(new Error('boom')), () => Promise.resolve(5))

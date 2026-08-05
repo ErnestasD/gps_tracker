@@ -61,6 +61,8 @@ export interface UsageReporterDeps {
   stripe: StripeUsagePort
   /** a TSP tenant whose base price is missing from STRIPE_INCLUDED — a config error, not a plan shape */
   onUnmappedPrice?: (info: { tenantId: string; priceId: string; plan: string }) => void
+  /** a day left as billed because the plan's allowance changed under it — see the loop */
+  onAllowanceSkip?: (info: { tenantId: string; day: string; was: number; now: number }) => void
 }
 
 export interface OverageRunResult {
@@ -73,6 +75,9 @@ export interface OverageRunResult {
   backfilled: number
   /** TSP subscribers skipped for want of an STRIPE_INCLUDED entry — should always be 0 (audit #23) */
   unmappedPrices: number
+  /** tenant-days left as billed because the allowance changed under them. A skipped day stays
+   *  skipped on every future run, so this must be visible rather than a log line nobody reads. */
+  allowanceSkips: number
 }
 
 /** UTC day (YYYY-MM-DD) `n` days before the given instant. */
@@ -133,7 +138,7 @@ export async function reportDailyOverage(
   // include tenants that lapsed INSIDE the window: they still owe the days they were billable for,
   // and enumerating only the currently-billable ones dropped exactly those days
   const subs = from === undefined ? [] : await deps.db.tenants.listActiveSubscribers(new Date(`${from}T00:00:00Z`))
-  const out: OverageRunResult = { subscribers: subs.length, reported: 0, devicesOver: 0, backfilled: 0, unmappedPrices: 0 }
+  const out: OverageRunResult = { subscribers: subs.length, reported: 0, devicesOver: 0, backfilled: 0, unmappedPrices: 0, allowanceSkips: 0 }
   if (from === undefined || to === undefined) return out
   let failures = 0
   for (const s of subs) {
@@ -167,23 +172,42 @@ export async function reportDailyOverage(
         deps.db.usage.reportedOverage(s.tenantId, { from, to }),
       ])
       const byDay = new Map(usage.map((r) => [r.day, r.deviceDays]))
-      const lapsedDay = s.billableUntil === null ? null : s.billableUntil.toISOString().slice(0, 10)
+      const lapsedMs = s.billableUntil?.getTime() ?? null
       for (const day of window) {
-        // a lapsed tenant owes the days up to and including the one it lapsed on, and nothing after
-        if (lapsedDay !== null && day > lapsedDay) continue
+        // A lapsed tenant owes the days it was live for, and no more. Compared as INSTANTS, not day
+        // strings: `day > lapsedDay` made the lapse day inclusive whatever the hour, so a cancel at
+        // 00:00 UTC still billed a full day the subscription was live for zero seconds of — and
+        // since the whole of audit #22 is that lapsed tenants keep reporting, the usage rows are
+        // always there to bill.
+        if (lapsedMs !== null && Date.parse(`${day}T00:00:00Z`) >= lapsedMs) continue
         const prior = already.get(day)
         // The allowance is a property of the plan AT THE TIME. Recomputing a day against a DIFFERENT
         // one is how a downgrade (750 included → 200) turns last week's settled days into hundreds of
         // device-days of overage the customer's plan actually covered. The stored value is the only
         // record of what was in force, so a day whose allowance has changed is left exactly as billed.
         if (prior !== undefined && prior.included !== null && prior.included !== included) {
+          out.allowanceSkips++
+          deps.onAllowanceSkip?.({ tenantId: s.tenantId, day, was: prior.included, now: included })
           console.warn('stripe overage: allowance changed for', s.tenantId, day, `${prior.included} → ${included} — day left as billed`)
           continue
         }
         const over = overageDevices(byDay.get(day) ?? 0, included)
         const prev = prior?.reported ?? 0
         const delta = over - prev
-        if (delta <= 0) continue // nothing new (or a retroactive decrease — see the doc comment)
+        if (delta <= 0) {
+          // A day UNDER its allowance owes nothing — but it still has to be recorded, or the guard
+          // above can never fire for it. Rows used to be written only after a positive submission,
+          // so precisely the days a downgrade endangers (the ones the old, larger allowance covered)
+          // had no row, no stored `included`, and were silently recomputed against the new smaller
+          // allowance on the next run. Measured: 750 → 200 with 500 devices billed 300 device-days
+          // per day of the window that the customer's plan had fully covered.
+          //
+          // Only when there is no row yet: an existing row is a high-water mark and a retroactive
+          // DECREASE must not lower it (the meter cannot go down, so lowering it would re-bill the
+          // difference on the next increase).
+          if (prior === undefined) await deps.db.usage.recordOverageReport(s.tenantId, day, { reported: over, included })
+          continue
+        }
         await deps.stripe.reportUsage({
           customerId: s.stripeCustomerId,
           value: delta,

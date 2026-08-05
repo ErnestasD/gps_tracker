@@ -20,8 +20,24 @@ export function createStripeUsageQueue(connection: ConnectionOptions): Queue {
   return new Queue(STRIPE_USAGE_QUEUE, { connection })
 }
 
-/** Upsert the repeatable report. jobId keeps the schedule single across restarts/workers. */
+/**
+ * Upsert the repeatable report. jobId keeps the schedule single across restarts/workers.
+ *
+ * The stale-schedule sweep is not optional. BullMQ derives a repeatable's key from its options,
+ * `every` included, so CHANGING the interval mints a NEW schedule and leaves the old one ticking
+ * forever — nothing removes it. After 24 h → 12 h both would fire, and because `getNextMillis` is
+ * epoch-aligned every 24 h boundary is also a 12 h one: two runs at the same millisecond, once a
+ * day. On more than one worker replica they interleave, both read the same `prev`, compute
+ * different `over` values, submit two DIFFERENT identifiers, and Stripe dedupes neither — the
+ * customer is billed twice for overlapping usage.
+ */
 export async function scheduleStripeUsage(queue: Queue): Promise<void> {
+  for (const job of await queue.getRepeatableJobs()) {
+    if (job.name === 'report' && job.every !== String(STRIPE_USAGE_EVERY_MS)) {
+      await queue.removeRepeatableByKey(job.key)
+      console.warn('stripe usage: removed a stale repeatable schedule', job.key)
+    }
+  }
   await queue.add(
     'report',
     {},

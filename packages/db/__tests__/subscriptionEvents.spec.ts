@@ -143,6 +143,28 @@ describe('applySubscriptionEvent ordering', () => {
     expect(await statusOf(id)).toBe('active')
   })
 
+  it('a same-second cancel THEN resubscribe lands the new subscription — correct order, lower rank', async () => {
+    // `.deleted`(A) then `.created`(B) in the same second is a cancel-and-resubscribe delivered in
+    // the RIGHT order. Rank alone dropped it (created 0 < deleted 2), leaving a paying customer on
+    // the canceled subscription: floored to zero entitlements AND classified as lapsed, so not even
+    // metered. A lower rank for a DIFFERENT subscription is not a reorder of this one's lifecycle.
+    const id = await tenantWithCustomer('Resub', 'cus_resub')
+    expect(await apply('cus_resub', T, 'evt_rs_del', DELETED, update('canceled', 'sub_A'))).toBe('applied')
+    expect(await apply('cus_resub', T, 'evt_rs_new', CREATED, update('active', 'sub_B'))).toBe('applied')
+    const billing = await db.tenants.getBilling(id)
+    expect(billing?.subscriptionStatus).toBe('active')
+    expect(billing?.stripeSubscriptionId).toBe('sub_B')
+  })
+
+  it('…but a live event for the SAME subscription after its cancel is still a reorder, and drops', async () => {
+    // the discriminator is the subscription id: `.updated`(A, active) after `.deleted`(A) in one
+    // second is the reordered delivery, not a resubscribe
+    const id = await tenantWithCustomer('SameSub', 'cus_samesub')
+    expect(await apply('cus_samesub', T, 'evt_ss_del', DELETED, update('canceled', 'sub_A'))).toBe('applied')
+    expect(await apply('cus_samesub', T, 'evt_ss_upd', UPDATED, update('active', 'sub_A'))).toBe('stale')
+    expect(await statusOf(id)).toBe('canceled')
+  })
+
   it('a same-second cancel of an OLD subscription still cannot kill the live one', async () => {
     // the per-subscription guard has to survive the same-second admission: cancel A → resubscribe B,
     // then A's delayed cancel arrives stamped in B's second

@@ -273,8 +273,10 @@ async function main(): Promise<void> {
           // SUCCESSFUL run and resets to 0 on restart, so it can read 0 for up to one tick after a
           // worker restart or a failing run — WorkerJobFailing covers that gap.
           prom.stripeUnmappedPrice.set(r.unmappedPrices)
+          prom.stripeAllowanceSkips.set(r.allowanceSkips)
         },
         onFailed: () => prom.jobFailed.inc({ job: 'stripe_usage' }),
+        onAllowanceSkip: (i) => console.warn('stripe overage: allowance changed under a reported day', JSON.stringify(i)),
       })
     : null
   if (stripeUsageQueue !== null) await scheduleStripeUsage(stripeUsageQueue)
@@ -310,6 +312,7 @@ async function main(): Promise<void> {
     db,
     retentionDays: Number.isFinite(retentionEnv) && retentionEnv > 0 ? retentionEnv : 30,
     rejectRetentionDays: Number(process.env['RAW_REJECT_RETENTION_DAYS']) || 90,
+    billingEventRetentionDays: Number(process.env['BILLING_EVENT_RETENTION_DAYS']) || 90,
     onPruned: (table, n) => prom.retentionPruned.inc({ table }, n),
     // the hook existed and nothing wired it: a retention sweep that throws every hour was
     // completely invisible, while positions/webhook_deliveries grew past their policy (audit MED)

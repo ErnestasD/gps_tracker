@@ -18,6 +18,8 @@ export interface StripeUsageWorkerDeps {
   onFailed?: () => void
   /** a TSP price with no STRIPE_INCLUDED entry — config error, zero overage billed for that plan */
   onUnmappedPrice?: (info: { tenantId: string; priceId: string; plan: string }) => void
+  /** a day left as billed because the plan's allowance changed under it */
+  onAllowanceSkip?: (info: { tenantId: string; day: string; was: number; now: number }) => void
 }
 
 /**
@@ -40,7 +42,15 @@ export function createStripeUsageWorker(deps: StripeUsageWorkerDeps): Worker {
     async () => {
       const days = billableDays(now(), backfillDays)
       try {
-        const r = await reportDailyOverage({ db: deps.db, stripe: deps.stripe, ...(deps.onUnmappedPrice ? { onUnmappedPrice: deps.onUnmappedPrice } : {}) }, days)
+        const r = await reportDailyOverage(
+          {
+            db: deps.db,
+            stripe: deps.stripe,
+            ...(deps.onUnmappedPrice ? { onUnmappedPrice: deps.onUnmappedPrice } : {}),
+            ...(deps.onAllowanceSkip ? { onAllowanceSkip: deps.onAllowanceSkip } : {}),
+          },
+          days,
+        )
         deps.onReported?.(r)
       } catch (err) {
         // a stalled metering pipeline is silent UNDER-BILLING: usage_daily keeps the truth but

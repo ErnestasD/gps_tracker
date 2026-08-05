@@ -192,14 +192,22 @@ export interface TenantRepo {
    *  applied one — or lands in the same `event.created` second with a type that ranks at or above the
    *  one already applied. Returns why nothing was written — see SubscriptionApplyResult. */
   applySubscriptionEvent(event: SubscriptionEvent, data: SubscriptionUpdate): Promise<SubscriptionApplyResult>
-  /** Worker usage reporter (PR B2): every tenant currently receiving PAID service — i.e. entitled,
-   *  by the SAME predicate entitlements use (isBillableSubscription), plus a Stripe customer id.
-   *  Includes `past_due`: dunning is a grace window for access, so it must be one for billing too. */
+  /**
+   * Worker usage reporter (PR B2): every tenant currently receiving PAID service — i.e. entitled, by
+   * the SAME predicate entitlements use (isBillableSubscription), plus a Stripe customer id.
+   * Includes `past_due`: dunning is a grace window for access, so it must be one for billing too.
+   *
+   * `lapsedSince` ADDITIONALLY returns tenants that lapsed at or after that instant — they still owe
+   * the days they were live for. Every row carries `billableUntil`, and a caller that passes
+   * `lapsedSince` MUST honour it: the extra rows are NOT entitled, and treating them as such would
+   * hand a canceled customer paid service. Called without the argument, the result is exactly the
+   * billable set and every `billableUntil` is null.
+   */
   listActiveSubscribers(lapsedSince?: Date): Promise<ActiveSubscriber[]>
   /** Drop applied-Stripe-event rows older than `cutoff` (retention sweep). Stripe retries for ~3
-   *  days, so anything past a wide margin can go; the table would otherwise grow forever. Returns
-   *  rows deleted. */
-  pruneBillingEvents(cutoff: Date): Promise<number>
+   *  days, so anything past a wide margin can go; the table would otherwise grow forever. Batched
+   *  like its retention siblings so the first pass cannot hold a long lock. Returns rows deleted. */
+  pruneBillingEvents(cutoff: Date, batchSize?: number): Promise<number>
   /** The inverse set: tenants whose entitlements are FLOORED right now — a lapsed subscription or an
    *  expired local trial — together with what they are still consuming. Platform-level, for the
    *  billing sweep; see {@link LapsedTenant}. */
@@ -355,12 +363,17 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       // `active`, entitled and unbilled until some later event happened to touch it.
       //
       // Admitting the equal-second case takes two things the timestamp cannot give. Durable
-      // REDELIVERY suppression is the first, and it is the `billing_events` claim above. A
-      // deterministic ORDER within the second is the second, and it is `rank` — because Stripe does
-      // not guarantee delivery order, and ordering same-second events by ARRIVAL means a `.deleted`
+      // REDELIVERY suppression is the first, and it is the `billing_events` claim above. An order
+      // within the second that does not depend on ARRIVAL is the second, and it is `rank` — because
+      // Stripe does not guarantee delivery order, and ordering by arrival means a `.deleted`
       // followed by a reordered `.updated` silently undoes a cancel, handing a canceled customer
       // full paid service. That direction was safe before this change only because the strict `lt`
       // dropped every same-second follow-up, including the ones that mattered.
+      //
+      // KNOWN LIMIT: two events of the SAME rank in one second (a plan change emits `.updated`
+      // twice) are still applied in arrival order, because nothing in the payloads orders them. The
+      // exposure is a tenant left on the pre-change price for the period; the next event on that
+      // subscription — a renewal at the latest — corrects it.
       //
       // Per-SUBSCRIPTION guard (audit P4): the customer-level monotonic guard alone lets a late-delivered
       // "OLD subscription deleted" (newer eventAt) overwrite the tenant's CURRENT live one — e.g. cancel
@@ -379,10 +392,34 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
               OR: [
                 { lastBillingEventAt: null },
                 { lastBillingEventAt: { lt: eventAt } },
-                // same second: admit only an event whose TYPE ranks at or above the one already
-                // applied, so a reordered `.updated` can never walk back a `.deleted`. `lte`, not
-                // `lt`: two same-second `.updated`s — what a plan change emits — must both land.
-                { AND: [{ lastBillingEventAt: eventAt }, { OR: [{ lastBillingEventRank: null }, { lastBillingEventRank: { lte: rank } }] }] },
+                // Same second: admit an event whose TYPE ranks at or above the one already applied,
+                // so a reordered `.updated` can never walk back a `.deleted`. `lte`, not `lt`: two
+                // same-second `.updated`s — what a plan change emits — must both land. (Equal ranks
+                // are therefore applied in ARRIVAL order; nothing in the events distinguishes them.)
+                //
+                // A NULL rank is NOT admitted: rows written before this column existed carry
+                // `lastBillingEventAt` with no rank, and admitting those would reopen the resurrected
+                // -cancel bug for Stripe's whole retry horizon after deploy. The migration backfills
+                // them to 2 (the maximum), which is the conservative behaviour they were written
+                // under; this predicate is the belt to that migration's braces.
+                //
+                // The exception is a LIVE event for a DIFFERENT subscription. `.deleted`(A) followed
+                // in the same second by `.created`(B) is a cancel-and-resubscribe delivered in the
+                // CORRECT order, and rank alone dropped it — leaving the paying customer on the
+                // canceled subscription, floored to zero entitlements and metered as lapsed. A lower
+                // rank for another subscription id is not a reorder of this one's lifecycle. The
+                // subscription must differ: a live `.updated`(A) after `.deleted`(A) IS the reorder.
+                {
+                  AND: [
+                    { lastBillingEventAt: eventAt },
+                    {
+                      OR: [
+                        { lastBillingEventRank: { lte: rank } },
+                        ...(incomingLive && data.stripeSubscriptionId !== null ? [{ stripeSubscriptionId: { not: data.stripeSubscriptionId } }] : []),
+                      ],
+                    },
+                  ],
+                },
               ],
             },
             ...(incomingLive
@@ -456,7 +493,17 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         billableUntil: isBillableSubscription(r.subscriptionStatus) ? null : r.lastBillingEventAt,
       }))
     },
-    pruneBillingEvents: async (cutoff) => (await prisma.billingEvent.deleteMany({ where: { appliedAt: { lt: cutoff } } })).count,
+    pruneBillingEvents: async (cutoff, batchSize = 5_000) => {
+      const size = Math.min(Math.max(Math.trunc(batchSize), 1), 50_000)
+      let total = 0
+      for (;;) {
+        const deleted = await prisma.$executeRaw`
+          DELETE FROM "billing_events"
+           WHERE "eventId" IN (SELECT "eventId" FROM "billing_events" WHERE "appliedAt" < ${cutoff} ORDER BY "appliedAt" LIMIT ${size})`
+        total += deleted
+        if (deleted < size) return total
+      }
+    },
     listLapsedTenants: async (now = new Date()) => {
       // Derived from the SAME predicate the entitlement gate uses (effectiveEntitlementsAt), not a
       // second hand-kept list — the last time those two drifted, `past_due` was entitled but not
