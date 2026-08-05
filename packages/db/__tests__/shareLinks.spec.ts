@@ -165,4 +165,25 @@ describe('V1-nice shareLinks repo', () => {
     // getByImei resolves the ACTIVE row, not the retired one
     expect((await db.devices.getByImei(a.aScope, imei))?.id).toBe(reclaimed.id)
   })
+
+  it('…but ONLY for the tenant that had it — a stranger cannot claim a retired IMEI', async () => {
+    // The physical tracker may still be wired to the vehicle and transmitting, and whoever holds
+    // the IMEI in `registry:imei` receives its live positions. Global uniqueness used to make this
+    // impossible; freeing the IMEI without this guard would make another company's vehicle report
+    // into your account after an ordinary self-service signup. §6.1 already notes device identity
+    // is IMEI-only and spoofable — this keeps it FORGEABLE rather than ACQUIRABLE.
+    const imei = '356307042449004'
+    const a = await seedDevice('OriginalOwner', imei)
+    await db.devices.retire(a.aScope, actor, a.deviceId.toString())
+
+    const b = await seedDevice('Stranger', '356307042449005')
+    const profileId = (await q<{ id: string }>(`SELECT id FROM device_profiles LIMIT 1`))[0]!.id
+    await expect(
+      db.devices.create(b.aScope, actor, { accountId: b.account.id, profileId, imei, name: 'Not yours' }),
+    ).rejects.toThrow(/already registered/i)
+    // …and the message says nothing about who holds it
+    await expect(
+      db.devices.create(b.aScope, actor, { accountId: b.account.id, profileId, imei, name: 'Not yours' }),
+    ).rejects.not.toThrow(/OriginalOwner|tenant/i)
+  })
 })

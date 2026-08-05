@@ -31,11 +31,14 @@ export interface DeviceUpdate {
 }
 
 /**
- * IMEI is GLOBALLY unique — a create colliding with ANOTHER tenant's IMEI would
- * otherwise surface a raw Prisma P2002 as a 500 (review HIGH). The repo catches
- * it and throws this domain error so the API translates it to a 409 / per-row
- * import error WITHOUT leaking that the IMEI exists in another tenant (the API
- * never gets to see the other tenant's row).
+ * An IMEI is already claimed. Two ways to get here, and the caller must not be able to tell them
+ * apart — the message never says which:
+ *   - another ACTIVE device in THIS tenant holds it (the partial unique index, as a P2002 which
+ *     would otherwise surface as a raw 500, review HIGH);
+ *   - ANY device in ANOTHER tenant holds it, retired or not (checked explicitly in `create`).
+ * Retiring frees an IMEI for its OWN tenant to re-register; it never releases it to a stranger.
+ * The API translates this to a 409 / per-row import error WITHOUT leaking that the IMEI exists
+ * elsewhere — the API never gets to see the other tenant's row.
  */
 export class DuplicateImeiError extends Error {
   constructor(readonly imei: string) {
@@ -71,11 +74,12 @@ export interface DeviceRepo {
   /** Boot registry-rehydrate ONLY (UNSCOPED, platform-level): every non-retired device with the
    *  fields ingest/worker need in Redis. Never a request path — those are always tenant-scoped. */
   listAllForRegistry(): Promise<RegistryDeviceRow[]>
-  /** UNSCOPED existence check for the worker's reject drain: which of these IMEIs still have a
-   *  device row. A rejection whose device was GDPR-erased must not be written back into
-   *  `raw_rejects` — the erase deletes by IMEI, and the drain runs on a timer after it. Never a
-   *  request path: it answers only "does this exist", for ids the caller already holds. */
-  imeisIn(imeis: readonly string[]): Promise<Set<string>>
+  /** UNSCOPED IMEI → device id for the worker's reject drain. Two jobs: a rejection whose device
+   *  was GDPR-erased must not be written back (the drain runs on a timer after the erase), and the
+   *  row stores the resolved id so the erase can key on the device rather than on an IMEI that may
+   *  belong to two rows. ACTIVE devices only — a retired one is not what a live rejection is from.
+   *  Never a request path: it answers only "which of these exist", for ids the caller holds. */
+  imeisIn(imeis: readonly string[]): Promise<Map<string, bigint>>
   get(scope: Scope, id: string): Promise<Device | null>
   getByImei(scope: Scope, imei: string): Promise<Device | null>
   create(scope: Scope, actor: Actor, data: DeviceCreate): Promise<Device>
@@ -97,9 +101,12 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
     list: (scope) => prisma.device.findMany({ where: scopedWhere(scope), orderBy: { createdAt: 'desc' } }),
     countActive: (scope) => prisma.device.count({ where: { ...scopedWhere(scope), retiredAt: null } }),
     imeisIn: async (imeis) => {
-      if (imeis.length === 0) return new Set()
-      const rows = await prisma.device.findMany({ where: { imei: { in: [...imeis] } }, select: { imei: true } })
-      return new Set(rows.map((r) => r.imei))
+      if (imeis.length === 0) return new Map()
+      const rows = await prisma.device.findMany({
+        where: { imei: { in: [...imeis] }, retiredAt: null },
+        select: { imei: true, id: true },
+      })
+      return new Map(rows.map((r) => [r.imei, r.id]))
     },
     listAllForRegistry: () =>
       prisma.device.findMany({
@@ -112,6 +119,19 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
     getByImei: (scope, imei) =>
       prisma.device.findFirst({ where: { ...scopedWhere(scope), imei }, orderBy: [{ retiredAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }] }),
     create: async (scope, actor, data) => {
+      // Retiring FREES an IMEI (partial unique index, migration 20260805150000) so returned hardware
+      // can be re-installed — but only by the tenant that had it. A cross-tenant reclaim is refused
+      // here rather than left to the index, because the physical tracker may still be wired to the
+      // vehicle and transmitting: whoever holds the IMEI in `registry:imei` receives its live
+      // positions. Global uniqueness used to make that impossible; without this check, learning an
+      // IMEI and signing up would be enough to have another company's vehicle report into your
+      // account. §6.1 already notes device identity is IMEI-only and spoofable — this keeps it
+      // FORGEABLE rather than ACQUIRABLE through the ordinary product.
+      const heldElsewhere = await prisma.device.findFirst({
+        where: { imei: data.imei, NOT: { tenantId: scope.tenantId } },
+        select: { id: true },
+      })
+      if (heldElsewhere !== null) throw new DuplicateImeiError(data.imei)
       let row
       try {
         row = await prisma.device.create({
@@ -129,7 +149,8 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
           },
         })
       } catch (err) {
-        if (isUniqueViolation(err)) throw new DuplicateImeiError(data.imei) // global imei clash
+        // the partial unique index — another ACTIVE device in THIS tenant already holds it
+        if (isUniqueViolation(err)) throw new DuplicateImeiError(data.imei)
         throw err
       }
       await audit.record(scope, actor, { action: 'create', entity: 'device', entityId: String(row.id), after: row })
@@ -145,13 +166,20 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
     retire: async (scope, actor, id) => {
       const before = await scopedById(scope, id)
       if (before === null) return null
-      if (before.retiredAt !== null) return before // already retired — idempotent
-      const row = await prisma.device.update({ where: { id: before.id }, data: { retiredAt: new Date() } })
       // Public share links die with the device (audit MED). Retiring is how an operator says "this
       // vehicle is no longer ours", and a live link keeps the UNAUTHENTICATED endpoint publishing
       // its last known position to anyone holding the URL for up to 30 more days — while the UI no
       // longer lists the device, so nobody can find the link to revoke it by hand.
+      //
+      // FIRST, and before the idempotent short-circuit below. Nothing here is transactional: with
+      // the revoke placed after the `retiredAt` write, a failure left the device retired WITH live
+      // links, and the retry then returned early and never revoked them — the exact state this is
+      // meant to prevent, in the one place an operator cannot see it (the UI no longer lists the
+      // device). Revoking is a no-op at zero live links, so running it on an already-retired device
+      // costs one query and repairs that history.
       await shareLinks.revokeForDevice(scope, actor, before.id)
+      if (before.retiredAt !== null) return before // already retired — idempotent
+      const row = await prisma.device.update({ where: { id: before.id }, data: { retiredAt: new Date() } })
       await audit.record(scope, actor, { action: 'update', entity: 'device', entityId: String(row.id), before, after: row })
       return row
     },

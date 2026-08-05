@@ -111,7 +111,7 @@ describe('E03-3 device CRUD + registry sync', () => {
     expect(dup.status).toBe(409)
   })
 
-  it('cross-tenant IMEI clash → 409, NOT a 500 (imei is globally unique; review HIGH)', async () => {
+  it('cross-tenant IMEI clash → 409, NOT a 500 (another tenant holds it; review HIGH)', async () => {
     // seed a device under a DIFFERENT tenant directly, then try to create the same
     // IMEI in the caller's tenant — the global unique index must surface as 409
     const other = await seedUser({ databaseUrl, email: 'other@x.test', password: 'password12', role: 'tsp_admin', tenantName: 'OtherCo', accountName: 'OF' })

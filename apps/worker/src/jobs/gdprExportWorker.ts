@@ -30,6 +30,9 @@ export interface GdprExportDeps {
   onDone?: (r: { exportId: string; bytes: number }) => void
   onFailed?: () => void
   onSwept?: (removed: number) => void
+  /** Abandoned `.tmp` exports reaped — a personal-data dump left by a killed process, NOT a routine
+   *  expiry. Anything above zero means we are leaking one on every deploy. */
+  onOrphanTmp?: (removed: number) => void
 }
 
 const PAGE = 10_000
@@ -156,7 +159,12 @@ export async function runExport(pool: Pool, exportDir: string, exportId: string)
 
 /** Delete expired export files + mark their rows (repeatable sweep; the DURABLE half of
  * MED-3 — the download route's lazy unlink only fires when someone hits an expired link). */
-export async function runExportSweep(pool: Pool, exportDir?: string, nowMs = Date.now()): Promise<number> {
+export async function runExportSweep(
+  pool: Pool,
+  exportDir?: string,
+  nowMs = Date.now(),
+  onOrphan?: (n: number) => void,
+): Promise<number> {
   const expired = await pool.query<{ id: string; path: string | null }>(
     `SELECT id, path FROM export_jobs WHERE status = 'done' AND "expiresAt" < now()`,
   )
@@ -166,7 +174,13 @@ export async function runExportSweep(pool: Pool, exportDir?: string, nowMs = Dat
     await pool.query(`UPDATE export_jobs SET status = 'expired', path = NULL WHERE id = $1 AND status = 'done'`, [row.id])
     removed++
   }
-  if (exportDir !== undefined) removed += await sweepOrphanTmp(exportDir, nowMs)
+  if (exportDir !== undefined) {
+    // reported SEPARATELY: an abandoned personal-data dump being reaped is not a routine expiry,
+    // and folding it into one number means "we leak a dump on every deploy" reads as normal traffic
+    const orphans = await sweepOrphanTmp(exportDir, nowMs)
+    if (orphans > 0) onOrphan?.(orphans)
+    removed += orphans
+  }
   return removed
 }
 
@@ -215,11 +229,11 @@ export async function sweepOrphanTmp(exportDir: string, nowMs = Date.now()): Pro
 export const EXPORT_SWEEP_EVERY_MS = 60 * 60_000
 
 /** Repeatable sweep consumer — removes expired export files hourly. */
-export function startGdprSweepWorker(deps: Pick<GdprExportDeps, 'connection' | 'pool' | 'exportDir' | 'onSwept'>): Worker {
+export function startGdprSweepWorker(deps: Pick<GdprExportDeps, 'connection' | 'pool' | 'exportDir' | 'onSwept' | 'onOrphanTmp'>): Worker {
   return new Worker(
     GDPR_SWEEP_QUEUE,
     async () => {
-      const removed = await runExportSweep(deps.pool, deps.exportDir)
+      const removed = await runExportSweep(deps.pool, deps.exportDir, Date.now(), (n) => deps.onOrphanTmp?.(n))
       if (removed > 0) deps.onSwept?.(removed)
     },
     { connection: deps.connection, concurrency: 1 },

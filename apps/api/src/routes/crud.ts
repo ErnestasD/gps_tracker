@@ -433,7 +433,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           // validate the (global) profile — a bad uuid would else be a P2003 500 (review MED)
           const profile = await db.profiles.get(data.profileId)
           if (profile === null) return problem(c, 400, 'Bad Request', 'unknown profileId')
-          // IMEI is GLOBALLY unique — the repo throws DuplicateImeiError on ANY clash
+          // An IMEI is claimed by an ACTIVE device here, or by ANY device in another tenant —
+          // the repo throws DuplicateImeiError for both and never says which
           // (including another tenant's), translated to 409 here so a cross-tenant clash
           // is not a 500 and does not reveal the other tenant's row (review HIGH)
           let device

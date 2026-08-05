@@ -55,6 +55,8 @@ export interface WorkerProm {
   rejectsDrained: Counter
   /** Windows the drain could not read because the stream was trimmed past its cursor. */
   rejectsDropped: Counter
+  /** Abandoned `.tmp` export dumps reaped — never a routine expiry. */
+  gdprOrphanTmp: Counter
   commandsResolved: Counter
   gdprErased: Counter
   gdprExported: Counter
@@ -163,6 +165,7 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const scheduledReportsSent = new Counter({ name: 'scheduled_reports_sent_total', help: 'scheduled report emails sent (V1-nice)', registers: [registry] })
   const retentionPruned = new Counter({ name: 'retention_pruned_total', help: 'rows pruned by the daily retention sweep, by table', labelNames: ['table'], registers: [registry] })
   const rejectsDrained = new Counter({ name: 'rejects_drained_total', help: 'sanity-rejected records persisted from the rejects stream into raw_rejects', registers: [registry] })
+  const gdprOrphanTmp = new Counter({ name: 'gdpr_orphan_tmp_removed_total', help: 'abandoned .tmp export dumps reaped by the sweep (a killed process left a full personal-data export behind)', registers: [registry] })
   const rejectsDropped = new Counter({ name: 'rejects_dropped_total', help: 'reject-stream windows lost because MAXLEN trimmed past the drain cursor', registers: [registry] })
   const commandsResolved = new Counter({ name: 'commands_resolved_total', help: 'Codec-12 commands resolved by the dispatcher (E08-2)', labelNames: ['outcome'], registers: [registry] })
   const gdprErased = new Counter({ name: 'gdpr_erase_total', help: 'GDPR device-erase cascades completed (E08-4)', registers: [registry] })
@@ -186,5 +189,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

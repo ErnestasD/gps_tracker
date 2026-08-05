@@ -54,7 +54,11 @@ function fakes(entries: [Buffer, Buffer[]][], opts: { throwOnRead?: Error; erase
     }),
   } as unknown as Redis
   const db = {
-    devices: { imeisIn: vi.fn((imeis: readonly string[]) => Promise.resolve(new Set(erasedImei === undefined ? imeis : imeis.filter((i) => i !== erasedImei)))) },
+    devices: {
+      imeisIn: vi.fn((imeis: readonly string[]) =>
+        Promise.resolve(new Map(imeis.filter((i) => i !== erasedImei).map((i, n) => [i, BigInt(100 + n)]))),
+      ),
+    },
     rawRejects: {
       insertMany: vi.fn((rows: RawRejectRow[]) => {
         inserted.push(rows)
@@ -75,6 +79,9 @@ describe('reject drain (rejects stream → raw_rejects)', () => {
     // the raw bytes travel with the row, so the offending frame can be replayed against the parser
     expect(Buffer.from(inserted[0]![0]!.payload!).toString('hex')).toBe('deadbeef')
     expect(store.get(REJECT_CURSOR_KEY)).toBe('2000-0')
+    // the resolved device id is stamped on the row: the GDPR erase keys on it, because an IMEI is
+    // unique among ACTIVE devices only and would otherwise reach a retired device's rows too
+    expect(inserted[0]!.every((r) => r.deviceId !== null)).toBe(true)
   })
 
   it('resumes AFTER the stored cursor — an exclusive range, never re-reading the last row', async () => {
@@ -134,7 +141,7 @@ describe('reject drain (rejects stream → raw_rejects)', () => {
     // Duplicated diagnostic rows are the right way round; silently skipped ones are not.
     const { redis, store } = fakes([entry('x', 1000, new Uint8Array())])
     const db = {
-      devices: { imeisIn: (imeis: readonly string[]) => Promise.resolve(new Set(imeis)) },
+      devices: { imeisIn: (imeis: readonly string[]) => Promise.resolve(new Map(imeis.map((i, n) => [i, BigInt(100 + n)]))) },
       rawRejects: { insertMany: () => Promise.reject(new Error('db down')) },
     } as unknown as Db
     await expect(runRejectDrain({ connection: {}, redis, db })).rejects.toThrow('db down')

@@ -45,6 +45,22 @@ async function clearRedisState(redis: Redis, deviceId: string): Promise<void> {
   await redis.hdel('device:config', deviceId)
 }
 
+/**
+ * Delete this device's sanity-rejected records.
+ *
+ * By deviceId, NOT by IMEI. `raw_rejects` predates device resolution, so it was keyed on IMEI — and
+ * an IMEI is unique among ACTIVE devices only, so after a device is retired and its IMEI
+ * re-registered, an IMEI delete reaches rows that belong to a different device. The drain stamps the
+ * id it resolved; the IMEI clause is kept, narrowed to rows written before that column existed, so
+ * a subject's older data is still erased. Those age out with the 90-day retention sweep.
+ */
+async function eraseRawRejects(pool: Pool, data: EraseJobData): Promise<void> {
+  await pool.query(`DELETE FROM raw_rejects WHERE "deviceId" = $1`, [data.deviceId])
+  if (data.imei !== undefined) {
+    await pool.query(`DELETE FROM raw_rejects WHERE "deviceId" IS NULL AND imei = $1`, [data.imei])
+  }
+}
+
 /** Run one erase. Idempotent: every step deletes only what still exists. */
 export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Promise<{ deviceId: string; positions: number }> {
   const idNum = BigInt(data.deviceId)
@@ -59,7 +75,7 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
     // still in the `rejects` stream at erase time land in the table AFTER the row was deleted;
     // without this pass nothing would ever remove them, and their raw AVL bytes embed lat/lon
     // (§3.4) — the exact coordinates the request is about.
-    if (data.imei !== undefined) await pool.query(`DELETE FROM raw_rejects WHERE imei = $1`, [data.imei])
+    await eraseRawRejects(pool, data)
     await clearRedisState(redis, data.deviceId)
     return { deviceId: data.deviceId, positions: 0 }
   }
@@ -94,7 +110,7 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
   // resurrection reason positions are: the drain writes on a 60 s tick, so a stream entry can land
   // in the table while this job runs. The drain also drops entries whose IMEI is no longer a
   // registered device, which closes the window for anything arriving later still.
-  await pool.query(`DELETE FROM raw_rejects WHERE imei = $1`, [data.imei ?? dev.rows[0]!.imei])
+  await eraseRawRejects(pool, { ...data, imei: data.imei ?? dev.rows[0]!.imei })
   return { deviceId: data.deviceId, positions: positions + late }
 }
 

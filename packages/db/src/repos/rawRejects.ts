@@ -16,6 +16,9 @@ import type { PrismaClient } from '@prisma/client'
  */
 export interface RawRejectRow {
   imei: string | null
+  /** resolved by the drain from the IMEI. GDPR erase keys on THIS — by IMEI it would reach a
+   *  different device's rows, since an IMEI is unique among ACTIVE devices only. */
+  deviceId: bigint | null
   reason: string
   /** the raw AVL record bytes, so the offending frame can be replayed against the parser */
   payload: Uint8Array | null
@@ -33,7 +36,7 @@ export function createRawRejectRepo(prisma: PrismaClient): RawRejectRepo {
     insertMany: async (rows) => {
       if (rows.length === 0) return 0
       const res = await prisma.rawReject.createMany({
-        data: rows.map((r) => ({ imei: r.imei, reason: r.reason, payload: r.payload === null ? null : new Uint8Array(r.payload) })),
+        data: rows.map((r) => ({ imei: r.imei, deviceId: r.deviceId, reason: r.reason, payload: r.payload === null ? null : new Uint8Array(r.payload) })),
       })
       return res.count
     },

@@ -97,7 +97,7 @@ async function seedDirectDemo(
       created++
     } catch (err) {
       if (err instanceof DuplicateImeiError) {
-        log(`  SKIP ${imei}: already registered in another tenant`)
+        log(`  SKIP ${imei}: already claimed (active here, or held by another tenant)`)
       } else throw err
     }
   }
@@ -175,7 +175,7 @@ export async function seedDemo(opts: {
           // the IMEI exists in ANOTHER tenant (getByImei is scoped) — e.g. a quarantine
           // claim took it. Skip with an actionable note; the run stays resumable.
           imeiConflicts++
-          log(`  SKIP ${spec.imei}: already registered in another tenant (clean it up or change DEMO_BASE_IMEI)`)
+          log(`  SKIP ${spec.imei}: already claimed (active here, or held by another tenant) (clean it up or change DEMO_BASE_IMEI)`)
         } else throw err
       }
     }
