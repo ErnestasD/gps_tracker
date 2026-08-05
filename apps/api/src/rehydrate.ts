@@ -23,30 +23,32 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
   const profileRules = new Map((await db.profiles.list()).map((p) => [p.id, p.presenceRules]))
   let devices = 0
   const registryRows = await db.devices.listAllForRegistry()
-  // The per-tenant index is REBUILT, not merely added to. Everything else here is an hset, which
-  // self-heals by overwriting; a set only grows, so a member stranded by a partial teardown would
-  // survive every restart forever and keep a retired device on the map. Boot is the one moment we
-  // hold the authoritative list, so it is the one place a true repair is possible.
+  // The per-tenant index is repaired ADDITIVELY here and reconciled member-by-member below — never
+  // rebuilt wholesale. Two rejected designs and why:
   //
-  // Built into a SCRATCH key and swapped with RENAME, never DEL-then-SADD in place. `pipeline()` is
-  // command batching, not MULTI, and this process is already serving `/v1/devices/last` while it
-  // runs: a DEL-first rebuild leaves every tenant's index empty for the duration (measured: 9 of 11
-  // concurrent reads returned an empty map on a 2400-device rehydrate), and a connection blip
-  // partway through leaves them empty PERMANENTLY, until the next successful boot. RENAME is
-  // atomic and the live key is never absent, so a partial failure simply keeps the old contents.
-  const scratch = (tenantId: string): string => `${tenantDevicesKey(tenantId)}:rebuild`
-  const tenantIds = new Set(registryRows.map((d) => d.tenantId))
-  for (const tenantId of tenantIds) pipe.del(scratch(tenantId))
+  //   DEL then SADD in place: `pipeline()` is command batching, not MULTI, and this process is
+  //   already serving `/v1/devices/last`. Every tenant's index sits EMPTY for the duration
+  //   (measured: 9 of 11 concurrent reads returned a blank map on a 2400-device rehydrate), and a
+  //   connection blip partway through leaves them empty until the next successful boot.
+  //
+  //   Build a scratch key, then RENAME: atomic, but it still overwrites whatever landed on the live
+  //   key while it ran. A rolling deploy rehydrates on one replica while the others serve CRUD, so
+  //   a device activated mid-rehydrate silently loses its index entry until the NEXT restart.
+  //
+  // Additive + reconcile has neither window: a concurrent activate writes `device:tenant` and the
+  // index in one MULTI, so the reconcile below sees the mapping and keeps the member. Correctness
+  // never depended on this anyway — the read path re-verifies every member against `device:tenant`
+  // (a stale entry costs a wasted lookup, never a leak); this is hygiene, and hygiene must not cost
+  // availability.
   for (const d of registryRows) {
     const id = d.id.toString()
     pipe.hset('registry:imei', d.imei, id)
     pipe.hset('device:tenant', id, d.tenantId)
     pipe.hset('device:account', id, d.accountId)
     pipe.hset('device:config', id, JSON.stringify({ presenceRules: profileRules.get(d.profileId) ?? {}, odometerSource: d.odometerSource }))
-    pipe.sadd(scratch(d.tenantId), id)
+    pipe.sadd(tenantDevicesKey(d.tenantId), id)
     devices++
   }
-  for (const tenantId of tenantIds) pipe.rename(scratch(tenantId), tenantDevicesKey(tenantId))
   let geofences = 0
   for (const g of await db.geofences.listAll()) {
     const [k, field, value] = geofenceCacheEntry(g) // same shape CRUD writes (no drift)
@@ -68,24 +70,40 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
   const failed = (results ?? []).filter(([err]) => err !== null).length
   if (failed > 0) console.error(`rehydrate: ${failed} of ${results?.length ?? 0} redis commands failed`)
 
-  // Tenants that lost their LAST device do not appear in `registryRows` at all, so the rebuild
-  // above never touches them and a stranded member would outlive every restart — the exact case the
-  // rebuild exists for. One SCAN closes it, and sweeps any scratch key a crashed run left behind
-  // (the RENAMEs above consumed this run's, so a survivor is by definition stale). SCAN is
-  // cursor-based and never blocks the server, unlike KEYS.
-  const KEY_RE = /^tenant:(.+):devices(:rebuild)?$/
+  // Reconcile: drop index members whose `device:tenant` mapping is gone or points elsewhere. This
+  // covers what the additive pass above cannot — a device retired while Redis was unreachable, and
+  // a tenant that lost its LAST device (it has no row in `registryRows` at all, so nothing above
+  // visits its key). Membership is judged per MEMBER against the authoritative hash written moments
+  // ago, not against a snapshot taken before three DB reads and a keyspace scan, so a device
+  // activated by another replica mid-sweep is kept: its `device:tenant` row is written in the same
+  // MULTI as its index entry. SCAN is cursor-based and never blocks the server, unlike KEYS.
+  const KEY_RE = /^tenant:(.+):devices$/
   let cursor = '0'
-  const stale: string[] = []
+  let pruned = 0
   do {
     const [next, keys] = await redis.scan(cursor, 'MATCH', 'tenant:*:devices*', 'COUNT', 500)
     cursor = next
-    for (const k of keys) {
-      const m = KEY_RE.exec(k)
+    for (const key of keys) {
+      // a scratch key from an older build that rebuilt via RENAME; nothing writes these now
+      if (key.endsWith(':rebuild')) {
+        await redis.del(key)
+        continue
+      }
+      const m = KEY_RE.exec(key)
       if (m === null) continue
-      if (m[2] !== undefined || !tenantIds.has(m[1]!)) stale.push(k)
+      const tenantId = m[1]!
+      const members = await redis.smembers(key)
+      if (members.length === 0) continue
+      const owners = await redis.hmget('device:tenant', ...members)
+      const gone = members.filter((_, i) => owners[i] !== tenantId)
+      if (gone.length > 0) {
+        await redis.srem(key, ...gone)
+        pruned += gone.length
+      }
+      if (gone.length === members.length) await redis.del(key) // emptied: do not leave the key behind
     }
   } while (cursor !== '0')
-  if (stale.length > 0) await redis.del(...stale)
+  if (pruned > 0) console.log(`rehydrate: pruned ${pruned} stale device-index entries`)
 
   return { devices, geofences, ibuttons }
 }

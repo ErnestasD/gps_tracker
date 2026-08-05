@@ -6,6 +6,9 @@ import type { Redis } from 'ioredis'
 import type { Db } from '@orbetra/db'
 import { partnerLoginSchema, partnerSetPasswordSchema } from '@orbetra/shared'
 
+// one implementation of the lockout primitives for BOTH login surfaces — partner had its own
+// byte-identical copies, which is how two surfaces drift apart without anyone noticing
+import { count, gateRead, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, LOCKOUT_SCRIPT as RL_SCRIPT } from '../auth/gates.js'
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from '../auth/passwords.js'
 import { problem } from '../auth/middleware.js'
 import { mintPartnerToken, verifyPartnerToken } from '../auth/partnerJwt.js'
@@ -38,7 +41,7 @@ export interface PartnerRouteDeps {
   }
   /** A lockout gate refused a partner login — same counter the tenant login feeds, so the
    *  `auth_lockout_tripped_total` series is not blind to half the authentication surface. */
-  onLockout?: (gate: 'credential' | 'ip' | 'email') => void
+  onLockout?: (gate: 'credential' | 'ip' | 'email' | 'degraded') => void
 }
 
 // the affiliate row shape, derived from the repo (avoids importing @prisma/client — rule 2)
@@ -48,10 +51,6 @@ type PartnerEnv = { Variables: { partner: Affiliate } }
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex')
 const DEFAULT_TTL_S = 8 * 3_600
 const DEFAULT_SETPW_TTL_S = 24 * 3_600
-// atomic fixed-window limiter (mirrors login.ts): INCR + re-armed EXPIRE, never strands a TTL-less key
-const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
-if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
-return n`
 // Defaults for the same three ceilings the tenant login carries (audit MED) — see the long gate
 // note in `auth/login.ts` for why each sits where it does. Overridable per deployment via
 // `PartnerRouteDeps.loginLimits`, so a ceiling can be raised during an incident without a redeploy.
@@ -61,14 +60,6 @@ const LOGIN_RL_MAX_ATTEMPTS_IP_HARD = 2_000 // HARD: per-IP ATTEMPTS, pre-verify
 const LOGIN_RL_MAX_FAIL_IPS = 30 // DISTINCT source IPs failing against one partner account
 const REDEEM_RL_MAX = 30 // set-password redeem attempts per IP per window
 const RL_WINDOW_S = 3_600
-/** One success repays one failure on the per-IP budget, floored at zero (parity with auth/login). */
-const DECAY_SCRIPT = `local n = tonumber(redis.call('GET', KEYS[1]) or '0')
-if n > 0 then redis.call('DECR', KEYS[1]) end
-return n`
-/** HyperLogLog of source IPs that failed against one account — 12 KB whatever the botnet size. */
-const FAIL_SOURCE_SCRIPT = `redis.call('PFADD', KEYS[1], ARGV[1])
-if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
-return redis.call('PFCOUNT', KEYS[1])`
 
 /** Partner-only auth guard: a valid `typ:'partner'` token → loads the affiliate and requires it to
  *  still be ACTIVE (review MED — so suspending a partner takes effect immediately, not at token TTL,
@@ -122,31 +113,34 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     const w = String(RL_WINDOW_S)
     const tooMany = async (key: string, gate: 'credential' | 'ip' | 'email'): Promise<Response> => {
       deps.onLockout?.(gate)
-      const ttl = await deps.redis.ttl(key)
+      const ttl = await deps.redis.ttl(key).catch(() => RL_WINDOW_S)
       c.header('Retry-After', String(Math.max(1, ttl)))
       return problem(c, 429, 'Too Many Attempts', 'try again later')
     }
-    const pre = await deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).exec()
-    if (Number(pre?.[0]?.[1] ?? 0) >= maxAttemptsIpHard) return tooMany(attemptIpKey, 'ip')
-    if (Number(pre?.[1]?.[1] ?? 0) >= maxFailIps) return tooMany(emailIpsKey, 'email')
-    const [credN] = (await deps.redis
-      .pipeline()
-      .eval(RL_SCRIPT, 1, lockKey, w)
-      .eval(RL_SCRIPT, 1, attemptIpKey, w)
-      .exec()) ?? []
-    if (Number(credN?.[1] ?? 0) > maxCred) return tooMany(lockKey, 'credential')
+    // gateRead/count: identical degradation posture to the tenant login — an unevaluable gate
+    // fails OPEN, deliberately and metered, rather than 500ing or hanging (see `auth/gates.ts`)
+    const pre = await gateRead(deps, () => deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).exec())
+    if (count(pre?.[0]) >= maxAttemptsIpHard) return tooMany(attemptIpKey, 'ip')
+    if (count(pre?.[1]) >= maxFailIps) return tooMany(emailIpsKey, 'email')
+    const bumped = await gateRead(deps, () =>
+      deps.redis.pipeline().eval(RL_SCRIPT, 1, lockKey, w).eval(RL_SCRIPT, 1, attemptIpKey, w).exec(),
+    )
+    if (count(bumped?.[0]) > maxCred) return tooMany(lockKey, 'credential')
+    if (count(bumped?.[1]) > maxAttemptsIpHard) return tooMany(attemptIpKey, 'ip')
     const partner = await deps.db.affiliates.findByEmailForAuth(email)
     // constant-ish time: an unknown email / unset password still burns one dummy verify
     const hash = partner?.passwordHash ?? (await DUMMY_HASH_PROMISE)
     const ok = await verifyPassword(hash, parsed.data.password)
     // only an ACTIVE partner with a set password + matching credential may sign in
     if (partner === null || partner.passwordHash === null || !ok || partner.status !== 'active') {
-      const [failN] = (await deps.redis
-        .pipeline()
-        .eval(RL_SCRIPT, 1, failIpKey, w)
-        .eval(FAIL_SOURCE_SCRIPT, 1, emailIpsKey, src, w)
-        .exec()) ?? []
-      if (Number(failN?.[1] ?? 0) > maxFailsIp) return tooMany(failIpKey, 'ip')
+      const failed = await gateRead(deps, () =>
+        deps.redis
+          .pipeline()
+          .eval(RL_SCRIPT, 1, failIpKey, w)
+          .eval(FAIL_SOURCE_SCRIPT, 1, emailIpsKey, src, w)
+          .exec(),
+      )
+      if (count(failed?.[0]) > maxFailsIp) return tooMany(failIpKey, 'ip')
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
     // the per-credential counter is cleared outright; the per-IP FAILURE budget only DECAYS by one,

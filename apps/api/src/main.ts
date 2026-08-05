@@ -1,3 +1,4 @@
+import { writeSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { serve } from '@hono/node-server'
 import { getConnInfo } from '@hono/node-server/conninfo'
@@ -111,7 +112,7 @@ const deps = {
   },
   onSmsQuotaRejected: (scope: 'device' | 'tenant' | 'global') => prom.smsQuotaRejected.inc({ scope }),
   onWebhookUnmatched: (reason: 'no_tenant' | 'unmappable') => prom.billingWebhookUnmatched.inc({ reason }),
-  onLockout: (gate: 'credential' | 'ip' | 'email') => prom.authLockoutTripped.inc({ gate }),
+  onLockout: (gate: 'credential' | 'ip' | 'email' | 'degraded') => prom.authLockoutTripped.inc({ gate }),
   // partner-portal ceilings; unset entries fall back to the module defaults (1 h window there)
   partnerLoginLimits: {
     ...(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP'] !== undefined ? { maxFailsPerIp: Number(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP']) } : {}),
@@ -168,14 +169,21 @@ void rehydrateRegistries(redis, db)
 // behaviour — die silently with a stack on stderr — makes a platform-wide outage look like a
 // container that "just restarted". Log it in a shape an operator can search for, then exit and let
 // the restart policy do its job: a process that has thrown from an unknown place is not trustworthy.
-process.on('uncaughtException', (err) => {
-  console.error('FATAL uncaughtException — exiting for restart', err)
+const fatal = (kind: string, err: unknown): never => {
+  // writeSync, not console.error: stderr is ASYNCHRONOUS on a pipe (docker logs, journald) and
+  // process.exit does not flush it, so the diagnostic this handler exists to produce was truncated
+  // at one pipe buffer — losing precisely the stack that distinguishes an outage from "a container
+  // that just restarted". Measured: 64 KB kept of a 200 KB message.
+  const msg = err instanceof Error ? (err.stack ?? err.message) : String(err)
+  try {
+    writeSync(2, `FATAL ${kind} — exiting for restart\n${msg}\n`)
+  } catch {
+    /* stderr itself is gone; nothing left to say */
+  }
   process.exit(1)
-})
-process.on('unhandledRejection', (reason) => {
-  console.error('FATAL unhandledRejection — exiting for restart', reason)
-  process.exit(1)
-})
+}
+process.on('uncaughtException', (err) => fatal('uncaughtException', err))
+process.on('unhandledRejection', (reason) => fatal('unhandledRejection', reason))
 
 process.on('SIGTERM', () => {
   httpServer.close(() => {

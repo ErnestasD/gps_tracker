@@ -19,15 +19,13 @@ function fakeRedis(store: Map<string, Record<string, string>>, sets = new Map<st
   const set = (k: string, f: string, v: string) => { const h = store.get(k) ?? {}; h[f] = v; store.set(k, h) }
   const sadd = (k: string, m: string) => { const s = sets.get(k) ?? new Set<string>(); s.add(m); sets.set(k, s) }
   const del = (...ks: string[]) => { for (const k of ks) { sets.delete(k); store.delete(k) } }
-  const rename = (from: string, to: string) => {
-    const v = sets.get(from)
-    if (v === undefined) throw new Error('ERR no such key') // real RENAME semantics
-    sets.set(to, v)
-    sets.delete(from)
-  }
+
   return {
     hset: (k: string, f: string, v: string) => { set(k, f, v); return Promise.resolve(1) },
     del: (...ks: string[]) => { del(...ks); return Promise.resolve(ks.length) },
+    smembers: (k: string) => Promise.resolve([...(sets.get(k) ?? [])]),
+    srem: (k: string, ...ms: string[]) => { const t = sets.get(k); for (const m of ms) t?.delete(m); return Promise.resolve(ms.length) },
+    hmget: (k: string, ...fs: string[]) => Promise.resolve(fs.map((f) => store.get(k)?.[f] ?? null)),
     // one page, then the terminating cursor — enough to exercise the orphan sweep
     scan: (cursor: string) =>
       Promise.resolve(cursor === '0' ? ['0', [...sets.keys()].filter((k) => /^tenant:.+:devices/.test(k))] : ['0', []]),
@@ -37,7 +35,6 @@ function fakeRedis(store: Map<string, Record<string, string>>, sets = new Map<st
         hset: (k: string, f: string, v: string) => { set(k, f, v); return chain },
         sadd: (k: string, m: string) => { sadd(k, m); return chain },
         del: (k: string) => { del(k); return chain },
-        rename: (a: string, b: string) => { rename(a, b); return chain },
         exec: () => Promise.resolve([]),
       }
       return chain
@@ -159,6 +156,19 @@ describe('rehydrateRegistries', () => {
     await rehydrateRegistries(observing, fakeDb([], [], [dev], [{ id: 'p', presenceRules: {} }]))
     expect(seen.every((v) => v !== undefined && v !== '')).toBe(true)
     expect([...(sets.get(tenantDevicesKey(T)) ?? [])]).toEqual(['42'])
+  })
+
+  it('keeps a device another replica activated MID-rehydrate — the sweep judges members, not a snapshot', async () => {
+    // REGRESSION. A rolling deploy rehydrates on one replica while the others serve CRUD. Deciding
+    // "orphan" from the tenant list snapshotted before three DB reads and a keyspace scan wiped the
+    // index of any tenant that gained its first device in between: `device:tenant` said the device
+    // was registered, the index said the tenant had nothing, and its map stayed blank until the
+    // NEXT boot. Membership is now judged per member against the authoritative hash.
+    const store = new Map<string, Record<string, string>>([['device:tenant', { '77': 'brand-new-tenant' }]])
+    const sets = new Map<string, Set<string>>([[tenantDevicesKey('brand-new-tenant'), new Set(['77'])]])
+    const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'p', odometerSource: 'gps' }
+    await rehydrateRegistries(fakeRedis(store, sets), fakeDb([], [], [dev], [{ id: 'p', presenceRules: {} }]))
+    expect([...(sets.get(tenantDevicesKey('brand-new-tenant')) ?? [])]).toEqual(['77'])
   })
 
   it('sweeps the index of a tenant whose LAST device is gone, and any scratch key a crash left', async () => {

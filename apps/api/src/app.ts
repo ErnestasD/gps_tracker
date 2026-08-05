@@ -57,7 +57,9 @@ export interface ApiDeps extends WsDeps {
     maxFailIpsPerEmail?: number
   }
   /** A lockout gate refused a login, by which ceiling tripped (see `auth/login.ts`). */
-  onLockout?: (gate: 'credential' | 'ip' | 'email') => void
+  onLockout?: (gate: 'credential' | 'ip' | 'email' | 'degraded') => void
+  /** Self-service password-change limit per user; default 10/h (two argon2 ops per request). */
+  passwordChangeRateLimit?: { max: number; windowS: number }
   /** Partner-portal login ceilings; each falls back to the partner module's default. */
   partnerLoginLimits?: { maxFails?: number; maxFailsPerIp?: number; maxAttemptsPerIpHard?: number; maxFailIpsPerEmail?: number }
   secureCookies: boolean
@@ -177,7 +179,7 @@ export function createApiProm(): ApiProm {
   })
   const authLockoutTripped = new Counter({
     name: 'auth_lockout_tripped_total',
-    help: 'logins refused by a lockout ceiling (credential = per IP+email, ip = per source, email = per account)',
+    help: 'logins refused by a lockout ceiling (credential = per IP+email, ip = per source, email = per account) — plus degraded = a gate could not be evaluated and the request was allowed through',
     labelNames: ['gate'],
     registers: [registry],
   })

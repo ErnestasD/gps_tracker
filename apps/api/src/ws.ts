@@ -206,7 +206,11 @@ export function attachWsGateway(
       for (const { ws } of set) {
         const missed = (strikes.get(ws) ?? 0) + 1
         if (missed > missesBeforeTerminate) {
-          ws.terminate()
+          try {
+            ws.terminate() // guarded like the ping below: a throw here kills the interval, and now the process
+          } catch {
+            /* already gone */
+          }
           continue
         }
         strikes.set(ws, missed)
@@ -274,6 +278,12 @@ export function attachWsGateway(
   }
 
   server.on('upgrade', (req: IncomingMessage, socket, head) => {
+    // FIRST, before any await. Node removes its own socket error handler before emitting 'upgrade',
+    // so this is a bare EventEmitter: a client that resets the connection while we are awaiting
+    // Redis — or that has already gone when we write the 401 — emits 'error' with nothing listening,
+    // which is ERR_UNHANDLED_ERROR and kills the process. This variant needs no ticket at all, so it
+    // is cheaper than the post-upgrade one: an unauthenticated stranger could take the API down.
+    socket.on('error', () => socket.destroy())
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://localhost')
       if (url.pathname !== '/v1/stream') {

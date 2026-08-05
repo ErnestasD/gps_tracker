@@ -543,6 +543,51 @@ describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
     expect(await redis.get('auth:fail:ip:10.9.9.2')).toBe('4')
   })
 
+  it('an argon2 SHED (503) refunds the budget — the server was busy, the user was not wrong', async () => {
+    // REGRESSION. Moving the credential counter to increment-before-verify fixed a concurrency
+    // hole but started charging requests that never compared a password: `verifyPassword` throws
+    // Argon2OverloadedError (→ 503) AFTER the increment, so a CPU spike converted into a
+    // 15-minute lockout for people whose password was right all along.
+    const email = 'shedvictim@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const url = await appOn(
+      { maxFails: 3, windowS: 30, maxFailsPerIp: 10_000, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
+      '10.9.9.8',
+    )
+    const spy = vi.spyOn(passwords, 'verifyPassword').mockRejectedValue(new passwords.Argon2OverloadedError())
+    for (let i = 0; i < 5; i++) expect((await post(url, email, PW)).status).toBe(503)
+    spy.mockRestore()
+    // five sheds against a ceiling of three: unrefunded, the next attempt would be 429
+    expect((await post(url, email, PW)).status).toBe(200)
+  })
+
+  it('a lockout gate that cannot be evaluated fails OPEN, and says so (degraded is a metric, not a hole)', async () => {
+    // Fail-closed would mean a Redis hiccup logs the whole platform out of its own product, which
+    // for a fleet-tracking service is the worse outage. Fail-open costs brute-force protection for
+    // the duration — argon2 and the process-wide semaphore are still the backstop — and the point
+    // is that it is VISIBLE rather than emergent: ioredis reports per-command errors INSIDE the
+    // result array instead of throwing, so an unchecked read silently scores every gate as zero.
+    const gates: string[] = []
+    const brokenRedis = new Proxy(redis, {
+      get(t, prop, r) {
+        if (prop !== 'pipeline') return Reflect.get(t, prop, r) as unknown
+        return () => {
+          const chain: Record<string, unknown> = {}
+          for (const m of ['get', 'pfcount', 'eval']) chain[m] = () => chain
+          chain['exec'] = () => Promise.resolve([[new Error('OOM command not allowed'), undefined]])
+          return chain
+        }
+      },
+    })
+    const app = createApp({ ...deps, redis: brokenRedis, onLockout: (g) => gates.push(g), getRemoteAddr: () => '10.9.9.9' })
+    const srv = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    servers.push(srv)
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    // the login is still answered on its merits — not 500, not a blanket 429
+    expect((await post(`http://127.0.0.1:${p}`, 'anyone@orbetra.test', 'wrong')).status).toBe(401)
+    expect(gates).toContain('degraded')
+  })
+
   it('the per-credential rule holds under a CONCURRENT burst, not just sequentially', async () => {
     // REGRESSION. The gate read the counter, spent ~120 ms in argon2, then incremented — so every
     // request in a burst read the same pre-increment value and none were refused. The real bound
@@ -558,6 +603,36 @@ describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
     const evaluated = burst.filter((r) => r.status === 401).length
     expect(evaluated).toBeLessThanOrEqual(5) // …not 30
     expect(burst.filter((r) => r.status === 429).length).toBe(30 - evaluated)
+  })
+})
+
+describe('E03-1 self-service password change', () => {
+  it('is rate-limited per user — two 64 MB argon2 ops behind nothing but a valid token', async () => {
+    // The login route's ceilings do not cover this one, and it runs TWO hashes per request (verify
+    // current + hash new), so any authenticated user of any tenant could saturate the process-wide
+    // 8-slot semaphore from one session and shed 503s across every login on the platform.
+    const email = 'pwchanger@orbetra.test'
+    const seededUser = await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
+    const token = ((await (await login(email, PW)).json()) as AuthSession).accessToken
+    const app = createApp({ ...deps, passwordChangeRateLimit: { max: 3, windowS: 60 } })
+    const srv = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    try {
+      const change = (): Promise<Response> =>
+        fetch(`http://127.0.0.1:${p}/v1/auth/password`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ currentPassword: 'definitely-wrong', newPassword: 'newpassword123' }),
+        })
+      for (let i = 0; i < 3; i++) expect((await change()).status).toBe(401) // wrong current password
+      const blocked = await change()
+      expect(blocked.status).toBe(429)
+      expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+      expect(seededUser.userId).toBeTruthy()
+    } finally {
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+    }
   })
 })
 
