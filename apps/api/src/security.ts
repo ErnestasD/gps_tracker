@@ -55,6 +55,11 @@ export async function fixedWindowCount(
   redis: { eval(script: string, numKeys: number, ...args: (string | number)[]): Promise<unknown> } | undefined,
   key: string,
   windowS: number,
+  /** Fired when the limiter could not be evaluated and the caller was let through. `gateRead` has
+   *  the same hook for the same reason: a fail-open window must be an alert, not a silent hole —
+   *  `POST /v1/auth/password` losing its limiter means two 64 MB argon2 ops per request, unbounded,
+   *  into the process-wide semaphore, invisibly. */
+  onDegraded?: () => void,
 ): Promise<number> {
   if (redis === undefined) return 0
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -62,11 +67,15 @@ export async function fixedWindowCount(
     const n = await Promise.race([
       redis.eval(RL_SCRIPT, 1, key, String(windowS)),
       new Promise<number>((resolve) => {
-        timer = setTimeout(() => resolve(0), RL_TIMEOUT_MS)
+        timer = setTimeout(() => {
+          onDegraded?.()
+          resolve(0)
+        }, RL_TIMEOUT_MS)
       }),
     ])
     return Number(n ?? 0)
   } catch {
+    onDegraded?.()
     return 0
   } finally {
     if (timer !== undefined) clearTimeout(timer)

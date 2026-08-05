@@ -6,6 +6,19 @@ import type { Redis } from 'ioredis'
  * matching the other.
  */
 
+/**
+ * How many attempts an UNMARKED bucket over its soft ceiling gets through, one in every N.
+ *
+ * Refusing outright is a renewable lockout for everyone on a shared egress: the failures counted
+ * are not per-account, so 50 wrong guesses at 50 invented addresses cost an attacker nothing and
+ * spend the whole bucket's budget — and once spent, the successful login that would MARK the bucket
+ * is refused by the gate it would clear, so it never self-heals and 50 cheap requests per window
+ * renew it forever. Admitting one in ten cuts an attacker's argon2 throughput by 10× (the point of
+ * the ceiling) while a real user behind an unmarked NAT still gets in, marks the bucket, and
+ * restores normal service for their colleagues.
+ */
+export const UNMARKED_ADMIT_EVERY = 10
+
 /** How long a source bucket stays "known good" after a real login — see the soft-ceiling note in
  *  `login.ts`. Long enough to cover a working week's rhythm, short enough that a network we no
  *  longer see real users on ages out. */
@@ -76,6 +89,16 @@ return n`
 // a SET: an attacker with ten thousand hosts would otherwise write ten thousand members into a key
 // they chose, and 12 KB of fixed memory is the difference between a counter and an amplifier. At the
 // cardinalities that matter here (tens) the sparse encoding is exact.
+/**
+ * Admission counter for an unmarked bucket past its soft ceiling: returns 1 for one attempt in
+ * every ARGV[1], 0 otherwise. Deterministic rather than random so the behaviour is testable, and
+ * atomic so a burst cannot all land on the same admitted slot.
+ */
+export const ADMIT_SCRIPT = `local n = redis.call('INCR', KEYS[1])
+if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
+if n % tonumber(ARGV[1]) == 0 then return 1 end
+return 0`
+
 export const FAIL_SOURCE_SCRIPT = `redis.call('PFADD', KEYS[1], ARGV[1])
 if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
 return redis.call('PFCOUNT', KEYS[1])`

@@ -387,22 +387,26 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   app.get('/v1/devices/last', async (c) => {
     const auth = c.get('auth')
     const rl = deps.deviceLastRateLimit ?? { max: 60, windowS: 60 }
-    if ((await fixedWindowCount(deps.redis, `devlast:rl:${auth.userId}`, rl.windowS)) > rl.max) {
+    if ((await fixedWindowCount(deps.redis, `devlast:rl:${auth.userId}`, rl.windowS, () => deps.onLockout?.('degraded'))) > rl.max) {
       c.header('Retry-After', String(rl.windowS)) // a throttled client needs a basis for backoff
       return problem(c, 429, 'Too Many Requests')
     }
 
     c.header('Cache-Control', 'no-store') // tenant-scoped positions: never cacheable
-    const candidates = (await deps.redis.smembers(tenantDevicesKey(auth.tenantId))).sort()
+    // Redis errors answer with an EMPTY snapshot, never a 500 and never a hang: the live WS feed
+    // fills the map within seconds anyway, so a blip is a briefly-late map rather than a broken
+    // dashboard. (`enableOfflineQueue: false` on the client is what makes these reject promptly
+    // instead of waiting in an uncapped queue — see main.ts.)
+    const candidates = (await deps.redis.smembers(tenantDevicesKey(auth.tenantId)).catch(() => [])).sort()
     if (candidates.length === 0) return c.json({ devices: [] })
 
-    const owners = await deps.redis.hmget('device:tenant', ...candidates)
+    const owners = await deps.redis.hmget('device:tenant', ...candidates).catch(() => [])
     const deviceIds = candidates.filter((_, i) => owners[i] === auth.tenantId)
     if (deviceIds.length === 0) return c.json({ devices: [] })
 
     const pipe = deps.redis.pipeline()
     for (const id of deviceIds) pipe.hget(`device:${id}:last`, 'json')
-    const results = (await pipe.exec()) ?? []
+    const results = (await pipe.exec().catch(() => [])) ?? []
 
     const devices: LiveEvent[] = []
     for (const entry of results) {

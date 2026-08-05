@@ -8,7 +8,7 @@ import { partnerLoginSchema, partnerSetPasswordSchema } from '@orbetra/shared'
 
 // one implementation of the lockout primitives for BOTH login surfaces — partner had its own
 // byte-identical copies, which is how two surfaces drift apart without anyone noticing
-import { count, gateRead, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, KNOWN_GOOD_TTL_S, LOCKOUT_SCRIPT as RL_SCRIPT } from '../auth/gates.js'
+import { count, gateRead, ADMIT_SCRIPT, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, KNOWN_GOOD_TTL_S, LOCKOUT_SCRIPT as RL_SCRIPT, UNMARKED_ADMIT_EVERY } from '../auth/gates.js'
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from '../auth/passwords.js'
 import { problem } from '../auth/middleware.js'
 import { mintPartnerToken, verifyPartnerToken } from '../auth/partnerJwt.js'
@@ -123,15 +123,30 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     const pre = await gateRead(deps, () =>
       deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).get(failIpKey).exists(okIpKey).exec(),
     )
-    if (count(pre?.[0]) >= maxAttemptsIpHard) return tooMany(attemptIpKey, 'ip')
-    if (count(pre?.[1]) >= maxFailIps) return tooMany(emailIpsKey, 'email')
-    // soft ceiling pre-verify for a bucket no real partner has ever signed in from (see login.ts)
-    if (count(pre?.[2]) >= maxFailsIp && count(pre?.[3]) === 0) return tooMany(failIpKey, 'ip')
+    // `pre === null` = a gate could not be evaluated; skip them all rather than read absent values
+    // as zero (which would also invert fail-open for a ceiling configured to 0). See auth/gates.ts.
+    if (pre !== null) {
+      if (count(pre[0]) >= maxAttemptsIpHard) return tooMany(attemptIpKey, 'ip')
+      if (count(pre[1]) >= maxFailIps) return tooMany(emailIpsKey, 'email')
+      // soft ceiling on an unmarked bucket: throttled to one in N, never refused outright — a hard
+      // refusal is a renewable lockout for everyone on that egress, and this window is an HOUR
+      if (count(pre[2]) >= maxFailsIp && count(pre[3]) === 0) {
+        const admitted = await gateRead(deps, () =>
+          deps.redis
+            .pipeline()
+            .eval(ADMIT_SCRIPT, 1, `partner:admit:ip:${src}`, String(UNMARKED_ADMIT_EVERY), w)
+            .exec(),
+        )
+        if (admitted !== null && count(admitted[0]) === 0) return tooMany(failIpKey, 'ip')
+      }
+    }
     const bumped = await gateRead(deps, () =>
       deps.redis.pipeline().eval(RL_SCRIPT, 1, lockKey, w).eval(RL_SCRIPT, 1, attemptIpKey, w).exec(),
     )
-    if (count(bumped?.[0]) > maxCred) return tooMany(lockKey, 'credential')
-    if (count(bumped?.[1]) > maxAttemptsIpHard) return tooMany(attemptIpKey, 'ip')
+    if (bumped !== null) {
+      if (count(bumped[0]) > maxCred) return tooMany(lockKey, 'credential')
+      if (count(bumped[1]) > maxAttemptsIpHard) return tooMany(attemptIpKey, 'ip')
+    }
     const partner = await deps.db.affiliates.findByEmailForAuth(email)
     // constant-ish time: an unknown email / unset password still burns one dummy verify
     const hash = partner?.passwordHash ?? (await DUMMY_HASH_PROMISE)
@@ -145,7 +160,7 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
           .eval(FAIL_SOURCE_SCRIPT, 1, emailIpsKey, src, w)
           .exec(),
       )
-      if (count(failed?.[0]) > maxFailsIp) return tooMany(failIpKey, 'ip')
+      if (failed !== null && count(failed[0]) > maxFailsIp) return tooMany(failIpKey, 'ip')
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
     // the per-credential counter is cleared outright; the per-IP FAILURE budget only DECAYS by one,

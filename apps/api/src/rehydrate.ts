@@ -84,21 +84,29 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
     const [next, keys] = await redis.scan(cursor, 'MATCH', 'tenant:*:devices*', 'COUNT', 500)
     cursor = next
     for (const key of keys) {
-      // a scratch key from an older build that rebuilt via RENAME; nothing writes these now
-      if (key.endsWith(':rebuild')) {
-        await redis.del(key)
-        continue
-      }
-      const m = KEY_RE.exec(key)
-      if (m === null) continue
-      const tenantId = m[1]!
-      const members = await redis.smembers(key)
-      if (members.length === 0) continue
-      const owners = await redis.hmget('device:tenant', ...members)
-      const gone = members.filter((_, i) => owners[i] !== tenantId)
-      if (gone.length > 0) {
-        await redis.srem(key, ...gone)
-        pruned += gone.length
+      try {
+        // a scratch key from an older build that rebuilt via RENAME; nothing writes these now
+        if (key.endsWith(':rebuild')) {
+          await redis.del(key)
+          continue
+        }
+        const m = KEY_RE.exec(key)
+        if (m === null) continue
+        const tenantId = m[1]!
+        const members = await redis.smembers(key)
+        if (members.length === 0) continue
+        const owners = await redis.hmget('device:tenant', ...members)
+        const gone = members.filter((_, i) => owners[i] !== tenantId)
+        if (gone.length > 0) {
+          await redis.srem(key, ...gone)
+          pruned += gone.length
+        }
+      } catch (err) {
+        // One bad key (a WRONGTYPE, a blip) must not abort the sweep — and must not propagate:
+        // every registry write above has already landed, so a throw here made the boot log say
+        // "rehydrate failed" and swallow the device count, leaving an operator unable to tell
+        // "the fleet was never repopulated" from "everything repopulated, pruning stopped".
+        console.error(`rehydrate: skipped ${key} during the index sweep`, err)
       }
       // NO `del(key)` when everything snapshotted was stale: that would wipe a member another
       // replica added between the SMEMBERS and here — the exact race this whole design avoids.

@@ -1,4 +1,5 @@
 import { writeSync } from 'node:fs'
+import { inspect } from 'node:util'
 import { createServer } from 'node:http'
 import { serve } from '@hono/node-server'
 import { getConnInfo } from '@hono/node-server/conninfo'
@@ -29,7 +30,15 @@ if (!databaseUrl) {
   process.exit(2)
 }
 
-const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
+// `enableOfflineQueue: false` is the root fix for a whole class of bug this API had. With the
+// default (true) plus `maxRetriesPerRequest: null`, a DISCONNECTED Redis makes every command WAIT
+// in an uncapped in-memory queue instead of rejecting — so a `.catch()` never runs and the request
+// HANGS. That produced a clean credential oracle during a Redis outage (a wrong password answered
+// 401 in ~130 ms through the timeout-bounded gates, a CORRECT one reached the unguarded success
+// bookkeeping and never answered at all), and pinned an HTTP socket plus queue entries per login
+// for the whole outage. Rejecting immediately makes every `.catch()` on this branch do what its
+// author believed it did. BullMQ's queues take their own connections, so they are unaffected.
+const redis = new Redis(redisUrl, { maxRetriesPerRequest: null, enableOfflineQueue: false })
 const redisSub = redis.duplicate()
 const db = createDb(databaseUrl)
 const pool = createPool(databaseUrl) // raw-SQL positions history reads (E04-3)
@@ -170,7 +179,12 @@ if (process.env['TRUST_PROXY'] !== '1') {
 
 // Boot backfill (DB→Redis): repopulate the geofence + iButton caches in case Redis was flushed;
 // best-effort — a failure here must never block serving (CRUD re-syncs incrementally anyway).
-void rehydrateRegistries(redis, db)
+// Waits for the connection: with the offline queue disabled, commands issued before the socket is
+// ready would reject rather than queue, and a boot backfill that silently did nothing is the
+// audit-D1 failure (an empty `registry:imei` quarantines the whole fleet) all over again.
+const redisReady = redis.status === 'ready' ? Promise.resolve() : new Promise<void>((r) => redis.once('ready', () => r()))
+void redisReady
+  .then(() => rehydrateRegistries(redis, db))
   .then((r) => console.log(`rehydrated Redis registries: ${r.devices} devices, ${r.geofences} geofences, ${r.ibuttons} iButtons`))
   .catch((e: unknown) => console.error('rehydrate failed (non-fatal)', e))
 
@@ -184,11 +198,19 @@ const fatal = (kind: string, err: unknown): never => {
   // process.exit does not flush it, so the diagnostic this handler exists to produce was truncated
   // at one pipe buffer — losing precisely the stack that distinguishes an outage from "a container
   // that just restarted". Measured: 64 KB kept of a 200 KB message.
-  const msg = err instanceof Error ? (err.stack ?? err.message) : String(err)
-  try {
-    writeSync(2, `FATAL ${kind} — exiting for restart\n${msg}\n`)
-  } catch {
-    /* stderr itself is gone; nothing left to say */
+  // inspect(), not String(): a non-Error rejection renders as "[object Object]" otherwise, which
+  // is the opposite of a diagnostic
+  const msg = err instanceof Error ? (err.stack ?? err.message) : inspect(err, { depth: 4 })
+  // LOOP on the returned byte count. writeSync does SHORT writes on a pipe — measured 146176 of
+  // 200025 bytes in one call — so ignoring the count drops the tail of the stack, which is the part
+  // that names the throwing frame. EAGAIN on a full non-blocking pipe is retried, not swallowed.
+  const buf = Buffer.from(`FATAL ${kind} — exiting for restart\n${msg}\n`)
+  for (let off = 0, spins = 0; off < buf.length && spins < 10_000; spins++) {
+    try {
+      off += writeSync(2, buf, off)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EAGAIN') break
+    }
   }
   process.exit(1)
 }

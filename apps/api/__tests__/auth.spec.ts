@@ -456,21 +456,38 @@ describe('E03-1 lockout: abuse ceilings beyond the per-credential rule', () => {
     }
   })
 
-  it('the SOFT per-IP ceiling refuses BEFORE argon2 for a source no real user has ever come from', async () => {
+  it('the SOFT per-IP ceiling THROTTLES a source no real user has come from — 1 in N, not a wall', async () => {
     // REGRESSION. Applied only post-verify, the soft ceiling enforced nothing: a correct password
     // never reaches the check, so it merely relabelled a wrong guess 401→429 while a full 64 MB
     // argon2 verify ran anyway — the oracle (200 means right) and the CPU cost both intact.
     // Applied pre-verify for everyone, it locks out a whole office behind one NAT with no way back.
     // So: pre-verify only for a bucket that has never produced a successful login.
+    // A hard refusal was itself a renewable lockout: the failures are not per-account, so 50 wrong
+    // guesses at 50 invented addresses spend the whole bucket's budget for free — and once spent,
+    // the successful login that would MARK the bucket is refused by the gate it would clear, so it
+    // never self-heals. One in ten still cuts an attacker's argon2 throughput tenfold.
+    const email = 'unmarked@orbetra.test'
+    await seedUser({ databaseUrl, email, password: PW, role: 'tsp_admin', tenantName: 'T1' })
     const spy = vi.spyOn(passwords, 'verifyPassword')
     const url = await appOn(
       { maxFails: 100, windowS: 30, maxFailsPerIp: 3, maxAttemptsPerIpHard: 100_000, maxFailIpsPerEmail: 10_000 },
       '10.9.9.10',
     )
     for (let i = 0; i < 3; i++) expect((await post(url, `stranger-${i}@orbetra.test`, 'wrong')).status).toBe(401)
+
+    // past the ceiling most attempts are refused BEFORE argon2 — that is the CPU shed
     const before = spy.mock.calls.length
-    expect((await post(url, 'stranger-x@orbetra.test', 'wrong')).status).toBe(429)
-    expect(spy.mock.calls.length, 'the refused attempt must not have run argon2').toBe(before)
+    const after: number[] = []
+    for (let i = 0; i < 9; i++) after.push((await post(url, `stranger-x${i}@orbetra.test`, 'wrong')).status)
+    expect(after.filter((s2) => s2 === 429).length).toBeGreaterThanOrEqual(8)
+    expect(spy.mock.calls.length - before).toBeLessThanOrEqual(1)
+
+    // …but a real user on that egress still gets through and MARKS the bucket, which restores
+    // normal service for everyone behind it — the self-heal a hard refusal makes impossible
+    let signedIn = false
+    for (let i = 0; i < 12 && !signedIn; i++) signedIn = (await post(url, email, PW)).status === 200
+    expect(signedIn).toBe(true)
+    expect((await post(url, email, PW)).status).toBe(200) // marked now: no throttle at all
     spy.mockRestore()
   })
 

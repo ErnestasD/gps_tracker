@@ -8,7 +8,7 @@ import { effectiveEntitlementsAt, forgotPasswordSchema, localeUpdateSchema, logi
 
 import { mintAccessToken } from './jwt.js'
 import { authMiddleware, problem, type AuthEnv } from './middleware.js'
-import { count, gateRead, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, KNOWN_GOOD_TTL_S, LOCKOUT_SCRIPT } from './gates.js'
+import { count, gateRead, ADMIT_SCRIPT, DECAY_SCRIPT, FAIL_SOURCE_SCRIPT, KNOWN_GOOD_TTL_S, LOCKOUT_SCRIPT, UNMARKED_ADMIT_EVERY } from './gates.js'
 import { fixedWindowCount } from '../security.js'
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from './passwords.js'
 import { revokeAllUserSessions } from './revoke.js'
@@ -247,9 +247,25 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     const pre = await gateRead(deps, () =>
       deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).get(failIpKey).exists(okIpKey).exec(),
     )
-    if (count(pre?.[0]) >= maxAttemptsPerIpHard) return tooMany(attemptIpKey, 'ip')
-    if (count(pre?.[1]) >= maxFailIpsPerEmail) return tooMany(emailIpsKey, 'email')
-    if (count(pre?.[2]) >= maxPerIp && count(pre?.[3]) === 0) return tooMany(failIpKey, 'ip')
+    // `pre === null` means a gate could not be evaluated — skip ALL of them rather than reading the
+    // absent values as zero. Reading them would also invert the fail-open posture for a deployment
+    // that sets a ceiling to 0: `0 >= 0` refuses every login precisely when Redis is degraded.
+    if (pre !== null) {
+      if (count(pre[0]) >= maxAttemptsPerIpHard) return tooMany(attemptIpKey, 'ip')
+      if (count(pre[1]) >= maxFailIpsPerEmail) return tooMany(emailIpsKey, 'email')
+      // Soft ceiling on an UNMARKED bucket: throttle to one attempt in N rather than refuse. See
+      // UNMARKED_ADMIT_EVERY — a hard refusal here is a renewable lockout for a whole shared egress,
+      // because the login that would mark the bucket is itself refused.
+      if (count(pre[2]) >= maxPerIp && count(pre[3]) === 0) {
+        const admitted = await gateRead(deps, () =>
+          deps.redis
+            .pipeline()
+            .eval(ADMIT_SCRIPT, 1, `auth:admit:ip:${ip}`, String(UNMARKED_ADMIT_EVERY), windowS)
+            .exec(),
+        )
+        if (admitted !== null && count(admitted[0]) === 0) return tooMany(failIpKey, 'ip')
+      }
+    }
 
     // then the per-credential rule, incremented and gated on the SAME atomic result. The attempt
     // counter is bumped here too and re-checked: the read above lets a spent budget drain (a
@@ -262,8 +278,10 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
         .eval(LOCKOUT_SCRIPT, 1, attemptIpKey, windowS)
         .exec(),
     )
-    if (count(bumped?.[0]) > deps.lockout.maxFails) return tooMany(lockKey, 'credential')
-    if (count(bumped?.[1]) > maxAttemptsPerIpHard) return tooMany(attemptIpKey, 'ip')
+    if (bumped !== null) {
+      if (count(bumped[0]) > deps.lockout.maxFails) return tooMany(lockKey, 'credential')
+      if (count(bumped[1]) > maxAttemptsPerIpHard) return tooMany(attemptIpKey, 'ip')
+    }
 
     // verify against ALL candidates, no short-circuit; unknown email burns one
     // dummy verify — response timing must not reveal email existence
@@ -302,7 +320,7 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       // For a KNOWN-GOOD bucket the soft ceiling only ever gets this far, and here it can do no
       // more than relabel the answer — the office is throttled, never denied. Unknown buckets were
       // already refused pre-verify above, before any argon2 ran.
-      if (count(failed?.[0]) > maxPerIp) return tooMany(failIpKey, 'ip')
+      if (failed !== null && count(failed[0]) > maxPerIp) return tooMany(failIpKey, 'ip')
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
     if (verified.length > 1) {
@@ -433,7 +451,7 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     // login route's own ceilings do not cover this one, so it carries its own — per user, because
     // that is the identity the token already pins. Fails open like every other limiter.
     const pwRl = deps.passwordChangeRateLimit ?? { max: 10, windowS: 3_600 }
-    if ((await fixedWindowCount(deps.redis, `auth:pwchange:${auth.userId}`, pwRl.windowS)) > pwRl.max) {
+    if ((await fixedWindowCount(deps.redis, `auth:pwchange:${auth.userId}`, pwRl.windowS, () => deps.onLockout?.('degraded'))) > pwRl.max) {
       c.header('Retry-After', String(pwRl.windowS))
       return problem(c, 429, 'Too Many Requests')
     }

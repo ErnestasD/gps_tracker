@@ -230,7 +230,10 @@ export function attachWsGateway(
   })
 
   const ensureSubscription = (): Promise<void> => {
-    // promise (not flag): a second concurrent upgrade awaits the ACTUAL subscription
+    // promise (not flag): a second concurrent upgrade awaits the ACTUAL subscription. A FAILED
+    // attempt clears the cache — `??=` never reassigns a rejected promise, so one Redis blip during
+    // the very first upgrade left every later upgrade awaiting that same rejection and the live
+    // feed permanently dead until a restart.
     subPromise ??= (async () => {
       await deps.redisSub.psubscribe('live:*')
       deps.redisSub.on('pmessage', (_pattern, channel, message) => {
@@ -278,7 +281,10 @@ export function attachWsGateway(
           }
         }
       })
-    })()
+    })().catch((err: unknown) => {
+      subPromise = null
+      throw err
+    })
     return subPromise
   }
 
