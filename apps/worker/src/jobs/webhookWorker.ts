@@ -28,13 +28,28 @@ interface WebhookRow {
   events: string[]
 }
 
-/** Enabled webhooks for the event's account (+ tenant-shared), subscribed to the kind.
- * Empty `events` = subscribe to ALL kinds. Raw SQL — the worker has no repo layer. */
+/**
+ * Enabled webhooks for the event's account (+ tenant-shared), subscribed to the kind.
+ * Empty `events` = subscribe to ALL kinds. Raw SQL — the worker has no repo layer.
+ *
+ * The tenant's PLAN is part of the predicate. It was not, so a tenant whose subscription lapsed —
+ * or who downgraded to a Direct plan, where `webhooks` is false — kept receiving deliveries
+ * indefinitely: the API refused to create new ones, but nothing stopped the existing ones firing.
+ * FLOOR_ENTITLEMENTS claims to stop a non-paying tenant keeping billable features; for webhooks it
+ * was decorative. Audit MED.
+ *
+ * `subscriptionStatus` NULL means admin-granted / never subscribed, which keeps its plan — the same
+ * rule `effectiveEntitlements` applies, kept here as one SQL predicate so the two cannot drift on a
+ * hot path that runs per event.
+ */
 export async function loadWebhooks(pool: Pool, tenantId: string, accountId: string, kind: string): Promise<WebhookRow[]> {
   const res = await pool.query<WebhookRow>(
-    `SELECT id, url, secret, events FROM webhooks
-     WHERE "tenantId" = $1 AND ("accountId" = $2 OR "accountId" IS NULL) AND enabled = true
-       AND (cardinality(events) = 0 OR $3 = ANY(events))`,
+    `SELECT w.id, w.url, w.secret, w.events FROM webhooks w
+       JOIN tenants t ON t.id = w."tenantId"
+     WHERE w."tenantId" = $1 AND (w."accountId" = $2 OR w."accountId" IS NULL) AND w.enabled = true
+       AND (cardinality(w.events) = 0 OR $3 = ANY(w.events))
+       AND t.plan::text LIKE 'tsp!_%' ESCAPE '!'
+       AND (t."subscriptionStatus" IS NULL OR t."subscriptionStatus" NOT IN ('canceled','unpaid','incomplete_expired','paused'))`,
     [tenantId, accountId, kind],
   )
   return res.rows

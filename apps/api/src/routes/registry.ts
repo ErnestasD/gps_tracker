@@ -20,8 +20,20 @@ export interface RouteDef {
   entity: string
   /** 'item' routes carry a :id param (cross-tenant target → 404); 'collection' don't. */
   shape: 'collection' | 'item'
-  /** Tenant-plan gate (WP2): when set, requireEntitlement runs AFTER the role gate — both
-   * must pass. Declarative so the isolation meta-test can read plan-gating off the manifest. */
+  /**
+   * Tenant-plan gate (WP2): when set, requireEntitlement runs AFTER the role gate on the WRITE
+   * methods — both must pass. Declarative so the isolation meta-test can read plan-gating off the
+   * manifest.
+   *
+   * GET and DELETE are deliberately NOT gated. Chaining the gate onto every method meant a lapsed
+   * or downgraded tenant could neither SEE nor REMOVE the things the plan no longer covers — while
+   * the delivery side kept running them: the worker's webhook loader selects on tenant/account and
+   * `enabled`, and domain resolution selects on `verified`, neither consults the plan. So a
+   * customer whose subscription lapsed kept sending events to their integration and kept a live
+   * white-label domain, and got a 403 when they tried to turn either off. Being unable to disable
+   * a paid feature you are no longer paying for is the worst possible shape of that bug.
+   * Gate creating and modifying; never gate looking and removing. Audit MED.
+   */
   entitlement?: EntitlementKey
   handler: (c: import('hono').Context<AuthEnv>) => Response | Promise<Response>
 }
@@ -58,14 +70,14 @@ export function mountRoutes(app: Hono<AuthEnv>, defs: RouteDef[], db: Db): void 
     // plan gate is chained AFTER the role gate, so BOTH must pass. Explicit per-method
     // dispatch keeps Hono's typed overloads.
     const role = requireRole(...def.roles)
-    if (def.entitlement !== undefined) {
+    // WRITE methods only — see RouteDef.entitlement for why read and delete stay open.
+    const planGated = def.entitlement !== undefined && (def.method === 'post' || def.method === 'patch')
+    if (planGated) {
       // role gate THEN plan gate — both must pass. Explicit fixed-arity calls (no spread) keep
       // Hono's typed handler overloads.
-      const plan = requireEntitlement(db, def.entitlement)
-      if (def.method === 'get') app.get(def.path, role, plan, def.handler)
-      else if (def.method === 'post') app.post(def.path, role, plan, def.handler)
-      else if (def.method === 'patch') app.patch(def.path, role, plan, def.handler)
-      else app.delete(def.path, role, plan, def.handler)
+      const plan = requireEntitlement(db, def.entitlement!)
+      if (def.method === 'post') app.post(def.path, role, plan, def.handler)
+      else app.patch(def.path, role, plan, def.handler)
     } else {
       if (def.method === 'get') app.get(def.path, role, def.handler)
       else if (def.method === 'post') app.post(def.path, role, def.handler)
