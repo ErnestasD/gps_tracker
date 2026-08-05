@@ -56,6 +56,20 @@ describe('normalize (E02-3)', () => {
     expect(rec.attrs['Beacon']).toBe('aabb') // variable payload as hex
   })
 
+  it('SIGNED dictionary parameters reach attrs as negative numbers, at their own width', () => {
+    // REGRESSION (audit MED). The wire carries raw bytes and the dictionary's Type column says how
+    // to read them; nothing applied it, so a −5 °C coolant temperature surfaced as 251 and an
+    // accelerometer axis swinging negative as ~65 000 — on the device page, in exports, and in any
+    // rule threshold built on them. A "below −10 °C" cold-chain alert could never fire.
+    const rec = normalize(
+      { ...basePayload, io: [[32, 251n], [17, 65_531n], [21, 251n]] },
+      hash,
+    )
+    expect(rec.attrs['Coolant Temperature']).toBe(-5) // 1-byte signed
+    expect(rec.attrs['Axis X']).toBe(-5) // 2-byte signed — read at ITS width, not the 1-byte one
+    expect(rec.attrs['GSM Signal']).toBe(251) // unsigned parameter untouched
+  })
+
   it('rec_hash: unsigned xxhash64 > 2^63−1 reinterpreted as SIGNED bigint (§6.3 R10)', () => {
     // find a raw whose hash has the top bit set — proves the two's-complement path
     let raw: Uint8Array | null = null

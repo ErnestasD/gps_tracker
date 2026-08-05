@@ -1,4 +1,4 @@
-import { loadDictionary, type DictionaryFamily } from '@orbetra/codec'
+import { applySign, loadDictionary, type DictionaryFamily } from '@orbetra/codec'
 import { rawStreamPayloadSchema, type NormalizedRecord, type RawStreamPayload } from '@orbetra/shared'
 
 // Core AVL ids (wiki FMB120 table, PROJECT_PLAN §3.7): promoted to columns.
@@ -105,17 +105,23 @@ export function normalize(
       else odometerM = v
     }
     else {
-      const name = FORCED_ID_KEYS.has(id) ? undefined : dict.get(id)?.name
+      const entry = dict.get(id)
+      const name = FORCED_ID_KEYS.has(id) ? undefined : entry?.name
       // §3.7 never-dropped: dictionary names are NOT unique across ids (e.g. two
       // "Battery Voltage" rows) — on collision the later id keeps its io_<id> key
       let key = name ?? `io_${id}`
       if (key in attrs) key = `io_${id}`
+      // Two's-complement reinterpretation for the parameters the wiki marks Signed (audit MED). The
+      // wire carries raw bytes; the dictionary is what says how to read them, and nothing did — so
+      // a −5 °C coolant/BLE temperature surfaced as 251 and an accelerometer axis as ~65 000, in
+      // the UI, in exports, and in any rule threshold built on them.
+      const signed = typeof v === 'bigint' ? applySign(entry, v) : v
       attrs[key] =
-        typeof v === 'bigint'
-          ? v <= BigInt(Number.MAX_SAFE_INTEGER)
-            ? Number(v)
-            : v.toString()
-          : Buffer.from(v).toString('hex')
+        typeof signed === 'bigint'
+          ? signed >= BigInt(Number.MIN_SAFE_INTEGER) && signed <= BigInt(Number.MAX_SAFE_INTEGER)
+            ? Number(signed)
+            : signed.toString()
+          : Buffer.from(signed).toString('hex')
     }
   }
 

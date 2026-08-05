@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildDictionary, loadDictionary, type DictionaryFile } from '../src/dictionaries.js'
+import { applySign, buildDictionary, loadDictionary, type DictionaryFile } from '../src/dictionaries.js'
 
 describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
   it('fmb1xx: core IDs match the wiki table', () => {
@@ -67,5 +67,31 @@ describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
     expect(() =>
       buildDictionary({ ...base, elements: { '2': { name: '', bytes: '1', type: 'U' } } }),
     ).toThrow(/no name/)
+  })
+
+  it('applySign reinterprets SIGNED parameters at their own width (audit MED)', () => {
+    // The wire carries raw bytes; the dictionary's Type column is what says how to read them. With
+    // nothing applying it, all 36 signed FMB1xx parameters surfaced as unsigned — a −5 °C coolant
+    // or BLE temperature read as 251, an accelerometer axis swinging negative as ~65 000 — in the
+    // UI, in exports, and in any rule threshold built on them. A "below −10 °C" cold-chain alert
+    // could never fire, because the value it compares was never negative.
+    // https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+    const d = loadDictionary('fmb1xx')
+    expect(d.get(32)?.type).toBe('Signed') // Coolant Temperature, 1 byte
+    expect(applySign(d.get(32), 251n)).toBe(-5n)
+    expect(applySign(d.get(32), 25n)).toBe(25n) // a positive reading is untouched
+    expect(d.get(17)?.type).toBe('Signed') // Axis X, 2 bytes
+    expect(applySign(d.get(17), 65_531n)).toBe(-5n) // …and at ITS width, not the 1-byte one
+    expect(d.get(239)?.type).toBe('Unsigned') // Ignition
+    expect(applySign(d.get(239), 251n)).toBe(251n) // unsigned parameters must not be touched
+  })
+
+  it('applySign never guesses: an unknown id, an unknown width, or an already-negative value pass through', () => {
+    // Guessing is how a correct reading becomes a wrong one — and every one of these is a shape a
+    // future dictionary revision could introduce.
+    const entry = { name: 'X', bytes: '3', type: 'Signed' as const }
+    expect(applySign(entry, 200n)).toBe(200n) // 3-byte width is not in the table
+    expect(applySign(undefined, 200n)).toBe(200n) // id absent from the dictionary
+    expect(applySign({ name: 'X', bytes: '1', type: 'Signed' }, -5n)).toBe(-5n) // already signed
   })
 })

@@ -51,6 +51,10 @@ export interface WorkerProm {
   stripeOverageReported: Counter
   scheduledReportsSent: Counter
   retentionPruned: Counter
+  /** §3.6 sanity failures moved from the `rejects` stream into `raw_rejects` (audit MED #46). */
+  rejectsDrained: Counter
+  /** Windows the drain could not read because the stream was trimmed past its cursor. */
+  rejectsDropped: Counter
   commandsResolved: Counter
   gdprErased: Counter
   gdprExported: Counter
@@ -157,7 +161,9 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })
   const stripeOverageReported = new Counter({ name: 'stripe_overage_reported_total', help: 'tenants for which device overage was reported to the Stripe meter (ADR-024 PR B2)', registers: [registry] })
   const scheduledReportsSent = new Counter({ name: 'scheduled_reports_sent_total', help: 'scheduled report emails sent (V1-nice)', registers: [registry] })
-  const retentionPruned = new Counter({ name: 'retention_pruned_total', help: 'webhook delivery-log rows pruned by the daily retention sweep', registers: [registry] })
+  const retentionPruned = new Counter({ name: 'retention_pruned_total', help: 'rows pruned by the daily retention sweep, by table', labelNames: ['table'], registers: [registry] })
+  const rejectsDrained = new Counter({ name: 'rejects_drained_total', help: 'sanity-rejected records persisted from the rejects stream into raw_rejects', registers: [registry] })
+  const rejectsDropped = new Counter({ name: 'rejects_dropped_total', help: 'reject-stream windows lost because MAXLEN trimmed past the drain cursor', registers: [registry] })
   const commandsResolved = new Counter({ name: 'commands_resolved_total', help: 'Codec-12 commands resolved by the dispatcher (E08-2)', labelNames: ['outcome'], registers: [registry] })
   const gdprErased = new Counter({ name: 'gdpr_erase_total', help: 'GDPR device-erase cascades completed (E08-4)', registers: [registry] })
   const gdprExported = new Counter({ name: 'gdpr_export_total', help: 'GDPR account exports completed (E08-4)', registers: [registry] })
@@ -180,5 +186,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

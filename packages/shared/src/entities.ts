@@ -182,12 +182,36 @@ export const pushSubscribeSchema = z.object({
   keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(200) }),
 })
 
+/**
+ * A rule's scope. `deviceIds` is an ALLOW-LIST — absent or empty means the whole account.
+ *
+ * Bounded and typed because it is caller input that lands on the hot path: the worker consults it
+ * for every device in every batch, so an unvalidated array was work a tenant admin could ask the
+ * pipeline to do on their behalf, forever, with one PATCH (audit MED). 5000 is the largest fleet
+ * any plan sells; a rule that needs more is an account-wide rule.
+ */
+export const MAX_RULE_SCOPE_IDS = 5_000
+export const ruleScopeSchema = z
+  .object({
+    // number OR string: `scope` used to be a free `z.record(…, unknown)`, so a client that stored
+    // `deviceIds: [42]` — device ids are bigints, and JSON has no bigint — was accepted. Rejecting
+    // that shape now would 400 a rule the API itself created, including on a read-modify-write PATCH.
+    // digits only: a device id is a bigint, and anything else — "042", " 42", "4.2e1" — validates
+    // fine and then never matches `deviceId.toString()` in the worker, leaving a rule that silently
+    // covers nothing. 19 digits is the int8 ceiling.
+    deviceIds: z.array(z.union([z.string().regex(/^\d{1,19}$/), z.number().int().nonnegative()]).transform(String)).max(MAX_RULE_SCOPE_IDS).optional(),
+  })
+  // passthrough, NOT strict: unknown keys are kept rather than rejected OR silently stripped. A
+  // strict schema breaks a client that stored an extra key under the old free-form contract, and
+  // zod's default (strip) would quietly delete it on the next PATCH — losing data on a write.
+  .passthrough()
+
 export const ruleCreateSchema = z.object({
   accountId: z.string().uuid(),
   kind: ruleKindSchema,
   name: z.string().min(1).max(120),
   config: z.record(z.string(), z.unknown()).optional(),
-  scope: z.record(z.string(), z.unknown()).optional(),
+  scope: ruleScopeSchema.optional(),
   channels: z.array(notificationChannelSchema).max(20).optional(),
   cooldownS: z.number().int().min(0).max(86_400).optional(),
   enabled: z.boolean().optional(),

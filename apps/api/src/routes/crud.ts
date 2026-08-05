@@ -99,7 +99,7 @@ export interface CrudDeps {
   /** GDPR job enqueuers (E08-4) — BullMQ producers wired in the server entry (ADR-020
    * addendum); optional so manifest-only construction needs no Redis, routes 503 without. */
   gdpr?: {
-    enqueueErase(data: { deviceId: string; tenantId: string }): Promise<void>
+    enqueueErase(data: { deviceId: string; tenantId: string; imei: string }): Promise<void>
     enqueueExport(data: { exportId: string }): Promise<void>
     /** erase is refused until the device has been retired this long (review HIGH-1: a live
      * TCP session survives retire until idle-timeout, and stream backlog drains async — an
@@ -754,7 +754,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           return problem(c, 409, 'Conflict', `retired too recently — erase is allowed ${Math.ceil(minRetiredMs / 60_000)} min after retire`)
         }
         await db.audit.record(scope, { userId: a.userId }, { action: 'delete', entity: 'device', entityId: device.id.toString(), before: { imei: device.imei, name: device.name, gdprErase: true } })
-        await deps.gdpr.enqueueErase({ deviceId: device.id.toString(), tenantId: scope.tenantId })
+        // imei travels with the job: `raw_rejects` keys on it, and the devices row is deleted mid-erase
+        await deps.gdpr.enqueueErase({ deviceId: device.id.toString(), tenantId: scope.tenantId, imei: device.imei })
         return json(c, { queued: true, deviceId: device.id.toString() }, 202)
       } },
     { method: 'post', path: '/v1/accounts/:id/export', scopeClass: 'account', entity: 'export', shape: 'item',

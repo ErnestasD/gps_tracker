@@ -21,6 +21,7 @@ let redisC: StartedTestContainer
 let redis: Redis
 let db: Db
 let pool: Pool
+let databaseUrl: string
 let port: number
 let httpServer: ReturnType<typeof createServer>
 let acct1: string
@@ -43,7 +44,7 @@ beforeAll(async () => {
     new GenericContainer(PG_IMAGE).withEnvironment({ POSTGRES_PASSWORD: 'test', POSTGRES_DB: 'orbetra' }).withExposedPorts(5432).withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2)).withStartupTimeout(240_000).start(),
     new GenericContainer('redis:7-alpine').withExposedPorts(6379).withWaitStrategy(Wait.forLogMessage(/Ready to accept connections/)).start(),
   ])
-  const databaseUrl = `postgresql://postgres:test@${pg.getHost()}:${pg.getMappedPort(5432)}/orbetra`
+  databaseUrl = `postgresql://postgres:test@${pg.getHost()}:${pg.getMappedPort(5432)}/orbetra`
   execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], { cwd: DB_PKG, env: { ...process.env, DATABASE_URL: databaseUrl } })
   redis = new Redis(redisC.getMappedPort(6379), redisC.getHost(), { maxRetriesPerRequest: null })
   db = createDb(databaseUrl)
@@ -151,5 +152,47 @@ describe('ADR-026 push routes', () => {
     expect((await jwtReq('/v1/push/subscribe', amA1, 'POST', sub(endpoint))).status).toBe(201)
     const targets = await db.pushSubscriptions.listByAccount(s1TenantId, acct1)
     expect(targets.filter((t) => t.endpoint === endpoint)).toHaveLength(1) // one row, not two
+  })
+
+  it('deleting the USER removes their push subscriptions — a removed employee stops receiving alerts', async () => {
+    // REGRESSION (audit MED). `push_subscriptions` had no FK, so a subscription outlived its user
+    // and a `webpush` rule channel — which fans out to the ACCOUNT's rows — kept pushing that
+    // account's vehicle positions and geofence alerts to a removed employee's browser, for as long
+    // as the browser held the subscription. No API surface listed the row, either.
+    const leaver = await seedUser({
+      databaseUrl, email: `leaver-${Date.now()}@p1.test`, password: 'password12',
+      role: 'account_manager', tenantName: 'P1', accountName: 'Fleet',
+    })
+    const token = await mintTestToken({ userId: leaver.userId, tenantId: leaver.tenantId, accountId: acct1, role: 'account_manager' })
+    const endpoint = `https://push.example.com/leaver-${Date.now()}`
+    expect((await jwtReq('/v1/push/subscribe', token, 'POST', sub(endpoint))).status).toBe(201)
+    expect((await db.pushSubscriptions.listByAccount(s1TenantId, acct1)).some((t) => t.endpoint === endpoint)).toBe(true)
+
+    await pool.query('DELETE FROM users WHERE id = $1', [leaver.userId])
+    expect((await db.pushSubscriptions.listByAccount(s1TenantId, acct1)).some((t) => t.endpoint === endpoint)).toBe(false)
+  })
+
+  it('deleting the ACCOUNT removes its scheduled reports — no e-mails to an ex-customer', async () => {
+    // Same class (audit MED): the worker's hourly cron reads `scheduled_reports` directly, so an
+    // orphan kept running the report and e-mailing its recipients about an account that no longer
+    // exists — invisible to every API read, all of which are tenant-scoped.
+    const gone = await seedUser({
+      databaseUrl, email: `sched-${Date.now()}@p1.test`, password: 'password12',
+      role: 'tsp_admin', tenantName: 'SchedCo', accountName: 'SchedFleet',
+    })
+    const accounts = await db.accounts.list({ tenantId: gone.tenantId })
+    const accountId = accounts[0]!.id
+    await pool.query(
+      `INSERT INTO scheduled_reports ("tenantId","accountId","reportType","cadence","hourUtc","recipients")
+       VALUES ($1,$2,'trips','daily',6,ARRAY['ex@customer.test'])`,
+      [gone.tenantId, accountId],
+    )
+    const count = async (): Promise<number> => {
+      const r = await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM scheduled_reports WHERE "accountId"=$1', [accountId])
+      return r.rows[0]!.n
+    }
+    expect(await count()).toBe(1)
+    await pool.query('DELETE FROM accounts WHERE id = $1', [accountId])
+    expect(await count()).toBe(0)
   })
 })

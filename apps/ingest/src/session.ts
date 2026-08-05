@@ -328,7 +328,16 @@ export class Session {
       if (this.socket.destroyed) return
       // a FAILED probe must never read as "drained" — that would resume a paused socket on a Redis
       // blip, which is exactly the congestion the pause exists for. Stay paused and keep polling.
-      const depth = await getCachedShardDepth(this.deps.redis, this.shard, this.now(), true).catch(
+      // CACHED, not forced (audit MED). Congestion pauses many sockets at once and they all poll
+      // the same shard every 500 ms, so a forced probe meant N XINFO round trips per shard per tick
+      // — piling load on the one Redis connection whose contention is the reason they are paused.
+      //
+      // The trade-off, stated honestly: the depth cache is shared across sockets, so a value another
+      // socket refreshed below the threshold can resume this one while the shard has since climbed
+      // back over it. I4 therefore holds to within one cache TTL rather than at probe time. The TTL
+      // comes from config, not a literal, so a deployment that wants the old always-fresh behaviour
+      // sets `depthCacheMs: 0` — which is exactly what the I4 tests do.
+      const depth = await getCachedShardDepth(this.deps.redis, this.shard, this.now(), false, this.deps.config.depthCacheMs).catch(
         () => Number.POSITIVE_INFINITY,
       )
       // re-check AFTER the await: a destroy() landing during the XLEN roundtrip already decremented

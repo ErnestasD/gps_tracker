@@ -68,6 +68,11 @@ export interface DeviceRepo {
   /** Boot registry-rehydrate ONLY (UNSCOPED, platform-level): every non-retired device with the
    *  fields ingest/worker need in Redis. Never a request path — those are always tenant-scoped. */
   listAllForRegistry(): Promise<RegistryDeviceRow[]>
+  /** UNSCOPED existence check for the worker's reject drain: which of these IMEIs still have a
+   *  device row. A rejection whose device was GDPR-erased must not be written back into
+   *  `raw_rejects` — the erase deletes by IMEI, and the drain runs on a timer after it. Never a
+   *  request path: it answers only "does this exist", for ids the caller already holds. */
+  imeisIn(imeis: readonly string[]): Promise<Set<string>>
   get(scope: Scope, id: string): Promise<Device | null>
   getByImei(scope: Scope, imei: string): Promise<Device | null>
   create(scope: Scope, actor: Actor, data: DeviceCreate): Promise<Device>
@@ -88,6 +93,11 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo): Device
   return {
     list: (scope) => prisma.device.findMany({ where: scopedWhere(scope), orderBy: { createdAt: 'desc' } }),
     countActive: (scope) => prisma.device.count({ where: { ...scopedWhere(scope), retiredAt: null } }),
+    imeisIn: async (imeis) => {
+      if (imeis.length === 0) return new Set()
+      const rows = await prisma.device.findMany({ where: { imei: { in: [...imeis] } }, select: { imei: true } })
+      return new Set(rows.map((r) => r.imei))
+    },
     listAllForRegistry: () =>
       prisma.device.findMany({
         where: { retiredAt: null },

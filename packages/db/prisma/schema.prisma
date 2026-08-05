@@ -106,9 +106,11 @@ model Tenant {
   accounts            Account[]
   users               User[]
   domains             TenantDomain[]
+  scheduledReports    ScheduledReport[]
+  pushSubscriptions   PushSubscription[]
   /// affiliate attribution (W9): the partner who referred this tenant, set once at signup from ?ref
-  referredByAffiliate Affiliate?     @relation("AffiliateReferrals", fields: [referredByAffiliateId], references: [id])
-  commissions         Commission[]   @relation("TenantCommissions")
+  referredByAffiliate Affiliate?         @relation("AffiliateReferrals", fields: [referredByAffiliateId], references: [id])
+  commissions         Commission[]       @relation("TenantCommissions")
 
   @@map("tenants")
 }
@@ -225,9 +227,11 @@ model Account {
   timezone  String   @default("UTC")
   createdAt DateTime @default(now()) @db.Timestamptz()
 
-  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users   User[]
-  devices Device[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users             User[]
+  devices           Device[]
+  scheduledReports  ScheduledReport[]
+  pushSubscriptions PushSubscription[]
 
   @@index([tenantId])
   @@map("accounts")
@@ -253,6 +257,7 @@ model User {
   account             Account?             @relation(fields: [accountId], references: [id], onDelete: SetNull)
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
+  pushSubscriptions   PushSubscription[]
 
   @@unique([tenantId, email])
   @@index([accountId])
@@ -426,6 +431,8 @@ model RawReject {
   createdAt DateTime @default(now()) @db.Timestamptz()
 
   @@index([createdAt])
+  // GDPR device-erase deletes by IMEI (raw_rejects predates device resolution, so it has no deviceId)
+  @@index([imei])
   @@map("raw_rejects")
 }
 
@@ -616,7 +623,16 @@ model ScheduledReport {
   lastRunAt  DateTime? @db.Timestamptz()
   createdAt  DateTime  @default(now()) @db.Timestamptz()
 
+  // FKs, added 2026-08-05 (audit MED). Without them a deleted tenant or account left its schedules
+  // behind, and the worker's hourly cron kept running the report and E-MAILING an ex-customer's
+  // recipients — data about an account that no longer exists, with no API surface to stop it
+  // (every read is scoped by tenant, so the row was invisible to the product).
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
   @@index([enabled])
+  @@index([tenantId])
+  @@index([accountId])
   @@map("scheduled_reports")
 }
 
@@ -633,7 +649,18 @@ model PushSubscription {
   auth      String
   createdAt DateTime @default(now()) @db.Timestamptz()
 
+  // FKs, added 2026-08-05 (audit MED). A `webpush` rule channel fans out to the ACCOUNT's rows, so
+  // a subscription that outlived its user kept pushing that account's alerts — vehicle positions and
+  // geofence events — to a removed employee's browser, for as long as the browser kept the
+  // subscription alive. Cascading on the USER is the important one: deleting the person is the
+  // action an operator takes, and it must take their devices' notifications with it.
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, accountId])
+  @@index([accountId])
+  @@index([userId])
   @@map("push_subscriptions")
 }
 
