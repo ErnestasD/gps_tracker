@@ -53,6 +53,9 @@ const cache = new Map<DictionaryFamily, Map<number, AvlDictionaryEntry>>()
  */
 export function applySign(entry: AvlDictionaryEntry | undefined, value: bigint): bigint {
   if (entry === undefined || entry.type !== 'Signed' || value < 0n) return value
+  // `bytes` is validated for presence nowhere (buildDictionary checks only `name`), and this runs on
+  // the ordered pipeline — a future dictionary entry without it must not throw a TypeError there.
+  if (typeof entry.bytes !== 'string') return value
   const bits = { '1': 8, '2': 16, '4': 32, '8': 64 }[entry.bytes.trim()]
   if (bits === undefined) return value
   return BigInt.asIntN(bits, value)

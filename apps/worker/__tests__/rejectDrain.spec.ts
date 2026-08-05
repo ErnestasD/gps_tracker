@@ -19,18 +19,36 @@ const entry = (imei: string, tsMs: number, raw: Uint8Array): [Buffer, Buffer[]] 
   [Buffer.from('p'), Buffer.from(cbor.encode({ imei, tsMs, raw, reason: 'sanity' }))],
 ]
 
-function fakes(entries: [Buffer, Buffer[]][]) {
+/** Stream ids sort on (ms, seq) numerically — the same comparison the CAS script makes. */
+const idLte = (a: string, b: string): boolean => {
+  const [ams, aseq] = a.split('-').map(Number) as [number, number]
+  const [bms, bseq] = b.split('-').map(Number) as [number, number]
+  return ams < bms || (ams === bms && aseq <= bseq)
+}
+
+function fakes(entries: [Buffer, Buffer[]][], opts: { throwOnRead?: Error } = {}) {
   const store = new Map<string, string>()
   const inserted: RawRejectRow[][] = []
   const calls: unknown[][] = []
+  let served = false
   const redis = {
     get: vi.fn((k: string) => Promise.resolve(store.get(k) ?? null)),
-    set: vi.fn((k: string, v: string) => {
-      store.set(k, v)
-      return Promise.resolve('OK')
+    del: vi.fn((k: string) => {
+      store.delete(k)
+      return Promise.resolve(1)
+    }),
+    // the CAS advance script, in JS: forward only
+    eval: vi.fn((_script: string, _n: number, key: string, next: string) => {
+      const cur = store.get(key)
+      if (cur !== undefined && idLte(next, cur)) return Promise.resolve(0)
+      store.set(key, next)
+      return Promise.resolve(1)
     }),
     callBuffer: vi.fn((...args: unknown[]) => {
       calls.push(args)
+      if (opts.throwOnRead) return Promise.reject(opts.throwOnRead)
+      if (served) return Promise.resolve([]) // the tick loops until the stream is caught up
+      served = true
       return Promise.resolve(entries)
     }),
   } as unknown as Redis
@@ -78,6 +96,35 @@ describe('reject drain (rejects stream → raw_rejects)', () => {
     expect(await runRejectDrain({ connection: {}, redis, db })).toBe(2)
     expect(inserted[0]!.map((r) => r.reason)).toEqual(['undecodable', 'sanity'])
     expect(store.get(REJECT_CURSOR_KEY)).toBe('2000-0') // …and the cursor still advances
+  })
+
+  it('a corrupt cursor self-heals instead of wedging the drain forever', async () => {
+    // A value that is not a stream id makes XRANGE throw on EVERY tick, with nothing to clear it —
+    // one bad write and the diagnostic tail is dead until someone notices. Re-reading a window is
+    // free; staying wedged is not.
+    const { redis, db, store } = fakes([], { throwOnRead: new Error('ERR Invalid stream ID specified as stream command argument') })
+    store.set(REJECT_CURSOR_KEY, 'not-an-id')
+    expect(await runRejectDrain({ connection: {}, redis, db })).toBe(0)
+    expect(store.has(REJECT_CURSOR_KEY)).toBe(false) // reset → the next tick starts from the oldest entry
+  })
+
+  it('the cursor only moves FORWARD — an overlapping slower pass cannot drag it back', async () => {
+    // The repeatable job's jobId keeps the SCHEDULE single, not the EXECUTION: a stalled BullMQ lock
+    // (this process also runs the ordered pipeline) lets a second replica overlap. An unconditional
+    // SET from the slower pass would re-read an already-drained window on every tick, forever.
+    const { redis, db, store } = fakes([entry('x', 1000, new Uint8Array())])
+    store.set(REJECT_CURSOR_KEY, '5000-0') // a faster peer already got further
+    await runRejectDrain({ connection: {}, redis, db })
+    expect(store.get(REJECT_CURSOR_KEY)).toBe('5000-0')
+  })
+
+  it('a tick LOOPS until the stream is caught up — one fixed batch was a rate limit, not a drain', async () => {
+    // 1000 rows/min is 17/s against a 100k stream fed by a 1500 msg/s envelope: during exactly the
+    // flood the table exists to explain, MAXLEN would trim past the cursor and the rows would be
+    // gone, while the counter reported a healthy constant 1000/min.
+    const { redis, db, calls } = fakes([entry('a', 1000, new Uint8Array()), entry('b', 2000, new Uint8Array())])
+    expect(await runRejectDrain({ connection: {}, redis, db })).toBe(2)
+    expect(calls.length).toBeGreaterThan(1) // read again after a full window, not once per tick
   })
 
   it('does NOT advance the cursor when the insert fails — the next tick retries the same window', async () => {

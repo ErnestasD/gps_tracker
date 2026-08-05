@@ -1,5 +1,7 @@
 import type { Redis } from 'ioredis'
 
+import { MAX_RULE_SCOPE_IDS } from '@orbetra/shared'
+
 import { ENGINE_RULE_KINDS, type EngineRuleKind, type RuleDef } from './types.js'
 
 /**
@@ -96,10 +98,11 @@ export class RuleCache {
   }
 }
 
-/** Largest allow-list the cache will honour — matches `ruleScopeSchema`. Beyond it the rule is
- *  treated as account-wide rather than dropped: a rule that fires too broadly is visible and
- *  fixable, one that silently stopped firing is neither. */
-const MAX_SCOPE_IDS = 5_000
+/** Largest allow-list the cache will honour — the SAME constant the API schema enforces, imported
+ *  rather than repeated so the two cannot drift. Beyond it the rule is treated as account-wide
+ *  rather than dropped: a rule that fires too broadly is visible and fixable, one that silently
+ *  stopped firing is neither. */
+const MAX_SCOPE_IDS = MAX_RULE_SCOPE_IDS
 
 /** Allow-list as a Set, built once at load. `null` = account-wide (absent, empty, or oversize). */
 function toScopeIds(scope: unknown): Set<string> | null {

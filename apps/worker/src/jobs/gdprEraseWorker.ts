@@ -46,8 +46,8 @@ async function clearRedisState(redis: Redis, deviceId: string): Promise<void> {
 export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Promise<{ deviceId: string; positions: number }> {
   const idNum = BigInt(data.deviceId)
   // tenant re-check straight from the DB row — the job payload is not trusted as scope proof
-  const dev = await pool.query<{ tenantId: string; retiredAt: Date | null }>(
-    `SELECT "tenantId", "retiredAt" FROM devices WHERE id = $1`,
+  const dev = await pool.query<{ tenantId: string; retiredAt: Date | null; imei: string }>(
+    `SELECT "tenantId", "retiredAt", imei FROM devices WHERE id = $1`,
     [data.deviceId],
   )
   if (dev.rowCount === 0) {
@@ -67,6 +67,11 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
   await pool.query(`DELETE FROM trips WHERE "deviceId" = $1`, [data.deviceId])
   await pool.query(`DELETE FROM events WHERE "deviceId" = $1`, [data.deviceId])
   await pool.query(`DELETE FROM commands WHERE "deviceId" = $1`, [data.deviceId])
+  // raw_rejects keys on IMEI, not deviceId — it holds records that failed §3.6 before any device
+  // was resolved, and the raw AVL bytes embed lat/lon (§3.4). Missing it would leave a device's
+  // coordinates behind after a right-to-erasure run, which is the one outcome this job exists to
+  // prevent. Read the imei from the row above, while it still exists.
+  await pool.query(`DELETE FROM raw_rejects WHERE imei = $1`, [dev.rows[0]!.imei])
   await clearRedisState(redis, data.deviceId)
   await pool.query(`DELETE FROM devices WHERE id = $1`, [data.deviceId]) // LAST — see header
   // FINAL sweep (review HIGH-1): a session that outlived retire or stream backlog may have

@@ -276,6 +276,7 @@ async function main(): Promise<void> {
     connection: recomputeConn,
     db,
     retentionDays: Number.isFinite(retentionEnv) && retentionEnv > 0 ? retentionEnv : 30,
+    rejectRetentionDays: Number(process.env['RAW_REJECT_RETENTION_DAYS']) || 90,
     onPruned: (n) => prom.retentionPruned.inc(n),
     // the hook existed and nothing wired it: a retention sweep that throws every hour was
     // completely invisible, while positions/webhook_deliveries grew past their policy (audit MED)

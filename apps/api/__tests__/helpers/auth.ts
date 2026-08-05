@@ -75,6 +75,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     exports: { create: notImpl, get: notImpl, list: notImpl, findPending: notImpl, pathOf: notImpl },
     leads: { create: notImpl, list: notImpl },
     webhookDeliveries: { list: notImpl, pruneOlderThan: notImpl },
+    rawRejects: { insertMany: notImpl, pruneOlderThan: notImpl },
     usage: { platformSummary: notImpl, tenantSummary: notImpl },
     events: { list: notImpl, get: notImpl },
     trips: { list: notImpl, get: notImpl, assignDriver: notImpl },
