@@ -13,9 +13,19 @@ const cbor = new Encoder()
  * that is decided downstream in the worker; here we only drop physically impossible records.
  */
 export function isSaneRecord(rec: AvlRecord, config: SessionConfig, nowMs: number): boolean {
-  if (rec.tsMs < config.minTsMs || rec.tsMs > nowMs + config.maxFutureMs) return false
-  if (Math.abs(rec.lat) > 90 || Math.abs(rec.lon) > 180) return false
-  return true
+  return sanityFailure(rec, config, nowMs) === null
+}
+
+/**
+ * WHICH §3.6 check failed, or null when the record is sane. The rejection is recorded with this
+ * (audit MED follow-up): a flat 'sanity' told support the device but not the fault, and the two
+ * cases need opposite responses — a fix-time failure is almost always a flat RTC backup battery,
+ * an out-of-range coordinate is a corrupt frame or a firmware bug.
+ */
+export function sanityFailure(rec: AvlRecord, config: SessionConfig, nowMs: number): 'fix_time' | 'coords' | null {
+  if (rec.tsMs < config.minTsMs || rec.tsMs > nowMs + config.maxFutureMs) return 'fix_time'
+  if (Math.abs(rec.lat) > 90 || Math.abs(rec.lon) > 180) return 'coords'
+  return null
 }
 
 export interface PersistTarget {
@@ -43,14 +53,18 @@ export async function persistAvlBatch(
   nowMs: number,
 ): Promise<number> {
   const good: AvlRecord[] = []
-  const insane: AvlRecord[] = []
-  for (const rec of records) (isSaneRecord(rec, config, nowMs) ? good : insane).push(rec)
+  const insane: [AvlRecord, 'fix_time' | 'coords'][] = []
+  for (const rec of records) {
+    const why = sanityFailure(rec, config, nowMs)
+    if (why === null) good.push(rec)
+    else insane.push([rec, why])
+  }
   if (good.length === 0 && insane.length === 0) return 0
 
   const pipeline = redis.pipeline()
-  for (const rec of insane) {
+  for (const [rec, reason] of insane) {
     metrics.sanityRejectsTotal++
-    pipeline.xadd('rejects', 'MAXLEN', '~', 100_000, '*', 'p', cbor.encode({ imei: target.imei, tsMs: rec.tsMs, raw: rec.raw, reason: 'sanity' }))
+    pipeline.xadd('rejects', 'MAXLEN', '~', 100_000, '*', 'p', cbor.encode({ imei: target.imei, tsMs: rec.tsMs, raw: rec.raw, reason }))
   }
   for (const rec of good) {
     pipeline.xadd(

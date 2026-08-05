@@ -29,6 +29,14 @@ DELETE FROM "push_subscriptions" ps
 CREATE INDEX IF NOT EXISTS "scheduled_reports_tenantId_idx"   ON "scheduled_reports" ("tenantId");
 CREATE INDEX IF NOT EXISTS "scheduled_reports_accountId_idx"  ON "scheduled_reports" ("accountId");
 CREATE INDEX IF NOT EXISTS "push_subscriptions_userId_idx"    ON "push_subscriptions" ("userId");
+-- accountId needs its OWN index: the existing (tenantId, accountId) index does not serve
+-- `accountId = ?`, so the new account cascade would seq-scan (measured: 7.9 ms vs 0.39 ms at 200k).
+CREATE INDEX IF NOT EXISTS "push_subscriptions_accountId_idx" ON "push_subscriptions" ("accountId");
+
+-- raw_rejects gains a WRITER in this release (the reject drain), and GDPR device-erase deletes from
+-- it by IMEI. Indexed only on createdAt, that erase is a sequential scan of up to 90 days of
+-- flood-rate diagnostics — on the pool the ordered pipeline shares.
+CREATE INDEX IF NOT EXISTS "raw_rejects_imei_idx" ON "raw_rejects" ("imei");
 
 ALTER TABLE "scheduled_reports"
   ADD CONSTRAINT "scheduled_reports_tenantId_fkey"  FOREIGN KEY ("tenantId")  REFERENCES "tenants"("id")  ON DELETE CASCADE ON UPDATE CASCADE,

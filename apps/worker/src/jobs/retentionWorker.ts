@@ -24,22 +24,36 @@ export interface RetentionWorkerDeps {
   retentionDays: number
   /** window for `raw_rejects` (default 90). Diagnostics, not evidence — see the note above. */
   rejectRetentionDays?: number
-  onPruned?: (rows: number) => void
+  onPruned?: (table: 'webhook_deliveries' | 'raw_rejects', rows: number) => void
   onFailed?: () => void
 }
 
 /** Run one sweep. Returns rows deleted. `retentionDays` is clamped to ≥ 1 so a misconfigured
  *  negative/zero value can never prune today's live delivery log (footgun guard). */
-export async function runRetentionSweep(db: Db, retentionDays: number, nowMs: number, rejectRetentionDays = 90): Promise<number> {
+export async function runRetentionSweep(
+  db: Db,
+  retentionDays: number,
+  nowMs: number,
+  rejectRetentionDays = 90,
+  onPruned?: (table: 'webhook_deliveries' | 'raw_rejects', rows: number) => void,
+): Promise<number> {
   const days = Number.isFinite(retentionDays) ? Math.max(1, retentionDays) : 30
   const cutoff = new Date(nowMs - days * 24 * 3_600_000)
   const rejectDays = Number.isFinite(rejectRetentionDays) ? Math.max(1, rejectRetentionDays) : 90
   const rejectCutoff = new Date(nowMs - rejectDays * 24 * 3_600_000)
-  const [deliveries, rejects] = await Promise.all([
+  // allSettled, and each table reports its own count: with Promise.all the first rejection skipped
+  // `onPruned` entirely, so rows the OTHER prune had already deleted were never counted — and they
+  // are gone, so no later run can count them. The per-table label is also the only evidence that the
+  // raw_rejects horizon is real; one summed number cannot show whether that prune ever ran.
+  const [deliveries, rejects] = await Promise.allSettled([
     db.webhookDeliveries.pruneOlderThan(cutoff),
     db.rawRejects.pruneOlderThan(rejectCutoff),
   ])
-  return deliveries + rejects
+  if (deliveries.status === 'fulfilled') onPruned?.('webhook_deliveries', deliveries.value)
+  if (rejects.status === 'fulfilled') onPruned?.('raw_rejects', rejects.value)
+  const failure = [deliveries, rejects].find((r) => r.status === 'rejected')
+  if (failure?.status === 'rejected') throw failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason))
+  return (deliveries.status === 'fulfilled' ? deliveries.value : 0) + (rejects.status === 'fulfilled' ? rejects.value : 0)
 }
 
 /** BullMQ worker running the daily retention sweep. Caller must close() on shutdown. */
@@ -48,8 +62,7 @@ export function startRetentionWorker(deps: RetentionWorkerDeps): Worker {
     RETENTION_QUEUE,
     async () => {
       try {
-        const rows = await runRetentionSweep(deps.db, deps.retentionDays, Date.now(), deps.rejectRetentionDays)
-        deps.onPruned?.(rows)
+        await runRetentionSweep(deps.db, deps.retentionDays, Date.now(), deps.rejectRetentionDays, deps.onPruned)
       } catch (err) {
         deps.onFailed?.()
         throw err // let BullMQ record the failure; the next daily run retries the window

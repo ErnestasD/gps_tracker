@@ -277,7 +277,7 @@ async function main(): Promise<void> {
     db,
     retentionDays: Number.isFinite(retentionEnv) && retentionEnv > 0 ? retentionEnv : 30,
     rejectRetentionDays: Number(process.env['RAW_REJECT_RETENTION_DAYS']) || 90,
-    onPruned: (n) => prom.retentionPruned.inc(n),
+    onPruned: (table, n) => prom.retentionPruned.inc({ table }, n),
     // the hook existed and nothing wired it: a retention sweep that throws every hour was
     // completely invisible, while positions/webhook_deliveries grew past their policy (audit MED)
     onFailed: () => prom.jobFailed.inc({ job: 'retention' }),
@@ -295,6 +295,10 @@ async function main(): Promise<void> {
     onDrained: (n) => {
       if (n > 0) prom.rejectsDrained.inc(n)
     },
+    onDropped: (n) => prom.rejectsDropped.inc(n),
+    ...(process.env['RAW_REJECT_DRAIN_MAX_PER_TICK'] !== undefined
+      ? { maxPerTick: Number(process.env['RAW_REJECT_DRAIN_MAX_PER_TICK']) }
+      : {}),
     onFailed: () => prom.jobFailed.inc({ job: 'reject-drain' }),
   })
   await scheduleRejectDrain(rejectDrainQueue)

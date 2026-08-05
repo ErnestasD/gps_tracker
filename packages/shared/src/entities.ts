@@ -196,7 +196,10 @@ export const ruleScopeSchema = z
     // number OR string: `scope` used to be a free `z.record(…, unknown)`, so a client that stored
     // `deviceIds: [42]` — device ids are bigints, and JSON has no bigint — was accepted. Rejecting
     // that shape now would 400 a rule the API itself created, including on a read-modify-write PATCH.
-    deviceIds: z.array(z.union([z.string().min(1).max(20), z.number().int()]).transform(String)).max(MAX_RULE_SCOPE_IDS).optional(),
+    // digits only: a device id is a bigint, and anything else — "042", " 42", "4.2e1" — validates
+    // fine and then never matches `deviceId.toString()` in the worker, leaving a rule that silently
+    // covers nothing. 19 digits is the int8 ceiling.
+    deviceIds: z.array(z.union([z.string().regex(/^\d{1,19}$/), z.number().int().nonnegative()]).transform(String)).max(MAX_RULE_SCOPE_IDS).optional(),
   })
   // passthrough, NOT strict: unknown keys are kept rather than rejected OR silently stripped. A
   // strict schema breaks a client that stored an extra key under the old free-form contract, and

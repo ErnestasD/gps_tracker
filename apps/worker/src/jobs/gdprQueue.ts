@@ -15,6 +15,15 @@ export const GDPR_SWEEP_QUEUE = 'gdpr-export-sweep'
 export interface EraseJobData {
   deviceId: string // bigint as string
   tenantId: string
+  /**
+   * The device's IMEI, carried in the payload rather than read from the row.
+   *
+   * `raw_rejects` keys on IMEI — its rows predate any device resolution — and the devices row is
+   * deleted mid-erase, so a retried job (which finds no row and returns early) could otherwise
+   * never reach them. Optional for jobs enqueued before this field existed; those fall back to the
+   * row while it still exists.
+   */
+  imei?: string
 }
 export interface ExportJobData {
   exportId: string // ExportJob row uuid

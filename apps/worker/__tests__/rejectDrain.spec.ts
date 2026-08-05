@@ -26,7 +26,8 @@ const idLte = (a: string, b: string): boolean => {
   return ams < bms || (ams === bms && aseq <= bseq)
 }
 
-function fakes(entries: [Buffer, Buffer[]][], opts: { throwOnRead?: Error } = {}) {
+function fakes(entries: [Buffer, Buffer[]][], opts: { throwOnRead?: Error; erasedImei?: string } = {}) {
+  const erasedImei = opts.erasedImei
   const store = new Map<string, string>()
   const inserted: RawRejectRow[][] = []
   const calls: unknown[][] = []
@@ -53,6 +54,7 @@ function fakes(entries: [Buffer, Buffer[]][], opts: { throwOnRead?: Error } = {}
     }),
   } as unknown as Redis
   const db = {
+    devices: { imeisIn: vi.fn((imeis: readonly string[]) => Promise.resolve(new Set(erasedImei === undefined ? imeis : imeis.filter((i) => i !== erasedImei)))) },
     rawRejects: {
       insertMany: vi.fn((rows: RawRejectRow[]) => {
         inserted.push(rows)
@@ -131,7 +133,10 @@ describe('reject drain (rejects stream → raw_rejects)', () => {
     // The cursor is the only thing standing between a DB blip and a permanently skipped window.
     // Duplicated diagnostic rows are the right way round; silently skipped ones are not.
     const { redis, store } = fakes([entry('x', 1000, new Uint8Array())])
-    const db = { rawRejects: { insertMany: () => Promise.reject(new Error('db down')) } } as unknown as Db
+    const db = {
+      devices: { imeisIn: (imeis: readonly string[]) => Promise.resolve(new Set(imeis)) },
+      rawRejects: { insertMany: () => Promise.reject(new Error('db down')) },
+    } as unknown as Db
     await expect(runRejectDrain({ connection: {}, redis, db })).rejects.toThrow('db down')
     expect(store.has(REJECT_CURSOR_KEY)).toBe(false)
   })
@@ -141,5 +146,26 @@ describe('reject drain (rejects stream → raw_rejects)', () => {
     expect(await runRejectDrain({ connection: {}, redis, db })).toBe(0)
     expect(inserted).toHaveLength(0)
     expect(store.has(REJECT_CURSOR_KEY)).toBe(false)
+  })
+
+  it('drops a rejection whose device was GDPR-ERASED — the drain must not undo the erase', async () => {
+    // The erase deletes `raw_rejects` by IMEI and the drain runs on a 60 s tick, so entries still in
+    // the stream when it ran would otherwise land in the table AFTER it — putting the subject's
+    // coordinates back (the raw AVL bytes embed lat/lon, §3.4). Every rejection comes from a device
+    // that passed the handshake, so a missing device row means exactly one thing: it was erased.
+    const { redis, db, inserted } = fakes(
+      [entry('356307042440030', 1000, new Uint8Array()), entry('356307042440031', 2000, new Uint8Array())],
+      { erasedImei: '356307042440030' },
+    )
+    expect(await runRejectDrain({ connection: {}, redis, db })).toBe(1)
+    expect(inserted[0]!.map((r) => r.imei)).toEqual(['356307042440031'])
+  })
+
+  it('reports entries MAXLEN trimmed past the cursor — an invisible loss reads as a healthy drain', async () => {
+    const dropped: number[] = []
+    const { redis, db, store } = fakes([entry('x', 9000, new Uint8Array())])
+    store.set(REJECT_CURSOR_KEY, '1000-0') // the stream has moved far past it
+    await runRejectDrain({ connection: {}, redis, db, onDropped: (n) => dropped.push(n) })
+    expect(dropped.length).toBeGreaterThan(0)
   })
 })

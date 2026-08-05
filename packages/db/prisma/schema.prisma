@@ -431,6 +431,8 @@ model RawReject {
   createdAt DateTime @default(now()) @db.Timestamptz()
 
   @@index([createdAt])
+  // GDPR device-erase deletes by IMEI (raw_rejects predates device resolution, so it has no deviceId)
+  @@index([imei])
   @@map("raw_rejects")
 }
 
@@ -657,6 +659,7 @@ model PushSubscription {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, accountId])
+  @@index([accountId])
   @@index([userId])
   @@map("push_subscriptions")
 }

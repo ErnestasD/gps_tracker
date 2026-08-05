@@ -28,6 +28,10 @@ export interface RejectDrainDeps {
   batchSize?: number
   /** ceiling on one tick's work, so a backlog cannot monopolise the worker (default 25k) */
   maxPerTick?: number
+  /** Entries the drain skipped because MAXLEN trimmed past the cursor. Silence here is the failure
+   *  mode the whole table exists to avoid: without it `rejects_drained_total` reports a healthy
+   *  rate while the rows it should be reporting are gone. */
+  onDropped?: (entries: number) => void
   onDrained?: (rows: number) => void
   onFailed?: () => void
 }
@@ -37,6 +41,16 @@ export const REJECT_CURSOR_KEY = 'rejects:drain:cursor'
 export const REJECTS_STREAM = 'rejects'
 
 const cbor = new Decoder()
+
+/** True when `id` is more than one step past `cursor` — i.e. entries were trimmed in between. Stream
+ *  ids compare on (ms, seq) numerically; a string compare would put '9-0' after '10-0'. */
+function idAfter(id: string, cursor: string): boolean {
+  const [ims, iseq] = id.split('-').map(Number)
+  const [cms, cseq] = cursor.split('-').map(Number)
+  if (ims === undefined || cms === undefined || Number.isNaN(ims) || Number.isNaN(cms)) return false
+  if (ims !== cms) return ims > cms
+  return (iseq ?? 0) > (cseq ?? 0) + 1
+}
 
 /** Move the cursor forward only. Stream ids sort lexicographically within equal length, so compare
  *  on (ms, seq) numerically — a plain string compare would put '9-0' after '10-0'. */
@@ -72,14 +86,17 @@ export async function runRejectDrain(deps: RejectDrainDeps): Promise<number> {
   const maxPerTick = Math.min(Math.max(Math.trunc(deps.maxPerTick ?? 25_000), 1), 200_000)
   let moved = 0
   for (;;) {
-    const n = await drainOnce(deps)
-    moved += n
-    if (n === 0 || moved >= maxPerTick) return moved
+    const { read, written } = await drainOnce(deps)
+    moved += written
+    // loop on rows READ, not rows written: a future `skipDuplicates` (the obvious remedy for the
+    // duplicate writes an overlapping peer produces) would make `written` 0 for a full window and
+    // end the tick early, turning "nothing new" into "nothing left"
+    if (read === 0 || moved >= maxPerTick) return moved
   }
 }
 
 /** One read/insert/advance window. */
-async function drainOnce(deps: RejectDrainDeps): Promise<number> {
+async function drainOnce(deps: RejectDrainDeps): Promise<{ read: number; written: number }> {
   const count = Math.min(Math.max(Math.trunc(deps.batchSize ?? 1_000), 1), 10_000)
   const from = (await deps.redis.get(REJECT_CURSOR_KEY)) ?? '0-0'
   // callBuffer, not xrange: the entry value is CBOR, and the string API would mangle it exactly as
@@ -100,9 +117,13 @@ async function drainOnce(deps: RejectDrainDeps): Promise<number> {
     // oldest surviving entry: re-reading a diagnostic window is free, staying wedged is not.
     if (!(err instanceof Error) || !/invalid stream id/i.test(err.message)) throw err
     await deps.redis.del(REJECT_CURSOR_KEY)
-    return 0
+    return { read: 0, written: 0 }
   }
-  if (!res || res.length === 0) return 0
+  if (!res || res.length === 0) return { read: 0, written: 0 }
+
+  // If MAXLEN trimmed past the cursor, XRANGE simply resumes at the oldest survivor and the entries
+  // in between are gone. Report the gap: an invisible loss reads exactly like a healthy drain.
+  if (from !== '0-0' && idAfter(res[0]![0].toString(), from)) deps.onDropped?.(1)
 
   const rows: RawRejectRow[] = []
   for (const [, fields] of res) {
@@ -127,7 +148,12 @@ async function drainOnce(deps: RejectDrainDeps): Promise<number> {
     }
   }
 
-  const written = await deps.db.rawRejects.insertMany(rows)
+  // Drop rejections whose IMEI is no longer a registered device. Every rejection comes from a device
+  // that passed the handshake, so a missing row means it was erased — and a GDPR erase that ran
+  // while these entries were still in the stream would otherwise be undone by this very insert.
+  const live = await deps.db.devices.imeisIn([...new Set(rows.map((r) => r.imei).filter((i): i is string => i !== null))])
+  const keep = rows.filter((r) => r.imei === null || live.has(r.imei))
+  const written = await deps.db.rawRejects.insertMany(keep)
   // The cursor advances ONLY after the insert commits — a crash in between re-reads the same window
   // and writes the rows twice, which for a diagnostic tail is the right way round.
   //
@@ -136,7 +162,7 @@ async function drainOnce(deps: RejectDrainDeps): Promise<number> {
   // replica overlap, and an unconditional write from the slower pass would drag the cursor
   // BACKWARDS — re-reading a window already drained, forever, every tick.
   await deps.redis.eval(ADVANCE_CURSOR_SCRIPT, 1, REJECT_CURSOR_KEY, res[res.length - 1]![0].toString())
-  return written
+  return { read: res.length, written }
 }
 
 /** BullMQ worker running the periodic drain. Caller must close() on shutdown. */
