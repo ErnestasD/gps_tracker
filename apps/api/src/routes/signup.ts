@@ -45,6 +45,20 @@ const TRIAL_DAYS = 30
 const TRIAL_PLAN = 'direct_10' as const
 
 // atomic fixed-window (mirrors pilotRequest): INCR, TTL on first hit, re-arm a stranded key
+/**
+ * Consumer mailbox providers. A shared one says nothing about a shared identity, so it must not be
+ * read as a self-referral — see the guard below. Not exhaustive by design: the list only has to
+ * cover what a small reseller in this market plausibly uses as a contact address.
+ */
+const FREE_MAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'outlook.com', 'hotmail.com', 'hotmail.co.uk',
+  'live.com', 'msn.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com',
+  'gmx.com', 'gmx.de', 'gmx.net', 'web.de', 't-online.de', 'freenet.de',
+  'inbox.lt', 'gmail.lt', 'takas.lt', 'one.lt', 'zebra.lt', 'centras.lt', 'delfi.lt',
+  'wp.pl', 'o2.pl', 'onet.pl', 'interia.pl', 'gazeta.pl', 'op.pl', 'poczta.onet.pl',
+  'yandex.ru', 'mail.ru', 'seznam.cz', 'zoho.com', 'fastmail.com', 'hushmail.com', 'tutanota.com', 'tuta.io',
+])
+
 const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
 if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return n`
@@ -101,8 +115,17 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
     // SELF-REFERRAL GUARD (PROJECT_PLAN §6.9): a partner must not earn commission on their own
     // subscription. Signing up with an email in the affiliate's own domain drops the attribution —
     // the tenant is still created, it simply earns nobody a commission.
+    //
+    // Free-mail domains are EXCLUDED from the comparison (audit MED). Matching raw domains meant a
+    // partner whose contact address is a gmail.com one lost commission on every gmail.com referral
+    // — which for a small reseller is most of them — silently, with only a server-side log to say
+    // so. A shared public mailbox provider is not evidence of a shared identity; a company domain
+    // is. The exact-address check still catches the literal case it is for.
     const domainOf = (e: string) => e.slice(e.lastIndexOf('@') + 1).toLowerCase()
-    const selfReferral = candidate !== null && domainOf(candidate.email) === domainOf(email)
+    const selfReferral =
+      candidate !== null &&
+      (candidate.email.trim().toLowerCase() === email ||
+        (domainOf(candidate.email) === domainOf(email) && !FREE_MAIL_DOMAINS.has(domainOf(email))))
     if (selfReferral) console.warn('signup: self-referral attribution dropped', candidate.code)
     const ref = selfReferral ? null : candidate
 

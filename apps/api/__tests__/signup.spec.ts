@@ -285,4 +285,21 @@ describe('public self-serve signup (F2)', () => {
     const { id } = (await res.json()) as { id: string }
     expect((await db.accounts.list({ tenantId: id }))[0]!.timezone).toBe('UTC')
   })
+
+  it('a FREE-MAIL partner still earns commission on free-mail referrals (audit MED)', async () => {
+    // The guard compared raw domains, so a reseller whose contact address is a gmail.com one lost
+    // commission on every gmail.com referral — which for a small partner is most of them — silently,
+    // with only a server-side log to say so. A shared public mailbox provider is not evidence of a
+    // shared identity; a company domain is.
+    const actor = { userId: '00000000-0000-0000-0000-0000000000f3' }
+    const aff = await db.affiliates.create(actor, { name: 'Solo Reseller', email: 'reseller@gmail.com', code: 'FREEMAIL1' })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
+
+    const referred = (await (await signup({ name: 'Customer', email: 'customer@gmail.com', password: 'password12', ref: 'FREEMAIL1' })).json()) as { id: string }
+    expect((await db.tenants.get(referred.id))!.referredByAffiliateId).toBe(aff.id)
+
+    // …and the literal case the guard exists for is still caught: the partner's OWN address
+    const same = (await (await signup({ name: 'Self', email: 'reseller@gmail.com', password: 'password12', ref: 'FREEMAIL1' })).json()) as { id: string; error?: string }
+    if (same.id !== undefined) expect((await db.tenants.get(same.id))?.referredByAffiliateId ?? null).toBeNull()
+  })
 })

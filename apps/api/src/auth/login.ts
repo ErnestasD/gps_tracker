@@ -558,11 +558,16 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     if (consumed === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
     const user = await deps.db.users.findByIdForAuth(consumed.userId)
     if (user === null) return problem(c, 400, 'Bad Request', 'invalid or expired token')
-    await deps.db.users.setPassword(user.id, newHash)
-    await deps.db.passwordResetTokens.invalidateAllForUser(user.id, now) // burn any sibling tokens
-    // kill every session: all refresh families + any live WS stream (parity with password change)
+    // REVOKE FIRST, then write the password (audit MED). The point of a reset is usually that
+    // someone else is in the account, and nothing here is transactional — so with the password
+    // written first, a failure in the revoke left the victim's password changed and the ATTACKER'S
+    // session alive, which is the one outcome this flow exists to prevent. Reversed, every failure
+    // mode is safe: a revoke failure changes nothing (the user asks for a new link), and a
+    // setPassword failure leaves them logged out everywhere with the old password still valid.
     await revokeAllUserSessions(deps.db.refreshTokens, user.id)
     await markSessionsRevoked(deps.redis, user.id)
+    await deps.db.users.setPassword(user.id, newHash)
+    await deps.db.passwordResetTokens.invalidateAllForUser(user.id, now) // burn any sibling tokens
     deleteCookie(c, COOKIE, { path: COOKIE_PATH })
     c.header('Cache-Control', 'no-store')
     return c.json({ ok: true })

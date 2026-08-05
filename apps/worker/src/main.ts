@@ -401,8 +401,15 @@ async function main(): Promise<void> {
             )
           }
         }
+        // PIPELINE lag is measured on server_time — the instant ingest accepted the frame — not on
+        // fix_time (audit MED). fix_time is the DEVICE's clock plus however long it buffered, so a
+        // truck returning from a weekend in a garage paged a false critical, and a device whose RTC
+        // runs fast pinned the gauge at 0 and hid real lag. Both views are exported now; only this
+        // one answers "is the pipeline keeping up".
+        const newestServerMs = records.reduce((m, r) => Math.max(m, r.serverTime.getTime()), 0)
+        if (newestServerMs > 0) prom.setLagMs(Math.max(0, Date.now() - newestServerMs))
         const newestMs = usable[usable.length - 1]?.fixTime.getTime()
-        if (newestMs !== undefined) prom.setLagMs(Math.max(0, Date.now() - newestMs))
+        if (newestMs !== undefined) prom.setDataAgeMs(Math.max(0, Date.now() - newestMs))
         try {
           await liveState.apply(records) // live is best-effort: log, never stall the shard
         } catch (err) {

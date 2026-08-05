@@ -164,7 +164,7 @@ const deps = {
 const app = createApp(deps, prom)
 
 const httpServer = serve({ fetch: app.fetch, port, createServer }) as ReturnType<typeof createServer>
-attachWsGateway(httpServer, deps, (n) => prom.setWsClients(n), () => prom.wsSlowConsumer.inc())
+const wss = attachWsGateway(httpServer, deps, (n) => prom.setWsClients(n), () => prom.wsSlowConsumer.inc())
 console.log(`orbetra api listening on :${port} (auth live, ws_clients metric live)`)
 // Misconfiguring this now has a much larger blast radius than it used to. Without TRUST_PROXY the
 // client IP is the socket peer, which behind Caddy is ONE bucket for the entire platform — and the
@@ -218,6 +218,15 @@ process.on('uncaughtException', (err) => fatal('uncaughtException', err))
 process.on('unhandledRejection', (reason) => fatal('unhandledRejection', reason))
 
 process.on('SIGTERM', () => {
+  // Close the WS gateway FIRST (audit MED). `httpServer.close()` waits for every connection to end,
+  // and an upgraded WebSocket never ends on its own — so with a single live client the callback
+  // never fired and this whole shutdown chain was dead code: Redis was never quit, the BullMQ
+  // queues were never closed, the pg pool was never drained. Only the 5 s hard exit below ran, i.e.
+  // every deploy killed the API mid-flight while looking graceful. Closing `wss` ends those sockets
+  // (clients reconnect and re-authorize, which they already do on a 4 h lifetime), so `close()` can
+  // actually complete.
+  wss.close()
+  for (const client of wss.clients) client.terminate()
   httpServer.close(() => {
     void redis
       .quit()
@@ -229,5 +238,8 @@ process.on('SIGTERM', () => {
       .then(() => db.$disconnect())
       .then(() => process.exit(0))
   })
+  // …and a plain HTTP keep-alive connection can outlast the close too. Give in-flight requests a
+  // moment, then cut the idle ones; the hard exit stays as the last resort.
+  setTimeout(() => httpServer.closeIdleConnections?.(), 1_000).unref()
   setTimeout(() => process.exit(0), 5_000).unref()
 })

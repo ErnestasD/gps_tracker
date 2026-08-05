@@ -1,3 +1,4 @@
+import { unlink } from 'node:fs/promises'
 import { Worker, type ConnectionOptions } from 'bullmq'
 import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
@@ -15,6 +16,8 @@ import { captureDeviceUsage } from './usageWorker.js'
  *
  * DELIBERATELY KEPT (documented in the plan): usage_daily (billing, legitimate interest;
  * plain deviceId, no FK) and audit_log (append-only evidence trail; redaction is V2).
+ * Also EXPIRES the account's already-produced export files — a standing NDJSON dump contains the
+ * device, so leaving one erases the database and not the data.
  * Covers: positions, trips, events, commands, sms_deliveries, raw_rejects (by deviceId), the device
  * row itself and the device's Redis state. A table added after this job ships must be added HERE —
  * two already were not (sms_deliveries, raw_rejects), and nothing failed to say so.
@@ -70,8 +73,8 @@ async function eraseRawRejects(pool: Pool, data: EraseJobData): Promise<void> {
 export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Promise<{ deviceId: string; positions: number }> {
   const idNum = BigInt(data.deviceId)
   // tenant re-check straight from the DB row — the job payload is not trusted as scope proof
-  const dev = await pool.query<{ tenantId: string; retiredAt: Date | null; imei: string }>(
-    `SELECT "tenantId", "retiredAt", imei FROM devices WHERE id = $1`,
+  const dev = await pool.query<{ tenantId: string; accountId: string; retiredAt: Date | null; imei: string }>(
+    `SELECT "tenantId", "accountId", "retiredAt", imei FROM devices WHERE id = $1`,
     [data.deviceId],
   )
   if (dev.rowCount === 0) {
@@ -115,6 +118,20 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
   // tick, so a stream entry can land in the table while this job runs. The drain also drops entries
   // whose device row is ABSENT, which closes the window for anything arriving later still.
   await eraseRawRejects(pool, { ...data, imei: data.imei ?? dev.rows[0]!.imei })
+
+  // Already-produced account exports still CONTAIN this device (audit MED). An export is a
+  // point-in-time NDJSON dump on the shared volume, downloadable for its full 7-day life by anyone
+  // with the link — so a right-to-erasure request that leaves one standing has erased the database
+  // and not the data. Expire them: the file is unlinked and the row marked, exactly as the hourly
+  // sweep does, and the requester can produce a fresh export that no longer holds the device.
+  const stale = await pool.query<{ id: string; path: string | null }>(
+    `SELECT id, path FROM export_jobs WHERE "accountId" = $1 AND status = 'done'`,
+    [dev.rows[0]!.accountId],
+  )
+  for (const row of stale.rows) {
+    if (row.path !== null) await unlink(row.path).catch(() => undefined)
+    await pool.query(`UPDATE export_jobs SET status = 'expired', path = NULL WHERE id = $1 AND status = 'done'`, [row.id])
+  }
   return { deviceId: data.deviceId, positions: positions + late }
 }
 

@@ -81,8 +81,13 @@ export function DashboardPage() {
   // with the account-tz report buckets and with the event times rendered everywhere else
   const tz = u.prefs.timeZone !== 'auto' ? u.prefs.timeZone : undefined
   const dayOfTz = (iso: string) => dayStrInTz(Date.parse(iso), tz)
-  const eventsSpark = dailyCounts(rows7, 7, now, dayOfTz)
-  const criticalSpark = dailyCounts(rows7.filter((e) => eventSeverity(e.kind) === 'critical'), 7, now, dayOfTz)
+  // The 7-day sparklines are DROPPED when the window was truncated (audit MED). The rows come back
+  // newest-first and capped at EVENTS_CAP, so a busy fleet's page holds only the most recent hours —
+  // and every older day then charts as a confident ZERO. A missing sparkline reads as "no data";
+  // a fabricated flat line reads as "a quiet week", which is worse than showing nothing. The donut
+  // and the hourly chart already say "sampled" for the same reason.
+  const eventsSpark = trunc7 ? [] : dailyCounts(rows7, 7, now, dayOfTz)
+  const criticalSpark = trunc7 ? [] : dailyCounts(rows7.filter((e) => eventSeverity(e.kind) === 'critical'), 7, now, dayOfTz)
   const hourly = hourlyBuckets(rows7, (iso) => hourInTz(iso, tz))
   const breakdown = kindBreakdown(rows7)
   const recent = rows24.slice(0, 6)

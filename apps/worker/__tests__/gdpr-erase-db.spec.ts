@@ -52,6 +52,7 @@ beforeAll(async () => {
   // sms_deliveries holds a phone number and the message body — the most directly identifying data
   // a device produces, and the table postdates this job
   await pool.query(`CREATE TABLE sms_deliveries (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "deviceId" bigint, "tenantId" uuid, "to" text, body text)`)
+  await pool.query(`CREATE TABLE export_jobs (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, status text, path text)`)
   // raw_rejects keys on IMEI, not deviceId — the erase has to reach it before the devices row goes
   await pool.query(`CREATE TABLE raw_rejects (id bigserial PRIMARY KEY, imei text, "deviceId" bigint, reason text, payload bytea, "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE usage_daily ("tenantId" uuid, "accountId" uuid, "deviceId" bigint, day date, PRIMARY KEY ("deviceId", day))`)
@@ -67,6 +68,8 @@ beforeAll(async () => {
   await pool.query(`INSERT INTO events ("deviceId","tenantId") VALUES (7,$1),(8,$1)`, [T1])
   await pool.query(`INSERT INTO commands ("deviceId","tenantId") VALUES (7,$1),(8,$1)`, [T1])
   await pool.query(`INSERT INTO sms_deliveries ("deviceId","tenantId","to",body) VALUES (7,$1,'+37060000001','setparam'),(8,$1,'+37060000002','setparam')`, [T1])
+  // a standing account export — it CONTAINS device 7's positions
+  await pool.query(`INSERT INTO export_jobs ("tenantId","accountId",status,path) VALUES ($1,$1,'done','/tmp/orbetra-erase-test-export.ndjson.gz')`, [T1])
   await pool.query(`INSERT INTO usage_daily ("tenantId","accountId","deviceId",day) VALUES ($1,$1,7,'2026-04-01'), ($1,$1,8,'2026-04-01')`, [T1])
   // rejections are keyed by IMEI (they predate any device resolution) and carry the raw AVL bytes
   await pool.query(`INSERT INTO raw_rejects (imei, "deviceId", reason, payload) VALUES ('356307042440030', 7, 'sanity', '\\xdeadbeef'), ('356307042440031', 8, 'sanity', '\\xdeadbeef')`)
@@ -100,6 +103,11 @@ describe('E08-4 runErase (cascade, real pg)', () => {
     expect(await count(`SELECT count(*) n FROM commands WHERE "deviceId"=$1`, 7)).toBe(0)
     expect(await count(`SELECT count(*) n FROM sms_deliveries WHERE "deviceId"=$1`, 7)).toBe(0)
     expect(await count(`SELECT count(*) n FROM sms_deliveries WHERE "deviceId"=$1`, 8)).toBe(1) // the other device is untouched
+    // an already-produced export is a downloadable NDJSON dump that still holds this device, so an
+    // erase leaving one standing has erased the database and not the data
+    const exports = await pool.query<{ status: string; path: string | null }>(`SELECT status, path FROM export_jobs`)
+    expect(exports.rows[0]!.status).toBe('expired')
+    expect(exports.rows[0]!.path).toBeNull()
     // raw_rejects keys on IMEI, so a device-id cascade misses it — and its payload embeds lat/lon
     // (§3.4), i.e. exactly the coordinates a right-to-erasure request is about
     const mine = await pool.query<{ n: string }>(`SELECT count(*) n FROM raw_rejects WHERE "deviceId"=7 OR ("deviceId" IS NULL AND imei='356307042440030')`)
