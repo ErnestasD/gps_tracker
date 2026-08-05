@@ -26,19 +26,27 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
   // The per-tenant index is REBUILT, not merely added to. Everything else here is an hset, which
   // self-heals by overwriting; a set only grows, so a member stranded by a partial teardown would
   // survive every restart forever and keep a retired device on the map. Boot is the one moment we
-  // hold the authoritative list, so it is the one place a true repair is possible. Only tenants
-  // present in the DB are cleared — a DEL of a key we are about to repopulate, in the same
-  // pipeline, so there is no window where a live tenant has an empty index.
-  for (const tenantId of new Set(registryRows.map((d) => d.tenantId))) pipe.del(tenantDevicesKey(tenantId))
+  // hold the authoritative list, so it is the one place a true repair is possible.
+  //
+  // Built into a SCRATCH key and swapped with RENAME, never DEL-then-SADD in place. `pipeline()` is
+  // command batching, not MULTI, and this process is already serving `/v1/devices/last` while it
+  // runs: a DEL-first rebuild leaves every tenant's index empty for the duration (measured: 9 of 11
+  // concurrent reads returned an empty map on a 2400-device rehydrate), and a connection blip
+  // partway through leaves them empty PERMANENTLY, until the next successful boot. RENAME is
+  // atomic and the live key is never absent, so a partial failure simply keeps the old contents.
+  const scratch = (tenantId: string): string => `${tenantDevicesKey(tenantId)}:rebuild`
+  const tenantIds = new Set(registryRows.map((d) => d.tenantId))
+  for (const tenantId of tenantIds) pipe.del(scratch(tenantId))
   for (const d of registryRows) {
     const id = d.id.toString()
     pipe.hset('registry:imei', d.imei, id)
     pipe.hset('device:tenant', id, d.tenantId)
     pipe.hset('device:account', id, d.accountId)
     pipe.hset('device:config', id, JSON.stringify({ presenceRules: profileRules.get(d.profileId) ?? {}, odometerSource: d.odometerSource }))
-    pipe.sadd(tenantDevicesKey(d.tenantId), id)
+    pipe.sadd(scratch(d.tenantId), id)
     devices++
   }
+  for (const tenantId of tenantIds) pipe.rename(scratch(tenantId), tenantDevicesKey(tenantId))
   let geofences = 0
   for (const g of await db.geofences.listAll()) {
     const [k, field, value] = geofenceCacheEntry(g) // same shape CRUD writes (no drift)
@@ -53,6 +61,31 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
     pipe.hset(`driver:ibutton:${d.tenantId}:${d.accountId}`, key, d.driverId)
     ibuttons++
   }
-  await pipe.exec()
+  const results = await pipe.exec()
+  // ioredis returns per-command errors in the result array rather than throwing, so an unchecked
+  // exec() swallows exactly the partial failures this rebuild is designed to survive. Report them:
+  // a rehydrate that half-worked must not read as a successful one in the boot log.
+  const failed = (results ?? []).filter(([err]) => err !== null).length
+  if (failed > 0) console.error(`rehydrate: ${failed} of ${results?.length ?? 0} redis commands failed`)
+
+  // Tenants that lost their LAST device do not appear in `registryRows` at all, so the rebuild
+  // above never touches them and a stranded member would outlive every restart — the exact case the
+  // rebuild exists for. One SCAN closes it, and sweeps any scratch key a crashed run left behind
+  // (the RENAMEs above consumed this run's, so a survivor is by definition stale). SCAN is
+  // cursor-based and never blocks the server, unlike KEYS.
+  const KEY_RE = /^tenant:(.+):devices(:rebuild)?$/
+  let cursor = '0'
+  const stale: string[] = []
+  do {
+    const [next, keys] = await redis.scan(cursor, 'MATCH', 'tenant:*:devices*', 'COUNT', 500)
+    cursor = next
+    for (const k of keys) {
+      const m = KEY_RE.exec(k)
+      if (m === null) continue
+      if (m[2] !== undefined || !tenantIds.has(m[1]!)) stale.push(k)
+    }
+  } while (cursor !== '0')
+  if (stale.length > 0) await redis.del(...stale)
+
   return { devices, geofences, ibuttons }
 }

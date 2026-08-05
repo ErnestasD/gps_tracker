@@ -16,6 +16,8 @@ export interface LiveSocketOpts {
   WebSocketImpl?: typeof WebSocket
   baseDelayMs?: number
   maxDelayMs?: number
+  /** How long a connection must stay open before `attempts` resets. Default 30 s. */
+  stableAfterMs?: number
   random?: () => number
 }
 
@@ -27,10 +29,13 @@ export interface LiveSocketOpts {
  */
 /** Backoff exponent a slow-consumer cut starts from: base·2^4 ≈ 16 s at the default 1 s base. */
 const SLOW_RETRY_FLOOR = 4
+/** How long a socket must STAY open before the backoff counter is forgiven. */
+const DEFAULT_STABLE_AFTER_MS = 30_000
 
 export class LiveSocket {
   private ws: WebSocket | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
+  private stableTimer: ReturnType<typeof setTimeout> | null = null
   private attempts = 0
   private stopped = true
   // Generation token (MED): a single `stopped` boolean can't cancel a connect() whose
@@ -49,11 +54,17 @@ export class LiveSocket {
     void this.connect(++this.generation)
   }
 
+  private clearStable(): void {
+    if (this.stableTimer !== null) clearTimeout(this.stableTimer)
+    this.stableTimer = null
+  }
+
   stop(): void {
     this.stopped = true
     this.generation++ // invalidate any in-flight connect() and any scheduled reconnect
     if (this.timer !== null) clearTimeout(this.timer)
     this.timer = null
+    this.clearStable()
     this.ws?.close()
     this.ws = null
   }
@@ -84,7 +95,18 @@ export class LiveSocket {
     let settled = false // close fires after error — schedule exactly once
     ws.onopen = () => {
       if (gen !== this.generation) return
-      this.attempts = 0
+      // Backoff is forgiven only once the connection has PROVED itself, not the instant it opens.
+      // Resetting on open makes every fast open→drop cycle retry at the base delay forever, which
+      // is a ~1 Hz reconnect storm whenever the drop is immediate — a slow-consumer cut, a gateway
+      // that rejects on subscribe, an upgrade that succeeds and dies. Those are exactly the cases
+      // where hammering hurts most, and the close code they carry is not always deliverable (a
+      // 4408 close frame queues BEHIND the megabyte of backlog that triggered it, so the client
+      // usually sees a bare 1006). Requiring the socket to survive a while is the signal that
+      // always arrives.
+      this.clearStable()
+      this.stableTimer = setTimeout(() => {
+        if (this.ws === ws && gen === this.generation) this.attempts = 0
+      }, this.opts.stableAfterMs ?? DEFAULT_STABLE_AFTER_MS)
       this.opts.onStatus?.('open')
     }
     ws.onmessage = (e: MessageEvent) => {
@@ -94,15 +116,15 @@ export class LiveSocket {
     ws.onclose = (e?: { code?: number }) => {
       if (settled) return
       settled = true
+      this.clearStable()
       if (this.ws === ws) this.ws = null
       // a socket from a superseded generation closing must NOT flap the badge or start a
       // second reconnect loop — only the current generation drives status/reconnect
       if (gen !== this.generation) return
       this.opts.onStatus?.('closed')
-      // A slow-consumer cut (the server's send buffer for THIS client ran away) must not reconnect
-      // at the base delay: `attempts` was zeroed by the successful open, so an immediate retry
-      // re-subscribes, re-buffers and gets cut again — a ~1 Hz storm of ticket + upgrade + fanout,
-      // exactly when the API is already under memory pressure. Keep the accrued backoff instead.
+      // A slow-consumer cut, WHEN the close frame does reach us, is a stronger signal than "the
+      // socket did not last": reconnecting re-subscribes to the same feed and gets cut again, so
+      // start from a long delay rather than growing into one.
       if (e?.code === WS_CLOSE.SLOW_CONSUMER) this.attempts = Math.max(this.attempts, SLOW_RETRY_FLOOR)
       if (!this.stopped) this.scheduleReconnect(gen)
     }

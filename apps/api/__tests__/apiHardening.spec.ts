@@ -59,6 +59,16 @@ const stub = {
   expire: () => Promise.resolve(1),
   ttl: () => Promise.resolve(-1),
   mget: () => Promise.resolve([]),
+  // login's gates run as ONE pipeline: without this the route 500s, and every assertion below of
+  // the form `not.toBe(403)` would pass for the wrong reason — a CSRF guard test that never
+  // reaches the credential check proves nothing about the guard.
+  pipeline: () => {
+    const chain: Record<string, unknown> = {}
+    for (const m of ['get', 'set', 'del', 'eval', 'incr', 'expire', 'pfcount', 'pfadd', 'hget', 'sadd', 'srem'])
+      chain[m] = () => chain
+    chain['exec'] = () => Promise.resolve([[null, 0], [null, 0]])
+    return chain
+  },
 } as unknown as Redis
 const appFor = (users: Urow[]) =>
   createApp({ redis: stub, redisSub: stub, db: buildDb(users), jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false, getRemoteAddr: () => '127.0.0.1' })

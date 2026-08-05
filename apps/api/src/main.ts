@@ -112,6 +112,12 @@ const deps = {
   onSmsQuotaRejected: (scope: 'device' | 'tenant' | 'global') => prom.smsQuotaRejected.inc({ scope }),
   onWebhookUnmatched: (reason: 'no_tenant' | 'unmappable') => prom.billingWebhookUnmatched.inc({ reason }),
   onLockout: (gate: 'credential' | 'ip' | 'email') => prom.authLockoutTripped.inc({ gate }),
+  // partner-portal ceilings; unset entries fall back to the module defaults (1 h window there)
+  partnerLoginLimits: {
+    ...(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP'] !== undefined ? { maxFailsPerIp: Number(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP']) } : {}),
+    ...(process.env['PARTNER_LOCKOUT_MAX_ATTEMPTS_PER_IP_HARD'] !== undefined ? { maxAttemptsPerIpHard: Number(process.env['PARTNER_LOCKOUT_MAX_ATTEMPTS_PER_IP_HARD']) } : {}),
+    ...(process.env['PARTNER_LOCKOUT_MAX_FAIL_IPS_PER_EMAIL'] !== undefined ? { maxFailIpsPerEmail: Number(process.env['PARTNER_LOCKOUT_MAX_FAIL_IPS_PER_EMAIL']) } : {}),
+  },
   // hard ceiling on one live socket (default 4 h). A stream is authorized only at connect, so this
   // is what makes a plan downgrade / role change eventually reach an already-open one; clients
   // reconnect with a fresh ticket, which re-authorizes.
@@ -119,15 +125,17 @@ const deps = {
   lockout: {
     maxFails: Number(process.env['LOCKOUT_MAX_FAILS'] ?? 5),
     windowS: Number(process.env['LOCKOUT_WINDOW_S'] ?? 900),
-    // Deliberately far above maxFails: these are ABUSE ceilings, not the per-credential rule, and a
-    // whole office or a mobile carrier NAT shares one source IP. 50 failed logins per 15 min from
-    // one address, or 20 against one account from anywhere, is not a human getting it wrong — but
-    // neither is grounds for denying a valid credential, so both refuse only wrong passwords. The
-    // HARD per-IP ceiling is what refuses everything up front, and it is set where the traffic
-    // stops being explicable as an office having a bad morning.
+    // Abuse ceilings, not the per-credential rule. One source IP is a whole office or a carrier
+    // NAT, so the soft one refuses only wrong passwords: 50 FAILED logins per 15 min from one
+    // address is not a human getting it wrong, but it is no reason to deny a valid credential.
     maxFailsPerIp: Number(process.env['LOCKOUT_MAX_FAILS_PER_IP'] ?? 50),
-    maxFailsPerIpHard: Number(process.env['LOCKOUT_MAX_FAILS_PER_IP_HARD'] ?? 200),
-    maxFailsPerEmail: Number(process.env['LOCKOUT_MAX_FAILS_PER_EMAIL'] ?? 20),
+    // The hard one counts every ATTEMPT and refuses before argon2 — the CPU shed. 1000 per 15 min
+    // is ~65/min sustained from one address: far beyond a 300-seat office arriving on a Monday
+    // (~5/min), and ~2 minutes of one core in argon2, which the 8-slot semaphore already bounds.
+    maxAttemptsPerIpHard: Number(process.env['LOCKOUT_MAX_ATTEMPTS_PER_IP_HARD'] ?? 1_000),
+    // DISTINCT source IPs failing against one account. A real user fails from one or two; needing
+    // 30 makes the account lockout cost a botnet, which is exactly when locking is the right call.
+    maxFailIpsPerEmail: Number(process.env['LOCKOUT_MAX_FAIL_IPS_PER_EMAIL'] ?? 30),
   },
   // Caddy on-demand-TLS ask throttle per source IP (E03-5); DNS TXT verify uses
   // the real resolver by default (no env — tests inject a mock).
@@ -154,6 +162,20 @@ console.log(`orbetra api listening on :${port} (auth live, ws_clients metric liv
 void rehydrateRegistries(redis, db)
   .then((r) => console.log(`rehydrated Redis registries: ${r.devices} devices, ${r.geofences} geofences, ${r.ibuttons} iButtons`))
   .catch((e: unknown) => console.error('rehydrate failed (non-fatal)', e))
+
+// Last resort. Every known throw path is handled, but an unhandled 'error' event anywhere in a
+// long-lived listener (ws, ioredis, a pg pool client) is an uncaught exception, and the default
+// behaviour — die silently with a stack on stderr — makes a platform-wide outage look like a
+// container that "just restarted". Log it in a shape an operator can search for, then exit and let
+// the restart policy do its job: a process that has thrown from an unknown place is not trustworthy.
+process.on('uncaughtException', (err) => {
+  console.error('FATAL uncaughtException — exiting for restart', err)
+  process.exit(1)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('FATAL unhandledRejection — exiting for restart', reason)
+  process.exit(1)
+})
 
 process.on('SIGTERM', () => {
   httpServer.close(() => {

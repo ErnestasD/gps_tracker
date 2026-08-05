@@ -18,15 +18,26 @@ const A = '22222222-2222-2222-2222-222222222222'
 function fakeRedis(store: Map<string, Record<string, string>>, sets = new Map<string, Set<string>>()): Redis {
   const set = (k: string, f: string, v: string) => { const h = store.get(k) ?? {}; h[f] = v; store.set(k, h) }
   const sadd = (k: string, m: string) => { const s = sets.get(k) ?? new Set<string>(); s.add(m); sets.set(k, s) }
-  const del = (k: string) => { sets.delete(k); store.delete(k) }
+  const del = (...ks: string[]) => { for (const k of ks) { sets.delete(k); store.delete(k) } }
+  const rename = (from: string, to: string) => {
+    const v = sets.get(from)
+    if (v === undefined) throw new Error('ERR no such key') // real RENAME semantics
+    sets.set(to, v)
+    sets.delete(from)
+  }
   return {
     hset: (k: string, f: string, v: string) => { set(k, f, v); return Promise.resolve(1) },
+    del: (...ks: string[]) => { del(...ks); return Promise.resolve(ks.length) },
+    // one page, then the terminating cursor — enough to exercise the orphan sweep
+    scan: (cursor: string) =>
+      Promise.resolve(cursor === '0' ? ['0', [...sets.keys()].filter((k) => /^tenant:.+:devices/.test(k))] : ['0', []]),
     // rehydrate uses a pipeline: a chainable hset/sadd + exec
     pipeline: () => {
       const chain = {
         hset: (k: string, f: string, v: string) => { set(k, f, v); return chain },
         sadd: (k: string, m: string) => { sadd(k, m); return chain },
         del: (k: string) => { del(k); return chain },
+        rename: (a: string, b: string) => { rename(a, b); return chain },
         exec: () => Promise.resolve([]),
       }
       return chain
@@ -112,5 +123,56 @@ describe('rehydrateRegistries', () => {
     const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'p', odometerSource: 'gps' }
     await rehydrateRegistries(fakeRedis(store, sets), fakeDb([], [], [dev], [{ id: 'p', presenceRules: {} }]))
     expect([...(sets.get(tenantDevicesKey(T)) ?? [])]).toEqual(['42'])
+  })
+
+  it('never leaves a live index EMPTY while rebuilding — it builds a scratch key and RENAMEs it', async () => {
+    // `pipeline()` is command batching, not MULTI, and the API is already serving /v1/devices/last
+    // while this runs. A DEL-then-SADD rebuild blanks every tenant's map for the duration, and a
+    // connection blip partway through blanks them until the NEXT successful boot. RENAME is atomic:
+    // the live key is never absent, so the worst a partial failure can do is keep the old contents.
+    const store = new Map<string, Record<string, string>>()
+    const sets = new Map<string, Set<string>>([[tenantDevicesKey(T), new Set(['old'])]])
+    const seen: (string | undefined)[] = []
+    const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'p', odometerSource: 'gps' }
+    const redis = fakeRedis(store, sets)
+    // observe the live key after every pipelined command — it must never be missing or empty
+    const observing = new Proxy(redis, {
+      get(t, prop, r): unknown {
+        const v: unknown = Reflect.get(t, prop, r)
+        if (prop !== 'pipeline') return v
+        return (): unknown => {
+          const chain = (v as () => Record<string, unknown>)()
+          return new Proxy(chain, {
+            get(ct, cp, cr): unknown {
+              const cv: unknown = Reflect.get(ct, cp, cr)
+              if (typeof cv !== 'function') return cv
+              return (...a: unknown[]): unknown => {
+                const out: unknown = (cv as (...x: unknown[]) => unknown).apply(ct, a)
+                seen.push(sets.has(tenantDevicesKey(T)) ? [...sets.get(tenantDevicesKey(T))!].join(',') : undefined)
+                return out === chain ? cr : out
+              }
+            },
+          })
+        }
+      },
+    })
+    await rehydrateRegistries(observing, fakeDb([], [], [dev], [{ id: 'p', presenceRules: {} }]))
+    expect(seen.every((v) => v !== undefined && v !== '')).toBe(true)
+    expect([...(sets.get(tenantDevicesKey(T)) ?? [])]).toEqual(['42'])
+  })
+
+  it('sweeps the index of a tenant whose LAST device is gone, and any scratch key a crash left', async () => {
+    // Such a tenant has no row in listAllForRegistry at all, so the rebuild never visits it — the
+    // one place a stranded member could still outlive every restart.
+    const store = new Map<string, Record<string, string>>()
+    const sets = new Map<string, Set<string>>([
+      [tenantDevicesKey('emptied-tenant'), new Set(['99'])],
+      [`${tenantDevicesKey('crashed-run')}:rebuild`, new Set(['1', '2'])],
+    ])
+    const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'p', odometerSource: 'gps' }
+    await rehydrateRegistries(fakeRedis(store, sets), fakeDb([], [], [dev], [{ id: 'p', presenceRules: {} }]))
+    expect(sets.has(tenantDevicesKey('emptied-tenant'))).toBe(false)
+    expect(sets.has(`${tenantDevicesKey('crashed-run')}:rebuild`)).toBe(false)
+    expect([...(sets.get(tenantDevicesKey(T)) ?? [])]).toEqual(['42']) // the live one is untouched
   })
 })

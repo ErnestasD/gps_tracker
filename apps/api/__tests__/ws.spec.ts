@@ -254,6 +254,27 @@ describe('E02-4 ws-ticket + live gateway', () => {
     }
   })
 
+  it('a malformed frame kills the SOCKET, never the process (an unhandled ws error is fatal to Node)', async () => {
+    // `ws` emits 'error' on any protocol violation, and Node's EventEmitter THROWS
+    // ERR_UNHANDLED_ERROR when nothing listens — so one crafted frame from any holder of a valid
+    // ws-ticket took down every tenant's REST, WS and login at once. The frame below sets RSV1 with
+    // no extension negotiated, which the receiver must reject.
+    const c = await connect(await issueTicket(deps, CTX_TENANT))
+    const closed = new Promise<void>((resolve) => c.ws.on('close', () => resolve()))
+    const sock = (c.ws as unknown as { _socket: { write: (b: Buffer) => void } })._socket
+    sock.write(Buffer.from([0xc1, 0x80, 0x00, 0x00, 0x00, 0x00])) // FIN|RSV1|text, masked, len 0
+    await Promise.race([
+      closed,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('socket survived a bad frame')), 3_000)),
+    ])
+    // the gateway is still serving: a second client connects and receives its feed
+    const survivor = await connect(await issueTicket(deps, CTX_TENANT))
+    await new Promise((r) => setTimeout(r, 100))
+    await redis.publish('live:t1', JSON.stringify({ deviceId: '900', accountId: null, lat: 1, lon: 1 }))
+    expect((await waitForCount(survivor, 1)).length).toBe(1)
+    survivor.ws.close()
+  })
+
   it('terminates a socket that stops answering pings — a half-open TCP link is invisible otherwise', async () => {
     // Without a heartbeat a connection whose peer vanished without a FIN stays readyState OPEN in
     // `subscribers` until the OS keepalive fires (~2 h on Linux): it counts against ws_clients, and

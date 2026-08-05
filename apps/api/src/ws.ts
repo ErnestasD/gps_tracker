@@ -135,6 +135,9 @@ export function attachWsGateway(
   onSlowConsumer?: () => void,
 ): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
+  // same reasoning as the per-socket handler below: an unhandled 'error' on the server object is an
+  // uncaught exception, and this one is not attached to any one tenant's connection
+  wss.on('error', () => undefined)
   const subscribers = new Map<string, Set<{ ws: WebSocket; ctx: WsAuthContext; establishedAt: number }>>()
   let subPromise: Promise<void> | null = null
 
@@ -191,8 +194,9 @@ export function attachWsGateway(
   //
   // TWO missed round trips, not one. At a 30 s interval a single-strike reaper kills any client
   // that stalls for 30 s — a lift, a tunnel, an LTE handover — and the SPA reconnects into a fresh
-  // ticket + upgrade. Two strikes is the conventional 2×-interval tolerance and costs one extra
-  // interval of holding a genuinely dead socket, which nothing depends on.
+  // ticket + upgrade. Two strikes is the conventional 2×-interval tolerance. Because the strike is
+  // counted BEFORE the ping that would clear it, a socket that goes silent is reaped on the third
+  // tick — ~90 s at the default interval, which is the number to size an alert on.
   const strikes = new WeakMap<WebSocket, number>()
   const pingMs = deps.pingIntervalMs ?? 30_000
   const maxBuffered = deps.maxBufferedBytes ?? MAX_WS_BUFFERED_BYTES
@@ -299,6 +303,19 @@ export function attachWsGateway(
       await ensureSubscription()
       wss.handleUpgrade(req, socket, head, (ws) => {
         const entry = { ws, ctx, establishedAt }
+        // A socket with NO 'error' listener is a process killer: `ws` emits 'error' on any protocol
+        // violation (a frame with RSV1 set, a bad mask, an oversized control frame), and Node's
+        // EventEmitter THROWS ERR_UNHANDLED_ERROR when nothing is listening. Any holder of a valid
+        // ws-ticket — i.e. any logged-in user of any tenant — could take the whole API down with one
+        // malformed frame, killing every tenant's REST, WS and login at once. Terminate that socket
+        // and let the rest of the platform carry on.
+        ws.on('error', () => {
+          try {
+            ws.terminate()
+          } catch {
+            /* already gone */
+          }
+        })
         // a fresh socket starts with a clean slate; every pong clears the strikes it accrued
         strikes.set(ws, 0)
         ws.on('pong', () => strikes.set(ws, 0))

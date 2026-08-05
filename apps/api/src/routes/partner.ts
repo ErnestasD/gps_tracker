@@ -27,6 +27,18 @@ export interface PartnerRouteDeps {
   setPwTokenTtlS?: number
   trustProxy: boolean
   getRemoteAddr: (c: unknown) => string
+  /** Login ceilings; each falls back to this module's default. Threaded from env so a partner
+   *  locked out during an incident can be freed without a redeploy — the tenant login already
+   *  had that and the doc comment claimed parity the operability did not have. */
+  loginLimits?: {
+    maxFails?: number
+    maxFailsPerIp?: number
+    maxAttemptsPerIpHard?: number
+    maxFailIpsPerEmail?: number
+  }
+  /** A lockout gate refused a partner login — same counter the tenant login feeds, so the
+   *  `auth_lockout_tripped_total` series is not blind to half the authentication surface. */
+  onLockout?: (gate: 'credential' | 'ip' | 'email') => void
 }
 
 // the affiliate row shape, derived from the repo (avoids importing @prisma/client — rule 2)
@@ -40,19 +52,23 @@ const DEFAULT_SETPW_TTL_S = 24 * 3_600
 const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
 if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return n`
-const LOGIN_RL_MAX = 10 // failed logins per IP+email per window
-// Same abuse ceilings the tenant login carries (audit MED): the (IP, email) key is different for
-// every address tried, so on its own it caps nothing for an attacker willing to vary the email —
-// and it gives each source IP its own budget against one partner account.
-const LOGIN_RL_MAX_IP = 60 // SOFT: past it a wrong password is refused, a correct one still works
-const LOGIN_RL_MAX_IP_HARD = 240 // HARD: past it nothing is verified at all
-const LOGIN_RL_MAX_EMAIL = 30 // failed logins against ONE partner account, from anywhere
+// Defaults for the same three ceilings the tenant login carries (audit MED) — see the long gate
+// note in `auth/login.ts` for why each sits where it does. Overridable per deployment via
+// `PartnerRouteDeps.loginLimits`, so a ceiling can be raised during an incident without a redeploy.
+const LOGIN_RL_MAX = 10 // per (IP, email) attempts, pre-verify
+const LOGIN_RL_MAX_IP = 60 // SOFT: per-IP FAILURES, post-verify — never denies a valid credential
+const LOGIN_RL_MAX_ATTEMPTS_IP_HARD = 2_000 // HARD: per-IP ATTEMPTS, pre-verify — the CPU shed
+const LOGIN_RL_MAX_FAIL_IPS = 30 // DISTINCT source IPs failing against one partner account
 const REDEEM_RL_MAX = 30 // set-password redeem attempts per IP per window
 const RL_WINDOW_S = 3_600
 /** One success repays one failure on the per-IP budget, floored at zero (parity with auth/login). */
 const DECAY_SCRIPT = `local n = tonumber(redis.call('GET', KEYS[1]) or '0')
 if n > 0 then redis.call('DECR', KEYS[1]) end
 return n`
+/** HyperLogLog of source IPs that failed against one account — 12 KB whatever the botnet size. */
+const FAIL_SOURCE_SCRIPT = `redis.call('PFADD', KEYS[1], ARGV[1])
+if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
+return redis.call('PFCOUNT', KEYS[1])`
 
 /** Partner-only auth guard: a valid `typ:'partner'` token → loads the affiliate and requires it to
  *  still be ACTIVE (review MED — so suspending a partner takes effect immediately, not at token TTL,
@@ -84,43 +100,58 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     const parsed = partnerLoginSchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return problem(c, 400, 'Bad Request', 'email and password required')
     const email = parsed.data.email.trim().toLowerCase()
-    // lockout gate BEFORE argon2 (attacker-driven CPU cap, parity with tenant login)
+    // Same three gates, same placement rules, as the tenant login — see the long note in
+    // `auth/login.ts`. Briefly: the per-credential rule is incremented and gated on one atomic
+    // result (a check-then-act gate around argon2 bounds nothing under concurrency); the hard
+    // per-IP ATTEMPT ceiling sheds CPU pre-verify and is never refunded; the soft per-IP FAILURE
+    // ceiling is post-verify so an office is never denied a valid credential; and the account
+    // ceiling counts DISTINCT source IPs, because counting attempts pre-verify would let one host
+    // lock a named partner out of the portal and counting them post-verify would bound nothing.
+    // Affiliate emails are the most public identifiers on the platform.
+    const lim = deps.loginLimits
+    const maxCred = lim?.maxFails ?? LOGIN_RL_MAX
+    const maxFailsIp = lim?.maxFailsPerIp ?? LOGIN_RL_MAX_IP
+    const maxAttemptsIpHard = lim?.maxAttemptsPerIpHard ?? LOGIN_RL_MAX_ATTEMPTS_IP_HARD
+    const maxFailIps = lim?.maxFailIpsPerEmail ?? LOGIN_RL_MAX_FAIL_IPS
     const emailHash = sha256(email).slice(0, 16)
-    const lockKey = `partner:fail:${ip(c)}:${emailHash}`
-    const ipKey = `partner:fail:ip:${ip(c)}`
-    const emailKey = `partner:fail:email:${emailHash}`
-    const tooMany = async (key: string): Promise<Response> => {
+    const src = ip(c)
+    const lockKey = `partner:fail:${src}:${emailHash}`
+    const failIpKey = `partner:fail:ip:${src}`
+    const attemptIpKey = `partner:attempt:ip:${src}`
+    const emailIpsKey = `partner:fail:ips:${emailHash}`
+    const w = String(RL_WINDOW_S)
+    const tooMany = async (key: string, gate: 'credential' | 'ip' | 'email'): Promise<Response> => {
+      deps.onLockout?.(gate)
       const ttl = await deps.redis.ttl(key)
       c.header('Retry-After', String(Math.max(1, ttl)))
       return problem(c, 429, 'Too Many Attempts', 'try again later')
     }
-    // Same gate shape, and the same placement rules, as the tenant login — see the long note in
-    // `auth/login.ts`. The per-credential rule and the HARD per-IP ceiling shed CPU and so come
-    // before argon2; the soft per-IP ceiling and the per-account ceiling are applied only to a wrong
-    // password after the verify, because refusing a correct one would lock a named partner out of
-    // the portal for a full window. Affiliate emails are the most public identifiers we have, and
-    // one IP is a whole office.
-    const preGates: [string, number][] = [[lockKey, LOGIN_RL_MAX], [ipKey, LOGIN_RL_MAX_IP_HARD]]
-    const preCounts = await deps.redis.mget(...preGates.map(([k]) => k))
-    const tripped = preGates.find(([, max], i) => Number(preCounts[i] ?? 0) >= max)
-    if (tripped !== undefined) return tooMany(tripped[0])
+    const pre = await deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).exec()
+    if (Number(pre?.[0]?.[1] ?? 0) >= maxAttemptsIpHard) return tooMany(attemptIpKey, 'ip')
+    if (Number(pre?.[1]?.[1] ?? 0) >= maxFailIps) return tooMany(emailIpsKey, 'email')
+    const [credN] = (await deps.redis
+      .pipeline()
+      .eval(RL_SCRIPT, 1, lockKey, w)
+      .eval(RL_SCRIPT, 1, attemptIpKey, w)
+      .exec()) ?? []
+    if (Number(credN?.[1] ?? 0) > maxCred) return tooMany(lockKey, 'credential')
     const partner = await deps.db.affiliates.findByEmailForAuth(email)
     // constant-ish time: an unknown email / unset password still burns one dummy verify
     const hash = partner?.passwordHash ?? (await DUMMY_HASH_PROMISE)
     const ok = await verifyPassword(hash, parsed.data.password)
     // only an ACTIVE partner with a set password + matching credential may sign in
     if (partner === null || partner.passwordHash === null || !ok || partner.status !== 'active') {
-      const bumped = await Promise.all(
-        [lockKey, ipKey, emailKey].map((k) => deps.redis.eval(RL_SCRIPT, 1, k, String(RL_WINDOW_S))),
-      )
-      // `>` not `>=` — the pre-verify gates read before their own increment (see auth/login.ts)
-      if (Number(bumped[2] ?? 0) > LOGIN_RL_MAX_EMAIL) return tooMany(emailKey)
-      if (Number(bumped[1] ?? 0) > LOGIN_RL_MAX_IP) return tooMany(ipKey)
+      const [failN] = (await deps.redis
+        .pipeline()
+        .eval(RL_SCRIPT, 1, failIpKey, w)
+        .eval(FAIL_SOURCE_SCRIPT, 1, emailIpsKey, src, w)
+        .exec()) ?? []
+      if (Number(failN?.[1] ?? 0) > maxFailsIp) return tooMany(failIpKey, 'ip')
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
-    // identity-scoped counters cleared outright; the per-IP budget only DECAYS by one, so a
-    // successful login cannot refund a whole attack budget while a shared egress still recovers
-    await Promise.all([deps.redis.del(lockKey, emailKey), deps.redis.eval(DECAY_SCRIPT, 1, ipKey)])
+    // the per-credential counter is cleared outright; the per-IP FAILURE budget only DECAYS by one,
+    // and the ATTEMPT counter is untouched — a refundable volume shed sheds nothing
+    await Promise.all([deps.redis.del(lockKey), deps.redis.eval(DECAY_SCRIPT, 1, failIpKey)])
     const token = await mintPartnerToken(partner.id, deps.jwtSecret, ttlS)
     c.header('Cache-Control', 'no-store')
     return c.json({ accessToken: token, expiresInS: ttlS })

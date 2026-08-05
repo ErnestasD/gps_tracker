@@ -65,11 +65,12 @@ export interface AuthRouteDeps {
   lockout: {
     maxFails: number
     windowS: number
-    /** Soft per-IP ceiling: past it a WRONG password is refused, a correct one still signs in. */
+    /** Soft per-IP ceiling on FAILURES: past it a wrong password is refused, a correct one is not. */
     maxFailsPerIp?: number
-    /** Hard per-IP ceiling: past it everything is refused before any argon2 runs. */
-    maxFailsPerIpHard?: number
-    maxFailsPerEmail?: number
+    /** Hard per-IP ceiling on ATTEMPTS (successes included): past it nothing is verified at all. */
+    maxAttemptsPerIpHard?: number
+    /** Distinct source IPs that may fail against ONE account before it is locked for the window. */
+    maxFailIpsPerEmail?: number
   }
   /** A lockout gate refused a request, by which ceiling tripped. A customer locked out of the
    *  product must be visible in Grafana, not merely in their own support ticket. */
@@ -114,6 +115,14 @@ return n`
 const DECAY_SCRIPT = `local n = tonumber(redis.call('GET', KEYS[1]) or '0')
 if n > 0 then redis.call('DECR', KEYS[1]) end
 return n`
+
+// Record a source IP against an account's failure set and keep the window armed. A HyperLogLog, not
+// a SET: an attacker with ten thousand hosts would otherwise write ten thousand members into a key
+// they chose, and 12 KB of fixed memory is the difference between a counter and an amplifier. At the
+// cardinalities that matter here (tens) the sparse encoding is exact.
+const FAIL_SOURCE_SCRIPT = `redis.call('PFADD', KEYS[1], ARGV[1])
+if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
+return redis.call('PFCOUNT', KEYS[1])`
 
 // forgot-password rate limit (ADR-031): max reset requests per IP+email per window. Generous enough
 // for a real user retrying, tight enough that the send path can't mail-bomb or probe for accounts.
@@ -196,49 +205,62 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     // open (audit MED) — but they do NOT all gate at the same point, and that distinction is the
     // whole design:
     //
-    //  - per (IP, email) — the documented §6.1 rule, checked BEFORE any DB/argon2 work.
-    //  - per IP, in TWO tiers. The (IP,email) key is DIFFERENT for every email, so one host could
-    //    send unlimited attempts simply by varying the address, and every one of them burned a full
-    //    argon2id verify against the shared 8-slot semaphore that every login on the platform
-    //    queues on. But one IP is not one person: a corporate NAT or a carrier CGNAT is hundreds of
-    //    people behind one address, and a single pre-verify ceiling locks all of them out — with no
-    //    way back, because the successful login that would repay the budget is refused by the very
-    //    gate it would clear. So the SOFT ceiling refuses only wrong passwords (post-verify): the
-    //    office keeps working, guessing does not. The HARD ceiling, several times higher, refuses
-    //    everything before any argon2 runs — past that volume an address is indistinguishable from
-    //    an attack and shedding CPU has to win.
-    //  - per ACCOUNT, checked only AFTER the password was verified, and only on the FAILURE path.
-    //    Credential stuffing got `maxFails` free attempts PER SOURCE IP with no account ceiling, so
-    //    N hosts bought 5N guesses at one victim. A ceiling fixes that — but a ceiling placed
-    //    BEFORE the verify is an account-lockout weapon: anyone who knows an email (they are
-    //    enumerable — admins, support addresses) could deny that account for a full window from a
-    //    single host, and the owner's own correct password would be refused. That trades a guessing
-    //    risk for an availability attack on a named customer, which is worse. Placed after the
-    //    verify it still bounds GUESSING absolutely (every wrong password past the ceiling is 429,
-    //    so no attacker learns anything) while the account owner is never locked out of their own
-    //    product. The CPU an attacker can burn this way stays bounded by the per-IP gate above.
+    //  - per (IP, email) at `maxFails` — the documented §6.1 rule. INCREMENTED BEFORE the verify
+    //    and gated on the returned count, not read-then-written around a ~120 ms argon2 call: with
+    //    a check-then-act gate every concurrent request reads the same pre-increment value, so the
+    //    real bound was the argon2 admission queue (8 running + 64 waiting = 72 per replica), not
+    //    five. It is deleted on success, so a legitimate user is never affected by counting
+    //    attempts rather than failures.
+    //  - per IP, in TWO tiers, on TWO different keys. One IP is not one person: a corporate NAT or
+    //    a carrier CGNAT is hundreds of people behind one address. The SOFT ceiling counts FAILURES
+    //    (`auth:fail:ip:`), decays by one per success, and is applied post-verify — so guessing
+    //    from that address stops while the office keeps working. The HARD ceiling counts EVERY
+    //    ATTEMPT (`auth:attempt:ip:`), never decays, and is applied pre-verify: it is the CPU shed,
+    //    and it must not be refundable. Sharing one key made it exactly that — one free signup, and
+    //    an attacker who interleaved a login to their own account held the counter near zero
+    //    forever, buying unlimited argon2 from a single address.
+    //  - per ACCOUNT, counted as DISTINCT SOURCE IPs that have failed against it, pre-verify.
+    //    Counting failed ATTEMPTS instead does not work, in either placement. Pre-verify it is an
+    //    account-lockout weapon: emails are enumerable (admins, support addresses, and every
+    //    affiliate address is published), so ~20 wrong guesses from ONE host denied any named
+    //    customer their own product for a full window. Post-verify it bounds nothing at all: the
+    //    check only runs on the failure path, so a CORRECT password sails through and the
+    //    attacker's oracle — 200 means right, anything else means wrong — is untouched; it merely
+    //    relabels a wrong guess from 401 to 429 while argon2 still runs on every attempt.
+    //    Distinct IPs is the axis the threat actually lives on: a real user fails from one or two
+    //    addresses, distributed stuffing needs many. This IS a lockout — the owner cannot sign in
+    //    while it holds — and that is a deliberate, metered trade-off: it takes a botnet of
+    //    `maxFailIpsPerEmail` distinct hosts to trigger, which is precisely the case where refusing
+    //    everyone is the correct answer, and the ceiling is env-tunable so it can be raised live.
     const emailHash = sha256(email).slice(0, 16)
     const lockKey = `auth:fail:${ip}:${emailHash}`
-    const ipKey = `auth:fail:ip:${ip}`
-    const emailKey = `auth:fail:email:${emailHash}`
-    const maxPerEmail = deps.lockout.maxFailsPerEmail ?? deps.lockout.maxFails * 4
+    const failIpKey = `auth:fail:ip:${ip}`
+    const attemptIpKey = `auth:attempt:ip:${ip}`
+    const emailIpsKey = `auth:fail:ips:${emailHash}` // HyperLogLog: bounded 12 KB whatever the botnet size
+    const maxFailIpsPerEmail = deps.lockout.maxFailIpsPerEmail ?? 30
     const maxPerIp = deps.lockout.maxFailsPerIp ?? deps.lockout.maxFails * 10
-    const maxPerIpHard = deps.lockout.maxFailsPerIpHard ?? maxPerIp * 4
-    const preGates: [string, number][] = [
-      [lockKey, deps.lockout.maxFails],
-      [ipKey, maxPerIpHard],
-    ]
-    const tooMany = async (key: string): Promise<Response> => {
+    const maxAttemptsPerIpHard = deps.lockout.maxAttemptsPerIpHard ?? maxPerIp * 20
+    const windowS = String(deps.lockout.windowS)
+    const tooMany = async (key: string, gate: 'credential' | 'ip' | 'email'): Promise<Response> => {
+      deps.onLockout?.(gate)
       const ttl = await deps.redis.ttl(key)
       c.header('Retry-After', String(Math.max(1, ttl)))
       return problem(c, 429, 'Too Many Attempts', 'try again later')
     }
-    const preCounts = await deps.redis.mget(...preGates.map(([k]) => k))
-    const tripped = preGates.find(([, max], i) => Number(preCounts[i] ?? 0) >= max)
-    if (tripped !== undefined) {
-      deps.onLockout?.(tripped[0] === ipKey ? 'ip' : 'credential')
-      return tooMany(tripped[0])
-    }
+
+    // read-only pre-checks first: a request refused here costs one pipeline and no argon2, and must
+    // not add to the very counters that refused it (that would extend a lockout for free)
+    const pre = await deps.redis.pipeline().get(attemptIpKey).pfcount(emailIpsKey).exec()
+    if (Number(pre?.[0]?.[1] ?? 0) >= maxAttemptsPerIpHard) return tooMany(attemptIpKey, 'ip')
+    if (Number(pre?.[1]?.[1] ?? 0) >= maxFailIpsPerEmail) return tooMany(emailIpsKey, 'email')
+
+    // then the per-credential rule, incremented and gated on the SAME atomic result
+    const [credN] = (await deps.redis
+      .pipeline()
+      .eval(LOCKOUT_SCRIPT, 1, lockKey, windowS)
+      .eval(LOCKOUT_SCRIPT, 1, attemptIpKey, windowS)
+      .exec()) ?? []
+    if (Number(credN?.[1] ?? 0) > deps.lockout.maxFails) return tooMany(lockKey, 'credential')
 
     // verify against ALL candidates, no short-circuit; unknown email burns one
     // dummy verify — response timing must not reveal email existence
@@ -253,23 +275,16 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     }
 
     if (verified.length === 0) {
-      // atomic INCR + (re-armed) EXPIRE — never strands a TTL-less key (review LOW-2)
-      const bumped = await Promise.all(
-        [lockKey, ipKey, emailKey].map((k) => deps.redis.eval(LOCKOUT_SCRIPT, 1, k, String(deps.lockout.windowS))),
-      )
-      // The soft per-IP ceiling and the account ceiling are applied HERE, to a wrong password only
-      // — see the gate note above. `>` not `>=`: the pre-verify gates read the counter BEFORE their
-      // own increment, so they allow exactly `max` failures and refuse the next attempt; comparing
-      // a post-increment count with `>=` would trip one attempt earlier and make the ceilings mean
-      // different things.
-      if (Number(bumped[2] ?? 0) > maxPerEmail) {
-        deps.onLockout?.('email')
-        return tooMany(emailKey)
-      }
-      if (Number(bumped[1] ?? 0) > maxPerIp) {
-        deps.onLockout?.('ip')
-        return tooMany(ipKey)
-      }
+      // atomic INCR + (re-armed) EXPIRE — never strands a TTL-less key (review LOW-2). PFADD marks
+      // this source against the account; its TTL is re-armed the same way for the same reason.
+      const [failN] = (await deps.redis
+        .pipeline()
+        .eval(LOCKOUT_SCRIPT, 1, failIpKey, windowS)
+        .eval(FAIL_SOURCE_SCRIPT, 1, emailIpsKey, ip, windowS)
+        .exec()) ?? []
+      // the SOFT per-IP ceiling is applied HERE, to a wrong password only, so a shared egress is
+      // never denied a valid credential. `>` not `>=`: it allows exactly `max` failures.
+      if (Number(failN?.[1] ?? 0) > maxPerIp) return tooMany(failIpKey, 'ip')
       return problem(c, 401, 'Unauthorized', 'invalid credentials')
     }
     if (verified.length > 1) {
@@ -279,12 +294,13 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       return problem(c, 409, 'Ambiguous Identity', 'contact your administrator', 'https://orbetra.dev/problems/ambiguous-identity')
     }
 
-    // Success clears the identity-scoped counters outright. The per-IP one is only DECREMENTED:
-    // clearing it would let an attacker refund their whole budget by interleaving one login to an
-    // account they control, while never decaying it punishes a shared egress — a corporate NAT or a
-    // carrier CGNAT is one address for hundreds of people, and nothing they did could clear it. One
-    // failure costs one success to undo, which decays honest traffic and buys an attacker nothing.
-    await Promise.all([deps.redis.del(lockKey, emailKey), deps.redis.eval(DECAY_SCRIPT, 1, ipKey)])
+    // Success clears the per-credential counter outright. The per-IP FAILURE budget is only
+    // DECREMENTED: clearing it would let an attacker refund it by interleaving one login to an
+    // account they control, while never decaying it punishes a shared egress. One failure costs one
+    // success to undo. The per-IP ATTEMPT counter is deliberately untouched — it is a volume shed,
+    // and a refundable volume shed sheds nothing. The account's distinct-IP set is also untouched:
+    // an attack in progress is not over because one person got in.
+    await Promise.all([deps.redis.del(lockKey), deps.redis.eval(DECAY_SCRIPT, 1, failIpKey)])
     const user = verified[0]!
     const { session, rawRefresh } = await issueSession(user, randomUUID())
     setRefreshCookie(c, rawRefresh)

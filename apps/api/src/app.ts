@@ -49,14 +49,17 @@ export interface ApiDeps extends WsDeps {
   lockout: {
     maxFails: number
     windowS: number
-    /** Soft per-IP ceiling: past it a WRONG password is refused, a correct one still signs in. */
+    /** Soft per-IP ceiling on FAILURES: past it a wrong password is refused, a correct one is not. */
     maxFailsPerIp?: number
-    /** Hard per-IP ceiling: past it everything is refused before any argon2 runs. */
-    maxFailsPerIpHard?: number
-    maxFailsPerEmail?: number
+    /** Hard per-IP ceiling on ATTEMPTS (successes included): past it nothing is verified at all. */
+    maxAttemptsPerIpHard?: number
+    /** Distinct source IPs that may fail against ONE account before it is locked for the window. */
+    maxFailIpsPerEmail?: number
   }
   /** A lockout gate refused a login, by which ceiling tripped (see `auth/login.ts`). */
   onLockout?: (gate: 'credential' | 'ip' | 'email') => void
+  /** Partner-portal login ceilings; each falls back to the partner module's default. */
+  partnerLoginLimits?: { maxFails?: number; maxFailsPerIp?: number; maxAttemptsPerIpHard?: number; maxFailIpsPerEmail?: number }
   secureCookies: boolean
   trustProxy: boolean
   /** Remote socket address resolver (Node server adapter specific; tests inject). */
@@ -330,7 +333,17 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // PARTNER (affiliate) self-service (F5) — a SEPARATE auth surface, mounted before the tenant /v1/*
   // guard: login/set-password are public, me/commissions carry their OWN partner-token guard. A
   // partner is never a tenant user, so the tenant middleware must not see these. Manifest-EXEMPT.
-  app.route('/', createPartnerRoutes({ db: deps.db, redis: deps.redis, jwtSecret: deps.jwtSecret, trustProxy: deps.trustProxy, getRemoteAddr }))
+  app.route('/', createPartnerRoutes({
+    db: deps.db,
+    redis: deps.redis,
+    jwtSecret: deps.jwtSecret,
+    trustProxy: deps.trustProxy,
+    getRemoteAddr,
+    // the partner portal shares the tenant login's ceilings and its lockout counter — one
+    // authentication surface should not be invisible in Grafana because it lives in another file
+    loginLimits: deps.partnerLoginLimits,
+    onLockout: deps.onLockout,
+  }))
 
   const apiKeyAuth = createApiKeyAuth({ apiKeys: deps.db.apiKeys, redis: deps.redis, perMin: deps.apiKeyRateLimitPerMin ?? 600 })
   // REST-API access is a TSP-plus entitlement — reject a resolved key whose tenant lacks apiAccess
