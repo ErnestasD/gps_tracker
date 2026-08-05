@@ -154,6 +154,24 @@ export class TripEngine {
     return out
   }
 
+  /**
+   * Re-arm a reconcile signal for `deviceId` from `from` (keeping the EARLIEST time already
+   * pending, so a wider window always wins).
+   *
+   * Two callers, both compensating for something that was lost rather than something that arrived
+   * late (audit MED):
+   *  - `takeLate()` CLEARS the set, so if the enqueue that follows it throws, the signal is gone and
+   *    nothing ever reconciles that window. Putting it back makes the drain retry-safe.
+   *  - a trip-persist failure drops the batch's CLOSE events entirely. The positions behind them are
+   *    already durable (I1/I3), so a recompute rebuilds those trips exactly — but only if something
+   *    asks for one, and nothing did.
+   */
+  markLate(deviceId: bigint, from: Date): void {
+    const key = deviceId.toString()
+    const prev = this.late.get(key)
+    if (prev === undefined || from < prev) this.late.set(key, from)
+  }
+
   /** True while a device has an unclosed trip (used by the worker to persist open rows). */
   hasOpenTrip(deviceId: bigint): boolean {
     return this.state.get(deviceId.toString())?.phase === 'moving'

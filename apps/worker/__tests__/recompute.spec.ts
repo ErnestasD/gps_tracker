@@ -214,6 +214,43 @@ describe('E04-2 trip recompute (idempotent, §6.4)', () => {
     expect((rows.rows[0] as { n: number }).n).toBe(1) // the open row survived recompute
   })
 
+  it('a trip CLOSED by streaming mid-job is not erased — the delete is keyed on ids read with the source', async () => {
+    // REGRESSION (audit MED). The DELETE was a time range with `status='closed'` re-evaluated at
+    // DELETE time, so a trip the streaming persister closed between the source read and the
+    // transaction was wiped — and it could not be rebuilt, because the rebuild only knows about the
+    // events its own positions produced. Silent data loss on an ordinary interleaving, with the job
+    // reporting success. Simulated here by inserting the closed row AFTER recompute has read.
+    await insert(trip(0, 54.0))
+    await recomputeTrips(pool, DEV, at(-10), at(400), SCOPE) // a closed trip now exists to replace
+    const realConnect = pool.connect.bind(pool)
+    let injected = false
+    const racingPool = new Proxy(pool, {
+      get(t, prop) {
+        // bind to the REAL pool: pool.query() acquires its own client internally, and letting that
+        // call re-enter this proxy's `connect` deadlocks the test rather than testing anything
+        if (prop !== 'connect') {
+          const v: unknown = Reflect.get(t, prop)
+          return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v
+        }
+        return async () => {
+          if (!injected) {
+            injected = true
+            // streaming closes a DIFFERENT trip, inside the same core span, right now
+            await pool.query(
+              `INSERT INTO trips ("tenantId","accountId","deviceId","status","startTime","endTime","startLat","startLon","distanceM","distanceSource","maxSpeed","idleS")
+               VALUES ($1,$2,$3,'closed',$4,$5,54.9,25,1234,'gps',60,0)`,
+              [SCOPE.tenantId, SCOPE.accountId, DEV.toString(), at(200), at(260)],
+            )
+          }
+          return realConnect()
+        }
+      },
+    })
+    await recomputeTrips(racingPool, DEV, at(-10), at(400), SCOPE)
+    const survivors = await pool.query(`SELECT count(*)::int AS n FROM trips WHERE "deviceId"=$1 AND "startTime"=$2`, [DEV.toString(), at(200)])
+    expect((survivors.rows[0] as { n: number }).n).toBe(1) // the mid-job close SURVIVED
+  })
+
   it('window expansion: a mid-trip window expands to the existing trip and never bisects it', async () => {
     await insert(trip(0, 54.0))
     await recomputeTrips(pool, DEV, at(-10), at(400), SCOPE) // trip now exists

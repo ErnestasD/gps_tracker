@@ -21,6 +21,19 @@ const CLAIM_TTL_S = 86_400
  */
 const CLAIM = { attempting: 'attempting', sent: 'sent', ambiguous: 'ambiguous' } as const
 
+/**
+ * The `sent` claim carries the provider's message id: `sent:<sid>`. Without it, a redelivery could
+ * only reconcile the row's STATUS and the sid — the one identifier that ties our row to a line on
+ * the Twilio invoice — was lost for good. Reads tolerate the bare `sent` written by older builds.
+ */
+const sentClaim = (providerMessageId: string): string => `${CLAIM.sent}:${providerMessageId}`
+const parseSent = (raw: string | null): { sent: boolean; providerMessageId: string | null } =>
+  raw === CLAIM.sent
+    ? { sent: true, providerMessageId: null }
+    : raw !== null && raw.startsWith(`${CLAIM.sent}:`)
+      ? { sent: true, providerMessageId: raw.slice(CLAIM.sent.length + 1) }
+      : { sent: false, providerMessageId: null }
+
 export interface SmsWorkerDeps {
   connection: ConnectionOptions
   pool: Pool
@@ -43,9 +56,16 @@ async function markSent(pool: Pool, smsDeliveryId: string, providerMessageId: st
 async function markFailed(pool: Pool, smsDeliveryId: string, error: string): Promise<void> {
   await pool.query('UPDATE sms_deliveries SET status = $1, error = $2 WHERE id = $3', ['failed', error, smsDeliveryId])
 }
-/** Reconcile a redelivered (proven-sent) job to 'sent' without touching the provider id. */
-async function reconcileSent(pool: Pool, smsDeliveryId: string): Promise<void> {
-  await pool.query('UPDATE sms_deliveries SET status = $1 WHERE id = $2', ['sent', smsDeliveryId])
+/**
+ * Reconcile a redelivered (proven-sent) job to 'sent'. Restores the provider id when the claim
+ * carries one — COALESCE so a claim written by an older build (bare `sent`, no sid) still reconciles
+ * the status without clearing a sid the first attempt may have managed to write.
+ */
+async function reconcileSent(pool: Pool, smsDeliveryId: string, providerMessageId: string | null): Promise<void> {
+  await pool.query(
+    'UPDATE sms_deliveries SET status = $1, "providerMessageId" = COALESCE($2, "providerMessageId"), "sentAt" = COALESCE("sentAt", now()), error = NULL WHERE id = $3',
+    ['sent', providerMessageId, smsDeliveryId],
+  )
 }
 
 /**
@@ -77,18 +97,15 @@ export async function runSms(deps: SmsWorkerDeps, job: Job<SmsJob>): Promise<voi
     // Only a proven 'sent' reconciles the row to sent; every other state (attempting = crashed
     // mid-flight, ambiguous = unconfirmed send) marks failed without touching the provider.
     const state = await deps.redis.get(key)
-    if (state === CLAIM.sent) await reconcileSent(deps.pool, smsDeliveryId)
+    const prior = parseSent(state)
+    if (prior.sent) await reconcileSent(deps.pool, smsDeliveryId, prior.providerMessageId)
     else await markFailed(deps.pool, smsDeliveryId, `not resent (prior attempt: ${state ?? 'expired'})`)
     return
   }
 
+  let providerMessageId: string
   try {
-    const { providerMessageId } = await deps.driver.send(to, body)
-    // record the (charged) send in the claim BEFORE the DB write, so a crash here still reconciles
-    // the row to 'sent' on redelivery rather than losing the fact of the charge
-    await deps.redis.set(key, CLAIM.sent, 'EX', CLAIM_TTL_S)
-    await markSent(deps.pool, smsDeliveryId, providerMessageId)
-    deps.onSent?.()
+    ;({ providerMessageId } = await deps.driver.send(to, body))
   } catch (err) {
     const message = err instanceof Error ? err.message : 'sms send failed'
     // A response-bearing SmsSendError (status >= 400) proves the provider saw the request and did
@@ -107,7 +124,24 @@ export async function runSms(deps: SmsWorkerDeps, job: Job<SmsJob>): Promise<voi
     await deps.redis.set(key, CLAIM.ambiguous, 'EX', CLAIM_TTL_S)
     await markFailed(deps.pool, smsDeliveryId, `ambiguous (not resent): ${message}`)
     deps.onFailed?.()
+    return
   }
+
+  // ── from here the provider ACCEPTED the message and we are charged ────────────────────────────
+  // The DB write is OUTSIDE the send's try on purpose (audit MED). It used to sit inside it, so an
+  // ordinary pg error — a container restart, a failover, a killed backend, a statement timeout —
+  // fell through to the ambiguous branch and did two wrong things at once: it OVERWROTE the `sent`
+  // claim (the only durable proof of the charge) with `ambiguous`, and it marked a delivered message
+  // `failed` while discarding the provider id. The design's own recovery seam then became
+  // unreachable, and its documented remedy — "an operator resends via a new delivery" — was exactly
+  // the wrong action: the message was definitely delivered and definitely charged. A hard crash
+  // preserved the evidence; a thrown error erased it.
+  //
+  // Now the claim records the sid, and a DB failure THROWS: BullMQ retries, the redelivery path sees
+  // `sent:<sid>` and reconciles the row without touching the provider.
+  await deps.redis.set(key, sentClaim(providerMessageId), 'EX', CLAIM_TTL_S)
+  await markSent(deps.pool, smsDeliveryId, providerMessageId)
+  deps.onSent?.()
 }
 
 /** BullMQ worker sending queued SMS. concurrency 4 (I/O-bound provider HTTP). Caller closes on drain. */

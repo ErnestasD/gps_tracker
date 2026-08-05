@@ -384,9 +384,20 @@ async function main(): Promise<void> {
             insideFor,
           )
           if (tripEvents.length > 0) {
-            const { opened, closed } = await tripPersister.apply(tripEvents)
-            prom.tripsOpened.inc(opened)
-            prom.tripsClosed.inc(closed)
+            try {
+              const { opened, closed } = await tripPersister.apply(tripEvents)
+              prom.tripsOpened.inc(opened)
+              prom.tripsClosed.inc(closed)
+            } catch (err) {
+              // The engine has already emitted these events and dropped the trips from memory, so a
+              // swallowed failure loses every CLOSE in the batch with nothing to notice — the trips
+              // are simply absent from history (audit MED). The positions behind them ARE durable
+              // (I1/I3), so re-arm a reconcile signal per device and let recompute rebuild them
+              // authoritatively; the loop below turns these into jobs in this same batch.
+              for (const ev of tripEvents) motionFeed.tripEngine.markLate(ev.deviceId, ev.startTime)
+              prom.tripPersistErrors.inc()
+              console.error('tripPersist', err)
+            }
           }
           if (transitions.length > 0) {
             // persist() dedups a redelivered/replayed crossing and returns ONLY the freshly-written
@@ -497,6 +508,9 @@ async function main(): Promise<void> {
                 await enqueueRecompute(recomputeQueue, deviceId, from, settledTo)
               }
             } catch (e) {
+              // takeLate() already CLEARED the signal, so dropping it here means nothing ever
+              // reconciles that window. Put it back for the next batch (audit MED).
+              motionFeed.tripEngine.markLate(deviceId, from)
               prom.tripPersistErrors.inc()
               console.error('enqueueRecompute', e)
             }

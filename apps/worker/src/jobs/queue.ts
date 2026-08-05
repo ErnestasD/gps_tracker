@@ -44,7 +44,12 @@ export async function enqueueRecompute(
   to: Date,
   opts: { delayMs?: number } = {},
 ): Promise<void> {
-  const bucket = from.toISOString().slice(0, 13) // yyyy-mm-ddThh
+  // Bucket BOTH edges. Keying on `from`'s hour alone silently discarded a genuinely WIDER
+  // reconciliation: a narrow job enqueued first owns the id, and the later request covering more
+  // history is dropped as a duplicate — so the window that actually needed rebuilding never was
+  // (audit MED). Identical windows, which is what a burst of late records from one device
+  // produces, still collapse to one job.
+  const bucket = `${from.toISOString().slice(0, 13)}-${to.toISOString().slice(0, 13)}` // yyyy-mm-ddThh ×2
   await queue.add(
     'recompute',
     { deviceId: deviceId.toString(), from: from.toISOString(), to: to.toISOString() },

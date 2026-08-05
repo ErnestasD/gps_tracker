@@ -317,6 +317,22 @@ describe('E04-1 trip state machine (§6.4)', () => {
     expect(engine.takeLate()).toHaveLength(0) // drained
   })
 
+  it('markLate re-arms a drained signal, keeping the EARLIEST time — the drain must be retry-safe', () => {
+    // `takeLate()` CLEARS the set, so the enqueue that follows it is the only thing standing between
+    // a late record and its reconciliation. If that enqueue throws, or the trip persist that should
+    // have written the batch's CLOSE events throws, the signal has to come back — otherwise nothing
+    // ever rebuilds that window and the trips are simply missing from history (audit MED).
+    const engine = new TripEngine()
+    engine.feed([rec(1000, { ign: true, mov: true, speed: 8, lat: 54 })])
+    engine.feed([rec(500, { ign: true, mov: true, speed: 8, lat: 54 })])
+    expect(engine.takeLate()).toHaveLength(1)
+
+    engine.markLate(DEV, new Date(T0 + 900 * 1000))
+    engine.markLate(DEV, new Date(T0 + 300 * 1000)) // earlier wins — a wider window is always safe
+    engine.markLate(DEV, new Date(T0 + 800 * 1000)) // later does not move it back
+    expect(engine.takeLate()).toEqual([{ deviceId: DEV, from: new Date(T0 + 300 * 1000) }])
+  })
+
   it('E04-5 per-device thresholds: a noIgnition (asset) device opens on speed alone, a default device does not', () => {
     const asset: DeviceTripConfig = { thresholds: { ...DEFAULT_THRESHOLDS, noIgnition: true, moveSpeedKmh: 3 }, odometerSource: 'auto' }
     const configFor = (id: bigint): DeviceTripConfig | undefined => (id === 1n ? asset : undefined)
