@@ -12,6 +12,9 @@ import { RETENTION_QUEUE } from './retentionQueue.js'
  * Two tables:
  *  - `webhook_deliveries` — a pure operational record (never billing/compliance evidence), so a
  *    rolling window is safe.
+ *  - `billing_events` — the applied-Stripe-event ledger that makes webhook redelivery suppression
+ *    durable. Stripe retries a failed delivery for ~3 days, so a row past 90 days can never dedupe
+ *    anything; without a sweep it is an append-only table on the billing path.
  *  - `raw_rejects` — §3.6 sanity failures, now that a drain actually writes them. Without a sweep
  *    the drain would trade a self-trimming 100k Redis stream for a permanently growing Postgres
  *    table of IMEIs and raw AVL bytes, and those bytes embed lat/lon (§3.4) — personal data the
@@ -24,7 +27,7 @@ export interface RetentionWorkerDeps {
   retentionDays: number
   /** window for `raw_rejects` (default 90). Diagnostics, not evidence — see the note above. */
   rejectRetentionDays?: number
-  onPruned?: (table: 'webhook_deliveries' | 'raw_rejects', rows: number) => void
+  onPruned?: (table: 'webhook_deliveries' | 'raw_rejects' | 'billing_events', rows: number) => void
   onFailed?: () => void
 }
 
@@ -35,7 +38,7 @@ export async function runRetentionSweep(
   retentionDays: number,
   nowMs: number,
   rejectRetentionDays = 90,
-  onPruned?: (table: 'webhook_deliveries' | 'raw_rejects', rows: number) => void,
+  onPruned?: (table: 'webhook_deliveries' | 'raw_rejects' | 'billing_events', rows: number) => void,
 ): Promise<number> {
   const days = Number.isFinite(retentionDays) ? Math.max(1, retentionDays) : 30
   const cutoff = new Date(nowMs - days * 24 * 3_600_000)
@@ -45,15 +48,23 @@ export async function runRetentionSweep(
   // `onPruned` entirely, so rows the OTHER prune had already deleted were never counted — and they
   // are gone, so no later run can count them. The per-table label is also the only evidence that the
   // raw_rejects horizon is real; one summed number cannot show whether that prune ever ran.
-  const [deliveries, rejects] = await Promise.allSettled([
+  const [deliveries, rejects, billing] = await Promise.allSettled([
     db.webhookDeliveries.pruneOlderThan(cutoff),
     db.rawRejects.pruneOlderThan(rejectCutoff),
+    // the same 90-day diagnostic horizon: 30× Stripe's retry window, so pruning can never resurrect
+    // a redelivery the ledger is there to suppress
+    db.tenants.pruneBillingEvents(rejectCutoff),
   ])
   if (deliveries.status === 'fulfilled') onPruned?.('webhook_deliveries', deliveries.value)
   if (rejects.status === 'fulfilled') onPruned?.('raw_rejects', rejects.value)
-  const failure = [deliveries, rejects].find((r) => r.status === 'rejected')
+  if (billing.status === 'fulfilled') onPruned?.('billing_events', billing.value)
+  const failure = [deliveries, rejects, billing].find((r) => r.status === 'rejected')
   if (failure?.status === 'rejected') throw failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason))
-  return (deliveries.status === 'fulfilled' ? deliveries.value : 0) + (rejects.status === 'fulfilled' ? rejects.value : 0)
+  return (
+    (deliveries.status === 'fulfilled' ? deliveries.value : 0) +
+    (rejects.status === 'fulfilled' ? rejects.value : 0) +
+    (billing.status === 'fulfilled' ? billing.value : 0)
+  )
 }
 
 /** BullMQ worker running the daily retention sweep. Caller must close() on shutdown. */

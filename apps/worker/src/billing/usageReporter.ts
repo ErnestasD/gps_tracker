@@ -112,13 +112,14 @@ export function meterTimestampS(dayIso: string): number {
  * difference. The meter is additive, so submitting the delta converges: a day reported at 4 devices
  * that later grows to 6 gets a +2 event, and a day already correct gets nothing.
  *
- * IDEMPOTENCY. The identifier carries the previously-reported value, so a retry of the SAME delta
- * reuses the SAME identifier (Stripe dedupes it) while a genuinely new delta gets a new one. The
- * residual gap: if Stripe accepts and the `usage_reports` write then fails, the next run re-submits
- * the identical identifier — a no-op inside Stripe's 24 h dedupe window, which every schedule of this
- * job falls inside. A day whose overage DROPS (a device removed retroactively) is never negative-
- * adjusted: meter events cannot go down, so the log keeps the high-water mark and the next real
- * increase is measured from it rather than double-billed.
+ * IDEMPOTENCY. The identifier carries BOTH ends of the delta (`{prev}-{over}`), so a retry of the
+ * SAME delta reuses the SAME identifier and Stripe dedupes it, while a retry that found MORE usage
+ * gets a new one and is not swallowed. The residual gap: if Stripe accepts and the `usage_reports`
+ * write then fails, the next run re-submits the identical identifier — a no-op inside Stripe's 24 h
+ * dedupe window, which is why the job ticks every 12 h rather than sitting on that boundary.
+ * A day whose overage DROPS (a device removed retroactively) is never negative-adjusted: meter events
+ * cannot go down, so the log keeps the high-water mark and the next real increase is measured from it
+ * rather than double-billed. A day whose ALLOWANCE changed is left exactly as billed — see the loop.
  */
 export async function reportDailyOverage(
   deps: UsageReporterDeps,
@@ -126,10 +127,12 @@ export async function reportDailyOverage(
   opts: { timestampFor?: (dayIso: string) => number } = {},
 ): Promise<OverageRunResult> {
   const timestampFor = opts.timestampFor ?? meterTimestampS
-  const subs = await deps.db.tenants.listActiveSubscribers()
   const window = days.slice().sort()
   const from = window[0]
   const to = window[window.length - 1]
+  // include tenants that lapsed INSIDE the window: they still owe the days they were billable for,
+  // and enumerating only the currently-billable ones dropped exactly those days
+  const subs = from === undefined ? [] : await deps.db.tenants.listActiveSubscribers(new Date(`${from}T00:00:00Z`))
   const out: OverageRunResult = { subscribers: subs.length, reported: 0, devicesOver: 0, backfilled: 0, unmappedPrices: 0 }
   if (from === undefined || to === undefined) return out
   let failures = 0
@@ -138,18 +141,22 @@ export async function reportDailyOverage(
     // every remaining tenant unbilled (review MED). Collect failures and rethrow at the end so
     // BullMQ retries — the report log makes the re-run a no-op for tenants already reported.
     try {
-      if (s.subscriptionPriceId === null) continue
-      const included = deps.stripe.includedFor(s.subscriptionPriceId)
+      const included = s.subscriptionPriceId === null ? undefined : deps.stripe.includedFor(s.subscriptionPriceId)
       if (included === undefined) {
         // A DIRECT plan has no included count by design — flat price, no metered overage. A TSP plan
         // without one is a MISCONFIGURATION: STRIPE_INCLUDED is hand-maintained env, so adding a
         // price in Stripe and forgetting the env entry silently billed every device on that plan as
         // included, forever, with no error anywhere (audit MED #23). The job must not throw — that
         // would leave every OTHER tenant unbilled too — so it is counted and alerted on instead.
+        //
+        // The NULL price counts too, and is checked here rather than skipped earlier: a sales-led TSP
+        // tenant whose price is outside STRIPE_PRICES never gets one written (the webhook refuses to
+        // null out a good plan, so it stays null forever), and `tsp_enterprise` has no catalog price
+        // at all. Skipping those first was the same silent zero-bill wearing a different mask.
         if (s.plan.startsWith('tsp_')) {
           out.unmappedPrices++
-          deps.onUnmappedPrice?.({ tenantId: s.tenantId, priceId: s.subscriptionPriceId, plan: s.plan })
-          console.error('stripe overage: TSP price missing from STRIPE_INCLUDED — overage NOT billed', s.subscriptionPriceId, 'tenant', s.tenantId)
+          deps.onUnmappedPrice?.({ tenantId: s.tenantId, priceId: s.subscriptionPriceId ?? '(none)', plan: s.plan })
+          console.error('stripe overage: TSP price missing from STRIPE_INCLUDED — overage NOT billed', s.subscriptionPriceId ?? '(no price on the tenant)', 'tenant', s.tenantId)
         }
         continue
       }
@@ -160,20 +167,36 @@ export async function reportDailyOverage(
         deps.db.usage.reportedOverage(s.tenantId, { from, to }),
       ])
       const byDay = new Map(usage.map((r) => [r.day, r.deviceDays]))
+      const lapsedDay = s.billableUntil === null ? null : s.billableUntil.toISOString().slice(0, 10)
       for (const day of window) {
+        // a lapsed tenant owes the days up to and including the one it lapsed on, and nothing after
+        if (lapsedDay !== null && day > lapsedDay) continue
+        const prior = already.get(day)
+        // The allowance is a property of the plan AT THE TIME. Recomputing a day against a DIFFERENT
+        // one is how a downgrade (750 included → 200) turns last week's settled days into hundreds of
+        // device-days of overage the customer's plan actually covered. The stored value is the only
+        // record of what was in force, so a day whose allowance has changed is left exactly as billed.
+        if (prior !== undefined && prior.included !== null && prior.included !== included) {
+          console.warn('stripe overage: allowance changed for', s.tenantId, day, `${prior.included} → ${included} — day left as billed`)
+          continue
+        }
         const over = overageDevices(byDay.get(day) ?? 0, included)
-        const prev = already.get(day) ?? 0
+        const prev = prior?.reported ?? 0
         const delta = over - prev
         if (delta <= 0) continue // nothing new (or a retroactive decrease — see the doc comment)
         await deps.stripe.reportUsage({
           customerId: s.stripeCustomerId,
           value: delta,
           timestampS: timestampFor(day),
-          identifier: `overage:${day}:${s.stripeCustomerId}:${prev}`,
+          // BOTH ends of the delta are in the key. With only `prev`, a retry that recomputed a LARGER
+          // `over` (usage landed between the failed attempt and the retry) reused the identifier of
+          // the smaller submission, Stripe deduped the whole event, and the difference was recorded
+          // as billed and lost. A true retry of the SAME delta still collapses.
+          identifier: `overage:${day}:${s.stripeCustomerId}:${prev}-${over}`,
         })
         // AFTER Stripe accepts: recording first would mark a failed submission as billed and
         // under-bill silently — the exact failure mode this whole change exists to remove
-        await deps.db.usage.recordOverageReport(s.tenantId, day, over)
+        await deps.db.usage.recordOverageReport(s.tenantId, day, { reported: over, included })
         out.reported++
         out.devicesOver += delta
         if (prev > 0) out.backfilled++

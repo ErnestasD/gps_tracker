@@ -271,12 +271,15 @@ describe('billing lifecycle (ADR-024)', () => {
     const post = (e: StripeEvent) => req(port, '/v1/webhooks/stripe', null, 'POST', e, { 'stripe-signature': 'valid' })
     const view = async () => (await (await req(port, '/v1/billing', token)).json()) as BillingView
 
-    await post(forSub('sub_A', 'evt_a1', 'customer.subscription.updated', 'active', 100)) // A active
+    // DISTINCT event ids from the previous test on purpose: redelivery suppression is keyed on the
+    // event id alone, platform-wide, exactly as Stripe's ids are globally unique. Reusing an id here
+    // would be a fixture reusing a real-world impossibility, and the second use would be dropped.
+    await post(forSub('sub_A', 'evt_ro_a1', 'customer.subscription.updated', 'active', 100)) // A active
     // B created (t=300) is delivered BEFORE A's cancel (t=200) — a LIVE event must win under monotonic
-    await post(forSub('sub_B', 'evt_b1', 'customer.subscription.created', 'active', 300))
+    await post(forSub('sub_B', 'evt_ro_b1', 'customer.subscription.created', 'active', 300))
     expect((await view()).active).toBe(true)
     // A's cancel (t=200) now arrives late: older than B's t=300 → the monotonic guard drops it
-    await post(forSub('sub_A', 'evt_a2', 'customer.subscription.deleted', 'canceled', 200))
+    await post(forSub('sub_A', 'evt_ro_a2', 'customer.subscription.deleted', 'canceled', 200))
     expect((await view()).active).toBe(true) // NOT clobbered — B stays active (would fail a blanket different-sub block)
   })
 

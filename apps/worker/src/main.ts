@@ -269,7 +269,9 @@ async function main(): Promise<void> {
           prom.stripeOverageReported.inc(r.reported)
           prom.stripeOverageBackfilled.inc(r.backfilled)
           // a GAUGE, not a counter: the question is "is the config wrong right now", and it must
-          // fall back to 0 by itself once STRIPE_INCLUDED is fixed
+          // fall back to 0 by itself once STRIPE_INCLUDED is fixed. It is only written on a
+          // SUCCESSFUL run and resets to 0 on restart, so it can read 0 for up to one tick after a
+          // worker restart or a failing run — WorkerJobFailing covers that gap.
           prom.stripeUnmappedPrice.set(r.unmappedPrices)
         },
         onFailed: () => prom.jobFailed.inc({ job: 'stripe_usage' }),

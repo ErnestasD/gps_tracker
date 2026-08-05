@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import type { LapsedTenant } from '@orbetra/db'
+import type { Db, LapsedTenant } from '@orbetra/db'
 
-import { DEFAULT_GRACE_DAYS, graceDaysFromEnv, isActionable } from '../src/jobs/lapseSweepWorker.js'
+import { DEFAULT_GRACE_DAYS, graceDaysFromEnv, isActionable, runLapseSweep } from '../src/jobs/lapseSweepWorker.js'
 
 /**
  * The lapsed-tenant sweep (audit MED #22).
@@ -53,5 +53,28 @@ describe('graceDaysFromEnv', () => {
     expect(graceDaysFromEnv({ BILLING_GRACE_DAYS: '-5' })).toBe(0)
     expect(graceDaysFromEnv({ BILLING_GRACE_DAYS: '99999' })).toBe(365)
     expect(graceDaysFromEnv({ BILLING_GRACE_DAYS: '7' })).toBe(7)
+  })
+})
+
+describe('runLapseSweep', () => {
+  const fakeDb = (rows: LapsedTenant[]): Db => ({ tenants: { listLapsedTenants: () => Promise.resolve(rows) } }) as unknown as Db
+
+  it('counts every lapsed tenant’s devices, but only the past-grace ones as actionable', async () => {
+    // the DEVICE count deliberately spans the grace window too: the ingest and storage cost is
+    // being incurred the whole time, whether or not anyone should act on it yet
+    const r = await runLapseSweep(
+      fakeDb([
+        lapsed({ tenantId: 'old', lapsedAt: daysAgo(60), activeDevices: 10 }),
+        lapsed({ tenantId: 'fresh', lapsedAt: daysAgo(2), activeDevices: 4 }),
+        lapsed({ tenantId: 'trial', lapsedAt: daysAgo(90), reason: 'trial_expired', subscriptionStatus: 'trialing', activeDevices: 1 }),
+      ]),
+      NOW,
+      14,
+    )
+    expect(r).toEqual({ tenants: 3, devices: 15, actionable: 2 })
+  })
+
+  it('a clean platform reports zeroes rather than nothing — the gauge must fall back', async () => {
+    expect(await runLapseSweep(fakeDb([]), NOW, 14)).toEqual({ tenants: 0, devices: 0, actionable: 0 })
   })
 })

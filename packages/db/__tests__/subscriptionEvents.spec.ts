@@ -4,7 +4,7 @@ import pg from 'pg'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { createDb, type Db } from '../src/index.js'
+import { createDb, subscriptionEventRank, type Db, type SubscriptionUpdate } from '../src/index.js'
 
 /**
  * The Stripe subscription webhook's ordering guard (ADR-024, audit MED #25).
@@ -56,6 +56,14 @@ async function tenantWithCustomer(name: string, customerId: string): Promise<str
   return t.id
 }
 
+const CREATED = 'customer.subscription.created'
+const UPDATED = 'customer.subscription.updated'
+const DELETED = 'customer.subscription.deleted'
+
+/** positional shorthand — the cases here differ only in (customer, second, id, type) */
+const apply = (stripeCustomerId: string, at: Date, id: string, type: string, data: SubscriptionUpdate) =>
+  db.tenants.applySubscriptionEvent({ stripeCustomerId, at, id, type }, data)
+
 const statusOf = async (id: string): Promise<string | null> => (await db.tenants.getBilling(id))?.subscriptionStatus ?? null
 
 beforeAll(async () => {
@@ -76,50 +84,98 @@ afterAll(async () => {
 })
 
 describe('applySubscriptionEvent ordering', () => {
-  it('applies a same-second event with a DIFFERENT id — the cancel that used to be dropped', async () => {
+  it('applies a same-second .deleted after a .updated — the cancel that used to be dropped', async () => {
     const id = await tenantWithCustomer('SameSecond', 'cus_samesecond')
-    expect(await db.tenants.applySubscriptionEvent('cus_samesecond', T, 'evt_1', update('active'))).toBe('applied')
-    // Stripe's second event for the SAME cancel, same `created` second, different event id
-    expect(await db.tenants.applySubscriptionEvent('cus_samesecond', T, 'evt_2', update('canceled'))).toBe('applied')
+    expect(await apply('cus_samesecond', T, 'evt_1', UPDATED, update('active'))).toBe('applied')
+    // Stripe's second event for the SAME cancel, same `created` second
+    expect(await apply('cus_samesecond', T, 'evt_2', DELETED, update('canceled'))).toBe('applied')
+    expect(await statusOf(id)).toBe('canceled')
+  })
+
+  it('applies TWO same-second .updated events — a plan change emits exactly that', async () => {
+    // the rank comparison is `>=`, not `>`, precisely so equal-rank events still both land
+    const id = await tenantWithCustomer('PlanChange', 'cus_planchange')
+    expect(await apply('cus_planchange', T, 'evt_p1', UPDATED, update('active', 'sub_P'))).toBe('applied')
+    expect(await apply('cus_planchange', T, 'evt_p2', UPDATED, { ...update('active', 'sub_P'), subscriptionPriceId: 'price_tsp_scale' })).toBe('applied')
+    expect(await statusOf(id)).toBe('active')
+  })
+
+  it('a REORDERED same-second .updated cannot undo a .deleted', async () => {
+    // Stripe does not guarantee delivery order, so the cancel can arrive FIRST. Ordering by arrival
+    // would then leave a canceled customer `active`, entitled and unbilled — the expensive direction
+    const id = await tenantWithCustomer('Reordered', 'cus_reordered')
+    expect(await apply('cus_reordered', T, 'evt_del', DELETED, update('canceled'))).toBe('applied')
+    expect(await apply('cus_reordered', T, 'evt_upd', UPDATED, update('active'))).toBe('stale')
+    expect(await statusOf(id)).toBe('canceled')
+  })
+
+  it('a RETRY of an already-applied event is dropped even after other events have landed', async () => {
+    // the single-slot `lastBillingEventId` this replaced remembered only the PREVIOUS event, so this
+    // exact sequence — an ordinary Stripe retry after a lost 200 — resurrected the subscription
+    const id = await tenantWithCustomer('Retry', 'cus_retry')
+    expect(await apply('cus_retry', T, 'evt_u', UPDATED, update('active'))).toBe('applied')
+    expect(await apply('cus_retry', T, 'evt_d', DELETED, update('canceled'))).toBe('applied')
+    expect(await apply('cus_retry', T, 'evt_u', UPDATED, update('active'))).toBe('stale')
+    expect(await statusOf(id)).toBe('canceled')
+    // …and it stays dropped however many times Stripe retries it
+    expect(await apply('cus_retry', T, 'evt_u', UPDATED, update('active'))).toBe('stale')
     expect(await statusOf(id)).toBe('canceled')
   })
 
   it('drops a REDELIVERY of the same event — same second, same id', async () => {
     const id = await tenantWithCustomer('Redelivery', 'cus_redelivery')
-    expect(await db.tenants.applySubscriptionEvent('cus_redelivery', T, 'evt_dup', update('active'))).toBe('applied')
-    // Stripe retries carry the SAME evt_ id; applying twice must be a no-op, which is what keeps the
-    // same-second admission from turning into "apply everything twice"
-    expect(await db.tenants.applySubscriptionEvent('cus_redelivery', T, 'evt_dup', update('canceled'))).toBe('stale')
+    expect(await apply('cus_redelivery', T, 'evt_dup', UPDATED, update('active'))).toBe('applied')
+    expect(await apply('cus_redelivery', T, 'evt_dup', UPDATED, update('canceled'))).toBe('stale')
     expect(await statusOf(id)).toBe('active')
   })
 
   it('drops an OLDER event whatever its id — out-of-order delivery must not roll state back', async () => {
     const id = await tenantWithCustomer('Older', 'cus_older')
-    expect(await db.tenants.applySubscriptionEvent('cus_older', T, 'evt_now', update('canceled'))).toBe('applied')
-    expect(await db.tenants.applySubscriptionEvent('cus_older', EARLIER, 'evt_old', update('active'))).toBe('stale')
+    expect(await apply('cus_older', T, 'evt_now', DELETED, update('canceled'))).toBe('applied')
+    expect(await apply('cus_older', EARLIER, 'evt_old', UPDATED, update('active'))).toBe('stale')
     expect(await statusOf(id)).toBe('canceled')
   })
 
-  it('applies a strictly NEWER event', async () => {
+  it('applies a strictly NEWER event even when it ranks lower — a resubscribe is not a reorder', async () => {
     const id = await tenantWithCustomer('Newer', 'cus_newer')
-    expect(await db.tenants.applySubscriptionEvent('cus_newer', T, 'evt_a', update('active'))).toBe('applied')
-    expect(await db.tenants.applySubscriptionEvent('cus_newer', LATER, 'evt_b', update('past_due'))).toBe('applied')
-    expect(await statusOf(id)).toBe('past_due')
+    expect(await apply('cus_newer', T, 'evt_a', DELETED, update('canceled'))).toBe('applied')
+    expect(await apply('cus_newer', LATER, 'evt_b', CREATED, update('active', 'sub_NEW'))).toBe('applied')
+    expect(await statusOf(id)).toBe('active')
   })
 
   it('a same-second cancel of an OLD subscription still cannot kill the live one', async () => {
     // the per-subscription guard has to survive the same-second admission: cancel A → resubscribe B,
     // then A's delayed cancel arrives stamped in B's second
     const id = await tenantWithCustomer('TwoSubs', 'cus_twosubs')
-    expect(await db.tenants.applySubscriptionEvent('cus_twosubs', T, 'evt_b_created', update('active', 'sub_B'))).toBe('applied')
-    expect(await db.tenants.applySubscriptionEvent('cus_twosubs', T, 'evt_a_canceled', update('canceled', 'sub_A'))).toBe('stale')
+    expect(await apply('cus_twosubs', T, 'evt_b_created', CREATED, update('active', 'sub_B'))).toBe('applied')
+    expect(await apply('cus_twosubs', T, 'evt_a_canceled', DELETED, update('canceled', 'sub_A'))).toBe('stale')
     const billing = await db.tenants.getBilling(id)
     expect(billing?.subscriptionStatus).toBe('active')
     expect(billing?.stripeSubscriptionId).toBe('sub_B')
   })
 
   it('an unknown customer id reports no_tenant rather than silently succeeding', async () => {
-    expect(await db.tenants.applySubscriptionEvent('cus_nobody', T, 'evt_x', update('active'))).toBe('no_tenant')
+    expect(await apply('cus_nobody', T, 'evt_x', UPDATED, update('active'))).toBe('no_tenant')
+  })
+
+  it('an event that matched NO tenant is NOT recorded as applied — the reconciled retry must work', async () => {
+    // the dedupe ledger is inside the transaction with the write, so a `no_tenant` outcome rolls it
+    // back. Otherwise an admin fixing `stripeCustomerId` by hand (the documented remedy) would find
+    // every redelivery silently dropped.
+    expect(await apply('cus_unmapped', T, 'evt_unmapped', UPDATED, update('active'))).toBe('no_tenant')
+    const id = await tenantWithCustomer('Reconciled', 'cus_unmapped')
+    expect(await apply('cus_unmapped', T, 'evt_unmapped', UPDATED, update('active'))).toBe('applied')
+    expect(await statusOf(id)).toBe('active')
+  })
+})
+
+describe('subscriptionEventRank', () => {
+  it('orders a state change the way Stripe emits it, and never leaves an unknown type last', () => {
+    expect(subscriptionEventRank('customer.subscription.created')).toBeLessThan(subscriptionEventRank('customer.subscription.updated'))
+    expect(subscriptionEventRank('customer.subscription.updated')).toBeLessThan(subscriptionEventRank('customer.subscription.deleted'))
+    // an unknown type ranks WITH updated: ranking it above would let it overwrite a cancel, below
+    // would let a cancel arriving after it be dropped
+    expect(subscriptionEventRank('customer.subscription.paused')).toBe(subscriptionEventRank('customer.subscription.updated'))
   })
 })
 
@@ -135,7 +191,7 @@ describe('listLapsedTenants', () => {
     // a Stripe subscription that lapsed
     const canceled = await db.tenants.create(actor, { name: 'Canceled Co' })
     await db.tenants.setStripeCustomer(canceled.id, 'cus_lapse_canceled')
-    await db.tenants.applySubscriptionEvent('cus_lapse_canceled', new Date('2026-06-01T00:00:00Z'), 'evt_lc', update('canceled', 'sub_C'))
+    await apply('cus_lapse_canceled', new Date('2026-06-01T00:00:00Z'), 'evt_lc', DELETED, update('canceled', 'sub_C'))
     ids['canceled'] = canceled.id
 
     // a LOCAL self-serve trial that ran out: `trialing`, no Stripe subscription, period end past
@@ -154,7 +210,7 @@ describe('listLapsedTenants', () => {
     // it — flooring this one would cut off a paying customer between the trial end and the webhook
     const stripeTrial = await db.tenants.create(actor, { name: 'Stripe Trial Co' })
     await db.tenants.setStripeCustomer(stripeTrial.id, 'cus_stripe_trial')
-    await db.tenants.applySubscriptionEvent('cus_stripe_trial', new Date('2026-06-01T00:00:00Z'), 'evt_st', {
+    await apply('cus_stripe_trial', new Date('2026-06-01T00:00:00Z'), 'evt_st', UPDATED, {
       stripeSubscriptionId: 'sub_T',
       subscriptionStatus: 'trialing',
       subscriptionPriceId: 'price_tsp_grow',
@@ -165,7 +221,7 @@ describe('listLapsedTenants', () => {
     // a dunning tenant: past_due is a GRACE window, deliberately still entitled and still metered
     const dunning = await db.tenants.create(actor, { name: 'Dunning Co' })
     await db.tenants.setStripeCustomer(dunning.id, 'cus_dunning')
-    await db.tenants.applySubscriptionEvent('cus_dunning', new Date('2026-06-01T00:00:00Z'), 'evt_d', update('past_due', 'sub_D'))
+    await apply('cus_dunning', new Date('2026-06-01T00:00:00Z'), 'evt_d', UPDATED, update('past_due', 'sub_D'))
     ids['dunning'] = dunning.id
   })
 

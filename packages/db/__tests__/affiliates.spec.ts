@@ -253,6 +253,27 @@ describe('affiliates repo', () => {
       expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_order', invoiceId: 'in_ord_aug', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date(Date.UTC(2026, 7, 20)) })).toBeNull()
     })
 
+    it('CONCURRENT first invoices still anchor on the EARLIER payment', async () => {
+      // the claim is conditional, so one of the two wins and the other adopts its anchor — and if the
+      // loser is the earlier payment, adopting alone leaves the window pinned to the LATER one and the
+      // partner earns past the agreed term. Measured before the fix: 2 of 3 races kept March.
+      const aff = await db.affiliates.create(actor, { name: 'Race Co', email: 'race@partner.co', code: 'RACEC1', commissionMonths: 6 })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Race Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_race')
+      const jan = new Date(Date.UTC(2026, 0, 10))
+      const mar = new Date(Date.UTC(2026, 2, 10))
+      await Promise.all([
+        db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_race', invoiceId: 'in_race_mar', amountPaidCents: 10_000, currency: 'eur', paidAt: mar }),
+        db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_race', invoiceId: 'in_race_jan', amountPaidCents: 10_000, currency: 'eur', paidAt: jan }),
+      ])
+      // whichever won the claim, the anchor must end up on January
+      const row = await db.tenants.get(tenant.id)
+      expect(row?.commissionAnchorAt?.toISOString()).toBe(jan.toISOString())
+      // …so an August invoice is outside the 6-month window. Anchored on March it would have paid.
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_race', invoiceId: 'in_race_aug', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date(Date.UTC(2026, 7, 20)) })).toBeNull()
+    })
+
     it('a tenant carrying commissions cannot be hard-deleted — the ledger survives (audit HIGH)', async () => {
       const aff = await db.affiliates.create(actor, { name: 'Ledger Co', email: 'ledger@partner.co', code: 'LEDGR1' })
       await db.affiliates.update(actor, aff.id, { status: 'active' })

@@ -272,11 +272,13 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
         // on a Redis blip, so two concurrent checkouts can leave a customer id we never stored.
         // Still a 200 — a retry cannot fix a missing mapping, and a 500 would make Stripe hammer
         // the endpoint for days — but now it is loud. Audit MED.
-        // `event.id` rides along as the SAME-SECOND tiebreak: `event.created` is second-granularity
-        // and Stripe emits `.updated` + `.deleted` for one cancel in the same second, so a strict
-        // `<` guard dropped the second one as a replay and left the tenant on the intermediate
-        // state — active and entitled after a cancel (audit MED #25).
-        const outcome = await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), event.id, mapped.update)
+        // The whole event identity goes to the repo, not just its timestamp: `event.created` is
+        // second-granularity and Stripe emits `.updated` + `.deleted` for one cancel in the same
+        // second, so ordering needs the TYPE, and suppressing a retry needs the ID (audit MED #25).
+        const outcome = await deps.db.tenants.applySubscriptionEvent(
+          { stripeCustomerId: mapped.customerId, id: event.id, type: event.type, at: new Date(event.created * 1000) },
+          mapped.update,
+        )
         // `stale` is NORMAL — the monotonic and per-subscription guards drop replayed and
         // out-of-order deliveries by design. Only `no_tenant` means a paying customer has no plan.
         if (outcome === 'no_tenant') {

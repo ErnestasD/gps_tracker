@@ -21,6 +21,13 @@ export interface TenantUsageRow {
   day: string // YYYY-MM-DD
   deviceDays: number
 }
+/** What Stripe has been told for one tenant-day. `reported` is CUMULATIVE, not the last delta. */
+export interface OverageReport {
+  reported: number
+  /** the plan's included-device allowance this was computed against — a later run must not recompute
+   *  the day against a DIFFERENT allowance (a downgrade would re-bill it at the smaller one). */
+  included: number | null
+}
 export interface UsageRangeOpts {
   from?: string
   to?: string
@@ -34,9 +41,10 @@ export interface UsageRepo {
    * job, which walks every subscriber; it takes an explicit tenant id rather than a Scope because
    * there is no request identity behind it (same shape as `listActiveSubscribers`).
    */
-  reportedOverage(tenantId: string, opts: UsageRangeOpts): Promise<Map<string, number>>
-  /** Record what Stripe has now been told about (tenant, day). Idempotent upsert; billing-job only. */
-  recordOverageReport(tenantId: string, day: string, reported: number): Promise<void>
+  reportedOverage(tenantId: string, opts: UsageRangeOpts): Promise<Map<string, OverageReport>>
+  /** Record what Stripe has now been told about (tenant, day), with the allowance it was computed
+   *  against. Idempotent upsert; billing-job only. */
+  recordOverageReport(tenantId: string, day: string, report: OverageReport): Promise<void>
 }
 
 const dayWhere = (opts: UsageRangeOpts) => ({
@@ -74,19 +82,19 @@ export function createUsageRepo(prisma: PrismaClient): UsageRepo {
       const day = dayWhere(opts)
       const rows = await prisma.usageReport.findMany({
         where: { tenantId, ...(Object.keys(day).length > 0 ? { day } : {}) },
-        select: { day: true, reported: true },
+        select: { day: true, reported: true, included: true },
       })
-      return new Map(rows.map((r) => [r.day.toISOString().slice(0, 10), r.reported]))
+      return new Map(rows.map((r) => [r.day.toISOString().slice(0, 10), { reported: r.reported, included: r.included }]))
     },
-    recordOverageReport: async (tenantId, day, reported) => {
+    recordOverageReport: async (tenantId, day, report) => {
       // guarded here rather than at the call site: a malformed day would otherwise reach Prisma as
       // `new Date('…')` → Invalid Date → an opaque 500 from a background job nobody is watching
       if (!isPgSafeDate(day)) throw new Error(`recordOverageReport: unusable day ${JSON.stringify(day)}`)
       const at = new Date(day)
       await prisma.usageReport.upsert({
         where: { tenantId_day: { tenantId, day: at } },
-        create: { tenantId, day: at, reported },
-        update: { reported, reportedAt: new Date() },
+        create: { tenantId, day: at, reported: report.reported, included: report.included },
+        update: { reported: report.reported, included: report.included, reportedAt: new Date() },
       })
     },
   }

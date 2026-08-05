@@ -44,6 +44,26 @@ export function isActionable(t: LapsedTenant, nowMs: number, graceDays: number):
  * the customer to see why their map went dark would be worse than the leak. The counts here are what
  * makes the decision possible; the alert rule on `billing_lapsed_tenants` is what surfaces it.
  */
+export async function runLapseSweep(db: Db, nowMs: number, graceDays: number): Promise<LapseSweepResult> {
+  const lapsed = await db.tenants.listLapsedTenants(new Date(nowMs))
+  const actionable = lapsed.filter((t) => isActionable(t, nowMs, graceDays))
+  // one line per tenant, not a total: the total says there is a problem, this says whose it is.
+  // Tenant name and device count only — no personal data in an ops log.
+  for (const t of actionable) {
+    console.warn(
+      'billing: tenant served past its entitlement floor',
+      JSON.stringify({ tenantId: t.tenantId, name: t.name, plan: t.plan, reason: t.reason, status: t.subscriptionStatus, lapsedAt: t.lapsedAt?.toISOString() ?? null, activeDevices: t.activeDevices }),
+    )
+  }
+  return {
+    tenants: lapsed.length,
+    // every lapsed tenant's devices, not just the actionable ones: the cost is being incurred
+    // during the grace window too
+    devices: lapsed.reduce((n, t) => n + t.activeDevices, 0),
+    actionable: actionable.length,
+  }
+}
+
 export function createLapseSweepWorker(deps: LapseSweepWorkerDeps): Worker {
   const now = deps.now ?? Date.now
   const graceDays = deps.graceDays ?? DEFAULT_GRACE_DAYS
@@ -51,23 +71,7 @@ export function createLapseSweepWorker(deps: LapseSweepWorkerDeps): Worker {
     LAPSE_SWEEP_QUEUE,
     async () => {
       try {
-        const nowMs = now()
-        const lapsed = await deps.db.tenants.listLapsedTenants(new Date(nowMs))
-        const actionable = lapsed.filter((t) => isActionable(t, nowMs, graceDays))
-        const result: LapseSweepResult = {
-          tenants: lapsed.length,
-          devices: lapsed.reduce((n, t) => n + t.activeDevices, 0),
-          actionable: actionable.length,
-        }
-        // one line per tenant, not a total: the total tells you there is a problem, this tells you
-        // whose it is. Names + device counts, no personal data.
-        for (const t of actionable) {
-          console.warn(
-            'billing: tenant served past its entitlement floor',
-            JSON.stringify({ tenantId: t.tenantId, name: t.name, plan: t.plan, reason: t.reason, status: t.subscriptionStatus, lapsedAt: t.lapsedAt?.toISOString() ?? null, activeDevices: t.activeDevices }),
-          )
-        }
-        deps.onSwept?.(result)
+        deps.onSwept?.(await runLapseSweep(deps.db, now(), graceDays))
       } catch (err) {
         deps.onFailed?.()
         throw err
