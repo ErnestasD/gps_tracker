@@ -4,7 +4,7 @@ import { Menu, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
-import { OrbetraLogo } from "./OrbetraLogo";
+import { OrbetraWordmark } from "./OrbetraLogo";
 import { DOCS_URL } from "@/lib/api";
 import { LanguageDropdown } from "./LanguageDropdown";
 
@@ -44,9 +44,9 @@ export function NavBar() {
       )}
     >
       <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 font-display font-bold text-lg text-ink">
-          <OrbetraLogo className="h-10 w-10" />
-          <span>Orbetra</span>
+        {/* the LOCKUP, not mark + text: the circle is the "O" of the word */}
+        <Link to="/" className="flex items-center">
+          <OrbetraWordmark className="h-8 w-auto" />
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">

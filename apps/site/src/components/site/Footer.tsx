@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { OrbetraLogo } from "./OrbetraLogo";
+import { OrbetraWordmark } from "./OrbetraLogo";
 import { DOCS_URL } from "@/lib/api";
 import { LanguageDropdown } from "./LanguageDropdown";
 
@@ -11,9 +11,7 @@ export function Footer() {
     <footer className="border-t border-[var(--hairline)] mt-32 bg-[var(--blueprint)]/40">
       <div className="mx-auto max-w-7xl px-6 py-16 grid gap-12 md:grid-cols-4">
         <div>
-          <div className="flex items-center gap-2 font-display font-bold text-lg text-ink">
-            <OrbetraLogo className="h-10 w-10" /> Orbetra
-          </div>
+          <OrbetraWordmark className="h-7 w-auto" />
           <p className="mt-3 text-sm text-muted-foreground max-w-xs">{t("footer.tagline")}</p>
           <div
             className="mt-4 inline-flex items-center gap-2 rounded-full px-3 py-1 mono text-[10px] tracking-[0.18em] uppercase text-[#4c4dcf]"
