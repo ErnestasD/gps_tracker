@@ -166,6 +166,26 @@ describe('V1-nice shareLinks repo', () => {
     expect((await db.devices.getByImei(a.aScope, imei))?.id).toBe(reclaimed.id)
   })
 
+  it('…and not by a sibling ACCOUNT either — the customer boundary in a TSP tenant is the account', async () => {
+    // REGRESSION (audit review HIGH). A tenant-only guard left the takeover one level down: a
+    // white-label TSP runs unrelated end-customers as accounts, `account_manager` can create
+    // devices, and the IMEI is caller-supplied text — so account B's manager could type the IMEI
+    // account A had just retired and start receiving A's vehicle. A TENANT-scoped caller may still
+    // move a device between accounts they both own; that is their fleet to reorganise.
+    const imei = '356307042449006'
+    const a = await seedDevice('AccountA', imei)
+    const otherAcct = await db.accounts.create(a.tScope, actor, { name: 'AccountB' })
+    await db.devices.retire(a.aScope, actor, a.deviceId.toString())
+    const profileId = (await q<{ id: string }>(`SELECT id FROM device_profiles LIMIT 1`))[0]!.id
+    const bScope = { tenantId: a.tenant.id, accountId: otherAcct.id }
+    await expect(
+      db.devices.create(bScope, actor, { accountId: otherAcct.id, profileId, imei, name: 'Sibling grab' }),
+    ).rejects.toThrow(/already registered/i)
+    // …while the tenant admin (no accountId pin) can move it
+    const moved = await db.devices.create(a.tScope, actor, { accountId: otherAcct.id, profileId, imei, name: 'Reassigned' })
+    expect(moved.accountId).toBe(otherAcct.id)
+  })
+
   it('…but ONLY for the tenant that had it — a stranger cannot claim a retired IMEI', async () => {
     // The physical tracker may still be wired to the vehicle and transmitting, and whoever holds
     // the IMEI in `registry:imei` receives its live positions. Global uniqueness used to make this

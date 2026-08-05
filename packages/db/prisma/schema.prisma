@@ -355,6 +355,10 @@ model Device {
   maintenanceItems MaintenanceItem[]
 
   @@index([tenantId, accountId])
+  // plain lookup index (migration 20260805160000). Declared HERE so `prisma migrate dev` does not
+  // drop it: the partial UNIQUE index cannot serve a query that omits `WHERE "retiredAt" IS NULL`,
+  // and neither IMEI lookup does — without this one, `imeisIn` seq-scans on the pipeline's pool.
+  @@index([imei])
   @@map("devices")
 }
 

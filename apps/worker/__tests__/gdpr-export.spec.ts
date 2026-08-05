@@ -49,6 +49,8 @@ beforeAll(async () => {
   await pool.query(`CREATE TABLE geofences (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, name text, color text, kind text, geom geography(Polygon,4326), "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE rules (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, kind text, name text, config jsonb DEFAULT '{}', scope jsonb DEFAULT '{}', "cooldownS" int DEFAULT 300, enabled bool DEFAULT true, "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE webhooks (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, url text, secret text, events text[] DEFAULT '{}', enabled bool DEFAULT true, "createdAt" timestamptz DEFAULT now())`)
+  await pool.query(`CREATE TABLE scheduled_reports (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "reportType" text, cadence text, "hourUtc" int, weekday int, recipients text[] DEFAULT '{}', timezone text DEFAULT 'UTC', enabled bool DEFAULT true, "lastRunAt" timestamptz, "createdAt" timestamptz DEFAULT now())`)
+  await pool.query(`CREATE TABLE push_subscriptions (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, "tenantId" uuid, "accountId" uuid, "userId" uuid, endpoint text, p256dh text, auth text, "createdAt" timestamptz DEFAULT now())`)
   await pool.query(`CREATE TABLE export_jobs (id uuid PRIMARY KEY, "tenantId" uuid, "accountId" uuid, status text DEFAULT 'pending', path text, "sizeBytes" bigint, error text, "createdAt" timestamptz DEFAULT now(), "expiresAt" timestamptz)`)
 
   await pool.query(`INSERT INTO accounts VALUES ($1, $2, 'Fleet One', 'Europe/Vilnius')`, [A1, T1])

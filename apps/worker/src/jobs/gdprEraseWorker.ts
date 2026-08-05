@@ -15,7 +15,7 @@ import { captureDeviceUsage } from './usageWorker.js'
  *
  * DELIBERATELY KEPT (documented in the plan): usage_daily (billing, legitimate interest;
  * plain deviceId, no FK) and audit_log (append-only evidence trail; redaction is V2).
- * Covers: positions, trips, events, commands, sms_deliveries, raw_rejects (by IMEI), the device
+ * Covers: positions, trips, events, commands, sms_deliveries, raw_rejects (by deviceId), the device
  * row itself and the device's Redis state. A table added after this job ships must be added HERE —
  * two already were not (sms_deliveries, raw_rejects), and nothing failed to say so.
  */
@@ -51,8 +51,13 @@ async function clearRedisState(redis: Redis, deviceId: string): Promise<void> {
  * By deviceId, NOT by IMEI. `raw_rejects` predates device resolution, so it was keyed on IMEI — and
  * an IMEI is unique among ACTIVE devices only, so after a device is retired and its IMEI
  * re-registered, an IMEI delete reaches rows that belong to a different device. The drain stamps the
- * id it resolved; the IMEI clause is kept, narrowed to rows written before that column existed, so
- * a subject's older data is still erased. Those age out with the 90-day retention sweep.
+ * id it resolved.
+ *
+ * The IMEI clause is kept for rows written before that column existed, and is BEST-EFFORT rather
+ * than a guarantee: once this device's row is deleted the IMEI is claimable again, so a legacy
+ * orphan this erase missed could later be removed by the next holder's erase instead. It
+ * over-deletes 90-day diagnostics that were already orphaned — the safe direction — and the whole
+ * class ages out with the retention sweep.
  */
 async function eraseRawRejects(pool: Pool, data: EraseJobData): Promise<void> {
   await pool.query(`DELETE FROM raw_rejects WHERE "deviceId" = $1`, [data.deviceId])
@@ -71,8 +76,8 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
   )
   if (dev.rowCount === 0) {
     // Device row already gone (retried job past its final step) — finish the cleanup that does NOT
-    // depend on it. `raw_rejects` is keyed by IMEI and the drain runs on a 60 s tick, so entries
-    // still in the `rejects` stream at erase time land in the table AFTER the row was deleted;
+    // depend on it. The drain runs on a 60 s tick, so entries still in the `rejects` stream at erase
+    // time land in the table AFTER the row was deleted;
     // without this pass nothing would ever remove them, and their raw AVL bytes embed lat/lon
     // (§3.4) — the exact coordinates the request is about.
     await eraseRawRejects(pool, data)
@@ -105,11 +110,10 @@ export async function runErase(pool: Pool, redis: Redis, data: EraseJobData): Pr
     await pool.query(`DELETE FROM trips WHERE "deviceId" = $1`, [data.deviceId])
     await pool.query(`DELETE FROM events WHERE "deviceId" = $1`, [data.deviceId])
   }
-  // raw_rejects keys on IMEI, not deviceId — those rows failed §3.6 before any device was resolved,
-  // and their raw AVL bytes embed lat/lon (§3.4). Deleted AFTER the final sweep, for the same
-  // resurrection reason positions are: the drain writes on a 60 s tick, so a stream entry can land
-  // in the table while this job runs. The drain also drops entries whose IMEI is no longer a
-  // registered device, which closes the window for anything arriving later still.
+  // raw_rejects: records that failed §3.6, whose raw AVL bytes embed lat/lon (§3.4). Deleted AFTER
+  // the final sweep, for the same resurrection reason positions are — the drain writes on a 60 s
+  // tick, so a stream entry can land in the table while this job runs. The drain also drops entries
+  // whose device row is ABSENT, which closes the window for anything arriving later still.
   await eraseRawRejects(pool, { ...data, imei: data.imei ?? dev.rows[0]!.imei })
   return { deviceId: data.deviceId, positions: positions + late }
 }

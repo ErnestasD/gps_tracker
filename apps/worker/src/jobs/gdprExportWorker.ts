@@ -114,6 +114,13 @@ export async function runExport(pool: Pool, exportDir: string, exportId: string)
     // the table postdates this export too
     await scopedPaged('sms_delivery', 'sms_deliveries', 'id::text',
       `id, "deviceId"::text, "to", body, provider, status, error, "createdAt", "sentAt"`)
+    // recipients[] is a list of named individuals' e-mail addresses; the API already treats it as
+    // sensitive (read gated to account writers) and the table postdates this export
+    await scoped('scheduled_report', `SELECT id, "reportType", cadence, "hourUtc", weekday, recipients, timezone, enabled, "lastRunAt", "createdAt" FROM scheduled_reports WHERE "tenantId" = $1 AND "accountId" = $2`)
+    // endpoint identifies one person's browser. p256dh/auth are CREDENTIALS for pushing to it and
+    // are deliberately omitted — an export is a copy of someone's data, not a way to hand an
+    // attacker the ability to impersonate a push sender.
+    await scoped('push_subscription', `SELECT id, "userId", endpoint, "createdAt" FROM push_subscriptions WHERE "tenantId" = $1 AND "accountId" = $2`)
 
     // positions per device, keyset-paged on the PK order
     const devices = await pool.query<{ id: string }>(`SELECT id::text FROM devices WHERE "tenantId" = $1 AND "accountId" = $2`, [tenantId, accountId])

@@ -592,6 +592,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const scope = scopeOf(a)
         const device = await db.devices.get(scope, id(c))
         if (device === null) return problem(c, 404, 'Not Found')
+        // Retiring revokes a device's live links; minting a NEW one afterwards would re-open the
+        // unauthenticated endpoint for a vehicle the operator has already said is no longer theirs
+        // (audit review MED). Retire is a soft delete, so `get` still returns the row.
+        if (device.retiredAt !== null) return problem(c, 409, 'Conflict', 'device is retired')
         const data = await body(c, shareCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const created = await db.shareLinks.create(scope, { userId: a.userId }, {

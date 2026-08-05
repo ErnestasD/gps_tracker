@@ -75,10 +75,12 @@ export interface DeviceRepo {
    *  fields ingest/worker need in Redis. Never a request path — those are always tenant-scoped. */
   listAllForRegistry(): Promise<RegistryDeviceRow[]>
   /** UNSCOPED IMEI → device id for the worker's reject drain. Two jobs: a rejection whose device
-   *  was GDPR-erased must not be written back (the drain runs on a timer after the erase), and the
+   *  was GDPR-ERASED must not be written back (the drain runs on a timer after the erase), and the
    *  row stores the resolved id so the erase can key on the device rather than on an IMEI that may
-   *  belong to two rows. ACTIVE devices only — a retired one is not what a live rejection is from.
-   *  Never a request path: it answers only "which of these exist", for ids the caller holds. */
+   *  belong to two rows. Includes RETIRED devices: a live TCP session survives retire until the
+   *  idle timeout, so a retired device still produces rejections, and only an ABSENT row means
+   *  erased. Prefers the ACTIVE row when an IMEI has been reclaimed. Never a request path: it
+   *  answers only "which of these exist", for ids the caller already holds. */
   imeisIn(imeis: readonly string[]): Promise<Map<string, bigint>>
   get(scope: Scope, id: string): Promise<Device | null>
   getByImei(scope: Scope, imei: string): Promise<Device | null>
@@ -102,9 +104,12 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
     countActive: (scope) => prisma.device.count({ where: { ...scopedWhere(scope), retiredAt: null } }),
     imeisIn: async (imeis) => {
       if (imeis.length === 0) return new Map()
+      // retired LAST so an active row overwrites it in the Map: after a reclaim both exist, and a
+      // live rejection belongs to the device in service
       const rows = await prisma.device.findMany({
-        where: { imei: { in: [...imeis] }, retiredAt: null },
-        select: { imei: true, id: true },
+        where: { imei: { in: [...imeis] } },
+        select: { imei: true, id: true, retiredAt: true },
+        orderBy: [{ retiredAt: { sort: 'desc', nulls: 'last' } }],
       })
       return new Map(rows.map((r) => [r.imei, r.id]))
     },
@@ -120,18 +125,30 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
       prisma.device.findFirst({ where: { ...scopedWhere(scope), imei }, orderBy: [{ retiredAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }] }),
     create: async (scope, actor, data) => {
       // Retiring FREES an IMEI (partial unique index, migration 20260805150000) so returned hardware
-      // can be re-installed — but only by the tenant that had it. A cross-tenant reclaim is refused
-      // here rather than left to the index, because the physical tracker may still be wired to the
-      // vehicle and transmitting: whoever holds the IMEI in `registry:imei` receives its live
-      // positions. Global uniqueness used to make that impossible; without this check, learning an
-      // IMEI and signing up would be enough to have another company's vehicle report into your
-      // account. §6.1 already notes device identity is IMEI-only and spoofable — this keeps it
-      // FORGEABLE rather than ACQUIRABLE through the ordinary product.
-      const heldElsewhere = await prisma.device.findFirst({
-        where: { imei: data.imei, NOT: { tenantId: scope.tenantId } },
+      // can be re-installed — but only by whoever had it. The physical tracker may still be wired to
+      // the vehicle and transmitting, and whoever holds the IMEI in `registry:imei` receives its
+      // live positions, so a reclaim by a stranger means another company's vehicle reporting into
+      // their account. Global uniqueness used to make that impossible; §6.1 already notes device
+      // identity is IMEI-only and spoofable, and this keeps it FORGEABLE rather than ACQUIRABLE
+      // through the ordinary "Add device" form.
+      //
+      // The boundary is the ACCOUNT, not the tenant. A white-label TSP runs unrelated end-customers
+      // as accounts — `crud.ts` says so in as many words — and `account_manager` can create devices,
+      // so a tenant-only guard left the same takeover one level down: account B's manager types the
+      // IMEI account A just retired and starts receiving A's vehicle. A TENANT-scoped caller
+      // (tsp_admin / platform_admin, no accountId pin) may still move a device between accounts they
+      // both own; that is their fleet to reorganise.
+      const held = await prisma.device.findFirst({
+        where: {
+          imei: data.imei,
+          NOT:
+            scope.accountId === undefined
+              ? { tenantId: scope.tenantId }
+              : { AND: [{ tenantId: scope.tenantId }, { accountId: scope.accountId }] },
+        },
         select: { id: true },
       })
-      if (heldElsewhere !== null) throw new DuplicateImeiError(data.imei)
+      if (held !== null) throw new DuplicateImeiError(data.imei)
       let row
       try {
         row = await prisma.device.create({

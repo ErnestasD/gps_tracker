@@ -50,6 +50,20 @@ export async function syncDeviceConfig(redis: Redis, id: bigint, presenceRules: 
   await redis.hset('device:config', id.toString(), JSON.stringify({ presenceRules: presenceRules ?? {}, odometerSource }))
 }
 
+/**
+ * Remove `registry:imei[imei]` ONLY when it still points at this device.
+ *
+ * A blind HDEL is keyed on the IMEI, not on who owns it — and since retiring frees an IMEI, a repeat
+ * DELETE on an already-retired device would tear down the mapping of the LIVE device that reclaimed
+ * it (audit review HIGH). That device stays `retiredAt = NULL` and looks active in the UI while
+ * ingest answers its handshake with 0x00, quarantines it, and after a few rejects closes the socket
+ * on sight: no positions, no trips, no alerts, and nothing to distinguish it from a device that
+ * simply went offline. Only an API restart repairs it, because the boot rehydrate is the sole other
+ * writer of that key.
+ */
+const HDEL_IF_MINE = `if redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2] then return redis.call('HDEL', KEYS[1], ARGV[1]) end
+return 0`
+
 export async function deactivateDevice(redis: Redis, d: { id: bigint; imei: string; tenantId: string }): Promise<void> {
   const id = d.id.toString()
   // The index entry is keyed by tenant, and the caller ALWAYS knows the tenant — it just read the
@@ -57,9 +71,9 @@ export async function deactivateDevice(redis: Redis, d: { id: bigint; imei: stri
   // whenever that hash row was already gone (a partially-applied earlier teardown, a Redis flush
   // before a rehydrate), stranding the member permanently: the index only ever grows, and nothing
   // else prunes it.
+  await redis.eval(HDEL_IF_MINE, 1, 'registry:imei', d.imei, id)
   await redis
     .multi()
-    .hdel('registry:imei', d.imei)
     .hdel('device:tenant', id)
     .hdel('device:account', id)
     .hdel('device:config', id)
