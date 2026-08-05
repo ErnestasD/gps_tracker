@@ -64,7 +64,17 @@ export function createPublicRoutes(deps: PublicDeps): Hono {
     // rate-limit per DOMAIN (fixed window, ATOMIC re-arm) — a stranded TTL-less key would else
     // 429 this domain forever and Caddy would never mint/renew its cert (review LOW-2)
     const key = `caddyask:${domain}`
-    const n = (await deps.redis.eval(RL_SCRIPT, 1, key, String(deps.askRateLimit.windowS))) as number
+    // Fail OPEN on a Redis error: the throttle is a guard rail, the DB is the authority. Caddy
+    // mints a cert iff this answers 200, so ANY non-200 — including a 500 from an unhandled
+    // rejection — reads as "deny" and that tenant's certificate silently stops renewing. Since
+    // `enableOfflineQueue: false`, a disconnected Redis rejects promptly instead of hanging, which
+    // makes this the difference between a skipped throttle and an expired customer certificate.
+    let n = 0
+    try {
+      n = (await deps.redis.eval(RL_SCRIPT, 1, key, String(deps.askRateLimit.windowS))) as number
+    } catch {
+      /* throttle unavailable — let the verified-domain check below decide */
+    }
     if (n > deps.askRateLimit.max) return c.text('rate limited', 429)
     // Caddy mints a cert iff 200
     return (await deps.db.tenantDomains.isVerifiedDomain(domain)) ? c.text('ok', 200) : c.text('denied', 403)
