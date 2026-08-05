@@ -165,6 +165,26 @@ describe('applySubscriptionEvent ordering', () => {
     expect(await statusOf(id)).toBe('canceled')
   })
 
+  it('THREE same-second events cannot wedge the tenant onto a DELETED subscription', async () => {
+    // the sequence that made the resubscribe hatch dangerous: after `deleted(A) → created(B)` the
+    // rank slot held B's rank 0, so a reordered `updated(A, active)` passed the ordinary rank clause
+    // and moved the tenant back onto the DELETED sub_A — as `active`, unlimited, and unrecoverable:
+    // sub_A emits nothing ever again, and every later sub_B event is non-live and blocked by the
+    // per-subscription guard. Free service that neither the lapse sweep nor the meter can see.
+    const id = await tenantWithCustomer('Wedge', 'cus_wedge')
+    expect(await apply('cus_wedge', T, 'evt_w_del_a', DELETED, update('canceled', 'sub_A'))).toBe('applied')
+    expect(await apply('cus_wedge', T, 'evt_w_new_b', CREATED, update('active', 'sub_B'))).toBe('applied')
+    expect(await apply('cus_wedge', T, 'evt_w_upd_a', UPDATED, update('active', 'sub_A'))).toBe('stale')
+    expect((await db.tenants.getBilling(id))?.stripeSubscriptionId).toBe('sub_B')
+
+    // …and the tenant is still cancelable: sub_B's own cancel lands
+    expect(await db.tenants.applySubscriptionEvent(
+      { stripeCustomerId: 'cus_wedge', id: 'evt_w_del_b', type: DELETED, at: new Date('2026-08-19T10:00:00.000Z') },
+      update('canceled', 'sub_B'),
+    )).toBe('applied')
+    expect(await statusOf(id)).toBe('canceled')
+  })
+
   it('a same-second cancel of an OLD subscription still cannot kill the live one', async () => {
     // the per-subscription guard has to survive the same-second admission: cancel A → resubscribe B,
     // then A's delayed cancel arrives stamped in B's second

@@ -75,7 +75,7 @@ type Sub = { tenantId: string; stripeCustomerId: string; subscriptionPriceId: st
  * writes into the same map `reportedOverage` reads, so the delta arithmetic is exercised end to end
  * across successive runs rather than mocked away.
  */
-type Report = { reported: number; included: number | null }
+type Report = { reported: number; included: number | null; priceId: string | null }
 
 function fakeDb(subs: Sub[], usage: Record<string, Record<string, number>>, log: Map<string, Report> = new Map()) {
   const db = {
@@ -327,26 +327,54 @@ describe('reportDailyOverage', () => {
     const { db, log } = fakeDb([tsp('t1', 'cus_1')], { t1: { '2026-07-11': 150, '2026-07-12': 199 } })
     await reportDailyOverage({ db, stripe: port(sent) }, DAYS)
     expect(sent).toHaveLength(0) // nothing owed…
-    expect(log.get('t1|2026-07-11')).toEqual({ reported: 0, included: 200 }) // …but the day is on record
+    expect(log.get('t1|2026-07-11')).toEqual({ reported: 0, included: 200, priceId: 'price_tsp' }) // …but the day is on record
   })
 
-  it('a DOWNGRADE does not re-bill days the old, larger allowance covered', async () => {
+  it('a PLAN CHANGE does not re-bill days the old, larger allowance covered', async () => {
     // TSP Grow (750 included) → TSP Start (200) with 500 devices. The prior rows are built by
     // RUNNING the reporter, not hand-seeded: a seeded row proved only that the guard reads a field.
     const sent: Sent[] = []
     const usage = { t1: { '2026-07-11': 500, '2026-07-12': 500 } }
-    const grow: StripeUsagePort = { includedFor: () => 750, reportUsage: (o) => { sent.push({ customerId: o.customerId, value: o.value, identifier: o.identifier, timestampS: o.timestampS }); return Promise.resolve() } }
-    const { db, log } = fakeDb([tsp('t1', 'cus_1')], usage)
-    await reportDailyOverage({ db, stripe: grow }, DAYS)
+    const sub = tsp('t1', 'cus_1')
+    sub.subscriptionPriceId = 'price_grow'
+    const twoPlans: StripeUsagePort = {
+      includedFor: (p) => (p === 'price_grow' ? 750 : 200),
+      reportUsage: (o) => { sent.push({ customerId: o.customerId, value: o.value, identifier: o.identifier, timestampS: o.timestampS }); return Promise.resolve() },
+    }
+    const { db, log } = fakeDb([sub], usage)
+    await reportDailyOverage({ db, stripe: twoPlans }, DAYS)
     expect(sent).toHaveLength(0) // 500 < 750, nothing owed
-    expect(log.get('t1|2026-07-11')?.included).toBe(750)
+    expect(log.get('t1|2026-07-11')).toMatchObject({ included: 750, priceId: 'price_grow' })
 
-    // …the tenant downgrades. `port` includes 200, so a naive recompute would bill 300/day.
+    // …the tenant downgrades. A naive recompute at 200 would bill 300/day for days Grow covered.
+    sub.subscriptionPriceId = 'price_start'
     const skips: { tenantId: string; day: string; was: number; now: number }[] = []
-    const r = await reportDailyOverage({ db, stripe: port(sent), onAllowanceSkip: (i) => skips.push(i) }, DAYS)
+    const r = await reportDailyOverage({ db, stripe: twoPlans, onAllowanceSkip: (i) => skips.push(i) }, DAYS)
     expect(sent).toHaveLength(0)
     expect(r.allowanceSkips).toBe(2)
     expect(skips[0]).toEqual({ tenantId: 't1', day: '2026-07-11', was: 750, now: 200 })
+  })
+
+  it('a CORRECTED STRIPE_INCLUDED still bills the days walked under the wrong number', async () => {
+    // the mirror case, and the one that matters more: STRIPE_INCLUDED is hand-maintained env whose
+    // miscuration is the whole of audit #23. Freezing on the allowance VALUE meant fixing a typo left
+    // every day already walked permanently unbillable — the trailing window exists to recover exactly
+    // this. Same price id ⇒ the config changed, not the plan.
+    const sent: Sent[] = []
+    let allowance = 750 // the typo: this plan really includes 200
+    const flaky: StripeUsagePort = {
+      includedFor: () => allowance,
+      reportUsage: (o) => { sent.push({ customerId: o.customerId, value: o.value, identifier: o.identifier, timestampS: o.timestampS }); return Promise.resolve() },
+    }
+    const { db } = fakeDb([tsp('t1', 'cus_1')], { t1: { '2026-07-11': 500, '2026-07-12': 500 } })
+    const first = await reportDailyOverage({ db, stripe: flaky }, DAYS)
+    expect(sent).toHaveLength(0)
+    expect(first.allowanceSkips).toBe(0)
+
+    allowance = 200 // founder fixes the env
+    const r = await reportDailyOverage({ db, stripe: flaky }, DAYS)
+    expect(sent.map((x) => x.value)).toEqual([300, 300]) // both days recovered, not frozen
+    expect(r.allowanceSkips).toBe(0)
   })
 
   it('a TSP tenant with NO price at all is counted too — the same silent zero-bill', async () => {

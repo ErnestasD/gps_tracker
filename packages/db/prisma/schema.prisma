@@ -782,6 +782,10 @@ model UsageReport {
   /// past days, so without it a downgrade (750 included → 200) would recompute last week's overage
   /// against the smaller allowance and bill hundreds of device-days the customer never owed.
   included   Int?
+  /// the base price the day was settled under — the discriminator between "the plan changed" (freeze
+  /// the day as billed) and "STRIPE_INCLUDED was corrected" (recompute it). Freezing on the allowance
+  /// alone made a config typo permanently unbillable, which is the opposite of audit #23's intent.
+  priceId    String?
   reportedAt DateTime @default(now()) @db.Timestamptz()
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

@@ -11,15 +11,20 @@
 -- `reported` is the cumulative overage-device count reported for that day, NOT the delta: a delta log
 -- cannot answer "what does Stripe think it has" after a partial failure without summing history.
 --
--- `included` is stored with the row because the allowance is a property of the plan AT THE TIME, and
--- the reporter re-walks days after the fact: a tenant that downgrades from 750 included to 200 would
--- otherwise have last week's already-billed days recomputed against the new, smaller allowance and
--- be charged hundreds of device-days it never owed.
+-- `priceId` + `included` record WHICH PLAN and WHICH ALLOWANCE the day was settled under, because the
+-- reporter re-walks days after the fact:
+--   * a tenant that DOWNGRADES (750 included → 200) must not have last week's days recomputed against
+--     the smaller allowance and be charged hundreds of device-days it never owed — those days are
+--     frozen, identified by the price id changing;
+--   * but a CORRECTION to the hand-maintained STRIPE_INCLUDED env (the miscuration audit #23 is
+--     about) leaves the price id alone, and those days must still be billable — freezing on the
+--     allowance value alone made a typo permanently unbillable.
 CREATE TABLE IF NOT EXISTS "usage_reports" (
   "tenantId"   UUID        NOT NULL,
   "day"        DATE        NOT NULL,
   "reported"   INTEGER     NOT NULL,
   "included"   INTEGER,
+  "priceId"    TEXT,
   "reportedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT "usage_reports_pkey" PRIMARY KEY ("tenantId", "day")
 );

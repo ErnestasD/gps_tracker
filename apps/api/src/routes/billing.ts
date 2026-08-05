@@ -248,7 +248,9 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
     }
     if (SUBSCRIPTION_EVENTS.has(event.type)) {
       const mapped = subscriptionFrom(event.data.object, deps.stripe.prices)
-      // event.created is the Unix-seconds ordering key; the DB guard applies it only if strictly newer
+      // event.created is the Unix-SECONDS ordering key. The DB guard applies a strictly newer event
+      // unconditionally, and an equal-second one by event type rank (see applySubscriptionEvent);
+      // a redelivery of an already-applied event id is dropped there whatever its timestamp.
       if (mapped === null) {
         // an unmappable subscription payload — we cannot provision anything from it. Ack (retrying
         // will not make it mappable) but SAY SO: silence here means a paying customer sits

@@ -33,7 +33,10 @@ export function createStripeUsageQueue(connection: ConnectionOptions): Queue {
  */
 export async function scheduleStripeUsage(queue: Queue): Promise<void> {
   for (const job of await queue.getRepeatableJobs()) {
-    if (job.name === 'report' && job.every !== String(STRIPE_USAGE_EVERY_MS)) {
+    // String() on BOTH sides: `getRepeatableJobs` round-trips `every` through Redis and returns a
+    // string, but the newer `getJobSchedulers` API returns a number — comparing a number against a
+    // string literal would be true every boot and churn the LIVE schedule instead of a stale one.
+    if (job.name === 'report' && String(job.every) !== String(STRIPE_USAGE_EVERY_MS)) {
       await queue.removeRepeatableByKey(job.key)
       console.warn('stripe usage: removed a stale repeatable schedule', job.key)
     }

@@ -28,19 +28,30 @@ function fakeQueue(existing: { key: string; name: string; every?: string | null 
 describe('scheduleStripeUsage', () => {
   it('removes a schedule left behind by a PREVIOUS interval', async () => {
     const { queue, removed, added } = fakeQueue([
-      { key: 'stripe-usage-daily:report::::86400000', name: 'report', every: '86400000' }, // the old 24 h
+      // a REAL bullmq 5 repeat key is an md5 of (name:jobId:endDate:tz:every), not a readable concat
+      { key: '544d2da08cde02c924fdaaa646bc6dad', name: 'report', every: '86400000' }, // the old 24 h
     ])
     await scheduleStripeUsage(queue)
-    expect(removed).toEqual(['stripe-usage-daily:report::::86400000'])
+    expect(removed).toEqual(['544d2da08cde02c924fdaaa646bc6dad'])
     expect(added).toHaveLength(1) // …and the current one is still upserted
   })
 
   it('leaves the CURRENT schedule alone — an upsert must not churn it every boot', async () => {
     const { queue, removed } = fakeQueue([
-      { key: `stripe-usage-daily:report::::${STRIPE_USAGE_EVERY_MS}`, name: 'report', every: String(STRIPE_USAGE_EVERY_MS) },
+      { key: 'b7a1f0c2d3e4f5061728394a5b6c7d8e', name: 'report', every: String(STRIPE_USAGE_EVERY_MS) },
     ])
     await scheduleStripeUsage(queue)
     expect(removed).toEqual([])
+  })
+
+  it('a NUMERIC `every` compares equal too — the newer scheduler API returns one', () => {
+    // `getRepeatableJobs` round-trips through Redis and yields a string; `getJobSchedulers` yields a
+    // number. Comparing a number to a string literal is true every boot, which would churn the LIVE
+    // schedule on every restart — a no-schedule window on the billing job, forever.
+    const { queue, removed } = fakeQueue([
+      { key: 'c9d8e7f6a5b4c3d2e1f00918273645ab', name: 'report', every: STRIPE_USAGE_EVERY_MS as unknown as string },
+    ])
+    return scheduleStripeUsage(queue).then(() => expect(removed).toEqual([]))
   })
 
   it('never touches another job’s schedule on the same queue', async () => {

@@ -181,14 +181,21 @@ export async function reportDailyOverage(
         // always there to bill.
         if (lapsedMs !== null && Date.parse(`${day}T00:00:00Z`) >= lapsedMs) continue
         const prior = already.get(day)
-        // The allowance is a property of the plan AT THE TIME. Recomputing a day against a DIFFERENT
-        // one is how a downgrade (750 included → 200) turns last week's settled days into hundreds of
-        // device-days of overage the customer's plan actually covered. The stored value is the only
-        // record of what was in force, so a day whose allowance has changed is left exactly as billed.
-        if (prior !== undefined && prior.included !== null && prior.included !== included) {
+        // The allowance is a property of the plan AT THE TIME, so recomputing a settled day against a
+        // different one is how a downgrade (750 included → 200) turns last week into hundreds of
+        // device-days of overage the customer's plan actually covered. Such a day is left exactly as
+        // billed.
+        //
+        // The discriminator is the PRICE ID, not the allowance value. Freezing whenever `included`
+        // changed also froze the case STRIPE_INCLUDED exists to get wrong: a typo in that
+        // hand-maintained env (audit #23) would be corrected, and every day already walked under the
+        // wrong number became permanently unbillable — the trailing window's whole purpose is to
+        // recover from exactly that. Same price, different allowance ⇒ the config was fixed, and the
+        // day is recomputed; different price ⇒ the plan changed under it, and it is frozen.
+        if (prior?.priceId != null && prior.priceId !== s.subscriptionPriceId) {
           out.allowanceSkips++
-          deps.onAllowanceSkip?.({ tenantId: s.tenantId, day, was: prior.included, now: included })
-          console.warn('stripe overage: allowance changed for', s.tenantId, day, `${prior.included} → ${included} — day left as billed`)
+          deps.onAllowanceSkip?.({ tenantId: s.tenantId, day, was: prior.included ?? 0, now: included })
+          console.warn('stripe overage: plan changed under a settled day', s.tenantId, day, `${prior.priceId} → ${s.subscriptionPriceId} — day left as billed`)
           continue
         }
         const over = overageDevices(byDay.get(day) ?? 0, included)
@@ -205,7 +212,7 @@ export async function reportDailyOverage(
           // Only when there is no row yet: an existing row is a high-water mark and a retroactive
           // DECREASE must not lower it (the meter cannot go down, so lowering it would re-bill the
           // difference on the next increase).
-          if (prior === undefined) await deps.db.usage.recordOverageReport(s.tenantId, day, { reported: over, included })
+          if (prior === undefined) await deps.db.usage.recordOverageReport(s.tenantId, day, { reported: over, included, priceId: s.subscriptionPriceId })
           continue
         }
         await deps.stripe.reportUsage({
@@ -220,7 +227,7 @@ export async function reportDailyOverage(
         })
         // AFTER Stripe accepts: recording first would mark a failed submission as billed and
         // under-bill silently — the exact failure mode this whole change exists to remove
-        await deps.db.usage.recordOverageReport(s.tenantId, day, { reported: over, included })
+        await deps.db.usage.recordOverageReport(s.tenantId, day, { reported: over, included, priceId: s.subscriptionPriceId })
         out.reported++
         out.devicesOver += delta
         if (prev > 0) out.backfilled++

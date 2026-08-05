@@ -392,30 +392,54 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
               OR: [
                 { lastBillingEventAt: null },
                 { lastBillingEventAt: { lt: eventAt } },
-                // Same second: admit an event whose TYPE ranks at or above the one already applied,
-                // so a reordered `.updated` can never walk back a `.deleted`. `lte`, not `lt`: two
-                // same-second `.updated`s — what a plan change emits — must both land. (Equal ranks
-                // are therefore applied in ARRIVAL order; nothing in the events distinguishes them.)
+                // SAME SECOND. Two disjoint cases, because rank is a per-SUBSCRIPTION lifecycle
+                // order living in a per-CUSTOMER row — the mistake that has to be kept out of this
+                // predicate is letting one subscription's rank order another's events.
                 //
-                // A NULL rank is NOT admitted: rows written before this column existed carry
-                // `lastBillingEventAt` with no rank, and admitting those would reopen the resurrected
-                // -cancel bug for Stripe's whole retry horizon after deploy. The migration backfills
-                // them to 2 (the maximum), which is the conservative behaviour they were written
-                // under; this predicate is the belt to that migration's braces.
+                //  1. SAME subscription → ordinary lifecycle order: admit a type ranking at or above
+                //     the one already applied, so a reordered `.updated` cannot walk back a
+                //     `.deleted`. `lte`, not `lt`: two same-second `.updated`s — what a plan change
+                //     emits — must both land. (Equal ranks are therefore applied in ARRIVAL order;
+                //     nothing in the payloads distinguishes them.) A NULL rank is not admitted: rows
+                //     predating the column carry `lastBillingEventAt` with no rank, and admitting
+                //     those reopens the resurrected-cancel bug for Stripe's whole retry horizon after
+                //     deploy. The migration backfills them to 2; this is the belt to those braces.
                 //
-                // The exception is a LIVE event for a DIFFERENT subscription. `.deleted`(A) followed
-                // in the same second by `.created`(B) is a cancel-and-resubscribe delivered in the
-                // CORRECT order, and rank alone dropped it — leaving the paying customer on the
-                // canceled subscription, floored to zero entitlements and metered as lapsed. A lower
-                // rank for another subscription id is not a reorder of this one's lifecycle. The
-                // subscription must differ: a live `.updated`(A) after `.deleted`(A) IS the reorder.
+                //  2. A RESUBSCRIBE: a LIVE event for a DIFFERENT subscription, and the stored
+                //     subscription is NOT live. `.deleted`(A) followed in the same second by
+                //     `.created`(B) is a cancel-and-resubscribe in the CORRECT order, and rank alone
+                //     dropped it — leaving the paying customer on the canceled subscription, floored
+                //     to zero entitlements and, because `listActiveSubscribers` reads the same
+                //     status, not even metered.
+                //
+                // The "stored is not live" half of (2) is what stops the three-event wedge:
+                // `deleted(A) → created(B,active) → updated(A,active)`, all in one second, used to
+                // end up ACTIVE on the DELETED sub_A — and unrecoverable, because every later sub_B
+                // event is non-live and blocked by the per-subscription guard while sub_A, being
+                // deleted, emits nothing ever again. Free unlimited service, invisible to both the
+                // lapse sweep and the meter.
                 {
                   AND: [
                     { lastBillingEventAt: eventAt },
                     {
                       OR: [
-                        { lastBillingEventRank: { lte: rank } },
-                        ...(incomingLive && data.stripeSubscriptionId !== null ? [{ stripeSubscriptionId: { not: data.stripeSubscriptionId } }] : []),
+                        {
+                          AND: [
+                            data.stripeSubscriptionId === null ? { stripeSubscriptionId: null } : { stripeSubscriptionId: data.stripeSubscriptionId },
+                            { lastBillingEventRank: { lte: rank } },
+                          ],
+                        },
+                        ...(incomingLive && data.stripeSubscriptionId !== null
+                          ? [
+                              {
+                                AND: [
+                                  // `{ not: X }` does NOT match NULL in Prisma, so the null case is explicit
+                                  { OR: [{ stripeSubscriptionId: null }, { stripeSubscriptionId: { not: data.stripeSubscriptionId } }] },
+                                  { OR: [{ subscriptionStatus: null }, { subscriptionStatus: { notIn: ['active', 'trialing'] } }] },
+                                ],
+                              },
+                            ]
+                          : []),
                       ],
                     },
                   ],

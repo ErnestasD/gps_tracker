@@ -42,38 +42,38 @@ afterAll(async () => {
 
 describe('usage report log', () => {
   it('records the CUMULATIVE reported value per day and reads it back by day string', async () => {
-    await db.usage.recordOverageReport(tenantId, '2026-07-11', { reported: 5, included: 200 })
-    await db.usage.recordOverageReport(tenantId, '2026-07-12', { reported: 3, included: 200 })
+    await db.usage.recordOverageReport(tenantId, '2026-07-11', { reported: 5, included: 200, priceId: 'price_tsp' })
+    await db.usage.recordOverageReport(tenantId, '2026-07-12', { reported: 3, included: 200, priceId: 'price_tsp' })
     const got = await db.usage.reportedOverage(tenantId, { from: '2026-07-11', to: '2026-07-12' })
     expect([...got.entries()].sort()).toEqual([
-      ['2026-07-11', { reported: 5, included: 200 }],
-      ['2026-07-12', { reported: 3, included: 200 }],
+      ['2026-07-11', { reported: 5, included: 200, priceId: 'price_tsp' }],
+      ['2026-07-12', { reported: 3, included: 200, priceId: 'price_tsp' }],
     ])
   })
 
   it('a second write for the same day OVERWRITES rather than erroring or duplicating', async () => {
     // the reporter re-walks a trailing window, so it writes the same tenant-day repeatedly; anything
     // other than an upsert would make the second run of every day throw
-    await db.usage.recordOverageReport(tenantId, '2026-07-11', { reported: 9, included: 200 })
-    expect((await db.usage.reportedOverage(tenantId, { from: '2026-07-11', to: '2026-07-11' })).get('2026-07-11')).toEqual({ reported: 9, included: 200 })
+    await db.usage.recordOverageReport(tenantId, '2026-07-11', { reported: 9, included: 200, priceId: 'price_tsp' })
+    expect((await db.usage.reportedOverage(tenantId, { from: '2026-07-11', to: '2026-07-11' })).get('2026-07-11')).toEqual({ reported: 9, included: 200, priceId: 'price_tsp' })
   })
 
-  it('keeps the ALLOWANCE the day was billed against, so a later downgrade cannot re-bill it', async () => {
-    // the reporter re-walks past days; recomputing them against a smaller allowance would charge
-    // hundreds of device-days the customer's plan actually covered at the time
-    await db.usage.recordOverageReport(tenantId, '2026-07-13', { reported: 4, included: 750 })
-    expect((await db.usage.reportedOverage(tenantId, { from: '2026-07-13', to: '2026-07-13' })).get('2026-07-13')).toEqual({ reported: 4, included: 750 })
+  it('keeps the PRICE and the ALLOWANCE the day was billed against', async () => {
+    // the reporter re-walks past days: the price id tells it whether the PLAN changed (freeze the
+    // day) or STRIPE_INCLUDED was merely corrected (recompute it)
+    await db.usage.recordOverageReport(tenantId, '2026-07-13', { reported: 4, included: 750, priceId: 'price_grow' })
+    expect((await db.usage.reportedOverage(tenantId, { from: '2026-07-13', to: '2026-07-13' })).get('2026-07-13')).toEqual({ reported: 4, included: 750, priceId: 'price_grow' })
   })
 
   it('reads are bounded by the window — an old day outside it is not returned', async () => {
-    await db.usage.recordOverageReport(tenantId, '2026-01-02', { reported: 42, included: 200 })
+    await db.usage.recordOverageReport(tenantId, '2026-01-02', { reported: 42, included: 200, priceId: 'price_tsp' })
     const got = await db.usage.reportedOverage(tenantId, { from: '2026-07-11', to: '2026-07-12' })
     expect(got.has('2026-01-02')).toBe(false)
   })
 
   it('another tenant’s log is never visible — the reporter must not read across tenants', async () => {
     const other = (await db.tenants.create(actor, { name: 'OtherCo' })).id
-    await db.usage.recordOverageReport(other, '2026-07-11', { reported: 77, included: 200 })
+    await db.usage.recordOverageReport(other, '2026-07-11', { reported: 77, included: 200, priceId: 'price_tsp' })
     expect((await db.usage.reportedOverage(tenantId, { from: '2026-07-11', to: '2026-07-11' })).get('2026-07-11')?.reported).toBe(9)
     expect((await db.usage.reportedOverage(other, { from: '2026-07-11', to: '2026-07-11' })).get('2026-07-11')?.reported).toBe(77)
   })
@@ -81,13 +81,13 @@ describe('usage report log', () => {
   it('a malformed day THROWS instead of reaching Postgres as an Invalid Date', async () => {
     // this runs in a background job with no request behind it; an unmappable Prisma error there is a
     // stack trace in a log nobody reads, so the guard names the bad value
-    await expect(db.usage.recordOverageReport(tenantId, 'not-a-day', { reported: 1, included: 200 })).rejects.toThrow(/unusable day/)
-    await expect(db.usage.recordOverageReport(tenantId, '2026-13-45', { reported: 1, included: 200 })).rejects.toThrow(/unusable day/)
+    await expect(db.usage.recordOverageReport(tenantId, 'not-a-day', { reported: 1, included: 200, priceId: 'price_tsp' })).rejects.toThrow(/unusable day/)
+    await expect(db.usage.recordOverageReport(tenantId, '2026-13-45', { reported: 1, included: 200, priceId: 'price_tsp' })).rejects.toThrow(/unusable day/)
   })
 
   it('the log dies with its tenant (FK cascade) — no orphan billing rows', async () => {
     const doomed = (await db.tenants.create(actor, { name: 'DoomedCo' })).id
-    await db.usage.recordOverageReport(doomed, '2026-07-11', { reported: 4, included: 200 })
+    await db.usage.recordOverageReport(doomed, '2026-07-11', { reported: 4, included: 200, priceId: 'price_tsp' })
     await db.tenants.remove(actor, doomed)
     const c = new pg.Client({ connectionString: url })
     await c.connect()
