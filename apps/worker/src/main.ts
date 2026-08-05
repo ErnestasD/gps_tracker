@@ -325,6 +325,16 @@ async function main(): Promise<void> {
   await scheduleExportSweep(gdprSweepQueue)
   // Create + start a consumer for ONE shard. Reused by the initial claim AND by the leaser's
   // onGained callback (a shard recovered after a lost lease / a dead peer's expired one).
+  /**
+   * Compensating recomputes whose enqueue failed, retried on the next batch WITH THEIR OWN WINDOW.
+   *
+   * Not folded into the trip engine's `late` set: that set is drained through a window capped at
+   * `now − RECOMPUTE_GUARD_MS`, which is precisely the window that cannot rebuild a close that just
+   * happened — so re-arming there would retry forever through the path the code already documents
+   * as useless for this case. Keyed by device, widest window wins.
+   */
+  const pendingCompensation = new Map<string, { deviceId: bigint; from: Date; to: Date }>()
+
   const makeConsumer = (s: number, conn: Redis): ShardConsumer =>
     new ShardConsumer(s, {
       onDeadLetter: (reason, n) => prom.deadLettered.inc({ reason }, n),
@@ -412,13 +422,19 @@ async function main(): Promise<void> {
                 }
               }
               for (const sp of spans.values()) {
+                const to = new Date(sp.last.getTime() + RECOMPUTE_GUARD_MS)
                 try {
-                  await enqueueRecompute(recomputeQueue, sp.deviceId, sp.first, new Date(sp.last.getTime() + RECOMPUTE_GUARD_MS), {
-                    delayMs: RECOMPUTE_GUARD_MS,
-                  })
+                  await enqueueRecompute(recomputeQueue, sp.deviceId, sp.first, to, { delayMs: RECOMPUTE_GUARD_MS })
                 } catch {
-                  // even the enqueue failed — fall back to the late signal so the NEXT batch retries
-                  motionFeed.tripEngine.markLate(sp.deviceId, sp.first)
+                  // even the enqueue failed (Redis is down too) — park it and retry NEXT batch with
+                  // this same window, widening if another failure lands first
+                  const key = sp.deviceId.toString()
+                  const prev = pendingCompensation.get(key)
+                  pendingCompensation.set(key, {
+                    deviceId: sp.deviceId,
+                    from: prev !== undefined && prev.from < sp.first ? prev.from : sp.first,
+                    to: prev !== undefined && prev.to > to ? prev.to : to,
+                  })
                 }
               }
               prom.tripPersistErrors.inc()
@@ -512,6 +528,16 @@ async function main(): Promise<void> {
             }
           } catch (err) {
             console.error('ruleEngine', err)
+          }
+          // retry any compensating recompute whose enqueue failed in an earlier batch, with the
+          // window it actually needs (see pendingCompensation)
+          for (const [key, pc] of [...pendingCompensation]) {
+            try {
+              await enqueueRecompute(recomputeQueue, pc.deviceId, pc.from, pc.to, { delayMs: RECOMPUTE_GUARD_MS })
+              pendingCompensation.delete(key)
+            } catch {
+              /* still down — keep it parked */
+            }
           }
           // any out-of-order (late) records the engine dropped → reconcile from durable
           // positions off the hot path (positions are already written by the consumer).

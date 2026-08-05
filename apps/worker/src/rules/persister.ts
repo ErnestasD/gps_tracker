@@ -29,10 +29,25 @@ const LATE_FLUSH_S = 48 * 3_600
  * the emitted event — including backwards — because the rule is "not twice within N of each other",
  * not "not twice within N of the newest thing we have seen".
  */
-/** Short stable tag for an event's payload — enough to separate two same-millisecond events of one
- *  rule, small enough to keep the key short. Collisions cost a dropped duplicate, never a wrong row. */
+/**
+ * Short stable tag for an event's payload — enough to separate two same-millisecond events of one
+ * rule, small enough to keep the key short. A collision costs a dropped duplicate, never a wrong row.
+ *
+ * The replacer is a FUNCTION, not the obvious `JSON.stringify(payload, Object.keys(payload).sort())`.
+ * That second form reads like "sort the keys" and is actually a WHITELIST applied at every depth: a
+ * nested object is emitted as `{}`, so two events differing only inside a nested field would collide
+ * into one dedup key and the second alert would be silently dropped. A bigint would throw outright —
+ * inside `gate()`, so the persist fails, the IO advance rolls back, and that rule kind never fires
+ * again. Today's payloads are flat primitives; this is about the next field somebody adds.
+ */
 function payloadTag(payload: Record<string, unknown>): string {
-  const json = JSON.stringify(payload, Object.keys(payload).sort())
+  const json = JSON.stringify(payload, (_k, v: unknown) =>
+    typeof v === 'bigint'
+      ? `${v.toString()}n`
+      : v !== null && typeof v === 'object' && !Array.isArray(v)
+        ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)))
+        : v,
+  )
   let h = 0x811c9dc5
   for (let i = 0; i < json.length; i++) {
     h ^= json.charCodeAt(i)

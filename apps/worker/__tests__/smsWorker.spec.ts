@@ -92,6 +92,24 @@ describe('runSms', () => {
     expect(store.has('sms:sent:d1')).toBe(false) // and no bogus 'attempting' left behind
   })
 
+  it('a DB blip in the pre-send backstop releases the claim — a pg error must not consume a send', async () => {
+    // The backstop runs after the SET NX. Leaving the claim at `attempting` when it throws means
+    // the retry takes the redelivery branch and records `not resent` for a message that was never
+    // handed to the provider — and never will be.
+    const brokenPool = { query: vi.fn(() => Promise.reject(new Error('Connection terminated'))) } as unknown as Pool
+    const { redis, store } = fakeRedis()
+    const { driver, send } = okDriver()
+    await expect(runSms({ connection: {}, pool: brokenPool, redis, driver }, job())).rejects.toThrow(/Connection terminated/)
+    expect(send).not.toHaveBeenCalled()
+    expect(store.has('sms:sent:d1')).toBe(false) // released → the retry starts clean and CAN send
+
+    // the retry, with a working DB, sends normally
+    const { pool, calls } = fakePool()
+    await runSms({ connection: {}, pool, redis, driver }, job())
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(calls.some((c) => c.params[0] === 'sent')).toBe(true)
+  })
+
   it('a DB failure after a charged send keeps the claim at sent and THROWS, so the retry reconciles', async () => {
     // REGRESSION (audit MED). `markSent` used to sit inside the send's try, so an ordinary pg error
     // — a container restart, a failover, a killed backend, a statement timeout — fell through to

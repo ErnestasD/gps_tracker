@@ -109,9 +109,21 @@ export async function runSms(deps: SmsWorkerDeps, job: Job<SmsJob>): Promise<voi
   // transient failure is retried rather than recorded as a lie), and the very events that break that
   // write — a failover, a restart — can also lose the Redis key. A fresh `SET NX` would then succeed
   // and the message would be sent and CHARGED a second time. The durable row is the backstop.
-  if (claimed !== null && (await alreadySent(deps.pool, smsDeliveryId))) {
-    await deps.redis.del(key).catch(() => undefined) // do not leave a bogus 'attempting' behind
-    return
+  if (claimed !== null) {
+    let proven: boolean
+    try {
+      proven = await alreadySent(deps.pool, smsDeliveryId)
+    } catch (err) {
+      // The backstop itself failed. RELEASE the claim before rethrowing: leaving it at `attempting`
+      // means the BullMQ retry takes the redelivery branch and records `not resent` — a message that
+      // was never handed to the provider, and now never will be. A pg blip must not consume a send.
+      await deps.redis.del(key).catch(() => undefined)
+      throw err
+    }
+    if (proven) {
+      await deps.redis.del(key).catch(() => undefined) // do not leave a bogus 'attempting' behind
+      return
+    }
   }
   if (claimed === null) {
     // a prior attempt already claimed this delivery — NEVER resend (it may already be charged).

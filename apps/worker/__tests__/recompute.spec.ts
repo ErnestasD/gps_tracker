@@ -251,6 +251,62 @@ describe('E04-2 trip recompute (idempotent, §6.4)', () => {
     expect((survivors.rows[0] as { n: number }).n).toBe(1) // the mid-job close SURVIVED
   })
 
+  it('a close that lands DURING the source read is not erased either — the ids are captured first', async () => {
+    // The sibling test above injects at `connect`, i.e. after both reads. This one injects between
+    // the id capture and the positions read, which is the window that actually matters: the rebuild's
+    // snapshot IS the positions read, and taking the ids after it would leave everything closing in
+    // between doomed AND unrebuilt — for the duration of the largest query in the job, during a
+    // buffered flood, which is exactly when the shard consumer closes that device's historic trips.
+    await insert(trip(0, 54.0))
+    await recomputeTrips(pool, DEV, at(-10), at(400), SCOPE)
+    let injected = false
+    const racingPool = new Proxy(pool, {
+      get(t, prop) {
+        const v: unknown = Reflect.get(t, prop)
+        if (prop !== 'query' || typeof v !== 'function') {
+          return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v
+        }
+        return async (sql: string, params: unknown[]) => {
+          // the id capture has just returned; streaming closes another trip before positions load
+          if (!injected && sql.includes('SELECT id, "startTime" FROM trips')) {
+            injected = true
+            const out = await (v as (...a: unknown[]) => Promise<unknown>).call(t, sql, params)
+            await pool.query(
+              `INSERT INTO trips ("tenantId","accountId","deviceId","status","startTime","endTime","startLat","startLon","distanceM","distanceSource","maxSpeed","idleS")
+               VALUES ($1,$2,$3,'closed',$4,$5,54.9,25,1234,'gps',60,0)`,
+              [SCOPE.tenantId, SCOPE.accountId, DEV.toString(), at(200), at(260)],
+            )
+            return out
+          }
+          return (v as (...a: unknown[]) => Promise<unknown>).call(t, sql, params)
+        }
+      },
+    })
+    await recomputeTrips(racingPool, DEV, at(-10), at(400), SCOPE)
+    const survivors = await pool.query(`SELECT count(*)::int AS n FROM trips WHERE "deviceId"=$1 AND "startTime"=$2`, [DEV.toString(), at(200)])
+    expect((survivors.rows[0] as { n: number }).n).toBe(1)
+  })
+
+  it('a rebuilt trip DISPLACES a stale row at the same start — the rebuild is authoritative (§6.4)', async () => {
+    // Both the mid-job close of the SAME journey and an `open` row whose close was lost sit at the
+    // rebuilt trip's exact startTime. Keeping either would give the device two rows for one journey,
+    // and reports aggregate trips with no status filter — an open one is scored to now(), so the
+    // duplicate double-counts distance and engine-hours.
+    await insert(trip(0, 54.0))
+    const first = await recomputeTrips(pool, DEV, at(-10), at(400), SCOPE)
+    expect(first.created).toBe(1)
+    const start = (await snapshot())[0]!.start
+    // a stranded open row for the same journey (its close threw and left it behind)
+    await pool.query(
+      `INSERT INTO trips ("tenantId","accountId","deviceId","status","startTime","startLat","startLon") VALUES ($1,$2,$3,'open',$4,54.0,25)`,
+      [SCOPE.tenantId, SCOPE.accountId, DEV.toString(), start],
+    )
+    await recomputeTrips(pool, DEV, at(-10), at(400), SCOPE)
+    const rows = await snapshot()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.status).toBe('closed')
+  })
+
   it('window expansion: a mid-trip window expands to the existing trip and never bisects it', async () => {
     await insert(trip(0, 54.0))
     await recomputeTrips(pool, DEV, at(-10), at(400), SCOPE) // trip now exists
