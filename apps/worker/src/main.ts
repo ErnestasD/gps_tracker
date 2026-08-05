@@ -33,7 +33,9 @@ import { startRetentionWorker } from './jobs/retentionWorker.js'
 import { createRejectDrainQueue, scheduleRejectDrain } from './jobs/rejectDrainQueue.js'
 import { startRejectDrainWorker } from './jobs/rejectDrainWorker.js'
 import { createStripeUsageQueue, scheduleStripeUsage } from './jobs/stripeUsageQueue.js'
-import { createStripeUsageWorker } from './jobs/stripeUsageWorker.js'
+import { backfillDaysFromEnv, createStripeUsageWorker } from './jobs/stripeUsageWorker.js'
+import { createLapseSweepQueue, scheduleLapseSweep } from './jobs/lapseSweepQueue.js'
+import { createLapseSweepWorker, graceDaysFromEnv } from './jobs/lapseSweepWorker.js'
 import { stripeUsagePortFromEnv } from './billing/usageReporter.js'
 import { createScheduledReportQueue, scheduleScheduledReports } from './jobs/scheduledReportQueue.js'
 import { startScheduledReportWorker } from './jobs/scheduledReportWorker.js'
@@ -258,9 +260,38 @@ async function main(): Promise<void> {
   const stripeUsagePort = stripeUsagePortFromEnv()
   const stripeUsageQueue = stripeUsagePort !== null ? createStripeUsageQueue(recomputeConn) : null
   const stripeUsageWorker = stripeUsagePort !== null
-    ? createStripeUsageWorker({ connection: recomputeConn, db, stripe: stripeUsagePort, onReported: (r) => prom.stripeOverageReported.inc(r.reported), onFailed: () => prom.jobFailed.inc({ job: 'stripe_usage' }) })
+    ? createStripeUsageWorker({
+        connection: recomputeConn,
+        db,
+        stripe: stripeUsagePort,
+        backfillDays: backfillDaysFromEnv(),
+        onReported: (r) => {
+          prom.stripeOverageReported.inc(r.reported)
+          prom.stripeOverageBackfilled.inc(r.backfilled)
+          // a GAUGE, not a counter: the question is "is the config wrong right now", and it must
+          // fall back to 0 by itself once STRIPE_INCLUDED is fixed
+          prom.stripeUnmappedPrice.set(r.unmappedPrices)
+        },
+        onFailed: () => prom.jobFailed.inc({ job: 'stripe_usage' }),
+      })
     : null
   if (stripeUsageQueue !== null) await scheduleStripeUsage(stripeUsageQueue)
+  // Audit MED #22: count tenants still being served past their entitlement floor. Runs whether or
+  // not Stripe is configured — an expired self-serve trial is a lapse too, and the whole point is
+  // that nothing anywhere counted these.
+  const lapseSweepQueue = createLapseSweepQueue(recomputeConn)
+  const lapseSweepWorker = createLapseSweepWorker({
+    connection: recomputeConn,
+    db,
+    graceDays: graceDaysFromEnv(),
+    onSwept: (r) => {
+      prom.billingLapsedTenants.set(r.tenants)
+      prom.billingLapsedDevices.set(r.devices)
+      prom.billingLapsedActionable.set(r.actionable)
+    },
+    onFailed: () => prom.jobFailed.inc({ job: 'lapse_sweep' }),
+  })
+  await scheduleLapseSweep(lapseSweepQueue)
   // V1-nice: scheduled emailed reports — hourly cron runs due schedules + e-mails them. Only when
   // email is configured (no transport ⇒ nothing to send); reuses the same SES SMTP as notifications.
   const scheduledReportQueue = emailTransport !== undefined ? createScheduledReportQueue(recomputeConn) : null
@@ -709,6 +740,8 @@ async function main(): Promise<void> {
       await usageQueue.close()
       await stripeUsageWorker?.close() // finish the in-flight overage report, stop taking new
       await stripeUsageQueue?.close()
+      await lapseSweepWorker.close() // finish the in-flight lapse sweep, stop taking new
+      await lapseSweepQueue.close()
       await scheduledReportWorker?.close() // finish the in-flight scheduled-report run, stop taking new
       await scheduledReportQueue?.close()
       await rejectDrainWorker.close()

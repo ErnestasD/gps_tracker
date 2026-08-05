@@ -16,7 +16,7 @@ const repoOver = (rows: { id: string; subscriptionStatus: string | null; stripeC
     const w = args.where
     return Promise.resolve(
       rows
-        .map((r) => ({ ...r, stripeCustomerId: 'stripeCustomerId' in r ? r.stripeCustomerId! : `cus_${r.id}`, subscriptionPriceId: 'price_1' }))
+        .map((r) => ({ ...r, stripeCustomerId: 'stripeCustomerId' in r ? r.stripeCustomerId! : `cus_${r.id}`, subscriptionPriceId: 'price_1', plan: 'tsp_grow' }))
         .filter((r) => (w['stripeCustomerId'] === undefined ? true : r.stripeCustomerId !== null))
         .filter((r) => (w['subscriptionStatus'] === undefined ? true : r.subscriptionStatus !== null)),
     )

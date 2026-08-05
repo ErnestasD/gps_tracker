@@ -2,9 +2,10 @@ import { Queue, type ConnectionOptions } from 'bullmq'
 
 /**
  * Daily Stripe overage-usage queue (ADR-024 PR B2). One repeatable job fires every 24 h and reports
- * yesterday's per-tenant device overage to the Stripe meter. Distinct from the E07-4 `usage-sweep`
- * (which POPULATES usage_daily); this one READS it and pushes overage to Stripe. Repeatable jobs
- * dedupe by scheduler key, so a fleet of workers upsert one schedule and one instance runs per tick.
+ * a trailing window of per-tenant device overage to the Stripe meter. Distinct from the E07-4
+ * `usage-sweep` (which POPULATES usage_daily); this one READS it and pushes overage to Stripe.
+ * Repeatable jobs dedupe by scheduler key, so a fleet of workers upsert one schedule and one
+ * instance runs per tick.
  */
 export const STRIPE_USAGE_QUEUE = 'stripe-usage-daily'
 export const STRIPE_USAGE_EVERY_MS = 24 * 3_600_000

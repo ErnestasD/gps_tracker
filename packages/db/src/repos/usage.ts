@@ -28,6 +28,15 @@ export interface UsageRangeOpts {
 export interface UsageRepo {
   platformSummary(opts?: UsageRangeOpts): Promise<PlatformUsageRow[]>
   tenantSummary(scope: Scope, opts?: UsageRangeOpts): Promise<TenantUsageRow[]>
+  /**
+   * What has ALREADY been reported to Stripe's overage meter for a tenant, per day → the CUMULATIVE
+   * value, so the reporter can submit only the delta. UNSCOPED BY DESIGN: the caller is the billing
+   * job, which walks every subscriber; it takes an explicit tenant id rather than a Scope because
+   * there is no request identity behind it (same shape as `listActiveSubscribers`).
+   */
+  reportedOverage(tenantId: string, opts: UsageRangeOpts): Promise<Map<string, number>>
+  /** Record what Stripe has now been told about (tenant, day). Idempotent upsert; billing-job only. */
+  recordOverageReport(tenantId: string, day: string, reported: number): Promise<void>
 }
 
 const dayWhere = (opts: UsageRangeOpts) => ({
@@ -60,6 +69,25 @@ export function createUsageRepo(prisma: PrismaClient): UsageRepo {
         take: 366, // a year of rows at most
       })
       return groups.map((g) => ({ day: g.day.toISOString().slice(0, 10), deviceDays: g._count._all }))
+    },
+    reportedOverage: async (tenantId, opts) => {
+      const day = dayWhere(opts)
+      const rows = await prisma.usageReport.findMany({
+        where: { tenantId, ...(Object.keys(day).length > 0 ? { day } : {}) },
+        select: { day: true, reported: true },
+      })
+      return new Map(rows.map((r) => [r.day.toISOString().slice(0, 10), r.reported]))
+    },
+    recordOverageReport: async (tenantId, day, reported) => {
+      // guarded here rather than at the call site: a malformed day would otherwise reach Prisma as
+      // `new Date('…')` → Invalid Date → an opaque 500 from a background job nobody is watching
+      if (!isPgSafeDate(day)) throw new Error(`recordOverageReport: unusable day ${JSON.stringify(day)}`)
+      const at = new Date(day)
+      await prisma.usageReport.upsert({
+        where: { tenantId_day: { tenantId, day: at } },
+        create: { tenantId, day: at, reported },
+        update: { reported, reportedAt: new Date() },
+      })
     },
   }
 }

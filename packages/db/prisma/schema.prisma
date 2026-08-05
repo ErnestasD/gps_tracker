@@ -101,6 +101,16 @@ model Tenant {
   /// timestamp of the last APPLIED Stripe event; a webhook update lands only when strictly newer
   /// (monotonic guard against out-of-order/duplicate delivery — ADR-024)
   lastBillingEventAt    DateTime?  @db.Timestamptz()
+  /// id (`evt_…`) of the last APPLIED Stripe event — the SAME-SECOND tiebreak. `event.created` is
+  /// second-granularity, so two genuinely distinct events emitted in the same second compared equal
+  /// under the strict `<` guard and the later one was silently dropped as a replay (audit #25).
+  lastBillingEventId    String?
+  /// affiliate commission window: the tenant's FIRST paid invoice, and the affiliate's
+  /// `commissionMonths` AS IT STOOD at that moment. Both are snapshots — the window used to be
+  /// derived from the earliest COMMISSION ROW and a live `commissionMonths`, so a period in which
+  /// nothing accrued moved the anchor forward, and an admin edit re-opened closed windows (audit #26).
+  commissionAnchorAt       DateTime? @db.Timestamptz()
+  commissionMonthsAtAnchor Int?
   createdAt             DateTime   @default(now()) @db.Timestamptz()
 
   accounts            Account[]
@@ -111,6 +121,7 @@ model Tenant {
   /// affiliate attribution (W9): the partner who referred this tenant, set once at signup from ?ref
   referredByAffiliate Affiliate?         @relation("AffiliateReferrals", fields: [referredByAffiliateId], references: [id])
   commissions         Commission[]       @relation("TenantCommissions")
+  usageReports        UsageReport[]
 
   @@map("tenants")
 }
@@ -750,6 +761,25 @@ model UsageDaily {
   @@id([deviceId, day])
   @@index([tenantId, day])
   @@map("usage_daily")
+}
+
+/// What has ALREADY been reported to Stripe's overage meter, per tenant-day (audit MED #21).
+///
+/// `reported` is CUMULATIVE — the total overage-device count Stripe has been told about for that day,
+/// not the last delta. The reporter re-walks a trailing window each run and submits `over − reported`,
+/// so a failed run, a restart, or a device that flushed its offline buffer after midnight is picked up
+/// by the next run instead of being lost. Without this row the job had exactly one chance per day and
+/// no way to know whether it took it.
+model UsageReport {
+  tenantId   String   @db.Uuid
+  day        DateTime @db.Date
+  reported   Int
+  reportedAt DateTime @default(now()) @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, day])
+  @@map("usage_reports")
 }
 
 model AuditLog {
