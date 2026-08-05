@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { resolve } from 'node:path'
 import { serve } from '@hono/node-server'
@@ -98,7 +99,11 @@ beforeAll(async () => {
     jwtTtlS: 900,
     refreshTtlS: 3600,
     ticketTtlS: 30,
-    lockout: { maxFails: 5, windowS: 2 }, // tiny window: unlock test needs no clock mocks
+    // The window must comfortably outlast FIVE argon2 verifies (~115 ms each locally, far more on
+    // a loaded CI runner) — at windowS: 2 the counter expired mid-test and the 6th login answered
+    // 200, which read as a lockout regression rather than a stopwatch problem. The unlock case
+    // deletes the key instead of sleeping: that IS what expiry does, and it is deterministic.
+    lockout: { maxFails: 5, windowS: 30 },
     secureCookies: false,
     trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
@@ -385,7 +390,9 @@ describe('E03-1 lockout (§6.1: 5 fails → window per IP+email)', () => {
     const blocked = await login(email, PW)
     expect(blocked.status).toBe(429)
     expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
-    await new Promise((r) => setTimeout(r, 2_100)) // windowS=2 in test deps
+    // simulate the window expiring — deleting the counter is exactly what EXPIRE does, and it does
+    // not make the suite wait out a real window (nor race it, as a sleep did)
+    await redis.del(`auth:fail:127.0.0.1:${createHash('sha256').update(email).digest('hex').slice(0, 16)}`)
     expect((await login(email, PW)).status).toBe(200)
   })
 

@@ -75,7 +75,7 @@
   },
   "routing": {
     "title": "Route planner",
-    "desc": "Order multi-stop routes optimally on real roads (pilot coverage: Lithuania).",
+    "desc": "Optimal visiting order for up to 12 stops over real roads — worldwide.",
     "pasteHint": "One stop per line: lat,lon[,label]",
     "addByClick": "Click the map to add a stop.",
     "optimize": "Optimize",
@@ -86,7 +86,7 @@
     "total": "Total",
     "empty": "Paste stops or click the map, then run Optimize.",
     "errors": {
-      "unroutable": "Could not route these stops — make sure every stop is inside the covered region (Lithuania).",
+      "unroutable": "No road route connects these stops — check that each one is reachable by car.",
       "unavailable": "Route optimization is not available on this environment.",
       "parse": "Check line {{lines}} — expected: lat,lon[,label]",
       "rateLimited": "Too many requests — try again in a minute"

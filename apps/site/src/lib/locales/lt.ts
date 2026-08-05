@@ -150,8 +150,8 @@ export const lt: Translation = {
       b1: "Serveriai Vokietijoje. Duomenys neišvyksta iš ES.",
       t2: "BDAR nuo pat pradžių",
       b2: "Duomenų valdytojo ir tvarkytojo atskyrimas įdiegtas pačioje architektūroje.",
-      t3: "Savi maršrutų serveriai",
-      b3: "Maršrutų optimizavimas veikia mūsų pačių OSRM serveriuose. Žemėlapio fragmentus teikia Mapbox.",
+      t3: "Jūsų duomenys lieka pas mus",
+      b3: "Pozicijos, kelionės ir įvykiai saugomi mūsų pačių ES duomenų bazėje — jų niekada neperparduodame. Žemėlapius ir maršrutų optimizavimą teikia Mapbox; adresų paiešką sukame patys.",
     },
     wl: {
       label: "— PERPARDAVĖJAI · WHITE-LABEL · TSP",

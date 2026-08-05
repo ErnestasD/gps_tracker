@@ -114,6 +114,10 @@ services:
       # OSRM route optimization (ADR-029) — empty until staging preps the osrm volume
       # (infra/osrm/README.md), then set OSRM_URL=http://osrm:5000 in /opt/orbetra/.env;
       # absent ⇒ POST /v1/routing/optimize answers 503 and the web page degrades
+      # Route optimization (ADR-034). Mapbox is the default engine — worldwide, no dataset.
+      # SECRET: the value lives in /opt/orbetra/.env, never in git. It must be a token WITHOUT URL
+      # restrictions — a server-side call sends no Referer, so a URL-restricted token 403s.
+      MAPBOX_TOKEN: ${MAPBOX_TOKEN:-}
       OSRM_URL: ${OSRM_URL:-}
     volumes:
       # the GDPR download route streams the file the WORKER wrote — same volume on both

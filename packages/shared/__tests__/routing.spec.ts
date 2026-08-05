@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildMapboxTripPath,
   buildOsrmTripPath,
+  MAX_ROUTE_STOPS,
   mapOsrmTrip,
   OsrmResponseError,
   OsrmUnroutableError,
@@ -35,10 +37,23 @@ describe('ADR-029 routeOptimizeRequestSchema', () => {
     expect(routeOptimizeRequestSchema.safeParse({ stops: [stop(54, 25)] }).success).toBe(false)
   })
 
-  it('rejects 51 stops (max 50, below --max-trip-size 100)', () => {
-    const stops = Array.from({ length: 51 }, (_, i) => stop(54 + i * 0.01, 25))
+  it('rejects 13 stops — the Mapbox Optimization ceiling, not a policy we chose (ADR-034)', () => {
+    // was 50, sized against the self-hosted OSRM container's --max-trip-size. Mapbox caps at 12
+    // coordinates per request and it is not configurable, so the schema is the honest place to say
+    // so — a 13th stop must fail here rather than as an opaque 4xx from the engine.
+    const stops = Array.from({ length: MAX_ROUTE_STOPS + 1 }, (_, i) => stop(54 + i * 0.01, 25))
     expect(routeOptimizeRequestSchema.safeParse({ stops }).success).toBe(false)
-    expect(routeOptimizeRequestSchema.safeParse({ stops: stops.slice(0, 50) }).success).toBe(true)
+    expect(routeOptimizeRequestSchema.safeParse({ stops: stops.slice(0, MAX_ROUTE_STOPS) }).success).toBe(true)
+  })
+
+  it('builds a Mapbox trip path that mirrors the OSRM one (same service, same shape)', () => {
+    const stops = [stop(54.687, 25.28), stop(54.9, 23.91)]
+    const path = buildMapboxTripPath(stops, false, 'pk.tok en/+')
+    expect(path).toContain('/optimized-trips/v1/mapbox/driving/25.28,54.687;23.91,54.9')
+    expect(path).toContain('roundtrip=false')
+    expect(path).toContain('destination=last') // a non-roundtrip pins the end, as OSRM does
+    expect(path).toContain('geometries=geojson')
+    expect(path).toContain('access_token=pk.tok%20en%2F%2B') // URL-encoded, never raw
   })
 
   it('rejects an out-of-range latitude (91)', () => {

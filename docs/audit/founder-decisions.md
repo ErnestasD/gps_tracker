@@ -104,7 +104,20 @@ rather than half-working.
 Route-snapped distances work for LT and silently fall back to great-circle everywhere else. A Polish
 or German customer gets less accurate mileage with no indication why.
 
-**DECIDED: Mapbox for routing now, OSRM later — behind a driver seam.**
+**DECIDED: Mapbox for routing, and the OSRM expansion is cancelled.** (ADR-034)
+
+The reasoning changed twice and it is worth recording why, because the first two answers were
+optimising the wrong thing.
+
+First I costed OSRM coverage and recommended expanding it. Then Mapbox's 12-coordinate limit turned
+up and I recommended keeping OSRM to protect the 50-stop capability. Then we actually looked at the
+screen: route planning is a **side feature of a tracking product**, it takes raw `lat,lon` pairs
+that no courier has, it shipped labelled *"pilot coverage: Lithuania"*, and nobody uses it. Twelve
+stops is more than enough for the customers this product is for — vehicles, theft alerts, speeding —
+and I had been about to recommend an irreversible server upgrade to defend a number no one asked
+for.
+
+The rest of this section is the costing that led there; it stands as the record.
 
 The costing settled it. At the modelled scale (10 direct customers × 4 devices + one small
 white-label ≈ 90 devices, ~30 users) full Mapbox is **$0/month**: map loads ~10k against a 50k free

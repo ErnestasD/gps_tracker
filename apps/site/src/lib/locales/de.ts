@@ -145,8 +145,8 @@ export const de: Translation = {
       b1: "Server in Deutschland. Ihre Daten verlassen die EU nicht.",
       t2: "DSGVO by Design",
       b2: "Die Trennung von Verantwortlichem und Auftragsverarbeiter ist fest eingebaut.",
-      t3: "Selbst gehostetes Routing",
-      b3: "Die Routenoptimierung läuft auf unseren eigenen OSRM-Servern. Die Kartenkacheln liefert Mapbox.",
+      t3: "Ihre Daten bleiben bei uns",
+      b3: "Positionen, Fahrten und Ereignisse liegen in unserer eigenen EU-Datenbank — wir verkaufen sie nie weiter. Karten und Routenoptimierung liefert Mapbox; die Adresssuche läuft auf unserem eigenen Geocoder.",
     },
     wl: {
       label: "— RESELLER · WHITE-LABEL · TSP",

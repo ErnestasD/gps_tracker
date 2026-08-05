@@ -16,9 +16,22 @@ export const routeStopSchema = z.object({
 })
 export type RouteStop = z.infer<typeof routeStopSchema>
 
-/** 2–50 stops: OSRM's container runs --max-trip-size 100; we cap well below (ADR-029). */
+/**
+ * 2–12 stops. The ceiling is the Mapbox Optimization API's own hard limit (12 coordinates per
+ * request) — it is not a policy we chose and cannot be raised by configuration.
+ *
+ * It used to be 50, sized against the self-hosted OSRM container's `--max-trip-size 100`. That
+ * capability was never used: route planning is a side feature of a TRACKING product, it takes
+ * coordinates rather than addresses, and it shipped labelled "pilot coverage: Lithuania". Keeping
+ * a self-hosted routing engine alive for it would have meant a per-country dataset, ~12 GB of disk
+ * and RAM on the box that also runs Postgres, a temporary build machine with 30–40 GB of RAM, and a
+ * quarterly rebuild as OSM data goes stale — all to protect a number no customer has asked for.
+ * Mapbox gives worldwide coverage today at $0 for this volume; OSRM comes back behind the same
+ * driver interface if a customer ever needs more than 12 (ADR-034).
+ */
+export const MAX_ROUTE_STOPS = 12
 export const routeOptimizeRequestSchema = z.object({
-  stops: z.array(routeStopSchema).min(2).max(50),
+  stops: z.array(routeStopSchema).min(2).max(MAX_ROUTE_STOPS),
   roundtrip: z.boolean().default(true),
 })
 export type RouteOptimizeRequest = z.infer<typeof routeOptimizeRequestSchema>
@@ -62,8 +75,25 @@ export function buildOsrmTripPath(stops: readonly RouteStop[], roundtrip: boolea
   return `/trip/v1/driving/${coords}?roundtrip=${roundtrip}&source=first${dest}&geometries=geojson&overview=full&steps=false`
 }
 
+/**
+ * Path+query for Mapbox's Optimization v1 Trip service.
+ *
+ * Mapbox Optimization v1 IS OSRM's trip service — same parameters, same response shape — so
+ * `mapOsrmTrip` reads both without a second mapper. The differences are the host, the
+ * `/optimized-trips/v1/mapbox/{profile}` prefix, the access token, and a few extra `code` values
+ * for auth failures. https://docs.mapbox.com/api/navigation/optimization-v1/
+ *
+ * The token is a QUERY parameter because that is the only form the API accepts — so it must never
+ * be logged, and the URL must never appear in an error message (rule 12).
+ */
+export function buildMapboxTripPath(stops: readonly RouteStop[], roundtrip: boolean, token: string): string {
+  const coords = stops.map((s) => `${s.lon},${s.lat}`).join(';')
+  const dest = roundtrip ? '' : '&destination=last'
+  return `/optimized-trips/v1/mapbox/driving/${coords}?roundtrip=${roundtrip}&source=first${dest}&geometries=geojson&overview=full&steps=false&access_token=${encodeURIComponent(token)}`
+}
+
 // ── OSRM response mapper ──────────────────────────────────────────────────────
-/** OSRM said the stops cannot be connected by road (NoTrips/NoSegment/NoRoute) → 422. */
+/** The engine said the stops cannot be connected by road (NoTrips/NoSegment/NoRoute) → 422. */
 export class OsrmUnroutableError extends Error {
   constructor(readonly code: string) {
     super(`OSRM unroutable: ${code}`)
@@ -79,6 +109,9 @@ export class OsrmResponseError extends Error {
 }
 
 const UNROUTABLE = new Set(['NoTrips', 'NoSegment', 'NoRoute'])
+/** Mapbox-only `code` values that mean OUR credentials are wrong, not the caller's stops. They must
+ *  surface as a 502 (our fault) and never as a 422 (their stops) — see mapOsrmTrip. */
+export const ENGINE_AUTH_CODES = new Set(['Not Authorized - No Token', 'Not Authorized - Invalid Token', 'Forbidden'])
 
 const osrmTripResponseSchema = z.object({
   code: z.string(),

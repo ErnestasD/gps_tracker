@@ -75,7 +75,7 @@
   },
   "routing": {
     "title": "Planer tras",
-    "desc": "Optymalna kolejność przystanków na rzeczywistych drogach (zasięg pilotażu: Litwa).",
+    "desc": "Optymalna kolejność do 12 przystanków po rzeczywistych drogach — na całym świecie.",
     "pasteHint": "Jeden przystanek na linię: lat,lon[,etykieta]",
     "addByClick": "Kliknij mapę, aby dodać przystanek.",
     "optimize": "Optymalizuj",
@@ -86,7 +86,7 @@
     "total": "Razem",
     "empty": "Wklej przystanki lub kliknij mapę, a następnie uruchom optymalizację.",
     "errors": {
-      "unroutable": "Nie udało się wyznaczyć trasy — upewnij się, że wszystkie przystanki są w obsługiwanym regionie (Litwa).",
+      "unroutable": "Nie znaleziono trasy drogowej — sprawdź, czy do każdego przystanku da się dojechać samochodem.",
       "unavailable": "Optymalizacja tras jest niedostępna w tym środowisku.",
       "parse": "Sprawdź linię {{lines}} — format: lat,lon[,etykieta]",
       "rateLimited": "Zbyt wiele żądań — spróbuj za minutę"

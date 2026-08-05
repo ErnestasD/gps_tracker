@@ -145,8 +145,8 @@ export const pl: Translation = {
       b1: "Serwery w Niemczech. Dane nie opuszczają UE.",
       t2: "RODO od podstaw",
       b2: "Rozdział administratora i podmiotu przetwarzającego wpisany w architekturę.",
-      t3: "Własne wyznaczanie tras",
-      b3: "Optymalizacja tras działa na naszych własnych serwerach OSRM. Kafelki map dostarcza Mapbox.",
+      t3: "Twoje dane zostają u nas",
+      b3: "Pozycje, trasy i zdarzenia są w naszej własnej bazie w UE — nigdy ich nie odsprzedajemy. Mapy i optymalizację tras dostarcza Mapbox; wyszukiwanie adresów działa na naszym własnym geokoderze.",
     },
     wl: {
       label: "— RESELLERZY · WHITE-LABEL · TSP",
