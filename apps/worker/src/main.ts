@@ -325,6 +325,16 @@ async function main(): Promise<void> {
   await scheduleExportSweep(gdprSweepQueue)
   // Create + start a consumer for ONE shard. Reused by the initial claim AND by the leaser's
   // onGained callback (a shard recovered after a lost lease / a dead peer's expired one).
+  /**
+   * Compensating recomputes whose enqueue failed, retried on the next batch WITH THEIR OWN WINDOW.
+   *
+   * Not folded into the trip engine's `late` set: that set is drained through a window capped at
+   * `now − RECOMPUTE_GUARD_MS`, which is precisely the window that cannot rebuild a close that just
+   * happened — so re-arming there would retry forever through the path the code already documents
+   * as useless for this case. Keyed by device, widest window wins.
+   */
+  const pendingCompensation = new Map<string, { deviceId: bigint; from: Date; to: Date }>()
+
   const makeConsumer = (s: number, conn: Redis): ShardConsumer =>
     new ShardConsumer(s, {
       onDeadLetter: (reason, n) => prom.deadLettered.inc({ reason }, n),
@@ -384,9 +394,52 @@ async function main(): Promise<void> {
             insideFor,
           )
           if (tripEvents.length > 0) {
-            const { opened, closed } = await tripPersister.apply(tripEvents)
-            prom.tripsOpened.inc(opened)
-            prom.tripsClosed.inc(closed)
+            try {
+              const { opened, closed } = await tripPersister.apply(tripEvents)
+              prom.tripsOpened.inc(opened)
+              prom.tripsClosed.inc(closed)
+            } catch (err) {
+              // The engine has already emitted these events and dropped the trips from memory, so a
+              // swallowed failure loses every CLOSE in the batch with nothing to notice — the trips
+              // are simply absent from history (audit MED). The positions behind them ARE durable
+              // (I1/I3), so ask for a rebuild.
+              //
+              // Enqueued DIRECTLY, not via the late-signal drain below, because that drain caps `to`
+              // at `now − RECOMPUTE_GUARD_MS` and pads the read by only a stop-threshold margin — a
+              // close that just happened sits INSIDE that gap, so the compensating job would read no
+              // confirming records and rebuild nothing. Window: the batch's own span, out to the
+              // newest end plus the settle guard, deferred until that edge has settled.
+              // one job PER DEVICE — a batch spans a whole shard, and a window welded across
+              // several devices would be both wrong and enormous
+              const spans = new Map<string, { deviceId: bigint; first: Date; last: Date }>()
+              for (const ev of tripEvents) {
+                const end = ev.type === 'close' ? ev.endTime : ev.startTime
+                const cur = spans.get(ev.deviceId.toString())
+                if (cur === undefined) spans.set(ev.deviceId.toString(), { deviceId: ev.deviceId, first: ev.startTime, last: end })
+                else {
+                  if (ev.startTime < cur.first) cur.first = ev.startTime
+                  if (end > cur.last) cur.last = end
+                }
+              }
+              for (const sp of spans.values()) {
+                const to = new Date(sp.last.getTime() + RECOMPUTE_GUARD_MS)
+                try {
+                  await enqueueRecompute(recomputeQueue, sp.deviceId, sp.first, to, { delayMs: RECOMPUTE_GUARD_MS })
+                } catch {
+                  // even the enqueue failed (Redis is down too) — park it and retry NEXT batch with
+                  // this same window, widening if another failure lands first
+                  const key = sp.deviceId.toString()
+                  const prev = pendingCompensation.get(key)
+                  pendingCompensation.set(key, {
+                    deviceId: sp.deviceId,
+                    from: prev !== undefined && prev.from < sp.first ? prev.from : sp.first,
+                    to: prev !== undefined && prev.to > to ? prev.to : to,
+                  })
+                }
+              }
+              prom.tripPersistErrors.inc()
+              console.error('tripPersist', err)
+            }
           }
           if (transitions.length > 0) {
             // persist() dedups a redelivered/replayed crossing and returns ONLY the freshly-written
@@ -476,6 +529,16 @@ async function main(): Promise<void> {
           } catch (err) {
             console.error('ruleEngine', err)
           }
+          // retry any compensating recompute whose enqueue failed in an earlier batch, with the
+          // window it actually needs (see pendingCompensation)
+          for (const [key, pc] of [...pendingCompensation]) {
+            try {
+              await enqueueRecompute(recomputeQueue, pc.deviceId, pc.from, pc.to, { delayMs: RECOMPUTE_GUARD_MS })
+              pendingCompensation.delete(key)
+            } catch {
+              /* still down — keep it parked */
+            }
+          }
           // any out-of-order (late) records the engine dropped → reconcile from durable
           // positions off the hot path (positions are already written by the consumer).
           // Bound recompute to SETTLED history (to = now − guard, guard > max stop window)
@@ -497,6 +560,9 @@ async function main(): Promise<void> {
                 await enqueueRecompute(recomputeQueue, deviceId, from, settledTo)
               }
             } catch (e) {
+              // takeLate() already CLEARED the signal, so dropping it here means nothing ever
+              // reconciles that window. Put it back for the next batch (audit MED).
+              motionFeed.tripEngine.markLate(deviceId, from)
               prom.tripPersistErrors.inc()
               console.error('enqueueRecompute', e)
             }

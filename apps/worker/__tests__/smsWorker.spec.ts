@@ -38,8 +38,8 @@ function fakeRedis(preclaimed: Record<string, string> = {}) {
 const job = (data: Partial<SmsJob> = {}): Job<SmsJob> =>
   ({ id: 'sms-d1', data: { smsDeliveryId: 'd1', deviceId: '42', tenantId: 't1', to: '+37060000000', body: 'cfg', provider: 'twilio', ...data } }) as unknown as Job<SmsJob>
 
-const okDriver = (): { driver: SmsDriver; send: ReturnType<typeof vi.fn> } => {
-  const send = vi.fn(() => Promise.resolve({ providerMessageId: 'SM_ok' }))
+const okDriver = (sid = 'SM_ok'): { driver: SmsDriver; send: ReturnType<typeof vi.fn> } => {
+  const send = vi.fn(() => Promise.resolve({ providerMessageId: sid }))
   return { driver: { send }, send }
 }
 
@@ -55,8 +55,10 @@ describe('runSms', () => {
 
     // claim NX with 'attempting' BEFORE the send, then flip to 'sent' after the (charged) send
     expect(set).toHaveBeenNthCalledWith(1, 'sms:sent:d1', 'attempting', 'EX', 86_400, 'NX')
-    expect(set).toHaveBeenNthCalledWith(2, 'sms:sent:d1', 'sent', 'EX', 86_400)
-    expect(store.get('sms:sent:d1')).toBe('sent')
+    // the claim carries the SID: it is the only identifier tying our row to a Twilio invoice line,
+    // and a redelivery that could restore only the status would lose it for good
+    expect(set).toHaveBeenNthCalledWith(2, 'sms:sent:d1', 'sent:SM_ok', 'EX', 86_400)
+    expect(store.get('sms:sent:d1')).toBe('sent:SM_ok')
     expect(send).toHaveBeenCalledWith('+37060000000', 'cfg')
     const sent = calls.find((c) => c.params[0] === 'sent')!
     expect(sent.params).toEqual(['sent', 'SM_ok', 'd1'])
@@ -65,12 +67,83 @@ describe('runSms', () => {
 
   it('does NOT resend when a prior attempt is proven sent — reconciles the row to sent (no double-charge)', async () => {
     const { pool, calls } = fakePool()
-    const { redis } = fakeRedis({ 'sms:sent:d1': 'sent' }) // a prior attempt sent+charged
+    const { redis } = fakeRedis({ 'sms:sent:d1': 'sent' }) // a prior attempt sent+charged (older build: no sid)
     const { driver, send } = okDriver()
     await runSms({ connection: {}, pool, redis, driver }, job())
 
     expect(send).not.toHaveBeenCalled() // idempotent — never a second send
     expect(lastStatus(calls)).toBe('sent') // row reconciled
+  })
+
+  it('a lost Redis claim cannot license a SECOND charged send — the delivery row is the backstop', async () => {
+    // The DB write now throws so a transient failure is retried instead of recorded as a lie. But
+    // the very events that break that write — a failover, a restart — can also lose the Redis key,
+    // and a fresh SET NX would then hand a delivered message straight back to the provider. The row
+    // is durable; the claim is not.
+    const sentRow = {
+      query: vi.fn((sql: string) =>
+        Promise.resolve({ rows: sql.startsWith('SELECT') ? [{ status: 'sent', providerMessageId: 'SM_already' }] : [], rowCount: 1 }),
+      ),
+    } as unknown as Pool
+    const { redis, store } = fakeRedis() // no claim at all — as if Redis had been flushed
+    const send = vi.fn()
+    await runSms({ connection: {}, pool: sentRow, redis, driver: { send } }, job())
+    expect(send).not.toHaveBeenCalled()
+    expect(store.has('sms:sent:d1')).toBe(false) // and no bogus 'attempting' left behind
+  })
+
+  it('a DB blip in the pre-send backstop releases the claim — a pg error must not consume a send', async () => {
+    // The backstop runs after the SET NX. Leaving the claim at `attempting` when it throws means
+    // the retry takes the redelivery branch and records `not resent` for a message that was never
+    // handed to the provider — and never will be.
+    const brokenPool = { query: vi.fn(() => Promise.reject(new Error('Connection terminated'))) } as unknown as Pool
+    const { redis, store } = fakeRedis()
+    const { driver, send } = okDriver()
+    await expect(runSms({ connection: {}, pool: brokenPool, redis, driver }, job())).rejects.toThrow(/Connection terminated/)
+    expect(send).not.toHaveBeenCalled()
+    expect(store.has('sms:sent:d1')).toBe(false) // released → the retry starts clean and CAN send
+
+    // the retry, with a working DB, sends normally
+    const { pool, calls } = fakePool()
+    await runSms({ connection: {}, pool, redis, driver }, job())
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(calls.some((c) => c.params[0] === 'sent')).toBe(true)
+  })
+
+  it('a DB failure after a charged send keeps the claim at sent and THROWS, so the retry reconciles', async () => {
+    // REGRESSION (audit MED). `markSent` used to sit inside the send's try, so an ordinary pg error
+    // — a container restart, a failover, a killed backend, a statement timeout — fell through to
+    // the ambiguous branch and did two wrong things at once: it overwrote the `sent` claim (the only
+    // durable proof of the charge) with `ambiguous`, and marked a DELIVERED message `failed` while
+    // discarding the provider id. The module's own recovery seam then became unreachable, and its
+    // documented remedy — "an operator resends via a new delivery" — was precisely the wrong action.
+    const { redis, store } = fakeRedis()
+    const calls: { sql: string; params: unknown[] }[] = []
+    const pool = {
+      query: vi.fn((sql: string, params: unknown[]) => {
+        calls.push({ sql, params })
+        if (sql.includes('"providerMessageId" = $2') && !sql.includes('COALESCE')) {
+          return Promise.reject(new Error('Connection terminated unexpectedly'))
+        }
+        return Promise.resolve({ rows: [], rowCount: 1 })
+      }),
+    } as unknown as Pool
+    const onFailed = vi.fn()
+    await expect(
+      runSms({ connection: {}, pool, redis, driver: okDriver('SM_charged').driver, onFailed }, job()),
+    ).rejects.toThrow(/Connection terminated/)
+
+    expect(store.get('sms:sent:d1')).toBe('sent:SM_charged') // proof of the charge SURVIVES
+    expect(calls.some((c) => c.params[0] === 'failed')).toBe(false) // a delivered message is not "failed"
+    expect(onFailed).not.toHaveBeenCalled() // …and it is not counted as one
+
+    // the BullMQ retry redelivers the same job: no provider call, and the row is reconciled to
+    // 'sent' WITH the sid rather than left failed
+    const retry = fakePool()
+    const send = vi.fn()
+    await runSms({ connection: {}, pool: retry.pool, redis, driver: { send } }, job())
+    expect(send).not.toHaveBeenCalled()
+    expect(retry.calls[0]!.params).toEqual(['sent', 'SM_charged', 'd1'])
   })
 
   it('does NOT resend when a prior attempt is only "attempting" (crashed mid-flight) — marks failed, not sent', async () => {

@@ -27,30 +27,48 @@ function fakePool() {
   return { pool: { query } as unknown as Pool, calls }
 }
 
-/** Fake redis modelling registry hmget + a SET NX EX cooldown store. */
-function fakeRedis(tenant: Record<string, string>, account: Record<string, string>, existingCooldownKeys = new Set<string>()) {
+/**
+ * Fake redis modelling the registry hmget plus the TWO gate stores: `SET NX` replay-dedup keys and
+ * the fix-time cooldown script. `store` is a plain key→value map shared across persister instances,
+ * which is how a redelivery or a second batch is simulated.
+ */
+function fakeRedis(tenant: Record<string, string>, account: Record<string, string>, store = new Map<string, string>()) {
   const setCmds: { key: string; args: unknown[] }[] = []
-  const pipe = {
-    set: vi.fn((key: string, ...args: unknown[]) => {
-      setCmds.push({ key, args })
-      return pipe
-    }),
-    exec: vi.fn(() =>
-      // model SET ... NX: 'OK' when the key did not exist, null when it did
-      Promise.resolve(
-        setCmds.map(({ key }) => {
-          if (existingCooldownKeys.has(key)) return [null, null]
-          existingCooldownKeys.add(key)
+  const newPipe = () => {
+    const queued: (() => [Error | null, unknown])[] = []
+    const pipe: Record<string, unknown> = {
+      set: (key: string, ...args: unknown[]) => {
+        setCmds.push({ key, args })
+        queued.push(() => {
+          if (args.includes('NX') && store.has(key)) return [null, null]
+          store.set(key, String(args[0]))
           return [null, 'OK']
-        }),
-      ),
-    ),
+        })
+        return pipe
+      },
+      // COOLDOWN_SCRIPT, in JS: symmetric window against the LAST EMITTED event's fix time
+      eval: (_script: string, _n: number, key: string, atMs: string, cooldownMs: string) => {
+        queued.push(() => {
+          const prev = store.get(key)
+          if (prev !== undefined && Math.abs(Number(atMs) - Number(prev)) < Number(cooldownMs)) return [null, 0]
+          store.set(key, atMs)
+          return [null, 1]
+        })
+        return pipe
+      },
+      exec: () => Promise.resolve(queued.map((f) => f())),
+    }
+    return pipe
   }
   const redis = {
     hmget: vi.fn((key: string, ...fields: string[]) => Promise.resolve(fields.map((f) => (key === 'device:tenant' ? tenant : account)[f] ?? null))),
-    pipeline: vi.fn(() => pipe),
+    pipeline: vi.fn(() => newPipe()),
+    del: vi.fn((...keys: string[]) => {
+      for (const k of keys) store.delete(k)
+      return Promise.resolve(keys.length)
+    }),
   } as unknown as Redis
-  return Object.assign(redis, { __setCmds: setCmds })
+  return Object.assign(redis, { __setCmds: setCmds, __store: store })
 }
 
 describe('E05-4 RulePersister — scope + cooldown', () => {
@@ -73,28 +91,64 @@ describe('E05-4 RulePersister — scope + cooldown', () => {
 
   it('cooldown suppresses a second same-rule event within the window', async () => {
     const { pool, calls } = fakePool()
-    const shared = new Set<string>()
+    const shared = new Map<string, string>()
     const persister = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
-    expect(await persister.persist([ev({ kind: 'overspeed' })])).toHaveLength(1) // first passes SET NX
-    // second call reuses the same cooldown-key store → suppressed
+    expect(await persister.persist([ev({ kind: 'overspeed' })])).toHaveLength(1)
+    // a DIFFERENT event (later fix time) of the same rule, still inside the 300 s window
     const p2 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
-    expect(await p2.persist([ev({ kind: 'overspeed' })])).toHaveLength(0)
+    expect(await p2.persist([ev({ kind: 'overspeed', at: new Date(61_000) })])).toHaveLength(0)
     expect(calls.filter((c) => c.sql.startsWith('INSERT INTO events'))).toHaveLength(1)
   })
 
-  it('panic + power_cut bypass the cooldown (always written)', async () => {
+  it('the cooldown is measured in FIX time, not wall clock — a buffered flush is not swallowed', async () => {
+    // REGRESSION (audit MED). The gate was `SET NX EX cooldownS`, i.e. a WALL-CLOCK TTL. A device
+    // that buffered six hours offline flushes all of it in one wall-clock second, so the first event
+    // claimed the key and every genuinely distinct historical event behind it was silently dropped —
+    // and the buffered-flood case is a stated V1 scenario, not a corner.
     const { pool } = fakePool()
-    const shared = new Set<string>()
+    const shared = new Map<string, string>()
+    const persister = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    const hour = 3_600_000
+    const written = await persister.persist([
+      ev({ kind: 'overspeed', at: new Date(hour * 1) }),
+      ev({ kind: 'overspeed', at: new Date(hour * 2) }), // hours apart in the DEVICE's clock…
+      ev({ kind: 'overspeed', at: new Date(hour * 3) }), // …though one wall-clock instant here
+    ])
+    expect(written).toHaveLength(3)
+    // …while two events genuinely within the window still collapse to one
+    const p2 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    expect(await p2.persist([ev({ kind: 'overspeed', at: new Date(hour * 3 + 60_000) })])).toHaveLength(0)
+  })
+
+  it('the window is symmetric — a flush arrives out of order and must not re-alert backwards', async () => {
+    const { pool } = fakePool()
+    const shared = new Map<string, string>()
+    const p1 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    expect(await p1.persist([ev({ kind: 'overspeed', at: new Date(600_000) })])).toHaveLength(1)
+    const p2 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    // 60 s EARLIER than the one already emitted: same burst, seen out of order
+    expect(await p2.persist([ev({ kind: 'overspeed', at: new Date(540_000) })])).toHaveLength(0)
+  })
+
+  it('panic + power_cut bypass the cooldown, but NOT the replay dedup', async () => {
+    const { pool } = fakePool()
+    const shared = new Map<string, string>()
     const persister = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
     expect(await persister.persist([ev({ kind: 'panic', bypassCooldown: true })])).toHaveLength(1)
+    // a genuinely SECOND panic (its own fix time) is always written — no cooldown applies
     const p2 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
-    expect(await p2.persist([ev({ kind: 'panic', bypassCooldown: true })])).toHaveLength(1) // no cooldown key set
+    expect(await p2.persist([ev({ kind: 'panic', bypassCooldown: true, at: new Date(2_000) })])).toHaveLength(1)
+    // …but a REDELIVERY of the first one (same identity) is not a second panic. The old code let it
+    // through — "a doubled panic beats a missed one" — because a claimed key plus a failed INSERT
+    // lost the alert; releasing the keys on insert failure removes that trade-off.
+    const p3 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    expect(await p3.persist([ev({ kind: 'panic', bypassCooldown: true })])).toHaveLength(0)
   })
 
   it('a mixed batch keeps bypass + passing-gated events in order, drops the blocked one (index alignment)', async () => {
     const { pool } = fakePool()
     // pre-seed the overspeed cooldown key so it is BLOCKED; ignition is fresh → passes
-    const preset = new Set<string>(['rule:cd:r-overspeed:42'])
+    const preset = new Map<string, string>([['rule:cd:r-overspeed:42', '1000']])
     const persister = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, preset))
     const written = await persister.persist([
       ev({ kind: 'overspeed' }), // gated + blocked → dropped
@@ -105,30 +159,54 @@ describe('E05-4 RulePersister — scope + cooldown', () => {
     expect(written.map((e) => e.kind)).toEqual(['panic', 'ignition', 'power_cut'])
   })
 
-  it('a cooldownS of 0 disables gating', async () => {
+  it('two genuinely different events at the SAME millisecond both survive the dedup', async () => {
+    // `positions` is keyed (device_id, fix_time, rec_hash), so two records can share a fix_time, and
+    // an ignition rule fires on ANY transition — a 1→0 and a 0→1 at one millisecond are two real
+    // events. Keying dedup on time alone would drop the second, in exactly the `cooldownS: 0`
+    // configuration the dedup exists to protect.
     const { pool } = fakePool()
-    const shared = new Set<string>()
+    const shared = new Map<string, string>()
     const persister = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
-    expect(await persister.persist([ev({ kind: 'ignition', cooldownS: 0 })])).toHaveLength(1)
+    const written = await persister.persist([
+      ev({ kind: 'ignition', cooldownS: 0, payload: { on: false } }),
+      ev({ kind: 'ignition', cooldownS: 0, payload: { on: true } }),
+    ])
+    expect(written).toHaveLength(2)
+    // …and a redelivery of BOTH is still fully deduped
     const p2 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
-    expect(await p2.persist([ev({ kind: 'ignition', cooldownS: 0 })])).toHaveLength(1)
+    expect(
+      await p2.persist([
+        ev({ kind: 'ignition', cooldownS: 0, payload: { on: false } }),
+        ev({ kind: 'ignition', cooldownS: 0, payload: { on: true } }),
+      ]),
+    ).toHaveLength(0)
   })
 
-  it('a FAILED insert releases the just-claimed cooldown so a replay re-emits (no permanent suppression)', async () => {
-    // pool.query throws on the INSERT → the cooldown key claimed for this event must be released
+  it('a cooldownS of 0 disables the cooldown but STILL dedupes a redelivery', async () => {
+    // REGRESSION (audit MED). Dedup used to be the cooldown key's second job, so `cooldownS: 0` — a
+    // perfectly ordinary "alert on every occurrence" setting — had no dedup at all, and `onBatch`
+    // running before `XACK` meant every redelivered batch wrote a duplicate alert row.
+    const { pool } = fakePool()
+    const shared = new Map<string, string>()
+    const persister = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    expect(await persister.persist([ev({ kind: 'ignition', cooldownS: 0 })])).toHaveLength(1)
+    // a genuinely new occurrence still fires — the gate is on identity, never on rate
+    const p2 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    expect(await p2.persist([ev({ kind: 'ignition', cooldownS: 0, at: new Date(2_000) })])).toHaveLength(1)
+    // …but the SAME event redelivered does not
+    const p3 = new RulePersister(pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
+    expect(await p3.persist([ev({ kind: 'ignition', cooldownS: 0 })])).toHaveLength(0)
+  })
+
+  it('a FAILED insert releases BOTH claimed keys so a replay re-emits (no permanent suppression)', async () => {
+    // pool.query throws on the INSERT → every key claimed for this event must be released, or the
+    // replay that is supposed to compensate finds them set and the alert is lost for good
     const throwingPool = { query: vi.fn(() => Promise.reject(new Error('db down'))) } as unknown as Pool
-    const shared = new Set<string>()
-    const dels: string[][] = []
+    const shared = new Map<string, string>()
     const redis = fakeRedis({ '42': 't' }, { '42': 'a' }, shared)
-    ;(redis as unknown as { del: (...k: string[]) => Promise<number> }).del = vi.fn((...k: string[]) => {
-      dels.push(k)
-      for (const key of k) shared.delete(key)
-      return Promise.resolve(k.length)
-    })
     const persister = new RulePersister(throwingPool, redis)
     await expect(persister.persist([ev({ kind: 'overspeed' })])).rejects.toThrow('db down')
-    expect(dels).toEqual([['rule:cd:r-overspeed:42']]) // released
-    expect(shared.has('rule:cd:r-overspeed:42')).toBe(false)
+    expect([...shared.keys()]).toEqual([]) // dedup key AND cooldown key both released
     // a subsequent (recovered) attempt is NOT suppressed by a stale key → the alert is re-emitted
     const ok = new RulePersister(fakePool().pool, fakeRedis({ '42': 't' }, { '42': 'a' }, shared))
     expect(await ok.persist([ev({ kind: 'overspeed' })])).toHaveLength(1)
@@ -136,9 +214,10 @@ describe('E05-4 RulePersister — scope + cooldown', () => {
 
   it('a Redis command error on the cooldown SET emits the event (never a silent drop)', async () => {
     const { pool, calls } = fakePool()
-    // model an errored SET reply: [Error, undefined] — indistinguishable from a nil under the old code
-    const pipe = {
+    // model an errored reply: [Error, undefined] — indistinguishable from a nil under the old code
+    const pipe: Record<string, unknown> = {
       set: vi.fn(() => pipe),
+      eval: vi.fn(() => pipe),
       exec: vi.fn(() => Promise.resolve([[new Error('LOADING'), undefined]])),
     }
     const redis = {

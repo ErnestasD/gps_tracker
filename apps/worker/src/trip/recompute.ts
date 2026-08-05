@@ -21,8 +21,9 @@ export interface RecomputeScope {
 export interface RecomputeResult {
   deleted: number
   created: number
-  /** Set when the window fell entirely below the positions retention horizon and was declined. */
-  skipped?: 'below_retention'
+  /** Set when the window fell entirely below the positions retention horizon and was declined,
+   *  or when even the clamped read hit the row cap with no rebuildable span left. */
+  skipped?: 'below_retention' | 'too_many_positions'
   /** Set when the requested window was WIDER than the cap and its tail was not rebuilt. An asset
    *  tracker buffering for weeks is normal, so this is an operator-backfill signal, not an error. */
   truncated?: true
@@ -47,6 +48,20 @@ const POSITIONS_RETENTION_MS = 13 * 30 * 24 * 3_600 * 1_000
  * backfill, not by a job the device can trigger.
  */
 const MAX_RECOMPUTE_WINDOW_MS = 14 * 24 * 3_600 * 1_000
+
+/**
+ * Hard cap on the ROW COUNT of one recompute's source read, because the width cap alone is not one.
+ * Fourteen days is a bound on TIME, not on volume: a 1 Hz tracker produces ~1.2 M rows inside it,
+ * buffered twice (pg rows, then mapped records) in the process that hosts all 16 shard consumers.
+ *
+ * On overflow the read is not abandoned — it is CLAMPED: we keep the first `MAX_RECOMPUTE_ROWS`
+ * (ordered by fix_time) and pull the rebuilt span back to what those rows actually cover, so the
+ * DELETE never reaches beyond the data the rebuild saw. That is the invariant that matters; the
+ * remaining tail is reported as `truncated` — an operator-backfill signal, not an automatic
+ * follow-up: nothing enqueues one, and pretending otherwise would hide a device that needs looking
+ * at (an asset tracker buffering for weeks is normal, so this is information, not an error).
+ */
+const MAX_RECOMPUTE_ROWS = 200_000
 
 interface RecomputedTrip {
   status: 'open' | 'closed'
@@ -100,6 +115,9 @@ export async function recomputeTrips(
   // Recompute reconciles SETTLED, CLOSED history only. It NEVER touches `open` rows: the
   // live streaming persister owns those and holds their ids (deleting one would strand its
   // close). So the core span is bounded by the CLOSED trips overlapping [from,to].
+  // Aggregate, not a row set: `from` is an unvalidated device timestamp (ingest §3.6 accepts back to
+  // 2020), so materialising every overlapping trip here would let one device with a fallen-back RTC
+  // pull its entire history into memory — and then be declined below as `below_retention` anyway.
   const bounds = await pool.query(
     `SELECT MIN("startTime") AS lo, MAX(COALESCE("endTime","startTime")) AS hi
        FROM trips WHERE "deviceId"=$1 AND status='closed' AND "startTime" <= $3 AND COALESCE("endTime","startTime") >= $2`,
@@ -121,7 +139,7 @@ export async function recomputeTrips(
   // trips" property silently becomes "wipe every trip older than the source data".
   const retentionFloor = new Date(Date.now() - POSITIONS_RETENTION_MS)
   const rawCoreFrom = lo !== null && lo < from ? lo : from
-  const coreTo = hi !== null && hi > to ? hi : to
+  let coreTo = hi !== null && hi > to ? hi : to
   // a window entirely below the floor has no source data to rebuild from — deleting there is pure
   // destruction, so decline instead
   if (coreTo <= retentionFloor) return { deleted: 0, created: 0, skipped: 'below_retention' }
@@ -135,12 +153,44 @@ export async function recomputeTrips(
   const readFrom = new Date(coreFrom.getTime() - marginMs)
   const readTo = new Date(coreTo.getTime() + marginMs)
 
+  // The "before" picture, captured BEFORE the source read — never after. The DELETE below is keyed
+  // on these ids rather than on a time range with `status='closed'` re-evaluated at DELETE time
+  // (audit MED): the streaming persister can CLOSE a trip concurrently, and a range delete would
+  // erase a row this run never rebuilt, because the rebuild only knows about the events its own
+  // positions produced. Silent data loss on an ordinary interleaving, with the job reporting
+  // success.
+  //
+  // The ORDER is the whole point, and it was wrong once already. The rebuild's snapshot is the
+  // positions read below; taking the ids after it leaves everything that closes in between doomed
+  // AND unrebuilt — and that gap is the duration of the largest query in the job (up to 200k rows),
+  // during a buffered flood, which is exactly when the shard consumer is closing that device's
+  // historic trips. Taken first, the residual interleaving is benign: a trip closed afterwards is
+  // absent from the list and survives, and if the rebuild produced it too, the displacement DELETE
+  // below removes the streamed copy.
+  const existing = await pool.query<{ id: string; startTime: Date }>(
+    `SELECT id, "startTime" FROM trips WHERE "deviceId"=$1 AND status='closed' AND "startTime" >= $2 AND "startTime" <= $3`,
+    [dev, coreFrom, coreTo],
+  )
+
   const pos = await pool.query(
     `SELECT fix_time, server_time, lat, lon, altitude, speed, course, satellites, fix_valid, ignition, movement, odometer_m
-     FROM positions WHERE device_id=$1 AND fix_time >= $2 AND fix_time <= $3 ORDER BY fix_time ASC`,
-    [dev, readFrom, readTo],
+     FROM positions WHERE device_id=$1 AND fix_time >= $2 AND fix_time <= $3 ORDER BY fix_time ASC LIMIT $4`,
+    [dev, readFrom, readTo, MAX_RECOMPUTE_ROWS + 1],
   )
-  const records = pos.rows.map((r) => toRecord(deviceId, r as Record<string, unknown>))
+  // Row cap: keep what we read and pull the REBUILT span back to what those rows cover, so the
+  // delete can never reach past the data the rebuild saw (see MAX_RECOMPUTE_ROWS).
+  let rows = pos.rows
+  let rowCapped = false
+  if (rows.length > MAX_RECOMPUTE_ROWS) {
+    rows = rows.slice(0, MAX_RECOMPUTE_ROWS)
+    rowCapped = true
+    const lastRead = (rows[rows.length - 1] as { fix_time: Date }).fix_time
+    const clampedCoreTo = new Date(lastRead.getTime() - marginMs) // the tail needs its own margin
+    if (clampedCoreTo <= coreFrom) return { deleted: 0, created: 0, skipped: 'too_many_positions' }
+    coreTo = clampedCoreTo
+  }
+  const records = rows.map((r) => toRecord(deviceId, r as Record<string, unknown>))
+
   const engine = new TripEngine(thresholds)
   const events = engine.feed(motionRecords(records), () => config) // I5: invalid fixes filtered; per-device config (H2)
 
@@ -172,17 +222,51 @@ export async function recomputeTrips(
          ORDER BY "startTime"`,
       [dev, coreFrom, coreTo],
     )
-    const del = await client.query(
-      `DELETE FROM trips WHERE "deviceId"=$1 AND status='closed' AND "startTime" >= $2 AND "startTime" <= $3`,
-      [dev, coreFrom, coreTo],
-    )
+    // delete exactly the rows this run read as its "before" picture. A trip closed by streaming
+    // after that read is simply not in the list, so it survives instead of vanishing.
+    // filtered in JS against the possibly-CLAMPED coreTo (the row cap may have pulled it back after
+    // the capture), so the delete still never reaches past the data the rebuild saw
+    const doomed = existing.rows.filter((r) => r.startTime <= coreTo).map((r) => r.id)
+    const del =
+      doomed.length === 0
+        ? { rowCount: 0 }
+        : // deviceId + status repeated even though the ids came from a scoped read: an id list is
+          // implicit scoping, and hard rule 2 exists because implicit scoping is how leaks happen
+          await client.query(`DELETE FROM trips WHERE id = ANY($1::int8[]) AND "deviceId"=$2 AND status='closed'`, [doomed, dev])
+    const inserted: string[] = []
     for (const t of trips) {
-      await client.query(
+      const r = await client.query<{ id: string }>(
         `INSERT INTO trips ("tenantId","accountId","deviceId","status","startTime","endTime","startLat","startLon","endLat","endLon","distanceM","distanceSource","maxSpeed","idleS")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
         [scope.tenantId, scope.accountId, dev, t.status, t.startTime, t.endTime, t.startLat, t.startLon, t.endLat, t.endLon, t.distanceM, t.distanceSource, t.maxSpeed, t.idleS],
       )
+      inserted.push(r.rows[0]!.id)
     }
+
+    // Displace anything else occupying a start we just rebuilt. Two rows it removes:
+    //
+    //  - a CLOSED row for the same journey — the mid-job close, or a duplicate an older overlapping
+    //    recompute left behind. §6.4 makes the rebuild authoritative, and it is the one computed
+    //    from the late records that triggered the job, so keeping the streamed row would discard the
+    //    very correction the job exists to make.
+    //  - an OPEN row at that exact start — a trip whose close was LOST (its persist threw, leaving
+    //    the row open and its id stranded in the persister's memory). The compensating recompute
+    //    then rebuilds the journey as closed, and without this the device carries the same trip
+    //    twice: reports aggregate trips with no status filter and score an open trip to `now()`, so
+    //    that double-counts distance and engine-hours. A LIVE trip cannot collide here — the rebuild
+    //    only emits a CLOSE whose confirmation it actually saw in the positions.
+    //
+    // Run AFTER the inserts and excluding our own ids, not before them: under READ COMMITTED each
+    // statement takes a fresh snapshot, so a close that commits mid-transaction is invisible to an
+    // earlier statement but visible to this one. Done first, it left that duplicate behind.
+    const rebuiltStarts = trips.map((t) => t.startTime)
+    const displaced =
+      rebuiltStarts.length === 0
+        ? { rowCount: 0 }
+        : await client.query(
+            `DELETE FROM trips WHERE "deviceId"=$1 AND "startTime" = ANY($2::timestamptz[]) AND id <> ALL($3::int8[])`,
+            [dev, rebuiltStarts, inserted],
+          )
     // carry each captured driver onto the recomputed trip(s) that START within its old window,
     // only where still unset — so a preserved boundary keeps its driver, a split shares it, and a
     // merge takes the earliest. Positions never carry a driver, so this is the sole carry path.
@@ -194,7 +278,7 @@ export async function recomputeTrips(
       )
     }
     await client.query('COMMIT')
-    return { deleted: del.rowCount ?? 0, created: trips.length, ...(truncated ? { truncated: true as const } : {}) }
+    return { deleted: (del.rowCount ?? 0) + (displaced.rowCount ?? 0), created: trips.length, ...(truncated || rowCapped ? { truncated: true as const } : {}) }
   } catch (err) {
     await client.query('ROLLBACK')
     throw err
