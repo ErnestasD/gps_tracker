@@ -29,7 +29,7 @@ export interface SessionConfig {
 
 export const SHARD_COUNT = 16 // CLAUDE.md rule 5: imei % 16
 
-interface SessionDeps {
+export interface SessionDeps {
   redis: Redis
   registry: DeviceRegistry
   metrics: IngestMetrics
@@ -186,14 +186,34 @@ export class Session {
 
   /**
    * Send any queued Codec-12 commands to this live device (E08-2). TRANSPORT ONLY (rule 3):
-   * LPOP the api-queued command, write it to the socket, and record it in-flight for the
-   * worker's dispatcher — no queue/timeout/retry policy here. Best-effort: a send failure
-   * leaves the command in-flight; the dispatcher times it out and re-queues it.
+   * LPOP the api-queued command, RECORD IT IN-FLIGHT, then write it to the socket — no
+   * queue/timeout/retry policy here.
+   *
+   * That order is the fix for audit MED #64, and the JSDoc used to describe the opposite. Writing
+   * first meant a failure between the socket write and the RPUSH left the command in NEITHER queue:
+   * the device may well have executed it, and nothing recorded that it was ever sent, so the
+   * dispatcher had nothing to reconcile and the DB row sat forever. Recording first inverts the
+   * failure into one the system already handles — "in flight but possibly not sent", which the
+   * dispatcher times out and re-queues, and a Teltonika `setparam` is idempotent so a re-send is
+   * safe.
+   *
+   * The socket is checked BEFORE popping, not caught after writing. `net.Socket.write()` does not
+   * throw synchronously on a dead peer — it returns false and emits `error` asynchronously — so a
+   * try/catch around it is dead code, and a review found the loop happily burning all 16 queued
+   * commands into a destroyed socket while a rollback that could never run claimed otherwise.
+   *
+   * Residual, stated rather than papered over: LPOP and the in-flight RPUSH are two round trips, so
+   * a crash or a Redis failure BETWEEN them still leaves the command in neither queue. Closing that
+   * needs an atomic LMOVE into a differently-shaped entry; the window is now microseconds wide and
+   * the command's 24 h DB expiry sweep is the backstop.
    */
   private async drainPending(): Promise<void> {
     if (this.deviceId === null) return
     const pendKey = `cmd:pending:${this.deviceId}`
     for (let i = 0; i < 16; i++) {
+      // A dead socket must not consume commands. `write()` reports this by RETURNING false and
+      // emitting `error` later, never by throwing, so the check has to come before the pop.
+      if (this.socket.destroyed || this.socket.writableEnded) return
       // bound per drain
       const raw = await this.deps.redis.lpop(pendKey)
       if (raw === null) return
@@ -207,20 +227,38 @@ export class Session {
       // execute a stale (possibly destructive) command on reconnect. Drop it; the dispatcher's
       // DB expiry sweep marks it 'expired' (E08-2 review HIGH).
       if (cmd.expiresAtMs !== undefined && cmd.expiresAtMs <= this.now()) continue
+      // encode BEFORE anything durable: an empty/oversize command is not sendable at all, and
+      // recording it in flight would make the dispatcher wait out a timeout for a frame that never
+      // existed. Drop it; the dispatcher's DB expiry sweep marks it.
+      let frame: Buffer
       try {
-        this.socket.write(encodeCodec12(cmd.text))
+        frame = encodeCodec12(cmd.text)
       } catch {
-        // encode failed (empty/oversize) — drop; the dispatcher will expire it in the DB
         continue
       }
       const inflightKey = `cmd:inflight:${this.deviceId}`
+      // serialized ONCE: the rollback below removes this exact member, and re-building it would
+      // stamp a different sentAtMs and match nothing
+      const inflightEntry = JSON.stringify({
+        id: cmd.id,
+        text: cmd.text,
+        attempt: cmd.attempt ?? 0,
+        sentAtMs: this.now(),
+        ...(cmd.expiresAtMs !== undefined ? { expiresAtMs: cmd.expiresAtMs } : {}),
+      })
       await this.deps.redis
         .multi()
         // keep expiresAtMs so a dispatcher resend can re-stamp it onto the pending entry
-        .rpush(inflightKey, JSON.stringify({ id: cmd.id, text: cmd.text, attempt: cmd.attempt ?? 0, sentAtMs: this.now(), ...(cmd.expiresAtMs !== undefined ? { expiresAtMs: cmd.expiresAtMs } : {}) }))
+        .rpush(inflightKey, inflightEntry)
         .expire(inflightKey, 24 * 3_600) // bound the list (dispatcher reconciles + trims it)
         .sadd('cmd:active', String(this.deviceId))
         .exec()
+      // `write` returning false is backpressure, not failure — the data is buffered and the kernel
+      // will take it. A genuinely dead socket was caught by the check at the top of the loop, and
+      // anything that dies mid-drain is caught on the next iteration; the command already recorded
+      // in flight is then the dispatcher's to time out and re-queue, which is the whole point of the
+      // ordering above.
+      this.socket.write(frame)
     }
   }
 

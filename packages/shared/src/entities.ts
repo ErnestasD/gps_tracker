@@ -36,20 +36,26 @@ export const userCreateSchema = z.object({
   role: roleSchema,
   accountId: z.string().uuid().nullable(),
 })
+/** The UI languages Orbetra ships (web i18n + server-side email/report localization). Single source
+ * for the web switcher, the ADMIN user update, and the self-service `PATCH /v1/auth/me`. */
+export const SUPPORTED_LOCALES = ['en', 'lt', 'pl', 'de'] as const
+export type Locale = (typeof SUPPORTED_LOCALES)[number]
+export const localeSchema = z.enum(SUPPORTED_LOCALES)
+export const localeUpdateSchema = z.object({ locale: localeSchema })
+
 export const userUpdateSchema = z
   .object({
     role: roleSchema,
     accountId: z.string().uuid().nullable(),
-    locale: z.string().min(2).max(10),
+    // the SAME enum the self-service route uses. It accepted any 2–10 character string, which is
+    // then looked up in an object literal with no fallback when an e-mail is rendered — so an admin
+    // typing 'gb' or 'en-US' permanently broke that user's password-reset mail, on a route whose
+    // author had already written the enum three lines away (audit MED).
+    locale: localeSchema,
     password: z.string().min(8).max(1024),
   })
   .partial()
 
-/** The UI languages Orbetra ships (web i18n + server-side email/report localization). Single source
- * for the web switcher AND the self-service `PATCH /v1/auth/me` locale update. */
-export const SUPPORTED_LOCALES = ['en', 'lt', 'pl', 'de'] as const
-export type Locale = (typeof SUPPORTED_LOCALES)[number]
-export const localeUpdateSchema = z.object({ locale: z.enum(SUPPORTED_LOCALES) })
 
 // ── devices ──────────────────────────────────────────────────────────────────
 export const odometerSourceSchema = z.enum(['auto', 'device', 'gps'])
@@ -196,10 +202,14 @@ export const ruleScopeSchema = z
     // number OR string: `scope` used to be a free `z.record(…, unknown)`, so a client that stored
     // `deviceIds: [42]` — device ids are bigints, and JSON has no bigint — was accepted. Rejecting
     // that shape now would 400 a rule the API itself created, including on a read-modify-write PATCH.
-    // digits only: a device id is a bigint, and anything else — "042", " 42", "4.2e1" — validates
-    // fine and then never matches `deviceId.toString()` in the worker, leaving a rule that silently
-    // covers nothing. 19 digits is the int8 ceiling.
-    deviceIds: z.array(z.union([z.string().regex(/^\d{1,19}$/), z.number().int().nonnegative()]).transform(String)).max(MAX_RULE_SCOPE_IDS).optional(),
+    // A device id is a bigint rendered by `deviceId.toString()`, so the accepted form is exactly
+    // what that produces: no leading zero, no sign, no exponent, ≤19 digits (the int8 ceiling).
+    // Anything else — "042", " 42", "4.2e1" — validated fine and then matched nothing, leaving a
+    // rule that silently covers no devices at all.
+    deviceIds: z
+      .array(z.union([z.string().regex(/^[1-9]\d{0,18}$/), z.number().int().positive()]).transform(String))
+      .max(MAX_RULE_SCOPE_IDS)
+      .optional(),
   })
   // passthrough, NOT strict: unknown keys are kept rather than rejected OR silently stripped. A
   // strict schema breaks a client that stored an extra key under the old free-form contract, and

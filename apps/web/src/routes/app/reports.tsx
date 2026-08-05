@@ -41,8 +41,27 @@ export function ReportsPage() {
   // yields an empty report (server scopes by accountId AND deviceId)
   const accDevices = (devices.data ?? []).filter((d) => d.accountId === acc)
 
+  // Day bounds in the ACCOUNT's reporting time zone — the basis the server buckets rows by (hard
+  // rule 7, and `reports.ts` reads `account.timezone` to do it). They were built from BROWSER-local
+  // midnight (audit MED), so every report a customer outside UTC ran had a partial first day and a
+  // spurious extra one: a Vilnius fleet asking for "1–7 August" got 21:00 on the 31st through 21:00
+  // on the 7th, mixing three hours of the previous month into day one and cutting three off the last.
+  //
+  // Note this page is now the ONE surface using the account zone: trips, playback and events use the
+  // DISPLAY-prefs zone, because they render individual timestamps rather than day buckets. The same
+  // picked day can therefore mean two different UTC windows across pages when a user's display zone
+  // differs from their account's. That is a real inconsistency and a product decision to resolve —
+  // it is not fixed here, because reports are the surface where the difference changes the numbers
+  // a customer invoices on, and matching the server is unambiguously correct for them.
+  const reportTz = accounts.data?.find((a) => a.id === acc)?.timezone
   const run = useMutation({
-    mutationFn: () => runReport(type, { from: dayStartIso(from!), to: dayEndIso(to!), accountId: acc, ...(deviceId ? { deviceId } : {}) }),
+    mutationFn: () =>
+      runReport(type, {
+        from: dayStartIso(from!, reportTz),
+        to: dayEndIso(to!, reportTz),
+        accountId: acc,
+        ...(deviceId ? { deviceId } : {}),
+      }),
   })
   const result: ReportResult | undefined = run.data
   // display prefs applied to the RESULT table, CSV and PDF alike: distance/speed value

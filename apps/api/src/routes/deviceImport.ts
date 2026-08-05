@@ -1,6 +1,7 @@
 import type { Redis } from 'ioredis'
 
 import { DuplicateImeiError, type Actor, type Db, type Scope } from '@orbetra/db'
+import { deviceCreateSchema } from '@orbetra/shared'
 
 import { activateDevice } from './deviceRegistry.js'
 
@@ -30,6 +31,9 @@ export interface ImportRow {
   simMsisdn?: string
   simIccid?: string
 }
+/** Consecutive unexpected row failures that mean the environment is broken, not the file. */
+const MAX_CONSECUTIVE_FAILURES = 5
+
 // SIM columns are optional; validated only when present. Same rules as the single-device schema
 // (entities.ts) so a bulk import and a manual add accept exactly the same values.
 const SIM_MSISDN_RE = /^\+[1-9]\d{6,14}$/
@@ -40,7 +44,8 @@ export interface RowError {
   reason: string
 }
 export interface DryRunResult {
-  create: ImportRow[]
+  /** `row` is the CSV line number, carried through so an apply-time failure can name it */
+  create: (ImportRow & { row: number })[]
   update: { row: number; imei: string; deviceId: string }[]
   errors: RowError[]
 }
@@ -149,9 +154,27 @@ export async function dryRun(
     const accountId = callerAccountId ?? row.accountId
     if (accountId === undefined || accountId === '') return fail('accountId is required')
     if (!validAccounts.has(accountId)) return fail('accountId not in your scope')
+    // The SAME schema a manual add uses (audit MED). The checks above cover the CSV-specific
+    // shape; everything else — name length, plate/groupName bounds, the exact IMEI rule — was
+    // enforced only for single-device creates, so a bulk import could push values the API would
+    // have refused one at a time, straight at the DB.
+    const parsed = deviceCreateSchema.safeParse({
+      accountId,
+      profileId: '00000000-0000-0000-0000-000000000000', // resolved from profileKey at apply
+      imei: row.imei,
+      name: row.name,
+      ...(row.plate !== undefined ? { plate: row.plate } : {}),
+      ...(row.groupName !== undefined ? { groupName: row.groupName } : {}),
+      ...(row.simMsisdn !== undefined ? { simMsisdn: row.simMsisdn } : {}),
+      ...(row.simIccid !== undefined ? { simIccid: row.simIccid } : {}),
+    })
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      return fail(`${issue?.path.join('.') ?? 'row'}: ${issue?.message ?? 'invalid'}`)
+    }
     const existingId = existing.get(row.imei)
     if (existingId !== undefined) result.update.push({ row: rowNum, imei: row.imei, deviceId: existingId })
-    else result.create.push({ ...row, accountId })
+    else result.create.push({ ...row, accountId, row: rowNum })
   })
   return result
 }
@@ -159,6 +182,9 @@ export async function dryRun(
 export interface ApplyResult {
   created: number
   errors: RowError[]
+  /** Set when the run stopped early on a run of unexpected failures — the environment is broken,
+   *  not the file, and the remaining rows were never attempted. */
+  aborted?: true
 }
 
 export async function applyImport(
@@ -173,12 +199,16 @@ export async function applyImport(
   const dr = await dryRun(db, scope, rows, new Set(profiles.keys()), callerAccountId)
   const errors = [...dr.errors]
   let created = 0
+  let consecutiveFailures = 0
   // profileId → presence_rules, resolved once for the worker trip config (E04-5)
   const rulesByProfile = new Map((await db.profiles.list()).map((p) => [p.id, p.presenceRules]))
-  // only the create-rows are applied; updates/errors are reported, not mutated (v1).
-  // Per-row try/catch: a cross-tenant IMEI clash (global unique) surfaces as a
-  // DuplicateImeiError → a per-row error, NOT a 500 that aborts the batch and loses
-  // the report of what was already created (review HIGH). row 0 = surfaced at apply.
+  // Only the create-rows are applied; updates/errors are reported, not mutated (v1).
+  //
+  // EVERY per-row failure is a per-row error, not just a duplicate IMEI (audit MED). Rethrowing
+  // anything else aborted the loop mid-batch: the devices already created stayed created — they are
+  // real, and rolling them back would be worse — while the caller got a 500 and NO report of which
+  // ones. An operator then had no way to tell what to retry. The row number is carried from the dry
+  // run so the error names the CSV line rather than a placeholder 0.
   for (const row of dr.create) {
     const profileId = profiles.get(row.profileKey)
     const accountId = callerAccountId ?? row.accountId
@@ -194,14 +224,36 @@ export async function applyImport(
         simMsisdn: row.simMsisdn ?? null,
         simIccid: row.simIccid ?? null,
       })
-      await activateDevice(redis, {
-        id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId,
-        config: { presenceRules: rulesByProfile.get(profileId) ?? {}, odometerSource: device.odometerSource }, // E04-5
-      })
-      created++
+      created++ // the row is real from here on — count it before the registry sync
+      // OUTSIDE the create's failure accounting: a Redis blip here leaves a device that exists in
+      // the DB (holding its IMEI) but is missing from `registry:imei`, so ingest quarantines it. The
+      // old catch reported that as "could not be created", and the operator's retry then hit
+      // "IMEI already registered" for a device they were told never existed. The API's boot
+      // rehydrate repairs the registry, so the honest report is "created, not yet reachable".
+      try {
+        await activateDevice(redis, {
+          id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId,
+          config: { presenceRules: rulesByProfile.get(profileId) ?? {}, odometerSource: device.odometerSource }, // E04-5
+        })
+      } catch (err) {
+        console.error('device import: created but not activated', { imei: row.imei, row: row.row }, err)
+        errors.push({ row: row.row, imei: row.imei, reason: 'created, but not yet reachable by the pipeline — retry not needed' })
+      }
     } catch (err) {
-      if (err instanceof DuplicateImeiError) errors.push({ row: 0, imei: row.imei, reason: 'IMEI already registered' })
-      else throw err
+      if (err instanceof DuplicateImeiError) {
+        errors.push({ row: row.row, imei: row.imei, reason: 'IMEI already registered' })
+      } else {
+        // unexpected: log it in full (an import that half-worked must be diagnosable) and report a
+        // generic reason — the message may name a constraint or another tenant's data
+        console.error('device import row failed', { imei: row.imei, row: row.row }, err)
+        errors.push({ row: row.row, imei: row.imei, reason: 'could not be created' })
+        // A run of these is an OUTAGE, not a data problem: a dead pool or a statement timeout would
+        // otherwise turn into 1000 per-row "could not be created" entries and an HTTP 201, telling
+        // the operator their CSV is bad when the database is down. Stop and hand back what landed.
+        if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return { created, errors, aborted: true }
+        continue
+      }
+      consecutiveFailures = 0
     }
   }
   return { created, errors }

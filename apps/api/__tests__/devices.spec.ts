@@ -232,6 +232,43 @@ describe('E03-3 CSV import', () => {
 })
 
 describe('E03-3 import unit helpers', () => {
+  it('CSV import validates each row with the SAME schema a manual add uses', async () => {
+    // The dry run checked the CSV-specific shape (Luhn, profile key, SIM regexes) and nothing else,
+    // so a bulk import could push values the API refuses one at a time — a 300-character name went
+    // straight at the DB (audit MED). The failure is per ROW, with the field named.
+    const csv = ['imei,name,profileKey,accountId', `356307042440908,${'x'.repeat(300)},fmb1xx,${accountId}`].join('\n')
+    const res = await authed('/v1/devices/import/preview', 'POST', { csv })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { create: unknown[]; errors: { row: number; reason: string }[] }
+    expect(body.create).toHaveLength(0)
+    expect(body.errors[0]!.row).toBe(2) // the CSV line, not a placeholder
+    expect(body.errors[0]!.reason).toMatch(/name/)
+  })
+
+  it('an import row that fails at APPLY is reported per row, not thrown away with the batch', async () => {
+    // Only a duplicate IMEI was caught per row; anything else rethrew and aborted the loop — the
+    // devices already created stayed created (they are real) while the caller got a 500 and NO
+    // report of which ones, leaving an operator with nothing to retry against.
+    const dup = '356307042440916'
+    await authed('/v1/devices', 'POST', { accountId, profileId, imei: dup, name: 'Existing' })
+    // …in ANOTHER tenant, so the row is not classified as an update and reaches the create path
+    const other = await seedUser({ databaseUrl, email: `imp-${Date.now()}@x.test`, password: 'password12', role: 'tsp_admin', tenantName: 'ImpCo', accountName: 'ImpFleet' })
+    const otherAccounts = await db.accounts.list({ tenantId: other.tenantId })
+    const otherToken = await mintTestToken({ userId: other.userId, tenantId: other.tenantId, role: 'tsp_admin' })
+    const csv = ['imei,name,profileKey,accountId', `${dup},Clash,fmb1xx,${otherAccounts[0]!.id}`, `356307042440924,Fine,fmb1xx,${otherAccounts[0]!.id}`].join('\n')
+    const res = await fetch(`${base()}/v1/devices/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${otherToken}` },
+      body: JSON.stringify({ csv }),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { created: number; errors: { row: number; imei: string }[] }
+    expect(body.created).toBe(1) // the good row still landed
+    expect(body.errors).toHaveLength(1)
+    expect(body.errors[0]!.imei).toBe(dup)
+    expect(body.errors[0]!.row).toBe(2) // named, not 0
+  })
+
   it('luhnValid: accepts a valid IMEI, rejects a broken checksum / wrong length', () => {
     const good = validImei(35630704248000n)
     expect(luhnValid(good)).toBe(true)
