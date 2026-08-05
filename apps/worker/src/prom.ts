@@ -13,7 +13,10 @@ export interface WorkerProm {
   registry: Registry
   batchRows: Histogram
   /** Call per processed batch with now − max(fix_time) of the batch. */
+  /** now − max(server_time): how long ingest→worker actually took. NOT the device's clock. */
   setLagMs: (ms: number) => void
+  /** now − max(fix_time): device clock skew + buffering. Deliberately separate from pipeline lag. */
+  setDataAgeMs: (ms: number) => void
   tripsOpened: Counter
   tripsClosed: Counter
   tripPersistErrors: Counter
@@ -123,7 +126,16 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
 
   const lag = new Gauge({
     name: 'pipeline_lag_ms',
-    help: 'now − max(fix_time) of the last processed batch (Grafana derives p95)',
+    help: 'now − max(server_time) of the last processed batch: how long ingest→worker actually took',
+    registers: [registry],
+  })
+  // The fix-time view, kept but NAMED for what it is. `pipeline_lag_ms` used to be computed from
+  // fix_time, which is the DEVICE's clock plus however long it buffered — so a truck coming back
+  // from a weekend in a garage paged a false critical, and a device whose RTC runs fast pinned the
+  // gauge at 0 and hid real lag. Both are worth seeing; neither is pipeline health.
+  const dataAge = new Gauge({
+    name: 'device_data_age_ms',
+    help: 'now − max(fix_time) of the last processed batch: device clock skew + buffering, NOT pipeline lag',
     registers: [registry],
   })
 
@@ -189,5 +201,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

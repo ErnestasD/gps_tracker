@@ -23,8 +23,13 @@ groups:
           summary: "Redis stream depth CRITICAL ({{ $value | humanize }})"
           description: "A shard's unconsumed backlog is near the 100k MAXLEN cap — unprocessed entries will be evicted (data loss). Scale or restart workers now."
 
-      # pipeline_lag_ms: age of the oldest unprocessed record. >30s risks the trip &
-      # GDPR-erase guards (both assume lag << their windows).
+      # pipeline_lag_ms: now − max(server_time), i.e. how long ingest→worker actually took. >30s
+      # risks the trip & GDPR-erase guards (both assume lag << their windows).
+      #
+      # It used to be computed from FIX time, so these two alerts fired on device clock skew and on
+      # buffered flushes: a truck returning from a weekend in a garage paged a critical while the
+      # pipeline was idle, and a device with a fast RTC pinned the gauge at 0 and hid real lag.
+      # `device_data_age_ms` carries that view now — worth watching, never worth paging on.
       - alert: PipelineLagHigh
         expr: max(pipeline_lag_ms) > 30000
         for: 5m

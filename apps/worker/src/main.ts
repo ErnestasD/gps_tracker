@@ -383,8 +383,9 @@ async function main(): Promise<void> {
       },
       onBatch: async (records) => {
         prom.batchRows.observe(records.length)
-        // lag is measured on records the pipeline will actually ACT on — a clock-skewed record's
-        // fixTime is in the FUTURE, which would make the gauge negative and mask real lag
+        // `usable` = records the pipeline will actually ACT on. A clock-skewed record's fixTime is
+        // in the FUTURE, so it must not feed anything derived from fix time — including the
+        // device_data_age gauge below, which would otherwise read 0 and mask a genuinely stale fleet.
         const usable = records.filter((r) => !isClockSkewed(r))
         const skewed = records.length - usable.length
         if (skewed > 0) {
@@ -401,8 +402,15 @@ async function main(): Promise<void> {
             )
           }
         }
+        // PIPELINE lag is measured on server_time — the instant ingest accepted the frame — not on
+        // fix_time (audit MED). fix_time is the DEVICE's clock plus however long it buffered, so a
+        // truck returning from a weekend in a garage paged a false critical, and a device whose RTC
+        // runs fast pinned the gauge at 0 and hid real lag. Both views are exported now; only this
+        // one answers "is the pipeline keeping up".
+        const newestServerMs = records.reduce((m, r) => Math.max(m, r.serverTime.getTime()), 0)
+        if (newestServerMs > 0) prom.setLagMs(Math.max(0, Date.now() - newestServerMs))
         const newestMs = usable[usable.length - 1]?.fixTime.getTime()
-        if (newestMs !== undefined) prom.setLagMs(Math.max(0, Date.now() - newestMs))
+        if (newestMs !== undefined) prom.setDataAgeMs(Math.max(0, Date.now() - newestMs))
         try {
           await liveState.apply(records) // live is best-effort: log, never stall the shard
         } catch (err) {

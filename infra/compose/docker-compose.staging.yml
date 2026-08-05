@@ -3,12 +3,13 @@
 # base (see docs/runbooks/staging-app-deploy.md); this overlay only adds GlitchTip + the 80/443
 # port publish + the localhost bindings, and can be combined with apps.yml.
 # Usage: docker compose -f docker-compose.yml -f docker-compose.apps.yml -f docker-compose.staging.yml up -d
+# `ports: []` DOES NOT UNPUBLISH ANYTHING. Compose MERGES port lists across files — an override can
+# only add. The entries that used to sit here for `pg` and `redis` were silent no-ops that read like
+# protection, which is worse than nothing: the actual guarantee is in the BASE file, where both bind
+# `127.0.0.1` (see its SECURITY header — Docker publishes by inserting iptables rules that bypass
+# UFW, so a `5432:5432` there would be public whatever this file said). Verified on staging:
+# `orbetra-pg-1 :: 127.0.0.1:5432->5432/tcp`.
 services:
-  pg:
-    ports: [] # not exposed publicly on staging
-
-  redis:
-    ports: []
 
   glitchtip:
     image: glitchtip/glitchtip:latest
@@ -25,7 +26,12 @@ services:
         condition: service_healthy
 
   caddy:
-    ports:
+    # `!override`, not a bare list. Compose MERGES port lists, so plainly re-stating 80/443 ADDED
+    # them to the base's `${CADDY_HTTP_PORT:-8088}:80` / `${CADDY_HTTPS_PORT:-8449}:443` and the
+    # documented three-file invocation quietly published Caddy on FOUR host ports. `!override`
+    # replaces the base list instead, so this overlay's guarantee — staging answers on 80/443 — holds
+    # whether or not the env vars are set.
+    ports: !override
       - '80:80'
       - '443:443'
     volumes:

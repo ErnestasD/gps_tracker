@@ -148,7 +148,7 @@
 
 ### E02-5 · Backpressure, metrics, dashboard (M)
 **Files:** `apps/{ingest,worker}/src/metrics.ts` (prom-client), `infra/grafana/dashboards/ingest.json`, `infra/prometheus/prometheus.yml`.
-**Metrics (names frozen — Appendix A):** `ingest_msgs_total, ingest_parse_fail_total, ingest_frame_violations_total, ack_latency_ms (hist), stream_depth{shard}, pipeline_lag_ms (now−fix_time p95 gauge), pipeline_batch_rows (hist), ws_clients`.
+**Metrics (names frozen — Appendix A):** `ingest_msgs_total, ingest_parse_fail_total, ingest_frame_violations_total, ack_latency_ms (hist), stream_depth{shard}, pipeline_lag_ms (now−server_time p95 gauge; the now−fix_time view is device_data_age_ms), pipeline_batch_rows (hist), ws_clients`.
 **AC:** [ ] flood test drives `stream_depth` past 50k → paused-sockets metric >0, zero loss, drains · [ ] dashboard JSON committed & renders all metrics.
 **Depends:** E02-3.
 

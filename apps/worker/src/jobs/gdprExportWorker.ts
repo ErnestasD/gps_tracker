@@ -160,7 +160,10 @@ export async function runExport(pool: Pool, exportDir: string, exportId: string)
   const bytes = (await stat(finalPath)).size
   // guard `status <> 'done'` (review LOW-5): if a stalled earlier attempt somehow lost the
   // race, the winner's file + size stay authoritative
-  await pool.query(`UPDATE export_jobs SET status = 'done', path = $2, "sizeBytes" = $3 WHERE id = $1 AND status <> 'done'`, [exportId, finalPath, bytes])
+  // `status = 'pending'`, not `<> 'done'`: a GDPR erase running concurrently marks this row
+  // 'expired' precisely so the dump stops being downloadable, and `<> 'done'` would flip it straight
+  // back with a fresh path — publishing the erased device's data after the erase completed.
+  await pool.query(`UPDATE export_jobs SET status = 'done', path = $2, "sizeBytes" = $3 WHERE id = $1 AND status = 'pending'`, [exportId, finalPath, bytes])
   return { exportId, bytes }
 }
 
