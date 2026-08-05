@@ -248,7 +248,9 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
     }
     if (SUBSCRIPTION_EVENTS.has(event.type)) {
       const mapped = subscriptionFrom(event.data.object, deps.stripe.prices)
-      // event.created is the Unix-seconds ordering key; the DB guard applies it only if strictly newer
+      // event.created is the Unix-SECONDS ordering key. The DB guard applies a strictly newer event
+      // unconditionally, and an equal-second one by event type rank (see applySubscriptionEvent);
+      // a redelivery of an already-applied event id is dropped there whatever its timestamp.
       if (mapped === null) {
         // an unmappable subscription payload — we cannot provision anything from it. Ack (retrying
         // will not make it mappable) but SAY SO: silence here means a paying customer sits
@@ -272,9 +274,15 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
         // on a Redis blip, so two concurrent checkouts can leave a customer id we never stored.
         // Still a 200 — a retry cannot fix a missing mapping, and a 500 would make Stripe hammer
         // the endpoint for days — but now it is loud. Audit MED.
-        const outcome = await deps.db.tenants.applySubscriptionEvent(mapped.customerId, new Date(event.created * 1000), mapped.update)
-        // `stale` is NORMAL — the monotonic and per-subscription guards drop replayed, out-of-order
-        // and same-second deliveries by design. Only `no_tenant` means a paying customer has no plan.
+        // The whole event identity goes to the repo, not just its timestamp: `event.created` is
+        // second-granularity and Stripe emits `.updated` + `.deleted` for one cancel in the same
+        // second, so ordering needs the TYPE, and suppressing a retry needs the ID (audit MED #25).
+        const outcome = await deps.db.tenants.applySubscriptionEvent(
+          { stripeCustomerId: mapped.customerId, id: event.id, type: event.type, at: new Date(event.created * 1000) },
+          mapped.update,
+        )
+        // `stale` is NORMAL — the monotonic and per-subscription guards drop replayed and
+        // out-of-order deliveries by design. Only `no_tenant` means a paying customer has no plan.
         if (outcome === 'no_tenant') {
           console.error('stripe webhook: no tenant for customer — subscription NOT applied', {
             type: event.type,

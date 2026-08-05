@@ -52,6 +52,25 @@ export interface WorkerProm {
    *  drifting RTC, whose live map and offline alerts would otherwise be silently wrong. */
   clockSkewed: Counter
   stripeOverageReported: Counter
+  /** Tenant-days whose overage was re-reported as a DELTA because usage_daily grew after the day
+   *  closed (a buffered device flushing, a lagging pipeline, a missed run). Expected to be small and
+   *  non-zero; a sudden jump means the pipeline is running late (audit MED #21). */
+  stripeOverageBackfilled: Counter
+  /** TSP subscribers skipped because their base price has no STRIPE_INCLUDED entry. MUST stay 0 —
+   *  any other value means a paying plan is billing ZERO overage (audit MED #23). */
+  stripeUnmappedPrice: Gauge
+  /** Tenant-days the reporter left exactly as billed because the plan's allowance changed under
+   *  them. Correct — the old allowance is what the customer had — but a skipped day stays skipped on
+   *  every future run, so any usage that lands for it later is never billed. Non-zero ⇒ reconcile. */
+  stripeAllowanceSkips: Gauge
+  /** Tenants whose entitlements are FLOORED (canceled/unpaid subscription, or an expired self-serve
+   *  trial) and which are still being ingested and served. The floor is enforced only at device
+   *  CREATE, so this is free service nobody was counting (audit MED #22). */
+  billingLapsedTenants: Gauge
+  /** …and the devices they still have registered — the ongoing storage/ingest cost. */
+  billingLapsedDevices: Gauge
+  /** …of which, past BILLING_GRACE_DAYS: the ones actually worth acting on. */
+  billingLapsedActionable: Gauge
   scheduledReportsSent: Counter
   retentionPruned: Counter
   /** §3.6 sanity failures moved from the `rejects` stream into `raw_rejects` (audit MED #46). */
@@ -174,6 +193,12 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
   const clockSkewed = new Counter({ name: 'positions_clock_skewed_total', help: 'records whose device clock ran ahead of server time — kept in positions, excluded from live state and the motion engines', registers: [registry] })
   const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })
   const stripeOverageReported = new Counter({ name: 'stripe_overage_reported_total', help: 'tenants for which device overage was reported to the Stripe meter (ADR-024 PR B2)', registers: [registry] })
+  const stripeOverageBackfilled = new Counter({ name: 'stripe_overage_backfilled_total', help: 'tenant-days re-reported as a delta because usage arrived after the day closed (audit #21)', registers: [registry] })
+  const stripeUnmappedPrice = new Gauge({ name: 'stripe_unmapped_price_tenants', help: 'TSP subscribers whose base price is missing from STRIPE_INCLUDED — their overage bills ZERO (audit #23)', registers: [registry] })
+  const stripeAllowanceSkips = new Gauge({ name: 'stripe_allowance_skipped_days', help: 'tenant-days left as billed because the plan allowance changed under them — later usage for those days is never billed (audit #21)', registers: [registry] })
+  const billingLapsedTenants = new Gauge({ name: 'billing_lapsed_tenants', help: 'tenants past their entitlement floor that are still being ingested and served (audit #22)', registers: [registry] })
+  const billingLapsedDevices = new Gauge({ name: 'billing_lapsed_devices', help: 'devices still registered to those tenants — the ongoing ingest/storage cost', registers: [registry] })
+  const billingLapsedActionable = new Gauge({ name: 'billing_lapsed_actionable', help: 'lapsed tenants past BILLING_GRACE_DAYS — the ones worth acting on', registers: [registry] })
   const scheduledReportsSent = new Counter({ name: 'scheduled_reports_sent_total', help: 'scheduled report emails sent (V1-nice)', registers: [registry] })
   const retentionPruned = new Counter({ name: 'retention_pruned_total', help: 'rows pruned by the daily retention sweep, by table', labelNames: ['table'], registers: [registry] })
   const rejectsDrained = new Counter({ name: 'rejects_drained_total', help: 'sanity-rejected records persisted from the rejects stream into raw_rejects', registers: [registry] })
@@ -201,5 +226,5 @@ export function startWorkerProm(redis: Redis, port: number): WorkerProm {
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

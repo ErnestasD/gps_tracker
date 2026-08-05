@@ -213,23 +213,65 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
     accrueForPaidInvoice: async (invoice) => {
       const tenant = await prisma.tenant.findFirst({
         where: { stripeCustomerId: invoice.stripeCustomerId },
-        select: { id: true, referredByAffiliateId: true },
+        select: { id: true, referredByAffiliateId: true, commissionAnchorAt: true, commissionMonthsAtAnchor: true },
       })
       if (tenant === null || tenant.referredByAffiliateId === null) return null // not a referred tenant
       const affiliate = await prisma.affiliate.findUnique({ where: { id: tenant.referredByAffiliateId } })
-      if (affiliate === null || affiliate.status !== 'active') return null // suspended/pending ⇒ commissions stop
+      if (affiliate === null) return null
       // Window: commissionMonths from the tenant's FIRST PAYMENT (schema §commissionMonths — a trial
-      // must not eat the window). The anchor is the earliest recorded `paidAt` (Stripe's clock), NOT a
-      // row's DB insert time: createdAt drifts later with webhook lag/retries, silently EXTENDING the
-      // earning window and over-paying (audit MED). Rows written before paidAt existed fall back to
-      // createdAt so historical anchors stay stable.
-      const first = await prisma.commission.findFirst({
-        where: { affiliateId: affiliate.id, tenantId: tenant.id },
-        orderBy: [{ paidAt: 'asc' }, { createdAt: 'asc' }],
-        select: { paidAt: true, createdAt: true },
-      })
-      const anchor = first?.paidAt ?? first?.createdAt ?? invoice.paidAt
-      if (invoice.paidAt > addMonthsUtc(anchor, affiliate.commissionMonths)) return null
+      // must not eat the window). BOTH ends were derived, and both drifted (audit MED #26):
+      //
+      //  * the anchor was the earliest COMMISSION ROW, so a first payment that accrued nothing —
+      //    the partner still `pending`/`suspended` at the time, or a 0% rate — left no row, and the
+      //    window silently restarted at whichever later payment first produced one. A partner
+      //    suspended for six months and reinstated got a fresh full term on a customer they had
+      //    already been paid out on. (A zero-amount invoice is NOT in this set: `paidInvoiceFrom`
+      //    drops `amount_paid <= 0` before the webhook ever calls this.)
+      //  * `commissionMonths` was read LIVE, so editing it re-priced history in both directions:
+      //    12 → 24 re-opened windows that closed a year of invoices ago and started paying again;
+      //    24 → 12 retroactively closed windows a partner had already earned in. This is the exact
+      //    mistake the `ratePct` snapshot two lines below exists to prevent — the term was simply
+      //    left out of it.
+      //
+      // Both are now stamped on the TENANT at its first paid invoice and never recomputed. The stamp
+      // happens BEFORE the affiliate-active check on purpose: the anchor is a fact about the customer's
+      // payment history, not about whether anyone happened to earn on it.
+      let anchorAt = tenant.commissionAnchorAt
+      let months = tenant.commissionMonthsAtAnchor ?? affiliate.commissionMonths
+      if (anchorAt === null) {
+        // CONDITIONAL write: two invoices delivered concurrently must not each claim the anchor.
+        // Whoever's `commissionAnchorAt: null` predicate still matches wins; the loser adopts it.
+        const claimed = await prisma.tenant.updateMany({
+          where: { id: tenant.id, commissionAnchorAt: null },
+          data: { commissionAnchorAt: invoice.paidAt, commissionMonthsAtAnchor: affiliate.commissionMonths },
+        })
+        if (claimed.count > 0) {
+          anchorAt = invoice.paidAt
+          months = affiliate.commissionMonths
+        } else {
+          const fresh = await prisma.tenant.findUnique({ where: { id: tenant.id }, select: { commissionAnchorAt: true, commissionMonthsAtAnchor: true } })
+          anchorAt = fresh?.commissionAnchorAt ?? invoice.paidAt
+          months = fresh?.commissionMonthsAtAnchor ?? affiliate.commissionMonths
+        }
+      }
+      // The back-move is UNCONDITIONAL, not the `else` of the claim above: when two first invoices
+      // race, the loser adopts the winner's anchor — and if the loser is the EARLIER payment, the
+      // window would stay pinned to the later one and the partner would earn past the agreed term.
+      // (Measured: 2 of 3 concurrent Jan/Mar races kept March and paid an August invoice that a
+      // 6-month window from January excludes.) The anchor is the FIRST payment, so it may move back,
+      // never forward; the term stays as first snapshotted, since re-reading it here would put the
+      // live value back in the path this whole block exists to remove.
+      if (invoice.paidAt < anchorAt) {
+        const moved = await prisma.tenant.updateMany({ where: { id: tenant.id, commissionAnchorAt: { gt: invoice.paidAt } }, data: { commissionAnchorAt: invoice.paidAt } })
+        if (moved.count > 0) anchorAt = invoice.paidAt
+        else {
+          // someone moved it even earlier between our read and this write — take theirs
+          const fresh = await prisma.tenant.findUnique({ where: { id: tenant.id }, select: { commissionAnchorAt: true } })
+          anchorAt = fresh?.commissionAnchorAt ?? invoice.paidAt
+        }
+      }
+      if (affiliate.status !== 'active') return null // suspended/pending ⇒ commissions stop (window still anchored)
+      if (invoice.paidAt > addMonthsUtc(anchorAt, months)) return null
       // SNAPSHOT the rate with the entry (§6.9): reading it live meant an admin editing commissionPct
       // re-priced every still-open commission, and editing commissionMonths could reopen a closed window.
       const ratePct = affiliate.commissionPct

@@ -101,6 +101,20 @@ model Tenant {
   /// timestamp of the last APPLIED Stripe event; a webhook update lands only when strictly newer
   /// (monotonic guard against out-of-order/duplicate delivery — ADR-024)
   lastBillingEventAt    DateTime?  @db.Timestamptz()
+  /// id (`evt_…`) of the last APPLIED Stripe event. Diagnostic only — redelivery suppression lives
+  /// in {@link BillingEvent}, because a single slot forgets everything but the previous event.
+  lastBillingEventId    String?
+  /// rank of that event's TYPE (created 0 < updated 1 < deleted 2) — the deterministic order WITHIN
+  /// one `event.created` second. Stripe does not guarantee delivery order, and `event.created` is
+  /// second-granularity, so without this a `.deleted` followed by a reordered `.updated` would undo
+  /// a cancel and hand a canceled customer full paid service (audit #25).
+  lastBillingEventRank  Int?
+  /// affiliate commission window: the tenant's FIRST paid invoice, and the affiliate's
+  /// `commissionMonths` AS IT STOOD at that moment. Both are snapshots — the window used to be
+  /// derived from the earliest COMMISSION ROW and a live `commissionMonths`, so a period in which
+  /// nothing accrued moved the anchor forward, and an admin edit re-opened closed windows (audit #26).
+  commissionAnchorAt       DateTime? @db.Timestamptz()
+  commissionMonthsAtAnchor Int?
   createdAt             DateTime   @default(now()) @db.Timestamptz()
 
   accounts            Account[]
@@ -111,6 +125,7 @@ model Tenant {
   /// affiliate attribution (W9): the partner who referred this tenant, set once at signup from ?ref
   referredByAffiliate Affiliate?         @relation("AffiliateReferrals", fields: [referredByAffiliateId], references: [id])
   commissions         Commission[]       @relation("TenantCommissions")
+  usageReports        UsageReport[]
 
   @@map("tenants")
 }
@@ -750,6 +765,49 @@ model UsageDaily {
   @@id([deviceId, day])
   @@index([tenantId, day])
   @@map("usage_daily")
+}
+
+/// What has ALREADY been reported to Stripe's overage meter, per tenant-day (audit MED #21).
+///
+/// `reported` is CUMULATIVE — the total overage-device count Stripe has been told about for that day,
+/// not the last delta. The reporter re-walks a trailing window each run and submits `over − reported`,
+/// so a failed run, a restart, or a device that flushed its offline buffer after midnight is picked up
+/// by the next run instead of being lost. Without this row the job had exactly one chance per day and
+/// no way to know whether it took it.
+model UsageReport {
+  tenantId   String   @db.Uuid
+  day        DateTime @db.Date
+  reported   Int
+  /// the plan's included-device allowance AT THE TIME this day was reported. The reporter re-walks
+  /// past days, so without it a downgrade (750 included → 200) would recompute last week's overage
+  /// against the smaller allowance and bill hundreds of device-days the customer never owed.
+  included   Int?
+  /// the base price the day was settled under — the discriminator between "the plan changed" (freeze
+  /// the day as billed) and "STRIPE_INCLUDED was corrected" (recompute it). Freezing on the allowance
+  /// alone made a config typo permanently unbillable, which is the opposite of audit #23's intent.
+  priceId    String?
+  reportedAt DateTime @default(now()) @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, day])
+  @@map("usage_reports")
+}
+
+/// Stripe events already APPLIED, for durable redelivery suppression (audit MED #25).
+///
+/// Not keyed on the tenant on purpose: the question it answers is "have I applied this event id",
+/// independently of what any tenant row now holds. The tenant's `lastBillingEventId` cannot answer
+/// it — it remembers one event, so `updated → deleted → retry of updated` (an ordinary Stripe retry
+/// after a lost response) looked like a new event and resurrected a canceled subscription.
+model BillingEvent {
+  eventId   String   @id
+  type      String
+  eventAt   DateTime @db.Timestamptz()
+  appliedAt DateTime @default(now()) @db.Timestamptz()
+
+  @@index([appliedAt])
+  @@map("billing_events")
 }
 
 model AuditLog {

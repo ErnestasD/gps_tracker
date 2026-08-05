@@ -2,51 +2,72 @@ import { Worker, type ConnectionOptions } from 'bullmq'
 
 import type { Db } from '@orbetra/db'
 
-import { reportDailyOverage, type StripeUsagePort } from '../billing/usageReporter.js'
+import { DEFAULT_BACKFILL_DAYS, billableDays, reportDailyOverage, type OverageRunResult, type StripeUsagePort } from '../billing/usageReporter.js'
 import { STRIPE_USAGE_QUEUE } from './stripeUsageQueue.js'
 
 export interface StripeUsageWorkerDeps {
   connection: ConnectionOptions
   db: Db
   stripe: StripeUsagePort
-  /** current time (ms) source — injectable for tests; the job bills the PREVIOUS UTC day. */
+  /** current time (ms) source — injectable for tests; the job bills COMPLETE UTC days only. */
   now?: () => number
-  onReported?: (r: { subscribers: number; reported: number; devicesOver: number }) => void
+  /** how many trailing days each run re-checks (env `STRIPE_BACKFILL_DAYS`, default 3). */
+  backfillDays?: number
+  onReported?: (r: OverageRunResult) => void
   /** the run THREW — a stalled overage reporter is silent UNDER-BILLING, so it must be visible */
   onFailed?: () => void
-}
-
-/** UTC day (YYYY-MM-DD) N days before the given ms instant. */
-function utcDay(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10)
+  /** a TSP price with no STRIPE_INCLUDED entry — config error, zero overage billed for that plan */
+  onUnmappedPrice?: (info: { tenantId: string; priceId: string; plan: string }) => void
+  /** a day left as billed because the plan's allowance changed under it */
+  onAllowanceSkip?: (info: { tenantId: string; day: string; was: number; now: number }) => void
 }
 
 /**
- * Daily job: report YESTERDAY's overage to Stripe. concurrency 1 (one report per tick). Errors throw
- * → BullMQ retries; the meter is additive but a same-day double-report would double-count, so the
- * job is scheduled once/day and reports the settled previous day (idempotency at the schedule level).
+ * Daily job: report the trailing window's overage to Stripe. concurrency 1 (one run per tick).
+ *
+ * The window (not just yesterday) is the fix for audit #21: usage for a day keeps arriving after that
+ * day ends — a device that was out of coverage flushes its buffer, the ordered pipeline is catching
+ * up, or this very job was down — and the old single-shot "bill yesterday, keep no record" had
+ * exactly one chance to see it. Re-walking the last few days and submitting the DELTA against
+ * `usage_reports` makes a missed or premature run self-correcting instead of permanently lost revenue.
+ *
+ * Errors still throw → BullMQ retries; the report log makes the retry a no-op for whatever already
+ * landed, so a retry cannot double-bill.
  */
 export function createStripeUsageWorker(deps: StripeUsageWorkerDeps): Worker {
   const now = deps.now ?? Date.now
+  const backfillDays = deps.backfillDays ?? DEFAULT_BACKFILL_DAYS
   return new Worker(
     STRIPE_USAGE_QUEUE,
     async () => {
-      const nowMs = now()
-      const day = utcDay(nowMs - 24 * 3_600_000) // yesterday (UTC)
-      // stamp the meter event at NOON of the billed day (not report-time): a 00:00-aligned run must not
-      // push yesterday's usage into today's billing period at a subscription-renewal boundary.
-      const timestampS = Math.floor(Date.parse(`${day}T12:00:00Z`) / 1000)
+      const days = billableDays(now(), backfillDays)
       try {
-        const r = await reportDailyOverage({ db: deps.db, stripe: deps.stripe }, day, timestampS)
+        const r = await reportDailyOverage(
+          {
+            db: deps.db,
+            stripe: deps.stripe,
+            ...(deps.onUnmappedPrice ? { onUnmappedPrice: deps.onUnmappedPrice } : {}),
+            ...(deps.onAllowanceSkip ? { onAllowanceSkip: deps.onAllowanceSkip } : {}),
+          },
+          days,
+        )
         deps.onReported?.(r)
       } catch (err) {
         // a stalled metering pipeline is silent UNDER-BILLING: usage_daily keeps the truth but
-        // nothing reaches Stripe, and the reporter only ever submits `now − 24h` with no backfill,
-        // so every failed run is revenue lost for good. It must page.
+        // nothing reaches Stripe. The window recovers a few missed runs on its own; one that stays
+        // broken longer than the window is money lost, so it must still page.
         deps.onFailed?.()
         throw err
       }
     },
     { connection: deps.connection, concurrency: 1 },
   )
+}
+
+/** `STRIPE_BACKFILL_DAYS`, clamped to 1…14 — a longer window would start submitting meter events
+ *  Stripe rejects as too old, and a shorter one is the single-shot behaviour this replaced. */
+export function backfillDaysFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env['STRIPE_BACKFILL_DAYS'])
+  if (!Number.isFinite(n)) return DEFAULT_BACKFILL_DAYS
+  return Math.min(14, Math.max(1, Math.floor(n)))
 }

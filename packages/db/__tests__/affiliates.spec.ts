@@ -199,6 +199,81 @@ describe('affiliates repo', () => {
       expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_anchor', invoiceId: 'in_a2', amountPaidCents: 10_000, currency: 'eur', paidAt: late })).toBeNull()
     })
 
+    it('anchors on the first PAYMENT even when it accrued NOTHING (audit MED #26)', async () => {
+      // the anchor used to be the earliest COMMISSION ROW, so any first payment that produced no row
+      // — partner still `pending`, a 100%-off coupon, a 0% rate — silently restarted the window at
+      // whichever later payment first accrued. Here the partner is suspended for the first payment
+      // and reinstated for the second: under the old rule the second payment became the anchor and
+      // bought a fresh full term on a customer the window should already have been counting.
+      const aff = await db.affiliates.create(actor, { name: 'Late Co', email: 'late@partner.co', code: 'LATEC1', commissionMonths: 6 })
+      const tenant = await db.tenants.create(actor, { name: 'Late Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_late')
+      const first = new Date(Date.UTC(2026, 0, 10))
+      // partner is `pending` → nothing accrues, but the window still starts here
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_late', invoiceId: 'in_late_1', amountPaidCents: 10_000, currency: 'eur', paidAt: first })).toBeNull()
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      // month 3 — inside the 6-month window measured from the FIRST payment
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_late', invoiceId: 'in_late_2', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date(Date.UTC(2026, 3, 10)) })).not.toBeNull()
+      // month 8 — outside it. Anchoring on the first ACCRUAL (month 3) would have paid this.
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_late', invoiceId: 'in_late_3', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date(Date.UTC(2026, 8, 10)) })).toBeNull()
+    })
+
+    it('SNAPSHOTS commissionMonths too — an admin edit cannot re-open a closed window (audit MED #26)', async () => {
+      // `ratePct` was snapshotted and the TERM was not, so editing commissionMonths re-priced history
+      // in both directions: 6 → 24 restarted paying on customers whose window closed a year ago.
+      const aff = await db.affiliates.create(actor, { name: 'Term Co', email: 'term@partner.co', code: 'TERMC1', commissionMonths: 6 })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Term Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_term')
+      const first = new Date(Date.UTC(2026, 0, 10))
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_term', invoiceId: 'in_term_1', amountPaidCents: 10_000, currency: 'eur', paidAt: first })).not.toBeNull()
+      const monthNine = new Date(Date.UTC(2026, 9, 10))
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_term', invoiceId: 'in_term_2', amountPaidCents: 10_000, currency: 'eur', paidAt: monthNine })).toBeNull()
+      // widening the term now must NOT retroactively re-open that closed window
+      await db.affiliates.update(actor, aff.id, { commissionMonths: 24 })
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_term', invoiceId: 'in_term_3', amountPaidCents: 10_000, currency: 'eur', paidAt: monthNine })).toBeNull()
+      // …and narrowing it must not retroactively close a window the partner is still inside
+      await db.affiliates.update(actor, aff.id, { commissionMonths: 1 })
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_term', invoiceId: 'in_term_4', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date(Date.UTC(2026, 4, 10)) })).not.toBeNull()
+    })
+
+    it('an EARLIER payment delivered late moves the anchor BACK, never forward', async () => {
+      // webhook reordering / an ops backfill: if the anchor could only ever be the first row seen,
+      // a late-delivered older invoice would leave the window starting after a payment we know about
+      const aff = await db.affiliates.create(actor, { name: 'Order Co', email: 'order@partner.co', code: 'ORDRC1', commissionMonths: 6 })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Order Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_order')
+      // the MARCH invoice is delivered first…
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_order', invoiceId: 'in_ord_mar', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date(Date.UTC(2026, 2, 10)) })).not.toBeNull()
+      // …then JANUARY's arrives, which is the real first payment
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_order', invoiceId: 'in_ord_jan', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date(Date.UTC(2026, 0, 10)) })).not.toBeNull()
+      // the window now runs Jan→Jul: August is outside. Had the anchor stayed on March it would
+      // have paid through September.
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_order', invoiceId: 'in_ord_aug', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date(Date.UTC(2026, 7, 20)) })).toBeNull()
+    })
+
+    it('CONCURRENT first invoices still anchor on the EARLIER payment', async () => {
+      // the claim is conditional, so one of the two wins and the other adopts its anchor — and if the
+      // loser is the earlier payment, adopting alone leaves the window pinned to the LATER one and the
+      // partner earns past the agreed term. Measured before the fix: 2 of 3 races kept March.
+      const aff = await db.affiliates.create(actor, { name: 'Race Co', email: 'race@partner.co', code: 'RACEC1', commissionMonths: 6 })
+      await db.affiliates.update(actor, aff.id, { status: 'active' })
+      const tenant = await db.tenants.create(actor, { name: 'Race Tenant', referredByAffiliateId: aff.id })
+      await db.tenants.setStripeCustomer(tenant.id, 'cus_race')
+      const jan = new Date(Date.UTC(2026, 0, 10))
+      const mar = new Date(Date.UTC(2026, 2, 10))
+      await Promise.all([
+        db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_race', invoiceId: 'in_race_mar', amountPaidCents: 10_000, currency: 'eur', paidAt: mar }),
+        db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_race', invoiceId: 'in_race_jan', amountPaidCents: 10_000, currency: 'eur', paidAt: jan }),
+      ])
+      // whichever won the claim, the anchor must end up on January
+      const row = await db.tenants.get(tenant.id)
+      expect(row?.commissionAnchorAt?.toISOString()).toBe(jan.toISOString())
+      // …so an August invoice is outside the 6-month window. Anchored on March it would have paid.
+      expect(await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_race', invoiceId: 'in_race_aug', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date(Date.UTC(2026, 7, 20)) })).toBeNull()
+    })
+
     it('a tenant carrying commissions cannot be hard-deleted — the ledger survives (audit HIGH)', async () => {
       const aff = await db.affiliates.create(actor, { name: 'Ledger Co', email: 'ledger@partner.co', code: 'LEDGR1' })
       await db.affiliates.update(actor, aff.id, { status: 'active' })

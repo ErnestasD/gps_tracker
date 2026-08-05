@@ -1,6 +1,6 @@
 import type { PrismaClient, Tenant } from '@prisma/client'
 
-import { effectiveEntitlementsAt, isBillableSubscription, type Entitlements, type TenantPlan } from '@orbetra/shared'
+import { effectiveEntitlementsAt, isBillableSubscription, LAPSED_SUBSCRIPTION_STATUSES, type Entitlements, type TenantPlan } from '@orbetra/shared'
 
 import type { AuditRepo } from './audit.js'
 import type { Actor } from '../scope.js'
@@ -14,6 +14,16 @@ export class TenantHasCommissionsError extends Error {
   constructor(readonly commissionCount: number) {
     super(`tenant has ${commissionCount} commission record(s); the payout ledger must not be destroyed`)
     this.name = 'TenantHasCommissionsError'
+  }
+}
+
+/** Internal signal: the customer id in a signature-verified event maps to no tenant. Thrown rather
+ *  than returned so the enclosing transaction rolls back the dedupe claim with it; never escapes
+ *  the repo (the caller sees `no_tenant`). */
+class UnmappedCustomerError extends Error {
+  constructor() {
+    super('no tenant for stripe customer')
+    this.name = 'UnmappedCustomerError'
   }
 }
 
@@ -75,11 +85,76 @@ export interface SubscriptionUpdate {
   currentPeriodEnd: Date | null
 }
 
+/**
+ * One signature-verified Stripe subscription event, as the ordering guard needs to see it.
+ *
+ * `at` is `event.created`, which is Unix SECONDS — the reason `type` has to be here at all. Several
+ * events for one state change share a second, and Stripe does not promise delivery order, so the
+ * type is the only deterministic way to order them: created < updated < deleted.
+ */
+export interface SubscriptionEvent {
+  stripeCustomerId: string
+  /** `evt_…` — the durable dedupe key. A Stripe retry carries the SAME id. */
+  id: string
+  /** e.g. `customer.subscription.deleted` */
+  type: string
+  at: Date
+}
+
+/** Deterministic order for events sharing one `event.created` second. An unknown type ranks WITH
+ *  `.updated`: it is a state change of unknown finality, and ranking it above would let it overwrite
+ *  a cancel, while ranking it below would let a cancel arriving after it be dropped. */
+export function subscriptionEventRank(type: string): number {
+  if (type.endsWith('.created')) return 0
+  if (type.endsWith('.deleted')) return 2
+  return 1
+}
+
 /** An active subscriber for the daily usage reporter (PR B2). */
 export interface ActiveSubscriber {
   tenantId: string
   stripeCustomerId: string
   subscriptionPriceId: string | null
+  /** the entitlement tier, so the reporter can tell "Direct plan, no overage by design" from
+   *  "TSP plan whose base price is missing from STRIPE_INCLUDED" — the second is a misconfiguration
+   *  that silently zeroed a paying customer's overage bill (audit MED #23). */
+  plan: TenantPlan
+  /**
+   * `null` while the subscription is still billable. Otherwise the instant it lapsed: days AT OR
+   * BEFORE it are still owed, days after it are not.
+   *
+   * Without this the reporter enumerated only CURRENTLY billable tenants, so a tenant that canceled
+   * on the 1st took every un-reported day of the trailing window with it — precisely when the
+   * incentive to bill is highest, and precisely the days a missed run was supposed to recover.
+   */
+  billableUntil: Date | null
+}
+
+/**
+ * A tenant whose entitlements are floored but which is still being served (audit MED #22).
+ *
+ * The floor is enforced at READ time and only by `deviceLimit`, which is consulted solely when a
+ * device is CREATED. So an expired trial or a canceled subscription changes exactly one thing the
+ * customer can perceive — "you cannot add another device" — while the trackers keep connecting,
+ * positions keep being written and charged to our storage, and live/history/trips/reports keep
+ * working indefinitely for free. Nothing anywhere counted these tenants, so the leak was not merely
+ * unenforced, it was invisible.
+ */
+export interface LapsedTenant {
+  tenantId: string
+  name: string
+  plan: TenantPlan
+  /** `canceled` / `unpaid` / … , or null for a local trial that simply ran out */
+  subscriptionStatus: string | null
+  /** when the floor took effect: the trial's period end, or — for a Stripe lapse — the last APPLIED
+   *  billing event. The second is an approximation: any later `customer.subscription.*` touch on the
+   *  canceled subscription moves it forward, which resets the grace clock. It is the only date the
+   *  tenant row carries, and the count itself does not depend on it. */
+  lapsedAt: Date | null
+  /** why it is floored — a Stripe lapse or an expired self-serve trial */
+  reason: 'subscription_lapsed' | 'trial_expired'
+  /** devices still registered and still being ingested for free */
+  activeDevices: number
 }
 
 /**
@@ -113,14 +188,30 @@ export interface TenantRepo {
   /** Persist the Stripe customer id created lazily on first checkout (tenant-self). */
   setStripeCustomer(tenantId: string, stripeCustomerId: string): Promise<void>
   /** Webhook path: write subscription state, resolving the tenant by customer id. Applied ONLY when
-   *  `eventAt` is strictly newer than the last applied event (monotonic guard vs out-of-order/duplicate
-   *  delivery — this WHERE is atomic, so concurrent duplicates collapse). Returns false when nothing
-   *  was updated, and WHY — see SubscriptionApplyResult. */
-  applySubscriptionEvent(stripeCustomerId: string, eventAt: Date, data: SubscriptionUpdate): Promise<SubscriptionApplyResult>
-  /** Worker usage reporter (PR B2): every tenant currently receiving PAID service — i.e. entitled,
-   *  by the SAME predicate entitlements use (isBillableSubscription), plus a Stripe customer id.
-   *  Includes `past_due`: dunning is a grace window for access, so it must be one for billing too. */
-  listActiveSubscribers(): Promise<ActiveSubscriber[]>
+   *  this event has never been applied before (durably, by `event.id`) AND it is newer than the last
+   *  applied one — or lands in the same `event.created` second with a type that ranks at or above the
+   *  one already applied. Returns why nothing was written — see SubscriptionApplyResult. */
+  applySubscriptionEvent(event: SubscriptionEvent, data: SubscriptionUpdate): Promise<SubscriptionApplyResult>
+  /**
+   * Worker usage reporter (PR B2): every tenant currently receiving PAID service — i.e. entitled, by
+   * the SAME predicate entitlements use (isBillableSubscription), plus a Stripe customer id.
+   * Includes `past_due`: dunning is a grace window for access, so it must be one for billing too.
+   *
+   * `lapsedSince` ADDITIONALLY returns tenants that lapsed at or after that instant — they still owe
+   * the days they were live for. Every row carries `billableUntil`, and a caller that passes
+   * `lapsedSince` MUST honour it: the extra rows are NOT entitled, and treating them as such would
+   * hand a canceled customer paid service. Called without the argument, the result is exactly the
+   * billable set and every `billableUntil` is null.
+   */
+  listActiveSubscribers(lapsedSince?: Date): Promise<ActiveSubscriber[]>
+  /** Drop applied-Stripe-event rows older than `cutoff` (retention sweep). Stripe retries for ~3
+   *  days, so anything past a wide margin can go; the table would otherwise grow forever. Batched
+   *  like its retention siblings so the first pass cannot hold a long lock. Returns rows deleted. */
+  pruneBillingEvents(cutoff: Date, batchSize?: number): Promise<number>
+  /** The inverse set: tenants whose entitlements are FLOORED right now — a lapsed subscription or an
+   *  expired local trial — together with what they are still consuming. Platform-level, for the
+   *  billing sweep; see {@link LapsedTenant}. */
+  listLapsedTenants(now?: Date): Promise<LapsedTenant[]>
 }
 
 /**
@@ -244,11 +335,45 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
     setStripeCustomer: async (tenantId, stripeCustomerId) => {
       await prisma.tenant.update({ where: { id: tenantId }, data: { stripeCustomerId } })
     },
-    applySubscriptionEvent: async (stripeCustomerId, eventAt, data) => {
-      // Atomic monotonic guard: match the customer AND only when this event is strictly newer than the
-      // last applied one. A reordered stale event (older `eventAt`) or a replay (equal `eventAt`) matches
-      // zero rows → no-op. Concurrent duplicates collapse: the first write advances lastBillingEventAt,
-      // the second's `lt` predicate then fails. An unknown customer id also matches zero rows.
+    applySubscriptionEvent: async (event, data) => {
+      const { stripeCustomerId, id: eventId, type: eventType, at: eventAt } = event
+      const rank = subscriptionEventRank(eventType)
+      // ONE transaction: the dedupe claim and the write it guards must commit or roll back together.
+      // A `no_tenant` outcome rolls the claim back too — signalled by a throw, the only way out of a
+      // Prisma interactive transaction — so an admin reconciling `stripeCustomerId` by hand (the
+      // documented remedy for that alert) does not find every redelivery silently swallowed.
+      try {
+        return await prisma.$transaction(async (tx) => {
+      // DURABLE redelivery suppression. Stripe retries whenever our 200 is lost or times out, and it
+      // retries the ORIGINAL event — so after `updated → deleted`, a retry of `updated` looked like a
+      // brand-new same-second event under a single-slot `lastBillingEventId` and flipped the canceled
+      // subscription back to active, entitled and uncapped, where it stayed until some unrelated
+      // later event moved it. Verified against a real database before this table existed.
+      const claimed = await tx.billingEvent.createMany({ data: { eventId, type: eventType, eventAt }, skipDuplicates: true })
+      if (claimed.count === 0) return 'stale'
+      // Atomic monotonic guard: match the customer AND only when this event is newer than the last
+      // applied one. A reordered stale event (older `eventAt`) matches zero rows → no-op. An unknown
+      // customer id also matches zero rows.
+      //
+      // SAME-SECOND ORDERING (audit MED #25). `event.created` is Unix SECONDS, and Stripe emits
+      // several events for one state change in the same second — a cancel is `customer.subscription
+      // .updated` (status → canceled, cancel_at_period_end) immediately followed by `.deleted`, and a
+      // plan change is `.updated` twice. A strict `lt` treated the second one as a replay and dropped
+      // it, so the tenant kept the intermediate state: on a same-second cancel the row stayed
+      // `active`, entitled and unbilled until some later event happened to touch it.
+      //
+      // Admitting the equal-second case takes two things the timestamp cannot give. Durable
+      // REDELIVERY suppression is the first, and it is the `billing_events` claim above. An order
+      // within the second that does not depend on ARRIVAL is the second, and it is `rank` — because
+      // Stripe does not guarantee delivery order, and ordering by arrival means a `.deleted`
+      // followed by a reordered `.updated` silently undoes a cancel, handing a canceled customer
+      // full paid service. That direction was safe before this change only because the strict `lt`
+      // dropped every same-second follow-up, including the ones that mattered.
+      //
+      // KNOWN LIMIT: two events of the SAME rank in one second (a plan change emits `.updated`
+      // twice) are still applied in arrival order, because nothing in the payloads orders them. The
+      // exposure is a tenant left on the pre-change price for the period; the next event on that
+      // subscription — a renewal at the latest — corrects it.
       //
       // Per-SUBSCRIPTION guard (audit P4): the customer-level monotonic guard alone lets a late-delivered
       // "OLD subscription deleted" (newer eventAt) overwrite the tenant's CURRENT live one — e.g. cancel
@@ -259,11 +384,68 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       // this preserves the mirror case where B-created is delivered BEFORE A-canceled (monotonic then
       // drops the stale A-cancel), which a blanket different-sub block would break.
       const incomingLive = data.subscriptionStatus === 'active' || data.subscriptionStatus === 'trialing'
-      const result = await prisma.tenant.updateMany({
+      const result = await tx.tenant.updateMany({
         where: {
           stripeCustomerId,
           AND: [
-            { OR: [{ lastBillingEventAt: null }, { lastBillingEventAt: { lt: eventAt } }] },
+            {
+              OR: [
+                { lastBillingEventAt: null },
+                { lastBillingEventAt: { lt: eventAt } },
+                // SAME SECOND. Two disjoint cases, because rank is a per-SUBSCRIPTION lifecycle
+                // order living in a per-CUSTOMER row — the mistake that has to be kept out of this
+                // predicate is letting one subscription's rank order another's events.
+                //
+                //  1. SAME subscription → ordinary lifecycle order: admit a type ranking at or above
+                //     the one already applied, so a reordered `.updated` cannot walk back a
+                //     `.deleted`. `lte`, not `lt`: two same-second `.updated`s — what a plan change
+                //     emits — must both land. (Equal ranks are therefore applied in ARRIVAL order;
+                //     nothing in the payloads distinguishes them.) A NULL rank is not admitted: rows
+                //     predating the column carry `lastBillingEventAt` with no rank, and admitting
+                //     those reopens the resurrected-cancel bug for Stripe's whole retry horizon after
+                //     deploy. The migration backfills them to 2; this is the belt to those braces.
+                //
+                //  2. A RESUBSCRIBE: a LIVE event for a DIFFERENT subscription, and the stored
+                //     subscription is NOT live. `.deleted`(A) followed in the same second by
+                //     `.created`(B) is a cancel-and-resubscribe in the CORRECT order, and rank alone
+                //     dropped it — leaving the paying customer on the canceled subscription, floored
+                //     to zero entitlements and, because `listActiveSubscribers` reads the same
+                //     status, not even metered.
+                //
+                // The "stored is not live" half of (2) is what stops the three-event wedge:
+                // `deleted(A) → created(B,active) → updated(A,active)`, all in one second, used to
+                // end up ACTIVE on the DELETED sub_A — and unrecoverable, because every later sub_B
+                // event is non-live and blocked by the per-subscription guard while sub_A, being
+                // deleted, emits nothing ever again. Free unlimited service, invisible to both the
+                // lapse sweep and the meter.
+                {
+                  AND: [
+                    { lastBillingEventAt: eventAt },
+                    {
+                      OR: [
+                        {
+                          AND: [
+                            data.stripeSubscriptionId === null ? { stripeSubscriptionId: null } : { stripeSubscriptionId: data.stripeSubscriptionId },
+                            { lastBillingEventRank: { lte: rank } },
+                          ],
+                        },
+                        ...(incomingLive && data.stripeSubscriptionId !== null
+                          ? [
+                              {
+                                AND: [
+                                  // `{ not: X }` does NOT match NULL in Prisma, so the null case is explicit
+                                  { OR: [{ stripeSubscriptionId: null }, { stripeSubscriptionId: { not: data.stripeSubscriptionId } }] },
+                                  { OR: [{ subscriptionStatus: null }, { subscriptionStatus: { notIn: ['active', 'trialing'] } }] },
+                                ],
+                              },
+                            ]
+                          : []),
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
             ...(incomingLive
               ? []
               : [
@@ -289,6 +471,8 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           ...(data.plan != null ? { plan: data.plan } : {}),
           currentPeriodEnd: data.currentPeriodEnd,
           lastBillingEventAt: eventAt,
+          lastBillingEventId: eventId,
+          lastBillingEventRank: rank,
         },
       })
       if (result.count > 0) return 'applied'
@@ -298,21 +482,83 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       // paying customer is unprovisioned, and the only one worth logging, counting and paging on.
       // Reporting all three as `no_tenant` made the new alert fire on routine Stripe traffic (67%
       // false positives on this repo's own webhook corpus), which is worse than no alert at all.
-      const known = await prisma.tenant.count({ where: { stripeCustomerId } })
-      return known > 0 ? 'stale' : 'no_tenant'
+      const known = await tx.tenant.count({ where: { stripeCustomerId } })
+      if (known === 0) throw new UnmappedCustomerError() // rolls back the claim — see above
+      return 'stale'
+        })
+      } catch (err) {
+        if (err instanceof UnmappedCustomerError) return 'no_tenant'
+        throw err
+      }
     },
-    listActiveSubscribers: async () => {
+    listActiveSubscribers: async (lapsedSince) => {
       // METERED == ENTITLED, by construction (audit high). Not a hand-kept `in [...]` list: the
       // previous one omitted `past_due`, which entitlements deliberately treat as a grace window —
       // so a card failure bought full service with zero billing for the entire dunning period.
       const rows = (
         await prisma.tenant.findMany({
           where: { stripeCustomerId: { not: null }, subscriptionStatus: { not: null } },
-          select: { id: true, stripeCustomerId: true, subscriptionPriceId: true, subscriptionStatus: true },
+          select: { id: true, stripeCustomerId: true, subscriptionPriceId: true, subscriptionStatus: true, plan: true, lastBillingEventAt: true },
         })
-      ).filter((r) => isBillableSubscription(r.subscriptionStatus))
+      ).filter((r) => {
+        if (isBillableSubscription(r.subscriptionStatus)) return true
+        // RECENTLY lapsed tenants are still owed for the days they WERE billable. Enumerating only
+        // the currently-billable ones meant a cancel on the 1st erased every un-reported day of the
+        // reporter's trailing window — the days a missed run exists to recover, for the customer
+        // with the least reason to come back and pay them.
+        return lapsedSince !== undefined && r.lastBillingEventAt !== null && r.lastBillingEventAt >= lapsedSince
+      })
       // stripeCustomerId is non-null by the WHERE; assert for the type
-      return rows.map((r) => ({ tenantId: r.id, stripeCustomerId: r.stripeCustomerId!, subscriptionPriceId: r.subscriptionPriceId }))
+      return rows.map((r) => ({
+        tenantId: r.id,
+        stripeCustomerId: r.stripeCustomerId!,
+        subscriptionPriceId: r.subscriptionPriceId,
+        plan: r.plan,
+        billableUntil: isBillableSubscription(r.subscriptionStatus) ? null : r.lastBillingEventAt,
+      }))
+    },
+    pruneBillingEvents: async (cutoff, batchSize = 5_000) => {
+      const size = Math.min(Math.max(Math.trunc(batchSize), 1), 50_000)
+      let total = 0
+      for (;;) {
+        const deleted = await prisma.$executeRaw`
+          DELETE FROM "billing_events"
+           WHERE "eventId" IN (SELECT "eventId" FROM "billing_events" WHERE "appliedAt" < ${cutoff} ORDER BY "appliedAt" LIMIT ${size})`
+        total += deleted
+        if (deleted < size) return total
+      }
+    },
+    listLapsedTenants: async (now = new Date()) => {
+      // Derived from the SAME predicate the entitlement gate uses (effectiveEntitlementsAt), not a
+      // second hand-kept list — the last time those two drifted, `past_due` was entitled but not
+      // metered and a dunning tenant got the full product free for the whole grace window.
+      const rows = await prisma.tenant.findMany({
+        where: {
+          OR: [
+            { subscriptionStatus: { in: [...LAPSED_SUBSCRIPTION_STATUSES] } },
+            // a LOCAL trial that ran out: `trialing` with no Stripe subscription behind it. The
+            // stripeSubscriptionId discriminator matters — a Stripe-side trial also reports
+            // `trialing`, and flooring one of those would cut off a paying customer.
+            { AND: [{ subscriptionStatus: 'trialing' }, { stripeSubscriptionId: null }, { currentPeriodEnd: { lt: now } }] },
+          ],
+        },
+        select: { id: true, name: true, plan: true, subscriptionStatus: true, currentPeriodEnd: true, lastBillingEventAt: true, stripeSubscriptionId: true },
+      })
+      if (rows.length === 0) return []
+      const counts = await prisma.device.groupBy({ by: ['tenantId'], where: { tenantId: { in: rows.map((r) => r.id) }, retiredAt: null }, _count: { _all: true } })
+      const byTenant = new Map(counts.map((c) => [c.tenantId, c._count._all]))
+      return rows.map((r) => {
+        const trialExpired = r.subscriptionStatus === 'trialing' && r.stripeSubscriptionId === null
+        return {
+          tenantId: r.id,
+          name: r.name,
+          plan: r.plan,
+          subscriptionStatus: r.subscriptionStatus,
+          lapsedAt: trialExpired ? r.currentPeriodEnd : r.lastBillingEventAt,
+          reason: trialExpired ? ('trial_expired' as const) : ('subscription_lapsed' as const),
+          activeDevices: byTenant.get(r.id) ?? 0,
+        }
+      })
     },
   }
 }

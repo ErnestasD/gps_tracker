@@ -146,7 +146,32 @@ groups:
         labels: { severity: critical, component: billing }
         annotations:
           summary: "Usage sweep failing — device-days are not being recorded"
-          description: "usage_daily is the ONLY source for overage billing and there is no backfill. Every failed sweep is revenue lost for good."
+          description: "usage_daily is the ONLY source for overage billing. The overage REPORTER now re-walks a trailing window, but nothing can re-create device-days that were never swept."
+
+      # A TSP base price with no STRIPE_INCLUDED entry bills ZERO overage for every tenant on that
+      # plan, silently and forever: the reporter cannot invent an allowance, and the skip used to be
+      # indistinguishable from a Direct plan legitimately having none. Adding a price in Stripe and
+      # forgetting the env entry is a two-minute mistake with an unbounded bill attached. Audit #23.
+      - alert: StripeUnmappedPrice
+        expr: stripe_unmapped_price_tenants > 0
+        for: 10m
+        labels: { severity: critical, component: billing }
+        annotations:
+          summary: "{{ $value }} TSP tenant(s) have a base price missing from STRIPE_INCLUDED"
+          description: "Their overage is billing ZERO. The worker log names the price id and tenant — add `<priceId>:<includedDevices>` to STRIPE_INCLUDED and restart the worker. Past days self-correct: the reporter's trailing window re-submits the delta."
+
+      # Tenants whose entitlements are floored but who are still being ingested and served. The floor
+      # is enforced only at device CREATE, so a canceled subscription or an expired trial takes away
+      # nothing the customer can perceive — the fleet keeps tracking, at our storage cost, for free.
+      # This is a business signal, not an outage: warning, and a long `for` so it is a standing list
+      # rather than a page. Audit #22.
+      - alert: BillingLapsedTenantsServed
+        expr: billing_lapsed_actionable > 0
+        for: 6h
+        labels: { severity: warning, component: billing }
+        annotations:
+          summary: "{{ $value }} lapsed tenant(s) still being served past the grace window"
+          description: "billing_lapsed_devices shows the devices still ingesting for free. The worker log lists each tenant with its name, reason and device count — decide per tenant: win them back, or retire the devices."
 
       - alert: EnginePersistErrors
         expr: increase(engine_persist_errors_total[15m]) > 0
