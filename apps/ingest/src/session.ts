@@ -29,7 +29,7 @@ export interface SessionConfig {
 
 export const SHARD_COUNT = 16 // CLAUDE.md rule 5: imei % 16
 
-interface SessionDeps {
+export interface SessionDeps {
   redis: Redis
   registry: DeviceRegistry
   metrics: IngestMetrics
@@ -186,9 +186,17 @@ export class Session {
 
   /**
    * Send any queued Codec-12 commands to this live device (E08-2). TRANSPORT ONLY (rule 3):
-   * LPOP the api-queued command, write it to the socket, and record it in-flight for the
-   * worker's dispatcher — no queue/timeout/retry policy here. Best-effort: a send failure
-   * leaves the command in-flight; the dispatcher times it out and re-queues it.
+   * LPOP the api-queued command, RECORD IT IN-FLIGHT, then write it to the socket — no
+   * queue/timeout/retry policy here.
+   *
+   * That order is the fix for audit MED #64, and the JSDoc used to describe the opposite. Writing
+   * first meant a failure between the socket write and the RPUSH left the command in NEITHER queue:
+   * the device may well have executed it, and nothing recorded that it was ever sent, so the
+   * dispatcher had nothing to reconcile and the DB row sat forever. Recording first inverts the
+   * failure into one the system already handles — "in flight but possibly not sent", which the
+   * dispatcher times out and re-queues, and a Teltonika `setparam` is idempotent so a re-send is
+   * safe. A write failure also pushes the entry back to the HEAD of pending, so an ordinary error
+   * (a closing socket, an oversize frame) does not consume the command at all.
    */
   private async drainPending(): Promise<void> {
     if (this.deviceId === null) return
@@ -207,20 +215,46 @@ export class Session {
       // execute a stale (possibly destructive) command on reconnect. Drop it; the dispatcher's
       // DB expiry sweep marks it 'expired' (E08-2 review HIGH).
       if (cmd.expiresAtMs !== undefined && cmd.expiresAtMs <= this.now()) continue
+      // encode BEFORE anything durable: an empty/oversize command is not sendable at all, and
+      // recording it in flight would make the dispatcher wait out a timeout for a frame that never
+      // existed. Drop it; the dispatcher's DB expiry sweep marks it.
+      let frame: Buffer
       try {
-        this.socket.write(encodeCodec12(cmd.text))
+        frame = encodeCodec12(cmd.text)
       } catch {
-        // encode failed (empty/oversize) — drop; the dispatcher will expire it in the DB
         continue
       }
       const inflightKey = `cmd:inflight:${this.deviceId}`
+      // serialized ONCE: the rollback below removes this exact member, and re-building it would
+      // stamp a different sentAtMs and match nothing
+      const inflightEntry = JSON.stringify({
+        id: cmd.id,
+        text: cmd.text,
+        attempt: cmd.attempt ?? 0,
+        sentAtMs: this.now(),
+        ...(cmd.expiresAtMs !== undefined ? { expiresAtMs: cmd.expiresAtMs } : {}),
+      })
       await this.deps.redis
         .multi()
         // keep expiresAtMs so a dispatcher resend can re-stamp it onto the pending entry
-        .rpush(inflightKey, JSON.stringify({ id: cmd.id, text: cmd.text, attempt: cmd.attempt ?? 0, sentAtMs: this.now(), ...(cmd.expiresAtMs !== undefined ? { expiresAtMs: cmd.expiresAtMs } : {}) }))
+        .rpush(inflightKey, inflightEntry)
         .expire(inflightKey, 24 * 3_600) // bound the list (dispatcher reconciles + trims it)
         .sadd('cmd:active', String(this.deviceId))
         .exec()
+      try {
+        this.socket.write(frame)
+      } catch {
+        // the socket died between the record and the write. Put the command BACK at the head of
+        // pending so the next connection sends it, and drop the in-flight entry we just made — the
+        // dispatcher would otherwise count a timeout against an attempt that never left the process.
+        await this.deps.redis
+          .multi()
+          .lpush(pendKey, raw)
+          .lrem(inflightKey, 1, inflightEntry)
+          .exec()
+          .catch(() => undefined)
+        return // the socket is gone; stop draining
+      }
     }
   }
 

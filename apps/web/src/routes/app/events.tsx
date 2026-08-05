@@ -70,7 +70,13 @@ export function EventsPage() {
         ...(toIso !== undefined ? { to: toIso } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
-    getNextPageParam: (last: EventRow[]) => (last.length === PAGE ? last[last.length - 1]!.id : undefined),
+    // keyset token, not the bare id: the server orders by OCCURRENCE now (a buffered flush inserts
+    // hours-old alerts with the newest ids), so a cursor on id alone would page through a different
+    // order than the one being displayed and skip rows
+    getNextPageParam: (last: EventRow[]) => {
+      const tail = last[last.length - 1]
+      return last.length === PAGE && tail !== undefined ? `${tail.at}|${tail.id}` : undefined
+    },
   })
 
   const rows = (query.data?.pages ?? []).flat()
