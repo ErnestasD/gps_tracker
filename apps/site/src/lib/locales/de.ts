@@ -481,7 +481,7 @@ export const de: Translation = {
     tspLink: "Zum White-Label-Weg →",
     doneLabel: "— GESCHAFFT",
     doneTitle: "Arbeitsbereich erstellt",
-    doneBody: "Ihr Test-Arbeitsbereich steht bereit. Melden Sie sich im Flotten-Dashboard mit der eben gewählten E-Mail-Adresse und dem Passwort an und fügen Sie Ihr erstes Gerät hinzu.",
+    doneBody: "Ihr Test-Arbeitsbereich steht bereit. Melden Sie sich im Flotten-Dashboard mit der eben gewählten E-Mail-Adresse und dem Passwort an. Falls für diese Adresse bereits ein Konto bestand, sehen Sie in Ihr Postfach — wir haben Ihnen geschrieben, wie Sie wieder hineinkommen.",
     doneCta: "Im Dashboard anmelden",
     name: "Vollständiger Name",
     email: "Geschäftliche E-Mail",

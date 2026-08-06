@@ -2,10 +2,10 @@ import type { Pool } from 'pg'
 import { describe, expect, it, vi } from 'vitest'
 
 import { sendAuthEmail } from '../src/jobs/authEmailWorker.js'
-import type { AuthEmailJob } from '../src/jobs/authEmailQueue.js'
+import type { AuthEmailJob, PasswordResetEmailJob } from '../src/jobs/authEmailQueue.js'
 import { renderResetEmail } from '../src/notify/passwordResetEmail.js'
 
-const job = (over: Partial<AuthEmailJob> = {}): AuthEmailJob => ({
+const job = (over: Partial<PasswordResetEmailJob> = {}): AuthEmailJob => ({
   kind: 'password-reset',
   email: 'u@orbetra.test',
   tenantId: 't1',

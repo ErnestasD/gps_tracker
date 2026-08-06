@@ -24,6 +24,18 @@ export interface EventListOpts {
 export interface EventRepo {
   list(scope: Scope, opts?: EventListOpts): Promise<Event[]>
   get(scope: Scope, id: string): Promise<Event | null>
+  /**
+   * Delete events older than `cutoff`, batched (retention sweep, audit MED #53). UNSCOPED BY
+   * DESIGN — a retention horizon is platform-wide, and the caller is a background job with no
+   * request identity behind it (same shape as `webhookDeliveries.pruneOlderThan`).
+   *
+   * Events carry `lat`/`lon` for every geofence crossing and panic, so they are raw location data
+   * of the same sensitivity as the positions they were derived from — and the published privacy
+   * policy and the DPA both name "event data" in the 13-month deletion promise. Only `positions`
+   * had a policy, so at month 14 the platform reported telemetry as deleted while a three-year-old
+   * commute stayed fully reconstructable from `events` alone.
+   */
+  pruneOlderThan(cutoff: Date, batchSize?: number): Promise<number>
 }
 
 /**
@@ -100,6 +112,18 @@ export function createEventRepo(prisma: PrismaClient): EventRepo {
       // same guard: an out-of-int8 id is a 404, never a 500 (bigid.ts)
       const n = toInt8OrNull(id)
       return n === null ? Promise.resolve(null) : prisma.event.findFirst({ where: { ...scopedWhere(scope), id: n } })
+    },
+    pruneOlderThan: async (cutoff, batchSize = 5_000) => {
+      const size = Math.min(Math.max(Math.trunc(batchSize), 1), 50_000)
+      let total = 0
+      for (;;) {
+        // batched, like the delivery-log prune: the FIRST run after this ships deletes everything
+        // past the horizon at once, and an unbounded DELETE would hold one lock over the table the
+        // rule engine writes to on the hot path
+        const n = await prisma.$executeRaw`DELETE FROM events WHERE id IN (SELECT id FROM events WHERE at < ${cutoff} LIMIT ${size})`
+        total += n
+        if (n < size) return total
+      }
     },
   }
 }

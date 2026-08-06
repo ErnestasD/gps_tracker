@@ -11,19 +11,36 @@ import { Queue, type ConnectionOptions } from 'bullmq'
  */
 export const AUTH_EMAIL_QUEUE = 'auth-email'
 
-export interface AuthEmailJob {
-  kind: 'password-reset'
+/** Fields every auth mail carries. */
+interface AuthEmailBase {
   /** recipient address (the account's login email) */
   email: string
   /** owning tenant — resolves the white-label branding for the message shell */
   tenantId: string
   /** recipient locale (en|lt|de|pl); falls back to en for anything else */
   locale: string
+}
+
+export interface PasswordResetEmailJob extends AuthEmailBase {
+  kind: 'password-reset'
   /** the full, ready-to-click reset link (APP_BASE_URL + /reset-password?token=…) */
   resetUrl: string
   /** link lifetime in minutes, shown in the body */
   expiresMinutes: number
 }
+
+/**
+ * "Someone tried to sign up with your address" (audit MED #67). Public signup answers a duplicate
+ * email with the SAME 201 as a real one — the fact that the address is taken is delivered here, to
+ * the only person entitled to know it. Carries no token and nothing the attempt supplied.
+ */
+export interface SignupExistsEmailJob extends AuthEmailBase {
+  kind: 'signup-exists'
+  loginUrl: string
+  resetUrl: string
+}
+
+export type AuthEmailJob = PasswordResetEmailJob | SignupExistsEmailJob
 
 export function createAuthEmailQueue(connection: ConnectionOptions): Queue<AuthEmailJob> {
   return new Queue<AuthEmailJob>(AUTH_EMAIL_QUEUE, { connection })

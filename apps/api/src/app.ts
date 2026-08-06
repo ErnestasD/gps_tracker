@@ -58,6 +58,9 @@ export interface ApiDeps extends WsDeps {
   }
   /** A lockout gate refused a login, by which ceiling tripped (see `auth/login.ts`). */
   onLockout?: (gate: 'credential' | 'ip' | 'email' | 'degraded') => void
+  /** a public signup hit an address that already has an account. Since the response no longer says
+   *  so, this counter is the only place bulk probing becomes visible (audit MED #67). */
+  onSignupEmailInUse?: () => void
   /** Self-service password-change limit per user; default 10/h (two argon2 ops per request). */
   passwordChangeRateLimit?: { max: number; windowS: number }
   /** Partner-portal login ceilings; each falls back to the partner module's default. */
@@ -99,6 +102,9 @@ export interface ApiDeps extends WsDeps {
    *  reset mail to the worker's `auth-email` queue. Absent ⇒ forgot-password is a no-op (still 200). */
   mail?: {
     enqueueResetEmail(job: { kind: 'password-reset'; email: string; tenantId: string; locale: string; resetUrl: string; expiresMinutes: number }): Promise<void>
+    /** "someone tried to sign up with your address" (audit MED #67) — the out-of-band half of a
+     *  signup that no longer answers "this email is taken" to anonymous callers. */
+    enqueueSignupExistsEmail?(job: { kind: 'signup-exists'; email: string; tenantId: string; locale: string; loginUrl: string; resetUrl: string }): Promise<void>
   }
   /** SMS gateway job enqueuer (SMS gateway feature): the API can't send SMS, so it hands a config-SMS
    *  job to the worker's `sms` queue. Present ONLY when Twilio is configured (smsConfigured, shared) —
@@ -135,6 +141,7 @@ export interface ApiProm {
   /** Logins refused by a lockout ceiling, by gate. A rising `email` rate is an account under
    *  attack; a rising `ip` rate is either abuse or a shared egress that needs a higher ceiling. */
   authLockoutTripped: Counter
+  signupEmailInUse: Counter
   /** Every HTTP response, by method / route TEMPLATE / status class. The route template (not the
    *  raw path) keeps the label set bounded — `/v1/devices/:id` is one series, not one per device. */
   httpRequests: Counter
@@ -183,6 +190,11 @@ export function createApiProm(): ApiProm {
     labelNames: ['gate'],
     registers: [registry],
   })
+  const signupEmailInUse = new Counter({
+    name: 'signup_email_in_use_total',
+    help: 'public signups that hit an address which already has an account — the response is a normal 201, so this is the only signal that someone is walking a list of addresses (audit #67)',
+    registers: [registry],
+  })
   const httpRequests = new Counter({
     name: 'http_requests_total',
     help: 'HTTP responses by method, route template and status class',
@@ -198,7 +210,7 @@ export function createApiProm(): ApiProm {
     buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   })
-  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, httpRequests, httpDuration }
+  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, signupEmailInUse, httpRequests, httpDuration }
 }
 
 /**
@@ -321,7 +333,22 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   app.route('/', createPilotRequestRoute({ db: deps.db, redis: deps.redis, getRemoteAddr, trustProxy: deps.trustProxy }))
 
   // PUBLIC self-serve signup (F2) — direct trial tenant creation; honeypot + per-IP limit + ?ref
-  app.route('/', createSignupRoute({ db: deps.db, redis: deps.redis, getRemoteAddr, trustProxy: deps.trustProxy, ...(deps.signupRateLimit !== undefined ? { rateLimit: deps.signupRateLimit } : {}) }))
+  // bound, not detached: the enqueuer closes over the queue on `deps.mail`, and handing the bare
+  // method to another object would rebind `this`
+  const signupMail = deps.mail?.enqueueSignupExistsEmail?.bind(deps.mail)
+  app.route(
+    '/',
+    createSignupRoute({
+      db: deps.db,
+      redis: deps.redis,
+      getRemoteAddr,
+      trustProxy: deps.trustProxy,
+      ...(deps.signupRateLimit !== undefined ? { rateLimit: deps.signupRateLimit } : {}),
+      ...(deps.appBaseUrl !== undefined ? { appBaseUrl: deps.appBaseUrl } : {}),
+      ...(signupMail !== undefined ? { mail: { enqueueSignupExistsEmail: signupMail } } : {}),
+      ...(deps.onSignupEmailInUse !== undefined ? { onEmailInUse: deps.onSignupEmailInUse } : {}),
+    }),
+  )
 
   // PUBLIC Stripe webhook (ADR-024) — before the /v1/* auth guard (Stripe carries no JWT);
   // raw body + signature verified inside. Manifest-exempt.

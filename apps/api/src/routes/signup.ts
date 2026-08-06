@@ -15,6 +15,8 @@ import { clientIp } from '../net.js'
  * admin user on a 30-day trial — the second unauthenticated write after pilot-request, hardened for
  * the fact that it creates real tenants:
  *  - HONEYPOT: a non-empty `hp_field` gets the SAME 201 shape as success (random id, nothing stored).
+ *  - NO ENUMERATION: an email that already has an account gets that same 201 too, and the owner is
+ *    told by email instead (audit MED #67) — see the catch at the bottom.
  *  - RATE LIMIT per real client IP + a platform-wide circuit breaker, atomic INCR+EXPIRE, fails CLOSED.
  *  - zod-validated; body size capped here (mounted before the global /v1 limiter).
  *
@@ -34,6 +36,17 @@ export interface SignupRouteDeps {
   trustProxy: boolean
   /** per-IP cap + a platform-wide circuit breaker; both fail CLOSED. */
   rateLimit?: { max: number; windowS: number; globalMax?: number }
+  /** absolute base for the links in the "you already have an account" mail. Absent ⇒ no mail is
+   *  sent (the response is unchanged either way — the 201 is not conditional on the mail). */
+  appBaseUrl?: string | undefined
+  /** Same worker queue forgot-password uses. Absent ⇒ signup still answers 201; the address owner
+   *  simply is not told, which is the pre-existing behaviour minus the oracle. */
+  mail?: {
+    enqueueSignupExistsEmail(job: { kind: 'signup-exists'; email: string; tenantId: string; locale: string; loginUrl: string; resetUrl: string }): Promise<void>
+  }
+  /** a signup hit an address that already exists. Bulk probing was previously indistinguishable from
+   *  ordinary traffic; a rising rate here is someone walking a list. */
+  onEmailInUse?: () => void
 }
 
 // 30 days — the publicly advertised trial. The marketing site AND the Terms of Service both state
@@ -168,7 +181,41 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
       })
       return c.json({ ok: true, id: created.tenantId }, 201)
     } catch (err) {
-      if (err instanceof SignupEmailInUseError) return c.json({ error: 'email_in_use' }, 409)
+      if (err instanceof SignupEmailInUseError) {
+        // NOT a 409 (audit MED #67). A distinct status here was a platform-wide, unauthenticated
+        // account-existence oracle answered in one request with no timing work — in a codebase that
+        // burns a dummy argon2 verify on unknown-email login and fabricates a DB write on
+        // forgot-password precisely so neither reveals whether an address exists. One status code
+        // undid all of it, over the same identity space.
+        //
+        // The response is now byte-identical to the honeypot's and shaped like a success, and the
+        // truth goes out of band to the only party entitled to it: the address's owner. `id` is a
+        // random uuid — a real signup returns its tenant id, and the caller cannot tell the
+        // difference without already holding the account.
+        //
+        // The mail is best-effort and deliberately AWAITED-then-swallowed: a queue outage must not
+        // turn this back into a distinguishable path (a 500 would be the oracle again, louder).
+        deps.onEmailInUse?.()
+        if (deps.mail !== undefined && deps.appBaseUrl !== undefined) {
+          const base = deps.appBaseUrl.replace(/\/+$/, '')
+          try {
+            await deps.mail.enqueueSignupExistsEmail({
+              kind: 'signup-exists',
+              email,
+              // the tenant is resolved for BRANDING only, and we deliberately do not look it up: the
+              // signup path has no authenticated identity, and a lookup here would reintroduce a
+              // timing difference between the taken and free paths. '' ⇒ default Orbetra branding.
+              tenantId: '',
+              locale: 'en',
+              loginUrl: `${base}/login`,
+              resetUrl: `${base}/forgot-password`,
+            })
+          } catch (mailErr) {
+            console.error('signup: could not enqueue the account-exists notice', mailErr instanceof Error ? mailErr.message : String(mailErr))
+          }
+        }
+        return c.json({ ok: true, id: randomUUID() }, 201)
+      }
       throw err
     }
   })

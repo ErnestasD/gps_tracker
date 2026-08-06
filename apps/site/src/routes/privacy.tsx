@@ -94,6 +94,11 @@ export const Route = createFileRoute("/privacy")({
       <h2>7. Retention</h2>
       <ul>
         <li>Telemetry and event data: <strong>13 months</strong> by default, then deleted.</li>
+        <li>
+          Trip records are kept longer for your own historical reporting, but their{" "}
+          <strong>coordinates are removed at the same 13-month point</strong> — what remains is the
+          distance, the times and the driver, with no way back to where the vehicle was.
+        </li>
         <li>Account data: for the life of the account, then deleted or anonymised within 90 days.</li>
         <li>Invoices and accounting records: as required by Lithuanian law (currently 10 years).</li>
         <li>Security logs: up to 12 months.</li>

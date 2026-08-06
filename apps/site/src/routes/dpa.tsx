@@ -127,7 +127,9 @@ export const Route = createFileRoute("/dpa")({
 
       <h2>11. Deletion and return</h2>
       <p>
-        Telemetry is deleted after the 13-month retention window. On termination or expiry the
+        Telemetry is deleted after the 13-month retention window, and the start/end coordinates of
+        trip records are erased at the same point (the trip's distance, times and driver are kept for
+        the Controller's own historical reporting and cannot be resolved back to a location). On termination or expiry the
         Controller has 30 days to export data through the app and the API. Orbetra then deletes
         personal data from live systems within 30 days; residual copies in encrypted backups are
         overwritten on the normal backup rotation, within 30 days of that deletion. Orbetra keeps

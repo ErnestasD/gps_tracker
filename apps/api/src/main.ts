@@ -6,7 +6,7 @@ import { getConnInfo } from '@hono/node-server/conninfo'
 import { Queue } from 'bullmq'
 import { Redis } from 'ioredis'
 
-import { createDb, createPool } from '@orbetra/db'
+import { createDb, createPool, poolOptionsFromEnv } from '@orbetra/db'
 import { smsConfigured } from '@orbetra/shared'
 
 import { createApiProm, createApp } from './app.js'
@@ -41,7 +41,7 @@ if (!databaseUrl) {
 const redis = new Redis(redisUrl, { maxRetriesPerRequest: null, enableOfflineQueue: false })
 const redisSub = redis.duplicate()
 const db = createDb(databaseUrl)
-const pool = createPool(databaseUrl) // raw-SQL positions history reads (E04-3)
+const pool = createPool(databaseUrl, poolOptionsFromEnv()) // raw-SQL positions history reads (E04-3)
 const prom = createApiProm()
 
 // GDPR job producers (E08-4, ADR-020 addendum): the api enqueues, the worker consumes.
@@ -64,9 +64,15 @@ const gdpr = {
 // Transactional auth email (ADR-031): the api enqueues the branded password-reset mail, the worker
 // sends it (SES/SMTP transport lives there). No jobId — two real reset requests are distinct sends.
 const authEmailQueue = new Queue('auth-email', { connection: gdprConn })
+const authEmailOpts = { attempts: 5, backoff: { type: 'exponential' as const, delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 }
 const mail = {
   enqueueResetEmail: async (job: { kind: 'password-reset'; email: string; tenantId: string; locale: string; resetUrl: string; expiresMinutes: number }): Promise<void> => {
-    await authEmailQueue.add('auth-email', job, { attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 })
+    await authEmailQueue.add('auth-email', job, authEmailOpts)
+  },
+  // audit MED #67: signup no longer tells an anonymous caller that an address is taken, so the
+  // address's OWNER is told instead. Same queue, same worker, no token in the payload.
+  enqueueSignupExistsEmail: async (job: { kind: 'signup-exists'; email: string; tenantId: string; locale: string; loginUrl: string; resetUrl: string }): Promise<void> => {
+    await authEmailQueue.add('auth-email', job, authEmailOpts)
   },
 }
 
@@ -122,6 +128,7 @@ const deps = {
   onSmsQuotaRejected: (scope: 'device' | 'tenant' | 'global') => prom.smsQuotaRejected.inc({ scope }),
   onWebhookUnmatched: (reason: 'no_tenant' | 'unmappable') => prom.billingWebhookUnmatched.inc({ reason }),
   onLockout: (gate: 'credential' | 'ip' | 'email' | 'degraded') => prom.authLockoutTripped.inc({ gate }),
+  onSignupEmailInUse: () => prom.signupEmailInUse.inc(),
   // partner-portal ceilings; unset entries fall back to the module defaults (1 h window there)
   partnerLoginLimits: {
     ...(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP'] !== undefined ? { maxFailsPerIp: Number(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP']) } : {}),

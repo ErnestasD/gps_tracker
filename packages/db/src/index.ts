@@ -1,6 +1,6 @@
 // @orbetra/db — the scoped-repository layer (E03-2) is the ONLY relational DB API.
 // Prisma is confined here (CLAUDE.md rule 2; enforced by lint + the isolation suite).
-export { createPool } from './pool.js'
+export { createPool, poolStats, poolOptionsFromEnv, DEFAULT_POOL_MAX, DEFAULT_ACQUIRE_TIMEOUT_MS, DEFAULT_STATEMENT_TIMEOUT_MS, type PoolOptions } from './pool.js'
 export { createAuthDb, buildAuthMethods, UNSCOPED_AUTH_METHODS, type AuthDb, type AuthUserRow, type RefreshTokenRow } from './auth.js'
 export { createDb, type Db } from './db.js'
 
