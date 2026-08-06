@@ -10,7 +10,7 @@
  */
 import { escapeHtml, renderBrandedEmail, METRIC_UNITS, type Branding, type DisplayUnits } from '@orbetra/shared'
 
-import { formatWithZone, speedKmh, volumeL } from '../format/localize.js'
+import { formatWithZone, speedPair, volumeL } from '../format/localize.js'
 import { stringsFor, unitLabels, type WorkerStrings } from '../format/strings.js'
 
 export interface NotifyMessage {
@@ -96,10 +96,16 @@ function brandName(ctx: NotifyContext): string {
  *  language and units — speeds and volumes carry the label that matches the number. */
 function summarize(kind: string, p: Record<string, unknown>, s: WorkerStrings, u: DisplayUnits): string {
   const l = unitLabels(s, u)
-  const speed = (v: unknown): string => (typeof v === 'number' ? speedKmh(v, u) : '—')
   switch (kind) {
-    case 'overspeed':
-      return s.detail.overspeed(speed(p['speedKmh']), speed(p['limitKmh']), l.speed)
+    case 'overspeed': {
+      // formatted as a PAIR: rounded independently, an integer mph speed and limit one km/h apart
+      // print the same number and the alert contradicts itself — see speedPair
+      const sp = p['speedKmh']
+      const lim = p['limitKmh']
+      if (typeof sp !== 'number' || typeof lim !== 'number') return s.detail.overspeed(num(sp), num(lim), l.speed)
+      const pair = speedPair(sp, lim, u)
+      return s.detail.overspeed(pair.speed, pair.limit, l.speed)
+    }
     case 'low_battery':
       return s.detail.lowBattery(num(p['volts']), num(p['thresholdV']), s.unit.v)
     // truthy, not `=== true`: the rule engine writes these from raw IO values, so a `1` must read
@@ -115,7 +121,9 @@ function summarize(kind: string, p: Record<string, unknown>, s: WorkerStrings, u
     case 'device_offline':
       return s.detail.deviceOffline(num(p['offlineH']), num(p['thresholdH']), s.unit.h)
     case 'geofence': {
-      const name = typeof p['name'] === 'string' && p['name'] !== '' ? p['name'] : s.geofenceFallbackName
+      // null, not a fallback WORD: several languages inflect the noun after "into"/"out of", so the
+      // nameless sentence has to be written per language rather than assembled — see strings.ts
+      const name = typeof p['name'] === 'string' && p['name'] !== '' ? p['name'] : null
       const t = p['transition'] === 'enter' ? 'enter' : p['transition'] === 'exit' ? 'exit' : null
       return s.detail.geofence(name, t)
     }

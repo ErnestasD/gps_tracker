@@ -298,16 +298,49 @@ describe('notificationMessage in the account language + units (account-settings 
   })
 
   it('localizes every kind, including the geofence transition and the offline hours label', () => {
-    expect(notificationMessage('geofence', '1', { name: 'Depas', transition: 'enter' }, at, { locale: 'lt' }).text).toContain('įvažiavo į Depas')
-    expect(notificationMessage('geofence', '1', { name: 'Depot', transition: 'exit' }, at, { locale: 'de' }).text).toContain('Ausfahrt Depot')
+    expect(notificationMessage('geofence', '1', { name: 'Depas', transition: 'enter' }, at, { locale: 'lt' }).text).toContain('įvažiavo į zoną: Depas')
+    expect(notificationMessage('geofence', '1', { name: 'Depot', transition: 'exit' }, at, { locale: 'de' }).text).toContain('Ausfahrt: Depot')
     expect(notificationMessage('device_offline', '1', { offlineH: 5, thresholdH: 3 }, at, { locale: 'pl' }).text).toContain('od 5 godz.')
     expect(notificationMessage('ignition', '1', { ignition: 1 }, at, { locale: 'lt' }).text).toContain('Degimas įjungtas')
     expect(notificationMessage('power_cut', '1', {}, at, { locale: 'de' }).text).toContain('Externe Stromversorgung unterbrochen')
   })
 
-  it('a geofence event with no name falls back to a translated word, never a blank', () => {
-    expect(notificationMessage('geofence', '1', { transition: 'exit' }, at, { locale: 'lt' }).text).toContain('išvažiavo iš geozona')
-    expect(notificationMessage('geofence', '1', {}, at, { locale: 'pl' }).text).toContain('geostrefa')
+  it('a geofence event with no name gets a GRAMMATICAL nameless sentence, not a word in a slot', () => {
+    // `iš` governs the genitive, so dropping a fallback noun into the slot produced "išvažiavo iš
+    // geozona" — wrong Lithuanian, and the same trap in Polish (`z` + genitive). The fallback is a
+    // word we own, so each language writes the nameless sentence out instead of assembling it.
+    expect(notificationMessage('geofence', '1', { transition: 'exit' }, at, { locale: 'lt' }).text).toContain('išvažiavo iš zonos')
+    expect(notificationMessage('geofence', '1', { transition: 'enter' }, at, { locale: 'lt' }).text).toContain('įvažiavo į zoną')
+    expect(notificationMessage('geofence', '1', { transition: 'exit' }, at, { locale: 'pl' }).text).toContain('wyjazd z geostrefy')
+    expect(notificationMessage('geofence', '1', { transition: 'enter' }, at, { locale: 'de' }).text).toContain('Einfahrt in einen Geofence')
+    expect(notificationMessage('geofence', '1', { transition: 'exit' }, at).text).toContain('exited a geofence')
+    // a NAMED fence keeps the name verbatim — a customer's label is not ours to decline
+    expect(notificationMessage('geofence', '1', { name: 'Depas', transition: 'exit' }, at, { locale: 'lt' }).text).toContain('išvažiavo iš zonos: Depas')
+  })
+
+  it('an overspeed alert can never say "over limit" with the same number on both sides', () => {
+    // A device reports integer km/h, so the smallest real event is limit+1 — 0.62 mph, which
+    // collapses to ONE integer for 68 of the 181 integer limits between 20 and 200. Rounded
+    // independently, the 3am alert asserted "Speed 50 mph over limit 50 mph".
+    const imp = { units: IMPERIAL } as const
+    expect(notificationMessage('overspeed', '1', { speedKmh: 81, limitKmh: 80 }, at, imp).text).toContain('Speed 50.3 mph over limit 49.7 mph')
+    // a comfortable gap still prints whole numbers — no false precision where none is needed
+    expect(notificationMessage('overspeed', '1', { speedKmh: 120, limitKmh: 80 }, at, imp).text).toContain('Speed 75 mph over limit 50 mph')
+    // and metric is not immune: a fractional rule limit collided too
+    expect(notificationMessage('overspeed', '1', { speedKmh: 91, limitKmh: 90.5 }, at).text).toContain('Speed 91.0 km/h over limit 90.5 km/h')
+    // exhaustive: no integer limit 20–200 with a +1 km/h fix may print two equal numbers
+    for (const limit of Array.from({ length: 181 }, (_, i) => i + 20)) {
+      for (const units of [undefined, IMPERIAL]) {
+        const m = notificationMessage('overspeed', '1', { speedKmh: limit + 1, limitKmh: limit }, at, units ? { units } : {})
+        const nums = /([\d.]+) \S+ over limit ([\d.]+)/.exec(m.text)
+        expect(nums, m.text).not.toBeNull()
+        expect(nums![1], `limit ${limit} ${units ? 'mph' : 'kmh'}`).not.toBe(nums![2])
+      }
+    }
+  })
+
+  it('a non-numeric overspeed payload degrades to dashes rather than throwing', () => {
+    expect(notificationMessage('overspeed', '1', { speedKmh: 'fast', limitKmh: null }, at).text).toContain('Speed — km/h over limit —')
   })
 
   it('the branded HTML footer follows the same language as the body', () => {

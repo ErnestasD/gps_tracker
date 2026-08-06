@@ -204,6 +204,7 @@
     "allActions": "Alle Aktionen",
     "e": {
       "account": "Konto",
+      "accountPrefs": "Sprache und Einheiten",
       "user": "Benutzer",
       "device": "Gerät",
       "rule": "Regel",
@@ -489,12 +490,12 @@
     "accountTz": {
       "title": "Berichte und E-Mails",
       "hint": "Was der Server für dieses Konto verwendet: Berichte und Kilometerstände werden nach dieser Zeitzone in Tage gruppiert, und Meldungen sowie geplante Berichte werden in dieser Sprache und diesen Einheiten verfasst. Nicht dasselbe wie die Anzeigeeinstellungen unten, die nur diesen Browser betreffen.",
+      "account": "Konto",
       "tz": "Zeitzone für Berichte",
       "locale": "Sprache",
       "save": "Speichern",
       "saved": "Gespeichert",
-      "error": "Einstellungen konnten nicht gespeichert werden",
-      "display": "Nur Anzeige — ändert, wie Zeiten Ihnen gezeigt werden, nicht wie Berichte gruppiert werden."
+      "error": "Einstellungen konnten nicht gespeichert werden"
     }
   },
   "devices": {

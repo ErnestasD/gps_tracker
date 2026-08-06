@@ -39,7 +39,15 @@ const dist = (v: unknown, u: DisplayUnits): string => (typeof v === 'number' ? d
 const hrs = (v: unknown): string => (typeof v === 'number' ? secondsToHours(v) : '—')
 const spd = (v: unknown, u: DisplayUnits): string => (typeof v === 'number' ? speedKmh(v, u) : '—')
 const text = (v: unknown): string => (typeof v === 'string' && v !== '' ? v : '—')
-const tzTime = (v: unknown, tz: string): string => (typeof v === 'string' && v !== '' ? formatInZone(new Date(v), tz) : '—')
+// An UNPARSEABLE timestamp is a dash, not a throw. `Intl.formatToParts` raises RangeError on an
+// invalid Date, and this is the ONE cell formatter that can reach it — the HTML report is wrapped in
+// a try/catch but the plain-text one is not, and it runs AFTER `claimRun` has already burned the
+// period, so a single bad row would lose that report permanently instead of retrying it.
+const tzTime = (v: unknown, tz: string): string => {
+  if (typeof v !== 'string' || v === '') return '—'
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? '—' : formatInZone(d, tz)
+}
 
 /** Device column: prefer the joined display name, then the plate, then the raw numeric id (never blank). */
 const deviceCell = (row: Row): string => text(row['deviceName'] ?? row['devicePlate'] ?? row['deviceId'])

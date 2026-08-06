@@ -53,13 +53,17 @@ export interface WorkerStrings {
     powerCut: string
     panic: string
     deviceOffline: (hours: string, threshold: string, h: string) => string
-    /** transition null ⇒ the geofence name alone (an unknown/absent transition) */
-    geofence: (name: string, transition: 'enter' | 'exit' | null) => string
+    /**
+     * `name` null ⇒ the event carried no geofence name, and the sentence must say so WITHOUT one.
+     * A fallback word cannot simply be dropped into the slot: `iš` governs the genitive, so
+     * "išvažiavo iš geozona" is wrong Lithuanian, and Polish `do`/`z` are the same. This file already
+     * argues that a template cannot decline a noun — the fallback is a word we OWN, so each language
+     * writes the nameless sentence out in full instead of pretending it can.
+     * `transition` null ⇒ the name alone (an unknown/absent transition).
+     */
+    geofence: (name: string | null, transition: 'enter' | 'exit' | null) => string
     fuelTheft: (drop: string, baseline: string, now: string, unit: string) => string
   }
-  /** the word used when a geofence event carries no name */
-  geofenceFallbackName: string
-
   // ── scheduled reports (format/report.ts, reports/scheduledReporter.ts) ─────
   reportTitle: Record<string, string>
   /** the report body's first line, e.g. "Mileage report" */
@@ -113,10 +117,13 @@ const EN: WorkerStrings = {
     powerCut: 'External power lost',
     panic: 'SOS / panic button triggered',
     deviceOffline: (hours, threshold, h) => `No fix for ${hours} ${h} (threshold ${threshold} ${h})`,
-    geofence: (name, t) => (t === null ? name : `${t === 'enter' ? 'entered' : 'exited'} ${name}`),
+    geofence: (name, t) => {
+      if (t === null) return name ?? 'geofence'
+      const verb = t === 'enter' ? 'entered' : 'exited'
+      return name === null ? `${verb} a geofence` : `${verb} ${name}`
+    },
     fuelTheft: (drop, baseline, now, u) => `Fuel dropped ${drop} ${u} (baseline ${baseline} ${u}, now ${now} ${u})`,
   },
-  geofenceFallbackName: 'geofence',
   reportTitle: { mileage: 'Mileage', stops: 'Stops', engine_hours: 'Engine hours', overspeed: 'Overspeed', geofence: 'Geofence', trips: 'Trips' },
   reportHeading: (title) => `${title} report`,
   reportSubject: (brand, title, from, to) => `${brand} — ${title} report (${from} to ${to})`,
@@ -163,10 +170,15 @@ const LT: WorkerStrings = {
     powerCut: 'Dingo išorinis maitinimas',
     panic: 'Paspaustas pavojaus (SOS) mygtukas',
     deviceOffline: (hours, threshold, h) => `Nėra ryšio ${hours} ${h} (riba ${threshold} ${h})`,
-    geofence: (name, t) => (t === null ? name : `${t === 'enter' ? 'įvažiavo į' : 'išvažiavo iš'} ${name}`),
+    // "įvažiavo į zoną: Depas" — a colon, so the customer's own fence name is never forced into a
+    // case the template cannot produce; and a full sentence when there is no name at all.
+    geofence: (name, t) => {
+      if (t === null) return name ?? 'geozona'
+      if (name === null) return t === 'enter' ? 'įvažiavo į zoną' : 'išvažiavo iš zonos'
+      return t === 'enter' ? `įvažiavo į zoną: ${name}` : `išvažiavo iš zonos: ${name}`
+    },
     fuelTheft: (drop, baseline, now, u) => `Kuro sumažėjo ${drop} ${u} (buvo ${baseline} ${u}, dabar ${now} ${u})`,
   },
-  geofenceFallbackName: 'geozona',
   reportTitle: { mileage: 'Rida', stops: 'Sustojimai', engine_hours: 'Variklio valandos', overspeed: 'Greičio viršijimai', geofence: 'Geozonos', trips: 'Kelionės' },
   // A COLON, not "<title> ataskaita": Lithuanian would need the report name in the genitive ("ridos
   // ataskaita", "kelionių ataskaita") and a template cannot decline it. The label form is correct
@@ -198,7 +210,7 @@ const DE: WorkerStrings = {
   labelDevice: 'Gerät',
   labelWhen: 'Zeitpunkt',
   alertTitle: {
-    overspeed: 'Geschwindigkeit',
+    overspeed: 'Geschwindigkeitsüberschreitung',
     low_battery: 'Batterie schwach',
     ignition: 'Zündung',
     din_change: 'Eingangswechsel',
@@ -216,11 +228,16 @@ const DE: WorkerStrings = {
     powerCut: 'Externe Stromversorgung unterbrochen',
     panic: 'SOS-/Paniktaste ausgelöst',
     deviceOffline: (hours, threshold, h) => `Seit ${hours} ${h} keine Position (Schwelle ${threshold} ${h})`,
-    geofence: (name, t) => (t === null ? name : `${t === 'enter' ? 'Einfahrt' : 'Ausfahrt'} ${name}`),
+    geofence: (name, t) => {
+      if (t === null) return name ?? 'Geofence'
+      if (name === null) return t === 'enter' ? 'Einfahrt in einen Geofence' : 'Ausfahrt aus einem Geofence'
+      return t === 'enter' ? `Einfahrt: ${name}` : `Ausfahrt: ${name}`
+    },
     fuelTheft: (drop, baseline, now, u) => `Kraftstoff um ${drop} ${u} gesunken (vorher ${baseline} ${u}, jetzt ${now} ${u})`,
   },
-  geofenceFallbackName: 'Geofence',
-  reportTitle: { mileage: 'Kilometer', stops: 'Stopps', engine_hours: 'Motorstunden', overspeed: 'Geschwindigkeit', geofence: 'Geofence', trips: 'Fahrten' },
+  // `Fahrleistung`, not `Kilometer`: a German account set to miles would otherwise read
+  // "Bericht: Kilometer" above a "Distanz (mi)" column.
+  reportTitle: { mileage: 'Fahrleistung', stops: 'Stopps', engine_hours: 'Motorstunden', overspeed: 'Geschwindigkeitsüberschreitungen', geofence: 'Geofence', trips: 'Fahrten' },
   reportHeading: (title) => `Bericht: ${title}`,
   reportSubject: (brand, title, from, to) => `${brand} — Bericht: ${title} (${from} – ${to})`,
   reportFooter: (tz, brand) => `Alle Zeiten in ${tz}. Erstellt von ${brand}.`,
@@ -266,10 +283,13 @@ const PL: WorkerStrings = {
     powerCut: 'Utrata zasilania zewnętrznego',
     panic: 'Uruchomiono przycisk alarmowy (SOS)',
     deviceOffline: (hours, threshold, h) => `Brak pozycji od ${hours} ${h} (próg ${threshold} ${h})`,
-    geofence: (name, t) => (t === null ? name : `${t === 'enter' ? 'wjazd do' : 'wyjazd z'} ${name}`),
+    geofence: (name, t) => {
+      if (t === null) return name ?? 'geostrefa'
+      if (name === null) return t === 'enter' ? 'wjazd do geostrefy' : 'wyjazd z geostrefy'
+      return t === 'enter' ? `wjazd do strefy: ${name}` : `wyjazd ze strefy: ${name}`
+    },
     fuelTheft: (drop, baseline, now, u) => `Spadek paliwa o ${drop} ${u} (było ${baseline} ${u}, jest ${now} ${u})`,
   },
-  geofenceFallbackName: 'geostrefa',
   reportTitle: { mileage: 'Przebieg', stops: 'Postoje', engine_hours: 'Godziny pracy', overspeed: 'Przekroczenia prędkości', geofence: 'Geostrefy', trips: 'Trasy' },
   reportHeading: (title) => `Raport: ${title}`,
   reportSubject: (brand, title, from, to) => `${brand} — raport: ${title} (${from} – ${to})`,

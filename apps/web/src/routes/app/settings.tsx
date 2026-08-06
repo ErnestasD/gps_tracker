@@ -282,7 +282,13 @@ function AccountDefaultsSection() {
   const canEditTz = user?.role === 'platform_admin' || user?.role === 'tsp_admin'
   const canEditPrefs = canEditTz || user?.role === 'account_manager'
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
-  const account = accounts.data?.[0]
+  // WHICH account is being edited. A tsp_admin running several customers as accounts sees them all,
+  // and this panel used to silently edit `[0]` — the alphabetically first one — while its heading
+  // said "this account" and named nobody. Setting "Language: Lietuvių" then rewrote a DIFFERENT
+  // customer's alert e-mails. One account ⇒ nothing to choose and the picker stays hidden.
+  const [picked, setPicked] = useState<string | null>(null)
+  const list = accounts.data ?? []
+  const account = list.find((a) => a.id === picked) ?? list[0]
   const [draft, setDraft] = useState<Partial<Account>>({})
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -312,10 +318,21 @@ function AccountDefaultsSection() {
     const calls: Promise<unknown>[] = []
     if (canEditTz && draft.timezone !== undefined) calls.push(updateAccountTimezone(account.id, draft.timezone))
     if (canEditPrefs && Object.keys(prefs).length > 0) calls.push(updateAccountPreferences(account.id, prefs))
+    // nothing to send ⇒ don't claim "Saved". An empty Promise.all resolves instantly, so the panel
+    // used to confirm a save it never made — including for a role whose every control is disabled.
+    if (calls.length === 0) {
+      setBusy(false)
+      return
+    }
     Promise.all(calls)
       .then(() => {
         setMsg({ kind: 'ok', text: t('settings.accountTz.saved') })
-        setDraft({}) // fall back to the server's copy, which the refetch is about to update
+        // write the saved values into the cache BEFORE clearing the draft. Clearing first made the
+        // comboboxes fall back to the stale cached row for as long as the refetch took, so the user
+        // watched "Saved" appear while the language snapped back to the old one.
+        const saved = { ...account, ...draft }
+        qc.setQueryData<Account[]>(['accounts'], (prev) => (prev ?? []).map((a) => (a.id === account.id ? saved : a)))
+        setDraft({})
         void qc.invalidateQueries({ queryKey: ['accounts'] })
       })
       .catch(() => setMsg({ kind: 'err', text: t('settings.accountTz.error') }))
@@ -338,6 +355,16 @@ function AccountDefaultsSection() {
       </div>
       <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.accountTz.hint')}</p>
       <div className="space-y-3 text-sm">
+        {list.length > 1 && (
+          <div className="flex items-center justify-between gap-3">
+            <span style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.accountTz.account')}</span>
+            <div className="w-56">
+              <Combobox data-testid="account-picker" aria-label={t('settings.accountTz.account')}
+                value={account?.id ?? ''} onChange={(v) => { setPicked(v); setDraft({}); setMsg(null) }}
+                options={list.map((a) => ({ value: a.id, label: a.name }))} />
+            </div>
+          </div>
+        )}
         {row(t('settings.accountTz.tz'), 'account-tz-select', tz, set('timezone'), tzOptions, !canEditTz)}
         {row(t('settings.accountTz.locale'), 'account-locale-select', val('locale', 'en'),
           set('locale'), LOCALES.map((l) => ({ value: l, label: LOCALE_LABELS[l] })), !canEditPrefs)}

@@ -204,6 +204,7 @@
     "allActions": "Wszystkie akcje",
     "e": {
       "account": "Konto",
+      "accountPrefs": "Język i jednostki",
       "user": "Użytkownik",
       "device": "Urządzenie",
       "rule": "Reguła",
@@ -489,12 +490,12 @@
     "accountTz": {
       "title": "Raporty i e-maile",
       "hint": "Czego serwer używa dla tego konta: raporty i przebieg są grupowane w dni według tej strefy czasowej, a powiadomienia i raporty cykliczne powstają w tym języku i tych jednostkach. To nie to samo co ustawienia wyświetlania poniżej, które zmieniają tylko tę przeglądarkę.",
+      "account": "Konto",
       "tz": "Strefa czasowa raportów",
       "locale": "Język",
       "save": "Zapisz",
       "saved": "Zapisano",
-      "error": "Nie udało się zapisać ustawień",
-      "display": "Tylko wyświetlanie — zmienia sposób pokazywania czasu Tobie, a nie grupowanie raportów."
+      "error": "Nie udało się zapisać ustawień"
     }
   },
   "devices": {

@@ -1,4 +1,4 @@
-import { distanceFromM, hoursFromS, sanitizeUnits, speedFromKmh, volumeFromL, METRIC_UNITS, type DisplayUnits } from '@orbetra/shared'
+import { distanceFromM, hoursFromS, kmhToMph, sanitizeUnits, speedFromKmh, volumeFromL, METRIC_UNITS, type DisplayUnits } from '@orbetra/shared'
 
 /**
  * Self-contained worker-side formatting for USER-FACING text (scheduled report emails +
@@ -68,6 +68,32 @@ export function distanceM(m: number, units: DisplayUnits = METRIC_UNITS): string
 /** km/h in → the account's speed unit, whole number ("95", or "59" for mph). */
 export function speedKmh(kmh: number, units: DisplayUnits = METRIC_UNITS): string {
   return String(speedFromKmh(kmh, units.speed))
+}
+
+/**
+ * The two speeds of an overspeed alert, formatted so the sentence can never contradict itself.
+ *
+ * A device reports an integer km/h, so the smallest real overspeed is limit + 1 km/h — which is
+ * 0.62 mph, and collapses to ONE integer for 68 of the 181 integer limits between 20 and 200,
+ * including 30, 80, 120 and 130. Rounded independently, the alert then read "Speed 50 mph over limit
+ * 50 mph": a 3am message asserting a contradiction, about the one thing it exists to report. Metric
+ * is not immune either — a rule configured at 90.5 km/h and a fix at 91 rounds to "91 over 91".
+ *
+ * Whole numbers stay the default, because a GPS speed is not accurate to a tenth and a decimal
+ * implies it is. The tenth appears ONLY when the two would otherwise print the same, which is
+ * exactly when the reader needs it: 0.62 mph apart is unambiguous at one decimal.
+ */
+export function speedPair(speed: number, limit: number, units: DisplayUnits = METRIC_UNITS): { speed: string; limit: string } {
+  const s = convertSpeed(speed, units)
+  const l = convertSpeed(limit, units)
+  const collides = Math.round(s) === Math.round(l)
+  const fmt = (v: number): string => (collides ? v.toFixed(1) : String(Math.round(v)))
+  return { speed: fmt(s), limit: fmt(l) }
+}
+
+/** km/h → the account's speed unit, UNROUNDED — only speedPair needs the raw value. */
+function convertSpeed(kmh: number, units: DisplayUnits): number {
+  return units.speed === 'mph' ? kmhToMph(kmh) : kmh
 }
 
 /** Litres in → the account's volume unit, one decimal. */

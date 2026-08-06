@@ -128,6 +128,14 @@ describe('format/report in the account language + units (account-settings debt, 
     expect(renderReportTableHtml('mileage', [], 'UTC', { locale: 'de' })).toContain('keine Daten')
   })
 
+  it('an unparseable timestamp is a dash, not a throw', () => {
+    // the plain-text renderer is NOT wrapped in a try/catch (the HTML one is), and it runs after
+    // claimRun has burned the period — one bad row would lose that report permanently
+    const rows = [{ deviceId: '5', deviceName: 'Van', startTime: 'not-a-date', endTime: '', distanceM: 0, maxSpeed: 0, idleS: 0 }]
+    expect(() => renderReportTable('trips', rows, 'UTC')).not.toThrow()
+    expect(renderReportTable('trips', rows, 'UTC')).toContain('—')
+  })
+
   it('the HTML table carries the same localized headers, escaped', () => {
     const html = renderReportTableHtml('mileage', [{ ...row, deviceName: '<b>Van</b>' }], 'UTC', { locale: 'lt', units: IMPERIAL })
     expect(html).toContain('Atstumas (mi)')

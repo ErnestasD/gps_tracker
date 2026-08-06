@@ -204,6 +204,7 @@
     "allActions": "All actions",
     "e": {
       "account": "Account",
+      "accountPrefs": "Language and units",
       "user": "User",
       "device": "Device",
       "rule": "Rule",
@@ -489,12 +490,12 @@
     "accountTz": {
       "title": "Reports and e-mails",
       "hint": "What the server uses for this account: reports and mileage are grouped into days by this time zone, and alert e-mails and scheduled reports are written in this language and these units. Not the same as the display preferences below, which change only this browser.",
+      "account": "Account",
       "tz": "Reporting time zone",
       "locale": "Language",
       "save": "Save",
       "saved": "Saved",
-      "error": "Could not save the settings",
-      "display": "Display only — changes how times are shown to you, not how reports are grouped."
+      "error": "Could not save the settings"
     }
   },
   "devices": {

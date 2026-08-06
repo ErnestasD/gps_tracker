@@ -204,6 +204,7 @@
     "allActions": "Visi veiksmai",
     "e": {
       "account": "Paskyra",
+      "accountPrefs": "Kalba ir vienetai",
       "user": "Naudotojas",
       "device": "Įrenginys",
       "rule": "Taisyklė",
@@ -489,12 +490,12 @@
     "accountTz": {
       "title": "Ataskaitos ir el. laiškai",
       "hint": "Ką serveris naudoja šiai paskyrai: ataskaitos ir rida grupuojamos į dienas pagal šią laiko juostą, o pranešimai ir suplanuotos ataskaitos rašomi šia kalba ir šiais vienetais. Tai nėra tas pats, kas rodymo nustatymai žemiau — jie keičia tik šią naršyklę.",
+      "account": "Paskyra",
       "tz": "Ataskaitų laiko juosta",
       "locale": "Kalba",
       "save": "Išsaugoti",
       "saved": "Išsaugota",
-      "error": "Nepavyko išsaugoti nustatymų",
-      "display": "Tik rodymui — keičia, kaip laikas rodomas jums, o ne kaip grupuojamos ataskaitos."
+      "error": "Nepavyko išsaugoti nustatymų"
     }
   },
   "devices": {

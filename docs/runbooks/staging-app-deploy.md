@@ -1,8 +1,16 @@
 # Staging app deploy (W7-D, vpsnet KVM-3 @185.80.129.33)
 
 Apps run as Docker services from ONE image (`orbetra-app`) layered over the infra
-compose. Deploy = rsync repo → build on server → compose up → migrate → seed.
+compose. Deploy = rsync repo → build on server → **migrate** → compose up → seed.
 Compose project name is pinned by the base file (`name: orbetra`) — no -p needed.
+
+**Migrate BEFORE `up -d`, not after.** The order used to be the other way round, and it
+opens a window where the new code runs against the old schema. It is not theoretical: the
+worker's alert-context and report-recipient lookups select columns a pending migration
+adds, both wrapped in a catch that keeps the notification flowing — so every alert in that
+window goes out with the raw device id, UTC time and the PLATFORM's name instead of the
+tenant's white-label brand. `migrate deploy` runs in a one-shot `run --rm api` container
+built from the image you just built, so nothing needs the services to be up first.
 
 ## One-time server prep (done 2026-07-13)
 
@@ -22,12 +30,19 @@ rsync -az --delete \
 
 ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
   cd /opt/orbetra/app/infra/compose &&
-  docker compose --env-file /opt/orbetra/.env -f docker-compose.yml -f docker-compose.apps.yml build app-base &&
+  docker compose --env-file /opt/orbetra/.env -f docker-compose.yml -f docker-compose.apps.yml build app-base
+'
+# …then MIGRATIONS (next section), and only then:
+ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
+  cd /opt/orbetra/app/infra/compose &&
   docker compose --env-file /opt/orbetra/.env -f docker-compose.yml -f docker-compose.apps.yml up -d
 '
 ```
 
 ## Migrations + seed (idempotent)
+
+Run the **migration** block between the build and `up -d` (see above). The demo **seed** is
+ordinary application data — run it after `up -d`, or not at all on a release deploy.
 
 The remote shell must SOURCE the env file — `--env-file` only feeds compose-file
 interpolation, not `$VARS` your shell expands into `-e` flags (review HIGH: an unsourced

@@ -34,6 +34,7 @@ const req = (path: string, token: string, method = 'GET') =>
 function idFor(f: TenantFixture, entity: string): string {
   const map: Record<string, string> = {
     account: f.accounts[0],
+    accountPrefs: f.accounts[0], // PATCH /v1/accounts/:id/preferences — the :id is an account
     user: f.userId,
     device: f.deviceId,
     domain: f.domainId,
@@ -70,7 +71,14 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     const items = fx.manifest.filter((m) => m.shape === 'item' && m.scopeClass !== 'platform')
     expect(items.length).toBeGreaterThan(0)
     for (const m of items) {
-      const path = itemPath(m.path, idFor(fx.t2, m.entity))
+      const rid = idFor(fx.t2, m.entity)
+      // A missing fixture id used to make this test VACUOUS rather than red: `idFor` returned '',
+      // `itemPath` produced `/v1/accounts//preferences`, and Hono answered 404 from the ROUTER —
+      // the handler was never reached, the scope check never ran, and the assertion passed anyway.
+      // The suite's promise is that a new endpoint is auto-covered; that only holds if a new entity
+      // without a seeded id fails loudly here (found by review of the accountPrefs route).
+      expect(rid, `no fixture id for entity '${m.entity}' — add one to idFor, or ${m.path} is untested`).not.toBe('')
+      const path = itemPath(m.path, rid)
       const res = await req(path, fx.t1.tokenTenant, m.method.toUpperCase())
       expect(res.status, `${m.method} ${path} as T1`).toBe(404)
     }

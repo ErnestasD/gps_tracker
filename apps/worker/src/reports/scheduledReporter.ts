@@ -167,7 +167,12 @@ async function resolveRecipient(pool: Pool, tenantId: string, accountId: string)
     const product = branding?.productName
     const brand = typeof product === 'string' && product.trim() !== '' ? product : tenantName ?? 'Orbetra'
     return { brand, branding, tenantName, locale: row.locale ?? undefined, units: sanitizeUnits(row) }
-  } catch {
+  } catch (err) {
+    // The report still sends, but under the PLATFORM's name in English metric rather than the
+    // tenant's brand — a white-label leak that used to leave no trace. See the same note in
+    // notifyWorker.resolveNotifyContext: a worker started before `migrate deploy` fails this query
+    // with 42703 on every run.
+    console.error('report recipient lookup failed', tenantId, err instanceof Error ? err.message : String(err))
     return DEFAULT_RECIPIENT
   }
 }

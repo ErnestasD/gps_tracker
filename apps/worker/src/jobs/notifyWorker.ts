@@ -84,8 +84,15 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string): Promis
       branding,
       tenantName: row.tenant_name ?? undefined,
     }
-  } catch {
-    return {} // context lookup must never suppress the alert — fall back to id/UTC/metric/'Orbetra'
+  } catch (err) {
+    // The alert still goes out — a context lookup must never suppress one — but it goes out NAKED:
+    // the raw device id instead of the vehicle, UTC instead of the fleet's zone, and 'Orbetra'
+    // instead of the tenant's white-label brand. That is a visible regression for the customer and
+    // was previously silent, which matters most in exactly the window that causes it: a deploy that
+    // starts the new worker before `migrate deploy` adds these columns fails EVERY lookup with
+    // 42703 and un-brands every alert until someone happens to notice.
+    console.error('notify context lookup failed', deviceId, err instanceof Error ? err.message : String(err))
+    return {}
   }
 }
 

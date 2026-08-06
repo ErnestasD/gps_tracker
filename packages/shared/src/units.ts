@@ -58,12 +58,18 @@ export const round1 = (v: number): number => Math.round(v * 10) / 10
  */
 export function sanitizeUnits(v: unknown): DisplayUnits {
   const o = typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {}
-  const pick = <T extends string>(raw: unknown, allowed: readonly T[], fallback: T): T =>
-    typeof raw === 'string' && (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback
+  const valid = <T extends string>(raw: unknown, allowed: readonly T[]): T | undefined =>
+    typeof raw === 'string' && (allowed as readonly string[]).includes(raw) ? (raw as T) : undefined
+  // Both spellings are accepted — `speed` from a DisplayUnits value, `unitSpeed` from a DB row — and
+  // the first VALID one wins, not the first PRESENT one. With `??` an object carrying both (a row
+  // merged into a partial DisplayUnits) would let a junk `speed` shadow a perfectly good
+  // `unitSpeed` and silently fall back to metric.
+  const pick = <T extends string>(a: unknown, b: unknown, allowed: readonly T[], fallback: T): T =>
+    valid(a, allowed) ?? valid(b, allowed) ?? fallback
   return {
-    speed: pick(o['speed'] ?? o['unitSpeed'], SPEED_UNITS, METRIC_UNITS.speed),
-    distance: pick(o['distance'] ?? o['unitDistance'], DISTANCE_UNITS, METRIC_UNITS.distance),
-    volume: pick(o['volume'] ?? o['unitVolume'], VOLUME_UNITS, METRIC_UNITS.volume),
+    speed: pick(o['speed'], o['unitSpeed'], SPEED_UNITS, METRIC_UNITS.speed),
+    distance: pick(o['distance'], o['unitDistance'], DISTANCE_UNITS, METRIC_UNITS.distance),
+    volume: pick(o['volume'], o['unitVolume'], VOLUME_UNITS, METRIC_UNITS.volume),
   }
 }
 
