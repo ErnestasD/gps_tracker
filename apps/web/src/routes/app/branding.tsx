@@ -319,11 +319,17 @@ function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: numbe
         onAdded()
       })
       .catch((err: unknown) => {
-        // the server's reason is the useful part here ('that name is reserved', '3–40 characters',
-        // 'already taken') — a generic "check the domain" hides which rule was hit
+        // A 409 has a TRANSLATED message and keeps it — the API's problem details are English
+        // only, so preferring them would have replaced four localized strings with "domain already
+        // added" for every non-English operator. A 400 has no translation that says WHICH rule was
+        // hit ('that name is reserved' vs '3–40 characters'), and English-but-specific beats
+        // localized-but-useless there; the generic key remains the fallback.
+        if (err instanceof ApiError && err.status === 409) {
+          setError(err.detail === 'that name is already taken' ? t('branding.takenDomain') : t('branding.dupDomain'))
+          return
+        }
         const detail = err instanceof ApiError ? err.detail : undefined
-        if (detail !== undefined && detail !== '') setError(detail)
-        else setError(err instanceof ApiError && err.status === 409 ? t('branding.dupDomain') : t('branding.badDomain'))
+        setError(detail !== undefined && detail !== '' ? detail : t('branding.badDomain'))
       })
   }
 
@@ -334,7 +340,7 @@ function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: numbe
           {(['sub', 'own'] as const).map((m) => (
             <label key={m} className="flex cursor-pointer items-center gap-1.5" style={{ color: 'var(--admin-ink-soft)' }}>
               <input type="radio" name="domain-mode" checked={mode === m} onChange={() => { setMode(m); setError(null); setTxt(null) }} data-testid={`domain-mode-${m}`} />
-              {t(m === 'sub' ? 'branding.modeSub' : 'branding.modeOwn')}
+              {m === 'sub' ? t('branding.modeSub', { domain: platformDomain }) : t('branding.modeOwn')}
             </label>
           ))}
         </div>

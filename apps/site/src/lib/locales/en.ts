@@ -490,7 +490,7 @@ export const en = {
     doneLabel: "— CHECK YOUR EMAIL",
     doneTitle: "One more step",
     doneBody: "We've emailed {{email}}. Open it to finish — it carries either the link that activates your new account, or, if that address already had one, how to get back into it. You can't sign in until you do.",
-    doneCta: "Sign in at the dashboard",
+    doneCta: "Open the dashboard",
     name: "Full name",
     email: "Work email",
     password: "Password",

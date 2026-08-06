@@ -13,6 +13,15 @@ export class DomainConflictError extends Error {
     this.name = 'DomainConflictError'
   }
 }
+/** THIS tenant already added this domain — the (tenantId, domain) unique clash.
+ *  Typed rather than duck-typed at the route, so the API layer needs no knowledge of Prisma error
+ *  codes and anything that is NOT a duplicate propagates as the fault it is. */
+export class DomainDuplicateError extends Error {
+  constructor() {
+    super('domain already added by this tenant')
+    this.name = 'DomainDuplicateError'
+  }
+}
 /** Tenant is at MAX_DOMAINS_PER_TENANT. */
 export class DomainLimitError extends Error {
   constructor() {
@@ -69,10 +78,13 @@ export function createTenantDomainRepo(prisma: PrismaClient, audit: AuditRepo): 
       try {
         row = await prisma.tenantDomain.create({ data: { tenantId: scope.tenantId, domain, txtToken, verified: opts.verified === true } })
       } catch (e) {
-        // Creating an ALREADY-VERIFIED row races the same partial unique index setVerified does, so
-        // a slug another tenant took must read as a conflict rather than as "you already added it".
-        if (opts.verified === true && isUniqueViolation(e)) throw new DomainConflictError()
-        throw e
+        if (!isUniqueViolation(e)) throw e // a dead pool is not a conflict — let it surface as a 500
+        // TWO unique constraints can fire here and they mean opposite things. (tenantId, domain)
+        // is "you already added this"; the partial index on verified rows is "someone else holds
+        // it". Only an already-verified insert can hit the second, so the flag disambiguates —
+        // reporting a tenant's own duplicate as "already taken" points them at the wrong problem.
+        const own = await prisma.tenantDomain.findFirst({ where: { tenantId: scope.tenantId, domain }, select: { id: true } })
+        throw own !== null ? new DomainDuplicateError() : new DomainConflictError()
       }
       await audit.record(scope, actor, { action: 'create', entity: 'domain', entityId: row.id, after: row })
       return row

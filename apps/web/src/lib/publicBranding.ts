@@ -33,6 +33,23 @@ export interface PublicBrand {
 const PLATFORM: PublicBrand = { whiteLabel: false, branding: {} }
 
 /**
+ * `/v1/branding`'s answer → whose brand this page wears. PURE, and separated from the hook because
+ * it is the whole decision: get it wrong in the permissive direction and a reseller's customers see
+ * our logo; get it wrong the other way and our own login page goes blank.
+ *
+ * An unknown host answers `{}` — that is the PLATFORM, not a tenant with empty branding. A tenant
+ * only owns the page once it has actually configured something, which is also why a bare
+ * `productName` with no colours counts: it is a deliberate act by someone on the Branding screen.
+ */
+export function brandFromResponse(res: { branding?: unknown; productName?: string } | null): PublicBrand {
+  if (res === null) return PLATFORM
+  const branding = (typeof res.branding === 'object' && res.branding !== null ? res.branding : {}) as Branding
+  const whiteLabel = res.productName !== undefined || Object.keys(branding).length > 0
+  if (!whiteLabel) return PLATFORM
+  return { whiteLabel: true, productName: res.productName, branding }
+}
+
+/**
  * Resolve once per page load, apply the colours/title/favicon, and return the result.
  *
  * Returns `null` while in flight so the caller can render nothing brand-specific yet: flashing the
@@ -45,11 +62,11 @@ export function usePublicBranding(): PublicBrand | null {
     let live = true
     void fetchPublicBranding().then((res) => {
       if (!live) return
-      const branding = res?.branding ?? {}
-      // an unknown host answers `{}` — that is the platform, not a tenant with empty branding
-      const whiteLabel = res !== null && (res.productName !== undefined || Object.keys(branding).length > 0)
-      if (whiteLabel) applyBranding({ ...branding, ...(res.productName !== undefined ? { productName: res.productName } : {}) })
-      setBrand(whiteLabel ? { whiteLabel, productName: res.productName, branding } : PLATFORM)
+      const brand = brandFromResponse(res)
+      if (brand.whiteLabel) {
+        applyBranding({ ...brand.branding, ...(brand.productName !== undefined ? { productName: brand.productName } : {}) })
+      }
+      setBrand(brand)
     })
     return () => {
       live = false

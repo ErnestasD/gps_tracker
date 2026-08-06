@@ -81,18 +81,29 @@ export function createPublicRoutes(deps: PublicDeps): Hono {
   })
 
   app.get('/v1/branding', async (c) => {
-    // Caddy reverse_proxy sets X-Forwarded-Host to the client's original host; fall
-    // back to Host for direct hits
-    const rawHost = c.req.header('x-forwarded-host') ?? c.req.header('host') ?? ''
+    // Caddy reverse_proxy sets X-Forwarded-Host to the client's original host; fall back to Host for
+    // direct hits. Only when we are actually BEHIND that proxy: the header is client-controlled on a
+    // direct hit, and this response now decides what every pre-auth screen looks like. Caddy's
+    // reverse_proxy preserves the original Host by default, so the fallback carries white-label
+    // resolution on its own even if TRUST_PROXY were ever unset — XFH is belt to that braces.
+    const rawHost = (deps.trustProxy === true ? c.req.header('x-forwarded-host') : undefined) ?? c.req.header('host') ?? ''
     const host = rawHost.split(':')[0]!.toLowerCase()
+    // The response varies by HOST, and it is `public` — without Vary the cache key is the path
+    // alone, so any cache in front of the API (or a shared one anywhere) would serve one tenant's
+    // logo, colours and title under another tenant's domain. Harmless while one page called this;
+    // it is now the first request of every login screen.
     c.header('Cache-Control', 'public, max-age=60')
+    c.header('Vary', 'X-Forwarded-Host, Host')
     if (!isHostname(host)) return c.json({})
     const tenantId = await deps.db.tenantDomains.tenantIdForDomain(host)
     if (tenantId === null) return c.json({})
     const tenant = await deps.db.tenants.get(tenantId)
     const branding = (tenant?.branding ?? {}) as { productName?: string }
-    // prefer the public product name; never leak the tenant's internal/legal name
-    return c.json({ branding, productName: branding.productName ?? tenant?.name })
+    // NO `?? tenant.name` fallback: the line this replaces said "never leak the tenant's
+    // internal/legal name" and then did exactly that. It is unauthenticated, and the web now feeds
+    // it into document.title — so a tenant who never set a product name was publishing "UAB
+    // Whatever" as the visible brand and browser-tab title of their own public login page.
+    return c.json({ branding, ...(branding.productName !== undefined ? { productName: branding.productName } : {}) })
   })
 
   // PUBLIC temporary share link (V1-nice): resolve an opaque token → ONE device's latest valid

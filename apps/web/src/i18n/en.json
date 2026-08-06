@@ -1,6 +1,6 @@
 {
   "login": {
-    "title": "Sign in to Orbetra",
+    "title": "Sign in",
     "emailLabel": "Email",
     "passwordLabel": "Password",
     "submit": "Sign in",
@@ -178,11 +178,12 @@
     "remove": "Remove",
     "domainRemoveSure": "Remove domain {{domain}}? The white-label URL will stop working.",
     "addDomain": "Add",
+    "takenDomain": "That name is already taken — choose another.",
     "dupDomain": "That domain is already registered.",
     "badDomain": "Enter a valid hostname (e.g. fleet.example.com).",
     "txtInstruction": "Add this TXT record to {{domain}}, then click Verify:",
     "certNote": "HTTPS certificates are issued automatically on the first secure request after a domain is verified.",
-    "modeSub": "Orbetra subdomain (instant)",
+    "modeSub": "Subdomain on {{domain}} (instant)",
     "modeOwn": "My own domain",
     "slugLabel": "Subdomain name",
     "subNote": "Ready in seconds — no DNS changes needed. Your customers sign in here.",

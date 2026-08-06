@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { AccountHasUsersError, AffiliateConflictError, TenantHasCommissionsError, DomainConflictError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { AccountHasUsersError, AffiliateConflictError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -1370,7 +1370,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         } catch (err) {
           if (err instanceof DomainLimitError) return problem(c, 409, 'Conflict', `domain limit reached (max ${MAX_DOMAINS_PER_TENANT})`)
           if (err instanceof DomainConflictError) return problem(c, 409, 'Conflict', 'that name is already taken')
-          // (tenantId, domain) unique clash = this tenant already added it
+          // Anything ELSE — a dead pool, a Prisma fault — propagates as the 500 it is rather than
+          // being dressed up as a conflict: the detail is now shown to the operator verbatim, and
+          // "domain already added" sends someone off to check DNS while the database is down.
+          if (!(err instanceof DomainDuplicateError)) throw err
           return problem(c, 409, 'Conflict', 'domain already added')
         }
       } },

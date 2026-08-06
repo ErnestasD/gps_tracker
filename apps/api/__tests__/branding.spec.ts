@@ -67,7 +67,9 @@ beforeAll(async () => {
   const app = createApp({
     redis, redisSub, db,
     jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
-    lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+    // trustProxy mirrors production (compose pins TRUST_PROXY=1): /v1/branding only honours
+    // X-Forwarded-Host when we are actually behind the proxy that sets it
+    lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: true,
     getRemoteAddr: () => '127.0.0.1',
     resolveTxt: (host) => {
       const rec = txtRecords.get(host)

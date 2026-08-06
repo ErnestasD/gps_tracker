@@ -1,6 +1,6 @@
 {
   "login": {
-    "title": "Zaloguj się do Orbetra",
+    "title": "Zaloguj się",
     "emailLabel": "E-mail",
     "passwordLabel": "Hasło",
     "submit": "Zaloguj się",
@@ -178,11 +178,12 @@
     "remove": "Usuń",
     "domainRemoveSure": "Usunąć domenę {{domain}}? Adres white-label przestanie działać.",
     "addDomain": "Dodaj",
+    "takenDomain": "Ta nazwa jest już zajęta — wybierz inną.",
     "dupDomain": "Ta domena jest już zarejestrowana.",
     "badDomain": "Podaj poprawną nazwę hosta (np. fleet.example.com).",
     "txtInstruction": "Dodaj ten rekord TXT do {{domain}}, następnie kliknij Zweryfikuj:",
     "certNote": "Certyfikaty HTTPS są wystawiane automatycznie przy pierwszym bezpiecznym żądaniu po weryfikacji domeny.",
-    "modeSub": "Subdomena Orbetra (od razu)",
+    "modeSub": "Subdomena w {{domain}} (od razu)",
     "modeOwn": "Własna domena",
     "slugLabel": "Nazwa subdomeny",
     "subNote": "Gotowe w kilka sekund — bez zmian w DNS. Tutaj logują się Twoi klienci.",

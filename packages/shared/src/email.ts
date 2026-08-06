@@ -71,9 +71,17 @@ const safeHttpsUrl = (u: string | undefined): string | undefined => {
  */
 let platform: { name: string; logoUrl?: string | undefined } = { name: 'Orbetra' }
 
+const DEFAULT_PLATFORM = { name: 'Orbetra' }
+
 /** Call once at boot (worker main) with the platform name and a public https logo URL. */
 export function configureEmailPlatform(p: { name: string; logoUrl?: string | undefined }): void {
   platform = p
+}
+
+/** Restore the default (no logo). For tests: this is module state, so the first spec that
+ *  configures it would otherwise poison every later spec in the same vitest worker — silently. */
+export function resetEmailPlatform(): void {
+  platform = DEFAULT_PLATFORM
 }
 
 /** The footer line, in the recipient's language. Hardcoding English put "You received this because…"
@@ -154,7 +162,11 @@ export function renderBrandedEmail(branding: Branding, tenantName: string, conte
    * it comes from the product they signed up to. That case used to render the tenant's own company
    * name in the header, which is a strange thing for a password-reset mail to be signed by.
    */
-  const whiteLabel = branding.logoUrl !== undefined || branding.productName !== undefined
+  // ANY branding field, not just a logo or a product name. Keying on those two classified a
+  // reseller who had set only their colours and support address as "not white-label" and shipped
+  // OUR logo to their customers with THEIR support address beside it — a regression on the exact
+  // promise this change exists to keep, for a tenant who paid for the entitlement and used it.
+  const whiteLabel = Object.keys(branding).length > 0
   const product = escapeHtml(whiteLabel ? branding.productName ?? tenantName : platform.name)
   const accent = safeColor(branding.primary)
   const logo = whiteLabel ? safeHttpsUrl(branding.logoUrl) : safeHttpsUrl(platform.logoUrl)

@@ -43,6 +43,28 @@ const RESERVED_LABELS = new Set([
 /** Slug rules for a platform subdomain: a single DNS label, 3–40 chars, no leading/trailing dash. */
 const SLUG_RE = /^(?!-)[a-z0-9-]{3,40}(?<!-)$/
 
+/**
+ * Tokens that may not appear ANYWHERE inside a slug, not merely as the whole label.
+ *
+ * An exact-match list is the wrong shape for an impersonation guard, because the attack does not
+ * need the reserved word on its own: `secure-login`, `orbetra-billing`, `account-verify` and
+ * `my-account` all passed it, and each would be issued under OUR wildcard certificate on OUR apex.
+ * Combined with a `productName` and `logoUrl` a tenant chooses freely, that is a credential page
+ * indistinguishable from ours in every visible respect.
+ *
+ * Deliberately SHORT: every entry costs legitimate names too. These are the words a page asking for
+ * a password or a card number uses, plus our own brand; a reseller wanting "acme-support" can have
+ * "acme" or "acmefleet", and that trade is worth making on a name we host at our own apex.
+ */
+const FORBIDDEN_SUBSTRINGS = [
+  'account', 'admin', 'auth', 'billing', 'invoice', 'login', 'oauth', 'official', 'passwd',
+  'password', 'payment', 'secure', 'signin', 'sso', 'support', 'verify', 'wallet',
+]
+
+/** Punycode A-label. `xn--80ak6aa92e` is "аррӏе" in Cyrillic; a homograph passes every ASCII shape
+ *  check ever written, so the encoding itself is refused rather than the characters behind it. */
+const PUNYCODE_PREFIX = 'xn--'
+
 export interface PlatformSubdomainCheck {
   /** true when `domain` is `<slug>.<platformDomain>` and the slug is claimable */
   ok: boolean
@@ -76,6 +98,11 @@ export function checkPlatformSubdomain(domain: string, platformDomain: string | 
   // "use 3–40 characters" would send someone off to try `mx01` instead of telling them the real rule
   if (RESERVED_LABELS.has(slug)) return { ok: false, reason: 'that name is reserved' }
   if (!SLUG_RE.test(slug)) return { ok: false, reason: 'use 3–40 characters: letters, digits and dashes' }
+  if (slug.startsWith(PUNYCODE_PREFIX)) return { ok: false, reason: 'that name is reserved' }
+  // our own brand anywhere in the name, and the vocabulary of a page that asks for a password
+  const brand = root.split('.')[0] ?? ''
+  if (brand !== '' && slug.includes(brand)) return { ok: false, reason: 'that name is reserved' }
+  if (FORBIDDEN_SUBSTRINGS.some((w) => slug.includes(w))) return { ok: false, reason: 'that name is reserved' }
   return { ok: true }
 }
 

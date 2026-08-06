@@ -1,6 +1,6 @@
 {
   "login": {
-    "title": "Prisijunkite prie Orbetra",
+    "title": "Prisijungti",
     "emailLabel": "El. paštas",
     "passwordLabel": "Slaptažodis",
     "submit": "Prisijungti",
@@ -178,11 +178,12 @@
     "remove": "Šalinti",
     "domainRemoveSure": "Šalinti domeną {{domain}}? White-label adresas nustos veikti.",
     "addDomain": "Pridėti",
+    "takenDomain": "Šis vardas jau užimtas — pasirinkite kitą.",
     "dupDomain": "Toks domenas jau užregistruotas.",
     "badDomain": "Įveskite tinkamą domeną (pvz. fleet.example.com).",
     "txtInstruction": "Pridėkite šį TXT įrašą prie {{domain}}, tada spauskite Patvirtinti:",
     "certNote": "HTTPS sertifikatai išduodami automatiškai per pirmą saugų užklausimą po domeno patvirtinimo.",
-    "modeSub": "Orbetra subdomenas (iš karto)",
+    "modeSub": "Subdomenas {{domain}} (iš karto)",
     "modeOwn": "Nuosavas domenas",
     "slugLabel": "Subdomeno vardas",
     "subNote": "Veikia po kelių sekundžių — DNS keisti nereikia. Čia jungsis jūsų klientai.",

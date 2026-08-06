@@ -26,6 +26,30 @@ describe('checkPlatformSubdomain', () => {
     }
   })
 
+  it('refuses a LOOKALIKE, not just an exact reserved word', () => {
+    // an exact-match list is the wrong shape for an impersonation guard: none of these is a
+    // reserved label, and every one would have been issued under OUR wildcard cert on OUR apex,
+    // free to render our name and our logo (brandingSchema constrains neither)
+    for (const s of ['secure-login', 'login-secure', 'orbetra-billing', 'billing-orbetra', 'orbetra',
+                     'orbetra-support', 'account-verify', 'my-account', 'pay-invoice', 'sso-portal']) {
+      expect(checkPlatformSubdomain(`${s}.${ROOT}`, ROOT).ok, s).toBe(false)
+    }
+  })
+
+  it('refuses a punycode A-label — a homograph passes every ASCII shape check', () => {
+    // xn--80ak6aa92e renders as "аррӏе" in Cyrillic
+    for (const s of ['xn--80ak6aa92e', 'xn--rbetra-9va', 'xn--lgin-0ta']) {
+      expect(checkPlatformSubdomain(`${s}.${ROOT}`, ROOT).ok, s).toBe(false)
+    }
+  })
+
+  it('still accepts an ordinary reseller name', () => {
+    // the denylist costs legitimate names, so it must not cost the OBVIOUS ones
+    for (const s of ['acme', 'acme-fleet', 'vrumm', 'transporta', 'baltic-logistics', 'fleet24']) {
+      expect(checkPlatformSubdomain(`${s}.${ROOT}`, ROOT), s).toEqual({ ok: true })
+    }
+  })
+
   it('refuses a slug that is too short, too long, or dash-edged', () => {
     for (const s of ['ab', 'a', 'x'.repeat(41), '-acme', 'acme-']) {
       expect(checkPlatformSubdomain(`${s}.${ROOT}`, ROOT).ok, s).toBe(false)

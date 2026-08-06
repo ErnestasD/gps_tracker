@@ -24,7 +24,9 @@ export interface SignupExistsEmailOpts {
 }
 
 interface Strings {
-  subject: string
+  /** takes the tenant's BRAND — `authEmailWorker` resolves it, and a TSP's end user must never
+   *  receive a mail naming their supplier. The subject is the one line branding cannot cover up. */
+  subject: (brand: string) => string
   heading: string
   intro: string
   button: string
@@ -35,7 +37,7 @@ interface Strings {
 
 const LOCALES: Record<string, Strings> = {
   en: {
-    subject: 'You already have an Orbetra account',
+    subject: (brand: string) => `Your ${brand} account already exists`,
     heading: 'This address already has an account',
     intro: 'Someone just filled in the sign-up form with this address — possibly you. There is already an account on it, so we did not create a second one and nothing about the existing account changed. Sign in with the password you already use.',
     button: 'Sign in',
@@ -44,7 +46,7 @@ const LOCALES: Record<string, Strings> = {
     fallback: 'If the button does not work, copy and paste this link into your browser:',
   },
   lt: {
-    subject: 'Su šiuo adresu Orbetra paskyra jau yra',
+    subject: (brand: string) => `Su šiuo adresu ${brand} paskyra jau yra`,
     heading: 'Su šiuo adresu paskyra jau sukurta',
     intro: 'Kažkas ką tik užpildė registracijos formą su šiuo adresu — galbūt jūs. Paskyra su juo jau yra, tad antros nekūrėme ir esamoje niekas nepasikeitė. Tiesiog prisijunkite su turimu slaptažodžiu.',
     button: 'Prisijungti',
@@ -53,7 +55,7 @@ const LOCALES: Record<string, Strings> = {
     fallback: 'Jei mygtukas neveikia, nukopijuokite šią nuorodą į naršyklę:',
   },
   de: {
-    subject: 'Für diese Adresse besteht bereits ein Orbetra-Konto',
+    subject: (brand: string) => `Für diese Adresse besteht bereits ein ${brand}-Konto`,
     heading: 'Für diese Adresse besteht bereits ein Konto',
     intro: 'Soeben wurde das Registrierungsformular mit dieser Adresse ausgefüllt — möglicherweise von Ihnen. Es besteht bereits ein Konto dafür, wir haben also kein zweites angelegt und am bestehenden nichts geändert. Melden Sie sich einfach mit Ihrem bisherigen Passwort an.',
     button: 'Anmelden',
@@ -62,7 +64,7 @@ const LOCALES: Record<string, Strings> = {
     fallback: 'Falls die Schaltfläche nicht funktioniert, kopieren Sie diesen Link in Ihren Browser:',
   },
   pl: {
-    subject: 'Dla tego adresu istnieje już konto Orbetra',
+    subject: (brand: string) => `Dla tego adresu istnieje już konto ${brand}`,
     heading: 'Dla tego adresu istnieje już konto',
     intro: 'Ktoś właśnie wypełnił formularz rejestracji tym adresem — być może Ty. Konto dla niego już istnieje, więc nie założyliśmy drugiego i nic w istniejącym się nie zmieniło. Po prostu zaloguj się dotychczasowym hasłem.',
     button: 'Zaloguj się',
@@ -74,6 +76,7 @@ const LOCALES: Record<string, Strings> = {
 
 export function renderSignupExistsEmail(opts: SignupExistsEmailOpts): { subject: string; text: string; html: string } {
   const s = LOCALES[opts.locale] ?? LOCALES['en']!
+  const subject = s.subject(opts.brand)
   const accent = opts.branding?.primary
   const bodyHtml = [
     `<h1 style="margin:0 0 12px;font-size:21px;font-weight:700;letter-spacing:-0.01em;color:#0f172a">${escapeHtml(s.heading)}</h1>`,
@@ -83,7 +86,7 @@ export function renderSignupExistsEmail(opts: SignupExistsEmailOpts): { subject:
     emailNote(s.ignore),
     emailFallbackLink(s.fallback, opts.loginUrl, accent),
   ].join('')
-  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject: s.subject, bodyHtml, preheader: s.intro, locale: opts.locale })
+  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject, bodyHtml, preheader: s.intro, locale: opts.locale })
   const text = [s.heading, '', s.intro, '', `${s.button}: ${opts.loginUrl}`, '', `${s.forgot} ${opts.resetUrl}`, '', s.ignore, '', `— ${opts.brand}`].join('\n')
-  return { subject: s.subject, text, html }
+  return { subject, text, html }
 }

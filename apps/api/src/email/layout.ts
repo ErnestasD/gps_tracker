@@ -4,5 +4,5 @@
  * to keep the E03-5 AC[3] snapshot test (apps/api/__tests__/email.spec.ts) green — the render
  * output is unchanged. New code should import from '@orbetra/shared' directly.
  */
-export { renderBrandedEmail, escapeHtml } from '@orbetra/shared'
+export { configureEmailPlatform, escapeHtml, renderBrandedEmail, resetEmailPlatform } from '@orbetra/shared'
 export type { EmailContent } from '@orbetra/shared'

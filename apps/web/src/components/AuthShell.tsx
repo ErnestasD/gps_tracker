@@ -23,7 +23,14 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
   const brand = usePublicBranding()
 
   // in flight: the card renders without a mark rather than flashing OURS and swapping — a 200 ms
-  // flash of the wrong brand is still the wrong brand, and it is what a screenshot catches
+  // flash of the wrong brand is still the wrong brand, and it is what a screenshot catches.
+  // KNOWN GAP: the tab is not covered. index.html ships `<title>Orbetra</title>`, our favicon and
+  // the PWA manifest name, and `applyBranding` only replaces them once this fetch resolves — so a
+  // tenant's tab does flash ours. Closing it needs the branding resolved server-side into the HTML
+  // (the SPA is served by `vite preview`, which cannot), so it is a real limitation, not an
+  // oversight. The BACKGROUND is likewise deliberately the product gradient rather than the
+  // tenant's `primary`: an arbitrary hex behind a login card fails contrast far more often than it
+  // flatters, and nothing in the branding schema constrains it to a background-safe colour.
   const mark =
     brand === null ? null : brand.whiteLabel ? (
       brand.branding.logoUrl !== undefined ? (

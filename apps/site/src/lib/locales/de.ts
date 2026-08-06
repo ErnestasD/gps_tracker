@@ -482,7 +482,7 @@ export const de: Translation = {
     doneLabel: "— E-MAIL PRÜFEN",
     doneTitle: "Noch ein Schritt",
     doneBody: "Wir haben an {{email}} geschrieben. Öffnen Sie die Nachricht, um abzuschließen — sie enthält entweder den Link, der Ihr neues Konto aktiviert, oder, falls für diese Adresse bereits eines besteht, wie Sie wieder hineinkommen. Vorher ist keine Anmeldung möglich.",
-    doneCta: "Im Dashboard anmelden",
+    doneCta: "Zum Dashboard",
     name: "Vollständiger Name",
     email: "Geschäftliche E-Mail",
     password: "Passwort",
