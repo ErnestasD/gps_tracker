@@ -71,6 +71,11 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: ${MAIL_FROM:-}
       SES_CONFIG_SET: ${SES_CONFIG_SET:-}
+      # The worker needs this too, not just the api: the billing lapse ladder builds the "renew" link
+      # from it, and without it the sweep refuses to suspend anyone (COUNT-ONLY at boot). It is the
+      # one variable whose absence turns enforcement off silently, so it is passed explicitly here
+      # rather than inherited by luck.
+      APP_BASE_URL: ${APP_BASE_URL:-}
       # SMS gateway (ADR-032) — Twilio, values in /opt/orbetra/.env (rule 12); any of the three
       # absent ⇒ SMS channel disabled: the worker holds no driver, the send route 503s, the button hides
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
