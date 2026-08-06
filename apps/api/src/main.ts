@@ -134,6 +134,7 @@ const deps = {
   onWebhookUnmatched: (reason: 'no_tenant' | 'unmappable') => prom.billingWebhookUnmatched.inc({ reason }),
   onLockout: (gate: 'credential' | 'ip' | 'email' | 'degraded') => prom.authLockoutTripped.inc({ gate }),
   onSignupEmailInUse: () => prom.signupEmailInUse.inc(),
+  onTenantRestored: () => prom.tenantRestored.inc(),
   onEmailVerified: () => prom.emailVerification.inc({ outcome: 'verified' }),
   onUnverifiedLogin: () => prom.emailVerification.inc({ outcome: 'unverified_login' }),
   onVerifyMailFailed: () => prom.emailVerification.inc({ outcome: 'mail_failed' }),

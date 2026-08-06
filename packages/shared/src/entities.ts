@@ -762,6 +762,10 @@ export interface BillingView {
   active: boolean
   /** ISO end of the current paid period, or null */
   currentPeriodEnd: string | null
+  /** ISO instant the fleet was cut off for non-payment; null = serving (audit MED #22). The UI needs
+   *  this to explain an empty live map — "no devices are reporting" and "we stopped accepting their
+   *  data" look identical on screen and could not be more different to the person looking at it. */
+  suspendedAt: string | null
   /** true when the tenant may start Stripe Checkout — computed SERVER-SIDE with the same predicate
    *  the checkout route enforces, so the UI can never offer (or hide) a plan picker that disagrees
    *  with the API. True for: never subscribed, a terminally-ended subscription, and an F2 self-serve

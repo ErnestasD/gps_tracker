@@ -1,4 +1,4 @@
-import { escapeHtml, renderBrandedEmail, type Branding } from '@orbetra/shared'
+import { emailButton, emailFallbackLink, emailNote, escapeHtml, renderBrandedEmail, type Branding } from '@orbetra/shared'
 
 /**
  * The welcome mail that ACTIVATES a self-serve signup (audit MED #67).
@@ -68,18 +68,16 @@ const LOCALES: Record<string, Strings> = {
 
 export function renderVerifyEmail(opts: VerifyEmailOpts): { subject: string; text: string; html: string } {
   const s = LOCALES[opts.locale] ?? LOCALES['en']!
-  const url = escapeHtml(opts.verifyUrl)
-  const accent = opts.branding?.primary && /^#[0-9a-fA-F]{6}$/.test(opts.branding.primary) ? opts.branding.primary : '#4DA3FF'
+  const accent = opts.branding?.primary
   const bodyHtml = [
-    `<h1 style="margin:0 0 12px;font-size:20px;color:#0f172a">${escapeHtml(s.heading)}</h1>`,
-    `<p style="margin:0 0 20px;color:#334155;font-size:14px;line-height:1.5">${escapeHtml(s.intro)}</p>`,
-    `<p style="margin:0 0 20px"><a href="${url}" style="display:inline-block;background:${accent};color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;font-size:14px">${escapeHtml(s.button)}</a></p>`,
-    `<p style="margin:0 0 8px;color:#64748b;font-size:12px">${escapeHtml(s.expires(opts.expiresHours))}</p>`,
-    `<p style="margin:0 0 16px;color:#64748b;font-size:12px">${escapeHtml(s.ignore)}</p>`,
-    `<p style="margin:0 0 4px;color:#94a3b8;font-size:12px">${escapeHtml(s.fallback)}</p>`,
-    `<p style="margin:0 0 16px;word-break:break-all"><a href="${url}" style="color:${accent};font-size:12px">${url}</a></p>`,
+    `<h1 style="margin:0 0 12px;font-size:21px;font-weight:700;letter-spacing:-0.01em;color:#0f172a">${escapeHtml(s.heading)}</h1>`,
+    `<p style="margin:0 0 24px;color:#334155;font-size:15px;line-height:1.6">${escapeHtml(s.intro)}</p>`,
+    emailButton(opts.verifyUrl, s.button, accent),
+    emailNote(s.expires(opts.expiresHours)),
+    emailNote(s.ignore),
+    emailFallbackLink(s.fallback, opts.verifyUrl, accent),
   ].join('')
-  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject: s.subject, bodyHtml })
+  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject: s.subject, bodyHtml, preheader: s.intro, locale: opts.locale })
   const text = [s.heading, '', s.intro, '', `${s.button}: ${opts.verifyUrl}`, '', s.expires(opts.expiresHours), s.ignore, '', `— ${opts.brand}`].join('\n')
   return { subject: s.subject, text, html }
 }

@@ -21,6 +21,10 @@ COPY apps/site/package.json apps/site/
 COPY packages/codec/package.json packages/codec/
 COPY packages/db/package.json packages/db/
 COPY packages/shared/package.json packages/shared/
+# every workspace package.json must be listed here — `pnpm install` silently installs only the
+# projects it can SEE, so a missing line produces a green image whose api and worker both die on
+# their first import with ERR_MODULE_NOT_FOUND. There is no build error to catch it.
+COPY packages/registry/package.json packages/registry/
 COPY tools/simulator/package.json tools/simulator/
 COPY tools/replay/package.json tools/replay/
 COPY tools/redact/package.json tools/redact/

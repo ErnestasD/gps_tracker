@@ -19,7 +19,9 @@ apps/web        React SPA (Vite, Mapbox GL, TanStack, shadcn) — the dashboard.
 apps/site       public marketing SPA (Vite, static; ADR-022/W9-S1) — orbetra.com.
 packages/codec  parser wrapper + AVL dictionaries (JSON, with source_url) + golden fixtures.
 packages/db     Prisma (relational) + raw SQL layer for positions (batched INSERT ON CONFLICT — NOT COPY) + SCOPED REPOSITORIES (the only DB API).
-packages/shared zod schemas — the single source of types for api/web/worker.
+packages/shared zod schemas — the single source of types for api/web/worker; also the branded email shell.
+packages/registry Redis device-registry contract (registry:imei, device:tenant/account/config, per-tenant index).
+                ONE owner, two writers: device CRUD (api) and billing suspension (worker).
 tools/simulator device emulator (scenarios: live-drive, buffered-flood, panic, invalid-fix, corrupt-crc, oversize, slow-loris).
 tools/replay    real-log replayer for load tests.
 ```

@@ -50,7 +50,7 @@ describe('renderVerifyEmail', () => {
 
   it('honours a valid branding accent and ignores a malformed one', () => {
     expect(renderVerifyEmail({ ...base, locale: 'en', branding: { primary: '#123ABC' } }).html).toContain('#123ABC')
-    expect(renderVerifyEmail({ ...base, locale: 'en', branding: { primary: 'red; }' } }).html).toContain('#4DA3FF')
+    expect(renderVerifyEmail({ ...base, locale: 'en', branding: { primary: 'red; }' } }).html).toContain('#5253DA') // the product accent, same as --accent in the app
   })
 })
 

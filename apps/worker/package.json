@@ -21,6 +21,7 @@
   "dependencies": {
     "@orbetra/codec": "workspace:*",
     "@orbetra/db": "workspace:*",
+    "@orbetra/registry": "workspace:*",
     "@orbetra/shared": "workspace:*",
     "bullmq": "^5.79.3",
     "cbor-x": "^1.6.4",

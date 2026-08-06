@@ -22,7 +22,7 @@ import { createPartnerRoutes } from './routes/partner.js'
 import { createSignupRoute } from './routes/signup.js'
 import { createVerifyEmailRoute } from './routes/verifyEmail.js'
 import { buildRoutes } from './routes/crud.js'
-import { tenantDevicesKey } from './routes/deviceRegistry.js'
+import { restoreTenantDevices, tenantDevicesKey } from './routes/deviceRegistry.js'
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { mountReports } from './routes/reports.js'
 import { mountDriverScores } from './routes/driverScores.js'
@@ -65,6 +65,10 @@ export interface ApiDeps extends WsDeps {
   onEmailVerified?: () => void
   /** the activation path is not wired at all — every new signup is an account nobody can log into. */
   onVerifyMailUnconfigured?: () => void
+  /** a suspended tenant paid and its fleet was restored on the spot (audit MED #22). */
+  onTenantRestored?: () => void
+  /** override the registry rebuild on restore (tests); production builds it from `redis`. */
+  restoreDevices?: (devices: readonly { id: bigint; imei: string; tenantId: string; accountId: string; presenceRules: unknown; odometerSource: string }[]) => Promise<void>
   /** a login presented the right password for an unverified account — invisible in the response. */
   onUnverifiedLogin?: () => void
   /** a public signup hit an address that already has an account. Since the response no longer says
@@ -154,6 +158,7 @@ export interface ApiProm {
   authLockoutTripped: Counter
   signupEmailInUse: Counter
   emailVerification: Counter
+  tenantRestored: Counter
   /** Every HTTP response, by method / route TEMPLATE / status class. The route template (not the
    *  raw path) keeps the label set bounded — `/v1/devices/:id` is one series, not one per device. */
   httpRequests: Counter
@@ -208,6 +213,11 @@ export function createApiProm(): ApiProm {
     labelNames: ['outcome'],
     registers: [registry],
   })
+  const tenantRestored = new Counter({
+    name: 'billing_tenant_restored_total',
+    help: 'suspended tenants whose fleet was restored on the spot by a payment webhook (audit #22)',
+    registers: [registry],
+  })
   const signupEmailInUse = new Counter({
     name: 'signup_email_in_use_total',
     help: 'public signups that hit an address which already has an account — the response is a normal 201, so this is the only signal that someone is walking a list of addresses (audit #67)',
@@ -228,7 +238,7 @@ export function createApiProm(): ApiProm {
     buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   })
-  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, signupEmailInUse, emailVerification, httpRequests, httpDuration }
+  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, signupEmailInUse, emailVerification, tenantRestored, httpRequests, httpDuration }
 }
 
 /**
@@ -392,7 +402,25 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
 
   // PUBLIC Stripe webhook (ADR-024) — before the /v1/* auth guard (Stripe carries no JWT);
   // raw body + signature verified inside. Manifest-exempt.
-  mountStripeWebhook(app, { db: deps.db, stripe: deps.stripe, appBaseUrl: deps.appBaseUrl, ...(deps.onWebhookUnmatched !== undefined ? { onWebhookUnmatched: deps.onWebhookUnmatched } : {}) })
+  mountStripeWebhook(app, {
+    db: deps.db,
+    stripe: deps.stripe,
+    appBaseUrl: deps.appBaseUrl,
+    ...(deps.onWebhookUnmatched !== undefined ? { onWebhookUnmatched: deps.onWebhookUnmatched } : {}),
+    // RESTORE ON PAYMENT (audit MED #22): the api owns the registry write path, so a suspended
+    // tenant's fleet comes back within one webhook rather than waiting for tomorrow's sweep.
+    // overridable so the most dangerous path in this route — "paying restores the feed" — can be
+    // tested for its ORDER (registry first, flag second) without a Redis fault injector
+    restoreDevices:
+      deps.restoreDevices ??
+      (async (devices) => {
+        await restoreTenantDevices(
+          deps.redis,
+          devices.map((d) => ({ id: d.id, imei: d.imei, tenantId: d.tenantId, accountId: d.accountId, config: { presenceRules: d.presenceRules, odometerSource: d.odometerSource } })),
+        )
+      }),
+    ...(deps.onTenantRestored !== undefined ? { onTenantRestored: deps.onTenantRestored } : {}),
+  })
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)

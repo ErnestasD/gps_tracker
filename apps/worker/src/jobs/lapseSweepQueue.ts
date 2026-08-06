@@ -10,9 +10,11 @@ import { Queue, type ConnectionOptions } from 'bullmq'
  * free, indefinitely. Nothing counted those tenants, so the leak was not just unenforced but
  * invisible: there was no list to act on and no number to alert on.
  *
- * This job produces that number. It does NOT cut anyone off — suspending a customer is a policy
- * decision (grace period, warning e-mail, what stays readable) that belongs to the founder, not to a
- * sweep that quietly stops a fleet from tracking.
+ * This job now ACTS on that, on the founder's policy (2026-08-06, docs/audit/founder-decisions.md):
+ * grace ends → warning, +1 day → warning, +2 days → final warning, +3 days → the tenant's devices
+ * leave the ingest registry. Nothing is deleted and a payment restores the feed within one webhook,
+ * but this is the one scheduled job in the product that can take a customer's live map away — read
+ * `runLapseSweep` before changing anything here.
  */
 export const LAPSE_SWEEP_QUEUE = 'lapse-sweep-daily'
 export const LAPSE_SWEEP_EVERY_MS = 24 * 3_600_000
@@ -31,7 +33,10 @@ export async function scheduleLapseSweep(queue: Queue): Promise<void> {
       jobId: 'lapse-sweep-daily',
       removeOnComplete: true,
       removeOnFail: 100,
-      // read-only and idempotent — a retry just recomputes the same counts
+      // Retries are safe, but NOT because the job is read-only — it suspends tenants. They are safe
+      // because every step is idempotent and durably recorded: `markLapseNotice` is monotonic within
+      // the lapse episode, `suspend()` is conditional on `suspendedAt IS NULL`, and the registry
+      // teardown re-asserts harmlessly. A retry finishes a partial run; it cannot repeat one.
       attempts: 3,
       backoff: { type: 'exponential', delay: 30_000 },
     },

@@ -98,6 +98,20 @@ export function BillingPage() {
         </div>
       )}
 
+      {/*
+        SUSPENDED (audit MED #22). This is the one banner in the product that explains why the live
+        map is empty — "no devices are reporting" and "we stopped accepting their data" look
+        identical on screen and could not be more different to the person reading it. It says what
+        survived (everything) and how to undo it, because a customer who thinks their history is gone
+        does not renew, they leave.
+      */}
+      {b?.suspendedAt != null && (
+        <div role="alert" className="admin-card p-4 text-sm" style={{ borderColor: 'var(--admin-danger)', color: 'var(--admin-ink)' }} data-testid="billing-suspended">
+          <p className="font-semibold" style={{ color: 'var(--admin-danger)' }}>{t('billing.suspendedTitle')}</p>
+          <p className="mt-1 text-muted">{t('billing.suspendedBody')}</p>
+        </div>
+      )}
+
       {actionError && (
         <p role="alert" className="admin-card p-3 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="billing-action-error">
           {t('billing.actionError')}

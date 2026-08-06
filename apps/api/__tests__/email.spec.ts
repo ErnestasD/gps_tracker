@@ -20,7 +20,7 @@ describe('E03-5 AC[3]: branded email layout', () => {
   it('falls back to tenant name + default accent when branding is empty', () => {
     const html = renderBrandedEmail({}, 'Bare Tenant', { subject: 'x', bodyHtml: '<p>hi</p>' })
     expect(html).toContain('Bare Tenant')
-    expect(html).toContain('#4DA3FF')
+    expect(html).toContain('#5253DA') // the product accent, same token the app uses
     expect(html).not.toContain('<img')
   })
 

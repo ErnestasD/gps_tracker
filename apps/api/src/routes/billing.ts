@@ -28,6 +28,11 @@ export interface BillingDeps {
    *  either way (a retry cannot conjure a missing customer mapping), so this counter is the only
    *  way anyone learns a paying customer is unprovisioned. */
   onWebhookUnmatched?: (reason: 'no_tenant' | 'unmappable') => void
+  /** Re-register a restored tenant's devices in the ingest registry. Injected rather than imported
+   *  so this route stays testable without Redis; absent ⇒ the daily sweep does it instead. */
+  restoreDevices?: (devices: readonly { id: bigint; imei: string; tenantId: string; accountId: string; presenceRules: unknown; odometerSource: string }[]) => Promise<void>
+  /** a suspended tenant paid and was restored on the spot */
+  onTenantRestored?: () => void
 }
 
 // how long the per-tenant checkout-creation lock is held (audit LOW): long enough to serialize a
@@ -74,7 +79,7 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
     c.header('Cache-Control', 'no-store')
     if (deps.stripe === undefined) {
-      const view: BillingView = { configured: false, hasCustomer: false, status: null, active: false, currentPeriodEnd: null, canSubscribe: false, localTrial: false }
+      const view: BillingView = { configured: false, hasCustomer: false, status: null, active: false, currentPeriodEnd: null, suspendedAt: null, canSubscribe: false, localTrial: false }
       return c.json(view)
     }
     const b = await deps.db.tenants.getBilling(auth.tenantId)
@@ -84,6 +89,7 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
       status: b?.subscriptionStatus ?? null,
       active: b?.subscriptionStatus != null && ACTIVE.has(b.subscriptionStatus),
       currentPeriodEnd: b?.currentPeriodEnd ?? null,
+      suspendedAt: b?.suspendedAt ?? null,
       // same predicate the checkout route enforces — the picker can never disagree with the API
       canSubscribe: canStartCheckout(b?.subscriptionStatus, b?.stripeSubscriptionId),
       localTrial: isLocalTrial(b?.subscriptionStatus, b?.stripeSubscriptionId),
@@ -263,6 +269,7 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
         // the tenant plan is written, and only from the signature-verified webhook (never the browser).
         // planFor undefined (unmapped/unknown price) ⇒ leave plan unchanged; the monotonic guard in
         // applySubscriptionEvent handles ordering. Covers both Direct + TSP checkout (same map).
+        const incomingLive = mapped.update.subscriptionStatus === 'active' || mapped.update.subscriptionStatus === 'trialing'
         const basePriceId = mapped.update.subscriptionPriceId
         const plan = basePriceId != null ? deps.stripe.planFor(basePriceId) : undefined
         if (plan !== undefined) mapped.update.plan = plan
@@ -283,6 +290,30 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
         )
         // `stale` is NORMAL — the monotonic and per-subscription guards drop replayed and
         // out-of-order deliveries by design. Only `no_tenant` means a paying customer has no plan.
+        // RESTORE ON PAYMENT (audit MED #22). The daily sweep also un-suspends, but daily is not an
+        // acceptable wait for someone who has just paid to get their fleet back — this is the path
+        // that makes suspension feel reversible rather than punitive. Best-effort: a failure here
+        // must not turn a signature-verified webhook into a retry storm, and the sweep repairs it.
+        if (outcome === 'applied' && incomingLive) {
+          try {
+            const tenantId = await deps.db.tenants.tenantIdForCustomer(mapped.customerId)
+            // ORDER IS THE WHOLE THING, and it is the same order the sweep uses: rebuild the
+            // registry FIRST, clear the flag SECOND. Clearing first and then failing the Redis write
+            // leaves the tenant marked not-suspended with a dark fleet — invisible to `listSuspended`
+            // (not suspended) AND to `listLapsedTenants` (they paid), so no pass ever looks at them
+            // again and only an API restart repairs it. This way a failure leaves them marked
+            // suspended with a working feed, which tomorrow's sweep simply finishes.
+            if (tenantId !== null && (await deps.db.tenants.isSuspended(tenantId))) {
+              const devices = await deps.db.tenants.registryDevicesFor(tenantId)
+              await deps.restoreDevices?.(devices)
+              await deps.db.tenants.unsuspend(tenantId)
+              console.warn('billing: restored a suspended tenant on payment', JSON.stringify({ tenantId, devices: devices.length }))
+              deps.onTenantRestored?.()
+            }
+          } catch (err) {
+            console.error('billing: restore-on-payment failed', err instanceof Error ? err.message : String(err))
+          }
+        }
         if (outcome === 'no_tenant') {
           console.error('stripe webhook: no tenant for customer — subscription NOT applied', {
             type: event.type,

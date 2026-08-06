@@ -134,6 +134,8 @@
       "paused": "Paused"
     },
     "actionError": "Couldn't reach Stripe — please try again.",
+    "suspendedTitle": "Your fleet has stopped reporting",
+    "suspendedBody": "We stopped accepting data from your devices because the subscription was not renewed. Nothing has been deleted — your history, trips and reports are all still here. Renewing restores the devices within a minute.",
     "loadError": "Couldn't load billing status.",
     "ends": "Ends",
     "pastDue": "Past due",

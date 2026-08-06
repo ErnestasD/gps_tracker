@@ -71,6 +71,10 @@ export interface WorkerProm {
   billingLapsedDevices: Gauge
   /** …of which, past BILLING_GRACE_DAYS: the ones actually worth acting on. */
   billingLapsedActionable: Gauge
+  /** What the lapse ladder actually DID, by action: warned | suspended | restored. `suspended` is the
+   *  only counter in the product that means a customer lost their live map, so it is the one to
+   *  alert on if it ever moves unexpectedly (audit MED #22). */
+  billingLapseAction: Counter
   scheduledReportsSent: Counter
   retentionPruned: Counter
   /** §3.6 sanity failures moved from the `rejects` stream into `raw_rejects` (audit MED #46). */
@@ -217,6 +221,7 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
   const billingLapsedTenants = new Gauge({ name: 'billing_lapsed_tenants', help: 'tenants past their entitlement floor that are still being ingested and served (audit #22)', registers: [registry] })
   const billingLapsedDevices = new Gauge({ name: 'billing_lapsed_devices', help: 'devices still registered to those tenants — the ongoing ingest/storage cost', registers: [registry] })
   const billingLapsedActionable = new Gauge({ name: 'billing_lapsed_actionable', help: 'lapsed tenants past BILLING_GRACE_DAYS — the ones worth acting on', registers: [registry] })
+  const billingLapseAction = new Counter({ name: 'billing_lapse_action_total', help: 'lapse-ladder actions: warned (a notice was emailed) | suspended (the fleet was cut off) | restored (a payment landed and service resumed)', labelNames: ['action'], registers: [registry] })
   const scheduledReportsSent = new Counter({ name: 'scheduled_reports_sent_total', help: 'scheduled report emails sent (V1-nice)', registers: [registry] })
   const retentionPruned = new Counter({ name: 'retention_pruned_total', help: 'rows pruned by the daily retention sweep, by table', labelNames: ['table'], registers: [registry] })
   const rejectsDrained = new Counter({ name: 'rejects_drained_total', help: 'sanity-rejected records persisted from the rejects stream into raw_rejects', registers: [registry] })
@@ -244,5 +249,5 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

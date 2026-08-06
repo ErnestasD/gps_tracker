@@ -160,6 +160,18 @@ groups:
           summary: "{{ $value }} TSP tenant(s) have a base price missing from STRIPE_INCLUDED"
           description: "Their overage is billing ZERO. The worker log names the price id and tenant — add `<priceId>:<includedDevices>` to STRIPE_INCLUDED and restart the worker. Past days self-correct: the reporter's trailing window re-submits the delta."
 
+      # A customer's fleet was CUT OFF. Expected and deliberate — it is the end of the lapse ladder —
+      # but it is the only automated action in the product that takes a live map away from someone,
+      # so it is never silent: every suspension gets a line here and in the worker log. If this fires
+      # for a tenant you did not expect, the ladder ran on bad billing state, not on a real lapse.
+      - alert: BillingTenantSuspended
+        expr: increase(billing_lapse_action_total{action="suspended"}[1h]) > 0
+        for: 5m
+        labels: { severity: warning, component: billing }
+        annotations:
+          summary: "{{ $value }} tenant(s) suspended for non-payment"
+          description: "Their devices were removed from the ingest registry after the full warning ladder. The worker log names each one. A payment restores service within one webhook; `billing_lapse_action_total{action=\"restored\"}` tracks that."
+
       # Tenants whose entitlements are floored but who are still being ingested and served. The floor
       # is enforced only at device CREATE, so a canceled subscription or an expired trial takes away
       # nothing the customer can perceive — the fleet keeps tracking, at our storage cost, for free.

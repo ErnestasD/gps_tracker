@@ -1,4 +1,4 @@
-import { escapeHtml, renderBrandedEmail, type Branding } from '@orbetra/shared'
+import { emailButton, emailFallbackLink, emailNote, escapeHtml, renderBrandedEmail, type Branding } from '@orbetra/shared'
 
 /**
  * "Someone tried to sign up with your address" (audit MED #67).
@@ -74,20 +74,16 @@ const LOCALES: Record<string, Strings> = {
 
 export function renderSignupExistsEmail(opts: SignupExistsEmailOpts): { subject: string; text: string; html: string } {
   const s = LOCALES[opts.locale] ?? LOCALES['en']!
-  const login = escapeHtml(opts.loginUrl)
-  const reset = escapeHtml(opts.resetUrl)
-  const accent = opts.branding?.primary && /^#[0-9a-fA-F]{6}$/.test(opts.branding.primary) ? opts.branding.primary : '#4DA3FF'
+  const accent = opts.branding?.primary
   const bodyHtml = [
-    `<h1 style="margin:0 0 12px;font-size:20px;color:#0f172a">${escapeHtml(s.heading)}</h1>`,
-    `<p style="margin:0 0 20px;color:#334155;font-size:14px;line-height:1.5">${escapeHtml(s.intro)}</p>`,
-    `<p style="margin:0 0 20px"><a href="${login}" style="display:inline-block;background:${accent};color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;font-size:14px">${escapeHtml(s.button)}</a></p>`,
-    `<p style="margin:0 0 4px;color:#64748b;font-size:12px">${escapeHtml(s.forgot)}</p>`,
-    `<p style="margin:0 0 16px;word-break:break-all"><a href="${reset}" style="color:${accent};font-size:12px">${reset}</a></p>`,
-    `<p style="margin:0 0 16px;color:#64748b;font-size:12px">${escapeHtml(s.ignore)}</p>`,
-    `<p style="margin:0 0 4px;color:#94a3b8;font-size:12px">${escapeHtml(s.fallback)}</p>`,
-    `<p style="margin:0 0 16px;word-break:break-all"><a href="${login}" style="color:${accent};font-size:12px">${login}</a></p>`,
+    `<h1 style="margin:0 0 12px;font-size:21px;font-weight:700;letter-spacing:-0.01em;color:#0f172a">${escapeHtml(s.heading)}</h1>`,
+    `<p style="margin:0 0 24px;color:#334155;font-size:15px;line-height:1.6">${escapeHtml(s.intro)}</p>`,
+    emailButton(opts.loginUrl, s.button, accent),
+    emailFallbackLink(s.forgot, opts.resetUrl, accent),
+    emailNote(s.ignore),
+    emailFallbackLink(s.fallback, opts.loginUrl, accent),
   ].join('')
-  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject: s.subject, bodyHtml })
+  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject: s.subject, bodyHtml, preheader: s.intro, locale: opts.locale })
   const text = [s.heading, '', s.intro, '', `${s.button}: ${opts.loginUrl}`, '', `${s.forgot} ${opts.resetUrl}`, '', s.ignore, '', `— ${opts.brand}`].join('\n')
   return { subject: s.subject, text, html }
 }

@@ -255,7 +255,7 @@ describe('E05-4 notificationMessage branded HTML', () => {
     const m = notificationMessage('panic', '42', {}, new Date('2026-07-09T00:00:00Z'), { tenantName: 'Bare Tenant' })
     expect(m.html).toBeDefined()
     expect(m.html!).toContain('Bare Tenant')
-    expect(m.html!).toContain('#4DA3FF') // default accent
+    expect(m.html!).toContain('#5253DA') // the product accent (--accent in the app), shared by every mail
     expect(m.html!).not.toContain('<img')
   })
 

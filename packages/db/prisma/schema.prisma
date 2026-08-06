@@ -115,6 +115,19 @@ model Tenant {
   /// nothing accrued moved the anchor forward, and an admin edit re-opened closed windows (audit #26).
   commissionAnchorAt       DateTime? @db.Timestamptz()
   commissionMonthsAtAnchor Int?
+  /// When the tenant's devices were torn out of the ingest registry for non-payment (audit MED #22).
+  /// NULL = serving normally. Suspension stops NEW data being accepted; it deletes nothing, the
+  /// customer can still sign in and read their history, and paying restores the feed within one
+  /// webhook.
+  suspendedAt              DateTime? @db.Timestamptz()
+  /// Which lapse notice has already gone out: 0 none, 1 grace-end, 2 day+1, 3 day+2 (final). The
+  /// daily sweep is idempotent on this — a job that runs twice, or a worker restarted mid-sweep,
+  /// must not mail the same customer twice nor skip the final warning before cutting them off.
+  lapseNoticeStage         Int       @default(0)
+  /// The `lapsedAt` the stage above belongs to. A stage recorded against a DIFFERENT lapse counts as
+  /// zero, which is what stops a customer who paid before being cut off from being suspended with no
+  /// warnings the next time they lapse.
+  lapseNoticeFor           DateTime? @db.Timestamptz()
   createdAt             DateTime   @default(now()) @db.Timestamptz()
 
   accounts            Account[]
