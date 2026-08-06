@@ -59,6 +59,23 @@ const safeHttpsUrl = (u: string | undefined): string | undefined => {
   }
 }
 
+/**
+ * The PLATFORM's own identity, for mail that is NOT white-labelled.
+ *
+ * Process-wide configuration rather than a parameter, because it is the same for every message this
+ * process sends and threading it through six independent templates (and their fixtures) is six
+ * chances to forget one — which shows up as a single unbranded email nobody notices for a month.
+ *
+ * The default carries NO logo, so a deployment that never calls this renders exactly what it did
+ * before: the product name as text.
+ */
+let platform: { name: string; logoUrl?: string | undefined } = { name: 'Orbetra' }
+
+/** Call once at boot (worker main) with the platform name and a public https logo URL. */
+export function configureEmailPlatform(p: { name: string; logoUrl?: string | undefined }): void {
+  platform = p
+}
+
 /** The footer line, in the recipient's language. Hardcoding English put "You received this because…"
  *  at the bottom of every Lithuanian, German and Polish mail we send. */
 const FOOTER: Record<string, string> = {
@@ -130,13 +147,22 @@ export function emailFallbackLink(intro: string, href: string, accent?: string):
 }
 
 export function renderBrandedEmail(branding: Branding, tenantName: string, content: EmailContent): string {
-  const product = escapeHtml(branding.productName ?? tenantName)
+  /**
+   * WHOSE mail is this? A tenant that has configured any white-label branding owns the header
+   * outright — their logo, or their product name as text, and never ours. A tenant that has
+   * configured none is not a reseller: they are a customer of OURS, and the mail should look like
+   * it comes from the product they signed up to. That case used to render the tenant's own company
+   * name in the header, which is a strange thing for a password-reset mail to be signed by.
+   */
+  const whiteLabel = branding.logoUrl !== undefined || branding.productName !== undefined
+  const product = escapeHtml(whiteLabel ? branding.productName ?? tenantName : platform.name)
   const accent = safeColor(branding.primary)
-  const logo = safeHttpsUrl(branding.logoUrl)
+  const logo = whiteLabel ? safeHttpsUrl(branding.logoUrl) : safeHttpsUrl(platform.logoUrl)
   const supportEmail = branding.supportEmail
-  // A white-label tenant's logo when it has one; otherwise the product name set in the accent — NOT
-  // an <img> of ours. Most clients block remote images by default, so a logo-only header renders as
-  // an empty box on first open, on the one line that has to say who this is from.
+  // An IMAGE when there is one to show — the tenant's, or ours on our own mail — and the product
+  // name as text otherwise. The `alt` is always the product name, which is the whole reason an image
+  // is safe here: most clients block remote images by default, and a blocked logo then renders as
+  // the name rather than as an empty box on the one line that has to say who this is from.
   const header =
     logo !== undefined
       ? `<img src="${escapeHtml(logo)}" alt="${product}" height="28" style="height:28px;display:block;border:0" />`

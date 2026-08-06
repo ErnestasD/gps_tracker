@@ -253,10 +253,14 @@ describe('E05-4 notificationMessage branded HTML', () => {
     expect(m.html!).toContain('<!doctype html>')
   })
 
-  it('FAIL SAFE: a missing/blank branding still renders HTML from the tenant name + default accent', () => {
+  it('a tenant with NO branding gets OUR name in the header, not its own company name', () => {
+    // Not white-label ⇒ not a reseller ⇒ this mail is from the product they signed up to. Heading a
+    // password-reset or an alert with the customer's own company name reads as if they sent it to
+    // themselves; it also left the platform's mail with no platform identity anywhere on it.
     const m = notificationMessage('panic', '42', {}, new Date('2026-07-09T00:00:00Z'), { tenantName: 'Bare Tenant' })
     expect(m.html).toBeDefined()
-    expect(m.html!).toContain('Bare Tenant')
+    expect(m.html!).toContain('Orbetra')
+    expect(m.html!).not.toContain('Bare Tenant')
     expect(m.html!).toContain('#5253DA') // the product accent (--accent in the app), shared by every mail
     expect(m.html!).not.toContain('<img')
   })

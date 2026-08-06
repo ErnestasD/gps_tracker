@@ -34,6 +34,12 @@ function SignupPage() {
   const { t } = useTranslation();
   const [ref, setRef] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "done">("idle");
+  // the address we wrote to, echoed on the done screen. The old copy said "Workspace created" — a
+  // confident claim that is FALSE for the half of cases where the address already had an account,
+  // and the founder hit exactly that: a success screen promising a new workspace, then an email
+  // saying nothing was created. Naming the address and the next step is true in both branches, and
+  // says nothing about which one happened (audit MED #67).
+  const [sentTo, setSentTo] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => setRef(readRefCode()), []);
@@ -43,10 +49,11 @@ function SignupPage() {
     setError(null);
     setState("loading");
     const fd = new FormData(e.currentTarget);
+    const address = formVal(fd, "email").trim();
     try {
       await apiPost(`/v1/public/signup`, {
         name: formVal(fd, "name").trim(),
-        email: formVal(fd, "email").trim(),
+        email: address,
         password: formVal(fd, "password"),
         company: formVal(fd, "company").trim() || undefined,
         ref: ref && REF_RE.test(ref) ? ref : undefined,
@@ -57,6 +64,7 @@ function SignupPage() {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
         hp_field: formVal(fd, "hp_field"), // honeypot — must stay empty
       });
+      setSentTo(address);
       setState("done");
     } catch (err) {
       // NO 409 branch: the API deliberately answers an already-registered address with the SAME 201
@@ -108,7 +116,7 @@ function SignupPage() {
             </div>
             <h2 className="display text-2xl font-bold text-ink mt-3">{t("signup.doneTitle")}</h2>
             <p className="mt-3 text-sm text-muted-foreground">
-              {t("signup.doneBody")}
+              {t("signup.doneBody", { email: sentTo })}
             </p>
             <a href={DASH_URL} className="mt-6 pill-primary hover:pill-primary-hover">
               {t("signup.doneCta")} <ArrowRight className="h-4 w-4" />
