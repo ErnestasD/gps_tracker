@@ -120,6 +120,18 @@ not been attacked is a hypothesis.
 | 72 | api / shutdown | API graceful shutdown is dead code whenever a WebSocket client is connected | `apps/api/src/main.ts:132` | **FIXED** — PR O — the WS gateway closes first: `httpServer.close()` waits for every connection and an upgraded socket never ends, so one live map client meant Redis never quit, the queues never closed and the pool never drained — every deploy killed the API mid-flight while looking graceful. The chain also gained a catch (it had never actually run) and the missing authEmailQueue |
 | 73 | infra / compose | The documented three-file compose invocation publishes Caddy on 8088/8449 in addition to 80/443, and `ports: []` for pg/redis is a silent no-op | `infra/compose/docker-compose.yml:167` | **FIXED** — PR O — `ports: !override` for Caddy (compose MERGES lists, so re-stating 80/443 published it on four host ports), and the no-op `ports: []` for pg/redis replaced by a note pointing at the real guarantee — the base binds 127.0.0.1 because Docker's iptables rules bypass UFW |
 
+## Beyond the audit: the nine `TODO(...)` code debts (all closed)
+
+Not audit findings — markers the authors left in the code themselves, swept once the 74 above were
+done. Recorded here because the tracker is where the founder looks for "is anything still owed".
+
+| Marker | Where | Closed by |
+|---|---|---|
+| `TODO(db)` ×2 | optional `revokeAllForUser` call sites | PR #166 — the method had already shipped; only the casts and the `if (… !== undefined)` fallbacks were left, and the one session a password change exists to kill is the one the owner is not sitting in front of |
+| `TODO(ADR)` | webhook SSRF guard resolved the host TWICE | PR #166 / [ADR-035](../adr/035-webhook-connection-pinning.md) — the guard returns the address it validated and delivery dials THAT, carrying the hostname in `Host` + TLS `servername`. Same pinning applied to web push, which had the identical hole |
+| `TODO(font)` | PDF export transliterated a hand-listed set of letters | PR #166 — WinAnsi allow-list first, so `š`/`ž`/`é`/`ö` keep their accents and a Czech `ř` no longer renders as tofu. Embedding a font still needs a licensed TTF in the repo (`tools/woff2ttf` makes that a one-liner) |
+| `TODO(account-settings)` ×5 | worker rendered every alert and report in English metric | PR #167 — `accounts` carries `locale` + three unit columns; the worker's four-language table renders alerts, Telegram and report tables from them. The preferences are the ACCOUNT's because a rule channel targets a free-text address with no user row |
+
 ## Health summary (verbatim from the audit)
 
 > The core of this backend is genuinely well built. Ingest's framing/CRC/ACK contract, the ACK-after-XADD ordering, the invalid-fix seam (I5), idempotent position writes with ON CONFLICT, the scoped-repository layer with `scopedWhere`, the per-shard leasing with a fencing check before durable effects, the argon2 concurrency semaphore, the audit-coverage meta-test and the tenant isolation suite are all real engineering, and the in-code comments show the authors reasoning about the right invariants. Most of what follows is not sloppiness — it is a small number of recurring blind spots applied consistently across an ambitious surface area.
