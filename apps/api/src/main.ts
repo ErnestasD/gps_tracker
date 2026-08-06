@@ -137,6 +137,7 @@ const deps = {
   onEmailVerified: () => prom.emailVerification.inc({ outcome: 'verified' }),
   onUnverifiedLogin: () => prom.emailVerification.inc({ outcome: 'unverified_login' }),
   onVerifyMailFailed: () => prom.emailVerification.inc({ outcome: 'mail_failed' }),
+  onVerifyMailUnconfigured: () => prom.emailVerification.inc({ outcome: 'mail_unconfigured' }),
   // partner-portal ceilings; unset entries fall back to the module defaults (1 h window there)
   partnerLoginLimits: {
     ...(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP'] !== undefined ? { maxFailsPerIp: Number(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP']) } : {}),

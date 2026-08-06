@@ -8,7 +8,12 @@
 --
 -- It is also, independently, the thing that stops a stranger from registering someone else's email.
 
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "emailVerifiedAt" TIMESTAMPTZ;
+-- DEFAULT now(), and it matters for one window only: between `migrate deploy` and the restart, the
+-- OLD api is writing to the NEW schema. Every user it creates in those seconds would land NULL and
+-- be locked out when the new code arrives, with no signal anywhere. Self-serve signup writes NULL
+-- EXPLICITLY (Prisma sends the column), so the default cannot leak into the one path that must stay
+-- unverified.
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "emailVerifiedAt" TIMESTAMPTZ DEFAULT now();
 
 -- EVERY EXISTING USER IS VERIFIED. This column gates login, so a backfill that left anyone NULL
 -- would lock a working tenant out of its own platform on deploy — the migration would be the outage.

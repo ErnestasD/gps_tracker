@@ -170,6 +170,53 @@ describe('public self-serve signup (F2)', () => {
     expect(sentVerify.length).toBe(before)
   })
 
+  it('an ADMIN-created user can log in immediately — verification is only for the public route', async () => {
+    // the single line that stops every admin-invited colleague being permanently locked out
+    // (`users.create` sets emailVerifiedAt) was covered by NOTHING: removing it left 117 tests green.
+    // This is the whole tenant-onboarding flow in three lines.
+    const owner = await signupActivated({ name: 'Owner', email: 'owner@invite.test', password: 'password12' })
+    const { id: tenantId } = (await owner.json()) as { id: string }
+    const token = (await (await login('owner@invite.test', 'password12')).json()) as { accessToken: string }
+    const created = await fetch(`http://127.0.0.1:${port}/v1/users`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token.accessToken}` },
+      body: JSON.stringify({ email: 'colleague@invite.test', password: 'password12', role: 'viewer', accountId: null }),
+    })
+    expect(created.status, await created.text()).toBe(201)
+    expect(tenantId).toBeTruthy()
+    expect((await login('colleague@invite.test', 'password12')).status).toBe(200)
+  })
+
+  it('a PASSWORD RESET also proves the address — the recovery route we signpost is not a dead end', async () => {
+    // the "you already have an account" mail says "sign in, or reset your password". For the exact
+    // case that mail exists for — an address squatted by someone else's unverified signup — resetting
+    // used to succeed and then login still 401'd, with no explanation anywhere.
+    await signup({ name: 'Squat', email: 'squatted@fleet.test', password: 'attacker-chose-this' })
+    expect((await login('squatted@fleet.test', 'attacker-chose-this')).status).toBe(401) // unverified
+
+    const [user] = await db.auth.users.findByEmailAllTenants('squatted@fleet.test')
+    const raw = randomBytes(32).toString('hex')
+    await db.auth.passwordResetTokens.create({
+      id: randomUUID(),
+      userId: user!.id,
+      tokenHash: createHash('sha256').update(raw).digest('hex'),
+      expiresAt: new Date(Date.now() + 3_600_000),
+    })
+    expect((await j('/v1/auth/reset-password', 'POST', { token: raw, newPassword: 'the-real-owner-pw' })).status).toBe(200)
+    // …and the address is now proven, so the account works
+    expect((await login('squatted@fleet.test', 'the-real-owner-pw')).status).toBe(200)
+  })
+
+  it('the ACTIVATION mail is capped per RECIPIENT, and plus-aliases do not multiply it', async () => {
+    // per-IP and global buckets bound the SENDER; `victim+1@`, `victim+2@` … all deliver to one inbox
+    const before = sentVerify.length
+    for (let i = 0; i < 6; i++) {
+      await signup({ name: `Alias ${i}`, email: `bomb+${i}@fleet.test`, password: 'password12' })
+    }
+    // 3/hour on the canonical mailbox — the tenants are still created, only the mail is withheld
+    expect(sentVerify.length - before).toBe(3)
+  })
+
   it('a garbage token is a clean 400, never a 500', async () => {
     for (const token of ['', 'short', 'x'.repeat(64), 'x'.repeat(500), '0'.repeat(64)]) {
       expect((await j('/v1/public/verify-email', 'POST', { token })).status, JSON.stringify(token.slice(0, 12))).toBe(400)

@@ -290,7 +290,10 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         // cannot authenticate, which is what stops the free branch of signup from answering "does
         // this address exist" through a follow-up login (audit MED #67).
         const user = await tx.user.create({
-          data: { tenantId: tenant.id, accountId: null, email: data.email, passwordHash: data.passwordHash, role: 'tsp_admin', locale: data.locale ?? 'en' },
+          // `emailVerifiedAt: null` is EXPLICIT, not omitted: the column carries a DB-side
+          // `DEFAULT now()` for the rolling-deploy window, so leaving it out would silently verify
+          // the one account that must prove itself.
+          data: { tenantId: tenant.id, accountId: null, email: data.email, passwordHash: data.passwordHash, role: 'tsp_admin', locale: data.locale ?? 'en', emailVerifiedAt: null },
         })
         return { tenantId: tenant.id, userId: user.id }
       })
@@ -549,14 +552,23 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       //   * no commissions — the payout ledger is a financial record and its FK is RESTRICT, so a
       //     match here would throw rather than delete (tenants.remove raises the same guard).
       // Users, accounts and the rest cascade from the tenant row.
+      // The predicates live INSIDE the sub-select, and that is the whole point of the shape. With
+      // `id IN (SELECT id FROM tenants ORDER BY createdAt LIMIT n)` the limit picked the n globally
+      // OLDEST tenants — which are the real customers, who can never match — so once the platform had
+      // more than n tenants the sweep became a permanent no-op and every squatted address was held
+      // forever. Measured: 3 older verified tenants + 1 abandoned signup at limit 3 deleted nothing.
+      // Here the limit is a BATCH SIZE over the matching set, which is what "picked up tomorrow" needs.
       return await prisma.$executeRaw`
-        DELETE FROM tenants t
-         WHERE t."createdAt" < ${cutoff}
-           AND t.id IN (SELECT id FROM tenants ORDER BY "createdAt" LIMIT ${size})
-           AND EXISTS (SELECT 1 FROM users u WHERE u."tenantId" = t.id)
-           AND NOT EXISTS (SELECT 1 FROM users u WHERE u."tenantId" = t.id AND u."emailVerifiedAt" IS NOT NULL)
-           AND NOT EXISTS (SELECT 1 FROM devices d WHERE d."tenantId" = t.id)
-           AND NOT EXISTS (SELECT 1 FROM commissions c WHERE c."tenantId" = t.id)`
+        DELETE FROM tenants
+         WHERE id IN (
+           SELECT t.id FROM tenants t
+            WHERE t."createdAt" < ${cutoff}
+              AND EXISTS (SELECT 1 FROM users u WHERE u."tenantId" = t.id)
+              AND NOT EXISTS (SELECT 1 FROM users u WHERE u."tenantId" = t.id AND u."emailVerifiedAt" IS NOT NULL)
+              AND NOT EXISTS (SELECT 1 FROM devices d WHERE d."tenantId" = t.id)
+              AND NOT EXISTS (SELECT 1 FROM commissions c WHERE c."tenantId" = t.id)
+            ORDER BY t."createdAt"
+            LIMIT ${size})`
     },
     pruneBillingEvents: async (cutoff, batchSize = 5_000) => {
       const size = Math.min(Math.max(Math.trunc(batchSize), 1), 50_000)

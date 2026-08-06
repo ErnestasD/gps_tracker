@@ -53,3 +53,42 @@ describe('renderVerifyEmail', () => {
     expect(renderVerifyEmail({ ...base, locale: 'en', branding: { primary: 'red; }' } }).html).toContain('#4DA3FF')
   })
 })
+
+describe('the activation mail is OURS, not the recipient’s own company', () => {
+  it('a self-serve tenant name never becomes the brand — that reads like phishing', async () => {
+    // `brand = productName ?? tenantName`, and a self-serve tenant is named after the company the
+    // customer just typed. So the first mail we ever send them — the one asking them to click a link
+    // — was headed with THEIR OWN company name.
+    const { sendAuthEmail } = await import('../src/jobs/authEmailWorker.js')
+    const sent: { subject: string; html: string }[] = []
+    const pool = { query: () => Promise.resolve({ rows: [{ name: "Jonas's fleet", branding: {} }] }) } as unknown as Parameters<typeof sendAuthEmail>[0]['pool']
+    const transport = { send: (_to: string, subject: string, _text: string, html: string) => { sent.push({ subject, html }); return Promise.resolve() } }
+    await sendAuthEmail({ pool, transport }, {
+      kind: 'verify-email',
+      email: 'jonas@fleet.test',
+      tenantId: '00000000-0000-0000-0000-0000000000aa',
+      locale: 'en',
+      verifyUrl: 'https://app.orbetra.test/verify-email?token=abc',
+      expiresHours: 48,
+    })
+    expect(sent[0]!.html).toContain('Orbetra')
+    expect(sent[0]!.html).not.toContain("Jonas's fleet")
+  })
+
+  it('…but a real WHITE-LABEL product name still wins — a TSP’s end user must never see ours', async () => {
+    const { sendAuthEmail } = await import('../src/jobs/authEmailWorker.js')
+    const sent: { html: string }[] = []
+    const pool = { query: () => Promise.resolve({ rows: [{ name: 'Reseller UAB', branding: { productName: 'FleetPro' } }] }) } as unknown as Parameters<typeof sendAuthEmail>[0]['pool']
+    const transport = { send: (_to: string, _s: string, _t: string, html: string) => { sent.push({ html }); return Promise.resolve() } }
+    await sendAuthEmail({ pool, transport }, {
+      kind: 'verify-email',
+      email: 'end@user.test',
+      tenantId: '00000000-0000-0000-0000-0000000000bb',
+      locale: 'en',
+      verifyUrl: 'https://app.example/verify-email?token=abc',
+      expiresHours: 48,
+    })
+    expect(sent[0]!.html).toContain('FleetPro')
+    expect(sent[0]!.html).not.toContain('Orbetra')
+  })
+})

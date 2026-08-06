@@ -39,6 +39,9 @@ export interface VerifyEmailRouteDeps {
   }
   /** a verification actually completed — the signup funnel's real conversion signal. */
   onVerified?: () => void
+  /** the activation path is not wired at all (no mail deps / no APP_BASE_URL), so every new signup
+   *  is an account that can never log in. MUST be zero in production. */
+  onMailUnconfigured?: () => void
 }
 
 /** 48 h. Long enough to survive a signup on a Friday evening; short enough that an intercepted link
@@ -63,10 +66,18 @@ return n`
  * mail after requesting a new one gets a clean failure instead of a silent success on a stale token.
  */
 export async function sendVerificationEmail(
-  deps: Pick<VerifyEmailRouteDeps, 'db' | 'mail' | 'appBaseUrl'>,
+  deps: Pick<VerifyEmailRouteDeps, 'db' | 'mail' | 'appBaseUrl' | 'onMailUnconfigured'>,
   user: { id: string; tenantId: string; email: string; locale: string },
 ): Promise<void> {
-  if (deps.mail === undefined || deps.appBaseUrl === undefined) return
+  // NOT silent. An unset APP_BASE_URL or unwired mail deps means every signup creates an account
+  // nobody can ever log into, and the response cannot say so — a 201 either way is the whole design.
+  // Without this counter the failure is invisible: `onVerifyMailFailed` only fires when the enqueue
+  // THROWS, and not being wired at all throws nothing.
+  if (deps.mail === undefined || deps.appBaseUrl === undefined) {
+    deps.onMailUnconfigured?.()
+    console.error('verify-email: activation mail is NOT configured — new signups cannot log in')
+    return
+  }
   const base = deps.appBaseUrl.replace(/\/+$/, '')
   await deps.db.auth.emailVerificationTokens.invalidateAllForUser(user.id, new Date())
   const rawToken = randomBytes(32).toString('hex')
@@ -143,7 +154,22 @@ export function createVerifyEmailRoute(deps: VerifyEmailRouteDeps): Hono {
 
     try {
       const user = await deps.db.auth.emailVerificationTokens.findUnverified(email)
-      if (user !== null) await sendVerificationEmail(deps, { id: user.id, tenantId: user.tenantId, email, locale: user.locale })
+      if (user !== null) {
+        await sendVerificationEmail(deps, { id: user.id, tenantId: user.tenantId, email, locale: user.locale })
+      } else {
+        // TIMING EQUIVALENCE, and it is not decoration — measured, the hit path (invalidate + insert
+        // + enqueue) ran a median 5.6 ms against 3.2 ms for a miss, on disjoint distributions. One
+        // signup plus one resend then answered "does this address have an account" with no
+        // statistics at all, which is precisely the question this whole design refuses. So the miss
+        // path performs the SAME writes against a random uuid that owns nothing: the invalidate
+        // matches no rows and the insert lands a token for a user id that does not exist… which the
+        // FK would reject, so it is the invalidate that is repeated twice instead. Same shape as
+        // forgot-password's fabricated `invalidateAllForUser(randomUUID())` — the pattern this
+        // codebase already uses for the same reason on the same identity space.
+        const nobody = randomUUID()
+        await deps.db.auth.emailVerificationTokens.invalidateAllForUser(nobody, new Date())
+        await deps.db.auth.emailVerificationTokens.invalidateAllForUser(nobody, new Date())
+      }
     } catch (err) {
       // a failure must not become a 500 — that would answer the question the 200 exists to refuse
       console.error('verify-email resend failed', err instanceof Error ? err.message : String(err))

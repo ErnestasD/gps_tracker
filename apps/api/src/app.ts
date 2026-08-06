@@ -63,6 +63,8 @@ export interface ApiDeps extends WsDeps {
   onVerifyMailFailed?: () => void
   /** an address was successfully verified (the signup funnel's real conversion event). */
   onEmailVerified?: () => void
+  /** the activation path is not wired at all — every new signup is an account nobody can log into. */
+  onVerifyMailUnconfigured?: () => void
   /** a login presented the right password for an unverified account — invisible in the response. */
   onUnverifiedLogin?: () => void
   /** a public signup hit an address that already has an account. Since the response no longer says
@@ -202,7 +204,7 @@ export function createApiProm(): ApiProm {
   })
   const emailVerification = new Counter({
     name: 'email_verification_total',
-    help: 'self-serve address verification outcomes: verified = a signup activated; unverified_login = the right password on an account that never activated (invisible in the response by design); mail_failed = the activation mail could not be sent, so that customer cannot log in',
+    help: 'self-serve address verification outcomes: verified = a signup activated; unverified_login = the right password on an account that never activated (invisible in the response by design); mail_failed = the activation mail could not be sent; mail_unconfigured = the activation path is not wired at all — either way that customer cannot log in',
     labelNames: ['outcome'],
     registers: [registry],
   })
@@ -371,6 +373,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
       ...(signupMail !== undefined ? { mail: signupMail } : {}),
       ...(deps.onSignupEmailInUse !== undefined ? { onEmailInUse: deps.onSignupEmailInUse } : {}),
       ...(deps.onVerifyMailFailed !== undefined ? { onVerifyMailFailed: deps.onVerifyMailFailed } : {}),
+      ...(deps.onVerifyMailUnconfigured !== undefined ? { onVerifyMailUnconfigured: deps.onVerifyMailUnconfigured } : {}),
     }),
   )
   app.route(
@@ -383,6 +386,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
       ...(deps.appBaseUrl !== undefined ? { appBaseUrl: deps.appBaseUrl } : {}),
       ...(verifyMail !== undefined ? { mail: { enqueueVerifyEmail: verifyMail } } : {}),
       ...(deps.onEmailVerified !== undefined ? { onVerified: deps.onEmailVerified } : {}),
+      ...(deps.onVerifyMailUnconfigured !== undefined ? { onMailUnconfigured: deps.onVerifyMailUnconfigured } : {}),
     }),
   )
 

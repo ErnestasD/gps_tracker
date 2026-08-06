@@ -54,6 +54,9 @@ export interface SignupRouteDeps {
   /** the ACTIVATION mail could not be sent — the customer is stranded and cannot log in, and the
    *  response cannot say so. Non-zero ⇒ page. */
   onVerifyMailFailed?: () => void
+  /** the activation path is not wired at all (no mail deps / no APP_BASE_URL) — same consequence,
+   *  different cause, and it throws nothing, so it needs its own signal. */
+  onVerifyMailUnconfigured?: () => void
 }
 
 // 30 days — the publicly advertised trial. The marketing site AND the Terms of Service both state
@@ -218,7 +221,20 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
       // signal this whole design removes. The resend endpoint is the recovery path, and the counter
       // below is how a broken queue becomes visible to us instead of to them.
       try {
-        await sendVerificationEmail(deps, { id: created.userId, tenantId: created.tenantId, email, locale })
+        // PER-RECIPIENT cap, exactly like the taken branch's mail — and here it is load-bearing for a
+        // second reason. `victim+1@gmail.com`, `victim+2@…` and dot-aliases all deliver to ONE inbox
+        // while being distinct addresses to us, so without this the per-IP (5/h) and global (200/h)
+        // buckets bound the sender and nothing bounds the recipient: 200 activation mails an hour
+        // into one mailbox, from our own SES identity. `canonicalMailbox` is the same normaliser the
+        // self-referral guard already uses, so the aliases collapse to the mailbox that receives them.
+        const mailKey = `signup:verify:${sha256(canonicalMailbox(email)).slice(0, 16)}`
+        const sends = (await deps.redis.eval(RL_SCRIPT, 1, mailKey, String(EXISTS_MAIL_WINDOW_S))) as number
+        if (sends <= EXISTS_MAIL_MAX) {
+          await sendVerificationEmail(
+            { db: deps.db, ...(deps.mail !== undefined ? { mail: deps.mail } : {}), ...(deps.appBaseUrl !== undefined ? { appBaseUrl: deps.appBaseUrl } : {}), ...(deps.onVerifyMailUnconfigured !== undefined ? { onMailUnconfigured: deps.onVerifyMailUnconfigured } : {}) },
+            { id: created.userId, tenantId: created.tenantId, email, locale },
+          )
+        }
       } catch (mailErr) {
         deps.onVerifyMailFailed?.()
         console.error('signup: could not send the activation mail', mailErr instanceof Error ? mailErr.message : String(mailErr))

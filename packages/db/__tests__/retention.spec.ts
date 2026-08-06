@@ -211,6 +211,19 @@ describe('never-activated signup cleanup', () => {
     expect(await exists(id)).toBe(true)
   })
 
+  it('the LIMIT is a batch size over the MATCHING set, not the oldest tenants overall', async () => {
+    // the bound used to read `id IN (SELECT id FROM tenants ORDER BY createdAt LIMIT n)` — the n
+    // globally-oldest tenants, which are the real customers and can never match. Once the platform
+    // had more than n tenants the sweep was a permanent no-op and every squatted address was held
+    // forever, while the comment claimed "whatever is left is picked up tomorrow".
+    const older = await abandoned('Older Real Co', 'older-real@x.test', new Date(Date.UTC(2023, 0, 1)))
+    await q(`UPDATE users SET "emailVerifiedAt" = now() WHERE "tenantId" = $1::uuid`, [older]) // a real customer
+    const debris = await abandoned('Debris Co', 'debris@x.test', OLD) // newer, and abandoned
+    expect(await db.tenants.pruneUnverifiedSignups(CUTOFF, 1)).toBe(1) // a limit of ONE still finds it
+    expect(await exists(debris)).toBe(false)
+    expect(await exists(older)).toBe(true)
+  })
+
   it('never touches a tenant carrying COMMISSIONS — the payout ledger is a financial record', async () => {
     const aff = await db.affiliates.create(actor, { name: 'Prune Partner', email: 'prunepartner@x.test', code: 'PRUNE1' })
     const id = await abandoned('Referred Co', 'referred@x.test', OLD)
@@ -219,5 +232,42 @@ describe('never-activated signup cleanup', () => {
     // the FK is RESTRICT, so a predicate bug here would THROW rather than silently destroy the ledger
     expect(await db.tenants.pruneUnverifiedSignups(CUTOFF)).toBe(0)
     expect(await exists(id)).toBe(true)
+  })
+})
+
+describe('a password reset proves the address', () => {
+  it('clears emailVerifiedAt’s NULL — the recovery route we signpost must not be a dead end', async () => {
+    const t = await db.tenants.createSelfServeSignup({
+      tenantName: 'Reset Co',
+      accountName: 'My fleet',
+      email: 'reset-proves@x.test',
+      passwordHash: 'x',
+      plan: 'direct_10',
+      trialEndsAt: new Date(Date.now() + 86_400_000),
+      referredByAffiliateId: null,
+    })
+    const unverified = await q<{ v: Date | null }>(`SELECT "emailVerifiedAt" AS v FROM users WHERE id = $1::uuid`, [t.userId])
+    expect(unverified[0]?.v).toBeNull() // self-serve signup starts unproven, DB default notwithstanding
+
+    await db.auth.passwordResetTokens.create({ id: crypto.randomUUID(), userId: t.userId, tokenHash: 'reset-proves-hash', expiresAt: new Date(Date.now() + 3_600_000) })
+    expect(await db.auth.passwordResetTokens.consume('reset-proves-hash', new Date())).toEqual({ userId: t.userId })
+    const after = await q<{ v: Date | null }>(`SELECT "emailVerifiedAt" AS v FROM users WHERE id = $1::uuid`, [t.userId])
+    expect(after[0]?.v).toBeInstanceOf(Date)
+  })
+
+  it('a token for a user deleted under it returns null and stays UNSPENT', async () => {
+    const t = await db.tenants.createSelfServeSignup({
+      tenantName: 'Gone Co',
+      accountName: 'My fleet',
+      email: 'gone@x.test',
+      passwordHash: 'x',
+      plan: 'direct_10',
+      trialEndsAt: new Date(Date.now() + 86_400_000),
+      referredByAffiliateId: null,
+    })
+    await db.auth.emailVerificationTokens.create({ id: crypto.randomUUID(), userId: t.userId, tokenHash: 'gone-hash', expiresAt: new Date(Date.now() + 3_600_000) })
+    await q(`DELETE FROM tenants WHERE id = $1::uuid`, [t.tenantId]) // cascades the user AND the token
+    // a token whose row is gone with it simply does not match — no P2025 escaping as a 404
+    expect(await db.auth.emailVerificationTokens.consume('gone-hash', new Date())).toBeNull()
   })
 })

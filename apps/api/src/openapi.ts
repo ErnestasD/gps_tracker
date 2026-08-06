@@ -76,6 +76,28 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
   add('get', '/v1/profiles', { tags: ['device'], summary: 'Device profiles (global reference data)', security: READ_SEC, responses: RESPONSES.read })
   add('get', '/v1/branding', { tags: ['tenant'], summary: 'Public branding by Host', security: [], responses: RESPONSES.read })
   add('post', '/v1/public/pilot-request', { tags: ['public'], summary: 'Pilot request from the marketing site (rate-limited, honeypotted)', security: [], responses: { ...RESPONSES.publicPost, '201': { description: 'Created' } } })
+  // The three self-serve signup endpoints. Their RESPONSE CODES are part of the security contract,
+  // not an implementation detail: signup answers 201 whether or not the address is already
+  // registered, and resend answers 200 whether or not it exists — documenting anything else here
+  // would invite a client to branch on a distinction the server refuses to make (audit MED #67).
+  add('post', '/v1/public/signup', {
+    tags: ['public'],
+    summary: 'Self-serve signup (rate-limited, honeypotted). ALWAYS 201 — an already-registered address is answered identically and its owner is notified by email',
+    security: [],
+    responses: { ...RESPONSES.publicPost, '201': { description: 'Accepted. The account, if newly created, cannot sign in until the emailed activation link is used' } },
+  })
+  add('post', '/v1/public/verify-email', {
+    tags: ['public'],
+    summary: 'Activate a self-serve signup with the emailed token (single-use, 48 h). Mints no session',
+    security: [],
+    responses: { ...RESPONSES.publicPost, '200': { description: 'Verified' }, '400': { description: 'Token unknown, already used, or expired' } },
+  })
+  add('post', '/v1/public/verify-email/resend', {
+    tags: ['public'],
+    summary: 'Request a fresh activation link. ALWAYS 200 — an unknown or already-verified address is answered identically',
+    security: [],
+    responses: { ...RESPONSES.publicPost, '200': { description: 'Accepted' } },
+  })
   add('post', '/v1/reports/{type}', {
     tags: ['report'],
     summary: 'Run a report (trips/mileage/stops/overspeed/geofence/engine_hours)',

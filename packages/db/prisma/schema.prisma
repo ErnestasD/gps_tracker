@@ -278,7 +278,11 @@ model User {
   /// back a working account, a second request — a login with the password the caller just chose —
   /// still answered the question with certainty. An unverified account fails login exactly like a
   /// wrong password, so both branches now end in the same 401 and the question has no answer.
-  emailVerifiedAt   DateTime? @db.Timestamptz()
+  /// DB-side `DEFAULT now()` (matches the migration): during a rolling deploy the OLD api writes to
+  /// the NEW schema, and those users would otherwise land NULL and be locked out. Self-serve signup
+  /// sends the column explicitly as null, so the default never reaches the path that must stay
+  /// unverified.
+  emailVerifiedAt   DateTime? @default(dbgenerated("now()")) @db.Timestamptz()
 
   tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   account                 Account?                 @relation(fields: [accountId], references: [id], onDelete: SetNull)
