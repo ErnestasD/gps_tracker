@@ -149,6 +149,21 @@ describe('pdfSafe (jsPDF WinAnsi fallback)', () => {
     expect(pdfSafe('œuvre')).toBe('œuvre')
   })
 
+  it('DECOMPOSED input renders exactly like composed — macOS filenames and CSV imports arrive NFD', () => {
+    // iterating code points sent a standalone combining mark to the fallback, so the German umlaut
+    // this whole function protects came out `Gera?t` the moment the text arrived decomposed
+    for (const word of ['Motorstunden Gerät', 'Kelionės', 'Řehoř', 'Łódź', 'Prędkość']) {
+      expect(pdfSafe(word.normalize('NFD')), word).toBe(pdfSafe(word.normalize('NFC')))
+    }
+    expect(pdfSafe('Gerät'.normalize('NFD'))).toBe('Gerät')
+  })
+
+  it('keeps newlines and tabs — autotable treats \\n as a cell line break', () => {
+    // mapping them to `?` printed a literal question mark in the middle of a free-text note
+    expect(pdfSafe('line one\nline two')).toBe('line one\nline two')
+    expect(pdfSafe('a\tb')).toBe('a\tb')
+  })
+
   it('anything still unrenderable becomes "?" — never a box the reader cannot name', () => {
     // a device named in Cyrillic or Chinese is not something Helvetica can print; the document must
     // still be readable, and a `?` says "missing character" where ▯ says "broken file"

@@ -33,7 +33,22 @@ beforeAll(async () => {
         res.end('no')
         return
       }
-      if (req.url === '/hang') return // never responds — the timeout must bound it
+      if (req.url === '/hang') return // never responds — the deadline must bound it
+      if (req.url === '/rst') {
+        // headers, a partial body, then the socket is destroyed — a draining load balancer, a
+        // restarted nginx worker, or one hostile tenant
+        res.writeHead(200, { 'content-length': '999' })
+        res.write('partial')
+        setTimeout(() => req.socket.destroy(), 20)
+        return
+      }
+      if (req.url === '/dribble') {
+        // one byte every 100 ms, forever: `timeout` is socket INACTIVITY, so every byte resets it
+        res.writeHead(200, { 'content-length': '99999' })
+        const t = setInterval(() => res.write('.'), 100)
+        res.on('close', () => clearInterval(t))
+        return
+      }
       res.writeHead(204)
       res.end()
     })
@@ -55,6 +70,12 @@ const opts = (path: string, host = 'hook.example') => ({
 })
 
 describe('deliverWebhook', () => {
+  it('a caller-supplied Host header cannot produce a SECOND one', async () => {
+    seen.length = 0
+    await deliverWebhook({ ...opts('/hook'), headers: { Host: 'spoofed.example', 'X-Signature': 'sig' } })
+    expect(seen[0]?.host).toBe(`hook.example:${port}`)
+  })
+
   it('dials the pinned IP while presenting the ORIGINAL hostname', async () => {
     // the socket goes to 127.0.0.1 (the validated address) but the endpoint must still see the name
     // the tenant configured — virtual hosts and Host-routing endpoints depend on it
@@ -85,6 +106,22 @@ describe('deliverWebhook', () => {
 
   it('bounds a hanging endpoint — `timeout` alone does not abort a node request', async () => {
     await expect(deliverWebhook({ ...opts('/hang'), timeoutMs: 300 })).rejects.toThrow(/timeout/)
+  })
+
+  it('an endpoint that RSTs mid-response settles — it must not wedge the queue for every tenant', async () => {
+    // The response object emits that error, and `req.on('error')` never fires for it. With no
+    // listener the promise simply never settled: measured still pending at 30 s against a 1 s
+    // timeout, while BullMQ happily renewed the lock — so ONE endpoint stopped webhook delivery
+    // platform-wide, indefinitely.
+    await expect(deliverWebhook({ ...opts('/rst'), timeoutMs: 5_000 })).rejects.toThrow()
+  })
+
+  it('a DRIBBLING endpoint is cut off by the deadline — inactivity alone never fires', async () => {
+    // a byte every 100 ms resets the socket timer forever; the whole point of the option is that a
+    // sick endpoint cannot pin a worker slot
+    const started = Date.now()
+    await expect(deliverWebhook({ ...opts('/dribble'), timeoutMs: 400 })).rejects.toThrow(/timeout/)
+    expect(Date.now() - started).toBeLessThan(2_000)
   })
 
   it('a connection refused surfaces as an error, not a hang', async () => {

@@ -42,9 +42,24 @@ change WHICH machine answers.
 - **Re-validate after the request.** Too late: the request has already been made.
 - **Only allow-list hostnames.** Refuses a legitimate product feature (customer-chosen endpoints).
 
+## Scope: every caller, not just webhooks
+
+`assertPublicUrl` has two callers, and pinning only one would have left the guard's own docstring
+lying about the other. **Web push** (`notify/drivers.ts`) validates a BROWSER-SUPPLIED endpoint and
+then hands it to `web-push`, which does its own `https.request` — a second resolution, verbatim the
+same hole, on a request that carries a VAPID `Authorization` header from inside the prod network.
+It is pinned the same way, via an `https.Agent` whose `lookup` returns the validated address;
+`web-push` accepts an `agent` option, so no fork and no patch.
+
 ## Consequences
 
-- `deliverWebhook` replaces `fetch` on this one path. `fetchImpl` stays injectable for tests.
+- `deliverWebhook` replaces `fetch` on this one path. `deliverImpl` stays injectable for tests.
+- The delivery carries a real DEADLINE, not node's `timeout` (which is socket inactivity and is reset
+  by every byte — an endpoint dribbling one byte per 100 ms is never cut off). It also listens for
+  errors on the RESPONSE: a peer that sends headers and then destroys the socket emits there, and
+  `req.on('error')` never fires for it, so without that listener the promise never settles at all.
+  The webhook worker runs several deliveries concurrently for the same reason: one sick endpoint
+  must not be the whole queue's problem.
 - HTTP/2 is not used for webhook delivery. Irrelevant: one POST per event to arbitrary endpoints.
 - A host that legitimately round-robins across many public IPs is pinned to the one we validated for
   the duration of that request — which is exactly the intent.

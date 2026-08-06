@@ -10,11 +10,15 @@ import { isIP } from 'node:net'
  * normalizes to (e.g. [::ffff:169.254.169.254] → ::ffff:a9fe:a9fe) and NAT64.
  * No new dependency — node:dns + node:net only.
  *
- * The DNS-REBINDING GAP IS CLOSED (ADR-035). This used to hand the hostname to `fetch`, which
- * resolved it a SECOND time — and the attacker is a tenant admin who can set both the URL and its
- * DNS record, so `attacker.example` could answer publicly for this check and `169.254.169.254` for
- * the connection a millisecond later. `validated.ip` is now the address the delivery actually dials
- * (see webhook/deliver.ts); there is no second resolution, so there is no window to rebind in.
+ * The DNS-REBINDING GAP IS CLOSED FOR EVERY CALLER (ADR-035), and closing it is the CALLER's job:
+ * this function only reports what it validated. Handing the hostname on to something that resolves
+ * again — `fetch`, or a library that calls `https.request` for you — reopens it, because the
+ * attacker is a tenant admin who controls both the URL and its DNS record: `attacker.example`
+ * answers publicly for this check and `169.254.169.254` for the connection a millisecond later.
+ *
+ * Both callers therefore use `validated.ip`, not the hostname: webhook delivery dials it directly
+ * (webhook/deliver.ts), and web push hands it to an https.Agent whose `lookup` returns it
+ * (notify/drivers.ts). A THIRD caller must do the same or the guard is decoration.
  */
 export class UnsafeUrlError extends Error {
   constructor(reason: string) {

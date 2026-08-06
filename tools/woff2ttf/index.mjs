@@ -9,8 +9,13 @@
  * no dependency and no ADR.
  *
  * Run: node tools/woff2ttf/index.mjs <in.woff> <out.ttf>
- * Used once to generate apps/web/src/assets/inter-latin-ext.ttf.base64 — kept in the tree so the
- * asset is reproducible rather than a binary someone downloaded from somewhere.
+ *
+ * NOTHING IN THE BUILD USES THIS YET, and the docstring should not pretend otherwise. It exists
+ * because the PDF export's WinAnsi fallback (apps/web/src/lib/reports.ts) can only be replaced by a
+ * real embedded font, and this is the missing half of that: @fontsource ships woff, jsPDF takes TTF.
+ * The OTHER half — a single TTF covering both `latin` and `latin-ext`, which @fontsource splits into
+ * files that do not cover each other — is a licensed ~100 KB binary and a founder decision. The day
+ * that asset lands, embedding it is this script plus two jsPDF calls.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { inflateSync } from 'node:zlib'
@@ -72,5 +77,20 @@ order.forEach((idx, slot) => {
   offset += d.length + pad
 })
 
-writeFileSync(output, Buffer.concat([header, dir, ...body]))
+const ttf = Buffer.concat([header, dir, ...body])
+
+// `head.checkSumAdjustment` covers the WHOLE file, and repacking moved every table — the value
+// copied out of the WOFF is stale, and strict validators reject the font for it. Recompute: zero the
+// field, sum the file as big-endian u32s, store 0xB1B0AFBA − sum.
+const headIdx = tables.findIndex((t) => t.tag.toString('ascii') === 'head')
+if (headIdx !== -1) {
+  const slot = order.indexOf(headIdx)
+  const headOffset = ttf.readUInt32BE(12 + slot * 16 + 8)
+  ttf.writeUInt32BE(0, headOffset + 8)
+  let sum = 0
+  for (let i = 0; i + 4 <= ttf.length; i += 4) sum = (sum + ttf.readUInt32BE(i)) >>> 0
+  ttf.writeUInt32BE((0xb1b0afba - sum) >>> 0, headOffset + 8)
+}
+
+writeFileSync(output, ttf)
 console.log(`${input} → ${output}: ${numTables} tables, ${offset} bytes`)

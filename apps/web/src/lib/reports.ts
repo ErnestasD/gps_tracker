@@ -166,13 +166,18 @@ export function toPdfTable(columns: Column[], rows: Record<string, unknown>[], h
  * combining marks, so `ř` → `r`, `ő` → `o`, `ā` → `a` — a Czech or Hungarian customer loses their
  * diacritics exactly like a Lithuanian one instead of getting boxes. Anything still outside WinAnsi
  * after that becomes `?`, which at least reads as a missing character rather than a broken document.
- * The on-screen table and the UTF-8 CSV keep full Unicode; this is the PDF path only.
+ * The on-screen table and the UTF-8 CSV keep full Unicode; this is the PDF path only. Newlines and
+ * tabs pass through: jspdf-autotable treats `\n` as a cell line break, so mapping it to `?` would
+ * print a literal question mark in the middle of a free-text note.
  */
-const WINANSI_SAFE = /^[\u0020-\u007e\u00a0-\u00ff\u20ac\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u017d\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u017e\u0178]$/
+const WINANSI_SAFE = /^[\n\t\r\u0020-\u007e\u00a0-\u00ff\u20ac\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u017d\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u017e\u0178]$/
 
 export function pdfSafe(s: string): string {
   let out = ''
-  for (const ch of s) {
+  // NFC FIRST. Text arrives decomposed from macOS filenames and CSV device imports, and a standalone
+  // combining mark would otherwise reach the fallback as its own code point: `'Gerät'.normalize(
+  // 'NFD')` came out `Gera?t` — the exact German umlaut this function exists to protect.
+  for (const ch of s.normalize('NFC')) {
     // WinAnsi FIRST, on the ORIGINAL character. Stripping accents up front would have cost a German
     // customer their umlauts (`Gerät` → `Gerat`) to fix a Lithuanian one's — ä ö ü é are Latin-1 and
     // print perfectly; only what Helvetica cannot draw is worth degrading.
@@ -186,6 +191,9 @@ export function pdfSafe(s: string): string {
       out += stripped
       continue
     }
+    // a bare combining mark (one that NFC could not attach to anything) contributes nothing — it is
+    // an accent with no letter, and printing `?` for it would invent a character
+    if (/\p{Diacritic}/u.test(ch)) continue
     // letters NFD cannot decompose — a stroke or a bar is part of the glyph, not a mark
     out += HARD_FOLD[ch] ?? '?'
   }

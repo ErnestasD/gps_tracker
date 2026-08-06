@@ -110,6 +110,17 @@ export async function runWebhook(deps: WebhookWorkerDeps, job: Job<WebhookJob>):
   if (failures.length > 0) throw new Error(`webhook: ${failures.length} endpoint(s) failed for ${kind}`)
 }
 
+/**
+ * BullMQ's default concurrency is ONE, which made a single slow endpoint the whole queue's problem:
+ * every tenant's alerts queued behind it for as long as it took. Deliveries are pure I/O with a hard
+ * per-request deadline, so several in flight cost nothing and one sick endpoint now delays at most
+ * its own share.
+ */
+const WEBHOOK_CONCURRENCY = Number(process.env['WEBHOOK_CONCURRENCY']?.trim() || 8)
+
 export function startWebhookWorker(deps: WebhookWorkerDeps): Worker<WebhookJob> {
-  return new Worker<WebhookJob>(WEBHOOK_QUEUE, (job) => runWebhook(deps, job), { connection: deps.connection })
+  return new Worker<WebhookJob>(WEBHOOK_QUEUE, (job) => runWebhook(deps, job), {
+    connection: deps.connection,
+    concurrency: Math.min(32, Math.max(1, WEBHOOK_CONCURRENCY)),
+  })
 }

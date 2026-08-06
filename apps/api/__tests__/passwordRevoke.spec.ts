@@ -10,10 +10,12 @@ import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 
 /**
  * E03 review HIGH: a password change (self-service) must revoke EVERY refresh family of the user,
- * not just the current cookie's, so a stolen/other session cannot outlive the change. apps/api is
- * wired to call refreshTokens.revokeAllForUser when the repo exposes it; this spec proves the
- * wiring (all sessions die) AND documents the fallback (only the current family dies) that applies
- * until packages/db ships that method — see apps/api/src/auth/revoke.ts.
+ * not just the current cookie's, so a stolen or attacker-held session cannot outlive the change.
+ *
+ * This spec used to ALSO document a fallback in which only the current family died — the behaviour
+ * while `revokeAllForUser` was optional on the repo interface. It is required now, and the case it
+ * documented was the security hole: the one session a password change is meant to kill is the one
+ * the owner is not sitting in front of.
  */
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex')
 
@@ -26,9 +28,7 @@ function makeUser(): AuthUserRow {
   return { id: 'u1', tenantId: 't1', accountId: null, email: 'u@orbetra.test', passwordHash: currentHash, role: 'tsp_admin', locale: 'en', plan: 'tsp_grow', subscriptionStatus: null, currentPeriodEnd: null, stripeSubscriptionId: null, emailVerifiedAt: new Date() }
 }
 
-/** `withRevokeAll: false` models a repo that does NOT implement the method — kept only to prove the
- *  route surfaces that as an error rather than silently leaving sessions alive. */
-function makeDeps(withRevokeAll: boolean): { deps: AuthRouteDeps; rows: Map<string, Row>; revokeAllSpy: ReturnType<typeof vi.fn>; seed: (raw: string, familyId: string) => void } {
+function makeDeps(): { deps: AuthRouteDeps; rows: Map<string, Row>; revokeAllSpy: ReturnType<typeof vi.fn>; seed: (raw: string, familyId: string) => void } {
   const user = makeUser()
   const rows = new Map<string, Row>()
   const epoch: { at: Date | null } = { at: null } // User.sessionsRevokedAt
@@ -65,16 +65,12 @@ function makeDeps(withRevokeAll: boolean): { deps: AuthRouteDeps; rows: Map<stri
       rows.set(successor.tokenHash, { familyId: row.familyId, userId: row.userId, tokenHash: successor.tokenHash, rotatedAt: null, revokedAt: null, expiresAt: successor.expiresAt, createdAt: new Date() })
       return Promise.resolve({ familyId: row.familyId, userId: row.userId })
     },
-    ...(withRevokeAll
-      ? {
-          revokeAllForUser: (userId: string, now: Date) => {
-            revokeAllSpy(userId)
-            epoch.at = now // the real repo stamps User.sessionsRevokedAt in the SAME transaction
-            for (const r of rows.values()) if (r.userId === userId && r.revokedAt === null) r.revokedAt = now
-            return Promise.resolve()
-          },
-        }
-      : {}),
+    revokeAllForUser: (userId: string, now: Date) => {
+      revokeAllSpy(userId)
+      epoch.at = now // the real repo stamps User.sessionsRevokedAt in the SAME transaction
+      for (const r of rows.values()) if (r.userId === userId && r.revokedAt === null) r.revokedAt = now
+      return Promise.resolve()
+    },
   }
   const db = {
     users: {
@@ -117,7 +113,7 @@ beforeAll(async () => {
 
 describe('password change revokes refresh families (review HIGH)', () => {
   it('with revokeAllForUser: EVERY other session can no longer refresh', async () => {
-    const { deps, revokeAllSpy, seed } = makeDeps(true)
+    const { deps, revokeAllSpy, seed } = makeDeps()
     const app = createAuthRoutes(deps, () => '127.0.0.1')
     seed('token-a', 'famA') // this session (cookie)
     seed('token-b', 'famB') // another logged-in session
@@ -138,7 +134,7 @@ describe('password change revokes refresh families (review HIGH)', () => {
     // packages/db ships revokeAllForUser". The method has existed for a while; only the optional
     // call site was left behind, so a password change on a compromised account left the ATTACKER's
     // session alive, which is the one case the whole eviction exists for.
-    const { deps, seed, revokeAllSpy } = makeDeps(true)
+    const { deps, seed, revokeAllSpy } = makeDeps()
     const app = createAuthRoutes(deps, () => '127.0.0.1')
     seed('token-a', 'famA') // the session doing the change
     seed('token-b', 'famB') // another device — or the attacker
@@ -150,13 +146,28 @@ describe('password change revokes refresh families (review HIGH)', () => {
     expect((await refresh(app, 'token-b')).status).toBe(401)
   })
 
+  it('a REVOKE failure does not turn a successful password change into a 500', async () => {
+    // The write commits first, so a repo rejection (the 40P01 deadlock `rotate`'s own docstring
+    // says is possible) told the user their change failed for a password that HAD changed — and
+    // because the two revokes were sequential awaits, the fallback family revoke never ran either.
+    const { deps, seed } = makeDeps()
+    const failing = { ...deps.db.refreshTokens, revokeAllForUser: () => Promise.reject(new Error('deadlock detected')) }
+    const app = createAuthRoutes({ ...deps, db: { ...deps.db, refreshTokens: failing } }, () => '127.0.0.1')
+    seed('token-a', 'famA')
+    const token = await mintTestToken({ userId: 'u1', tenantId: 't1', role: 'tsp_admin' })
+
+    expect((await changePassword(app, token, 'token-a')).status).toBe(200)
+    // …and the family the caller DID hold is still revoked — the two are attempted independently
+    expect((await refresh(app, 'token-a')).status).toBe(401)
+  })
+
   it('a refresh IN FLIGHT during the revoke does not resurrect the family (revocation fence)', async () => {
     // REGRESSION (audit high): claim → read user → insert are three separate statements, and every
     // eviction path is an `updateMany WHERE revokedAt IS NULL` — which cannot match a row that did
     // not exist when it ran. So a refresh racing a password reset wrote a fresh UNREVOKED row and
     // the family rotated on for the full 14-day TTL; the reset evicted nobody. The eviction is
     // fired here from findByIdForAuth, which is exactly the gap between the claim and the insert.
-    const { deps, rows, seed } = makeDeps(true)
+    const { deps, rows, seed } = makeDeps()
     const app = createAuthRoutes(deps, () => '127.0.0.1')
     seed('token-a', 'famA')
 
@@ -171,7 +182,7 @@ describe('password change revokes refresh families (review HIGH)', () => {
   })
 
   it('a wrong current password is rejected and revokes nothing', async () => {
-    const { deps, revokeAllSpy, seed } = makeDeps(true)
+    const { deps, revokeAllSpy, seed } = makeDeps()
     const app = createAuthRoutes(deps, () => '127.0.0.1')
     seed('token-a', 'famA')
     const token = await mintTestToken({ userId: 'u1', tenantId: 't1', role: 'tsp_admin' })
