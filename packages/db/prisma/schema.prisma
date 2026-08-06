@@ -124,6 +124,10 @@ model Tenant {
   /// daily sweep is idempotent on this — a job that runs twice, or a worker restarted mid-sweep,
   /// must not mail the same customer twice nor skip the final warning before cutting them off.
   lapseNoticeStage         Int       @default(0)
+  /// The `lapsedAt` the stage above belongs to. A stage recorded against a DIFFERENT lapse counts as
+  /// zero, which is what stops a customer who paid before being cut off from being suspended with no
+  /// warnings the next time they lapse.
+  lapseNoticeFor           DateTime? @db.Timestamptz()
   createdAt             DateTime   @default(now()) @db.Timestamptz()
 
   accounts            Account[]
@@ -135,8 +139,6 @@ model Tenant {
   referredByAffiliate Affiliate?         @relation("AffiliateReferrals", fields: [referredByAffiliateId], references: [id])
   commissions         Commission[]       @relation("TenantCommissions")
   usageReports        UsageReport[]
-
-  @@index([suspendedAt])
 
   @@map("tenants")
 }

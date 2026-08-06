@@ -78,21 +78,42 @@ export function noticeDue(pastGrace: number, sentStage: number): number | null {
 }
 
 /**
- * Past grace and worth acting on. A lapse with no known date counts: an unknown date means it has
- * been lapsed at least since the row was written, and treating it as recent would hide the oldest
- * cases — exactly the ones worth acting on.
+ * Past grace and worth a human looking at — the `billing_lapsed_actionable` gauge, not the ladder.
+ *
+ * A lapse with NO KNOWN DATE counts here and is deliberately skipped by the ladder below: an unknown
+ * date means it has been lapsed at least since the row was written, so it is exactly the kind of
+ * case worth surfacing — but it is not a date the automation may cut anyone off from. The gauge says
+ * "look at these"; only a tenant with a real lapse date is ever acted on.
  */
 export function isActionable(t: LapsedTenant, nowMs: number, graceDays: number): boolean {
   const past = daysPastGrace(t, nowMs, graceDays)
   return past === null || past >= 0
 }
 
-/** `BILLING_GRACE_DAYS`, clamped to 0…365. */
+/**
+ * `BILLING_GRACE_DAYS`, clamped to 0…365.
+ *
+ * EMPTY is absent, not zero. `Number('')` is 0 and finite, so the clamp accepted it — and an operator
+ * "unsetting" the variable the usual way (`BILLING_GRACE_DAYS=` in .env, or compose's `${VAR:-}`)
+ * would have given every already-lapsed tenant one email today and taken their fleet tomorrow.
+ */
 export function graceDaysFromEnv(env: NodeJS.ProcessEnv = process.env): number {
-  const n = Number(env['BILLING_GRACE_DAYS'])
+  const raw = env['BILLING_GRACE_DAYS']?.trim()
+  if (raw === undefined || raw === '') return DEFAULT_GRACE_DAYS
+  const n = Number(raw)
   if (!Number.isFinite(n)) return DEFAULT_GRACE_DAYS
   return Math.min(365, Math.max(0, Math.floor(n)))
 }
+
+/**
+ * How many tenants ONE run may cut off. Not a throughput limit — a blast radius.
+ *
+ * The abandoned-signup prune batches because "a predicate bug that ran unbounded would take the
+ * platform with it", and that only deletes debris. This suspends real customers' fleets, so it gets
+ * the same protection: whatever a bad billing state, a clock skew or a bad grace value does, it does
+ * to at most this many customers before someone sees the alert. The rest wait for tomorrow.
+ */
+export const MAX_SUSPENSIONS_PER_RUN = 50
 
 export interface SweepDeps {
   db: Db
@@ -166,7 +187,7 @@ export async function runLapseSweep(deps: SweepDeps, nowMs: number, graceDays: n
           billingUrl: `${base}/app/billing`,
           daysLeft: SUSPEND_AFTER_DAYS - (due - 1),
         })
-        await deps.db.tenants.markLapseNotice(t.tenantId, due)
+        await deps.db.tenants.markLapseNotice(t.tenantId, due, t.lapsedAt)
         result.warned++
       }
 
@@ -174,12 +195,21 @@ export async function runLapseSweep(deps: SweepDeps, nowMs: number, graceDays: n
       //    them it happened. `t.noticeStage` is the value BEFORE this run, so a tenant that reached
       //    stage 3 above waits one more day: the final notice must land before the feed stops.
       const readyToSuspend = past >= SUSPEND_AFTER_DAYS && t.noticeStage >= SUSPEND_AFTER_DAYS
-      if (readyToSuspend && t.suspendedAt === null && deps.redis !== undefined && canMail) {
-        const devices = await deps.db.tenants.registryDevicesFor(t.tenantId)
+      // ALREADY suspended and still lapsed ⇒ RE-ASSERT the teardown. `suspend()` commits before the
+      // Redis walk, so a blip on device 3 of 40 used to leave the flag set, the customer told the
+      // feed had stopped, and devices 3..N still ingesting — with the guard below blocking any retry
+      // forever and the counter never incrementing, so the one suspension that went wrong was the
+      // one nobody could see. The teardown is idempotent, so re-asserting costs nothing.
+      if (t.suspendedAt !== null && deps.redis !== undefined) {
+        await suspendTenantDevices(deps.redis, await deps.db.tenants.registryDevicesFor(t.tenantId))
+      } else if (readyToSuspend && deps.redis !== undefined && canMail && result.suspended < MAX_SUSPENSIONS_PER_RUN) {
+        // COUNT from the DB write, not the Redis one: the flag is what every other pass keys on, so
+        // it is the honest definition of "this tenant was cut off today".
         if (await deps.db.tenants.suspend(t.tenantId, new Date(nowMs))) {
-          await suspendTenantDevices(deps.redis, devices)
           result.suspended++
+          const devices = await deps.db.tenants.registryDevicesFor(t.tenantId)
           console.warn('billing: SUSPENDED a tenant for non-payment', JSON.stringify({ tenantId: t.tenantId, name: t.name, devices: devices.length }))
+          await suspendTenantDevices(deps.redis, devices)
           if (t.contactEmail !== null) {
             await deps.mail!.enqueueLapseEmail({ kind: 'lapse', email: t.contactEmail, tenantId: t.tenantId, locale: t.contactLocale, billingUrl: `${base}/app/billing`, daysLeft: 0 })
           }
@@ -189,6 +219,11 @@ export async function runLapseSweep(deps: SweepDeps, nowMs: number, graceDays: n
       // one tenant's failure must not stop the ladder for the rest
       console.error('billing: lapse ladder failed for tenant', t.tenantId, err instanceof Error ? err.message : String(err))
     }
+  }
+  if (result.suspended >= MAX_SUSPENSIONS_PER_RUN) {
+    // never silently truncate a destructive sweep — the number NOT acted on is the number that says
+    // whether this was a normal day or a billing-state accident
+    console.error('billing: suspension cap reached — remaining tenants deferred to the next run', MAX_SUSPENSIONS_PER_RUN)
   }
   return result
 }

@@ -104,7 +104,7 @@ export function renderLapseEmail(opts: LapseEmailOpts): { subject: string; text:
     emailNote(s.keeps),
     emailFallbackLink(s.fallback, opts.billingUrl, accent),
   ].join('')
-  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject, bodyHtml, preheader: intro })
+  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject, bodyHtml, preheader: intro, locale: opts.locale })
   const text = [heading, '', intro, '', `${s.button}: ${opts.billingUrl}`, '', s.keeps, '', `— ${opts.brand}`].join('\n')
   return { subject, text, html }
 }

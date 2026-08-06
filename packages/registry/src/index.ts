@@ -76,7 +76,21 @@ export async function syncDeviceConfig(redis: Redis, id: bigint, presenceRules: 
 const HDEL_IF_MINE = `if redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2] then return redis.call('HDEL', KEYS[1], ARGV[1]) end
 return 0`
 
-export async function deactivateDevice(redis: Redis, d: RegistryRef): Promise<void> {
+export interface DeactivateOptions {
+  /**
+   * Keep `device:{id}:last` — the device's most recent fix.
+   *
+   * RETIREMENT drops it: the device is gone and its last position should not linger on a map. A
+   * billing SUSPENSION must not, because nothing can rebuild that key: `activateDevice` never writes
+   * it and neither does the boot rehydrate — only the worker's LiveState does, on the next incoming
+   * fix. Dropping it would mean a customer who pays gets their devices back and still sees a blank
+   * map until every vehicle happens to report, which for a parked van on an ignition-triggered
+   * profile is days — while the email we just sent them promises "within a minute".
+   */
+  keepLastFix?: boolean
+}
+
+export async function deactivateDevice(redis: Redis, d: RegistryRef, opts: DeactivateOptions = {}): Promise<void> {
   const id = d.id.toString()
   // The index entry is keyed by tenant, and the caller ALWAYS knows the tenant — it just read the
   // device row through a scoped repo. Deriving it from `device:tenant` instead would skip the SREM
@@ -84,14 +98,9 @@ export async function deactivateDevice(redis: Redis, d: RegistryRef): Promise<vo
   // before a rehydrate), stranding the member permanently: the index only ever grows, and nothing
   // else prunes it.
   await redis.eval(HDEL_IF_MINE, 1, 'registry:imei', d.imei, id)
-  await redis
-    .multi()
-    .hdel('device:tenant', id)
-    .hdel('device:account', id)
-    .hdel('device:config', id)
-    .del(`device:${id}:last`)
-    .srem(tenantDevicesKey(d.tenantId), id)
-    .exec()
+  const m = redis.multi().hdel('device:tenant', id).hdel('device:account', id).hdel('device:config', id)
+  if (opts.keepLastFix !== true) m.del(`device:${id}:last`)
+  await m.srem(tenantDevicesKey(d.tenantId), id).exec()
 }
 
 /**
@@ -99,15 +108,17 @@ export async function deactivateDevice(redis: Redis, d: RegistryRef): Promise<vo
  *
  * The teardown is per device and reuses `deactivateDevice`, so the delete-if-mine guard applies to
  * every one of them — a suspension must never steal the `registry:imei` mapping of a device that
- * some OTHER tenant has since reclaimed. Returns how many were torn down, which is the number the
- * operator sees in the log and the metric.
+ * some OTHER tenant has since reclaimed. Returns how many were handed in, which is what the log
+ * reports; the METRIC counts tenants, from the durable flag, not from this walk.
  *
  * What this deliberately does NOT do: touch a single row of the tenant's data. Positions, trips,
  * events and reports all stay, the customer can still sign in and read them, and paying restores the
  * feed within one webhook. Suspension stops the meter running; it is not a deletion.
  */
 export async function suspendTenantDevices(redis: Redis, devices: readonly RegistryRef[]): Promise<number> {
-  for (const d of devices) await deactivateDevice(redis, d)
+  // `keepLastFix` — see DeactivateOptions. A suspension is reversible and must LOOK reversible: the
+  // last known position is what makes the map non-empty the second the fleet is restored.
+  for (const d of devices) await deactivateDevice(redis, d, { keepLastFix: true })
   return devices.length
 }
 

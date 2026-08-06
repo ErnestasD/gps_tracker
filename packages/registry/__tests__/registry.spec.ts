@@ -26,11 +26,15 @@ function fakeRedis(hashes: Record<string, Record<string, string>> = {}) {
   const evals: { keys: string[]; args: string[] }[] = []
   const redis = {
     hget: (key: string, field: string) => Promise.resolve(hashes[key]?.[field] ?? null),
-    // the delete-if-mine Lua, faithfully: only removes when the mapping still points at this device
-    eval: (_script: string, _n: number, key: string, field: string, expected: string) => {
+    // A tiny Lua interpreter for the ONE script this package ships, so the test exercises the SCRIPT
+    // rather than a re-implementation of it: swap `HDEL_IF_MINE` for a blind HDEL and this fake
+    // stops guarding, which is the whole point. (The end-to-end guard also has real-Redis coverage
+    // in apps/api/__tests__/devices.spec.ts; this is the unit that owns the string.)
+    eval: (script: string, _n: number, key: string, field: string, expected: string) => {
       evals.push({ keys: [key], args: [field, expected] })
+      const guarded = /HGET[^)]*\)\s*==\s*ARGV\[2\]/.test(script)
       const h = hashes[key]
-      if (h?.[field] === expected) delete h[field]
+      if (h !== undefined && (!guarded || h[field] === expected)) delete h[field]
       return Promise.resolve(1)
     },
     multi: () => chain,
@@ -55,6 +59,18 @@ describe('activate / deactivate', () => {
     await activateDevice(redis, dev(7n, '860000000000001', 'new-tenant'))
     expect(sets.get(tenantDevicesKey('new-tenant'))?.has('7')).toBe(true)
     expect(sets.get(tenantDevicesKey('old-tenant'))?.has('7') ?? false).toBe(false)
+  })
+
+  it('teardown keeps `device:{id}:last` when asked — a suspension must look reversible', async () => {
+    // retirement drops the last fix; a billing suspension must not, because NOTHING can rebuild it —
+    // not activateDevice, not the boot rehydrate, only the next incoming position. Dropping it means
+    // a customer who pays sees a blank map until every parked vehicle happens to report.
+    const { redis, ops } = fakeRedis()
+    await deactivateDevice(redis, dev(7n, 'a'), { keepLastFix: true })
+    expect(ops.some((o) => o.startsWith('del device:7:last'))).toBe(false)
+    const second = fakeRedis()
+    await deactivateDevice(second.redis, dev(7n, 'a'))
+    expect(second.ops.some((o) => o.startsWith('del device:7:last'))).toBe(true) // retirement still does
   })
 
   it('teardown removes the imei mapping ONLY while it still points at this device', async () => {

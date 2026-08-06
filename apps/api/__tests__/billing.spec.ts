@@ -35,6 +35,9 @@ let db: Db
 let databaseUrl: string
 let port: number
 let portOff: number
+/** device counts handed to the registry rebuild, and a switch to make that rebuild fail. */
+const restored: number[] = []
+let restoreFails = false
 let httpServer: ReturnType<typeof createServer>
 let httpServerOff: ReturnType<typeof createServer>
 
@@ -118,8 +121,20 @@ beforeAll(async () => {
     lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
   }
-  const app = createApp({ ...common, stripe: fakeStripe, onWebhookUnmatched: (r) => unmatched.push(r) })
+  const app = createApp({
+    ...common,
+    stripe: fakeStripe,
+    onWebhookUnmatched: (r) => unmatched.push(r),
+    // observed, and failable on demand, so the ORDER of the registry write vs the suspension flag
+    // can be pinned — that order is the whole substance of the restore path
+    restoreDevices: (devices) => {
+      if (restoreFails) return Promise.reject(new Error('redis down'))
+      restored.push(devices.length)
+      return Promise.resolve()
+    },
+  })
   const appOff = createApp({ ...common }) // no stripe → not configured
+  void restored
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
   httpServerOff = serve({ fetch: appOff.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
@@ -281,6 +296,45 @@ describe('billing lifecycle (ADR-024)', () => {
     // A's cancel (t=200) now arrives late: older than B's t=300 → the monotonic guard drops it
     await post(forSub('sub_A', 'evt_ro_a2', 'customer.subscription.deleted', 'canceled', 200))
     expect((await view()).active).toBe(true) // NOT clobbered — B stays active (would fail a blanket different-sub block)
+  })
+
+  it('a payment RESTORES a suspended tenant, and the registry is rebuilt BEFORE the flag comes off', async () => {
+    // the single most customer-visible claim in the lapse ladder — "paying restores the feed within
+    // one webhook" — had no test. The ORDER is the substance: clearing the flag first and then
+    // failing the Redis write leaves the tenant marked not-suspended with a dark fleet, invisible to
+    // both the restore pass (not suspended) and the ladder (they paid), until an API restart.
+    const { token, cus } = await freshTenant('Restore')
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_susp', cus, 'customer.subscription.deleted', 'canceled', 100), { 'stripe-signature': 'valid' })
+    const tenantId = (await db.tenants.tenantIdForCustomer(cus))!
+    await db.tenants.suspend(tenantId, new Date())
+    expect((await db.tenants.isSuspended(tenantId))).toBe(true)
+
+    restored.length = 0
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_paid', cus, 'customer.subscription.updated', 'active', 200), { 'stripe-signature': 'valid' })
+    expect(await db.tenants.isSuspended(tenantId)).toBe(false)
+    expect(restored).toHaveLength(1) // the registry was rebuilt
+    const view = (await (await req(port, '/v1/billing', token)).json()) as BillingView & { suspendedAt: string | null }
+    expect(view.suspendedAt).toBeNull() // …and the banner is gone
+  })
+
+  it('a FAILED registry rebuild leaves the tenant marked suspended — recoverable, not stranded', async () => {
+    const { token, cus } = await freshTenant('RestoreFail')
+    await req(port, '/v1/billing/checkout', token, 'POST')
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_sf1', cus, 'customer.subscription.deleted', 'canceled', 100), { 'stripe-signature': 'valid' })
+    const tenantId = (await db.tenants.tenantIdForCustomer(cus))!
+    await db.tenants.suspend(tenantId, new Date())
+    restoreFails = true
+    try {
+      const res = await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_sf2', cus, 'customer.subscription.updated', 'active', 200), { 'stripe-signature': 'valid' })
+      expect(res.status).toBe(200) // Stripe is still acked — a retry cannot fix Redis
+      // the flag SURVIVES, so tomorrow's sweep finishes the job; the opposite order would have left
+      // this tenant permanently dark with nothing looking at it
+      expect(await db.tenants.isSuspended(tenantId)).toBe(true)
+    } finally {
+      restoreFails = false
+    }
+    void token
   })
 
   it('webhook state is per-tenant — one customer event never touches another tenant', async () => {

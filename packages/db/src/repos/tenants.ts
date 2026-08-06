@@ -165,7 +165,8 @@ export interface LapsedTenant {
   /** already suspended? Suspended tenants stay in this list so the sweep can UN-suspend one whose
    *  payment landed while the webhook path was down. */
   suspendedAt: Date | null
-  /** which lapse notice has already been sent: 0 none, 1 grace-end, 2 +1 day, 3 +2 days (final) */
+  /** which lapse notice has already been sent IN THIS EPISODE: 0 none, 1 grace-end, 2 +1 day, 3 +2
+   *  days (final). A stage recorded against a DIFFERENT `lapsedAt` reads as 0 — see `lapseNoticeFor`. */
   noticeStage: number
   /** the tenant admin to write to, and in which language. Null when the tenant somehow has no user. */
   contactEmail: string | null
@@ -252,13 +253,17 @@ export interface TenantRepo {
   /** The tenant behind a Stripe customer id — the restore-on-payment path, which has the customer
    *  id from the webhook and nothing else. */
   tenantIdForCustomer(stripeCustomerId: string): Promise<string | null>
+  /** Is this tenant suspended right now? The restore paths check BEFORE touching Redis, so the flag
+   *  is cleared only after the registry is actually back. */
+  isSuspended(tenantId: string): Promise<boolean>
   /** Tenants currently SUSPENDED. The restore pass reads this rather than filtering the lapsed
    *  list, because a tenant that has paid is by definition absent from that list. */
   listSuspended(): Promise<{ tenantId: string; suspendedAt: Date }[]>
   /** Every ACTIVE device of one tenant, in the registry's shape — the suspend/restore payload. */
   registryDevicesFor(tenantId: string): Promise<TenantRegistryDevice[]>
-  /** Record that a lapse notice went out, so the daily sweep never repeats or skips one. */
-  markLapseNotice(tenantId: string, stage: number): Promise<void>
+  /** Record that a lapse notice went out, against the lapse it belongs to, so the daily sweep never
+   *  repeats or skips one — and so a LATER, unrelated lapse starts the ladder from the beginning. */
+  markLapseNotice(tenantId: string, stage: number, forLapse: Date | null): Promise<void>
   /** Mark a tenant suspended (the registry teardown is the caller's — this is the durable record).
    *  Conditional: returns false when it was ALREADY suspended, so a re-run neither re-mails nor
    *  re-logs, and the count an operator sees is the number of tenants actually cut off. */
@@ -276,6 +281,10 @@ export interface TenantRepo {
  * - `no_tenant`— no row carries that `stripeCustomerId`: someone is paying and has no plan.
  */
 export type SubscriptionApplyResult = 'applied' | 'stale' | 'no_tenant'
+
+/** Same lapse episode? Both null counts as the same (an unknown date is not a new lapse). */
+const sameEpisode = (recordedFor: Date | null, lapsedAt: Date | null): boolean =>
+  recordedFor === null || lapsedAt === null ? recordedFor === lapsedAt : recordedFor.getTime() === lapsedAt.getTime()
 
 export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): TenantRepo {
   return {
@@ -532,6 +541,10 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           // resolved a plan for this event; a missing/unmapped plan leaves the existing tier intact
           ...(data.plan != null ? { plan: data.plan } : {}),
           currentPeriodEnd: data.currentPeriodEnd,
+          // a LIVE subscription ends the lapse episode outright: clear the ladder here as well as in
+          // `unsuspend`, because the majority path is a customer paying BEFORE they are cut off,
+          // which never reaches unsuspend at all
+          ...(incomingLive ? { lapseNoticeStage: 0, lapseNoticeFor: null } : {}),
           lastBillingEventAt: eventAt,
           lastBillingEventId: eventId,
           lastBillingEventRank: rank,
@@ -580,6 +593,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       }))
     },
     tenantIdForCustomer: async (stripeCustomerId) => (await prisma.tenant.findFirst({ where: { stripeCustomerId }, select: { id: true } }))?.id ?? null,
+    isSuspended: async (tenantId) => (await prisma.tenant.findUnique({ where: { id: tenantId }, select: { suspendedAt: true } }))?.suspendedAt != null,
     listSuspended: async () => {
       const rows = await prisma.tenant.findMany({ where: { suspendedAt: { not: null } }, select: { id: true, suspendedAt: true } })
       return rows.map((r) => ({ tenantId: r.id, suspendedAt: r.suspendedAt! }))
@@ -602,8 +616,13 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         odometerSource: r.odometerSource,
       }))
     },
-    markLapseNotice: async (tenantId, stage) => {
-      await prisma.tenant.update({ where: { id: tenantId }, data: { lapseNoticeStage: stage } })
+    markLapseNotice: async (tenantId, stage, forLapse) => {
+      // MONOTONIC within the episode: two sweeps that both read stage 0 must not both mail notice 1.
+      // A different episode always writes (the `OR` below), which is how the ladder restarts.
+      await prisma.tenant.updateMany({
+        where: { id: tenantId, OR: [{ lapseNoticeFor: forLapse === null ? undefined : { not: forLapse } }, { lapseNoticeStage: { lt: stage } }] },
+        data: { lapseNoticeStage: stage, lapseNoticeFor: forLapse },
+      })
     },
     suspend: async (tenantId, at) => {
       // CONDITIONAL on `suspendedAt: null`, so two workers (or a retry) cannot both count the same
@@ -612,9 +631,10 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       return r.count > 0
     },
     unsuspend: async (tenantId) => {
-      // the notice ladder resets with the suspension: a customer who pays, lapses again months later
-      // and gets no warnings would be cut off without notice the second time
-      const r = await prisma.tenant.updateMany({ where: { id: tenantId, suspendedAt: { not: null } }, data: { suspendedAt: null, lapseNoticeStage: 0 } })
+      // the ladder resets with the suspension too. This is belt to `lapseNoticeFor`'s braces: that
+      // field already makes a stale stage read as zero, but leaving a spent ladder on a paying
+      // tenant's row is state nobody would expect to find there.
+      const r = await prisma.tenant.updateMany({ where: { id: tenantId, suspendedAt: { not: null } }, data: { suspendedAt: null, lapseNoticeStage: 0, lapseNoticeFor: null } })
       return r.count > 0
     },
     pruneUnverifiedSignups: async (cutoff, limit = 500) => {
@@ -683,6 +703,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           stripeSubscriptionId: true,
           suspendedAt: true,
           lapseNoticeStage: true,
+          lapseNoticeFor: true,
           // the tenant ADMIN is who a billing notice belongs to — not an account manager or a
           // viewer, who can do nothing about it. Oldest first: on a self-serve signup that is the
           // person who created the tenant.
@@ -703,7 +724,10 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           reason: trialExpired ? ('trial_expired' as const) : ('subscription_lapsed' as const),
           activeDevices: byTenant.get(r.id) ?? 0,
           suspendedAt: r.suspendedAt,
-          noticeStage: r.lapseNoticeStage,
+          // the stage counts ONLY when it was recorded against THIS lapse. A customer who walked the
+          // whole ladder and then paid on day +2 — before suspension — would otherwise keep stage 3
+          // forever and be cut off on their next lapse with no warnings at all.
+          noticeStage: sameEpisode(r.lapseNoticeFor, trialExpired ? r.currentPeriodEnd : r.lastBillingEventAt) ? r.lapseNoticeStage : 0,
           contactEmail: r.users[0]?.email ?? null,
           contactLocale: r.users[0]?.locale ?? 'en',
         }

@@ -152,3 +152,38 @@ street than as coordinates) or shut the container down. Right now we pay for it 
 
 **My recommendation:** wire it up. It is a small change and it is the single biggest perceived-quality
 difference between us and a hobby tracker.
+
+---
+
+## 9. Lapse enforcement — DECIDED 2026-08-06
+
+**The question:** the zero-entitlement floor (audit MED #22) was enforced only when a device is
+CREATED, so a canceled subscription or an expired trial changed exactly one thing the customer could
+perceive — "you cannot add another device" — while the fleet kept tracking at our storage cost,
+indefinitely, for free. PR #162 made that set countable and deliberately stopped there, because
+cutting a customer off is a policy decision, not a sweep's.
+
+**The founder's decision (verbatim, 2026-08-06):** *"grace periodas, ispejimas kai baigiasi, 1 ir 2
+dienos po, jei neapmoketa 3 diena isjungiam."*
+
+**As implemented** (`apps/worker/src/jobs/lapseSweepWorker.ts`):
+
+| day | action |
+| --- | --- |
+| lapse | grace window starts (`BILLING_GRACE_DAYS`, default 14) |
+| grace ends | notice 1 — "your fleet stops reporting in 3 days" |
+| +1 | notice 2 |
+| +2 | notice 3, final |
+| +3 | **SUSPEND** — the tenant's devices leave the ingest registry |
+
+**What suspension is, and is not.** It stops NEW data being accepted. It deletes nothing: the
+customer signs in, reads and exports their entire history, and a payment restores the feed within one
+webhook (the daily sweep also restores, as a safety net). The billing page shows a banner saying
+exactly that, because "no devices are reporting" and "we stopped accepting their data" look identical
+on screen and could not be more different to the person reading them.
+
+**Refusals built in, deliberately.** No mail transport, no `APP_BASE_URL` or no Redis and the sweep
+degrades to counting — nobody is cut off. A tenant that never received the final warning is not cut
+off, however late we noticed it. At most `MAX_SUSPENSIONS_PER_RUN` (50) tenants can be suspended in
+one run, so a bad billing state, a clock skew or a wrong grace value costs at most 50 customers
+before the `BillingTenantSuspended` alert fires.

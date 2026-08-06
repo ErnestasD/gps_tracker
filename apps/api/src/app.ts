@@ -67,6 +67,8 @@ export interface ApiDeps extends WsDeps {
   onVerifyMailUnconfigured?: () => void
   /** a suspended tenant paid and its fleet was restored on the spot (audit MED #22). */
   onTenantRestored?: () => void
+  /** override the registry rebuild on restore (tests); production builds it from `redis`. */
+  restoreDevices?: (devices: readonly { id: bigint; imei: string; tenantId: string; accountId: string; presenceRules: unknown; odometerSource: string }[]) => Promise<void>
   /** a login presented the right password for an unverified account — invisible in the response. */
   onUnverifiedLogin?: () => void
   /** a public signup hit an address that already has an account. Since the response no longer says
@@ -407,12 +409,16 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     ...(deps.onWebhookUnmatched !== undefined ? { onWebhookUnmatched: deps.onWebhookUnmatched } : {}),
     // RESTORE ON PAYMENT (audit MED #22): the api owns the registry write path, so a suspended
     // tenant's fleet comes back within one webhook rather than waiting for tomorrow's sweep.
-    restoreDevices: async (devices) => {
-      await restoreTenantDevices(
-        deps.redis,
-        devices.map((d) => ({ id: d.id, imei: d.imei, tenantId: d.tenantId, accountId: d.accountId, config: { presenceRules: d.presenceRules, odometerSource: d.odometerSource } })),
-      )
-    },
+    // overridable so the most dangerous path in this route — "paying restores the feed" — can be
+    // tested for its ORDER (registry first, flag second) without a Redis fault injector
+    restoreDevices:
+      deps.restoreDevices ??
+      (async (devices) => {
+        await restoreTenantDevices(
+          deps.redis,
+          devices.map((d) => ({ id: d.id, imei: d.imei, tenantId: d.tenantId, accountId: d.accountId, config: { presenceRules: d.presenceRules, odometerSource: d.odometerSource } })),
+        )
+      }),
     ...(deps.onTenantRestored !== undefined ? { onTenantRestored: deps.onTenantRestored } : {}),
   })
 

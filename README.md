@@ -34,7 +34,8 @@ in the commit message, and any staged `TODO(VERIFY-WIKI)` marker blocks the comm
 | `apps/web` | React SPA (Vite, MapLibre, TanStack, shadcn) |
 | `packages/codec` | Teltonika parser wrapper + AVL dictionaries + golden fixtures |
 | `packages/db` | Prisma (relational) + raw SQL layer for positions + scoped repositories |
-| `packages/shared` | zod schemas — single source of types |
+| `packages/shared` | zod schemas — single source of types; also the branded transactional email shell |
+| `packages/registry` | the Redis device-registry contract (`registry:imei`, `device:tenant`/`account`/`config`, the per-tenant index). ONE owner, two writers: device CRUD in the api, billing suspension in the worker |
 | `tools/simulator` | device emulator (scenarios per PROJECT_PLAN §7.2) |
 | `apps/site` | public marketing site (Lovable design → static Vite SPA, W9-S1) |
 | `tools/replay` | real-log replayer for load tests |
@@ -88,7 +89,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `PG_ACQUIRE_TIMEOUT_MS` | apps/api, apps/worker | ms to wait for a free connection before the acquire FAILS, default `10000`. Unset, node-postgres queues an acquire forever with no error and no metric — pool exhaustion looked exactly like a slow database |
 | `PG_STATEMENT_TIMEOUT_MS` | apps/api, apps/worker | server-side `statement_timeout`, default `120000`; `0` disables it. Stops one pathological query pinning a pooled connection indefinitely. Watch `pg_pool_connections{state="waiting"}` |
 | `BILLING_GRACE_DAYS` | apps/worker | days after a subscription lapses (or a trial expires) before the notice ladder starts; default `14`. Then: grace-end → warning, +1 day → warning, +2 days → final warning, **+3 days → the fleet is SUSPENDED** (its devices leave the ingest registry, so new data is refused). Suspension deletes nothing — the customer can still sign in, read and export everything — and a payment restores the feed within one webhook. Enforcement requires `APP_BASE_URL` **and** a working mail transport: without either the sweep only COUNTS, because cutting a fleet off with no email first is worse than another day of unpaid storage |
-| `APP_BASE_URL` | apps/api | absolute base for Checkout/portal return URLs AND the password-reset link (ADR-031) (e.g. `https://app.orbetra.com`); falls back to the request Origin for Stripe. Unset ⇒ forgot-password still 200s but sends no email (link can't be built) |
+| `APP_BASE_URL` | apps/api, apps/worker | absolute base for Checkout/portal return URLs AND the password-reset link (ADR-031) (e.g. `https://app.orbetra.com`); falls back to the request Origin for Stripe. Unset ⇒ forgot-password still 200s but sends no email (link can't be built). **apps/worker needs it too**: without it the billing lapse ladder cannot build a renew link, so it silently degrades to counting and NOBODY is ever suspended |
 | `OSRM_URL` | apps/api | self-hosted OSRM base URL for route optimization (ADR-029), e.g. `http://osrm:5000`; unset ⇒ `POST /v1/routing/optimize` answers 503. Prep the data volume first (`infra/osrm/README.md`) |
 | `TELEGRAM_BOT_TOKEN` | apps/worker + infra/alertmanager | notification delivery (E05-5) AND ops alerts (W7-S1); unset = alerts visible in UI only, no push |
 | `TELEGRAM_ALERT_CHAT_ID` | infra/alertmanager | founders' chat id for ops alerts (W7-S1) |

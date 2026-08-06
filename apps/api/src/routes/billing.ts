@@ -297,9 +297,16 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
         if (outcome === 'applied' && incomingLive) {
           try {
             const tenantId = await deps.db.tenants.tenantIdForCustomer(mapped.customerId)
-            if (tenantId !== null && (await deps.db.tenants.unsuspend(tenantId))) {
+            // ORDER IS THE WHOLE THING, and it is the same order the sweep uses: rebuild the
+            // registry FIRST, clear the flag SECOND. Clearing first and then failing the Redis write
+            // leaves the tenant marked not-suspended with a dark fleet — invisible to `listSuspended`
+            // (not suspended) AND to `listLapsedTenants` (they paid), so no pass ever looks at them
+            // again and only an API restart repairs it. This way a failure leaves them marked
+            // suspended with a working feed, which tomorrow's sweep simply finishes.
+            if (tenantId !== null && (await deps.db.tenants.isSuspended(tenantId))) {
               const devices = await deps.db.tenants.registryDevicesFor(tenantId)
               await deps.restoreDevices?.(devices)
+              await deps.db.tenants.unsuspend(tenantId)
               console.warn('billing: restored a suspended tenant on payment', JSON.stringify({ tenantId, devices: devices.length }))
               deps.onTenantRestored?.()
             }

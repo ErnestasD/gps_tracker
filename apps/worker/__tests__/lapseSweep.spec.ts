@@ -3,7 +3,7 @@ import type { Redis } from 'ioredis'
 
 import type { Db, LapsedTenant } from '@orbetra/db'
 
-import { DEFAULT_GRACE_DAYS, daysPastGrace, graceDaysFromEnv, isActionable, noticeDue, runLapseSweep, SUSPEND_AFTER_DAYS } from '../src/jobs/lapseSweepWorker.js'
+import { DEFAULT_GRACE_DAYS, daysPastGrace, graceDaysFromEnv, isActionable, MAX_SUSPENSIONS_PER_RUN, noticeDue, runLapseSweep, SUSPEND_AFTER_DAYS } from '../src/jobs/lapseSweepWorker.js'
 
 /**
  * The lapse ladder (audit MED #22, founder policy 2026-08-06): grace ends → notice, +1 day → notice,
@@ -75,6 +75,10 @@ describe('graceDaysFromEnv', () => {
   it('defaults to 14 and clamps rather than accepting a negative or absurd window', () => {
     expect(graceDaysFromEnv({})).toBe(DEFAULT_GRACE_DAYS)
     expect(graceDaysFromEnv({ BILLING_GRACE_DAYS: 'soon' })).toBe(DEFAULT_GRACE_DAYS)
+    // EMPTY is absent, not zero — `BILLING_GRACE_DAYS=` in .env would otherwise mean "no grace at
+    // all", i.e. one email today and the fleet gone tomorrow for every already-lapsed tenant
+    expect(graceDaysFromEnv({ BILLING_GRACE_DAYS: '' })).toBe(DEFAULT_GRACE_DAYS)
+    expect(graceDaysFromEnv({ BILLING_GRACE_DAYS: '   ' })).toBe(DEFAULT_GRACE_DAYS)
     expect(graceDaysFromEnv({ BILLING_GRACE_DAYS: '-5' })).toBe(0)
     expect(graceDaysFromEnv({ BILLING_GRACE_DAYS: '99999' })).toBe(365)
     expect(graceDaysFromEnv({ BILLING_GRACE_DAYS: '7' })).toBe(7)
@@ -95,6 +99,7 @@ function fakeDb(rows: LapsedTenant[], suspended: { tenantId: string; suspendedAt
       registryDevicesFor: (tenantId: string) =>
         Promise.resolve([{ id: 1n, imei: '860000000000001', tenantId, accountId: 'a1', presenceRules: {}, odometerSource: 'auto' }]),
       markLapseNotice: (tenantId: string, stage: number) => { notices.push([tenantId, stage]); return Promise.resolve() },
+      isSuspended: () => Promise.resolve(false),
       suspend: (tenantId: string) => { suspends.push(tenantId); return Promise.resolve(true) },
       unsuspend: (tenantId: string) => { unsuspends.push(tenantId); return Promise.resolve(true) },
     },
@@ -221,16 +226,60 @@ describe('runLapseSweep', () => {
     expect(r.warned).toBe(1)
   })
 
-  it('a tenant with no admin to write to is counted but never suspended', async () => {
+  it('a tenant with no admin address still counts, and its stage-3 record still governs suspension', async () => {
     const sent: Sent[] = []
     const { db, suspends } = fakeDb([lapsed({ contactEmail: null, noticeStage: 3, lapsedAt: daysAgo(GRACE + 9) })])
     const { redis } = fakeRedis()
     const r = await runLapseSweep({ db, redis, mail: mailer(sent), appBaseUrl: 'https://app.test' }, NOW, GRACE)
     expect(sent).toEqual([])
-    // the ladder cannot warn them, so suspension still fires only because stage 3 was already
-    // recorded — which can only have happened when an address existed. Assert the count is honest.
+    // the ladder cannot warn them, so suspension fires ONLY because stage 3 was already recorded —
+    // which can only have happened while an address existed. The title used to claim they were
+    // protected; they are not, and a reader scanning names should not be told otherwise.
     expect(r.actionable).toBe(1)
     expect(suspends.length).toBe(1)
+  })
+
+  it('does NOT suspend on day 0, 1 or 2 of the ladder — only on day 3', async () => {
+    // every suspension case used past ∈ {3,9,10}; changing the threshold to `>= 0` left all of them
+    // green while tenants were cut off the moment grace ended
+    for (const past of [0, 1, 2]) {
+      const sent: Sent[] = []
+      const { db, suspends } = fakeDb([lapsed({ lapsedAt: daysAgo(GRACE + past), noticeStage: 3 })])
+      const { redis } = fakeRedis()
+      await runLapseSweep({ db, redis, mail: mailer(sent), appBaseUrl: 'https://app.test' }, NOW, GRACE)
+      expect(suspends, `day ${past}`).toEqual([])
+    }
+    const sent: Sent[] = []
+    const { db, suspends } = fakeDb([lapsed({ lapsedAt: daysAgo(GRACE + 3), noticeStage: 3 })])
+    const { redis } = fakeRedis()
+    await runLapseSweep({ db, redis, mail: mailer(sent), appBaseUrl: 'https://app.test' }, NOW, GRACE)
+    expect(suspends).toEqual(['t1'])
+  })
+
+  it('RE-ASSERTS the teardown for an already-suspended tenant — a partial Redis walk must not stick', async () => {
+    // `suspend()` commits before the walk, so a blip on device 3 of 40 used to leave the flag set,
+    // the customer told the feed had stopped, and devices 3..N still ingesting — with the guard
+    // blocking any retry forever and the counter never moving
+    const sent: Sent[] = []
+    const { db, suspends } = fakeDb([lapsed({ lapsedAt: daysAgo(GRACE + 9), noticeStage: 3, suspendedAt: daysAgo(1) })])
+    const { redis, touched } = fakeRedis()
+    const r = await runLapseSweep({ db, redis, mail: mailer(sent), appBaseUrl: 'https://app.test' }, NOW, GRACE)
+    expect(touched.length).toBeGreaterThan(0) // the registry WAS re-torn-down
+    expect(suspends).toEqual([]) // …without counting or re-mailing them
+    expect(r.suspended).toBe(0)
+    expect(sent).toEqual([])
+  })
+
+  it('caps how many tenants ONE run may cut off — a blast radius, not a throughput limit', async () => {
+    const sent: Sent[] = []
+    const many = Array.from({ length: MAX_SUSPENSIONS_PER_RUN + 10 }, (_, i) =>
+      lapsed({ tenantId: `t${i}`, lapsedAt: daysAgo(GRACE + 5), noticeStage: 3 }),
+    )
+    const { db, suspends } = fakeDb(many)
+    const { redis } = fakeRedis()
+    const r = await runLapseSweep({ db, redis, mail: mailer(sent), appBaseUrl: 'https://app.test' }, NOW, GRACE)
+    expect(r.suspended).toBe(MAX_SUSPENSIONS_PER_RUN)
+    expect(suspends.length).toBe(MAX_SUSPENSIONS_PER_RUN)
   })
 
   it('a clean platform reports zeroes rather than nothing — the gauges must fall back', async () => {
