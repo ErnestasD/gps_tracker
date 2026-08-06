@@ -116,12 +116,18 @@ export interface AuthDb {
      * NOT a revocation fence — see `rotate`.
      */
     familyRevoked(familyId: string): Promise<boolean>
-    /** Revoke EVERY non-revoked refresh token for a user, across ALL families — the eviction a
-     *  password change / admin reset needs so every other live session is logged out. UNSCOPED BY
-     *  DESIGN (refresh-token rows hang off userId; the userId comes from the verified access token).
-     *  Optional on the interface so lightweight AuthDb doubles need not implement it; the api calls it
-     *  via a `typeof … === 'function'` guard (apps/api/src/auth/revoke.ts) and the real db provides it. */
-    revokeAllForUser?(userId: string, now: Date): Promise<void>
+    /**
+     * Revoke EVERY non-revoked refresh token for a user, across ALL families, AND stamp the session
+     * epoch that makes the eviction visible to a rotation already in flight — a row sweep alone
+     * cannot reach a row inserted after it ran.
+     *
+     * The carrier for a password reset, an admin role/scope change and an account move: anything
+     * after which a token minted a second ago must stop working. UNSCOPED BY DESIGN (refresh rows
+     * hang off userId, and the userId comes from the verified access token). REQUIRED, not optional:
+     * while it was optional the api guarded every call, so a double that silently lacked it left
+     * every OTHER session alive — including the attacker's, which is the case this exists for.
+     */
+    revokeAllForUser(userId: string, now: Date): Promise<void>
   }
   /** Forgot-password one-time tokens (raw = 32B CSPRNG, sha256-stored, single-use, short TTL). */
   passwordResetTokens: {

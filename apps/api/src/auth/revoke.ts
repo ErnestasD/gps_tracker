@@ -1,20 +1,18 @@
 import type { AuthDb } from '@orbetra/db'
 
 /**
- * The refresh-token surface plus the OPTIONAL `revokeAllForUser` (E03 review HIGH). A password
+ * The refresh-token surface plus the by-user `revokeAllForUser` (E03 review HIGH). A password
  * change or admin reset must revoke EVERY family of the user — not just the current cookie's —
- * so a stolen/other session cannot outlive a password reset. The proper carrier is
- * `refreshTokens.revokeAllForUser(userId, now)`; packages/db does not yet expose it (there is no
- * per-user family listing to loop over from apps/api either), so we call it WHEN present and
- * otherwise fall back to the caller's known family. Until then, an admin reset (no known family)
- * is a best-effort no-op and only self-service change revokes the current session.
+ * so a stolen/other session cannot outlive a password reset. The carrier is
+ * `refreshTokens.revokeAllForUser(userId, now)`, which revokes every non-revoked row AND stamps the
+ * session epoch in one transaction — the epoch is what reaches a rotation that has already claimed
+ * its token, which a row sweep alone cannot.
  *
- * TODO(db): implement `refreshTokens.revokeAllForUser(userId, now)` in packages/db (revoke all
- * non-revoked rows for the user) and drop the optionality here.
+ * `fallbackFamilyId` is the caller's own family, revoked ALONGSIDE (not instead of) the by-user
+ * sweep — see the note in the body about why they are attempted independently.
+ *
  */
-export type RevocableRefreshTokens = AuthDb['refreshTokens'] & {
-  revokeAllForUser?(userId: string, now: Date): Promise<void>
-}
+export type RevocableRefreshTokens = AuthDb['refreshTokens']
 
 /**
  * Revoke ALL of a user's refresh families (every session). Falls back to `fallbackFamilyId`
@@ -26,9 +24,18 @@ export async function revokeAllUserSessions(
   fallbackFamilyId?: string,
 ): Promise<void> {
   const now = new Date()
-  if (refreshTokens.revokeAllForUser !== undefined) {
-    await refreshTokens.revokeAllForUser(userId, now)
-    return
+  // BOTH are attempted, independently. A sequential `await` short-circuits, so a repo-level surprise
+  // — the 40P01 deadlock `rotate`'s own docstring says is possible — meant the "belt to braces"
+  // family revoke never ran either, and the caller answered 500 for a password that HAD changed.
+  const results = await Promise.allSettled([
+    refreshTokens.revokeAllForUser(userId, now),
+    ...(fallbackFamilyId !== undefined ? [refreshTokens.revokeFamily(fallbackFamilyId, now)] : []),
+  ])
+  const failed = results.filter((r) => r.status === 'rejected')
+  if (failed.length === results.length) {
+    // EVERYTHING failed — the sessions are still live, and that is worth surfacing. A partial
+    // failure is not: one of the two paths revoked, and the caller's password is already changed.
+    throw failed[0]!.reason instanceof Error ? failed[0]!.reason : new Error(String(failed[0]!.reason))
   }
-  if (fallbackFamilyId !== undefined) await refreshTokens.revokeFamily(fallbackFamilyId, now)
+  for (const r of failed) console.error('session revoke partially failed', r.reason instanceof Error ? r.reason.message : String(r.reason))
 }

@@ -489,7 +489,7 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     }
     await deps.db.users.setPassword(user.id, await hashPassword(parsed.data.newPassword))
     // revoke EVERY family for this user (all sessions). The current cookie's family is the
-    // fallback used until packages/db ships refreshTokens.revokeAllForUser (see revoke.ts TODO).
+    // fallback used via refreshTokens.revokeAllForUser, which sweeps the rows AND stamps the session epoch.
     const raw = getCookie(c, COOKIE)
     let currentFamily: string | undefined
     if (raw !== undefined && raw !== '') {

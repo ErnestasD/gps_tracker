@@ -1,3 +1,6 @@
+import { Agent } from 'node:https'
+import { isIP } from 'node:net'
+
 import webpush from 'web-push'
 
 import type { PushSubscriptionRepo } from '@orbetra/db'
@@ -81,6 +84,31 @@ export function telegramDriver(botToken: string, fetchImpl: typeof fetch = fetch
  * Acceptable for alerts — same-tag notifications collapse on screen — and the alternative (per-
  * endpoint idempotency) buys little for a best-effort channel.
  */
+/**
+ * An https.Agent that resolves EVERY host to one address — the one the SSRF guard validated.
+ *
+ * `lookup` is the hook `net.connect` uses, so overriding it removes the second resolution entirely
+ * rather than racing it. One agent per address, cached for the process: agents pool sockets, and
+ * minting a fresh one per notification would leak a pool per push.
+ */
+const AGENTS = new Map<string, Agent>()
+function pinnedAgent(ip: string): Agent {
+  const existing = AGENTS.get(ip)
+  if (existing !== undefined) return existing
+  const agent = new Agent({
+    keepAlive: true,
+    maxSockets: 8,
+    lookup: (_hostname, _options, callback) => {
+      // the signature is overloaded; this is the (err, address, family) form node uses internally
+      ;(callback as (err: NodeJS.ErrnoException | null, address: string, family: number) => void)(null, ip, isIP(ip) === 6 ? 6 : 4)
+    },
+  })
+  // bounded: one entry per distinct push-service address, of which there are a handful (FCM, Mozilla,
+  // Apple). A pathological set would still be capped by the browsers that actually exist.
+  if (AGENTS.size < 64) AGENTS.set(ip, agent)
+  return agent
+}
+
 export function webPushDriver(subscriptions: PushSubscriptionRepo, resolveHost?: Parameters<typeof assertPublicUrl>[1]): Driver {
   return {
     send: async (channel, msg, ctx) => {
@@ -94,8 +122,17 @@ export function webPushDriver(subscriptions: PushSubscriptionRepo, resolveHost?:
           // INSIDE the prod network carrying a VAPID Authorization header. Reject private/metadata
           // hosts at send time (resolve → reject loopback/link-local/ULA/etc.), mirroring the
           // hardened webhook path. A pruneable dead endpoint is left to the 404/410 handling below.
-          await (resolveHost ? assertPublicUrl(t.endpoint, resolveHost) : assertPublicUrl(t.endpoint))
-          await webpush.sendNotification({ endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } }, payload, { timeout: NOTIFY_TIMEOUT_MS })
+          const validated = await (resolveHost ? assertPublicUrl(t.endpoint, resolveHost) : assertPublicUrl(t.endpoint))
+          // …and PIN the connection to the address that was validated (ADR-035). Checking the host
+          // and then handing web-push the hostname let it resolve a SECOND time
+          // (web-push-lib → https.request), which is the DNS-rebinding window the webhook path
+          // closed — on an endpoint the BROWSER supplies, with a VAPID Authorization header, sent
+          // from inside the prod network. An https.Agent whose `lookup` answers with the validated
+          // address is the whole fix: web-push accepts an agent, and the agent owns resolution.
+          await webpush.sendNotification({ endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } }, payload, {
+            timeout: NOTIFY_TIMEOUT_MS,
+            agent: pinnedAgent(validated.ip),
+          })
         } catch (err) {
           if (err instanceof Error && err.name === 'UnsafeUrlError') {
             // an endpoint pointing at private infra is not a transient failure and never will be —

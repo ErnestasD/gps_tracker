@@ -29,8 +29,12 @@ const pub = () => Promise.resolve([{ address: '93.184.216.34', family: 4 }]) as 
 const priv = () => Promise.resolve([{ address: '10.0.0.5', family: 4 }]) as never
 
 describe('E06-4 assertPublicUrl', () => {
-  it('accepts an http(s) URL resolving to a public IP', async () => {
-    await expect(assertPublicUrl('https://example.test/hook', pub)).resolves.toBeInstanceOf(URL)
+  it('accepts an http(s) URL resolving to a public IP, and hands back THE address it validated', async () => {
+    // the ip is the contract now (ADR-035): a caller that keeps only the URL has to resolve again,
+    // and that second resolution is the DNS-rebinding window this guard exists to close
+    const v = await assertPublicUrl('https://example.test/hook', pub)
+    expect(v.url).toBeInstanceOf(URL)
+    expect(v.ip).toBe('93.184.216.34')
   })
   it('rejects a non-http scheme', async () => {
     await expect(assertPublicUrl('file:///etc/passwd', pub)).rejects.toBeInstanceOf(UnsafeUrlError)

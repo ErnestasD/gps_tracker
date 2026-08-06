@@ -52,12 +52,15 @@ function fakeRedis(tenant: string | null, account: string | null, sent: string[]
 }
 const job = (kind = 'panic'): Job<WebhookJob> =>
   ({ id: 'wh-1', data: { eventId: `42:${kind}:0:r1`, deviceId: '42', kind, at: '2026-07-09T00:00:00.000Z', payload: { x: 1 } } }) as unknown as Job<WebhookJob>
-const okFetch = () => vi.fn(() => Promise.resolve({ ok: true, status: 200 } as Response))
+/** The delivery double. It observes the URL AND the IP the worker dialled — the ip is the whole
+ *  point of ADR-035, so a test that only checked the URL would pass on the rebindable code. */
+const okFetch = () =>
+  vi.fn((opts: { url: URL; ip: string; headers: Record<string, string>; body: string }) => Promise.resolve({ ok: true, status: 200, dialled: opts.ip }))
 // SSRF-guard resolver injected so tests don't do real DNS: public by default
 const publicResolver = () => Promise.resolve([{ address: '93.184.216.34', family: 4 }]) as never
 const privateResolver = () => Promise.resolve([{ address: '169.254.169.254', family: 4 }]) as never
 const baseDeps = (pool: Pool, redis: Redis, fetchImpl: ReturnType<typeof okFetch>, extra: Partial<WebhookWorkerDeps> = {}): WebhookWorkerDeps =>
-  ({ connection: {}, pool, redis, fetchImpl, resolveHost: publicResolver, ...extra })
+  ({ connection: {}, pool, redis, deliverImpl: fetchImpl, resolveHost: publicResolver, ...extra })
 
 describe('E06-4 runWebhook', () => {
   it('POSTs the signed body + X-Webhook-Id to a subscribed webhook', async () => {
@@ -66,12 +69,17 @@ describe('E06-4 runWebhook', () => {
     const onDelivered = vi.fn()
     await runWebhook(baseDeps(pool, fakeRedis('t', 'a'), fetchImpl, { onDelivered }), job())
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    const [opts] = fetchImpl.mock.calls[0] as unknown as [{ url: URL; ip: string; headers: Record<string, string>; body: string }]
+    const url = opts.url.toString()
+    const init = { headers: opts.headers, body: opts.body }
     expect(url).toBe('https://x.test/hook')
-    const headers = init.headers as Record<string, string>
-    expect(headers['X-Signature']).toBe(signBody(init.body as string, 'sec'))
+    // …and it dialled the address the guard validated, not the hostname (ADR-035)
+    expect(opts.ip).toBe('93.184.216.34')
+    const headers = init.headers
+    expect(headers['X-Signature']).toBe(signBody(init.body, 'sec'))
     expect(headers['X-Webhook-Id']).toBe('42:panic:0:r1')
-    expect(init.redirect).toBe('error') // no 302 into a private URL
+    // a 302 into a private URL is refused by the delivery itself now — following it would resolve a
+    // NEW host and undo the pinning, so it is a rejected status rather than a fetch option
     expect(onDelivered).toHaveBeenCalledTimes(1)
   })
 
@@ -91,7 +99,7 @@ describe('E06-4 runWebhook', () => {
   })
 
   it('throws (→ BullMQ retry) when an endpoint returns non-2xx, and records the failure', async () => {
-    const fetchImpl = vi.fn(() => Promise.resolve({ ok: false, status: 500 } as Response)) as ReturnType<typeof okFetch>
+    const fetchImpl = vi.fn(() => Promise.resolve({ ok: false, status: 500, dialled: '93.184.216.34' })) as ReturnType<typeof okFetch>
     const { pool } = fakePool([{ id: 'h1', url: 'https://x.test/u', secret: 's', events: ['panic'] }])
     const onFailed = vi.fn()
     await expect(runWebhook(baseDeps(pool, fakeRedis('t', 'a'), fetchImpl, { onFailed }), job())).rejects.toThrow('failed')
@@ -113,7 +121,7 @@ describe('E06-4 runWebhook', () => {
     // params: tenantId, accountId, webhookId, eventId, kind, statusCode, success, error
     expect(okPool.inserts[0]!.params.slice(2, 8)).toEqual(['h1', '42:panic:0:r1', 'panic', 200, true, null])
 
-    const failImpl = vi.fn(() => Promise.resolve({ ok: false, status: 502 } as Response)) as ReturnType<typeof okFetch>
+    const failImpl = vi.fn(() => Promise.resolve({ ok: false, status: 502, dialled: '93.184.216.34' })) as ReturnType<typeof okFetch>
     const failPool = fakePool([{ id: 'h1', url: 'https://x.test/bad', secret: 's', events: ['panic'] }])
     await expect(runWebhook(baseDeps(failPool.pool, fakeRedis('t', 'a'), failImpl), job())).rejects.toThrow()
     expect(failPool.inserts[0]!.params[5]).toBe(502) // statusCode parsed from the error
@@ -138,7 +146,10 @@ describe('E06-4 runWebhook', () => {
       sismember: vi.fn((_k: string, m: string) => Promise.resolve(set.has(m) ? 1 : 0)),
       pipeline: vi.fn(() => pipe),
     } as unknown as Redis
-    const fetchImpl = vi.fn((url: string) => Promise.resolve({ ok: url.includes('good'), status: url.includes('good') ? 200 : 500 } as Response)) as ReturnType<typeof okFetch>
+    const fetchImpl = vi.fn((o: { url: URL; ip: string }) => {
+      const good = o.url.toString().includes('good')
+      return Promise.resolve({ ok: good, status: good ? 200 : 500, dialled: o.ip })
+    }) as ReturnType<typeof okFetch>
     const { pool } = fakePool([
       { id: 'h1', url: 'https://good.test/x', secret: 's', events: ['panic'] },
       { id: 'h2', url: 'https://bad.test/x', secret: 's', events: ['panic'] },
@@ -148,7 +159,7 @@ describe('E06-4 runWebhook', () => {
     // retry: h1 skipped, only h2 re-attempted
     fetchImpl.mockClear()
     await expect(runWebhook(baseDeps(pool, redis, fetchImpl), job())).rejects.toThrow('1 endpoint')
-    const retried = (fetchImpl.mock.calls as unknown as [string][]).map((c) => c[0])
+    const retried = (fetchImpl.mock.calls as unknown as [{ url: URL }][]).map((c) => c[0].url.toString())
     expect(retried).toEqual(['https://bad.test/x'])
   })
 })

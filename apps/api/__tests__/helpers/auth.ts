@@ -46,6 +46,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
         claimForRotation: () => Promise.resolve(null),
         findByTokenHash: () => Promise.resolve(null),
         revokeFamily: () => Promise.resolve(),
+        revokeAllForUser: () => Promise.resolve(),
         familyRevoked: () => Promise.resolve(false),
         rotate: () => Promise.resolve(null),
       },
