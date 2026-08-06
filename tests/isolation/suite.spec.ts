@@ -170,6 +170,30 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     expect(bad.status).toBe(400)
   })
 
+  it('account language + units: an account_manager may set them, and CANNOT reach a sibling account', async () => {
+    // The preferences route is deliberately wider than `PATCH /v1/accounts/:id` — the operator who
+    // reads the alerts picks the units they arrive in — so the scope check is what carries the whole
+    // weight here. It is the same `findScoped` the rest of the repo uses; this proves it.
+    const [a1, a2] = fx.t1.accounts
+    const hdr = (tok: string) => ({ authorization: `Bearer ${tok}`, 'content-type': 'application/json' })
+    const patch = (id: string | undefined, tok: string, body: unknown) =>
+      fetch(`${fx.baseUrl}/v1/accounts/${id}/preferences`, { method: 'PATCH', headers: hdr(tok), body: JSON.stringify(body) })
+
+    const own = await patch(a1, fx.t1.tokenAccountA1, { locale: 'lt', unitDistance: 'mi' })
+    expect(own.status).toBe(200)
+    expect(await own.json()).toMatchObject({ locale: 'lt', unitDistance: 'mi', unitSpeed: 'kmh' })
+
+    // a sibling account is invisible, not merely unwritable
+    expect((await patch(a2, fx.t1.tokenAccountA1, { locale: 'de' })).status).toBe(404)
+    // …and a viewer may not write its own account's units either
+    expect((await patch(a1, fx.t1.tokenViewerA1, { locale: 'de' })).status).toBe(403)
+    // an unknown unit is refused rather than stored — nothing downstream would render it
+    expect((await patch(a1, fx.t1.tokenTenant, { unitDistance: 'furlongs' })).status).toBe(400)
+    // and the narrow schema means this route can never rename an account or move its report boundary
+    const sneak = await patch(a1, fx.t1.tokenAccountA1, { name: 'renamed', timezone: 'Mars/Olympus' })
+    expect(sneak.status).toBe(400)
+  })
+
   it('audit: an ACCOUNT-SCOPED tenant admin is refused (403) — audit_log has no account partition', async () => {
     // REGRESSION (audit MED): `READ_POLICY.audit = TENANT_ADMINS` assumed every tenant admin is
     // tenant-WIDE — an assumption written into scope.ts but never enforced. `POST /v1/users`

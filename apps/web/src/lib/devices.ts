@@ -1,3 +1,5 @@
+import type { AccountPreferences, DistanceUnit, SpeedUnit, VolumeUnit } from '@orbetra/shared'
+
 import { getJson, mutate } from './client'
 
 /** Device shapes returned by the API (ids are stringified BigInt). */
@@ -21,6 +23,12 @@ export interface Account {
   name: string
   /** IANA account timezone (day-boundary basis for reports/mileage) — the API returns it. */
   timezone?: string
+  /** Language + units the SERVER renders this fleet's alert e-mails and reports in. Not the same as
+   *  the device-local display prefs — see `settings.tsx`, DisplayPrefsSection. */
+  locale?: string
+  unitSpeed?: SpeedUnit
+  unitDistance?: DistanceUnit
+  unitVolume?: VolumeUnit
 }
 export interface Profile {
   id: string
@@ -78,6 +86,11 @@ export const listAccounts = () => getJson<Account[]>('/v1/accounts')
  *  NOT the display preference in Settings, which only changes how timestamps are rendered. */
 export const updateAccountTimezone = (id: string, timezone: string) =>
   mutate<Account>('PATCH', `/v1/accounts/${encodeURIComponent(id)}`, { timezone })
+/** The account's LANGUAGE + UNITS for server-rendered mail (alerts, scheduled reports). Its own
+ *  endpoint because it answers to account_manager, while renaming an account and moving its
+ *  reporting time zone stay with tenant admins. */
+export const updateAccountPreferences = (id: string, prefs: AccountPreferences) =>
+  mutate<Account>('PATCH', `/v1/accounts/${encodeURIComponent(id)}/preferences`, prefs)
 export const listProfiles = () => getJson<Profile[]>('/v1/profiles')
 export const listQuarantine = () => getJson<QuarantineEntry[]>('/v1/quarantine')
 export const listTenants = () => getJson<Tenant[]>('/v1/tenants')

@@ -214,8 +214,10 @@ describe('E05-5 notificationMessage', () => {
     const m = notificationMessage('fuel_theft', '42', { unit: 'liters', baseline: 60, to: 40, drop: 20 }, new Date('2026-07-09T00:00:00Z'))
     expect(m.subject).toContain('Fuel theft')
     expect(m.subject).not.toContain('fuel_theft')
-    expect(m.text).toContain('Fuel dropped 20 L')
-    expect(m.text).toContain('baseline 60 L')
+    // lowercase `l`, matching the dashboard's own volume label — an email and the screen it came
+    // from must not label the same number two different ways
+    expect(m.text).toContain('Fuel dropped 20.0 l')
+    expect(m.text).toContain('baseline 60.0 l')
   })
 
   it('renders a percentage fuel_theft drop', () => {
@@ -265,5 +267,64 @@ describe('E05-4 notificationMessage branded HTML', () => {
     })
     expect(m.html!).not.toContain('<script>alert(1)</script>')
     expect(m.html!).toContain('&lt;script&gt;')
+  })
+})
+
+describe('notificationMessage in the account language + units (account-settings debt, closed)', () => {
+  const at = new Date('2026-07-09T00:00:00Z')
+  const IMPERIAL = { speed: 'mph', distance: 'mi', volume: 'gal' } as const
+
+  it('writes the whole alert in the account language', () => {
+    const m = notificationMessage('overspeed', '42', { speedKmh: 95, limitKmh: 90 }, at, { locale: 'lt', deviceLabel: 'Van 1' })
+    expect(m.subject).toBe('[Orbetra] Greičio viršijimas — Van 1')
+    expect(m.text).toContain('Pranešimas: Greičio viršijimas')
+    expect(m.text).toContain('Įrenginys: Van 1')
+    expect(m.text).toContain('Kada: 2026-07-09 00:00 (UTC)')
+    expect(m.text).toContain('Greitis 95 km/val, leistina 90 km/val')
+    expect(m.text).not.toContain('Device')
+  })
+
+  it('converts the numbers AND labels them in the account unit', () => {
+    const m = notificationMessage('overspeed', '42', { speedKmh: 96.56064, limitKmh: 80.4672 }, at, { units: IMPERIAL })
+    expect(m.text).toContain('Speed 60 mph over limit 50 mph')
+    expect(m.text).not.toContain('km/h')
+  })
+
+  it('does NOT convert a percentage fuel drop to gallons — a ratio is not a volume', () => {
+    const pct = notificationMessage('fuel_theft', '42', { unit: 'pct', baseline: 80, to: 55, drop: 25 }, at, { units: IMPERIAL })
+    expect(pct.text).toContain('Fuel dropped 25 %')
+    const litres = notificationMessage('fuel_theft', '42', { unit: 'liters', baseline: 37.854, to: 18.927, drop: 18.927 }, at, { units: IMPERIAL })
+    expect(litres.text).toContain('Fuel dropped 5.0 gal')
+  })
+
+  it('localizes every kind, including the geofence transition and the offline hours label', () => {
+    expect(notificationMessage('geofence', '1', { name: 'Depas', transition: 'enter' }, at, { locale: 'lt' }).text).toContain('įvažiavo į Depas')
+    expect(notificationMessage('geofence', '1', { name: 'Depot', transition: 'exit' }, at, { locale: 'de' }).text).toContain('Ausfahrt Depot')
+    expect(notificationMessage('device_offline', '1', { offlineH: 5, thresholdH: 3 }, at, { locale: 'pl' }).text).toContain('od 5 godz.')
+    expect(notificationMessage('ignition', '1', { ignition: 1 }, at, { locale: 'lt' }).text).toContain('Degimas įjungtas')
+    expect(notificationMessage('power_cut', '1', {}, at, { locale: 'de' }).text).toContain('Externe Stromversorgung unterbrochen')
+  })
+
+  it('a geofence event with no name falls back to a translated word, never a blank', () => {
+    expect(notificationMessage('geofence', '1', { transition: 'exit' }, at, { locale: 'lt' }).text).toContain('išvažiavo iš geozona')
+    expect(notificationMessage('geofence', '1', {}, at, { locale: 'pl' }).text).toContain('geostrefa')
+  })
+
+  it('the branded HTML footer follows the same language as the body', () => {
+    const m = notificationMessage('panic', '42', {}, at, { locale: 'lt', tenantName: 'T' })
+    expect(m.html!).toContain('Šį laišką gavote')
+    expect(m.html!).toContain('Paspaustas pavojaus (SOS) mygtukas')
+  })
+
+  it('an unknown locale renders English rather than throwing (the column has no CHECK)', () => {
+    const m = notificationMessage('panic', '42', {}, at, { locale: 'xx' })
+    expect(m.subject).toContain('Panic / SOS')
+    expect(m.text).toContain('SOS / panic button triggered')
+  })
+
+  it('an unknown KIND still has no translation and must not leak the raw slug', () => {
+    const m = notificationMessage('some_new_kind', '7', {}, at, { locale: 'lt' })
+    expect(m.subject).toContain('Some new kind')
+    expect(m.text).toContain('Įrenginys: 7')
   })
 })

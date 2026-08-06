@@ -2,7 +2,7 @@ import { Worker, type ConnectionOptions, type Job } from 'bullmq'
 import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 
-import { brandingSchema, notificationChannelSchema, type Branding, type NotificationChannel } from '@orbetra/shared'
+import { brandingSchema, notificationChannelSchema, sanitizeUnits, type Branding, type NotificationChannel } from '@orbetra/shared'
 
 import { dispatchEvent } from '../notify/dispatch.js'
 import type { Drivers } from '../notify/drivers.js'
@@ -37,17 +37,31 @@ export async function loadRuleChannels(pool: Pool, ruleId: string): Promise<Noti
 }
 
 /**
- * Resolve the human context for an alert: the device NAME/plate, the account TIMEZONE, and the
- * tenant BRAND — so the message names the vehicle (not a raw IMEI), stamps the time in the account
- * zone (rule 7), and uses the tenant's white-label brand. Derived from the device row itself (the
- * authoritative tenant/account source), scoped by the device id — never a guessed scope. A lookup
- * miss (retired/unknown device) yields safe defaults so a notification is never dropped.
+ * Resolve the human context for an alert: the device NAME/plate, the account's TIMEZONE, LANGUAGE
+ * and UNITS, and the tenant BRAND — so the message names the vehicle (not a raw IMEI), stamps the
+ * time in the account zone (rule 7), speaks the language and units that account chose, and carries
+ * the tenant's white-label brand. Derived from the device row itself (the authoritative
+ * tenant/account source), scoped by the device id — never a guessed scope. A lookup miss
+ * (retired/unknown device) yields safe defaults so a notification is never dropped.
  */
 export async function resolveNotifyContext(pool: Pool, deviceId: string): Promise<NotifyContext> {
   if (!/^\d+$/.test(deviceId)) return {}
   try {
-    const res = await pool.query<{ device_name: string | null; device_plate: string | null; timezone: string | null; tenant_name: string | null; branding: unknown }>(
-      `SELECT d.name AS device_name, d.plate AS device_plate, a.timezone AS timezone, t.name AS tenant_name, t.branding AS branding
+    const res = await pool.query<{
+      device_name: string | null
+      device_plate: string | null
+      timezone: string | null
+      locale: string | null
+      unitSpeed: string | null
+      unitDistance: string | null
+      unitVolume: string | null
+      tenant_name: string | null
+      branding: unknown
+    }>(
+      `SELECT d.name AS device_name, d.plate AS device_plate,
+              a.timezone AS timezone, a.locale AS locale,
+              a."unitSpeed", a."unitDistance", a."unitVolume",
+              t.name AS tenant_name, t.branding AS branding
          FROM devices d JOIN accounts a ON a.id = d."accountId" JOIN tenants t ON t.id = d."tenantId"
         WHERE d.id = $1`,
       [deviceId],
@@ -62,12 +76,16 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string): Promis
     return {
       deviceLabel: row.device_name ?? row.device_plate ?? undefined,
       timezone: row.timezone ?? undefined,
+      locale: row.locale ?? undefined,
+      // sanitize rather than trust: the columns are plain TEXT with no CHECK (see the migration), so
+      // an unknown value renders metric instead of throwing inside the send path
+      units: sanitizeUnits(row),
       brand: brand ?? undefined,
       branding,
       tenantName: row.tenant_name ?? undefined,
     }
   } catch {
-    return {} // context lookup must never suppress the alert — fall back to id/UTC/'Orbetra'
+    return {} // context lookup must never suppress the alert — fall back to id/UTC/metric/'Orbetra'
   }
 }
 

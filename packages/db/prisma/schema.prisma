@@ -253,6 +253,26 @@ model Account {
   name      String
   /// IANA zone; ALL rendering converts from UTC with this (CLAUDE.md rule 7)
   timezone  String   @default("UTC")
+  /// Language + units for everything the SERVER renders for this fleet: alert e-mails, Telegram
+  /// messages and scheduled report tables.
+  ///
+  /// They live on the ACCOUNT, not on the user, because the recipients have no user row. A rule's
+  /// notification channel targets a free-text address (`dispatcher@customer.lt`, a shared inbox, an
+  /// on-call alias) and a scheduled report carries a `recipients[]` array of the same; there is
+  /// simply nobody to read a preference from. The account IS the fleet — one operation, one country,
+  /// one set of units — which is the same reason `timezone` above is already an account column.
+  ///
+  /// The browser keeps its own device-local copy (localStorage) for what IT renders: a formatter
+  /// cannot wait for a round trip, and one person may prefer miles on their own screen. These are
+  /// the fleet's defaults, and Settings writes both at once so the two never silently disagree.
+  locale       String @default("en")
+  /// 'kmh' | 'mph' — validated by the API (speedUnitSchema); a value this build does not know falls
+  /// back to metric at render rather than throwing inside an e-mail.
+  unitSpeed    String @default("kmh")
+  /// 'km' | 'mi'
+  unitDistance String @default("km")
+  /// 'l' | 'gal'
+  unitVolume   String @default("l")
   createdAt DateTime @default(now()) @db.Timestamptz()
 
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)

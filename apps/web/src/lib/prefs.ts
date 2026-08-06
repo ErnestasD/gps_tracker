@@ -1,3 +1,5 @@
+import type { DistanceUnit, SpeedUnit, VolumeUnit } from '@orbetra/shared'
+
 /**
  * Client preferences (E03-2 Settings/Profile): theme + locale persisted to
  * localStorage and applied eagerly. Dark-first — `.light` on <html> flips the
@@ -46,9 +48,10 @@ export function onThemeChange(cb: () => void): () => void {
 
 export type TimeFormatPref = '24h' | '12h'
 export type DateFormatPref = 'auto' | 'ymd' | 'dmy' | 'mdy'
-export type SpeedUnit = 'kmh' | 'mph'
-export type DistanceUnit = 'km' | 'mi'
-export type VolumeUnit = 'l' | 'gal'
+// The unit types come from @orbetra/shared — the server stores the same three choices on the account
+// and renders e-mails from them, so a fourth value invented here would typecheck and then silently
+// fail to round-trip. Re-exported because half the app imports them from this module.
+export type { DistanceUnit, SpeedUnit, VolumeUnit }
 
 export interface DisplayPrefs {
   timeFormat: TimeFormatPref

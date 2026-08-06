@@ -1,6 +1,8 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { kmToMi, kmhToMph, lToGal, round1, KM_PER_MI, L_PER_GAL } from '@orbetra/shared'
+
 import { getDisplayPrefs, onPrefsChange, type DisplayPrefs, type DistanceUnit, type SpeedUnit, type VolumeUnit } from './prefs'
 
 /**
@@ -8,18 +10,15 @@ import { getDisplayPrefs, onPrefsChange, type DisplayPrefs, type DistanceUnit, t
  * (settings → Rodymo nustatymai). Converters and fmt* are PURE (unit-tested);
  * useUnits() binds them to the live prefs + i18n unit labels for components.
  * Storage stays metric everywhere (km/h, metres, litres) — conversion happens at render only.
+ *
+ * The FACTORS come from `@orbetra/shared`, not from here, because the browser is no longer the only
+ * renderer: alert e-mails and scheduled reports are formatted by the worker, and a second copy of
+ * 1.609344 is how a dashboard and a report of the same trip come to disagree. Re-exported so the
+ * existing imports across the app keep working.
  */
 
-export const KM_PER_MI = 1.609344
-export const L_PER_GAL = 3.785411784 // US gallon
-
-export const kmToMi = (km: number): number => km / KM_PER_MI
-export const miToKm = (mi: number): number => mi * KM_PER_MI
-export const kmhToMph = (kmh: number): number => kmh / KM_PER_MI
-export const lToGal = (l: number): number => l / L_PER_GAL
-
-/** Round to 1 decimal, dropping a trailing .0 → '12', '12.3'. Pure. */
-export const round1 = (v: number): number => Math.round(v * 10) / 10
+export { KM_PER_MI, L_PER_GAL, kmToMi, kmhToMph, lToGal, round1 }
+export { miToKm } from '@orbetra/shared'
 
 /** Translator shape we need from react-i18next's t (structural — the lib stays UI-free). */
 export type TFn = (key: string, options?: Record<string, unknown>) => string

@@ -136,6 +136,29 @@ describe('formatReport', () => {
     expect(r.html!).toContain('#5253DA') // the product accent (--accent in the app), shared by every mail
     expect(r.html!).toContain('(no data in this period)')
   })
+
+  // account-settings debt, closed: the subject, the table and the closing line all follow the
+  // ACCOUNT — a customer who runs the dashboard in Lithuanian gets a Lithuanian report.
+  it('renders the subject, table and footer in the account language and units', () => {
+    const r = formatReport(
+      { type: 'mileage', rows: [{ day: '2026-07-14', deviceId: '5', deviceName: 'Van 1', devicePlate: null, trips: 3, distanceM: 16093.44 }] },
+      w,
+      { ...opts, locale: 'lt', units: { speed: 'mph', distance: 'mi', volume: 'gal' } },
+    )
+    expect(r.subject).toBe('Acme Fleet — ataskaita: Rida (2026-07-14–2026-07-15)')
+    expect(r.text).toContain('Atstumas (mi)')
+    expect(r.text).toContain('10.0') // 16093.44 m is exactly 10 miles
+    expect(r.text).toContain('Visas laikas rodomas Europe/Vilnius zona. Parengė Acme Fleet.')
+    expect(r.text).not.toContain('Distance')
+    expect(r.html!).toContain('Ataskaita: Rida')
+    expect(r.html!).toContain('Šį laišką gavote') // the shell footer follows the same language
+  })
+
+  it('an unknown locale renders English rather than throwing', () => {
+    const r = formatReport({ type: 'mileage', rows: [] }, w, { ...opts, locale: 'xx' })
+    expect(r.subject).toBe('Acme Fleet — Mileage report (2026-07-14 to 2026-07-15)')
+    expect(r.text).toContain('(no data in this period)')
+  })
 })
 
 // fake pool: every query returns no rows → runReport yields an empty result (orchestration test)

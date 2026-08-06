@@ -3,6 +3,8 @@ import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 import { describe, expect, it, vi } from 'vitest'
 
+import { METRIC_UNITS } from '@orbetra/shared'
+
 import { loadRuleChannels, resolveNotifyContext, runNotify, type NotifyWorkerDeps } from '../src/jobs/notifyWorker.js'
 import type { NotifyJob } from '../src/jobs/notifyQueue.js'
 
@@ -63,20 +65,28 @@ describe('resolveNotifyContext', () => {
 
   it('resolves the device name, account timezone, productName brand, and FULL branding for HTML email', async () => {
     const branding = { productName: 'Acme Fleet', primary: '#ff8800', logoUrl: 'https://cdn.acme.test/logo.png', supportEmail: 'help@acme.test' }
-    const ctx = await resolveNotifyContext(rowPool({ device_name: 'Vilnius Van 1', device_plate: 'ABC-123', timezone: 'Europe/Vilnius', tenant_name: 'Acme', branding }), '42')
-    // the full branding (logo/color/supportEmail) + tenant name now flow through for the branded HTML body
-    expect(ctx).toEqual({ deviceLabel: 'Vilnius Van 1', timezone: 'Europe/Vilnius', brand: 'Acme Fleet', branding, tenantName: 'Acme' })
+    const ctx = await resolveNotifyContext(rowPool({ device_name: 'Vilnius Van 1', device_plate: 'ABC-123', timezone: 'Europe/Vilnius', locale: 'lt', unitSpeed: 'mph', unitDistance: 'mi', unitVolume: 'gal', tenant_name: 'Acme', branding }), '42')
+    // the full branding (logo/color/supportEmail) + tenant name flow through for the branded HTML body,
+    // and the account's language + units decide what words and numbers the alert is written in
+    expect(ctx).toEqual({ deviceLabel: 'Vilnius Van 1', timezone: 'Europe/Vilnius', locale: 'lt', units: { speed: 'mph', distance: 'mi', volume: 'gal' }, brand: 'Acme Fleet', branding, tenantName: 'Acme' })
   })
 
   it('falls back to the plate for the label and the tenant name for the brand', async () => {
     const ctx = await resolveNotifyContext(rowPool({ device_name: null, device_plate: 'ABC-123', timezone: 'UTC', tenant_name: 'Acme', branding: {} }), '42')
-    expect(ctx).toEqual({ deviceLabel: 'ABC-123', timezone: 'UTC', brand: 'Acme', branding: {}, tenantName: 'Acme' })
+    expect(ctx).toEqual({ deviceLabel: 'ABC-123', timezone: 'UTC', locale: undefined, units: METRIC_UNITS, brand: 'Acme', branding: {}, tenantName: 'Acme' })
   })
 
   it('ignores a MALFORMED branding jsonb (no crash) — brand falls back to the tenant name', async () => {
     // a bad primary (not #rrggbb) fails brandingSchema → branding dropped, but the alert is never lost
     const ctx = await resolveNotifyContext(rowPool({ device_name: 'Van', device_plate: null, timezone: 'UTC', tenant_name: 'Acme', branding: { primary: 'red', productName: 42 } }), '42')
-    expect(ctx).toEqual({ deviceLabel: 'Van', timezone: 'UTC', brand: 'Acme', branding: undefined, tenantName: 'Acme' })
+    expect(ctx).toEqual({ deviceLabel: 'Van', timezone: 'UTC', locale: undefined, units: METRIC_UNITS, brand: 'Acme', branding: undefined, tenantName: 'Acme' })
+  })
+
+  it('an unrecognised unit column renders metric rather than propagating a value no renderer knows', async () => {
+    // the columns are plain TEXT with no CHECK (see the migration) — a hand-edited or
+    // later-release value must degrade to metric, not reach a formatter as an unknown enum
+    const ctx = await resolveNotifyContext(rowPool({ device_name: 'Van', device_plate: null, timezone: 'UTC', locale: 'lt', unitSpeed: 'knots', unitDistance: 'mi', unitVolume: null, tenant_name: 'Acme', branding: {} }), '42')
+    expect(ctx.units).toEqual({ speed: 'kmh', distance: 'mi', volume: 'l' })
   })
 
   it('returns empty context for an unknown device (→ id/UTC/Orbetra defaults downstream)', async () => {
