@@ -74,6 +74,11 @@ const mail = {
   enqueueSignupExistsEmail: async (job: { kind: 'signup-exists'; email: string; tenantId: string; locale: string; loginUrl: string; resetUrl: string }): Promise<void> => {
     await authEmailQueue.add('auth-email', job, authEmailOpts)
   },
+  // …and the other half: the mail that ACTIVATES a real signup. Without it the new account can
+  // never log in, which is what makes the two branches indistinguishable.
+  enqueueVerifyEmail: async (job: { kind: 'verify-email'; email: string; tenantId: string; locale: string; verifyUrl: string; expiresHours: number }): Promise<void> => {
+    await authEmailQueue.add('auth-email', job, authEmailOpts)
+  },
 }
 
 // SMS gateway (SMS gateway feature): the api enqueues a config-SMS job; the worker's `sms` queue
@@ -129,6 +134,10 @@ const deps = {
   onWebhookUnmatched: (reason: 'no_tenant' | 'unmappable') => prom.billingWebhookUnmatched.inc({ reason }),
   onLockout: (gate: 'credential' | 'ip' | 'email' | 'degraded') => prom.authLockoutTripped.inc({ gate }),
   onSignupEmailInUse: () => prom.signupEmailInUse.inc(),
+  onEmailVerified: () => prom.emailVerification.inc({ outcome: 'verified' }),
+  onUnverifiedLogin: () => prom.emailVerification.inc({ outcome: 'unverified_login' }),
+  onVerifyMailFailed: () => prom.emailVerification.inc({ outcome: 'mail_failed' }),
+  onVerifyMailUnconfigured: () => prom.emailVerification.inc({ outcome: 'mail_unconfigured' }),
   // partner-portal ceilings; unset entries fall back to the module defaults (1 h window there)
   partnerLoginLimits: {
     ...(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP'] !== undefined ? { maxFailsPerIp: Number(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP']) } : {}),

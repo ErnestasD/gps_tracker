@@ -92,9 +92,26 @@ export function LoginPage() {
               />
             </div>
             {error !== null && (
-              <p role="alert" data-testid="login-error" className="text-sm text-danger">
-                {error}
-              </p>
+              <>
+                <p role="alert" data-testid="login-error" className="text-sm text-danger">
+                  {error}
+                </p>
+                {/*
+                  A 401 covers TWO things the server deliberately refuses to tell apart: a wrong
+                  password, and an account whose address was never activated (audit MED #67 — any
+                  distinguishable answer here reopens the signup oracle for the price of one extra
+                  request). So the hint is shown on EVERY 401, phrased conditionally: it helps the
+                  person who just signed up without confirming anything to the person who did not.
+                */}
+                {error === t('login.invalidCredentials') && (
+                  <p className="text-sm text-muted" data-testid="login-verify-hint">
+                    {t('login.invalidHint')}{' '}
+                    <Link to="/verify-email" className="text-accent underline-offset-2 hover:underline" data-testid="login-to-verify">
+                      {t('verify.resend')}
+                    </Link>
+                  </p>
+                )}
+              </>
             )}
             <Button
               type="submit"

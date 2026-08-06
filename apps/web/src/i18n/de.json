@@ -5,6 +5,7 @@
     "passwordLabel": "Passwort",
     "submit": "Anmelden",
     "invalidCredentials": "Falsche E-Mail oder falsches Passwort.",
+    "invalidHint": "Falls Sie sich gerade registriert haben, aktivieren Sie Ihr Konto über den zugesandten Link.",
     "tooManyAttempts": "Zu viele Versuche — bitte in einigen Minuten erneut versuchen.",
     "ambiguousIdentity": "Ihr Konto ist über Organisationen hinweg mehrdeutig — wenden Sie sich an Ihren Administrator.",
     "networkError": "Keine Verbindung. Bitte prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.",
@@ -30,6 +31,18 @@
     "requestNew": "Neuen Link anfordern",
     "done": "Ihr Passwort wurde geändert. Melden Sie sich mit dem neuen Passwort an.",
     "toLogin": "Zur Anmeldung"
+  },
+  "verify": {
+    "title": "Konto wird aktiviert",
+    "working": "Adresse wird bestätigt…",
+    "done": "Ihr Konto ist aktiv. Melden Sie sich an, um zu starten.",
+    "toLogin": "Zur Anmeldung",
+    "invalid": "Dieser Aktivierungslink ist ungültig, bereits verwendet oder abgelaufen.",
+    "resend": "Neuen Link senden",
+    "resendSent": "Falls diese Adresse aktiviert werden muss, ist ein neuer Link unterwegs.",
+    "resendEmail": "Ihre E-Mail-Adresse",
+    "resendSubmit": "Link senden",
+    "noToken": "Dieser Aktivierungslink ist unvollständig. Fordern Sie unten einen neuen an."
   },
   "shell": {
     "live": "Live",

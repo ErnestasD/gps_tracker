@@ -44,6 +44,9 @@ export interface SelfServeSignup {
   plan: TenantPlan
   /** trial end — stored as currentPeriodEnd; getEntitlements floors a `trialing` tenant past it. */
   trialEndsAt: Date
+  /** the signer-up's UI language (en|lt|de|pl), so the verification mail and every later
+   *  transactional mail arrive in the language they just used. Omitted ⇒ en. */
+  locale?: string
   referredByAffiliateId: string | null
   /** Reporting time zone for the default account (IANA). Omitted ⇒ UTC, which is only right for a
    *  caller whose day genuinely starts at 00:00 UTC — see the route. */
@@ -204,6 +207,18 @@ export interface TenantRepo {
    * billable set and every `billableUntil` is null.
    */
   listActiveSubscribers(lapsedSince?: Date): Promise<ActiveSubscriber[]>
+  /**
+   * Delete tenants created by a self-serve signup that was NEVER activated (audit MED #67).
+   *
+   * Verification made signup safe to answer identically for a taken and a free address, but the free
+   * branch still WRITES: probing an address leaves a real tenant squatting it, and an ordinary
+   * abandoned signup leaves the same debris. A tenant qualifies only when it can have no owner and
+   * no history — every user unverified, no devices, no commissions — so this can never reach an
+   * account someone actually uses.
+   *
+   * Platform-level, called by the daily sweep. Returns tenants deleted.
+   */
+  pruneUnverifiedSignups(cutoff: Date, limit?: number): Promise<number>
   /** Drop applied-Stripe-event rows older than `cutoff` (retention sweep). Stripe retries for ~3
    *  days, so anything past a wide margin can go; the table would otherwise grow forever. Batched
    *  like its retention siblings so the first pass cannot hold a long lock. Returns rows deleted. */
@@ -270,8 +285,15 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         // meant every self-serve tenant's "yesterday" ran on the wrong day boundary, invisibly.
         await tx.account.create({ data: { tenantId: tenant.id, name: data.accountName, timezone: data.timezone ?? 'UTC' } })
         // the owner is a TENANT-WIDE admin (accountId null) — a tsp_admin manages the whole tenant
+        // `emailVerifiedAt` is deliberately LEFT NULL — this is the one path that creates a user for
+        // an address nobody has proven. Until the link in the welcome mail is clicked the account
+        // cannot authenticate, which is what stops the free branch of signup from answering "does
+        // this address exist" through a follow-up login (audit MED #67).
         const user = await tx.user.create({
-          data: { tenantId: tenant.id, accountId: null, email: data.email, passwordHash: data.passwordHash, role: 'tsp_admin', locale: 'en' },
+          // `emailVerifiedAt: null` is EXPLICIT, not omitted: the column carries a DB-side
+          // `DEFAULT now()` for the rolling-deploy window, so leaving it out would silently verify
+          // the one account that must prove itself.
+          data: { tenantId: tenant.id, accountId: null, email: data.email, passwordHash: data.passwordHash, role: 'tsp_admin', locale: data.locale ?? 'en', emailVerifiedAt: null },
         })
         return { tenantId: tenant.id, userId: user.id }
       })
@@ -516,6 +538,37 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         plan: r.plan,
         billableUntil: isBillableSubscription(r.subscriptionStatus) ? null : r.lastBillingEventAt,
       }))
+    },
+    pruneUnverifiedSignups: async (cutoff, limit = 500) => {
+      const size = Math.min(Math.max(Math.trunc(limit), 1), 5_000)
+      // Deliberately ONE bounded pass per run rather than a drain loop: this deletes tenants, and a
+      // predicate bug that ran unbounded would take the platform with it. 500/day is far above any
+      // real abandonment rate, and whatever is left is picked up tomorrow.
+      //
+      // The four conditions are the whole safety argument, and each is load-bearing:
+      //   * created before the cutoff — an in-flight signup must have time to click the link;
+      //   * at least one user, and NONE verified — a tenant with a verified user has a real owner;
+      //   * no devices — someone got far enough to register hardware, whatever the user state;
+      //   * no commissions — the payout ledger is a financial record and its FK is RESTRICT, so a
+      //     match here would throw rather than delete (tenants.remove raises the same guard).
+      // Users, accounts and the rest cascade from the tenant row.
+      // The predicates live INSIDE the sub-select, and that is the whole point of the shape. With
+      // `id IN (SELECT id FROM tenants ORDER BY createdAt LIMIT n)` the limit picked the n globally
+      // OLDEST tenants — which are the real customers, who can never match — so once the platform had
+      // more than n tenants the sweep became a permanent no-op and every squatted address was held
+      // forever. Measured: 3 older verified tenants + 1 abandoned signup at limit 3 deleted nothing.
+      // Here the limit is a BATCH SIZE over the matching set, which is what "picked up tomorrow" needs.
+      return await prisma.$executeRaw`
+        DELETE FROM tenants
+         WHERE id IN (
+           SELECT t.id FROM tenants t
+            WHERE t."createdAt" < ${cutoff}
+              AND EXISTS (SELECT 1 FROM users u WHERE u."tenantId" = t.id)
+              AND NOT EXISTS (SELECT 1 FROM users u WHERE u."tenantId" = t.id AND u."emailVerifiedAt" IS NOT NULL)
+              AND NOT EXISTS (SELECT 1 FROM devices d WHERE d."tenantId" = t.id)
+              AND NOT EXISTS (SELECT 1 FROM commissions c WHERE c."tenantId" = t.id)
+            ORDER BY t."createdAt"
+            LIMIT ${size})`
     },
     pruneBillingEvents: async (cutoff, batchSize = 5_000) => {
       const size = Math.min(Math.max(Math.trunc(batchSize), 1), 50_000)

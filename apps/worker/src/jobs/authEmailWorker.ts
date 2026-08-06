@@ -6,6 +6,7 @@ import { brandingSchema, type Branding } from '@orbetra/shared'
 import type { EmailTransport } from '../notify/drivers.js'
 import { renderResetEmail } from '../notify/passwordResetEmail.js'
 import { renderSignupExistsEmail } from '../notify/signupExistsEmail.js'
+import { renderVerifyEmail } from '../notify/verifyEmail.js'
 import { AUTH_EMAIL_QUEUE, type AuthEmailJob } from './authEmailQueue.js'
 
 export interface AuthEmailWorkerDeps {
@@ -67,11 +68,21 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   // path. Doing it here is also what keeps white-label intact: a TSP's end user must not receive an
   // Orbetra-branded mail naming their supplier. A miss falls back to the default brand.
   const tenantId = job.tenantId !== '' ? job.tenantId : await tenantIdForEmail(deps.pool, job.email)
-  const { brand, branding, tenantName } = await resolveBranding(deps.pool, tenantId)
+  const resolved = await resolveBranding(deps.pool, tenantId)
+  // The ACTIVATION mail is the first thing a direct customer ever receives from us, and a self-serve
+  // tenant is named after the company they just typed — so `brand = productName ?? tenantName` put
+  // the RECIPIENT'S OWN company name in the header of a mail asking them to click a link. That reads
+  // like phishing. A real white-label TSP sets `productName`, and that must still win (their end
+  // users must never see ours); absent one, this mail is from Orbetra.
+  const { branding, tenantName } = resolved
+  const brand = job.kind === 'verify-email' ? (branding?.productName?.trim() ?? '') || 'Orbetra' : resolved.brand
+  const shellName = job.kind === 'verify-email' ? (branding?.productName?.trim() ?? '') || undefined : tenantName
   const { subject, text, html } =
     job.kind === 'signup-exists'
       ? renderSignupExistsEmail({ loginUrl: job.loginUrl, resetUrl: job.resetUrl, locale: job.locale, brand, branding, tenantName })
-      : renderResetEmail({ resetUrl: job.resetUrl, expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding, tenantName })
+      : job.kind === 'verify-email'
+        ? renderVerifyEmail({ verifyUrl: job.verifyUrl, expiresHours: job.expiresHours, locale: job.locale, brand, branding, tenantName: shellName })
+        : renderResetEmail({ resetUrl: job.resetUrl, expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding, tenantName })
   await deps.transport.send(job.email, subject, text, html)
   return true
 }

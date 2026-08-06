@@ -481,7 +481,7 @@ export const pl: Translation = {
     tspLink: "Zobacz ścieżkę white-label →",
     doneLabel: "— GOTOWE",
     doneTitle: "Konto utworzone",
-    doneBody: "Środowisko testowe jest gotowe. Proszę zalogować się w panelu floty adresem e-mail i hasłem wybranym przed chwilą. Jeśli dla tego adresu istniało już konto, proszę sprawdzić skrzynkę — wysłaliśmy wiadomość, jak się zalogować.",
+    doneBody: "Proszę sprawdzić skrzynkę — wysłaliśmy link aktywujący konto. Do czasu kliknięcia logowanie nie jest możliwe; a jeśli dla tego adresu istniało już konto, napisaliśmy, jak do niego wrócić.",
     doneCta: "Zaloguj się w panelu",
     name: "Imię i nazwisko",
     email: "Służbowy e-mail",

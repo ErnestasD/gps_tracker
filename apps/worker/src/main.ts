@@ -320,6 +320,7 @@ async function main(): Promise<void> {
     // mean "delete everything" on the next tick.
     locationRetentionDays: Number(process.env['LOCATION_RETENTION_DAYS']) || LOCATION_RETENTION_DAYS,
     tokenRetentionDays: Number(process.env['TOKEN_RETENTION_DAYS']) || 30,
+    unverifiedSignupDays: Number(process.env['UNVERIFIED_SIGNUP_RETENTION_DAYS']) || 30,
     ...(process.env['RETENTION_CONFIRM_SHORT'] !== undefined ? { confirmShortWindow: process.env['RETENTION_CONFIRM_SHORT'] } : {}),
     onPruned: (table, n) => prom.retentionPruned.inc({ table }, n),
     // the hook existed and nothing wired it: a retention sweep that throws every hour was

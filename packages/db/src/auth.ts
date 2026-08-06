@@ -25,6 +25,11 @@ export const UNSCOPED_AUTH_METHODS = [
   // sweep with no request identity behind it, and they address rows only by expiry. Same shape as
   // webhookDeliveries.pruneOlderThan / rawRejects.pruneOlderThan on the scoped side (audit MED #53).
   'tokenRetention.*',
+  // email verification (audit MED #67): the raw token IS the capability and it precedes any session
+  // or tenant knowledge, exactly like passwordResetTokens.*. `findUnverified` is a cross-tenant
+  // lookup by address for the same reason login's is — an address is not owned by a tenant until
+  // someone proves it.
+  'emailVerificationTokens.*',
 ] as const
 
 export interface AuthUserRow {
@@ -42,6 +47,9 @@ export interface AuthUserRow {
   currentPeriodEnd: Date | null
   /** null for an F2 LOCAL trial; set for a Stripe-side subscription (the trial discriminator). */
   stripeSubscriptionId: string | null
+  /** NULL ⇒ the address was never proven and the account cannot authenticate (audit MED #67).
+   *  Only public self-serve signup ever creates such a row. */
+  emailVerifiedAt: Date | null
 }
 
 export interface RefreshTokenRow {
@@ -122,10 +130,33 @@ export interface AuthDb {
      * Atomic single-use consume: marks the token used iff it is live (not used, not expired) and
      * returns its userId. Exactly ONE of two concurrent consumes wins (row-level lock on the
      * conditional UPDATE, no transaction) — mirrors refreshTokens.claimForRotation.
+     *
+     * Redeeming it ALSO verifies the address (audit MED #67 review). A reset link is delivered to the
+     * mailbox and comes back, which is the same proof the activation link carries — and without this
+     * the recovery route we signpost was a dead end: the "you already have an account" mail says
+     * "sign in, or reset your password", and for the case that mail exists for (an address squatted
+     * by someone else's unverified signup) resetting succeeded and then login still 401'd, with no
+     * explanation anywhere.
      */
     consume(tokenHash: string, now: Date): Promise<{ userId: string } | null>
     /** Invalidate a user's outstanding (unused) reset tokens — called when a NEW reset is requested
      *  (only the latest link stays valid) and after a successful reset. */
+    invalidateAllForUser(userId: string, now: Date): Promise<void>
+  }
+  /**
+   * Address-ownership proof for a public self-serve signup (audit MED #67). Same shape as
+   * passwordResetTokens for the same reasons: the raw token is the capability, only its hash is
+   * stored, and consuming it is a single atomic conditional UPDATE so two concurrent clicks on the
+   * same link cannot both succeed. UNSCOPED BY DESIGN — verification precedes any session.
+   */
+  emailVerificationTokens: {
+    create(row: { id: string; userId: string; tokenHash: string; expiresAt: Date }): Promise<void>
+    /** Consume the token AND mark the user verified, atomically. Returns the user, or null when the
+     *  token is unknown, used or expired. */
+    consume(tokenHash: string, now: Date): Promise<{ userId: string; tenantId: string; email: string } | null>
+    /** The UNVERIFIED user for an address, if any — the resend path. Null when the address is
+     *  unknown OR already verified; the caller must answer identically either way. */
+    findUnverified(email: string): Promise<{ id: string; tenantId: string; locale: string } | null>
     invalidateAllForUser(userId: string, now: Date): Promise<void>
   }
   /**
@@ -143,6 +174,7 @@ export interface AuthDb {
     pruneRefreshTokens(cutoff: Date, batchSize?: number): Promise<number>
     pruneResetTokens(cutoff: Date, batchSize?: number): Promise<number>
     pruneAffiliateTokens(cutoff: Date, batchSize?: number): Promise<number>
+    pruneVerificationTokens(cutoff: Date, batchSize?: number): Promise<number>
   }
   $disconnect(): Promise<void>
 }
@@ -155,6 +187,7 @@ const AUTH_USER_SELECT = {
   passwordHash: true,
   role: true,
   locale: true,
+  emailVerifiedAt: true,
   // join the owning tenant's plan + live billing window so the session hint can be TRIAL-AWARE
   // (an expired F2 trial must not advertise features the server already floors) — login computes
   // entitlements with effectiveEntitlementsAt, the same helper the authoritative gate uses.
@@ -256,15 +289,61 @@ export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnec
         await prisma.passwordResetToken.create({ data: row })
       },
       consume: async (tokenHash, now) => {
-        const claimed = await prisma.passwordResetToken.updateManyAndReturn({
-          where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
-          data: { usedAt: now },
-          select: { userId: true },
+        return await prisma.$transaction(async (tx) => {
+          const claimed = await tx.passwordResetToken.updateManyAndReturn({
+            where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
+            data: { usedAt: now },
+            select: { userId: true },
+          })
+          const userId = claimed[0]?.userId
+          if (userId === undefined) return null
+          // …and the address is now PROVEN: the link went to that mailbox and came back, which is
+          // exactly what the activation link demonstrates. Without this the recovery route we
+          // signpost was a dead end — see the interface note. `updateMany`, so a user deleted under
+          // us rolls the claim back instead of raising a P2025 the route never documents.
+          const updated = await tx.user.updateMany({ where: { id: userId }, data: { emailVerifiedAt: now } })
+          if (updated.count === 0) return null
+          return { userId }
         })
-        return claimed[0] ?? null
       },
       invalidateAllForUser: async (userId, now) => {
         await prisma.passwordResetToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: now } })
+      },
+    },
+    emailVerificationTokens: {
+      create: async (row) => {
+        await prisma.emailVerificationToken.create({ data: row })
+      },
+      consume: async (tokenHash, now) => {
+        // ONE transaction: the token is spent and the user is verified together, so a crash between
+        // them cannot leave a burnt link on an account that still cannot log in — the user's only
+        // recovery would be a resend they have no reason to expect they need.
+        return await prisma.$transaction(async (tx) => {
+          const claimed = await tx.emailVerificationToken.updateManyAndReturn({
+            where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
+            data: { usedAt: now },
+            select: { userId: true },
+          })
+          const userId = claimed[0]?.userId
+          if (userId === undefined) return null
+          // idempotent on the user side: verifying an already-verified account is a no-op, not an error
+          const updated = await tx.user.updateManyAndReturn({ where: { id: userId }, data: { emailVerifiedAt: now }, select: { id: true, tenantId: true, email: true } })
+          const user = updated[0]
+          // The user vanished under us — a concurrent tenant/user delete, or the unverified-signup
+          // sweep. `update` would raise P2025, which the API's error mapper turns into a 404 rather
+          // than the promised 400, and would leave the caller staring at a status the route never
+          // documents. `updateMany` returns an empty set instead, and the enclosing transaction rolls
+          // the claim back, so the token is not burnt either.
+          if (user === undefined) return null
+          return { userId: user.id, tenantId: user.tenantId, email: user.email }
+        })
+      },
+      findUnverified: async (email) => {
+        const row = await prisma.user.findFirst({ where: { email, emailVerifiedAt: null }, select: { id: true, tenantId: true, locale: true } })
+        return row ?? null
+      },
+      invalidateAllForUser: async (userId, now) => {
+        await prisma.emailVerificationToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: now } })
       },
     },
     tokenRetention: {
@@ -294,6 +373,19 @@ export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnec
           const n = await prisma.$executeRaw`
             DELETE FROM password_reset_tokens WHERE id IN (
               SELECT id FROM password_reset_tokens
+               WHERE "expiresAt" < ${cutoff}
+               LIMIT ${size})`
+          total += n
+          if (n < size) return total
+        }
+      },
+      pruneVerificationTokens: async (cutoff, batchSize = 5_000) => {
+        const size = batchOf(batchSize)
+        let total = 0
+        for (;;) {
+          const n = await prisma.$executeRaw`
+            DELETE FROM email_verification_tokens WHERE id IN (
+              SELECT id FROM email_verification_tokens
                WHERE "expiresAt" < ${cutoff}
                LIMIT ${size})`
           total += n

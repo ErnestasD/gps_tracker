@@ -53,6 +53,12 @@ export function createUserRepo(prisma: PrismaClient, audit: AuditRepo): UserRepo
           role: data.role,
           accountId: data.accountId,
           locale: data.locale ?? 'en',
+          // VERIFIED on creation. This path is an already-authenticated admin adding a colleague, so
+          // the address is vouched for by someone the platform already trusts. Only PUBLIC self-serve
+          // signup mints an unverified user (audit MED #67) — making an admin's new hire prove their
+          // own address would break tenant onboarding to close a hole that only exists on the
+          // unauthenticated route.
+          emailVerifiedAt: new Date(),
         },
         select: VIEW,
       })

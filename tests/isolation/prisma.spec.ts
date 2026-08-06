@@ -42,12 +42,17 @@ describe('E03-2 AC[4]: Prisma confined to packages/db', () => {
     //   platform-wide by definition, the caller is a background job with no request identity behind
     //   it, and the methods address rows only by expiry — the same shape as the scoped side's
     //   webhookDeliveries.pruneOlderThan / rawRejects.pruneOlderThan.
+    // emailVerificationTokens.* added for self-serve signup verification (audit MED #67): the raw
+    //   token IS the capability and it precedes any session, exactly like passwordResetTokens.*,
+    //   and `findUnverified` is a cross-tenant lookup by address for the same reason login's is —
+    //   an address belongs to no tenant until someone proves it.
     expect(UNSCOPED_AUTH_METHODS).toEqual([
       'users.findByEmailAllTenants',
       'users.findByIdForAuth',
       'refreshTokens.*',
       'passwordResetTokens.*',
       'tokenRetention.*',
+      'emailVerificationTokens.*',
     ])
   })
 })
