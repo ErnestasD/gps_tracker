@@ -5,6 +5,7 @@
     "passwordLabel": "Slaptažodis",
     "submit": "Prisijungti",
     "invalidCredentials": "Neteisingas el. paštas arba slaptažodis.",
+    "invalidHint": "Jei ką tik registravotės, aktyvuokite paskyrą per atsiųstą nuorodą.",
     "tooManyAttempts": "Per daug bandymų — pabandykite po kelių minučių.",
     "ambiguousIdentity": "Jūsų paskyra dviprasmiška tarp organizacijų — kreipkitės į administratorių.",
     "networkError": "Nepavyko prisijungti. Patikrinkite interneto ryšį ir bandykite dar kartą.",
@@ -30,6 +31,18 @@
     "requestNew": "Prašyti naujos nuorodos",
     "done": "Slaptažodis pakeistas. Prisijunkite su nauju slaptažodžiu.",
     "toLogin": "Eiti į prisijungimą"
+  },
+  "verify": {
+    "title": "Aktyvuojame paskyrą",
+    "working": "Tvirtiname jūsų adresą…",
+    "done": "Paskyra aktyvi. Prisijunkite ir pradėkite.",
+    "toLogin": "Eiti prisijungti",
+    "invalid": "Ši aktyvavimo nuoroda netinkama, jau panaudota arba nebegalioja.",
+    "resend": "Atsiųsti naują nuorodą",
+    "resendSent": "Jei tas adresas laukia aktyvavimo, nauja nuoroda jau pakeliui.",
+    "resendEmail": "Jūsų el. paštas",
+    "resendSubmit": "Siųsti nuorodą",
+    "noToken": "Ši aktyvavimo nuoroda nepilna. Užsisakykite naują žemiau."
   },
   "shell": {
     "live": "Gyvai",

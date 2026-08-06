@@ -77,6 +77,9 @@ export interface AuthRouteDeps {
   /** A lockout gate refused a request, by which ceiling tripped. A customer locked out of the
    *  product must be visible in Grafana, not merely in their own support ticket. */
   onLockout?: (gate: 'credential' | 'ip' | 'email' | 'degraded') => void
+  /** a login presented the RIGHT password for an account whose address was never verified. Invisible
+   *  in the response by design, so this counter is the only way to see people stuck at that gate. */
+  onUnverifiedLogin?: () => void
   /** Self-service password-change limit per user; default 10/h. Two argon2 ops per request. */
   passwordChangeRateLimit?: { max: number; windowS: number }
   secureCookies: boolean
@@ -305,6 +308,30 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
         deps.redis.eval(DECAY_SCRIPT, 1, attemptIpKey).catch(() => undefined),
       ])
       throw err
+    }
+
+    // UNVERIFIED accounts are folded into the wrong-password branch — same 401, same body, same
+    // lockout bookkeeping, same latency (the argon2 verify above has already run). This is what
+    // finally closes the signup oracle (audit MED #67): answering a taken address with the same 201
+    // as a free one only moved the question one request downstream, because the free branch handed
+    // back an account the caller could then log into. It cannot now.
+    //
+    // Folding it in rather than returning a distinct "verify your email" is deliberate and costs
+    // real UX: a legitimate user who has not clicked the link sees "invalid credentials". Any
+    // distinguishable answer here — a different status, a different body, a skipped lockout
+    // increment that shows up as a later 429 — reopens the oracle for the price of one extra
+    // request. The login screen tells everyone to check their mail on a failed attempt, and
+    // `POST /v1/public/verify-email/resend` is one click away, which is where that cost is paid back.
+    const unverified = verified.filter((u) => u.emailVerifiedAt === null)
+    if (unverified.length > 0 && unverified.length === verified.length) {
+      deps.onUnverifiedLogin?.()
+      verified.length = 0
+    } else if (unverified.length > 0) {
+      // the same address verified in several tenants, only some of them proven: sign in to the
+      // proven ones and leave the rest invisible
+      const proven = verified.filter((u) => u.emailVerifiedAt !== null)
+      verified.length = 0
+      verified.push(...proven)
     }
 
     if (verified.length === 0) {

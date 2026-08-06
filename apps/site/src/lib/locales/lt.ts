@@ -486,7 +486,7 @@ export const lt: Translation = {
     tspLink: "Peržiūrėkite white-label kryptį →",
     doneLabel: "— VISKAS PARUOŠTA",
     doneTitle: "Darbo aplinka sukurta",
-    doneBody: "Jūsų bandomoji darbo sritis paruošta. Prisijunkite prie valdymo skydelio ką tik pasirinktu el. paštu ir slaptažodžiu. Jei su tuo adresu paskyra jau buvo, patikrinkite pašto dėžutę — išsiuntėme, kaip prisijungti.",
+    doneBody: "Patikrinkite pašto dėžutę — išsiuntėme nuorodą, kuri aktyvuoja paskyrą. Kol jos nepaspausite, prisijungti negalėsite; o jei su tuo adresu paskyra jau buvo, parašėme, kaip prie jos grįžti.",
     doneCta: "Prisijungti prie valdymo skydelio",
     name: "Vardas ir pavardė",
     email: "Darbo el. paštas",

@@ -57,6 +57,37 @@ export async function requestPasswordReset(email: string): Promise<void> {
   if (!res.ok) throw new ApiError(res.status)
 }
 
+/**
+ * POST /v1/public/verify-email (audit MED #67) — activate a self-serve signup.
+ *
+ * Until this succeeds the account cannot sign in AT ALL, which is what stops signup from answering
+ * "does this address exist" through a follow-up login. Throws ApiError(400) for a token that is
+ * unknown, already used or expired.
+ */
+export async function verifyEmail(token: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/v1/public/verify-email`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  if (!res.ok) throw new ApiError(res.status)
+}
+
+/**
+ * POST /v1/public/verify-email/resend — ask for a fresh activation link.
+ *
+ * ALWAYS resolves, whatever the server says: the endpoint answers 200 for an unknown address, an
+ * already-verified one and a real resend alike (the forgot-password contract), and surfacing a
+ * network failure differently would hand back the distinction the 200 exists to refuse.
+ */
+export async function resendVerification(email: string): Promise<void> {
+  await fetch(`${API_BASE}/v1/public/verify-email/resend`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email }),
+  }).catch(() => undefined)
+}
+
 /** POST /v1/auth/reset-password (ADR-031) — redeem the emailed token + set a new password.
  *  Throws ApiError(400) for an invalid/expired token or a too-short password. */
 export async function resetPassword(token: string, newPassword: string): Promise<void> {

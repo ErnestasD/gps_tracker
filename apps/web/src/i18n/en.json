@@ -5,6 +5,7 @@
     "passwordLabel": "Password",
     "submit": "Sign in",
     "invalidCredentials": "Wrong email or password.",
+    "invalidHint": "If you just signed up, activate your account from the link we emailed you.",
     "tooManyAttempts": "Too many attempts — try again in a few minutes.",
     "ambiguousIdentity": "Your account is ambiguous across organizations — contact your administrator.",
     "networkError": "Can't connect. Check your internet connection and try again.",
@@ -30,6 +31,18 @@
     "requestNew": "Request a new link",
     "done": "Your password has been changed. Sign in with your new password.",
     "toLogin": "Go to sign in"
+  },
+  "verify": {
+    "title": "Activating your account",
+    "working": "Confirming your address…",
+    "done": "Your account is active. Sign in to get started.",
+    "toLogin": "Go to sign in",
+    "invalid": "This activation link is invalid, already used, or has expired.",
+    "resend": "Send me a new link",
+    "resendSent": "If that address needs activating, a new link is on its way.",
+    "resendEmail": "Your email address",
+    "resendSubmit": "Send link",
+    "noToken": "This activation link is incomplete. Request a new one below."
   },
   "shell": {
     "live": "Live",

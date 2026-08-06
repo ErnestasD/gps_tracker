@@ -16,12 +16,12 @@ const fakeDb = (
   prune: Prune,
   rejectPrune: Prune,
   billingPrune: Prune = zero,
-  over: { events?: Prune; trips?: Prune; refresh?: Prune; reset?: Prune; affiliate?: Prune } = {},
+  over: { events?: Prune; trips?: Prune; refresh?: Prune; reset?: Prune; affiliate?: Prune; verification?: Prune; signups?: Prune } = {},
 ): Db =>
   ({
     webhookDeliveries: { pruneOlderThan: prune },
     rawRejects: { pruneOlderThan: rejectPrune },
-    tenants: { pruneBillingEvents: billingPrune },
+    tenants: { pruneBillingEvents: billingPrune, pruneUnverifiedSignups: over.signups ?? zero },
     events: { pruneOlderThan: over.events ?? zero },
     trips: { stripCoordinatesOlderThan: over.trips ?? zero },
     auth: {
@@ -29,6 +29,7 @@ const fakeDb = (
         pruneRefreshTokens: over.refresh ?? zero,
         pruneResetTokens: over.reset ?? zero,
         pruneAffiliateTokens: over.affiliate ?? zero,
+        pruneVerificationTokens: over.verification ?? zero,
       },
     },
   }) as unknown as Db
@@ -133,6 +134,22 @@ describe('retention sweep', () => {
     expect(seen).toContainEqual(['refresh_tokens', 400])
     expect(seen).toContainEqual(['password_reset_tokens', 9])
     expect(seen).toContainEqual(['affiliate_password_tokens', 2])
+  })
+
+  it('deletes NEVER-ACTIVATED signups on their own window, floored at 2 days', async () => {
+    // verification made signup safe to answer identically for a taken and a free address, but the
+    // free branch still WRITES a tenant — so probing an address squats it. The floor matters: the
+    // activation link lives 48 h, so a shorter window would delete accounts whose owner still holds
+    // a valid link.
+    const signups = vi.fn<Prune>(() => Promise.resolve(3))
+    const seen: [string, number][] = []
+    const db = fakeDb(zero, zero, zero, { signups })
+    const now = Date.UTC(2026, 6, 16, 12, 0, 0)
+    expect(await runRetentionSweep(db, 30, now, 90, (t, n) => seen.push([t, n]), 90, 396, 30, 30)).toBe(3)
+    expect(signups.mock.calls[0]![0].getTime()).toBe(now - 30 * 24 * 3_600_000)
+    expect(seen).toContainEqual(['unverified_signups', 3])
+    await runRetentionSweep(db, 30, now, 90, undefined, 90, 396, 30, 1)
+    expect(signups.mock.calls[1]![0].getTime()).toBe(now - 2 * 24 * 3_600_000)
   })
 
   it('one table failing still counts and reports what the others deleted', async () => {

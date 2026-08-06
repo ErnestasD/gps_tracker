@@ -33,7 +33,17 @@ import { RETENTION_QUEUE } from './retentionQueue.js'
  *    need a year: 90 days is far past the point where anyone is still investigating.
  */
 /** The tables the sweep touches, for the per-table `retention_pruned_total` counter. */
-export type RetentionTable = 'webhook_deliveries' | 'raw_rejects' | 'billing_events' | 'events' | 'trips_coords' | 'refresh_tokens' | 'password_reset_tokens' | 'affiliate_password_tokens'
+export type RetentionTable =
+  | 'webhook_deliveries'
+  | 'raw_rejects'
+  | 'billing_events'
+  | 'events'
+  | 'trips_coords'
+  | 'refresh_tokens'
+  | 'password_reset_tokens'
+  | 'affiliate_password_tokens'
+  | 'email_verification_tokens'
+  | 'unverified_signups'
 
 /** The platform-wide raw-location horizon, in days. MUST match `add_retention_policy('positions',
  *  drop_after => interval '13 months')` in sql/001_positions.sql and the 13 months the privacy
@@ -78,6 +88,9 @@ export interface RetentionWorkerDeps {
   tokenRetentionDays?: number
   /** `RETENTION_CONFIRM_SHORT` — required to run a location window below the published 13 months. */
   confirmShortWindow?: string | undefined
+  /** days before a NEVER-ACTIVATED self-serve signup is deleted (default 30, floored at 2 — the
+   *  activation link itself lives 48 h). */
+  unverifiedSignupDays?: number
   onPruned?: (table: RetentionTable, rows: number) => void
   onFailed?: () => void
 }
@@ -93,7 +106,11 @@ export async function runRetentionSweep(
   billingEventRetentionDays = 90,
   locationRetentionDays = LOCATION_RETENTION_DAYS,
   tokenRetentionDays = 30,
+  unverifiedSignupDaysRaw = 30,
 ): Promise<number> {
+  // floored at 2 days: an activation link lives 48 h, so anything shorter would delete accounts
+  // whose owner still has a valid link in their inbox
+  const unverifiedSignupDays = Number.isFinite(unverifiedSignupDaysRaw) ? Math.max(2, unverifiedSignupDaysRaw) : 30
   const days = Number.isFinite(retentionDays) ? Math.max(1, retentionDays) : 30
   const cutoff = new Date(nowMs - days * 24 * 3_600_000)
   const rejectDays = Number.isFinite(rejectRetentionDays) ? Math.max(1, rejectRetentionDays) : 90
@@ -125,6 +142,12 @@ export async function runRetentionSweep(
     ['refresh_tokens', db.auth.tokenRetention.pruneRefreshTokens(tokenCutoff)],
     ['password_reset_tokens', db.auth.tokenRetention.pruneResetTokens(tokenCutoff)],
     ['affiliate_password_tokens', db.auth.tokenRetention.pruneAffiliateTokens(tokenCutoff)],
+    ['email_verification_tokens', db.auth.tokenRetention.pruneVerificationTokens(tokenCutoff)],
+    // NEVER-ACTIVATED signups. Verification made signup safe to answer identically for a taken and a
+    // free address, but the free branch still writes a tenant — so probing an address squats it, and
+    // an ordinary abandoned signup leaves the same debris. Only tenants that can have no owner and no
+    // history qualify; see the repo method for the four conditions.
+    ['unverified_signups', db.tenants.pruneUnverifiedSignups(new Date(nowMs - unverifiedSignupDays * 24 * 3_600_000))],
   ]
   // allSettled, and each table reports its own count: with Promise.all the first rejection skipped
   // `onPruned` entirely, so rows the OTHER prunes had already deleted were never counted — and they
@@ -156,6 +179,7 @@ export function startRetentionWorker(deps: RetentionWorkerDeps): Worker {
       billingEvents: deps.billingEventRetentionDays ?? 90,
       location: deps.locationRetentionDays ?? LOCATION_RETENTION_DAYS,
       tokens: deps.tokenRetentionDays ?? 30,
+      unverifiedSignups: deps.unverifiedSignupDays ?? 30,
     }),
   )
   return new Worker(
@@ -171,6 +195,7 @@ export function startRetentionWorker(deps: RetentionWorkerDeps): Worker {
           deps.billingEventRetentionDays,
           deps.locationRetentionDays,
           deps.tokenRetentionDays,
+          deps.unverifiedSignupDays,
         )
       } catch (err) {
         deps.onFailed?.()

@@ -163,3 +163,61 @@ describe('token retention', () => {
     expect((await q<{ n: string }>(`SELECT count(*) AS n FROM affiliate_password_tokens`))[0]?.n).toBe('1')
   })
 })
+
+describe('never-activated signup cleanup', () => {
+  /** A self-serve signup exactly as the public route creates one: unverified, no devices. */
+  const abandoned = async (name: string, email: string, createdAt: Date): Promise<string> => {
+    const t = await db.tenants.createSelfServeSignup({
+      tenantName: name,
+      accountName: 'My fleet',
+      email,
+      passwordHash: 'x',
+      plan: 'direct_10',
+      trialEndsAt: new Date(Date.now() + 86_400_000),
+      referredByAffiliateId: null,
+    })
+    await q(`UPDATE tenants SET "createdAt" = $2 WHERE id = $1::uuid`, [t.tenantId, createdAt])
+    return t.tenantId
+  }
+  const exists = async (id: string): Promise<boolean> =>
+    (await q<{ n: string }>(`SELECT count(*) AS n FROM tenants WHERE id = $1::uuid`, [id]))[0]?.n === '1'
+
+  it('deletes an old, never-activated, empty signup', async () => {
+    const id = await abandoned('Abandoned Co', 'abandoned@x.test', OLD)
+    expect(await db.tenants.pruneUnverifiedSignups(CUTOFF)).toBe(1)
+    expect(await exists(id)).toBe(false)
+  })
+
+  it('never touches a tenant with a VERIFIED user — that account has a real owner', async () => {
+    const id = await abandoned('Verified Co', 'verified@x.test', OLD)
+    await q(`UPDATE users SET "emailVerifiedAt" = now() WHERE "tenantId" = $1::uuid`, [id])
+    expect(await db.tenants.pruneUnverifiedSignups(CUTOFF)).toBe(0)
+    expect(await exists(id)).toBe(true)
+  })
+
+  it('never touches a RECENT signup — the activation link is still valid', async () => {
+    const id = await abandoned('Recent Co', 'recent@x.test', RECENT)
+    expect(await db.tenants.pruneUnverifiedSignups(CUTOFF)).toBe(0)
+    expect(await exists(id)).toBe(true)
+  })
+
+  it('never touches a tenant that has DEVICES, however unverified its users', async () => {
+    // someone got far enough to register hardware; whatever the user state, this is not debris
+    const id = await abandoned('Device Co', 'devices@x.test', OLD)
+    const [acct] = await q<{ id: string }>(`SELECT id::text FROM accounts WHERE "tenantId" = $1::uuid LIMIT 1`, [id])
+    const [prof] = await q<{ id: string }>(`INSERT INTO device_profiles(id,key,name) VALUES (gen_random_uuid(),'prune','P') RETURNING id::text`)
+    await db.devices.create({ tenantId: id, accountId: acct!.id }, actor, { accountId: acct!.id, profileId: prof!.id, imei: '860000000000901', name: 'Van' })
+    expect(await db.tenants.pruneUnverifiedSignups(CUTOFF)).toBe(0)
+    expect(await exists(id)).toBe(true)
+  })
+
+  it('never touches a tenant carrying COMMISSIONS — the payout ledger is a financial record', async () => {
+    const aff = await db.affiliates.create(actor, { name: 'Prune Partner', email: 'prunepartner@x.test', code: 'PRUNE1' })
+    const id = await abandoned('Referred Co', 'referred@x.test', OLD)
+    await q(`UPDATE tenants SET "referredByAffiliateId" = $2::uuid WHERE id = $1::uuid`, [id, aff.id])
+    await db.affiliates.accrueCommission({ affiliateId: aff.id, tenantId: id, amountCents: 100, currency: 'eur', sourceInvoiceId: 'in_prune_1' })
+    // the FK is RESTRICT, so a predicate bug here would THROW rather than silently destroy the ledger
+    expect(await db.tenants.pruneUnverifiedSignups(CUTOFF)).toBe(0)
+    expect(await exists(id)).toBe(true)
+  })
+})

@@ -13,6 +13,7 @@ import { getAccessToken, getCurrentUser, refreshSession } from '@/lib/auth'
 import { LoginPage } from '@/routes/login'
 import { ForgotPasswordPage } from '@/routes/forgotPassword'
 import { ResetPasswordPage } from '@/routes/resetPassword'
+import { VerifyEmailPage } from '@/routes/verifyEmail'
 import { MapPage } from '@/routes/app/map'
 import { DashboardPage } from './routes/app/dashboard'
 import { AuditPage } from '@/routes/app/audit'
@@ -96,6 +97,18 @@ const resetPasswordRoute = createRoute({
     return typeof tk === 'string' && tk !== '' ? { token: tk } : {}
   },
   component: ResetPasswordPage,
+})
+
+// PUBLIC account activation (audit MED #67) — a self-serve signup cannot sign in until the address
+// in its `?token=` link is proven. Same shape as reset-password: no auth, no app shell.
+const verifyEmailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/verify-email',
+  validateSearch: (search: Record<string, unknown>): { token?: string } => {
+    const tk = search['token']
+    return typeof tk === 'string' && tk !== '' ? { token: tk } : {}
+  },
+  component: VerifyEmailPage,
 })
 
 // PUBLIC temporary share page (V1-nice) — no auth, no app shell; the token is the capability.
@@ -252,6 +265,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   forgotPasswordRoute,
   resetPasswordRoute,
+  verifyEmailRoute,
   shareRoute,
   appRoute.addChildren([appIndexRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
 ])

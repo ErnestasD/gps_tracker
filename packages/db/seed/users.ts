@@ -72,8 +72,12 @@ export async function seedUser(opts: SeedUserOpts): Promise<{ tenantId: string; 
     const passwordHash = await hash(opts.password, { algorithm: 2, ...ARGON2ID_PARAMS })
     const user = await prisma.user.upsert({
       where: { tenantId_email: { tenantId: tenant.id, email } },
-      create: { tenantId: tenant.id, accountId: userAccountId, email, passwordHash, role: opts.role, locale: opts.locale ?? 'en' },
-      update: { passwordHash, role: opts.role, accountId: userAccountId },
+      // VERIFIED on creation, like every admin-created user: a seeded account exists because an
+      // operator ran this command, which is the same vouching an authenticated admin does. Only
+      // PUBLIC self-serve signup mints an unverified user (audit MED #67), and leaving a seed
+      // unverified would silently make every fixture and the demo tenant unable to log in.
+      create: { tenantId: tenant.id, accountId: userAccountId, email, passwordHash, role: opts.role, locale: opts.locale ?? 'en', emailVerifiedAt: new Date() },
+      update: { passwordHash, role: opts.role, accountId: userAccountId, emailVerifiedAt: new Date() },
     })
     return { tenantId: tenant.id, accountId: createdAccountId, userId: user.id }
   } finally {

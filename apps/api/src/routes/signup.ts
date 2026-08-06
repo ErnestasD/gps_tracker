@@ -9,6 +9,7 @@ import { signupSchema } from '@orbetra/shared'
 
 import { hashPassword } from '../auth/passwords.js'
 import { clientIp } from '../net.js'
+import { sendVerificationEmail } from './verifyEmail.js'
 
 /**
  * PUBLIC self-serve signup (F2, item 5/W9): a direct small-fleet customer creates their own tenant +
@@ -43,10 +44,16 @@ export interface SignupRouteDeps {
    *  simply is not told, which is the pre-existing behaviour minus the oracle. */
   mail?: {
     enqueueSignupExistsEmail(job: { kind: 'signup-exists'; email: string; tenantId: string; locale: string; loginUrl: string; resetUrl: string }): Promise<void>
+    /** the ACTIVATION mail for a real signup — the account cannot be signed in to until its link is
+     *  clicked, which is what makes the taken and free branches indistinguishable (audit MED #67). */
+    enqueueVerifyEmail(job: { kind: 'verify-email'; email: string; tenantId: string; locale: string; verifyUrl: string; expiresHours: number }): Promise<void>
   }
   /** a signup hit an address that already exists. Bulk probing was previously indistinguishable from
    *  ordinary traffic; a rising rate here is someone walking a list. */
   onEmailInUse?: () => void
+  /** the ACTIVATION mail could not be sent — the customer is stranded and cannot log in, and the
+   *  response cannot say so. Non-zero ⇒ page. */
+  onVerifyMailFailed?: () => void
 }
 
 // 30 days — the publicly advertised trial. The marketing site AND the Terms of Service both state
@@ -168,6 +175,9 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
     }
 
     const email = body.email.trim().toLowerCase()
+    // one locale for both branches — the taken path must not be distinguishable by the language of
+    // a mail the caller never sees, and the real signup should arrive in the language just used
+    const locale = preferredLocale(c.req.header('accept-language'))
     // attribution BEFORE the transaction (read-only): active code → affiliate, else none
     const candidate = body.ref !== undefined ? await deps.db.affiliates.getActiveByCode(body.ref) : null
     // SELF-REFERRAL GUARD (PROJECT_PLAN §6.9): a partner must not earn commission on their own
@@ -196,11 +206,23 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
         plan: TRIAL_PLAN,
         trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 3_600_000),
         referredByAffiliateId: ref?.id ?? null,
+        locale,
         // the signup form sends the browser's IANA zone; it is the account's REPORTING zone (hard
         // rule 7), not a display preference. Absent ⇒ UTC, the old behaviour, which was only ever
         // right for a customer whose day genuinely starts at 00:00 UTC.
         ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
       })
+      // ACTIVATION. The account exists but cannot authenticate until this link is clicked, so a
+      // failure to send is not cosmetic — it strands a real customer. It is still swallowed rather
+      // than surfaced: a 500 here would be visible ONLY on the free branch, which is precisely the
+      // signal this whole design removes. The resend endpoint is the recovery path, and the counter
+      // below is how a broken queue becomes visible to us instead of to them.
+      try {
+        await sendVerificationEmail(deps, { id: created.userId, tenantId: created.tenantId, email, locale })
+      } catch (mailErr) {
+        deps.onVerifyMailFailed?.()
+        console.error('signup: could not send the activation mail', mailErr instanceof Error ? mailErr.message : String(mailErr))
+      }
       return c.json({ ok: true, id: created.tenantId }, 201)
     } catch (err) {
       if (err instanceof SignupEmailInUseError) {
@@ -239,7 +261,7 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
                 // address and render the message in that tenant's branding — a white-label TSP's end
                 // user must not receive an Orbetra-branded mail naming their supplier.
                 tenantId: '',
-                locale: preferredLocale(c.req.header('accept-language')),
+                locale,
                 loginUrl: `${base}/login`,
                 resetUrl: `${base}/forgot-password`,
               })

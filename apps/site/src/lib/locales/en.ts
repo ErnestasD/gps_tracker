@@ -489,7 +489,7 @@ export const en = {
     tspLink: "See the white-label track →",
     doneLabel: "— YOU'RE IN",
     doneTitle: "Workspace created",
-    doneBody: "Your trial workspace is ready. Sign in at the fleet dashboard with the email and password you just chose. If that address already had an account, check your inbox instead — we've emailed you how to get back in.",
+    doneBody: "Check your inbox — we've emailed a link that activates your account. Until you click it you can't sign in, and if that address already had an account we've written to tell you how to get back in.",
     doneCta: "Sign in at the dashboard",
     name: "Full name",
     email: "Work email",

@@ -40,7 +40,18 @@ export interface SignupExistsEmailJob extends AuthEmailBase {
   resetUrl: string
 }
 
-export type AuthEmailJob = PasswordResetEmailJob | SignupExistsEmailJob
+/**
+ * The mail that ACTIVATES a self-serve signup (audit MED #67). Until its link is clicked the account
+ * cannot authenticate, which is what stops signup's free branch from answering "does this address
+ * exist" through a follow-up login.
+ */
+export interface VerifyEmailJob extends AuthEmailBase {
+  kind: 'verify-email'
+  verifyUrl: string
+  expiresHours: number
+}
+
+export type AuthEmailJob = PasswordResetEmailJob | SignupExistsEmailJob | VerifyEmailJob
 
 export function createAuthEmailQueue(connection: ConnectionOptions): Queue<AuthEmailJob> {
   return new Queue<AuthEmailJob>(AUTH_EMAIL_QUEUE, { connection })

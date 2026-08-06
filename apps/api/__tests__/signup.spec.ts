@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import { resolve } from 'node:path'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
+
 import { serve } from '@hono/node-server'
 import { Redis } from 'ioredis'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
@@ -34,6 +36,8 @@ let httpServer: ReturnType<typeof createServer>
 let platformToken: string
 /** signup-exists mails the route enqueued, and how many times the in-use counter fired. */
 const sentMail: { kind: string; email: string; loginUrl: string; resetUrl: string }[] = []
+/** activation mails the route enqueued — the link is the only way a signup becomes usable. */
+const sentVerify: { kind: string; email: string; verifyUrl: string; expiresHours: number }[] = []
 let emailInUseCount = 0
 
 const base = () => `http://127.0.0.1:${port}`
@@ -75,6 +79,7 @@ beforeAll(async () => {
     mail: {
       enqueueResetEmail: () => Promise.resolve(),
       enqueueSignupExistsEmail: (job) => { sentMail.push(job); return Promise.resolve() },
+      enqueueVerifyEmail: (job) => { sentVerify.push(job); return Promise.resolve() },
     },
     onSignupEmailInUse: () => { emailInUseCount++ },
   })
@@ -107,12 +112,99 @@ describe('public self-serve signup (F2)', () => {
     // trial entitlements: direct matrix (deviceLimit 10, no white-label)
     const ents = await db.tenants.getEntitlements(id)
     expect(ents).toMatchObject({ deviceLimit: 10, whiteLabel: false, apiAccess: false })
-    // the created admin logs in through the ordinary login route (signup minted NO session)
+    // …but the account CANNOT log in yet: the address has not been proven, and until it is, the
+    // right password is refused exactly like a wrong one (audit MED #67). This is the whole reason
+    // the taken and free branches of signup are indistinguishable.
+    expect((await login('jonas@fleet.test', 'password12')).status).toBe(401)
+
+    // the activation mail went out with a single-use link…
+    const mail = sentVerify.find((m) => m.email === 'jonas@fleet.test')
+    expect(mail).toMatchObject({ kind: 'verify-email', expiresHours: 48 })
+    const token = new URL(mail!.verifyUrl).searchParams.get('token')!
+    expect(token).toMatch(/^[0-9a-f]{64}$/) // 32 bytes of CSPRNG, hex
+
+    // …and after clicking it, the ORDINARY login works (verification mints no session of its own)
+    expect((await j('/v1/public/verify-email', 'POST', { token })).status).toBe(200)
     const session = await login('jonas@fleet.test', 'password12')
     expect(session.status).toBe(200)
     const bodyJson = (await session.json()) as { user: { role: string; tenantId: string; accountId: string | null } }
     expect(bodyJson.user).toMatchObject({ role: 'tsp_admin', tenantId: id, accountId: null })
+
+    // the link is SINGLE-USE — a second click (a mail scanner, a forwarded message) is refused
+    expect((await j('/v1/public/verify-email', 'POST', { token })).status).toBe(400)
   })
+
+  it('the login answer for an UNVERIFIED account is byte-identical to a wrong password', async () => {
+    // this is the property that closes the oracle: signup(taken) and signup(free) both 201, and the
+    // follow-up login — the second request that used to answer the question — is the same 401 either
+    // way. Anything distinguishable here (status, body, or a lockout increment that shows up later
+    // as a 429) hands the answer back for the price of one extra request.
+    await signup({ name: 'Unv', email: 'unverified@fleet.test', password: 'password12' })
+    const unverified = await login('unverified@fleet.test', 'password12') // RIGHT password, unproven address
+    const wrongPassword = await login('unverified@fleet.test', 'totally-wrong-pw')
+    const unknownAddress = await login('nobody-at-all@fleet.test', 'password12')
+    expect([unverified.status, wrongPassword.status, unknownAddress.status]).toEqual([401, 401, 401])
+    const bodies = await Promise.all([unverified.text(), wrongPassword.text(), unknownAddress.text()])
+    expect(new Set(bodies).size).toBe(1)
+  })
+
+  it('a resend issues a NEW link and burns the old one', async () => {
+    await signup({ name: 'Re', email: 'resend@fleet.test', password: 'password12' })
+    const first = new URL(sentVerify.find((m) => m.email === 'resend@fleet.test')!.verifyUrl).searchParams.get('token')!
+    expect((await j('/v1/public/verify-email/resend', 'POST', { email: 'resend@fleet.test' })).status).toBe(200)
+    const mails = sentVerify.filter((m) => m.email === 'resend@fleet.test')
+    expect(mails).toHaveLength(2)
+    const second = new URL(mails[1]!.verifyUrl).searchParams.get('token')!
+    expect(second).not.toBe(first)
+    // only the NEWEST link works — a user who clicks an older mail gets a clean failure instead of
+    // a silent success on a token they thought they had replaced
+    expect((await j('/v1/public/verify-email', 'POST', { token: first })).status).toBe(400)
+    expect((await j('/v1/public/verify-email', 'POST', { token: second })).status).toBe(200)
+  })
+
+  it('resend answers 200 for an unknown and an already-verified address alike, and sends nothing', async () => {
+    const before = sentVerify.length
+    expect((await j('/v1/public/verify-email/resend', 'POST', { email: 'no-such-person@fleet.test' })).status).toBe(200)
+    expect((await j('/v1/public/verify-email/resend', 'POST', { email: 'jonas@fleet.test' })).status).toBe(200) // already verified above
+    expect((await j('/v1/public/verify-email/resend', 'POST', { email: 'not an address' })).status).toBe(200)
+    expect(sentVerify.length).toBe(before)
+  })
+
+  it('a garbage token is a clean 400, never a 500', async () => {
+    for (const token of ['', 'short', 'x'.repeat(64), 'x'.repeat(500), '0'.repeat(64)]) {
+      expect((await j('/v1/public/verify-email', 'POST', { token })).status, JSON.stringify(token.slice(0, 12))).toBe(400)
+    }
+    expect((await j('/v1/public/verify-email', 'POST', {})).status).toBe(400)
+  })
+
+  /**
+   * Activate an account created OUTSIDE the route (the repo path in the cases below), by minting and
+   * consuming a real token — the same code the link runs, so these tests cannot pass on a shortcut
+   * the product does not have.
+   */
+  const activateByEmail = async (email: string): Promise<void> => {
+    const [user] = await db.auth.users.findByEmailAllTenants(email)
+    if (user === undefined) return
+    const raw = randomBytes(32).toString('hex')
+    await db.auth.emailVerificationTokens.create({
+      id: randomUUID(),
+      userId: user.id,
+      tokenHash: createHash('sha256').update(raw).digest('hex'),
+      expiresAt: new Date(Date.now() + 3_600_000),
+    })
+    await db.auth.emailVerificationTokens.consume(createHash('sha256').update(raw).digest('hex'), new Date())
+  }
+
+  /** Sign up AND activate, for the cases that are not about verification itself. */
+  const signupActivated = async (body: { name: string; email: string; password: string; company?: string; ref?: string }): Promise<Response> => {
+    const res = await signup(body)
+    const mail = sentVerify.find((m) => m.email === body.email.trim().toLowerCase())
+    if (mail !== undefined) {
+      const token = new URL(mail.verifyUrl).searchParams.get('token')
+      if (token !== null) await j('/v1/public/verify-email', 'POST', { token })
+    }
+    return res
+  }
 
   it('an EXPIRED trial floors at the authoritative gate (no sweep needed)', async () => {
     const fresh = await signup({ name: 'Rasa', email: 'rasa@fleet.test', password: 'password12' })
@@ -130,7 +222,7 @@ describe('public self-serve signup (F2)', () => {
   it('the SESSION hint is trial-aware — an expired trial never advertises what the server would 403', async () => {
     // a tenant whose trial has already elapsed, created through the repo, with a real login password
     const pw = 'password12'
-    const hashed = (await (await signup({ name: 'Hint', email: 'hint-live@fleet.test', password: pw })).json()) as { id: string }
+    const hashed = (await (await signupActivated({ name: 'Hint', email: 'hint-live@fleet.test', password: pw })).json()) as { id: string }
     void hashed
     // reuse the live signup path for the UNEXPIRED case, and drive the expired case through login on a
     // tenant created with a past window (same argon2 hash as the live user so login succeeds)
@@ -141,6 +233,7 @@ describe('public self-serve signup (F2)', () => {
       trialEndsAt: new Date(Date.now() - 1000), referredByAffiliateId: null,
     })
     void expired
+    await activateByEmail('hint-expired@fleet.test') // created through the repo, so it has no link
     const liveSession = (await (await login('hint-live@fleet.test', pw)).json()) as { user: { entitlements: { deviceLimit: number } } }
     const deadSession = (await (await login('hint-expired@fleet.test', pw)).json()) as { user: { entitlements: { deviceLimit: number } } }
     expect(liveSession.user.entitlements.deviceLimit).toBe(10) // in-trial → plan matrix
@@ -154,7 +247,7 @@ describe('public self-serve signup (F2)', () => {
     // (audit MED #67). The response must now be shaped exactly like a success.
     sentMail.length = 0
     emailInUseCount = 0
-    const first = await signup({ name: 'Dup', email: 'dup@fleet.test', password: 'password12' })
+    const first = await signupActivated({ name: 'Dup', email: 'dup@fleet.test', password: 'password12' })
     const second = await signup({ name: 'Dup2', email: 'dup@fleet.test', password: 'password12' })
     expect(second.status).toBe(first.status) // 201, same as the real one
     const body = (await second.json()) as { ok: boolean; id: string }

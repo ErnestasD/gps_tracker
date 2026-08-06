@@ -267,12 +267,25 @@ model User {
   /// that revokes the refresh rows, and read under `FOR UPDATE` by refresh rotation — that lock is
   /// what serializes the two, so an eviction can never be invisible to a rotation in flight.
   sessionsRevokedAt DateTime? @db.Timestamptz()
+  /// When the address was PROVEN to belong to this person. NULL ⇒ the account cannot authenticate.
+  ///
+  /// Only PUBLIC self-serve signup ever writes NULL. Every other creation path — an admin adding a
+  /// colleague, the demo seed — is vouched for by an already-authenticated actor and is verified on
+  /// creation, so this cannot lock anyone out of a tenant that already works.
+  ///
+  /// It exists because signup must not be an account-existence oracle (audit MED #67). Returning the
+  /// same 201 for a taken and a free address is not enough on its own: while the free path handed
+  /// back a working account, a second request — a login with the password the caller just chose —
+  /// still answered the question with certainty. An unverified account fails login exactly like a
+  /// wrong password, so both branches now end in the same 401 and the question has no answer.
+  emailVerifiedAt   DateTime? @db.Timestamptz()
 
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  account             Account?             @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
-  pushSubscriptions   PushSubscription[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account                 Account?                 @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  pushSubscriptions       PushSubscription[]
 
   @@unique([tenantId, email])
   @@index([accountId])
@@ -323,6 +336,24 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+/// Single-use, expiring proof that a self-serve signup owns the address it registered (audit MED
+/// #67). Mirrors PasswordResetToken exactly — only the SHA-256 hash is stored, so a database read
+/// cannot activate an account; the raw token exists only in the one email.
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz()
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+  /// set when the token is consumed by a successful verification (single-use)
+  usedAt    DateTime? @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
 }
 
 model DeviceProfile {

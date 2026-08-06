@@ -5,6 +5,7 @@
     "passwordLabel": "Hasło",
     "submit": "Zaloguj się",
     "invalidCredentials": "Błędny e-mail lub hasło.",
+    "invalidHint": "Jeśli właśnie się zarejestrowałeś, aktywuj konto linkiem, który wysłaliśmy.",
     "tooManyAttempts": "Zbyt wiele prób — spróbuj za kilka minut.",
     "ambiguousIdentity": "Twoje konto jest niejednoznaczne między organizacjami — skontaktuj się z administratorem.",
     "networkError": "Brak połączenia. Sprawdź połączenie internetowe i spróbuj ponownie.",
@@ -30,6 +31,18 @@
     "requestNew": "Poproś o nowy link",
     "done": "Twoje hasło zostało zmienione. Zaloguj się nowym hasłem.",
     "toLogin": "Przejdź do logowania"
+  },
+  "verify": {
+    "title": "Aktywujemy konto",
+    "working": "Potwierdzamy adres…",
+    "done": "Konto jest aktywne. Zaloguj się, aby zacząć.",
+    "toLogin": "Przejdź do logowania",
+    "invalid": "Ten link aktywacyjny jest nieprawidłowy, już użyty lub wygasł.",
+    "resend": "Wyślij nowy link",
+    "resendSent": "Jeśli ten adres wymaga aktywacji, nowy link jest w drodze.",
+    "resendEmail": "Twój adres e-mail",
+    "resendSubmit": "Wyślij link",
+    "noToken": "Ten link aktywacyjny jest niepełny. Poproś o nowy poniżej."
   },
   "shell": {
     "live": "Na żywo",
