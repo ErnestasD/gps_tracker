@@ -486,7 +486,7 @@ export const lt: Translation = {
     tspLink: "Peržiūrėkite white-label kryptį →",
     doneLabel: "— VISKAS PARUOŠTA",
     doneTitle: "Darbo aplinka sukurta",
-    doneBody: "Bandomoji darbo aplinka paruošta. Prisijunkite prie autoparko valdymo skydelio ką tik pasirinktu el. paštu ir slaptažodžiu, tada pridėkite pirmą įrenginį.",
+    doneBody: "Jūsų bandomoji darbo sritis paruošta. Prisijunkite prie valdymo skydelio ką tik pasirinktu el. paštu ir slaptažodžiu. Jei su tuo adresu paskyra jau buvo, patikrinkite pašto dėžutę — išsiuntėme, kaip prisijungti.",
     doneCta: "Prisijungti prie valdymo skydelio",
     name: "Vardas ir pavardė",
     email: "Darbo el. paštas",
@@ -495,6 +495,9 @@ export const lt: Translation = {
     referral: "Rekomendacija pritaikyta · {{code}}",
     submit: "Sukurti paskyrą",
     submitting: "Kuriama…",
+    // unused since audit MED #67: the API no longer 409s a duplicate address (it answers the
+    // same 201 as a real signup and emails the owner), so nothing reads this. Kept because the
+    // locale objects are type-enforced against each other and removing one key means removing four.
     errConflict: "Šis el. pašto adresas jau naudojamas — prisijunkite valdymo skydelyje.",
     errRate: "Per daug bandymų. Šiek tiek palaukite ir bandykite dar kartą.",
     errGeneric: "Kažkas nepavyko. Bandykite dar kartą.",

@@ -27,6 +27,17 @@ export interface TripReadRepo {
   /** Assign or clear (driverId=null) the trip's driver. Returns the updated row, or null if the
    *  trip is out of scope; throws DriverNotInScopeError if the driver isn't in the caller's scope. */
   assignDriver(scope: Scope, actor: Actor, tripId: string, driverId: string | null): Promise<TripWithDriver | null>
+  /**
+   * Strip start/end COORDINATES from trips older than `cutoff`, keeping the row. Batched; returns
+   * rows changed. UNSCOPED BY DESIGN (retention sweep — see EventRepo.pruneOlderThan).
+   *
+   * Founder decision, and the reason trips are not simply deleted like events: distance, duration
+   * and driver are the basis of every historical report and of any mileage claim a customer may
+   * have to defend years later, while `startLat/startLon/endLat/endLon` are raw location — the exact
+   * home and workplace of a driver, reconstructable indefinitely from a table nothing pruned. Once
+   * nulled, a trip is an aggregate: "120 km on 3 March", with no way back to where.
+   */
+  stripCoordinatesOlderThan(cutoff: Date, batchSize?: number): Promise<number>
 }
 
 const withDriver = { include: { driver: { select: { name: true } } } } as const
@@ -84,6 +95,25 @@ export function createTripRepo(prisma: PrismaClient, audit: AuditRepo): TripRead
       const row = flat(await prisma.trip.update({ where: { id: before.id }, data: { driverId }, ...withDriver }))
       await audit.record(scope, actor, { action: 'update', entity: 'trip', entityId: tripId, before: { driverId: before.driverId }, after: { driverId: row.driverId } })
       return row
+    },
+    stripCoordinatesOlderThan: async (cutoff, batchSize = 5_000) => {
+      const size = Math.min(Math.max(Math.trunc(batchSize), 1), 50_000)
+      let total = 0
+      for (;;) {
+        // `AND "startLat" IS NOT NULL` is what makes this terminate AND idempotent: without it every
+        // run re-updates every old trip forever, rewriting the whole tail of the table daily. It
+        // also means the loop's `n < size` exit is honest — once a batch is stripped it can never
+        // match again.
+        const n = await prisma.$executeRaw`
+          UPDATE trips SET "startLat" = NULL, "startLon" = NULL, "endLat" = NULL, "endLon" = NULL
+           WHERE id IN (
+             SELECT id FROM trips
+              WHERE "startTime" < ${cutoff}
+                AND ("startLat" IS NOT NULL OR "startLon" IS NOT NULL OR "endLat" IS NOT NULL OR "endLon" IS NOT NULL)
+              LIMIT ${size})`
+        total += n
+        if (n < size) return total
+      }
     },
   }
 }

@@ -5,6 +5,7 @@ import { brandingSchema, type Branding } from '@orbetra/shared'
 
 import type { EmailTransport } from '../notify/drivers.js'
 import { renderResetEmail } from '../notify/passwordResetEmail.js'
+import { renderSignupExistsEmail } from '../notify/signupExistsEmail.js'
 import { AUTH_EMAIL_QUEUE, type AuthEmailJob } from './authEmailQueue.js'
 
 export interface AuthEmailWorkerDeps {
@@ -16,12 +17,31 @@ export interface AuthEmailWorkerDeps {
   onSent?: (kind: string) => void
 }
 
+/**
+ * The tenant that owns a login address, for a job that could not resolve it on the API side.
+ *
+ * `findFirst`-shaped on purpose: an address is unique platform-wide by signup's own rule, and if
+ * that were ever violated the first match is still a tenant the recipient belongs to. Returns '' on
+ * a miss or a fault, which `resolveBranding` turns into the default brand rather than no mail.
+ */
+async function tenantIdForEmail(pool: Pool, email: string): Promise<string> {
+  try {
+    const res = await pool.query<{ tenantId: string }>('SELECT "tenantId" FROM users WHERE email = $1 LIMIT 1', [email])
+    return res.rows[0]?.tenantId ?? ''
+  } catch {
+    return ''
+  }
+}
+
 /** The tenant's white-label identity for a transactional email (mirrors scheduledReporter): the
  *  outgoing `brand` string plus the full branding + tenant name for the branded shell. Any
  *  lookup/parse failure defaults gracefully so a missing brand never suppresses delivery. */
 async function resolveBranding(pool: Pool, tenantId: string): Promise<{ brand: string; branding: Branding | undefined; tenantName: string | undefined }> {
   try {
-    const res = await pool.query<{ name: string; branding: unknown }>('SELECT name, branding FROM tenants WHERE id = $1', [tenantId])
+    // `id = ''` is a 22P02 (invalid uuid), not an empty result — cheaper and clearer to skip the
+    // query than to catch a syntax error on every default-branded send
+    if (tenantId === '') return { brand: 'Orbetra', branding: undefined, tenantName: undefined }
+    const res = await pool.query<{ name: string; branding: unknown }>('SELECT name, branding FROM tenants WHERE id = $1::uuid', [tenantId])
     const row = res.rows[0]
     if (row === undefined) return { brand: 'Orbetra', branding: undefined, tenantName: undefined }
     const tenantName = row.name && row.name.trim() !== '' ? row.name : undefined
@@ -41,15 +61,17 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
     console.warn('auth-email skipped: email transport not configured') // no address in the log (PII)
     return false
   }
-  const { brand, branding, tenantName } = await resolveBranding(deps.pool, job.tenantId)
-  const { subject, text, html } = renderResetEmail({
-    resetUrl: job.resetUrl,
-    expiresMinutes: job.expiresMinutes,
-    locale: job.locale,
-    brand,
-    branding,
-    tenantName,
-  })
+  // An empty tenantId means "resolve it here" — the signup-exists mail cannot look the tenant up on
+  // the API side without putting a query on the taken path that the free path does not have, which
+  // is the timing signal the whole change exists to remove. The worker is already off the request
+  // path. Doing it here is also what keeps white-label intact: a TSP's end user must not receive an
+  // Orbetra-branded mail naming their supplier. A miss falls back to the default brand.
+  const tenantId = job.tenantId !== '' ? job.tenantId : await tenantIdForEmail(deps.pool, job.email)
+  const { brand, branding, tenantName } = await resolveBranding(deps.pool, tenantId)
+  const { subject, text, html } =
+    job.kind === 'signup-exists'
+      ? renderSignupExistsEmail({ loginUrl: job.loginUrl, resetUrl: job.resetUrl, locale: job.locale, brand, branding, tenantName })
+      : renderResetEmail({ resetUrl: job.resetUrl, expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding, tenantName })
   await deps.transport.send(job.email, subject, text, html)
   return true
 }

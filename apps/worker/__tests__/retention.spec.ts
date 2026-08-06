@@ -2,17 +2,35 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { Db } from '@orbetra/db'
 
-import { runRetentionSweep } from '../src/jobs/retentionWorker.js'
+import { assertLocationWindow, runRetentionSweep } from '../src/jobs/retentionWorker.js'
 
 type Prune = (cutoff: Date, batchSize?: number) => Promise<number>
 
 /** `billing_events` defaults to 0 here — the cases below are about the two data tables; its own
  *  window is asserted separately. */
-const fakeDb = (prune: Prune, rejectPrune: Prune, billingPrune: Prune = () => Promise.resolve(0)): Db =>
+const zero: Prune = () => Promise.resolve(0)
+
+/** Everything the sweep touches. The location + token prunes default to 0 so the cases below stay
+ *  about the table each is named for; their own windows are asserted separately. */
+const fakeDb = (
+  prune: Prune,
+  rejectPrune: Prune,
+  billingPrune: Prune = zero,
+  over: { events?: Prune; trips?: Prune; refresh?: Prune; reset?: Prune; affiliate?: Prune } = {},
+): Db =>
   ({
     webhookDeliveries: { pruneOlderThan: prune },
     rawRejects: { pruneOlderThan: rejectPrune },
     tenants: { pruneBillingEvents: billingPrune },
+    events: { pruneOlderThan: over.events ?? zero },
+    trips: { stripCoordinatesOlderThan: over.trips ?? zero },
+    auth: {
+      tokenRetention: {
+        pruneRefreshTokens: over.refresh ?? zero,
+        pruneResetTokens: over.reset ?? zero,
+        pruneAffiliateTokens: over.affiliate ?? zero,
+      },
+    },
   }) as unknown as Db
 
 describe('retention sweep', () => {
@@ -75,13 +93,77 @@ describe('retention sweep', () => {
     expect(billingPrune.mock.calls[1]![0].getTime()).toBe(now - 7 * 24 * 3_600_000)
   })
 
+  it('prunes EVENTS and strips TRIP coordinates on the 13-month location horizon', async () => {
+    // `add_retention_policy('positions', …)` was the only horizon in the codebase, so at month 14 the
+    // raw chunks were dropped while events kept lat/lon for every geofence crossing and panic, and
+    // trips kept exact start/end coordinates — after the privacy policy, Terms and DPA had all told
+    // the customer that data was deleted.
+    const events = vi.fn<Prune>(() => Promise.resolve(11))
+    const trips = vi.fn<Prune>(() => Promise.resolve(7))
+    const seen: [string, number][] = []
+    const db = fakeDb(zero, zero, zero, { events, trips })
+    const now = Date.UTC(2026, 6, 16, 12, 0, 0)
+    expect(await runRetentionSweep(db, 30, now, 90, (t, n) => seen.push([t, n]))).toBe(18)
+    expect(events.mock.calls[0]![0].getTime()).toBe(now - 396 * 24 * 3_600_000) // 13 months
+    expect(trips.mock.calls[0]![0].getTime()).toBe(now - 396 * 24 * 3_600_000) // the SAME horizon
+    expect(seen).toContainEqual(['events', 11])
+    expect(seen).toContainEqual(['trips_coords', 7])
+  })
+
+  it('the location window is floored at 30 days — a fat-fingered 1 must not erase a fleet’s history', async () => {
+    // this prune DESTROYS customer location data; unlike the delivery log there is no re-deriving it
+    const events = vi.fn<Prune>(() => Promise.resolve(0))
+    const db = fakeDb(zero, zero, zero, { events })
+    const now = Date.UTC(2026, 6, 16, 12, 0, 0)
+    await runRetentionSweep(db, 30, now, 90, undefined, 90, 1)
+    expect(events.mock.calls[0]![0].getTime()).toBe(now - 30 * 24 * 3_600_000)
+  })
+
+  it('prunes the THREE token tables on their own window', async () => {
+    // refresh_tokens grows by a row per login AND per rotation, forever, on the path every
+    // authenticated request depends on
+    const refresh = vi.fn<Prune>(() => Promise.resolve(400))
+    const reset = vi.fn<Prune>(() => Promise.resolve(9))
+    const affiliate = vi.fn<Prune>(() => Promise.resolve(2))
+    const seen: [string, number][] = []
+    const db = fakeDb(zero, zero, zero, { refresh, reset, affiliate })
+    const now = Date.UTC(2026, 6, 16, 12, 0, 0)
+    expect(await runRetentionSweep(db, 30, now, 90, (t, n) => seen.push([t, n]), 90, 396, 30)).toBe(411)
+    for (const fn of [refresh, reset, affiliate]) expect(fn.mock.calls[0]![0].getTime()).toBe(now - 30 * 24 * 3_600_000)
+    expect(seen).toContainEqual(['refresh_tokens', 400])
+    expect(seen).toContainEqual(['password_reset_tokens', 9])
+    expect(seen).toContainEqual(['affiliate_password_tokens', 2])
+  })
+
   it('one table failing still counts and reports what the others deleted', async () => {
     const seen: [string, number][] = []
     const db = fakeDb(() => Promise.resolve(1), () => Promise.reject(new Error('boom')), () => Promise.resolve(5))
     await expect(runRetentionSweep(db, 30, Date.now(), 90, (t, n) => seen.push([t, n]))).rejects.toThrow('boom')
-    expect(seen).toEqual([
+    // every table EXCEPT the one that threw is still reported — those rows are already gone, so no
+    // later run could ever count them
+    expect(seen.filter(([, n]) => n > 0)).toEqual([
       ['webhook_deliveries', 1],
       ['billing_events', 5],
     ])
+    expect(seen.map(([t]) => t)).not.toContain('raw_rejects')
+  })
+})
+describe('assertLocationWindow', () => {
+  it('refuses a window shorter than the PUBLISHED 13 months unless it is confirmed', () => {
+    // the floor of 30 catches `1`, but 90 — the value one README row above, for raw_rejects — is a
+    // perfectly legal number that silently deletes ten months of a customer's history on the next
+    // tick. 13 months is not a preference: the privacy policy, Terms and DPA all state it.
+    expect(() => assertLocationWindow(90, undefined)).toThrow(/shorter than the published 13-month/)
+    expect(() => assertLocationWindow(90, '1')).not.toThrow()
+    expect(() => assertLocationWindow(90, 'true')).not.toThrow()
+  })
+
+  it('a LONGER window needs no ceremony — it deletes strictly less', () => {
+    expect(() => assertLocationWindow(396, undefined)).not.toThrow()
+    expect(() => assertLocationWindow(1000, undefined)).not.toThrow()
+  })
+
+  it('names the variable and the consequence — the operator must not have to read the source', () => {
+    expect(() => assertLocationWindow(30, undefined)).toThrow(/LOCATION_RETENTION_DAYS=30[\s\S]*RETENTION_CONFIRM_SHORT=1/)
   })
 })

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { Hono, type Context } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
@@ -15,6 +15,8 @@ import { clientIp } from '../net.js'
  * admin user on a 30-day trial — the second unauthenticated write after pilot-request, hardened for
  * the fact that it creates real tenants:
  *  - HONEYPOT: a non-empty `hp_field` gets the SAME 201 shape as success (random id, nothing stored).
+ *  - NO ENUMERATION: an email that already has an account gets that same 201 too, and the owner is
+ *    told by email instead (audit MED #67) — see the catch at the bottom.
  *  - RATE LIMIT per real client IP + a platform-wide circuit breaker, atomic INCR+EXPIRE, fails CLOSED.
  *  - zod-validated; body size capped here (mounted before the global /v1 limiter).
  *
@@ -34,6 +36,17 @@ export interface SignupRouteDeps {
   trustProxy: boolean
   /** per-IP cap + a platform-wide circuit breaker; both fail CLOSED. */
   rateLimit?: { max: number; windowS: number; globalMax?: number }
+  /** absolute base for the links in the "you already have an account" mail. Absent ⇒ no mail is
+   *  sent (the response is unchanged either way — the 201 is not conditional on the mail). */
+  appBaseUrl?: string | undefined
+  /** Same worker queue forgot-password uses. Absent ⇒ signup still answers 201; the address owner
+   *  simply is not told, which is the pre-existing behaviour minus the oracle. */
+  mail?: {
+    enqueueSignupExistsEmail(job: { kind: 'signup-exists'; email: string; tenantId: string; locale: string; loginUrl: string; resetUrl: string }): Promise<void>
+  }
+  /** a signup hit an address that already exists. Bulk probing was previously indistinguishable from
+   *  ordinary traffic; a rising rate here is someone walking a list. */
+  onEmailInUse?: () => void
 }
 
 // 30 days — the publicly advertised trial. The marketing site AND the Terms of Service both state
@@ -80,6 +93,28 @@ function canonicalMailbox(raw: string): string {
   if (plus !== -1) local = local.slice(0, plus)
   if (domain === 'gmail.com' || domain === 'googlemail.com') local = local.replaceAll('.', '')
   return `${local}@${domain}`
+}
+
+/** Per-recipient ceiling for the "you already have an account" mail (audit review HIGH). */
+const EXISTS_MAIL_MAX = 3
+const EXISTS_MAIL_WINDOW_S = 3_600
+
+const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex')
+
+/**
+ * Best-effort locale from `Accept-Language`, limited to the four the emails are written in.
+ *
+ * A header, not a DB lookup: the recipient's stored locale lives on their user row, and reading it
+ * here would put a query on the taken path that the free path does not have. The browser that just
+ * typed the address is a good proxy, and an unrecognised language falls back to English.
+ */
+function preferredLocale(header: string | undefined): string {
+  if (header === undefined) return 'en'
+  for (const part of header.split(',')) {
+    const tag = part.split(';')[0]?.trim().toLowerCase().slice(0, 2)
+    if (tag === 'lt' || tag === 'de' || tag === 'pl' || tag === 'en') return tag
+  }
+  return 'en'
 }
 
 const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
@@ -168,7 +203,53 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
       })
       return c.json({ ok: true, id: created.tenantId }, 201)
     } catch (err) {
-      if (err instanceof SignupEmailInUseError) return c.json({ error: 'email_in_use' }, 409)
+      if (err instanceof SignupEmailInUseError) {
+        // NOT a 409 (audit MED #67). A distinct status here was a platform-wide, unauthenticated
+        // account-existence oracle answered in one request with no timing work — in a codebase that
+        // burns a dummy argon2 verify on unknown-email login and fabricates a DB write on
+        // forgot-password precisely so neither reveals whether an address exists. One status code
+        // undid all of it, over the same identity space.
+        //
+        // The response is now byte-identical to the honeypot's and shaped like a success, and the
+        // truth goes out of band to the only party entitled to it: the address's owner. `id` is a
+        // random uuid — a real signup returns its tenant id, and the caller cannot tell the
+        // difference without already holding the account.
+        //
+        // The mail is best-effort and deliberately AWAITED-then-swallowed: a queue outage must not
+        // turn this back into a distinguishable path (a 500 would be the oracle again, louder).
+        deps.onEmailInUse?.()
+        if (deps.mail !== undefined && deps.appBaseUrl !== undefined) {
+          const base = deps.appBaseUrl.replace(/\/+$/, '')
+          try {
+            // PER-RECIPIENT cap, IP-INDEPENDENT — the same guard forgot-password carries, for the
+            // same reason. The per-IP (5/h) and global (200/h) signup buckets bound the attacker's
+            // rate but not the VICTIM's inbox: 40 IPs is 200 mails/hour at one address, from our own
+            // SES identity, which the recipient marks as spam. Keyed on the address, so rotating
+            // hosts does not multiply it. Over the cap the mail is skipped and the response is
+            // byte-identical — silence must never be observable from outside.
+            const key = `signup:exists:${sha256(email).slice(0, 16)}`
+            const n = (await deps.redis.eval(RL_SCRIPT, 1, key, String(EXISTS_MAIL_WINDOW_S))) as number
+            if (n <= EXISTS_MAIL_MAX) {
+              await deps.mail.enqueueSignupExistsEmail({
+                kind: 'signup-exists',
+                email,
+                // resolved in the WORKER, not here: this route has no authenticated identity, and a
+                // tenant lookup on the request path would add a measurable step the free path does
+                // not have. The worker is already off the request path, so it can find the tenant by
+                // address and render the message in that tenant's branding — a white-label TSP's end
+                // user must not receive an Orbetra-branded mail naming their supplier.
+                tenantId: '',
+                locale: preferredLocale(c.req.header('accept-language')),
+                loginUrl: `${base}/login`,
+                resetUrl: `${base}/forgot-password`,
+              })
+            }
+          } catch (mailErr) {
+            console.error('signup: could not enqueue the account-exists notice', mailErr instanceof Error ? mailErr.message : String(mailErr))
+          }
+        }
+        return c.json({ ok: true, id: randomUUID() }, 201)
+      }
       throw err
     }
   })

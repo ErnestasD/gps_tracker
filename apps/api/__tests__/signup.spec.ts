@@ -16,8 +16,9 @@ import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 /**
  * PUBLIC self-serve signup (F2). Proves: a direct customer creates a trial tenant + tenant-admin user
  * and can immediately LOG IN through the normal auth path; the trial floors at expiry via the
- * authoritative entitlement gate; a duplicate email 409s; the honeypot fakes success; an active ?ref
- * attributes the new tenant while an unknown ref never blocks; the created tenant is fully isolated.
+ * authoritative entitlement gate; a duplicate email answers with the SAME 201 as a real signup, so
+ * the response is not an account-existence oracle (audit MED #67); the honeypot fakes success; an
+ * active ?ref attributes the new tenant while an unknown ref never blocks; the tenant is isolated.
  */
 const PG_IMAGE = 'timescale/timescaledb-ha:pg16'
 const DB_PKG = resolve(import.meta.dirname, '../../../packages/db')
@@ -31,6 +32,9 @@ let databaseUrl: string
 let port: number
 let httpServer: ReturnType<typeof createServer>
 let platformToken: string
+/** signup-exists mails the route enqueued, and how many times the in-use counter fired. */
+const sentMail: { kind: string; email: string; loginUrl: string; resetUrl: string }[] = []
+let emailInUseCount = 0
 
 const base = () => `http://127.0.0.1:${port}`
 const j = (path: string, method = 'GET', bodyObj?: unknown, headers: Record<string, string> = {}) =>
@@ -67,6 +71,12 @@ beforeAll(async () => {
     lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
     signupRateLimit: { max: 100, windowS: 3600 }, // the suite performs >5 signups from one IP
+    appBaseUrl: 'https://app.orbetra.test',
+    mail: {
+      enqueueResetEmail: () => Promise.resolve(),
+      enqueueSignupExistsEmail: (job) => { sentMail.push(job); return Promise.resolve() },
+    },
+    onSignupEmailInUse: () => { emailInUseCount++ },
   })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
@@ -137,13 +147,57 @@ describe('public self-serve signup (F2)', () => {
     expect(deadSession.user.entitlements.deviceLimit).toBe(0) // expired → floored, matching the server gate
   })
 
-  it('a duplicate email (any tenant) → 409 email_in_use', async () => {
-    await signup({ name: 'Dup', email: 'dup@fleet.test', password: 'password12' })
+  it('a duplicate email is INDISTINGUISHABLE from a real signup — no enumeration oracle', async () => {
+    // The 409 this replaces was a platform-wide account-existence oracle answered in one
+    // unauthenticated request, in a codebase that burns a dummy argon2 verify on unknown-email login
+    // and fabricates a DB write on forgot-password so neither reveals whether an address exists
+    // (audit MED #67). The response must now be shaped exactly like a success.
+    sentMail.length = 0
+    emailInUseCount = 0
+    const first = await signup({ name: 'Dup', email: 'dup@fleet.test', password: 'password12' })
     const second = await signup({ name: 'Dup2', email: 'dup@fleet.test', password: 'password12' })
-    expect(second.status).toBe(409)
-    expect(((await second.json()) as { error: string }).error).toBe('email_in_use')
-    // also collides with a pre-existing seeded user email
-    expect((await signup({ name: 'X', email: 'pa@x.test', password: 'password12' })).status).toBe(409)
+    expect(second.status).toBe(first.status) // 201, same as the real one
+    const body = (await second.json()) as { ok: boolean; id: string }
+    expect(body.ok).toBe(true)
+    expect(body.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/) // a uuid, like a real tenant id
+    // …and it created NOTHING: the original account still owns the address with its original password
+    expect((await login('dup@fleet.test', 'password12')).status).toBe(200)
+
+    // a pre-existing seeded user email behaves identically
+    expect((await signup({ name: 'X', email: 'pa@x.test', password: 'password12' })).status).toBe(201)
+
+    // the truth went out of band, to the address's owner, with no token and nothing the attempt supplied
+    expect(sentMail.map((m) => m.email)).toEqual(['dup@fleet.test', 'pa@x.test'])
+    expect(sentMail[0]).toMatchObject({ kind: 'signup-exists', loginUrl: 'https://app.orbetra.test/login', resetUrl: 'https://app.orbetra.test/forgot-password' })
+    // …and it is counted, because the response no longer is
+    expect(emailInUseCount).toBe(2)
+  })
+
+  it('a mail-queue outage does NOT reopen the oracle — the response is unchanged', async () => {
+    // a 500 here would be the same oracle, louder
+    sentMail.length = 0
+    const broken = createApp({
+      redis, redisSub, db,
+      jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
+      lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+      getRemoteAddr: () => '127.0.0.1',
+      signupRateLimit: { max: 100, windowS: 3600 },
+      appBaseUrl: 'https://app.orbetra.test',
+      mail: { enqueueResetEmail: () => Promise.resolve(), enqueueSignupExistsEmail: () => Promise.reject(new Error('redis down')) },
+    })
+    const srv = serve({ fetch: broken.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
+    try {
+      const res = await fetch(`http://127.0.0.1:${p}/v1/public/signup`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Dup3', email: 'dup@fleet.test', password: 'password12' }),
+      })
+      expect(res.status).toBe(201)
+    } finally {
+      srv.closeAllConnections?.()
+      await new Promise<void>((r) => srv.close(() => r()))
+    }
   })
 
   it('honeypot gets a FAKE 201 and stores nothing', async () => {

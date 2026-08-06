@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Redis } from 'ioredis'
 import xxhash from 'xxhash-wasm'
 
-import { createDb, createPool } from '@orbetra/db'
+import { createDb, createPool, poolOptionsFromEnv, poolStats } from '@orbetra/db'
 
 import { ShardConsumer } from './consumer.js'
 import { LiveState } from './liveState.js'
@@ -29,7 +29,7 @@ import { createGdprSweepQueue, scheduleExportSweep } from './jobs/gdprQueue.js'
 import { createUsageQueue, scheduleUsageSweep } from './jobs/usageQueue.js'
 import { startUsageWorker } from './jobs/usageWorker.js'
 import { createRetentionQueue, scheduleRetentionSweep } from './jobs/retentionQueue.js'
-import { startRetentionWorker } from './jobs/retentionWorker.js'
+import { LOCATION_RETENTION_DAYS, startRetentionWorker } from './jobs/retentionWorker.js'
 import { createRejectDrainQueue, scheduleRejectDrain } from './jobs/rejectDrainQueue.js'
 import { startRejectDrainWorker } from './jobs/rejectDrainWorker.js'
 import { createStripeUsageQueue, scheduleStripeUsage } from './jobs/stripeUsageQueue.js'
@@ -70,7 +70,9 @@ async function main(): Promise<void> {
   }
   const workerId = `worker-${randomUUID().slice(0, 8)}`
   const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
-  const pool = createPool(databaseUrl)
+  // 24, not the shared default of 10: this ONE pool serves 16 shard consumers plus a dozen BullMQ
+  // workers, so at the default every busy moment queued acquires invisibly (audit MED #30).
+  const pool = createPool(databaseUrl, poolOptionsFromEnv(process.env, { max: 24 }))
   const db = createDb(databaseUrl) // scoped repos for the Stripe usage reporter (tenants + usage)
   const hasher = await xxhash()
   const hash = (data: Uint8Array): bigint => hasher.h64Raw(data)
@@ -137,7 +139,7 @@ async function main(): Promise<void> {
   console.log(`${workerId} owns shards: ${[...shards].join(',') || '(none)'}`)
 
   // dedicated connection: scrape XLENs must not queue behind consumers' blocking reads
-  const prom = startWorkerProm(redis.duplicate(), Number(process.env['PROMETHEUS_PORT'] ?? 9102))
+  const prom = startWorkerProm(redis.duplicate(), Number(process.env['PROMETHEUS_PORT'] ?? 9102), () => poolStats(pool))
   const liveState = new LiveState(redis)
   const motionFeed = new MotionFeed() // I5 seam (E02-7): trip engine (E04-1) + geofence stub (E05-x)
   const configCache = new DeviceConfigCache(redis) // per-device trip thresholds/odometerSource (E04-5)
@@ -313,6 +315,12 @@ async function main(): Promise<void> {
     retentionDays: Number.isFinite(retentionEnv) && retentionEnv > 0 ? retentionEnv : 30,
     rejectRetentionDays: Number(process.env['RAW_REJECT_RETENTION_DAYS']) || 90,
     billingEventRetentionDays: Number(process.env['BILLING_EVENT_RETENTION_DAYS']) || 90,
+    // derived LOCATION data — must track the positions hypertable's 13-month policy and the privacy
+    // text that promises it. `|| LOCATION_RETENTION_DAYS` also catches a 0, which would otherwise
+    // mean "delete everything" on the next tick.
+    locationRetentionDays: Number(process.env['LOCATION_RETENTION_DAYS']) || LOCATION_RETENTION_DAYS,
+    tokenRetentionDays: Number(process.env['TOKEN_RETENTION_DAYS']) || 30,
+    ...(process.env['RETENTION_CONFIRM_SHORT'] !== undefined ? { confirmShortWindow: process.env['RETENTION_CONFIRM_SHORT'] } : {}),
     onPruned: (table, n) => prom.retentionPruned.inc({ table }, n),
     // the hook existed and nothing wired it: a retention sweep that throws every hour was
     // completely invisible, while positions/webhook_deliveries grew past their policy (audit MED)

@@ -489,7 +489,7 @@ export const en = {
     tspLink: "See the white-label track →",
     doneLabel: "— YOU'RE IN",
     doneTitle: "Workspace created",
-    doneBody: "Your trial workspace is ready. Sign in at the fleet dashboard with the email and password you just chose, then add your first device.",
+    doneBody: "Your trial workspace is ready. Sign in at the fleet dashboard with the email and password you just chose. If that address already had an account, check your inbox instead — we've emailed you how to get back in.",
     doneCta: "Sign in at the dashboard",
     name: "Full name",
     email: "Work email",
@@ -498,6 +498,9 @@ export const en = {
     referral: "Referral applied · {{code}}",
     submit: "Create account",
     submitting: "Creating…",
+    // unused since audit MED #67: the API no longer 409s a duplicate address (it answers the
+    // same 201 as a real signup and emails the owner), so nothing reads this. Kept because the
+    // locale objects are type-enforced against each other and removing one key means removing four.
     errConflict: "That email is already in use — sign in at the dashboard instead.",
     errRate: "Too many attempts. Please wait a moment and try again.",
     errGeneric: "Something went wrong. Please try again.",

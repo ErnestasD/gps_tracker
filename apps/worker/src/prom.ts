@@ -121,8 +121,26 @@ export async function shardBacklog(redis: Redis, shard: number): Promise<number>
   return await redis.xlen(stream) // no group yet ⇒ nothing consuming ⇒ all retained is backlog
 }
 
-export function startWorkerProm(redis: Redis, port: number): WorkerProm {
+export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { total: number; idle: number; waiting: number }): WorkerProm {
   const registry = new Registry()
+
+  // Pool saturation, audit MED #30. `waiting` sustained above 0 is the ONLY way to tell "the
+  // database is slow" from "we ran out of connections" — before this, a queued acquire produced no
+  // error, no log and no metric, and the operator saw only pipeline lag with nothing to point at.
+  if (poolStats !== undefined) {
+    new Gauge({
+      name: 'pg_pool_connections',
+      help: 'raw-SQL pool connections by state (total | idle | waiting acquirers)',
+      labelNames: ['state'],
+      registers: [registry],
+      collect() {
+        const s = poolStats()
+        this.set({ state: 'total' }, s.total)
+        this.set({ state: 'idle' }, s.idle)
+        this.set({ state: 'waiting' }, s.waiting)
+      },
+    })
+  }
 
   new Gauge({
     name: 'stream_depth',

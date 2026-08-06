@@ -48,6 +48,21 @@ services:
       PROMETHEUS_PORT: "9102"
       EXPORT_DIR: /var/orbetra/exports
       WEBHOOK_DELIVERY_RETENTION_DAYS: ${WEBHOOK_DELIVERY_RETENTION_DAYS:-30}
+      # DERIVED location data (audit MED #53): events are deleted and trip coordinates nulled at the
+      # same 13-month horizon the positions hypertable policy and the published privacy text use.
+      # This one DESTROYS customer history — the code floors it at 30 days and logs the window it is
+      # running with at boot, so a wrong value here is loud rather than silent.
+      LOCATION_RETENTION_DAYS: ${LOCATION_RETENTION_DAYS:-396}
+      TOKEN_RETENTION_DAYS: ${TOKEN_RETENTION_DAYS:-30}
+      BILLING_EVENT_RETENTION_DAYS: ${BILLING_EVENT_RETENTION_DAYS:-90}
+      RAW_REJECT_RETENTION_DAYS: ${RAW_REJECT_RETENTION_DAYS:-90}
+      # pg pool (audit MED #30). ONE pool here serves 16 shard consumers plus a dozen BullMQ workers,
+      # so the shared default of 10 queued acquires invisibly. Left EMPTY these fall back to the
+      # code's defaults (24 / 10 s / 120 s) — `${VAR:-}` yields an empty string, which the parser
+      # treats as absent precisely because this file's idiom produces it.
+      PG_POOL_MAX: ${PG_POOL_MAX:-}
+      PG_ACQUIRE_TIMEOUT_MS: ${PG_ACQUIRE_TIMEOUT_MS:-}
+      PG_STATEMENT_TIMEOUT_MS: ${PG_STATEMENT_TIMEOUT_MS:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # E05-5 email delivery (ADR-023) — values live in /opt/orbetra/.env (rule 12); absent ⇒ skipped
       SMTP_HOST: ${SMTP_HOST:-}
@@ -91,6 +106,10 @@ services:
       # provisioned and smoke-tested, but NO api code reads GEOCODER_URL yet — the consumer (address
       # lookup for positions/reports) is a planned follow-up. Kept wired so it's live the day it lands.
       GEOCODER_URL: http://photon:2322
+      # pg pool — the API's own pool serves every raw-SQL history/report read (audit MED #30)
+      PG_POOL_MAX: ${PG_POOL_MAX:-}
+      PG_ACQUIRE_TIMEOUT_MS: ${PG_ACQUIRE_TIMEOUT_MS:-}
+      PG_STATEMENT_TIMEOUT_MS: ${PG_STATEMENT_TIMEOUT_MS:-}
       TRUST_PROXY: "1"
       # staging is reachable over plain HTTP by IP until DNS lands — Secure cookies
       # would silently break login there. Flip to 1 the day TLS is on.

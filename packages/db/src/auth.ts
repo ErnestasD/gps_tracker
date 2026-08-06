@@ -21,6 +21,10 @@ export const UNSCOPED_AUTH_METHODS = [
   // forgot-password: the raw token IS the capability (precedes any session/tenant knowledge);
   // rows hang off userId and are only ever addressed by tokenHash. UNSCOPED BY DESIGN.
   'passwordResetTokens.*',
+  // retention prunes: a horizon is platform-wide by definition, the caller is the worker's daily
+  // sweep with no request identity behind it, and they address rows only by expiry. Same shape as
+  // webhookDeliveries.pruneOlderThan / rawRejects.pruneOlderThan on the scoped side (audit MED #53).
+  'tokenRetention.*',
 ] as const
 
 export interface AuthUserRow {
@@ -123,6 +127,22 @@ export interface AuthDb {
     /** Invalidate a user's outstanding (unused) reset tokens — called when a NEW reset is requested
      *  (only the latest link stays valid) and after a successful reset. */
     invalidateAllForUser(userId: string, now: Date): Promise<void>
+  }
+  /**
+   * Retention for the token tables (audit MED #53). Nothing ever deleted from them: every login
+   * writes a `refresh_tokens` row and every rotation writes another, so the table grows for the
+   * life of the platform — on the hot auth path, where `findByTokenHash`/`claimForRotation` pay for
+   * every dead row in the index. Reset tokens are smaller but identical in shape.
+   *
+   * DEAD means expired, revoked, rotated or used — a row in any of those states can never
+   * authenticate anything again; the live-session check is a predicate on the row, not on its
+   * existence. `cutoff` is applied to `expiresAt` so a token is only removed once it is past its own
+   * lifetime as well, which keeps the family-revocation trail intact for as long as it could matter.
+   */
+  tokenRetention: {
+    pruneRefreshTokens(cutoff: Date, batchSize?: number): Promise<number>
+    pruneResetTokens(cutoff: Date, batchSize?: number): Promise<number>
+    pruneAffiliateTokens(cutoff: Date, batchSize?: number): Promise<number>
   }
   $disconnect(): Promise<void>
 }
@@ -247,8 +267,58 @@ export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnec
         await prisma.passwordResetToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: now } })
       },
     },
+    tokenRetention: {
+      // batched like every other prune here: the first run after this ships clears however many
+      // months of dead rows have accumulated, and one unbounded DELETE would hold a lock on the
+      // table `claimForRotation` needs for every token refresh in flight.
+      pruneRefreshTokens: async (cutoff, batchSize = 5_000) => {
+        const size = batchOf(batchSize)
+        let total = 0
+        for (;;) {
+          // dead = it can never authenticate again. `expiresAt < cutoff` on TOP of that, so a
+          // revoked-family row survives its own lifetime and stays available for forensics.
+          const n = await prisma.$executeRaw`
+            DELETE FROM refresh_tokens WHERE id IN (
+              SELECT id FROM refresh_tokens
+               WHERE "expiresAt" < ${cutoff}
+                 AND ("revokedAt" IS NOT NULL OR "rotatedAt" IS NOT NULL OR "expiresAt" < now())
+               LIMIT ${size})`
+          total += n
+          if (n < size) return total
+        }
+      },
+      pruneResetTokens: async (cutoff, batchSize = 5_000) => {
+        const size = batchOf(batchSize)
+        let total = 0
+        for (;;) {
+          const n = await prisma.$executeRaw`
+            DELETE FROM password_reset_tokens WHERE id IN (
+              SELECT id FROM password_reset_tokens
+               WHERE "expiresAt" < ${cutoff}
+               LIMIT ${size})`
+          total += n
+          if (n < size) return total
+        }
+      },
+      pruneAffiliateTokens: async (cutoff, batchSize = 5_000) => {
+        const size = batchOf(batchSize)
+        let total = 0
+        for (;;) {
+          const n = await prisma.$executeRaw`
+            DELETE FROM affiliate_password_tokens WHERE id IN (
+              SELECT id FROM affiliate_password_tokens
+               WHERE "expiresAt" < ${cutoff}
+               LIMIT ${size})`
+          total += n
+          if (n < size) return total
+        }
+      },
+    },
   }
 }
+
+/** Clamp a caller-supplied batch size — shared by the token prunes. */
+const batchOf = (n: number): number => Math.min(Math.max(Math.trunc(n), 1), 50_000)
 
 export function createAuthDb(databaseUrl: string): AuthDb {
   const prisma = new PrismaClient({ datasourceUrl: databaseUrl })

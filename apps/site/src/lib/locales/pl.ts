@@ -481,7 +481,7 @@ export const pl: Translation = {
     tspLink: "Zobacz ścieżkę white-label →",
     doneLabel: "— GOTOWE",
     doneTitle: "Konto utworzone",
-    doneBody: "Środowisko testowe jest gotowe. Proszę zalogować się w panelu floty adresem e-mail i hasłem wybranym przed chwilą, a następnie dodać pierwsze urządzenie.",
+    doneBody: "Środowisko testowe jest gotowe. Proszę zalogować się w panelu floty adresem e-mail i hasłem wybranym przed chwilą. Jeśli dla tego adresu istniało już konto, proszę sprawdzić skrzynkę — wysłaliśmy wiadomość, jak się zalogować.",
     doneCta: "Zaloguj się w panelu",
     name: "Imię i nazwisko",
     email: "Służbowy e-mail",
@@ -490,6 +490,9 @@ export const pl: Translation = {
     referral: "Polecenie zaliczone · {{code}}",
     submit: "Załóż konto",
     submitting: "Tworzenie…",
+    // unused since audit MED #67: the API no longer 409s a duplicate address (it answers the
+    // same 201 as a real signup and emails the owner), so nothing reads this. Kept because the
+    // locale objects are type-enforced against each other and removing one key means removing four.
     errConflict: "Ten adres e-mail jest już używany — proszę zalogować się w panelu.",
     errRate: "Zbyt wiele prób. Proszę chwilę odczekać i spróbować ponownie.",
     errGeneric: "Coś poszło nie tak. Proszę spróbować ponownie.",

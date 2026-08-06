@@ -59,9 +59,10 @@ function SignupPage() {
       });
       setState("done");
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setError(t("signup.errConflict"));
-      } else if (err instanceof ApiError && err.status === 429) {
+      // NO 409 branch: the API deliberately answers an already-registered address with the SAME 201
+      // as a real signup (audit MED #67 — a distinct status was an unauthenticated
+      // account-existence oracle). The owner is told by email; the success copy covers both cases.
+      if (err instanceof ApiError && err.status === 429) {
         setError(t("signup.errRate"));
       } else {
         setError(err instanceof Error ? err.message : t("signup.errGeneric"));
