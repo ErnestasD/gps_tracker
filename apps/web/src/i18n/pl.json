@@ -10,6 +10,7 @@
     "ambiguousIdentity": "Twoje konto jest niejednoznaczne między organizacjami — skontaktuj się z administratorem.",
     "networkError": "Brak połączenia. Sprawdź połączenie internetowe i spróbuj ponownie.",
     "serverError": "Coś poszło nie tak po naszej stronie. Spróbuj ponownie za kilka minut.",
+    "backToSite": "Powrót do orbetra.com",
     "forgotLink": "Nie pamiętasz hasła?"
   },
   "forgot": {
@@ -181,6 +182,11 @@
     "badDomain": "Podaj poprawną nazwę hosta (np. fleet.example.com).",
     "txtInstruction": "Dodaj ten rekord TXT do {{domain}}, następnie kliknij Zweryfikuj:",
     "certNote": "Certyfikaty HTTPS są wystawiane automatycznie przy pierwszym bezpiecznym żądaniu po weryfikacji domeny.",
+    "modeSub": "Subdomena Orbetra (od razu)",
+    "modeOwn": "Własna domena",
+    "slugLabel": "Nazwa subdomeny",
+    "subNote": "Gotowe w kilka sekund — bez zmian w DNS. Tutaj logują się Twoi klienci.",
+    "dnsInstruction": "Następnie skieruj tę domenę na nas rekordem CNAME na:",
     "domainLabel": "Domena",
     "actionError": "Akcja nie powiodła się — spróbuj ponownie.",
     "limitDomain": "Osiągnięto maksymalną liczbę {{max}} domen niestandardowych."

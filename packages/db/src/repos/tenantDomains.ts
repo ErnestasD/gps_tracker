@@ -35,7 +35,14 @@ export class DomainLimitError extends Error {
 export interface TenantDomainRepo {
   list(scope: Scope): Promise<TenantDomain[]>
   get(scope: Scope, id: string): Promise<TenantDomain | null>
-  create(scope: Scope, actor: Actor, domain: string, txtToken: string): Promise<TenantDomain>
+  /**
+   * `verified` is for PLATFORM SUBDOMAINS only (`<slug>.orbetra.com`): we own that zone, so there is
+   * no DNS proof for a tenant to publish and the ownership question is decided entirely by the
+   * caller's slug check plus the global partial-unique index this insert hits. Every other domain
+   * MUST go through setVerified after a real TXT lookup.
+   * @throws DomainConflictError when `verified` and another tenant already holds this domain.
+   */
+  create(scope: Scope, actor: Actor, domain: string, txtToken: string, opts?: { verified?: boolean }): Promise<TenantDomain>
   remove(scope: Scope, actor: Actor, id: string): Promise<boolean>
   /** @throws DomainConflictError if another tenant already verified this domain. */
   setVerified(scope: Scope, actor: Actor, id: string): Promise<TenantDomain | null>
@@ -55,10 +62,18 @@ export function createTenantDomainRepo(prisma: PrismaClient, audit: AuditRepo): 
   return {
     list: (scope) => prisma.tenantDomain.findMany({ where: { tenantId: scope.tenantId }, orderBy: { createdAt: 'desc' } }),
     get: (scope, id) => scoped(scope, id),
-    create: async (scope, actor, domain, txtToken) => {
+    create: async (scope, actor, domain, txtToken, opts = {}) => {
       const count = await prisma.tenantDomain.count({ where: { tenantId: scope.tenantId } })
       if (count >= MAX_DOMAINS_PER_TENANT) throw new DomainLimitError()
-      const row = await prisma.tenantDomain.create({ data: { tenantId: scope.tenantId, domain, txtToken } })
+      let row: TenantDomain
+      try {
+        row = await prisma.tenantDomain.create({ data: { tenantId: scope.tenantId, domain, txtToken, verified: opts.verified === true } })
+      } catch (e) {
+        // Creating an ALREADY-VERIFIED row races the same partial unique index setVerified does, so
+        // a slug another tenant took must read as a conflict rather than as "you already added it".
+        if (opts.verified === true && isUniqueViolation(e)) throw new DomainConflictError()
+        throw e
+      }
       await audit.record(scope, actor, { action: 'create', entity: 'domain', entityId: row.id, after: row })
       return row
     },

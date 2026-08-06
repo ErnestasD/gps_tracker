@@ -96,6 +96,9 @@ Every new variable must be added to the table here AND match the `.env` contract
 | pgBackRest repo | infra/pgbackrest/pgbackrest.conf | local volume now; swap to Hetzner Storage Box SFTP for real DR (W7-S2, founder-gated) |
 | `ORBETRA_SITE_HOST` / `ORBETRA_SITE_WWW` | infra/Caddyfile | public site apex + www hosts (W9-S1); www 301s to apex; unset = inert |
 | `ORBETRA_APP_HOST` | infra/Caddyfile | dashboard host (dash.<domain>) for the app SPA |
+| `PLATFORM_DOMAIN` | apps/api | our own domain (`orbetra.com`). Lets a tenant claim `<slug>.<domain>` as a white-label host with NO DNS work — created already verified, since we hold the zone. **Requires a `*.<domain>` A record**; unset ⇒ the option is not offered and every domain goes through DNS TXT |
+| `EDGE_HOSTNAME` | apps/api | where a tenant CNAMEs their OWN domain (`dash.orbetra.com`). Shown in the Domains card — a hostname, not an IP, so the address stays ours to change |
+| `VITE_SITE_URL` | apps/web (build) | marketing site the pre-auth pages link back to; default `https://orbetra.com`. Never rendered on a tenant's custom domain |
 | `VITE_DASH_URL` | apps/site (build-time) | dashboard URL the site's Sign-in links point to, default `https://dash.orbetra.com` |
 | `VITE_DEMO_URL` | apps/site (build-time) | where "Live demo" points; default `/app` (built-in read-only mock admin). An `https://` value links out instead |
 | `API_PROXY_TARGET` | apps/site + apps/web vite dev/preview | where the `/v1` proxy forwards, default `http://localhost:3010` |
@@ -188,9 +191,21 @@ Every new variable must be added to the table here AND match the `.env` contract
   compose maps `:443`→`8449` and has no real DNS, so it stays inert); certs are then minted
   automatically on the first HTTPS hit to a verified domain. Full 2-domain TLS is exercised on
   staging.
+- **Two ways to be reachable.** `<slug>.orbetra.com` (`PLATFORM_DOMAIN`) is the zero-setup
+  option: we own the zone, so there is no ownership to prove — the domain is created already
+  verified and works within seconds, gated only by a reserved-label list (`dash`, `www`,
+  `secure`, `login`, `mail`, … — see `checkPlatformSubdomain`) and the same global
+  partial-unique index. It needs a `*.orbetra.com` A record to exist; without one, unset
+  `PLATFORM_DOMAIN` and the option is not offered. A tenant's OWN domain proves ownership by
+  DNS TXT and must then be pointed at us with a CNAME to `EDGE_HOSTNAME` — that second step is
+  shown in the Domains card, because proving ownership and routing traffic are different things
+  and a verified badge above a domain that resolves nowhere is the worse failure.
 - **Pre-login branding**: public `GET /v1/branding` resolves the tenant by `Host`
-  (`X-Forwarded-Host` behind Caddy) → verified domain → branding, so a custom-domain
-  login page shows the tenant's logo before authentication; unknown host → `{}`.
+  (`X-Forwarded-Host` behind Caddy) → verified domain → branding. `AuthShell` (login, forgot,
+  reset, activate) reads it before anything renders, so a custom-domain login page shows the
+  tenant's logo, colours, tab title and favicon — and shows NO Orbetra wordmark and no link to
+  orbetra.com. On our own hosts the inverse holds: the wordmark and a footer line lead back to
+  the marketing site. Unknown host → `{}` → the platform brand.
 - **Branded email**: `renderBrandedEmail(branding, tenantName, content)` renders the
   tenant's name/logo/accent with all tenant strings HTML-escaped (snapshot-tested).
 

@@ -106,6 +106,11 @@ const deps = {
   onboarding: { host: process.env['INGEST_PUBLIC_HOST'] ?? 'orbetra.com', port: Number(process.env['INGEST_TCP_PORT'] ?? 5027) },
   ...(stripe !== undefined ? { stripe } : {}),
   ...(process.env['APP_BASE_URL'] ? { appBaseUrl: process.env['APP_BASE_URL'] } : {}),
+  // White-label hosting: PLATFORM_DOMAIN turns on `<slug>.orbetra.com` (needs the `*` A record),
+  // EDGE_HOSTNAME is what a tenant CNAMEs their own domain to. Both optional — absent simply means
+  // the corresponding half of the setup instructions is not offered rather than shown wrong.
+  ...(process.env['PLATFORM_DOMAIN'] ? { platformDomain: process.env['PLATFORM_DOMAIN'] } : {}),
+  ...(process.env['EDGE_HOSTNAME'] ? { edgeHostname: process.env['EDGE_HOSTNAME'] } : {}),
   ...(process.env['VAPID_PUBLIC_KEY'] ? { vapidPublicKey: process.env['VAPID_PUBLIC_KEY'] } : {}),
   // OSRM route optimization (ADR-029): unset ⇒ POST /v1/routing/optimize answers 503
   // route optimization (ADR-034): Mapbox by default — worldwide, no dataset to build or refresh,

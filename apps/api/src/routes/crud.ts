@@ -59,7 +59,7 @@ import { markSessionsRevoked } from '../ws.js'
 import { issuePartnerSetPwToken } from './partner.js'
 import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
-import { expectedTxt, newTxtToken, verifyDomainTxt, type TxtResolver } from './tenantSelf.js'
+import { checkPlatformSubdomain, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, type TxtResolver } from './tenantSelf.js'
 
 // Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
 // truth and is already committed, so a Redis blip must NOT 500 the request (a 500 → client
@@ -91,6 +91,23 @@ export interface CrudDeps {
   redis: Redis
   /** DNS TXT resolver for domain verification (E03-5); injectable for tests. */
   resolveTxt: TxtResolver
+  /**
+   * Our own domain (`PLATFORM_DOMAIN`, e.g. `orbetra.com`). A tenant may claim `<slug>` under it and
+   * be live in a minute with no DNS work at all — the zero-setup half of white-label. Unset ⇒ the
+   * option is simply not offered and every domain goes through DNS TXT, which is the correct
+   * behaviour anywhere the wildcard record does not exist (local, CI, a self-hosted deploy).
+   */
+  platformDomain?: string
+  /**
+   * Where a tenant should point their OWN domain (`EDGE_HOSTNAME`, e.g. `dash.orbetra.com`).
+   *
+   * A CNAME to a hostname, not an A record to an IP: the address is ours to change, and a customer
+   * who hard-codes it goes dark the day we move. Handed back with the domain so the UI can state the
+   * step — its absence was why a tenant could publish the TXT record, see the badge flip to
+   * "verified", and still have a domain that resolved nowhere, with nothing anywhere telling them
+   * the one step that was missing.
+   */
+  edgeHostname?: string
   /** raw-SQL pool for positions history reads (E04-3); positions are not in Prisma.
    * Optional so manifest-only construction (apiManifest) needs no DB; the positions
    * route 503s if it is somehow reached without one. */
@@ -1299,7 +1316,16 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'get', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
       handler: async (c) => {
         const tenant = await db.tenants.get(auth(c).tenantId)
-        return json(c, { branding: tenant?.branding ?? {}, name: tenant?.name })
+        // `dnsTarget` and `platformDomain` are deployment config, not tenant data, and they ride
+        // here because the Branding page loads this alongside the domain list and has to state both
+        // remaining setup steps: where to point a CNAME, and whether the zero-setup
+        // `<slug>.orbetra.com` option exists at all (it needs a wildcard record to).
+        return json(c, {
+          branding: tenant?.branding ?? {},
+          name: tenant?.name,
+          dnsTarget: deps.edgeHostname ?? null,
+          platformDomain: deps.platformDomain ?? null,
+        })
       } },
     { method: 'patch', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection', entitlement: 'whiteLabel',
       handler: async (c) => {
@@ -1309,6 +1335,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const tenant = await db.tenants.updateBranding({ userId: a.userId }, a.tenantId, data)
         return json(c, { branding: tenant.branding, name: tenant.name })
       } },
+    // NOTE: stays a bare ARRAY. The UI also needs `dnsTarget` + `platformDomain`, and wrapping them
+    // in here would have been the obvious place — but the isolation suite's collection sweep reads
+    // `Array.isArray(body) ? body : []`, so an object body turns its cross-tenant leak check into a
+    // vacuous pass. The config rides on GET /v1/tenant/branding instead, which the same page loads.
     { method: 'get', path: '/v1/tenant/domains', scopeClass: 'tenant', entity: 'domain', shape: 'collection', entitlement: 'customDomains',
       handler: async (c) => json(c, await db.tenantDomains.list(scopeOf(auth(c)))) },
     { method: 'get', path: '/v1/tenant/domains/:id', scopeClass: 'tenant', entity: 'domain', shape: 'item', entitlement: 'customDomains',
@@ -1321,11 +1351,25 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const data = await body(c, domainCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const a = auth(c)
+        const domain = data.domain.toLowerCase()
+        // A subdomain of OUR zone takes a different path, and must be routed to it even when the
+        // slug turns out to be unclaimable: sending `secure.orbetra.com` down the DNS-TXT branch
+        // would tell a tenant to publish a record in a zone they cannot edit, and then fail forever
+        // with "TXT record not found" — a dead end with no hint of the real reason.
+        const ownZone = isUnderPlatformDomain(domain, deps.platformDomain)
+        if (ownZone) {
+          const chk = checkPlatformSubdomain(domain, deps.platformDomain)
+          if (!chk.ok) return problem(c, 400, 'Bad Request', chk.reason)
+        }
         try {
-          const row = await db.tenantDomains.create(scopeOf(a), { userId: a.userId }, data.domain.toLowerCase(), newTxtToken())
-          return json(c, { ...row, txtRecord: expectedTxt(row.txtToken) }, 201)
+          // verified on creation for our own zone: there is no ownership for the tenant to prove —
+          // we hold the DNS. The slug check above plus the global partial-unique index below ARE the
+          // ownership model, which is why neither may be skipped.
+          const row = await db.tenantDomains.create(scopeOf(a), { userId: a.userId }, domain, newTxtToken(), ownZone ? { verified: true } : {})
+          return json(c, { ...row, txtRecord: ownZone ? null : expectedTxt(row.txtToken), dnsTarget: ownZone ? null : deps.edgeHostname ?? null }, 201)
         } catch (err) {
           if (err instanceof DomainLimitError) return problem(c, 409, 'Conflict', `domain limit reached (max ${MAX_DOMAINS_PER_TENANT})`)
+          if (err instanceof DomainConflictError) return problem(c, 409, 'Conflict', 'that name is already taken')
           // (tenantId, domain) unique clash = this tenant already added it
           return problem(c, 409, 'Conflict', 'domain already added')
         }

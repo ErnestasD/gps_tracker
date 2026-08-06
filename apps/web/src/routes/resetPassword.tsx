@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { AuthShell } from '@/components/AuthShell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { resetPassword } from '@/lib/auth'
@@ -39,10 +40,9 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-[radial-gradient(ellipse_at_top,_#1A1F2C_0%,_#0A0E1A_60%)] p-4">
-      <Card className="w-full max-w-sm">
+    <AuthShell>
+      <Card className="w-full">
         <CardHeader className="items-center pt-8 text-center">
-          <img src="/orbetra-wordmark.svg" alt="Orbetra" className="mb-3 h-8 w-auto" />
           <CardTitle className="text-lg">{t('reset.title')}</CardTitle>
         </CardHeader>
         <CardContent className="pb-8">
@@ -102,6 +102,6 @@ export function ResetPasswordPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AuthShell>
   )
 }

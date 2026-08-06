@@ -10,6 +10,7 @@
     "ambiguousIdentity": "Jūsų paskyra dviprasmiška tarp organizacijų — kreipkitės į administratorių.",
     "networkError": "Nepavyko prisijungti. Patikrinkite interneto ryšį ir bandykite dar kartą.",
     "serverError": "Kažkas nutiko mūsų pusėje. Bandykite dar kartą po kelių minučių.",
+    "backToSite": "Grįžti į orbetra.com",
     "forgotLink": "Pamiršote slaptažodį?"
   },
   "forgot": {
@@ -181,6 +182,11 @@
     "badDomain": "Įveskite tinkamą domeną (pvz. fleet.example.com).",
     "txtInstruction": "Pridėkite šį TXT įrašą prie {{domain}}, tada spauskite Patvirtinti:",
     "certNote": "HTTPS sertifikatai išduodami automatiškai per pirmą saugų užklausimą po domeno patvirtinimo.",
+    "modeSub": "Orbetra subdomenas (iš karto)",
+    "modeOwn": "Nuosavas domenas",
+    "slugLabel": "Subdomeno vardas",
+    "subNote": "Veikia po kelių sekundžių — DNS keisti nereikia. Čia jungsis jūsų klientai.",
+    "dnsInstruction": "Tada nukreipkite šį domeną į mus CNAME įrašu į:",
     "domainLabel": "Domenas",
     "actionError": "Veiksmas nepavyko — bandykite dar kartą.",
     "limitDomain": "Pasiekėte {{max}} tinkintų domenų ribą."
