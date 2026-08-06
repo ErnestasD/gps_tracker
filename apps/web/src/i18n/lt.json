@@ -134,6 +134,8 @@
       "paused": "Pristabdyta"
     },
     "actionError": "Nepavyko pasiekti Stripe — bandykite dar kartą.",
+    "suspendedTitle": "Jūsų įrenginiai nustojo siųsti duomenis",
+    "suspendedBody": "Nustojome priimti duomenis iš jūsų įrenginių, nes prenumerata nebuvo atnaujinta. Niekas neištrinta — istorija, kelionės ir ataskaitos tebėra vietoje. Atnaujinus prenumeratą įrenginiai atsistato per minutę.",
     "loadError": "Nepavyko įkelti atsiskaitymo būsenos.",
     "ends": "Baigiasi",
     "pastDue": "Pradelsta",

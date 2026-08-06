@@ -134,6 +134,8 @@
       "paused": "Pausiert"
     },
     "actionError": "Stripe konnte nicht erreicht werden — bitte erneut versuchen.",
+    "suspendedTitle": "Ihre Geräte senden keine Daten mehr",
+    "suspendedBody": "Wir nehmen keine Daten Ihrer Geräte mehr an, weil das Abonnement nicht verlängert wurde. Es wurde nichts gelöscht — Historie, Fahrten und Berichte sind vollständig vorhanden. Eine Verlängerung stellt die Geräte binnen einer Minute wieder her.",
     "loadError": "Abrechnungsstatus konnte nicht geladen werden.",
     "ends": "Endet am",
     "pastDue": "Überfällig",

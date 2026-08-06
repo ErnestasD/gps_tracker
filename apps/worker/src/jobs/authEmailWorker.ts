@@ -7,6 +7,7 @@ import type { EmailTransport } from '../notify/drivers.js'
 import { renderResetEmail } from '../notify/passwordResetEmail.js'
 import { renderSignupExistsEmail } from '../notify/signupExistsEmail.js'
 import { renderVerifyEmail } from '../notify/verifyEmail.js'
+import { renderLapseEmail } from '../notify/lapseEmail.js'
 import { AUTH_EMAIL_QUEUE, type AuthEmailJob } from './authEmailQueue.js'
 
 export interface AuthEmailWorkerDeps {
@@ -80,7 +81,9 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   const { subject, text, html } =
     job.kind === 'signup-exists'
       ? renderSignupExistsEmail({ loginUrl: job.loginUrl, resetUrl: job.resetUrl, locale: job.locale, brand, branding, tenantName })
-      : job.kind === 'verify-email'
+      : job.kind === 'lapse'
+        ? renderLapseEmail({ billingUrl: job.billingUrl, daysLeft: job.daysLeft, locale: job.locale, brand, branding, tenantName })
+        : job.kind === 'verify-email'
         ? renderVerifyEmail({ verifyUrl: job.verifyUrl, expiresHours: job.expiresHours, locale: job.locale, brand, branding, tenantName: shellName })
         : renderResetEmail({ resetUrl: job.resetUrl, expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding, tenantName })
   await deps.transport.send(job.email, subject, text, html)

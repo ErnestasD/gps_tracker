@@ -133,7 +133,7 @@ describe('formatReport', () => {
     const r = formatReport({ type: 'mileage', rows: [] }, w, opts) // opts has brand but no branding
     expect(r.html).toBeDefined()
     expect(r.html!).toContain('Acme Fleet') // brand used as the shell name fallback
-    expect(r.html!).toContain('#4DA3FF') // default accent
+    expect(r.html!).toContain('#5253DA') // the product accent (--accent in the app), shared by every mail
     expect(r.html!).toContain('(no data in this period)')
   })
 })

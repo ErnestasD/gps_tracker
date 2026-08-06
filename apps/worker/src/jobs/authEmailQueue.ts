@@ -51,7 +51,18 @@ export interface VerifyEmailJob extends AuthEmailBase {
   expiresHours: number
 }
 
-export type AuthEmailJob = PasswordResetEmailJob | SignupExistsEmailJob | VerifyEmailJob
+/**
+ * A step on the lapse ladder (audit MED #22): three warnings, then the notice that the fleet stopped
+ * reporting. `daysLeft: 0` is the suspension notice. Same queue as the other transactional mail —
+ * one worker, one branded shell, one place where a send can fail.
+ */
+export interface LapseEmailJob extends AuthEmailBase {
+  kind: 'lapse'
+  billingUrl: string
+  daysLeft: number
+}
+
+export type AuthEmailJob = PasswordResetEmailJob | SignupExistsEmailJob | VerifyEmailJob | LapseEmailJob
 
 export function createAuthEmailQueue(connection: ConnectionOptions): Queue<AuthEmailJob> {
   return new Queue<AuthEmailJob>(AUTH_EMAIL_QUEUE, { connection })

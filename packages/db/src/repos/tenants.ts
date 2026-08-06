@@ -75,6 +75,10 @@ export interface BillingState {
   stripeSubscriptionId: string | null
   subscriptionStatus: string | null
   currentPeriodEnd: string | null
+  /** when the fleet was cut off for non-payment; null = serving. The UI needs this to explain an
+   *  empty live map — "no devices are reporting" and "we stopped accepting their data" look
+   *  identical on screen and could not be more different to the person looking at it. */
+  suspendedAt: string | null
 }
 /** Subscription fields written by the signature-verified webhook (never by the browser). */
 export interface SubscriptionUpdate {
@@ -158,6 +162,24 @@ export interface LapsedTenant {
   reason: 'subscription_lapsed' | 'trial_expired'
   /** devices still registered and still being ingested for free */
   activeDevices: number
+  /** already suspended? Suspended tenants stay in this list so the sweep can UN-suspend one whose
+   *  payment landed while the webhook path was down. */
+  suspendedAt: Date | null
+  /** which lapse notice has already been sent: 0 none, 1 grace-end, 2 +1 day, 3 +2 days (final) */
+  noticeStage: number
+  /** the tenant admin to write to, and in which language. Null when the tenant somehow has no user. */
+  contactEmail: string | null
+  contactLocale: string
+}
+
+/** A device as the registry needs it, for suspending or restoring one tenant's fleet. */
+export interface TenantRegistryDevice {
+  id: bigint
+  imei: string
+  tenantId: string
+  accountId: string
+  presenceRules: unknown
+  odometerSource: string
 }
 
 /**
@@ -227,6 +249,23 @@ export interface TenantRepo {
    *  expired local trial — together with what they are still consuming. Platform-level, for the
    *  billing sweep; see {@link LapsedTenant}. */
   listLapsedTenants(now?: Date): Promise<LapsedTenant[]>
+  /** The tenant behind a Stripe customer id — the restore-on-payment path, which has the customer
+   *  id from the webhook and nothing else. */
+  tenantIdForCustomer(stripeCustomerId: string): Promise<string | null>
+  /** Tenants currently SUSPENDED. The restore pass reads this rather than filtering the lapsed
+   *  list, because a tenant that has paid is by definition absent from that list. */
+  listSuspended(): Promise<{ tenantId: string; suspendedAt: Date }[]>
+  /** Every ACTIVE device of one tenant, in the registry's shape — the suspend/restore payload. */
+  registryDevicesFor(tenantId: string): Promise<TenantRegistryDevice[]>
+  /** Record that a lapse notice went out, so the daily sweep never repeats or skips one. */
+  markLapseNotice(tenantId: string, stage: number): Promise<void>
+  /** Mark a tenant suspended (the registry teardown is the caller's — this is the durable record).
+   *  Conditional: returns false when it was ALREADY suspended, so a re-run neither re-mails nor
+   *  re-logs, and the count an operator sees is the number of tenants actually cut off. */
+  suspend(tenantId: string, at: Date): Promise<boolean>
+  /** Clear suspension + the notice ladder in ONE write. Returns false when it was not suspended, so
+   *  the caller can skip the (expensive, Redis-touching) restore for the overwhelming majority. */
+  unsuspend(tenantId: string): Promise<boolean>
 }
 
 /**
@@ -344,7 +383,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
     getBilling: async (tenantId) => {
       const row = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { stripeCustomerId: true, stripeSubscriptionId: true, subscriptionStatus: true, currentPeriodEnd: true },
+        select: { stripeCustomerId: true, stripeSubscriptionId: true, subscriptionStatus: true, currentPeriodEnd: true, suspendedAt: true },
       })
       if (row === null) return null
       return {
@@ -352,6 +391,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         stripeSubscriptionId: row.stripeSubscriptionId,
         subscriptionStatus: row.subscriptionStatus,
         currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
+        suspendedAt: row.suspendedAt?.toISOString() ?? null,
       }
     },
     setStripeCustomer: async (tenantId, stripeCustomerId) => {
@@ -539,6 +579,44 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         billableUntil: isBillableSubscription(r.subscriptionStatus) ? null : r.lastBillingEventAt,
       }))
     },
+    tenantIdForCustomer: async (stripeCustomerId) => (await prisma.tenant.findFirst({ where: { stripeCustomerId }, select: { id: true } }))?.id ?? null,
+    listSuspended: async () => {
+      const rows = await prisma.tenant.findMany({ where: { suspendedAt: { not: null } }, select: { id: true, suspendedAt: true } })
+      return rows.map((r) => ({ tenantId: r.id, suspendedAt: r.suspendedAt! }))
+    },
+    registryDevicesFor: async (tenantId) => {
+      // the same shape the boot rehydrate builds, so a restore leaves the registry exactly as a
+      // restart would: presence rules come from the PROFILE, odometerSource from the device
+      const rows = await prisma.device.findMany({
+        where: { tenantId, retiredAt: null },
+        select: { id: true, imei: true, tenantId: true, accountId: true, profileId: true, odometerSource: true },
+      })
+      if (rows.length === 0) return []
+      const profiles = new Map((await prisma.deviceProfile.findMany({ select: { id: true, presenceRules: true } })).map((p) => [p.id, p.presenceRules]))
+      return rows.map((r) => ({
+        id: r.id,
+        imei: r.imei,
+        tenantId: r.tenantId,
+        accountId: r.accountId,
+        presenceRules: profiles.get(r.profileId) ?? {},
+        odometerSource: r.odometerSource,
+      }))
+    },
+    markLapseNotice: async (tenantId, stage) => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { lapseNoticeStage: stage } })
+    },
+    suspend: async (tenantId, at) => {
+      // CONDITIONAL on `suspendedAt: null`, so two workers (or a retry) cannot both count the same
+      // tenant as newly cut off — the number in the log and the metric is tenants, not attempts.
+      const r = await prisma.tenant.updateMany({ where: { id: tenantId, suspendedAt: null }, data: { suspendedAt: at } })
+      return r.count > 0
+    },
+    unsuspend: async (tenantId) => {
+      // the notice ladder resets with the suspension: a customer who pays, lapses again months later
+      // and gets no warnings would be cut off without notice the second time
+      const r = await prisma.tenant.updateMany({ where: { id: tenantId, suspendedAt: { not: null } }, data: { suspendedAt: null, lapseNoticeStage: 0 } })
+      return r.count > 0
+    },
     pruneUnverifiedSignups: async (cutoff, limit = 500) => {
       const size = Math.min(Math.max(Math.trunc(limit), 1), 5_000)
       // Deliberately ONE bounded pass per run rather than a drain loop: this deletes tenants, and a
@@ -595,7 +673,21 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
             { AND: [{ subscriptionStatus: 'trialing' }, { stripeSubscriptionId: null }, { currentPeriodEnd: { lt: now } }] },
           ],
         },
-        select: { id: true, name: true, plan: true, subscriptionStatus: true, currentPeriodEnd: true, lastBillingEventAt: true, stripeSubscriptionId: true },
+        select: {
+          id: true,
+          name: true,
+          plan: true,
+          subscriptionStatus: true,
+          currentPeriodEnd: true,
+          lastBillingEventAt: true,
+          stripeSubscriptionId: true,
+          suspendedAt: true,
+          lapseNoticeStage: true,
+          // the tenant ADMIN is who a billing notice belongs to — not an account manager or a
+          // viewer, who can do nothing about it. Oldest first: on a self-serve signup that is the
+          // person who created the tenant.
+          users: { where: { role: 'tsp_admin' }, orderBy: { createdAt: 'asc' }, take: 1, select: { email: true, locale: true } },
+        },
       })
       if (rows.length === 0) return []
       const counts = await prisma.device.groupBy({ by: ['tenantId'], where: { tenantId: { in: rows.map((r) => r.id) }, retiredAt: null }, _count: { _all: true } })
@@ -610,6 +702,10 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           lapsedAt: trialExpired ? r.currentPeriodEnd : r.lastBillingEventAt,
           reason: trialExpired ? ('trial_expired' as const) : ('subscription_lapsed' as const),
           activeDevices: byTenant.get(r.id) ?? 0,
+          suspendedAt: r.suspendedAt,
+          noticeStage: r.lapseNoticeStage,
+          contactEmail: r.users[0]?.email ?? null,
+          contactLocale: r.users[0]?.locale ?? 'en',
         }
       })
     },

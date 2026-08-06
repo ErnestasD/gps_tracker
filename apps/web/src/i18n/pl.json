@@ -134,6 +134,8 @@
       "paused": "Wstrzymana"
     },
     "actionError": "Nie udało się połączyć ze Stripe — spróbuj ponownie.",
+    "suspendedTitle": "Urządzenia przestały przesyłać dane",
+    "suspendedBody": "Przestaliśmy przyjmować dane z urządzeń, ponieważ subskrypcja nie została odnowiona. Nic nie zostało usunięte — historia, trasy i raporty są na miejscu. Odnowienie przywraca urządzenia w ciągu minuty.",
     "loadError": "Nie udało się załadować statusu płatności.",
     "ends": "Kończy się",
     "pastDue": "Zaległa",

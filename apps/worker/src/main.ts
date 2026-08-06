@@ -45,6 +45,7 @@ import { startRecomputeWorker } from './jobs/recomputeWorker.js'
 import { driversFromEnv } from './notify/drivers.js'
 import { buildEmailTransport } from './notify/emailTransport.js'
 import { startAuthEmailWorker } from './jobs/authEmailWorker.js'
+import { createAuthEmailQueue, enqueueAuthEmail } from './jobs/authEmailQueue.js'
 import { smsDriverFromEnv } from './sms/drivers.js'
 import { startSmsWorker } from './jobs/smsWorker.js'
 import { GeofenceCache } from './geofence/cache.js'
@@ -196,6 +197,9 @@ async function main(): Promise<void> {
   // ADR-031: transactional auth emails (password-reset) — the API enqueues, the worker renders the
   // tenant-branded message and sends it via the SAME transport. Env-gated: no transport ⇒ no-op.
   const authEmailWorker = startAuthEmailWorker({ connection: recomputeConn, pool, transport: emailTransport })
+  // the worker enqueues onto the SAME auth-email queue the api uses — the lapse ladder is the only
+  // mail this process originates, and it must land in the same branded shell as the rest
+  const authEmailQueue = createAuthEmailQueue(recomputeConn)
   // SMS gateway: send Teltonika config/command SMS to a device SIM via the env-gated Twilio driver
   // (TWILIO_ACCOUNT_SID + TWILIO_FROM + auth token OR API key pair). Absent creds ⇒ no driver ⇒ the
   // worker isn't started; the API returns 503 (shared smsConfigured is the single source of truth).
@@ -286,14 +290,28 @@ async function main(): Promise<void> {
   // not Stripe is configured — an expired self-serve trial is a lapse too, and the whole point is
   // that nothing anywhere counted these.
   const lapseSweepQueue = createLapseSweepQueue(recomputeConn)
+  // The lapse LADDER (audit MED #22, founder policy): warn at grace-end, +1, +2, suspend on +3, and
+  // restore the moment a payment lands. Enforcement needs all three of redis, mail and a link the
+  // customer can click — without any of them the sweep degrades to counting, because cutting a fleet
+  // off with no email first is worse than another day of unpaid storage.
+  const lapseMail = {
+    enqueueLapseEmail: async (job: { kind: 'lapse'; email: string; tenantId: string; locale: string; billingUrl: string; daysLeft: number }): Promise<void> => {
+      await enqueueAuthEmail(authEmailQueue, job)
+    },
+  }
   const lapseSweepWorker = createLapseSweepWorker({
     connection: recomputeConn,
     db,
+    redis,
     graceDays: graceDaysFromEnv(),
+    ...(process.env['APP_BASE_URL'] !== undefined && emailTransport !== undefined ? { appBaseUrl: process.env['APP_BASE_URL'], mail: lapseMail } : {}),
     onSwept: (r) => {
       prom.billingLapsedTenants.set(r.tenants)
       prom.billingLapsedDevices.set(r.devices)
       prom.billingLapsedActionable.set(r.actionable)
+      prom.billingLapseAction.inc({ action: 'warned' }, r.warned)
+      prom.billingLapseAction.inc({ action: 'suspended' }, r.suspended)
+      prom.billingLapseAction.inc({ action: 'restored' }, r.restored)
     },
     onFailed: () => prom.jobFailed.inc({ job: 'lapse_sweep' }),
   })
@@ -756,6 +774,7 @@ async function main(): Promise<void> {
       await stripeUsageQueue?.close()
       await lapseSweepWorker.close() // finish the in-flight lapse sweep, stop taking new
       await lapseSweepQueue.close()
+      await authEmailQueue.close()
       await scheduledReportWorker?.close() // finish the in-flight scheduled-report run, stop taking new
       await scheduledReportQueue?.close()
       await rejectDrainWorker.close()
