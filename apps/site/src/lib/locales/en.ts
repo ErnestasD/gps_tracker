@@ -498,6 +498,9 @@ export const en = {
     referral: "Referral applied · {{code}}",
     submit: "Create account",
     submitting: "Creating…",
+    // unused since audit MED #67: the API no longer 409s a duplicate address (it answers the
+    // same 201 as a real signup and emails the owner), so nothing reads this. Kept because the
+    // locale objects are type-enforced against each other and removing one key means removing four.
     errConflict: "That email is already in use — sign in at the dashboard instead.",
     errRate: "Too many attempts. Please wait a moment and try again.",
     errGeneric: "Something went wrong. Please try again.",

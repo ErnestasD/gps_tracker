@@ -495,6 +495,9 @@ export const lt: Translation = {
     referral: "Rekomendacija pritaikyta · {{code}}",
     submit: "Sukurti paskyrą",
     submitting: "Kuriama…",
+    // unused since audit MED #67: the API no longer 409s a duplicate address (it answers the
+    // same 201 as a real signup and emails the owner), so nothing reads this. Kept because the
+    // locale objects are type-enforced against each other and removing one key means removing four.
     errConflict: "Šis el. pašto adresas jau naudojamas — prisijunkite valdymo skydelyje.",
     errRate: "Per daug bandymų. Šiek tiek palaukite ir bandykite dar kartą.",
     errGeneric: "Kažkas nepavyko. Bandykite dar kartą.",

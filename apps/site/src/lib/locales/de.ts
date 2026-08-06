@@ -490,6 +490,9 @@ export const de: Translation = {
     referral: "Empfehlung angewendet · {{code}}",
     submit: "Konto erstellen",
     submitting: "Wird erstellt…",
+    // unused since audit MED #67: the API no longer 409s a duplicate address (it answers the
+    // same 201 as a real signup and emails the owner), so nothing reads this. Kept because the
+    // locale objects are type-enforced against each other and removing one key means removing four.
     errConflict: "Diese E-Mail-Adresse wird bereits verwendet — melden Sie sich stattdessen im Dashboard an.",
     errRate: "Zu viele Versuche. Bitte warten Sie einen Moment und versuchen Sie es erneut.",
     errGeneric: "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",

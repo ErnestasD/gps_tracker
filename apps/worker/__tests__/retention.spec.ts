@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { Db } from '@orbetra/db'
 
-import { runRetentionSweep } from '../src/jobs/retentionWorker.js'
+import { assertLocationWindow, runRetentionSweep } from '../src/jobs/retentionWorker.js'
 
 type Prune = (cutoff: Date, batchSize?: number) => Promise<number>
 
@@ -146,5 +146,24 @@ describe('retention sweep', () => {
       ['billing_events', 5],
     ])
     expect(seen.map(([t]) => t)).not.toContain('raw_rejects')
+  })
+})
+describe('assertLocationWindow', () => {
+  it('refuses a window shorter than the PUBLISHED 13 months unless it is confirmed', () => {
+    // the floor of 30 catches `1`, but 90 — the value one README row above, for raw_rejects — is a
+    // perfectly legal number that silently deletes ten months of a customer's history on the next
+    // tick. 13 months is not a preference: the privacy policy, Terms and DPA all state it.
+    expect(() => assertLocationWindow(90, undefined)).toThrow(/shorter than the published 13-month/)
+    expect(() => assertLocationWindow(90, '1')).not.toThrow()
+    expect(() => assertLocationWindow(90, 'true')).not.toThrow()
+  })
+
+  it('a LONGER window needs no ceremony — it deletes strictly less', () => {
+    expect(() => assertLocationWindow(396, undefined)).not.toThrow()
+    expect(() => assertLocationWindow(1000, undefined)).not.toThrow()
+  })
+
+  it('names the variable and the consequence — the operator must not have to read the source', () => {
+    expect(() => assertLocationWindow(30, undefined)).toThrow(/LOCATION_RETENTION_DAYS=30[\s\S]*RETENTION_CONFIRM_SHORT=1/)
   })
 })

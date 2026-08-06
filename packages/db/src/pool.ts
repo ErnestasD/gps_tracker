@@ -45,7 +45,14 @@ export const DEFAULT_STATEMENT_TIMEOUT_MS = 120_000
 /** Read pool settings from env, clamped. Invalid/absent values fall back to the defaults. */
 export function poolOptionsFromEnv(env: NodeJS.ProcessEnv = process.env, defaults: PoolOptions = {}): Required<PoolOptions> {
   const num = (raw: string | undefined, fallback: number, lo: number, hi: number): number => {
-    const n = Number(raw)
+    // EMPTY is absent, not zero. `Number('')` is 0 — finite, so it would pass the guard and then be
+    // clamped to the FLOOR, i.e. the most dangerous legal value: pool max 1, acquire timeout 100 ms,
+    // statement timeout off. And empty is exactly what this repo's compose produces: every optional
+    // var is written `VAR: ${VAR:-}`, so an operator following the file's own idiom would have
+    // dropped the worker to a single connection shared by 16 shard consumers.
+    const trimmed = raw?.trim()
+    if (trimmed === undefined || trimmed === '') return fallback
+    const n = Number(trimmed)
     if (!Number.isFinite(n)) return fallback
     return Math.min(hi, Math.max(lo, Math.trunc(n)))
   }
@@ -67,11 +74,14 @@ export function createPool(databaseUrl: string, opts: PoolOptions | number = {})
     connectionString: databaseUrl,
     max,
     connectionTimeoutMillis: acquireTimeoutMs,
-    // `statement_timeout` is a CONNECTION parameter, not a pg.Pool option: passing it here makes
-    // libpq set it at startup for every client the pool opens, including ones opened later to
-    // replace a retired connection. Doing it in an `on('connect')` handler would leave a window
-    // where the first query on a fresh client runs unbounded. 0 ⇒ omit (Postgres default: no limit).
-    ...(statementTimeoutMs > 0 ? { options: `-c statement_timeout=${statementTimeoutMs}` } : {}),
+    // node-postgres' FIRST-CLASS field, not `options: '-c statement_timeout=…'`. Both work, but pg
+    // merges the parsed connection string OVER the config object, so a `?options=` already present
+    // in DATABASE_URL (a timezone, an application_name) would replace ours wholesale and silently
+    // switch the timeout back off — the entire fix evaporating with nothing to see. `statement_timeout`
+    // has no such collision. It is applied per connection at startup, including to clients the pool
+    // opens later to replace a retired one, so no fresh client's first query runs unbounded.
+    // 0 ⇒ omit (Postgres default: no limit).
+    ...(statementTimeoutMs > 0 ? { statement_timeout: statementTimeoutMs } : {}),
   })
   // node-postgres emits 'error' on behalf of IDLE clients (a backend restart/failover or a network
   // reset killing a pooled idle connection). With NO listener that unhandled 'error' crashes the

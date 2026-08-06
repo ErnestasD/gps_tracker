@@ -41,6 +41,25 @@ export type RetentionTable = 'webhook_deliveries' | 'raw_rejects' | 'billing_eve
  *  true of derived location data too. */
 export const LOCATION_RETENTION_DAYS = 396 // 13 months
 
+/**
+ * Refuse to start with a location window shorter than the published 13 months unless the operator
+ * says so out loud.
+ *
+ * The sweep is irreversible and unattended: by the time the counter shows what it deleted, ten
+ * months of a customer's event log and trip coordinates are gone, and no backup restore is scoped to
+ * "one config typo". Meanwhile 13 months is not a preference — it is what the privacy policy, the
+ * Terms and the DPA all state, so a shorter window is a legal-position change, not a tuning knob.
+ * A LONGER window needs no ceremony: it deletes strictly less.
+ */
+export function assertLocationWindow(days: number, confirm: string | undefined): void {
+  if (days >= LOCATION_RETENTION_DAYS || confirm === '1' || confirm === 'true') return
+  throw new Error(
+    `LOCATION_RETENTION_DAYS=${days} is shorter than the published 13-month retention (${LOCATION_RETENTION_DAYS} days). ` +
+      'This DELETES events and erases trip coordinates irreversibly on the next daily run, and contradicts the privacy policy, ' +
+      'Terms and DPA. Set RETENTION_CONFIRM_SHORT=1 to proceed deliberately.',
+  )
+}
+
 export interface RetentionWorkerDeps {
   connection: ConnectionOptions
   db: Db
@@ -57,6 +76,8 @@ export interface RetentionWorkerDeps {
   locationRetentionDays?: number
   /** window for dead auth tokens (default 30). They are only pruned once ALSO past `expiresAt`. */
   tokenRetentionDays?: number
+  /** `RETENTION_CONFIRM_SHORT` — required to run a location window below the published 13 months. */
+  confirmShortWindow?: string | undefined
   onPruned?: (table: RetentionTable, rows: number) => void
   onFailed?: () => void
 }
@@ -80,7 +101,11 @@ export async function runRetentionSweep(
   const billingDays = Number.isFinite(billingEventRetentionDays) ? Math.max(7, billingEventRetentionDays) : 90
   const billingCutoff = new Date(nowMs - billingDays * 24 * 3_600_000)
   // floored at 30 days, not 1: this one DESTROYS customer location history, and a fat-fingered
-  // `RETENTION_LOCATION_DAYS=1` would silently erase a fleet's entire event log on the next tick.
+  // `LOCATION_RETENTION_DAYS=1` would erase a fleet's entire event log on the next tick. The floor
+  // is not enough on its own — 90 is a perfectly legal number and also the value one row above it in
+  // the README (`RAW_REJECT_RETENTION_DAYS`), so the plausible typo passes every guard and silently
+  // deletes ten months of history. `assertLocationWindow` makes any window shorter than the
+  // published promise an explicit, opt-in decision instead.
   const locationDays = Number.isFinite(locationRetentionDays) ? Math.max(30, locationRetentionDays) : LOCATION_RETENTION_DAYS
   const locationCutoff = new Date(nowMs - locationDays * 24 * 3_600_000)
   const tokenDays = Number.isFinite(tokenRetentionDays) ? Math.max(1, tokenRetentionDays) : 30
@@ -120,6 +145,19 @@ export async function runRetentionSweep(
 
 /** BullMQ worker running the daily retention sweep. Caller must close() on shutdown. */
 export function startRetentionWorker(deps: RetentionWorkerDeps): Worker {
+  // at BOOT, not on the first tick: a config that would destroy history must stop the worker from
+  // starting, where it is visible, rather than surface as a failed job at 03:00
+  assertLocationWindow(deps.locationRetentionDays ?? LOCATION_RETENTION_DAYS, deps.confirmShortWindow)
+  console.log(
+    'retention windows (days):',
+    JSON.stringify({
+      webhookDeliveries: deps.retentionDays,
+      rawRejects: deps.rejectRetentionDays ?? 90,
+      billingEvents: deps.billingEventRetentionDays ?? 90,
+      location: deps.locationRetentionDays ?? LOCATION_RETENTION_DAYS,
+      tokens: deps.tokenRetentionDays ?? 30,
+    }),
+  )
   return new Worker(
     RETENTION_QUEUE,
     async () => {

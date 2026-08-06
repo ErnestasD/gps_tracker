@@ -490,6 +490,9 @@ export const pl: Translation = {
     referral: "Polecenie zaliczone · {{code}}",
     submit: "Załóż konto",
     submitting: "Tworzenie…",
+    // unused since audit MED #67: the API no longer 409s a duplicate address (it answers the
+    // same 201 as a real signup and emails the owner), so nothing reads this. Kept because the
+    // locale objects are type-enforced against each other and removing one key means removing four.
     errConflict: "Ten adres e-mail jest już używany — proszę zalogować się w panelu.",
     errRate: "Zbyt wiele prób. Proszę chwilę odczekać i spróbować ponownie.",
     errGeneric: "Coś poszło nie tak. Proszę spróbować ponownie.",

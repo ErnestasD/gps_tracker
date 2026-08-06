@@ -38,6 +38,16 @@ describe('E03-2 AC[4]: Prisma confined to packages/db', () => {
   it('the auth-method exemption list is the documented single source (no silent growth)', () => {
     // guards against E03-2+ code quietly adding unscoped methods without an ADR.
     // passwordResetTokens.* added by ADR-031 (forgot-password) — same pre-auth rationale as refreshTokens.*
-    expect(UNSCOPED_AUTH_METHODS).toEqual(['users.findByEmailAllTenants', 'users.findByIdForAuth', 'refreshTokens.*', 'passwordResetTokens.*'])
+    // tokenRetention.*  added for the daily retention sweep (audit MED #53): a retention horizon is
+    //   platform-wide by definition, the caller is a background job with no request identity behind
+    //   it, and the methods address rows only by expiry — the same shape as the scoped side's
+    //   webhookDeliveries.pruneOlderThan / rawRejects.pruneOlderThan.
+    expect(UNSCOPED_AUTH_METHODS).toEqual([
+      'users.findByEmailAllTenants',
+      'users.findByIdForAuth',
+      'refreshTokens.*',
+      'passwordResetTokens.*',
+      'tokenRetention.*',
+    ])
   })
 })

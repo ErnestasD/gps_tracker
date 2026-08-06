@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { Hono, type Context } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
@@ -93,6 +93,28 @@ function canonicalMailbox(raw: string): string {
   if (plus !== -1) local = local.slice(0, plus)
   if (domain === 'gmail.com' || domain === 'googlemail.com') local = local.replaceAll('.', '')
   return `${local}@${domain}`
+}
+
+/** Per-recipient ceiling for the "you already have an account" mail (audit review HIGH). */
+const EXISTS_MAIL_MAX = 3
+const EXISTS_MAIL_WINDOW_S = 3_600
+
+const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex')
+
+/**
+ * Best-effort locale from `Accept-Language`, limited to the four the emails are written in.
+ *
+ * A header, not a DB lookup: the recipient's stored locale lives on their user row, and reading it
+ * here would put a query on the taken path that the free path does not have. The browser that just
+ * typed the address is a good proxy, and an unrecognised language falls back to English.
+ */
+function preferredLocale(header: string | undefined): string {
+  if (header === undefined) return 'en'
+  for (const part of header.split(',')) {
+    const tag = part.split(';')[0]?.trim().toLowerCase().slice(0, 2)
+    if (tag === 'lt' || tag === 'de' || tag === 'pl' || tag === 'en') return tag
+  }
+  return 'en'
 }
 
 const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
@@ -199,17 +221,29 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
         if (deps.mail !== undefined && deps.appBaseUrl !== undefined) {
           const base = deps.appBaseUrl.replace(/\/+$/, '')
           try {
-            await deps.mail.enqueueSignupExistsEmail({
-              kind: 'signup-exists',
-              email,
-              // the tenant is resolved for BRANDING only, and we deliberately do not look it up: the
-              // signup path has no authenticated identity, and a lookup here would reintroduce a
-              // timing difference between the taken and free paths. '' ⇒ default Orbetra branding.
-              tenantId: '',
-              locale: 'en',
-              loginUrl: `${base}/login`,
-              resetUrl: `${base}/forgot-password`,
-            })
+            // PER-RECIPIENT cap, IP-INDEPENDENT — the same guard forgot-password carries, for the
+            // same reason. The per-IP (5/h) and global (200/h) signup buckets bound the attacker's
+            // rate but not the VICTIM's inbox: 40 IPs is 200 mails/hour at one address, from our own
+            // SES identity, which the recipient marks as spam. Keyed on the address, so rotating
+            // hosts does not multiply it. Over the cap the mail is skipped and the response is
+            // byte-identical — silence must never be observable from outside.
+            const key = `signup:exists:${sha256(email).slice(0, 16)}`
+            const n = (await deps.redis.eval(RL_SCRIPT, 1, key, String(EXISTS_MAIL_WINDOW_S))) as number
+            if (n <= EXISTS_MAIL_MAX) {
+              await deps.mail.enqueueSignupExistsEmail({
+                kind: 'signup-exists',
+                email,
+                // resolved in the WORKER, not here: this route has no authenticated identity, and a
+                // tenant lookup on the request path would add a measurable step the free path does
+                // not have. The worker is already off the request path, so it can find the tenant by
+                // address and render the message in that tenant's branding — a white-label TSP's end
+                // user must not receive an Orbetra-branded mail naming their supplier.
+                tenantId: '',
+                locale: preferredLocale(c.req.header('accept-language')),
+                loginUrl: `${base}/login`,
+                resetUrl: `${base}/forgot-password`,
+              })
+            }
           } catch (mailErr) {
             console.error('signup: could not enqueue the account-exists notice', mailErr instanceof Error ? mailErr.message : String(mailErr))
           }

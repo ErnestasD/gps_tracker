@@ -16,8 +16,9 @@ import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 /**
  * PUBLIC self-serve signup (F2). Proves: a direct customer creates a trial tenant + tenant-admin user
  * and can immediately LOG IN through the normal auth path; the trial floors at expiry via the
- * authoritative entitlement gate; a duplicate email 409s; the honeypot fakes success; an active ?ref
- * attributes the new tenant while an unknown ref never blocks; the created tenant is fully isolated.
+ * authoritative entitlement gate; a duplicate email answers with the SAME 201 as a real signup, so
+ * the response is not an account-existence oracle (audit MED #67); the honeypot fakes success; an
+ * active ?ref attributes the new tenant while an unknown ref never blocks; the tenant is isolated.
  */
 const PG_IMAGE = 'timescale/timescaledb-ha:pg16'
 const DB_PKG = resolve(import.meta.dirname, '../../../packages/db')
