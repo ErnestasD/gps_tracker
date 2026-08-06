@@ -374,12 +374,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           (data.role !== undefined && data.role !== prevRole) ||
           (data.accountId !== undefined && data.accountId !== prevAccountId)
         if (password !== undefined || scopeChanged) {
-          // TODO(db): refreshTokens.revokeAllForUser(userId, now) — until it exists this is a
-          // best-effort no-op (there is no per-user family listing to loop from apps/api).
-          const rt = db.auth.refreshTokens as typeof db.auth.refreshTokens & {
-            revokeAllForUser?(userId: string, now: Date): Promise<void>
-          }
-          if (rt.revokeAllForUser !== undefined) await rt.revokeAllForUser(id(c), new Date())
+          // every session of the TARGET user dies here: the row sweep plus the epoch stamp, in one
+          // transaction, so a rotation already in flight cannot outrun it
+          await db.auth.refreshTokens.revokeAllForUser(id(c), new Date())
           // …and tear down the target's LIVE WebSocket streams: revoking refresh families kills
           // HTTP access but a socket opened before the change keeps streaming otherwise (audit MED/B2).
           // Best-effort marker; the WS gateway re-validates on an interval AND ws-ticket issuance

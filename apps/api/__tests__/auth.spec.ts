@@ -257,7 +257,7 @@ describe('E03-1 AC[1]: refresh rotation + family revocation', () => {
       const c = cookieOf(await login(email, PW))
       const [refreshed] = await Promise.all([
         refresh(c),
-        db.auth.refreshTokens.revokeAllForUser!(viewerId, new Date()),
+        db.auth.refreshTokens.revokeAllForUser(viewerId, new Date()),
       ])
       if (refreshed.status === 200) {
         // rotation won the lock: the eviction ran after it, so its sweep covered the successor

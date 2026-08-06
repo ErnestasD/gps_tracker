@@ -4,6 +4,7 @@ import type { Pool } from 'pg'
 
 import { writeDeliveries, type DeliveryRow } from '../webhook/deliveryLog.js'
 import { assertPublicUrl } from '../webhook/guard.js'
+import { deliverWebhook, type DeliverOptions, type DeliverResult } from '../webhook/deliver.js'
 import { signBody } from '../webhook/sign.js'
 import { WEBHOOK_QUEUE, type WebhookJob } from './webhookQueue.js'
 
@@ -14,7 +15,8 @@ export interface WebhookWorkerDeps {
   connection: ConnectionOptions
   pool: Pool
   redis: Redis
-  fetchImpl?: typeof fetch
+  /** injectable delivery, for tests — production dials the validated IP via node:https (ADR-035) */
+  deliverImpl?: (opts: DeliverOptions) => Promise<DeliverResult>
   /** injected DNS resolver for the SSRF guard (tests); defaults to node:dns lookup. */
   resolveHost?: Parameters<typeof assertPublicUrl>[1]
   onDelivered?: () => void
@@ -65,7 +67,7 @@ export async function runWebhook(deps: WebhookWorkerDeps, job: Job<WebhookJob>):
   if (hooks.length === 0) return
 
   const body = JSON.stringify({ kind, deviceId, at, payload })
-  const fetchImpl = deps.fetchImpl ?? fetch
+  const deliver = deps.deliverImpl ?? deliverWebhook
   const sentKey = `wh:sent:${job.id ?? eventId}`
   const failures: string[] = []
   const log: DeliveryRow[] = [] // E06-4b: one row per attempt (never the payload/secret)
@@ -76,15 +78,18 @@ export async function runWebhook(deps: WebhookWorkerDeps, job: Job<WebhookJob>):
   for (const h of hooks) {
     if ((await deps.redis.sismember(sentKey, h.id)) === 1) continue // delivered on a prior attempt
     try {
-      // SSRF guard (resolve at request time; reject private/metadata targets) + redirect:error
-      // (a public URL must not 302 into a private one) + a hard timeout (no hanging endpoint).
-      const url = deps.resolveHost ? await assertPublicUrl(h.url, deps.resolveHost) : await assertPublicUrl(h.url)
-      const res = await fetchImpl(url.toString(), {
-        method: 'POST',
+      // SSRF guard: resolve at request time, reject private/metadata targets — and then dial THE
+      // VALIDATED ADDRESS rather than the hostname (ADR-035). Handing the hostname to fetch let
+      // undici resolve a second time, which is a rebinding window a tenant admin who controls the
+      // DNS record can drive straight into our metadata service. Redirects are refused (same
+      // escalation, another route) and a hard timeout bounds a hanging endpoint.
+      const validated = deps.resolveHost ? await assertPublicUrl(h.url, deps.resolveHost) : await assertPublicUrl(h.url)
+      const res = await deliver({
+        url: validated.url,
+        ip: validated.ip,
         headers: { 'content-type': 'application/json', 'X-Signature': signBody(body, h.secret), 'X-Webhook-Id': eventId },
         body,
-        redirect: 'error',
-        signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
+        timeoutMs: DELIVERY_TIMEOUT_MS,
       })
       if (!res.ok) throw new Error(`status ${res.status}`)
       await deps.redis.pipeline().sadd(sentKey, h.id).expire(sentKey, SENT_TTL_S).exec() // claim AFTER success

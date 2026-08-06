@@ -123,11 +123,42 @@ describe('engine-hours report renders hours, not raw seconds', () => {
 })
 
 describe('pdfSafe (jsPDF WinAnsi fallback)', () => {
-  it('transliterates LT/PL Latin-Extended letters, leaves WinAnsi (umlauts) untouched', () => {
+  it('degrades ONLY what Helvetica cannot draw — WinAnsi letters keep their diacritics', () => {
+    // The previous version transliterated a hand-listed set, which threw away letters WinAnsi
+    // actually HAS: `š` and `ž` sit at 0x9A/0x9E in CP1252 and print perfectly, so stripping them
+    // cost a Lithuanian customer accuracy for nothing. Only `ą č ė į ų ū` genuinely cannot be drawn.
     expect(pdfSafe('Kelionės')).toBe('Keliones')
-    expect(pdfSafe('Grcio viršijimas'.replace('Grcio', 'Greičio'))).toBe('Greicio virsijimas')
+    expect(pdfSafe('Greičio viršijimas')).toBe('Greicio viršijimas')
     expect(pdfSafe('Prędkość')).toBe('Predkosc')
     expect(pdfSafe('Motorstunden Gerät ö ü ß')).toBe('Motorstunden Gerät ö ü ß')
+  })
+
+  it('covers scripts nobody hand-listed — a Czech or Hungarian name must not become boxes either', () => {
+    // the old version enumerated lt+pl and let everything else through to jsPDF as tofu. A fleet is
+    // named by its owner, not by our list.
+    expect(pdfSafe('Řehoř')).toBe('Rehor')
+    expect(pdfSafe('Gépjármű őrzés')).toBe('Gépjármu orzés') // é/á are Latin-1; ű/ő are not
+    expect(pdfSafe('Zaķu iela')).toBe('Zaku iela')
+    expect(pdfSafe('Şoför')).toBe('Soför') // ö survives, Ş does not
+  })
+
+  it('folds letters NFD cannot decompose — a stroke is part of the glyph, not an accent', () => {
+    expect(pdfSafe('Łódź')).toBe('Lódz') // Ł folds, ó prints
+    expect(pdfSafe('Đorđe')).toBe('Dorde')
+    // …but æ/œ/ø ARE WinAnsi, so they are printed rather than folded
+    expect(pdfSafe('œuvre')).toBe('œuvre')
+  })
+
+  it('anything still unrenderable becomes "?" — never a box the reader cannot name', () => {
+    // a device named in Cyrillic or Chinese is not something Helvetica can print; the document must
+    // still be readable, and a `?` says "missing character" where ▯ says "broken file"
+    expect(pdfSafe('Москва')).toBe('??????')
+    expect(pdfSafe('東京 3')).toBe('?? 3')
+  })
+
+  it('leaves plain ASCII and the WinAnsi punctuation jsPDF really can print', () => {
+    expect(pdfSafe('Van 3 — 12.5 km/h (A→B)')).toBe('Van 3 — 12.5 km/h (A?B)')
+    expect(pdfSafe('“quoted” • €10')).toBe('“quoted” • €10')
   })
 })
 

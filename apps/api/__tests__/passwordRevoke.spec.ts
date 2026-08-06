@@ -26,6 +26,8 @@ function makeUser(): AuthUserRow {
   return { id: 'u1', tenantId: 't1', accountId: null, email: 'u@orbetra.test', passwordHash: currentHash, role: 'tsp_admin', locale: 'en', plan: 'tsp_grow', subscriptionStatus: null, currentPeriodEnd: null, stripeSubscriptionId: null, emailVerifiedAt: new Date() }
 }
 
+/** `withRevokeAll: false` models a repo that does NOT implement the method — kept only to prove the
+ *  route surfaces that as an error rather than silently leaving sessions alive. */
 function makeDeps(withRevokeAll: boolean): { deps: AuthRouteDeps; rows: Map<string, Row>; revokeAllSpy: ReturnType<typeof vi.fn>; seed: (raw: string, familyId: string) => void } {
   const user = makeUser()
   const rows = new Map<string, Row>()
@@ -131,18 +133,21 @@ describe('password change revokes refresh families (review HIGH)', () => {
     expect((await refresh(app, 'token-a')).status).toBe(401)
   })
 
-  it('fallback (no revokeAllForUser): only the current session dies — documents the pre-db-method gap', async () => {
-    const { deps, seed } = makeDeps(false)
+  it('EVERY session dies, not just the one that changed the password', async () => {
+    // This replaces a test that documented the opposite — "only the current session dies … until
+    // packages/db ships revokeAllForUser". The method has existed for a while; only the optional
+    // call site was left behind, so a password change on a compromised account left the ATTACKER's
+    // session alive, which is the one case the whole eviction exists for.
+    const { deps, seed, revokeAllSpy } = makeDeps(true)
     const app = createAuthRoutes(deps, () => '127.0.0.1')
-    seed('token-a', 'famA')
-    seed('token-b', 'famB')
+    seed('token-a', 'famA') // the session doing the change
+    seed('token-b', 'famB') // another device — or the attacker
     const token = await mintTestToken({ userId: 'u1', tenantId: 't1', role: 'tsp_admin' })
 
     expect((await changePassword(app, token, 'token-a')).status).toBe(200)
-    // current family revoked…
+    expect(revokeAllSpy).toHaveBeenCalledWith('u1')
     expect((await refresh(app, 'token-a')).status).toBe(401)
-    // …but the other session survives until packages/db ships revokeAllForUser (TODO(db))
-    expect((await refresh(app, 'token-b')).status).toBe(200)
+    expect((await refresh(app, 'token-b')).status).toBe(401)
   })
 
   it('a refresh IN FLIGHT during the revoke does not resurrect the family (revocation fence)', async () => {
@@ -156,7 +161,7 @@ describe('password change revokes refresh families (review HIGH)', () => {
     seed('token-a', 'famA')
 
     // the reset lands FIRST; the in-flight refresh must not resurrect the family behind it
-    await deps.db.refreshTokens.revokeAllForUser!('u1', new Date())
+    await deps.db.refreshTokens.revokeAllForUser('u1', new Date())
 
     const res = await refresh(app, 'token-a')
     expect(res.status).toBe(401) // no resurrected token is ever handed out

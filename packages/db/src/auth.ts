@@ -121,7 +121,12 @@ export interface AuthDb {
      *  DESIGN (refresh-token rows hang off userId; the userId comes from the verified access token).
      *  Optional on the interface so lightweight AuthDb doubles need not implement it; the api calls it
      *  via a `typeof … === 'function'` guard (apps/api/src/auth/revoke.ts) and the real db provides it. */
-    revokeAllForUser?(userId: string, now: Date): Promise<void>
+    /**
+     * Revoke EVERY session of a user, and stamp the epoch that makes the eviction visible to a
+     * rotation already in flight. The carrier for a password reset, an admin role/scope change and
+     * an account move — anything after which a token minted a second ago must stop working.
+     */
+    revokeAllForUser(userId: string, now: Date): Promise<void>
   }
   /** Forgot-password one-time tokens (raw = 32B CSPRNG, sha256-stored, single-use, short TTL). */
   passwordResetTokens: {

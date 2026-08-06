@@ -147,20 +147,56 @@ export function toPdfTable(columns: Column[], rows: Record<string, unknown>[], h
   }
 }
 
-/** jsPDF's built-in Helvetica is WinAnsi (Latin-1) only: it renders German umlauts (ä ö ü ß) and
- * é/ó fine, but Lithuanian/Polish Latin-Extended letters (ą č ž ł …) come out as tofu boxes. We
- * can't embed a Unicode TTF without a new asset/dependency (CLAUDE rule 10; the tree ships only
- * woff2, which jsPDF cannot parse), so for the PDF export ONLY we transliterate those out-of-WinAnsi
- * letters to ASCII. The on-screen table and the (UTF-8) CSV keep full Unicode.
- * TODO(font): embed a licensed Latin-Extended TTF via addFileToVFS/addFont to drop this fallback. */
-const PDF_TRANSLIT: Record<string, string> = {
-  ą: 'a', č: 'c', ę: 'e', ė: 'e', į: 'i', š: 's', ų: 'u', ū: 'u', ž: 'z',
-  Ą: 'A', Č: 'C', Ę: 'E', Ė: 'E', Į: 'I', Š: 'S', Ų: 'U', Ū: 'U', Ž: 'Z',
-  ć: 'c', ł: 'l', ń: 'n', ś: 's', ź: 'z', ż: 'z',
-  Ć: 'C', Ł: 'L', Ń: 'N', Ś: 'S', Ź: 'Z', Ż: 'Z',
-}
+/**
+ * Make a string safe for jsPDF's built-in Helvetica, which is WinAnsi (Latin-1) only.
+ *
+ * German umlauts and é/ó render fine; Lithuanian and Polish Latin-Extended letters (ą č ž ł …) do
+ * not, and an unmapped character is not a fallback glyph but a TOFU BOX — the customer's own fleet
+ * name, printed as ▯▯▯, in the document they hand to an accountant.
+ *
+ * WHY NOT EMBED A UNICODE FONT. jsPDF embeds TTF and nothing else, and this repo ships only
+ * woff/woff2 (via @fontsource, subsetted per script), which it cannot parse. `tools/woff2ttf`
+ * converts woff→TTF with no dependency and works — but @fontsource splits `latin` and `latin-ext`
+ * into DIFFERENT files, and neither covers the other: the latin-ext subset genuinely has `ą` and no
+ * lowercase `a`. A single font covering both means adding a licensed TTF binary to the repo (a
+ * ~100 KB asset and a licence decision), which is a founder call, not a refactor. The tool is kept
+ * so that swap is a one-liner the day the asset lands.
+ *
+ * SO: transliterate, but do it for EVERY script, not a hand-listed few. NFD splits a letter from its
+ * combining marks, so `ř` → `r`, `ő` → `o`, `ā` → `a` — a Czech or Hungarian customer loses their
+ * diacritics exactly like a Lithuanian one instead of getting boxes. Anything still outside WinAnsi
+ * after that becomes `?`, which at least reads as a missing character rather than a broken document.
+ * The on-screen table and the UTF-8 CSV keep full Unicode; this is the PDF path only.
+ */
+const WINANSI_SAFE = /^[\u0020-\u007e\u00a0-\u00ff\u20ac\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u017d\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u017e\u0178]$/
+
 export function pdfSafe(s: string): string {
-  return s.replace(/[ąčęėįšųūžĄČĘĖĮŠŲŪŽćłńśźżĆŁŃŚŹŻ]/g, (ch) => PDF_TRANSLIT[ch] ?? ch)
+  let out = ''
+  for (const ch of s) {
+    // WinAnsi FIRST, on the ORIGINAL character. Stripping accents up front would have cost a German
+    // customer their umlauts (`Gerät` → `Gerat`) to fix a Lithuanian one's — ä ö ü é are Latin-1 and
+    // print perfectly; only what Helvetica cannot draw is worth degrading.
+    if (WINANSI_SAFE.test(ch)) {
+      out += ch
+      continue
+    }
+    // base letter + combining marks: drop the marks and keep the letter, if that lands in WinAnsi
+    const stripped = ch.normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    if (stripped !== '' && [...stripped].every((c) => WINANSI_SAFE.test(c))) {
+      out += stripped
+      continue
+    }
+    // letters NFD cannot decompose — a stroke or a bar is part of the glyph, not a mark
+    out += HARD_FOLD[ch] ?? '?'
+  }
+  return out
+}
+
+/** Letters NFD cannot decompose — a stroke or a bar is part of the glyph, not a combining mark.
+ *  (æ, œ, ø and the umlauts are absent on purpose: WinAnsi has them, so they never reach here.) */
+const HARD_FOLD: Record<string, string> = {
+  ł: 'l', Ł: 'L', đ: 'd', Đ: 'D', ħ: 'h', Ħ: 'H', ŧ: 't', Ŧ: 'T',
+  ı: 'i', ĸ: 'k', ŉ: 'n', ſ: 's', ŀ: 'l', Ŀ: 'L', ə: 'e', ɵ: 'o',
 }
 
 export interface PdfMeta {

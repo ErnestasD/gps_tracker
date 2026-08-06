@@ -8,14 +8,13 @@ import { isIP } from 'node:net'
  * http/https, (2) resolve the host at REQUEST time and reject loopback/link-local/private/ULA/
  * CGNAT/metadata targets — including IPv4-mapped IPv6 in the hex-compressed form `new URL()`
  * normalizes to (e.g. [::ffff:169.254.169.254] → ::ffff:a9fe:a9fe) and NAT64.
- * The caller must ALSO pass `redirect: 'error'` to fetch so a public URL can't 302 into a
- * private one. No new dependency — node:dns + node:net only.
+ * No new dependency — node:dns + node:net only.
  *
- * RESIDUAL GAP (TOCTOU / DNS rebinding, review HIGH — NOT fixed here): undici (node fetch)
- * re-resolves the hostname at connect time, so a record that changes between this lookup and
- * undici's, or a multi-A round-robin, can still land on a private IP. Fully closing it requires
- * pinning the connection to the validated IP via a custom undici dispatcher — a new runtime dep
- * that needs an ADR (rule 10). TODO(ADR): pin the resolved address at connect time.
+ * The DNS-REBINDING GAP IS CLOSED (ADR-035). This used to hand the hostname to `fetch`, which
+ * resolved it a SECOND time — and the attacker is a tenant admin who can set both the URL and its
+ * DNS record, so `attacker.example` could answer publicly for this check and `169.254.169.254` for
+ * the connection a millisecond later. `validated.ip` is now the address the delivery actually dials
+ * (see webhook/deliver.ts); there is no second resolution, so there is no window to rebind in.
  */
 export class UnsafeUrlError extends Error {
   constructor(reason: string) {
@@ -24,8 +23,20 @@ export class UnsafeUrlError extends Error {
   }
 }
 
+/**
+ * A URL that passed the guard, together with THE address it passed on.
+ *
+ * Returning the ip is the whole point: a caller that keeps only the URL has to resolve again, and
+ * the second resolution is the vulnerability.
+ */
+export interface ValidatedUrl {
+  url: URL
+  /** the validated address to connect to — never re-resolve the hostname after this */
+  ip: string
+}
+
 /** Parse + validate the URL and resolve its host to only public IPs, or throw. */
-export async function assertPublicUrl(raw: string, resolveHost: typeof lookup = lookup): Promise<URL> {
+export async function assertPublicUrl(raw: string, resolveHost: typeof lookup = lookup): Promise<ValidatedUrl> {
   let u: URL
   try {
     u = new URL(raw)
@@ -37,8 +48,10 @@ export async function assertPublicUrl(raw: string, resolveHost: typeof lookup = 
   const host = u.hostname.replace(/^\[|\]$/g, '') // strip IPv6 brackets
   const ips = isIP(host) ? [host] : (await resolveHost(host, { all: true })).map((r) => r.address)
   if (ips.length === 0) throw new UnsafeUrlError('no address')
+  // EVERY answer must be public, not just the one we pick: a round-robin that mixes a public and a
+  // private record would otherwise pass half the time, and which half is the attacker's choice.
   for (const ip of ips) if (isPrivateIp(ip)) throw new UnsafeUrlError(`private address ${ip}`)
-  return u
+  return { url: u, ip: ips[0]! }
 }
 
 /** True for loopback / link-local / private / ULA / CGNAT / reserved addresses. */
