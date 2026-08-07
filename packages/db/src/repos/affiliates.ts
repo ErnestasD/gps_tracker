@@ -55,6 +55,12 @@ export interface CommissionAccrual {
   amountCents: number
   currency: string
   sourceInvoiceId: string
+  /** the rate applied, SNAPSHOTTED — editing the affiliate later must never re-price history (§6.9) */
+  ratePct?: string
+  /** the customer payment this was computed from, so the partner can check the arithmetic */
+  baseAmountCents?: number
+  /** when the customer actually paid (Stripe's clock), not when we inserted the row */
+  paidAt?: Date
 }
 
 /** A settled Stripe invoice for a referred tenant — the webhook hands this to accrueForPaidInvoice,
@@ -84,6 +90,37 @@ function addMonthsUtc(d: Date, months: number): Date {
  * the ONE method the (unauthenticated) public signup path uses, to attribute a new tenant to a
  * referral code — it returns only ACTIVE affiliates so a pending/suspended code never attributes.
  */
+/** One commission, told as a sentence: this customer paid this, at this rate, so you earned this. */
+export interface PartnerCommissionRow {
+  id: string
+  customer: string
+  amountCents: number
+  baseAmountCents: number | null
+  ratePct: string | null
+  currency: string
+  status: CommissionStatus
+  sourceInvoiceId: string
+  /** when the CUSTOMER paid (Stripe's clock), falling back to the row's own creation */
+  at: string
+}
+
+/** A referred customer as the partner may see them. */
+export interface PartnerCustomerRow {
+  id: string
+  name: string
+  plan: string
+  /** live | past_due | canceled | … straight from Stripe; null before their first subscription */
+  subscriptionStatus: string | null
+  /** their first paid invoice — the moment the earning window started */
+  since: string | null
+  /** when the window closes; null while they have never paid */
+  windowEndsAt: string | null
+  windowOpen: boolean
+  paidCents: number
+  earnedCents: number
+  currency: string
+}
+
 export interface AffiliateRepo {
   list(): Promise<AffiliateView[]>
   get(id: string): Promise<AffiliateView | null>
@@ -104,6 +141,29 @@ export interface AffiliateRepo {
    */
   accrueForPaidInvoice(invoice: PaidInvoice): Promise<Commission | null>
   listCommissions(affiliateId?: string): Promise<Commission[]>
+  /**
+   * A refunded customer payment reverses the commission it earned (Stripe `charge.refunded`).
+   *
+   * Only a still-PENDING commission is voided. One already marked `paid` is money that has left our
+   * bank into the partner's, and flipping it to `void` would silently create a debt the partner
+   * never sees and we never chase — that is a conversation, not a database write, so it returns
+   * `alreadyPaid` and leaves the row alone for a human.
+   */
+  voidCommissionForRefund(sourceInvoiceId: string): Promise<'voided' | 'alreadyPaid' | 'none'>
+  /**
+   * The partner's own view: every commission WITH the customer it came from and the invoice it was
+   * calculated on. The portal previously listed an amount, a status and a raw Stripe invoice id —
+   * a partner could see that they had earned €90 and nothing about which customer, which month, or
+   * what the customer actually paid, which is not a statement anyone can check.
+   *
+   * The customer's NAME and the INVOICE TOTAL are the boundary: they are the basis of the money
+   * owed, so a partner is entitled to them. Everything else about that tenant — its users, devices,
+   * contacts — is not, and is not selected here.
+   */
+  listCommissionsForPartner(affiliateId: string): Promise<PartnerCommissionRow[]>
+  /** The customers a partner introduced, with what they have paid, what it earned, and when the
+   *  earning window closes — the questions a partner actually asks. */
+  listReferredCustomers(affiliateId: string): Promise<PartnerCustomerRow[]>
   setCommissionStatus(actor: Actor, id: string, status: CommissionStatus): Promise<Commission | null>
 
   // ── partner self-service auth (F5) — UNSCOPED by design (a partner is not a tenant user) ──────────
@@ -295,6 +355,78 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
     },
     listCommissions: (affiliateId) =>
       prisma.commission.findMany({ where: affiliateId !== undefined ? { affiliateId } : {}, orderBy: { createdAt: 'desc' } }),
+    listCommissionsForPartner: async (affiliateId) => {
+      const rows = await prisma.commission.findMany({
+        where: { affiliateId },
+        orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
+        // ONLY the customer's display name — see the interface note on where the boundary is
+        select: {
+          id: true, amountCents: true, baseAmountCents: true, ratePct: true, currency: true,
+          status: true, sourceInvoiceId: true, paidAt: true, createdAt: true,
+          tenant: { select: { name: true } },
+        },
+      })
+      return rows.map((r) => ({
+        id: r.id,
+        customer: r.tenant.name,
+        amountCents: r.amountCents,
+        baseAmountCents: r.baseAmountCents,
+        ratePct: r.ratePct?.toString() ?? null,
+        currency: r.currency,
+        status: r.status,
+        sourceInvoiceId: r.sourceInvoiceId,
+        at: (r.paidAt ?? r.createdAt).toISOString(),
+      }))
+    },
+    listReferredCustomers: async (affiliateId) => {
+      const tenants = await prisma.tenant.findMany({
+        where: { referredByAffiliateId: affiliateId },
+        select: {
+          id: true, name: true, plan: true, subscriptionStatus: true,
+          commissionAnchorAt: true, commissionMonthsAtAnchor: true,
+        },
+        orderBy: { name: 'asc' },
+      })
+      if (tenants.length === 0) return []
+      // one grouped pass rather than a query per tenant — a partner with fifty customers should not
+      // cost fifty round trips on a page they refresh
+      const sums = await prisma.commission.groupBy({
+        by: ['tenantId', 'currency'],
+        where: { affiliateId, status: { not: 'void' } },
+        _sum: { amountCents: true, baseAmountCents: true },
+      })
+      const byTenant = new Map(sums.map((s) => [s.tenantId, s]))
+      const now = Date.now()
+      return tenants.map((t) => {
+        const s = byTenant.get(t.id)
+        const months = t.commissionMonthsAtAnchor
+        const ends =
+          t.commissionAnchorAt !== null && months !== null
+            ? new Date(new Date(t.commissionAnchorAt).setUTCMonth(new Date(t.commissionAnchorAt).getUTCMonth() + months))
+            : null
+        return {
+          id: t.id,
+          name: t.name,
+          plan: t.plan,
+          subscriptionStatus: t.subscriptionStatus,
+          since: t.commissionAnchorAt?.toISOString() ?? null,
+          windowEndsAt: ends?.toISOString() ?? null,
+          // no anchor yet ⇒ they have never paid, so the window has not started and is not closed
+          windowOpen: ends === null ? true : ends.getTime() > now,
+          paidCents: s?._sum.baseAmountCents ?? 0,
+          earnedCents: s?._sum.amountCents ?? 0,
+          currency: s?.currency ?? 'eur',
+        }
+      })
+    },
+    voidCommissionForRefund: async (sourceInvoiceId) => {
+      const row = await prisma.commission.findUnique({ where: { sourceInvoiceId }, select: { id: true, status: true } })
+      if (row === null) return 'none' // no commission for that invoice — nothing referred, or out of window
+      if (row.status === 'paid') return 'alreadyPaid'
+      if (row.status === 'void') return 'voided' // idempotent: a redelivered refund event is a no-op
+      await prisma.commission.update({ where: { id: row.id }, data: { status: 'void' } })
+      return 'voided'
+    },
     setCommissionStatus: async (actor, id, status) => {
       const before = await prisma.commission.findUnique({ where: { id } })
       if (before === null) return null

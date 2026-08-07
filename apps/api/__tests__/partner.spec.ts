@@ -120,6 +120,44 @@ describe('partner self-service auth (F5)', () => {
     expect(bList).toHaveLength(0) // B never sees A's commission
   })
 
+  it('a commission row carries the customer, the invoice base and the rate — not just an amount', async () => {
+    const p = await makePartner('detail@partner.co', 'partnerpass1')
+    const tenant = await db.tenants.create({ userId: '00000000-0000-0000-0000-0000000000f6' }, { name: 'Visible Customer Ltd' })
+    await db.affiliates.accrueCommission({
+      affiliateId: p.id, tenantId: tenant.id, amountCents: 2500, currency: 'eur',
+      sourceInvoiceId: 'in_detail_1', ratePct: '25.00', baseAmountCents: 10000, paidAt: new Date('2026-03-02T10:00:00Z'),
+    })
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const [row] = (await (await j('/v1/partner/commissions', 'GET', undefined, bearer(tok))).json()) as {
+      customer: string; baseAmountCents: number; ratePct: string; amountCents: number; at: string
+    }[]
+    // the whole point: the arithmetic is checkable — 10000 × 25% = 2500, from THIS customer
+    expect(row?.customer).toBe('Visible Customer Ltd')
+    expect(row?.baseAmountCents).toBe(10000)
+    expect(row?.ratePct).toBe('25')
+    expect(row?.amountCents).toBe(2500)
+    expect(row?.at).toBe('2026-03-02T10:00:00.000Z') // when the CUSTOMER paid, not when we inserted
+  })
+
+  it('a partner sees ONLY the customers it referred, with their totals and window', async () => {
+    const a = await makePartner('cusa@partner.co', 'partnerpass1')
+    const b = await makePartner('cusb@partner.co', 'partnerpass1')
+    const sys = { userId: '00000000-0000-0000-0000-0000000000f7' }
+    const mine = await db.tenants.create(sys, { name: 'Mine Ltd', referredByAffiliateId: a.id })
+    await db.tenants.create(sys, { name: 'Theirs Ltd', referredByAffiliateId: b.id }) // B's, must not appear
+    await db.affiliates.accrueCommission({
+      affiliateId: a.id, tenantId: mine.id, amountCents: 3000, currency: 'eur',
+      sourceInvoiceId: 'in_cus_1', ratePct: '20.00', baseAmountCents: 15000, paidAt: new Date('2026-01-05T00:00:00Z'),
+    })
+    const aTok = ((await (await login(a.email, a.password)).json()) as { accessToken: string }).accessToken
+    const rows = (await (await j('/v1/partner/customers', 'GET', undefined, bearer(aTok))).json()) as {
+      name: string; paidCents: number; earnedCents: number
+    }[]
+    expect(rows.map((r) => r.name)).toEqual(['Mine Ltd']) // B's customer is not in A's list
+    expect(rows[0]?.paidCents).toBe(15000) // what the CUSTOMER paid
+    expect(rows[0]?.earnedCents).toBe(3000)
+  })
+
   it('login rejects wrong password, unknown email, an unset-password partner, and a non-active partner', async () => {
     const p = await makePartner('who@partner.co', 'partnerpass1')
     expect((await login(p.email, 'wrongpass1')).status).toBe(401)

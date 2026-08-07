@@ -48,6 +48,13 @@ price_1TtAmYDn0hX6WL8d8xxAMGq1,price_1TtAmZDn0hX6WL8d4qBJ1GgM,price_1TtAmaDn0hX6
 Overage prices are added as a **2nd subscription line item** in PR B (a metered price is not a standalone subscription target), not in this allowlist.
 
 ## Still needed to go live on staging (founder / follow-up)
-1. A **webhook endpoint** in Stripe → `https://<staging>/v1/webhooks/stripe`, subscribed to `customer.subscription.*`; copy its `whsec_…` → server `.env` `STRIPE_WEBHOOK_SECRET`.
+1. A **webhook endpoint** in Stripe → `https://<staging>/v1/webhooks/stripe`, subscribed to
+   `customer.subscription.*`, `invoice.payment_succeeded` and `charge.refunded`; copy its `whsec_…`
+   → server `.env` `STRIPE_WEBHOOK_SECRET`.
+
+   > The last two drive **affiliate commissions**: `invoice.payment_succeeded` accrues a partner's
+   > cut, `charge.refunded` reverses it when the customer gets the money back. Forgetting
+   > `charge.refunded` does not break anything visibly — it just leaves commissions owed on sales
+   > that were undone, which nobody notices until a payout run.
 2. Server `.env`: `STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_PRICES=<above>`, `APP_BASE_URL=https://<app>`.
 3. PR B: plan-picker UI + the daily meter-event usage push.
