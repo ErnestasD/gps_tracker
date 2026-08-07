@@ -207,13 +207,32 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     })
   })
 
+  /**
+   * The partner's commission ledger — every line traceable back to a customer and an invoice.
+   *
+   * This used to return an amount, a status and a raw Stripe invoice id, which is a number a partner
+   * can neither check nor dispute: "€90, pending" says nothing about who paid, when, or at what rate.
+   * Each row now carries the customer, what THEY paid, the rate applied and the resulting commission,
+   * so the arithmetic is visible on the page.
+   */
   app.get('/v1/partner/commissions', partnerAuth(deps), async (c) => {
-    const rows = await deps.db.affiliates.listCommissions(c.get('partner').id)
+    const rows = await deps.db.affiliates.listCommissionsForPartner(c.get('partner').id)
     c.header('Cache-Control', 'no-store')
-    return c.json(rows.map((r) => ({
-      id: r.id, amountCents: r.amountCents, currency: r.currency, status: r.status,
-      sourceInvoiceId: r.sourceInvoiceId, createdAt: r.createdAt.toISOString(),
-    })))
+    return c.json(rows)
+  })
+
+  /**
+   * The customers this partner introduced.
+   *
+   * A partner is entitled to know which of their referrals converted, what those customers pay, and
+   * when each earning window closes — that is the deal they signed. They are NOT entitled to anything
+   * else about that tenant, so the repo selects the company name, plan and subscription state and
+   * nothing further: no users, no devices, no contact details.
+   */
+  app.get('/v1/partner/customers', partnerAuth(deps), async (c) => {
+    const rows = await deps.db.affiliates.listReferredCustomers(c.get('partner').id)
+    c.header('Cache-Control', 'no-store')
+    return c.json(rows)
   })
 
   return app

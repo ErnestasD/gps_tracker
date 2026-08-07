@@ -96,6 +96,12 @@ const invoiceEvent = (id: string, customer: string, invoiceId: string, amountPai
   data: { object: { id: invoiceId, customer, amount_paid: amountPaid, currency: 'eur' } },
 })
 
+// a charge.refunded event: `refunded: true` means the customer got the WHOLE payment back
+const refundEvent = (id: string, invoiceId: string, full = true, customer = 'cus_refund', created = 1_700_000_100): StripeEvent => ({
+  id, type: 'charge.refunded', created,
+  data: { object: { id: `ch_${invoiceId}`, invoice: invoiceId, customer, refunded: full, amount: 5_000, amount_refunded: full ? 5_000 : 1_000 } },
+})
+
 beforeAll(async () => {
   ;[pg, redisC] = await Promise.all([
     new GenericContainer(PG_IMAGE)
@@ -541,6 +547,52 @@ describe('billing lifecycle (ADR-024)', () => {
     // a duplicate delivery of the SAME invoice does NOT double-accrue
     await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_inv_1b', 'cus_whook', 'in_whook_1', 5_000), { 'stripe-signature': 'valid' })
     expect(await db.affiliates.listCommissions(aff.id)).toHaveLength(1)
+  })
+
+  it('a fully refunded invoice REVERSES its pending commission; a partial refund and a paid-out one do not', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-0000000000f8' }
+    const aff = await db.affiliates.create(actor, { name: 'Refund Partner', email: 'rf@partner.co', code: 'RFND1', commissionPct: 20, commissionMonths: 12 })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
+    const tenant = await db.tenants.create(actor, { name: 'Refunded customer', referredByAffiliateId: aff.id })
+    await db.tenants.setStripeCustomer(tenant.id, 'cus_refund')
+
+    // three paid invoices → three pending commissions
+    for (const n of [1, 2, 3]) {
+      await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent(`evt_rf_${n}`, 'cus_refund', `in_rf_${n}`, 5_000), { 'stripe-signature': 'valid' })
+    }
+    const byInvoice = async (inv: string) => (await db.affiliates.listCommissions(aff.id)).find((c) => c.sourceInvoiceId === inv)
+
+    // 1) full refund of a pending commission → void
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', refundEvent('evt_rfd_1', 'in_rf_1'), { 'stripe-signature': 'valid' })).status).toBe(200)
+    expect((await byInvoice('in_rf_1'))?.status).toBe('void')
+    // …and a redelivery of the same refund is a no-op, not an error
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', refundEvent('evt_rfd_1b', 'in_rf_1'), { 'stripe-signature': 'valid' })).status).toBe(200)
+
+    // 2) PARTIAL refund → the commission stands; reducing it is a human's arithmetic, not a guess
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', refundEvent('evt_rfd_2', 'in_rf_2', false), { 'stripe-signature': 'valid' })).status).toBe(200)
+    expect((await byInvoice('in_rf_2'))?.status).toBe('pending')
+
+    // 3) already PAID OUT → left alone: that money is in the partner's bank, a void would hide a debt
+    const three = await byInvoice('in_rf_3')
+    await db.affiliates.setCommissionStatus(actor, three?.id ?? '', 'paid')
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', refundEvent('evt_rfd_3', 'in_rf_3'), { 'stripe-signature': 'valid' })).status).toBe(200)
+    expect((await byInvoice('in_rf_3'))?.status).toBe('paid')
+  })
+
+  it('a refund that OVERTAKES its own accrual still blocks the commission', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-0000000000f9' }
+    const aff = await db.affiliates.create(actor, { name: 'Race Partner', email: 'race@partner.co', code: 'RACE1', commissionPct: 20, commissionMonths: 12 })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
+    const tenant = await db.tenants.create(actor, { name: 'Raced customer', referredByAffiliateId: aff.id })
+    await db.tenants.setStripeCustomer(tenant.id, 'cus_race')
+
+    // Stripe does not guarantee ordering, and our own accrual 500s-and-retries on a DB fault — so
+    // the refund really can land first. It leaves a tombstone on the invoice id.
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', refundEvent('evt_race_r', 'in_race_1', true, 'cus_race'), { 'stripe-signature': 'valid' })).status).toBe(200)
+    // …and the accrual that arrives afterwards must NOT pay out on money the customer already has back
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_race_i', 'cus_race', 'in_race_1', 5_000), { 'stripe-signature': 'valid' })).status).toBe(200)
+    const owed = (await db.affiliates.listCommissions(aff.id)).filter((c) => c.status !== 'void')
+    expect(owed).toHaveLength(0)
   })
 
   it('invoice.payment_succeeded for an UNREFERRED tenant accrues nothing (safe no-op)', async () => {

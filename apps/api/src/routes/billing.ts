@@ -342,6 +342,40 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
           return c.text('accrual failed', 500)
         }
       }
+    } else if (event.type === 'charge.refunded') {
+      // The commission mirror of the accrual above: we paid a partner a cut of a payment that the
+      // customer has now got back. Without this the ledger keeps showing money owed on a sale that
+      // was undone, and the partner portal states — in writing — that a refund reverses the
+      // commission. Only a FULL refund reverses: a partial one leaves a commission that is merely
+      // too large, which is an arithmetic judgement (which line? what proportion?) rather than a
+      // cancellation, so it is logged for a human instead of guessed at.
+      const obj = event.data.object
+      const invoiceId = typeof obj['invoice'] === 'string' && obj['invoice'] !== '' ? obj['invoice'] : null
+      const customerId = typeof obj['customer'] === 'string' ? obj['customer'] : ''
+      const full = obj['refunded'] === true
+      if (invoiceId !== null) {
+        try {
+          if (full) {
+            const outcome = await deps.db.affiliates.voidCommissionForRefund(invoiceId, customerId)
+            if (outcome === 'alreadyPaid') {
+              // deliberately loud: the partner has the cash and the sale is reversed. Nothing here
+              // can fix that, and pretending otherwise by voiding the row would hide it. The repo
+              // also writes an audit row, so this survives the log buffer.
+              console.warn('commission already PAID OUT on a refunded invoice — manual clawback', invoiceId)
+            } else if (outcome === 'tombstoned') {
+              // the refund overtook its own accrual; the tombstone stops the retry from paying out
+              console.warn('refund arrived before accrual — commission blocked for invoice', invoiceId)
+            }
+          } else {
+            console.warn('partial refund on an invoice with a commission — review manually', invoiceId)
+          }
+        } catch (err) {
+          // same contract as accrual: a genuine fault returns non-2xx so Stripe retries. The void is
+          // idempotent, so the retry is safe.
+          console.error('commission reversal failed', invoiceId, err)
+          return c.text('reversal failed', 500)
+        }
+      }
     }
     // other event types (checkout.session.completed, invoice.payment_failed, …) are acked; the
     // subscription.* events remain authoritative for plan/status.

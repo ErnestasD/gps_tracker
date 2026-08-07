@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Copy, LogOut } from "lucide-react";
 import { ApiError, apiGet } from "@/lib/api";
@@ -20,10 +20,10 @@ export const Route = createFileRoute("/partner/dashboard")({
   component: PartnerDashboard,
 });
 
-/** These MUST mirror the wire shape of GET /v1/partner/me and /v1/partner/commissions
- *  (apps/api/src/routes/partner.ts). Fields are REQUIRED on purpose: optional fields let a rename
- *  silently render "—" everywhere instead of failing the typecheck — which is exactly how the whole
- *  dashboard shipped blank (review HIGH). `commissionPct` is a Decimal serialized as a STRING. */
+/** These MUST mirror the wire shape of GET /v1/partner/me, /v1/partner/commissions and
+ *  /v1/partner/customers (apps/api/src/routes/partner.ts). Fields are REQUIRED on purpose: optional
+ *  fields let a rename silently render "—" everywhere instead of failing the typecheck — which is
+ *  exactly how the whole dashboard shipped blank (review HIGH). Decimals arrive as STRINGS. */
 type PartnerMe = {
   id: string;
   name: string;
@@ -37,11 +37,40 @@ type PartnerMe = {
 
 type Commission = {
   id: string;
+  customer: string;
   amountCents: number;
+  baseAmountCents: number | null;
+  ratePct: string | null;
   currency: string;
   status: string;
   sourceInvoiceId: string;
-  createdAt: string;
+  at: string;
+};
+
+type CurrencyTotal = { currency: string; commissionableCents: number; earnedCents: number };
+
+type Customer = {
+  id: string;
+  name: string;
+  plan: string;
+  state: "trial" | "active" | "ended";
+  since: string | null;
+  windowEndsAt: string | null;
+  windowOpen: boolean;
+  totals: CurrencyTotal[];
+};
+
+/** Money, in the currency the commission was actually accrued in — never a hard-coded €. */
+function money(cents: number, currency: string, locale: string) {
+  return new Intl.NumberFormat(locale, { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
+}
+
+/** `pending` and `paid` are the only states a partner can act on, so they get colour; `void` is a
+ *  reversal and reads as muted rather than alarming. */
+const STATUS_COLOR: Record<string, string> = {
+  paid: "var(--brand-cyan)",
+  pending: "#E0A030",
+  void: "var(--muted-foreground)",
 };
 
 function PartnerDashboard() {
@@ -50,6 +79,7 @@ function PartnerDashboard() {
   const navigate = useNavigate();
   const [me, setMe] = useState<PartnerMe | null>(null);
   const [rows, setRows] = useState<Commission[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -61,13 +91,19 @@ function PartnerDashboard() {
     let cancelled = false;
     void (async () => {
       try {
+        // /customers is SETTLED SEPARATELY, not awaited alongside the other two. apps/site is a
+        // static SPA deployed independently of the API: ship the page before the server and a 404
+        // on the new route would take the referral link — which worked yesterday — down with it.
+        const customersP = apiGet<Customer[] | { data?: Customer[] }>("/v1/partner/customers", token).catch(() => [] as Customer[]);
         const [meRes, comRes] = await Promise.all([
           apiGet<PartnerMe>("/v1/partner/me", token),
           apiGet<Commission[] | { data?: Commission[] }>("/v1/partner/commissions", token),
         ]);
+        const cusRes = await customersP;
         if (cancelled) return;
         setMe(meRes);
         setRows(Array.isArray(comRes) ? comRes : (comRes?.data ?? []));
+        setCustomers(Array.isArray(cusRes) ? cusRes : (cusRes?.data ?? []));
       } catch (err) {
         if (cancelled) return;
         // 401 = token expired/invalid → back to sign-in; anything else (network, 5xx)
@@ -85,6 +121,48 @@ function PartnerDashboard() {
     };
   }, [token, navigate, t]);
 
+  const locale = i18n.resolvedLanguage ?? "en";
+
+  /**
+   * The numbers a partner opens this page for, BUCKETED BY CURRENCY.
+   *
+   * Adding cents across currencies and stamping one symbol on the result invents an exchange rate
+   * we do not have — €100 + $100 is not €200, and the symbol would flip with whichever row happened
+   * to be newest. A partner earning in two currencies gets two rows of tiles instead.
+   *
+   * `void` rows are reversals — a refunded customer payment — and are excluded from EARNED rather
+   * than shown as money that exists: a total counting cancelled commissions is the one number on
+   * this page that would be a lie.
+   */
+  const buckets = useMemo(() => {
+    const by = new Map<string, { currency: string; earned: number; paid: number; pending: number }>();
+    for (const r of rows) {
+      if (r.status === "void") continue;
+      const b = by.get(r.currency) ?? { currency: r.currency, earned: 0, paid: 0, pending: 0 };
+      b.earned += r.amountCents;
+      if (r.status === "paid") b.paid += r.amountCents;
+      if (r.status === "pending") b.pending += r.amountCents;
+      by.set(r.currency, b);
+    }
+    // no commissions yet ⇒ still show the zeroed tiles rather than an empty strip
+    return by.size > 0 ? [...by.values()] : [{ currency: "eur", earned: 0, paid: 0, pending: 0 }];
+  }, [rows]);
+
+  // a customer stops earning when their window closes; knowing how many are still live is the
+  // difference between "I have 8 customers" and "I am still being paid for 3 of them"
+  const earning = useMemo(() => customers.filter((c) => c.windowOpen && c.since !== null).length, [customers]);
+
+  /**
+   * Dates on this page are UTC, deliberately.
+   *
+   * The window end is a CONTRACTUAL date computed in UTC by the accrual, and rendering it in the
+   * viewer's zone would show a partner in Los Angeles one day earlier than the day the server
+   * enforces. A ledger that reads differently depending on where you open it is worse than one that
+   * reads in a zone you have to know about (hard rule 7).
+   */
+  const fmtDate = (iso: string | null) =>
+    iso === null ? "—" : new Date(iso).toLocaleDateString(locale, { timeZone: "UTC" });
+
   if (!token) return null;
 
   const code = me?.code ?? "—";
@@ -92,7 +170,7 @@ function PartnerDashboard() {
   const link = me?.code ? `${typeof window !== "undefined" ? window.location.origin : "https://orbetra.com"}/?ref=${me.code}` : "—";
 
   return (
-    <div className="mx-auto max-w-5xl px-6 pt-24 md:pt-32 pb-24">
+    <div className="mx-auto max-w-6xl px-6 pt-24 md:pt-32 pb-24">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <span className="section-label">
@@ -116,7 +194,40 @@ function PartnerDashboard() {
 
       {error && <p className="mt-6 text-sm text-[#DC2626]">{error}</p>}
 
-      <div className="mt-10 grid gap-5 md:grid-cols-3">
+      {/* ── the headline numbers, one strip per currency ─────────────────────────────────────── */}
+      {buckets.map((b, i) => (
+        <div key={b.currency} className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4 first-of-type:mt-10">
+          <Tile
+            label={t("partner.dashboard.totalEarned")}
+            value={money(b.earned, b.currency, locale)}
+            hint={t("partner.dashboard.totalEarnedHint")}
+          />
+          <Tile
+            label={t("partner.dashboard.paidOut")}
+            value={money(b.paid, b.currency, locale)}
+            hint={t("partner.dashboard.paidOutHint")}
+          />
+          <Tile
+            label={t("partner.dashboard.awaiting")}
+            value={money(b.pending, b.currency, locale)}
+            hint={t("partner.dashboard.awaitingHint")}
+            accent="#E0A030"
+          />
+          {/* the customer count belongs to the partner, not to a currency — render it once */}
+          {i === 0 ? (
+            <Tile
+              label={t("partner.dashboard.customers")}
+              value={String(customers.length)}
+              hint={t("partner.dashboard.customersHint", { n: earning })}
+            />
+          ) : (
+            <div className="hidden lg:block" />
+          )}
+        </div>
+      ))}
+
+      {/* ── link + terms ─────────────────────────────────────────────────────────────────────── */}
+      <div className="mt-5 grid gap-5 md:grid-cols-3">
         <div className="surface-card p-6 md:col-span-2">
           <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.referralLink")}</div>
           <div className="mt-3 flex items-center gap-3 flex-wrap">
@@ -149,37 +260,98 @@ function PartnerDashboard() {
         </div>
       </div>
 
-      <div className="mt-10 surface-card overflow-x-auto">
-        <div className="px-5 py-4 mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground border-b border-[var(--hairline)]">
-          {t("partner.dashboard.history")}
-        </div>
+      {/* ── who is actually paying ───────────────────────────────────────────────────────────── */}
+      <Section title={t("partner.dashboard.yourCustomers")} note={t("partner.dashboard.yourCustomersNote")}>
+        {customers.length === 0 ? (
+          <p className="px-5 py-8 text-sm text-muted-foreground">{t("partner.dashboard.noCustomers")}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                <th className="text-left px-5 py-3">{t("partner.dashboard.customer")}</th>
+                <th className="text-left px-5 py-3">{t("partner.dashboard.plan")}</th>
+                <th className="text-left px-5 py-3">{t("partner.dashboard.since")}</th>
+                <th className="text-right px-5 py-3">{t("partner.dashboard.theyPaid")}</th>
+                <th className="text-right px-5 py-3">{t("partner.dashboard.youEarned")}</th>
+                <th className="text-left px-5 py-3">{t("partner.dashboard.windowCol")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map((c) => (
+                <tr key={c.id} className="border-t border-[var(--hairline)]">
+                  <td className="px-5 py-3 text-ink">{c.name}</td>
+                  <td className="px-5 py-3 mono text-[12px] text-muted-foreground">
+                    {c.plan}
+                    {c.state !== "active" && (
+                      <span className="ml-2 text-[10px] uppercase tracking-widest" style={{ color: c.state === "ended" ? "var(--muted-foreground)" : "#E0A030" }}>
+                        {t(`partner.dashboard.state.${c.state}`)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3 mono text-[12px] text-muted-foreground">{fmtDate(c.since)}</td>
+                  <td className="px-5 py-3 mono text-right text-muted-foreground">
+                    {c.totals.length === 0 ? "—" : c.totals.map((x) => <div key={x.currency}>{money(x.commissionableCents, x.currency, locale)}</div>)}
+                  </td>
+                  <td className="px-5 py-3 mono text-right text-ink">
+                    {c.totals.length === 0 ? "—" : c.totals.map((x) => <div key={x.currency}>{money(x.earnedCents, x.currency, locale)}</div>)}
+                  </td>
+                  <td className="px-5 py-3 mono text-[12px]">
+                    {c.since === null ? (
+                      <span className="text-muted-foreground">{t("partner.dashboard.notYetPaying")}</span>
+                    ) : c.windowOpen ? (
+                      <span style={{ color: "var(--brand-cyan)" }}>{t("partner.dashboard.windowUntil", { date: fmtDate(c.windowEndsAt) })}</span>
+                    ) : (
+                      <span className="text-muted-foreground">{t("partner.dashboard.windowClosed", { date: fmtDate(c.windowEndsAt) })}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+
+      {/* ── the ledger, with the arithmetic on show ──────────────────────────────────────────── */}
+      <Section title={t("partner.dashboard.history")} note={t("partner.dashboard.historyNote")}>
         {rows.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-muted-foreground">
-            {t("partner.dashboard.empty")}
-          </p>
+          <p className="px-5 py-8 text-sm text-muted-foreground">{t("partner.dashboard.empty")}</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 <th className="text-left px-5 py-3">{t("partner.dashboard.date")}</th>
-                <th className="text-left px-5 py-3">{t("partner.dashboard.invoice")}</th>
-                <th className="text-left px-5 py-3">{t("partner.dashboard.amount")}</th>
+                <th className="text-left px-5 py-3">{t("partner.dashboard.customer")}</th>
+                <th className="text-right px-5 py-3">{t("partner.dashboard.theyPaid")}</th>
+                <th className="text-right px-5 py-3">{t("partner.dashboard.rate")}</th>
+                <th className="text-right px-5 py-3">{t("partner.dashboard.yourCommission")}</th>
                 <th className="text-left px-5 py-3">{t("partner.dashboard.status")}</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-t border-[var(--hairline)]">
-                  <td className="px-5 py-3 mono text-[12px] text-muted-foreground">
-                    {new Date(r.createdAt).toLocaleDateString(i18n.resolvedLanguage)}
+                  <td className="px-5 py-3 mono text-[12px] text-muted-foreground" title={r.sourceInvoiceId}>
+                    {fmtDate(r.at)}
                   </td>
-                  <td className="px-5 py-3 mono text-[12px] text-muted-foreground">{r.sourceInvoiceId}</td>
-                  <td className="px-5 py-3 mono text-ink">
-                    {(r.amountCents / 100).toFixed(2)} {r.currency.toUpperCase()}
+                  <td className="px-5 py-3 text-ink">{r.customer}</td>
+                  <td className="px-5 py-3 mono text-right text-muted-foreground">
+                    {r.baseAmountCents === null ? "—" : money(r.baseAmountCents, r.currency, locale)}
+                  </td>
+                  <td className="px-5 py-3 mono text-right text-muted-foreground">
+                    {r.ratePct === null ? "—" : `${Number(r.ratePct)}%`}
+                  </td>
+                  <td
+                    className="px-5 py-3 mono text-right"
+                    style={{ color: r.status === "void" ? "var(--muted-foreground)" : "var(--ink)", textDecoration: r.status === "void" ? "line-through" : undefined }}
+                  >
+                    {money(r.amountCents, r.currency, locale)}
                   </td>
                   <td className="px-5 py-3">
-                    <span className="mono text-[10px] uppercase tracking-widest text-[color:var(--brand-cyan)]">
-                      {r.status}
+                    <span
+                      className="mono text-[10px] uppercase tracking-widest"
+                      style={{ color: STATUS_COLOR[r.status] ?? "var(--muted-foreground)" }}
+                    >
+                      {t(`partner.dashboard.statusLabel.${r.status}`, { defaultValue: r.status })}
                     </span>
                   </td>
                 </tr>
@@ -187,6 +359,19 @@ function PartnerDashboard() {
             </tbody>
           </table>
         )}
+      </Section>
+
+      {/* ── how the money works, in plain words ──────────────────────────────────────────────── */}
+      <div className="mt-10 surface-card p-6">
+        <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.howTitle")}</div>
+        <ul className="mt-4 grid gap-3 text-sm text-muted-foreground">
+          {(["accrual", "window", "statuses", "refunds", "snapshot", "payout"] as const).map((k) => (
+            <li key={k} className="flex gap-3">
+              <span className="mono text-[color:var(--brand-cyan)] shrink-0">·</span>
+              <span>{t(`partner.dashboard.how.${k}`)}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <p className="mt-8 text-sm text-muted-foreground">
@@ -194,6 +379,30 @@ function PartnerDashboard() {
         <a href="mailto:hello@orbetra.com" className="text-[color:var(--brand-cyan)] hover:underline">hello@orbetra.com</a>{" "}
         · <Link to="/partners" className="text-[color:var(--brand-cyan)] hover:underline">{t("partner.dashboard.programLink")}</Link>
       </p>
+    </div>
+  );
+}
+
+function Tile({ label, value, hint, accent }: { label: string; value: string; hint: string; accent?: string }) {
+  return (
+    <div className="surface-card p-6">
+      <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{label}</div>
+      <div className="mt-3 display text-2xl md:text-3xl font-bold" style={{ color: accent ?? "var(--ink)" }}>
+        {value}
+      </div>
+      <div className="mono text-[11px] text-muted-foreground mt-1">{hint}</div>
+    </div>
+  );
+}
+
+function Section({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-10 surface-card overflow-x-auto">
+      <div className="px-5 py-4 border-b border-[var(--hairline)]">
+        <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{title}</div>
+        <p className="mt-1.5 text-[12px] text-muted-foreground">{note}</p>
+      </div>
+      {children}
     </div>
   );
 }

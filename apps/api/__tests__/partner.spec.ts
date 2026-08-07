@@ -120,6 +120,83 @@ describe('partner self-service auth (F5)', () => {
     expect(bList).toHaveLength(0) // B never sees A's commission
   })
 
+  it('a commission row carries the customer, the invoice base and the rate — not just an amount', async () => {
+    const p = await makePartner('detail@partner.co', 'partnerpass1')
+    const tenant = await db.tenants.create({ userId: '00000000-0000-0000-0000-0000000000f6' }, { name: 'Visible Customer Ltd' })
+    await db.affiliates.accrueCommission({
+      affiliateId: p.id, tenantId: tenant.id, amountCents: 2500, currency: 'eur',
+      sourceInvoiceId: 'in_detail_1', ratePct: '25.00', baseAmountCents: 10000, paidAt: new Date('2026-03-02T10:00:00Z'),
+    })
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const [row] = (await (await j('/v1/partner/commissions', 'GET', undefined, bearer(tok))).json()) as {
+      customer: string; baseAmountCents: number; ratePct: string; amountCents: number; at: string
+    }[]
+    // the whole point: the arithmetic is checkable — 10000 × 25% = 2500, from THIS customer
+    expect(row?.customer).toBe('Visible Customer Ltd')
+    expect(row?.baseAmountCents).toBe(10000)
+    expect(row?.ratePct).toBe('25')
+    expect(row?.amountCents).toBe(2500)
+    expect(row?.at).toBe('2026-03-02T10:00:00.000Z') // when the CUSTOMER paid, not when we inserted
+  })
+
+  it('a partner sees ONLY the customers it referred, with their totals and window', async () => {
+    const a = await makePartner('cusa@partner.co', 'partnerpass1')
+    const b = await makePartner('cusb@partner.co', 'partnerpass1')
+    const sys = { userId: '00000000-0000-0000-0000-0000000000f7' }
+    const mine = await db.tenants.create(sys, { name: 'Mine Ltd', referredByAffiliateId: a.id })
+    await db.tenants.create(sys, { name: 'Theirs Ltd', referredByAffiliateId: b.id }) // B's, must not appear
+    await db.affiliates.accrueCommission({
+      affiliateId: a.id, tenantId: mine.id, amountCents: 3000, currency: 'eur',
+      sourceInvoiceId: 'in_cus_1', ratePct: '20.00', baseAmountCents: 15000, paidAt: new Date('2026-01-05T00:00:00Z'),
+    })
+    const aTok = ((await (await login(a.email, a.password)).json()) as { accessToken: string }).accessToken
+    const rows = (await (await j('/v1/partner/customers', 'GET', undefined, bearer(aTok))).json()) as {
+      name: string; totals: { currency: string; commissionableCents: number; earnedCents: number }[]
+    }[]
+    expect(rows.map((r) => r.name)).toEqual(['Mine Ltd']) // B's customer is not in A's list
+    expect(rows[0]?.totals).toEqual([{ currency: 'eur', commissionableCents: 15000, earnedCents: 3000 }])
+  })
+
+  it('a customer paying in TWO currencies keeps both totals — neither silently replaces the other', async () => {
+    const p = await makePartner('multi@partner.co', 'partnerpass1')
+    const t = await db.tenants.create({ userId: '00000000-0000-0000-0000-0000000000f9' }, { name: 'Two Currencies Ltd', referredByAffiliateId: p.id })
+    await db.affiliates.accrueCommission({ affiliateId: p.id, tenantId: t.id, amountCents: 1000, currency: 'eur', sourceInvoiceId: 'in_mc_eur', baseAmountCents: 5000 })
+    await db.affiliates.accrueCommission({ affiliateId: p.id, tenantId: t.id, amountCents: 2000, currency: 'usd', sourceInvoiceId: 'in_mc_usd', baseAmountCents: 8000 })
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const [row] = (await (await j('/v1/partner/customers', 'GET', undefined, bearer(tok))).json()) as {
+      totals: { currency: string; commissionableCents: number; earnedCents: number }[]
+    }[]
+    // keyed by tenant ALONE, the second currency used to overwrite the first and vanish from the page
+    expect([...(row?.totals ?? [])].sort((a, b) => a.currency.localeCompare(b.currency))).toEqual([
+      { currency: 'eur', commissionableCents: 5000, earnedCents: 1000 },
+      { currency: 'usd', commissionableCents: 8000, earnedCents: 2000 },
+    ])
+  })
+
+  it('the window end shown to the partner is the one the accrual enforces, month-end included', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000010a' }
+    const p = await makePartner('window@partner.co', 'partnerpass1')
+    await db.affiliates.update(actor, p.id, { commissionMonths: 6 })
+    const t = await db.tenants.create(actor, { name: 'Month End Ltd', referredByAffiliateId: p.id })
+    await db.tenants.setStripeCustomer(t.id, 'cus_monthend')
+    // 31 August + 6 months: the accrual CLAMPS to 28 Feb. Naive month arithmetic overflows to 3 Mar,
+    // which would promise the partner three days of earning the accrual refuses.
+    await db.affiliates.accrueForPaidInvoice({
+      stripeCustomerId: 'cus_monthend', invoiceId: 'in_win_1', amountPaidCents: 10000,
+      currency: 'eur', paidAt: new Date('2026-08-31T09:00:00Z'),
+    })
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const [row] = (await (await j('/v1/partner/customers', 'GET', undefined, bearer(tok))).json()) as { windowEndsAt: string }[]
+    expect(row?.windowEndsAt).toBe('2027-02-28T09:00:00.000Z')
+    // and the boundary agrees: a payment exactly on the end still accrues, so the page must not
+    // have called the window shut before it
+    const onTheLine = await db.affiliates.accrueForPaidInvoice({
+      stripeCustomerId: 'cus_monthend', invoiceId: 'in_win_2', amountPaidCents: 10000,
+      currency: 'eur', paidAt: new Date('2027-02-28T09:00:00Z'),
+    })
+    expect(onTheLine).not.toBeNull()
+  })
+
   it('login rejects wrong password, unknown email, an unset-password partner, and a non-active partner', async () => {
     const p = await makePartner('who@partner.co', 'partnerpass1')
     expect((await login(p.email, 'wrongpass1')).status).toBe(401)
