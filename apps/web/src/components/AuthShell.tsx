@@ -1,3 +1,5 @@
+import { ChevronDown, Eye, EyeOff, Globe } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { OrbitalFluidBg } from '@/components/OrbitalFluidBg'
@@ -26,10 +28,63 @@ import { usePublicBranding } from '@/lib/publicBranding'
  */
 const SITE_URL = (import.meta.env['VITE_SITE_URL'] as string | undefined) ?? 'https://orbetra.com'
 
-export function AuthShell({ label, title, children }: { label: string; title: string; children: React.ReactNode }) {
+/** The site's own nav, in its order. Absolute links: these pages live on the marketing site. */
+const NAV = [
+  ['platform', '/'],
+  ['pricing', '/pricing'],
+  ['resellers', '/tsp'],
+  ['partners', '/partners'],
+  ['contact', '/pilot'],
+  ['docs', '/docs'],
+] as const
+
+/** The site's globe + code + chevron control, not four bare codes. */
+function LanguagePicker() {
   const { t, i18n } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const current = i18n.language.split('-')[0] ?? 'en'
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={t('settings.locale')}
+        data-testid="auth-lang"
+        className="mono flex items-center gap-1.5 rounded px-2 py-1 text-xs uppercase"
+        style={{ color: 'var(--muted)' }}
+      >
+        <Globe className="h-3.5 w-3.5" />
+        {current}
+        <ChevronDown className="h-3 w-3" />
+      </button>
+      {open && (
+        <ul
+          className="absolute right-0 z-50 mt-1 min-w-[9rem] overflow-hidden rounded border py-1"
+          style={{ borderColor: 'var(--auth-hairline)', background: 'rgba(10,20,40,0.98)' }}
+        >
+          {SUPPORTED_LOCALES.map((l) => (
+            <li key={l}>
+              <button
+                type="button"
+                onClick={() => { setLocale(l); setOpen(false) }}
+                data-testid={`auth-lang-${l}`}
+                className="block w-full px-3 py-1.5 text-left text-sm"
+                style={{ color: current === l ? 'var(--accent)' : 'var(--auth-ink)' }}
+              >
+                {LOCALE_LABELS[l]}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+export function AuthShell({ label, title, children }: { label: string; title: string; children: React.ReactNode }) {
+  const { t } = useTranslation()
   const brand = usePublicBranding()
-  const current = i18n.language.split('-')[0]
 
   // brand === null is UNKNOWN (in flight, or the lookup failed) and renders NOTHING brand-specific.
   // A 200 ms flash of the wrong brand is still the wrong brand, and it is what a screenshot catches.
@@ -55,30 +110,38 @@ export function AuthShell({ label, title, children }: { label: string; title: st
       {/* the site's own canvas, in the tenant's accent — the single biggest difference between the
           two sign-in screens before this, and the one a side-by-side screenshot leads with */}
       <OrbitalFluidBg />
-      <header className="flex h-16 items-center justify-between px-6 md:px-10">
-        <div className="flex items-center">{mark}</div>
-        {/* the switcher is always available: someone who arrived in the wrong language must be able
-            to fix it here rather than hunting for a setting behind a login they cannot read */}
-        <nav className="flex items-center gap-1" aria-label={t('settings.locale')}>
-          {SUPPORTED_LOCALES.map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => setLocale(l)}
-              data-testid={`auth-lang-${l}`}
-              aria-current={current === l}
-              className="mono rounded px-2 py-1 text-[10px] uppercase tracking-[0.18em]"
-              style={{ color: current === l ? 'var(--accent)' : 'var(--muted)' }}
-              title={LOCALE_LABELS[l]}
-            >
-              {l}
-            </button>
-          ))}
-        </nav>
+      {/* THE SITE'S HEADER, not an approximation — same lockup, same links, same language control,
+          same trial pill. It renders ONLY on our own hosts: it is a marketing nav, and putting it on
+          `fleet.reseller.lt` would advertise their supplier to their customers on the one screen all
+          of them pass through. On a tenant host the bar carries their mark and the language control,
+          and nothing else. */}
+      <header className="fixed inset-x-0 top-0 z-50 border-b" style={{ borderColor: 'var(--auth-hairline)', background: 'rgba(4,7,15,0.85)', backdropFilter: 'blur(8px)' }}>
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+          <div className="flex items-center">{mark}</div>
+
+          {brand !== null && !brand.whiteLabel && (
+            <nav className="hidden items-center gap-8 md:flex">
+              {NAV.map(([key, path]) => (
+                <a key={key} href={`${SITE_URL}${path}`} className="text-sm transition-colors" style={{ color: 'var(--muted)' }}>
+                  {t(`authNav.${key}`)}
+                </a>
+              ))}
+            </nav>
+          )}
+
+          <div className="flex items-center gap-3">
+            <LanguagePicker />
+            {brand !== null && !brand.whiteLabel && (
+              <a href={`${SITE_URL}/signup`} className="auth-trial hidden sm:inline-flex" data-testid="auth-trial">
+                {t('authNav.trial')}
+              </a>
+            )}
+          </div>
+        </div>
       </header>
 
       {/* the partner login's own container, verbatim */}
-      <div className="mx-auto max-w-md px-6 pt-20 pb-28 md:pt-28">
+      <div className="mx-auto max-w-md px-6 pt-28 pb-28 md:pt-36">
         <span className="auth-label">{label}</span>
         <h1 className="display mt-4 text-3xl font-bold md:text-4xl" style={{ color: 'var(--auth-ink)' }}>
           {title}
@@ -96,12 +159,44 @@ export function AuthShell({ label, title, children }: { label: string; title: st
   )
 }
 
-/** A labelled input in the partner login's exact shape: mono uppercase caption over the field. */
+/**
+ * A labelled input in the partner login's exact shape: mono uppercase caption over the field.
+ *
+ * A PASSWORD field gets a reveal toggle. It is not decoration: the commonest reason a correct
+ * password is rejected is a typo nobody can see, and on a phone keyboard that is most of the time.
+ * The button carries an aria-label that flips with the state, so a screen reader announces which
+ * way it goes rather than just "button".
+ */
 export function AuthField({ id, label, ...input }: { id: string; label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  const { t } = useTranslation()
+  const [shown, setShown] = useState(false)
+  const isPassword = input.type === 'password'
   return (
     <label htmlFor={id} className="grid gap-1.5">
       <span className="auth-field">{label}</span>
-      <input id={id} className="auth-input" {...input} />
+      <span className="relative block">
+        <input
+          id={id}
+          className="auth-input"
+          {...input}
+          {...(isPassword ? { type: shown ? 'text' : 'password', style: { paddingRight: '2.75rem' } } : {})}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShown((v) => !v)}
+            aria-label={t(shown ? 'login.hidePassword' : 'login.showPassword')}
+            aria-pressed={shown}
+            data-testid={`${id}-reveal`}
+            // tabIndex -1 would hide it from the keyboard entirely; it stays reachable, after the
+            // field and before submit, which is where someone checking a typo expects it
+            className="absolute inset-y-0 right-0 grid w-11 place-items-center"
+            style={{ color: 'var(--muted)' }}
+          >
+            {shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        )}
+      </span>
     </label>
   )
 }

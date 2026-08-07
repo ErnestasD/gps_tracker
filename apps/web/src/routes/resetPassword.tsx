@@ -2,7 +2,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { AuthShell } from '@/components/AuthShell'
+import { AuthField, AuthShell } from '@/components/AuthShell'
 import { resetPassword } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
 
@@ -54,36 +54,26 @@ export function ResetPasswordPage() {
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label htmlFor="password" className="auth-field">
-              {t('reset.newPassword')}
-            </label>
-            <input
-              className="auth-input"
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              data-testid="reset-password"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="confirm" className="auth-field">
-              {t('reset.confirmPassword')}
-            </label>
-            <input
-              className="auth-input"
-              id="confirm"
-              type="password"
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              data-testid="reset-confirm"
-            />
-          </div>
+          <AuthField
+            id="password"
+            label={t('reset.newPassword')}
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            data-testid="reset-password"
+          />
+          <AuthField
+            id="confirm"
+            label={t('reset.confirmPassword')}
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            required
+            data-testid="reset-confirm"
+          />
           {error !== null && (
             <p role="alert" data-testid="reset-error" className="text-sm" style={{ color: 'var(--danger)' }}>
               {error}

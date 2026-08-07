@@ -18,6 +18,8 @@ export const lt: Translation = {
     menu: "Meniu",
   },
   cta: {
+    showPassword: "Rodyti slaptažodį",
+    hidePassword: "Slėpti slaptažodį",
     trial: "Pradėkite nemokamai",
     signin: "Prisijungti",
     pricing: "Peržiūrėkite kainas",

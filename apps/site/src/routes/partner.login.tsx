@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiPost } from "@/lib/api";
 import { setPartnerToken } from "@/lib/partner-auth";
+import { PasswordInput } from "@/components/site/PasswordInput";
 
 export const Route = createFileRoute("/partner/login")({
   head: () => ({
@@ -65,8 +66,7 @@ function PartnerLogin() {
         </label>
         <label className="grid gap-1.5">
           <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.login.password")}</span>
-          <input name="password" type="password" required autoComplete="current-password"
-            className="h-11 rounded px-3 bg-[rgba(10,20,40,0.6)] border border-[var(--hairline)] text-ink text-sm outline-none focus:border-[color:var(--brand-blue)]" />
+          <PasswordInput name="password" required autoComplete="current-password" />
         </label>
         {error && <p className="text-sm text-[#DC2626]">{error}</p>}
         <button type="submit" disabled={loading}

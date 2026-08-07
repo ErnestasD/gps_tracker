@@ -12,7 +12,9 @@
     "serverError": "Something went wrong on our end. Please try again in a few minutes.",
     "backToSite": "Back to orbetra.com",
     "forgotLink": "Forgot your password?",
-    "label": "Sign in"
+    "label": "Sign in",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "forgot": {
     "title": "Reset your password",
@@ -1133,5 +1135,15 @@
     "create": "Send invite",
     "createError": "Could not create the partner. The code or email may already be in use.",
     "actionError": "Action failed. Try again."
+  },
+  "authNav": {
+    "platform": "Platform",
+    "pricing": "Pricing",
+    "resellers": "Resellers",
+    "partners": "Partners",
+    "contact": "Contact",
+    "docs": "Docs",
+    "signin": "Sign in",
+    "trial": "Start free trial"
   }
 }

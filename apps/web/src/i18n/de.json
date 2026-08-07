@@ -12,7 +12,9 @@
     "serverError": "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuchen Sie es in einigen Minuten erneut.",
     "backToSite": "Zurück zu orbetra.com",
     "forgotLink": "Passwort vergessen?",
-    "label": "Anmeldung"
+    "label": "Anmeldung",
+    "showPassword": "Passwort anzeigen",
+    "hidePassword": "Passwort verbergen"
   },
   "forgot": {
     "title": "Passwort zurücksetzen",
@@ -1133,5 +1135,15 @@
     "create": "Einladung senden",
     "createError": "Partner konnte nicht erstellt werden. Code oder E-Mail wird bereits verwendet.",
     "actionError": "Aktion fehlgeschlagen. Erneut versuchen."
+  },
+  "authNav": {
+    "platform": "Plattform",
+    "pricing": "Preise",
+    "resellers": "Reseller",
+    "partners": "Partner",
+    "contact": "Kontakt",
+    "docs": "Dokumentation",
+    "signin": "Anmelden",
+    "trial": "Kostenlos testen"
   }
 }

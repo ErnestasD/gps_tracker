@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { PasswordInput } from "@/components/site/PasswordInput";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiPost } from "@/lib/api";
@@ -76,13 +77,11 @@ function SetPassword() {
           </label>
           <label className="grid gap-1.5">
             <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.setPassword.password")}</span>
-            <input name="password" type="password" required minLength={8} autoComplete="new-password"
-              className="h-11 rounded px-3 bg-[rgba(10,20,40,0.6)] border border-[var(--hairline)] text-ink text-sm outline-none focus:border-[color:var(--brand-blue)]" />
+            <PasswordInput name="password" required minLength={8} autoComplete="new-password" />
           </label>
           <label className="grid gap-1.5">
             <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.setPassword.confirm")}</span>
-            <input name="confirm" type="password" required minLength={8} autoComplete="new-password"
-              className="h-11 rounded px-3 bg-[rgba(10,20,40,0.6)] border border-[var(--hairline)] text-ink text-sm outline-none focus:border-[color:var(--brand-blue)]" />
+            <PasswordInput name="confirm" required minLength={8} autoComplete="new-password" />
           </label>
           {error && <p className="text-sm text-[#DC2626]">{error}</p>}
           <button type="submit" disabled={state === "loading"}

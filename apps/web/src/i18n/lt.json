@@ -12,7 +12,9 @@
     "serverError": "Kažkas nutiko mūsų pusėje. Bandykite dar kartą po kelių minučių.",
     "backToSite": "Grįžti į orbetra.com",
     "forgotLink": "Pamiršote slaptažodį?",
-    "label": "Prisijungimas"
+    "label": "Prisijungimas",
+    "showPassword": "Rodyti slaptažodį",
+    "hidePassword": "Slėpti slaptažodį"
   },
   "forgot": {
     "title": "Atstatykite slaptažodį",
@@ -1133,5 +1135,15 @@
     "create": "Siųsti kvietimą",
     "createError": "Nepavyko sukurti partnerio. Kodas arba el. paštas jau naudojamas.",
     "actionError": "Veiksmas nepavyko. Bandykite dar kartą."
+  },
+  "authNav": {
+    "platform": "Platforma",
+    "pricing": "Kainos",
+    "resellers": "Perpardavėjai",
+    "partners": "Partneriai",
+    "contact": "Kontaktai",
+    "docs": "Dokumentacija",
+    "signin": "Prisijungti",
+    "trial": "Pradėkite nemokamai"
   }
 }

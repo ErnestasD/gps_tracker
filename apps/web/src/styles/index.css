@@ -222,3 +222,24 @@ summary {
   opacity: 0.6;
   cursor: default;
 }
+/* the site's trial pill, so the ported header carries the same call to action */
+.auth-scope .auth-trial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, #000) 100%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent),
+    0 8px 24px -10px color-mix(in srgb, var(--accent) 55%, transparent);
+  transition: background 0.2s ease;
+}
+.auth-scope .auth-trial:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 80%, #fff) 0%, var(--accent) 100%);
+}
