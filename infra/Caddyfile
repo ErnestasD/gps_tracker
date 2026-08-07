@@ -44,6 +44,18 @@
 		}
 		reverse_proxy api:3010
 	}
+	# …and the PARTNER PORTAL, which lives on this host and nowhere else. It was added in W9 and
+	# this carve-out was never widened, so every call it makes — login, me, commissions,
+	# set-password — fell through to the SPA and answered 404. The portal has therefore never
+	# worked in production: a partner who followed their invite link could not sign in at all.
+	# It stays OFF the tenant blocks (they 404 it deliberately): the affiliate programme is ours,
+	# not a reseller's, and must not be reachable on their domain.
+	handle /v1/partner/* {
+		request_body {
+			max_size 64KB
+		}
+		reverse_proxy api:3010
+	}
 	# static SPA (vite preview serving the built dist — same tested path as the app)
 	handle {
 		reverse_proxy site:4174

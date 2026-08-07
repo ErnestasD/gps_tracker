@@ -138,7 +138,11 @@ summary {
   --auth-bg: #04070f;
   --auth-hairline: #12213d;
   --auth-ink: #e6f1ff;
-  background: var(--auth-bg);
+  /* NO background here. The ported canvas sits at `-z-50`, which paints above the ROOT background
+   * but below any in-flow descendant's — so a colour on this wrapper would hide the whole animation.
+   * The canvas fills #04070F itself every frame; the body's own dark token is the fallback if the
+   * 2d context is unavailable. This is how the site does it too: the colour is on the page, not on
+   * a wrapper. */
   color: var(--auth-ink);
 }
 .auth-scope .auth-label {
@@ -185,6 +189,18 @@ summary {
 }
 .auth-scope .auth-input:focus {
   border-color: var(--accent);
+}
+/* Chrome paints an autofilled field `rgb(232,240,254)` — a light blue that beats any background we
+ * set — so a saved password turned the dark form into two white boxes, which is what the founder
+ * screenshotted. The inset shadow is the only way to override it, and `text-fill-color` is needed
+ * too or the text stays dark-on-dark. `transition-delay` keeps it from flashing white on load. */
+.auth-scope .auth-input:-webkit-autofill,
+.auth-scope .auth-input:-webkit-autofill:hover,
+.auth-scope .auth-input:-webkit-autofill:focus {
+  -webkit-box-shadow: inset 0 0 0 1000px rgba(10, 20, 40, 0.98);
+  -webkit-text-fill-color: var(--auth-ink);
+  caret-color: var(--auth-ink);
+  transition: background-color 9999s ease-out;
 }
 .auth-scope .auth-submit {
   height: 2.75rem;
