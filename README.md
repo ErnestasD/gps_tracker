@@ -94,8 +94,8 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `TELEGRAM_BOT_TOKEN` | apps/worker + infra/alertmanager | notification delivery (E05-5) AND ops alerts (W7-S1); unset = alerts visible in UI only, no push |
 | `TELEGRAM_ALERT_CHAT_ID` | infra/alertmanager | founders' chat id for ops alerts (W7-S1) |
 | pgBackRest repo | infra/pgbackrest/pgbackrest.conf | local volume now; swap to Hetzner Storage Box SFTP for real DR (W7-S2, founder-gated) |
-| `ORBETRA_SITE_HOST` / `ORBETRA_SITE_WWW` | infra/Caddyfile | public site apex + www hosts (W9-S1); www 301s to apex; unset = inert |
-| `ORBETRA_APP_HOST` | infra/Caddyfile | dashboard host (dash.<domain>) for the app SPA |
+| `ORBETRA_SITE_HOST` / `ORBETRA_SITE_WWW` | infra/caddy/Caddyfile | public site apex + www hosts (W9-S1); www 301s to apex; unset = inert |
+| `ORBETRA_APP_HOST` | infra/caddy/Caddyfile | dashboard host (dash.<domain>) for the app SPA |
 | `PLATFORM_DOMAIN` | apps/api | our own domain (`orbetra.com`). Lets a tenant claim `<slug>.<domain>` as a white-label host with NO DNS work — created already verified, since we hold the zone. **Requires a `*.<domain>` A record**; unset ⇒ the option is not offered and every domain goes through DNS TXT |
 | `EDGE_HOSTNAME` | apps/api | where a tenant CNAMEs their OWN domain (`dash.orbetra.com`). Shown in the Domains card — a hostname, not an IP, so the address stays ours to change |
 | `VITE_SITE_URL` | apps/web (build) | marketing site the pre-auth pages link back to; default `https://orbetra.com`. Never rendered on a tenant's custom domain |
@@ -126,7 +126,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `COOKIE_SECURE` | apps/api | `0` disables the Secure cookie flag (dev/e2e over http ONLY) |
 | `TRUST_PROXY` | apps/api | `1` = trust X-Forwarded-For for lockout + caddy-ask IPs (behind Caddy) |
 | `ASK_RATE_MAX` / `ASK_RATE_WINDOW_S` | apps/api | Caddy on-demand-TLS ask throttle per source IP (E03-5), defaults `10` / `60` |
-| `ORBETRA_STAGING_HOST` | infra/Caddyfile | staging plain-HTTP host (e.g. the server IP) for the pre-TLS `http://` block; unset = inert locally |
+| `ORBETRA_STAGING_HOST` | infra/caddy/Caddyfile | staging plain-HTTP host (e.g. the server IP) for the pre-TLS `http://` block; unset = inert locally |
 | `DATABASE_URL` | apps/api (E03-1+) | required — auth reads users/refresh tokens via @orbetra/db |
 | `MAPBOX_TOKEN` | apps/api | Mapbox token for the **Optimization API** (route planner, ADR-034). Absent AND `OSRM_URL` absent ⇒ `/v1/routing/optimize` 503s. SECRET — server `.env` only, never git (GitHub push protection blocks Mapbox tokens). Travels as a query parameter, so the request URL must never be logged |
 | `OSRM_URL` | apps/api | Self-hosted OSRM base URL — the ALTERNATIVE routing driver, for the >12-stop case Mapbox cannot serve (ADR-034). Ignored when `MAPBOX_TOKEN` is set |
@@ -187,7 +187,7 @@ Every new variable must be added to the table here AND match the `.env` contract
   200 only for a **verified** tenant domain, 403 otherwise, throttled **per requested
   domain** (`ASK_RATE_MAX`/`ASK_RATE_WINDOW_S`; every ask shares Caddy's source IP, so
   a per-IP bucket would be one global choke point). Caddy's own `interval`/`burst` is the
-  coarse global bound. The on-demand-TLS `https://` site block in `infra/Caddyfile` becomes
+  coarse global bound. The on-demand-TLS `https://` site block in `infra/caddy/Caddyfile` becomes
   active whenever Caddy publishes `:443` (the staging/prod compose does; the local infra-only
   compose maps `:443`→`8449` and has no real DNS, so it stays inert); certs are then minted
   automatically on the first HTTPS hit to a verified domain. Full 2-domain TLS is exercised on

@@ -163,7 +163,14 @@ services:
   caddy:
     image: caddy:2-alpine
     volumes:
-      - ../Caddyfile:/etc/caddy/Caddyfile:ro
+      # The DIRECTORY, not the file. A single-file bind mount is pinned to the inode it was created
+      # with, and rsync replaces files rather than writing through them — so every Caddyfile change
+      # since this stack went up landed on disk and was never visible inside the container. The
+      # symptom was silent and total: the file said one thing, `docker exec … cat` said another, and
+      # three days of edits (tenant-domain route blocks, HSTS, the partner-portal carve-out) were
+      # inert with nothing to show it. Mounting the directory makes the container follow the path
+      # rather than the inode.
+      - ../caddy:/etc/caddy:ro
       - caddy_data:/data
     ports:
       # local default avoids clashing with a host webserver on :80 (macOS Apache);

@@ -63,6 +63,30 @@ ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
 '
 ```
 
+## Caddy config changes
+
+`infra/caddy/` is bind-mounted as a DIRECTORY, deliberately. It used to be the single file
+`infra/Caddyfile → /etc/caddy/Caddyfile`, and a single-file bind mount is pinned to the inode it
+was created with. `rsync` replaces files rather than writing through them, so every edit landed on
+disk and the container went on serving the original — silently, for three days, across half a dozen
+deploys. `grep` on the host said one thing and `docker exec … cat` said another, with nothing
+anywhere reporting a problem.
+
+After changing the Caddyfile:
+
+```sh
+ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
+  cd /opt/orbetra/app/infra/compose
+  docker compose --env-file /opt/orbetra/.env -f docker-compose.yml -f docker-compose.apps.yml \
+    up -d --force-recreate caddy
+  # then PROVE it took, rather than assuming:
+  docker exec orbetra-caddy-1 grep -c "v1/partner" /etc/caddy/Caddyfile
+'
+```
+
+A plain `caddy reload` is not enough when the mount itself is stale — it re-reads the same wrong
+file. Recreate the container, then verify from inside it.
+
 ## Verify
 
 - `curl http://185.80.129.33/healthz` → ok (Caddy)
@@ -77,7 +101,7 @@ ssh -i ~/.ssh/orbetra_staging root@185.80.129.33 '
   point DNS at the server, set `ORBETRA_APP_HOST`/`ORBETRA_SITE_HOST` (+ `ORBETRA_SITE_WWW`),
   AND add the domain to `apps/web/vite.config.ts` `preview.allowedHosts` (vite preview 403s
   unknown Hosts — IPs pass by default, domains do not). Tenant custom domains need no flag:
-  the `https://` on-demand-TLS block in `infra/Caddyfile` self-activates once Caddy publishes
+  the `https://` on-demand-TLS block in `infra/caddy/Caddyfile` self-activates once Caddy publishes
   `:443` and the api's caddy-ask approves the verified domain (there is no `ORBETRA_PUBLIC`
   switch — the variable was never wired).
 - Ingest is the only app port published beside Caddy (5027 — devices). Internal
