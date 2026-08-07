@@ -1,6 +1,7 @@
 # ADR-036 — A white-label tenant sends mail from their OWN domain
 
-Status: accepted (2026-08-07)
+Status: **proposed** (2026-08-07) — decided, NOT yet implemented. No `sesv2` code exists; mail is
+still sent from the platform identity with `Reply-To` set to the tenant's support address.
 Supersedes nothing. Related: E03-5 (custom domains), ADR-023 (SMTP transport), ROADMAP-post-v1 item 13.
 
 ## The problem

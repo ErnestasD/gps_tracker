@@ -11,7 +11,8 @@
     "networkError": "Brak połączenia. Sprawdź połączenie internetowe i spróbuj ponownie.",
     "serverError": "Coś poszło nie tak po naszej stronie. Spróbuj ponownie za kilka minut.",
     "backToSite": "Powrót do orbetra.com",
-    "forgotLink": "Nie pamiętasz hasła?"
+    "forgotLink": "Nie pamiętasz hasła?",
+    "label": "Logowanie"
   },
   "forgot": {
     "title": "Zresetuj hasło",
@@ -19,7 +20,8 @@
     "submit": "Wyślij link",
     "sent": "Jeśli konto dla {{email}} istnieje, link jest już w drodze. Sprawdź skrzynkę odbiorczą i spam.",
     "backToLogin": "Powrót do logowania",
-    "error": "Coś poszło nie tak. Spróbuj ponownie."
+    "error": "Coś poszło nie tak. Spróbuj ponownie.",
+    "label": "Reset hasła"
   },
   "reset": {
     "title": "Wybierz nowe hasło",
@@ -31,7 +33,8 @@
     "invalidToken": "Ten link jest nieprawidłowy lub wygasł.",
     "requestNew": "Poproś o nowy link",
     "done": "Twoje hasło zostało zmienione. Zaloguj się nowym hasłem.",
-    "toLogin": "Przejdź do logowania"
+    "toLogin": "Przejdź do logowania",
+    "label": "Nowe hasło"
   },
   "verify": {
     "title": "Aktywujemy konto",
@@ -43,7 +46,8 @@
     "resendSent": "Jeśli ten adres wymaga aktywacji, nowy link jest w drodze.",
     "resendEmail": "Twój adres e-mail",
     "resendSubmit": "Wyślij link",
-    "noToken": "Ten link aktywacyjny jest niepełny. Poproś o nowy poniżej."
+    "noToken": "Ten link aktywacyjny jest niepełny. Poproś o nowy poniżej.",
+    "label": "Aktywacja"
   },
   "shell": {
     "live": "Na żywo",

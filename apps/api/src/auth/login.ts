@@ -551,7 +551,8 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
             email: u.email,
             tenantId: u.tenantId,
             locale: u.locale,
-            resetUrl: `${base}/reset-password?token=${rawToken}`,
+            // `lng`: the mail is in their language; the page it opens should not re-guess it
+            resetUrl: `${base}/reset-password?token=${rawToken}&lng=${encodeURIComponent(u.locale)}`,
             expiresMinutes: Math.round(ttlS / 60),
           })
         } catch (err) {

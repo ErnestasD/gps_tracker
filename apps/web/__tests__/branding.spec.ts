@@ -90,3 +90,23 @@ describe('white-label favicon (faviconLinks)', () => {
     }
   })
 })
+
+describe('faviconLinks on a WHITE-LABEL host', () => {
+  it('no logo ⇒ NO icons — the browser default beats the platform mark in a tenant tab', () => {
+    // the previous fallback restored ours whenever a tenant had not set a logo, so our purple mark
+    // sat in a reseller's customers' tabs permanently (review HIGH)
+    expect(faviconLinks(undefined, true)).toEqual([])
+    expect(faviconLinks('', true)).toEqual([])
+  })
+
+  it('a logo is used on either kind of host', () => {
+    expect(faviconLinks('https://x.test/l.png', true)).toEqual([
+      { rel: 'icon', href: 'https://x.test/l.png' },
+      { rel: 'apple-touch-icon', href: 'https://x.test/l.png' },
+    ])
+  })
+
+  it('OUR hosts keep the platform icons', () => {
+    expect(faviconLinks(undefined, false).map((l) => l.href)).toContain('/platform-icon.ico')
+  })
+})

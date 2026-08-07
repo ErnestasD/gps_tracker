@@ -11,7 +11,8 @@
     "networkError": "Keine Verbindung. Bitte prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.",
     "serverError": "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuchen Sie es in einigen Minuten erneut.",
     "backToSite": "Zurück zu orbetra.com",
-    "forgotLink": "Passwort vergessen?"
+    "forgotLink": "Passwort vergessen?",
+    "label": "Anmeldung"
   },
   "forgot": {
     "title": "Passwort zurücksetzen",
@@ -19,7 +20,8 @@
     "submit": "Link senden",
     "sent": "Falls ein Konto für {{email}} existiert, ist ein Link unterwegs. Prüfen Sie Posteingang und Spam-Ordner.",
     "backToLogin": "Zurück zur Anmeldung",
-    "error": "Etwas ist schiefgelaufen. Bitte erneut versuchen."
+    "error": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
+    "label": "Passwort zurücksetzen"
   },
   "reset": {
     "title": "Neues Passwort wählen",
@@ -31,7 +33,8 @@
     "invalidToken": "Dieser Link ist ungültig oder abgelaufen.",
     "requestNew": "Neuen Link anfordern",
     "done": "Ihr Passwort wurde geändert. Melden Sie sich mit dem neuen Passwort an.",
-    "toLogin": "Zur Anmeldung"
+    "toLogin": "Zur Anmeldung",
+    "label": "Neues Passwort"
   },
   "verify": {
     "title": "Konto wird aktiviert",
@@ -43,7 +46,8 @@
     "resendSent": "Falls diese Adresse aktiviert werden muss, ist ein neuer Link unterwegs.",
     "resendEmail": "Ihre E-Mail-Adresse",
     "resendSubmit": "Link senden",
-    "noToken": "Dieser Aktivierungslink ist unvollständig. Fordern Sie unten einen neuen an."
+    "noToken": "Dieser Aktivierungslink ist unvollständig. Fordern Sie unten einen neuen an.",
+    "label": "Aktivierung"
   },
   "shell": {
     "live": "Live",

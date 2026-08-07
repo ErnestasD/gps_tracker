@@ -114,7 +114,9 @@ export interface CrudDeps {
    * Optional so manifest-only construction (apiManifest) needs no DB; the positions
    * route 503s if it is somehow reached without one. */
   pool?: Pool
-  /** public ingest endpoint for the SMS onboarding sheet (V1-nice); default orbetra.com:5027. */
+  /** public ingest endpoint for the SMS onboarding sheet (V1-nice). NO default host: an unset
+   *  INGEST_PUBLIC_HOST must render as a visible gap, never as the platform's own domain in a
+   *  reseller's installation instructions. */
   onboarding?: { host: string; port: number }
   /** GDPR job enqueuers (E08-4) — BullMQ producers wired in the server entry (ADR-020
    * addendum); optional so manifest-only construction needs no Redis, routes 503 without. */
@@ -671,7 +673,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const device = await db.devices.get(scopeOf(auth(c)), id(c))
         if (device === null) return problem(c, 404, 'Not Found')
         const profile = await db.profiles.get(device.profileId)
-        const target = deps.onboarding ?? { host: 'orbetra.com', port: 5027 }
+        const target = deps.onboarding ?? { host: '', port: 5027 }
         const apnRaw = c.req.query('apn')
         // smsEnabled: whether the platform can actually SEND this config SMS (Twilio configured) — the
         // web hides the "Send config SMS" button when false and falls back to manual copy-paste.
@@ -745,7 +747,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // build the config SMS via buildOnboarding (the SAME generator as the onboarding sheet); a
         // caller may override the generated text with an explicit body (future arbitrary command).
         const profile = await db.profiles.get(device.profileId)
-        const target = deps.onboarding ?? { host: 'orbetra.com', port: 5027 }
+        const target = deps.onboarding ?? { host: '', port: 5027 }
         const sheet = buildOnboarding({
           imei: device.imei,
           host: target.host,
@@ -755,7 +757,11 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         })
         // smsAuto = APN (when supplied) + server params in ONE setparam, so a device with no
         // auto-APN gets data AND the server address from a single SMS (server-only when no APN)
+        // An unconfigured ingest host yields no command at all. REFUSE rather than invent one: the
+        // alternative was a default that pointed a reseller's customer's hardware at our domain,
+        // permanently, from inside the device.
         const bodyText = data.body ?? sheet.smsAuto
+        if (bodyText === null) return problem(c, 503, 'Service Unavailable', 'ingest host is not configured (INGEST_PUBLIC_HOST)')
         // persist a 'queued' delivery FIRST (the id is the BullMQ jobId), then enqueue.
         const delivery = await db.smsDeliveries.create(scope, { deviceId: device.id, accountId: device.accountId, to: device.simMsisdn, body: bodyText, provider: 'twilio' })
         try {

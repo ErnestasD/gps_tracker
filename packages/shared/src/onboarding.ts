@@ -28,17 +28,18 @@ export interface OnboardingInput {
 
 export interface OnboardingSheet {
   imei: string
-  host: string
+  /** null ⇒ INGEST_PUBLIC_HOST is not configured for this deployment; the commands are null too. */
+  host: string | null
   port: number
-  /** the SMS that points the device at our server (empty login+password prefix). */
-  smsServer: string
+  /** the SMS that points the device at our server (empty login+password prefix). null when unset. */
+  smsServer: string | null
   /** the SMS that sets the carrier APN — only when an apn was given. */
   smsApn: string | null
   /** the ONE SMS the automated gateway actually sends: APN (when given) + server params combined
    * in a single setparam, so a device with no auto-APN gets data AND the server address at once
    * (one charge, atomic). Falls back to server-only when no APN. Prefer this for programmatic sends;
-   * smsServer/smsApn stay split for the manual copy-paste sheet. */
-  smsAuto: string
+   * smsServer/smsApn stay split for the manual copy-paste sheet. null when the host is unset. */
+  smsAuto: string | null
   /** short operator checklist. */
   steps: string[]
   /** true when the family isn't a known FMB/FMC — the params may differ. */
@@ -53,11 +54,16 @@ const SAFE_HOST = /^[a-zA-Z0-9.-]{1,253}$/
 const SAFE_APN = /^[a-zA-Z0-9._-]{1,63}$/
 
 export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
-  const host = SAFE_HOST.test(input.host) ? input.host : 'orbetra.com'
+  // NO fallback host. It used to be `'orbetra.com'`, so a deployment that never set
+  // INGEST_PUBLIC_HOST told a reseller's installer to point their customer's hardware at OUR
+  // domain — and that string is then written INTO the tracker, where any technician servicing the
+  // vehicle reads it back. An unset host now yields `null` commands, which the sheet renders as a
+  // visible gap and the send route refuses; a missing configuration must look missing.
+  const host = SAFE_HOST.test(input.host) ? input.host : null
   const port = Number.isInteger(input.port) && input.port > 0 && input.port < 65536 ? input.port : 5027
   // empty login + password → two leading spaces (Teltonika SMS contract). 2006:0 = protocol TCP
   // (our ingest is TCP-only); the APN password (2003) is deliberately left untouched.
-  const smsServer = `  setparam 2004:${host};2005:${port};2006:0`
+  const smsServer = host === null ? null : `  setparam 2004:${host};2005:${port};2006:0`
   const apn = input.apn?.trim()
   // reject any APN carrying a separator/space (';'/':' would inject a second setparam) — drop to
   // null on a bad value, exactly as host falls back; the {1,63} bound also caps length server-side
@@ -65,7 +71,7 @@ export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
   const smsApn = apnSafe !== null ? `  setparam 2001:${apnSafe}` : null
   // combined single SMS for the automated gateway: prepend the APN param (2001) to the server
   // triplet in ONE setparam when an APN is given — ~55 chars, well under one 160-char segment.
-  const smsAuto = `  setparam ${apnSafe !== null ? `2001:${apnSafe};` : ''}2004:${host};2005:${port};2006:0`
+  const smsAuto = host === null ? null : `  setparam ${apnSafe !== null ? `2001:${apnSafe};` : ''}2004:${host};2005:${port};2006:0`
 
   const familyCaveat = input.family !== undefined && !KNOWN_FAMILIES.has(input.family)
   const steps = [

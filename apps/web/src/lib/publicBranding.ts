@@ -66,17 +66,29 @@ export function brandFromResponse(res: { whiteLabel?: unknown; branding?: unknow
  * Orbetra wordmark for 200 ms before swapping to the tenant's is exactly the leak this closes, and
  * it is the kind that survives a screenshot.
  */
+/**
+ * ONE fetch per page load, shared by every consumer.
+ *
+ * Three components call this (AuthShell, AppShell, BillingPage) and each used to issue its own
+ * request and its own `applyBranding`. A module-level promise makes them agree by construction and
+ * costs one round trip instead of three on the slowest screen there is — the first one.
+ */
+let inFlight: Promise<PublicBrand | null> | null = null
+function resolveOnce(): Promise<PublicBrand | null> {
+  inFlight ??= fetchPublicBranding().then(brandFromResponse)
+  return inFlight
+}
+
 export function usePublicBranding(): PublicBrand | null {
   const [brand, setBrand] = useState<PublicBrand | null>(null)
   useEffect(() => {
     let live = true
-    void fetchPublicBranding().then((res) => {
+    void resolveOnce().then((res) => {
       if (!live) return
-      const brand = brandFromResponse(res)
-      if (brand !== null) {
-        applyBranding({ ...brand.branding, ...(brand.productName !== undefined ? { productName: brand.productName } : {}) }, brand.whiteLabel)
+      if (res !== null) {
+        applyBranding({ ...res.branding, ...(res.productName !== undefined ? { productName: res.productName } : {}) }, res.whiteLabel)
       }
-      setBrand(brand)
+      setBrand(res)
     })
     return () => {
       live = false

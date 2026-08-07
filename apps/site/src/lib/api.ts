@@ -8,6 +8,24 @@ export const API_URL: string =
 export const DASH_URL: string =
   (import.meta.env.VITE_DASH_URL as string | undefined) || 'https://dash.orbetra.com'
 
+/**
+ * A dashboard link that CARRIES THE READER'S LANGUAGE.
+ *
+ * The site and the dashboard are different origins, so nothing is shared between them: someone
+ * reading orbetra.com in English pressed "Open the fleet dashboard" and landed on a Lithuanian
+ * login page, because the dashboard's detector fell through localStorage (empty on that origin) to
+ * the browser's own language. Choosing English on our marketing site and being answered in another
+ * language is the first thing a prospect sees of the product.
+ *
+ * `lng` is what `i18next-browser-languagedetector` reads FIRST, ahead of the browser, and its
+ * default cache writes it to the dashboard's localStorage — so the choice carries once and then
+ * sticks, without the two apps having to share anything.
+ */
+export function dashUrl(lang: string, path = ''): string {
+  const base = `${DASH_URL}${path}`
+  return `${base}${base.includes('?') ? '&' : '?'}lng=${encodeURIComponent(lang)}`
+}
+
 /** Where "Live demo" points: the built-in read-only mock admin by default. */
 export const DEMO_URL: string = (import.meta.env.VITE_DEMO_URL as string | undefined) || '/app'
 

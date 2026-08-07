@@ -26,8 +26,11 @@ export function BillingPage() {
   // downgraded keeps serving its verified custom domain (entitlements gate writes, not resolution),
   // so their own admins were shown our sales address and "run Orbetra under your own brand" on a
   // page inside their own product.
+  // `!== true`, not `=== false`: an UNRESOLVED host (in flight, or a failed /v1/branding) must not
+  // hide our own upgrade path forever — this is a revenue screen, and the white-label risk it guards
+  // against only exists when the host IS a tenant's.
   const host = usePublicBranding()
-  const showUpgrade = user !== null && host?.whiteLabel === false && (isDirectPlan(user.plan) || !user.entitlements.whiteLabel)
+  const showUpgrade = user !== null && host?.whiteLabel !== true && (isDirectPlan(user.plan) || !user.entitlements.whiteLabel)
   const upgradeFeatures = ['whiteLabel', 'customDomains', 'subAccounts', 'api', 'webhooks'] as const
   const billing = useQuery({ queryKey: ['billing'], queryFn: getBilling })
   const b = billing.data

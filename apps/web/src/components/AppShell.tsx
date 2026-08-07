@@ -131,13 +131,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // apply the tenant's white-label theme once authenticated (E03-5)
   useEffect(() => {
+    // WAIT for the host. `host?.whiteLabel === true` coerced the unresolved `null` at mount into
+    // false, so the very first apply wrote the platform title and favicons onto a tenant's page —
+    // and `document.title` was then never cleared by the corrected re-run.
+    if (host === null) return
     getBranding()
       .then((b) => {
-        applyBranding(b.branding, host?.whiteLabel === true)
+        applyBranding(b.branding, host.whiteLabel)
         setBranding(b.branding)
       })
       .catch(() => undefined)
-  }, [host?.whiteLabel])
+  }, [host])
 
   // close the mobile drawer on navigation
   useEffect(() => setMobileOpen(false), [pathname])
@@ -149,7 +153,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       onBrandingChange(() => {
         void getBranding()
           .then((b) => {
-            applyBranding(b.branding)
+            applyBranding(b.branding, host?.whiteLabel === true)
             setBranding(b.branding)
           })
           .catch(() => undefined)

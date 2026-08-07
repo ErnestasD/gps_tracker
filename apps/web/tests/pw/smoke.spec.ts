@@ -879,7 +879,12 @@ test('notifications bell + command palette: open, mark-all, keyboard + search na
 })
 
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
-  const manifest = await page.request.get('/manifest.webmanifest')
+  // the manifest comes from the API now, branded by Host — a static file could never be, so
+  // "Install app" offered a white-label tenant's user an app called Orbetra and put our icon on
+  // their phone for as long as they kept the shortcut. The old path must NOT answer any more:
+  // a browser that installed the PWA before the change keeps re-fetching whatever URL it recorded.
+  expect((await page.request.get('/manifest.webmanifest')).status()).toBe(404)
+  const manifest = await page.request.get('/v1/public/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)
   expect((await manifest.json()) as { display: string }).toMatchObject({ display: 'standalone' })
 

@@ -11,7 +11,8 @@
     "networkError": "Nepavyko prisijungti. Patikrinkite interneto ryšį ir bandykite dar kartą.",
     "serverError": "Kažkas nutiko mūsų pusėje. Bandykite dar kartą po kelių minučių.",
     "backToSite": "Grįžti į orbetra.com",
-    "forgotLink": "Pamiršote slaptažodį?"
+    "forgotLink": "Pamiršote slaptažodį?",
+    "label": "Prisijungimas"
   },
   "forgot": {
     "title": "Atstatykite slaptažodį",
@@ -19,7 +20,8 @@
     "submit": "Siųsti nuorodą",
     "sent": "Jei paskyra su {{email}} egzistuoja, atstatymo nuoroda jau pakeliui. Patikrinkite gautų ir šlamšto aplankus.",
     "backToLogin": "Grįžti į prisijungimą",
-    "error": "Kažkas nutiko. Bandykite dar kartą."
+    "error": "Kažkas nutiko. Bandykite dar kartą.",
+    "label": "Slaptažodžio atstatymas"
   },
   "reset": {
     "title": "Pasirinkite naują slaptažodį",
@@ -31,7 +33,8 @@
     "invalidToken": "Ši atstatymo nuoroda neteisinga arba nebegalioja.",
     "requestNew": "Prašyti naujos nuorodos",
     "done": "Slaptažodis pakeistas. Prisijunkite su nauju slaptažodžiu.",
-    "toLogin": "Eiti į prisijungimą"
+    "toLogin": "Eiti į prisijungimą",
+    "label": "Naujas slaptažodis"
   },
   "verify": {
     "title": "Aktyvuojame paskyrą",
@@ -43,7 +46,8 @@
     "resendSent": "Jei tas adresas laukia aktyvavimo, nauja nuoroda jau pakeliui.",
     "resendEmail": "Jūsų el. paštas",
     "resendSubmit": "Siųsti nuorodą",
-    "noToken": "Ši aktyvavimo nuoroda nepilna. Užsisakykite naują žemiau."
+    "noToken": "Ši aktyvavimo nuoroda nepilna. Užsisakykite naują žemiau.",
+    "label": "Aktyvavimas"
   },
   "shell": {
     "live": "Gyvai",

@@ -89,7 +89,12 @@ wordmark. If you have both, use the wordmark.
 
 ---
 
-## Part 3 — Your sending address (10 minutes)
+## Part 3 — Your sending address (coming soon)
+
+> **Not available yet.** Today your mail is sent from our address with **Reply-To set to your
+> support address**, so a customer pressing Reply reaches you. Everything inside the message —
+> logo, colours, product name, links — is already yours. This section describes the step that
+> removes the last line, and is published so you know it is coming and what it will ask of you.
 
 Without this step, e-mail arrives from our address. Everything inside the message is yours; the
 "From" line is not.
@@ -126,8 +131,9 @@ lose an alert because a DNS record is still propagating.
 
 1. Open your address in a **private/incognito window**. You should see your logo and colours on the
    sign-in page, your name in the browser tab, and no mention of us anywhere.
-2. Use **Forgot password** with your own address. The mail should come from your sending address,
-   carry your logo, and its link should point back at *your* domain — not ours.
+2. Use **Forgot password** with your own address. The mail should carry your logo and its link
+   should point back at *your* domain — not ours. Pressing Reply should reach your support address.
+   (The "From" line still shows ours until Part 3 ships.)
 3. Open the site on a phone. Add it to the home screen; the icon and name should be yours.
 
 If any of those still shows our name, tell us — it is a bug on our side, not a setting you missed.

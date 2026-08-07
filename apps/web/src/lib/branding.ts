@@ -96,7 +96,13 @@ export function ensureContrast(hex: string, theme: Theme = 'dark'): string {
 // Last-applied branding, kept so a theme switch can re-clamp accents against the
 // new surface. Subscription is lazy (first apply) — this module is imported by
 // node-side unit tests where window/document don't exist.
+//
+// The FLAG is remembered with it. The theme re-apply called `applyBranding(appliedBranding)` with
+// no flag, so a tenant's user clicking the light/dark switch put the platform's icon in their tab
+// and our name in their title — permanently. A default argument made every forgotten call site do
+// the same, which is why `whiteLabel` is required now and this variable exists.
 let appliedBranding: Branding | null = null
+let appliedWhiteLabel = false
 let themeSubscribed = false
 
 /**
@@ -107,12 +113,13 @@ let themeSubscribed = false
  * logo means NO icon — the browser's blank default — because our purple mark beside their product
  * name is worse than no mark at all. On our own host the platform defaults are correct.
  */
-export function applyBranding(branding: Branding, whiteLabel = false): void {
+export function applyBranding(branding: Branding, whiteLabel: boolean): void {
   appliedBranding = branding
+  appliedWhiteLabel = whiteLabel
   if (!themeSubscribed) {
     themeSubscribed = true
     onThemeChange(() => {
-      if (appliedBranding) applyBranding(appliedBranding)
+      if (appliedBranding) applyBranding(appliedBranding, appliedWhiteLabel)
     })
   }
   const theme = getTheme()
@@ -126,8 +133,10 @@ export function applyBranding(branding: Branding, whiteLabel = false): void {
   // ALWAYS set the title. Guarding on productName left `index.html`'s value in the tab, which used
   // to be "Orbetra" — so a tenant who set colours but no name kept ours for good. index.html now
   // ships no title at all, so an unnamed tenant shows the browser's URL, which is their own domain.
-  if (branding.productName !== undefined) document.title = branding.productName
-  else if (!whiteLabel) document.title = PLATFORM_NAME
+  // ALWAYS assign — declining to set it is not the same as clearing it. `else if (!whiteLabel)` left
+  // whatever was there, so one call with whiteLabel=false (AppShell's effect at mount, before the
+  // host is known) wrote "Orbetra" into a tenant's tab and nothing ever took it out again.
+  document.title = branding.productName ?? (whiteLabel ? '' : PLATFORM_NAME)
   // white-label favicon: a tenant's logo IS their favicon — no separate input, reuse logoUrl
   // (brandingSchema pins it to an https URL).
   applyFavicon(branding.logoUrl, whiteLabel)
@@ -177,10 +186,11 @@ function applyFavicon(logoUrl: string | undefined, whiteLabel = false): void {
 
 export function resetBranding(): void {
   appliedBranding = null
+  appliedWhiteLabel = false
   const root = document.documentElement
   root.style.removeProperty('--accent')
   root.style.removeProperty('--accent-2')
-  applyFavicon(undefined)
+  applyFavicon(undefined, false)
 }
 
 // Saved-branding change notifier: the always-mounted AppShell holds branding in local state (not

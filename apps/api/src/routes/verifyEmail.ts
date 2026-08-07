@@ -92,7 +92,10 @@ export async function sendVerificationEmail(
     email: user.email,
     tenantId: user.tenantId,
     locale: user.locale,
-    verifyUrl: `${base}/verify-email?token=${rawToken}`,
+    // `lng` carries the RECIPIENT's language across the origin hop. The mail is written in their
+    // language and the page it opens used to guess from the browser, so a Lithuanian activation
+    // mail could land on an English screen — or the reverse, which is what a prospect sees first.
+    verifyUrl: `${base}/verify-email?token=${rawToken}&lng=${encodeURIComponent(user.locale)}`,
     expiresHours: Math.round(VERIFY_TTL_S / 3_600),
   })
 }

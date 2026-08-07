@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { AuthShell } from '@/components/AuthShell'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { requestPasswordReset } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
@@ -32,11 +32,8 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <AuthShell>
+    <AuthShell label={t('forgot.label')} title={t('forgot.title')}>
       <Card className="w-full">
-        <CardHeader className="items-center pt-8 text-center">
-          <CardTitle className="text-lg">{t('forgot.title')}</CardTitle>
-        </CardHeader>
         <CardContent className="pb-8">
           {sent ? (
             <div className="space-y-4 text-center" data-testid="forgot-sent">

@@ -206,7 +206,7 @@ Every new variable must be added to the table here AND match the `.env` contract
   reset, activate) reads it before anything renders, so a custom-domain login page shows the
   tenant's logo, colours, tab title and favicon — and shows NO Orbetra wordmark and no link to
   orbetra.com. On our own hosts the inverse holds: the wordmark and a footer line lead back to
-  the marketing site. Unknown host → `{}` → the platform brand.
+  the marketing site. Unknown host → `{whiteLabel:false}` → the platform brand; a FAILED lookup is neither (the client renders nothing rather than guessing ours).
 - **Branded email**: `renderBrandedEmail(branding, tenantName, content)` renders the
   tenant's name/logo/accent with all tenant strings HTML-escaped (snapshot-tested).
 

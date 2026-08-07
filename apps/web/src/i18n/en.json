@@ -11,7 +11,8 @@
     "networkError": "Can't connect. Check your internet connection and try again.",
     "serverError": "Something went wrong on our end. Please try again in a few minutes.",
     "backToSite": "Back to orbetra.com",
-    "forgotLink": "Forgot your password?"
+    "forgotLink": "Forgot your password?",
+    "label": "Sign in"
   },
   "forgot": {
     "title": "Reset your password",
@@ -19,7 +20,8 @@
     "submit": "Send reset link",
     "sent": "If an account exists for {{email}}, a reset link is on its way. Check your inbox and spam folder.",
     "backToLogin": "Back to sign in",
-    "error": "Something went wrong. Please try again."
+    "error": "Something went wrong. Please try again.",
+    "label": "Password reset"
   },
   "reset": {
     "title": "Choose a new password",
@@ -31,7 +33,8 @@
     "invalidToken": "This reset link is invalid or has expired.",
     "requestNew": "Request a new link",
     "done": "Your password has been changed. Sign in with your new password.",
-    "toLogin": "Go to sign in"
+    "toLogin": "Go to sign in",
+    "label": "New password"
   },
   "verify": {
     "title": "Activating your account",
@@ -43,7 +46,8 @@
     "resendSent": "If that address needs activating, a new link is on its way.",
     "resendEmail": "Your email address",
     "resendSubmit": "Send link",
-    "noToken": "This activation link is incomplete. Request a new one below."
+    "noToken": "This activation link is incomplete. Request a new one below.",
+    "label": "Activation"
   },
   "shell": {
     "live": "Live",
