@@ -1,6 +1,6 @@
 {
   "login": {
-    "title": "Bei Orbetra anmelden",
+    "title": "Anmelden",
     "emailLabel": "E-Mail",
     "passwordLabel": "Passwort",
     "submit": "Anmelden",
@@ -10,6 +10,7 @@
     "ambiguousIdentity": "Ihr Konto ist über Organisationen hinweg mehrdeutig — wenden Sie sich an Ihren Administrator.",
     "networkError": "Keine Verbindung. Bitte prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.",
     "serverError": "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuchen Sie es in einigen Minuten erneut.",
+    "backToSite": "Zurück zu orbetra.com",
     "forgotLink": "Passwort vergessen?"
   },
   "forgot": {
@@ -177,10 +178,16 @@
     "remove": "Entfernen",
     "domainRemoveSure": "Domain {{domain}} entfernen? Die White-Label-URL funktioniert dann nicht mehr.",
     "addDomain": "Hinzufügen",
+    "takenDomain": "Dieser Name ist bereits vergeben — bitte einen anderen wählen.",
     "dupDomain": "Diese Domain ist bereits registriert.",
     "badDomain": "Gültigen Hostnamen eingeben (z. B. fleet.example.com).",
     "txtInstruction": "Fügen Sie diesen TXT-Eintrag zu {{domain}} hinzu und klicken Sie dann auf Verifizieren:",
     "certNote": "HTTPS-Zertifikate werden nach der Domain-Verifizierung automatisch bei der ersten sicheren Anfrage ausgestellt.",
+    "modeSub": "Subdomain auf {{domain}} (sofort)",
+    "modeOwn": "Eigene Domain",
+    "slugLabel": "Subdomain-Name",
+    "subNote": "In Sekunden bereit — keine DNS-Änderung nötig. Hier melden sich Ihre Kunden an.",
+    "dnsInstruction": "Richten Sie diese Domain anschließend per CNAME auf uns:",
     "domainLabel": "Domain",
     "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen.",
     "limitDomain": "Sie haben die maximale Anzahl von {{max}} benutzerdefinierten Domains erreicht."

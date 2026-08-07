@@ -35,8 +35,20 @@ export async function request(method: string, path: string, body?: unknown, retr
     onUnauthorized?.() // redirect to /login from wherever the dead session first surfaced
     throw new ApiError(401)
   }
-  if (!res.ok) throw new ApiError(res.status)
+  if (!res.ok) throw new ApiError(res.status, await problemDetail(res))
   return res
+}
+
+/** The `detail` of an RFC 7807 body, or undefined for any other content type / unparseable body.
+ *  Never throws: a failure to read the explanation must not replace the original error. */
+async function problemDetail(res: Response): Promise<string | undefined> {
+  if (!(res.headers.get('content-type') ?? '').includes('problem+json')) return undefined
+  try {
+    const body = (await res.json()) as { detail?: unknown }
+    return typeof body.detail === 'string' && body.detail !== '' ? body.detail : undefined
+  } catch {
+    return undefined
+  }
 }
 
 export async function getJson<T>(path: string): Promise<T> {

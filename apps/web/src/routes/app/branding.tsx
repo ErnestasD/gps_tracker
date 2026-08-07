@@ -161,7 +161,12 @@ export function BrandingPage() {
           {t('branding.domains')}
         </h3>
         <div className="space-y-3">
-          <AddDomain count={(domains.data ?? []).length} onAdded={() => void qc.invalidateQueries({ queryKey: ['domains'] })} />
+          <AddDomain
+            count={(domains.data ?? []).length}
+            dnsTarget={current.data?.dnsTarget ?? null}
+            platformDomain={current.data?.platformDomain ?? null}
+            onAdded={() => void qc.invalidateQueries({ queryKey: ['domains'] })}
+          />
           {domainError && (
             <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="domain-action-error">{t('branding.actionError')}</p>
           )}
@@ -273,9 +278,23 @@ function HexInput({ value, onCommit, testid, label }: { value: string; onCommit:
   )
 }
 
-function AddDomain({ count, onAdded }: { count: number; onAdded: () => void }) {
+/**
+ * Add a domain — in one of TWO shapes, because a reseller has two very different starting points.
+ *
+ * `<slug>.orbetra.com` is the zero-setup path: we own the zone, so there is no ownership to prove
+ * and no DNS for the tenant to touch. It comes back verified and works within seconds. Without it, a
+ * TSP who cannot get a DNS change scheduled this quarter simply cannot launch — and that was the
+ * only option the product offered.
+ *
+ * A tenant's OWN domain still proves ownership by TXT, and now also states where to point it. That
+ * second step was documented NOWHERE — not in the UI, not in the README — so the honest outcome of
+ * following the instructions was a verified badge above a domain that resolved nowhere.
+ */
+function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: number; dnsTarget: string | null; platformDomain: string | null; onAdded: () => void }) {
   const { t } = useTranslation()
+  const [mode, setMode] = useState<'own' | 'sub'>(platformDomain !== null ? 'sub' : 'own')
   const [domain, setDomain] = useState('')
+  const [slug, setSlug] = useState('')
   const [txt, setTxt] = useState<{ domain: string; record: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   // the server 409s BOTH the cap and a duplicate — the client can't tell them apart from status
@@ -289,21 +308,67 @@ function AddDomain({ count, onAdded }: { count: number; onAdded: () => void }) {
       setError(t('branding.limitDomain', { max: MAX_DOMAINS_PER_TENANT }))
       return
     }
-    addDomain(domain.trim().toLowerCase())
+    const wanted = mode === 'sub' && platformDomain !== null ? `${slug.trim().toLowerCase()}.${platformDomain}` : domain.trim().toLowerCase()
+    addDomain(wanted)
       .then((d) => {
-        setTxt({ domain: d.domain, record: d.txtRecord })
+        // a platform subdomain returns verified with no record to publish — showing an empty TXT
+        // box would invent a step that does not exist
+        setTxt(d.txtRecord !== null ? { domain: d.domain, record: d.txtRecord } : null)
         setDomain('')
+        setSlug('')
         onAdded()
       })
-      .catch((err: unknown) => setError(err instanceof ApiError && err.status === 409 ? t('branding.dupDomain') : t('branding.badDomain')))
+      .catch((err: unknown) => {
+        // A 409 has a TRANSLATED message and keeps it — the API's problem details are English
+        // only, so preferring them would have replaced four localized strings with "domain already
+        // added" for every non-English operator. A 400 has no translation that says WHICH rule was
+        // hit ('that name is reserved' vs '3–40 characters'), and English-but-specific beats
+        // localized-but-useless there; the generic key remains the fallback.
+        if (err instanceof ApiError && err.status === 409) {
+          setError(err.detail === 'that name is already taken' ? t('branding.takenDomain') : t('branding.dupDomain'))
+          return
+        }
+        const detail = err instanceof ApiError ? err.detail : undefined
+        setError(detail !== undefined && detail !== '' ? detail : t('branding.badDomain'))
+      })
   }
 
   return (
     <div className="space-y-2">
-      <form onSubmit={add} className="flex gap-2">
-        <AdminInput aria-label={t('branding.domainLabel')} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="fleet.example.com" data-testid="domain-input" className="max-w-xs" />
-        <AdminButton type="submit" disabled={domain.trim() === '' || atCap} data-testid="domain-add">{t('branding.addDomain')}</AdminButton>
-      </form>
+      {platformDomain !== null && (
+        <div className="flex gap-4 text-sm">
+          {(['sub', 'own'] as const).map((m) => (
+            <label key={m} className="flex cursor-pointer items-center gap-1.5" style={{ color: 'var(--admin-ink-soft)' }}>
+              <input type="radio" name="domain-mode" checked={mode === m} onChange={() => { setMode(m); setError(null); setTxt(null) }} data-testid={`domain-mode-${m}`} />
+              {m === 'sub' ? t('branding.modeSub', { domain: platformDomain }) : t('branding.modeOwn')}
+            </label>
+          ))}
+        </div>
+      )}
+      {mode === 'sub' && platformDomain !== null ? (
+        <>
+          <form onSubmit={add} className="flex items-center gap-2">
+            <AdminInput aria-label={t('branding.slugLabel')} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="acme" data-testid="slug-input" className="max-w-[10rem]" />
+            <span className="mono text-sm" style={{ color: 'var(--admin-ink-soft)' }}>.{platformDomain}</span>
+            <AdminButton type="submit" disabled={slug.trim() === '' || atCap} data-testid="slug-add">{t('branding.addDomain')}</AdminButton>
+          </form>
+          <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.subNote')}</p>
+        </>
+      ) : (
+        <>
+          <form onSubmit={add} className="flex gap-2">
+            <AdminInput aria-label={t('branding.domainLabel')} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="fleet.example.com" data-testid="domain-input" className="max-w-xs" />
+            <AdminButton type="submit" disabled={domain.trim() === '' || atCap} data-testid="domain-add">{t('branding.addDomain')}</AdminButton>
+          </form>
+          {/* the step that used to be missing: proving ownership is not the same as pointing the
+              domain at us, and a verified badge above a dead domain is a worse outcome than an error */}
+          {dnsTarget !== null && (
+            <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid="dns-target">
+              {t('branding.dnsInstruction')} <code className="mono" style={{ color: 'var(--admin-ink)' }}>{dnsTarget}</code>
+            </p>
+          )}
+        </>
+      )}
       {atCap && (
         <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid="domain-limit">{t('branding.limitDomain', { max: MAX_DOMAINS_PER_TENANT })}</p>
       )}

@@ -13,6 +13,15 @@ export class DomainConflictError extends Error {
     this.name = 'DomainConflictError'
   }
 }
+/** THIS tenant already added this domain — the (tenantId, domain) unique clash.
+ *  Typed rather than duck-typed at the route, so the API layer needs no knowledge of Prisma error
+ *  codes and anything that is NOT a duplicate propagates as the fault it is. */
+export class DomainDuplicateError extends Error {
+  constructor() {
+    super('domain already added by this tenant')
+    this.name = 'DomainDuplicateError'
+  }
+}
 /** Tenant is at MAX_DOMAINS_PER_TENANT. */
 export class DomainLimitError extends Error {
   constructor() {
@@ -35,7 +44,14 @@ export class DomainLimitError extends Error {
 export interface TenantDomainRepo {
   list(scope: Scope): Promise<TenantDomain[]>
   get(scope: Scope, id: string): Promise<TenantDomain | null>
-  create(scope: Scope, actor: Actor, domain: string, txtToken: string): Promise<TenantDomain>
+  /**
+   * `verified` is for PLATFORM SUBDOMAINS only (`<slug>.orbetra.com`): we own that zone, so there is
+   * no DNS proof for a tenant to publish and the ownership question is decided entirely by the
+   * caller's slug check plus the global partial-unique index this insert hits. Every other domain
+   * MUST go through setVerified after a real TXT lookup.
+   * @throws DomainConflictError when `verified` and another tenant already holds this domain.
+   */
+  create(scope: Scope, actor: Actor, domain: string, txtToken: string, opts?: { verified?: boolean }): Promise<TenantDomain>
   remove(scope: Scope, actor: Actor, id: string): Promise<boolean>
   /** @throws DomainConflictError if another tenant already verified this domain. */
   setVerified(scope: Scope, actor: Actor, id: string): Promise<TenantDomain | null>
@@ -55,10 +71,21 @@ export function createTenantDomainRepo(prisma: PrismaClient, audit: AuditRepo): 
   return {
     list: (scope) => prisma.tenantDomain.findMany({ where: { tenantId: scope.tenantId }, orderBy: { createdAt: 'desc' } }),
     get: (scope, id) => scoped(scope, id),
-    create: async (scope, actor, domain, txtToken) => {
+    create: async (scope, actor, domain, txtToken, opts = {}) => {
       const count = await prisma.tenantDomain.count({ where: { tenantId: scope.tenantId } })
       if (count >= MAX_DOMAINS_PER_TENANT) throw new DomainLimitError()
-      const row = await prisma.tenantDomain.create({ data: { tenantId: scope.tenantId, domain, txtToken } })
+      let row: TenantDomain
+      try {
+        row = await prisma.tenantDomain.create({ data: { tenantId: scope.tenantId, domain, txtToken, verified: opts.verified === true } })
+      } catch (e) {
+        if (!isUniqueViolation(e)) throw e // a dead pool is not a conflict — let it surface as a 500
+        // TWO unique constraints can fire here and they mean opposite things. (tenantId, domain)
+        // is "you already added this"; the partial index on verified rows is "someone else holds
+        // it". Only an already-verified insert can hit the second, so the flag disambiguates —
+        // reporting a tenant's own duplicate as "already taken" points them at the wrong problem.
+        const own = await prisma.tenantDomain.findFirst({ where: { tenantId: scope.tenantId, domain }, select: { id: true } })
+        throw own !== null ? new DomainDuplicateError() : new DomainConflictError()
+      }
       await audit.record(scope, actor, { action: 'create', entity: 'domain', entityId: row.id, after: row })
       return row
     },

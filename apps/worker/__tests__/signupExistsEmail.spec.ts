@@ -12,7 +12,7 @@ const base = { loginUrl: 'https://app.orbetra.test/login', resetUrl: 'https://ap
 describe('renderSignupExistsEmail', () => {
   it('carries BOTH ways back in — sign in, or reset — in HTML and plain text', () => {
     const { html, text, subject } = renderSignupExistsEmail({ ...base, locale: 'en' })
-    expect(subject).toBe('You already have an account')
+    expect(subject).toBe('Your Orbetra account already exists')
     for (const body of [html, text]) {
       expect(body).toContain('https://app.orbetra.test/login')
       expect(body).toContain('https://app.orbetra.test/forgot-password')
@@ -31,14 +31,14 @@ describe('renderSignupExistsEmail', () => {
 
   it('says plainly that nothing happened — the recipient must not think they were breached', () => {
     const { text } = renderSignupExistsEmail({ ...base, locale: 'en' })
-    expect(text).toContain('Nobody gained access')
+    expect(text).toContain('Nobody got into your account')
   })
 
   it('localizes to the four shipped languages and falls back to en', () => {
-    expect(renderSignupExistsEmail({ ...base, locale: 'lt' }).subject).toBe('Paskyra su šiuo el. paštu jau yra')
-    expect(renderSignupExistsEmail({ ...base, locale: 'de' }).subject).toBe('Sie haben bereits ein Konto')
-    expect(renderSignupExistsEmail({ ...base, locale: 'pl' }).subject).toBe('Masz już konto')
-    expect(renderSignupExistsEmail({ ...base, locale: 'xx' }).subject).toBe('You already have an account')
+    expect(renderSignupExistsEmail({ ...base, locale: 'lt' }).subject).toBe('Su šiuo adresu Orbetra paskyra jau yra')
+    expect(renderSignupExistsEmail({ ...base, locale: 'de' }).subject).toBe('Für diese Adresse besteht bereits ein Orbetra-Konto')
+    expect(renderSignupExistsEmail({ ...base, locale: 'pl' }).subject).toBe('Dla tego adresu istnieje już konto Orbetra')
+    expect(renderSignupExistsEmail({ ...base, locale: 'xx' }).subject).toBe('Your Orbetra account already exists')
   })
 
   it('escapes a tenant-supplied brand and a hostile URL — this mail is rendered from tenant branding', () => {

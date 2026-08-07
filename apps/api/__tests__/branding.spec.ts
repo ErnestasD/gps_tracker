@@ -67,13 +67,17 @@ beforeAll(async () => {
   const app = createApp({
     redis, redisSub, db,
     jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
-    lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+    // trustProxy mirrors production (compose pins TRUST_PROXY=1): /v1/branding only honours
+    // X-Forwarded-Host when we are actually behind the proxy that sets it
+    lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: true,
     getRemoteAddr: () => '127.0.0.1',
     resolveTxt: (host) => {
       const rec = txtRecords.get(host)
       return rec ? Promise.resolve(rec) : Promise.reject(new Error('ENOTFOUND'))
     },
     askRateLimit: { max: 5, windowS: 60 },
+    platformDomain: 'orbetra.test',
+    edgeHostname: 'dash.orbetra.test',
   })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
@@ -139,6 +143,77 @@ describe('E03-5 domains + DNS verify', () => {
 
   it('invalid domain string → 400', async () => {
     expect((await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'http://not a host' })).status).toBe(400)
+  })
+})
+
+/**
+ * The zero-setup half of white-label: a tenant with no domain of their own claims a slug under OURS
+ * and is live in a minute. There is no DNS proof to ask for — we hold the zone — so the slug rules
+ * and the global partial-unique index ARE the entire ownership model.
+ */
+describe('platform subdomains (<slug>.orbetra.test)', () => {
+  it('is VERIFIED on creation, with no TXT record to publish, and serves branding by Host', async () => {
+    const res = await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'acme.orbetra.test' })
+    expect(res.status).toBe(201)
+    const created = (await res.json()) as { id: string; verified: boolean; txtRecord: string | null }
+    expect(created.verified).toBe(true)
+    expect(created.txtRecord).toBeNull() // nothing for the tenant to publish
+
+    // …and it is immediately usable end to end: Caddy will mint a cert for it,
+    await req('/v1/tenant/branding', t1Token, 'PATCH', { productName: 'Acme Fleet', primary: '#ff8800' })
+    const ask = await fetch(`http://127.0.0.1:${port}/v1/internal/caddy-ask?domain=acme.orbetra.test`)
+    expect(ask.status).toBe(200)
+    // and the pre-login page gets the tenant's brand from the Host alone
+    const branding = await fetch(`http://127.0.0.1:${port}/v1/branding`, { headers: { 'x-forwarded-host': 'acme.orbetra.test' } })
+    expect(((await branding.json()) as { productName: string }).productName).toBe('Acme Fleet')
+  })
+
+  it('refuses a RESERVED name — the slug check is the only thing guarding our own zone', async () => {
+    for (const slug of ['dash', 'www', 'api', 'secure', 'login', 'billing', 'mail', 'hello']) {
+      const res = await req('/v1/tenant/domains', t1Token, 'POST', { domain: `${slug}.orbetra.test` })
+      expect(res.status, slug).toBe(400)
+      expect(await res.text(), slug).toContain('reserved')
+    }
+  })
+
+  it('refuses a bad slug shape and a second level, with a reason that says which', async () => {
+    const bad = async (domain: string) => {
+      const res = await req('/v1/tenant/domains', t1Token, 'POST', { domain })
+      expect(res.status, domain).toBe(400)
+      return res.text()
+    }
+    expect(await bad('ab.orbetra.test')).toContain('3–40') // too short
+    expect(await bad(`${'a'.repeat(41)}.orbetra.test`)).toContain('3–40') // too long
+    // (a leading/trailing dash never reaches the slug rule — domainCreateSchema's hostname
+    // regex refuses it first, which is the right layer for a malformed label)
+    expect(await bad('deep.nested.orbetra.test')).toContain('one level')
+    // the platform domain ITSELF is not claimable
+    expect(await bad('orbetra.test')).toContain('platform domain')
+  })
+
+  it('a slug another tenant already holds is a CONFLICT, not "already added"', async () => {
+    expect((await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'taken.orbetra.test' })).status).toBe(201)
+    const res = await req('/v1/tenant/domains', t2Token, 'POST', { domain: 'taken.orbetra.test' })
+    expect(res.status).toBe(409)
+    expect(await res.text()).toContain('already taken')
+  })
+
+  it('an unclaimable name is refused OUTRIGHT rather than sent down the DNS-TXT path', async () => {
+    // Routing `secure.orbetra.test` to the normal flow would tell the tenant to publish a TXT
+    // record in a zone they cannot edit, then fail forever with "TXT record not found".
+    const res = await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'secure.orbetra.test' })
+    expect(res.status).toBe(400)
+    const list = (await (await req('/v1/tenant/domains', t1Token)).json()) as { domain: string }[]
+    expect(list.some((d) => d.domain === 'secure.orbetra.test')).toBe(false) // nothing was created
+  })
+
+  it('a tenant OWN domain still requires DNS proof — the subdomain path must not leak into it', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'fleet.customer.test' })).json()) as
+      { verified: boolean; txtRecord: string; dnsTarget: string }
+    expect(created.verified).toBe(false)
+    expect(created.txtRecord).toMatch(/^orbetra-verify=/)
+    // …and it now says where to point the domain, the step that used to be documented nowhere
+    expect(created.dnsTarget).toBe('dash.orbetra.test')
   })
 })
 

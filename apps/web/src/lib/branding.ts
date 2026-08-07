@@ -174,9 +174,16 @@ export function onBrandingChange(cb: () => void): () => void {
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
-export const getBranding = () => getJson<{ branding: Branding; name: string }>('/v1/tenant/branding')
+/** Branding plus the two pieces of DEPLOYMENT config the Domains card needs and cannot infer:
+ *  where a tenant points their own domain's CNAME, and whether `<slug>.<platformDomain>` is on
+ *  offer at all (it needs a wildcard DNS record to exist). Either may be null. */
+export const getBranding = () =>
+  getJson<{ branding: Branding; name: string; dnsTarget: string | null; platformDomain: string | null }>('/v1/tenant/branding')
 export const saveBranding = (b: Branding) => mutate<{ branding: Branding; name: string }>('PATCH', '/v1/tenant/branding', b)
 export const listDomains = () => getJson<TenantDomain[]>('/v1/tenant/domains')
-export const addDomain = (domain: string) => mutate<TenantDomain & { txtRecord: string }>('POST', '/v1/tenant/domains', { domain })
+/** `txtRecord`/`dnsTarget` are null for a PLATFORM SUBDOMAIN — it comes back already verified,
+ *  with nothing for the tenant to publish and nowhere for them to point anything. */
+export const addDomain = (domain: string) =>
+  mutate<TenantDomain & { txtRecord: string | null; dnsTarget: string | null }>('POST', '/v1/tenant/domains', { domain })
 export const removeDomain = (id: string) => mutate<{ ok: boolean }>('DELETE', `/v1/tenant/domains/${id}`)
 export const verifyDomain = (id: string) => mutate<TenantDomain>('POST', `/v1/tenant/domains/${id}/verify`)

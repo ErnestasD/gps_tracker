@@ -76,6 +76,10 @@ services:
       # one variable whose absence turns enforcement off silently, so it is passed explicitly here
       # rather than inherited by luck.
       APP_BASE_URL: ${APP_BASE_URL:-}
+      # OUR logo on mail that is not white-labelled (apps/site serves /email-logo.png). Absent ⇒ the
+      # header stays the product name as text — a broken image is worse than none on the line that
+      # says who sent this. Enumerated here because nothing in this file is inherited by luck.
+      EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-}
       # SMS gateway (ADR-032) — Twilio, values in /opt/orbetra/.env (rule 12); any of the three
       # absent ⇒ SMS channel disabled: the worker holds no driver, the send route 503s, the button hides
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
@@ -126,6 +130,12 @@ services:
       STRIPE_PRICES: ${STRIPE_PRICES:-}
       STRIPE_OVERAGE_MAP: ${STRIPE_OVERAGE_MAP:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
+      # White-label hosting. PLATFORM_DOMAIN turns on the zero-setup `<slug>.<domain>` option (it
+      # needs a `*.<domain>` A record to exist); EDGE_HOSTNAME is what a tenant CNAMEs their OWN
+      # domain to. Both absent ⇒ the corresponding half of the setup instructions is simply not
+      # offered — silent by design, which is exactly why they must be listed here.
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
+      EDGE_HOSTNAME: ${EDGE_HOSTNAME:-}
       # SMS gateway (ADR-032) — the API does NOT send SMS (the worker does); it needs these three only
       # to compute the `smsConfigured` boolean that gates the 503 / `smsEnabled` flag. Passing the token
       # here too (not just a presence flag) is the V1 shortcut; a future refactor could hand the API a bare

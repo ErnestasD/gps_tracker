@@ -1,6 +1,6 @@
 {
   "login": {
-    "title": "Sign in to Orbetra",
+    "title": "Sign in",
     "emailLabel": "Email",
     "passwordLabel": "Password",
     "submit": "Sign in",
@@ -10,6 +10,7 @@
     "ambiguousIdentity": "Your account is ambiguous across organizations — contact your administrator.",
     "networkError": "Can't connect. Check your internet connection and try again.",
     "serverError": "Something went wrong on our end. Please try again in a few minutes.",
+    "backToSite": "Back to orbetra.com",
     "forgotLink": "Forgot your password?"
   },
   "forgot": {
@@ -177,10 +178,16 @@
     "remove": "Remove",
     "domainRemoveSure": "Remove domain {{domain}}? The white-label URL will stop working.",
     "addDomain": "Add",
+    "takenDomain": "That name is already taken — choose another.",
     "dupDomain": "That domain is already registered.",
     "badDomain": "Enter a valid hostname (e.g. fleet.example.com).",
     "txtInstruction": "Add this TXT record to {{domain}}, then click Verify:",
     "certNote": "HTTPS certificates are issued automatically on the first secure request after a domain is verified.",
+    "modeSub": "Subdomain on {{domain}} (instant)",
+    "modeOwn": "My own domain",
+    "slugLabel": "Subdomain name",
+    "subNote": "Ready in seconds — no DNS changes needed. Your customers sign in here.",
+    "dnsInstruction": "Then point this domain at us with a CNAME record to:",
     "domainLabel": "Domain",
     "actionError": "Action failed — try again.",
     "limitDomain": "You've reached the maximum of {{max}} custom domains."

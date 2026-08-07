@@ -53,7 +53,7 @@ export type { Pool } from 'pg'
 export { SignupEmailInUseError, TenantHasCommissionsError, type TenantRepo, type TenantCreate, type TenantUpdate, type BillingState, type SubscriptionUpdate, type ActiveSubscriber, type LapsedTenant, type SelfServeSignup, type SubscriptionEvent, subscriptionEventRank } from './repos/tenants.js'
 export { type SubscriptionApplyResult } from './repos/tenants.js'
 export { createAffiliateRepo, AffiliateConflictError, type AffiliateRepo, type AffiliateCreate, type AffiliateUpdate, type CommissionAccrual, type PaidInvoice } from './repos/affiliates.js'
-export { type TenantDomainRepo, DomainConflictError, DomainLimitError, MAX_DOMAINS_PER_TENANT } from './repos/tenantDomains.js'
+export { type TenantDomainRepo, DomainConflictError, DomainDuplicateError, DomainLimitError, MAX_DOMAINS_PER_TENANT } from './repos/tenantDomains.js'
 export { type AuditRepo } from './repos/audit.js'
 
 export { dbErrorHttp } from './errors.js'

@@ -3,6 +3,7 @@ import { Redis } from 'ioredis'
 import xxhash from 'xxhash-wasm'
 
 import { createDb, createPool, poolOptionsFromEnv, poolStats } from '@orbetra/db'
+import { configureEmailPlatform } from '@orbetra/shared'
 
 import { ShardConsumer } from './consumer.js'
 import { LiveState } from './liveState.js'
@@ -183,6 +184,14 @@ async function main(): Promise<void> {
   // whose credentials are absent is skipped (metric), not failed. Email = SES SMTP (ADR-023,
   // SMTP_URL+MAIL_FROM); Telegram = TELEGRAM_BOT_TOKEN. Absent env ⇒ that channel is skipped.
   const notifyQueue = createNotifyQueue(recomputeConn)
+  // Our own identity on mail that is NOT white-labelled. EMAIL_LOGO_URL must be a PUBLIC https URL
+  // (apps/site serves /email-logo.png); unset ⇒ the header stays the product name as text, which is
+  // the correct degradation — a broken image is worse than no image on the line that says who sent
+  // this. Configured once here rather than passed through six templates.
+  configureEmailPlatform({
+    name: 'Orbetra',
+    ...(process.env['EMAIL_LOGO_URL'] ? { logoUrl: process.env['EMAIL_LOGO_URL'] } : {}),
+  })
   const emailTransport = buildEmailTransport(process.env)
   const drivers = driversFromEnv(process.env, { emailTransport, subscriptions: db.pushSubscriptions })
   const notifyWorker = startNotifyWorker({
