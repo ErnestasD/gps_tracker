@@ -138,7 +138,11 @@ summary {
   --auth-bg: #04070f;
   --auth-hairline: #12213d;
   --auth-ink: #e6f1ff;
-  background: var(--auth-bg);
+  /* NO background here. The ported canvas sits at `-z-50`, which paints above the ROOT background
+   * but below any in-flow descendant's — so a colour on this wrapper would hide the whole animation.
+   * The canvas fills #04070F itself every frame; the body's own dark token is the fallback if the
+   * 2d context is unavailable. This is how the site does it too: the colour is on the page, not on
+   * a wrapper. */
   color: var(--auth-ink);
 }
 .auth-scope .auth-label {

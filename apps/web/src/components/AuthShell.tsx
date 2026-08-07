@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
+import { OrbitalFluidBg } from '@/components/OrbitalFluidBg'
 import { LOCALE_LABELS, setLocale, SUPPORTED_LOCALES } from '@/lib/locale'
 import { usePublicBranding } from '@/lib/publicBranding'
 
@@ -50,7 +51,10 @@ export function AuthShell({ label, title, children }: { label: string; title: st
     )
 
   return (
-    <div className="auth-scope min-h-full">
+    <div className="auth-scope relative min-h-full">
+      {/* the site's own canvas, in the tenant's accent — the single biggest difference between the
+          two sign-in screens before this, and the one a side-by-side screenshot leads with */}
+      <OrbitalFluidBg />
       <header className="flex h-16 items-center justify-between px-6 md:px-10">
         <div className="flex items-center">{mark}</div>
         {/* the switcher is always available: someone who arrived in the wrong language must be able
