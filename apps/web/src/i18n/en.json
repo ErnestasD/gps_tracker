@@ -227,7 +227,9 @@
       "export": "Data export",
       "maintenance": "Maintenance",
       "scheduledReport": "Scheduled report",
-      "shareLink": "Share link"
+      "shareLink": "Share link",
+      "affiliate": "Affiliate",
+      "commission": "Commission"
     },
     "a": {
       "create": "Created",
@@ -848,7 +850,7 @@
   },
   "platform": {
     "title": "Platform",
-    "desc": "Tenants and billable usage this month.",
+    "desc": "Tenants, enquiries and the platform audit trail.",
     "denied": "Platform administrators only.",
     "tenants": "Tenants",
     "tenant": "Tenant",
@@ -857,7 +859,42 @@
     "monthTotal": "Total device-days this month",
     "empty": "No tenants yet.",
     "note": "A device-day = the device reported at least once during that UTC day (billing metric).",
-    "usageError": "Usage figures are unavailable right now."
+    "usageError": "Usage figures are unavailable right now.",
+    "tab": {
+      "tenants": "Tenants",
+      "leads": "Enquiries",
+      "audit": "Platform audit"
+    },
+    "plan": "Plan",
+    "state": "State",
+    "active": "Active",
+    "suspended": "Suspended",
+    "suspendedSince": "Suspended {{at}}",
+    "total": "Total",
+    "tenantId": "Tenant ID",
+    "subscription": "Subscription",
+    "periodEnd": "Period ends",
+    "noticeStage": "Warnings sent",
+    "planNote": "Entitlements only — this grants what the product allows immediately, and does NOT change Stripe billing. Stripe stays authoritative: the customer's next subscription event resets this to the plan mapped from their price.",
+    "planSaved": "Plan updated",
+    "restore": "Restore access",
+    "restored": "Access restored",
+    "restoreNote": "Rebuilds the ingest registry, then clears the flag. The warning ladder is kept, so if they are still unpaid the next daily sweep suspends them again — quietly, with no new e-mail.",
+    "actionError": "That did not work — try again.",
+    "close": "Close",
+    "domains": "White-label hosts",
+    "noDomains": "None.",
+    "accounts": "Accounts",
+    "when": "When",
+    "noLeads": "No enquiries yet.",
+    "leadName": "Name",
+    "leadCompany": "Company",
+    "leadContact": "Contact",
+    "leadDevices": "Devices",
+    "leadMessage": "Message",
+    "planConfirmTitle": "Change this tenant's plan?",
+    "planSave": "Change plan",
+    "planConfirm": "Set the plan to {{plan}}. They have {{accounts}} account(s) and {{domains}} white-label host(s). A downgrade blocks NEW devices, domains and sub-accounts — it does not switch off what already exists."
   },
   "share": {
     "title": "Live tracking",

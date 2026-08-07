@@ -420,10 +420,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     restoreDevices:
       deps.restoreDevices ??
       (async (devices) => {
-        await restoreTenantDevices(
-          deps.redis,
-          devices.map((d) => ({ id: d.id, imei: d.imei, tenantId: d.tenantId, accountId: d.accountId, config: { presenceRules: d.presenceRules, odometerSource: d.odometerSource } })),
-        )
+        await restoreTenantDevices(deps.redis, devices) // nests the trip config itself — see the registry
       }),
     ...(deps.onTenantRestored !== undefined ? { onTenantRestored: deps.onTenantRestored } : {}),
   })

@@ -227,7 +227,9 @@
       "export": "Datenexport",
       "maintenance": "Wartung",
       "scheduledReport": "Geplanter Bericht",
-      "shareLink": "Freigabelink"
+      "shareLink": "Freigabelink",
+      "affiliate": "Partner",
+      "commission": "Provision"
     },
     "a": {
       "create": "Erstellt",
@@ -848,7 +850,7 @@
   },
   "platform": {
     "title": "Plattform",
-    "desc": "Mandanten und abrechenbare Nutzung in diesem Monat.",
+    "desc": "Mandanten, Anfragen und das Plattform-Audit.",
     "denied": "Nur Plattform-Administratoren.",
     "tenants": "Mandanten",
     "tenant": "Mandant",
@@ -857,7 +859,42 @@
     "monthTotal": "Gerätetage gesamt diesen Monat",
     "empty": "Noch keine Mandanten.",
     "note": "Ein Gerätetag = das Gerät hat an diesem UTC-Tag mindestens einmal gemeldet (Abrechnungsmetrik).",
-    "usageError": "Nutzungszahlen sind derzeit nicht verfügbar."
+    "usageError": "Nutzungszahlen sind derzeit nicht verfügbar.",
+    "tab": {
+      "tenants": "Mandanten",
+      "leads": "Anfragen",
+      "audit": "Plattform-Audit"
+    },
+    "plan": "Tarif",
+    "state": "Status",
+    "active": "Aktiv",
+    "suspended": "Gesperrt",
+    "suspendedSince": "Gesperrt seit {{at}}",
+    "total": "Gesamt",
+    "tenantId": "Mandanten-ID",
+    "subscription": "Abonnement",
+    "periodEnd": "Zeitraum endet",
+    "noticeStage": "Gesendete Warnungen",
+    "planNote": "Nur Berechtigungen — schaltet sofort frei, was das Produkt erlaubt, und ändert die Stripe-Abrechnung NICHT. Stripe bleibt maßgeblich: das nächste Abo-Ereignis setzt dies auf den Tarif zurück, der dem Preis entspricht.",
+    "planSaved": "Tarif geändert",
+    "restore": "Zugang wiederherstellen",
+    "restored": "Zugang wiederhergestellt",
+    "restoreNote": "Baut die Ingest-Registry neu auf und entfernt dann die Markierung. Die Warnstufe bleibt erhalten — bei weiterhin offener Zahlung sperrt der nächste Tageslauf erneut, still und ohne neue E-Mail.",
+    "actionError": "Das hat nicht geklappt — bitte erneut versuchen.",
+    "close": "Schließen",
+    "domains": "White-Label-Hosts",
+    "noDomains": "Keine.",
+    "accounts": "Konten",
+    "when": "Wann",
+    "noLeads": "Noch keine Anfragen.",
+    "leadName": "Name",
+    "leadCompany": "Firma",
+    "leadContact": "Kontakt",
+    "leadDevices": "Geräte",
+    "leadMessage": "Nachricht",
+    "planConfirmTitle": "Tarif dieses Mandanten ändern?",
+    "planSave": "Tarif ändern",
+    "planConfirm": "Tarif auf {{plan}} setzen. Der Mandant hat {{accounts}} Konto/Konten und {{domains}} White-Label-Host(s). Eine Herabstufung blockiert NEUE Geräte, Domains und Unterkonten — bestehende werden nicht abgeschaltet."
   },
   "share": {
     "title": "Live-Verfolgung",
