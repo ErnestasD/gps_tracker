@@ -64,8 +64,12 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: async () => {
+    // Carry `?lng` through. The site links here with the reader's language, and this redirect used
+    // to drop the whole query string — so someone who chose English on orbetra.com arrived at a
+    // login page in their browser's language, with the parameter thrown away before anything read
+    // it. `search: true` keeps it, and i18next reads it on the next render.
     // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
-    throw redirect({ to: (await hasSession()) ? '/app/map' : '/login' })
+    throw redirect({ to: (await hasSession()) ? '/app/map' : '/login', search: true })
   },
 })
 

@@ -2,10 +2,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import { AuthShell } from '@/components/AuthShell'
-import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { resendVerification, verifyEmail } from '@/lib/auth'
 
 /**
@@ -51,53 +48,50 @@ export function VerifyEmailPage() {
 
   return (
     <AuthShell label={t('verify.label')} title={t('verify.title')}>
-      <Card className="w-full">
-        <CardContent className="pb-8">
-          {state === 'working' ? (
-            <p className="text-center text-sm text-muted" data-testid="verify-working">
-              {t('verify.working')}
+      {state === 'working' ? (
+        <p className="text-center text-sm text-muted" data-testid="verify-working">
+          {t('verify.working')}
+        </p>
+      ) : state === 'done' ? (
+        <div className="space-y-4 text-center" data-testid="verify-done">
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>{t('verify.done')}</p>
+          <button className="auth-submit" onClick={() => void navigate({ to: '/login' })} data-testid="verify-to-login">
+            {t('verify.toLogin')}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4" data-testid="verify-invalid">
+          <p role="alert" className="text-center text-sm text-danger">
+            {t(token === undefined || token === '' ? 'verify.noToken' : 'verify.invalid')}
+          </p>
+          {resent ? (
+            <p className="text-center text-sm text-muted" data-testid="verify-resent">
+              {t('verify.resendSent')}
             </p>
-          ) : state === 'done' ? (
-            <div className="space-y-4 text-center" data-testid="verify-done">
-              <p className="text-sm text-muted">{t('verify.done')}</p>
-              <Button className="w-full" onClick={() => void navigate({ to: '/login' })} data-testid="verify-to-login">
-                {t('verify.toLogin')}
-              </Button>
-            </div>
           ) : (
-            <div className="space-y-4" data-testid="verify-invalid">
-              <p role="alert" className="text-center text-sm text-danger">
-                {t(token === undefined || token === '' ? 'verify.noToken' : 'verify.invalid')}
-              </p>
-              {resent ? (
-                <p className="text-center text-sm text-muted" data-testid="verify-resent">
-                  {t('verify.resendSent')}
-                </p>
-              ) : (
-                <form onSubmit={submitResend} className="space-y-3">
-                  <div className="space-y-1.5">
-                    <label htmlFor="verify-email" className="text-sm text-muted">
-                      {t('verify.resendEmail')}
-                    </label>
-                    <Input
-                      id="verify-email"
-                      type="email"
-                      autoComplete="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      data-testid="verify-email-input"
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={busy} data-testid="verify-resend">
-                    {t('verify.resendSubmit')}
-                  </Button>
-                </form>
-              )}
-            </div>
+            <form onSubmit={submitResend} className="space-y-3">
+              <div className="space-y-1.5">
+                <label htmlFor="verify-email" className="text-sm" style={{ color: 'var(--muted)' }}>
+                  {t('verify.resendEmail')}
+                </label>
+                <input
+              className="auth-input"
+                  id="verify-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  data-testid="verify-email-input"
+                />
+              </div>
+              <button type="submit" className="auth-submit" disabled={busy} data-testid="verify-resend">
+                {t('verify.resendSubmit')}
+              </button>
+            </form>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
     </AuthShell>
   )
 }
