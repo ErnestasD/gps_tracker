@@ -26,6 +26,23 @@ export interface AccountUpdate {
 }
 
 /**
+ * Language + units for everything the SERVER renders for this fleet (alert e-mails, Telegram,
+ * scheduled report tables).
+ *
+ * Its own type and its own repo method, deliberately NOT four more optional fields on
+ * `AccountUpdate`: the preferences route is open to account_managers, and if it reused `update` then
+ * the only thing standing between an operator and renaming an account or re-cutting every report's
+ * day boundary would be the request schema in the API layer. A narrower repo method makes the floor
+ * structural — the route CANNOT write `name` or `timezone` because there is no argument for them.
+ */
+export interface AccountPreferencesUpdate {
+  locale?: string
+  unitSpeed?: string
+  unitDistance?: string
+  unitVolume?: string
+}
+
+/**
  * Accounts scope SPECIALLY: the account IS the scope unit (no accountId column).
  * A tenant-wide user sees all accounts of the tenant; an account-scoped user sees
  * only their own (id === scope.accountId). Cross-tenant is always excluded.
@@ -35,6 +52,8 @@ export interface AccountRepo {
   get(scope: Scope, id: string): Promise<Account | null>
   create(scope: Scope, actor: Actor, data: AccountCreate): Promise<Account>
   update(scope: Scope, actor: Actor, id: string, data: AccountUpdate): Promise<Account | null>
+  /** Display preferences only — see AccountPreferencesUpdate for why this is not `update`. */
+  updatePreferences(scope: Scope, actor: Actor, id: string, data: AccountPreferencesUpdate): Promise<Account | null>
   remove(scope: Scope, actor: Actor, id: string): Promise<boolean>
 }
 
@@ -66,6 +85,17 @@ export function createAccountRepo(prisma: PrismaClient, audit: AuditRepo): Accou
       if (before === null) return null
       const row = await prisma.account.update({ where: { id }, data })
       await audit.record(scope, actor, { action: 'update', entity: 'account', entityId: id, before, after: row })
+      return row
+    },
+    // Same scoping as `update` — findScoped is what stops an account-scoped caller from reaching a
+    // sibling account, and it is the ONLY thing that does, so it stays in front of every write here.
+    // Audited under its own entity so a "who switched the fleet to miles" question is answerable
+    // without reading four unrelated account renames.
+    updatePreferences: async (scope, actor, id, data) => {
+      const before = await findScoped(scope, id)
+      if (before === null) return null
+      const row = await prisma.account.update({ where: { id }, data })
+      await audit.record(scope, actor, { action: 'update', entity: 'accountPrefs', entityId: id, before, after: row })
       return row
     },
     remove: async (scope, actor, id) => {

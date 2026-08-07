@@ -2,12 +2,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import type { AccountPreferences } from '@orbetra/shared'
+
 import { AdminButton, Badge, AdminInput, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { changePassword } from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
-import { listAccounts, updateAccountTimezone } from '@/lib/devices'
+import { listAccounts, updateAccountPreferences, updateAccountTimezone, type Account } from '@/lib/devices'
 import { downloadExport, hasPendingExport, listExports, requestExport } from '@/lib/gdpr'
 import { ApiError } from '@/lib/http'
 import {
@@ -21,7 +23,7 @@ import {
   type Theme,
 } from '@/lib/prefs'
 import { disablePush, enablePush, pushEnabled, pushSupported } from '@/lib/push'
-import { setLocale } from '@/lib/locale'
+import { setLocale, LOCALE_LABELS } from '@/lib/locale'
 
 const LOCALES = ['en', 'lt', 'pl', 'de'] as const
 
@@ -194,7 +196,7 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
-          <AccountTimezoneSection />
+          <AccountDefaultsSection />
           <DisplayPrefsSection />
         </div>
       </div>
@@ -255,42 +257,96 @@ export function SettingsPage() {
 }
 
 /**
- * The ACCOUNT's reporting time zone — the one the server buckets report days by (hard rule 7).
+ * The ACCOUNT's server-side settings: the reporting time zone, and the language + units every
+ * e-mail and scheduled report we send on this fleet's behalf is written in.
  *
- * It was hard-coded to UTC at signup with no screen anywhere to change it, while Settings already
- * showed a time-zone picker for the DISPLAY preference. So a customer could set "Europe/Vilnius",
- * watch every timestamp switch to local time, and still get reports cut on UTC midnight — the
- * control looked like it worked. Tenant admins only; account-scoped users see their zone read-only.
+ * The time zone is what the server buckets report days by (hard rule 7). It was hard-coded to UTC at
+ * signup with no screen anywhere to change it, while Settings already showed a time-zone picker for
+ * the DISPLAY preference — so a customer could set "Europe/Vilnius", watch every timestamp switch to
+ * local time, and still get reports cut on UTC midnight. The control looked like it worked.
+ *
+ * The language and units are the same trap one level up, and the reason this section exists at all:
+ * the display preferences below are DEVICE-LOCAL, so a fleet running the dashboard in Lithuanian and
+ * miles still received "Overspeed — Speed 95 km/h" by e-mail. These are the settings the SERVER
+ * renders with, they belong to the account rather than to a browser, and they are what an alert
+ * arriving at a dispatcher's shared inbox — an address with no user account at all — follows.
+ *
+ * Two permissions, one panel: the time zone re-cuts every report's day boundary and stays with
+ * tenant admins, while language and units answer to ACCOUNT_WRITERS — the operator who reads the
+ * alerts picks the units they arrive in. Save issues only the requests the caller is allowed to make.
  */
-function AccountTimezoneSection() {
+function AccountDefaultsSection() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const user = getCurrentUser()
-  const canEdit = user?.role === 'platform_admin' || user?.role === 'tsp_admin'
+  const canEditTz = user?.role === 'platform_admin' || user?.role === 'tsp_admin'
+  const canEditPrefs = canEditTz || user?.role === 'account_manager'
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
-  const account = accounts.data?.[0]
-  const [tz, setTz] = useState('')
+  // WHICH account is being edited. A tsp_admin running several customers as accounts sees them all,
+  // and this panel used to silently edit `[0]` — the alphabetically first one — while its heading
+  // said "this account" and named nobody. Setting "Language: Lietuvių" then rewrote a DIFFERENT
+  // customer's alert e-mails. One account ⇒ nothing to choose and the picker stays hidden.
+  const [picked, setPicked] = useState<string | null>(null)
+  const list = accounts.data ?? []
+  const account = list.find((a) => a.id === picked) ?? list[0]
+  const [draft, setDraft] = useState<Partial<Account>>({})
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
-  const value = tz || account?.timezone || 'UTC'
 
-  const options = [
+  // the server value unless the operator has touched this control since the last save
+  const val = <K extends keyof Account>(key: K, fallback: NonNullable<Account[K]>): NonNullable<Account[K]> =>
+    draft[key] ?? account?.[key] ?? fallback
+  const set = <K extends keyof Account>(key: K) => (v: string) => setDraft((d) => ({ ...d, [key]: v }))
+  const tz = val('timezone', 'UTC')
+
+  const tzOptions = [
     ...COMMON_TIMEZONES.map((z) => ({ value: z, label: z })),
-    ...(!(COMMON_TIMEZONES as readonly string[]).includes(value) ? [{ value, label: value }] : []),
+    ...(!(COMMON_TIMEZONES as readonly string[]).includes(tz) ? [{ value: tz, label: tz }] : []),
   ]
 
   const save = () => {
     if (account === undefined) return
     setBusy(true)
     setMsg(null)
-    updateAccountTimezone(account.id, value)
+    const prefs: AccountPreferences = {}
+    if (draft.locale !== undefined) prefs.locale = draft.locale as AccountPreferences['locale']
+    if (draft.unitSpeed !== undefined) prefs.unitSpeed = draft.unitSpeed
+    if (draft.unitDistance !== undefined) prefs.unitDistance = draft.unitDistance
+    if (draft.unitVolume !== undefined) prefs.unitVolume = draft.unitVolume
+    // only what actually changed, and only what this role may write: a tenant admin editing units
+    // must not be handed a 403 from a time-zone PATCH it never asked for
+    const calls: Promise<unknown>[] = []
+    if (canEditTz && draft.timezone !== undefined) calls.push(updateAccountTimezone(account.id, draft.timezone))
+    if (canEditPrefs && Object.keys(prefs).length > 0) calls.push(updateAccountPreferences(account.id, prefs))
+    // nothing to send ⇒ don't claim "Saved". An empty Promise.all resolves instantly, so the panel
+    // used to confirm a save it never made — including for a role whose every control is disabled.
+    if (calls.length === 0) {
+      setBusy(false)
+      return
+    }
+    Promise.all(calls)
       .then(() => {
         setMsg({ kind: 'ok', text: t('settings.accountTz.saved') })
+        // write the saved values into the cache BEFORE clearing the draft. Clearing first made the
+        // comboboxes fall back to the stale cached row for as long as the refetch took, so the user
+        // watched "Saved" appear while the language snapped back to the old one.
+        const saved = { ...account, ...draft }
+        qc.setQueryData<Account[]>(['accounts'], (prev) => (prev ?? []).map((a) => (a.id === account.id ? saved : a)))
+        setDraft({})
         void qc.invalidateQueries({ queryKey: ['accounts'] })
       })
       .catch(() => setMsg({ kind: 'err', text: t('settings.accountTz.error') }))
       .finally(() => setBusy(false))
   }
+
+  const row = (label: string, testid: string, value: string, onChange: (v: string) => void, options: { value: string; label: string }[], disabled: boolean) => (
+    <div className="flex items-center justify-between gap-3">
+      <span style={{ color: 'var(--admin-ink-soft)' }}>{label}</span>
+      <div className="w-56">
+        <Combobox data-testid={testid} aria-label={label} value={value} onChange={onChange} options={options} disabled={disabled || account === undefined} />
+      </div>
+    </div>
+  )
 
   return (
     <div className="admin-hairline-t space-y-3 pt-4" data-testid="account-tz">
@@ -298,12 +354,35 @@ function AccountTimezoneSection() {
         {t('settings.accountTz.title')}
       </div>
       <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.accountTz.hint')}</p>
-      <div className="flex items-end gap-2">
-        <div className="w-56">
-          <Combobox data-testid="account-tz-select" aria-label={t('settings.accountTz.title')}
-            value={value} onChange={setTz} options={options} disabled={!canEdit || account === undefined} />
-        </div>
-        {canEdit && (
+      <div className="space-y-3 text-sm">
+        {list.length > 1 && (
+          <div className="flex items-center justify-between gap-3">
+            <span style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.accountTz.account')}</span>
+            <div className="w-56">
+              <Combobox data-testid="account-picker" aria-label={t('settings.accountTz.account')}
+                value={account?.id ?? ''} onChange={(v) => { setPicked(v); setDraft({}); setMsg(null) }}
+                options={list.map((a) => ({ value: a.id, label: a.name }))} />
+            </div>
+          </div>
+        )}
+        {row(t('settings.accountTz.tz'), 'account-tz-select', tz, set('timezone'), tzOptions, !canEditTz)}
+        {row(t('settings.accountTz.locale'), 'account-locale-select', val('locale', 'en'),
+          set('locale'), LOCALES.map((l) => ({ value: l, label: LOCALE_LABELS[l] })), !canEditPrefs)}
+        {row(t('settings.display.speed'), 'account-speed-select', val('unitSpeed', 'kmh'), set('unitSpeed'), [
+          { value: 'kmh', label: t('units.kmh') },
+          { value: 'mph', label: t('units.mph') },
+        ], !canEditPrefs)}
+        {row(t('settings.display.distance'), 'account-distance-select', val('unitDistance', 'km'), set('unitDistance'), [
+          { value: 'km', label: t('settings.display.km') },
+          { value: 'mi', label: t('settings.display.mi') },
+        ], !canEditPrefs)}
+        {row(t('settings.display.volume'), 'account-volume-select', val('unitVolume', 'l'), set('unitVolume'), [
+          { value: 'l', label: t('settings.display.l') },
+          { value: 'gal', label: t('settings.display.gal') },
+        ], !canEditPrefs)}
+      </div>
+      <div className="flex items-center gap-2">
+        {(canEditTz || canEditPrefs) && (
           <AdminButton type="button" onClick={save} disabled={busy || account === undefined} data-testid="account-tz-save">
             {t('settings.accountTz.save')}
           </AdminButton>
@@ -320,7 +399,12 @@ function AccountTimezoneSection() {
 
 /** Global display preferences (Rodymo nustatymai): time/date format, time zone, and units.
  * Device-local (prefs.ts localStorage) with instant apply — every subscribed formatter
- * (useFmt/useUnits) re-renders on change, so reports, tables and maps update live. */
+ * (useFmt/useUnits) re-renders on change, so reports, tables and maps update live.
+ *
+ * THIS BROWSER only, and the panel now says so: the identical-looking controls in the account
+ * section above are what alert e-mails and scheduled reports are rendered with. Two panels showing
+ * "Distance: km" while one of them silently governs nothing a customer receives is exactly the trap
+ * the account time zone fell into. */
 function DisplayPrefsSection() {
   const { t } = useTranslation()
   const prefs = useSyncExternalStore(onPrefsChange, getDisplayPrefs)
@@ -349,6 +433,7 @@ function DisplayPrefsSection() {
       <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }} data-testid="display-prefs">
         {t('settings.display.title')}
       </div>
+      <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.display.browserNote')}</p>
       {row(t('settings.display.timeFormat'), 'pref-timeformat', prefs.timeFormat, set('timeFormat'), [
         { value: '24h', label: t('settings.display.h24') },
         { value: '12h', label: t('settings.display.h12') },

@@ -1,18 +1,31 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatInZone, formatWithZone, metersToKm, safeZone, secondsToHours } from '../src/format/localize.js'
-import { renderReportTable, reportTitle } from '../src/format/report.js'
+import { distanceM, formatInZone, formatWithZone, safeZone, secondsToHours, speedKmh, volumeL } from '../src/format/localize.js'
+import { renderReportTable, renderReportTableHtml, reportTitle } from '../src/format/report.js'
+
+const IMPERIAL = { speed: 'mph', distance: 'mi', volume: 'gal' } as const
 
 describe('format/localize unit conversion', () => {
-  it('meters → km at one decimal', () => {
-    expect(metersToKm(15234)).toBe('15.2')
-    expect(metersToKm(0)).toBe('0.0')
-    expect(metersToKm(999)).toBe('1.0')
+  it('meters → km at one decimal (metric default)', () => {
+    expect(distanceM(15234)).toBe('15.2')
+    expect(distanceM(0)).toBe('0.0')
+    expect(distanceM(999)).toBe('1.0')
   })
   it('seconds → hours at one decimal', () => {
     expect(secondsToHours(3600)).toBe('1.0')
     expect(secondsToHours(0)).toBe('0.0')
     expect(secondsToHours(5400)).toBe('1.5')
+  })
+  it('converts to the account units when they are imperial', () => {
+    // 1609.344 m is exactly one mile — the factor is shared with the web, so this pins both
+    expect(distanceM(1609.344, IMPERIAL)).toBe('1.0')
+    expect(distanceM(15234, IMPERIAL)).toBe('9.5')
+    expect(speedKmh(96.56064, IMPERIAL)).toBe('60')
+    expect(volumeL(3.785411784, IMPERIAL)).toBe('1.0')
+  })
+  it('speeds are whole numbers — a GPS speed has no meaningful tenth', () => {
+    expect(speedKmh(95.4)).toBe('95')
+    expect(speedKmh(95.6)).toBe('96')
   })
 })
 
@@ -70,5 +83,63 @@ describe('format/report labels + table', () => {
 
   it('empty rows produce an explicit no-data marker', () => {
     expect(renderReportTable('mileage', [], 'UTC')).toBe('(no data in this period)')
+  })
+})
+
+describe('format/report in the account language + units (account-settings debt, closed)', () => {
+  const row = { day: '2026-07-14', deviceId: '5', deviceName: 'Van 1', devicePlate: 'ABC', trips: 3, distanceM: 16093.44 }
+
+  it('renders titles and column headers in the account language', () => {
+    expect(reportTitle('mileage', 'lt')).toBe('Rida')
+    expect(reportTitle('engine_hours', 'de')).toBe('Motorstunden')
+    expect(reportTitle('stops', 'pl')).toBe('Postoje')
+    const lt = renderReportTable('mileage', [row], 'UTC', { locale: 'lt' })
+    expect(lt).toContain('Atstumas (km)')
+    expect(lt).toContain('Kelionės')
+    expect(lt).not.toContain('Distance')
+  })
+
+  it('puts the unit in the header and the converted value in the cell', () => {
+    const t = renderReportTable('mileage', [row], 'UTC', { locale: 'lt', units: IMPERIAL })
+    expect(t).toContain('Atstumas (mi)')
+    expect(t).toContain('10.0') // 16093.44 m = exactly 10 miles
+    expect(t).not.toContain('16.1')
+  })
+
+  it('localizes the hours label in idle/engine columns', () => {
+    expect(renderReportTable('stops', [{ day: 'd', deviceId: '5', trips: 2, idleS: 5400 }], 'UTC', { locale: 'lt' })).toContain('Prastova (val.)')
+    expect(renderReportTable('engine_hours', [{ day: 'd', deviceId: '5', seconds: 3600 }], 'UTC', { locale: 'de' })).toContain('Motor (Std.)')
+    expect(renderReportTable('stops', [{ day: 'd', deviceId: '5', trips: 2, idleS: 5400 }], 'UTC', { locale: 'pl' })).toContain('Postój (godz.)')
+  })
+
+  it('speed columns follow the speed unit, not the distance unit', () => {
+    const t = renderReportTable('overspeed', [{ day: 'd', deviceId: '5', count: 2, maxSpeedKmh: 96.56064 }], 'UTC', { units: IMPERIAL })
+    expect(t).toContain('Max speed (mph)')
+    expect(t).toContain('60')
+  })
+
+  it('an unknown locale renders English rather than throwing (the column has no CHECK)', () => {
+    expect(reportTitle('mileage', 'xx-YY')).toBe('Mileage')
+    expect(renderReportTable('mileage', [], 'UTC', { locale: 'klingon' })).toBe('(no data in this period)')
+  })
+
+  it('the no-data marker is translated too', () => {
+    expect(renderReportTable('mileage', [], 'UTC', { locale: 'lt' })).toBe('(šiuo laikotarpiu duomenų nėra)')
+    expect(renderReportTableHtml('mileage', [], 'UTC', { locale: 'de' })).toContain('keine Daten')
+  })
+
+  it('an unparseable timestamp is a dash, not a throw', () => {
+    // the plain-text renderer is NOT wrapped in a try/catch (the HTML one is), and it runs after
+    // claimRun has burned the period — one bad row would lose that report permanently
+    const rows = [{ deviceId: '5', deviceName: 'Van', startTime: 'not-a-date', endTime: '', distanceM: 0, maxSpeed: 0, idleS: 0 }]
+    expect(() => renderReportTable('trips', rows, 'UTC')).not.toThrow()
+    expect(renderReportTable('trips', rows, 'UTC')).toContain('—')
+  })
+
+  it('the HTML table carries the same localized headers, escaped', () => {
+    const html = renderReportTableHtml('mileage', [{ ...row, deviceName: '<b>Van</b>' }], 'UTC', { locale: 'lt', units: IMPERIAL })
+    expect(html).toContain('Atstumas (mi)')
+    expect(html).toContain('&lt;b&gt;Van&lt;/b&gt;')
+    expect(html).not.toContain('<b>Van</b>')
   })
 })

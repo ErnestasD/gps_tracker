@@ -34,6 +34,7 @@ const req = (path: string, token: string, method = 'GET') =>
 function idFor(f: TenantFixture, entity: string): string {
   const map: Record<string, string> = {
     account: f.accounts[0],
+    accountPrefs: f.accounts[0], // PATCH /v1/accounts/:id/preferences — the :id is an account
     user: f.userId,
     device: f.deviceId,
     domain: f.domainId,
@@ -70,7 +71,14 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     const items = fx.manifest.filter((m) => m.shape === 'item' && m.scopeClass !== 'platform')
     expect(items.length).toBeGreaterThan(0)
     for (const m of items) {
-      const path = itemPath(m.path, idFor(fx.t2, m.entity))
+      const rid = idFor(fx.t2, m.entity)
+      // A missing fixture id used to make this test VACUOUS rather than red: `idFor` returned '',
+      // `itemPath` produced `/v1/accounts//preferences`, and Hono answered 404 from the ROUTER —
+      // the handler was never reached, the scope check never ran, and the assertion passed anyway.
+      // The suite's promise is that a new endpoint is auto-covered; that only holds if a new entity
+      // without a seeded id fails loudly here (found by review of the accountPrefs route).
+      expect(rid, `no fixture id for entity '${m.entity}' — add one to idFor, or ${m.path} is untested`).not.toBe('')
+      const path = itemPath(m.path, rid)
       const res = await req(path, fx.t1.tokenTenant, m.method.toUpperCase())
       expect(res.status, `${m.method} ${path} as T1`).toBe(404)
     }
@@ -168,6 +176,30 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     // …and a zone Intl cannot resolve is refused, not stored — it would throw at every report render
     const bad = await fetch(`${fx.baseUrl}/v1/accounts/${acct}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ timezone: 'Mars/Olympus' }) })
     expect(bad.status).toBe(400)
+  })
+
+  it('account language + units: an account_manager may set them, and CANNOT reach a sibling account', async () => {
+    // The preferences route is deliberately wider than `PATCH /v1/accounts/:id` — the operator who
+    // reads the alerts picks the units they arrive in — so the scope check is what carries the whole
+    // weight here. It is the same `findScoped` the rest of the repo uses; this proves it.
+    const [a1, a2] = fx.t1.accounts
+    const hdr = (tok: string) => ({ authorization: `Bearer ${tok}`, 'content-type': 'application/json' })
+    const patch = (id: string | undefined, tok: string, body: unknown) =>
+      fetch(`${fx.baseUrl}/v1/accounts/${id}/preferences`, { method: 'PATCH', headers: hdr(tok), body: JSON.stringify(body) })
+
+    const own = await patch(a1, fx.t1.tokenAccountA1, { locale: 'lt', unitDistance: 'mi' })
+    expect(own.status).toBe(200)
+    expect(await own.json()).toMatchObject({ locale: 'lt', unitDistance: 'mi', unitSpeed: 'kmh' })
+
+    // a sibling account is invisible, not merely unwritable
+    expect((await patch(a2, fx.t1.tokenAccountA1, { locale: 'de' })).status).toBe(404)
+    // …and a viewer may not write its own account's units either
+    expect((await patch(a1, fx.t1.tokenViewerA1, { locale: 'de' })).status).toBe(403)
+    // an unknown unit is refused rather than stored — nothing downstream would render it
+    expect((await patch(a1, fx.t1.tokenTenant, { unitDistance: 'furlongs' })).status).toBe(400)
+    // and the narrow schema means this route can never rename an account or move its report boundary
+    const sneak = await patch(a1, fx.t1.tokenAccountA1, { name: 'renamed', timezone: 'Mars/Olympus' })
+    expect(sneak.status).toBe(400)
   })
 
   it('audit: an ACCOUNT-SCOPED tenant admin is refused (403) — audit_log has no account partition', async () => {

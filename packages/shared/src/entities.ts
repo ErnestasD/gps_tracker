@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { tenantPlanSchema } from './plans.js'
 import { roleSchema } from './roles.js'
+import { distanceUnitSchema, speedUnitSchema, volumeUnitSchema } from './units.js'
 
 /**
  * IANA time-zone id (e.g. `Europe/Vilnius`). Validated against the runtime's own tz database rather
@@ -42,6 +43,37 @@ export const SUPPORTED_LOCALES = ['en', 'lt', 'pl', 'de'] as const
 export type Locale = (typeof SUPPORTED_LOCALES)[number]
 export const localeSchema = z.enum(SUPPORTED_LOCALES)
 export const localeUpdateSchema = z.object({ locale: localeSchema })
+
+/**
+ * The ACCOUNT's display preferences — language + units for everything the SERVER renders (alert
+ * e-mails, Telegram messages, scheduled report tables).
+ *
+ * Its own schema and its own route (`PATCH /v1/accounts/:id/preferences`) rather than four more
+ * optional fields on `accountUpdateSchema`, because the two are not the same decision. Renaming an
+ * account and changing its reporting time zone are tenant-admin acts — a time-zone change silently
+ * re-cuts every report's day boundary. Choosing miles is an operator's act: the account_manager who
+ * reads the alerts is exactly who should pick the units they arrive in, and making them file a
+ * ticket with their TSP for it is how a setting ends up permanently wrong.
+ *
+ * Partial: the settings page sends one field at a time as the operator flips each control.
+ *
+ * STRICT, unlike the other CRUD schemas, and deliberately: the point of this route is that it can do
+ * LESS than `PATCH /v1/accounts/:id`, so a body carrying `name` or `timezone` must be refused rather
+ * than silently stripped. Non-strict, an account_manager posting `{unitSpeed, name}` would get a 200
+ * and no rename — a caller cannot tell that from a rename that worked, and the next reader of this
+ * schema would have to prove the repo method is narrow to know which it was. Two independent floors
+ * (rejected here, unrepresentable in `updatePreferences`) is what makes that unambiguous.
+ */
+export const accountPreferencesSchema = z
+  .object({
+    locale: localeSchema,
+    unitSpeed: speedUnitSchema,
+    unitDistance: distanceUnitSchema,
+    unitVolume: volumeUnitSchema,
+  })
+  .partial()
+  .strict()
+export type AccountPreferences = z.infer<typeof accountPreferencesSchema>
 
 export const userUpdateSchema = z
   .object({

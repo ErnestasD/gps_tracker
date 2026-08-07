@@ -204,6 +204,7 @@
     "allActions": "All actions",
     "e": {
       "account": "Account",
+      "accountPrefs": "Language and units",
       "user": "User",
       "device": "Device",
       "rule": "Rule",
@@ -483,15 +484,18 @@
       "mi": "Miles (mi)",
       "l": "Liters (l)",
       "gal": "US gallons (gal)",
-      "tzNote": "Display only — changes how times are shown to you, not how reports are grouped."
+      "tzNote": "Display only — changes how times are shown to you, not how reports are grouped.",
+      "browserNote": "These apply to this browser only. Alert e-mails and scheduled reports use the account settings above."
     },
     "accountTz": {
-      "title": "Reporting time zone",
-      "hint": "Reports and mileage are grouped into days using THIS zone — it is the account's setting, not how times are shown on your screen.",
+      "title": "Reports and e-mails",
+      "hint": "What the server uses for this account: reports and mileage are grouped into days by this time zone, and alert e-mails and scheduled reports are written in this language and these units. Not the same as the display preferences below, which change only this browser.",
+      "account": "Account",
+      "tz": "Reporting time zone",
+      "locale": "Language",
       "save": "Save",
       "saved": "Saved",
-      "error": "Could not save the time zone",
-      "display": "Display only — changes how times are shown to you, not how reports are grouped."
+      "error": "Could not save the settings"
     }
   },
   "devices": {

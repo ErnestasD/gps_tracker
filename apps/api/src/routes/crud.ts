@@ -7,6 +7,7 @@ import { AccountHasUsersError, AffiliateConflictError, TenantHasCommissionsError
 import {
   ROLES,
   accountCreateSchema,
+  accountPreferencesSchema,
   accountUpdateSchema,
   affiliateCreateSchema,
   affiliateUpdateSchema,
@@ -140,6 +141,10 @@ const READ_POLICY: Record<string, Role[]> = {
 }
 const WRITE_POLICY: Record<string, Role[]> = {
   account: TENANT_ADMINS,
+  // language + units for this fleet's outbound mail — the operator who READS the alerts picks the
+  // units they arrive in. Deliberately wider than `account` (rename / reporting time zone), which
+  // stays with tenant admins; see the route note.
+  accountPrefs: ACCOUNT_WRITERS,
   user: TENANT_ADMINS,
   device: ACCOUNT_WRITERS,
   rule: ACCOUNT_WRITERS,
@@ -285,6 +290,24 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const data = await body(c, accountUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const row = await db.accounts.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    /**
+     * The account's LANGUAGE and UNITS — what alert e-mails, Telegram messages and scheduled report
+     * tables are rendered in — the five `TODO(account-settings)` markers this closes.
+     *
+     * A separate route from `PATCH /v1/accounts/:id` because it answers to a different role. Renaming
+     * an account or moving its reporting time zone re-cuts every report's day boundary and stays with
+     * tenant admins; picking miles is the choice of the operator who reads the alerts, so `entity:
+     * 'accountPrefs'` opens it to ACCOUNT_WRITERS. The repo method is narrow to match — the handler
+     * cannot write `name` or `timezone` because `updatePreferences` takes no such argument, so the
+     * separation survives an edit to this schema.
+     */
+    { method: 'patch', path: '/v1/accounts/:id/preferences', scopeClass: 'tenant', entity: 'accountPrefs', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, accountPreferencesSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const row = await db.accounts.updatePreferences(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
     { method: 'delete', path: '/v1/accounts/:id', scopeClass: 'tenant', entity: 'account', shape: 'item',
