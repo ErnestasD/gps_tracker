@@ -76,10 +76,18 @@ describe('resolveNotifyContext', () => {
     expect(ctx).toEqual({ deviceLabel: 'ABC-123', timezone: 'UTC', locale: undefined, units: METRIC_UNITS, brand: 'Acme', branding: {}, tenantName: 'Acme' })
   })
 
-  it('ignores a MALFORMED branding jsonb (no crash) — brand falls back to the tenant name', async () => {
-    // a bad primary (not #rrggbb) fails brandingSchema → branding dropped, but the alert is never lost
-    const ctx = await resolveNotifyContext(rowPool({ device_name: 'Van', device_plate: null, timezone: 'UTC', tenant_name: 'Acme', branding: { primary: 'red', productName: 42 } }), '42')
-    expect(ctx).toEqual({ deviceLabel: 'Van', timezone: 'UTC', locale: undefined, units: METRIC_UNITS, brand: 'Acme', branding: undefined, tenantName: 'Acme' })
+  it('a MALFORMED branding field costs that FIELD, not the whole brand', () => {
+    // `brandingSchema.safeParse` is all-or-nothing, so one stale value — a 61-character product
+    // name, a logoUrl a migration wrote as null — used to drop the entire object. Every renderer
+    // reads `{}` as "not white-label", so the tenant's next e-mail went out with OUR logo and OUR
+    // name on it. The read path is tolerant now; writes still 400 (review HIGH).
+    return resolveNotifyContext(
+      rowPool({ device_name: 'Van', device_plate: null, timezone: 'UTC', tenant_name: 'Acme', branding: { primary: 'red', productName: 'Vrumm logistics', supportEmail: 'help@vrumm.lt' } }),
+      '42',
+    ).then((ctx) => {
+      expect(ctx.branding).toEqual({ productName: 'Vrumm logistics', supportEmail: 'help@vrumm.lt' }) // bad colour dropped
+      expect(ctx.brand).toBe('Vrumm logistics') // …and the tenant still owns the mail
+    })
   })
 
   it('an unrecognised unit column renders metric rather than propagating a value no renderer knows', async () => {

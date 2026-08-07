@@ -20,6 +20,13 @@ self.addEventListener('activate', (event) => {
 
 // Web Push (ADR-026): the worker sends {title, body}; show it as a notification. A malformed/absent
 // payload falls back to a generic alert rather than dropping it silently.
+//
+// The fallbacks are BRANDLESS on purpose. This runs on a reseller's customers' phones and the title
+// is what the lock screen shows: `'Orbetra'` there named the platform to people who have never heard
+// of it, on a device we do not control, for a notification the tenant's own brand paid for. The
+// icon is likewise omitted rather than pointing at ours — and the path it used, `/icon-192.png`,
+// did not exist anyway (the real one is /icons/pwa-192.png), so it silently fell through to the
+// manifest icon, which until now was ours too.
 self.addEventListener('push', (event) => {
   let data: { title?: string; body?: string } = {}
   try {
@@ -28,11 +35,9 @@ self.addEventListener('push', (event) => {
     data = { body: event.data?.text() }
   }
   event.waitUntil(
-    self.registration.showNotification(data.title ?? 'Orbetra', {
+    self.registration.showNotification(data.title ?? '', {
       body: data.body ?? 'New alert',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: 'orbetra-alert',
+      tag: 'fleet-alert',
     }),
   )
 })

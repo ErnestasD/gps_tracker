@@ -99,7 +99,15 @@ export function ensureContrast(hex: string, theme: Theme = 'dark'): string {
 let appliedBranding: Branding | null = null
 let themeSubscribed = false
 
-export function applyBranding(branding: Branding): void {
+/**
+ * Apply a resolved brand to the document.
+ *
+ * `whiteLabel` decides what happens to the parts a tenant left blank, and getting that wrong is how
+ * OUR mark ends up on THEIR page permanently rather than for a moment. On a tenant host an unset
+ * logo means NO icon — the browser's blank default — because our purple mark beside their product
+ * name is worse than no mark at all. On our own host the platform defaults are correct.
+ */
+export function applyBranding(branding: Branding, whiteLabel = false): void {
   appliedBranding = branding
   if (!themeSubscribed) {
     themeSubscribed = true
@@ -115,10 +123,14 @@ export function applyBranding(branding: Branding): void {
   if (branding.accent !== undefined && HEX.test(branding.accent)) {
     root.style.setProperty('--accent-2', clampForTheme(branding.accent, theme))
   }
+  // ALWAYS set the title. Guarding on productName left `index.html`'s value in the tab, which used
+  // to be "Orbetra" — so a tenant who set colours but no name kept ours for good. index.html now
+  // ships no title at all, so an unnamed tenant shows the browser's URL, which is their own domain.
   if (branding.productName !== undefined) document.title = branding.productName
+  else if (!whiteLabel) document.title = PLATFORM_NAME
   // white-label favicon: a tenant's logo IS their favicon — no separate input, reuse logoUrl
-  // (brandingSchema pins it to an https URL). Falls back to the Orbetra icons when unset.
-  applyFavicon(branding.logoUrl)
+  // (brandingSchema pins it to an https URL).
+  applyFavicon(branding.logoUrl, whiteLabel)
 }
 
 export interface FaviconLink {
@@ -126,24 +138,35 @@ export interface FaviconLink {
   href: string
   type?: string
 }
-/** The static Orbetra favicon links (index.html), restored when a tenant clears its logo. */
+export const PLATFORM_NAME = 'Orbetra'
+/**
+ * OUR icons. NOT at /favicon.* any more: a browser asks for /favicon.ico on its own when a page
+ * declares no icon, so leaving the file there served our mark to every tenant before a line of
+ * JavaScript ran. Now nothing answers that path and these are reachable only from here.
+ */
 const DEFAULT_ICONS: FaviconLink[] = [
-  { rel: 'icon', href: '/favicon.ico' },
-  // theme-reactive SVG: white mark on a dark browser tab, purple (default) on a light one —
-  // the SVG carries the prefers-color-scheme swap internally (index.html mirrors this link)
-  { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+  { rel: 'icon', href: '/platform-icon.ico' },
+  // theme-reactive SVG: white mark on a dark browser tab, purple (default) on a light one
+  { rel: 'icon', href: '/platform-icon.svg', type: 'image/svg+xml' },
   { rel: 'apple-touch-icon', href: '/icons/pwa-192.png' },
 ]
-/** Which <link> icons to render for a given tenant logo (or the Orbetra defaults). Pure — tested. */
-export function faviconLinks(logoUrl: string | undefined): FaviconLink[] {
-  return logoUrl !== undefined && logoUrl !== '' ? [{ rel: 'icon', href: logoUrl }, { rel: 'apple-touch-icon', href: logoUrl }] : DEFAULT_ICONS
+/**
+ * Which <link> icons to render. Pure — tested.
+ *
+ * A white-label host with no logo gets NONE, which renders as the browser's blank page icon. That is
+ * the whole point: the previous fallback put the platform's mark in a reseller's customers' tabs and
+ * left it there, because "no logo configured" is not "show someone else's logo".
+ */
+export function faviconLinks(logoUrl: string | undefined, whiteLabel = false): FaviconLink[] {
+  if (logoUrl !== undefined && logoUrl !== '') return [{ rel: 'icon', href: logoUrl }, { rel: 'apple-touch-icon', href: logoUrl }]
+  return whiteLabel ? [] : DEFAULT_ICONS
 }
 
 /** Point the browser-tab icon at `logoUrl` (tenant white-label) or restore the Orbetra defaults. */
-function applyFavicon(logoUrl: string | undefined): void {
+function applyFavicon(logoUrl: string | undefined, whiteLabel = false): void {
   const head = document.head
   head.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]').forEach((el) => el.remove())
-  for (const l of faviconLinks(logoUrl)) {
+  for (const l of faviconLinks(logoUrl, whiteLabel)) {
     const link = document.createElement('link')
     link.rel = l.rel
     link.href = l.href

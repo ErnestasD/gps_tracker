@@ -103,7 +103,13 @@ if (stripe === undefined) console.warn('Stripe not configured (STRIPE_SECRET_KEY
 
 const deps = {
   redis,
-  onboarding: { host: process.env['INGEST_PUBLIC_HOST'] ?? 'orbetra.com', port: Number(process.env['INGEST_TCP_PORT'] ?? 5027) },
+  // The hostname a TRACKER is configured to dial, printed in the onboarding sheet and pasted into
+  // the config SMS. It defaulted to our own domain, and the variable was in no compose file — so a
+  // reseller's installer was told to point their customer's hardware at `orbetra.com:5027`, and that
+  // string was then written into the device, where any technician servicing the vehicle can read it
+  // back. There is no safe default: an unset value now yields an empty host, which the onboarding
+  // sheet renders as a visible gap rather than as somebody else's brand.
+  onboarding: { host: process.env['INGEST_PUBLIC_HOST'] ?? '', port: Number(process.env['INGEST_TCP_PORT'] ?? 5027) },
   ...(stripe !== undefined ? { stripe } : {}),
   ...(process.env['APP_BASE_URL'] ? { appBaseUrl: process.env['APP_BASE_URL'] } : {}),
   // White-label hosting: PLATFORM_DOMAIN turns on `<slug>.orbetra.com` (needs the `*` A record),

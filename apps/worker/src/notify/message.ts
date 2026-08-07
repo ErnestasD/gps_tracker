@@ -19,6 +19,8 @@ export interface NotifyMessage {
   /** White-label branded HTML body for the email channel (E05-4). Absent when it could not be
    *  built — the email then sends plain `text` only. Telegram/webpush ignore it. */
   html?: string | undefined
+  /** the tenant's support address, so Reply reaches them and not the platform */
+  replyTo?: string | undefined
 }
 
 /** Per-message context resolved by the worker from the device/account/tenant registry. */
@@ -59,7 +61,7 @@ export function notificationMessage(kind: string, deviceId: string, payload: Rec
   const heading = s.alertHeading(title)
   const text = [heading, `${s.labelDevice}: ${device}`, `${s.labelWhen}: ${when}`, ...(detail ? [detail] : [])].join('\n')
   const html = renderAlertHtml(subject, heading, device, when, detail, s, ctx)
-  return { subject, text, html }
+  return { subject, text, html, replyTo: ctx.branding?.supportEmail }
 }
 
 /**

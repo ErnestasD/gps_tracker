@@ -861,7 +861,9 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // c.body and so bypasses the json() helper that stamps no-store on every other read)
         c.header('Cache-Control', 'no-store')
         c.header('content-type', 'application/gzip')
-        c.header('content-disposition', `attachment; filename="orbetra-export-${id(c)}.ndjson.gz"`)
+        // brand-neutral: this file is handed to the data subject, who on a white-label tenant has
+        // never heard of us and should not learn our name from a filename
+        c.header('content-disposition', `attachment; filename="fleet-data-export-${id(c)}.ndjson.gz"`)
         c.header('content-length', String(st.size))
         const nodeStream = createReadStream(info.path)
         const { Readable } = await import('node:stream')

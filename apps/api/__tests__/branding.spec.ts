@@ -235,7 +235,10 @@ describe('E03-5 public branding by Host + Caddy ask', () => {
     expect(b1.branding.productName).toBe('T1 Brand')
     expect(b2.branding.productName).toBe('T2 Brand')
     const unknown = (await (await fetch(`${base()}/v1/branding`, { headers: { 'x-forwarded-host': 'nope.test' } })).json()) as Record<string, unknown>
-    expect(unknown).toEqual({})
+    // `whiteLabel:false` and nothing else — the flag is the fact the client needs and this endpoint
+    // used to withhold, so the web inferred it from "did any branding field arrive" and drew our
+    // wordmark on a verified-but-unbranded tenant's login page
+    expect(unknown).toEqual({ whiteLabel: false })
   })
 
   it('caddy-ask: 200 for a verified domain, 403 for unknown/unverified, 400 for a bad domain', async () => {
@@ -302,6 +305,42 @@ describe('E03-5 public branding by Host + Caddy ask', () => {
     }
     // …and the direct call Caddy actually makes still works
     expect((await fetch(`${base()}/v1/internal/caddy-ask?domain=proxied.t1.test`)).status).toBe(200)
+  })
+})
+
+describe('the manifest is branded by Host — the leak that outlives every other one', () => {
+  it('serves the tenant name + logo on a tenant host, and the platform identity on ours', async () => {
+    await req('/v1/tenant/branding', t1Token, 'PATCH', { productName: 'Acme Fleet', logoUrl: 'https://cdn.acme.test/logo.png', primary: '#ff8800' })
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'app.acme.test' })).json()) as { id: string; txtToken: string }
+    txtRecords.set('app.acme.test', [['orbetra-verify=' + created.txtToken]])
+    await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')
+
+    const tenant = (await (await fetch(`${base()}/v1/public/manifest.webmanifest`, { headers: { 'x-forwarded-host': 'app.acme.test' } })).json()) as
+      { name: string; short_name: string; theme_color: string; icons: { src: string }[] }
+    expect(tenant.name).toBe('Acme Fleet')
+    expect(tenant.icons[0]!.src).toBe('https://cdn.acme.test/logo.png')
+    expect(tenant.theme_color).toBe('#ff8800')
+    expect(JSON.stringify(tenant)).not.toContain('Orbetra')
+
+    const ours = (await (await fetch(`${base()}/v1/public/manifest.webmanifest`, { headers: { 'x-forwarded-host': 'nope.test' } })).json()) as { name: string }
+    expect(ours.name).toBe('Orbetra')
+  })
+
+  it('a VERIFIED but UNBRANDED tenant still gets no platform identity anywhere', async () => {
+    // the case that broke every client-side inference: the host resolves to a tenant, and there is
+    // no branding to infer it from
+    await db.tenants.updateBranding({ userId: '00000000-0000-0000-0000-0000000000ff' }, t2, {})
+    const created = (await (await req('/v1/tenant/domains', t2Token, 'POST', { domain: 'bare.t2.test' })).json()) as { id: string; txtToken: string }
+    txtRecords.set('bare.t2.test', [['orbetra-verify=' + created.txtToken]])
+    await req(`/v1/tenant/domains/${created.id}/verify`, t2Token, 'POST')
+
+    const m = (await (await fetch(`${base()}/v1/public/manifest.webmanifest`, { headers: { 'x-forwarded-host': 'bare.t2.test' } })).json()) as { name: string; icons: unknown[] }
+    expect(m.name).toBe('bare.t2.test') // their host, not our name and not their legal name
+    expect(m.icons).toEqual([])
+    expect(JSON.stringify(m)).not.toContain('Orbetra')
+
+    const b = (await (await fetch(`${base()}/v1/branding`, { headers: { 'x-forwarded-host': 'bare.t2.test' } })).json()) as { whiteLabel: boolean }
+    expect(b.whiteLabel).toBe(true) // …and the SERVER says so, so the client never has to guess
   })
 })
 

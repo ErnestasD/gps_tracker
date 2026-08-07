@@ -6,6 +6,7 @@ import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { applyBranding, type Branding } from '@/lib/branding'
 import { useFmt } from '@/lib/datetime'
 import { mapboxgl, styleForTheme, watchMapLoad } from '@/lib/map'
+import { brandFromResponse } from '@/lib/publicBranding'
 import { expiryLabel, fetchPublicBranding, fetchPublicShare, type PublicShare } from '@/lib/share'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
@@ -29,12 +30,19 @@ export function SharePage({ token }: { token: string }) {
   // hardcoded Orbetra brand — the public link is served on the tenant's own custom domain
   const [branding, setBranding] = useState<Branding | null>(null)
   const [productName, setProductName] = useState<string | null>(null)
+  // null = UNKNOWN (in flight or the lookup failed). The attribution below renders only once this
+  // is definitively false — it used to show on first paint for every tenant, and forever for one
+  // that set colours but no product name.
+  const [isPlatform, setIsPlatform] = useState<boolean | null>(null)
 
   useEffect(() => {
     let alive = true
-    void fetchPublicBranding().then((b) => {
-      if (!alive || b === null) return
-      applyBranding(b.branding) // accent colors (contrast-clamped) + document.title
+    void fetchPublicBranding().then((res) => {
+      if (!alive) return
+      const b = brandFromResponse(res)
+      if (b === null) return // failed: stay unknown, show neither brand
+      setIsPlatform(!b.whiteLabel)
+      applyBranding({ ...b.branding, ...(b.productName !== undefined ? { productName: b.productName } : {}) }, b.whiteLabel) // accents + title
       setBranding(b.branding)
       setProductName(b.productName ?? b.branding.productName ?? null)
     })
@@ -123,14 +131,18 @@ export function SharePage({ token }: { token: string }) {
         </div>
         {/* white-label brand: tenant product name/logo when the Host resolves to a tenant, else the
             platform's "Powered by Orbetra" attribution */}
+        {/* UNKNOWN host (in flight or a failed lookup) shows nothing at all. "Powered by Orbetra"
+            used to render on FIRST PAINT for every tenant — and permanently for one with colours but
+            no product name — on the widest-reach surface in the product: a link a reseller sends to
+            somebody else's customer. */}
         {productName !== null ? (
           <span className="flex items-center gap-1.5 text-xs text-muted" data-testid="share-brand">
             {branding?.logoUrl != null && branding.logoUrl !== '' && <img src={branding.logoUrl} alt="" className="h-4 w-4" />}
             {productName}
           </span>
-        ) : (
+        ) : isPlatform === true ? (
           <span className="text-xs text-muted">{t('share.poweredBy')}</span>
-        )}
+        ) : null}
       </header>
 
       <div className="relative flex-1">

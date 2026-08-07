@@ -1,7 +1,7 @@
 import { Worker, type ConnectionOptions } from 'bullmq'
 import type { Pool } from 'pg'
 
-import { brandingSchema, type Branding } from '@orbetra/shared'
+import { brandingReadSchema, type Branding } from '@orbetra/shared'
 
 import type { EmailTransport } from '../notify/drivers.js'
 import { renderResetEmail } from '../notify/passwordResetEmail.js'
@@ -47,7 +47,7 @@ async function resolveBranding(pool: Pool, tenantId: string): Promise<{ brand: s
     const row = res.rows[0]
     if (row === undefined) return { brand: 'Orbetra', branding: undefined, tenantName: undefined }
     const tenantName = row.name && row.name.trim() !== '' ? row.name : undefined
-    const parsed = row.branding && typeof row.branding === 'object' ? brandingSchema.safeParse(row.branding) : undefined
+    const parsed = row.branding && typeof row.branding === 'object' ? brandingReadSchema.safeParse(row.branding) : undefined
     const branding = parsed?.success ? parsed.data : undefined
     const product = branding?.productName
     const brand = typeof product === 'string' && product.trim() !== '' ? product : tenantName ?? 'Orbetra'
@@ -119,8 +119,15 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   // like phishing. A real white-label TSP sets `productName`, and that must still win (their end
   // users must never see ours); absent one, this mail is from Orbetra.
   const { branding, tenantName } = resolved
-  const brand = job.kind === 'verify-email' ? (branding?.productName?.trim() ?? '') || 'Orbetra' : resolved.brand
-  const shellName = job.kind === 'verify-email' ? (branding?.productName?.trim() ?? '') || undefined : tenantName
+  // WHITE-LABEL means any branding at all, and then the platform name must not appear even as a
+  // last resort: a tenant with colours and a logo but no product name was getting `alt="Orbetra"`
+  // on the header image — which is what most clients SHOW, since remote images are blocked by
+  // default — a footer reading `Orbetra · help@reseller.lt`, and a plain-text part signed `— Orbetra`.
+  // Their own name is the correct fallback; ours is only correct when nothing is configured at all.
+  const whiteLabel = branding !== undefined && Object.keys(branding).length > 0
+  const ownName = (branding?.productName?.trim() ?? '') || (whiteLabel ? tenantName : undefined)
+  const brand = job.kind === 'verify-email' ? ownName ?? 'Orbetra' : resolved.brand
+  const shellName = job.kind === 'verify-email' ? ownName : tenantName
   // …and send them to THEIR host, not ours. The billing link is deliberately excluded: it is a
   // Stripe portal/checkout return that only makes sense on the platform host.
   const host = await primaryDomain(deps.pool, tenantId)
@@ -133,7 +140,7 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
         : job.kind === 'verify-email'
         ? renderVerifyEmail({ verifyUrl: on(job.verifyUrl), expiresHours: job.expiresHours, locale: job.locale, brand, branding, tenantName: shellName })
         : renderResetEmail({ resetUrl: on(job.resetUrl), expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding, tenantName })
-  await deps.transport.send(job.email, subject, text, html)
+  await deps.transport.send(job.email, subject, text, html, branding?.supportEmail)
   return true
 }
 

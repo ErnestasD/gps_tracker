@@ -41,7 +41,8 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getCurrentUser, logout as authLogout } from '@/lib/auth'
-import { applyBranding, getBranding, onBrandingChange, type Branding } from '@/lib/branding'
+import { applyBranding, getBranding, onBrandingChange, PLATFORM_NAME, type Branding } from '@/lib/branding'
+import { usePublicBranding } from '@/lib/publicBranding'
 import { liveStore } from '@/lib/liveStore'
 import { isPaletteShortcut, shortcutLabel } from '@/lib/palette'
 import { getTheme, onThemeChange, setTheme, type Theme } from '@/lib/prefs'
@@ -117,19 +118,26 @@ export function AppShell({ children }: { children: ReactNode }) {
   // branding/api-keys/webhooks nav is hidden entirely. Missing user ⇒ no entitlements ⇒ gated off.
   const entitlements = user?.entitlements
   const hasEntitlement = (item: NavItem) => item.entitlement === undefined || entitlements?.[item.entitlement] === true
-  // white-label shell (E03-5): the sidebar brand block uses the tenant's productName/logoUrl
-  // when present; Orbetra + the local svg are only the fallback
+  // white-label shell (E03-5): the sidebar brand block uses the tenant's productName/logoUrl.
+  //
+  // WHOSE host this is comes from `usePublicBranding` (resolved by Host, before auth) and decides
+  // what a blank field falls back to. `AuthShell` has guarded this since it was written — "a 200 ms
+  // flash of the wrong brand is still the wrong brand" — and this shell, which renders on EVERY
+  // authenticated page for every role, never got the same treatment: it painted our logo and the
+  // literal "Orbetra" until the fetch landed, and kept them for good for a tenant with colours but
+  // no product name, or on any fetch failure (the catch below).
+  const host = usePublicBranding()
   const [branding, setBranding] = useState<Branding | null>(null)
 
   // apply the tenant's white-label theme once authenticated (E03-5)
   useEffect(() => {
     getBranding()
       .then((b) => {
-        applyBranding(b.branding)
+        applyBranding(b.branding, host?.whiteLabel === true)
         setBranding(b.branding)
       })
       .catch(() => undefined)
-  }, [])
+  }, [host?.whiteLabel])
 
   // close the mobile drawer on navigation
   useEffect(() => setMobileOpen(false), [pathname])
@@ -244,11 +252,20 @@ export function AppShell({ children }: { children: ReactNode }) {
     <>
       <div className={cn('flex h-14 items-center gap-2.5 px-4 admin-hairline-b', collapsed && withCollapse && 'justify-center px-0')}>
         <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg" style={{ background: 'var(--admin-brand-soft)' }}>
-          <img src={branding?.logoUrl ?? '/orbetra-logo.svg'} alt="" className="h-5 w-5" />
+          {/* no logo configured on a TENANT host ⇒ no image, never ours */}
+          {branding?.logoUrl !== undefined ? (
+            <img src={branding.logoUrl} alt="" className="h-5 w-5" />
+          ) : host?.whiteLabel === false ? (
+            <img src="/orbetra-logo.svg" alt="" className="h-5 w-5" />
+          ) : null}
         </div>
         {!(collapsed && withCollapse) && (
           <div className="min-w-0 leading-tight">
-            <div className="display truncate text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{branding?.productName ?? 'Orbetra'}</div>
+            {/* blank while the host is unknown, and blank forever on a tenant host with no name —
+                the platform name only ever appears on the platform's own hosts */}
+            <div className="display truncate text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+              {branding?.productName ?? (host?.whiteLabel === false ? PLATFORM_NAME : '')}
+            </div>
             <div className="mono text-[9px] uppercase tracking-[0.18em]" style={{ color: 'var(--admin-ink-soft)' }}>{t('shell.admin')}</div>
           </div>
         )}

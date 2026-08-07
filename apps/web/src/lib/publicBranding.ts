@@ -41,16 +41,26 @@ const PLATFORM: PublicBrand = { whiteLabel: false, branding: {} }
  * only owns the page once it has actually configured something, which is also why a bare
  * `productName` with no colours counts: it is a deliberate act by someone on the Branding screen.
  */
-export function brandFromResponse(res: { branding?: unknown; productName?: string } | null): PublicBrand {
-  if (res === null) return PLATFORM
+export function brandFromResponse(res: { whiteLabel?: unknown; branding?: unknown; productName?: string } | null): PublicBrand | null {
+  // A FETCH FAILURE IS NOT THE PLATFORM. It used to be: a blocked request, a 502 mid-deploy or a
+  // flaky network on a tenant's login page fell through to `PLATFORM` and rendered our wordmark and
+  // a link to our marketing site on their domain. `null` means UNKNOWN, and every caller renders
+  // nothing brand-specific for it (fail closed).
+  if (res === null) return null
   const branding = (typeof res.branding === 'object' && res.branding !== null ? res.branding : {}) as Branding
-  const whiteLabel = res.productName !== undefined || Object.keys(branding).length > 0
-  if (!whiteLabel) return PLATFORM
+  // THE SERVER decides, not the shape of what came back. Inferring white-label from "did any
+  // branding field arrive" meant a reseller who verified their domain BEFORE filling in the branding
+  // form got the full platform wordmark on the one screen every one of their customers passes
+  // through. The host resolving to a tenant is the fact, and only the API knows it.
+  if (res.whiteLabel !== true) return PLATFORM
   return { whiteLabel: true, productName: res.productName, branding }
 }
 
 /**
  * Resolve once per page load, apply the colours/title/favicon, and return the result.
+ *
+ * `null` means UNKNOWN — still in flight, or the request failed. Callers must render nothing
+ * brand-specific for it; see brandFromResponse on why a failure must not resolve to the platform.
  *
  * Returns `null` while in flight so the caller can render nothing brand-specific yet: flashing the
  * Orbetra wordmark for 200 ms before swapping to the tenant's is exactly the leak this closes, and
@@ -63,8 +73,8 @@ export function usePublicBranding(): PublicBrand | null {
     void fetchPublicBranding().then((res) => {
       if (!live) return
       const brand = brandFromResponse(res)
-      if (brand.whiteLabel) {
-        applyBranding({ ...brand.branding, ...(brand.productName !== undefined ? { productName: brand.productName } : {}) })
+      if (brand !== null) {
+        applyBranding({ ...brand.branding, ...(brand.productName !== undefined ? { productName: brand.productName } : {}) }, brand.whiteLabel)
       }
       setBrand(brand)
     })

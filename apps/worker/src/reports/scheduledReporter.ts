@@ -1,5 +1,5 @@
 import { runReport, type Db, type Pool, type ReportResult, type ReportType } from '@orbetra/db'
-import { brandingSchema, escapeHtml, renderBrandedEmail, sanitizeUnits, METRIC_UNITS, type Branding, type DisplayUnits } from '@orbetra/shared'
+import { brandingReadSchema, escapeHtml, renderBrandedEmail, sanitizeUnits, METRIC_UNITS, type Branding, type DisplayUnits } from '@orbetra/shared'
 
 import { renderReportTable, renderReportTableHtml, reportTitle } from '../format/report.js'
 import { stringsFor } from '../format/strings.js'
@@ -162,7 +162,7 @@ async function resolveRecipient(pool: Pool, tenantId: string, accountId: string)
     const row = res.rows[0]
     if (row === undefined) return DEFAULT_RECIPIENT
     const tenantName = row.name && row.name.trim() !== '' ? row.name : undefined
-    const parsed = row.branding && typeof row.branding === 'object' ? brandingSchema.safeParse(row.branding) : undefined
+    const parsed = row.branding && typeof row.branding === 'object' ? brandingReadSchema.safeParse(row.branding) : undefined
     const branding = parsed?.success ? parsed.data : undefined
     const product = branding?.productName
     const brand = typeof product === 'string' && product.trim() !== '' ? product : tenantName ?? 'Orbetra'
@@ -204,7 +204,7 @@ export async function runDueSchedules(deps: ScheduledReporterDeps): Promise<{ du
       // each recipient independently: one bad address must NOT suppress the others
       for (const to of s.recipients) {
         try {
-          await deps.transport.send(to, subject, text, html)
+          await deps.transport.send(to, subject, text, html, branding?.supportEmail)
           emailed++
         } catch (err) {
           console.error('scheduled report send failed', s.id, err instanceof Error ? err.message : String(err)) // message only, no PII object

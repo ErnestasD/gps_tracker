@@ -89,13 +89,13 @@ describe('E05-5 emailDriver + driversFromEnv', () => {
     const send = vi.fn(() => Promise.resolve())
     const transport: EmailTransport = { send }
     await emailDriver(transport).send(email('x@y.co'), { subject: 'S', text: 'B', html: '<p>H</p>' })
-    expect(send).toHaveBeenCalledWith('x@y.co', 'S', 'B', '<p>H</p>')
+    expect(send).toHaveBeenCalledWith('x@y.co', 'S', 'B', '<p>H</p>', undefined)
   })
 
   it('emailDriver passes html=undefined when a message has no html (plain-text only)', async () => {
     const send = vi.fn(() => Promise.resolve())
     await emailDriver({ send }).send(email('x@y.co'), { subject: 'S', text: 'B' })
-    expect(send).toHaveBeenCalledWith('x@y.co', 'S', 'B', undefined)
+    expect(send).toHaveBeenCalledWith('x@y.co', 'S', 'B', undefined, undefined)
   })
 
   it('driversFromEnv exposes telegram only when the token is set', () => {

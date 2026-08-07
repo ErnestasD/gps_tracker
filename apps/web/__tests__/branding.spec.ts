@@ -85,8 +85,8 @@ describe('white-label favicon (faviconLinks)', () => {
   it('falls back to the Orbetra defaults when the logo is unset or empty', () => {
     for (const v of [undefined, '']) {
       const hrefs = faviconLinks(v).map((l) => l.href)
-      expect(hrefs).toContain('/favicon.ico')
-      expect(hrefs).toContain('/favicon.svg')
+      expect(hrefs).toContain('/platform-icon.ico')
+      expect(hrefs).toContain('/platform-icon.svg')
     }
   })
 })
