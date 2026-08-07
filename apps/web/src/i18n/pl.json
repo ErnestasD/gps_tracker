@@ -12,7 +12,9 @@
     "serverError": "Coś poszło nie tak po naszej stronie. Spróbuj ponownie za kilka minut.",
     "backToSite": "Powrót do orbetra.com",
     "forgotLink": "Nie pamiętasz hasła?",
-    "label": "Logowanie"
+    "label": "Logowanie",
+    "showPassword": "Pokaż hasło",
+    "hidePassword": "Ukryj hasło"
   },
   "forgot": {
     "title": "Zresetuj hasło",
@@ -1133,5 +1135,15 @@
     "create": "Wyślij zaproszenie",
     "createError": "Nie udało się utworzyć partnera. Kod lub e-mail jest już używany.",
     "actionError": "Akcja nie powiodła się. Spróbuj ponownie."
+  },
+  "authNav": {
+    "platform": "Platforma",
+    "pricing": "Cennik",
+    "resellers": "Resellerzy",
+    "partners": "Partnerzy",
+    "contact": "Kontakt",
+    "docs": "Dokumentacja",
+    "signin": "Zaloguj się",
+    "trial": "Wypróbuj bezpłatnie"
   }
 }

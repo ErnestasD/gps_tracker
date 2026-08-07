@@ -13,6 +13,8 @@ export const pl: Translation = {
     menu: "Menu",
   },
   cta: {
+    showPassword: "Pokaż hasło",
+    hidePassword: "Ukryj hasło",
     trial: "Wypróbuj bezpłatnie",
     signin: "Zaloguj się",
     pricing: "Zobacz cennik",

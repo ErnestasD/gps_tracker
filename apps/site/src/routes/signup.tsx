@@ -4,6 +4,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import { ApiError, apiPost, dashUrl } from "@/lib/api";
 import { readRefCode } from "@/lib/consent";
+import { PasswordInput } from "@/components/site/PasswordInput";
 
 // signupSchema (packages/shared) accepts ref only as a 3–64 url-safe slug; a shorter/
 // junk code must not 400 the whole signup, so it is dropped client-side too.
@@ -178,11 +179,16 @@ function Field({ label, name, ...rest }: { label: string; name: string } & React
   return (
     <label className="grid gap-1.5">
       <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{label}</span>
-      <input
-        name={name}
-        {...rest}
-        className="h-11 rounded px-3 bg-[rgba(10,20,40,0.6)] border border-[var(--hairline)] text-ink text-sm outline-none focus:border-[color:var(--brand-blue)]"
-      />
+      {/* a password field gets the reveal toggle — same reason as the partner forms */}
+      {rest.type === "password" ? (
+        <PasswordInput name={name} {...rest} />
+      ) : (
+        <input
+          name={name}
+          {...rest}
+          className="h-11 rounded px-3 bg-[rgba(10,20,40,0.6)] border border-[var(--hairline)] text-ink text-sm outline-none focus:border-[color:var(--brand-blue)]"
+        />
+      )}
     </label>
   );
 }

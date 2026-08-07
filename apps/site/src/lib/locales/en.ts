@@ -21,6 +21,8 @@ export const en = {
     menu: "Menu",
   },
   cta: {
+    showPassword: "Show password",
+    hidePassword: "Hide password",
     trial: "Start free trial",
     signin: "Sign in",
     pricing: "See pricing",
