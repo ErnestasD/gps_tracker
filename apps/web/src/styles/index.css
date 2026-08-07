@@ -190,6 +190,18 @@ summary {
 .auth-scope .auth-input:focus {
   border-color: var(--accent);
 }
+/* Chrome paints an autofilled field `rgb(232,240,254)` — a light blue that beats any background we
+ * set — so a saved password turned the dark form into two white boxes, which is what the founder
+ * screenshotted. The inset shadow is the only way to override it, and `text-fill-color` is needed
+ * too or the text stays dark-on-dark. `transition-delay` keeps it from flashing white on load. */
+.auth-scope .auth-input:-webkit-autofill,
+.auth-scope .auth-input:-webkit-autofill:hover,
+.auth-scope .auth-input:-webkit-autofill:focus {
+  -webkit-box-shadow: inset 0 0 0 1000px rgba(10, 20, 40, 0.98);
+  -webkit-text-fill-color: var(--auth-ink);
+  caret-color: var(--auth-ink);
+  transition: background-color 9999s ease-out;
+}
 .auth-scope .auth-submit {
   height: 2.75rem;
   width: 100%;
