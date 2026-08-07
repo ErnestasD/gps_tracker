@@ -3,26 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- neutral near-black, not our palette: the manifest now carries the TENANT's theme colour and
-         this tag is what mobile Chrome tints the address bar with before it loads -->
+    <!-- neutral near-black; the per-host manifest carries the tenant's own theme colour -->
     <meta name="theme-color" content="#0A0E1A" />
-    <!--
-      NO <title> and NO icon links, deliberately.
-
-      This one file is served byte-identical to every host, so anything branded in it is branded for
-      a reseller's customers too — and it is the FIRST thing they see, before any JavaScript runs.
-      `<title>Orbetra</title>` was in the tab from first paint on every white-label domain, and stayed
-      there for good if the tenant had not filled in a product name.
-
-      With no title a browser shows the URL, which on `fleet.reseller.lt` is exactly right, and
-      `applyBranding` replaces it within one round trip. With no icon links the browser asks for
-      /favicon.ico, which this app does not serve (our own icon lives at /platform-icon.*, reachable
-      only through applyBranding) — so a tenant gets the browser's blank default rather than ours.
-
-      The MANIFEST is fetched by the browser itself and could never be rewritten at runtime, which is
-      why it now comes from the API, branded by Host: "Install app" used to offer a tenant's user an
-      app called Orbetra, and put our icon on their phone for years.
-    -->
+    <!-- Deliberately no <title> and no icon links: this file is byte-identical on every host, so
+         anything named in it is named to every tenant's customers — including in view-source. Both
+         are set at runtime from the branding the host resolves to; see applyBranding and
+         faviconLinks in src/lib/branding.ts, and the manifest route in apps/api. -->
     <link rel="manifest" href="/v1/public/manifest.webmanifest" />
   </head>
   <body>
