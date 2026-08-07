@@ -47,17 +47,17 @@ type Commission = {
   at: string;
 };
 
+type CurrencyTotal = { currency: string; commissionableCents: number; earnedCents: number };
+
 type Customer = {
   id: string;
   name: string;
   plan: string;
-  subscriptionStatus: string | null;
+  state: "trial" | "active" | "ended";
   since: string | null;
   windowEndsAt: string | null;
   windowOpen: boolean;
-  paidCents: number;
-  earnedCents: number;
-  currency: string;
+  totals: CurrencyTotal[];
 };
 
 /** Money, in the currency the commission was actually accrued in — never a hard-coded €. */
@@ -91,11 +91,15 @@ function PartnerDashboard() {
     let cancelled = false;
     void (async () => {
       try {
-        const [meRes, comRes, cusRes] = await Promise.all([
+        // /customers is SETTLED SEPARATELY, not awaited alongside the other two. apps/site is a
+        // static SPA deployed independently of the API: ship the page before the server and a 404
+        // on the new route would take the referral link — which worked yesterday — down with it.
+        const customersP = apiGet<Customer[] | { data?: Customer[] }>("/v1/partner/customers", token).catch(() => [] as Customer[]);
+        const [meRes, comRes] = await Promise.all([
           apiGet<PartnerMe>("/v1/partner/me", token),
           apiGet<Commission[] | { data?: Commission[] }>("/v1/partner/commissions", token),
-          apiGet<Customer[] | { data?: Customer[] }>("/v1/partner/customers", token),
         ]);
+        const cusRes = await customersP;
         if (cancelled) return;
         setMe(meRes);
         setRows(Array.isArray(comRes) ? comRes : (comRes?.data ?? []));
@@ -120,27 +124,44 @@ function PartnerDashboard() {
   const locale = i18n.resolvedLanguage ?? "en";
 
   /**
-   * The four numbers a partner opens this page for. `void` rows are reversals — a refunded customer
-   * payment — and are excluded from EARNED rather than shown as money that exists: a total that
-   * counts cancelled commissions is the one number on the page that would be a lie.
+   * The numbers a partner opens this page for, BUCKETED BY CURRENCY.
+   *
+   * Adding cents across currencies and stamping one symbol on the result invents an exchange rate
+   * we do not have — €100 + $100 is not €200, and the symbol would flip with whichever row happened
+   * to be newest. A partner earning in two currencies gets two rows of tiles instead.
+   *
+   * `void` rows are reversals — a refunded customer payment — and are excluded from EARNED rather
+   * than shown as money that exists: a total counting cancelled commissions is the one number on
+   * this page that would be a lie.
    */
-  const totals = useMemo(() => {
-    const live = rows.filter((r) => r.status !== "void");
-    const currency = live[0]?.currency ?? customers[0]?.currency ?? "eur";
-    const sum = (rs: Commission[]) => rs.reduce((a, r) => a + r.amountCents, 0);
-    return {
-      currency,
-      earned: sum(live),
-      paid: sum(live.filter((r) => r.status === "paid")),
-      pending: sum(live.filter((r) => r.status === "pending")),
-      customers: customers.length,
-      // a customer stops earning when their window closes; knowing how many are still live is the
-      // difference between "I have 8 customers" and "I am still being paid for 3 of them"
-      earning: customers.filter((c) => c.windowOpen && c.since !== null).length,
-    };
-  }, [rows, customers]);
+  const buckets = useMemo(() => {
+    const by = new Map<string, { currency: string; earned: number; paid: number; pending: number }>();
+    for (const r of rows) {
+      if (r.status === "void") continue;
+      const b = by.get(r.currency) ?? { currency: r.currency, earned: 0, paid: 0, pending: 0 };
+      b.earned += r.amountCents;
+      if (r.status === "paid") b.paid += r.amountCents;
+      if (r.status === "pending") b.pending += r.amountCents;
+      by.set(r.currency, b);
+    }
+    // no commissions yet ⇒ still show the zeroed tiles rather than an empty strip
+    return by.size > 0 ? [...by.values()] : [{ currency: "eur", earned: 0, paid: 0, pending: 0 }];
+  }, [rows]);
 
-  const fmtDate = (iso: string | null) => (iso === null ? "—" : new Date(iso).toLocaleDateString(locale));
+  // a customer stops earning when their window closes; knowing how many are still live is the
+  // difference between "I have 8 customers" and "I am still being paid for 3 of them"
+  const earning = useMemo(() => customers.filter((c) => c.windowOpen && c.since !== null).length, [customers]);
+
+  /**
+   * Dates on this page are UTC, deliberately.
+   *
+   * The window end is a CONTRACTUAL date computed in UTC by the accrual, and rendering it in the
+   * viewer's zone would show a partner in Los Angeles one day earlier than the day the server
+   * enforces. A ledger that reads differently depending on where you open it is worse than one that
+   * reads in a zone you have to know about (hard rule 7).
+   */
+  const fmtDate = (iso: string | null) =>
+    iso === null ? "—" : new Date(iso).toLocaleDateString(locale, { timeZone: "UTC" });
 
   if (!token) return null;
 
@@ -173,30 +194,37 @@ function PartnerDashboard() {
 
       {error && <p className="mt-6 text-sm text-[#DC2626]">{error}</p>}
 
-      {/* ── the headline numbers ─────────────────────────────────────────────────────────────── */}
-      <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile
-          label={t("partner.dashboard.totalEarned")}
-          value={money(totals.earned, totals.currency, locale)}
-          hint={t("partner.dashboard.totalEarnedHint")}
-        />
-        <Tile
-          label={t("partner.dashboard.paidOut")}
-          value={money(totals.paid, totals.currency, locale)}
-          hint={t("partner.dashboard.paidOutHint")}
-        />
-        <Tile
-          label={t("partner.dashboard.awaiting")}
-          value={money(totals.pending, totals.currency, locale)}
-          hint={t("partner.dashboard.awaitingHint")}
-          accent="#E0A030"
-        />
-        <Tile
-          label={t("partner.dashboard.customers")}
-          value={String(totals.customers)}
-          hint={t("partner.dashboard.customersHint", { count: totals.earning })}
-        />
-      </div>
+      {/* ── the headline numbers, one strip per currency ─────────────────────────────────────── */}
+      {buckets.map((b, i) => (
+        <div key={b.currency} className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4 first-of-type:mt-10">
+          <Tile
+            label={t("partner.dashboard.totalEarned")}
+            value={money(b.earned, b.currency, locale)}
+            hint={t("partner.dashboard.totalEarnedHint")}
+          />
+          <Tile
+            label={t("partner.dashboard.paidOut")}
+            value={money(b.paid, b.currency, locale)}
+            hint={t("partner.dashboard.paidOutHint")}
+          />
+          <Tile
+            label={t("partner.dashboard.awaiting")}
+            value={money(b.pending, b.currency, locale)}
+            hint={t("partner.dashboard.awaitingHint")}
+            accent="#E0A030"
+          />
+          {/* the customer count belongs to the partner, not to a currency — render it once */}
+          {i === 0 ? (
+            <Tile
+              label={t("partner.dashboard.customers")}
+              value={String(customers.length)}
+              hint={t("partner.dashboard.customersHint", { n: earning })}
+            />
+          ) : (
+            <div className="hidden lg:block" />
+          )}
+        </div>
+      ))}
 
       {/* ── link + terms ─────────────────────────────────────────────────────────────────────── */}
       <div className="mt-5 grid gap-5 md:grid-cols-3">
@@ -254,15 +282,19 @@ function PartnerDashboard() {
                   <td className="px-5 py-3 text-ink">{c.name}</td>
                   <td className="px-5 py-3 mono text-[12px] text-muted-foreground">
                     {c.plan}
-                    {c.subscriptionStatus !== null && c.subscriptionStatus !== "active" && (
-                      <span className="ml-2 text-[10px] uppercase tracking-widest" style={{ color: "#E0A030" }}>
-                        {c.subscriptionStatus}
+                    {c.state !== "active" && (
+                      <span className="ml-2 text-[10px] uppercase tracking-widest" style={{ color: c.state === "ended" ? "var(--muted-foreground)" : "#E0A030" }}>
+                        {t(`partner.dashboard.state.${c.state}`)}
                       </span>
                     )}
                   </td>
                   <td className="px-5 py-3 mono text-[12px] text-muted-foreground">{fmtDate(c.since)}</td>
-                  <td className="px-5 py-3 mono text-right text-muted-foreground">{money(c.paidCents, c.currency, locale)}</td>
-                  <td className="px-5 py-3 mono text-right text-ink">{money(c.earnedCents, c.currency, locale)}</td>
+                  <td className="px-5 py-3 mono text-right text-muted-foreground">
+                    {c.totals.length === 0 ? "—" : c.totals.map((x) => <div key={x.currency}>{money(x.commissionableCents, x.currency, locale)}</div>)}
+                  </td>
+                  <td className="px-5 py-3 mono text-right text-ink">
+                    {c.totals.length === 0 ? "—" : c.totals.map((x) => <div key={x.currency}>{money(x.earnedCents, x.currency, locale)}</div>)}
+                  </td>
                   <td className="px-5 py-3 mono text-[12px]">
                     {c.since === null ? (
                       <span className="text-muted-foreground">{t("partner.dashboard.notYetPaying")}</span>
@@ -299,7 +331,7 @@ function PartnerDashboard() {
               {rows.map((r) => (
                 <tr key={r.id} className="border-t border-[var(--hairline)]">
                   <td className="px-5 py-3 mono text-[12px] text-muted-foreground" title={r.sourceInvoiceId}>
-                    {new Date(r.at).toLocaleDateString(locale)}
+                    {fmtDate(r.at)}
                   </td>
                   <td className="px-5 py-3 text-ink">{r.customer}</td>
                   <td className="px-5 py-3 mono text-right text-muted-foreground">

@@ -40,7 +40,10 @@ export interface AuditRepo {
    * `READ_POLICY.audit = TENANT_ADMINS`. Read back via `listPlatform`, which is platform-only.
    */
   recordPlatform(
-    actor: Actor,
+    /** `{ userId: null }` is legitimate here and ONLY here: some platform events have no human
+     *  behind them (a Stripe webhook reversing a commission). Recording them as nobody is honest;
+     *  attributing them to a placeholder user would not be. */
+    actor: Actor | { userId: null },
     entry: { action: 'create' | 'update' | 'delete'; entity: string; entityId: string; before?: unknown; after?: unknown },
   ): Promise<void>
   list(scope: Scope, opts?: AuditListOpts): Promise<AuditLog[]>

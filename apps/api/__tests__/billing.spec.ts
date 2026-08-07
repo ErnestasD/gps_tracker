@@ -97,9 +97,9 @@ const invoiceEvent = (id: string, customer: string, invoiceId: string, amountPai
 })
 
 // a charge.refunded event: `refunded: true` means the customer got the WHOLE payment back
-const refundEvent = (id: string, invoiceId: string, full = true, created = 1_700_000_100): StripeEvent => ({
+const refundEvent = (id: string, invoiceId: string, full = true, customer = 'cus_refund', created = 1_700_000_100): StripeEvent => ({
   id, type: 'charge.refunded', created,
-  data: { object: { id: `ch_${invoiceId}`, invoice: invoiceId, refunded: full, amount: 5_000, amount_refunded: full ? 5_000 : 1_000 } },
+  data: { object: { id: `ch_${invoiceId}`, invoice: invoiceId, customer, refunded: full, amount: 5_000, amount_refunded: full ? 5_000 : 1_000 } },
 })
 
 beforeAll(async () => {
@@ -577,6 +577,22 @@ describe('billing lifecycle (ADR-024)', () => {
     await db.affiliates.setCommissionStatus(actor, three?.id ?? '', 'paid')
     expect((await req(port, '/v1/webhooks/stripe', null, 'POST', refundEvent('evt_rfd_3', 'in_rf_3'), { 'stripe-signature': 'valid' })).status).toBe(200)
     expect((await byInvoice('in_rf_3'))?.status).toBe('paid')
+  })
+
+  it('a refund that OVERTAKES its own accrual still blocks the commission', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-0000000000f9' }
+    const aff = await db.affiliates.create(actor, { name: 'Race Partner', email: 'race@partner.co', code: 'RACE1', commissionPct: 20, commissionMonths: 12 })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
+    const tenant = await db.tenants.create(actor, { name: 'Raced customer', referredByAffiliateId: aff.id })
+    await db.tenants.setStripeCustomer(tenant.id, 'cus_race')
+
+    // Stripe does not guarantee ordering, and our own accrual 500s-and-retries on a DB fault — so
+    // the refund really can land first. It leaves a tombstone on the invoice id.
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', refundEvent('evt_race_r', 'in_race_1', true, 'cus_race'), { 'stripe-signature': 'valid' })).status).toBe(200)
+    // …and the accrual that arrives afterwards must NOT pay out on money the customer already has back
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_race_i', 'cus_race', 'in_race_1', 5_000), { 'stripe-signature': 'valid' })).status).toBe(200)
+    const owed = (await db.affiliates.listCommissions(aff.id)).filter((c) => c.status !== 'void')
+    expect(owed).toHaveLength(0)
   })
 
   it('invoice.payment_succeeded for an UNREFERRED tenant accrues nothing (safe no-op)', async () => {

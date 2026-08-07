@@ -351,15 +351,20 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
       // cancellation, so it is logged for a human instead of guessed at.
       const obj = event.data.object
       const invoiceId = typeof obj['invoice'] === 'string' && obj['invoice'] !== '' ? obj['invoice'] : null
+      const customerId = typeof obj['customer'] === 'string' ? obj['customer'] : ''
       const full = obj['refunded'] === true
       if (invoiceId !== null) {
         try {
           if (full) {
-            const outcome = await deps.db.affiliates.voidCommissionForRefund(invoiceId)
+            const outcome = await deps.db.affiliates.voidCommissionForRefund(invoiceId, customerId)
             if (outcome === 'alreadyPaid') {
               // deliberately loud: the partner has the cash and the sale is reversed. Nothing here
-              // can fix that, and pretending otherwise by voiding the row would hide it.
+              // can fix that, and pretending otherwise by voiding the row would hide it. The repo
+              // also writes an audit row, so this survives the log buffer.
               console.warn('commission already PAID OUT on a refunded invoice — manual clawback', invoiceId)
+            } else if (outcome === 'tombstoned') {
+              // the refund overtook its own accrual; the tombstone stops the retry from paying out
+              console.warn('refund arrived before accrual — commission blocked for invoice', invoiceId)
             }
           } else {
             console.warn('partial refund on an invoice with a commission — review manually', invoiceId)
