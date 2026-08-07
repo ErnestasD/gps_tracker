@@ -6,6 +6,7 @@ import { TENANT_PLANS, type TenantPlan } from '@orbetra/shared'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { listTenants } from '@/lib/devices'
@@ -80,11 +81,14 @@ export function PlatformPage() {
         })}
       </div>
 
-      {tab === 'tenants' && <TenantsTab onOpen={setOpenTenant} />}
+      {tab === 'tenants' && (
+        <>
+          <TenantsTab onOpen={setOpenTenant} />
+          {openTenant !== null && <TenantCard id={openTenant} onClose={() => setOpenTenant(null)} />}
+        </>
+      )}
       {tab === 'leads' && <LeadsTab />}
       {tab === 'audit' && <AuditTab />}
-
-      {openTenant !== null && <TenantCard id={openTenant} onClose={() => setOpenTenant(null)} />}
     </div>
   )
 }
@@ -98,6 +102,13 @@ function TenantsTab({ onOpen }: { onOpen: (id: string) => void }) {
   // a failed usage fetch used to render as an authoritative "0 device-days" for every tenant —
   // show '—' + a banner instead so nobody reads billing usage as genuinely zero
   const usageErr = usage.isError
+
+  // A failed /v1/tenants used to render as "this platform has no tenants" — under a footer stating
+  // an authoritative device-day total. There is no state in which that is a truthful screen, and the
+  // comment two lines above says exactly why for the usage half (review MED).
+  if (tenants.isError) return <p role="alert" className="admin-card p-4 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="platform-error">{t('platform.usageError')}</p>
+  if (tenants.isLoading) return <p className="admin-card p-4 text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="platform-loading">{t('platform.title')}…</p>
+  if ((tenants.data ?? []).length === 0) return <p className="admin-card p-4 text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="platform-empty">{t('platform.empty')}</p>
 
   return (
     <div className="admin-card overflow-hidden">
@@ -121,8 +132,13 @@ function TenantsTab({ onOpen }: { onOpen: (id: string) => void }) {
             const u = usageByTenant.get(tn.id)
             const row = tn as { id: string; name: string; plan?: string; suspendedAt?: string | null }
             return (
-              <tr key={tn.id} className="admin-hairline-b cursor-pointer hover:opacity-80" onClick={() => onOpen(tn.id)} data-testid={`platform-tenant-${tn.id}`}>
-                <td className={td} style={{ color: 'var(--admin-ink)' }}>{tn.name}</td>
+              <tr key={tn.id} className="admin-hairline-b" data-testid={`platform-tenant-${tn.id}`}>
+                {/* a button, not a clickable <tr>: the card was unreachable by keyboard entirely */}
+                <td className={td}>
+                  <button type="button" className="underline-offset-2 hover:underline" style={{ color: 'var(--admin-ink)' }} onClick={() => onOpen(tn.id)}>
+                    {tn.name}
+                  </button>
+                </td>
                 <td className={td}><span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{row.plan ?? '—'}</span></td>
                 <td className={td}>
                   {row.suspendedAt != null
@@ -161,6 +177,7 @@ function TenantCard({ id, onClose }: { id: string; onClose: () => void }) {
   const accounts = useQuery({ queryKey: ['platform-tenant-accounts', id], queryFn: () => listTenantAccounts(id) })
   const domains = useQuery({ queryKey: ['platform-tenant-domains', id], queryFn: () => listTenantDomains(id) })
   const [busy, setBusy] = useState(false)
+  const [pendingPlan, setPendingPlan] = useState<TenantPlan | null>(null)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
   const refresh = () => {
@@ -210,7 +227,10 @@ function TenantCard({ id, onClose }: { id: string; onClose: () => void }) {
               data-testid="platform-plan-select"
               aria-label={t('platform.plan')}
               value={d?.plan ?? ''}
-              onChange={(v) => run(() => setTenantPlan(id, v as TenantPlan), 'platform.planSaved')}
+              // a plan change is one click on somebody else's live business — confirm it, with the
+              // counts that make a downgrade's consequence concrete
+              onChange={(v) => setPendingPlan(v as TenantPlan)}
+              disabled={busy}
               options={TENANT_PLANS.map((p) => ({ value: p, label: p }))}
             />
           </div>
@@ -252,6 +272,19 @@ function TenantCard({ id, onClose }: { id: string; onClose: () => void }) {
           <div key={a.id} className="py-1" style={{ color: 'var(--admin-ink)' }}>{a.name} <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>· {a.timezone ?? 'UTC'}</span></div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={pendingPlan !== null}
+        onOpenChange={(o) => { if (!o) setPendingPlan(null) }}
+        title={t('platform.planConfirmTitle')}
+        description={t('platform.planConfirm', { plan: pendingPlan ?? '', accounts: (accounts.data ?? []).length, domains: (domains.data ?? []).length })}
+        confirmLabel={t('platform.planSave')}
+        onConfirm={() => {
+          const next = pendingPlan
+          setPendingPlan(null)
+          if (next !== null) run(() => setTenantPlan(id, next), 'platform.planSaved')
+        }}
+      />
 
       {msg !== null && (
         <p role="status" className="text-sm" style={{ color: msg.kind === 'ok' ? 'var(--admin-ink-soft)' : 'var(--admin-danger)' }} data-testid="platform-tenant-msg">
@@ -326,7 +359,7 @@ function AuditTab() {
         <tbody>
           {rows.map((e) => (
             <tr key={e.id} className="admin-hairline-b">
-              <td className={td} style={{ color: 'var(--admin-ink-soft)' }}>{fmt.dt(e.createdAt)}</td>
+              <td className={td} style={{ color: 'var(--admin-ink-soft)' }}>{fmt.dt(e.at)}</td>
               <td className={td} style={{ color: 'var(--admin-ink)' }}>{t(`audit.a.${e.action}`, e.action)}</td>
               <td className={td} style={{ color: 'var(--admin-ink)' }}>{t(`audit.e.${e.entity}`, e.entity)}</td>
               <td className={td}><span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{e.entityId}</span></td>

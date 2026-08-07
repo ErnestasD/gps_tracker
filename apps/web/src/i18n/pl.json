@@ -227,7 +227,9 @@
       "export": "Eksport danych",
       "maintenance": "Konserwacja",
       "scheduledReport": "Zaplanowany raport",
-      "shareLink": "Link udostępniania"
+      "shareLink": "Link udostępniania",
+      "affiliate": "Partner",
+      "commission": "Prowizja"
     },
     "a": {
       "create": "Utworzono",
@@ -848,10 +850,10 @@
   },
   "platform": {
     "title": "Platforma",
-    "desc": "Najemcy i rozliczane użycie w tym miesiącu.",
+    "desc": "Klienci, zapytania i audyt platformy.",
     "denied": "Tylko administratorzy platformy.",
     "tenants": "Najemcy",
-    "tenant": "Najemca",
+    "tenant": "Klient",
     "deviceDays": "Dni urządzeń (ten miesiąc)",
     "activeDevices": "Aktywne urządzenia",
     "monthTotal": "Łącznie dni urządzeń w tym miesiącu",
@@ -873,11 +875,11 @@
     "subscription": "Subskrypcja",
     "periodEnd": "Okres kończy się",
     "noticeStage": "Wysłane ostrzeżenia",
-    "planNote": "Tylko uprawnienia — ustala, co produkt dopuszcza (urządzenia, white-label, własne domeny, API). NIE zmienia rozliczeń Stripe.",
+    "planNote": "Tylko uprawnienia — od razu udostępnia to, co produkt dopuszcza, i NIE zmienia rozliczeń Stripe. Stripe pozostaje nadrzędny: kolejne zdarzenie subskrypcji przywróci plan wynikający z ceny.",
     "planSaved": "Plan zmieniony",
     "restore": "Przywróć dostęp",
     "restored": "Dostęp przywrócony",
-    "restoreNote": "Odbudowuje rejestr ingest, potem zdejmuje flagę. Rozliczenia bez zmian — jeśli nadal nieopłacone, kolejny dzienny przebieg zawiesi ponownie.",
+    "restoreNote": "Odbudowuje rejestr ingest, potem zdejmuje flagę. Poziom ostrzeżeń zostaje zachowany — jeśli nadal nieopłacone, kolejny dzienny przebieg zawiesi ponownie, po cichu i bez nowego e-maila.",
     "actionError": "Nie udało się — spróbuj ponownie.",
     "close": "Zamknij",
     "domains": "Hosty white-label",
@@ -889,7 +891,10 @@
     "leadCompany": "Firma",
     "leadContact": "Kontakt",
     "leadDevices": "Urządzenia",
-    "leadMessage": "Wiadomość"
+    "leadMessage": "Wiadomość",
+    "planConfirmTitle": "Zmienić plan tego klienta?",
+    "planSave": "Zmień plan",
+    "planConfirm": "Ustaw plan {{plan}}. Klient ma {{accounts}} kont(a) i {{domains}} host(ów) white-label. Obniżenie planu blokuje NOWE urządzenia, domeny i konta — nie wyłącza istniejących."
   },
   "share": {
     "title": "Śledzenie na żywo",

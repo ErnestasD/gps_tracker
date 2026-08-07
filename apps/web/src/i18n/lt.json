@@ -227,7 +227,9 @@
       "export": "Duomenų eksportas",
       "maintenance": "Techninė priežiūra",
       "scheduledReport": "Suplanuota ataskaita",
-      "shareLink": "Bendrinimo nuoroda"
+      "shareLink": "Bendrinimo nuoroda",
+      "affiliate": "Partneris",
+      "commission": "Komisinis"
     },
     "a": {
       "create": "Sukurta",
@@ -848,10 +850,10 @@
   },
   "platform": {
     "title": "Platforma",
-    "desc": "Nuomininkai ir apmokestinamas naudojimas šį mėnesį.",
+    "desc": "Klientai, užklausos ir platformos audito žurnalas.",
     "denied": "Tik platformos administratoriams.",
     "tenants": "Nuomininkai",
-    "tenant": "Nuomininkas",
+    "tenant": "Klientas",
     "deviceDays": "Įrenginio dienos (šį mėn.)",
     "activeDevices": "Aktyvūs įrenginiai",
     "monthTotal": "Viso įrenginio dienų šį mėnesį",
@@ -867,17 +869,17 @@
     "state": "Būsena",
     "active": "Aktyvus",
     "suspended": "Atjungtas",
-    "suspendedSince": "Atjungtas {{at}}",
+    "suspendedSince": "Atjungtas nuo {{at}}",
     "total": "Iš viso",
     "tenantId": "Kliento ID",
     "subscription": "Prenumerata",
     "periodEnd": "Laikotarpis baigiasi",
     "noticeStage": "Išsiųsta įspėjimų",
-    "planNote": "Tik teisės — nustato, ką produktas leidžia (įrenginiai, white-label, nuosavi domenai, API). Stripe atsiskaitymų NEKEIČIA.",
+    "planNote": "Tik teisės — iškart suteikia tai, ką produktas leidžia, ir Stripe atsiskaitymų NEKEIČIA. Stripe lieka viršesnis: kitas kliento prenumeratos įvykis grąžins planą pagal jo kainą.",
     "planSaved": "Planas pakeistas",
     "restore": "Grąžinti prieigą",
     "restored": "Prieiga grąžinta",
-    "restoreNote": "Atstato ingest registrą, tada nuima žymę. Atsiskaitymai neliečiami — jei vis dar neapmokėta, kitas paros nuskaitymas atjungs iš naujo.",
+    "restoreNote": "Atstato ingest registrą, tada nuima žymę. Įspėjimų kopėtėlės išsaugomos, tad jei vis dar neapmokėta, kitas kasdienis patikrinimas atjungs vėl — tyliai, be naujo laiško.",
     "actionError": "Nepavyko — bandykite dar kartą.",
     "close": "Uždaryti",
     "domains": "White-label adresai",
@@ -889,7 +891,10 @@
     "leadCompany": "Įmonė",
     "leadContact": "Kontaktai",
     "leadDevices": "Įrenginiai",
-    "leadMessage": "Žinutė"
+    "leadMessage": "Žinutė",
+    "planConfirmTitle": "Keisti šio kliento planą?",
+    "planSave": "Keisti planą",
+    "planConfirm": "Nustatyti planą {{plan}}. Klientas turi {{accounts}} paskyr(as) ir {{domains}} white-label adres(us). Žemesnis planas blokuoja NAUJUS įrenginius, domenus ir paskyras — jau esamų neišjungia."
   },
   "share": {
     "title": "Gyvas sekimas",

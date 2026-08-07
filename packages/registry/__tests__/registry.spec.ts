@@ -95,15 +95,25 @@ describe('tenant suspension', () => {
     // without device:account the device connects and is then dropped by the worker for want of a
     // tenant — a "restored" fleet that still shows nothing on the map
     const { redis, hashes } = fakeRedis()
-    await restoreTenantDevices(redis, [{ ...dev(1n, 'a'), config: { presenceRules: {}, odometerSource: 'auto' } }])
+    await restoreTenantDevices(redis, [{ ...dev(1n, 'a'), presenceRules: { minStopS: 120 }, odometerSource: 'can' }])
     expect(hashes['registry:imei']?.['a']).toBe('1')
     expect(hashes['device:account']?.['1']).toBe('a1')
     expect(hashes['device:config']?.['1']).toContain('odometerSource')
   })
 
+  it('nests the trip config ITSELF — a caller cannot forget it and silently reset the fleet', async () => {
+    // `RegistryDevice.config` is optional, so handing the flat DB rows to activateDevice typechecks
+    // and skips device:config entirely: the fleet returns with default presence rules and GPS
+    // odometry instead of CAN, and nobody notices because data is flowing. Three call sites did this
+    // mapping by hand; the third forgot (review HIGH).
+    const { redis, hashes } = fakeRedis()
+    await restoreTenantDevices(redis, [{ ...dev(1n, 'a'), presenceRules: { minStopS: 120 }, odometerSource: 'can' }])
+    expect(JSON.parse(hashes['device:config']!['1']!)).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'can' })
+  })
+
   it('suspend → restore → suspend is idempotent in both directions', async () => {
     const { redis, hashes } = fakeRedis()
-    const one = [{ ...dev(1n, 'a') }]
+    const one = [{ ...dev(1n, 'a'), presenceRules: {}, odometerSource: 'auto' }]
     await restoreTenantDevices(redis, one)
     await restoreTenantDevices(redis, one)
     expect(hashes['registry:imei']?.['a']).toBe('1')

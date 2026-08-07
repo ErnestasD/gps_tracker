@@ -268,9 +268,20 @@ export interface TenantRepo {
    *  Conditional: returns false when it was ALREADY suspended, so a re-run neither re-mails nor
    *  re-logs, and the count an operator sees is the number of tenants actually cut off. */
   suspend(tenantId: string, at: Date): Promise<boolean>
-  /** Clear suspension + the notice ladder in ONE write. Returns false when it was not suspended, so
-   *  the caller can skip the (expensive, Redis-touching) restore for the overwhelming majority. */
-  unsuspend(tenantId: string): Promise<boolean>
+  /**
+   * Clear suspension. Returns false when it was not suspended, so the caller can skip the
+   * (expensive, Redis-touching) restore for the overwhelming majority.
+   *
+   * `keepLadder` decides what the NEXT sweep does, and the two callers need opposite things.
+   *  - A PAYMENT clears the ladder (default): the episode is over, and a later lapse deserves the
+   *    full three warnings again.
+   *  - A PLATFORM OVERRIDE keeps it. Resetting there is not a tidier record, it is a loophole: the
+   *    sweep can only suspend at `stage >= 3`, so a zeroed ladder buys the tenant another ~2 days of
+   *    free service AND mails them a fresh "your fleet stops tomorrow" — every click, unbounded.
+   *    With the ladder kept, the next sweep re-suspends immediately and quietly, which is exactly
+   *    what the button's own copy promises.
+   */
+  unsuspend(tenantId: string, opts?: { keepLadder?: boolean }): Promise<boolean>
 }
 
 /**
@@ -630,11 +641,16 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       const r = await prisma.tenant.updateMany({ where: { id: tenantId, suspendedAt: null }, data: { suspendedAt: at } })
       return r.count > 0
     },
-    unsuspend: async (tenantId) => {
-      // the ladder resets with the suspension too. This is belt to `lapseNoticeFor`'s braces: that
-      // field already makes a stale stage read as zero, but leaving a spent ladder on a paying
-      // tenant's row is state nobody would expect to find there.
-      const r = await prisma.tenant.updateMany({ where: { id: tenantId, suspendedAt: { not: null } }, data: { suspendedAt: null, lapseNoticeStage: 0, lapseNoticeFor: null } })
+    unsuspend: async (tenantId, opts = {}) => {
+      // On a PAYMENT the ladder resets with the suspension. This is belt to `lapseNoticeFor`'s
+      // braces: that field already makes a stale stage read as zero, but leaving a spent ladder on a
+      // paying tenant's row is state nobody would expect to find there. On a platform OVERRIDE the
+      // ladder survives — see the interface note; zeroing it there is a free-service lever.
+      const clearLadder = opts.keepLadder !== true
+      const r = await prisma.tenant.updateMany({
+        where: { id: tenantId, suspendedAt: { not: null } },
+        data: { suspendedAt: null, ...(clearLadder ? { lapseNoticeStage: 0, lapseNoticeFor: null } : {}) },
+      })
       return r.count > 0
     },
     pruneUnverifiedSignups: async (cutoff, limit = 500) => {

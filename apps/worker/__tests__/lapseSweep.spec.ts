@@ -99,7 +99,10 @@ function fakeDb(rows: LapsedTenant[], suspended: { tenantId: string; suspendedAt
       registryDevicesFor: (tenantId: string) =>
         Promise.resolve([{ id: 1n, imei: '860000000000001', tenantId, accountId: 'a1', presenceRules: {}, odometerSource: 'auto' }]),
       markLapseNotice: (tenantId: string, stage: number) => { notices.push([tenantId, stage]); return Promise.resolve() },
-      isSuspended: () => Promise.resolve(false),
+      // answers from the SAME state `listLapsedTenants` reports, because the sweep re-reads it
+      // before re-asserting a teardown — trusting the snapshot let a concurrent platform restore
+      // leave a dark fleet flagged Active (review MED-HIGH)
+      isSuspended: (tenantId: string) => Promise.resolve(rows.some((r) => r.tenantId === tenantId && r.suspendedAt !== null)),
       suspend: (tenantId: string) => { suspends.push(tenantId); return Promise.resolve(true) },
       unsuspend: (tenantId: string) => { unsuspends.push(tenantId); return Promise.resolve(true) },
     },
@@ -268,6 +271,24 @@ describe('runLapseSweep', () => {
     expect(suspends).toEqual([]) // …without counting or re-mailing them
     expect(r.suspended).toBe(0)
     expect(sent).toEqual([])
+  })
+
+  it('a tenant restored MID-RUN is not torn back down — the snapshot is not the truth', async () => {
+    // `lapsed` is listed once at the top of the run. A platform admin clicking Restore after that and
+    // before the loop reaches this tenant would otherwise have the sweep rebuild the teardown while
+    // the row already says not-suspended: a DARK fleet flagged Active, invisible to the restore pass
+    // (not suspended) and unsuspendable by the ladder, until an API restart (review MED-HIGH).
+    const sent: Sent[] = []
+    const { db } = fakeDb([lapsed({ lapsedAt: daysAgo(GRACE + 9), noticeStage: 3, suspendedAt: daysAgo(1) })])
+    const { redis, touched } = fakeRedis()
+    let asked = false
+    const restoredMidRun = {
+      ...db,
+      tenants: { ...db.tenants, isSuspended: () => { asked = true; return Promise.resolve(false) } },
+    } as unknown as typeof db
+    await runLapseSweep({ db: restoredMidRun, redis, mail: mailer(sent), appBaseUrl: 'https://app.test' }, NOW, GRACE)
+    expect(asked).toBe(true) // it re-read rather than trusting the snapshot
+    expect(touched).toEqual([]) // …and left the restored fleet alone
   })
 
   it('caps how many tenants ONE run may cut off — a blast radius, not a throughput limit', async () => {

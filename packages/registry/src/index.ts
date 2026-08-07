@@ -123,13 +123,39 @@ export async function suspendTenantDevices(redis: Redis, devices: readonly Regis
 }
 
 /**
- * RESTORE a suspended tenant — the exact inverse, run the moment a payment lands.
- *
- * Takes the full `RegistryDevice` (not just the ref) because a restore has to rebuild the account
- * mapping and the trip config as well, or the device would connect and then be dropped by the worker
- * for want of a tenant. Idempotent: re-activating a device that is already present is a no-op.
+ * A device row as the DB hands it back (`tenants.registryDevicesFor`): FLAT, with the trip config as
+ * two sibling columns rather than a nested object.
  */
-export async function restoreTenantDevices(redis: Redis, devices: readonly RegistryDevice[]): Promise<number> {
-  for (const d of devices) await activateDevice(redis, d)
+export interface TenantDeviceRow {
+  id: bigint
+  imei: string
+  tenantId: string
+  accountId: string
+  presenceRules: unknown
+  odometerSource: string
+}
+
+/**
+ * RESTORE a suspended tenant — the exact inverse of a suspension, run the moment a payment lands or
+ * a platform admin overrides.
+ *
+ * It takes the FLAT row and nests the config itself, which is the whole point. `RegistryDevice.config`
+ * is optional, so handing the flat rows straight to `activateDevice` typechecks perfectly and simply
+ * skips `device:config` — the fleet comes back on the air with default presence rules and GPS
+ * odometry instead of CAN, which nobody notices because data is flowing. Three call sites each did
+ * this mapping by hand and the third one forgot; doing it once here means a fourth cannot.
+ *
+ * Idempotent: re-activating a device that is already present is a no-op.
+ */
+export async function restoreTenantDevices(redis: Redis, devices: readonly TenantDeviceRow[]): Promise<number> {
+  for (const d of devices) {
+    await activateDevice(redis, {
+      id: d.id,
+      imei: d.imei,
+      tenantId: d.tenantId,
+      accountId: d.accountId,
+      config: { presenceRules: d.presenceRules, odometerSource: d.odometerSource },
+    })
+  }
   return devices.length
 }

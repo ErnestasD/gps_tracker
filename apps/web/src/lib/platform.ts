@@ -50,7 +50,10 @@ export interface PlatformAuditEntry {
   entity: string
   entityId: string
   userId: string | null
-  createdAt: string
+  /** the column is `at`, NOT `createdAt` — the tenant audit page reads the same field. Getting it
+   *  wrong renders every row's timestamp as '—' with no error anywhere, because `getJson` is an
+   *  unchecked cast and `fmt.dt(undefined)` degrades quietly. */
+  at: string
 }
 
 export const getTenant = (id: string) => getJson<PlatformTenant>(`/v1/tenants/${encodeURIComponent(id)}`)
@@ -60,11 +63,18 @@ export const listTenantDomains = (id: string) => getJson<PlatformDomain[]>(`/v1/
 /**
  * Change a tenant's plan.
  *
- * ENTITLEMENTS ONLY — this is the tier the product enforces (device ceiling, white-label, custom
- * domains, sub-accounts, API), and it does NOT touch Stripe. Moving someone to `tsp_grow` here gives
- * them the features immediately and bills them nothing; the subscription is changed in Stripe
- * separately. The screen says so, because a plan field that silently means two different things is
- * how someone ends up served for free.
+ * ENTITLEMENTS ONLY — this is the tier the product enforces, and it does NOT touch Stripe. Moving
+ * someone to `tsp_grow` here gives them the features immediately and bills them nothing.
+ *
+ * And STRIPE REMAINS AUTHORITATIVE: `applySubscriptionEvent` re-derives `plan` from the subscription
+ * price on every `customer.subscription.*`, so a hand-set tier survives only until that customer's
+ * next billing event. A grant meant to last needs the Stripe price changed as well — the screen says
+ * this, because a plan that silently reverts mid-week is worse than one that never changed.
+ *
+ * A DOWNGRADE blocks new devices, domains and sub-accounts; it does not switch off what already
+ * exists. `requireEntitlement` is chained on POST/PATCH only, and domain resolution selects on
+ * `verified` without consulting the plan, so verified white-label hosts keep serving and Caddy keeps
+ * issuing their certs.
  */
 export const setTenantPlan = (id: string, plan: TenantPlan) =>
   mutate<PlatformTenant>('PATCH', `/v1/tenants/${encodeURIComponent(id)}`, { plan })

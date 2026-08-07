@@ -156,10 +156,7 @@ export async function runLapseSweep(deps: SweepDeps, nowMs: number, graceDays: n
       if (lapsed.some((l) => l.tenantId === t.tenantId)) continue // still lapsed — leave suspended
       try {
         const devices = await deps.db.tenants.registryDevicesFor(t.tenantId)
-        await restoreTenantDevices(
-          deps.redis,
-          devices.map((d) => ({ id: d.id, imei: d.imei, tenantId: d.tenantId, accountId: d.accountId, config: { presenceRules: d.presenceRules, odometerSource: d.odometerSource } })),
-        )
+        await restoreTenantDevices(deps.redis, devices) // nests the trip config itself — see the registry
         // the flag comes off AFTER the registry is rebuilt: a crash in between leaves the tenant
         // marked suspended with a working feed, which the next run simply repeats — the opposite
         // order would leave it unmarked and dark, and nothing would ever look at it again
@@ -200,8 +197,17 @@ export async function runLapseSweep(deps: SweepDeps, nowMs: number, graceDays: n
       // feed had stopped, and devices 3..N still ingesting — with the guard below blocking any retry
       // forever and the counter never incrementing, so the one suspension that went wrong was the
       // one nobody could see. The teardown is idempotent, so re-asserting costs nothing.
-      if (t.suspendedAt !== null && deps.redis !== undefined) {
-        await suspendTenantDevices(deps.redis, await deps.db.tenants.registryDevicesFor(t.tenantId))
+      //
+      // RE-READ, never the snapshot. `lapsed` was listed at the top of the run, so a platform admin
+      // clicking Restore in between would otherwise have this loop tear the registry straight back
+      // down while the row already says not-suspended: a DARK fleet flagged Active, invisible to the
+      // restore pass (not suspended) and to this one (it would fall through and re-suspend the
+      // tenant a human deliberately just un-suspended). Being restored mid-run means SKIP for today
+      // — tomorrow's sweep sees the real state and, because an override keeps the ladder, cuts them
+      // off again immediately if they are still unpaid (review MED-HIGH).
+      if (t.suspendedAt !== null) {
+        if (!(await deps.db.tenants.isSuspended(t.tenantId))) continue
+        if (deps.redis !== undefined) await suspendTenantDevices(deps.redis, await deps.db.tenants.registryDevicesFor(t.tenantId))
       } else if (readyToSuspend && deps.redis !== undefined && canMail && result.suspended < MAX_SUSPENSIONS_PER_RUN) {
         // COUNT from the DB write, not the Redis one: the flag is what every other pass keys on, so
         // it is the honest definition of "this tenant was cut off today".

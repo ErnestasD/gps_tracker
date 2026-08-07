@@ -15,6 +15,7 @@ import type { StripeEvent, StripeGateway } from '../src/billing/stripe.js'
 import { randomUUID } from 'node:crypto'
 
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
+import { seedProfiles } from '../../../packages/db/seed/profiles.js'
 
 /** reasons a verified webhook provisioned nothing — the signal that used to not exist at all */
 const unmatched: string[] = []
@@ -329,11 +330,37 @@ describe('billing lifecycle (ADR-024)', () => {
     await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_mr', cus, 'customer.subscription.deleted', 'canceled', 100), { 'stripe-signature': 'valid' })
     const tenantId = (await db.tenants.tenantIdForCustomer(cus))!
     await db.tenants.suspend(tenantId, new Date())
+    await db.tenants.markLapseNotice(tenantId, 3, new Date())
+    const stageBefore = (await db.tenants.get(tenantId) as unknown as { lapseNoticeStage: number }).lapseNoticeStage
+
+    // a REAL device on the fixture, because both new tests used to run against an empty fleet — so
+    // `restoreTenantDevices` was called with [] and the registry write, the thing the docblock calls
+    // "the whole thing", was never exercised (review LOW). That is how the dropped `device:config`
+    // got past green tests.
+    const account = await db.accounts.create({ tenantId }, { userId: randomUUID() }, { name: 'Ops' })
+    const profiles = await seedProfiles(databaseUrl)
+    const device = await db.devices.create({ tenantId }, { userId: randomUUID() }, {
+      accountId: account.id, imei: '356307042999001', name: 'Van 1', profileId: profiles['fmb1xx']!, odometerSource: 'device',
+    })
+    await redis.del('device:config')
 
     const platform = await mintTestToken({ userId: randomUUID(), tenantId, role: 'platform_admin' })
     const res = await req(port, `/v1/tenants/${tenantId}/restore`, platform, 'POST')
     expect(res.status).toBe(200)
+    expect(((await res.json()) as { restored: number }).restored).toBe(1)
     expect(await db.tenants.isSuspended(tenantId)).toBe(false)
+    // the registry is rebuilt WITH the trip config: handing the flat DB rows to activateDevice
+    // typechecks and silently skips device:config, and the fleet then runs on default presence rules
+    // and GPS odometry instead of CAN, with nothing to notice it by (review HIGH)
+    const cfg = await redis.hget('device:config', String(device.id))
+    expect(cfg).not.toBeNull()
+    expect(JSON.parse(cfg!) as { odometerSource: string }).toMatchObject({ odometerSource: 'device' })
+
+    // the warning ladder SURVIVES an override: zeroing it means the next sweep cannot suspend
+    // (it needs stage >= 3), so every click would buy ~2 more days of free service and mail the
+    // customer a fresh final warning (review HIGH)
+    const after = await db.tenants.get(tenantId)
+    expect((after as unknown as { lapseNoticeStage: number }).lapseNoticeStage).toBe(stageBefore)
 
     // idempotent: a second click reports it rather than pretending to have done something
     const again = (await (await req(port, `/v1/tenants/${tenantId}/restore`, platform, 'POST')).json()) as { alreadyActive?: boolean }

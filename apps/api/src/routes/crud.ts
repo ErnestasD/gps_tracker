@@ -1451,17 +1451,36 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (!(await db.tenants.isSuspended(id(c)))) return json(c, { ok: true, restored: 0, alreadyActive: true })
         const devices = await db.tenants.registryDevicesFor(id(c))
         const restored = await restoreTenantDevices(deps.redis, devices)
-        await db.tenants.unsuspend(id(c))
+        // keepLadder: the notice stage SURVIVES an override. Clearing it would mean the next sweep
+        // cannot suspend (it needs stage >= 3), so every click would buy ~2 more days of free
+        // service and mail the customer a fresh "your fleet stops tomorrow" — the opposite of what
+        // the button says (review HIGH).
+        const cleared = await db.tenants.unsuspend(id(c), { keepLadder: true })
+        if (!cleared) return json(c, { ok: true, restored, alreadyActive: true }) // lost the race; nothing to file
         // filed under the PLATFORM trail: who re-enabled a fleet, and when, is exactly the kind of
-        // override that must be answerable later
-        await db.audit.recordPlatform({ userId: auth(c).userId }, { action: 'update', entity: 'tenant', entityId: id(c), before: { suspended: true }, after: { suspended: false, devices: restored } })
+        // override that must be answerable later. It is written AFTER the state change and cannot be
+        // in the same transaction as it (different store for the registry half), so a failure here is
+        // logged rather than thrown: reporting a completed restore as an error would have the
+        // operator click again, see `alreadyActive`, and believe the second click did it — leaving a
+        // restored fleet with no trail at all.
+        try {
+          await db.audit.recordPlatform({ userId: auth(c).userId }, { action: 'update', entity: 'tenant', entityId: id(c), before: { suspended: true }, after: { suspended: false, devices: restored } })
+        } catch (err) {
+          console.error('platform: restore succeeded but the audit write failed', id(c), err instanceof Error ? err.message : String(err))
+        }
         console.warn('platform: tenant restored by hand', JSON.stringify({ tenantId: id(c), devices: restored }))
         return json(c, { ok: true, restored })
       } },
     /** A tenant's white-label hosts, for the platform view — the tenant-self route is scoped to the
      *  caller's own tenant, and a support question about someone else's login URL cannot use it. */
     { method: 'get', path: '/v1/tenants/:id/domains', scopeClass: 'platform', entity: 'tenant', shape: 'item',
-      handler: async (c) => json(c, await db.tenantDomains.list({ tenantId: id(c) })) },
+      handler: async (c) => {
+        const rows = await db.tenantDomains.list({ tenantId: id(c) })
+        // PROJECTED, not passed through: the wire shape and the TS interface on the web side must be
+        // the same object, or the next person to dump a row on a support screen ships whatever
+        // column was added since.
+        return json(c, rows.map((d) => ({ id: d.id, domain: d.domain, verified: d.verified, createdAt: d.createdAt })))
+      } },
     { method: 'delete', path: '/v1/tenants/:id', scopeClass: 'platform', entity: 'tenant', shape: 'item',
       handler: async (c) => {
         try {
