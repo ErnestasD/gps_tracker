@@ -20,8 +20,13 @@ export const DASH_URL: string =
  * `lng` is what `i18next-browser-languagedetector` reads FIRST, ahead of the browser, and its
  * default cache writes it to the dashboard's localStorage — so the choice carries once and then
  * sticks, without the two apps having to share anything.
+ *
+ * The path defaults to `/login`, NOT the root. The root bounces an unauthenticated visitor to
+ * `/login` and the redirect drops the query string with it — so the parameter arrived, was thrown
+ * away before anything read it, and the page came up in the browser's language anyway. Landing
+ * directly on the page that needs the language is the fix.
  */
-export function dashUrl(lang: string, path = ''): string {
+export function dashUrl(lang: string, path = '/login'): string {
   const base = `${DASH_URL}${path}`
   return `${base}${base.includes('?') ? '&' : '?'}lng=${encodeURIComponent(lang)}`
 }
