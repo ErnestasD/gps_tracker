@@ -3,10 +3,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
-import { AuthShell } from '@/components/AuthShell'
-import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { AuthField, AuthShell } from '@/components/AuthShell'
 import { getLastPositions } from '@/lib/api'
 import { login } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
@@ -57,75 +54,58 @@ export function LoginPage() {
 
   return (
     <AuthShell label={t('login.label')} title={t('login.title')}>
-      <Card className="w-full">
-        <CardContent className="pb-8">
-          <form onSubmit={submit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label htmlFor="email" className="text-sm text-muted">
-                {t('login.emailLabel')}
-              </label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                data-testid="email-input"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm text-muted">
-                {t('login.passwordLabel')}
-              </label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                data-testid="password-input"
-              />
-            </div>
-            {error !== null && (
-              <>
-                <p role="alert" data-testid="login-error" className="text-sm text-danger">
-                  {error}
-                </p>
-                {/*
-                  A 401 covers TWO things the server deliberately refuses to tell apart: a wrong
-                  password, and an account whose address was never activated (audit MED #67 — any
-                  distinguishable answer here reopens the signup oracle for the price of one extra
-                  request). So the hint is shown on EVERY 401, phrased conditionally: it helps the
-                  person who just signed up without confirming anything to the person who did not.
-                */}
-                {error === t('login.invalidCredentials') && (
-                  <p className="text-sm text-muted" data-testid="login-verify-hint">
-                    {t('login.invalidHint')}{' '}
-                    <Link to="/verify-email" className="text-accent underline-offset-2 hover:underline" data-testid="login-to-verify">
-                      {t('verify.resend')}
-                    </Link>
-                  </p>
-                )}
-              </>
-            )}
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={busy || email.trim() === '' || password === ''}
-              data-testid="login-submit"
-            >
-              {t('login.submit')}
-            </Button>
-            <p className="text-center text-xs">
-              <Link to="/forgot-password" className="text-muted underline-offset-2 hover:text-text hover:underline" data-testid="forgot-link">
-                {t('login.forgotLink')}
-              </Link>
+      <form onSubmit={submit} className="grid gap-4">
+        <AuthField
+          id="email"
+          label={t('login.emailLabel')}
+          type="email"
+          autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          data-testid="email-input"
+        />
+        <AuthField
+          id="password"
+          label={t('login.passwordLabel')}
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          data-testid="password-input"
+        />
+        {error !== null && (
+          <>
+            <p role="alert" data-testid="login-error" className="text-sm" style={{ color: 'var(--danger)' }}>
+              {error}
             </p>
-          </form>
-        </CardContent>
-      </Card>
+            {/*
+              A 401 covers TWO things the server deliberately refuses to tell apart: a wrong
+              password, and an account whose address was never activated (audit MED #67 — any
+              distinguishable answer here reopens the signup oracle for the price of one extra
+              request). So the hint is shown on EVERY 401, phrased conditionally: it helps the
+              person who just signed up without confirming anything to the person who did not.
+            */}
+            {error === t('login.invalidCredentials') && (
+              <p className="text-sm" style={{ color: 'var(--muted)' }} data-testid="login-verify-hint">
+                {t('login.invalidHint')}{' '}
+                <Link to="/verify-email" className="underline-offset-2 hover:underline" style={{ color: 'var(--accent)' }} data-testid="login-to-verify">
+                  {t('verify.resend')}
+                </Link>
+              </p>
+            )}
+          </>
+        )}
+        <button type="submit" className="auth-submit" disabled={busy || email.trim() === '' || password === ''} data-testid="login-submit">
+          {t('login.submit')}
+        </button>
+        <p className="border-t pt-4 text-center text-xs" style={{ borderColor: 'var(--auth-hairline)' }}>
+          <Link to="/forgot-password" className="underline-offset-2 hover:underline" style={{ color: 'var(--muted)' }} data-testid="forgot-link">
+            {t('login.forgotLink')}
+          </Link>
+        </p>
+      </form>
     </AuthShell>
   )
 }

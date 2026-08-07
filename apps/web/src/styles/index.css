@@ -117,3 +117,92 @@ summary {
 [data-drawing='true'] .mapboxgl-canvas-container {
   cursor: crosshair;
 }
+
+/* ── Pre-auth screens (login / forgot / reset / activate) ────────────────────
+ *
+ * PORTED FROM the marketing site's partner login (apps/site/src/routes/partner.login.tsx) so the
+ * two sign-in screens are the same screen with different words. The dashboard login was a bare
+ * centred card while the partner one had a background, a section label and a card with real
+ * weight; side by side they read as two different products.
+ *
+ * The values are copied verbatim from apps/site/src/styles.css — same palette, same 4px radius,
+ * same gradients, same 1px hairline — with ONE substitution: every brand colour is `var(--accent)`,
+ * which `applyBranding` sets to the TENANT's colour on a white-label host. So the screen is
+ * identical to the partner login on our own hosts and wears the reseller's brand on theirs, from
+ * one definition rather than two that drift.
+ *
+ * Scoped under `.auth-scope` so none of it reaches the admin surfaces, which have their own palette
+ * (ADR-028) and must not inherit the site's.
+ */
+.auth-scope {
+  --auth-bg: #04070f;
+  --auth-hairline: #12213d;
+  --auth-ink: #e6f1ff;
+  background: var(--auth-bg);
+  color: var(--auth-ink);
+}
+.auth-scope .auth-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.auth-scope .auth-label::before {
+  content: '';
+  display: block;
+  width: 1.5rem;
+  height: 1px;
+  background: var(--accent);
+}
+.auth-scope .auth-card {
+  background: linear-gradient(180deg, rgba(14, 58, 95, 0.28) 0%, rgba(10, 20, 40, 0.6) 100%);
+  border: 1px solid var(--auth-hairline);
+  border-radius: 4px;
+  backdrop-filter: blur(8px);
+}
+.auth-scope .auth-field {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.auth-scope .auth-input {
+  height: 2.75rem;
+  width: 100%;
+  border-radius: 4px;
+  padding: 0 0.75rem;
+  background: rgba(10, 20, 40, 0.6);
+  border: 1px solid var(--auth-hairline);
+  color: var(--auth-ink);
+  font-size: 0.875rem;
+  outline: none;
+}
+.auth-scope .auth-input:focus {
+  border-color: var(--accent);
+}
+.auth-scope .auth-submit {
+  height: 2.75rem;
+  width: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.auth-scope .auth-submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.auth-scope .auth-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

@@ -12,11 +12,11 @@ import { usePublicBranding } from '@/lib/publicBranding'
  * "White-label domain, logo, colours. Orbetra never appears." Getting that wrong on one of four
  * pages is the likely failure mode, which is why it is a shell and not a snippet.
  *
- * It also carries the composition the marketing site's partner login already had — a real header
- * bar, a section label, a large display heading, then the card — because the two sign-in screens sat
- * side by side looking like different products. The visual language is the DASHBOARD's own tokens
- * (`--accent`, `.display`, `.mono`), not a copy of the site's: `--accent` is the tenant's colour, so
- * this composition wears their brand automatically rather than ours by construction.
+ * IT IS THE PARTNER LOGIN. `apps/site/src/routes/partner.login.tsx` and this page are the same
+ * screen with different words — same background, same section label with its rule, same card, same
+ * inputs, same button — with the styles copied into `.auth-scope` (styles/index.css) rather than
+ * re-invented. Two sign-in screens that looked like two products is what this replaces. Every brand
+ * colour there is `var(--accent)`, so the ported look wears the TENANT's brand on their host.
  *
  * The LANGUAGE SWITCHER is here for a concrete reason. The site and the dashboard are different
  * origins, so someone reading orbetra.com in English used to land on a Lithuanian login page — the
@@ -25,7 +25,7 @@ import { usePublicBranding } from '@/lib/publicBranding'
  */
 const SITE_URL = (import.meta.env['VITE_SITE_URL'] as string | undefined) ?? 'https://orbetra.com'
 
-export function AuthShell({ label, title, children }: { label?: string; title: string; children: React.ReactNode }) {
+export function AuthShell({ label, title, children }: { label: string; title: string; children: React.ReactNode }) {
   const { t, i18n } = useTranslation()
   const brand = usePublicBranding()
   const current = i18n.language.split('-')[0]
@@ -50,8 +50,8 @@ export function AuthShell({ label, title, children }: { label?: string; title: s
     )
 
   return (
-    <div className="relative flex min-h-full flex-col bg-[radial-gradient(ellipse_at_top,_#1A1F2C_0%,_#0A0E1A_60%)]">
-      <header className="flex h-16 shrink-0 items-center justify-between px-5 md:px-8" style={{ borderBottom: '1px solid var(--line)' }}>
+    <div className="auth-scope min-h-full">
+      <header className="flex h-16 items-center justify-between px-6 md:px-10">
         <div className="flex items-center">{mark}</div>
         {/* the switcher is always available: someone who arrived in the wrong language must be able
             to fix it here rather than hunting for a setting behind a login they cannot read */}
@@ -63,7 +63,7 @@ export function AuthShell({ label, title, children }: { label?: string; title: s
               onClick={() => setLocale(l)}
               data-testid={`auth-lang-${l}`}
               aria-current={current === l}
-              className="mono rounded px-2 py-1 text-[10px] uppercase tracking-[0.18em] transition-colors"
+              className="mono rounded px-2 py-1 text-[10px] uppercase tracking-[0.18em]"
               style={{ color: current === l ? 'var(--accent)' : 'var(--muted)' }}
               title={LOCALE_LABELS[l]}
             >
@@ -73,27 +73,31 @@ export function AuthShell({ label, title, children }: { label?: string; title: s
         </nav>
       </header>
 
-      <main className="flex flex-1 items-center justify-center p-4">
-        <div className="w-full max-w-sm">
-          {label !== undefined && (
-            <span className="mono flex items-center gap-2 text-[10px] uppercase tracking-[0.22em]" style={{ color: 'var(--muted)' }}>
-              <span className="h-px w-6" style={{ background: 'var(--accent)' }} />
-              {label}
-            </span>
-          )}
-          <h1 className="display mt-3 mb-6 text-3xl font-bold" style={{ color: 'var(--text)' }}>
-            {title}
-          </h1>
-          {children}
-          {brand !== null && !brand.whiteLabel && (
-            <p className="mt-6 text-center text-xs">
-              <a href={SITE_URL} className="text-muted underline-offset-2 hover:text-text hover:underline" data-testid="auth-site-link">
-                {t('login.backToSite')}
-              </a>
-            </p>
-          )}
-        </div>
-      </main>
+      {/* the partner login's own container, verbatim */}
+      <div className="mx-auto max-w-md px-6 pt-20 pb-28 md:pt-28">
+        <span className="auth-label">{label}</span>
+        <h1 className="display mt-4 text-3xl font-bold md:text-4xl" style={{ color: 'var(--auth-ink)' }}>
+          {title}
+        </h1>
+        <div className="auth-card mt-8 p-7">{children}</div>
+        {brand !== null && !brand.whiteLabel && (
+          <p className="mt-6 text-center text-xs">
+            <a href={SITE_URL} className="underline-offset-2 hover:underline" style={{ color: 'var(--muted)' }} data-testid="auth-site-link">
+              {t('login.backToSite')}
+            </a>
+          </p>
+        )}
+      </div>
     </div>
+  )
+}
+
+/** A labelled input in the partner login's exact shape: mono uppercase caption over the field. */
+export function AuthField({ id, label, ...input }: { id: string; label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label htmlFor={id} className="grid gap-1.5">
+      <span className="auth-field">{label}</span>
+      <input id={id} className="auth-input" {...input} />
+    </label>
   )
 }
