@@ -59,6 +59,8 @@ import { markSessionsRevoked } from '../ws.js'
 import { issuePartnerSetPwToken } from './partner.js'
 import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
+import { restoreTenantDevices } from '@orbetra/registry'
+
 import { checkPlatformSubdomain, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, type TxtResolver } from './tenantSelf.js'
 
 // Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
@@ -1424,6 +1426,42 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const row = await db.tenants.update({ userId: auth(c).userId }, id(c), data)
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
+    /**
+     * Put a SUSPENDED tenant back on the air, by hand.
+     *
+     * The lapse ladder can disconnect a customer's whole fleet, and until now the only way back was
+     * a Stripe payment landing on the webhook — so a customer who paid by bank transfer, or one cut
+     * off by our own mistake, was restored with a psql UPDATE and a Redis rebuild typed from memory,
+     * while they waited on the phone.
+     *
+     * THE ORDER IS THE WHOLE THING, and it is the same order the sweep and the webhook use: rebuild
+     * the registry FIRST, clear the flag SECOND. Clearing first and then failing the Redis write
+     * leaves a tenant marked not-suspended with a dark fleet — invisible to `listSuspended` (not
+     * suspended) and to `listLapsedTenants` (they paid), so nothing ever looks at them again. This
+     * way a failure leaves them marked suspended with a working feed, which the next sweep finishes.
+     *
+     * It does NOT touch billing. A tenant restored here while still unpaid is picked up by the next
+     * sweep and suspended again — deliberately: this is an override for a human who knows why, not a
+     * way to make the ledger say something it does not.
+     */
+    { method: 'post', path: '/v1/tenants/:id/restore', scopeClass: 'platform', entity: 'tenant', shape: 'item',
+      handler: async (c) => {
+        const tenant = await db.tenants.get(id(c))
+        if (tenant === null) return problem(c, 404, 'Not Found')
+        if (!(await db.tenants.isSuspended(id(c)))) return json(c, { ok: true, restored: 0, alreadyActive: true })
+        const devices = await db.tenants.registryDevicesFor(id(c))
+        const restored = await restoreTenantDevices(deps.redis, devices)
+        await db.tenants.unsuspend(id(c))
+        // filed under the PLATFORM trail: who re-enabled a fleet, and when, is exactly the kind of
+        // override that must be answerable later
+        await db.audit.recordPlatform({ userId: auth(c).userId }, { action: 'update', entity: 'tenant', entityId: id(c), before: { suspended: true }, after: { suspended: false, devices: restored } })
+        console.warn('platform: tenant restored by hand', JSON.stringify({ tenantId: id(c), devices: restored }))
+        return json(c, { ok: true, restored })
+      } },
+    /** A tenant's white-label hosts, for the platform view — the tenant-self route is scoped to the
+     *  caller's own tenant, and a support question about someone else's login URL cannot use it. */
+    { method: 'get', path: '/v1/tenants/:id/domains', scopeClass: 'platform', entity: 'tenant', shape: 'item',
+      handler: async (c) => json(c, await db.tenantDomains.list({ tenantId: id(c) })) },
     { method: 'delete', path: '/v1/tenants/:id', scopeClass: 'platform', entity: 'tenant', shape: 'item',
       handler: async (c) => {
         try {

@@ -12,6 +12,8 @@ import type { BillingView } from '@orbetra/shared'
 import { seedUser } from '../../../packages/db/seed/users.js'
 import { createApp } from '../src/app.js'
 import type { StripeEvent, StripeGateway } from '../src/billing/stripe.js'
+import { randomUUID } from 'node:crypto'
+
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
 
 /** reasons a verified webhook provisioned nothing — the signal that used to not exist at all */
@@ -316,6 +318,42 @@ describe('billing lifecycle (ADR-024)', () => {
     expect(restored).toHaveLength(1) // the registry was rebuilt
     const view = (await (await req(port, '/v1/billing', token)).json()) as BillingView & { suspendedAt: string | null }
     expect(view.suspendedAt).toBeNull() // …and the banner is gone
+  })
+
+  it('a PLATFORM ADMIN can restore a suspended tenant by hand — the bank-transfer case', async () => {
+    // Until this route existed, the only way back on the air was a Stripe payment landing on the
+    // webhook. A customer who paid by transfer, or one cut off by our own mistake, was restored with
+    // a psql UPDATE and a Redis rebuild typed from memory while they waited on the phone.
+    const { cus, token: owner } = await freshTenant('ManualRestore')
+    await req(port, '/v1/billing/checkout', owner, 'POST') // mints the customer mapping
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_mr', cus, 'customer.subscription.deleted', 'canceled', 100), { 'stripe-signature': 'valid' })
+    const tenantId = (await db.tenants.tenantIdForCustomer(cus))!
+    await db.tenants.suspend(tenantId, new Date())
+
+    const platform = await mintTestToken({ userId: randomUUID(), tenantId, role: 'platform_admin' })
+    const res = await req(port, `/v1/tenants/${tenantId}/restore`, platform, 'POST')
+    expect(res.status).toBe(200)
+    expect(await db.tenants.isSuspended(tenantId)).toBe(false)
+
+    // idempotent: a second click reports it rather than pretending to have done something
+    const again = (await (await req(port, `/v1/tenants/${tenantId}/restore`, platform, 'POST')).json()) as { alreadyActive?: boolean }
+    expect(again.alreadyActive).toBe(true)
+
+    // and it is filed on the PLATFORM trail — who re-enabled a fleet must be answerable later
+    const trail = await db.audit.listPlatform({ take: 20 })
+    expect(trail.some((e) => e.entity === 'tenant' && e.entityId === tenantId)).toBe(true)
+  })
+
+  it('a TENANT admin cannot restore anyone, including itself', async () => {
+    // the route is the override for a human who knows why; a customer clearing their own suspension
+    // would make the lapse ladder advisory
+    const { cus, token } = await freshTenant('NoSelfRestore')
+    await req(port, '/v1/billing/checkout', token, 'POST') // mints the customer mapping
+    await req(port, '/v1/webhooks/stripe', null, 'POST', subEvent('evt_nsr', cus, 'customer.subscription.deleted', 'canceled', 100), { 'stripe-signature': 'valid' })
+    const tenantId = (await db.tenants.tenantIdForCustomer(cus))!
+    await db.tenants.suspend(tenantId, new Date())
+    expect((await req(port, `/v1/tenants/${tenantId}/restore`, token, 'POST')).status).toBe(403)
+    expect(await db.tenants.isSuspended(tenantId)).toBe(true)
   })
 
   it('a FAILED registry rebuild leaves the tenant marked suspended — recoverable, not stranded', async () => {
