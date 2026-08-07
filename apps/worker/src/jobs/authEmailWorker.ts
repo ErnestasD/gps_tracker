@@ -57,6 +57,49 @@ async function resolveBranding(pool: Pool, tenantId: string): Promise<{ brand: s
   }
 }
 
+/**
+ * Rewrite a link to land on the TENANT's own host when they have one.
+ *
+ * Every auth link is built by the API from the single global `APP_BASE_URL`, so a VrummTrack-branded
+ * password-reset mail sent its user to `dash.orbetra.com` — where the page resolves as NOT
+ * white-labelled and therefore shows the Orbetra wordmark and a link to orbetra.com. The mail kept
+ * the promise and the page it opened broke it, on the one screen a reseller's customers are
+ * guaranteed to reach.
+ *
+ * Only the ORIGIN moves. The token lives in the path/query and is validated server-side against the
+ * database, so it is origin-independent — and a verified tenant domain serves the same SPA and the
+ * same `/v1` through the same Caddy, which is what makes the swap safe rather than merely pretty.
+ *
+ * Anything unexpected keeps the original link: an unparseable URL, no verified domain, a lookup
+ * fault. A mail with a working link to the wrong brand beats a mail with no link at all.
+ */
+export function onTenantHost(url: string, domain: string | null): string {
+  if (domain === null || domain === '') return url
+  try {
+    const u = new URL(url)
+    u.protocol = 'https:' // a verified custom domain always has a cert (Caddy on-demand)
+    u.host = domain
+    return u.toString()
+  } catch {
+    return url
+  }
+}
+
+/** The tenant's own login host: the OLDEST verified domain, so the choice is stable as they add
+ *  more. Null when they have none, when the id is not a uuid, or on any fault. */
+async function primaryDomain(pool: Pool, tenantId: string): Promise<string | null> {
+  if (tenantId === '') return null
+  try {
+    const res = await pool.query<{ domain: string }>(
+      'SELECT domain FROM tenant_domains WHERE "tenantId" = $1 AND verified = true ORDER BY "createdAt" ASC LIMIT 1',
+      [tenantId],
+    )
+    return res.rows[0]?.domain ?? null
+  } catch {
+    return null
+  }
+}
+
 /** Render + send one auth email. Exported for unit testing without a live queue. */
 export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'transport'>, job: AuthEmailJob): Promise<boolean> {
   if (deps.transport === undefined) {
@@ -78,14 +121,18 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   const { branding, tenantName } = resolved
   const brand = job.kind === 'verify-email' ? (branding?.productName?.trim() ?? '') || 'Orbetra' : resolved.brand
   const shellName = job.kind === 'verify-email' ? (branding?.productName?.trim() ?? '') || undefined : tenantName
+  // …and send them to THEIR host, not ours. The billing link is deliberately excluded: it is a
+  // Stripe portal/checkout return that only makes sense on the platform host.
+  const host = await primaryDomain(deps.pool, tenantId)
+  const on = (url: string): string => onTenantHost(url, host)
   const { subject, text, html } =
     job.kind === 'signup-exists'
-      ? renderSignupExistsEmail({ loginUrl: job.loginUrl, resetUrl: job.resetUrl, locale: job.locale, brand, branding, tenantName })
+      ? renderSignupExistsEmail({ loginUrl: on(job.loginUrl), resetUrl: on(job.resetUrl), locale: job.locale, brand, branding, tenantName })
       : job.kind === 'lapse'
         ? renderLapseEmail({ billingUrl: job.billingUrl, daysLeft: job.daysLeft, locale: job.locale, brand, branding, tenantName })
         : job.kind === 'verify-email'
-        ? renderVerifyEmail({ verifyUrl: job.verifyUrl, expiresHours: job.expiresHours, locale: job.locale, brand, branding, tenantName: shellName })
-        : renderResetEmail({ resetUrl: job.resetUrl, expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding, tenantName })
+        ? renderVerifyEmail({ verifyUrl: on(job.verifyUrl), expiresHours: job.expiresHours, locale: job.locale, brand, branding, tenantName: shellName })
+        : renderResetEmail({ resetUrl: on(job.resetUrl), expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding, tenantName })
   await deps.transport.send(job.email, subject, text, html)
   return true
 }
