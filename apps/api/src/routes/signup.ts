@@ -278,8 +278,8 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
                 // user must not receive an Orbetra-branded mail naming their supplier.
                 tenantId: '',
                 locale,
-                loginUrl: `${base}/login`,
-                resetUrl: `${base}/forgot-password`,
+                loginUrl: `${base}/login?lng=${encodeURIComponent(locale)}`,
+                resetUrl: `${base}/forgot-password?lng=${encodeURIComponent(locale)}`,
               })
             }
           } catch (mailErr) {

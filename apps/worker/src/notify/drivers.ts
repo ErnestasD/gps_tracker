@@ -45,7 +45,9 @@ export interface Drivers {
  *  `html` is the white-label branded body (E05-4); `text` is the always-present plain-text
  *  fallback for clients that don't render HTML. `html` is optional → backwards-compatible. */
 export interface EmailTransport {
-  send(to: string, subject: string, text: string, html?: string): Promise<void>
+  /** `replyTo` is the TENANT's support address when they have one — the footer has always printed
+   *  it while Reply composed to the platform's mailbox instead. */
+  send(to: string, subject: string, text: string, html?: string, replyTo?: string): Promise<void>
 }
 
 export function emailDriver(transport: EmailTransport): Driver {
@@ -53,7 +55,7 @@ export function emailDriver(transport: EmailTransport): Driver {
     send: async (channel, msg) => {
       if (channel.type !== 'email') return
       // msg.html is the branded HTML (built by notificationMessage); msg.text is the fallback.
-      await transport.send(channel.to, msg.subject, msg.text, msg.html)
+      await transport.send(channel.to, msg.subject, msg.text, msg.html, msg.replyTo)
     },
   }
 }

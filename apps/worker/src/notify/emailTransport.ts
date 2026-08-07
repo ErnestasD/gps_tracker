@@ -18,7 +18,7 @@ import type { EmailTransport } from './drivers.js'
  * `createTransport` is injectable so tests exercise the send mapping without a live SMTP server.
  */
 export interface MailSender {
-  sendMail(opts: { from: string; to: string; subject: string; text: string; html?: string; headers?: Record<string, string> }): Promise<unknown>
+  sendMail(opts: { from: string; replyTo?: string; to: string; subject: string; text: string; html?: string; headers?: Record<string, string> }): Promise<unknown>
 }
 export interface SmtpOptions {
   host: string
@@ -87,7 +87,7 @@ export function buildEmailTransport(
     return undefined
   }
   return {
-    send: async (to, subject, text, html) => {
+    send: async (to, subject, text, html, replyTo) => {
       // drop reserved-TLD recipients before they reach SES (bounce-reputation guard). A comma-list
       // keeps only its deliverable addresses; if none remain the send is a logged no-op, not an error.
       const deliverable = to.split(',').map((s) => s.trim()).filter((s) => s !== '' && isDeliverableAddress(s))
@@ -97,6 +97,10 @@ export function buildEmailTransport(
       }
       await mailer.sendMail({
         from,
+        // The tenant's own support address, so hitting Reply reaches THEM. Their address was
+        // already printed in the footer of every message while the reply went to us — which is
+        // both a brand leak and a customer trying to get help from the wrong company.
+        ...(replyTo !== undefined && replyTo !== '' ? { replyTo } : {}),
         to: deliverable.join(', '),
         subject,
         text, // always-present plain-text fallback

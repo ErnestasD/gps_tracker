@@ -136,6 +136,10 @@ services:
       # offered — silent by design, which is exactly why they must be listed here.
       PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
       EDGE_HOSTNAME: ${EDGE_HOSTNAME:-}
+      # The hostname trackers are told to dial, shown in the onboarding sheet and pasted into the
+      # config SMS. Absent from this file until now, so the API served its hard-coded default — our
+      # own domain — to resellers configuring their customers' hardware.
+      INGEST_PUBLIC_HOST: ${INGEST_PUBLIC_HOST:-}
       # SMS gateway (ADR-032) — the API does NOT send SMS (the worker does); it needs these three only
       # to compute the `smsConfigured` boolean that gates the 503 / `smsEnabled` flag. Passing the token
       # here too (not just a presence flag) is the V1 shortcut; a future refactor could hand the API a bare

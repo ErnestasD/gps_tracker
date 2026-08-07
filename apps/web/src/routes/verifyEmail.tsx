@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { AuthShell } from '@/components/AuthShell'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { resendVerification, verifyEmail } from '@/lib/auth'
 
@@ -50,11 +50,8 @@ export function VerifyEmailPage() {
   }
 
   return (
-    <AuthShell>
+    <AuthShell label={t('verify.label')} title={t('verify.title')}>
       <Card className="w-full">
-        <CardHeader className="items-center pt-8 text-center">
-          <CardTitle className="text-lg">{t('verify.title')}</CardTitle>
-        </CardHeader>
         <CardContent className="pb-8">
           {state === 'working' ? (
             <p className="text-center text-sm text-muted" data-testid="verify-working">

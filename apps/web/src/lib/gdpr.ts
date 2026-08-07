@@ -25,7 +25,9 @@ export async function downloadExport(id: string): Promise<void> {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `orbetra-export-${id}.ndjson.gz`
+  // NOT `orbetra-export-…`: a GDPR export exists to be handed to the data subject, and on a
+  // white-label tenant it landed in their Downloads folder named after their supplier's supplier.
+  a.download = `fleet-data-export-${id}.ndjson.gz`
   a.click()
   URL.revokeObjectURL(url)
 }

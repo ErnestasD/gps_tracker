@@ -89,7 +89,7 @@ export async function runExport(pool: Pool, exportDir: string, exportId: string)
       }
     }
 
-    await write(gzip, 'meta', { exportId, tenantId, accountId, format: 'orbetra-gdpr-ndjson-v1' })
+    await write(gzip, 'meta', { exportId, tenantId, accountId, format: 'gdpr-ndjson-v1' })
     await scoped('account', `SELECT id, name, timezone, "createdAt" FROM accounts WHERE "tenantId" = $1 AND id = $2`)
     // NO passwordHash — the single most dangerous column in the schema
     await scoped('user', `SELECT id, email, role, locale, "createdAt" FROM users WHERE "tenantId" = $1 AND "accountId" = $2`)

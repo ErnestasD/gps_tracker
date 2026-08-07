@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Redis } from 'ioredis'
 
 import { hashShareToken, readLatestValidPosition, type Db, type Pool } from '@orbetra/db'
-import type { PublicShareView } from '@orbetra/shared'
+import { brandingReadSchema, type PublicShareView } from '@orbetra/shared'
 
 import { problem } from '../auth/middleware.js'
 import { clientIp } from '../net.js'
@@ -25,6 +25,22 @@ return n`
  *  - GET /v1/branding  — branding for the requesting Host (custom domain) so the
  *    login screen shows the tenant's logo/colors before auth; unknown host → {}.
  */
+/** The parts of the manifest that are not brand-dependent, plus OUR values for the parts that are. */
+const PLATFORM_MANIFEST = {
+  name: 'Orbetra',
+  description: 'Live GPS fleet tracking',
+  start_url: '/app/map',
+  scope: '/',
+  display: 'standalone',
+  background_color: '#0B1020',
+  theme_color: '#0B1020',
+  icons: [
+    { src: '/icons/pwa-192.png', sizes: '192x192', type: 'image/png' },
+    { src: '/icons/pwa-512.png', sizes: '512x512', type: 'image/png' },
+    { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+  ],
+}
+
 export interface PublicDeps {
   db: Db
   redis: Redis
@@ -94,16 +110,68 @@ export function createPublicRoutes(deps: PublicDeps): Hono {
     // it is now the first request of every login screen.
     c.header('Cache-Control', 'public, max-age=60')
     c.header('Vary', 'X-Forwarded-Host, Host')
-    if (!isHostname(host)) return c.json({})
+    if (!isHostname(host)) return c.json({ whiteLabel: false })
     const tenantId = await deps.db.tenantDomains.tenantIdForDomain(host)
-    if (tenantId === null) return c.json({})
+    if (tenantId === null) return c.json({ whiteLabel: false })
     const tenant = await deps.db.tenants.get(tenantId)
-    const branding = (tenant?.branding ?? {}) as { productName?: string }
+    // same tolerance as the manifest: one bad key must not 500 an unauthenticated route, and the
+    // response must carry ONLY the five schema fields — the column accepts arbitrary keys from the
+    // platform path, and this endpoint is public
+    const branding = brandingReadSchema.safeParse(tenant?.branding ?? {}).data ?? {}
     // NO `?? tenant.name` fallback: the line this replaces said "never leak the tenant's
     // internal/legal name" and then did exactly that. It is unauthenticated, and the web now feeds
     // it into document.title — so a tenant who never set a product name was publishing "UAB
     // Whatever" as the visible brand and browser-tab title of their own public login page.
-    return c.json({ branding, ...(branding.productName !== undefined ? { productName: branding.productName } : {}) })
+    //
+    // `whiteLabel` is the fact the client actually needs and this endpoint used to throw away. The
+    // web inferred it from "did any branding field come back", so a reseller who verified their
+    // domain BEFORE filling in the branding form got the full platform wordmark on the one screen
+    // all their customers pass through. The host resolving to a tenant is the answer, and it is
+    // knowable here and nowhere else.
+    return c.json({ whiteLabel: true, branding, ...(branding.productName !== undefined ? { productName: branding.productName } : {}) })
+  })
+
+  /**
+   * The PWA manifest, branded by Host.
+   *
+   * `applyBranding` rewrites the title and the favicon at runtime and could never rewrite this: the
+   * manifest is a static file the browser fetches itself, so "Install app" offered a white-label
+   * tenant's user an app called **Orbetra**, and the home-screen icon they tapped for the next two
+   * years was ours. Of every leak in the product this was the longest-lived — a flash you can fix
+   * with a re-render, an icon on someone's phone you cannot.
+   *
+   * It lives under /v1/ so no edge configuration is needed: the tenant Caddy block already proxies
+   * /v1/* to the API, and `<link rel="manifest">` may point anywhere.
+   */
+  app.get('/v1/public/manifest.webmanifest', async (c) => {
+    const rawHost = (deps.trustProxy === true ? c.req.header('x-forwarded-host') : undefined) ?? c.req.header('host') ?? ''
+    const host = rawHost.split(':')[0]!.toLowerCase()
+    c.header('Cache-Control', 'public, max-age=60')
+    c.header('Vary', 'X-Forwarded-Host, Host')
+    c.header('Content-Type', 'application/manifest+json')
+    const tenantId = isHostname(host) ? await deps.db.tenantDomains.tenantIdForDomain(host) : null
+    // Through the TOLERANT schema, not a cast. `branding` is a jsonb the platform tenant path
+    // writes unvalidated, so `productName: 42` reached `.slice(0, 24)` and threw — a 500 on a route
+    // the browser fetches on first paint of every page on that host.
+    const raw = tenantId !== null ? (await deps.db.tenants.get(tenantId))?.branding ?? {} : {}
+    const branding = brandingReadSchema.safeParse(raw).data ?? {}
+    const isTenant = tenantId !== null
+    // A tenant with no product name gets their HOST as the app name — never ours, and never their
+    // internal company name (which this endpoint deliberately does not return anywhere else).
+    const name = branding.productName ?? (isTenant ? host : PLATFORM_MANIFEST.name)
+    // ONE entry with `sizes: 'any'`: the logo is pinned to https and nothing else, so declaring it
+    // a 512×512 PNG would be a guess — an SVG or a 32px favicon advertised as a large raster is
+    // skipped or upscaled by the engine. `any` is the honest declaration for an unknown asset.
+    // A tenant with NO logo gets none, which does mean their app is not installable (Chrome wants
+    // an icon ≥192px) — an install prompt carrying OUR mark is the worse outcome, and the setup
+    // guide asks them for a logo precisely here.
+    const icons = typeof branding.logoUrl === 'string' && branding.logoUrl.startsWith('https://')
+      ? [{ src: branding.logoUrl, sizes: 'any' }]
+      : isTenant
+        ? []
+        : PLATFORM_MANIFEST.icons
+    const theme = typeof branding.primary === 'string' && /^#[0-9a-fA-F]{6}$/.test(branding.primary) ? branding.primary : PLATFORM_MANIFEST.theme_color
+    return c.body(JSON.stringify({ ...PLATFORM_MANIFEST, name, short_name: [...name].slice(0, 24).join(''), theme_color: theme, background_color: theme, icons }))
   })
 
   // PUBLIC temporary share link (V1-nice): resolve an opaque token → ONE device's latest valid

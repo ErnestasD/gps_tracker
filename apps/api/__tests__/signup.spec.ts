@@ -308,7 +308,14 @@ describe('public self-serve signup (F2)', () => {
 
     // the truth went out of band, to the address's owner, with no token and nothing the attempt supplied
     expect(sentMail.map((m) => m.email)).toEqual(['dup@fleet.test', 'pa@x.test'])
-    expect(sentMail[0]).toMatchObject({ kind: 'signup-exists', loginUrl: 'https://app.orbetra.test/login', resetUrl: 'https://app.orbetra.test/forgot-password' })
+    // `?lng` carries the reader's language across the origin hop: the mail is written in it and the
+    // page it opens used to re-guess from the browser, so an English reader landed on a Lithuanian
+    // login screen
+    expect(sentMail[0]).toMatchObject({
+      kind: 'signup-exists',
+      loginUrl: 'https://app.orbetra.test/login?lng=en',
+      resetUrl: 'https://app.orbetra.test/forgot-password?lng=en',
+    })
     // …and it is counted, because the response no longer is
     expect(emailInUseCount).toBe(2)
   })

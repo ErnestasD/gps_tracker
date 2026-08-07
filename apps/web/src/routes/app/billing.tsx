@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { getCurrentUser } from '@/lib/auth'
+import { usePublicBranding } from '@/lib/publicBranding'
 import { fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from '@/lib/billing'
 import { useFmt } from '@/lib/datetime'
 
@@ -21,7 +22,15 @@ export function BillingPage() {
   // WP3: a Direct-plan tenant has the TSP-plus nav (branding/api-keys/webhooks) hidden entirely —
   // this page is where the upgrade path stays discoverable, so surface a "what TSP unlocks" CTA.
   const user = getCurrentUser()
-  const showUpgrade = user !== null && (isDirectPlan(user.plan) || !user.entitlements.whiteLabel)
+  // …and NEVER on a white-label host. The gate was plan-only, but a tenant that lapsed or was
+  // downgraded keeps serving its verified custom domain (entitlements gate writes, not resolution),
+  // so their own admins were shown our sales address and "run Orbetra under your own brand" on a
+  // page inside their own product.
+  // `!== true`, not `=== false`: an UNRESOLVED host (in flight, or a failed /v1/branding) must not
+  // hide our own upgrade path forever — this is a revenue screen, and the white-label risk it guards
+  // against only exists when the host IS a tenant's.
+  const host = usePublicBranding()
+  const showUpgrade = user !== null && host?.whiteLabel !== true && (isDirectPlan(user.plan) || !user.entitlements.whiteLabel)
   const upgradeFeatures = ['whiteLabel', 'customDomains', 'subAccounts', 'api', 'webhooks'] as const
   const billing = useQuery({ queryKey: ['billing'], queryFn: getBilling })
   const b = billing.data

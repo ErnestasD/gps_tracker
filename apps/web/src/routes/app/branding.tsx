@@ -47,16 +47,18 @@ export function BrandingPage() {
     }
   }, [current.data])
 
-  // live preview: apply as you type (validated inside applyBranding)
+  // live preview: apply as you type (validated inside applyBranding).
+  // `whiteLabel` is TRUE here by definition — this page only renders for a tenant editing its own
+  // branding, and passing false put the platform's title and favicon back on every keystroke.
   useEffect(() => {
-    applyBranding(form)
+    applyBranding(form, true)
   }, [form])
 
   // unmount = leaving the page: revert any unsaved preview so a red draft accent (and the tab
   // title) doesn't leak app-wide for the rest of the session (a full reload was the only escape)
   useEffect(
     () => () => {
-      if (savedRef.current) applyBranding(savedRef.current)
+      if (savedRef.current) applyBranding(savedRef.current, true)
     },
     [],
   )

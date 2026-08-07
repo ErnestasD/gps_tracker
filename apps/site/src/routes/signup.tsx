@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
-import { ApiError, apiPost, DASH_URL } from "@/lib/api";
+import { ApiError, apiPost, dashUrl } from "@/lib/api";
 import { readRefCode } from "@/lib/consent";
 
 // signupSchema (packages/shared) accepts ref only as a 3–64 url-safe slug; a shorter/
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/signup")({
 });
 
 function SignupPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [ref, setRef] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "done">("idle");
   // the address we wrote to, echoed on the done screen. The old copy said "Workspace created" — a
@@ -118,7 +118,7 @@ function SignupPage() {
             <p className="mt-3 text-sm text-muted-foreground">
               {t("signup.doneBody", { email: sentTo })}
             </p>
-            <a href={DASH_URL} className="mt-6 pill-primary hover:pill-primary-hover">
+            <a href={dashUrl(i18n.language)} className="mt-6 pill-primary hover:pill-primary-hover">
               {t("signup.doneCta")} <ArrowRight className="h-4 w-4" />
             </a>
           </div>

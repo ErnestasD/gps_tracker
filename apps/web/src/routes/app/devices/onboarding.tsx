@@ -94,7 +94,8 @@ export function OnboardingCard({ device, initialApn }: { device: Device; initial
           /* don't quote a (possibly wrong, white-label) fallback host as if it loaded — say it failed */
           <p role="alert" className="text-xs text-danger" data-testid="onboarding-error">{t('admin.loadError')}</p>
         ) : (
-          <p className="text-xs text-muted">{t('devices.onb.intro', { host: s?.host ?? 'orbetra.com', port: s?.port ?? 5027 })}</p>
+          <p className="text-xs text-muted">{/* no substitute host: an unconfigured deployment shows a gap, not our domain */}
+          {t('devices.onb.intro', { host: s?.host ?? '—', port: s?.port ?? 5027 })}</p>
         )}
 
         {/* SIM fields — saved on the device, used as the SMS destination + support audit */}

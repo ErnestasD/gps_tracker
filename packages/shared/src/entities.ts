@@ -479,6 +479,28 @@ export const brandingSchema = z
   .partial()
 export type Branding = z.infer<typeof brandingSchema>
 
+/**
+ * The same shape, read TOLERANTLY — for the render paths, never for a write.
+ *
+ * `brandingSchema.safeParse` is all-or-nothing, so ONE bad field made the whole object fail and the
+ * caller fell back to `{}` — which every renderer reads as "not white-label", so a tenant with a
+ * 61-character product name, or a logo URL a migration wrote as `null`, had OUR logo and OUR name
+ * put on every email they sent. A single stale field must cost that field, not the brand.
+ *
+ * Writes keep using `brandingSchema`: an operator typing a bad colour deserves a 400, not a value
+ * that vanishes silently.
+ */
+export const brandingReadSchema = z
+  .object({
+    logoUrl: z.string().url().startsWith('https://').max(2048).optional().catch(undefined),
+    primary: hexColor.optional().catch(undefined),
+    accent: hexColor.optional().catch(undefined),
+    productName: z.string().min(1).max(60).optional().catch(undefined),
+    supportEmail: z.string().email().max(320).optional().catch(undefined),
+  })
+  // drop the keys that failed, so `Object.keys(branding).length` stays an honest "what is set"
+  .transform((b) => Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined)) as Branding)
+
 export const domainCreateSchema = z.object({
   // hostname: labels of a-z0-9-, dots; no scheme/path
   domain: z

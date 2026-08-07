@@ -12,6 +12,10 @@
 
 # Local/dev default: plain HTTP on :80 with health endpoint.
 :80 {
+	# `-Server` here too: this block answers any Host that reached :80 without matching a named
+	# site — including a tenant's custom domain over plain HTTP — and it was the one place in the
+	# file still returning `Server: Caddy`.
+	header -Server
 	respond /healthz "ok" 200
 	# app routes are wired in E02+ stories (api, web); keep 404 for everything else
 	respond 404
@@ -123,8 +127,14 @@ https:// {
 	# layers stay IDENTICAL; if you change a value here, change apps/api/src/security.ts
 	# too (conflicting XFO/STS duplicates confuse browsers). The SPA is never embedded,
 	# so framing is denied outright.
+	#
+	# NO `includeSubDomains` on THIS block, unlike our own hosts. These are domains we do not
+	# own: asserting a 180-day HTTPS-only policy across a customer's whole namespace would lock
+	# their mail interface, their VPN portal and any legacy HTTP tooling out of every visitor's
+	# browser for six months, and there is no way to unwind it remotely. If a tenant ever points
+	# an apex here, that is their entire company.
 	header {
-		Strict-Transport-Security "max-age=15552000; includeSubDomains"
+		Strict-Transport-Security "max-age=15552000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "no-referrer"
@@ -134,6 +144,29 @@ https:// {
 	# INTERNAL-ONLY (see the app host block): the on-demand-TLS ask must not be reachable here
 	# either — a tenant custom domain is exactly where an attacker would look for it.
 	handle /v1/internal/* {
+		respond 404
+	}
+	# PLATFORM SURFACES, 404'd on a tenant's own domain. Each of these answered here and each
+	# named us to the tenant's customers:
+	#   /v1/docs + /v1/openapi.json — a page titled "Orbetra API" listing every platform route
+	#     AND `servers: [https://dash.orbetra.com]`, unauthenticated, on fleet.reseller.lt;
+	#   /v1/public/signup — a stranger on the reseller's domain could create a tenant on OUR
+	#     platform; /v1/public/pilot-request files a lead into OUR sales inbox;
+	#   /v1/partner/* — the affiliate portal, which belongs to us, not to them.
+	# The manifest is the one /v1/public path that MUST answer here: it is this host's app name.
+	handle /v1/docs* {
+		respond 404
+	}
+	handle /v1/openapi.json {
+		respond 404
+	}
+	handle /v1/public/signup {
+		respond 404
+	}
+	handle /v1/public/pilot-request {
+		respond 404
+	}
+	handle /v1/partner/* {
 		respond 404
 	}
 	# API + realtime first (longest-prefix wins in Caddy route ordering).

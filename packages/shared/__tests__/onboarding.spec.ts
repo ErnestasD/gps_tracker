@@ -7,9 +7,9 @@ describe('V1-nice buildOnboarding (SMS device onboarding)', () => {
     const s = buildOnboarding({ imei: '860000000000001', host: 'orbetra.com', port: 5027, family: 'fmb1xx' })
     // two leading spaces = empty login + empty password (Teltonika SMS contract); 2006:0 = TCP
     // (2003 is the APN PASSWORD, not the protocol — must never appear here)
-    expect(s.smsServer).toBe('  setparam 2004:orbetra.com;2005:5027;2006:0')
-    expect(s.smsServer.startsWith('  ')).toBe(true)
-    expect(s.smsServer).not.toContain('2003') // never touch the APN password
+    expect(s.smsServer!).toBe('  setparam 2004:orbetra.com;2005:5027;2006:0')
+    expect(s.smsServer!.startsWith('  ')).toBe(true)
+    expect(s.smsServer!).not.toContain('2003') // never touch the APN password
     expect(s.familyCaveat).toBe(false)
     expect(s.smsApn).toBeNull()
   })
@@ -26,9 +26,9 @@ describe('V1-nice buildOnboarding (SMS device onboarding)', () => {
     // with APN → 2001 prepended into the SAME setparam so one SMS sets data + server atomically
     expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto).toBe('  setparam 2001:banga;2004:orbetra.com;2005:5027;2006:0')
     // still one 160-char GSM-7 segment
-    expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto.length).toBeLessThanOrEqual(160)
+    expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto!.length).toBeLessThanOrEqual(160)
     // empty login+password prefix preserved; APN password (2003) never touched
-    expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto.startsWith('  ')).toBe(true)
+    expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto!.startsWith('  ')).toBe(true)
     expect(buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'banga' }).smsAuto).not.toContain('2003')
   })
 
@@ -41,10 +41,11 @@ describe('V1-nice buildOnboarding (SMS device onboarding)', () => {
   })
 
   it('sanitizes host/port (SMS field separators must not leak in)', () => {
-    // ':' and ';' would break the SMS field structure → fall back to the safe default
+    // ':' and ';' would break the SMS field structure → REFUSE. It used to substitute a default
+    // hostname, which quietly turned an injection attempt into a valid command pointed at us.
     const s = buildOnboarding({ imei: '1', host: 'evil;setparam 9999:x', port: 5027 })
-    expect(s.host).toBe('orbetra.com')
-    expect(s.smsServer).not.toContain('9999')
+    expect(s.host).toBeNull()
+    expect(s.smsServer).toBeNull()
     expect(buildOnboarding({ imei: '1', host: 'h', port: 99999 }).port).toBe(5027)
   })
 
@@ -68,5 +69,24 @@ describe('V1-nice buildOnboarding (SMS device onboarding)', () => {
     expect(buildOnboarding({ imei: '1', host: 'h', port: 5027, apn: 'a'.repeat(64) }).smsApn).toBeNull()
     // a legitimate hostname-like APN with dots/dashes still works
     expect(buildOnboarding({ imei: '1', host: 'h', port: 5027, apn: 'wap.o2.co.uk' }).smsApn).toBe('  setparam 2001:wap.o2.co.uk')
+  })
+})
+
+describe('an unconfigured ingest host is a VISIBLE gap, never our domain', () => {
+  it('yields null commands rather than falling back to the platform hostname', () => {
+    // the fallback used to be `orbetra.com`, so a deployment that never set INGEST_PUBLIC_HOST told
+    // a reseller's installer to point their customer's hardware at OUR domain — and that string is
+    // written INTO the tracker, where any technician servicing the vehicle reads it back
+    const s = buildOnboarding({ imei: '1', host: '', port: 5027 })
+    expect(s.host).toBeNull()
+    expect(s.smsServer).toBeNull()
+    expect(s.smsAuto).toBeNull()
+    expect(JSON.stringify(s)).not.toContain('orbetra')
+  })
+
+  it('rejects a malformed host the same way — no silent substitution', () => {
+    for (const host of ['not a host', 'a;b', 'x'.repeat(254)]) {
+      expect(buildOnboarding({ imei: '1', host, port: 5027 }).host, host).toBeNull()
+    }
   })
 })

@@ -23,7 +23,13 @@ export default defineConfig({
       injectRegister: null, // registered manually in main.tsx
       manifest: false, // static public/manifest.webmanifest is the source of truth
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // The platform's own marks are never rendered on a white-label host, and precaching them
+        // downloaded and STORED them in every tenant user's Cache Storage on first visit — three
+        // entries literally named `orbetra-*` sitting in their devtools. `icons/**` is the same
+        // mark in raster form and was missed the first time — the filter matched by NAME, not by
+        // content; those files are reachable only through DEFAULT_ICONS, which fires on our hosts.
+        globIgnores: ['**/orbetra-*', '**/platform-icon.*', '**/icons/**'],
         // fonts push the default 2 MiB limit; app-shell precache only, no tiles
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },

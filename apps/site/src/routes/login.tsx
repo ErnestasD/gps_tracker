@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { DASH_URL } from "@/lib/api";
+import { dashUrl } from "@/lib/api";
 
 /** Sign-in CHOOSER — the marketing site never authenticates tenant users itself.
  * There is NO /v1/public/login endpoint: fleet users sign in at the external
@@ -27,7 +27,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
     <div className="mx-auto max-w-md px-6 pt-24 md:pt-32 pb-24">
       <span className="section-label">
@@ -43,7 +43,7 @@ function LoginPage() {
 
       <div className="surface-card p-7 mt-8 grid gap-4">
         <a
-          href={DASH_URL}
+          href={dashUrl(i18n.language)}
           className="inline-flex h-11 items-center justify-center gap-2 rounded bg-[var(--brand-blue)] text-white mono text-xs tracking-[0.18em] uppercase hover:opacity-90"
         >
           {t("login.dashboard")} <ArrowRight className="h-4 w-4" />

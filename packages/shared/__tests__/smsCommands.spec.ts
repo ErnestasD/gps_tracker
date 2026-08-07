@@ -17,8 +17,8 @@ describe('isAllowedSmsCommand', () => {
       { imei: '356307042441013', host: '185.80.129.33', port: 5027, apn: 'banga.lt' },
     ]) {
       const sheet = buildOnboarding(input)
-      expect(isAllowedSmsCommand(sheet.smsAuto), sheet.smsAuto).toBe(true)
-      expect(isAllowedSmsCommand(sheet.smsServer), sheet.smsServer).toBe(true)
+      expect(isAllowedSmsCommand(sheet.smsAuto!), sheet.smsAuto!).toBe(true)
+      expect(isAllowedSmsCommand(sheet.smsServer!), sheet.smsServer!).toBe(true)
       if (sheet.smsApn !== null) expect(isAllowedSmsCommand(sheet.smsApn), sheet.smsApn).toBe(true)
     }
   })

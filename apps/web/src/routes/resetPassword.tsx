@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { AuthShell } from '@/components/AuthShell'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { resetPassword } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
@@ -40,11 +40,8 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <AuthShell>
+    <AuthShell label={t('reset.label')} title={t('reset.title')}>
       <Card className="w-full">
-        <CardHeader className="items-center pt-8 text-center">
-          <CardTitle className="text-lg">{t('reset.title')}</CardTitle>
-        </CardHeader>
         <CardContent className="pb-8">
           {done ? (
             <div className="space-y-4 text-center" data-testid="reset-done">

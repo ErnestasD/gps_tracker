@@ -2,7 +2,7 @@ import { Worker, type ConnectionOptions, type Job } from 'bullmq'
 import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 
-import { brandingSchema, notificationChannelSchema, sanitizeUnits, type Branding, type NotificationChannel } from '@orbetra/shared'
+import { brandingReadSchema, notificationChannelSchema, sanitizeUnits, type Branding, type NotificationChannel } from '@orbetra/shared'
 
 import { dispatchEvent } from '../notify/dispatch.js'
 import type { Drivers } from '../notify/drivers.js'
@@ -100,7 +100,7 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string): Promis
  *  (defense in depth — the render path also re-escapes/re-validates). Never throws. */
 function safeBranding(raw: unknown): Branding | undefined {
   if (raw === null || raw === undefined || typeof raw !== 'object') return undefined
-  const parsed = brandingSchema.safeParse(raw)
+  const parsed = brandingReadSchema.safeParse(raw)
   return parsed.success ? parsed.data : undefined
 }
 
