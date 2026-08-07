@@ -92,3 +92,55 @@ describe('the activation mail is OURS, not the recipient’s own company', () =>
     expect(sent[0]!.html).not.toContain('Orbetra')
   })
 })
+
+/**
+ * Every auth link is built by the API from the single global APP_BASE_URL, so a white-label mail
+ * kept its promise and then opened a page that broke it: dash.orbetra.com resolves as NOT
+ * white-labelled, so it shows our wordmark and (since the AuthShell change) a link to orbetra.com —
+ * on the one screen a reseller's customers are guaranteed to reach.
+ */
+describe('auth links land on the TENANT\u2019s host when it has one', () => {
+  /** a pool that answers the branding SELECT and the tenant_domains SELECT differently */
+  const poolWith = (domains: { domain: string }[], branding: Record<string, unknown> = { productName: 'FleetPro' }) =>
+    ({
+      query: (sql: string) =>
+        Promise.resolve({ rows: sql.includes('tenant_domains') ? domains : [{ name: 'Reseller UAB', branding }] }),
+    }) as unknown as Parameters<typeof import('../src/jobs/authEmailWorker.js').sendAuthEmail>[0]['pool']
+
+  const send = async (pool: unknown, verifyUrl: string) => {
+    const { sendAuthEmail } = await import('../src/jobs/authEmailWorker.js')
+    const sent: string[] = []
+    const transport = { send: (_to: string, _s: string, text: string) => { sent.push(text); return Promise.resolve() } }
+    await sendAuthEmail({ pool: pool as never, transport }, {
+      kind: 'verify-email', email: 'end@user.test', tenantId: '00000000-0000-0000-0000-0000000000bb',
+      locale: 'en', verifyUrl, expiresHours: 48,
+    })
+    return sent[0]!
+  }
+
+  it('swaps the ORIGIN and keeps the token untouched', async () => {
+    const text = await send(poolWith([{ domain: 'fleet.reseller.lt' }]), 'http://dash.orbetra.test/verify-email?token=abc123')
+    expect(text).toContain('https://fleet.reseller.lt/verify-email?token=abc123')
+    expect(text).not.toContain('dash.orbetra.test')
+  })
+
+  it('picks the OLDEST verified domain, so the link is stable as a tenant adds more', async () => {
+    // the query orders by createdAt asc and takes one; this pins that the FIRST row is used
+    const text = await send(poolWith([{ domain: 'first.reseller.lt' }, { domain: 'later.reseller.lt' }]), 'https://dash.orbetra.test/verify-email?token=t')
+    expect(text).toContain('first.reseller.lt')
+    expect(text).not.toContain('later.reseller.lt')
+  })
+
+  it('keeps the platform link when the tenant has NO verified domain', async () => {
+    const text = await send(poolWith([]), 'https://dash.orbetra.test/verify-email?token=t')
+    expect(text).toContain('https://dash.orbetra.test/verify-email?token=t')
+  })
+
+  it('a lookup fault or an unparseable link never costs the mail its link', async () => {
+    const dead = { query: (sql: string) => (sql.includes('tenant_domains') ? Promise.reject(new Error('pool down')) : Promise.resolve({ rows: [{ name: 'R', branding: {} }] })) }
+    expect(await send(dead, 'https://dash.orbetra.test/verify-email?token=t')).toContain('https://dash.orbetra.test/verify-email?token=t')
+    const { onTenantHost } = await import('../src/jobs/authEmailWorker.js')
+    expect(onTenantHost('not a url', 'fleet.reseller.lt')).toBe('not a url')
+    expect(onTenantHost('https://a.test/x', null)).toBe('https://a.test/x')
+  })
+})
