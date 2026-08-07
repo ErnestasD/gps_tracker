@@ -35,7 +35,9 @@ services:
       - '80:80'
       - '443:443'
     volumes:
-      # base compose already mounts ../Caddyfile; re-stated here so the staging TLS/site blocks
+      # base compose already mounts ../caddy (the DIRECTORY — see the note there: a single-file
+      # bind mount pins the inode and rsync replaces files, so edits never reached the container);
+      # re-stated here so the staging TLS/site blocks
       # (ORBETRA_STAGING_HOST http:// + on-demand https://) front the 80/443 publish above.
-      - ../Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../caddy:/etc/caddy:ro
       - caddy_data:/data
