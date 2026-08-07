@@ -879,11 +879,16 @@ test('notifications bell + command palette: open, mark-all, keyboard + search na
 })
 
 test('PWA: manifest served and service worker registers on the built app', async ({ page }) => {
-  // the manifest comes from the API now, branded by Host — a static file could never be, so
+  // The manifest comes from the API now, branded by Host — a static file could never be, so
   // "Install app" offered a white-label tenant's user an app called Orbetra and put our icon on
-  // their phone for as long as they kept the shortcut. The old path must NOT answer any more:
-  // a browser that installed the PWA before the change keeps re-fetching whatever URL it recorded.
-  expect((await page.request.get('/manifest.webmanifest')).status()).toBe(404)
+  // their phone for as long as they kept the shortcut.
+  //
+  // The old path must no longer serve a MANIFEST. Asserting 404 would be wrong: the SPA's
+  // catch-all answers any unknown path with index.html (200 text/html), here and behind Caddy
+  // alike. What matters is that a browser still asking for the old URL cannot parse our name out
+  // of it — so this asserts the CONTENT, which is the thing that leaked.
+  const stale = await page.request.get('/manifest.webmanifest')
+  expect(await stale.text()).not.toContain('Orbetra')
   const manifest = await page.request.get('/v1/public/manifest.webmanifest')
   expect(manifest.ok()).toBe(true)
   expect((await manifest.json()) as { display: string }).toMatchObject({ display: 'standalone' })
