@@ -13,6 +13,7 @@ export const pl: Translation = {
     menu: "Menu",
   },
   cta: {
+    partnerDashboard: "Panel partnera",
     showPassword: "Pokaż hasło",
     hidePassword: "Ukryj hasło",
     trial: "Wypróbuj bezpłatnie",

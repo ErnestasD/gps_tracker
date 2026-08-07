@@ -21,6 +21,7 @@ export const en = {
     menu: "Menu",
   },
   cta: {
+    partnerDashboard: "Partner dashboard",
     showPassword: "Show password",
     hidePassword: "Hide password",
     trial: "Start free trial",

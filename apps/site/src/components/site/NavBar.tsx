@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { OrbetraWordmark } from "./OrbetraLogo";
 import { DOCS_URL } from "@/lib/api";
 import { LanguageDropdown } from "./LanguageDropdown";
+import { usePartnerToken } from "@/lib/partner-auth";
 
 const NAV = [
   { to: "/", key: "nav.platform" },
@@ -21,6 +22,7 @@ export function NavBar() {
   const [open, setOpen] = useState(false);
   const { location } = useRouterState();
   const { t } = useTranslation();
+  const partnerToken = usePartnerToken();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -73,11 +75,15 @@ export function NavBar() {
 
         <div className="flex items-center gap-3">
           <LanguageDropdown className="hidden sm:block" />
+          {/* A SIGNED-IN PARTNER gets the way back, not an invitation to sign in again. Leaving
+              "Sign in" there meant that visiting any other page — pricing, docs, the front page —
+              stranded them: the only route to their own dashboard was to authenticate a second
+              time. The token lives in this browser, so the header knows. */}
           <Link
-            to="/login"
+            to={partnerToken !== null ? "/partner/dashboard" : "/login"}
             className="hidden lg:inline-flex text-sm text-muted-foreground hover:text-ink"
           >
-            {t("cta.signin")}
+            {partnerToken !== null ? t("cta.partnerDashboard") : t("cta.signin")}
           </Link>
           <Link to="/signup" className="hidden sm:inline-flex pill-primary hover:pill-primary-hover">
             {t("cta.trial")}

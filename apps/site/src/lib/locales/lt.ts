@@ -18,6 +18,7 @@ export const lt: Translation = {
     menu: "Meniu",
   },
   cta: {
+    partnerDashboard: "Partnerio skydelis",
     showPassword: "Rodyti slaptažodį",
     hidePassword: "Slėpti slaptažodį",
     trial: "Pradėkite nemokamai",
