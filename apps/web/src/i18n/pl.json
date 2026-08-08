@@ -1045,7 +1045,8 @@
     "actions": "Akcje",
     "pickDate": "Wybierz datę",
     "loadError": "Nie udało się załadować — spróbuj ponownie.",
-    "loading": "Ładowanie…"
+    "loading": "Ładowanie…",
+    "save": "Zapisz"
   },
   "dash": {
     "title": "Przegląd",
@@ -1134,7 +1135,32 @@
     "months": "Czas trwania (mies.)",
     "create": "Wyślij zaproszenie",
     "createError": "Nie udało się utworzyć partnera. Kod lub e-mail jest już używany.",
-    "actionError": "Akcja nie powiodła się. Spróbuj ponownie."
+    "actionError": "Akcja nie powiodła się. Spróbuj ponownie.",
+    "edit": "Edytuj",
+    "editTitle": "Edytuj: {{name}}",
+    "editNoteRate": "Nowa stawka obejmie prowizje naliczane od teraz. Już zapisane prowizje zachowują stawkę z chwili naliczenia — historia nigdy nie jest przeliczana.",
+    "editNoteWindow": "Nowy okres obejmie klientów, którzy jeszcze nie zapłacili. Klient już płacący zachowuje okres uzgodniony na starcie.",
+    "loginLink": "Link logowania",
+    "loginLinkHint": "Tworzy jednorazowy link, którym partner ustawia hasło. Nowy link unieważnia poprzedni.",
+    "copy": "Kopiuj",
+    "copied": "Skopiowano",
+    "stats": {
+      "customers_one": "{{count}} klient",
+      "customers_few": "{{count}} klienci",
+      "customers_many": "{{count}} klientów",
+      "customers_other": "{{count}} klienta",
+      "earning_one": "{{count}} zarabia",
+      "earning_few": "{{count}} zarabia",
+      "earning_many": "{{count}} zarabia",
+      "earning_other": "{{count}} zarabia",
+      "notPaying_one": "{{count}} nie płaci",
+      "notPaying_few": "{{count}} nie płaci",
+      "notPaying_many": "{{count}} nie płaci",
+      "notPaying_other": "{{count}} nie płaci",
+      "earned": "zarobiono {{amount}}",
+      "pending": "należne {{amount}}",
+      "nothingYet": "jeszcze nic nie zarobiono"
+    }
   },
   "authNav": {
     "platform": "Platforma",

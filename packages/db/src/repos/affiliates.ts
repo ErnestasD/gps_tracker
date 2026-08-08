@@ -158,6 +158,30 @@ export interface PartnerCustomerRow {
   totals: readonly PartnerCurrencyTotal[]
 }
 
+/** What a partner is worth, per currency. Money is never summed across currencies (we have no rate). */
+export interface AffiliateMoney {
+  currency: string
+  /** everything accrued and not reversed */
+  earnedCents: number
+  /** already transferred to the partner */
+  paidCents: number
+  /** confirmed, owed, not yet transferred — the number a payout run works from */
+  pendingCents: number
+}
+
+/** The registry line an admin actually needs: who they are AND what they have produced. */
+export interface AffiliateWithStats extends AffiliateView {
+  stats: {
+    /** tenants attributed to this partner, whatever state they are in */
+    customers: number
+    /** …of those, how many have never paid (still a trial, or signed up and stopped) */
+    notPaying: number
+    /** …and how many are still inside their earning window — the only ones producing money */
+    earning: number
+    money: readonly AffiliateMoney[]
+  }
+}
+
 export interface AffiliateRepo {
   list(): Promise<AffiliateView[]>
   get(id: string): Promise<AffiliateView | null>
@@ -177,6 +201,15 @@ export interface AffiliateRepo {
    * amount, or a duplicate invoice (idempotent). All lookups + window math live here (rule 2).
    */
   accrueForPaidInvoice(invoice: PaidInvoice): Promise<Commission | null>
+  /**
+   * The admin registry: every partner WITH what they have produced.
+   *
+   * The plain list showed a name, a code and a percentage — nothing that answers "is this partner
+   * worth anything?", which is the only question the page exists for. Three grouped queries for the
+   * whole table, not one per row: the aggregates come from two groupBys and one projection of the
+   * referred tenants, so adding a partner does not add a query.
+   */
+  listWithStats(): Promise<AffiliateWithStats[]>
   listCommissions(affiliateId?: string): Promise<Commission[]>
   /**
    * A refunded customer payment reverses the commission it earned (Stripe `charge.refunded`).
@@ -218,6 +251,17 @@ export interface AffiliateRepo {
   setPassword(id: string, passwordHash: string): Promise<void>
   /** Issue a one-time set/reset-password token (store only its hash). */
   createPwToken(affiliateId: string, tokenHash: string, expiresAt: Date): Promise<void>
+  /**
+   * Issue a token AND burn every older unused one, atomically.
+   *
+   * The admin UI says a new link invalidates the previous one, and for a while it did not: minting
+   * only created, so every link an admin had ever generated stayed valid for its full TTL. An admin
+   * pasting a link into the wrong chat and re-minting to "revoke" it would have left the leaked one
+   * working — and that link sets a password on the partner portal, which shows referred customers'
+   * names and revenue. Invalidate-then-create in ONE transaction, so two concurrent mints cannot
+   * interleave into a state where the surviving token is not the one the admin is looking at.
+   */
+  replacePwToken(affiliateId: string, tokenHash: string, expiresAt: Date, now: Date): Promise<void>
   /** Consume a token atomically (single-use, unexpired) → the affiliate id, or null. */
   consumePwToken(tokenHash: string, now: Date): Promise<string | null>
   /** Burn every still-unused token for an affiliate (after a successful set, so no sibling link works). */
@@ -255,6 +299,69 @@ const PUBLIC_SELECT = {
 export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): AffiliateRepo {
   return {
     list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' }, select: PUBLIC_SELECT }),
+    listWithStats: async () => {
+      const [affiliates, tenants, sums] = await Promise.all([
+        prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' }, select: PUBLIC_SELECT }),
+        // O(referred tenants), NOT O(invoices): this projects three columns of the customer table,
+        // which is bounded by how many customers the platform has, and is index-backed on
+        // referredByAffiliateId. The per-tenant window math needs the anchor and the snapshotted
+        // term, so it cannot collapse into a groupBy without raw SQL — and correctness that is
+        // readable beats an aggregate nobody can check against the accrual it must match.
+        prisma.tenant.findMany({
+          where: { referredByAffiliateId: { not: null } },
+          select: { referredByAffiliateId: true, commissionAnchorAt: true, commissionMonthsAtAnchor: true },
+        }),
+        // ordered so the currency chips do not swap places between refetches (the API test having to
+        // sort before asserting was the tell that the order was Postgres', not ours)
+        prisma.commission.groupBy({ by: ['affiliateId', 'currency', 'status'], _sum: { amountCents: true }, orderBy: [{ currency: 'asc' }] }),
+      ])
+      // the live term, for the one case where a tenant is anchored but carries no snapshot: the
+      // ACCRUAL falls back to the affiliate's current commissionMonths and keeps paying, so
+      // defaulting to 0 here would show a live obligation as expired. Not reachable today (both
+      // columns are always written together) — it is the direction of the guess that matters.
+      const liveMonths = new Map(affiliates.map((a) => [a.id, a.commissionMonths]))
+      const activeAffiliates = new Set(affiliates.filter((a) => a.status === 'active').map((a) => a.id))
+      const counts = new Map<string, { customers: number; notPaying: number; earning: number }>()
+      const now = Date.now()
+      for (const t of tenants) {
+        const key = t.referredByAffiliateId
+        if (key === null) continue // narrowed for the type; the where clause already excluded these
+        const c = counts.get(key) ?? { customers: 0, notPaying: 0, earning: 0 }
+        c.customers += 1
+        if (t.commissionAnchorAt === null) c.notPaying += 1 // no anchor ⇒ never paid an invoice
+        // SAME window function as the accrual and the partner portal — three readings of one term
+        // would be three different answers (see listReferredCustomers). And the SAME status gate:
+        // accrueForPaidInvoice refuses everything for a non-active affiliate BEFORE it looks at the
+        // window, so a suspended partner has nobody earning, however open their customers' windows
+        // are. Counting them anyway meant pressing Suspend did not move the number next to it.
+        else if (
+          activeAffiliates.has(key) &&
+          addMonthsUtc(t.commissionAnchorAt, t.commissionMonthsAtAnchor ?? liveMonths.get(key) ?? 0).getTime() >= now
+        ) {
+          c.earning += 1
+        }
+        counts.set(key, c)
+      }
+      const money = new Map<string, Map<string, AffiliateMoney>>()
+      for (const s of sums) {
+        const amount = s._sum.amountCents ?? 0
+        if (s.status === 'void') continue // reversals are not money; a total counting them is a lie
+        const per = money.get(s.affiliateId) ?? new Map<string, AffiliateMoney>()
+        const m = per.get(s.currency) ?? { currency: s.currency, earnedCents: 0, paidCents: 0, pendingCents: 0 }
+        m.earnedCents += amount
+        if (s.status === 'paid') m.paidCents += amount
+        if (s.status === 'pending') m.pendingCents += amount
+        per.set(s.currency, m)
+        money.set(s.affiliateId, per)
+      }
+      return affiliates.map((a) => ({
+        ...a,
+        stats: {
+          ...(counts.get(a.id) ?? { customers: 0, notPaying: 0, earning: 0 }),
+          money: [...(money.get(a.id)?.values() ?? [])],
+        },
+      }))
+    },
     get: (id) => prisma.affiliate.findUnique({ where: { id }, select: PUBLIC_SELECT }),
     // EXACT, case-insensitive match (audit HIGH). Prisma's `mode:'insensitive'` compiles to ILIKE
     // with the value bound UNESCAPED, so `_` — a LIKE single-char wildcard that the code charset
@@ -559,6 +666,12 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
     },
     createPwToken: async (affiliateId, tokenHash, expiresAt) => {
       await prisma.affiliatePasswordToken.create({ data: { affiliateId, tokenHash, expiresAt } })
+    },
+    replacePwToken: async (affiliateId, tokenHash, expiresAt, now) => {
+      await prisma.$transaction([
+        prisma.affiliatePasswordToken.updateMany({ where: { affiliateId, usedAt: null }, data: { usedAt: now } }),
+        prisma.affiliatePasswordToken.create({ data: { affiliateId, tokenHash, expiresAt } }),
+      ])
     },
     consumePwToken: async (tokenHash, now) => {
       // atomic single-use claim: only an unused, unexpired token matches (mirrors passwordResetTokens)

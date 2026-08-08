@@ -1,18 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Handshake, Plus } from 'lucide-react'
+import { Copy, Handshake, KeyRound, Pencil, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, EmptyState, PageHeader } from '@/components/admin/AdminKit'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import {
+  buildAffiliatePatch,
   createAffiliate,
+  issuePartnerLoginLink,
   listAffiliates,
   listCommissions,
   setCommissionStatus,
   updateAffiliate,
   type AffiliateStatus,
   type AffiliateView,
+  type AffiliateWithStats,
   type CommissionStatus,
 } from '@/lib/affiliates'
 import { getCurrentUser } from '@/lib/auth'
@@ -102,6 +105,8 @@ export function AffiliatesPage() {
                   <code className="mono rounded-md border px-2 py-1 text-xs" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }} data-testid={`affiliate-code-${a.id}`}>{a.code}</code>
                   <span className="text-xs tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{t('affiliates.terms', { pct: Number(a.commissionPct), months: a.commissionMonths })}</span>
                   <Badge tone={STATUS_TONE[a.status]} data-testid={`affiliate-status-${a.id}`}>{t(`affiliates.status.${a.status}`)}</Badge>
+                  <EditPartner affiliate={a} onSaved={refresh} />
+                  <LoginLinkButton affiliate={a} />
                   {a.status !== 'active' ? (
                     <AdminButton size="sm" variant="secondary" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ id: a.id, status: 'active' })} data-testid={`affiliate-activate-${a.id}`}>
                       {t('affiliates.activate')}
@@ -115,6 +120,7 @@ export function AffiliatesPage() {
                     {t('affiliates.commissions')}
                   </AdminButton>
                 </div>
+                <PartnerStats affiliate={a} />
                 {openFor === a.id && <CommissionsPanel affiliate={a} />}
               </li>
             ))}
@@ -123,6 +129,204 @@ export function AffiliatesPage() {
         <p className="admin-hairline-t px-4 py-3 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('affiliates.note')}</p>
       </div>
     </div>
+  )
+}
+
+/**
+ * The numbers that make this a registry rather than a contact list: how many customers a partner
+ * brought, how many are still producing, and what they are owed.
+ *
+ * `notPaying` is shown as its own figure and not folded into `customers`, because "12 referred" next
+ * to "€0 owed" is the shape of a partner who is sending traffic that never converts — a different
+ * conversation from one who converts and whose windows have closed.
+ */
+function PartnerStats({ affiliate }: { affiliate: AffiliateWithStats }) {
+  const { t } = useTranslation()
+  // `money` is the module-level formatter — the array gets a different name rather than shadowing it
+  const { customers, notPaying, earning, money: byCurrency } = affiliate.stats
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-4 pb-3 text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`affiliate-stats-${affiliate.id}`}>
+      {/* `count`, not an arbitrary name: i18next selects the plural form off THAT option, and
+          Lithuanian and Polish get "1 klientai"/"1 klientów" without it */}
+      <span className="tabular-nums">{t('affiliates.stats.customers', { count: customers })}</span>
+      <span className="tabular-nums">{t('affiliates.stats.earning', { count: earning })}</span>
+      <span className="tabular-nums">{t('affiliates.stats.notPaying', { count: notPaying })}</span>
+      {byCurrency.length === 0 ? (
+        <span data-testid={`affiliate-money-none-${affiliate.id}`}>{t('affiliates.stats.nothingYet')}</span>
+      ) : (
+        byCurrency.map((m) => (
+          <span key={m.currency} className="tabular-nums">
+            {t('affiliates.stats.earned', { amount: money(m.earnedCents, m.currency) })}
+            {' · '}
+            {/* what a payout run works from — deliberately the last thing on the line so it reads as the action */}
+            <strong style={{ color: m.pendingCents > 0 ? 'var(--admin-warning, var(--admin-ink))' : 'var(--admin-ink-soft)' }}>
+              {t('affiliates.stats.pending', { amount: money(m.pendingCents, m.currency) })}
+            </strong>
+          </span>
+        ))
+      )}
+    </div>
+  )
+}
+
+/**
+ * Edit a partner's terms after the invite.
+ *
+ * The invite form could set a percentage and a window; nothing could change them afterwards, so a
+ * renegotiated deal meant a row in the database nobody could reach. Both fields are money controls,
+ * so the panel states what a change does and does NOT do — see the note keys. It matters: an admin
+ * raising the rate to fix an under-paid partner will expect the open commissions to follow, and they
+ * will not (the rate is snapshotted per accrual, deliberately, so history is never re-priced).
+ */
+function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; onSaved: () => void }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState(affiliate.name)
+  const [pct, setPct] = useState(String(Number(affiliate.commissionPct)))
+  const [months, setMonths] = useState(String(affiliate.commissionMonths))
+  /**
+   * What the row said WHEN THIS PANEL OPENED — the diff baseline.
+   *
+   * Diffing against the live `affiliate` prop looks equivalent and is not: the query has no
+   * staleTime and refetches on window focus, so the row updates underneath an open sheet. Admin A
+   * opens at 20%, admin B raises it to 30%, A's window refocuses, A fixes a typo in the name and
+   * saves — and because the untouched input still reads 20 while the prop now reads 30, the patch
+   * carries `commissionPct: 20` and silently reverts B's raise, with A's name on the audit row.
+   */
+  const [baseline, setBaseline] = useState(affiliate)
+
+  const save = useMutation({
+    mutationFn: () => {
+      // the diff lives in lib/affiliates.ts and is unit-tested — see buildAffiliatePatch for why
+      // both "diff against the baseline" and "skip an empty patch" are correctness, not tidiness
+      const data = buildAffiliatePatch(baseline, { name, pct, months })
+      return data === null ? Promise.resolve(null) : updateAffiliate(affiliate.id, data)
+    },
+    onSuccess: () => {
+      setOpen(false)
+      onSaved()
+    },
+  })
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v)
+        if (v) {
+          // re-seed from the row each time it opens, so a cancelled edit is not still sitting there,
+          // and take a fresh baseline with it. `save.reset()` too: without it, one failed save left
+          // the red error showing the next time the panel opened, before anyone had touched a field.
+          setName(affiliate.name)
+          setPct(String(Number(affiliate.commissionPct)))
+          setMonths(String(affiliate.commissionMonths))
+          setBaseline(affiliate)
+          save.reset()
+        }
+      }}
+    >
+      <SheetTrigger asChild>
+        <AdminButton size="sm" variant="ghost" data-testid={`affiliate-edit-open-${affiliate.id}`}>
+          <Pencil className="h-3.5 w-3.5" aria-hidden />
+          {t('affiliates.edit')}
+        </AdminButton>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>{t('affiliates.editTitle', { name: affiliate.name })}</SheetTitle>
+        </SheetHeader>
+        <form
+          className="grid gap-4 p-4"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault()
+            save.mutate()
+          }}
+        >
+          <div className="grid gap-1.5">
+            <AdminLabel htmlFor={`edit-name-${affiliate.id}`}>{t('affiliates.name')}</AdminLabel>
+            <AdminInput id={`edit-name-${affiliate.id}`} value={name} onChange={(e) => setName(e.target.value)} required maxLength={160} data-testid="affiliate-edit-name" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <AdminLabel htmlFor={`edit-pct-${affiliate.id}`}>{t('affiliates.pct')}</AdminLabel>
+              <AdminInput id={`edit-pct-${affiliate.id}`} type="number" min={0} max={100} step={0.01} value={pct} onChange={(e) => setPct(e.target.value)} required data-testid="affiliate-edit-pct" />
+            </div>
+            <div className="grid gap-1.5">
+              <AdminLabel htmlFor={`edit-months-${affiliate.id}`}>{t('affiliates.months')}</AdminLabel>
+              <AdminInput id={`edit-months-${affiliate.id}`} type="number" min={1} max={120} step={1} value={months} onChange={(e) => setMonths(e.target.value)} required data-testid="affiliate-edit-months" />
+            </div>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid="affiliate-edit-note">
+            {t('affiliates.editNoteRate')}
+          </p>
+          <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+            {t('affiliates.editNoteWindow')}
+          </p>
+          {save.isError && (
+            <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="affiliate-edit-error">{t('affiliates.actionError')}</p>
+          )}
+          <SheetFooter>
+            <AdminButton type="button" variant="ghost" onClick={() => setOpen(false)}>{t('admin.cancel')}</AdminButton>
+            <AdminButton type="submit" disabled={save.isPending} data-testid="affiliate-edit-save">{t('admin.save')}</AdminButton>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+/**
+ * Mint the partner's one-time sign-in link.
+ *
+ * The plaintext token comes back ONCE (only its hash is stored), so it is rendered for copying and
+ * never re-fetchable — pressing the button again mints a NEW link and invalidates the old one, which
+ * is why the caption says so rather than leaving an admin to discover it by breaking a partner's
+ * onboarding.
+ */
+function LoginLinkButton({ affiliate }: { affiliate: AffiliateView }) {
+  const { t } = useTranslation()
+  const [link, setLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const issue = useMutation({ mutationFn: () => issuePartnerLoginLink(affiliate.id), onSuccess: setLink })
+  // a failed mint used to replace the button's label PERMANENTLY — the row stays mounted, so the
+  // error outlived the attempt and there was no way back to "Sign-in link" but a page reload
+  const label = issue.isError ? t('affiliates.actionError') : t('affiliates.loginLink')
+
+  if (link !== null) {
+    return (
+      <span className="flex min-w-0 items-center gap-2" data-testid={`affiliate-link-${affiliate.id}`}>
+        <code className="mono truncate rounded-md border px-2 py-1 text-[11px]" style={{ maxWidth: '18rem', borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }}>{link}</code>
+        <AdminButton
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            void navigator.clipboard.writeText(link)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1600)
+          }}
+          data-testid={`affiliate-link-copy-${affiliate.id}`}
+        >
+          <Copy className="h-3.5 w-3.5" aria-hidden />
+          {copied ? t('affiliates.copied') : t('affiliates.copy')}
+        </AdminButton>
+      </span>
+    )
+  }
+  return (
+    <AdminButton
+      size="sm"
+      variant="ghost"
+      disabled={issue.isPending}
+      onClick={() => {
+        issue.reset()
+        issue.mutate()
+      }}
+      data-testid={`affiliate-link-issue-${affiliate.id}`}
+      title={t('affiliates.loginLinkHint')}
+    >
+      <KeyRound className="h-3.5 w-3.5" aria-hidden />
+      {label}
+    </AdminButton>
   )
 }
 

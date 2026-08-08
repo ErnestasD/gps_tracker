@@ -1045,7 +1045,8 @@
     "actions": "Veiksmai",
     "pickDate": "Pasirinkti datą",
     "loadError": "Nepavyko įkelti — bandykite dar kartą.",
-    "loading": "Įkeliama…"
+    "loading": "Įkeliama…",
+    "save": "Išsaugoti"
   },
   "dash": {
     "title": "Apžvalga",
@@ -1134,7 +1135,29 @@
     "months": "Trukmė (mėn.)",
     "create": "Siųsti kvietimą",
     "createError": "Nepavyko sukurti partnerio. Kodas arba el. paštas jau naudojamas.",
-    "actionError": "Veiksmas nepavyko. Bandykite dar kartą."
+    "actionError": "Veiksmas nepavyko. Bandykite dar kartą.",
+    "edit": "Redaguoti",
+    "editTitle": "Redaguoti: {{name}}",
+    "editNoteRate": "Naujas procentas galios nuo šiol priskaičiuojamiems komisiniams. Jau užfiksuoti komisiniai išlaiko tuometį procentą — istorija neperskaičiuojama.",
+    "editNoteWindow": "Nauja trukmė galios klientams, kurie dar neatliko pirmo mokėjimo. Jau mokantis klientas išlaiko tą langą, kuris galiojo jam pradedant.",
+    "loginLink": "Prisijungimo nuoroda",
+    "loginLinkHint": "Sukuria vienkartinę nuorodą partneriui pasistatyti slaptažodį. Sukūrus naują, senoji nustoja galioti.",
+    "copy": "Kopijuoti",
+    "copied": "Nukopijuota",
+    "stats": {
+      "customers_one": "{{count}} klientas",
+      "customers_few": "{{count}} klientai",
+      "customers_other": "{{count}} klientų",
+      "earning_one": "{{count}} uždirba",
+      "earning_few": "{{count}} uždirba",
+      "earning_other": "{{count}} uždirba",
+      "notPaying_one": "{{count}} nemoka",
+      "notPaying_few": "{{count}} nemoka",
+      "notPaying_other": "{{count}} nemoka",
+      "earned": "uždirbta {{amount}}",
+      "pending": "priklauso {{amount}}",
+      "nothingYet": "kol kas neuždirbta"
+    }
   },
   "authNav": {
     "platform": "Platforma",

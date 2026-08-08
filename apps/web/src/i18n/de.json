@@ -1045,7 +1045,8 @@
     "actions": "Aktionen",
     "pickDate": "Datum wählen",
     "loadError": "Konnte nicht geladen werden — bitte erneut versuchen.",
-    "loading": "Wird geladen…"
+    "loading": "Wird geladen…",
+    "save": "Speichern"
   },
   "dash": {
     "title": "Übersicht",
@@ -1134,7 +1135,26 @@
     "months": "Dauer (Monate)",
     "create": "Einladung senden",
     "createError": "Partner konnte nicht erstellt werden. Code oder E-Mail wird bereits verwendet.",
-    "actionError": "Aktion fehlgeschlagen. Erneut versuchen."
+    "actionError": "Aktion fehlgeschlagen. Erneut versuchen.",
+    "edit": "Bearbeiten",
+    "editTitle": "{{name}} bearbeiten",
+    "editNoteRate": "Ein neuer Satz gilt für ab jetzt gutgeschriebene Provisionen. Bereits erfasste Provisionen behalten den damals geltenden Satz — die Historie wird nie neu bewertet.",
+    "editNoteWindow": "Eine neue Laufzeit gilt für Kunden, die noch nicht gezahlt haben. Ein bereits zahlender Kunde behält den Zeitraum, der bei seinem Start vereinbart war.",
+    "loginLink": "Anmeldelink",
+    "loginLinkHint": "Erzeugt einen einmaligen Link, mit dem der Partner ein Passwort setzt. Ein neuer Link macht den vorherigen ungültig.",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "stats": {
+      "customers_one": "{{count}} Kunde",
+      "customers_other": "{{count}} Kunden",
+      "earning_one": "{{count}} aktiv",
+      "earning_other": "{{count}} aktiv",
+      "notPaying_one": "{{count}} zahlt nicht",
+      "notPaying_other": "{{count}} zahlen nicht",
+      "earned": "verdient {{amount}}",
+      "pending": "offen {{amount}}",
+      "nothingYet": "noch nichts verdient"
+    }
   },
   "authNav": {
     "platform": "Plattform",

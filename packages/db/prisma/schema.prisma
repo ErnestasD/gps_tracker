@@ -137,6 +137,9 @@ model Tenant {
   pushSubscriptions   PushSubscription[]
   /// affiliate attribution (W9): the partner who referred this tenant, set once at signup from ?ref
   referredByAffiliate Affiliate?         @relation("AffiliateReferrals", fields: [referredByAffiliateId], references: [id])
+  /// the admin registry aggregates referred tenants per partner, and the accrual path resolves a
+  /// tenant's referrer on every paid invoice — both were unindexed scans (migration 20260808070000)
+  @@index([referredByAffiliateId])
   commissions         Commission[]       @relation("TenantCommissions")
   usageReports        UsageReport[]
 

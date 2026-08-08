@@ -333,7 +333,9 @@ const commissionPctSchema = z.number().min(0).max(100)
 const commissionMonthsSchema = z.number().int().min(1).max(120)
 
 export const affiliateCreateSchema = z.object({
-  name: z.string().min(1).max(160),
+  // TRIMMED: a stored name with a stray leading/trailing space makes the admin edit panel's diff
+  // report a change on every open, so every save carried a name mutation nobody made
+  name: z.string().trim().min(1).max(160),
   email: z.string().email().max(320),
   code: affiliateCodeSchema.optional(),
   commissionPct: commissionPctSchema.optional(),
@@ -341,7 +343,7 @@ export const affiliateCreateSchema = z.object({
 })
 export const affiliateUpdateSchema = z
   .object({
-    name: z.string().min(1).max(160),
+    name: z.string().trim().min(1).max(160),
     status: affiliateStatusSchema,
     commissionPct: commissionPctSchema,
     commissionMonths: commissionMonthsSchema,

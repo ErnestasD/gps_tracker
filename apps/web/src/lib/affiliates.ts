@@ -18,6 +18,24 @@ export interface AffiliateView {
   status: AffiliateStatus
   createdAt: string
 }
+/** Money a partner has produced, per currency — never summed across them. */
+export interface AffiliateMoney {
+  currency: string
+  earnedCents: number
+  paidCents: number
+  pendingCents: number
+}
+
+/** The registry row: the partner PLUS what they are worth. `/v1/affiliates` returns this shape. */
+export interface AffiliateWithStats extends AffiliateView {
+  stats: {
+    customers: number
+    notPaying: number
+    earning: number
+    money: AffiliateMoney[]
+  }
+}
+
 export interface CommissionView {
   id: string
   affiliateId: string
@@ -44,8 +62,55 @@ export interface AffiliateUpdateInput {
 
 const enc = encodeURIComponent
 
-export const listAffiliates = () => getJson<AffiliateView[]>('/v1/affiliates')
+export const listAffiliates = () => getJson<AffiliateWithStats[]>('/v1/affiliates')
 export const createAffiliate = (data: AffiliateCreateInput) => mutate<AffiliateView>('POST', '/v1/affiliates', data)
 export const updateAffiliate = (id: string, data: AffiliateUpdateInput) => mutate<AffiliateView>('PATCH', `/v1/affiliates/${enc(id)}`, data)
 export const listCommissions = (affiliateId: string) => getJson<CommissionView[]>(`/v1/affiliates/${enc(affiliateId)}/commissions`)
 export const setCommissionStatus = (id: string, status: CommissionStatus) => mutate<CommissionView>('PATCH', `/v1/commissions/${enc(id)}`, { status })
+
+/** What the edit panel's three inputs hold — strings, because that is what an <input> gives you. */
+export interface AffiliateDraft {
+  name: string
+  pct: string
+  months: string
+}
+
+/**
+ * The patch to send for an edited partner: ONLY the fields that actually changed.
+ *
+ * Pure, exported and tested because both of its failure modes are silent money bugs, and neither is
+ * visible in the rendered panel:
+ *
+ *  * diffing against the LIVE row instead of what the panel opened with reverts a concurrent edit —
+ *    the refetch-on-focus updates the row under an open sheet, so an untouched 20% input against a
+ *    freshly-refetched 30% row sends `commissionPct: 20` when the admin only fixed a typo in a name;
+ *  * an empty patch is valid against the partial schema, so a no-op save still writes an audit row
+ *    with identical before/after — noise in the one trail a disputed rate change is settled from.
+ *
+ * Returns null when there is nothing to send, so the caller can skip the request entirely.
+ */
+export function buildAffiliatePatch(baseline: AffiliateView, draft: AffiliateDraft): AffiliateUpdateInput | null {
+  const data: AffiliateUpdateInput = {}
+  const name = draft.name.trim()
+  const pct = Number(draft.pct)
+  const months = Number(draft.months)
+  if (name !== baseline.name.trim()) data.name = name
+  // NaN from a cleared or non-numeric field is not a change — it is an invalid draft, and sending
+  // it would let the server 400 on a field the admin never meant to touch
+  if (Number.isFinite(pct) && draft.pct.trim() !== '' && pct !== Number(baseline.commissionPct)) data.commissionPct = pct
+  if (Number.isFinite(months) && draft.months.trim() !== '' && months !== baseline.commissionMonths) data.commissionMonths = months
+  return Object.keys(data).length === 0 ? null : data
+}
+
+/**
+ * Mint a one-time set/reset-password token for a partner and turn it into the link they click.
+ *
+ * The plaintext exists ONCE, in this response — only its hash is stored — so the admin must copy it
+ * before closing the panel. Until this had a button, onboarding a partner meant an admin running
+ * curl by hand, which is why the founder's first partner account was created from a terminal.
+ */
+export const issuePartnerLoginLink = async (id: string): Promise<string> => {
+  const { token } = await mutate<{ token: string }>('POST', `/v1/affiliates/${enc(id)}/set-password-token`)
+  const site = (import.meta.env['VITE_SITE_URL'] as string | undefined) ?? 'https://orbetra.com'
+  return `${site}/partner/set-password?token=${enc(token)}`
+}
