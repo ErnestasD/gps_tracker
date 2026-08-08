@@ -14,12 +14,14 @@ const partner: AffiliateView = {
   commissionPct: '25.00', // Decimal, serialized as a string by the API
   commissionMonths: 12,
   status: 'active',
+  locale: 'en',
   createdAt: '2026-01-01T00:00:00.000Z',
 }
-const draft = (over: Partial<{ name: string; pct: string; months: string }> = {}) => ({
+const draft = (over: Partial<{ name: string; pct: string; months: string; locale: string }> = {}) => ({
   name: partner.name,
   pct: '25',
   months: '12',
+  locale: partner.locale,
   ...over,
 })
 
@@ -54,6 +56,10 @@ describe('buildAffiliatePatch', () => {
     expect(buildAffiliatePatch(partner, draft({ pct: 'abc' }))).toBeNull()
     expect(buildAffiliatePatch(partner, draft({ months: '' }))).toBeNull()
   })
+
+  it('carries a language change — it decides which of four translations the partner receives', () => {
+    expect(buildAffiliatePatch(partner, draft({ locale: 'lt' }))).toEqual({ locale: 'lt' });
+  });
 
   it('an explicit 0% IS a change — it is a decision, not an empty box', () => {
     expect(buildAffiliatePatch(partner, draft({ pct: '0' }))).toEqual({ commissionPct: 0 })

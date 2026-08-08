@@ -19,6 +19,7 @@ import { seedProfiles } from '../../../packages/db/seed/profiles.js'
 
 /** reasons a verified webhook provisioned nothing — the signal that used to not exist at all */
 const unmatched: string[] = []
+const partnerMails: { event: string; email: string; customer: string; locale: string; amount?: string }[] = []
 
 /**
  * Billing API (ADR-024). A FAKE StripeGateway records calls and lets tests craft webhook events:
@@ -134,6 +135,17 @@ beforeAll(async () => {
     ...common,
     stripe: fakeStripe,
     onWebhookUnmatched: (r) => unmatched.push(r),
+    // the "you earned X" notice — captured rather than queued, so the test can prove it fires
+    // exactly once per commission and carries the PARTNER's language
+    siteUrl: 'https://site.example',
+    mail: {
+      // the only one this test needs; the reset mail is exercised by auth.spec
+      enqueueResetEmail: () => Promise.resolve(),
+      enqueuePartnerEmail: (job) => {
+        partnerMails.push(job)
+        return Promise.resolve()
+      },
+    },
     // observed, and failable on demand, so the ORDER of the registry write vs the suspension flag
     // can be pinned — that order is the whole substance of the restore path
     restoreDevices: (devices) => {
@@ -547,6 +559,30 @@ describe('billing lifecycle (ADR-024)', () => {
     // a duplicate delivery of the SAME invoice does NOT double-accrue
     await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_inv_1b', 'cus_whook', 'in_whook_1', 5_000), { 'stripe-signature': 'valid' })
     expect(await db.affiliates.listCommissions(aff.id)).toHaveLength(1)
+  })
+
+  it('a commission notice reaches the partner ONCE — a Stripe redelivery must not tell them twice', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000ac01' }
+    partnerMails.length = 0 // the capture is module-level and earlier tests in this file accrue too
+    const aff = await db.affiliates.create(actor, { name: 'Notified Partner', email: 'notify@partner.co', code: 'NOTIFY1', commissionPct: 20, commissionMonths: 12 })
+    await db.affiliates.update(actor, aff.id, { status: 'active', locale: 'lt' })
+    const tenant = await db.tenants.create(actor, { name: 'Notifying Customer', referredByAffiliateId: aff.id })
+    await db.tenants.setStripeCustomer(tenant.id, 'cus_notify')
+
+    await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_note_1', 'cus_notify', 'in_note_1', 5_000), { 'stripe-signature': 'valid' })
+    // the notice is fired off the response path — give the microtask + its two lookups a moment
+    await new Promise((r) => setTimeout(r, 400))
+    expect(partnerMails).toHaveLength(1)
+    expect(partnerMails[0]).toMatchObject({ event: 'commission', email: 'notify@partner.co', customer: 'Notifying Customer' })
+    // the PARTNER's language and its money formatting, not the customer's browser and not always en
+    expect(partnerMails[0]?.locale).toBe('lt')
+    expect(partnerMails[0]?.amount).toContain('10,00')
+
+    // a redelivery of the same invoice accrues nothing (unique sourceInvoiceId) and must therefore
+    // notify nothing — a partner told twice about one payment stops trusting the numbers
+    await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_note_1b', 'cus_notify', 'in_note_1', 5_000), { 'stripe-signature': 'valid' })
+    await new Promise((r) => setTimeout(r, 400))
+    expect(partnerMails).toHaveLength(1)
   })
 
   it('a fully refunded invoice REVERSES its pending commission; a partial refund and a paid-out one do not', async () => {

@@ -46,6 +46,8 @@ export interface AffiliateUpdate {
   status?: AffiliateStatus
   commissionPct?: number
   commissionMonths?: number
+  /** the partner's own language for the mail we send them (en|lt|de|pl) */
+  locale?: string
 }
 
 /** A commission accrued from a referred tenant's payment (idempotent on the source Stripe invoice). */
@@ -308,6 +310,7 @@ const PUBLIC_SELECT = {
   commissionPct: true,
   commissionMonths: true,
   status: true,
+  locale: true,
   createdAt: true,
 } as const
 
@@ -539,24 +542,25 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
       // 30 UTC days back, floored to midnight — the series is day-grained, so a partial first day
       // would make "last 30 days" mean 29 and a bit, differently every time the page is opened
       const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29))
-      const [all, recent, leads, tenants] = await Promise.all([
+      // ALL FIVE IN ONE Promise.all, on one snapshot. `paying` used to be awaited afterwards, so a
+      // tenant that paid between the two reads produced paying > signups — which the portal renders
+      // as a conversion above 100% on the last funnel step.
+      const [all, recent, leads, signups, paying] = await Promise.all([
         prisma.affiliateClick.aggregate({ where: { affiliateId }, _sum: { clicks: true } }),
         prisma.affiliateClick.aggregate({ where: { affiliateId, day: { gte: from } }, _sum: { clicks: true } }),
-        // EXACT lower(code) equality, the same rule attribution uses — Prisma's `mode:'insensitive'`
-        // compiles to ILIKE, where a code containing `_` would match codes it does not own
+        // EXACT lower(ref) = lower(code), the same rule attribution uses — Prisma's
+        // `mode:'insensitive'` compiles to ILIKE, where a code containing `_` would match codes it
+        // does not own. Backed by the functional index in migration 20260808110000; a plain index
+        // on `ref` would not be used by this predicate.
         prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM leads WHERE lower(ref) = lower(${code})`,
-        prisma.tenant.groupBy({
-          by: ['referredByAffiliateId'],
-          where: { referredByAffiliateId: affiliateId },
-          _count: { _all: true },
-        }),
+        prisma.tenant.count({ where: { referredByAffiliateId: affiliateId } }),
+        prisma.tenant.count({ where: { referredByAffiliateId: affiliateId, commissionAnchorAt: { not: null } } }),
       ])
-      const paying = await prisma.tenant.count({ where: { referredByAffiliateId: affiliateId, commissionAnchorAt: { not: null } } })
       return {
         clicksTotal: all._sum.clicks ?? 0,
         clicks30: recent._sum.clicks ?? 0,
         leads: Number(leads[0]?.n ?? 0),
-        signups: tenants[0]?._count._all ?? 0,
+        signups,
         paying,
       }
     },

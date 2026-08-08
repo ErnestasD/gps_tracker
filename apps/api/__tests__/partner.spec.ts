@@ -235,6 +235,44 @@ describe('partner self-service auth (F5)', () => {
     expect((await funnel()).signups).toBe(1)
   })
 
+  it('the funnel counts enquiries by lower(ref), and the 30-day window is a window', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000010c' }
+    const p = await makePartner('funnel@partner.co', 'partnerpass1')
+    const code = ((await (await admin(`/v1/affiliates/${p.id}`)).json()) as { code: string }).code
+
+    // a lead carrying the code in the WRONG CASE still belongs to this partner — attribution
+    // matches on lower(ref), so the funnel has to agree or the two numbers contradict each other
+    await db.leads.create({ name: 'A', company: 'Lead Co', email: 'lead@x.lt', ref: code.toLowerCase() })
+    await db.leads.create({ name: 'B', company: 'Other Co', email: 'other@x.lt', ref: 'SOMEONEELSE' })
+
+    // clicks: one inside the 30-day window, one long outside it
+    const today = new Date()
+    const utcDay = (offsetDays: number) =>
+      new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - offsetDays))
+    await db.affiliates.recordClick(p.id, utcDay(0))
+    await db.affiliates.recordClick(p.id, utcDay(90))
+
+    // one referred tenant that pays, one that never has
+    const paying = await db.tenants.create(actor, { name: 'Funnel Paying', referredByAffiliateId: p.id })
+    await db.tenants.create(actor, { name: 'Funnel Trial', referredByAffiliateId: p.id })
+    await db.tenants.setStripeCustomer(paying.id, 'cus_funnel')
+    await db.affiliates.update(actor, p.id, { status: 'active' })
+    await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_funnel', invoiceId: 'in_funnel_1', amountPaidCents: 10000, currency: 'eur', paidAt: new Date() })
+
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const f = (await (await j('/v1/partner/funnel', 'GET', undefined, bearer(tok))).json()) as {
+      clicksTotal: number; clicks30: number; leads: number; signups: number; paying: number
+    }
+    expect(f.clicksTotal).toBe(2)
+    expect(f.clicks30).toBe(1) // the 90-day-old one is outside the window
+    expect(f.leads).toBe(1) // case-insensitive, and someone else's lead is not counted
+    expect(f.signups).toBe(2)
+    expect(f.paying).toBe(1)
+    // read on ONE snapshot: paying can never exceed signups, which the portal would render as a
+    // conversion above 100%
+    expect(f.paying).toBeLessThanOrEqual(f.signups)
+  })
+
   it('login rejects wrong password, unknown email, an unset-password partner, and a non-active partner', async () => {
     const p = await makePartner('who@partner.co', 'partnerpass1')
     expect((await login(p.email, 'wrongpass1')).status).toBe(401)

@@ -26,6 +26,9 @@ export interface BillingDeps {
   redis?: Redis | undefined
   /** public site origin — the partner portal link in the "you earned X" notice. Absent ⇒ no notice. */
   siteUrl?: string | undefined
+  /** the "you earned X" notice could not be queued. The commission is already recorded and nothing
+   *  retries the mail, so without this a systematically dropped notice is invisible. */
+  onPartnerMailFailed?: () => void | undefined
   /** the partner-notification queue. Absent ⇒ commissions still accrue, silently, as before. */
   mail?: {
     enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
@@ -261,12 +264,15 @@ async function notifyPartnerOfCommission(deps: BillingDeps, commission: { affili
       event: 'commission',
       email: affiliate.email,
       tenantId: '', // platform-branded; see the job's doc comment
-      locale: 'en',
+      locale: affiliate.locale, // the PARTNER's language
       customer: tenant?.name ?? '',
-      amount: new Intl.NumberFormat('en', { style: 'currency', currency: commission.currency.toUpperCase() }).format(commission.amountCents / 100),
+      // formatted in the PARTNER's locale, so "€90.00" and "90,00 €" match the language of the
+      // sentence they land in rather than always reading as English
+      amount: new Intl.NumberFormat(affiliate.locale, { style: 'currency', currency: commission.currency.toUpperCase() }).format(commission.amountCents / 100),
       portalUrl: `${deps.siteUrl.replace(/\/+$/, '')}/partner/dashboard`,
     })
   } catch (err) {
+    deps.onPartnerMailFailed?.()
     console.warn('commission notice not queued', err instanceof Error ? err.message : String(err))
   }
 }

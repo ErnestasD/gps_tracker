@@ -198,6 +198,13 @@ describe('affiliate management API (platform)', () => {
     expect(row?.stats.money).toEqual([]) // "nothing earned yet", not a 0.00 EUR chip
   })
 
+  it('the short link 404s when no site origin is configured — it never guesses a host', async () => {
+    // this app is built WITHOUT siteUrl (see beforeAll). A marketing link that redirects somewhere
+    // wrong is worse than one that is not there yet, and a default would be a guess.
+    const res = await fetch(`http://127.0.0.1:${port}/r/ANYCODE1`, { redirect: 'manual' })
+    expect(res.status).toBe(404)
+  })
+
   it('404s marking an unknown commission paid', async () => {
     expect((await req('/v1/commissions/00000000-0000-0000-0000-0000000000ff', platformToken, 'PATCH', { status: 'paid' })).status).toBe(404)
   })

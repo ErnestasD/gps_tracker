@@ -415,7 +415,11 @@ function PartnerDashboard() {
  * yet, which is the opposite conclusion.
  */
 function FunnelStep({ label, value, hint, from }: { label: string; value: number; hint: string; from?: number }) {
-  const pct = from !== undefined && from > 0 ? Math.round((value / from) * 100) : null;
+  // Suppressed above 100%, not clamped. Click counting started the day it shipped while sign-ups and
+  // enquiries are historical, so every existing partner shows twelve sign-ups from one open — and
+  // "1200%" is a lie where a blank is merely silent. It settles by itself as clicks accumulate.
+  const ratio = from !== undefined && from > 0 ? Math.round((value / from) * 100) : null;
+  const pct = ratio !== null && ratio <= 100 ? ratio : null;
   return (
     <div>
       <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{label}</div>

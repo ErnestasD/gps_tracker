@@ -1154,6 +1154,13 @@
       "earned": "verdient {{amount}}",
       "pending": "offen {{amount}}",
       "nothingYet": "noch nichts verdient"
+    },
+    "locale": "Ihre Sprache",
+    "localeName": {
+      "en": "Englisch",
+      "lt": "Litauisch",
+      "de": "Deutsch",
+      "pl": "Polnisch"
     }
   },
   "authNav": {

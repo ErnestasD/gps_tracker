@@ -38,6 +38,7 @@ let platformToken: string
 const sentMail: { kind: string; email: string; loginUrl: string; resetUrl: string }[] = []
 /** activation mails the route enqueued — the link is the only way a signup becomes usable. */
 const sentVerify: { kind: string; email: string; verifyUrl: string; expiresHours: number }[] = []
+const sentPartner: { event: string; email: string; customer: string; locale: string }[] = []
 let emailInUseCount = 0
 
 const base = () => `http://127.0.0.1:${port}`
@@ -80,7 +81,9 @@ beforeAll(async () => {
       enqueueResetEmail: () => Promise.resolve(),
       enqueueSignupExistsEmail: (job) => { sentMail.push(job); return Promise.resolve() },
       enqueueVerifyEmail: (job) => { sentVerify.push(job); return Promise.resolve() },
+      enqueuePartnerEmail: (job) => { sentPartner.push(job); return Promise.resolve() },
     },
+    siteUrl: 'https://site.example',
     onSignupEmailInUse: () => { emailInUseCount++ },
   })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
@@ -390,6 +393,29 @@ describe('public self-serve signup (F2)', () => {
     expect(unknown.status).toBe(201)
     const u = (await unknown.json()) as { id: string }
     expect((await db.tenants.get(u.id))!.referredByAffiliateId).toBeNull()
+  })
+
+  it('tells the PARTNER a referral arrived, in their language — and never for a self-referral', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-0000000000f2' }
+    sentPartner.length = 0
+    const aff = await db.affiliates.create(actor, { name: 'Notified Ltd', email: 'notice@partnerco.test', code: 'NOTICE1' })
+    await db.affiliates.update(actor, aff.id, { status: 'active', locale: 'lt' })
+
+    await signup({ name: 'Buyer', email: 'buyer@somefleet.test', password: 'password12', company: 'Some Fleet UAB', ref: 'NOTICE1' })
+    expect(sentPartner).toHaveLength(1)
+    expect(sentPartner[0]).toMatchObject({ event: 'referral', email: 'notice@partnerco.test', customer: 'Some Fleet UAB', locale: 'lt' })
+
+    // a SELF-referral is dropped before attribution, so there is nothing to announce — telling a
+    // partner they earned a referral we then refuse to attribute is worse than saying nothing
+    await signup({ name: 'Owner', email: 'boss@partnerco.test', password: 'password12', ref: 'NOTICE1' })
+    expect(sentPartner).toHaveLength(1)
+
+    // …and the notice is capped PER PARTNER: their code is public, so 200 junk signups an hour with
+    // it would otherwise be 200 mails an hour into their inbox from our own sending identity
+    for (let i = 0; i < 6; i++) {
+      await signup({ name: `Flood${i}`, email: `flood${i}@elsewhere.test`, password: 'password12', ref: 'NOTICE1' })
+    }
+    expect(sentPartner.length).toBeLessThanOrEqual(3)
   })
 
   it('drops SELF-REFERRAL attribution — a partner cannot earn commission on their own signup (§6.9)', async () => {

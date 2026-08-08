@@ -118,6 +118,10 @@ export interface ApiDeps extends WsDeps {
   /** Public marketing site origin (e.g. https://orbetra.com) — where a partner's short link lands.
    *  Unset ⇒ `/r/<code>` 404s rather than guessing a host. */
   siteUrl?: string
+  /** the partner short link's click counter failed (swallowed — see affiliateSilentFailure) */
+  onClickCountFailed?: () => void
+  /** a partner notification could not be queued (swallowed — see affiliateSilentFailure) */
+  onPartnerMailFailed?: () => void
   /** Password-reset token lifetime (ADR-031); default 3600 s (1 h). */
   resetTokenTtlS?: number
   /** Transactional auth-email enqueuer (ADR-031): the API can't send email, so it hands the branded
@@ -168,6 +172,7 @@ export interface ApiProm {
    *  attack; a rising `ip` rate is either abuse or a shared egress that needs a higher ceiling. */
   authLockoutTripped: Counter
   signupEmailInUse: Counter
+  affiliateSilentFailure: Counter
   emailVerification: Counter
   tenantRestored: Counter
   /** Every HTTP response, by method / route TEMPLATE / status class. The route template (not the
@@ -234,6 +239,21 @@ export function createApiProm(): ApiProm {
     help: 'public signups that hit an address which already has an account — the response is a normal 201, so this is the only signal that someone is walking a list of addresses (audit #67)',
     registers: [registry],
   })
+  /**
+   * The affiliate module's two silent paths, made visible.
+   *
+   * Both swallow deliberately — a broken click counter must not break a marketing link, and a mail
+   * failure must not make Stripe retry an accrual that already succeeded. Silence is right for the
+   * caller and wrong for us: an unapplied migration zeroes every partner's funnel forever, which
+   * reads exactly like "nobody clicked", and a wedged mail queue is indistinguishable from "no
+   * referrals happened".
+   */
+  const affiliateSilentFailure = new Counter({
+    name: 'affiliate_silent_failure_total',
+    help: 'affiliate side-effects that failed and were swallowed on purpose: click counting, partner notifications',
+    labelNames: ['kind'],
+    registers: [registry],
+  })
   const httpRequests = new Counter({
     name: 'http_requests_total',
     help: 'HTTP responses by method, route template and status class',
@@ -249,7 +269,7 @@ export function createApiProm(): ApiProm {
     buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   })
-  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, signupEmailInUse, emailVerification, tenantRestored, httpRequests, httpDuration }
+  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, signupEmailInUse, affiliateSilentFailure, emailVerification, tenantRestored, httpRequests, httpDuration }
 }
 
 /**
@@ -398,6 +418,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
       ...(signupMail !== undefined ? { mail: signupMail } : {}),
       // the partner portal link in the referral notice lives on the public site, not the app
       ...(deps.siteUrl !== undefined ? { siteUrl: deps.siteUrl } : {}),
+      ...(deps.onPartnerMailFailed !== undefined ? { onPartnerMailFailed: deps.onPartnerMailFailed } : {}),
       ...(deps.onSignupEmailInUse !== undefined ? { onEmailInUse: deps.onSignupEmailInUse } : {}),
       ...(deps.onVerifyMailFailed !== undefined ? { onVerifyMailFailed: deps.onVerifyMailFailed } : {}),
       ...(deps.onVerifyMailUnconfigured !== undefined ? { onVerifyMailUnconfigured: deps.onVerifyMailUnconfigured } : {}),
@@ -426,6 +447,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     // the "you earned X" notice rides the same queue as every other transactional mail
     ...(deps.siteUrl !== undefined ? { siteUrl: deps.siteUrl } : {}),
     ...(partnerMail !== undefined ? { mail: { enqueuePartnerEmail: partnerMail } } : {}),
+    ...(deps.onPartnerMailFailed !== undefined ? { onPartnerMailFailed: deps.onPartnerMailFailed } : {}),
     ...(deps.onWebhookUnmatched !== undefined ? { onWebhookUnmatched: deps.onWebhookUnmatched } : {}),
     // RESTORE ON PAYMENT (audit MED #22): the api owns the registry write path, so a suspended
     // tenant's fleet comes back within one webhook rather than waiting for tomorrow's sweep.
@@ -459,6 +481,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     onLockout: deps.onLockout,
     // the short link `/r/<code>` sends visitors to the PUBLIC SITE, not the app
     ...(deps.siteUrl !== undefined ? { siteUrl: deps.siteUrl } : {}),
+    ...(deps.onClickCountFailed !== undefined ? { onClickCountFailed: deps.onClickCountFailed } : {}),
     ...(deps.onUnverifiedLogin !== undefined ? { onUnverifiedLogin: deps.onUnverifiedLogin } : {}),
   }))
 

@@ -171,6 +171,10 @@ model Affiliate {
   passwordHash     String?
 
   referrals   Tenant[]                 @relation("AffiliateReferrals")
+  /// the partner's own language for the mail WE send them (en|lt|de|pl). A partner is not a tenant
+  /// user, so there is no user row to read a locale from — and using the referred customer's browser
+  /// language would be the wrong person's preference entirely.
+  locale      String                   @default("en")
   commissions Commission[]
   clicks      AffiliateClick[]
   pwTokens    AffiliatePasswordToken[]
