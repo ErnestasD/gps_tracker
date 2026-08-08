@@ -24,6 +24,12 @@ export interface BillingDeps {
   appBaseUrl?: string | undefined
   /** used for a short-lived per-tenant checkout lock (audit LOW TOCTOU mitigation); optional. */
   redis?: Redis | undefined
+  /** public site origin — the partner portal link in the "you earned X" notice. Absent ⇒ no notice. */
+  siteUrl?: string | undefined
+  /** the partner-notification queue. Absent ⇒ commissions still accrue, silently, as before. */
+  mail?: {
+    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
+  } | undefined
   /** Fired when a signature-verified subscription webhook provisioned NOTHING. Stripe is acked
    *  either way (a retry cannot conjure a missing customer mapping), so this counter is the only
    *  way anyone learns a paying customer is unprovisioned. */
@@ -233,6 +239,39 @@ function paidInvoiceFrom(obj: Record<string, unknown>, paidAt: Date): PaidInvoic
 }
 
 /**
+ * "You earned X" — fire-and-forget, outside the webhook's success path.
+ *
+ * Every lookup it needs (the partner's address, the customer's name) is a read the accrual did not
+ * have to do, so it happens here rather than widening the money path. Any failure is logged and
+ * dropped: the commission is already recorded, and that is the part that must survive.
+ */
+async function notifyPartnerOfCommission(deps: BillingDeps, commission: { affiliateId: string; tenantId: string; amountCents: number; currency: string }): Promise<void> {
+  try {
+    // bound to its object: the lint rule is right that a detached method loses `this`, and the
+    // queue closure this resolves to in main.ts genuinely captures one
+    const enqueue = deps.mail?.enqueuePartnerEmail?.bind(deps.mail)
+    if (enqueue === undefined || deps.siteUrl === undefined) return
+    const [affiliate, tenant] = await Promise.all([
+      deps.db.affiliates.get(commission.affiliateId),
+      deps.db.tenants.get(commission.tenantId),
+    ])
+    if (affiliate === null || affiliate.status !== 'active') return // a suspended partner is not being told about money
+    await enqueue({
+      kind: 'partner',
+      event: 'commission',
+      email: affiliate.email,
+      tenantId: '', // platform-branded; see the job's doc comment
+      locale: 'en',
+      customer: tenant?.name ?? '',
+      amount: new Intl.NumberFormat('en', { style: 'currency', currency: commission.currency.toUpperCase() }).format(commission.amountCents / 100),
+      portalUrl: `${deps.siteUrl.replace(/\/+$/, '')}/partner/dashboard`,
+    })
+  } catch (err) {
+    console.warn('commission notice not queued', err instanceof Error ? err.message : String(err))
+  }
+}
+
+/**
  * PUBLIC Stripe webhook — MUST be registered before the /v1/* auth guard (Stripe carries no JWT).
  * The raw body is required for signature verification; an invalid signature ⇒ 400 with NO state
  * change. Ordering/idempotency is enforced in the DB write (applySubscriptionEvent's atomic
@@ -333,7 +372,13 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
         try {
           // returns null for a dedupe / nothing-owed (both fine, ack 200); THROWS only on a genuine
           // fault (the repo no longer swallows non-dedupe errors)
-          await deps.db.affiliates.accrueForPaidInvoice(paid)
+          const commission = await deps.db.affiliates.accrueForPaidInvoice(paid)
+          // TELL THE PARTNER they earned. This is the message that makes someone refer a second
+          // time, and until now nothing reached them at all. Strictly best-effort: a mail failure
+          // must never make Stripe retry an accrual that already succeeded — the retry is idempotent
+          // but it would re-send the notice, and a partner told twice about one payment stops
+          // trusting the numbers.
+          if (commission !== null) void notifyPartnerOfCommission(deps, commission)
         } catch (err) {
           // a real fault (e.g. transient DB error). Return non-2xx so Stripe RETRIES this invoice —
           // accrual is idempotent, so the retry recovers the commission instead of losing it forever

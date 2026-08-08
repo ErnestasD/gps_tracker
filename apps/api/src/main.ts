@@ -79,6 +79,12 @@ const mail = {
   enqueueVerifyEmail: async (job: { kind: 'verify-email'; email: string; tenantId: string; locale: string; verifyUrl: string; expiresHours: number }): Promise<void> => {
     await authEmailQueue.add('auth-email', job, authEmailOpts)
   },
+  // A partner heard NOTHING before this: they were handed a link and had to log in on a hunch to
+  // find out whether it had worked. `tenantId: ''` is load-bearing — the worker short-circuits
+  // branding for this kind, so the mail is ours whatever tenant the referral belongs to.
+  enqueuePartnerEmail: async (job: { kind: 'partner'; event: 'referral' | 'commission'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void> => {
+    await authEmailQueue.add('auth-email', job, authEmailOpts)
+  },
 }
 
 // SMS gateway (SMS gateway feature): the api enqueues a config-SMS job; the worker's `sms` queue

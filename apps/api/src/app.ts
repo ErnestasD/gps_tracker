@@ -129,6 +129,8 @@ export interface ApiDeps extends WsDeps {
     enqueueSignupExistsEmail?(job: { kind: 'signup-exists'; email: string; tenantId: string; locale: string; loginUrl: string; resetUrl: string }): Promise<void>
     /** the ACTIVATION mail for a self-serve signup — without it the new account can never log in. */
     enqueueVerifyEmail?(job: { kind: 'verify-email'; email: string; tenantId: string; locale: string; verifyUrl: string; expiresHours: number }): Promise<void>
+    /** Partner-facing notification (referral signed up / commission earned). Platform-branded. */
+    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
   }
   /** SMS gateway job enqueuer (SMS gateway feature): the API can't send SMS, so it hands a config-SMS
    *  job to the worker's `sms` queue. Present ONLY when Twilio is configured (smsConfigured, shared) —
@@ -376,10 +378,14 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // methods to another object would rebind `this`
   const existsMail = deps.mail?.enqueueSignupExistsEmail?.bind(deps.mail)
   const verifyMail = deps.mail?.enqueueVerifyEmail?.bind(deps.mail)
+  const partnerMail = deps.mail?.enqueuePartnerEmail?.bind(deps.mail)
   // BOTH mails or neither: signup's two branches must not differ in whether they can notify. With
   // only one wired, a taken address would get a mail and a free one would not (or the reverse),
   // which is observable to anyone who controls one of the two addresses.
-  const signupMail = existsMail !== undefined && verifyMail !== undefined ? { enqueueSignupExistsEmail: existsMail, enqueueVerifyEmail: verifyMail } : undefined
+  const signupMail =
+    existsMail !== undefined && verifyMail !== undefined
+      ? { enqueueSignupExistsEmail: existsMail, enqueueVerifyEmail: verifyMail, ...(partnerMail !== undefined ? { enqueuePartnerEmail: partnerMail } : {}) }
+      : undefined
   app.route(
     '/',
     createSignupRoute({
@@ -390,6 +396,8 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
       ...(deps.signupRateLimit !== undefined ? { rateLimit: deps.signupRateLimit } : {}),
       ...(deps.appBaseUrl !== undefined ? { appBaseUrl: deps.appBaseUrl } : {}),
       ...(signupMail !== undefined ? { mail: signupMail } : {}),
+      // the partner portal link in the referral notice lives on the public site, not the app
+      ...(deps.siteUrl !== undefined ? { siteUrl: deps.siteUrl } : {}),
       ...(deps.onSignupEmailInUse !== undefined ? { onEmailInUse: deps.onSignupEmailInUse } : {}),
       ...(deps.onVerifyMailFailed !== undefined ? { onVerifyMailFailed: deps.onVerifyMailFailed } : {}),
       ...(deps.onVerifyMailUnconfigured !== undefined ? { onVerifyMailUnconfigured: deps.onVerifyMailUnconfigured } : {}),
@@ -415,6 +423,9 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     db: deps.db,
     stripe: deps.stripe,
     appBaseUrl: deps.appBaseUrl,
+    // the "you earned X" notice rides the same queue as every other transactional mail
+    ...(deps.siteUrl !== undefined ? { siteUrl: deps.siteUrl } : {}),
+    ...(partnerMail !== undefined ? { mail: { enqueuePartnerEmail: partnerMail } } : {}),
     ...(deps.onWebhookUnmatched !== undefined ? { onWebhookUnmatched: deps.onWebhookUnmatched } : {}),
     // RESTORE ON PAYMENT (audit MED #22): the api owns the registry write path, so a suspended
     // tenant's fleet comes back within one webhook rather than waiting for tomorrow's sweep.

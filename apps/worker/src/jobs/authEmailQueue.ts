@@ -62,7 +62,27 @@ export interface LapseEmailJob extends AuthEmailBase {
   daysLeft: number
 }
 
-export type AuthEmailJob = PasswordResetEmailJob | SignupExistsEmailJob | VerifyEmailJob | LapseEmailJob
+/**
+ * A partner-facing notification: someone signed up through their link, or a commission was earned.
+ *
+ * `tenantId` is deliberately '' and stays that way — this mail is PLATFORM-branded, always. Letting
+ * it resolve a tenant's white label would sign our partner agreement with a reseller's name and, if
+ * the partner's address also happens to be a tenant user's, leak which tenant that is. The referred
+ * company name travels because it is the basis of the money owed (the same boundary the portal
+ * draws); nothing else about that tenant does.
+ */
+export interface PartnerEmailJob extends AuthEmailBase {
+  kind: 'partner'
+  event: 'referral' | 'commission'
+  /** the referred company */
+  customer: string
+  /** commission events: already formatted with its currency, e.g. "€90.00" */
+  amount?: string
+  /** the partner portal link */
+  portalUrl: string
+}
+
+export type AuthEmailJob = PasswordResetEmailJob | SignupExistsEmailJob | VerifyEmailJob | LapseEmailJob | PartnerEmailJob
 
 export function createAuthEmailQueue(connection: ConnectionOptions): Queue<AuthEmailJob> {
   return new Queue<AuthEmailJob>(AUTH_EMAIL_QUEUE, { connection })
