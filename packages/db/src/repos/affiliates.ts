@@ -158,6 +158,30 @@ export interface PartnerCustomerRow {
   totals: readonly PartnerCurrencyTotal[]
 }
 
+/** What a partner is worth, per currency. Money is never summed across currencies (we have no rate). */
+export interface AffiliateMoney {
+  currency: string
+  /** everything accrued and not reversed */
+  earnedCents: number
+  /** already transferred to the partner */
+  paidCents: number
+  /** confirmed, owed, not yet transferred — the number a payout run works from */
+  pendingCents: number
+}
+
+/** The registry line an admin actually needs: who they are AND what they have produced. */
+export interface AffiliateWithStats extends AffiliateView {
+  stats: {
+    /** tenants attributed to this partner, whatever state they are in */
+    customers: number
+    /** …of those, how many have never paid (still a trial, or signed up and stopped) */
+    notPaying: number
+    /** …and how many are still inside their earning window — the only ones producing money */
+    earning: number
+    money: readonly AffiliateMoney[]
+  }
+}
+
 export interface AffiliateRepo {
   list(): Promise<AffiliateView[]>
   get(id: string): Promise<AffiliateView | null>
@@ -177,6 +201,15 @@ export interface AffiliateRepo {
    * amount, or a duplicate invoice (idempotent). All lookups + window math live here (rule 2).
    */
   accrueForPaidInvoice(invoice: PaidInvoice): Promise<Commission | null>
+  /**
+   * The admin registry: every partner WITH what they have produced.
+   *
+   * The plain list showed a name, a code and a percentage — nothing that answers "is this partner
+   * worth anything?", which is the only question the page exists for. Three grouped queries for the
+   * whole table, not one per row: the aggregates come from two groupBys and one projection of the
+   * referred tenants, so adding a partner does not add a query.
+   */
+  listWithStats(): Promise<AffiliateWithStats[]>
   listCommissions(affiliateId?: string): Promise<Commission[]>
   /**
    * A refunded customer payment reverses the commission it earned (Stripe `charge.refunded`).
@@ -255,6 +288,48 @@ const PUBLIC_SELECT = {
 export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): AffiliateRepo {
   return {
     list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' }, select: PUBLIC_SELECT }),
+    listWithStats: async () => {
+      const [affiliates, tenants, sums] = await Promise.all([
+        prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' }, select: PUBLIC_SELECT }),
+        prisma.tenant.findMany({
+          where: { referredByAffiliateId: { not: null } },
+          select: { referredByAffiliateId: true, commissionAnchorAt: true, commissionMonthsAtAnchor: true },
+        }),
+        prisma.commission.groupBy({ by: ['affiliateId', 'currency', 'status'], _sum: { amountCents: true } }),
+      ])
+      const counts = new Map<string, { customers: number; notPaying: number; earning: number }>()
+      const now = Date.now()
+      for (const t of tenants) {
+        const key = t.referredByAffiliateId
+        if (key === null) continue // narrowed for the type; the where clause already excluded these
+        const c = counts.get(key) ?? { customers: 0, notPaying: 0, earning: 0 }
+        c.customers += 1
+        if (t.commissionAnchorAt === null) c.notPaying += 1 // no anchor ⇒ never paid an invoice
+        // SAME window function as the accrual and the partner portal — three readings of one term
+        // would be three different answers (see listReferredCustomers)
+        else if (addMonthsUtc(t.commissionAnchorAt, t.commissionMonthsAtAnchor ?? 0).getTime() >= now) c.earning += 1
+        counts.set(key, c)
+      }
+      const money = new Map<string, Map<string, AffiliateMoney>>()
+      for (const s of sums) {
+        const amount = s._sum.amountCents ?? 0
+        if (s.status === 'void') continue // reversals are not money; a total counting them is a lie
+        const per = money.get(s.affiliateId) ?? new Map<string, AffiliateMoney>()
+        const m = per.get(s.currency) ?? { currency: s.currency, earnedCents: 0, paidCents: 0, pendingCents: 0 }
+        m.earnedCents += amount
+        if (s.status === 'paid') m.paidCents += amount
+        if (s.status === 'pending') m.pendingCents += amount
+        per.set(s.currency, m)
+        money.set(s.affiliateId, per)
+      }
+      return affiliates.map((a) => ({
+        ...a,
+        stats: {
+          ...(counts.get(a.id) ?? { customers: 0, notPaying: 0, earning: 0 }),
+          money: [...(money.get(a.id)?.values() ?? [])],
+        },
+      }))
+    },
     get: (id) => prisma.affiliate.findUnique({ where: { id }, select: PUBLIC_SELECT }),
     // EXACT, case-insensitive match (audit HIGH). Prisma's `mode:'insensitive'` compiles to ILIKE
     // with the value bound UNESCAPED, so `_` — a LIKE single-char wildcard that the code charset

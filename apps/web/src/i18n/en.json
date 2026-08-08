@@ -1045,7 +1045,8 @@
     "actions": "Actions",
     "pickDate": "Pick a date",
     "loadError": "Couldn't load — please try again.",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "save": "Save"
   },
   "dash": {
     "title": "Overview",
@@ -1134,7 +1135,23 @@
     "months": "Duration (months)",
     "create": "Send invite",
     "createError": "Could not create the partner. The code or email may already be in use.",
-    "actionError": "Action failed. Try again."
+    "actionError": "Action failed. Try again.",
+    "edit": "Edit",
+    "editTitle": "Edit {{name}}",
+    "editNoteRate": "A new rate applies to commissions accrued from now on. Commissions already recorded keep the rate they were earned at — changing this never re-prices history.",
+    "editNoteWindow": "A new duration applies to customers who have not yet made their first payment. A customer already paying keeps the window agreed when they started.",
+    "loginLink": "Sign-in link",
+    "loginLinkHint": "Creates a one-time link for the partner to set a password. Issuing a new one invalidates the previous link.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "stats": {
+      "customers": "{{n}} customers",
+      "earning": "{{n}} earning",
+      "notPaying": "{{n}} not paying",
+      "earned": "earned {{amount}}",
+      "pending": "owed {{amount}}",
+      "nothingYet": "nothing earned yet"
+    }
   },
   "authNav": {
     "platform": "Platform",

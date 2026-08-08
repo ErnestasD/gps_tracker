@@ -1526,8 +1526,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     // ── affiliates / partner program (PLATFORM, item 5 / W9) ──────────────────
     // Invite-only management: platform_admin creates a partner (code auto-generated when omitted),
     // then flips status → active so its referral code starts attributing new tenants (F4).
+    // WITH stats: the registry is a management screen, and a name + a percentage answers nothing an
+    // admin came here to ask. Three grouped queries for the whole table (see listWithStats).
     { method: 'get', path: '/v1/affiliates', scopeClass: 'platform', entity: 'affiliate', shape: 'collection',
-      handler: async (c) => json(c, await db.affiliates.list()) },
+      handler: async (c) => json(c, await db.affiliates.listWithStats()) },
     { method: 'get', path: '/v1/affiliates/:id', scopeClass: 'platform', entity: 'affiliate', shape: 'item',
       handler: async (c) => {
         const row = await db.affiliates.get(id(c))

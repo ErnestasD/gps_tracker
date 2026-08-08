@@ -134,6 +134,35 @@ describe('affiliate management API (platform)', () => {
     expect((await res.json()) as unknown[]).toEqual([])
   })
 
+  it('the registry carries each partner\u2019s customer counts and money, per currency', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000ab01' }
+    const a = (await (await req('/v1/affiliates', platformToken, 'POST', { name: 'Stats Partner', email: 'stats@partner.co', commissionPct: 25, commissionMonths: 12 })).json()) as { id: string }
+    // one customer paying (window open), one that never paid, and one whose window has closed
+    const paying = await db.tenants.create(actor, { name: 'Paying Ltd', referredByAffiliateId: a.id })
+    const never = await db.tenants.create(actor, { name: 'Never Paid Ltd', referredByAffiliateId: a.id })
+    const closed = await db.tenants.create(actor, { name: 'Closed Window Ltd', referredByAffiliateId: a.id })
+    await db.tenants.setStripeCustomer(paying.id, 'cus_stats_pay')
+    await db.tenants.setStripeCustomer(closed.id, 'cus_stats_closed')
+    await db.affiliates.update(actor, a.id, { status: 'active' })
+    await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_stats_pay', invoiceId: 'in_stats_1', amountPaidCents: 20000, currency: 'eur', paidAt: new Date() })
+    // a window anchored two years ago with a 12-month term is CLOSED — it must not count as earning
+    await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_stats_closed', invoiceId: 'in_stats_2', amountPaidCents: 10000, currency: 'usd', paidAt: new Date(Date.now() - 730 * 86_400_000) })
+
+    const list = (await (await req('/v1/affiliates', platformToken)).json()) as {
+      id: string
+      stats: { customers: number; notPaying: number; earning: number; money: { currency: string; earnedCents: number; paidCents: number; pendingCents: number }[] }
+    }[]
+    const row = list.find((r) => r.id === a.id)
+    expect(row?.stats.customers).toBe(3)
+    expect(row?.stats.notPaying).toBe(1) // `never` has no anchor
+    expect(row?.stats.earning).toBe(1) // `closed` is anchored but its window has run out
+    expect([...(row?.stats.money ?? [])].sort((x, y) => x.currency.localeCompare(y.currency))).toEqual([
+      { currency: 'eur', earnedCents: 5000, paidCents: 0, pendingCents: 5000 },
+      { currency: 'usd', earnedCents: 2500, paidCents: 0, pendingCents: 2500 },
+    ])
+    expect(never.id).not.toBe(closed.id) // both were created; the ids are used only for that
+  })
+
   it('404s marking an unknown commission paid', async () => {
     expect((await req('/v1/commissions/00000000-0000-0000-0000-0000000000ff', platformToken, 'PATCH', { status: 'paid' })).status).toBe(404)
   })
