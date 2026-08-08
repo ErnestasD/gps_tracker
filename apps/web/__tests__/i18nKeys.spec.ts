@@ -99,16 +99,41 @@ describe('i18n keys', () => {
   })
 
   it('every locale carries the same keys as English', () => {
+    // Compared on the BASE key, with the plural/context suffix stripped. Languages do not agree on
+    // how many plural forms exist — English needs one/other where Lithuanian needs one/few/other and
+    // Polish one/few/many/other — so an exact key-set match would forbid correct translations. The
+    // first draft of this test did exactly that, and would have blocked the fix for "1 klientai".
+    const base = (k: string) => k.replace(SUFFIXED, '')
+    const enBase = new Set([...EN].map(base))
     for (const [name, dict] of [
       ['lt', lt],
       ['de', de],
       ['pl', pl],
     ] as const) {
-      const keys = flatten(dict)
-      const missing = [...EN].filter((k) => !keys.has(k))
-      const extra = [...keys].filter((k) => !EN.has(k))
+      const keys = new Set([...flatten(dict)].map(base))
+      const missing = [...enBase].filter((k) => !keys.has(k))
+      const extra = [...keys].filter((k) => !enBase.has(k))
       expect(missing, `${name}.json is missing:\n${missing.join('\n')}`).toEqual([])
       expect(extra, `${name}.json has keys English does not:\n${extra.join('\n')}`).toEqual([])
+    }
+  })
+
+  it('a pluralised string carries every form its language needs', () => {
+    // i18next v4 CLDR categories. A key with `_one` and no `_few` renders the English-shaped
+    // fallback for 2–9 in Lithuanian, which is the "1 klientai" bug in the other direction.
+    const REQUIRED = { en: ['one', 'other'], de: ['one', 'other'], lt: ['one', 'few', 'other'], pl: ['one', 'few', 'many', 'other'] }
+    for (const [name, dict] of [
+      ['en', en],
+      ['lt', lt],
+      ['de', de],
+      ['pl', pl],
+    ] as const) {
+      const keys = flatten(dict)
+      const plural = new Set([...keys].filter((k) => SUFFIXED.test(k)).map((k) => k.replace(SUFFIXED, '')))
+      for (const b of plural) {
+        const missing = REQUIRED[name].filter((form) => !keys.has(`${b}_${form}`))
+        expect(missing, `${name}.json: ${b} is missing ${missing.join(', ')}`).toEqual([])
+      }
     }
   })
 })

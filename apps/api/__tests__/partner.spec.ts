@@ -250,6 +250,18 @@ describe('partner self-service auth (F5)', () => {
     expect((await j('/v1/partner/commissions', 'GET', undefined, bearer(tok))).status).toBe(401)
   })
 
+  it('minting a SECOND sign-in link retires the first — the admin UI promises this', async () => {
+    const a = (await (await admin('/v1/affiliates', 'POST', { name: 'Relink', email: 'relink@partner.co' })).json()) as { id: string }
+    await admin(`/v1/affiliates/${a.id}`, 'PATCH', { status: 'active' })
+    const first = ((await (await admin(`/v1/affiliates/${a.id}/set-password-token`, 'POST')).json()) as { token: string }).token
+    const second = ((await (await admin(`/v1/affiliates/${a.id}/set-password-token`, 'POST')).json()) as { token: string }).token
+    expect(first).not.toBe(second)
+    // an admin who pastes a link into the wrong chat re-mints to revoke it; if the first still
+    // worked, the leaked link would set a password on the portal for its full TTL
+    expect((await j('/v1/partner/set-password', 'POST', { token: first, password: 'partnerpass1' })).status).toBe(400)
+    expect((await j('/v1/partner/set-password', 'POST', { token: second, password: 'partnerpass1' })).status).toBe(200)
+  })
+
   it('a set-password token is single-use and rejects garbage', async () => {
     const a = (await (await admin('/v1/affiliates', 'POST', { name: 'Once', email: 'once@partner.co' })).json()) as { id: string }
     const { token } = (await (await admin(`/v1/affiliates/${a.id}/set-password-token`, 'POST')).json()) as { token: string }

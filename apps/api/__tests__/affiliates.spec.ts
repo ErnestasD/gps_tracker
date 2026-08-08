@@ -163,6 +163,41 @@ describe('affiliate management API (platform)', () => {
     expect(never.id).not.toBe(closed.id) // both were created; the ids are used only for that
   })
 
+  it('a SUSPENDED partner has nobody earning, however open their customers\u2019 windows are', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000ab02' }
+    const a = (await (await req('/v1/affiliates', platformToken, 'POST', { name: 'Susp Partner', email: 'susp@partner.co', commissionPct: 20, commissionMonths: 12 })).json()) as { id: string }
+    const cust = await db.tenants.create(actor, { name: 'Susp Customer', referredByAffiliateId: a.id })
+    await db.tenants.setStripeCustomer(cust.id, 'cus_susp')
+    await db.affiliates.update(actor, a.id, { status: 'active' })
+    await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_susp', invoiceId: 'in_susp_1', amountPaidCents: 10000, currency: 'eur', paidAt: new Date() })
+    const earningOf = async () =>
+      ((await (await req('/v1/affiliates', platformToken)).json()) as { id: string; stats: { earning: number } }[]).find((r) => r.id === a.id)?.stats.earning
+    expect(await earningOf()).toBe(1)
+
+    // accrueForPaidInvoice refuses a non-active affiliate BEFORE it looks at the window, so pressing
+    // Suspend must move the number next to the button — it used to keep reading 1
+    await req(`/v1/affiliates/${a.id}`, platformToken, 'PATCH', { status: 'suspended' })
+    expect(await earningOf()).toBe(0)
+  })
+
+  it('a refund tombstone does not become a phantom customer or a 0.00 money chip', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000ab03' }
+    const a = (await (await req('/v1/affiliates', platformToken, 'POST', { name: 'Tomb Partner', email: 'tomb@partner.co' })).json()) as { id: string }
+    await db.affiliates.update(actor, a.id, { status: 'active' })
+    const cust = await db.tenants.create(actor, { name: 'Refunded Customer', referredByAffiliateId: a.id })
+    await db.tenants.setStripeCustomer(cust.id, 'cus_tomb')
+    // refund arrives before any accrual → a zero-amount void row exists for that invoice
+    expect(await db.affiliates.voidCommissionForRefund('in_tomb_1', 'cus_tomb')).toBe('tombstoned')
+
+    const row = ((await (await req('/v1/affiliates', platformToken)).json()) as {
+      id: string
+      stats: { customers: number; notPaying: number; money: unknown[] }
+    }[]).find((r) => r.id === a.id)
+    expect(row?.stats.customers).toBe(1) // the tenant, counted once — counts come from tenants, not commissions
+    expect(row?.stats.notPaying).toBe(1)
+    expect(row?.stats.money).toEqual([]) // "nothing earned yet", not a 0.00 EUR chip
+  })
+
   it('404s marking an unknown commission paid', async () => {
     expect((await req('/v1/commissions/00000000-0000-0000-0000-0000000000ff', platformToken, 'PATCH', { status: 'paid' })).status).toBe(404)
   })

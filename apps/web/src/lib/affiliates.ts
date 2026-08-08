@@ -68,6 +68,40 @@ export const updateAffiliate = (id: string, data: AffiliateUpdateInput) => mutat
 export const listCommissions = (affiliateId: string) => getJson<CommissionView[]>(`/v1/affiliates/${enc(affiliateId)}/commissions`)
 export const setCommissionStatus = (id: string, status: CommissionStatus) => mutate<CommissionView>('PATCH', `/v1/commissions/${enc(id)}`, { status })
 
+/** What the edit panel's three inputs hold — strings, because that is what an <input> gives you. */
+export interface AffiliateDraft {
+  name: string
+  pct: string
+  months: string
+}
+
+/**
+ * The patch to send for an edited partner: ONLY the fields that actually changed.
+ *
+ * Pure, exported and tested because both of its failure modes are silent money bugs, and neither is
+ * visible in the rendered panel:
+ *
+ *  * diffing against the LIVE row instead of what the panel opened with reverts a concurrent edit —
+ *    the refetch-on-focus updates the row under an open sheet, so an untouched 20% input against a
+ *    freshly-refetched 30% row sends `commissionPct: 20` when the admin only fixed a typo in a name;
+ *  * an empty patch is valid against the partial schema, so a no-op save still writes an audit row
+ *    with identical before/after — noise in the one trail a disputed rate change is settled from.
+ *
+ * Returns null when there is nothing to send, so the caller can skip the request entirely.
+ */
+export function buildAffiliatePatch(baseline: AffiliateView, draft: AffiliateDraft): AffiliateUpdateInput | null {
+  const data: AffiliateUpdateInput = {}
+  const name = draft.name.trim()
+  const pct = Number(draft.pct)
+  const months = Number(draft.months)
+  if (name !== baseline.name.trim()) data.name = name
+  // NaN from a cleared or non-numeric field is not a change — it is an invalid draft, and sending
+  // it would let the server 400 on a field the admin never meant to touch
+  if (Number.isFinite(pct) && draft.pct.trim() !== '' && pct !== Number(baseline.commissionPct)) data.commissionPct = pct
+  if (Number.isFinite(months) && draft.months.trim() !== '' && months !== baseline.commissionMonths) data.commissionMonths = months
+  return Object.keys(data).length === 0 ? null : data
+}
+
 /**
  * Mint a one-time set/reset-password token for a partner and turn it into the link they click.
  *

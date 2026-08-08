@@ -242,6 +242,8 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
  *  plaintext is returned ONCE for the admin to convey; only its hash is stored. */
 export async function issuePartnerSetPwToken(db: Db, affiliateId: string, ttlS = DEFAULT_SETPW_TTL_S): Promise<string> {
   const raw = randomBytes(32).toString('hex')
-  await db.affiliates.createPwToken(affiliateId, sha256(raw), new Date(Date.now() + ttlS * 1000))
+  // REPLACE, not create: a second link must retire the first, which is what the admin UI promises
+  // and what an admin re-minting to revoke a mis-sent link is relying on.
+  await db.affiliates.replacePwToken(affiliateId, sha256(raw), new Date(Date.now() + ttlS * 1000), new Date())
   return raw
 }

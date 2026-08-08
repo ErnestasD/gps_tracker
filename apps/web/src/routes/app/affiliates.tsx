@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { AdminButton, AdminInput, AdminLabel, Badge, EmptyState, PageHeader } from '@/components/admin/AdminKit'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import {
+  buildAffiliatePatch,
   createAffiliate,
   issuePartnerLoginLink,
   listAffiliates,
@@ -13,7 +14,6 @@ import {
   setCommissionStatus,
   updateAffiliate,
   type AffiliateStatus,
-  type AffiliateUpdateInput,
   type AffiliateView,
   type AffiliateWithStats,
   type CommissionStatus,
@@ -146,9 +146,11 @@ function PartnerStats({ affiliate }: { affiliate: AffiliateWithStats }) {
   const { customers, notPaying, earning, money: byCurrency } = affiliate.stats
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-4 pb-3 text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`affiliate-stats-${affiliate.id}`}>
-      <span className="tabular-nums">{t('affiliates.stats.customers', { n: customers })}</span>
-      <span className="tabular-nums">{t('affiliates.stats.earning', { n: earning })}</span>
-      <span className="tabular-nums">{t('affiliates.stats.notPaying', { n: notPaying })}</span>
+      {/* `count`, not an arbitrary name: i18next selects the plural form off THAT option, and
+          Lithuanian and Polish get "1 klientai"/"1 klientów" without it */}
+      <span className="tabular-nums">{t('affiliates.stats.customers', { count: customers })}</span>
+      <span className="tabular-nums">{t('affiliates.stats.earning', { count: earning })}</span>
+      <span className="tabular-nums">{t('affiliates.stats.notPaying', { count: notPaying })}</span>
       {byCurrency.length === 0 ? (
         <span data-testid={`affiliate-money-none-${affiliate.id}`}>{t('affiliates.stats.nothingYet')}</span>
       ) : (
@@ -182,16 +184,23 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
   const [name, setName] = useState(affiliate.name)
   const [pct, setPct] = useState(String(Number(affiliate.commissionPct)))
   const [months, setMonths] = useState(String(affiliate.commissionMonths))
+  /**
+   * What the row said WHEN THIS PANEL OPENED — the diff baseline.
+   *
+   * Diffing against the live `affiliate` prop looks equivalent and is not: the query has no
+   * staleTime and refetches on window focus, so the row updates underneath an open sheet. Admin A
+   * opens at 20%, admin B raises it to 30%, A's window refocuses, A fixes a typo in the name and
+   * saves — and because the untouched input still reads 20 while the prop now reads 30, the patch
+   * carries `commissionPct: 20` and silently reverts B's raise, with A's name on the audit row.
+   */
+  const [baseline, setBaseline] = useState(affiliate)
 
   const save = useMutation({
     mutationFn: () => {
-      // send ONLY what changed: PATCH is partial, and re-sending an unchanged percentage would put a
-      // no-op money mutation in the audit trail on every name fix
-      const data: AffiliateUpdateInput = {}
-      if (name.trim() !== affiliate.name) data.name = name.trim()
-      if (Number(pct) !== Number(affiliate.commissionPct)) data.commissionPct = Number(pct)
-      if (Number(months) !== affiliate.commissionMonths) data.commissionMonths = Number(months)
-      return updateAffiliate(affiliate.id, data)
+      // the diff lives in lib/affiliates.ts and is unit-tested — see buildAffiliatePatch for why
+      // both "diff against the baseline" and "skip an empty patch" are correctness, not tidiness
+      const data = buildAffiliatePatch(baseline, { name, pct, months })
+      return data === null ? Promise.resolve(null) : updateAffiliate(affiliate.id, data)
     },
     onSuccess: () => {
       setOpen(false)
@@ -205,10 +214,14 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
       onOpenChange={(v) => {
         setOpen(v)
         if (v) {
-          // re-seed from the row each time it opens, so a cancelled edit is not still sitting there
+          // re-seed from the row each time it opens, so a cancelled edit is not still sitting there,
+          // and take a fresh baseline with it. `save.reset()` too: without it, one failed save left
+          // the red error showing the next time the panel opened, before anyone had touched a field.
           setName(affiliate.name)
           setPct(String(Number(affiliate.commissionPct)))
           setMonths(String(affiliate.commissionMonths))
+          setBaseline(affiliate)
+          save.reset()
         }
       }}
     >
@@ -275,6 +288,9 @@ function LoginLinkButton({ affiliate }: { affiliate: AffiliateView }) {
   const [link, setLink] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const issue = useMutation({ mutationFn: () => issuePartnerLoginLink(affiliate.id), onSuccess: setLink })
+  // a failed mint used to replace the button's label PERMANENTLY — the row stays mounted, so the
+  // error outlived the attempt and there was no way back to "Sign-in link" but a page reload
+  const label = issue.isError ? t('affiliates.actionError') : t('affiliates.loginLink')
 
   if (link !== null) {
     return (
@@ -286,6 +302,7 @@ function LoginLinkButton({ affiliate }: { affiliate: AffiliateView }) {
           onClick={() => {
             void navigator.clipboard.writeText(link)
             setCopied(true)
+            setTimeout(() => setCopied(false), 1600)
           }}
           data-testid={`affiliate-link-copy-${affiliate.id}`}
         >
@@ -296,9 +313,19 @@ function LoginLinkButton({ affiliate }: { affiliate: AffiliateView }) {
     )
   }
   return (
-    <AdminButton size="sm" variant="ghost" disabled={issue.isPending} onClick={() => issue.mutate()} data-testid={`affiliate-link-issue-${affiliate.id}`} title={t('affiliates.loginLinkHint')}>
+    <AdminButton
+      size="sm"
+      variant="ghost"
+      disabled={issue.isPending}
+      onClick={() => {
+        issue.reset()
+        issue.mutate()
+      }}
+      data-testid={`affiliate-link-issue-${affiliate.id}`}
+      title={t('affiliates.loginLinkHint')}
+    >
       <KeyRound className="h-3.5 w-3.5" aria-hidden />
-      {issue.isError ? t('affiliates.actionError') : t('affiliates.loginLink')}
+      {label}
     </AdminButton>
   )
 }

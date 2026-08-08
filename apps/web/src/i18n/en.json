@@ -1145,9 +1145,12 @@
     "copy": "Copy",
     "copied": "Copied",
     "stats": {
-      "customers": "{{n}} customers",
-      "earning": "{{n}} earning",
-      "notPaying": "{{n}} not paying",
+      "customers_one": "{{count}} customer",
+      "customers_other": "{{count}} customers",
+      "earning_one": "{{count}} earning",
+      "earning_other": "{{count}} earning",
+      "notPaying_one": "{{count}} not paying",
+      "notPaying_other": "{{count}} not paying",
       "earned": "earned {{amount}}",
       "pending": "owed {{amount}}",
       "nothingYet": "nothing earned yet"

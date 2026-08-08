@@ -1145,9 +1145,15 @@
     "copy": "Kopijuoti",
     "copied": "Nukopijuota",
     "stats": {
-      "customers": "{{n}} klientai",
-      "earning": "{{n}} uždirba",
-      "notPaying": "{{n}} nemoka",
+      "customers_one": "{{count}} klientas",
+      "customers_few": "{{count}} klientai",
+      "customers_other": "{{count}} klientų",
+      "earning_one": "{{count}} uždirba",
+      "earning_few": "{{count}} uždirba",
+      "earning_other": "{{count}} uždirba",
+      "notPaying_one": "{{count}} nemoka",
+      "notPaying_few": "{{count}} nemoka",
+      "notPaying_other": "{{count}} nemoka",
       "earned": "uždirbta {{amount}}",
       "pending": "priklauso {{amount}}",
       "nothingYet": "kol kas neuždirbta"

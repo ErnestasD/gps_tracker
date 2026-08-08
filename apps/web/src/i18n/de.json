@@ -1145,9 +1145,12 @@
     "copy": "Kopieren",
     "copied": "Kopiert",
     "stats": {
-      "customers": "{{n}} Kunden",
-      "earning": "{{n}} aktiv",
-      "notPaying": "{{n}} zahlen nicht",
+      "customers_one": "{{count}} Kunde",
+      "customers_other": "{{count}} Kunden",
+      "earning_one": "{{count}} aktiv",
+      "earning_other": "{{count}} aktiv",
+      "notPaying_one": "{{count}} zahlt nicht",
+      "notPaying_other": "{{count}} zahlen nicht",
       "earned": "verdient {{amount}}",
       "pending": "offen {{amount}}",
       "nothingYet": "noch nichts verdient"
