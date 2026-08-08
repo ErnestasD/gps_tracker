@@ -115,6 +115,9 @@ export interface ApiDeps extends WsDeps {
   stripe?: StripeGateway
   /** absolute base URL for Checkout/portal return URLs; falls back to the request Origin. */
   appBaseUrl?: string
+  /** Public marketing site origin (e.g. https://orbetra.com) — where a partner's short link lands.
+   *  Unset ⇒ `/r/<code>` 404s rather than guessing a host. */
+  siteUrl?: string
   /** Password-reset token lifetime (ADR-031); default 3600 s (1 h). */
   resetTokenTtlS?: number
   /** Transactional auth-email enqueuer (ADR-031): the API can't send email, so it hands the branded
@@ -443,6 +446,8 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     // authentication surface should not be invisible in Grafana because it lives in another file
     loginLimits: deps.partnerLoginLimits,
     onLockout: deps.onLockout,
+    // the short link `/r/<code>` sends visitors to the PUBLIC SITE, not the app
+    ...(deps.siteUrl !== undefined ? { siteUrl: deps.siteUrl } : {}),
     ...(deps.onUnverifiedLogin !== undefined ? { onUnverifiedLogin: deps.onUnverifiedLogin } : {}),
   }))
 

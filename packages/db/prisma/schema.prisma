@@ -172,6 +172,7 @@ model Affiliate {
 
   referrals   Tenant[]                 @relation("AffiliateReferrals")
   commissions Commission[]
+  clicks      AffiliateClick[]
   pwTokens    AffiliatePasswordToken[]
 
   @@map("affiliates")
@@ -202,6 +203,24 @@ enum CommissionStatus {
   paid
   /// reversed (e.g. the customer refunded / charged back)
   void
+}
+
+/// Daily UNIQUE clicks on a partner's short link (`/r/<code>`), §6.9 funnel.
+///
+/// One row per partner per UTC day, incremented in place — a click is not an event worth storing
+/// individually, and a row-per-click table on a public unauthenticated URL is an invitation to fill
+/// the disk. "Unique" means one visitor (IP, per code, per day) counts once: a partner wants to know
+/// how many PEOPLE opened their link, and a raw hit count that a single refresh inflates is a number
+/// they will stop trusting.
+model AffiliateClick {
+  affiliateId String    @db.Uuid
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  /// UTC calendar day — the ledger next to it is UTC too, so the funnel does not shift by timezone
+  day         DateTime  @db.Date
+  clicks      Int       @default(0)
+
+  @@id([affiliateId, day])
+  @@map("affiliate_clicks")
 }
 
 model Commission {

@@ -78,6 +78,7 @@ beforeAll(async () => {
     jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
     lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
+    siteUrl: 'https://site.example',
   })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
@@ -195,6 +196,43 @@ describe('partner self-service auth (F5)', () => {
       currency: 'eur', paidAt: new Date('2027-02-28T09:00:00Z'),
     })
     expect(onTheLine).not.toBeNull()
+  })
+
+  it('the short link redirects with the ref attached, counts ONE click per visitor per day, and never says whether a code exists', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000010b' }
+    const p = await makePartner('short@partner.co', 'partnerpass1')
+    const code = ((await (await admin(`/v1/affiliates/${p.id}`)).json()) as { code: string }).code
+    const hit = (c: string, headers: Record<string, string> = {}) =>
+      fetch(`${base()}/r/${c}`, { redirect: 'manual', headers: { 'user-agent': 'Mozilla/5.0 (X11; Linux)', ...headers } })
+
+    const res = await hit(code)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(`https://site.example/?ref=${encodeURIComponent(code)}`)
+    // NO cookie: the ref cookie is non-essential and the SITE sets it after consent — this endpoint
+    // must not set it behind the visitor's back
+    expect(res.headers.get('set-cookie')).toBeNull()
+
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const funnel = async () => (await (await j('/v1/partner/funnel', 'GET', undefined, bearer(tok))).json()) as { clicksTotal: number; signups: number }
+    expect((await funnel()).clicksTotal).toBe(1)
+
+    // the same visitor refreshing five times is still ONE person who opened the link
+    for (let i = 0; i < 5; i++) await hit(code)
+    expect((await funnel()).clicksTotal).toBe(1)
+
+    // a link-preview fetcher is not a visitor
+    await hit(code, { 'user-agent': 'WhatsApp/2.23 facebookexternalhit/1.1' })
+    expect((await funnel()).clicksTotal).toBe(1)
+
+    // an UNKNOWN code redirects exactly like a real one — otherwise this is a public oracle over
+    // the partner list, and the codes are short enough to enumerate
+    const ghost = await hit('NOSUCHCODE9')
+    expect(ghost.status).toBe(302)
+    expect(ghost.headers.get('location')).toBe('https://site.example/?ref=NOSUCHCODE9')
+
+    // …and the funnel counts the tenants attributed to this partner
+    await db.tenants.create(actor, { name: 'Short Link Customer', referredByAffiliateId: p.id })
+    expect((await funnel()).signups).toBe(1)
   })
 
   it('login rejects wrong password, unknown email, an unset-password partner, and a non-active partner', async () => {

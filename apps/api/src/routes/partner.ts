@@ -30,6 +30,10 @@ export interface PartnerRouteDeps {
   setPwTokenTtlS?: number
   trustProxy: boolean
   getRemoteAddr: (c: unknown) => string
+  /** Where `/r/<code>` sends a visitor — the PUBLIC SITE, not the app. Absent ⇒ the short link 404s
+   *  rather than redirecting somewhere wrong; a marketing link that lands on the wrong host is worse
+   *  than one that is not there yet. */
+  siteUrl?: string
   /** Login ceilings; each falls back to this module's default. Threaded from env so a partner
    *  locked out during an incident can be freed without a redeploy — the tenant login already
    *  had that and the doc comment claimed parity the operability did not have. */
@@ -235,7 +239,74 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     return c.json(rows)
   })
 
+  /** The four funnel stages: how many opened the link, enquired, signed up, and started paying. */
+  app.get('/v1/partner/funnel', partnerAuth(deps), async (c) => {
+    const partner = c.get('partner')
+    c.header('Cache-Control', 'no-store')
+    return c.json(await deps.db.affiliates.funnelFor(partner.id, partner.code, new Date()))
+  })
+
+  /**
+   * The partner's SHORT LINK: `orbetra.com/r/<code>` → the site, with the referral attached.
+   *
+   * Two things it is not. It does not set the ref cookie: that is a non-essential cookie and the
+   * site sets it only after the visitor accepts the notice, so this redirects with `?ref=` and lets
+   * the existing consent flow decide. And it does not reveal whether a code exists — an unknown code
+   * redirects exactly like a real one, because a public endpoint that answers "is BALTIC25 a real
+   * partner?" differently is an enumeration oracle over our partner list.
+   *
+   * Counting is best-effort by design: a failed count must never cost a visitor the page they asked
+   * for. The redirect happens regardless.
+   */
+  app.get('/r/:code', async (c) => {
+    const raw = c.req.param('code')
+    const site = deps.siteUrl
+    if (site === undefined) return c.notFound()
+    const code = SHORT_CODE_RE.test(raw) ? raw : null
+    // an invalid code still lands on the site — just without attribution
+    const target = code === null ? site : `${site}/?ref=${encodeURIComponent(code)}`
+
+    if (code !== null) {
+      try {
+        const affiliate = await deps.db.affiliates.getActiveByCode(code)
+        if (affiliate !== null && !isBot(c.req.header('user-agent') ?? '')) {
+          const now = new Date()
+          const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+          // ONE VISITOR PER CODE PER DAY. A partner asking "how many people opened my link" is not
+          // helped by a number their own three refreshes inflate. SET NX is the whole mechanism:
+          // first arrival wins the key and gets counted, the rest of the day is free.
+          // the SAME ip() the login limiter uses — rightmost XFF under trustProxy, socket otherwise,
+          // so a spoofed header cannot mint a fresh identity per request and inflate the count
+          const seen = `aff:click:${affiliate.id}:${sha256(ip(c)).slice(0, 32)}:${day.toISOString().slice(0, 10)}`
+          const first = await deps.redis.set(seen, '1', 'EX', CLICK_DEDUPE_TTL_S, 'NX')
+          if (first !== null) await deps.db.affiliates.recordClick(affiliate.id, day)
+        }
+      } catch (err) {
+        // a broken counter must not break the link. This is the one place in the affiliate module
+        // where swallowing is right: nothing downstream depends on the number being exact.
+        console.warn('affiliate click count failed', err)
+      }
+    }
+    return c.redirect(target, 302)
+  })
+
   return app
+}
+
+/** Referral codes are url-safe slugs; anything else is noise, not a referral (mirrors apps/site). */
+const SHORT_CODE_RE = /^[a-zA-Z0-9_-]{1,64}$/
+/** one visitor, one code, one day */
+const CLICK_DEDUPE_TTL_S = 24 * 3600
+
+/**
+ * Link-preview fetchers and crawlers, which would otherwise turn one WhatsApp share into a click.
+ *
+ * Deliberately a substring list and not a allowlist: a false negative costs one inflated click, a
+ * false positive silently loses a real visitor from the partner's funnel.
+ */
+const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|monitor|curl|wget|python-|headless|lighthouse|facebookexternalhit|whatsapp|telegram|discord|skype|slack/i
+function isBot(ua: string): boolean {
+  return ua === '' || BOT_UA.test(ua)
 }
 
 /** Issue a one-time set/reset-password token for a partner (called by the platform_admin route). The

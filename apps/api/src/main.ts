@@ -112,6 +112,8 @@ const deps = {
   onboarding: { host: process.env['INGEST_PUBLIC_HOST'] ?? '', port: Number(process.env['INGEST_TCP_PORT'] ?? 5027) },
   ...(stripe !== undefined ? { stripe } : {}),
   ...(process.env['APP_BASE_URL'] ? { appBaseUrl: process.env['APP_BASE_URL'] } : {}),
+  // where a partner's short link `/r/<code>` lands — the marketing site, not the dashboard
+  ...(process.env['SITE_BASE_URL'] ? { siteUrl: process.env['SITE_BASE_URL'].replace(/\/+$/, '') } : {}),
   // White-label hosting: PLATFORM_DOMAIN turns on `<slug>.orbetra.com` (needs the `*` A record),
   // EDGE_HOSTNAME is what a tenant CNAMEs their own domain to. Both optional — absent simply means
   // the corresponding half of the setup instructions is not offered rather than shown wrong.
