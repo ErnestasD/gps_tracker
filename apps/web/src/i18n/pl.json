@@ -1160,6 +1160,13 @@
       "earned": "zarobiono {{amount}}",
       "pending": "należne {{amount}}",
       "nothingYet": "jeszcze nic nie zarobiono"
+    },
+    "locale": "Ich język",
+    "localeName": {
+      "en": "Angielski",
+      "lt": "Litewski",
+      "de": "Niemiecki",
+      "pl": "Polski"
     }
   },
   "authNav": {

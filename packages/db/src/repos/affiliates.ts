@@ -46,6 +46,8 @@ export interface AffiliateUpdate {
   status?: AffiliateStatus
   commissionPct?: number
   commissionMonths?: number
+  /** the partner's own language for the mail we send them (en|lt|de|pl) */
+  locale?: string
 }
 
 /** A commission accrued from a referred tenant's payment (idempotent on the source Stripe invoice). */
@@ -158,6 +160,20 @@ export interface PartnerCustomerRow {
   totals: readonly PartnerCurrencyTotal[]
 }
 
+/** One partner's funnel — the four stages, plus the daily click series behind the first. */
+export interface AffiliateFunnel {
+  /** unique visitors who opened the short link, all time */
+  clicksTotal: number
+  /** …and in the last 30 UTC days, which is the number that says whether they are active NOW */
+  clicks30: number
+  /** pilot enquiries carrying their code */
+  leads: number
+  /** tenants attributed to them, whatever state */
+  signups: number
+  /** …of those, how many have ever paid an invoice */
+  paying: number
+}
+
 /** What a partner is worth, per currency. Money is never summed across currencies (we have no rate). */
 export interface AffiliateMoney {
   currency: string
@@ -210,6 +226,15 @@ export interface AffiliateRepo {
    * referred tenants, so adding a partner does not add a query.
    */
   listWithStats(): Promise<AffiliateWithStats[]>
+  /**
+   * Count ONE unique click on a partner's short link, for the given UTC day.
+   *
+   * Idempotency (one visitor per code per day) is the CALLER's job via Redis — this is the durable
+   * counter, and it upserts rather than inserting a row per hit.
+   */
+  recordClick(affiliateId: string, day: Date): Promise<void>
+  /** The four funnel stages for one partner. */
+  funnelFor(affiliateId: string, code: string, now: Date): Promise<AffiliateFunnel>
   listCommissions(affiliateId?: string): Promise<Commission[]>
   /**
    * A refunded customer payment reverses the commission it earned (Stripe `charge.refunded`).
@@ -285,6 +310,7 @@ const PUBLIC_SELECT = {
   commissionPct: true,
   commissionMonths: true,
   status: true,
+  locale: true,
   createdAt: true,
 } as const
 
@@ -503,6 +529,39 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
       } catch (err) {
         if (isUniqueViolation(err)) return null
         throw err
+      }
+    },
+    recordClick: async (affiliateId, day) => {
+      await prisma.affiliateClick.upsert({
+        where: { affiliateId_day: { affiliateId, day } },
+        create: { affiliateId, day, clicks: 1 },
+        update: { clicks: { increment: 1 } },
+      })
+    },
+    funnelFor: async (affiliateId, code, now) => {
+      // 30 UTC days back, floored to midnight — the series is day-grained, so a partial first day
+      // would make "last 30 days" mean 29 and a bit, differently every time the page is opened
+      const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29))
+      // ALL FIVE IN ONE Promise.all, on one snapshot. `paying` used to be awaited afterwards, so a
+      // tenant that paid between the two reads produced paying > signups — which the portal renders
+      // as a conversion above 100% on the last funnel step.
+      const [all, recent, leads, signups, paying] = await Promise.all([
+        prisma.affiliateClick.aggregate({ where: { affiliateId }, _sum: { clicks: true } }),
+        prisma.affiliateClick.aggregate({ where: { affiliateId, day: { gte: from } }, _sum: { clicks: true } }),
+        // EXACT lower(ref) = lower(code), the same rule attribution uses — Prisma's
+        // `mode:'insensitive'` compiles to ILIKE, where a code containing `_` would match codes it
+        // does not own. Backed by the functional index in migration 20260808110000; a plain index
+        // on `ref` would not be used by this predicate.
+        prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM leads WHERE lower(ref) = lower(${code})`,
+        prisma.tenant.count({ where: { referredByAffiliateId: affiliateId } }),
+        prisma.tenant.count({ where: { referredByAffiliateId: affiliateId, commissionAnchorAt: { not: null } } }),
+      ])
+      return {
+        clicksTotal: all._sum.clicks ?? 0,
+        clicks30: recent._sum.clicks ?? 0,
+        leads: Number(leads[0]?.n ?? 0),
+        signups,
+        paying,
       }
     },
     listCommissions: (affiliateId) =>

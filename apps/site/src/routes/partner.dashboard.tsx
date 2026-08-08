@@ -47,6 +47,8 @@ type Commission = {
   at: string;
 };
 
+type Funnel = { clicksTotal: number; clicks30: number; leads: number; signups: number; paying: number };
+
 type CurrencyTotal = { currency: string; commissionableCents: number; earnedCents: number };
 
 type Customer = {
@@ -80,6 +82,7 @@ function PartnerDashboard() {
   const [me, setMe] = useState<PartnerMe | null>(null);
   const [rows, setRows] = useState<Commission[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [funnel, setFunnel] = useState<Funnel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -95,12 +98,14 @@ function PartnerDashboard() {
         // static SPA deployed independently of the API: ship the page before the server and a 404
         // on the new route would take the referral link — which worked yesterday — down with it.
         const customersP = apiGet<Customer[] | { data?: Customer[] }>("/v1/partner/customers", token).catch(() => [] as Customer[]);
+        const funnelP = apiGet<Funnel>("/v1/partner/funnel", token).catch(() => null);
         const [meRes, comRes] = await Promise.all([
           apiGet<PartnerMe>("/v1/partner/me", token),
           apiGet<Commission[] | { data?: Commission[] }>("/v1/partner/commissions", token),
         ]);
-        const cusRes = await customersP;
+        const [cusRes, funnelRes] = await Promise.all([customersP, funnelP]);
         if (cancelled) return;
+        setFunnel(funnelRes);
         setMe(meRes);
         setRows(Array.isArray(comRes) ? comRes : (comRes?.data ?? []));
         setCustomers(Array.isArray(cusRes) ? cusRes : (cusRes?.data ?? []));
@@ -167,7 +172,10 @@ function PartnerDashboard() {
 
   const code = me?.code ?? "—";
   // the shareable link the partner actually gives out; origin-relative so it works on any deploy
-  const link = me?.code ? `${typeof window !== "undefined" ? window.location.origin : "https://orbetra.com"}/?ref=${me.code}` : "—";
+  // the SHORT link: `/r/<code>` counts the click and forwards to the site with `?ref=` attached.
+  // A partner pastes this into an email; `?ref=BALTIC25` on a long URL looks like tracking junk and
+  // was also unmeasurable — nothing counted an open before it existed.
+  const link = me?.code ? `${typeof window !== "undefined" ? window.location.origin : "https://orbetra.com"}/r/${me.code}` : "—";
 
   return (
     <div className="mx-auto max-w-6xl px-6 pt-24 md:pt-32 pb-24">
@@ -193,6 +201,22 @@ function PartnerDashboard() {
       </div>
 
       {error && <p className="mt-6 text-sm text-[#DC2626]">{error}</p>}
+
+      {/* ── the funnel: where people fall out, which is the question "how much did I earn" can't answer ── */}
+      {funnel !== null && (
+        <div className="mt-10 surface-card p-6" data-testid="partner-funnel">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.funnel")}</div>
+            <div className="mono text-[11px] text-muted-foreground">{t("partner.dashboard.funnel30", { n: funnel.clicks30 })}</div>
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <FunnelStep label={t("partner.dashboard.stepClicks")} value={funnel.clicksTotal} hint={t("partner.dashboard.stepClicksHint")} />
+            <FunnelStep label={t("partner.dashboard.stepLeads")} value={funnel.leads} hint={t("partner.dashboard.stepLeadsHint")} from={funnel.clicksTotal} />
+            <FunnelStep label={t("partner.dashboard.stepSignups")} value={funnel.signups} hint={t("partner.dashboard.stepSignupsHint")} from={funnel.clicksTotal} />
+            <FunnelStep label={t("partner.dashboard.stepPaying")} value={funnel.paying} hint={t("partner.dashboard.stepPayingHint")} from={funnel.signups} />
+          </div>
+        </div>
+      )}
 
       {/* ── the headline numbers, one strip per currency ─────────────────────────────────────── */}
       {buckets.map((b, i) => (
@@ -379,6 +403,31 @@ function PartnerDashboard() {
         <a href="mailto:hello@orbetra.com" className="text-[color:var(--brand-cyan)] hover:underline">hello@orbetra.com</a>{" "}
         · <Link to="/partners" className="text-[color:var(--brand-cyan)] hover:underline">{t("partner.dashboard.programLink")}</Link>
       </p>
+    </div>
+  );
+}
+
+/**
+ * One funnel stage, with the conversion from the stage it is measured against.
+ *
+ * The percentage is deliberately omitted when the previous stage is zero rather than rendered as 0%
+ * or NaN%: "0% of 0" tells a new partner their link is failing when in fact nobody has opened it
+ * yet, which is the opposite conclusion.
+ */
+function FunnelStep({ label, value, hint, from }: { label: string; value: number; hint: string; from?: number }) {
+  // Suppressed above 100%, not clamped. Click counting started the day it shipped while sign-ups and
+  // enquiries are historical, so every existing partner shows twelve sign-ups from one open — and
+  // "1200%" is a lie where a blank is merely silent. It settles by itself as clicks accumulate.
+  const ratio = from !== undefined && from > 0 ? Math.round((value / from) * 100) : null;
+  const pct = ratio !== null && ratio <= 100 ? ratio : null;
+  return (
+    <div>
+      <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{label}</div>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="display text-2xl font-bold text-ink">{value}</span>
+        {pct !== null && <span className="mono text-[11px] text-muted-foreground">{pct}%</span>}
+      </div>
+      <div className="mono text-[11px] text-muted-foreground mt-1">{hint}</div>
     </div>
   );
 }

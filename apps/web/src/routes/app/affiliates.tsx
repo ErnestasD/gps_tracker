@@ -184,6 +184,7 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
   const [name, setName] = useState(affiliate.name)
   const [pct, setPct] = useState(String(Number(affiliate.commissionPct)))
   const [months, setMonths] = useState(String(affiliate.commissionMonths))
+  const [locale, setLocale] = useState(affiliate.locale)
   /**
    * What the row said WHEN THIS PANEL OPENED — the diff baseline.
    *
@@ -199,7 +200,7 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
     mutationFn: () => {
       // the diff lives in lib/affiliates.ts and is unit-tested — see buildAffiliatePatch for why
       // both "diff against the baseline" and "skip an empty patch" are correctness, not tidiness
-      const data = buildAffiliatePatch(baseline, { name, pct, months })
+      const data = buildAffiliatePatch(baseline, { name, pct, months, locale })
       return data === null ? Promise.resolve(null) : updateAffiliate(affiliate.id, data)
     },
     onSuccess: () => {
@@ -220,6 +221,7 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
           setName(affiliate.name)
           setPct(String(Number(affiliate.commissionPct)))
           setMonths(String(affiliate.commissionMonths))
+          setLocale(affiliate.locale)
           setBaseline(affiliate)
           save.reset()
         }
@@ -255,6 +257,23 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
               <AdminLabel htmlFor={`edit-months-${affiliate.id}`}>{t('affiliates.months')}</AdminLabel>
               <AdminInput id={`edit-months-${affiliate.id}`} type="number" min={1} max={120} step={1} value={months} onChange={(e) => setMonths(e.target.value)} required data-testid="affiliate-edit-months" />
             </div>
+          </div>
+          <div className="grid gap-1.5">
+            <AdminLabel htmlFor={`edit-locale-${affiliate.id}`}>{t('affiliates.locale')}</AdminLabel>
+            {/* the language of the mail WE send THEM. A partner is not a tenant user, so there is no
+                user row to read it from, and the referred customer's browser language is the wrong
+                person's preference entirely. */}
+            <select
+              id={`edit-locale-${affiliate.id}`}
+              value={locale}
+              onChange={(e) => setLocale(e.target.value)}
+              className="admin-input"
+              data-testid="affiliate-edit-locale"
+            >
+              {(['en', 'lt', 'de', 'pl'] as const).map((l) => (
+                <option key={l} value={l}>{t(`affiliates.localeName.${l}`)}</option>
+              ))}
+            </select>
           </div>
           <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid="affiliate-edit-note">
             {t('affiliates.editNoteRate')}

@@ -30,6 +30,13 @@ export interface PartnerRouteDeps {
   setPwTokenTtlS?: number
   trustProxy: boolean
   getRemoteAddr: (c: unknown) => string
+  /** the click counter failed — an unapplied migration or a Redis fault silently zeroes every
+   *  partner's funnel, which reads exactly like "nobody clicked" */
+  onClickCountFailed?: () => void
+  /** Where `/r/<code>` sends a visitor — the PUBLIC SITE, not the app. Absent ⇒ the short link 404s
+   *  rather than redirecting somewhere wrong; a marketing link that lands on the wrong host is worse
+   *  than one that is not there yet. */
+  siteUrl?: string
   /** Login ceilings; each falls back to this module's default. Threaded from env so a partner
    *  locked out during an incident can be freed without a redeploy — the tenant login already
    *  had that and the doc comment claimed parity the operability did not have. */
@@ -235,7 +242,107 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     return c.json(rows)
   })
 
+  /** The four funnel stages: how many opened the link, enquired, signed up, and started paying. */
+  app.get('/v1/partner/funnel', partnerAuth(deps), async (c) => {
+    const partner = c.get('partner')
+    c.header('Cache-Control', 'no-store')
+    return c.json(await deps.db.affiliates.funnelFor(partner.id, partner.code, new Date()))
+  })
+
+  /**
+   * The partner's SHORT LINK: `orbetra.com/r/<code>` → the site, with the referral attached.
+   *
+   * Two things it is not. It does not set the ref cookie: that is a non-essential cookie and the
+   * site sets it only after the visitor accepts the notice, so this redirects with `?ref=` and lets
+   * the existing consent flow decide. And it does not reveal whether a code exists — an unknown code
+   * redirects exactly like a real one, because a public endpoint that answers "is BALTIC25 a real
+   * partner?" differently is an enumeration oracle over our partner list.
+   *
+   * Counting is best-effort by design: a failed count must never cost a visitor the page they asked
+   * for. The redirect happens regardless.
+   */
+  app.get('/r/:code', async (c) => {
+    const raw = c.req.param('code')
+    const site = deps.siteUrl
+    if (site === undefined) return c.notFound()
+    const code = SHORT_CODE_RE.test(raw) ? raw : null
+    // an invalid code still lands on the site — just without attribution
+    const target = code === null ? site : `${site}/?ref=${encodeURIComponent(code)}`
+
+    // REDIRECT FIRST, count after. Two reasons, and the second is the important one:
+    //
+    //  * a visitor should not wait on two or three Postgres round trips to reach a marketing page;
+    //  * doing the lookup before responding made the promise above FALSE. A valid code took a
+    //    Redis SET NX and an upsert that an invalid one did not, so the endpoint answered "is
+    //    BALTIC25 a real partner?" in milliseconds of latency — and leaked a third state, "valid
+    //    and already counted today". Matching status and Location is not enough when the work
+    //    differs; the fix is to do the same amount of work before every response, which is none.
+    if (code !== null) void countClick(deps, c, code)
+    return c.redirect(target, 302)
+  })
+
   return app
+}
+
+/**
+ * Referral codes, mirroring `affiliateCodeSchema` — NOT apps/site's looser cookie validator.
+ *
+ * No underscore, deliberately. The server schema forbids it (it is a SQL LIKE wildcard), so `/r/A_B`
+ * used to forward `?ref=A_B`, the site would store it in `tc_ref`, and then the pilot form and the
+ * signup POST would reject the WHOLE submission — a mistyped short link turning into a silently
+ * broken contact form rather than an unattributed one.
+ */
+const SHORT_CODE_RE = /^[a-zA-Z0-9-]{3,64}$/
+/** one visitor, one code, one day */
+const CLICK_DEDUPE_TTL_S = 24 * 3600
+
+/**
+ * Link-preview fetchers and crawlers, which would otherwise turn one WhatsApp share into a click.
+ *
+ * Deliberately a substring list and not a allowlist: a false negative costs one inflated click, a
+ * false positive silently loses a real visitor from the partner's funnel.
+ */
+const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|monitor|curl|wget|python-|headless|lighthouse|facebookexternalhit|whatsapp|telegram|discord|skype|slack/i
+function isBot(ua: string): boolean {
+  return ua === '' || BOT_UA.test(ua)
+}
+
+/** per-IP ceiling on the short link. Generous — it is a marketing URL, not a credential. */
+const CLICK_RL_PER_MIN = 120
+const CLICK_RL_WINDOW_S = 60
+
+/**
+ * Count one unique open — off the response path, so nothing here is observable from outside.
+ *
+ * This is the only public endpoint in the codebase that WRITES, and it sits in front of a
+ * ten-connection pool with no auth. A per-IP ceiling comes first and short-circuits before the
+ * lookup: without it one host looping this URL holds every connection and takes tenant login and
+ * the Stripe webhook down with it, at no cost to the attacker and with no metric that separates it
+ * from popularity.
+ */
+async function countClick(deps: PartnerRouteDeps, c: Context<PartnerEnv>, code: string): Promise<void> {
+  try {
+    if (isBot(c.req.header('user-agent') ?? '')) return
+    const addr = clientIp(c.req.header('x-forwarded-for'), deps.getRemoteAddr(c), deps.trustProxy)
+    const hits = (await deps.redis.eval(RL_SCRIPT, 1, `r:rl:${addr}`, String(CLICK_RL_WINDOW_S))) as number
+    if (hits > CLICK_RL_PER_MIN) return
+    const affiliate = await deps.db.affiliates.getActiveByCode(code)
+    if (affiliate === null) return
+    const now = new Date()
+    const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    // ONE VISITOR PER CODE PER DAY. A partner asking "how many people opened my link" is not helped
+    // by a number their own three refreshes inflate. SET NX is the whole mechanism: the first
+    // arrival wins the key and gets counted, the rest of the day is free.
+    const seen = `aff:click:${affiliate.id}:${sha256(addr).slice(0, 32)}:${day.toISOString().slice(0, 10)}`
+    const first = await deps.redis.set(seen, '1', 'EX', CLICK_DEDUPE_TTL_S, 'NX')
+    if (first !== null) await deps.db.affiliates.recordClick(affiliate.id, day)
+  } catch (err) {
+    // A broken counter must not break the link — and it is off the response path anyway. The
+    // counter hook is how this becomes visible to US: without it, an unapplied migration makes
+    // every partner's funnel read 0 forever, which is indistinguishable from "nobody clicked".
+    deps.onClickCountFailed?.()
+    console.warn('affiliate click count failed', err instanceof Error ? err.message : String(err))
+  }
 }
 
 /** Issue a one-time set/reset-password token for a partner (called by the platform_admin route). The

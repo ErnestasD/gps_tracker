@@ -78,6 +78,7 @@ beforeAll(async () => {
     jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
     lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
+    siteUrl: 'https://site.example',
   })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
@@ -195,6 +196,81 @@ describe('partner self-service auth (F5)', () => {
       currency: 'eur', paidAt: new Date('2027-02-28T09:00:00Z'),
     })
     expect(onTheLine).not.toBeNull()
+  })
+
+  it('the short link redirects with the ref attached, counts ONE click per visitor per day, and never says whether a code exists', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000010b' }
+    const p = await makePartner('short@partner.co', 'partnerpass1')
+    const code = ((await (await admin(`/v1/affiliates/${p.id}`)).json()) as { code: string }).code
+    const hit = (c: string, headers: Record<string, string> = {}) =>
+      fetch(`${base()}/r/${c}`, { redirect: 'manual', headers: { 'user-agent': 'Mozilla/5.0 (X11; Linux)', ...headers } })
+
+    const res = await hit(code)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(`https://site.example/?ref=${encodeURIComponent(code)}`)
+    // NO cookie: the ref cookie is non-essential and the SITE sets it after consent — this endpoint
+    // must not set it behind the visitor's back
+    expect(res.headers.get('set-cookie')).toBeNull()
+
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const funnel = async () => (await (await j('/v1/partner/funnel', 'GET', undefined, bearer(tok))).json()) as { clicksTotal: number; signups: number }
+    expect((await funnel()).clicksTotal).toBe(1)
+
+    // the same visitor refreshing five times is still ONE person who opened the link
+    for (let i = 0; i < 5; i++) await hit(code)
+    expect((await funnel()).clicksTotal).toBe(1)
+
+    // a link-preview fetcher is not a visitor
+    await hit(code, { 'user-agent': 'WhatsApp/2.23 facebookexternalhit/1.1' })
+    expect((await funnel()).clicksTotal).toBe(1)
+
+    // an UNKNOWN code redirects exactly like a real one — otherwise this is a public oracle over
+    // the partner list, and the codes are short enough to enumerate
+    const ghost = await hit('NOSUCHCODE9')
+    expect(ghost.status).toBe(302)
+    expect(ghost.headers.get('location')).toBe('https://site.example/?ref=NOSUCHCODE9')
+
+    // …and the funnel counts the tenants attributed to this partner
+    await db.tenants.create(actor, { name: 'Short Link Customer', referredByAffiliateId: p.id })
+    expect((await funnel()).signups).toBe(1)
+  })
+
+  it('the funnel counts enquiries by lower(ref), and the 30-day window is a window', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000010c' }
+    const p = await makePartner('funnel@partner.co', 'partnerpass1')
+    const code = ((await (await admin(`/v1/affiliates/${p.id}`)).json()) as { code: string }).code
+
+    // a lead carrying the code in the WRONG CASE still belongs to this partner — attribution
+    // matches on lower(ref), so the funnel has to agree or the two numbers contradict each other
+    await db.leads.create({ name: 'A', company: 'Lead Co', email: 'lead@x.lt', ref: code.toLowerCase() })
+    await db.leads.create({ name: 'B', company: 'Other Co', email: 'other@x.lt', ref: 'SOMEONEELSE' })
+
+    // clicks: one inside the 30-day window, one long outside it
+    const today = new Date()
+    const utcDay = (offsetDays: number) =>
+      new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - offsetDays))
+    await db.affiliates.recordClick(p.id, utcDay(0))
+    await db.affiliates.recordClick(p.id, utcDay(90))
+
+    // one referred tenant that pays, one that never has
+    const paying = await db.tenants.create(actor, { name: 'Funnel Paying', referredByAffiliateId: p.id })
+    await db.tenants.create(actor, { name: 'Funnel Trial', referredByAffiliateId: p.id })
+    await db.tenants.setStripeCustomer(paying.id, 'cus_funnel')
+    await db.affiliates.update(actor, p.id, { status: 'active' })
+    await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_funnel', invoiceId: 'in_funnel_1', amountPaidCents: 10000, currency: 'eur', paidAt: new Date() })
+
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const f = (await (await j('/v1/partner/funnel', 'GET', undefined, bearer(tok))).json()) as {
+      clicksTotal: number; clicks30: number; leads: number; signups: number; paying: number
+    }
+    expect(f.clicksTotal).toBe(2)
+    expect(f.clicks30).toBe(1) // the 90-day-old one is outside the window
+    expect(f.leads).toBe(1) // case-insensitive, and someone else's lead is not counted
+    expect(f.signups).toBe(2)
+    expect(f.paying).toBe(1)
+    // read on ONE snapshot: paying can never exceed signups, which the portal would render as a
+    // conversion above 100%
+    expect(f.paying).toBeLessThanOrEqual(f.signups)
   })
 
   it('login rejects wrong password, unknown email, an unset-password partner, and a non-active partner', async () => {

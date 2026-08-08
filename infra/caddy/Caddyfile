@@ -56,6 +56,15 @@
 		}
 		reverse_proxy api:3010
 	}
+	# …and the PARTNER SHORT LINK `orbetra.com/r/<code>`, which redirects to this same host with
+	# `?ref=` attached and counts one unique click. It lives on the API because the count is a DB
+	# write; it stays OFF the tenant blocks with the rest of the affiliate surface.
+	handle /r/* {
+		request_body {
+			max_size 64KB
+		}
+		reverse_proxy api:3010
+	}
 	# static SPA (vite preview serving the built dist — same tested path as the app)
 	handle {
 		reverse_proxy site:4174
@@ -179,6 +188,12 @@ https:// {
 		respond 404
 	}
 	handle /v1/partner/* {
+		respond 404
+	}
+	# …and the partner SHORT LINK, for the same reason: the affiliate programme is ours, not a
+	# reseller's. Without this it fell through to their SPA and rendered their app shell on a URL
+	# that belongs to us — the property held by omission rather than by rule.
+	handle /r/* {
 		respond 404
 	}
 	# API + realtime first (longest-prefix wins in Caddy route ordering).

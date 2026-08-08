@@ -30,6 +30,9 @@ import { sendVerificationEmail } from './verifyEmail.js'
  * Attribution: `ref` resolves via getActiveByCode (EXACT lower(code) match, ACTIVE only) → referredByAffiliateId;
  * an unknown/inactive code attributes to no one and never blocks the signup.
  */
+/** over the per-partner notice cap — skipped silently, and NOT an error worth a counter */
+class SkipPartnerNotice extends Error {}
+
 export interface SignupRouteDeps {
   db: Db
   redis: Redis
@@ -47,7 +50,14 @@ export interface SignupRouteDeps {
     /** the ACTIVATION mail for a real signup — the account cannot be signed in to until its link is
      *  clicked, which is what makes the taken and free branches indistinguishable (audit MED #67). */
     enqueueVerifyEmail(job: { kind: 'verify-email'; email: string; tenantId: string; locale: string; verifyUrl: string; expiresHours: number }): Promise<void>
+    /** the referral notice — optional, so a deployment without it simply sends no partner mail */
+    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
   }
+  /** public site origin — the partner portal link in the referral notice. Absent ⇒ no notice. */
+  siteUrl?: string
+  /** the referral notice could not be queued — a wedged queue is otherwise indistinguishable from
+   *  "no referrals happened", since the send is deliberately silent */
+  onPartnerMailFailed?: () => void
   /** a signup hit an address that already exists. Bulk probing was previously indistinguishable from
    *  ordinary traffic; a rising rate here is someone walking a list. */
   onEmailInUse?: () => void
@@ -238,6 +248,37 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
       } catch (mailErr) {
         deps.onVerifyMailFailed?.()
         console.error('signup: could not send the activation mail', mailErr instanceof Error ? mailErr.message : String(mailErr))
+      }
+      // TELL THE PARTNER. A referral used to be invisible to the person who made it: they were
+      // handed a link and had to log in on a hunch to find out whether it had worked. Best-effort
+      // and swallowed for the same reason as the activation mail above — a failure here must not be
+      // observable from outside, or the free branch and the taken branch stop looking identical.
+      if (ref !== null && deps.mail?.enqueuePartnerEmail !== undefined && deps.siteUrl !== undefined) {
+        try {
+          // PER-PARTNER cap, exactly like the two mails above and for the same reason — except the
+          // victim here is chosen by the ATTACKER, not by accident. A referral code is the most
+          // public identifier a partner owns: 200 signups/hour with `?ref=<their code>` is 200 mails
+          // an hour into their inbox from our own SES identity, and 200 junk tenants named with
+          // attacker-chosen text in their customer list. Over the cap the mail is skipped; the
+          // response is unconditional either way.
+          const refKey = `signup:refnotice:${sha256(ref.id).slice(0, 16)}`
+          const notices = (await deps.redis.eval(RL_SCRIPT, 1, refKey, String(EXISTS_MAIL_WINDOW_S))) as number
+          if (notices > EXISTS_MAIL_MAX) throw new SkipPartnerNotice()
+          await deps.mail.enqueuePartnerEmail({
+            kind: 'partner',
+            event: 'referral',
+            email: ref.email,
+            tenantId: '', // platform-branded; see the job's doc comment
+            locale: ref.locale, // the PARTNER's language — not the customer's browser
+            customer: body.company?.trim() ? body.company.trim() : `${body.name.trim()}'s fleet`,
+            portalUrl: `${deps.siteUrl.replace(/\/+$/, '')}/partner/dashboard`,
+          })
+        } catch (notifyErr) {
+          if (!(notifyErr instanceof SkipPartnerNotice)) {
+            deps.onPartnerMailFailed?.()
+            console.warn('signup: partner referral notice not queued', notifyErr instanceof Error ? notifyErr.message : String(notifyErr))
+          }
+        }
       }
       return c.json({ ok: true, id: created.tenantId }, 201)
     } catch (err) {

@@ -364,6 +364,10 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
     // Hono exposes registered routes; the auth/public + infra routes are exempt.
     // `routing` (ADR-029) is a stateless OSRM proxy — reads/writes NO tenant data,
     // so there is no tenant boundary for the manifest harness to defend.
+    // NOTE: the filter below is `path.startsWith('/v1/')`, so this harness structurally cannot see a
+    // route outside /v1 — the public short link `/r/:code` is the first one. Adding it to EXEMPT
+    // would read as "considered and exempted" while changing nothing; it is covered by its own tests
+    // in apps/api/__tests__/partner.spec.ts instead.
     const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/signup|public\/verify-email|public\/share|public\/manifest\.webmanifest|driver-scores|routing|stream|reports|api-keys|billing|webhooks|push|partner|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))

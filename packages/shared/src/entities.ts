@@ -332,6 +332,9 @@ export const commissionStatusSchema = z.enum(['pending', 'paid', 'void'])
 const commissionPctSchema = z.number().min(0).max(100)
 const commissionMonthsSchema = z.number().int().min(1).max(120)
 
+/** The partner's own language for the mail we send them — not their customers' language. */
+export const affiliateLocaleSchema = z.enum(['en', 'lt', 'de', 'pl'])
+
 export const affiliateCreateSchema = z.object({
   // TRIMMED: a stored name with a stray leading/trailing space makes the admin edit panel's diff
   // report a change on every open, so every save carried a name mutation nobody made
@@ -340,6 +343,7 @@ export const affiliateCreateSchema = z.object({
   code: affiliateCodeSchema.optional(),
   commissionPct: commissionPctSchema.optional(),
   commissionMonths: commissionMonthsSchema.optional(),
+  locale: affiliateLocaleSchema.optional(),
 })
 export const affiliateUpdateSchema = z
   .object({
@@ -347,6 +351,7 @@ export const affiliateUpdateSchema = z
     status: affiliateStatusSchema,
     commissionPct: commissionPctSchema,
     commissionMonths: commissionMonthsSchema,
+    locale: affiliateLocaleSchema,
   })
   .partial()
 export const commissionStatusUpdateSchema = z.object({ status: commissionStatusSchema })

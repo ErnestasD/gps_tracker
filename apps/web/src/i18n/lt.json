@@ -1157,6 +1157,13 @@
       "earned": "uždirbta {{amount}}",
       "pending": "priklauso {{amount}}",
       "nothingYet": "kol kas neuždirbta"
+    },
+    "locale": "Jų kalba",
+    "localeName": {
+      "en": "Anglų",
+      "lt": "Lietuvių",
+      "de": "Vokiečių",
+      "pl": "Lenkų"
     }
   },
   "authNav": {

@@ -8,6 +8,7 @@ import { renderResetEmail } from '../notify/passwordResetEmail.js'
 import { renderSignupExistsEmail } from '../notify/signupExistsEmail.js'
 import { renderVerifyEmail } from '../notify/verifyEmail.js'
 import { renderLapseEmail } from '../notify/lapseEmail.js'
+import { renderPartnerEmail } from '../notify/partnerEmail.js'
 import { AUTH_EMAIL_QUEUE, type AuthEmailJob } from './authEmailQueue.js'
 
 export interface AuthEmailWorkerDeps {
@@ -111,6 +112,22 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   // is the timing signal the whole change exists to remove. The worker is already off the request
   // path. Doing it here is also what keeps white-label intact: a TSP's end user must not receive an
   // Orbetra-branded mail naming their supplier. A miss falls back to the default brand.
+  // A PARTNER mail short-circuits every line of branding resolution below. It is ours, from us,
+  // about our agreement — and the address may well also belong to a tenant user, in which case
+  // resolving branding would dress our partner notification in that tenant's white label and tell
+  // the partner which tenant they are. Rendered and sent before any of that can happen.
+  if (job.kind === 'partner') {
+    const { subject, text, html } = renderPartnerEmail({
+      kind: job.event,
+      customer: job.customer,
+      ...(job.amount !== undefined ? { amount: job.amount } : {}),
+      portalUrl: job.portalUrl,
+      locale: job.locale,
+    })
+    // no supportEmail override either: replies come to us, not to a reseller's support desk
+    await deps.transport.send(job.email, subject, text, html)
+    return true
+  }
   const tenantId = job.tenantId !== '' ? job.tenantId : await tenantIdForEmail(deps.pool, job.email)
   const resolved = await resolveBranding(deps.pool, tenantId)
   // The ACTIVATION mail is the first thing a direct customer ever receives from us, and a self-serve

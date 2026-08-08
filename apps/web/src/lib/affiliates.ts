@@ -16,6 +16,8 @@ export interface AffiliateView {
   commissionPct: string // Decimal serialized as string
   commissionMonths: number
   status: AffiliateStatus
+  /** the partner's own language for the mail WE send them (en|lt|de|pl) */
+  locale: string
   createdAt: string
 }
 /** Money a partner has produced, per currency — never summed across them. */
@@ -58,6 +60,7 @@ export interface AffiliateUpdateInput {
   status?: AffiliateStatus
   commissionPct?: number
   commissionMonths?: number
+  locale?: string
 }
 
 const enc = encodeURIComponent
@@ -73,6 +76,7 @@ export interface AffiliateDraft {
   name: string
   pct: string
   months: string
+  locale: string
 }
 
 /**
@@ -99,6 +103,7 @@ export function buildAffiliatePatch(baseline: AffiliateView, draft: AffiliateDra
   // it would let the server 400 on a field the admin never meant to touch
   if (Number.isFinite(pct) && draft.pct.trim() !== '' && pct !== Number(baseline.commissionPct)) data.commissionPct = pct
   if (Number.isFinite(months) && draft.months.trim() !== '' && months !== baseline.commissionMonths) data.commissionMonths = months
+  if (draft.locale !== baseline.locale) data.locale = draft.locale
   return Object.keys(data).length === 0 ? null : data
 }
 
