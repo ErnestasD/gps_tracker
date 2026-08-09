@@ -205,6 +205,49 @@ describe('affiliate management API (platform)', () => {
     expect(res.status).toBe(404)
   })
 
+  it('a performance tier raises the rate on NEW accruals and never re-prices history', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000ab04' }
+    const a = (await (await req('/v1/affiliates', platformToken, 'POST', { name: 'Tiered', email: 'tier@partner.co', commissionPct: 20, commissionMonths: 12 })).json()) as { id: string }
+    await req(`/v1/affiliates/${a.id}`, platformToken, 'PATCH', { status: 'active', tierPct: 30, tierMinCustomers: 2 })
+
+    const customer = async (n: number) => {
+      const t = await db.tenants.create(actor, { name: `Tier Customer ${n}`, referredByAffiliateId: a.id })
+      await db.tenants.setStripeCustomer(t.id, `cus_tier_${n}`)
+      return t
+    }
+    const c1 = await customer(1)
+    const c2 = await customer(2)
+
+    // first customer's first payment: one paying customer, below the threshold → base rate
+    await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_tier_1', invoiceId: 'in_tier_1', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })
+    // second customer's first payment: the anchor is claimed BEFORE the rate is resolved, so this
+    // invoice is the one that crosses the threshold and earns the higher rate itself
+    await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_tier_2', invoiceId: 'in_tier_2', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })
+    // …and a later invoice from the first customer earns it too
+    await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_tier_1', invoiceId: 'in_tier_3', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })
+
+    const byInvoice = new Map((await db.affiliates.listCommissions(a.id)).map((r) => [r.sourceInvoiceId, r]))
+    expect(byInvoice.get('in_tier_1')?.amountCents).toBe(2_000) // 20% — one paying customer at the time
+    expect(byInvoice.get('in_tier_2')?.amountCents).toBe(3_000) // 30% — this payment is the second
+    expect(byInvoice.get('in_tier_3')?.amountCents).toBe(3_000)
+    // the FIRST entry keeps the rate it was earned at: crossing a threshold pays more from then on
+    // and never re-prices a line already recorded
+    expect(byInvoice.get('in_tier_1')?.ratePct?.toString()).toBe('20')
+    expect(byInvoice.get('in_tier_2')?.ratePct?.toString()).toBe('30')
+    void c1
+    void c2
+  })
+
+  it('HALF a tier is ignored — a rate with no threshold pays nothing and must not pretend to', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000ab05' }
+    const a = (await (await req('/v1/affiliates', platformToken, 'POST', { name: 'Half Tier', email: 'half@partner.co', commissionPct: 20, commissionMonths: 12 })).json()) as { id: string }
+    await req(`/v1/affiliates/${a.id}`, platformToken, 'PATCH', { status: 'active', tierPct: 30 }) // no threshold
+    const t = await db.tenants.create(actor, { name: 'Half Tier Customer', referredByAffiliateId: a.id })
+    await db.tenants.setStripeCustomer(t.id, 'cus_half')
+    await db.affiliates.accrueForPaidInvoice({ stripeCustomerId: 'cus_half', invoiceId: 'in_half_1', amountPaidCents: 10_000, currency: 'eur', paidAt: new Date() })
+    expect((await db.affiliates.listCommissions(a.id))[0]?.amountCents).toBe(2_000) // base, not 30%
+  })
+
   it('404s marking an unknown commission paid', async () => {
     expect((await req('/v1/commissions/00000000-0000-0000-0000-0000000000ff', platformToken, 'PATCH', { status: 'paid' })).status).toBe(404)
   })

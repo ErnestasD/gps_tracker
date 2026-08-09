@@ -18,6 +18,9 @@ export interface AffiliateView {
   status: AffiliateStatus
   /** the partner's own language for the mail WE send them (en|lt|de|pl) */
   locale: string
+  /** performance tier: the rate that replaces commissionPct once tierMinCustomers is reached */
+  tierPct: string | null
+  tierMinCustomers: number | null
   createdAt: string
 }
 /** Money a partner has produced, per currency — never summed across them. */
@@ -61,6 +64,9 @@ export interface AffiliateUpdateInput {
   commissionPct?: number
   commissionMonths?: number
   locale?: string
+  /** null clears the tier back to a flat rate; undefined leaves it alone */
+  tierPct?: number | null
+  tierMinCustomers?: number | null
 }
 
 /** A partner's claim on a prospect, as the admin queue shows it. */
@@ -113,6 +119,9 @@ export interface AffiliateDraft {
   pct: string
   months: string
   locale: string
+  /** both blank ⇒ no tier (flat rate); both filled ⇒ a tier */
+  tierPct: string
+  tierMin: string
 }
 
 /**
@@ -140,6 +149,23 @@ export function buildAffiliatePatch(baseline: AffiliateView, draft: AffiliateDra
   if (Number.isFinite(pct) && draft.pct.trim() !== '' && pct !== Number(baseline.commissionPct)) data.commissionPct = pct
   if (Number.isFinite(months) && draft.months.trim() !== '' && months !== baseline.commissionMonths) data.commissionMonths = months
   if (draft.locale !== baseline.locale) data.locale = draft.locale
+  /**
+   * THE TIER IS ONE SETTING IN TWO BOXES. Half of it is a configuration mistake the accrual then
+   * silently ignores — a rate with no threshold, or a threshold with no rate, reads on screen like
+   * an offer and pays nothing. So it is sent as a pair or not at all: both blank clears it, both
+   * filled sets it, and anything in between leaves what is stored untouched.
+   */
+  const tierPct = Number(draft.tierPct)
+  const tierMin = Number(draft.tierMin)
+  const bothBlank = draft.tierPct.trim() === '' && draft.tierMin.trim() === ''
+  const bothSet = draft.tierPct.trim() !== '' && draft.tierMin.trim() !== '' && Number.isFinite(tierPct) && Number.isFinite(tierMin)
+  if (bothBlank && (baseline.tierPct !== null || baseline.tierMinCustomers !== null)) {
+    data.tierPct = null
+    data.tierMinCustomers = null
+  } else if (bothSet && (tierPct !== Number(baseline.tierPct ?? NaN) || tierMin !== baseline.tierMinCustomers)) {
+    data.tierPct = tierPct
+    data.tierMinCustomers = tierMin
+  }
   return Object.keys(data).length === 0 ? null : data
 }
 

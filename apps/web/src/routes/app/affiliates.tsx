@@ -302,6 +302,8 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
   const [pct, setPct] = useState(String(Number(affiliate.commissionPct)))
   const [months, setMonths] = useState(String(affiliate.commissionMonths))
   const [locale, setLocale] = useState(affiliate.locale)
+  const [tierPct, setTierPct] = useState(affiliate.tierPct !== null ? String(Number(affiliate.tierPct)) : '')
+  const [tierMin, setTierMin] = useState(affiliate.tierMinCustomers !== null ? String(affiliate.tierMinCustomers) : '')
   /**
    * What the row said WHEN THIS PANEL OPENED — the diff baseline.
    *
@@ -317,7 +319,7 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
     mutationFn: () => {
       // the diff lives in lib/affiliates.ts and is unit-tested — see buildAffiliatePatch for why
       // both "diff against the baseline" and "skip an empty patch" are correctness, not tidiness
-      const data = buildAffiliatePatch(baseline, { name, pct, months, locale })
+      const data = buildAffiliatePatch(baseline, { name, pct, months, locale, tierPct, tierMin })
       return data === null ? Promise.resolve(null) : updateAffiliate(affiliate.id, data)
     },
     onSuccess: () => {
@@ -339,6 +341,8 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
           setPct(String(Number(affiliate.commissionPct)))
           setMonths(String(affiliate.commissionMonths))
           setLocale(affiliate.locale)
+          setTierPct(affiliate.tierPct !== null ? String(Number(affiliate.tierPct)) : '')
+          setTierMin(affiliate.tierMinCustomers !== null ? String(affiliate.tierMinCustomers) : '')
           setBaseline(affiliate)
           save.reset()
         }
@@ -375,6 +379,17 @@ function EditPartner({ affiliate, onSaved }: { affiliate: AffiliateWithStats; on
               <AdminInput id={`edit-months-${affiliate.id}`} type="number" min={1} max={120} step={1} value={months} onChange={(e) => setMonths(e.target.value)} required data-testid="affiliate-edit-months" />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <AdminLabel htmlFor={`edit-tierpct-${affiliate.id}`}>{t('affiliates.tierPct')}</AdminLabel>
+              <AdminInput id={`edit-tierpct-${affiliate.id}`} type="number" min={0} max={100} step={0.01} value={tierPct} onChange={(e) => setTierPct(e.target.value)} placeholder="—" data-testid="affiliate-edit-tierpct" />
+            </div>
+            <div className="grid gap-1.5">
+              <AdminLabel htmlFor={`edit-tiermin-${affiliate.id}`}>{t('affiliates.tierMin')}</AdminLabel>
+              <AdminInput id={`edit-tiermin-${affiliate.id}`} type="number" min={1} step={1} value={tierMin} onChange={(e) => setTierMin(e.target.value)} placeholder="—" data-testid="affiliate-edit-tiermin" />
+            </div>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('affiliates.tierNote')}</p>
           <div className="grid gap-1.5">
             <AdminLabel htmlFor={`edit-locale-${affiliate.id}`}>{t('affiliates.locale')}</AdminLabel>
             {/* the language of the mail WE send THEM. A partner is not a tenant user, so there is no

@@ -210,6 +210,9 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     return c.json({
       id: partner.id, name: partner.name, email: partner.email, code: partner.code,
       commissionPct: partner.commissionPct.toString(), commissionMonths: partner.commissionMonths,
+      // the performance tier, so the portal can say "reach N customers for Y%" instead of leaving a
+      // partner to discover their own incentive by accident
+      tierPct: partner.tierPct?.toString() ?? null, tierMinCustomers: partner.tierMinCustomers,
       status: partner.status, createdAt: partner.createdAt.toISOString(),
     })
   })

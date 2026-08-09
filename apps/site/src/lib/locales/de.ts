@@ -631,6 +631,8 @@ export const de: Translation = {
       window_many: "{{count}} Monate je Empfehlung",
       window_other: "{{count}} Monate je Empfehlung",
       windowFallback: "Laufend, begrenzter Zeitraum",
+      tierReached: "Sie sind auf der {{pct}}%-Stufe — Ihr bester Satz ist aktiv.",
+      tierProgress: "Noch {{n}} zahlende Kunden und Ihr Satz steigt auf {{pct}}%.",
       history: "Provisionshistorie",
       empty: "Noch keine Provisionen. Teilen Sie Ihren Link, um zu starten.",
       date: "Datum",
