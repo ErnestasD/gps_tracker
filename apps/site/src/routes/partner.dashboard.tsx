@@ -484,6 +484,11 @@ function DealsSection({ token, deals, onRegistered }: { token: string; deals: De
       setError(
         detail === "free_mail_domain" ? t("partner.dashboard.dealFreeMail")
         : detail === "own_domain" ? t("partner.dashboard.dealOwnDomain")
+        // the house-account rule: registration protects NEW business. ONE message for both "already
+        // ours" and "already another partner's" — telling them apart would let any partner walk a
+        // domain list and map our customer base against a rival's
+        : detail === "not_eligible" ? t("partner.dashboard.dealNotEligible")
+        : detail === "too_many_pending" ? t("partner.dashboard.dealTooMany")
         : t("partner.dashboard.dealError"),
       );
     } finally {

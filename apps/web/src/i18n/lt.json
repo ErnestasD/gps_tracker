@@ -1184,7 +1184,13 @@
     "dealExisting_one": "{{count}} esama paskyra šiame domene",
     "dealExisting_few": "{{count}} esamos paskyros šiame domene",
     "dealExisting_other": "{{count}} esamų paskyrų šiame domene",
-    "dealSelfDomain": "tai paties partnerio domenas"
+    "dealSelfDomain": "tai paties partnerio domenas",
+    "dealHouse_one": "{{count}} paskyra čia jau mūsų",
+    "dealHouse_few": "{{count}} paskyros čia jau mūsų",
+    "dealHouse_other": "{{count}} paskyrų čia jau mūsų",
+    "dealOtherPartnerAccounts_one": "{{count}} paskyra priklauso kitam partneriui",
+    "dealOtherPartnerAccounts_few": "{{count}} paskyros priklauso kitam partneriui",
+    "dealOtherPartnerAccounts_other": "{{count}} paskyrų priklauso kitam partneriui"
   },
   "authNav": {
     "platform": "Platforma",

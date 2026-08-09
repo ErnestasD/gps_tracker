@@ -90,6 +90,31 @@ function addMonthsUtc(d: Date, months: number): Date {
  *  a long-lived partner's dashboard load stays a fixed cost; the page is a summary, not an export. */
 const PARTNER_LEDGER_LIMIT = 500
 
+/**
+ * IS THIS TENANT COLD? — the house-account predicate, stated as what may be claimed rather than what
+ * may not, because the safe default on a money rule is to refuse.
+ *
+ * The first cut asked "has this tenant paid?" and got it backwards. Both signals it used are
+ * STRIPE-SHAPED: `commissionAnchorAt` is written only for tenants that already carry a referral, and
+ * `subscriptionStatus` is written only by the Stripe webhook — so a tenant created by an admin and
+ * invoiced outside Stripe has NULL for both. That is not an edge case, it is the sales-led TSP
+ * customer: the largest accounts on the platform were invisible to a rule whose entire purpose is to
+ * stop a partner earning commission on business we already have.
+ *
+ * COALESCE is load-bearing, not tidiness. `subscriptionStatus` is NULL for exactly the tenants this
+ * rule was rewritten to catch, and `NULL = 'trialing'` is NULL, so `NOT (NULL AND …)` is NULL — which
+ * a FILTER clause treats as false. The first version of this predicate therefore let through the
+ * very customers it was inverted to protect, silently. The test that caught it is the one asserting
+ * an admin-provisioned tenant is refused.
+ *
+ * Inverted, only one thing is claimable: a LOCAL SELF-SERVE TRIAL — `trialing` with no Stripe
+ * subscription behind it, the same discriminator `effectiveEntitlementsAt` uses to tell a local
+ * trial from a Stripe one. Someone at the company starting a trial by themselves is the commonest
+ * way a partner's own prospect appears in our database before they register it, and that case stays
+ * open. Everything else is ours until a human says otherwise.
+ */
+const COLD_TENANT_SQL = `(COALESCE(t."subscriptionStatus", '') = 'trialing' AND t."stripeSubscriptionId" IS NULL AND t."commissionAnchorAt" IS NULL)`
+
 /** Claims are a queue a human works through, not an archive — bound the read like the ledger. */
 const DEAL_LIST_LIMIT = 500
 
@@ -213,6 +238,27 @@ export interface DealCreateInput {
   note?: string | undefined
 }
 
+/**
+ * What we already have at a domain — the HOUSE ACCOUNT test.
+ *
+ * Deal registration protects NEW business. A prospect who is already our paying customer is not new
+ * business by any reading, and paying commission on their next invoice is revenue we were already
+ * earning. The same is true of an account another partner already owns.
+ *
+ * A domain carrying only unattributed, non-paying accounts is deliberately NOT blocked: someone at
+ * the company starting a trial by themselves is the commonest way a partner's own prospect shows up
+ * in our database before the partner gets round to registering them, and refusing on that basis
+ * punishes the honest case.
+ */
+export interface DomainStanding {
+  /** verified accounts whose address is at this domain */
+  accounts: number
+  /** …belonging to a tenant that is NOT a claimable local trial — i.e. already ours */
+  houseAccounts: number
+  /** …belonging to a tenant attributed to a DIFFERENT partner */
+  otherPartnerAccounts: number
+}
+
 /** Raised when a partner claims a domain another partner already holds. First approved claim wins. */
 export class DealDomainTakenError extends Error {
   constructor() {
@@ -263,6 +309,13 @@ export interface AffiliateRepo {
   createDeal(data: DealCreateInput): Promise<DealRegistration>
   /** How many of a partner's claims are still awaiting a decision — the outstanding-queue cap. */
   countPendingDeals(affiliateId: string): Promise<number>
+  /**
+   * The house-account test for one domain, from the point of view of ONE partner.
+   *
+   * `forAffiliateId` is what makes "another partner's account" answerable: a domain already
+   * attributed to the claimant is not a reason to refuse them.
+   */
+  domainStanding(domain: string, forAffiliateId: string): Promise<DomainStanding>
   /** One partner's own claims, newest first. */
   listDealsForPartner(affiliateId: string): Promise<DealRegistration[]>
   /**
@@ -270,11 +323,17 @@ export interface AffiliateRepo {
    * anything from anyone, and a partner filing junk claims must not be able to push a competitor's
    * pending one off the end of the page.
    *
-   * Each row carries the two facts the decision actually turns on and which the queue had no way to
-   * show: how many accounts ALREADY use that domain (is this a customer someone else owns?), and
-   * the claiming partner's own email domain (is this a self-referral wearing a second domain?).
+   * Each row carries the facts the decision turns on and which the queue had no way to show: the
+   * domain's STANDING (is this already our customer, or another partner's?) and the claiming
+   * partner's own email domain (is this a self-referral wearing a second domain?).
+   *
+   * Standing is shown, NOT enforced here. The registration endpoint refuses the obvious cases so a
+   * partner learns the rule immediately, but the test is a heuristic over email domains and it will
+   * be wrong sometimes — a customer whose staff use a different domain, a reseller's sub-account
+   * user carrying their own. Making it terminal at approval would leave a human with a claim they
+   * can see is legitimate and no way to say so, which is the opposite of why this queue exists.
    */
-  listDeals(): Promise<(DealRegistration & { affiliateName: string; affiliateEmailDomain: string; existingAccounts: number })[]>
+  listDeals(): Promise<(DealRegistration & { affiliateName: string; affiliateEmailDomain: string; standing: DomainStanding })[]>
   /**
    * Approve or reject a pending claim.
    *
@@ -397,7 +456,8 @@ const PUBLIC_SELECT = {
  * dispute with a partner had nothing to reconstruct.
  */
 export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): AffiliateRepo {
-  return {
+  // named so listDeals can reuse domainStanding rather than carrying a second copy of the predicate
+  const repo: AffiliateRepo = {
     list: () => prisma.affiliate.findMany({ orderBy: { createdAt: 'desc' }, select: PUBLIC_SELECT }),
     listWithStats: async () => {
       const [affiliates, tenants, sums] = await Promise.all([
@@ -650,6 +710,41 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
         },
       }),
     countPendingDeals: (affiliateId) => prisma.dealRegistration.count({ where: { affiliateId, status: 'pending' } }),
+    domainStanding: async (domain, forAffiliateId) => {
+      const rows = await prisma.$queryRawUnsafe<{ total: bigint; house: bigint; other: bigint }[]>(
+        `SELECT
+           count(*) AS total,
+           count(*) FILTER (WHERE NOT ${COLD_TENANT_SQL}) AS house,
+           count(*) FILTER (WHERE t."referredByAffiliateId" IS NOT NULL AND t."referredByAffiliateId" <> $2::uuid) AS other
+         FROM users u
+         JOIN tenants t ON t.id = u."tenantId"
+         WHERE
+           -- ONLY VERIFIED ACCOUNTS BLOCK. Public signup stamps referredByAffiliateId from ?ref and
+           -- creates the user BEFORE anyone proves the address, and those rows live for thirty days.
+           -- Counting them let a partner sign up one throwaway through their own link and lock every
+           -- rival out of that domain for a month, renewably, while staying free to claim it
+           -- themselves (their own attribution is excluded below).
+           u."emailVerifiedAt" IS NOT NULL
+           AND (
+             split_part(lower(u.email), '@', 2) = $1
+             -- …or the tenant SERVES that domain under its own white-label host, which is the same
+             -- company by a different address: a customer paying as ops@bigfleet.com is not made a
+             -- stranger by a partner claiming bigfleet.lt
+             OR EXISTS (SELECT 1 FROM tenant_domains d WHERE d."tenantId" = t.id AND d.verified AND lower(d.domain) = $1)
+           )
+           -- a partner is never blocked by their OWN customers: re-claiming a domain they already
+           -- brought is pointless, not fraudulent
+           AND (t."referredByAffiliateId" IS NULL OR t."referredByAffiliateId" <> $2::uuid)`,
+        domain,
+        forAffiliateId,
+      )
+      const r = rows[0]
+      return {
+        accounts: Number(r?.total ?? 0),
+        houseAccounts: Number(r?.house ?? 0),
+        otherPartnerAccounts: Number(r?.other ?? 0),
+      }
+    },
     listDealsForPartner: (affiliateId) => prisma.dealRegistration.findMany({ where: { affiliateId }, orderBy: { createdAt: 'desc' }, take: DEAL_LIST_LIMIT }),
     listDeals: async () => {
       const rows = await prisma.dealRegistration.findMany({
@@ -660,19 +755,19 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
         include: { affiliate: { select: { name: true, email: true } } },
       })
       if (rows.length === 0) return []
-      // ONE grouped query for every domain on the page, not one per row
-      const domains = [...new Set(rows.map((r) => r.domain))]
-      const counts = await prisma.$queryRaw<{ d: string; n: bigint }[]>`
-        SELECT split_part(lower(email), '@', 2) AS d, count(*) AS n
-        FROM users
-        WHERE split_part(lower(email), '@', 2) = ANY(${domains}::text[])
-        GROUP BY 1`
-      const byDomain = new Map(counts.map((c) => [c.d, Number(c.n)]))
+      // ONE query for every (domain, owner) pair on the page, not one per row
+      const standings = await Promise.all(
+        [...new Map(rows.map((r) => [`${r.domain}|${r.affiliateId}`, r])).values()].map(async (r) => ({
+          key: `${r.domain}|${r.affiliateId}`,
+          standing: await repo.domainStanding(r.domain, r.affiliateId),
+        })),
+      )
+      const byKey = new Map(standings.map((x) => [x.key, x.standing]))
       return rows.map(({ affiliate, ...d }) => ({
         ...d,
         affiliateName: affiliate.name,
         affiliateEmailDomain: affiliate.email.slice(affiliate.email.lastIndexOf('@') + 1).toLowerCase(),
-        existingAccounts: byDomain.get(d.domain) ?? 0,
+        standing: byKey.get(`${d.domain}|${d.affiliateId}`) ?? { accounts: 0, houseAccounts: 0, otherPartnerAccounts: 0 },
       }))
     },
     decideDeal: async (actor, id, status, reason, now) => {
@@ -919,4 +1014,5 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
       await prisma.affiliatePasswordToken.updateMany({ where: { affiliateId, usedAt: null }, data: { usedAt: now } })
     },
   }
+  return repo
 }
