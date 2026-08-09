@@ -1179,7 +1179,11 @@
     },
     "dealExisting_one": "{{count}} existing account on this domain",
     "dealExisting_other": "{{count}} existing accounts on this domain",
-    "dealSelfDomain": "this is the partner's own domain"
+    "dealSelfDomain": "this is the partner's own domain",
+    "dealHouse_one": "{{count}} account here is already ours",
+    "dealHouse_other": "{{count}} accounts here are already ours",
+    "dealOtherPartnerAccounts_one": "{{count}} account belongs to another partner",
+    "dealOtherPartnerAccounts_other": "{{count}} accounts belong to another partner"
   },
   "authNav": {
     "platform": "Platform",

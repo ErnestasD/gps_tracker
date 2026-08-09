@@ -336,6 +336,91 @@ describe('partner self-service auth (F5)', () => {
     expect(bCode).toMatch(/^[A-Za-z0-9-]{3,}$/) // B has a usable code; the link-wins case lives in signup.spec
   })
 
+  it('HOUSE ACCOUNTS: only a local self-serve trial is claimable — everything else is already ours', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000010d' }
+    const p = await makePartner('house@partnerco.test', 'partnerpass1')
+    const other = await makePartner('rival@rivalco.test', 'partnerpass1')
+    await admin(`/v1/affiliates/${p.id}`, 'PATCH', { status: 'active' })
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const register = (domain: string) => j('/v1/partner/deals', 'POST', { company: domain, domain }, bearer(tok))
+    const withUser = async (tenantName: string, email: string, extra?: { referredByAffiliateId?: string }) => {
+      const t = await db.tenants.create(actor, { name: tenantName, ...(extra ?? {}) })
+      // seedUser converges on tenant NAME, so this attaches to the row just created
+      await seedUser({ databaseUrl, email, password: 'password12', role: 'tsp_admin', tenantName })
+      return t
+    }
+
+    // THE CASE THE FIRST CUT MISSED, and the most valuable customers on the platform: a tenant an
+    // admin created and invoices outside Stripe has NULL subscriptionStatus and NULL
+    // commissionAnchorAt. Asking "has this tenant paid?" answered no for every one of them.
+    await withUser('Sales Led Co', 'ops@salesled.test')
+    const salesLed = await register('salesled.test')
+    expect(salesLed.status).toBe(409)
+    expect((await salesLed.json()) as { detail: string }).toMatchObject({ detail: 'not_eligible' })
+
+    // a Stripe subscription, in any of its states, is likewise already ours
+    const paying = await withUser('Paying Co', 'ops@payingco.test')
+    await db.tenants.setStripeCustomer(paying.id, 'cus_house')
+    await db.tenants.applySubscriptionEvent(
+      { stripeCustomerId: 'cus_house', id: 'evt_house_1', type: 'customer.subscription.updated', at: new Date() },
+      { stripeSubscriptionId: 'sub_house', subscriptionStatus: 'active', subscriptionPriceId: null, currentPeriodEnd: null },
+    )
+    expect((await register('payingco.test')).status).toBe(409)
+
+    // …and so is a domain another partner already serves
+    await withUser('Rival Co', 'ops@rivalcustomer.test', { referredByAffiliateId: other.id })
+    expect((await register('rivalcustomer.test')).status).toBe(409)
+
+    // A LOCAL SELF-SERVE TRIAL IS CLAIMABLE. Someone at the company starting a trial by themselves
+    // is the commonest way a partner's own prospect appears here before they register it.
+    const trialRes = await j('/v1/public/signup', 'POST', {
+      name: 'Trial Person', email: 'ops@trialco.test', password: 'password12', company: 'Trial Co',
+    })
+    expect(trialRes.status).toBe(201)
+    expect((await register('trialco.test')).status).toBe(201)
+
+    // UNVERIFIED ACCOUNTS DO NOT BLOCK. Public signup stamps ?ref and creates the user before anyone
+    // proves the address, and those rows live 30 days — counting them let a partner sign up one
+    // throwaway through their own link and lock every rival out of that domain, renewably.
+    const otherTok = ((await (await login(other.email, other.password)).json()) as { accessToken: string }).accessToken
+    await admin(`/v1/affiliates/${other.id}`, 'PATCH', { status: 'active' })
+    const otherCode = ((await (await admin(`/v1/affiliates/${other.id}`)).json()) as { code: string }).code
+    await j('/v1/public/signup', 'POST', { name: 'Squat', email: 'squat@contested.test', password: 'password12', ref: otherCode })
+    expect((await register('contested.test')).status).toBe(201) // the squatted signup is unverified
+    void otherTok
+
+    // a partner is never blocked by their OWN customer — re-claiming a domain they brought is
+    // pointless, not fraudulent
+    const mine = await withUser('Mine Co', 'ops@mineco.test', { referredByAffiliateId: p.id })
+    await db.tenants.setStripeCustomer(mine.id, 'cus_mine')
+    await db.tenants.applySubscriptionEvent(
+      { stripeCustomerId: 'cus_mine', id: 'evt_mine_1', type: 'customer.subscription.updated', at: new Date() },
+      { stripeSubscriptionId: 'sub_mine', subscriptionStatus: 'active', subscriptionPriceId: null, currentPeriodEnd: null },
+    )
+    expect((await register('mineco.test')).status).toBe(201)
+  })
+
+  it('an admin CAN approve a claim the house-account heuristic would refuse today', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000010e' }
+    const p = await makePartner('override@partnerco.test', 'partnerpass1')
+    await admin(`/v1/affiliates/${p.id}`, 'PATCH', { status: 'active' })
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+
+    // filed while the domain was clear…
+    const claim = (await (await j('/v1/partner/deals', 'POST', { company: 'Later Co', domain: 'laterco.test' }, bearer(tok))).json()) as { id: string }
+    // …and the prospect becomes our customer before anyone reviews it
+    const t = await db.tenants.create(actor, { name: 'Later Co Tenant' })
+    await seedUser({ databaseUrl, email: 'ops@laterco.test', password: 'password12', role: 'tsp_admin', tenantName: 'Later Co Tenant' })
+    void t
+
+    // the test is a heuristic over email domains and WILL be wrong sometimes. A human who can see a
+    // claim is legitimate must be able to say so — that is what the queue is for. The standing is
+    // shown on the row instead of blocking the button.
+    const queue = (await (await admin('/v1/deals')).json()) as { id: string; standing: { houseAccounts: number } }[]
+    expect(queue.find((d) => d.id === claim.id)?.standing.houseAccounts).toBeGreaterThan(0)
+    expect((await admin(`/v1/deals/${claim.id}`, 'PATCH', { status: 'approved' })).status).toBe(200)
+  })
+
   it('two admins approving competing claims on one domain in the same instant: exactly one wins', async () => {
     const a = await makePartner('racea@partnerco.test', 'partnerpass1')
     const b = await makePartner('raceb@otherco.test', 'partnerpass1')

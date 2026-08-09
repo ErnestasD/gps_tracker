@@ -76,8 +76,12 @@ export interface DealView {
   status: 'pending' | 'approved' | 'rejected' | 'converted'
   /** the claiming partner's OWN email domain — a match with `domain` is a self-referral signal */
   affiliateEmailDomain: string
-  /** accounts already using that email domain: is this a customer someone else owns? */
-  existingAccounts: number
+  /**
+   * What we already have at that domain. SHOWN, not enforced at approval: the test is a heuristic
+   * over email domains and will be wrong sometimes, so an admin who can see a claim is legitimate
+   * must be able to approve it anyway.
+   */
+  standing: { accounts: number; houseAccounts: number; otherPartnerAccounts: number }
   reason: string | null
   expiresAt: string | null
   convertedTenantId: string | null

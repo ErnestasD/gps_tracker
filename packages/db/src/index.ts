@@ -52,7 +52,7 @@ export {
 export type { Pool } from 'pg'
 export { SignupEmailInUseError, TenantHasCommissionsError, type TenantRepo, type TenantCreate, type TenantUpdate, type BillingState, type SubscriptionUpdate, type ActiveSubscriber, type LapsedTenant, type SelfServeSignup, type SubscriptionEvent, subscriptionEventRank } from './repos/tenants.js'
 export { type SubscriptionApplyResult } from './repos/tenants.js'
-export { createAffiliateRepo, AffiliateConflictError, DealDomainTakenError, DEAL_WINDOW_DAYS, type AffiliateRepo, type AffiliateCreate, type AffiliateUpdate, type CommissionAccrual, type PaidInvoice, type DealCreateInput } from './repos/affiliates.js'
+export { createAffiliateRepo, AffiliateConflictError, DealDomainTakenError, DEAL_WINDOW_DAYS, type AffiliateRepo, type AffiliateCreate, type AffiliateUpdate, type CommissionAccrual, type PaidInvoice, type DealCreateInput, type DomainStanding } from './repos/affiliates.js'
 export { type TenantDomainRepo, DomainConflictError, DomainDuplicateError, DomainLimitError, MAX_DOMAINS_PER_TENANT } from './repos/tenantDomains.js'
 export { type AuditRepo } from './repos/audit.js'
 

@@ -267,6 +267,28 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     if ((await deps.db.affiliates.countPendingDeals(partner.id)) >= MAX_PENDING_DEALS) {
       return problem(c, 429, 'Too Many Requests', 'too_many_pending')
     }
+    /**
+     * HOUSE ACCOUNT. Registration protects new business; a company already on the platform is not
+     * new business, and a domain another partner already serves is not this one's to claim.
+     *
+     * ONE slug for both, deliberately. Two distinct answers turn this endpoint into a customer-base
+     * oracle: any active partner — a reseller, i.e. a competitor in the same market — could walk a
+     * domain list and learn precisely which companies are ours and which are a rival's. The refusal
+     * is also RATE-LIMITED and AUDIT-LOGGED, because a probe writes no row and spends no queue quota,
+     * so without those it is free and invisible. This codebase treats existence oracles as defects
+     * elsewhere (audit #67 made signup answer identically on both branches on purpose).
+     *
+     * NOT re-thrown at approval. The test is a heuristic over email domains and it will be wrong
+     * sometimes; an admin who can see a claim is legitimate must be able to say so, which is what
+     * the queue is for. The standing is shown on the row instead.
+     */
+    const probes = (await deps.redis.eval(RL_SCRIPT, 1, `deals:probe:${partner.id}`, String(DEAL_PROBE_WINDOW_S))) as number
+    if (probes > DEAL_PROBE_MAX) return problem(c, 429, 'Too Many Requests', 'too_many_pending')
+    const standing = await deps.db.affiliates.domainStanding(domain, partner.id)
+    if (standing.houseAccounts > 0 || standing.otherPartnerAccounts > 0) {
+      console.warn('deal registration refused (house account)', { affiliateId: partner.id, domain })
+      return problem(c, 409, 'Conflict', 'not_eligible')
+    }
     const row = await deps.db.affiliates.createDeal({
       affiliateId: partner.id,
       company: parsed.data.company,
@@ -386,6 +408,11 @@ function isBot(ua: string): boolean {
 
 /** How many undecided claims one partner may hold. Generous for a real pipeline, useless for a flood. */
 const MAX_PENDING_DEALS = 25
+
+/** A refused registration writes no row and spends no queue quota, so the ATTEMPT is what gets
+ *  counted — otherwise walking a domain list past the house-account test is free and leaves no trace. */
+const DEAL_PROBE_MAX = 40
+const DEAL_PROBE_WINDOW_S = 3600
 
 /** per-IP ceiling on the short link. Generous — it is a marketing URL, not a credential. */
 const CLICK_RL_PER_MIN = 120

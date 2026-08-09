@@ -185,8 +185,19 @@ function DealQueue() {
                       every signup on that domain for ninety days, and the queue used to show
                       nothing that would tell an admin whether that was reasonable. */}
                   <div className="mt-1 flex flex-wrap gap-x-4 text-xs">
-                    <span style={{ color: d.existingAccounts > 0 ? 'var(--admin-warning, var(--admin-ink))' : 'var(--admin-ink-soft)' }}>
-                      {t('affiliates.dealExisting', { count: d.existingAccounts })}
+                    {/* the registration endpoint already refuses these, so a PENDING row showing
+                        them means the state changed after filing — the case where a human, not a
+                        heuristic, should decide */}
+                    {d.standing.houseAccounts > 0 && (
+                      <span style={{ color: 'var(--admin-danger)' }} data-testid={`deal-house-${d.id}`}>
+                        {t('affiliates.dealHouse', { count: d.standing.houseAccounts })}
+                      </span>
+                    )}
+                    {d.standing.otherPartnerAccounts > 0 && (
+                      <span style={{ color: 'var(--admin-danger)' }}>{t('affiliates.dealOtherPartnerAccounts', { count: d.standing.otherPartnerAccounts })}</span>
+                    )}
+                    <span style={{ color: d.standing.accounts > 0 ? 'var(--admin-warning, var(--admin-ink))' : 'var(--admin-ink-soft)' }}>
+                      {t('affiliates.dealExisting', { count: d.standing.accounts })}
                     </span>
                     {d.affiliateEmailDomain === d.domain && (
                       <span style={{ color: 'var(--admin-danger)' }} data-testid={`deal-self-${d.id}`}>{t('affiliates.dealSelfDomain')}</span>

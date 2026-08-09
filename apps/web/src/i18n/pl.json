@@ -1189,7 +1189,15 @@
     "dealExisting_few": "{{count}} istniejące konta w tej domenie",
     "dealExisting_many": "{{count}} istniejących kont w tej domenie",
     "dealExisting_other": "{{count}} istniejącego konta w tej domenie",
-    "dealSelfDomain": "to własna domena partnera"
+    "dealSelfDomain": "to własna domena partnera",
+    "dealHouse_one": "{{count}} konto tutaj jest już nasze",
+    "dealHouse_few": "{{count}} konta tutaj są już nasze",
+    "dealHouse_many": "{{count}} kont tutaj jest już naszych",
+    "dealHouse_other": "{{count}} konta tutaj jest już naszego",
+    "dealOtherPartnerAccounts_one": "{{count}} konto należy do innego partnera",
+    "dealOtherPartnerAccounts_few": "{{count}} konta należą do innego partnera",
+    "dealOtherPartnerAccounts_many": "{{count}} kont należy do innego partnera",
+    "dealOtherPartnerAccounts_other": "{{count}} konta należy do innego partnera"
   },
   "authNav": {
     "platform": "Platforma",
