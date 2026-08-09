@@ -639,6 +639,8 @@ export const en = {
       window_many: "{{count}} months per referral",
       window_other: "{{count}} months per referral",
       windowFallback: "Recurring, limited window",
+      tierReached: "You are on the {{pct}}% tier — your best rate is active.",
+      tierProgress: "{{n}} more paying customers and your rate rises to {{pct}}%.",
       history: "Commission history",
       empty: "No commissions yet. Share your link to get started.",
       date: "Date",

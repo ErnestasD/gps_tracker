@@ -1183,7 +1183,10 @@
     "dealHouse_one": "{{count}} Konto hier gehört bereits uns",
     "dealHouse_other": "{{count}} Konten hier gehören bereits uns",
     "dealOtherPartnerAccounts_one": "{{count}} Konto gehört einem anderen Partner",
-    "dealOtherPartnerAccounts_other": "{{count}} Konten gehören einem anderen Partner"
+    "dealOtherPartnerAccounts_other": "{{count}} Konten gehören einem anderen Partner",
+    "tierPct": "Stufensatz %",
+    "tierMin": "…ab so vielen zahlenden Kunden",
+    "tierNote": "Optional. Beide leer lassen für einen festen Satz. Eine Stufe gilt für Provisionen ab dem Moment, in dem der Partner die Schwelle erreicht; bereits Erfasstes wird nicht neu bewertet."
   },
   "authNav": {
     "platform": "Plattform",

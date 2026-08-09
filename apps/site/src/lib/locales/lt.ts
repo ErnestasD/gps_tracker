@@ -636,6 +636,8 @@ export const lt: Translation = {
       window_many: "{{count}} mėnesio už kiekvieną rekomendaciją",
       window_other: "{{count}} mėnesių už kiekvieną rekomendaciją",
       windowFallback: "Pasikartojantis, ribotą laiką",
+      tierReached: "Jūs pasiekėte {{pct}}% pakopą — galioja geriausias jūsų procentas.",
+      tierProgress: "Dar {{n}} mokantys klientai — ir jūsų procentas pakyla iki {{pct}}%.",
       history: "Komisinių istorija",
       empty: "Komisinių dar nėra. Pasidalykite savo nuoroda ir pradėkite.",
       date: "Data",

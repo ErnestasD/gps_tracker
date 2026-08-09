@@ -1183,7 +1183,10 @@
     "dealHouse_one": "{{count}} account here is already ours",
     "dealHouse_other": "{{count}} accounts here are already ours",
     "dealOtherPartnerAccounts_one": "{{count}} account belongs to another partner",
-    "dealOtherPartnerAccounts_other": "{{count}} accounts belong to another partner"
+    "dealOtherPartnerAccounts_other": "{{count}} accounts belong to another partner",
+    "tierPct": "Tier rate %",
+    "tierMin": "…from this many paying customers",
+    "tierNote": "Optional. Leave both blank for a flat rate. A tier applies to commissions accrued from the moment the partner reaches the threshold; nothing already recorded is re-priced."
   },
   "authNav": {
     "platform": "Platform",

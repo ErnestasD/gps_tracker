@@ -407,6 +407,8 @@ export const affiliateCreateSchema = z.object({
   commissionPct: commissionPctSchema.optional(),
   commissionMonths: commissionMonthsSchema.optional(),
   locale: affiliateLocaleSchema.optional(),
+  tierPct: commissionPctSchema.nullable().optional(),
+  tierMinCustomers: z.number().int().min(1).max(10_000).nullable().optional(),
 })
 export const affiliateUpdateSchema = z
   .object({
@@ -415,6 +417,10 @@ export const affiliateUpdateSchema = z
     commissionPct: commissionPctSchema,
     commissionMonths: commissionMonthsSchema,
     locale: affiliateLocaleSchema,
+    // NULLABLE, not merely optional: clearing a tier back to a flat rate has to be expressible,
+    // and `undefined` means "leave it alone" in a partial patch
+    tierPct: commissionPctSchema.nullable(),
+    tierMinCustomers: z.number().int().min(1).max(10_000).nullable(),
   })
   .partial()
 export const commissionStatusUpdateSchema = z.object({ status: commissionStatusSchema })

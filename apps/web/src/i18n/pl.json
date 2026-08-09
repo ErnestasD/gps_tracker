@@ -1197,7 +1197,10 @@
     "dealOtherPartnerAccounts_one": "{{count}} konto należy do innego partnera",
     "dealOtherPartnerAccounts_few": "{{count}} konta należą do innego partnera",
     "dealOtherPartnerAccounts_many": "{{count}} kont należy do innego partnera",
-    "dealOtherPartnerAccounts_other": "{{count}} konta należy do innego partnera"
+    "dealOtherPartnerAccounts_other": "{{count}} konta należy do innego partnera",
+    "tierPct": "Stawka progu %",
+    "tierMin": "…od tylu płacących klientów",
+    "tierNote": "Opcjonalne. Zostaw oba puste dla stałej stawki. Próg obejmuje prowizje naliczane od chwili osiągnięcia progu; nic już zapisanego nie jest przeliczane."
   },
   "authNav": {
     "platform": "Platforma",

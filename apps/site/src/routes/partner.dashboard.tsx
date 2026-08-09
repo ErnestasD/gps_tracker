@@ -31,6 +31,9 @@ type PartnerMe = {
   code: string;
   commissionPct: string;
   commissionMonths: number;
+  /** performance tier: the rate that replaces commissionPct once tierMinCustomers is reached */
+  tierPct: string | null;
+  tierMinCustomers: number | null;
   status: string;
   createdAt: string;
 };
@@ -294,6 +297,20 @@ function PartnerDashboard() {
               ? t("partner.dashboard.window", { count: me.commissionMonths })
               : t("partner.dashboard.windowFallback")}
           </div>
+          {/* The tier, stated as a distance rather than a rule. A partner who does not know they are
+              two customers away from a better rate is not being incentivised by it. Shown only once
+              both halves are configured — half a tier is a mistake, not an offer. */}
+          {me?.tierPct != null && me.tierMinCustomers != null && funnel !== null && (
+            <div className="mt-3 border-t border-[var(--hairline)] pt-3 text-[11px]" data-testid="partner-tier">
+              {funnel.paying >= me.tierMinCustomers ? (
+                <span style={{ color: "var(--brand-cyan)" }}>{t("partner.dashboard.tierReached", { pct: Number(me.tierPct) })}</span>
+              ) : (
+                <span className="text-muted-foreground">
+                  {t("partner.dashboard.tierProgress", { n: me.tierMinCustomers - funnel.paying, pct: Number(me.tierPct) })}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

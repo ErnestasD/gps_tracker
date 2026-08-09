@@ -631,6 +631,8 @@ export const pl: Translation = {
       window_many: "{{count}} miesięcy na każde polecenie",
       window_other: "{{count}} miesiąca na każde polecenie",
       windowFallback: "Powtarzalnie, przez określony czas",
+      tierReached: "Jesteś na progu {{pct}}% — obowiązuje Twoja najlepsza stawka.",
+      tierProgress: "Jeszcze {{n}} płacących klientów i Twoja stawka wzrośnie do {{pct}}%.",
       history: "Historia prowizji",
       empty: "Brak prowizji. Proszę udostępnić swój link, aby zacząć.",
       date: "Data",

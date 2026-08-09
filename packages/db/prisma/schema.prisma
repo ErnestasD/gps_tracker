@@ -176,6 +176,11 @@ model Affiliate {
   /// user, so there is no user row to read a locale from — and using the referred customer's browser
   /// language would be the wrong person's preference entirely.
   locale      String                   @default("en")
+  /// PERFORMANCE TIER (optional): once the partner has this many PAYING customers, `tierPct`
+  /// replaces `commissionPct` on new accruals. Both null ⇒ a flat rate, which is the default.
+  /// History is untouched either way — every commission snapshots the rate it was earned at.
+  tierPct     Decimal?                 @db.Decimal(5, 2)
+  tierMinCustomers Int?
   commissions Commission[]
   clicks      AffiliateClick[]
   deals       DealRegistration[]

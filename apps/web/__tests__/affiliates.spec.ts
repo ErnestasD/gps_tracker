@@ -15,13 +15,17 @@ const partner: AffiliateView = {
   commissionMonths: 12,
   status: 'active',
   locale: 'en',
+  tierPct: null,
+  tierMinCustomers: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 }
-const draft = (over: Partial<{ name: string; pct: string; months: string; locale: string }> = {}) => ({
+const draft = (over: Partial<{ name: string; pct: string; months: string; locale: string; tierPct: string; tierMin: string }> = {}) => ({
   name: partner.name,
   pct: '25',
   months: '12',
   locale: partner.locale,
+  tierPct: '',
+  tierMin: '',
   ...over,
 })
 
@@ -60,6 +64,22 @@ describe('buildAffiliatePatch', () => {
   it('carries a language change — it decides which of four translations the partner receives', () => {
     expect(buildAffiliatePatch(partner, draft({ locale: 'lt' }))).toEqual({ locale: 'lt' });
   });
+
+  it('sends the tier as a PAIR, or not at all', () => {
+    // half a tier is a configuration mistake the accrual silently ignores: a rate with no threshold
+    // reads on screen like an offer and pays nothing
+    expect(buildAffiliatePatch(partner, draft({ tierPct: '30' }))).toBeNull()
+    expect(buildAffiliatePatch(partner, draft({ tierMin: '10' }))).toBeNull()
+    expect(buildAffiliatePatch(partner, draft({ tierPct: '30', tierMin: '10' }))).toEqual({ tierPct: 30, tierMinCustomers: 10 })
+  })
+
+  it('clears a tier only when BOTH boxes are emptied', () => {
+    const tiered = { ...partner, tierPct: '30.00', tierMinCustomers: 10 }
+    expect(buildAffiliatePatch(tiered, draft({ tierPct: '30', tierMin: '10' }))).toBeNull() // unchanged
+    expect(buildAffiliatePatch(tiered, draft())).toEqual({ tierPct: null, tierMinCustomers: null })
+    // …and emptying one box does NOT half-clear it
+    expect(buildAffiliatePatch(tiered, draft({ tierMin: '10' }))).toBeNull()
+  })
 
   it('an explicit 0% IS a change — it is a decision, not an empty box', () => {
     expect(buildAffiliatePatch(partner, draft({ pct: '0' }))).toEqual({ commissionPct: 0 })

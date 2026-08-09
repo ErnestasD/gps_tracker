@@ -1190,7 +1190,10 @@
     "dealHouse_other": "{{count}} paskyrų čia jau mūsų",
     "dealOtherPartnerAccounts_one": "{{count}} paskyra priklauso kitam partneriui",
     "dealOtherPartnerAccounts_few": "{{count}} paskyros priklauso kitam partneriui",
-    "dealOtherPartnerAccounts_other": "{{count}} paskyrų priklauso kitam partneriui"
+    "dealOtherPartnerAccounts_other": "{{count}} paskyrų priklauso kitam partneriui",
+    "tierPct": "Pakopos procentas",
+    "tierMin": "…nuo tiek mokančių klientų",
+    "tierNote": "Nebūtina. Palikus abu tuščius galioja vienodas procentas. Pakopa taikoma komisiniams, priskaičiuotiems nuo tada, kai partneris pasiekia ribą; jau užfiksuoti neperskaičiuojami."
   },
   "authNav": {
     "platform": "Platforma",

@@ -1,4 +1,4 @@
-import type { Affiliate, AffiliateStatus, Commission, CommissionStatus, DealRegistration, PrismaClient } from '@prisma/client'
+import type { Affiliate, AffiliateStatus, Commission, CommissionStatus, DealRegistration, Prisma, PrismaClient } from '@prisma/client'
 
 /**
  * An affiliate as the API may return it — the model MINUS `passwordHash` (argon2id, partner
@@ -48,6 +48,10 @@ export interface AffiliateUpdate {
   commissionMonths?: number
   /** the partner's own language for the mail we send them (en|lt|de|pl) */
   locale?: string
+  /** performance tier: the rate that replaces commissionPct once tierMinCustomers is reached.
+   *  `null` on either field clears the tier back to a flat rate. */
+  tierPct?: number | null
+  tierMinCustomers?: number | null
 }
 
 /** A commission accrued from a referred tenant's payment (idempotent on the source Stripe invoice). */
@@ -114,6 +118,21 @@ const PARTNER_LEDGER_LIMIT = 500
  * open. Everything else is ours until a human says otherwise.
  */
 const COLD_TENANT_SQL = `(COALESCE(t."subscriptionStatus", '') = 'trialing' AND t."stripeSubscriptionId" IS NULL AND t."commissionAnchorAt" IS NULL)`
+
+/**
+ * The rate this partner earns RIGHT NOW: their tier rate once they have enough paying customers,
+ * otherwise the base. Both tier fields must be set for a tier to exist — half a tier is a
+ * configuration mistake, not a rule, and guessing at the missing half would move money.
+ */
+async function tierRateFor(
+  prisma: PrismaClient,
+  affiliate: { id: string; commissionPct: Prisma.Decimal; tierPct: Prisma.Decimal | null; tierMinCustomers: number | null },
+): Promise<Prisma.Decimal> {
+  const { tierPct, tierMinCustomers } = affiliate
+  if (tierPct === null || tierMinCustomers === null) return affiliate.commissionPct
+  const paying = await prisma.tenant.count({ where: { referredByAffiliateId: affiliate.id, commissionAnchorAt: { not: null } } })
+  return paying >= tierMinCustomers ? tierPct : affiliate.commissionPct
+}
 
 /** Claims are a queue a human works through, not an archive — bound the read like the ledger. */
 const DEAL_LIST_LIMIT = 500
@@ -444,6 +463,8 @@ const PUBLIC_SELECT = {
   commissionMonths: true,
   status: true,
   locale: true,
+  tierPct: true,
+  tierMinCustomers: true,
   createdAt: true,
 } as const
 
@@ -644,9 +665,20 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
       }
       if (affiliate.status !== 'active') return null // suspended/pending ⇒ commissions stop (window still anchored)
       if (invoice.paidAt > addMonthsUtc(anchorAt, months)) return null
-      // SNAPSHOT the rate with the entry (§6.9): reading it live meant an admin editing commissionPct
-      // re-priced every still-open commission, and editing commissionMonths could reopen a closed window.
-      const ratePct = affiliate.commissionPct
+      /**
+       * SNAPSHOT the rate with the entry (§6.9): reading it live meant an admin editing commissionPct
+       * re-priced every still-open commission, and editing commissionMonths could reopen a closed
+       * window.
+       *
+       * PERFORMANCE TIER, resolved here and then frozen with the row. "Paying customers" is counted
+       * the same way the registry counts it — tenants of this partner that have ever paid an
+       * invoice — INCLUDING the one being accrued right now, which is why the count happens after
+       * the anchor is claimed above: a partner whose tenth customer's first payment is this very
+       * invoice earns the higher rate on it, not on the next one. Crossing back below the threshold
+       * (a churned customer) lowers the rate on FUTURE accruals only; everything already earned
+       * keeps the rate it was earned at, because that is what the snapshot is for.
+       */
+      const ratePct = await tierRateFor(prisma, affiliate)
       const amountCents = Math.floor((invoice.amountPaidCents * Number(ratePct)) / 100)
       if (amountCents <= 0) return null // a $0 invoice / 100%-discount / zero-rate owes nothing
       // idempotent on the invoice id — a DUPLICATE delivery is a no-op (null); any OTHER fault rethrows
