@@ -141,6 +141,7 @@ model Tenant {
   /// tenant's referrer on every paid invoice — both were unindexed scans (migration 20260808070000)
   @@index([referredByAffiliateId])
   commissions         Commission[]       @relation("TenantCommissions")
+  dealConversions     DealRegistration[] @relation("DealConversions")
   usageReports        UsageReport[]
 
   @@map("tenants")
@@ -246,8 +247,13 @@ model DealRegistration {
   expiresAt    DateTime?  @db.Timestamptz()
   reviewedAt   DateTime?  @db.Timestamptz()
   reviewedBy   String?    @db.Uuid
-  /// the tenant this claim actually produced, once one signs up
+  /// The tenant this claim actually produced, stamped once by the first signup.
+  ///
+  /// The claim is NOT spent by it: `converted` used to be written here and `claimFor` only matches
+  /// `approved`, so any stranger could POST an unverified signup at the prospect's domain and end
+  /// the partner's ninety days. ON DELETE SET NULL because retention prunes unverified signups.
   convertedTenantId String? @db.Uuid
+  convertedTenant   Tenant? @relation("DealConversions", fields: [convertedTenantId], references: [id], onDelete: SetNull)
   convertedAt  DateTime?  @db.Timestamptz()
   createdAt    DateTime   @default(now()) @db.Timestamptz()
 

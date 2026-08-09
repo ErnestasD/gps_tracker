@@ -260,6 +260,13 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     const { domain } = parsed.data
     if (FREE_MAIL_DOMAINS.has(domain)) return problem(c, 400, 'Bad Request', 'free_mail_domain')
     if (domain === emailDomain(partner.email)) return problem(c, 400, 'Bad Request', 'own_domain')
+    // A CAP ON THE OUTSTANDING QUEUE, not on the total. The admin queue is one bounded page ordered
+    // pending-first, so a partner filing junk claims could otherwise push every competitor's pending
+    // claim off the only screen anyone reviews them on — and nothing ages them out. Once ours are
+    // decided, more can be filed.
+    if ((await deps.db.affiliates.countPendingDeals(partner.id)) >= MAX_PENDING_DEALS) {
+      return problem(c, 429, 'Too Many Requests', 'too_many_pending')
+    }
     const row = await deps.db.affiliates.createDeal({
       affiliateId: partner.id,
       company: parsed.data.company,
@@ -376,6 +383,9 @@ const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|monitor|curl|wget|python-|h
 function isBot(ua: string): boolean {
   return ua === '' || BOT_UA.test(ua)
 }
+
+/** How many undecided claims one partner may hold. Generous for a real pipeline, useless for a flood. */
+const MAX_PENDING_DEALS = 25
 
 /** per-IP ceiling on the short link. Generous — it is a marketing URL, not a credential. */
 const CLICK_RL_PER_MIN = 120

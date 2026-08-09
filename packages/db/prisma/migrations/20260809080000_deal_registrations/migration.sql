@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS "deal_registrations" (
   "contactName"       TEXT,
   "contactEmail"      TEXT,
   "note"              TEXT,
+  -- 'converted' is RESERVED and never written: spending a claim on the first tenant row let an
+  -- unverified stranger end a partner's protection. A claim stays 'approved' for its whole window
+  -- and records which tenant it produced in convertedTenantId.
   "status"            "DealStatus" NOT NULL DEFAULT 'pending',
   "reason"            TEXT,
   -- set on approval; a claim that outlives it attributes nothing. Expiry is DERIVED at read time,
@@ -29,7 +32,12 @@ CREATE TABLE IF NOT EXISTS "deal_registrations" (
   "convertedAt"       TIMESTAMPTZ,
   "createdAt"         TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT "deal_registrations_affiliateId_fkey" FOREIGN KEY ("affiliateId")
-    REFERENCES "affiliates"("id") ON DELETE CASCADE ON UPDATE CASCADE
+    REFERENCES "affiliates"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  -- SET NULL, not CASCADE: an unverified signup is pruned by retention, and the claim it touched
+  -- must survive that with a null pointer rather than being deleted or left dangling at a tenant
+  -- that no longer exists.
+  CONSTRAINT "deal_registrations_convertedTenantId_fkey" FOREIGN KEY ("convertedTenantId")
+    REFERENCES "tenants"("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- signup resolves a claim by domain on every unattributed registration

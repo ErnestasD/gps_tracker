@@ -1180,7 +1180,11 @@
       "approved": "Rezervuota",
       "converted": "Užsiregistravo",
       "rejected": "Atmesta"
-    }
+    },
+    "dealExisting_one": "{{count}} esama paskyra šiame domene",
+    "dealExisting_few": "{{count}} esamos paskyros šiame domene",
+    "dealExisting_other": "{{count}} esamų paskyrų šiame domene",
+    "dealSelfDomain": "tai paties partnerio domenas"
   },
   "authNav": {
     "platform": "Platforma",

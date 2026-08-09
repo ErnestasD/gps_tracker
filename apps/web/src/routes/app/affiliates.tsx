@@ -22,6 +22,7 @@ import {
   type DealView,
 } from '@/lib/affiliates'
 import { getCurrentUser } from '@/lib/auth'
+import { ApiError } from '@/lib/http'
 import { useFmt } from '@/lib/datetime'
 
 const STATUS_TONE: Record<AffiliateStatus, 'success' | 'warning' | 'neutral'> = { active: 'success', pending: 'warning', suspended: 'neutral' }
@@ -180,6 +181,17 @@ function DealQueue() {
                   <div className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
                     <code className="mono">{d.domain}</code> · {t('affiliates.dealBy', { name: d.affiliateName })} · {dt(d.createdAt)}
                   </div>
+                  {/* the two facts the decision actually turns on. Approving hands this partner
+                      every signup on that domain for ninety days, and the queue used to show
+                      nothing that would tell an admin whether that was reasonable. */}
+                  <div className="mt-1 flex flex-wrap gap-x-4 text-xs">
+                    <span style={{ color: d.existingAccounts > 0 ? 'var(--admin-warning, var(--admin-ink))' : 'var(--admin-ink-soft)' }}>
+                      {t('affiliates.dealExisting', { count: d.existingAccounts })}
+                    </span>
+                    {d.affiliateEmailDomain === d.domain && (
+                      <span style={{ color: 'var(--admin-danger)' }} data-testid={`deal-self-${d.id}`}>{t('affiliates.dealSelfDomain')}</span>
+                    )}
+                  </div>
                   {d.note !== null && d.note !== '' && <div className="mt-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{d.note}</div>}
                 </div>
                 <Badge tone={DEAL_TONE[d.status]} data-testid={`deal-status-${d.id}`}>{t(`affiliates.dealStatus.${d.status}`)}</Badge>
@@ -195,7 +207,10 @@ function DealQueue() {
                       onClick={() => {
                         // the reason is shown to the PARTNER, so it is asked for rather than left
                         // blank — a rejection with no explanation is the support ticket this avoids
-                        const reason = window.prompt(t('affiliates.dealRejectReason')) ?? ''
+                        const reason = window.prompt(t('affiliates.dealRejectReason'))
+                        // CANCEL MEANS CANCEL. `?? ''` turned Escape into an irreversible rejection
+                        // with no explanation — and a decided claim cannot be decided again.
+                        if (reason === null) return
                         decide.mutate({ id: d.id, status: 'rejected', reason })
                       }}
                       data-testid={`deal-reject-${d.id}`}
@@ -214,7 +229,9 @@ function DealQueue() {
       )}
       {decide.isError && (
         <p role="alert" className="admin-hairline-t px-4 py-2 text-xs" style={{ color: 'var(--admin-danger)' }} data-testid="deal-error">
-          {t('affiliates.dealConflict')}
+          {/* 409 is the only one that means what the conflict copy says. Showing it for a 404
+              (already decided) or a 500 sends an admin looking for a rival claim that isn't there. */}
+          {decide.error instanceof ApiError && decide.error.status === 409 ? t('affiliates.dealConflict') : t('affiliates.actionError')}
         </p>
       )}
     </div>

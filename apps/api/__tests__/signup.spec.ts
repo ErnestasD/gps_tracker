@@ -434,10 +434,17 @@ describe('public self-serve signup (F2)', () => {
     const claim = await approve(claimer.id, 'protectedco.test')
     const direct = (await (await signup({ name: 'Direct', email: 'ops@protectedco.test', password: 'password12' })).json()) as { id: string }
     expect((await db.tenants.get(direct.id))!.referredByAffiliateId).toBe(claimer.id)
-    // …and the claim is spent, so a second signup from that domain does not re-use it
+    // the claim RECORDS the tenant but is NOT spent — an unverified signup by a stranger (or one
+    // employee abandoning the form) would otherwise end the partner's ninety days, and retention
+    // then deletes that tenant leaving nothing behind
     const after = (await db.affiliates.listDealsForPartner(claimer.id)).find((d) => d.id === claim.id)
-    expect(after?.status).toBe('converted')
+    expect(after?.status).toBe('approved')
     expect(after?.convertedTenantId).toBe(direct.id)
+    // …so a SECOND signup on that domain inside the window is still attributed
+    const second = (await (await signup({ name: 'Second', email: 'fleet2@protectedco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(second.id))!.referredByAffiliateId).toBe(claimer.id)
+    // and the first tenant it produced is not overwritten
+    expect((await db.affiliates.listDealsForPartner(claimer.id)).find((d) => d.id === claim.id)?.convertedTenantId).toBe(direct.id)
 
     // A LINK WINS over someone else's standing claim: the link is the customer's own action at the
     // moment of signing up, and a claim must never quietly take a signup another partner drove.
@@ -450,12 +457,19 @@ describe('public self-serve signup (F2)', () => {
     const unapproved = (await (await signup({ name: 'Pending', email: 'ops@pendingco.test', password: 'password12' })).json()) as { id: string }
     expect((await db.tenants.get(unapproved.id))!.referredByAffiliateId).toBeNull()
 
-    // an EXPIRED claim attributes nothing either — expiry is derived at read time, not swept
-    const stale = await approve(claimer.id, 'staleco.test')
-    await db.affiliates.decideDeal(actor, stale.id, 'approved', undefined, new Date()) // already decided → no-op
-    await db.affiliates.setDealExpiry(stale.id, new Date(Date.now() - 86_400_000))
+    // an EXPIRED claim attributes nothing either — expiry is derived at read time, not swept.
+    // Approved with a backdated `now`, so its window (now + 90d) has already closed. No test seam
+    // on the repo: a method that can silently extend a money window has no business existing.
+    const stale = await db.affiliates.createDeal({ affiliateId: claimer.id, company: 'Stale', domain: 'staleco.test' })
+    await db.affiliates.decideDeal(actor, stale.id, 'approved', undefined, new Date(Date.now() - 91 * 86_400_000))
     const expired = (await (await signup({ name: 'Stale', email: 'ops@staleco.test', password: 'password12' })).json()) as { id: string }
     expect((await db.tenants.get(expired.id))!.referredByAffiliateId).toBeNull()
+
+    // a partner cannot earn on THEIR OWN signup through a claim either (§6.9) — the link path has
+    // always had this floor, and `selfReferral` setting linked=null is exactly what opens this branch
+    await approve(claimer.id, 'claimerco.test')
+    const own = (await (await signup({ name: 'Self', email: 'ops@claimerco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(own.id))!.referredByAffiliateId).toBeNull()
 
     // a SUSPENDED partner's claim attributes nothing, exactly as their code would not
     await approve(claimer.id, 'suspendedclaim.test')

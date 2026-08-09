@@ -1184,7 +1184,12 @@
       "approved": "Chronione",
       "converted": "Zarejestrowany",
       "rejected": "Odrzucone"
-    }
+    },
+    "dealExisting_one": "{{count}} istniejące konto w tej domenie",
+    "dealExisting_few": "{{count}} istniejące konta w tej domenie",
+    "dealExisting_many": "{{count}} istniejących kont w tej domenie",
+    "dealExisting_other": "{{count}} istniejącego konta w tej domenie",
+    "dealSelfDomain": "to własna domena partnera"
   },
   "authNav": {
     "platform": "Platforma",

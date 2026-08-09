@@ -261,10 +261,20 @@ export interface AffiliateRepo {
   // ── deal registration (§6.9) ──────────────────────────────────────────────────────────────────
   /** A partner claims a prospect. Always lands as `pending` — approval is a human decision. */
   createDeal(data: DealCreateInput): Promise<DealRegistration>
+  /** How many of a partner's claims are still awaiting a decision — the outstanding-queue cap. */
+  countPendingDeals(affiliateId: string): Promise<number>
   /** One partner's own claims, newest first. */
   listDealsForPartner(affiliateId: string): Promise<DealRegistration[]>
-  /** Every claim, for the admin queue. Newest first; pending ones are what need action. */
-  listDeals(): Promise<(DealRegistration & { affiliateName: string })[]>
+  /**
+   * Every claim, for the admin queue — PENDING FIRST, because those are the only rows that need
+   * anything from anyone, and a partner filing junk claims must not be able to push a competitor's
+   * pending one off the end of the page.
+   *
+   * Each row carries the two facts the decision actually turns on and which the queue had no way to
+   * show: how many accounts ALREADY use that domain (is this a customer someone else owns?), and
+   * the claiming partner's own email domain (is this a self-referral wearing a second domain?).
+   */
+  listDeals(): Promise<(DealRegistration & { affiliateName: string; affiliateEmailDomain: string; existingAccounts: number })[]>
   /**
    * Approve or reject a pending claim.
    *
@@ -284,12 +294,21 @@ export interface AffiliateRepo {
    * Oldest live claim wins, so the answer cannot change under a concurrent approval.
    */
   claimFor(domain: string, now: Date): Promise<DealRegistration | null>
-  /** Record that a claim produced a tenant (idempotent — only the first signup converts it). */
+  /**
+   * Record that a claim produced a tenant — WITHOUT spending it.
+   *
+   * It used to flip the claim to `converted`, and `claimFor` only matches `approved`, so the first
+   * tenant row on that domain ended the protection. That is reachable by anyone: `POST
+   * /v1/public/signup` with `ops@bigfleet.lt` creates a tenant before any address is verified, the
+   * activation mail goes to the real customer who never clicks it, `pruneUnverifiedSignups` deletes
+   * the tenant — and the partner's ninety days are gone, burnt by a stranger or by one employee who
+   * abandoned a form. A competitor could do it deliberately for every contested prospect.
+   *
+   * The claim stays `approved` for its full window, so a customer's later (or second) signup is
+   * still attributed. `convertedTenantId` is stamped once, by the first signup, purely so the
+   * partner can see it landed.
+   */
   markDealConverted(id: string, tenantId: string, now: Date): Promise<void>
-  /** TEST SEAM: move a claim's expiry. Expiry is derived at read time and never written by the
-   *  product, so proving "an expired claim attributes nothing" needs a way to age one — and reaching
-   *  into the table from a test would put SQL outside packages/db (hard rule 2). */
-  setDealExpiry(id: string, expiresAt: Date): Promise<void>
   listCommissions(affiliateId?: string): Promise<Commission[]>
   /**
    * A refunded customer payment reverses the commission it earned (Stripe `charge.refunded`).
@@ -630,14 +649,31 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
           ...(data.note !== undefined ? { note: data.note } : {}),
         },
       }),
+    countPendingDeals: (affiliateId) => prisma.dealRegistration.count({ where: { affiliateId, status: 'pending' } }),
     listDealsForPartner: (affiliateId) => prisma.dealRegistration.findMany({ where: { affiliateId }, orderBy: { createdAt: 'desc' }, take: DEAL_LIST_LIMIT }),
     listDeals: async () => {
       const rows = await prisma.dealRegistration.findMany({
-        orderBy: { createdAt: 'desc' },
+        // pending first IN SQL — sorting client-side over a `take` window means a flood of new
+        // claims silently drops older pending ones out of the only screen an admin has
+        orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
         take: DEAL_LIST_LIMIT,
-        include: { affiliate: { select: { name: true } } },
+        include: { affiliate: { select: { name: true, email: true } } },
       })
-      return rows.map(({ affiliate, ...d }) => ({ ...d, affiliateName: affiliate.name }))
+      if (rows.length === 0) return []
+      // ONE grouped query for every domain on the page, not one per row
+      const domains = [...new Set(rows.map((r) => r.domain))]
+      const counts = await prisma.$queryRaw<{ d: string; n: bigint }[]>`
+        SELECT split_part(lower(email), '@', 2) AS d, count(*) AS n
+        FROM users
+        WHERE split_part(lower(email), '@', 2) = ANY(${domains}::text[])
+        GROUP BY 1`
+      const byDomain = new Map(counts.map((c) => [c.d, Number(c.n)]))
+      return rows.map(({ affiliate, ...d }) => ({
+        ...d,
+        affiliateName: affiliate.name,
+        affiliateEmailDomain: affiliate.email.slice(affiliate.email.lastIndexOf('@') + 1).toLowerCase(),
+        existingAccounts: byDomain.get(d.domain) ?? 0,
+      }))
     },
     decideDeal: async (actor, id, status, reason, now) => {
       const updated = await prisma.$transaction(async (tx) => {
@@ -647,14 +683,19 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
         // silently re-open a window that has already paid out
         if (before.status !== 'pending') return null
         if (status === 'approved') {
-          // EXCLUSIVE. Inside the transaction so two admins approving competing claims for the same
-          // domain in the same second cannot both succeed.
+          // A TRANSACTION IS NOT A LOCK. Prisma runs at Postgres' default READ COMMITTED, and the
+          // check below is a plain read against a NON-unique index — so two admins approving
+          // competing claims on the same domain each see "nothing live" (neither can see the
+          // other's uncommitted UPDATE), each updates a DIFFERENT row, and both commit. Two
+          // partners then hold written promises on one prospect, which is discovered when the money
+          // is owed twice. The advisory lock serialises them on the domain itself.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${before.domain}))`
           const live = await tx.dealRegistration.findFirst({
-            where: { domain: before.domain, status: { in: ['approved', 'converted'] }, expiresAt: { gt: now }, NOT: { id } },
+            where: { domain: before.domain, status: 'approved', expiresAt: { gt: now }, NOT: { id } },
           })
           if (live !== null) throw new DealDomainTakenError()
         }
-        return tx.dealRegistration.update({
+        const row = await tx.dealRegistration.update({
           where: { id },
           data: {
             status,
@@ -664,15 +705,21 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
             ...(status === 'approved' ? { expiresAt: new Date(now.getTime() + DEAL_WINDOW_DAYS * 86_400_000) } : {}),
           },
         })
-      })
-      if (updated === null) return null
-      // the money control it is: an approved claim attributes future signups to a partner, so who
-      // approved it and when has to be answerable later
-      await audit.recordPlatform(actor, {
-        action: 'update',
-        entity: 'deal_registration',
-        entityId: id,
-        after: { status: updated.status, domain: updated.domain, affiliateId: updated.affiliateId, expiresAt: updated.expiresAt },
+        // AUDITED IN THE SAME TRANSACTION. Written after the commit, a failing audit left the
+        // approval standing and unrecorded while the admin saw an error saying it had not saved —
+        // the worst of both. An approved claim attributes future signups to a partner, so who
+        // approved it and when has to be answerable later, or not have happened at all.
+        await tx.auditLog.create({
+          data: {
+            tenantId: null,
+            userId: actor.userId,
+            action: 'update',
+            entity: 'deal_registration',
+            entityId: id,
+            after: { status: row.status, domain: row.domain, affiliateId: row.affiliateId, expiresAt: row.expiresAt?.toISOString() ?? null } as never,
+          },
+        })
+        return row
       })
       return updated
     },
@@ -683,15 +730,13 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
         orderBy: { createdAt: 'asc' },
       }),
     markDealConverted: async (id, tenantId, now) => {
-      // guarded on `approved`, so a second signup from the same domain does not overwrite the tenant
-      // the claim actually produced
+      // `convertedTenantId: null` in the predicate: the FIRST signup stamps it and later ones do not
+      // overwrite it. The status is deliberately NOT touched — see the interface note on why
+      // spending the claim here hands a stranger the power to end a partner's protection.
       await prisma.dealRegistration.updateMany({
-        where: { id, status: 'approved' },
-        data: { status: 'converted', convertedTenantId: tenantId, convertedAt: now },
+        where: { id, convertedTenantId: null },
+        data: { convertedTenantId: tenantId, convertedAt: now },
       })
-    },
-    setDealExpiry: async (id, expiresAt) => {
-      await prisma.dealRegistration.update({ where: { id }, data: { expiresAt } })
     },
     listCommissions: (affiliateId) =>
       prisma.commission.findMany({ where: affiliateId !== undefined ? { affiliateId } : {}, orderBy: { createdAt: 'desc' } }),

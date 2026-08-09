@@ -349,7 +349,12 @@ export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
   'gmx.com', 'gmx.de', 'gmx.net', 'web.de', 't-online.de', 'freenet.de',
   'inbox.lt', 'gmail.lt', 'takas.lt', 'one.lt', 'zebra.lt', 'centras.lt', 'delfi.lt',
   'wp.pl', 'o2.pl', 'onet.pl', 'interia.pl', 'gazeta.pl', 'op.pl', 'poczta.onet.pl',
-  'yandex.ru', 'mail.ru', 'seznam.cz', 'zoho.com', 'fastmail.com', 'hushmail.com', 'tutanota.com', 'tuta.io',
+  'yandex.ru', 'yandex.com', 'yandex.by', 'yandex.kz', 'mail.ru', 'bk.ru', 'list.ru', 'inbox.ru', 'ukr.net',
+  'seznam.cz', 'zoho.com', 'fastmail.com', 'hushmail.com', 'tutanota.com', 'tuta.io',
+  'mail.com', 'email.com', 'live.co.uk', 'live.de', 'hotmail.de', 'hotmail.fr', 'outlook.de', 'outlook.fr',
+  'yahoo.de', 'yahoo.fr', 'yahoo.pl', 'gmx.at', 'gmx.ch', 'poczta.fm', 'vp.pl', 'azet.sk', 'centrum.sk',
+  // disposable providers: a claim on one of these is a claim on everybody who ever used it
+  'mailinator.com', '10minutemail.com', 'guerrillamail.com', 'yopmail.com', 'temp-mail.org', 'sharklasers.com',
 ])
 
 /** The domain part of an address, lowercased. '' for anything that is not an address. */

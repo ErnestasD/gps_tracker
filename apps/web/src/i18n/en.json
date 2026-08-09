@@ -1176,7 +1176,10 @@
       "approved": "Protected",
       "converted": "Signed up",
       "rejected": "Rejected"
-    }
+    },
+    "dealExisting_one": "{{count}} existing account on this domain",
+    "dealExisting_other": "{{count}} existing accounts on this domain",
+    "dealSelfDomain": "this is the partner's own domain"
   },
   "authNav": {
     "platform": "Platform",

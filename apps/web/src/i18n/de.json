@@ -1176,7 +1176,10 @@
       "approved": "Geschützt",
       "converted": "Registriert",
       "rejected": "Abgelehnt"
-    }
+    },
+    "dealExisting_one": "{{count}} bestehendes Konto auf dieser Domain",
+    "dealExisting_other": "{{count}} bestehende Konten auf dieser Domain",
+    "dealSelfDomain": "das ist die eigene Domain des Partners"
   },
   "authNav": {
     "platform": "Plattform",

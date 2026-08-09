@@ -214,14 +214,29 @@ describe('partner self-service auth (F5)', () => {
 
     const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
     const funnel = async () => (await (await j('/v1/partner/funnel', 'GET', undefined, bearer(tok))).json()) as { clicksTotal: number; signups: number }
-    expect((await funnel()).clicksTotal).toBe(1)
+    /**
+     * Counting happens AFTER the redirect is sent — deliberately, so a valid code does no work an
+     * invalid one does not (the timing oracle) and so no visitor waits on it. That makes the count
+     * eventually consistent, so the test waits for it rather than assuming the write landed before
+     * the response did.
+     */
+    const clicksReach = async (n: number) => {
+      for (let i = 0; i < 40; i++) {
+        if ((await funnel()).clicksTotal === n) return n
+        await new Promise((r) => setTimeout(r, 50))
+      }
+      return (await funnel()).clicksTotal
+    }
+    expect(await clicksReach(1)).toBe(1)
 
     // the same visitor refreshing five times is still ONE person who opened the link
     for (let i = 0; i < 5; i++) await hit(code)
+    await new Promise((r) => setTimeout(r, 300))
     expect((await funnel()).clicksTotal).toBe(1)
 
     // a link-preview fetcher is not a visitor
     await hit(code, { 'user-agent': 'WhatsApp/2.23 facebookexternalhit/1.1' })
+    await new Promise((r) => setTimeout(r, 300))
     expect((await funnel()).clicksTotal).toBe(1)
 
     // an UNKNOWN code redirects exactly like a real one — otherwise this is a public oracle over
@@ -318,7 +333,44 @@ describe('partner self-service auth (F5)', () => {
     // …and a decided claim cannot be decided again — re-approving would move the expiry and
     // silently re-open a window that may already have paid out
     expect((await admin(`/v1/deals/${claim.id}`, 'PATCH', { status: 'rejected' })).status).toBe(404)
-    void bCode
+    expect(bCode).toMatch(/^[A-Za-z0-9-]{3,}$/) // B has a usable code; the link-wins case lives in signup.spec
+  })
+
+  it('two admins approving competing claims on one domain in the same instant: exactly one wins', async () => {
+    const a = await makePartner('racea@partnerco.test', 'partnerpass1')
+    const b = await makePartner('raceb@otherco.test', 'partnerpass1')
+    const toks = await Promise.all([a, b].map(async (p) => ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken))
+    const ids = await Promise.all(
+      toks.map(async (tok) => ((await (await j('/v1/partner/deals', 'POST', { company: 'Contested', domain: 'racedomain.test' }, bearer(tok))).json()) as { id: string }).id),
+    )
+    // A TRANSACTION IS NOT A LOCK: at READ COMMITTED neither approval can see the other's
+    // uncommitted write, and they update different rows so nothing collides. Without the advisory
+    // lock both used to succeed, leaving two partners each holding a written promise on one prospect.
+    const results = await Promise.all(ids.map((id) => admin(`/v1/deals/${id}`, 'PATCH', { status: 'approved' })))
+    const codes = results.map((r) => r.status).sort()
+    expect(codes).toEqual([200, 409])
+    // and exactly one live claim exists for that domain
+    expect((await db.affiliates.claimFor('racedomain.test', new Date()))).not.toBeNull()
+  })
+
+  it('a partner never sees another partner’s claims, and cannot flood the review queue', async () => {
+    const a = await makePartner('mine@partnerco.test', 'partnerpass1')
+    const b = await makePartner('theirs@otherco.test', 'partnerpass1')
+    const aTok = ((await (await login(a.email, a.password)).json()) as { accessToken: string }).accessToken
+    const bTok = ((await (await login(b.email, b.password)).json()) as { accessToken: string }).accessToken
+    await j('/v1/partner/deals', 'POST', { company: 'A Co', domain: 'aonly.test' }, bearer(aTok))
+    await j('/v1/partner/deals', 'POST', { company: 'B Co', domain: 'bonly.test' }, bearer(bTok))
+    const aList = (await (await j('/v1/partner/deals', 'GET', undefined, bearer(aTok))).json()) as { domain: string }[]
+    expect(aList.map((d) => d.domain)).toEqual(['aonly.test'])
+
+    // the admin queue is one bounded, pending-first page — a partner filing junk must not be able to
+    // push every competitor's pending claim off the only screen anyone reviews them on
+    let refused = 0
+    for (let i = 0; i < 30; i++) {
+      const res = await j('/v1/partner/deals', 'POST', { company: `Flood ${i}`, domain: `flood${i}.test` }, bearer(bTok))
+      if (res.status === 429) refused += 1
+    }
+    expect(refused).toBeGreaterThan(0)
   })
 
   it('login rejects wrong password, unknown email, an unset-password partner, and a non-active partner', async () => {

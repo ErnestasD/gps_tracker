@@ -74,6 +74,10 @@ export interface DealView {
   contactEmail: string | null
   note: string | null
   status: 'pending' | 'approved' | 'rejected' | 'converted'
+  /** the claiming partner's OWN email domain — a match with `domain` is a self-referral signal */
+  affiliateEmailDomain: string
+  /** accounts already using that email domain: is this a customer someone else owns? */
+  existingAccounts: number
   reason: string | null
   expiresAt: string | null
   convertedTenantId: string | null
