@@ -205,7 +205,16 @@ async function main(): Promise<void> {
   })
   // ADR-031: transactional auth emails (password-reset) — the API enqueues, the worker renders the
   // tenant-branded message and sends it via the SAME transport. Env-gated: no transport ⇒ no-op.
-  const authEmailWorker = startAuthEmailWorker({ connection: recomputeConn, pool, transport: emailTransport })
+  const authEmailWorker = startAuthEmailWorker({
+    connection: recomputeConn,
+    pool,
+    transport: emailTransport,
+    // `auth_email` joins retention / scheduled_reports / stripe_usage / lapse_sweep on the one
+    // alert that watches background jobs. Without it, a permanently failing activation mail was
+    // invisible — and one dead-lettered job proved it by sitting unnoticed for three days.
+    onFailed: (kind) => prom.jobFailed.inc({ job: `auth_email:${kind}` }),
+    onSent: (kind) => prom.authEmailSent.inc({ kind }),
+  })
   // the worker enqueues onto the SAME auth-email queue the api uses — the lapse ladder is the only
   // mail this process originates, and it must land in the same branded shell as the rest
   const authEmailQueue = createAuthEmailQueue(recomputeConn)

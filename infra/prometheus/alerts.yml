@@ -138,7 +138,7 @@ groups:
         labels: { severity: critical, component: worker }
         annotations:
           summary: "Worker job failing: {{ $labels.job }}"
-          description: "A background job has thrown in the last hour. `stripe_usage` is silent under-billing (no backfill exists); `retention` means data is growing past policy."
+          description: "A background job has thrown in the last hour. `stripe_usage` is silent under-billing (no backfill exists); `retention` means data is growing past policy; `auth_email:*` means a transactional message — an activation link, a password reset, the final warning before a fleet is cut off — is not being delivered, and the recipient has no way to know."
 
       - alert: UsageSweepFailing
         expr: increase(usage_sweep_failed_total[1h]) > 0

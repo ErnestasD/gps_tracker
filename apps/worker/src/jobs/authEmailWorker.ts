@@ -18,6 +18,17 @@ export interface AuthEmailWorkerDeps {
    *  (channel skipped, same env-gating as every other driver) — NOT a retryable failure. */
   transport?: EmailTransport | undefined
   onSent?: (kind: string) => void
+  /**
+   * A transactional mail failed permanently.
+   *
+   * This existed as a field and was never wired, so `worker_job_failed_total` — the metric the only
+   * background-job alert watches — had no `auth_email` series at all. Activation, password reset,
+   * "someone tried to sign up with your address", the lapse ladder's FINAL warning before a fleet is
+   * cut off, and every partner notice could all die permanently with nothing anywhere saying so. A
+   * customer who never receives their activation mail cannot log in at all, and we would learn about
+   * it from them.
+   */
+  onFailed?: (kind: string) => void
 }
 
 /**
@@ -166,8 +177,16 @@ export function startAuthEmailWorker(deps: AuthEmailWorkerDeps): Worker<AuthEmai
   return new Worker<AuthEmailJob>(
     AUTH_EMAIL_QUEUE,
     async (job) => {
-      const sent = await sendAuthEmail(deps, job.data)
-      if (sent) deps.onSent?.(job.data.kind)
+      try {
+        const sent = await sendAuthEmail(deps, job.data)
+        if (sent) deps.onSent?.(job.data.kind)
+      } catch (err) {
+        // counted on EVERY attempt, not only the last: BullMQ retries five times with backoff, and a
+        // rising count during the retries is the earliest signal that mail is broken — waiting for
+        // the dead-letter means waiting up to an hour to find out.
+        deps.onFailed?.(typeof job.data?.kind === 'string' ? job.data.kind : 'unknown')
+        throw err // still a failure: the retry is what recovers a transient SMTP blip
+      }
     },
     { connection: deps.connection, concurrency: 4 },
   )
