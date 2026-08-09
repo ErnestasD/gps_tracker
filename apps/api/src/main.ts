@@ -82,7 +82,7 @@ const mail = {
   // A partner heard NOTHING before this: they were handed a link and had to log in on a hunch to
   // find out whether it had worked. `tenantId: ''` is load-bearing — the worker short-circuits
   // branding for this kind, so the mail is ours whatever tenant the referral belongs to.
-  enqueuePartnerEmail: async (job: { kind: 'partner'; event: 'referral' | 'commission'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void> => {
+  enqueuePartnerEmail: async (job: { kind: 'partner'; event: 'referral' | 'commission' | 'payout-request'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void> => {
     await authEmailQueue.add('auth-email', job, authEmailOpts)
   },
 }
@@ -120,6 +120,8 @@ const deps = {
   ...(process.env['APP_BASE_URL'] ? { appBaseUrl: process.env['APP_BASE_URL'] } : {}),
   // where a partner's short link `/r/<code>` lands — the marketing site, not the dashboard
   ...(process.env['SITE_BASE_URL'] ? { siteUrl: process.env['SITE_BASE_URL'].replace(/\/+$/, '') } : {}),
+  // where a partner's payout request lands; absent ⇒ the request is logged and audited, not mailed
+  ...(process.env['PARTNER_OPS_EMAIL'] ? { opsEmail: process.env['PARTNER_OPS_EMAIL'] } : {}),
   // White-label hosting: PLATFORM_DOMAIN turns on `<slug>.orbetra.com` (needs the `*` A record),
   // EDGE_HOSTNAME is what a tenant CNAMEs their own domain to. Both optional — absent simply means
   // the corresponding half of the setup instructions is not offered rather than shown wrong.
@@ -165,6 +167,7 @@ const deps = {
     ...(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP'] !== undefined ? { maxFailsPerIp: Number(process.env['PARTNER_LOCKOUT_MAX_FAILS_PER_IP']) } : {}),
     ...(process.env['PARTNER_LOCKOUT_MAX_ATTEMPTS_PER_IP_HARD'] !== undefined ? { maxAttemptsPerIpHard: Number(process.env['PARTNER_LOCKOUT_MAX_ATTEMPTS_PER_IP_HARD']) } : {}),
     ...(process.env['PARTNER_LOCKOUT_MAX_FAIL_IPS_PER_EMAIL'] !== undefined ? { maxFailIpsPerEmail: Number(process.env['PARTNER_LOCKOUT_MAX_FAIL_IPS_PER_EMAIL']) } : {}),
+    ...(process.env['PARTNER_REDEEM_MAX'] !== undefined ? { setPwRedeemMax: Number(process.env['PARTNER_REDEEM_MAX']) } : {}),
   },
   // hard ceiling on one live socket (default 4 h). A stream is authorized only at connect, so this
   // is what makes a plan downgrade / role change eventually reach an already-open one; clients

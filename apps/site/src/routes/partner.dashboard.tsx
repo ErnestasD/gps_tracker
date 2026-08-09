@@ -1,8 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, LogOut, Plus } from "lucide-react";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
+import { Copy, Download, LogOut, Plus } from "lucide-react";
+import { API_URL, ApiError, apiGet, apiPost } from "@/lib/api";
 import { usePartnerToken, setPartnerToken } from "@/lib/partner-auth";
 
 export const Route = createFileRoute("/partner/dashboard")({
@@ -431,6 +431,9 @@ function PartnerDashboard() {
         </ul>
       </div>
 
+      {/* ── ask to be paid, and take the numbers with you ────────────────────────────────────── */}
+      <PayoutBar token={token} owed={buckets.reduce((a, b) => a + b.pending, 0)} locale={locale} buckets={buckets} />
+
       <p className="mt-8 text-sm text-muted-foreground">
         {t("partner.dashboard.payoutAsk")}{" "}
         <a href="mailto:hello@orbetra.com" className="text-[color:var(--brand-cyan)] hover:underline">hello@orbetra.com</a>{" "}
@@ -447,6 +450,79 @@ function PartnerDashboard() {
  * or NaN%: "0% of 0" tells a new partner their link is failing when in fact nobody has opened it
  * yet, which is the opposite conclusion.
  */
+/**
+ * The payout row: a statement to attach to their invoice, and a way to say "please pay me".
+ *
+ * Both existed only as an email to us before. The statement is generated from the SAME rows the
+ * ledger above renders, so the figure a partner invoices for cannot drift from the one on screen —
+ * and it contains only what is owed, because a statement listing already-paid lines is an invoice
+ * we would have to dispute.
+ */
+function PayoutBar({ token, owed, locale, buckets }: { token: string; owed: number; locale: string; buckets: { currency: string; pending: number }[] }) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "already" | "error">("idle");
+  const balance = buckets.filter((b) => b.pending > 0).map((b) => money(b.pending, b.currency, locale)).join(" + ");
+
+  const request = async () => {
+    setState("sending");
+    try {
+      await apiPost("/v1/partner/payout-request", {}, token);
+      setState("sent");
+    } catch (err) {
+      // 429 is not a failure — it means we already heard them today, which is what they wanted
+      setState(err instanceof ApiError && err.status === 429 ? "already" : "error");
+    }
+  };
+
+  return (
+    <div className="mt-10 surface-card p-6" data-testid="partner-payout">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.payout")}</div>
+          <div className="mt-2 display text-2xl font-bold text-ink">{balance === "" ? money(0, buckets[0]?.currency ?? "eur", locale) : balance}</div>
+          <div className="mono text-[11px] text-muted-foreground mt-1">{t("partner.dashboard.payoutHint")}</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            href={`${API_URL}/v1/partner/statement.csv`}
+            onClick={(e) => {
+              // the CSV needs the bearer token, which a plain <a> cannot carry — fetch it, then hand
+              // the browser a blob. Putting the token in the URL would park it in history and logs.
+              e.preventDefault();
+              void (async () => {
+                const res = await fetch(`${API_URL}/v1/partner/statement.csv`, { headers: { Authorization: `Bearer ${token}` } });
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "orbetra-statement.csv";
+                a.click();
+                URL.revokeObjectURL(url);
+              })();
+            }}
+            className="pill-ghost cursor-pointer inline-flex items-center gap-2"
+            data-testid="statement-download"
+          >
+            <Download className="h-4 w-4" /> {t("partner.dashboard.statement")}
+          </a>
+          <button
+            onClick={() => void request()}
+            disabled={state === "sending" || state === "sent" || owed <= 0}
+            className="auth-submit disabled:opacity-50"
+            data-testid="payout-request"
+          >
+            {state === "sent" ? t("partner.dashboard.payoutSent")
+              : state === "already" ? t("partner.dashboard.payoutAlready")
+              : t("partner.dashboard.payoutRequest")}
+          </button>
+        </div>
+      </div>
+      {state === "error" && <p role="alert" className="mt-3 text-sm text-[#DC2626]">{t("partner.dashboard.dealError")}</p>}
+      {owed <= 0 && <p className="mt-3 text-[12px] text-muted-foreground">{t("partner.dashboard.payoutNothing")}</p>}
+    </div>
+  );
+}
+
 function FunnelStep({ label, value, hint, from }: { label: string; value: number; hint: string; from?: number }) {
   // Suppressed above 100%, not clamped. Click counting started the day it shipped while sign-ups and
   // enquiries are historical, so every existing partner shows twelve sign-ups from one open — and

@@ -51,7 +51,7 @@ export interface SignupRouteDeps {
      *  clicked, which is what makes the taken and free branches indistinguishable (audit MED #67). */
     enqueueVerifyEmail(job: { kind: 'verify-email'; email: string; tenantId: string; locale: string; verifyUrl: string; expiresHours: number }): Promise<void>
     /** the referral notice — optional, so a deployment without it simply sends no partner mail */
-    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
+    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission' | 'payout-request'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
   }
   /** public site origin — the partner portal link in the referral notice. Absent ⇒ no notice. */
   siteUrl?: string

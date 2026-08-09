@@ -79,6 +79,9 @@ beforeAll(async () => {
     lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
     siteUrl: 'https://site.example',
+    // this suite onboards far more partners in an hour than any real hour ever will; the ceiling
+    // itself is asserted by the lockout tests, not by starving the rest of the file
+    partnerLoginLimits: { setPwRedeemMax: 500 },
   })
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   port = await new Promise<number>((r) => httpServer.on('listening', () => r((httpServer.address() as { port: number }).port)))
@@ -456,6 +459,48 @@ describe('partner self-service auth (F5)', () => {
       if (res.status === 429) refused += 1
     }
     expect(refused).toBeGreaterThan(0)
+  })
+
+  it('the statement is what is OWED, in the same numbers the ledger shows — and a payout request reaches us once a day', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-00000000010f' }
+    const p = await makePartner('payout@partnerco.test', 'partnerpass1')
+    const t1 = await db.tenants.create(actor, { name: 'Statement Co', referredByAffiliateId: p.id })
+    await db.affiliates.accrueCommission({ affiliateId: p.id, tenantId: t1.id, amountCents: 9_000, currency: 'eur', sourceInvoiceId: 'in_st_1', ratePct: '25.00', baseAmountCents: 36_000, paidAt: new Date('2026-05-04T00:00:00Z') })
+    const paid = await db.affiliates.accrueCommission({ affiliateId: p.id, tenantId: t1.id, amountCents: 5_000, currency: 'eur', sourceInvoiceId: 'in_st_2', ratePct: '25.00', baseAmountCents: 20_000, paidAt: new Date('2026-04-04T00:00:00Z') })
+    await db.affiliates.setCommissionStatus(actor, paid?.id ?? '', 'paid')
+
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const csv = await j('/v1/partner/statement.csv', 'GET', undefined, bearer(tok))
+    expect(csv.headers.get('content-type')).toContain('text/csv')
+    expect(csv.headers.get('content-disposition')).toContain('attachment')
+    const text = await csv.text()
+    const lines = text.trim().split('\n')
+    // header + the ONE pending line. An already-paid line on a statement is an invoice we would
+    // have to dispute, so it is not there.
+    expect(lines).toHaveLength(2)
+    expect(lines[1]).toContain('"Statement Co"')
+    expect(lines[1]).toContain('"in_st_1"')
+    expect(lines[1]).toContain('360.00') // what the customer paid
+    expect(lines[1]).toContain('90.00') // 25% of it — the same arithmetic the portal renders
+    expect(text).not.toContain('in_st_2')
+
+    const first = await j('/v1/partner/payout-request', 'POST', {}, bearer(tok))
+    expect(first.status).toBe(200)
+    expect((await first.json()) as { balance: string }).toMatchObject({ balance: '90.00 EUR' })
+    // once a day: a partner clicking twice must not look like they are chasing us
+    expect((await j('/v1/partner/payout-request', 'POST', {}, bearer(tok))).status).toBe(429)
+  })
+
+  it('a CSV field containing a quote or a comma cannot break the file', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-000000000110' }
+    const p = await makePartner('csv@partnerco.test', 'partnerpass1')
+    // a company name is free text typed by whoever signed up
+    const t = await db.tenants.create(actor, { name: 'Smith, "Bob" & Co', referredByAffiliateId: p.id })
+    await db.affiliates.accrueCommission({ affiliateId: p.id, tenantId: t.id, amountCents: 100, currency: 'eur', sourceInvoiceId: 'in_csv_1', baseAmountCents: 400 })
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const text = await (await j('/v1/partner/statement.csv', 'GET', undefined, bearer(tok))).text()
+    expect(text.trim().split('\n')).toHaveLength(2) // the comma did not split the row
+    expect(text).toContain('"Smith, ""Bob"" & Co"') // and the quotes are doubled, not dropped
   })
 
   it('login rejects wrong password, unknown email, an unset-password partner, and a non-active partner', async () => {

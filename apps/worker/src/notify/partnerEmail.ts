@@ -17,7 +17,7 @@ import { emailButton, emailFallbackLink, emailNote, escapeHtml, renderBrandedEma
  * company name is the basis of the money owed, so the partner is entitled to it — nothing else about
  * that tenant travels in this mail.
  */
-export type PartnerEmailKind = 'referral' | 'commission'
+export type PartnerEmailKind = 'referral' | 'commission' | 'payout-request'
 
 export interface PartnerEmailOpts {
   kind: PartnerEmailKind
@@ -96,6 +96,30 @@ const LOCALES: Record<string, Strings> = {
 
 export function renderPartnerEmail(opts: PartnerEmailOpts): { subject: string; text: string; html: string } {
   const s = LOCALES[opts.locale] ?? LOCALES['en']!
+  /**
+   * The ONE message here whose recipient is not the partner: a payout request goes to us.
+   *
+   * Not localised, because the reader is our own ops desk and not a partner — and deliberately
+   * plain: everything needed to act on it is in the subject line, so it can be triaged from a phone
+   * without opening anything.
+   */
+  if (opts.kind === 'payout-request') {
+    const who = opts.customer // "Partner Name (CODE)" — assembled by the caller
+    const amount = opts.amount ?? '0.00'
+    const subject = `Payout requested: ${who} — ${amount}`
+    const intro = `${who} has asked to be paid. Outstanding balance at the time of the request: ${amount}.`
+    const note = 'Open Admin → Affiliates to review the lines and mark them paid once the transfer is out.'
+    const bodyHtml = [
+      `<h1 style="margin:0 0 12px;font-size:21px;font-weight:700;letter-spacing:-0.01em;color:#0f172a">${escapeHtml('Payout requested')}</h1>`,
+      `<p style="margin:0 0 24px;color:#334155;font-size:15px;line-height:1.6">${escapeHtml(intro)}</p>`,
+      emailNote(note),
+    ].join('')
+    return {
+      subject,
+      text: [subject, '', intro, '', note].join('\n'),
+      html: renderBrandedEmail({}, 'Orbetra', { subject, bodyHtml, preheader: intro, locale: 'en' }),
+    }
+  }
   const isCommission = opts.kind === 'commission'
   // a commission mail with no amount is a bug upstream, but rendering "You earned undefined" is a
   // worse outcome than degrading to the referral wording
