@@ -79,6 +79,32 @@ describe('a partner mail is never dressed in a tenant’s brand', () => {
     expect(sent[0]?.subject).toContain('90,00 €')
   })
 
+  it('a job that lost its recipient is a logged no-op, not a TypeError that dead-letters', async () => {
+    // `to.split(...)` on undefined threw, BullMQ retried five times, and the message was gone with
+    // nothing but a TypeError to say which account had been stranded. One such corpse sat in the
+    // staging queue for three days before an audit found it.
+    let sent = 0
+    const transport = {
+      send: (to: string) => {
+        sent += 1
+        void to
+        return Promise.resolve()
+      },
+    }
+    const ok = await sendAuthEmail({ pool: {} as never, transport }, {
+      kind: 'partner',
+      event: 'referral',
+      // the field the corrupted job was missing
+      email: undefined as unknown as string,
+      tenantId: '',
+      locale: 'en',
+      customer: 'Acme',
+      portalUrl: 'https://orbetra.com/partner/dashboard',
+    })
+    expect(ok).toBe(true) // handled, not thrown
+    expect(sent).toBe(1) // the transport decides; it skips and logs rather than exploding
+  })
+
   it('is a no-op, not a retry, when no transport is configured', async () => {
     const ok = await sendAuthEmail({ pool: {} as never, transport: undefined }, {
       kind: 'partner',

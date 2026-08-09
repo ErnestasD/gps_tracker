@@ -88,6 +88,15 @@ export function buildEmailTransport(
   }
   return {
     send: async (to, subject, text, html, replyTo) => {
+      // A MISSING RECIPIENT IS A NO-OP, NOT A CRASH. `to` is typed `string`, and a job whose payload
+      // lost its `email` field made this throw `Cannot read properties of undefined (reading
+      // 'split')` — which BullMQ retried five times and then dead-lettered. That is the worst
+      // available outcome for a transactional mail: the send is gone, and a TypeError says nothing
+      // about which message or whose account. One such corpse sat in the queue for three days.
+      if (typeof to !== 'string' || to === '') {
+        console.error('email skipped: job carried no recipient') // no payload in the log (PII)
+        return
+      }
       // drop reserved-TLD recipients before they reach SES (bounce-reputation guard). A comma-list
       // keeps only its deliverable addresses; if none remain the send is a logged no-op, not an error.
       const deliverable = to.split(',').map((s) => s.trim()).filter((s) => s !== '' && isDeliverableAddress(s))

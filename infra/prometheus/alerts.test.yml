@@ -196,7 +196,7 @@ tests:
           - exp_labels: { severity: critical, component: worker, job: stripe_usage }
             exp_annotations:
               summary: "Worker job failing: stripe_usage"
-              description: "A background job has thrown in the last hour. `stripe_usage` is silent under-billing (no backfill exists); `retention` means data is growing past policy."
+              description: "A background job has thrown in the last hour. `stripe_usage` is silent under-billing (no backfill exists); `retention` means data is growing past policy; `auth_email:*` means a transactional message — an activation link, a password reset, the final warning before a fleet is cut off — is not being delivered, and the recipient has no way to know."
 
   - interval: 1m
     input_series:
@@ -206,6 +206,22 @@ tests:
       - eval_time: 20m
         alertname: WorkerJobFailing
         exp_alerts: []
+
+  # TRANSACTIONAL MAIL. The counter had no `auth_email` series at all: the worker was constructed
+  # without its onFailed, so an activation link that never arrives — the failure that leaves a
+  # customer unable to log in and with no way to know why — was indistinguishable from silence.
+  - interval: 1m
+    input_series:
+      - series: 'worker_job_failed_total{job="auth_email:verify-email"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WorkerJobFailing
+        exp_alerts:
+          - exp_labels: { severity: critical, component: worker, job: "auth_email:verify-email" }
+            exp_annotations:
+              summary: "Worker job failing: auth_email:verify-email"
+              description: "A background job has thrown in the last hour. `stripe_usage` is silent under-billing (no backfill exists); `retention` means data is growing past policy; `auth_email:*` means a transactional message — an activation link, a password reset, the final warning before a fleet is cut off — is not being delivered, and the recipient has no way to know."
 
   # an API that is UP but answering 5xx — the case `up == 0` could never catch
   - interval: 1m
