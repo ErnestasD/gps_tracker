@@ -4,7 +4,7 @@ import { bodyLimit } from 'hono/body-limit'
 import type { Redis } from 'ioredis'
 
 import type { Db } from '@orbetra/db'
-import { partnerLoginSchema, partnerSetPasswordSchema } from '@orbetra/shared'
+import { dealRegistrationCreateSchema, emailDomain, FREE_MAIL_DOMAINS, partnerLoginSchema, partnerSetPasswordSchema } from '@orbetra/shared'
 
 // one implementation of the lockout primitives for BOTH login surfaces — partner had its own
 // byte-identical copies, which is how two surfaces drift apart without anyone noticing
@@ -242,6 +242,50 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     return c.json(rows)
   })
 
+  /**
+   * Register a prospect — the claim that protects a partner who introduced a fleet in person.
+   *
+   * Two refusals here rather than at approval time, because both are rules a partner should learn
+   * once instead of by having a claim rejected days later:
+   *  * a FREE-MAIL domain is never a company, and one approved claim on gmail.com would quietly take
+   *    every self-serve signup on the platform;
+   *  * a partner's OWN domain is a self-referral, which §6.9 forbids for commissions and which would
+   *    be a strange thing to protect them from.
+   * Everything else is an admin's judgement, which is what `pending` is for.
+   */
+  app.post('/v1/partner/deals', partnerAuth(deps), bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const partner = c.get('partner')
+    const parsed = dealRegistrationCreateSchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return problem(c, 400, 'Bad Request')
+    const { domain } = parsed.data
+    if (FREE_MAIL_DOMAINS.has(domain)) return problem(c, 400, 'Bad Request', 'free_mail_domain')
+    if (domain === emailDomain(partner.email)) return problem(c, 400, 'Bad Request', 'own_domain')
+    // A CAP ON THE OUTSTANDING QUEUE, not on the total. The admin queue is one bounded page ordered
+    // pending-first, so a partner filing junk claims could otherwise push every competitor's pending
+    // claim off the only screen anyone reviews them on — and nothing ages them out. Once ours are
+    // decided, more can be filed.
+    if ((await deps.db.affiliates.countPendingDeals(partner.id)) >= MAX_PENDING_DEALS) {
+      return problem(c, 429, 'Too Many Requests', 'too_many_pending')
+    }
+    const row = await deps.db.affiliates.createDeal({
+      affiliateId: partner.id,
+      company: parsed.data.company,
+      domain,
+      ...(parsed.data.contactName !== undefined ? { contactName: parsed.data.contactName } : {}),
+      ...(parsed.data.contactEmail !== undefined ? { contactEmail: parsed.data.contactEmail } : {}),
+      ...(parsed.data.note !== undefined ? { note: parsed.data.note } : {}),
+    })
+    c.header('Cache-Control', 'no-store')
+    return c.json(dealView(row), 201)
+  })
+
+  /** A partner's own claims and where each one stands. */
+  app.get('/v1/partner/deals', partnerAuth(deps), async (c) => {
+    const rows = await deps.db.affiliates.listDealsForPartner(c.get('partner').id)
+    c.header('Cache-Control', 'no-store')
+    return c.json(rows.map(dealView))
+  })
+
   /** The four funnel stages: how many opened the link, enquired, signed up, and started paying. */
   app.get('/v1/partner/funnel', partnerAuth(deps), async (c) => {
     const partner = c.get('partner')
@@ -285,6 +329,39 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
 }
 
 /**
+ * A claim as its OWNER may see it.
+ *
+ * `reviewedBy` never travels: it is a platform admin's user id, and which of our people approved a
+ * claim is our business, not the partner's. Everything else they typed themselves, or has to be
+ * readable for the claim to mean anything.
+ */
+function dealView(d: {
+  id: string
+  company: string
+  domain: string
+  contactName: string | null
+  contactEmail: string | null
+  note: string | null
+  status: string
+  reason: string | null
+  expiresAt: Date | null
+  createdAt: Date
+}) {
+  return {
+    id: d.id,
+    company: d.company,
+    domain: d.domain,
+    contactName: d.contactName,
+    contactEmail: d.contactEmail,
+    note: d.note,
+    status: d.status,
+    reason: d.reason,
+    expiresAt: d.expiresAt?.toISOString() ?? null,
+    createdAt: d.createdAt.toISOString(),
+  }
+}
+
+/**
  * Referral codes, mirroring `affiliateCodeSchema` — NOT apps/site's looser cookie validator.
  *
  * No underscore, deliberately. The server schema forbids it (it is a SQL LIKE wildcard), so `/r/A_B`
@@ -306,6 +383,9 @@ const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|monitor|curl|wget|python-|h
 function isBot(ua: string): boolean {
   return ua === '' || BOT_UA.test(ua)
 }
+
+/** How many undecided claims one partner may hold. Generous for a real pipeline, useless for a flood. */
+const MAX_PENDING_DEALS = 25
 
 /** per-IP ceiling on the short link. Generous — it is a marketing URL, not a credential. */
 const CLICK_RL_PER_MIN = 120

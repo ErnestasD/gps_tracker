@@ -8,6 +8,8 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger
 import {
   buildAffiliatePatch,
   createAffiliate,
+  decideDeal,
+  listDeals,
   issuePartnerLoginLink,
   listAffiliates,
   listCommissions,
@@ -17,12 +19,15 @@ import {
   type AffiliateView,
   type AffiliateWithStats,
   type CommissionStatus,
+  type DealView,
 } from '@/lib/affiliates'
 import { getCurrentUser } from '@/lib/auth'
+import { ApiError } from '@/lib/http'
 import { useFmt } from '@/lib/datetime'
 
 const STATUS_TONE: Record<AffiliateStatus, 'success' | 'warning' | 'neutral'> = { active: 'success', pending: 'warning', suspended: 'neutral' }
 const COMMISSION_TONE: Record<CommissionStatus, 'warning' | 'success' | 'neutral'> = { pending: 'warning', paid: 'success', void: 'neutral' }
+const DEAL_TONE: Record<DealView['status'], 'warning' | 'success' | 'neutral'> = { pending: 'warning', approved: 'success', converted: 'success', rejected: 'neutral' }
 const money = (cents: number, currency: string) => `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`
 
 /**
@@ -83,6 +88,8 @@ export function AffiliatesPage() {
         <p role="alert" className="admin-card p-3 text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="affiliates-action-error">{t('affiliates.actionError')}</p>
       )}
 
+      <DealQueue />
+
       <div className="admin-card overflow-hidden">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {t('affiliates.list')}
@@ -128,6 +135,105 @@ export function AffiliatesPage() {
         )}
         <p className="admin-hairline-t px-4 py-3 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('affiliates.note')}</p>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The deal-registration queue: partners claiming prospects they introduced in person.
+ *
+ * THIS IS THE ANTI-LAND-GRAB CONTROL. Approving a claim gives that partner every signup on that
+ * email domain for ninety days, whether or not they had anything to do with it — so the decision is
+ * a money decision, the server audits it, and a domain another partner already holds is refused
+ * (409) rather than silently promised to two people.
+ *
+ * Pending claims sort to the top because they are the only rows that need anything from anyone.
+ */
+function DealQueue() {
+  const { t } = useTranslation()
+  const { dt } = useFmt()
+  const qc = useQueryClient()
+  const deals = useQuery({ queryKey: ['deals'], queryFn: listDeals })
+  const decide = useMutation({
+    mutationFn: ({ id, status, reason }: { id: string; status: 'approved' | 'rejected'; reason?: string }) => decideDeal(id, status, reason),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['deals'] }),
+  })
+
+  const rows = [...(deals.data ?? [])].sort((a, b) => Number(b.status === 'pending') - Number(a.status === 'pending'))
+  const pending = rows.filter((d) => d.status === 'pending').length
+  if (deals.isLoading || (rows.length === 0 && !deals.isError)) return null // an empty queue is not worth a card
+
+  return (
+    <div className="admin-card overflow-hidden" data-testid="deal-queue">
+      <div className="admin-hairline-b flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+        <span className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('affiliates.deals')}</span>
+        {pending > 0 && <Badge tone="warning" data-testid="deal-pending-count">{t('affiliates.dealsPending', { count: pending })}</Badge>}
+      </div>
+      {deals.isError ? (
+        <p role="alert" className="px-4 py-6 text-center text-sm" style={{ color: 'var(--admin-danger)' }}>{t('admin.loadError')}</p>
+      ) : (
+        <ul>
+          {rows.map((d) => (
+            <li key={d.id} className="admin-hairline-b last:border-b-0 px-4 py-3 text-sm" data-testid={`deal-${d.id}`}>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium" style={{ color: 'var(--admin-ink)' }}>{d.company}</div>
+                  <div className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+                    <code className="mono">{d.domain}</code> · {t('affiliates.dealBy', { name: d.affiliateName })} · {dt(d.createdAt)}
+                  </div>
+                  {/* the two facts the decision actually turns on. Approving hands this partner
+                      every signup on that domain for ninety days, and the queue used to show
+                      nothing that would tell an admin whether that was reasonable. */}
+                  <div className="mt-1 flex flex-wrap gap-x-4 text-xs">
+                    <span style={{ color: d.existingAccounts > 0 ? 'var(--admin-warning, var(--admin-ink))' : 'var(--admin-ink-soft)' }}>
+                      {t('affiliates.dealExisting', { count: d.existingAccounts })}
+                    </span>
+                    {d.affiliateEmailDomain === d.domain && (
+                      <span style={{ color: 'var(--admin-danger)' }} data-testid={`deal-self-${d.id}`}>{t('affiliates.dealSelfDomain')}</span>
+                    )}
+                  </div>
+                  {d.note !== null && d.note !== '' && <div className="mt-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{d.note}</div>}
+                </div>
+                <Badge tone={DEAL_TONE[d.status]} data-testid={`deal-status-${d.id}`}>{t(`affiliates.dealStatus.${d.status}`)}</Badge>
+                {d.status === 'pending' && (
+                  <>
+                    <AdminButton size="sm" variant="secondary" disabled={decide.isPending} onClick={() => decide.mutate({ id: d.id, status: 'approved' })} data-testid={`deal-approve-${d.id}`}>
+                      {t('affiliates.dealApprove')}
+                    </AdminButton>
+                    <AdminButton
+                      size="sm"
+                      variant="ghost"
+                      disabled={decide.isPending}
+                      onClick={() => {
+                        // the reason is shown to the PARTNER, so it is asked for rather than left
+                        // blank — a rejection with no explanation is the support ticket this avoids
+                        const reason = window.prompt(t('affiliates.dealRejectReason'))
+                        // CANCEL MEANS CANCEL. `?? ''` turned Escape into an irreversible rejection
+                        // with no explanation — and a decided claim cannot be decided again.
+                        if (reason === null) return
+                        decide.mutate({ id: d.id, status: 'rejected', reason })
+                      }}
+                      data-testid={`deal-reject-${d.id}`}
+                    >
+                      {t('affiliates.dealReject')}
+                    </AdminButton>
+                  </>
+                )}
+                {d.expiresAt !== null && d.status !== 'rejected' && (
+                  <span className="text-xs tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{t('affiliates.dealUntil', { date: dt(d.expiresAt) })}</span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {decide.isError && (
+        <p role="alert" className="admin-hairline-t px-4 py-2 text-xs" style={{ color: 'var(--admin-danger)' }} data-testid="deal-error">
+          {/* 409 is the only one that means what the conflict copy says. Showing it for a 404
+              (already decided) or a 500 sends an admin looking for a rival claim that isn't there. */}
+          {decide.error instanceof ApiError && decide.error.status === 409 ? t('affiliates.dealConflict') : t('affiliates.actionError')}
+        </p>
+      )}
     </div>
   )
 }

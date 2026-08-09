@@ -1,8 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, LogOut } from "lucide-react";
-import { ApiError, apiGet } from "@/lib/api";
+import { Copy, LogOut, Plus } from "lucide-react";
+import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { usePartnerToken, setPartnerToken } from "@/lib/partner-auth";
 
 export const Route = createFileRoute("/partner/dashboard")({
@@ -47,6 +47,16 @@ type Commission = {
   at: string;
 };
 
+type Deal = {
+  id: string;
+  company: string;
+  domain: string;
+  status: "pending" | "approved" | "rejected" | "converted";
+  reason: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+};
+
 type Funnel = { clicksTotal: number; clicks30: number; leads: number; signups: number; paying: number };
 
 type CurrencyTotal = { currency: string; commissionableCents: number; earnedCents: number };
@@ -83,6 +93,7 @@ function PartnerDashboard() {
   const [rows, setRows] = useState<Commission[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [funnel, setFunnel] = useState<Funnel | null>(null);
+  const [deals, setDeals] = useState<Deal[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -99,13 +110,15 @@ function PartnerDashboard() {
         // on the new route would take the referral link — which worked yesterday — down with it.
         const customersP = apiGet<Customer[] | { data?: Customer[] }>("/v1/partner/customers", token).catch(() => [] as Customer[]);
         const funnelP = apiGet<Funnel>("/v1/partner/funnel", token).catch(() => null);
+        const dealsP = apiGet<Deal[]>("/v1/partner/deals", token).catch(() => [] as Deal[]);
         const [meRes, comRes] = await Promise.all([
           apiGet<PartnerMe>("/v1/partner/me", token),
           apiGet<Commission[] | { data?: Commission[] }>("/v1/partner/commissions", token),
         ]);
-        const [cusRes, funnelRes] = await Promise.all([customersP, funnelP]);
+        const [cusRes, funnelRes, dealsRes] = await Promise.all([customersP, funnelP, dealsP]);
         if (cancelled) return;
         setFunnel(funnelRes);
+        setDeals(Array.isArray(dealsRes) ? dealsRes : []);
         setMe(meRes);
         setRows(Array.isArray(comRes) ? comRes : (comRes?.data ?? []));
         setCustomers(Array.isArray(cusRes) ? cusRes : (cusRes?.data ?? []));
@@ -335,6 +348,9 @@ function PartnerDashboard() {
         )}
       </Section>
 
+      {/* ── protect a prospect you introduced yourself ──────────────────────────────────────── */}
+      <DealsSection token={token} deals={deals} onRegistered={(d) => setDeals((prev) => [d, ...prev])} />
+
       {/* ── the ledger, with the arithmetic on show ──────────────────────────────────────────── */}
       <Section title={t("partner.dashboard.history")} note={t("partner.dashboard.historyNote")}>
         {rows.length === 0 ? (
@@ -428,6 +444,125 @@ function FunnelStep({ label, value, hint, from }: { label: string; value: number
         {pct !== null && <span className="mono text-[11px] text-muted-foreground">{pct}%</span>}
       </div>
       <div className="mono text-[11px] text-muted-foreground mt-1">{hint}</div>
+    </div>
+  );
+}
+
+/**
+ * Deal registration: the claim that protects a partner who introduced a fleet in person.
+ *
+ * The one thing this section has to communicate, because getting it wrong costs a partner money, is
+ * WHEN it applies: a claim covers a customer who arrives with no link. It does not override someone
+ * else's referral link, and it does nothing until we approve it. Both are stated in the copy rather
+ * than discovered when a commission fails to appear.
+ */
+function DealsSection({ token, deals, onRegistered }: { token: string; deals: Deal[]; onRegistered: (d: Deal) => void }) {
+  const { t, i18n } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [company, setCompany] = useState("");
+  const [domain, setDomain] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const locale = i18n.resolvedLanguage ?? "en";
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await apiPost<Deal>("/v1/partner/deals", { company: company.trim(), domain: domain.trim(), ...(note.trim() !== "" ? { note: note.trim() } : {}) }, token);
+      onRegistered(created);
+      setCompany("");
+      setDomain("");
+      setNote("");
+      setOpen(false);
+    } catch (err) {
+      // the two 400s a partner can actually hit have their own copy — "invalid request" would send
+      // them to support for a rule we could simply have told them
+      const detail = err instanceof ApiError ? err.detail : null;
+      setError(
+        detail === "free_mail_domain" ? t("partner.dashboard.dealFreeMail")
+        : detail === "own_domain" ? t("partner.dashboard.dealOwnDomain")
+        : t("partner.dashboard.dealError"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const tone: Record<Deal["status"], string> = {
+    pending: "#E0A030",
+    approved: "var(--brand-cyan)",
+    converted: "var(--brand-cyan)",
+    rejected: "var(--muted-foreground)",
+  };
+
+  return (
+    <div className="mt-10 surface-card overflow-x-auto" data-testid="partner-deals">
+      <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4 border-b border-[var(--hairline)]">
+        <div>
+          <div className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.deals")}</div>
+          <p className="mt-1.5 max-w-2xl text-[12px] text-muted-foreground">{t("partner.dashboard.dealsNote")}</p>
+        </div>
+        <button onClick={() => setOpen((v) => !v)} className="pill-ghost cursor-pointer inline-flex items-center gap-2">
+          <Plus className="h-4 w-4" /> {t("partner.dashboard.dealAdd")}
+        </button>
+      </div>
+
+      {open && (
+        <form onSubmit={(e) => void submit(e)} className="grid gap-3 px-5 py-4 border-b border-[var(--hairline)] sm:grid-cols-2">
+          <label className="grid gap-1.5">
+            <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.dealCompany")}</span>
+            <input value={company} onChange={(e) => setCompany(e.target.value)} required maxLength={160} className="auth-input" data-testid="deal-company" />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.dealDomain")}</span>
+            <input value={domain} onChange={(e) => setDomain(e.target.value)} required placeholder="imone.lt" className="auth-input" data-testid="deal-domain" />
+          </label>
+          <label className="grid gap-1.5 sm:col-span-2">
+            <span className="mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">{t("partner.dashboard.dealNote")}</span>
+            <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} className="auth-input" data-testid="deal-note" />
+          </label>
+          {error !== null && <p role="alert" className="text-sm text-[#DC2626] sm:col-span-2" data-testid="deal-error">{error}</p>}
+          <div className="sm:col-span-2">
+            <button type="submit" disabled={busy} className="auth-submit" data-testid="deal-submit">{t("partner.dashboard.dealSubmit")}</button>
+          </div>
+        </form>
+      )}
+
+      {deals.length === 0 ? (
+        <p className="px-5 py-8 text-sm text-muted-foreground">{t("partner.dashboard.noDeals")}</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              <th className="text-left px-5 py-3">{t("partner.dashboard.dealCompany")}</th>
+              <th className="text-left px-5 py-3">{t("partner.dashboard.dealDomain")}</th>
+              <th className="text-left px-5 py-3">{t("partner.dashboard.status")}</th>
+              <th className="text-left px-5 py-3">{t("partner.dashboard.dealProtectedUntil")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {deals.map((d) => (
+              <tr key={d.id} className="border-t border-[var(--hairline)]">
+                <td className="px-5 py-3 text-ink">{d.company}</td>
+                <td className="px-5 py-3 mono text-[12px] text-muted-foreground">{d.domain}</td>
+                <td className="px-5 py-3">
+                  <span className="mono text-[10px] uppercase tracking-widest" style={{ color: tone[d.status] }}>
+                    {t(`partner.dashboard.dealStatus.${d.status}`)}
+                  </span>
+                  {/* a rejection without its reason is the support ticket this avoids */}
+                  {d.reason !== null && d.reason !== "" && <div className="mt-1 text-[11px] text-muted-foreground">{d.reason}</div>}
+                </td>
+                <td className="px-5 py-3 mono text-[12px] text-muted-foreground">
+                  {d.expiresAt === null ? "—" : new Date(d.expiresAt).toLocaleDateString(locale, { timeZone: "UTC" })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

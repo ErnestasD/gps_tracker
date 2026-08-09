@@ -1161,7 +1161,25 @@
       "lt": "Litauisch",
       "de": "Deutsch",
       "pl": "Polnisch"
-    }
+    },
+    "deals": "Kundenregistrierungen",
+    "dealsPending_one": "{{count}} zur Prüfung",
+    "dealsPending_other": "{{count}} zur Prüfung",
+    "dealBy": "von {{name}}",
+    "dealApprove": "Freigeben",
+    "dealReject": "Ablehnen",
+    "dealRejectReason": "Warum? Der Partner liest das.",
+    "dealUntil": "geschützt bis {{date}}",
+    "dealConflict": "Speichern nicht möglich. Ein anderer Partner hält möglicherweise bereits einen gültigen Anspruch auf diese Domain.",
+    "dealStatus": {
+      "pending": "Offen",
+      "approved": "Geschützt",
+      "converted": "Registriert",
+      "rejected": "Abgelehnt"
+    },
+    "dealExisting_one": "{{count}} bestehendes Konto auf dieser Domain",
+    "dealExisting_other": "{{count}} bestehende Konten auf dieser Domain",
+    "dealSelfDomain": "das ist die eigene Domain des Partners"
   },
   "authNav": {
     "platform": "Plattform",

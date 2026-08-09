@@ -141,6 +141,7 @@ model Tenant {
   /// tenant's referrer on every paid invoice — both were unindexed scans (migration 20260808070000)
   @@index([referredByAffiliateId])
   commissions         Commission[]       @relation("TenantCommissions")
+  dealConversions     DealRegistration[] @relation("DealConversions")
   usageReports        UsageReport[]
 
   @@map("tenants")
@@ -177,6 +178,7 @@ model Affiliate {
   locale      String                   @default("en")
   commissions Commission[]
   clicks      AffiliateClick[]
+  deals       DealRegistration[]
   pwTokens    AffiliatePasswordToken[]
 
   @@map("affiliates")
@@ -207,6 +209,58 @@ enum CommissionStatus {
   paid
   /// reversed (e.g. the customer refunded / charged back)
   void
+}
+
+enum DealStatus {
+  pending
+  approved
+  rejected
+  converted
+}
+
+/// A partner claiming a prospect BEFORE that prospect signs up (§6.9 deal registration).
+///
+/// This is the control a serious B2B partner asks for first: they introduce a fleet over coffee, the
+/// fleet later types our address into a browser, and without this the partner earns nothing. A claim
+/// attributes the signup even with no referral link involved.
+///
+/// APPROVAL IS THE WHOLE ANTI-LAND-GRAB CONTROL. Without it a partner registers `maxima.lt` on their
+/// first afternoon and owns every large company that ever signs up. An admin reads the claim and
+/// decides; only an `approved`, unexpired claim attributes anything.
+model DealRegistration {
+  id           String     @id @default(uuid()) @db.Uuid
+  affiliateId  String     @db.Uuid
+  affiliate    Affiliate  @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  /// the prospect, as the partner knows them
+  company      String
+  /// THE MATCHING KEY: the prospect's company email domain, stored lowercased. Free-mail domains are
+  /// refused at creation — one approved claim on `gmail.com` would take every self-serve signup.
+  domain       String
+  contactName  String?
+  contactEmail String?
+  note         String?
+  status       DealStatus @default(pending)
+  /// why an admin rejected it — the partner reads this, so it is not an internal note
+  reason       String?
+  /// set on approval; a claim that outlives it attributes nothing. Expiry is DERIVED, not swept:
+  /// a status column that has to be aged by a cron is a status that is wrong between runs.
+  expiresAt    DateTime?  @db.Timestamptz()
+  reviewedAt   DateTime?  @db.Timestamptz()
+  reviewedBy   String?    @db.Uuid
+  /// The tenant this claim actually produced, stamped once by the first signup.
+  ///
+  /// The claim is NOT spent by it: `converted` used to be written here and `claimFor` only matches
+  /// `approved`, so any stranger could POST an unverified signup at the prospect's domain and end
+  /// the partner's ninety days. ON DELETE SET NULL because retention prunes unverified signups.
+  convertedTenantId String? @db.Uuid
+  convertedTenant   Tenant? @relation("DealConversions", fields: [convertedTenantId], references: [id], onDelete: SetNull)
+  convertedAt  DateTime?  @db.Timestamptz()
+  createdAt    DateTime   @default(now()) @db.Timestamptz()
+
+  /// signup resolves a claim by domain on every unattributed registration
+  @@index([domain, status])
+  @@index([affiliateId, createdAt])
+  @@map("deal_registrations")
 }
 
 /// Daily UNIQUE clicks on a partner's short link (`/r/<code>`), §6.9 funnel.

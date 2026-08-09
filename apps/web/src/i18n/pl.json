@@ -1167,7 +1167,29 @@
       "lt": "Litewski",
       "de": "Niemiecki",
       "pl": "Polski"
-    }
+    },
+    "deals": "Rejestracje klientów",
+    "dealsPending_one": "{{count}} czeka na decyzję",
+    "dealsPending_few": "{{count}} czeka na decyzję",
+    "dealsPending_many": "{{count}} czeka na decyzję",
+    "dealsPending_other": "{{count}} czeka na decyzję",
+    "dealBy": "od {{name}}",
+    "dealApprove": "Zatwierdź",
+    "dealReject": "Odrzuć",
+    "dealRejectReason": "Dlaczego? Partner to przeczyta.",
+    "dealUntil": "chronione do {{date}}",
+    "dealConflict": "Nie udało się zapisać. Inny partner może już mieć aktywne zgłoszenie na tę domenę.",
+    "dealStatus": {
+      "pending": "Oczekuje",
+      "approved": "Chronione",
+      "converted": "Zarejestrowany",
+      "rejected": "Odrzucone"
+    },
+    "dealExisting_one": "{{count}} istniejące konto w tej domenie",
+    "dealExisting_few": "{{count}} istniejące konta w tej domenie",
+    "dealExisting_many": "{{count}} istniejących kont w tej domenie",
+    "dealExisting_other": "{{count}} istniejącego konta w tej domenie",
+    "dealSelfDomain": "to własna domena partnera"
   },
   "authNav": {
     "platform": "Platforma",

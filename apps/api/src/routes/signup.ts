@@ -5,7 +5,7 @@ import { bodyLimit } from 'hono/body-limit'
 import type { Redis } from 'ioredis'
 
 import { SignupEmailInUseError, type Db } from '@orbetra/db'
-import { signupSchema } from '@orbetra/shared'
+import { emailDomain, FREE_MAIL_DOMAINS, signupSchema } from '@orbetra/shared'
 
 import { hashPassword } from '../auth/passwords.js'
 import { clientIp } from '../net.js'
@@ -78,19 +78,6 @@ const TRIAL_DAYS = 30
 const TRIAL_PLAN = 'direct_10' as const
 
 // atomic fixed-window (mirrors pilotRequest): INCR, TTL on first hit, re-arm a stranded key
-/**
- * Consumer mailbox providers. A shared one says nothing about a shared identity, so it must not be
- * read as a self-referral — see the guard below. Not exhaustive by design: the list only has to
- * cover what a small reseller in this market plausibly uses as a contact address.
- */
-const FREE_MAIL_DOMAINS = new Set([
-  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'outlook.com', 'hotmail.com', 'hotmail.co.uk',
-  'live.com', 'msn.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com',
-  'gmx.com', 'gmx.de', 'gmx.net', 'web.de', 't-online.de', 'freenet.de',
-  'inbox.lt', 'gmail.lt', 'takas.lt', 'one.lt', 'zebra.lt', 'centras.lt', 'delfi.lt',
-  'wp.pl', 'o2.pl', 'onet.pl', 'interia.pl', 'gazeta.pl', 'op.pl', 'poczta.onet.pl',
-  'yandex.ru', 'mail.ru', 'seznam.cz', 'zoho.com', 'fastmail.com', 'hushmail.com', 'tutanota.com', 'tuta.io',
-])
 
 /**
  * The mailbox an address actually delivers to, for the self-referral equality test.
@@ -202,13 +189,66 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
     // — which for a small reseller is most of them — silently, with only a server-side log to say
     // so. A shared public mailbox provider is not evidence of a shared identity; a company domain
     // is. The exact-address check still catches the literal case it is for.
-    const domainOf = (e: string) => e.slice(e.lastIndexOf('@') + 1).toLowerCase()
     const selfReferral =
       candidate !== null &&
       (canonicalMailbox(candidate.email) === canonicalMailbox(email) ||
-        (domainOf(candidate.email) === domainOf(email) && !FREE_MAIL_DOMAINS.has(domainOf(email))))
+        (emailDomain(candidate.email) === emailDomain(email) && !FREE_MAIL_DOMAINS.has(emailDomain(email))))
     if (selfReferral) console.warn('signup: self-referral attribution dropped', candidate.code)
-    const ref = selfReferral ? null : candidate
+    const linked = selfReferral ? null : candidate
+
+    /**
+     * DEAL REGISTRATION fallback (§6.9) — the case the whole feature exists for.
+     *
+     * A partner introduces a fleet in person; the fleet later types our address into a browser with
+     * no link, no code and no cookie, and the partner earns nothing. An approved, unexpired claim on
+     * the signup's email domain attributes it to them.
+     *
+     * A REFERRAL LINK WINS when one is present. The link is the customer's own action at the moment
+     * of signing up, and honouring a third party's standing claim over it would let a claim quietly
+     * take a signup another partner actively drove. A claim covers the no-link case, which is the
+     * only case anyone complained about.
+     *
+     * The free-mail rule is enforced at registration, not here — but the guard is repeated because
+     * this is where a mistake would be expensive, and one approved gmail.com claim would otherwise
+     * take every self-serve signup on the platform.
+     */
+    let claimed: { id: string } | null = null
+    let claimOwner: Awaited<ReturnType<typeof deps.db.affiliates.get>> = null
+    if (linked === null) {
+      const domain = emailDomain(email)
+      if (domain !== '' && !FREE_MAIL_DOMAINS.has(domain)) {
+        try {
+          const claim = await deps.db.affiliates.claimFor(domain, new Date())
+          if (claim !== null) {
+            const owner = await deps.db.affiliates.get(claim.affiliateId)
+            // THE SAME SELF-REFERRAL FLOOR the link path applies (§6.9). It was missing here, and
+            // the omission was self-inflicted: `selfReferral` sets `linked = null`, which is
+            // precisely the condition that opens this branch — so the guard's own output routed the
+            // request into the unguarded path. A partner whose contact address is a gmail one (which
+            // this codebase explicitly expects of small resellers) could claim their own company
+            // domain and earn on their own subscription.
+            const ownSignup =
+              owner !== null &&
+              (canonicalMailbox(owner.email) === canonicalMailbox(email) ||
+                (emailDomain(owner.email) === domain && !FREE_MAIL_DOMAINS.has(domain)))
+            if (ownSignup) console.warn('signup: self-referral via deal claim dropped', claim.id)
+            // an inactive partner's claim attributes nothing, exactly as their code would not.
+            // `owner` is kept and REUSED below rather than re-fetched: the second read was a TOCTOU
+            // that could attribute to a partner suspended in between, or spend a claim for a signup
+            // it never earned.
+            else if (owner !== null && owner.status === 'active') {
+              claimed = { id: claim.id }
+              claimOwner = owner
+            }
+          }
+        } catch (claimErr) {
+          // attribution is never allowed to block a signup — a customer creating an account must not
+          // fail because a partner-facing lookup did
+          console.warn('signup: deal claim lookup failed', claimErr instanceof Error ? claimErr.message : String(claimErr))
+        }
+      }
+    }
+    const ref = linked ?? claimOwner
 
     try {
       const created = await deps.db.tenants.createSelfServeSignup({
@@ -248,6 +288,15 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
       } catch (mailErr) {
         deps.onVerifyMailFailed?.()
         console.error('signup: could not send the activation mail', mailErr instanceof Error ? mailErr.message : String(mailErr))
+      }
+      // …and close the claim it came from, so the partner's list shows it landed and a second
+      // signup from the same domain does not silently re-use a protection that has been spent
+      if (claimed !== null) {
+        try {
+          await deps.db.affiliates.markDealConverted(claimed.id, created.tenantId, new Date())
+        } catch (convErr) {
+          console.warn('signup: deal claim not marked converted', convErr instanceof Error ? convErr.message : String(convErr))
+        }
       }
       // TELL THE PARTNER. A referral used to be invisible to the person who made it: they were
       // handed a link and had to log in on a hunch to find out whether it had worked. Best-effort

@@ -58,6 +58,7 @@ function idFor(f: TenantFixture, entity: string): string {
     // path match so the tsp_admin RBAC gate fires (403) BEFORE the handler ever looks the id up
     affiliate: '00000000-0000-0000-0000-0000000000a1',
     commission: '00000000-0000-0000-0000-0000000000c1',
+    deal_registration: '00000000-0000-0000-0000-0000000000d1',
   }
   return map[entity] ?? ''
 }

@@ -418,6 +418,66 @@ describe('public self-serve signup (F2)', () => {
     expect(sentPartner.length).toBeLessThanOrEqual(3)
   })
 
+  it('an approved DEAL REGISTRATION attributes a link-less signup; a referral link still wins', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-0000000000f2' }
+    const claimer = await db.affiliates.create(actor, { name: 'Claimer Ltd', email: 'c@claimerco.test', code: 'CLAIMER1' })
+    const linker = await db.affiliates.create(actor, { name: 'Linker Ltd', email: 'l@linkerco.test', code: 'LINKER1' })
+    await db.affiliates.update(actor, claimer.id, { status: 'active' })
+    await db.affiliates.update(actor, linker.id, { status: 'active' })
+    const approve = async (affiliateId: string, domain: string) => {
+      const d = await db.affiliates.createDeal({ affiliateId, company: domain, domain })
+      await db.affiliates.decideDeal(actor, d.id, 'approved', undefined, new Date())
+      return d
+    }
+
+    // THE CASE THE FEATURE EXISTS FOR: no ref, no cookie, no link — the customer typed our address
+    const claim = await approve(claimer.id, 'protectedco.test')
+    const direct = (await (await signup({ name: 'Direct', email: 'ops@protectedco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(direct.id))!.referredByAffiliateId).toBe(claimer.id)
+    // the claim RECORDS the tenant but is NOT spent — an unverified signup by a stranger (or one
+    // employee abandoning the form) would otherwise end the partner's ninety days, and retention
+    // then deletes that tenant leaving nothing behind
+    const after = (await db.affiliates.listDealsForPartner(claimer.id)).find((d) => d.id === claim.id)
+    expect(after?.status).toBe('approved')
+    expect(after?.convertedTenantId).toBe(direct.id)
+    // …so a SECOND signup on that domain inside the window is still attributed
+    const second = (await (await signup({ name: 'Second', email: 'fleet2@protectedco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(second.id))!.referredByAffiliateId).toBe(claimer.id)
+    // and the first tenant it produced is not overwritten
+    expect((await db.affiliates.listDealsForPartner(claimer.id)).find((d) => d.id === claim.id)?.convertedTenantId).toBe(direct.id)
+
+    // A LINK WINS over someone else's standing claim: the link is the customer's own action at the
+    // moment of signing up, and a claim must never quietly take a signup another partner drove.
+    await approve(claimer.id, 'contested.test')
+    const viaLink = (await (await signup({ name: 'Linked', email: 'ops@contested.test', password: 'password12', ref: 'LINKER1' })).json()) as { id: string }
+    expect((await db.tenants.get(viaLink.id))!.referredByAffiliateId).toBe(linker.id)
+
+    // a PENDING claim attributes nothing — approval is the whole control
+    await db.affiliates.createDeal({ affiliateId: claimer.id, company: 'Pending Co', domain: 'pendingco.test' })
+    const unapproved = (await (await signup({ name: 'Pending', email: 'ops@pendingco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(unapproved.id))!.referredByAffiliateId).toBeNull()
+
+    // an EXPIRED claim attributes nothing either — expiry is derived at read time, not swept.
+    // Approved with a backdated `now`, so its window (now + 90d) has already closed. No test seam
+    // on the repo: a method that can silently extend a money window has no business existing.
+    const stale = await db.affiliates.createDeal({ affiliateId: claimer.id, company: 'Stale', domain: 'staleco.test' })
+    await db.affiliates.decideDeal(actor, stale.id, 'approved', undefined, new Date(Date.now() - 91 * 86_400_000))
+    const expired = (await (await signup({ name: 'Stale', email: 'ops@staleco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(expired.id))!.referredByAffiliateId).toBeNull()
+
+    // a partner cannot earn on THEIR OWN signup through a claim either (§6.9) — the link path has
+    // always had this floor, and `selfReferral` setting linked=null is exactly what opens this branch
+    await approve(claimer.id, 'claimerco.test')
+    const own = (await (await signup({ name: 'Self', email: 'ops@claimerco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(own.id))!.referredByAffiliateId).toBeNull()
+
+    // a SUSPENDED partner's claim attributes nothing, exactly as their code would not
+    await approve(claimer.id, 'suspendedclaim.test')
+    await db.affiliates.update(actor, claimer.id, { status: 'suspended' })
+    const susp = (await (await signup({ name: 'Susp', email: 'ops@suspendedclaim.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(susp.id))!.referredByAffiliateId).toBeNull()
+  })
+
   it('drops SELF-REFERRAL attribution — a partner cannot earn commission on their own signup (§6.9)', async () => {
     const actor = { userId: '00000000-0000-0000-0000-0000000000f2' }
     const aff = await db.affiliates.create(actor, { name: 'Selfie Ltd', email: 'owner@selfie-fleet.test', code: 'SELFIE1' })

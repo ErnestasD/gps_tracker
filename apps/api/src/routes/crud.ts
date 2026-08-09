@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { AccountHasUsersError, AffiliateConflictError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { AccountHasUsersError, AffiliateConflictError, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -11,6 +11,7 @@ import {
   accountUpdateSchema,
   affiliateCreateSchema,
   affiliateUpdateSchema,
+  dealDecisionSchema,
   commissionStatusUpdateSchema,
   brandingSchema,
   canGrantRole,
@@ -1571,6 +1572,26 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (affiliate === null) return problem(c, 404, 'Not Found')
         const token = await issuePartnerSetPwToken(db, affiliate.id)
         return json(c, { token }, 201)
+      } },
+    // DEAL REGISTRATION queue (§6.9). Approval is the anti-land-grab control — without a human in
+    // this loop a partner registers every large company in the country on their first afternoon.
+    { method: 'get', path: '/v1/deals', scopeClass: 'platform', entity: 'deal_registration', shape: 'collection',
+      handler: async (c) => json(c, await db.affiliates.listDeals()) },
+    { method: 'patch', path: '/v1/deals/:id', scopeClass: 'platform', entity: 'deal_registration', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, dealDecisionSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        try {
+          const row = await db.affiliates.decideDeal({ userId: auth(c).userId }, id(c), data.status, data.reason, new Date())
+          // null covers both "no such claim" and "already decided" — re-approving a converted claim
+          // would move its expiry and silently re-open a window that has already paid out
+          return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+        } catch (err) {
+          // two partners both told "this prospect is protected for you" is worse than one being told
+          // no: the duplicate is discovered only when the money is already owed twice
+          if (err instanceof DealDomainTakenError) return problem(c, 409, 'Conflict', 'domain_claimed')
+          throw err
+        }
       } },
     // commissions accrued for ONE affiliate (payout review); PATCH marks one paid/void
     { method: 'get', path: '/v1/affiliates/:id/commissions', scopeClass: 'platform', entity: 'affiliate', shape: 'item',
