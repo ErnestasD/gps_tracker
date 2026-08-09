@@ -39,10 +39,20 @@ export const DOCS_URL = '/docs'
 /** Error carrying the HTTP status so callers can branch (409 vs 429 vs 401). */
 export class ApiError extends Error {
   readonly status: number
-  constructor(message: string, status: number) {
+  /**
+   * The RFC 7807 `detail` slug, when the API sent one.
+   *
+   * Several 400s are DIFFERENT rules a user can fix — a free-mail domain is not the same mistake as
+   * claiming your own — and a single "invalid request" turns each of them into a support ticket for
+   * a rule we could simply have told them. The API already distinguishes them; this stops the
+   * client from throwing that away.
+   */
+  readonly detail: string | null
+  constructor(message: string, status: number, detail: string | null = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -69,8 +79,8 @@ async function handle<T>(res: Response): Promise<T> {
   const text = await res.text()
   const data = text ? safeJson(text) : null
   if (!res.ok) {
-    const d = data as { message?: string; error?: string } | null
-    throw new ApiError(d?.message || d?.error || `Request failed (${res.status})`, res.status)
+    const d = data as { message?: string; error?: string; detail?: string } | null
+    throw new ApiError(d?.message || d?.error || `Request failed (${res.status})`, res.status, d?.detail ?? null)
   }
   return data as T
 }

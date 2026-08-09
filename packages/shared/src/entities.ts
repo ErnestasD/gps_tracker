@@ -332,6 +332,64 @@ export const commissionStatusSchema = z.enum(['pending', 'paid', 'void'])
 const commissionPctSchema = z.number().min(0).max(100)
 const commissionMonthsSchema = z.number().int().min(1).max(120)
 
+/**
+ * Consumer mailbox providers.
+ *
+ * Lived in apps/api/src/routes/signup.ts, where the self-referral guard needs it. Deal registration
+ * needs the SAME list for a harder reason: a claim is keyed on an email domain, so one approved
+ * registration on `gmail.com` would quietly claim every self-serve signup on the platform. Two
+ * copies of this list drifting apart is how that ships, so there is one.
+ *
+ * Not exhaustive by design: it only has to cover what a small reseller in this market plausibly
+ * uses as a contact address.
+ */
+export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'outlook.com', 'hotmail.com', 'hotmail.co.uk',
+  'live.com', 'msn.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com',
+  'gmx.com', 'gmx.de', 'gmx.net', 'web.de', 't-online.de', 'freenet.de',
+  'inbox.lt', 'gmail.lt', 'takas.lt', 'one.lt', 'zebra.lt', 'centras.lt', 'delfi.lt',
+  'wp.pl', 'o2.pl', 'onet.pl', 'interia.pl', 'gazeta.pl', 'op.pl', 'poczta.onet.pl',
+  'yandex.ru', 'mail.ru', 'seznam.cz', 'zoho.com', 'fastmail.com', 'hushmail.com', 'tutanota.com', 'tuta.io',
+])
+
+/** The domain part of an address, lowercased. '' for anything that is not an address. */
+export function emailDomain(address: string): string {
+  const at = address.lastIndexOf('@')
+  return at < 0 ? '' : address.slice(at + 1).trim().toLowerCase()
+}
+
+/**
+ * A partner registering a prospect BEFORE that prospect signs up (§6.9 deal registration).
+ *
+ * The domain is the matching key and it is a COMPANY domain by rule — see FREE_MAIL_DOMAINS. The
+ * shape is deliberately small: this is a claim, not a CRM record, and every field a partner types
+ * here is one an admin has to read before approving.
+ */
+export const dealRegistrationCreateSchema = z.object({
+  company: z.string().trim().min(1).max(160),
+  /** the prospect's company email domain, with or without a leading @ or scheme — normalised here */
+  domain: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(3)
+    .max(253)
+    .transform((d) => d.replace(/^https?:\/\//, '').replace(/^@/, '').replace(/^www\./, '').replace(/\/.*$/, ''))
+    .refine((d) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(d), 'not a domain'),
+  contactName: z.string().trim().max(160).optional(),
+  contactEmail: z.string().trim().toLowerCase().email().max(320).optional(),
+  note: z.string().trim().max(2000).optional(),
+})
+
+/** An admin's decision on a pending claim. A rejection carries a reason the partner will read. */
+export const dealDecisionSchema = z.object({
+  status: z.enum(['approved', 'rejected']),
+  reason: z.string().trim().max(500).optional(),
+})
+
+export type DealRegistrationCreateInput = z.infer<typeof dealRegistrationCreateSchema>
+export type DealDecisionInput = z.infer<typeof dealDecisionSchema>
+
 /** The partner's own language for the mail we send them — not their customers' language. */
 export const affiliateLocaleSchema = z.enum(['en', 'lt', 'de', 'pl'])
 

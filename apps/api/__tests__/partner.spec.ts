@@ -273,6 +273,54 @@ describe('partner self-service auth (F5)', () => {
     expect(f.paying).toBeLessThanOrEqual(f.signups)
   })
 
+  it('deal registration: a claim is pending until an admin decides, and free-mail or own-domain is refused outright', async () => {
+    const p = await makePartner('deal@partnerco.test', 'partnerpass1')
+    const tok = ((await (await login(p.email, p.password)).json()) as { accessToken: string }).accessToken
+    const register = (body: unknown) => j('/v1/partner/deals', 'POST', body, bearer(tok))
+
+    const ok = await register({ company: 'Vilnius Fleet UAB', domain: 'https://www.vilniusfleet.lt/contact', note: 'Met at the expo' })
+    expect(ok.status).toBe(201)
+    const claim = (await ok.json()) as { id: string; domain: string; status: string; expiresAt: string | null }
+    expect(claim.domain).toBe('vilniusfleet.lt') // scheme, www and path all normalised away
+    expect(claim.status).toBe('pending') // approval is a human decision, never automatic
+    expect(claim.expiresAt).toBeNull() // the window starts when it is approved, not when it is asked for
+
+    // a free-mail domain is never a company — one approved claim on gmail.com would take every
+    // self-serve signup on the platform
+    expect((await register({ company: 'Gmail Ltd', domain: 'gmail.com' })).status).toBe(400)
+    // …and a partner cannot protect themselves from themselves
+    expect((await register({ company: 'Mine', domain: 'partnerco.test' })).status).toBe(400)
+
+    // the partner sees their own claim, and never who reviewed it
+    const mine = (await (await j('/v1/partner/deals', 'GET', undefined, bearer(tok))).json()) as Record<string, unknown>[]
+    expect(mine).toHaveLength(1)
+    expect('reviewedBy' in (mine[0] ?? {})).toBe(false)
+  })
+
+  it('an approved claim attributes a direct signup — but a referral LINK still wins', async () => {
+    const a = await makePartner('claimer@partnerco.test', 'partnerpass1')
+    const b = await makePartner('linker@otherco.test', 'partnerpass1')
+    for (const id of [a.id, b.id]) await admin(`/v1/affiliates/${id}`, 'PATCH', { status: 'active' })
+    const bCode = ((await (await admin(`/v1/affiliates/${b.id}`)).json()) as { code: string }).code
+    const aTok = ((await (await login(a.email, a.password)).json()) as { accessToken: string }).accessToken
+
+    const claim = (await (await j('/v1/partner/deals', 'POST', { company: 'Protected Fleet', domain: 'protectedfleet.test' }, bearer(aTok))).json()) as { id: string }
+    // pending attributes NOTHING — the anti-land-grab control is that a human said yes
+    expect(await db.affiliates.claimFor('protectedfleet.test', new Date())).toBeNull()
+    expect((await admin(`/v1/deals/${claim.id}`, 'PATCH', { status: 'approved' })).status).toBe(200)
+    expect((await db.affiliates.claimFor('protectedfleet.test', new Date()))?.affiliateId).toBe(a.id)
+
+    // a SECOND partner cannot be promised the same prospect: two partners both told "this is
+    // protected for you" is discovered only when the money is owed twice
+    const dupe = (await (await j('/v1/partner/deals', 'POST', { company: 'Same Fleet', domain: 'protectedfleet.test' }, bearer(((await (await login(b.email, b.password)).json()) as { accessToken: string }).accessToken))).json()) as { id: string }
+    expect((await admin(`/v1/deals/${dupe.id}`, 'PATCH', { status: 'approved' })).status).toBe(409)
+
+    // …and a decided claim cannot be decided again — re-approving would move the expiry and
+    // silently re-open a window that may already have paid out
+    expect((await admin(`/v1/deals/${claim.id}`, 'PATCH', { status: 'rejected' })).status).toBe(404)
+    void bCode
+  })
+
   it('login rejects wrong password, unknown email, an unset-password partner, and a non-active partner', async () => {
     const p = await makePartner('who@partner.co', 'partnerpass1')
     expect((await login(p.email, 'wrongpass1')).status).toBe(401)

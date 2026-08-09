@@ -63,11 +63,39 @@ export interface AffiliateUpdateInput {
   locale?: string
 }
 
+/** A partner's claim on a prospect, as the admin queue shows it. */
+export interface DealView {
+  id: string
+  affiliateName: string
+  affiliateId: string
+  company: string
+  domain: string
+  contactName: string | null
+  contactEmail: string | null
+  note: string | null
+  status: 'pending' | 'approved' | 'rejected' | 'converted'
+  reason: string | null
+  expiresAt: string | null
+  convertedTenantId: string | null
+  createdAt: string
+}
+
 const enc = encodeURIComponent
 
 export const listAffiliates = () => getJson<AffiliateWithStats[]>('/v1/affiliates')
 export const createAffiliate = (data: AffiliateCreateInput) => mutate<AffiliateView>('POST', '/v1/affiliates', data)
 export const updateAffiliate = (id: string, data: AffiliateUpdateInput) => mutate<AffiliateView>('PATCH', `/v1/affiliates/${enc(id)}`, data)
+export const listDeals = () => getJson<DealView[]>('/v1/deals')
+/**
+ * Approve or reject a claim.
+ *
+ * Approval is the whole anti-land-grab control: an approved claim attributes future signups on that
+ * domain to this partner for 90 days, so it is a money decision and the server audits it. A 409
+ * means another partner already holds a live claim on the same domain.
+ */
+export const decideDeal = (id: string, status: 'approved' | 'rejected', reason?: string) =>
+  mutate<DealView>('PATCH', `/v1/deals/${enc(id)}`, { status, ...(reason !== undefined && reason !== '' ? { reason } : {}) })
+
 export const listCommissions = (affiliateId: string) => getJson<CommissionView[]>(`/v1/affiliates/${enc(affiliateId)}/commissions`)
 export const setCommissionStatus = (id: string, status: CommissionStatus) => mutate<CommissionView>('PATCH', `/v1/commissions/${enc(id)}`, { status })
 

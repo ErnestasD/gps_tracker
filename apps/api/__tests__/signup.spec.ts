@@ -418,6 +418,52 @@ describe('public self-serve signup (F2)', () => {
     expect(sentPartner.length).toBeLessThanOrEqual(3)
   })
 
+  it('an approved DEAL REGISTRATION attributes a link-less signup; a referral link still wins', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-0000000000f2' }
+    const claimer = await db.affiliates.create(actor, { name: 'Claimer Ltd', email: 'c@claimerco.test', code: 'CLAIMER1' })
+    const linker = await db.affiliates.create(actor, { name: 'Linker Ltd', email: 'l@linkerco.test', code: 'LINKER1' })
+    await db.affiliates.update(actor, claimer.id, { status: 'active' })
+    await db.affiliates.update(actor, linker.id, { status: 'active' })
+    const approve = async (affiliateId: string, domain: string) => {
+      const d = await db.affiliates.createDeal({ affiliateId, company: domain, domain })
+      await db.affiliates.decideDeal(actor, d.id, 'approved', undefined, new Date())
+      return d
+    }
+
+    // THE CASE THE FEATURE EXISTS FOR: no ref, no cookie, no link — the customer typed our address
+    const claim = await approve(claimer.id, 'protectedco.test')
+    const direct = (await (await signup({ name: 'Direct', email: 'ops@protectedco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(direct.id))!.referredByAffiliateId).toBe(claimer.id)
+    // …and the claim is spent, so a second signup from that domain does not re-use it
+    const after = (await db.affiliates.listDealsForPartner(claimer.id)).find((d) => d.id === claim.id)
+    expect(after?.status).toBe('converted')
+    expect(after?.convertedTenantId).toBe(direct.id)
+
+    // A LINK WINS over someone else's standing claim: the link is the customer's own action at the
+    // moment of signing up, and a claim must never quietly take a signup another partner drove.
+    await approve(claimer.id, 'contested.test')
+    const viaLink = (await (await signup({ name: 'Linked', email: 'ops@contested.test', password: 'password12', ref: 'LINKER1' })).json()) as { id: string }
+    expect((await db.tenants.get(viaLink.id))!.referredByAffiliateId).toBe(linker.id)
+
+    // a PENDING claim attributes nothing — approval is the whole control
+    await db.affiliates.createDeal({ affiliateId: claimer.id, company: 'Pending Co', domain: 'pendingco.test' })
+    const unapproved = (await (await signup({ name: 'Pending', email: 'ops@pendingco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(unapproved.id))!.referredByAffiliateId).toBeNull()
+
+    // an EXPIRED claim attributes nothing either — expiry is derived at read time, not swept
+    const stale = await approve(claimer.id, 'staleco.test')
+    await db.affiliates.decideDeal(actor, stale.id, 'approved', undefined, new Date()) // already decided → no-op
+    await db.affiliates.setDealExpiry(stale.id, new Date(Date.now() - 86_400_000))
+    const expired = (await (await signup({ name: 'Stale', email: 'ops@staleco.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(expired.id))!.referredByAffiliateId).toBeNull()
+
+    // a SUSPENDED partner's claim attributes nothing, exactly as their code would not
+    await approve(claimer.id, 'suspendedclaim.test')
+    await db.affiliates.update(actor, claimer.id, { status: 'suspended' })
+    const susp = (await (await signup({ name: 'Susp', email: 'ops@suspendedclaim.test', password: 'password12' })).json()) as { id: string }
+    expect((await db.tenants.get(susp.id))!.referredByAffiliateId).toBeNull()
+  })
+
   it('drops SELF-REFERRAL attribution — a partner cannot earn commission on their own signup (§6.9)', async () => {
     const actor = { userId: '00000000-0000-0000-0000-0000000000f2' }
     const aff = await db.affiliates.create(actor, { name: 'Selfie Ltd', email: 'owner@selfie-fleet.test', code: 'SELFIE1' })

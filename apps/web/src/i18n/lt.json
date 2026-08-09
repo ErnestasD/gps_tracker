@@ -1164,6 +1164,22 @@
       "lt": "Lietuvių",
       "de": "Vokiečių",
       "pl": "Lenkų"
+    },
+    "deals": "Klientų rezervacijos",
+    "dealsPending_one": "{{count}} laukia sprendimo",
+    "dealsPending_few": "{{count}} laukia sprendimo",
+    "dealsPending_other": "{{count}} laukia sprendimo",
+    "dealBy": "pateikė {{name}}",
+    "dealApprove": "Patvirtinti",
+    "dealReject": "Atmesti",
+    "dealRejectReason": "Kodėl? Partneris tai perskaitys.",
+    "dealUntil": "rezervuota iki {{date}}",
+    "dealConflict": "Nepavyko išsaugoti. Tą domeną galbūt jau turi kitas partneris.",
+    "dealStatus": {
+      "pending": "Laukia",
+      "approved": "Rezervuota",
+      "converted": "Užsiregistravo",
+      "rejected": "Atmesta"
     }
   },
   "authNav": {

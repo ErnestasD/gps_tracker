@@ -1161,6 +1161,21 @@
       "lt": "Lithuanian",
       "de": "German",
       "pl": "Polish"
+    },
+    "deals": "Deal registrations",
+    "dealsPending_one": "{{count}} awaiting review",
+    "dealsPending_other": "{{count}} awaiting review",
+    "dealBy": "by {{name}}",
+    "dealApprove": "Approve",
+    "dealReject": "Reject",
+    "dealRejectReason": "Why? The partner will read this.",
+    "dealUntil": "protected until {{date}}",
+    "dealConflict": "Could not save. Another partner may already hold a live claim on that domain.",
+    "dealStatus": {
+      "pending": "Pending",
+      "approved": "Protected",
+      "converted": "Signed up",
+      "rejected": "Rejected"
     }
   },
   "authNav": {

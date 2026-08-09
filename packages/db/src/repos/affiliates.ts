@@ -1,4 +1,4 @@
-import type { Affiliate, AffiliateStatus, Commission, CommissionStatus, PrismaClient } from '@prisma/client'
+import type { Affiliate, AffiliateStatus, Commission, CommissionStatus, DealRegistration, PrismaClient } from '@prisma/client'
 
 /**
  * An affiliate as the API may return it — the model MINUS `passwordHash` (argon2id, partner
@@ -89,6 +89,9 @@ function addMonthsUtc(d: Date, months: number): Date {
 /** A partner's ledger read is unbounded by nature (one row per customer invoice, forever). Cap it so
  *  a long-lived partner's dashboard load stays a fixed cost; the page is a summary, not an export. */
 const PARTNER_LEDGER_LIMIT = 500
+
+/** Claims are a queue a human works through, not an archive — bound the read like the ledger. */
+const DEAL_LIST_LIMIT = 500
 
 /** Stripe's subscription vocabulary → the three states a partner is entitled to. See PartnerCustomerRow.state. */
 function customerState(status: string | null): 'trial' | 'active' | 'ended' {
@@ -198,6 +201,26 @@ export interface AffiliateWithStats extends AffiliateView {
   }
 }
 
+/** How long an approved claim protects a prospect. Ninety days is one sales cycle for a fleet. */
+export const DEAL_WINDOW_DAYS = 90
+
+export interface DealCreateInput {
+  affiliateId: string
+  company: string
+  domain: string
+  contactName?: string | undefined
+  contactEmail?: string | undefined
+  note?: string | undefined
+}
+
+/** Raised when a partner claims a domain another partner already holds. First approved claim wins. */
+export class DealDomainTakenError extends Error {
+  constructor() {
+    super('domain already claimed')
+    this.name = 'DealDomainTakenError'
+  }
+}
+
 export interface AffiliateRepo {
   list(): Promise<AffiliateView[]>
   get(id: string): Promise<AffiliateView | null>
@@ -235,6 +258,38 @@ export interface AffiliateRepo {
   recordClick(affiliateId: string, day: Date): Promise<void>
   /** The four funnel stages for one partner. */
   funnelFor(affiliateId: string, code: string, now: Date): Promise<AffiliateFunnel>
+  // ── deal registration (§6.9) ──────────────────────────────────────────────────────────────────
+  /** A partner claims a prospect. Always lands as `pending` — approval is a human decision. */
+  createDeal(data: DealCreateInput): Promise<DealRegistration>
+  /** One partner's own claims, newest first. */
+  listDealsForPartner(affiliateId: string): Promise<DealRegistration[]>
+  /** Every claim, for the admin queue. Newest first; pending ones are what need action. */
+  listDeals(): Promise<(DealRegistration & { affiliateName: string })[]>
+  /**
+   * Approve or reject a pending claim.
+   *
+   * APPROVAL IS EXCLUSIVE: it refuses (DealDomainTakenError) when another partner already holds a
+   * live claim on the same domain. Two partners both told "this prospect is protected for you" is
+   * worse than one of them being told no — the promise is the product here, and a duplicate would be
+   * discovered only when the money was already owed twice.
+   */
+  decideDeal(actor: Actor, id: string, status: 'approved' | 'rejected', reason: string | undefined, now: Date): Promise<DealRegistration | null>
+  /**
+   * The partner protecting this email domain right now, if any.
+   *
+   * Signup calls this ONLY when no referral code was supplied — an explicit link is the customer's
+   * own action at the moment of signing up, and it wins. A claim covers the case the whole feature
+   * exists for: the customer arrives by typing our address into a browser.
+   *
+   * Oldest live claim wins, so the answer cannot change under a concurrent approval.
+   */
+  claimFor(domain: string, now: Date): Promise<DealRegistration | null>
+  /** Record that a claim produced a tenant (idempotent — only the first signup converts it). */
+  markDealConverted(id: string, tenantId: string, now: Date): Promise<void>
+  /** TEST SEAM: move a claim's expiry. Expiry is derived at read time and never written by the
+   *  product, so proving "an expired claim attributes nothing" needs a way to age one — and reaching
+   *  into the table from a test would put SQL outside packages/db (hard rule 2). */
+  setDealExpiry(id: string, expiresAt: Date): Promise<void>
   listCommissions(affiliateId?: string): Promise<Commission[]>
   /**
    * A refunded customer payment reverses the commission it earned (Stripe `charge.refunded`).
@@ -563,6 +618,80 @@ export function createAffiliateRepo(prisma: PrismaClient, audit: AuditRepo): Aff
         signups,
         paying,
       }
+    },
+    createDeal: (data) =>
+      prisma.dealRegistration.create({
+        data: {
+          affiliateId: data.affiliateId,
+          company: data.company,
+          domain: data.domain,
+          ...(data.contactName !== undefined ? { contactName: data.contactName } : {}),
+          ...(data.contactEmail !== undefined ? { contactEmail: data.contactEmail } : {}),
+          ...(data.note !== undefined ? { note: data.note } : {}),
+        },
+      }),
+    listDealsForPartner: (affiliateId) => prisma.dealRegistration.findMany({ where: { affiliateId }, orderBy: { createdAt: 'desc' }, take: DEAL_LIST_LIMIT }),
+    listDeals: async () => {
+      const rows = await prisma.dealRegistration.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: DEAL_LIST_LIMIT,
+        include: { affiliate: { select: { name: true } } },
+      })
+      return rows.map(({ affiliate, ...d }) => ({ ...d, affiliateName: affiliate.name }))
+    },
+    decideDeal: async (actor, id, status, reason, now) => {
+      const updated = await prisma.$transaction(async (tx) => {
+        const before = await tx.dealRegistration.findUnique({ where: { id } })
+        if (before === null) return null
+        // only a PENDING claim is decidable: re-approving a converted one would move its expiry and
+        // silently re-open a window that has already paid out
+        if (before.status !== 'pending') return null
+        if (status === 'approved') {
+          // EXCLUSIVE. Inside the transaction so two admins approving competing claims for the same
+          // domain in the same second cannot both succeed.
+          const live = await tx.dealRegistration.findFirst({
+            where: { domain: before.domain, status: { in: ['approved', 'converted'] }, expiresAt: { gt: now }, NOT: { id } },
+          })
+          if (live !== null) throw new DealDomainTakenError()
+        }
+        return tx.dealRegistration.update({
+          where: { id },
+          data: {
+            status,
+            ...(reason !== undefined ? { reason } : {}),
+            reviewedAt: now,
+            reviewedBy: actor.userId,
+            ...(status === 'approved' ? { expiresAt: new Date(now.getTime() + DEAL_WINDOW_DAYS * 86_400_000) } : {}),
+          },
+        })
+      })
+      if (updated === null) return null
+      // the money control it is: an approved claim attributes future signups to a partner, so who
+      // approved it and when has to be answerable later
+      await audit.recordPlatform(actor, {
+        action: 'update',
+        entity: 'deal_registration',
+        entityId: id,
+        after: { status: updated.status, domain: updated.domain, affiliateId: updated.affiliateId, expiresAt: updated.expiresAt },
+      })
+      return updated
+    },
+    claimFor: (domain, now) =>
+      prisma.dealRegistration.findFirst({
+        where: { domain, status: 'approved', expiresAt: { gt: now } },
+        // OLDEST first: the answer must not depend on which of two live claims was written last
+        orderBy: { createdAt: 'asc' },
+      }),
+    markDealConverted: async (id, tenantId, now) => {
+      // guarded on `approved`, so a second signup from the same domain does not overwrite the tenant
+      // the claim actually produced
+      await prisma.dealRegistration.updateMany({
+        where: { id, status: 'approved' },
+        data: { status: 'converted', convertedTenantId: tenantId, convertedAt: now },
+      })
+    },
+    setDealExpiry: async (id, expiresAt) => {
+      await prisma.dealRegistration.update({ where: { id }, data: { expiresAt } })
     },
     listCommissions: (affiliateId) =>
       prisma.commission.findMany({ where: affiliateId !== undefined ? { affiliateId } : {}, orderBy: { createdAt: 'desc' } }),

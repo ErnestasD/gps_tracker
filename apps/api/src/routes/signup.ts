@@ -208,7 +208,43 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
       (canonicalMailbox(candidate.email) === canonicalMailbox(email) ||
         (domainOf(candidate.email) === domainOf(email) && !FREE_MAIL_DOMAINS.has(domainOf(email))))
     if (selfReferral) console.warn('signup: self-referral attribution dropped', candidate.code)
-    const ref = selfReferral ? null : candidate
+    const linked = selfReferral ? null : candidate
+
+    /**
+     * DEAL REGISTRATION fallback (§6.9) — the case the whole feature exists for.
+     *
+     * A partner introduces a fleet in person; the fleet later types our address into a browser with
+     * no link, no code and no cookie, and the partner earns nothing. An approved, unexpired claim on
+     * the signup's email domain attributes it to them.
+     *
+     * A REFERRAL LINK WINS when one is present. The link is the customer's own action at the moment
+     * of signing up, and honouring a third party's standing claim over it would let a claim quietly
+     * take a signup another partner actively drove. A claim covers the no-link case, which is the
+     * only case anyone complained about.
+     *
+     * The free-mail rule is enforced at registration, not here — but the guard is repeated because
+     * this is where a mistake would be expensive, and one approved gmail.com claim would otherwise
+     * take every self-serve signup on the platform.
+     */
+    let claimed: { id: string; affiliateId: string } | null = null
+    if (linked === null) {
+      const domain = domainOf(email)
+      if (domain !== '' && !FREE_MAIL_DOMAINS.has(domain)) {
+        try {
+          const claim = await deps.db.affiliates.claimFor(domain, new Date())
+          // an inactive partner's claim attributes nothing, exactly as their code would not
+          if (claim !== null) {
+            const owner = await deps.db.affiliates.get(claim.affiliateId)
+            if (owner !== null && owner.status === 'active') claimed = { id: claim.id, affiliateId: claim.affiliateId }
+          }
+        } catch (claimErr) {
+          // attribution is never allowed to block a signup — a customer creating an account must not
+          // fail because a partner-facing lookup did
+          console.warn('signup: deal claim lookup failed', claimErr instanceof Error ? claimErr.message : String(claimErr))
+        }
+      }
+    }
+    const ref = linked ?? (claimed !== null ? await deps.db.affiliates.get(claimed.affiliateId) : null)
 
     try {
       const created = await deps.db.tenants.createSelfServeSignup({
@@ -248,6 +284,15 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
       } catch (mailErr) {
         deps.onVerifyMailFailed?.()
         console.error('signup: could not send the activation mail', mailErr instanceof Error ? mailErr.message : String(mailErr))
+      }
+      // …and close the claim it came from, so the partner's list shows it landed and a second
+      // signup from the same domain does not silently re-use a protection that has been spent
+      if (claimed !== null) {
+        try {
+          await deps.db.affiliates.markDealConverted(claimed.id, created.tenantId, new Date())
+        } catch (convErr) {
+          console.warn('signup: deal claim not marked converted', convErr instanceof Error ? convErr.message : String(convErr))
+        }
       }
       // TELL THE PARTNER. A referral used to be invisible to the person who made it: they were
       // handed a link and had to log in on a hunch to find out whether it had worked. Best-effort
