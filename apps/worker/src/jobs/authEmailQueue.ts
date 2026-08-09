@@ -73,7 +73,7 @@ export interface LapseEmailJob extends AuthEmailBase {
  */
 export interface PartnerEmailJob extends AuthEmailBase {
   kind: 'partner'
-  event: 'referral' | 'commission'
+  event: 'referral' | 'commission' | 'payout-request'
   /** the referred company */
   customer: string
   /** commission events: already formatted with its currency, e.g. "€90.00" */

@@ -31,7 +31,7 @@ export interface BillingDeps {
   onPartnerMailFailed?: () => void | undefined
   /** the partner-notification queue. Absent ⇒ commissions still accrue, silently, as before. */
   mail?: {
-    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
+    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission' | 'payout-request'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
   } | undefined
   /** Fired when a signature-verified subscription webhook provisioned NOTHING. Stripe is acked
    *  either way (a retry cannot conjure a missing customer mapping), so this counter is the only

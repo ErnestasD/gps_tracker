@@ -30,6 +30,14 @@ export interface PartnerRouteDeps {
   setPwTokenTtlS?: number
   trustProxy: boolean
   getRemoteAddr: (c: unknown) => string
+  /** where a payout request lands. Absent ⇒ the request is still recorded, just not mailed. */
+  opsEmail?: string
+  /** the partner-notification queue (payout requests ride it too) */
+  mail?: {
+    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission' | 'payout-request'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
+  }
+  /** a partner notification could not be queued */
+  onPartnerMailFailed?: () => void
   /** the click counter failed — an unapplied migration or a Redis fault silently zeroes every
    *  partner's funnel, which reads exactly like "nobody clicked" */
   onClickCountFailed?: () => void
@@ -45,6 +53,9 @@ export interface PartnerRouteDeps {
     maxFailsPerIp?: number
     maxAttemptsPerIpHard?: number
     maxFailIpsPerEmail?: number
+    /** set-password redeem attempts per IP per hour. The one partner ceiling that stayed a hard
+     *  constant while its neighbours became tunable — and the one an onboarding push hits first. */
+    setPwRedeemMax?: number
   }
   /** A lockout gate refused a partner login — same counter the tenant login feeds, so the
    *  `auth_lockout_tripped_total` series is not blind to half the authentication surface. */
@@ -184,7 +195,7 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
 
   // ── PUBLIC: set/reset password via a one-time token ──────────────────────────
   app.post('/v1/partner/set-password', async (c) => {
-    if (Number(await deps.redis.eval(RL_SCRIPT, 1, `partner:redeem:${ip(c)}`, String(RL_WINDOW_S))) > REDEEM_RL_MAX) {
+    if (Number(await deps.redis.eval(RL_SCRIPT, 1, `partner:redeem:${ip(c)}`, String(RL_WINDOW_S))) > (deps.loginLimits?.setPwRedeemMax ?? REDEEM_RL_MAX)) {
       return problem(c, 429, 'Too Many Requests')
     }
     const parsed = partnerSetPasswordSchema.safeParse(await c.req.json().catch(() => null))
@@ -311,6 +322,86 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
     return c.json(rows.map(dealView))
   })
 
+  /**
+   * The partner's payout statement, as a CSV they can attach to their own invoice.
+   *
+   * Every payout today starts with an email asking what the balance is. This is that answer, in the
+   * one format an accountant can open — and it is the SAME rows the portal shows, from the same
+   * repo method, so the number a partner invoices for cannot drift from the number on screen.
+   *
+   * Only what is OWED: `pending`. Paid lines belong to a past statement and reversed ones are not
+   * money, so including either would produce an invoice we would have to dispute.
+   */
+  app.get('/v1/partner/statement.csv', partnerAuth(deps), async (c) => {
+    const partner = c.get('partner')
+    const rows = (await deps.db.affiliates.listCommissionsForPartner(partner.id)).filter((r) => r.status === 'pending')
+    const esc = (v: string) => `"${v.replaceAll('"', '""')}"`
+    const body = [
+      ['date', 'customer', 'invoice', 'customer_paid', 'rate_pct', 'commission', 'currency'].join(','),
+      ...rows.map((r) =>
+        [
+          esc(r.at.slice(0, 10)),
+          esc(r.customer),
+          esc(r.sourceInvoiceId),
+          ((r.baseAmountCents ?? 0) / 100).toFixed(2),
+          r.ratePct ?? '',
+          (r.amountCents / 100).toFixed(2),
+          esc(r.currency.toUpperCase()),
+        ].join(','),
+      ),
+    ].join('\n')
+    c.header('Content-Type', 'text/csv; charset=utf-8')
+    c.header('Content-Disposition', `attachment; filename="orbetra-statement-${partner.code}.csv"`)
+    c.header('Cache-Control', 'no-store')
+    return c.body(body)
+  })
+
+  /**
+   * "I would like to be paid."
+   *
+   * Deliberately a NOTIFICATION, not a transaction: the transfer is a bank payment a human makes,
+   * and pretending otherwise with a status machine would be a lie in the ledger. What this removes
+   * is the part that was actually broken — a partner had no way to tell us except by finding an
+   * address on the marketing site.
+   *
+   * ONE PER DAY per partner. Not abuse prevention so much as courtesy in both directions: a partner
+   * clicking twice must not look like they are chasing us, and we must not receive the same request
+   * five times because a page was refreshed.
+   */
+  app.post('/v1/partner/payout-request', partnerAuth(deps), async (c) => {
+    const partner = c.get('partner')
+    const asked = (await deps.redis.eval(RL_SCRIPT, 1, `partner:payout:${partner.id}`, String(PAYOUT_REQUEST_WINDOW_S))) as number
+    if (asked > 1) return problem(c, 429, 'Too Many Requests', 'already_requested')
+    const owed = (await deps.db.affiliates.listCommissionsForPartner(partner.id)).filter((r) => r.status === 'pending')
+    const byCurrency = new Map<string, number>()
+    for (const r of owed) byCurrency.set(r.currency, (byCurrency.get(r.currency) ?? 0) + r.amountCents)
+    const balance = [...byCurrency.entries()].map(([cur, cents]) => `${(cents / 100).toFixed(2)} ${cur.toUpperCase()}`).join(' + ')
+    // AUDITED whatever happens to the mail: a partner asking to be paid is a fact about the money,
+    // and it must survive a queue that is down or an ops address nobody configured.
+    console.warn('partner payout requested', { affiliateId: partner.id, code: partner.code, balance, lines: owed.length })
+    try {
+      const enqueue = deps.mail?.enqueuePartnerEmail?.bind(deps.mail)
+      if (enqueue !== undefined && deps.opsEmail !== undefined && deps.siteUrl !== undefined) {
+        await enqueue({
+          kind: 'partner',
+          event: 'payout-request',
+          email: deps.opsEmail, // TO US — this is the one partner mail whose recipient is not the partner
+          tenantId: '',
+          locale: 'en',
+          customer: `${partner.name} (${partner.code})`,
+          amount: balance === '' ? '0.00' : balance,
+          portalUrl: `${deps.siteUrl.replace(/\/+$/, '')}/partner/dashboard`,
+        })
+      }
+    } catch (err) {
+      // the request is already logged; a mail failure must not tell the partner their request failed
+      deps.onPartnerMailFailed?.()
+      console.warn('payout request notice not queued', err instanceof Error ? err.message : String(err))
+    }
+    c.header('Cache-Control', 'no-store')
+    return c.json({ ok: true, balance })
+  })
+
   /** The four funnel stages: how many opened the link, enquired, signed up, and started paying. */
   app.get('/v1/partner/funnel', partnerAuth(deps), async (c) => {
     const partner = c.get('partner')
@@ -416,6 +507,9 @@ const MAX_PENDING_DEALS = 25
  *  counted — otherwise walking a domain list past the house-account test is free and leaves no trace. */
 const DEAL_PROBE_MAX = 40
 const DEAL_PROBE_WINDOW_S = 3600
+
+/** one payout request a day — courtesy in both directions, not abuse prevention */
+const PAYOUT_REQUEST_WINDOW_S = 24 * 3600
 
 /** per-IP ceiling on the short link. Generous — it is a marketing URL, not a credential. */
 const CLICK_RL_PER_MIN = 120

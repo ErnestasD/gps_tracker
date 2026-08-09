@@ -77,7 +77,7 @@ export interface ApiDeps extends WsDeps {
   /** Self-service password-change limit per user; default 10/h (two argon2 ops per request). */
   passwordChangeRateLimit?: { max: number; windowS: number }
   /** Partner-portal login ceilings; each falls back to the partner module's default. */
-  partnerLoginLimits?: { maxFails?: number; maxFailsPerIp?: number; maxAttemptsPerIpHard?: number; maxFailIpsPerEmail?: number }
+  partnerLoginLimits?: { maxFails?: number; maxFailsPerIp?: number; maxAttemptsPerIpHard?: number; maxFailIpsPerEmail?: number; setPwRedeemMax?: number }
   secureCookies: boolean
   trustProxy: boolean
   /** Remote socket address resolver (Node server adapter specific; tests inject). */
@@ -118,6 +118,8 @@ export interface ApiDeps extends WsDeps {
   /** Public marketing site origin (e.g. https://orbetra.com) — where a partner's short link lands.
    *  Unset ⇒ `/r/<code>` 404s rather than guessing a host. */
   siteUrl?: string
+  /** where a partner's payout request lands (PARTNER_OPS_EMAIL). Absent ⇒ recorded, not mailed. */
+  opsEmail?: string
   /** the partner short link's click counter failed (swallowed — see affiliateSilentFailure) */
   onClickCountFailed?: () => void
   /** a partner notification could not be queued (swallowed — see affiliateSilentFailure) */
@@ -134,7 +136,7 @@ export interface ApiDeps extends WsDeps {
     /** the ACTIVATION mail for a self-serve signup — without it the new account can never log in. */
     enqueueVerifyEmail?(job: { kind: 'verify-email'; email: string; tenantId: string; locale: string; verifyUrl: string; expiresHours: number }): Promise<void>
     /** Partner-facing notification (referral signed up / commission earned). Platform-branded. */
-    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
+    enqueuePartnerEmail?(job: { kind: 'partner'; event: 'referral' | 'commission' | 'payout-request'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void>
   }
   /** SMS gateway job enqueuer (SMS gateway feature): the API can't send SMS, so it hands a config-SMS
    *  job to the worker's `sms` queue. Present ONLY when Twilio is configured (smsConfigured, shared) —
@@ -482,6 +484,10 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
     // the short link `/r/<code>` sends visitors to the PUBLIC SITE, not the app
     ...(deps.siteUrl !== undefined ? { siteUrl: deps.siteUrl } : {}),
     ...(deps.onClickCountFailed !== undefined ? { onClickCountFailed: deps.onClickCountFailed } : {}),
+    // a payout request is mailed to US, so the partner routes need the queue and the ops address
+    ...(partnerMail !== undefined ? { mail: { enqueuePartnerEmail: partnerMail } } : {}),
+    ...(deps.opsEmail !== undefined ? { opsEmail: deps.opsEmail } : {}),
+    ...(deps.onPartnerMailFailed !== undefined ? { onPartnerMailFailed: deps.onPartnerMailFailed } : {}),
     ...(deps.onUnverifiedLogin !== undefined ? { onUnverifiedLogin: deps.onUnverifiedLogin } : {}),
   }))
 
