@@ -40,8 +40,32 @@ describe('renderResetEmail', () => {
 })
 
 describe('sendAuthEmail', () => {
-  const fakePool = (branding: unknown = null): Pool =>
-    ({ query: () => Promise.resolve({ rows: [{ name: 'Acme Fleet', branding }], rowCount: 1 }) }) as unknown as Pool
+  /**
+   * Answers PER QUERY, not one canned row for everything.
+   *
+   * It used to return `{ name, branding }` to any SQL at all, which quietly made the new
+   * suppression check ("is this address dead?") answer YES for every message — the branding test
+   * failed with `expected false to be true` and told you nothing about why. A stub that agrees with
+   * every question cannot catch a caller asking a new one.
+   */
+  const fakePool = (branding: unknown = null, suppressed = false): Pool =>
+    ({
+      query: (sql: string) =>
+        Promise.resolve(
+          sql.includes('email_suppressions')
+            ? { rows: suppressed ? [{ address: 'x' }] : [], rowCount: suppressed ? 1 : 0 }
+            : { rows: [{ name: 'Acme Fleet', branding }], rowCount: 1 },
+        ),
+    }) as unknown as Pool
+
+  it('never mails an address SES told us is dead', async () => {
+    // the whole point of the bounce feedback loop: one send path, checked once, so no producer can
+    // forget. A suppressed address is a no-op — not a retry, and not a bounce we pay for again.
+    const send = vi.fn<(to: string, subject: string, text: string, html?: string) => Promise<void>>(() => Promise.resolve())
+    const sent = await sendAuthEmail({ pool: fakePool(null, true), transport: { send } }, job())
+    expect(sent).toBe(false)
+    expect(send).not.toHaveBeenCalled()
+  })
 
   it('renders the branded message and sends it via the transport', async () => {
     const send = vi.fn<(to: string, subject: string, text: string, html?: string) => Promise<void>>(() => Promise.resolve())

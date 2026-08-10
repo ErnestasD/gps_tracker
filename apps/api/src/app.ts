@@ -28,6 +28,7 @@ import { mountReports } from './routes/reports.js'
 import { mountDriverScores } from './routes/driverScores.js'
 import { mountRouting } from './routes/routing.js'
 import { mountBilling, mountStripeWebhook } from './routes/billing.js'
+import { createSesWebhookRoutes } from './routes/sesWebhook.js'
 import { mountPush } from './routes/push.js'
 import type { StripeGateway } from './billing/stripe.js'
 import { defaultTxtResolver, type TxtResolver } from './routes/tenantSelf.js'
@@ -118,6 +119,8 @@ export interface ApiDeps extends WsDeps {
   /** Public marketing site origin (e.g. https://orbetra.com) — where a partner's short link lands.
    *  Unset ⇒ `/r/<code>` 404s rather than guessing a host. */
   siteUrl?: string
+  /** an SES feedback event arrived (bounce | complaint | other | rejected-signature) */
+  onSesEvent?: (kind: 'bounce' | 'complaint' | 'other' | 'rejected') => void
   /** where a partner's payout request lands (PARTNER_OPS_EMAIL). Absent ⇒ recorded, not mailed. */
   opsEmail?: string
   /** the partner short link's click counter failed (swallowed — see affiliateSilentFailure) */
@@ -462,6 +465,13 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
       }),
     ...(deps.onTenantRestored !== undefined ? { onTenantRestored: deps.onTenantRestored } : {}),
   })
+
+  // PUBLIC SES bounce/complaint feedback (SNS) — before the /v1/* auth guard, because SNS carries no
+  // credential. Its security is the signature, verified inside. Manifest-EXEMPT.
+  app.route('/', createSesWebhookRoutes({
+    db: deps.db,
+    ...(deps.onSesEvent !== undefined ? { onEvent: deps.onSesEvent } : {}),
+  }))
 
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)

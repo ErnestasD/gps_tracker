@@ -268,6 +268,34 @@ model DealRegistration {
   @@map("deal_registrations")
 }
 
+enum SuppressionReason {
+  bounce
+  complaint
+}
+
+/// Addresses we must stop mailing, learned from SES bounce/complaint events (§ADR-023).
+///
+/// Before this, a bounce was invisible to the platform: SES told a human inbox and nothing in the
+/// system knew. Someone who mistyped their address at signup never got the activation link and
+/// vanished; worse, the billing lapse ladder advances on SEND, so a customer whose billing contact
+/// was dead was recorded as warned three times and then had their fleet cut off, having been warned
+/// into a void.
+///
+/// Keyed on the ADDRESS, not a user: the recipients we mail include partners and account contacts
+/// that have no user row, and the reason to stop is a fact about the mailbox either way.
+model EmailSuppression {
+  /// lowercased, exactly as SES reported it
+  address   String            @id
+  reason    SuppressionReason
+  /// SES's own words — bounce subtype, or the diagnostic line. Shown to support, never to the user.
+  detail    String?
+  /// the SNS message that told us, so a duplicate delivery is recognisable in the audit trail
+  messageId String?
+  createdAt DateTime          @default(now()) @db.Timestamptz()
+
+  @@map("email_suppressions")
+}
+
 /// Daily UNIQUE clicks on a partner's short link (`/r/<code>`), §6.9 funnel.
 ///
 /// One row per partner per UTC day, incremented in place — a click is not an event worth storing

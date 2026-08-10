@@ -37,6 +37,18 @@ export interface LapseSweepWorkerDeps {
   }
   onSwept?: (r: LapseSweepResult) => void
   onFailed?: () => void
+  /** a lapsed tenant's billing contact is undeliverable, so the ladder cannot run for them and their
+   *  fleet will never be suspended. Someone has to fix the address; nothing else will. */
+  onUnreachable?: () => void
+}
+
+/** SES has told us this billing contact is dead. Fails OPEN — see the note in authEmailWorker. */
+async function isSuppressedContact(db: Db, email: string): Promise<boolean> {
+  try {
+    return await db.suppressions.isSuppressed(email)
+  } catch {
+    return false
+  }
 }
 
 const DAY_MS = 86_400_000
@@ -120,6 +132,8 @@ export interface SweepDeps {
   redis?: Redis | undefined
   appBaseUrl?: string | undefined
   mail?: LapseSweepWorkerDeps['mail']
+  /** a lapsed tenant's billing contact is undeliverable — see the note on the ladder below */
+  onUnreachable?: () => void
 }
 
 /**
@@ -173,9 +187,23 @@ export async function runLapseSweep(deps: SweepDeps, nowMs: number, graceDays: n
     const past = daysPastGrace(t, nowMs, graceDays)
     if (past === null || past < 0) continue // still inside the grace window
     try {
-      // 2. WARN — one notice per day of the ladder, recorded before the next can be due.
+      /**
+       * 2. WARN — one notice per day of the ladder, recorded before the next can be due.
+       *
+       * A SUPPRESSED CONTACT STOPS THE LADDER DEAD. The stage is what step 3 reads to decide the
+       * customer has been warned enough to cut off, and it used to advance on ENQUEUE — so a tenant
+       * whose billing address had hard-bounced was recorded as warned three times, warned into a
+       * void, and then had their fleet stopped. Not advancing the stage means `readyToSuspend` can
+       * never become true for them: they stay lapsed and visible in the counters until somebody
+       * fixes the address, which is the only honest outcome when we cannot reach a customer.
+       */
+      const reachable = t.contactEmail !== null && !(await isSuppressedContact(deps.db, t.contactEmail))
+      if (!reachable && t.contactEmail !== null) {
+        console.warn('billing: lapse notice NOT sent — contact address is suppressed; suspension is blocked', JSON.stringify({ tenantId: t.tenantId, name: t.name }))
+        deps.onUnreachable?.()
+      }
       const due = noticeDue(past, t.noticeStage)
-      if (due !== null && canMail && t.contactEmail !== null) {
+      if (due !== null && canMail && reachable && t.contactEmail !== null) {
         await deps.mail!.enqueueLapseEmail({
           kind: 'lapse',
           email: t.contactEmail,
@@ -216,7 +244,7 @@ export async function runLapseSweep(deps: SweepDeps, nowMs: number, graceDays: n
           const devices = await deps.db.tenants.registryDevicesFor(t.tenantId)
           console.warn('billing: SUSPENDED a tenant for non-payment', JSON.stringify({ tenantId: t.tenantId, name: t.name, devices: devices.length }))
           await suspendTenantDevices(deps.redis, devices)
-          if (t.contactEmail !== null) {
+          if (reachable && t.contactEmail !== null) {
             await deps.mail!.enqueueLapseEmail({ kind: 'lapse', email: t.contactEmail, tenantId: t.tenantId, locale: t.contactLocale, billingUrl: `${base}/app/billing`, daysLeft: 0 })
           }
         }
@@ -256,7 +284,7 @@ export function createLapseSweepWorker(deps: LapseSweepWorkerDeps): Worker {
       try {
         deps.onSwept?.(
           await runLapseSweep(
-            { db: deps.db, ...(deps.redis !== undefined ? { redis: deps.redis } : {}), ...(deps.appBaseUrl !== undefined ? { appBaseUrl: deps.appBaseUrl } : {}), ...(deps.mail !== undefined ? { mail: deps.mail } : {}) },
+            { db: deps.db, ...(deps.redis !== undefined ? { redis: deps.redis } : {}), ...(deps.appBaseUrl !== undefined ? { appBaseUrl: deps.appBaseUrl } : {}), ...(deps.mail !== undefined ? { mail: deps.mail } : {}), ...(deps.onUnreachable !== undefined ? { onUnreachable: deps.onUnreachable } : {}) },
             now(),
             graceDays,
           ),

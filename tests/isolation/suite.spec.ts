@@ -369,7 +369,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
     // route outside /v1 — the public short link `/r/:code` is the first one. Adding it to EXEMPT
     // would read as "considered and exempted" while changing nothing; it is covered by its own tests
     // in apps/api/__tests__/partner.spec.ts instead.
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/signup|public\/verify-email|public\/share|public\/manifest\.webmanifest|driver-scores|routing|stream|reports|api-keys|billing|webhooks|push|partner|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/signup|public\/verify-email|public\/share|public\/manifest\.webmanifest|driver-scores|routing|stream|reports|api-keys|billing|webhooks|push|partner|webhooks\/ses|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)
@@ -385,7 +385,7 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
     app.get('/v1/sneaky', (c) => c.json({}))
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/signup|public\/verify-email|public\/share|public\/manifest\.webmanifest|driver-scores|routing|stream|reports|api-keys|billing|webhooks|push|partner|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
+    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/signup|public\/verify-email|public\/share|public\/manifest\.webmanifest|driver-scores|routing|stream|reports|api-keys|billing|webhooks|push|partner|webhooks\/ses|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
     const registered = (app.routes as { method: string; path: string }[])
       .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
       .map((r) => `${r.method} ${r.path}`)
