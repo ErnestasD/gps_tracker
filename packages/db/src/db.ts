@@ -18,6 +18,7 @@ import { createShareLinkRepo, type ShareLinkRepo } from './repos/shareLinks.js'
 import { createSmsDeliveryRepo, type SmsDeliveryRepo } from './repos/smsDeliveries.js'
 import { createTenantDomainRepo, type TenantDomainRepo } from './repos/tenantDomains.js'
 import { createAffiliateRepo, type AffiliateRepo } from './repos/affiliates.js'
+import { createSuppressionRepo, type SuppressionRepo } from './repos/suppressions.js'
 import { createTenantRepo, type TenantRepo } from './repos/tenants.js'
 import { createTripRepo, type TripReadRepo } from './repos/trips.js'
 import { createUsageRepo, type UsageRepo } from './repos/usage.js'
@@ -38,6 +39,8 @@ export interface Db {
   auth: Omit<AuthDb, '$disconnect'>
   tenants: TenantRepo
   affiliates: AffiliateRepo
+  /** addresses SES told us to stop mailing (bounce/complaint) */
+  suppressions: SuppressionRepo
   tenantDomains: TenantDomainRepo
   accounts: AccountRepo
   users: UserRepo
@@ -75,6 +78,7 @@ export function createDb(databaseUrl: string): Db {
     auth: buildAuthMethods(prisma),
     tenants: createTenantRepo(prisma, audit),
     affiliates: createAffiliateRepo(prisma, audit),
+    suppressions: createSuppressionRepo(prisma),
     tenantDomains: createTenantDomainRepo(prisma, audit),
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),

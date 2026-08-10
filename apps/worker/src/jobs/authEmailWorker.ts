@@ -112,10 +112,33 @@ async function primaryDomain(pool: Pool, tenantId: string): Promise<string | nul
   }
 }
 
+/**
+ * Has SES told us this mailbox is dead?
+ *
+ * Read on the send path so a hard-bounced or complaining address is never mailed again. Fails OPEN:
+ * a lookup fault must not silence a live customer's password reset, and the worst case of sending
+ * one extra message to a dead address is one bounce — the worst case of the opposite is a customer
+ * who cannot recover their account.
+ */
+async function isSuppressed(pool: Pool, email: string): Promise<boolean> {
+  try {
+    const res = await pool.query('SELECT 1 FROM email_suppressions WHERE address = $1 LIMIT 1', [email.trim().toLowerCase()])
+    return res.rowCount !== null && res.rowCount > 0
+  } catch {
+    return false
+  }
+}
+
 /** Render + send one auth email. Exported for unit testing without a live queue. */
 export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'transport'>, job: AuthEmailJob): Promise<boolean> {
   if (deps.transport === undefined) {
     console.warn('auth-email skipped: email transport not configured') // no address in the log (PII)
+    return false
+  }
+  // SUPPRESSED addresses are dropped here rather than at each producer: there are five of them and
+  // one send path, and a producer that forgets the check is a bounce we pay for.
+  if (await isSuppressed(deps.pool, job.email ?? '')) {
+    console.warn('auth-email skipped: address suppressed (bounce/complaint)', { kind: job.kind })
     return false
   }
   // An empty tenantId means "resolve it here" — the signup-exists mail cannot look the tenant up on

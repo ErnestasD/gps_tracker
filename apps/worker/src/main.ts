@@ -332,6 +332,9 @@ async function main(): Promise<void> {
       prom.billingLapseAction.inc({ action: 'restored' }, r.restored)
     },
     onFailed: () => prom.jobFailed.inc({ job: 'lapse_sweep' }),
+    // a lapsed customer we CANNOT reach: the ladder is blocked for them and their fleet will never
+    // be suspended, which is correct and also means nothing resolves without a human
+    onUnreachable: () => prom.billingLapseUnreachable.inc(),
   })
   await scheduleLapseSweep(lapseSweepQueue)
   // V1-nice: scheduled emailed reports — hourly cron runs due schedules + e-mails them. Only when

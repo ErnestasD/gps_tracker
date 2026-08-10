@@ -45,6 +45,7 @@ export interface WorkerProm {
    *  nothing wired, and several exposed none at all — a job failing every run was invisible. */
   jobFailed: Counter
   authEmailSent: Counter
+  billingLapseUnreachable: Counter
   /** Fields normalization had to null because the value did not fit its column. Non-zero ⇒ a
    *  firmware quirk or spoofed frames; the position is kept, the field is not. */
   fieldNulled: Counter
@@ -215,6 +216,8 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
   /** transactional mail actually handed to SES, by kind — the denominator that makes a failure rate
    *  meaningful and the only evidence that activation mail is flowing at all */
   const authEmailSent = new Counter({ name: 'worker_auth_email_sent_total', help: 'transactional emails handed to the transport, by kind (verify-email | password-reset | signup-exists | lapse | partner)', labelNames: ['kind'], registers: [registry] })
+  /** lapsed tenants whose billing contact bounced: the ladder is blocked and only a human unblocks it */
+  const billingLapseUnreachable = new Counter({ name: 'billing_lapse_unreachable_total', help: 'lapsed tenants whose billing contact address is suppressed (bounce/complaint) — the notice ladder cannot run and suspension is blocked until someone fixes the address', registers: [registry] })
   const jobFailed = new Counter({ name: 'worker_job_failed_total', help: 'background job runs that threw, by job (retention | scheduled_reports | stripe_usage | …)', labelNames: ['job'], registers: [registry] })
   const clockSkewed = new Counter({ name: 'positions_clock_skewed_total', help: 'records whose device clock ran ahead of server time — kept in positions, excluded from live state and the motion engines', registers: [registry] })
   const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })
@@ -253,5 +256,5 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, authEmailSent, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, authEmailSent, billingLapseUnreachable, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }
