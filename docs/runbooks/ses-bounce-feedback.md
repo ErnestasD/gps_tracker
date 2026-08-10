@@ -132,17 +132,26 @@ At this point the events reach the topic and go nowhere. That is expected until 
 
 ---
 
-## 6 — (nothing to do) what gets built on our side
+## 6 — (nothing to do) what is built on our side — **SHIPPED**
 
-An endpoint at `POST /v1/webhooks/ses` that:
+`POST /v1/webhooks/ses`:
 
-- verifies the SNS message signature, so nobody can post fake bounces and suppress a real customer's
-  mail;
-- answers the `SubscriptionConfirmation` handshake automatically, so step 7 confirms itself;
-- records the address as undeliverable and **stops sending to it**;
-- makes it visible in the admin panel next to the account, so support can see why someone never got
-  their activation link;
-- **does not advance the lapse ladder when the warning bounced** — the reason this is worth building.
+- **verifies the SNS signature**, and fetches the certificate only from an
+  `sns.<region>.amazonaws.com` host. Trusting `SigningCertURL` is how an endpoint like this gets
+  broken: sign your own payload, host your own certificate, and the maths checks out perfectly.
+  Unsigned or altered messages get a 403 and change nothing;
+- answers the `SubscriptionConfirmation` handshake by itself, so step 7 confirms in seconds — with
+  the same host check on `SubscribeURL`, which is a URL from the body we would otherwise fetch on
+  request;
+- records the address as undeliverable and **stops sending to it**, checked once on the single send
+  path so no producer can forget;
+- ignores **transient** bounces. A full mailbox clears by itself, and suppressing on it would
+  silence a live customer permanently — this failure inverted;
+- **blocks the lapse ladder for an unreachable contact.** The stage no longer advances when the
+  warning cannot be delivered, so a customer we could not reach can never become ready to suspend.
+  They stay lapsed and counted in `billing_lapse_unreachable_total` until someone fixes the address.
+
+Step 4 (`SES_CONFIG_SET=orbetra-prod`) is already set on the server.
 
 ---
 
@@ -153,11 +162,17 @@ An endpoint at `POST /v1/webhooks/ses` that:
 | Field | Value |
 |---|---|
 | Protocol | **HTTPS** |
-| Endpoint | `https://orbetra.com/v1/webhooks/ses` |
+| Endpoint | `https://dash.orbetra.com/v1/webhooks/ses` |
 | Raw message delivery | **OFF** — leave unticked |
 
 Raw message delivery must stay off: it strips the SNS envelope, and the envelope is what carries the
 signature we verify. With it on, every message would be rejected as unsigned.
+
+> **The app host, not the marketing one.** `orbetra.com` deliberately proxies only the handful of
+> public paths the site needs — `/v1/public/*`, `/v1/partner/*`, `/r/*` — and everything else falls
+> through to the SPA and answers 404. `dash.orbetra.com` carries the whole `/v1` surface, which is
+> also where the Stripe webhook lives. Verified live: an unsigned POST there answers **403** and
+> changes nothing.
 
 The subscription shows **Pending confirmation** for a few seconds and then flips to **Confirmed** by
 itself. If it stays pending, the endpoint is not reachable or not deployed — press **Request
@@ -170,7 +185,7 @@ confirmation** on the subscription after fixing it rather than recreating it.
 Send to `bounce@simulator.amazonses.com` once more. Within a few seconds:
 
 - SNS → topic → Monitoring shows another published message;
-- the address appears as undeliverable in the admin panel.
+- the address is in `email_suppressions` (ask me, or `SELECT * FROM email_suppressions`).
 
 If the first happens and the second does not, the problem is on our side, not in AWS — tell me and
 send the timestamp.
