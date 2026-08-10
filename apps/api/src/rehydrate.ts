@@ -1,6 +1,7 @@
 import type { Redis } from 'ioredis'
 
 import type { Db } from '@orbetra/db'
+import { deactivateDevice } from '@orbetra/registry'
 import { ibuttonKeyFromHex } from '@orbetra/shared'
 
 import { tenantDevicesKey } from './routes/deviceRegistry.js'
@@ -69,6 +70,35 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
   // a rehydrate that half-worked must not read as a successful one in the boot log.
   const failed = (results ?? []).filter(([err]) => err !== null).length
   if (failed > 0) console.error(`rehydrate: ${failed} of ${results?.length ?? 0} redis commands failed`)
+
+  /**
+   * REPAIR WHAT WE JUST RESURRECTED.
+   *
+   * The snapshot above is taken before three more DB reads and a whole pipeline build, and this
+   * process is already serving CRUD (main.ts starts the server first). A device retired inside that
+   * window is written back here in full — mapping, tenant, account, config — and nothing ever
+   * removes it again: the next rehydrate excludes retired rows rather than deleting their keys, and
+   * the index reconcile below keeps the member because the stale `device:tenant` row we just wrote
+   * agrees with it. The device goes on ingesting, publishing live positions and firing rules,
+   * permanently, until a human notices.
+   *
+   * The guarded write in `activateDevice` cannot catch this one: the mapping was DELETED by the
+   * retire, so "free or mine" is satisfied and the resurrection is allowed. Only a fresh read can
+   * tell the difference between "free because nobody owns it" and "free because it was just given
+   * up". So: re-read the active set and tear down anything that left it while we were writing.
+   */
+  const stillActive = new Set((await db.devices.listAllForRegistry()).map((r) => r.id.toString()))
+  let resurrected = 0
+  for (const d of registryRows) {
+    const id = d.id.toString()
+    if (stillActive.has(id)) continue
+    // deactivateDevice, not a hand-rolled teardown: it carries the delete-if-mine guard, so if the
+    // device was retired AND its IMEI re-registered to a new device in the same window, we remove
+    // only a mapping that still points at the old id and leave the new owner's alone.
+    await deactivateDevice(redis, { id: d.id, imei: d.imei, tenantId: d.tenantId })
+    resurrected++
+  }
+  if (resurrected > 0) console.warn(`rehydrate: tore down ${resurrected} device(s) retired mid-rehydrate`)
 
   // Reconcile: drop index members whose `device:tenant` mapping is gone or points elsewhere. This
   // covers what the additive pass above cannot — a device retired while Redis was unreachable, and

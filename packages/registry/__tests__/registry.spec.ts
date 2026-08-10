@@ -26,15 +26,33 @@ function fakeRedis(hashes: Record<string, Record<string, string>> = {}) {
   const evals: { keys: string[]; args: string[] }[] = []
   const redis = {
     hget: (key: string, field: string) => Promise.resolve(hashes[key]?.[field] ?? null),
-    // A tiny Lua interpreter for the ONE script this package ships, so the test exercises the SCRIPT
-    // rather than a re-implementation of it: swap `HDEL_IF_MINE` for a blind HDEL and this fake
-    // stops guarding, which is the whole point. (The end-to-end guard also has real-Redis coverage
-    // in apps/api/__tests__/devices.spec.ts; this is the unit that owns the string.)
+    // the standalone write `activateDevice` uses for its CLAIM path (outside the MULTI)
+    hset: (key: string, field: string, value: string) => {
+      ops.push(`hset ${key}`)
+      ;(hashes[key] ??= {})[field] = value
+      return Promise.resolve(1)
+    },
+    // A tiny Lua interpreter for the TWO scripts this package ships, so the tests exercise the
+    // SCRIPTS rather than a re-implementation of them: swap either guard for a blind command and
+    // this fake stops guarding, which is the whole point. It dispatches on what the script DOES
+    // (HDEL vs HSET) rather than on a name, so a renamed constant cannot silently take the wrong
+    // branch. (The end-to-end guards also have real-Redis coverage in apps/api/__tests__.)
     eval: (script: string, _n: number, key: string, field: string, expected: string) => {
       evals.push({ keys: [key], args: [field, expected] })
+      const h = (hashes[key] ??= {})
+      if (script.includes('HSET')) {
+        // HSET_IF_FREE_OR_MINE: write only when the field is absent or already ours
+        const free = /cur\s*==\s*false/.test(script)
+        const mine = /cur\s*==\s*ARGV\[2\]/.test(script)
+        const cur = h[field]
+        if ((free && cur === undefined) || (mine && cur === expected)) {
+          h[field] = expected
+          return Promise.resolve(1)
+        }
+        return Promise.resolve(0)
+      }
       const guarded = /HGET[^)]*\)\s*==\s*ARGV\[2\]/.test(script)
-      const h = hashes[key]
-      if (h !== undefined && (!guarded || h[field] === expected)) delete h[field]
+      if (!guarded || h[field] === expected) delete h[field]
       return Promise.resolve(1)
     },
     multi: () => chain,
@@ -71,6 +89,31 @@ describe('activate / deactivate', () => {
     const second = fakeRedis()
     await deactivateDevice(second.redis, dev(7n, 'a'))
     expect(second.ops.some((o) => o.startsWith('del device:7:last'))).toBe(true) // retirement still does
+  })
+
+  it('activation does NOT steal an imei mapping that now points at another device', async () => {
+    // The exact inverse of the teardown guard below, and it did not exist — the delete side carried
+    // a guard and an essay, the write side was a blind HSET. Two callers replay a snapshot that is
+    // seconds old (the boot rehydrate and the suspension restore walk), and the API serves CRUD
+    // while the rehydrate runs, so a reclaim inside that window was undone by the replay.
+    const { redis, hashes } = fakeRedis({ 'registry:imei': { '860000000000001': '99' } })
+    await activateDevice(redis, { ...dev(7n, '860000000000001'), accountId: 'a1' })
+    expect(hashes['registry:imei']?.['860000000000001']).toBe('99') // device 99 keeps it
+  })
+
+  it('…but a caller that has just proven the IMEI is free MAY claim it', async () => {
+    // device create/import/claim run inside a DB transaction that refuses an IMEI held by any other
+    // live device, backed by the partial unique index. There the DB is the authority and Redis is
+    // merely catching up, so a stale mapping must be corrected rather than obeyed.
+    const { redis, hashes } = fakeRedis({ 'registry:imei': { '860000000000001': '99' } })
+    await activateDevice(redis, { ...dev(7n, '860000000000001'), accountId: 'a1' }, { claim: true })
+    expect(hashes['registry:imei']?.['860000000000001']).toBe('7')
+  })
+
+  it('re-activating the SAME device is not a steal', async () => {
+    const { redis, hashes } = fakeRedis({ 'registry:imei': { '860000000000001': '7' } })
+    await activateDevice(redis, { ...dev(7n, '860000000000001'), accountId: 'a1' })
+    expect(hashes['registry:imei']?.['860000000000001']).toBe('7')
   })
 
   it('teardown removes the imei mapping ONLY while it still points at this device', async () => {

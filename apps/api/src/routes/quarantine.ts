@@ -95,6 +95,11 @@ export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: Cla
     await activateDevice(redis, {
       id: device.id, imei: device.imei, tenantId: input.tenantId, accountId: input.accountId,
       config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
+    }, {
+      // the DB write above just proved this IMEI is held by no other LIVE device
+      // (devices.create + the partial unique index on active rows), so Redis may be
+      // corrected to match it. Snapshot-replaying callers must never pass this.
+      claim: true,
     })
     await redis.multi().zrem('quarantine:imei', input.imei).del(`quarantine:rejects:${input.imei}`).exec()
     return { ok: true, deviceId: device.id.toString() }

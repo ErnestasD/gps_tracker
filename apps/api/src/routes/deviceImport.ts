@@ -234,6 +234,11 @@ export async function applyImport(
         await activateDevice(redis, {
           id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId,
           config: { presenceRules: rulesByProfile.get(profileId) ?? {}, odometerSource: device.odometerSource }, // E04-5
+        }, {
+          // the DB write above just proved this IMEI is held by no other LIVE device
+          // (devices.create + the partial unique index on active rows), so Redis may be
+          // corrected to match it. Snapshot-replaying callers must never pass this.
+          claim: true,
         })
       } catch (err) {
         console.error('device import: created but not activated', { imei: row.imei, row: row.row }, err)

@@ -33,6 +33,29 @@ function fakeRedis(store: Map<string, Record<string, string>>, sets = new Map<st
       return Promise.resolve(ms.length)
     },
     hmget: (k: string, ...fs: string[]) => Promise.resolve(fs.map((f) => store.get(k)?.[f] ?? null)),
+    hdel: (k: string, ...fs: string[]) => { const h = store.get(k); for (const f of fs) delete h?.[f]; return Promise.resolve(fs.length) },
+    // the repair pass tears a resurrected device down through `deactivateDevice`, whose imei delete
+    // is the guarded Lua — interpreted here rather than re-implemented, so swapping the script for a
+    // blind HDEL makes this fake stop guarding too
+    eval: (script: string, _n: number, k: string, f: string, expected: string) => {
+      const h = store.get(k)
+      const guarded = /HGET[^)]*\)\s*==\s*ARGV\[2\]/.test(script)
+      if (h !== undefined && (!guarded || h[f] === expected)) delete h[f]
+      return Promise.resolve(1)
+    },
+    multi: () => {
+      const chain: Record<string, unknown> = {}
+      for (const m of ['hdel', 'srem', 'del']) {
+        chain[m] = (k: string, ...args: unknown[]) => {
+          if (m === 'hdel') { const h = store.get(k); for (const a of args) delete h?.[String(a)] }
+          if (m === 'srem') { const t = sets.get(k); for (const a of args) t?.delete(String(a)); if (t?.size === 0) sets.delete(k) }
+          if (m === 'del') del(k)
+          return chain
+        }
+      }
+      chain['exec'] = () => Promise.resolve([])
+      return chain
+    },
     // one page, then the terminating cursor — enough to exercise the orphan sweep
     scan: (cursor: string) =>
       Promise.resolve(cursor === '0' ? ['0', [...sets.keys()].filter((k) => /^tenant:.+:devices/.test(k))] : ['0', []]),
@@ -99,6 +122,48 @@ describe('rehydrateRegistries', () => {
     expect(store.get('device:tenant')?.['42']).toBe(T)
     expect(store.get('device:account')?.['42']).toBe(A)
     expect(JSON.parse(store.get('device:config')?.['42'] ?? '{}')).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'gps' })
+  })
+
+  it('tears down a device RETIRED mid-rehydrate instead of resurrecting it permanently', async () => {
+    /**
+     * The window is real: main.ts starts serving HTTP before it rehydrates, and the snapshot is
+     * taken before three more DB reads and the whole pipeline build. A retire inside it was written
+     * back in full — mapping, tenant, account, config — and never removed again: the next rehydrate
+     * EXCLUDES retired rows rather than deleting their keys, and the index reconcile keeps the
+     * member because the stale `device:tenant` row it just wrote agrees with it. The device went on
+     * ingesting and firing rules forever.
+     *
+     * The guarded write cannot catch this one — the retire DELETED the mapping, so "free or mine"
+     * is satisfied and the resurrection is allowed. Only a fresh read distinguishes "free because
+     * nobody owns it" from "free because it was just given up".
+     */
+    const store = new Map<string, Record<string, string>>()
+    const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'prof-1', odometerSource: 'gps' }
+    const db = fakeDb([], [], [dev], [{ id: 'prof-1', presenceRules: {} }])
+    // the SECOND read — the one that repairs — sees the device gone, exactly as a concurrent retire
+    // would leave it. The first read still returns it, so the pipeline writes all its keys.
+    let reads = 0
+    db.devices.listAllForRegistry = () => {
+      reads++
+      return Promise.resolve(reads === 1 ? [dev] : [])
+    }
+
+    await rehydrateRegistries(fakeRedis(store), db)
+
+    expect(reads).toBe(2) // the repair pass ran at all
+    expect(store.get('registry:imei')?.['356307042440000']).toBeUndefined() // ingest refuses it again
+    expect(store.get('device:tenant')?.['42']).toBeUndefined()
+    expect(store.get('device:account')?.['42']).toBeUndefined()
+  })
+
+  it('a device that is STILL active after the repair read is left alone', async () => {
+    // the repair must not tear down the fleet it just rebuilt — the common case is that nothing
+    // changed between the two reads
+    const store = new Map<string, Record<string, string>>()
+    const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'prof-1', odometerSource: 'gps' }
+    await rehydrateRegistries(fakeRedis(store), fakeDb([], [], [dev], [{ id: 'prof-1', presenceRules: {} }]))
+    expect(store.get('registry:imei')?.['356307042440000']).toBe('42')
+    expect(store.get('device:tenant')?.['42']).toBe(T)
   })
 
   it('rebuilds the per-tenant device INDEX too — else /v1/devices/last is empty after a Redis flush', async () => {
