@@ -162,11 +162,17 @@ Step 4 (`SES_CONFIG_SET=orbetra-prod`) is already set on the server.
 | Field | Value |
 |---|---|
 | Protocol | **HTTPS** |
-| Endpoint | `https://orbetra.com/v1/webhooks/ses` |
+| Endpoint | `https://dash.orbetra.com/v1/webhooks/ses` |
 | Raw message delivery | **OFF** — leave unticked |
 
 Raw message delivery must stay off: it strips the SNS envelope, and the envelope is what carries the
 signature we verify. With it on, every message would be rejected as unsigned.
+
+> **The app host, not the marketing one.** `orbetra.com` deliberately proxies only the handful of
+> public paths the site needs — `/v1/public/*`, `/v1/partner/*`, `/r/*` — and everything else falls
+> through to the SPA and answers 404. `dash.orbetra.com` carries the whole `/v1` surface, which is
+> also where the Stripe webhook lives. Verified live: an unsigned POST there answers **403** and
+> changes nothing.
 
 The subscription shows **Pending confirmation** for a few seconds and then flips to **Confirmed** by
 itself. If it stays pending, the endpoint is not reachable or not deployed — press **Request
@@ -179,7 +185,7 @@ confirmation** on the subscription after fixing it rather than recreating it.
 Send to `bounce@simulator.amazonses.com` once more. Within a few seconds:
 
 - SNS → topic → Monitoring shows another published message;
-- the address appears as undeliverable in the admin panel.
+- the address is in `email_suppressions` (ask me, or `SELECT * FROM email_suppressions`).
 
 If the first happens and the second does not, the problem is on our side, not in AWS — tell me and
 send the timestamp.
