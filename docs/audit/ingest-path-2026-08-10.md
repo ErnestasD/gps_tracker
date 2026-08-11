@@ -212,3 +212,60 @@ suppression path all sit above it). **The regressions were all in what the attem
    `'multi'`, which both calls produce. A double that records command *names* and not command
    *shapes* cannot tell a teardown from a restore. Record keys and fields, then assert the teardown
    wrote `hdel device:tenant`.
+
+---
+
+## Finding #8 (+#4 parking) — attempt rejected. Read this before trying again.
+
+**The attempt was a no-op for the trigger it cited**, and the reviewer proved it by building the
+packets and running them against the vendored parser:
+
+```
+2 good + 1 with a REPEATED avl id (the audit's trigger)  -> THREW: Repeated id '1' in IOElement.
+2 good + 1 with priority 5                               -> parsed OK, 3 records
+```
+
+`decodeIoWithLib` decodes **all** records in one `new ProtocolParser(hex)` call, *before* the
+per-record loop. The lib's default `on_ioElement_error` rethrows, so a repeated id kills the whole
+packet upstream of any isolation. What the attempt actually isolated was `priority > 2` — a
+deliberate spec assertion it deleted — and a null IO value that is unreachable for codec 8.
+
+**Any real fix must move the lib decode per-record** (a `ProtocolParser` per slice, or pass
+`on_ioElement_error` so a bad record yields a partial map the loop can reject on its own). Without
+that, per-record isolation cannot see the only failure worth isolating.
+
+### The three rule-4 regressions it introduced
+
+1. **A partial persist became a full ACK.** `persistAvlBatch` returns the count ACTUALLY written —
+   an ioredis pipeline can partially fail without rejecting, and that under-count is what makes the
+   device resend. Overriding it with `declaredCount` whenever any bad record is present acknowledges
+   records that were never XADDed. `ackedRecordsTotal += acked - persisted` then feeds the fabricated
+   number to the very I1 reconciliation that would have caught it.
+2. **A swallowed park failure is permanent loss.** `parkBadRecord` is an XADD; catching its throw
+   and ACKing anyway means a *transient* Redis blip destroys the record. Worse with no fault at all:
+   a packet whose records are ALL bad gives `records = []`, `persistAvlBatch` early-returns 0 without
+   touching Redis, and the full count is ACKed. The codec-16 precedent the attempt cited does the
+   opposite — it does not catch, so a park failure kills the socket and the device retries.
+3. **UDP got the new parse behaviour with none of the handling.** `parseUdpAvl` funnels through the
+   same `parseAvl`, so on UDP the packet now parses, `badRecords` is ignored, nothing is parked, and
+   `frameViolationsTotal`/`parseFailTotal`/the named IMEI all disappear — the wedge survives and
+   every signal of it is removed. That silently re-opens finding #4 on the quieter transport.
+
+### And the test looked right while testing nothing
+
+The e2e was invariant to its own title: **invert the fix so every good record is discarded and it
+still passes** (ACK is `declaredCount` either way, one parked entry either way). Its stated excuse —
+"the synthetic fixture's coordinates do not survive §3.6" — is factually wrong: `lat=0, lon=0` pass
+sanity; it is the helper's default `tsMs` (2019) that is below `minTsMs`. Passing `tsMs: Date.now()`
+would have let it assert the shard stream, which is the seam the change actually touches.
+
+### Also required next time
+
+- **Rule 8 and 14**: turning `priority > 2` from a rejection into a tolerated quirk is a codec
+  semantics change. It needs a wiki citation and an ADR, not a Traccar anecdote.
+- Batch the parks into the existing pipeline: 255 sequential XADDs sit in front of the ACK, inside
+  the §6.1 latency budget, and `rejects` is shared with the §3.6 audit trail it would evict.
+- Do not reuse `onParseFailure` (one line per device per process) for a handled condition — it burns
+  the slot that finding #4 added for diagnosing a real wedge.
+- Add `ingest_bad_records_parked_total` and a park-failure counter; do not raise `parseFailTotal`
+  for a packet that parsed and was fully ACKed.
