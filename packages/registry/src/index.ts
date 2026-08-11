@@ -37,47 +37,15 @@ export interface RegistryRef {
   tenantId: string
 }
 
-/**
- * Claim `registry:imei` ONLY if it is free or already ours. Returns 1 on write, 0 on refusal.
- *
- * The mirror of HDEL_IF_MINE below, and it was missing — the delete side carried a guard and an
- * essay about why, while the write side was a blind HSET. That asymmetry is reachable: two callers
- * (`rehydrate`, `restoreTenantDevices`) replay a device snapshot that is seconds old by the time it
- * lands, and the API is already serving CRUD while the boot rehydrate runs. A retire inside that
- * window is undone by the replay, permanently — no later rehydrate rewrites the key (retired rows
- * are excluded from the query) and nothing prunes it, so a retired device goes on ingesting,
- * publishing live positions and firing rules until somebody notices.
- */
-const HSET_IF_FREE_OR_MINE = `local cur = redis.call('HGET', KEYS[1], ARGV[1])
-if cur == false or cur == ARGV[2] then redis.call('HSET', KEYS[1], ARGV[1], ARGV[2]); return 1 end
-return 0`
-
-export interface ActivateOptions {
-  /**
-   * This caller has JUST proven, in a DB transaction, that no other live device holds this IMEI —
-   * so it may take the mapping from whatever stale value is there.
-   *
-   * Only device create/import/claim may pass it: `devices.create` refuses an IMEI held by another
-   * tenant or account and is backed by the partial unique index on active rows, so the DB is the
-   * authority and Redis is merely catching up. Every OTHER caller is replaying a snapshot and must
-   * not overwrite a mapping that has moved since it was taken.
-   */
-  claim?: boolean
-}
-
-export async function activateDevice(redis: Redis, d: RegistryDevice, opts: ActivateOptions = {}): Promise<void> {
+export async function activateDevice(redis: Redis, d: RegistryDevice): Promise<void> {
   const id = d.id.toString()
   // If this device was previously registered to a DIFFERENT tenant, drop it from that tenant's
   // index — otherwise the old owner keeps a member pointing at a device it no longer owns. Read
   // first, outside the MULTI: a CRUD write, not a hot path.
   const prevTenant = await redis.hget('device:tenant', id)
-  // OUTSIDE the MULTI, like the teardown's eval: a conditional write cannot be expressed in a
-  // pipeline, and the ordering that matters (the mapping is what ingest reads) is preserved by
-  // doing it first.
-  if (opts.claim === true) await redis.hset('registry:imei', d.imei, id)
-  else await redis.eval(HSET_IF_FREE_OR_MINE, 1, 'registry:imei', d.imei, id)
   const m = redis
     .multi()
+    .hset('registry:imei', d.imei, id)
     .hset('device:tenant', id, d.tenantId)
     .hset('device:account', id, d.accountId)
     .sadd(tenantDevicesKey(d.tenantId), id)

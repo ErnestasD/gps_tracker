@@ -496,11 +496,6 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           await activateDevice(deps.redis, {
             id: device.id, imei: device.imei, tenantId: a.tenantId, accountId,
             config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
-          }, {
-            // the DB write above just proved this IMEI is held by no other LIVE device
-            // (devices.create + the partial unique index on active rows), so Redis may be
-            // corrected to match it. Snapshot-replaying callers must never pass this.
-            claim: true,
           })
           return json(c, device, 201)
         }, () => problem(c, 409, 'Conflict', 'device_create_in_progress'))

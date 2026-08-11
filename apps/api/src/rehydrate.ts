@@ -1,7 +1,6 @@
 import type { Redis } from 'ioredis'
 
 import type { Db } from '@orbetra/db'
-import { deactivateDevice } from '@orbetra/registry'
 import { ibuttonKeyFromHex } from '@orbetra/shared'
 
 import { tenantDevicesKey } from './routes/deviceRegistry.js'
@@ -72,33 +71,71 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
   if (failed > 0) console.error(`rehydrate: ${failed} of ${results?.length ?? 0} redis commands failed`)
 
   /**
-   * REPAIR WHAT WE JUST RESURRECTED.
+   * MAKE `registry:imei` MATCH THE DATABASE. One HGETALL, one fresh read, one authoritative pass.
    *
-   * The snapshot above is taken before three more DB reads and a whole pipeline build, and this
-   * process is already serving CRUD (main.ts starts the server first). A device retired inside that
-   * window is written back here in full — mapping, tenant, account, config — and nothing ever
-   * removes it again: the next rehydrate excludes retired rows rather than deleting their keys, and
-   * the index reconcile below keeps the member because the stale `device:tenant` row we just wrote
-   * agrees with it. The device goes on ingesting, publishing live positions and firing rules,
-   * permanently, until a human notices.
+   * The additive rebuild above cannot be correct on its own, and the reason is not a race but the
+   * shape of the query: it selects `retiredAt: null`, so it can only ever ADD mappings. It has no
+   * way to express "this one should be gone". Three states survive it, and all three end with a
+   * tracker whose data is accepted when it should not be:
    *
-   * The guarded write in `activateDevice` cannot catch this one: the mapping was DELETED by the
-   * retire, so "free or mine" is satisfied and the resurrection is allowed. Only a fresh read can
-   * tell the difference between "free because nobody owns it" and "free because it was just given
-   * up". So: re-read the active set and tear down anything that left it while we were writing.
+   *   * a device RETIRED between the snapshot and the pipeline exec is written back in full —
+   *     mapping, tenant, account, config — and nothing removes it again, because the next rehydrate
+   *     excludes retired rows rather than deleting their keys and the index reconcile below keeps
+   *     the member (the stale `device:tenant` row we just wrote agrees with it). It ingests,
+   *     publishes live positions and fires rules, permanently;
+   *   * a mapping left behind by a teardown that half-failed (the eval landed, the MULTI did not)
+   *     points at a device that no longer exists;
+   *   * a mapping STOLEN by a snapshot replay — the restore walk writing `X → old id` after the
+   *     IMEI was legitimately reclaimed by a new device — leaves the new device dark.
+   *
+   * A guard on the write cannot fix any of them. The first is a DELETED key, so "is it free?" is
+   * satisfied and the resurrection is allowed; and a guard that refuses would break the self-heal
+   * that `deviceImport` and `deactivateDevice` both explicitly promise ("created, not yet
+   * reachable — the boot rehydrate repairs it"). The answer is not to make the writes cleverer, it
+   * is to finish by comparing the whole hash against the truth. Doing it LAST also removes the
+   * window entirely for anything the pipeline itself wrote.
+   *
+   * The read is deliberately fresh rather than reusing `registryRows`: retire tears Redis down
+   * BEFORE the DB soft-delete commits, so a snapshot taken earlier cannot see a retire that is
+   * already visible in Redis.
    */
-  const stillActive = new Set((await db.devices.listAllForRegistry()).map((r) => r.id.toString()))
-  let resurrected = 0
-  for (const d of registryRows) {
-    const id = d.id.toString()
-    if (stillActive.has(id)) continue
-    // deactivateDevice, not a hand-rolled teardown: it carries the delete-if-mine guard, so if the
-    // device was retired AND its IMEI re-registered to a new device in the same window, we remove
-    // only a mapping that still points at the old id and leave the new owner's alone.
-    await deactivateDevice(redis, { id: d.id, imei: d.imei, tenantId: d.tenantId })
-    resurrected++
+  let imeiFixed = 0
+  try {
+    const [live, current] = await Promise.all([db.devices.listAllForRegistry(), redis.hgetall('registry:imei')])
+    const shouldBe = new Map(live.map((d) => [d.imei, d.id.toString()]))
+    const fix = redis.pipeline()
+    for (const [imei, id] of Object.entries(current)) {
+      const want = shouldBe.get(imei)
+      if (want === id) continue
+      if (want === undefined) {
+        // no ACTIVE device claims this IMEI: a resurrected retire, or a ghost from a failed
+        // teardown. Either way ingest must stop accepting it.
+        fix.hdel('registry:imei', imei)
+      } else {
+        // an active device DOES claim it, and Redis names a different one — a stolen mapping. The
+        // partial unique index on active rows makes the DB the only possible authority here.
+        fix.hset('registry:imei', imei, want)
+      }
+      imeiFixed++
+    }
+    // …and anything the pipeline failed to write at all
+    for (const [imei, id] of shouldBe) {
+      if (current[imei] === undefined) {
+        fix.hset('registry:imei', imei, id)
+        imeiFixed++
+      }
+    }
+    if (imeiFixed > 0) {
+      await fix.exec()
+      console.warn(`rehydrate: reconciled ${imeiFixed} imei mapping(s) against the database`)
+    }
+  } catch (err) {
+    // NON-FATAL, and deliberately so: every registry write above has already landed, and throwing
+    // here would skip the index sweep below — leaving an operator unable to tell "the fleet was
+    // never repopulated" from "everything repopulated, reconciliation stopped". Same reasoning as
+    // the sweep's own catch.
+    console.error('rehydrate: imei reconciliation failed', err instanceof Error ? err.message : String(err))
   }
-  if (resurrected > 0) console.warn(`rehydrate: tore down ${resurrected} device(s) retired mid-rehydrate`)
 
   // Reconcile: drop index members whose `device:tenant` mapping is gone or points elsewhere. This
   // covers what the additive pass above cannot — a device retired while Redis was unreachable, and
