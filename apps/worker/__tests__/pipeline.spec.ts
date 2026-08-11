@@ -164,6 +164,41 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     expect((pending as [number, ...unknown[]])[0]).toBe(0) // B ACKed them
   }, 60_000)
 
+  it('COUNTS pending entries the stream trimmed away — the only post-hoc proof of real loss', async () => {
+    /**
+     * The loss this pipeline can actually suffer, and the one it could not prove afterwards.
+     *
+     * Entries are ACKed to their device the moment they are XADDed, so the device drops its copies.
+     * If a consumer then stalls long enough for `XADD ... MAXLEN` to trim past its pending entries,
+     * those positions are gone — no retry, no re-derivation, nothing. XAUTOCLAIM reports exactly
+     * which ids it dropped from the group for that reason, in its third element, and the code typed
+     * that element and discarded it.
+     *
+     * This is deliberately NOT a general loss detector: entries evicted before any consumer took
+     * delivery were never in a PEL and can never appear here. `stream_depth` is the leading
+     * indicator; this is the receipt.
+     */
+    await ingestRecords(5)
+    const a = consumerFor('workerA')
+    await a.ensureGroup()
+    // A takes delivery and never ACKs — the crash point, exactly as the chaos test above
+    const entries = await (a as unknown as { read(b?: number): Promise<[string, Buffer][]> }).read()
+    expect(entries.length).toBe(5)
+
+    // …and while A is away, the stream is trimmed past everything it held
+    await redis.xtrim(`raw:${SHARD}`, 'MAXLEN', 0)
+    // NOT for min-idle: Redis checks "does this entry still exist" BEFORE the idle threshold, so a
+    // deleted PEL entry is reported at any age. The wait is only so worker A's claim is genuinely
+    // stale, matching how the chaos test above sequences the same handoff.
+    await new Promise((r) => setTimeout(r, 150))
+
+    const evicted: number[] = []
+    const b = consumerFor('workerB', { onPendingEvicted: (n: number) => evicted.push(n) })
+    await b.tick()
+
+    expect(evicted.reduce((x, y) => x + y, 0)).toBe(5) // all five reported as destroyed
+  }, 60_000)
+
   it('malformed CBOR entry → raw:dead, shard keeps flowing', async () => {
     await ingestRecords(5)
     await redis.xadd(`raw:${SHARD}`, '*', 'p', Buffer.from('not-cbor-at-all'))

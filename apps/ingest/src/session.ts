@@ -35,6 +35,9 @@ export interface SessionDeps {
   metrics: IngestMetrics
   /** prom histogram hook (E02-5); undefined in unit tests */
   observeAckLatencyMs?: (ms: number) => void
+  /** a packet failed CRC/structure — carries the IMEI, which the counter cannot. A device that
+   *  appears here repeatedly is wedged: it is resending bytes we will never accept. */
+  onParseFailure?: (imei: string, reason: string) => void
   config: SessionConfig
   /** newest-wins duplicate-IMEI policy — server tracks live sessions per IMEI */
   onAuthenticated: (imei: string, session: Session) => void
@@ -274,7 +277,35 @@ export class Session {
       if (err instanceof CrcError || err instanceof FrameError) {
         // corrupt packet: ACK the count actually persisted — zero (rule 4; device re-sends)
         this.deps.metrics.parseFailTotal++
+        /**
+         * NAME THE DEVICE. `ingest_parse_fail_total` has no device label, so `ParseFailSpike` tells
+         * an operator a RATE and nothing else — and the failure that matters most here is not a
+         * spike across the fleet but one device stuck forever.
+         *
+         * ACK 0 is right for a CRC error: retransmission fixes corruption. It is a LIVELOCK for a
+         * failure that is a property of the bytes — a repeated AVL IO id, which our own walker
+         * accepts and the wrapped parser refuses, is the one such trigger the audit could actually
+         * reach. That device resends the identical packet forever, its ACK cursor never moves, and
+         * its own buffer eventually overwrites its OLDEST records: silent permanent loss of good
+         * data queued behind one poison packet.
+         *
+         * Logging the IMEI and the reason does not fix the livelock — parking after k consecutive
+         * failures does, and that is a separate change. It does make the difference between an
+         * operator who can name the device and pull its capture, and one staring at a graph.
+         *
+         * The CALLER is responsible for not printing this once per packet: a wedged device resends
+         * forever, so an unbounded log is the same defect wearing a different hat. main.ts dedupes
+         * per IMEI, the way the worker's clock-skew warning already does.
+         */
         this.socket.write(this.codec.encodeAck(0))
+        // AFTER the ACK, like observeAckLatencyMs below and for the same reason: this is a
+        // caller-supplied callback, and a throw from it must not land upstream of the one write
+        // rule 4 is about. Wrapped as well — an observability hook may never cost a session.
+        try {
+          this.deps.onParseFailure?.(this.imei, err.message)
+        } catch {
+          /* a logging fault is not a session fault */
+        }
         this.deps.observeAckLatencyMs?.(this.now() - t0) // error-ACKs count too
         return
       }

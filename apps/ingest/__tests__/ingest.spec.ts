@@ -39,9 +39,15 @@ afterEach(async () => {
   await redis.flushall()
 })
 
+/** every parse failure the server reported, WITH the imei it could not name before */
+const parseFailures: { imei: string; reason: string }[] = []
+
 async function startIngest(overrides: Partial<typeof DEFAULT_CONFIG> = {}): Promise<number> {
   await redis.hset('registry:imei', IMEI, '42')
-  ingest = createIngestServer(redis, { ...DEFAULT_CONFIG, ...overrides })
+  parseFailures.length = 0
+  ingest = createIngestServer(redis, { ...DEFAULT_CONFIG, ...overrides }, undefined, (imei, reason) =>
+    parseFailures.push({ imei, reason }),
+  )
   return new Promise((resolve) => {
     ingest!.server.listen(0, '127.0.0.1', () => {
       resolve((ingest!.server.address() as { port: number }).port)
@@ -94,6 +100,16 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     expect(res.socketClosedByServer).toBe(false)
     expect(await redis.xlen(`raw:${SHARD}`)).toBe(0)
     expect(ingest!.metrics.parseFailTotal).toBe(5)
+    // …and every one of them NAMES THE DEVICE. `ingest_parse_fail_total` carries no label, so a
+    // spike alert tells an operator a rate and nothing else — while the failure that costs data is
+    // one device stuck resending bytes we will never accept. Without the imei there is no capture
+    // to pull and no device to configure.
+    expect(parseFailures).toHaveLength(5)
+    expect(new Set(parseFailures.map((f) => f.imei))).toEqual(new Set([IMEI]))
+    // the REASON must be the decoder's own words, not a class name — an operator pulling a capture
+    // needs to know it was the checksum and not, say, a record-count mismatch
+    expect(parseFailures[0]?.reason).toMatch(/crc/i)
+    expect(parseFailures[0]?.reason.length).toBeGreaterThan(10)
   }, 30_000)
 
   it('codec 16: frame is PARKED and the declared count ACKed — never an endless resend loop', async () => {

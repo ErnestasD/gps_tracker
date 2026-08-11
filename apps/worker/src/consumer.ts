@@ -39,6 +39,9 @@ export interface ConsumerDeps {
   /** Fired per field normalization had to null (out of column range). Non-zero ⇒ firmware quirk or
    *  spoofed frames; without it a nulled speed is indistinguishable from a device that reports none. */
   onFieldNulled?: (field: string) => void
+  /** pending entries Redis deleted because the stream had already trimmed past them — the only
+   *  post-hoc proof that a stalled consumer's backlog was destroyed rather than merely delayed */
+  onPendingEvicted?: (shard: number, count: number) => void
 }
 
 /**
@@ -169,6 +172,33 @@ export class ShardConsumer {
       String(this.deps.batchSize ?? 200),
     )) as [Buffer, [Buffer, Buffer[]][], Buffer[]] | null
     if (!res) return []
+    /**
+     * `res[2]` is the list of pending ids Redis DELETED from the group because the entries no
+     * longer exist in the stream — trimmed away by `MAXLEN` before this consumer got back to them.
+     * It was typed here and thrown away, which made it the one loss the pipeline could suffer with
+     * nothing to point at afterwards.
+     *
+     * It is NOT a complete loss signal and must not be read as one: entries evicted before any
+     * consumer took delivery were never in a PEL, so they can never appear here.
+     *
+     * And it is a LOWER BOUND — the autoclaim COUNT caps the deleted-id list per call, so a shard
+     * that trimmed past a large PEL reports it 200 at a time across successive cycles.
+     *
+     * `stream_depth` is NOT a reliable precursor to this, contrary to the obvious assumption:
+     * depth is lag + pending, while MAXLEN trims on total XLEN (acked included). A batch that
+     * `process()` threw on stays pending while the loop reads and ACKs newer ones, so it can be
+     * trimmed away with depth in the low hundreds and StreamDepthCritical (90 k) never close. That
+     * is exactly why this counter is the only signal for the stalled-consumer case, and why the
+     * alert must not send a responder to look at depth first.
+     */
+    const evicted = res[2] ?? []
+    if (evicted.length > 0) {
+      this.deps.onPendingEvicted?.(this.shard, evicted.length)
+      console.error('pipeline: pending entries were TRIMMED from the stream before this consumer claimed them', {
+        stream: this.stream,
+        count: evicted.length,
+      })
+    }
     return (res[1] ?? []).map(([id, fields]) => [id.toString(), fields[1]!])
   }
 

@@ -451,6 +451,7 @@ async function main(): Promise<void> {
   const makeConsumer = (s: number, conn: Redis): ShardConsumer =>
     new ShardConsumer(s, {
       onDeadLetter: (reason, n) => prom.deadLettered.inc({ reason }, n),
+      onPendingEvicted: (shard, n) => prom.pendingEvicted.inc({ shard: String(shard) }, n),
       onFieldNulled: (field) => prom.fieldNulled.inc({ field }),
       redis: conn,
       pool,
