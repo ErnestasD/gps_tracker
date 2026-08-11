@@ -11,7 +11,34 @@ const port = Number(process.env['INGEST_TCP_PORT'] ?? 5027)
 const udpPort = Number(process.env['INGEST_UDP_PORT'] ?? port)
 const redisUrl = process.env['REDIS_URL'] ?? 'redis://127.0.0.1:6379'
 
-const redis = new Redis(redisUrl, { maxRetriesPerRequest: null })
+/**
+ * `enableOfflineQueue: false` — the same root fix apps/api took, applied to the connection where it
+ * matters most and never got.
+ *
+ * With the default (true) plus `maxRetriesPerRequest: null`, a DISCONNECTED Redis makes every
+ * command WAIT in an uncapped in-memory queue instead of rejecting. On the API that produced a
+ * credential oracle; here it is an out-of-memory kill. Measured against a dead Redis: every device
+ * reconnect queues a `registry.lookup` that never resolves and is never cancelled when the
+ * handshake timer destroys the socket ~6.3 KB retained per attempt, perfectly linear. A
+ * 5 000-device fleet reconnecting every 15 s is ~2 MB/s — roughly 7 GB/hour, so Node's default heap
+ * is gone in about half an hour of a Redis outage, and `maxConn` does not bound it because a closed
+ * socket frees a slot that immediately strands another lookup.
+ *
+ * Rejecting immediately is also what this process already wants: the ingest path is deliberately
+ * fail-CLOSED (a lookup rejection destroys the socket without an ACK, so the device buffers and
+ * re-sends). The only behaviour that changes during an outage is that it fails in milliseconds
+ * instead of accumulating.
+ *
+ * `commandTimeout` covers the other half: a command issued while the socket is still considered
+ * healthy but the server has stopped answering would otherwise hang forever, which is the same leak
+ * through a different door.
+ */
+const REDIS_COMMAND_TIMEOUT_MS = Number(process.env['REDIS_COMMAND_TIMEOUT_MS'] ?? 5_000)
+const redis = new Redis(redisUrl, {
+  maxRetriesPerRequest: null,
+  enableOfflineQueue: false,
+  commandTimeout: REDIS_COMMAND_TIMEOUT_MS,
+})
 const promPort = Number(process.env['PROMETHEUS_PORT'] ?? 9101) // §6.7
 const preMetricsHolder: { hist?: (ms: number) => void } = {}
 const config = {

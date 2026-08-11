@@ -54,6 +54,20 @@ groups:
           summary: "Ingest parse-fail spike ({{ $value | humanize }}/s)"
           description: "CRC/structure failures >5/s for 10m — protocol drift or corrupt-frame flood. Check a capture."
 
+      # THE SHED PATH. `inFlight` hits its cap only when Redis stops keeping up, and every datagram
+      # past it is dropped with no ACK — the device re-sends, so nothing is lost, but the platform is
+      # silently refusing traffic. Nothing else says so: `up{job="ingest"}` stays 1 because /metrics
+      # never touches Redis, and the sibling counter that looks like a substitute
+      # (ingest_udp_backpressure_drops_total) is gated behind a shard-depth READ — itself a Redis
+      # call — so during exactly this stall it stays flat. ANY non-zero rate is worth waking up for.
+      - alert: IngestSheddingDatagrams
+        expr: rate(ingest_udp_inflight_drops_total[5m]) > 0
+        for: 5m
+        labels: { severity: critical, component: ingest }
+        annotations:
+          summary: "Ingest is shedding UDP datagrams ({{ $value | humanize }}/s)"
+          description: "The in-flight handler cap is being hit, which happens when Redis is slow or unreachable. Devices re-send so data is not lost, but ingest is refusing traffic and no other signal shows it. Check Redis latency and `stream_depth` first."
+
       # p99 ACK latency SLA (§5: p99 < 250 ms).
       - alert: AckLatencyHigh
         expr: histogram_quantile(0.99, sum(rate(ack_latency_ms_bucket[5m])) by (le)) > 250
