@@ -15,6 +15,29 @@ rewritten, and the verifiers found two the auditors had missed.**
 
 ---
 
+## Status (2026-08-11)
+
+| Finding | State |
+|---|---|
+| #2 unbounded Redis offline queue | **FIXED & LIVE** — PR #189 |
+| #6 two loss counters never exported | **FIXED & LIVE** — PR #189, with `IngestSheddingDatagrams` |
+| #4 parse failures carry no device identity | **FIXED & LIVE** — PR #192 (the livelock itself is NOT fixed; see below) |
+| #9 XAUTOCLAIM's evicted-pending list discarded | **FIXED & LIVE** — PR #192, with `PipelinePendingEvicted` |
+| #1 registry resurrection | **OPEN** — two attempts rejected, design below |
+| #3 lapse re-assert skipped | **OPEN** — one attempt rejected, design below |
+| #5 first frame of a session persists before any depth check | **OPEN**, untouched |
+| #7 Codec 16 parked in an unread ring | **OPEN**, untouched — lowest priority (spec'd, alerted, no pilot device speaks it) |
+| #8 one bad record discards the whole packet | **OPEN**, untouched — not loss on its own; only matters with #4's livelock |
+
+**What #4 did and did not do.** The device is now named in the log (once per device per process) on
+both transports, so an operator can pull a capture. The LIVELOCK is untouched: a deterministic
+`FrameError` still gets ACK 0, so a device sending bytes we will never accept still resends forever
+until its own buffer overwrites its oldest records. The fix for that is parking after k consecutive
+failures — `parkUndecodableFrame` already exists in `apps/ingest/src/persist.ts`, takes a `reason`,
+and writes imei + raw bytes to a MAXLEN-capped stream. It should be done with #8 (per-record
+isolation), because together they turn "one poison record kills every packet forever" into "the bad
+record is parked and the rest of the batch is ACKed".
+
 ## Verified queue
 
 | # | Finding | Status | Where |
