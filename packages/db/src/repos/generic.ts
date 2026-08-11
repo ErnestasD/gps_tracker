@@ -98,7 +98,14 @@ export function createGenericRepo<Row extends { [k: string]: unknown }, CreateDa
 
     create: async (scope, actor, data) => {
       const row = await delegate.create({
-        data: { ...(cfg.stampCreate ? cfg.stampCreate(scope) : { tenantId: scope.tenantId }), ...data },
+        // The scope stamp is spread LAST so it always wins. It used to come first, which made the
+        // tenant of a new row depend on the caller's payload not containing a `tenantId` — true
+        // today only because the three schemas that reach this line (rules, webhooks,
+        // scheduledReports) are plain `z.object`, which STRIPS unknown keys. That is a property of
+        // three schemas in another package, not of this line; one `z.looseObject` (the shape already
+        // used for JWT claims in auth/jwt.ts) would have turned a create into a cross-tenant write
+        // with nothing here to stop it. Now the stamp is unconditional.
+        data: { ...data, ...(cfg.stampCreate ? cfg.stampCreate(scope) : { tenantId: scope.tenantId }) },
       })
       await audit.record(scope, actor, { action: 'create', entity: cfg.entity, entityId: String(row[idField]), after: redact(row, cfg.redactFields) })
       return row

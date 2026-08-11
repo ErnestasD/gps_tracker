@@ -33,13 +33,16 @@ describe('E06-4b WebhookDeliveryRepo', () => {
     expect(out[0]).toEqual({ id: '5', webhookId: row.webhookId, eventId: '42:panic:0:r1', kind: 'panic', statusCode: 200, success: true, error: null, at: '2026-07-09T00:00:00.000Z' })
   })
 
-  it('ACCOUNT-scopes an account caller (their account + tenant-shared), not just tenant (cross-account leak fix)', async () => {
+  it('ACCOUNT-scopes an account caller STRICTLY — an unattributed row is invisible, not tenant-wide', async () => {
     const { prisma, captured } = fakePrisma()
     await createWebhookDeliveryRepo(prisma).list({ tenantId: 'ten-1', accountId: 'acc-A' })
-    // an account_manager must NOT see a sibling account's delivery rows: account-scoped +
-    // null (tenant-shared) only — mirrors the webhooks repo (nullableAccount). OR form, not
-    // `{ in: ['acc-A', null] }` — Prisma rejects a null inside `in` and 500s the real query.
-    expect(captured()!.where).toEqual({ tenantId: 'ten-1', OR: [{ accountId: 'acc-A' }, { accountId: null }] })
+    // an account_manager must NOT see a sibling account's delivery rows. This used to mirror the
+    // webhooks repo (`nullableAccount`, an `accountId IS NULL` OR-branch) — correct THERE, where a
+    // null account means "tenant-shared, applies to everyone", and wrong here, where every delivery
+    // is stamped with the account of the device that fired it and a null is simply an anomaly.
+    // With the OR branch, any future writer that failed to resolve an account would have published
+    // that row to every account in the tenant; without it, the row is merely invisible.
+    expect(captured()!.where).toEqual({ tenantId: 'ten-1', accountId: 'acc-A' })
   })
 
   it('applies a valid webhookId filter but drops a malformed one', async () => {

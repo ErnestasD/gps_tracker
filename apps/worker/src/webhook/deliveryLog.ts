@@ -8,7 +8,10 @@ import type { Pool } from 'pg'
  */
 export interface DeliveryRow {
   tenantId: string
-  accountId: string | null
+  /** NOT nullable, though the column is. The read side (packages/db webhookDeliveries.list) scopes
+   *  strictly by account, so an unattributed row would be invisible rather than tenant-wide — an
+   *  invariant that used to rest on one early return in webhookWorker. Typed here so it cannot. */
+  accountId: string
   webhookId: string
   eventId: string
   kind: string

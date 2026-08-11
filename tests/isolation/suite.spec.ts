@@ -12,6 +12,120 @@ import { setup, type Fixtures, type TenantFixture } from './fixtures.js'
  * CI-blocking forever (this package's `test` script runs under `turbo run test`).
  */
 
+/**
+ * Routes the manifest harness does not defend, and why.
+ *
+ * This used to be a single regex of PREFIXES, and a prefix is the wrong unit here: `billing`
+ * exempted `/v1/billing/portal` (intended) and every future `/v1/billing/*` route (not intended),
+ * and a bare `webhooks` alternative — written for `POST /v1/webhooks/ses` — silently exempted the
+ * whole manifested webhook CRUD plus any `/v1/webhooks/:id/test` someone adds next year. A route
+ * that is invisible to the meta-test is invisible to the isolation suite, so the exemption unit
+ * must be the exact route, not its neighbourhood.
+ *
+ * Two prefixes survive, and only because no route under them can ever have a tenant boundary to
+ * defend: `/v1/auth/*` and `/v1/public/*` run BEFORE the auth middleware (`app.ts`), so there is no
+ * principal to scope against, and they carry their own dedicated specs.
+ */
+const EXEMPT_PREFIXES = /^\/(healthz|metrics)$|^\/v1\/(auth|public|openapi\.json|docs)(?:\/|$)/
+
+/** METHOD PATH → why this specific route is not manifest-covered. Every entry must still exist. */
+const EXEMPT_ROUTES: Record<string, string> = {
+  // no tenant data at all
+  'GET /v1/profiles': 'global reference data — DeviceProfile has no tenantId',
+  'POST /v1/routing/optimize': 'ADR-029 stateless OSRM proxy — stops come from the body, touches no repo',
+  'GET /v1/internal/caddy-ask': 'Host-driven cert gate, unauthenticated by design — caddyAsk.spec.ts',
+  'GET /v1/ws-ticket': 'mints a ticket for the caller’s OWN scope — ws.spec.ts redeems it cross-tenant',
+  'GET /v1/branding': 'Host-driven, pre-auth — branding.spec.ts',
+  'POST /v1/webhooks/ses': 'SNS ingress, signature-authenticated — sesWebhook.spec.ts',
+  'POST /v1/webhooks/stripe': 'Stripe ingress, signature-authenticated — billing.spec.ts',
+  // tenant data, covered by a dedicated spec because the harness shape does not fit
+  'GET /v1/api-keys': 'create returns the plaintext once — apiKeys.spec.ts',
+  'POST /v1/api-keys': 'create returns the plaintext once — apiKeys.spec.ts',
+  'DELETE /v1/api-keys/:id': 'apiKeys.spec.ts:109 attempts a cross-tenant revoke',
+  'GET /v1/devices/last': 'Redis snapshot, no :id — devicesLast.spec.ts',
+  'GET /v1/driver-scores': 'aggregate, no :id — covered by the cross-tenant test below',
+  'POST /v1/reports/:type': ':type is not a resource id — reports.spec.ts',
+  'GET /v1/billing': 'tenant-wide Stripe state — billing.spec.ts',
+  'GET /v1/billing/plans': 'the plan catalogue is platform-global',
+  'POST /v1/billing/checkout': 'tenant-wide Stripe state — billing.spec.ts',
+  'POST /v1/billing/portal': 'tenant-wide Stripe state — billing.spec.ts',
+  'GET /v1/push/vapid-key': 'the public VAPID key is the same for every tenant',
+  'POST /v1/push/subscribe': 'scope comes from the JWT only — push.spec.ts',
+  'POST /v1/push/unsubscribe': 'scope comes from the JWT only — push.spec.ts',
+  // the partner surface is a SECOND tenancy boundary (affiliate ↔ affiliate), not tenant ↔ tenant.
+  // The manifest cannot express it; partner.spec.ts makes the cross-partner attempts instead.
+  'POST /v1/partner/login': 'partner boundary — partner.spec.ts',
+  'POST /v1/partner/set-password': 'partner boundary — partner.spec.ts',
+  'GET /v1/partner/me': 'partner boundary — partner.spec.ts',
+  'GET /v1/partner/customers': 'partner boundary — partner.spec.ts:114',
+  'GET /v1/partner/commissions': 'partner boundary — partner.spec.ts:146',
+  'GET /v1/partner/funnel': 'partner boundary — partner.spec.ts',
+  'GET /v1/partner/deals': 'partner boundary — partner.spec.ts:444',
+  'POST /v1/partner/deals': 'partner boundary — partner.spec.ts:444',
+  'GET /v1/partner/statement.csv': 'partner boundary — partner.spec.ts:579',
+  'POST /v1/partner/payout-request': 'partner boundary — partner.spec.ts',
+}
+// `/v1/stream` is deliberately absent: it is attached to the Node server, not to Hono, so it can
+// never appear in `app.routes` and an entry here would read as coverage while asserting nothing.
+// ws.spec.ts:115 (cross-tenant) and :305 (ticket reuse) are its real tests.
+
+/**
+ * Routes whose data has NO accountId column to be scoped by, so an account pin cannot bite and the
+ * handler must refuse a pinned principal outright (`tenantWide` in crud.ts, `isTenantWideAdmin` in
+ * billing.ts). Add a route here the moment you add one of that shape — this sweep is the only thing
+ * that notices, because from the outside a role gate looks identical whether or not it also checks
+ * the pin.
+ */
+const TENANT_WIDE_ONLY: readonly (readonly [string, string, string?])[] = [
+  ['GET', '/v1/audit'],
+  ['GET', '/v1/audit/:id', 'audit'],
+  ['GET', '/v1/usage'],
+  ['GET', '/v1/billing'],
+  ['GET', '/v1/billing/plans'],
+  ['POST', '/v1/billing/checkout'],
+  ['POST', '/v1/billing/portal'],
+  ['PATCH', '/v1/tenant/branding'],
+  ['GET', '/v1/tenant/domains'],
+  ['POST', '/v1/tenant/domains'],
+  // the ITEM routes matter as much as the collection ones and were the first thing left out: the
+  // DELETE below is the one that takes a verified white-label host offline for every sibling
+  // account. Their id is t1's OWN, so a 403 here also proves the gate runs BEFORE the lookup —
+  // a 404 would mean the route merely failed to find the row.
+  ['GET', '/v1/tenant/domains/:id', 'domain'],
+  ['DELETE', '/v1/tenant/domains/:id', 'domain'],
+  ['POST', '/v1/tenant/domains/:id/verify', 'domain'],
+  // create is the one account method that ignores the pin — list/get/update/remove all honour it
+  ['POST', '/v1/accounts'],
+]
+
+/**
+ * The live /v1 route table, minus everything deliberately exempted.
+ *
+ * Hono records middleware and sub-app mounts as method `ALL` on a wildcard path (`/v1/*` from the
+ * auth guard, `/v1/partner/*` from the mount). Those are not endpoints and cannot be manifested.
+ * Dropping them is safe because no HANDLER is registered with `app.all()` — asserted below, since
+ * `ALL` on a concrete path is a shape this codebase already uses for rate-limit middleware and so
+ * would read as normal — and because Hono merges a mounted sub-app's concrete routes into this same
+ * table. `mountsExposeTheirRoutes` checks the second half only for mounts that leave a wildcard
+ * record behind (`app.route('/v1/auth', …)` leaves none), so treat it as a tripwire for the mount
+ * shape we have, not a general proof that merging happened.
+ */
+function unexemptedRoutes(app: { routes: { method: string; path: string }[] }): string[] {
+  return app.routes
+    .filter((r) => r.method !== 'ALL' && r.path.startsWith('/v1/') && !EXEMPT_PREFIXES.test(r.path))
+    .map((r) => `${r.method} ${r.path}`)
+    .filter((r) => EXEMPT_ROUTES[r] === undefined)
+}
+
+/** Every `ALL /prefix/*` mount must have at least one concrete route under it — see above. */
+function mountsExposeTheirRoutes(app: { routes: { method: string; path: string }[] }): string[] {
+  const concrete = app.routes.filter((r) => r.method !== 'ALL')
+  return app.routes
+    .filter((r) => r.method === 'ALL' && r.path.endsWith('/*') && r.path !== '/v1/*')
+    .map((r) => r.path.slice(0, -1))
+    .filter((prefix) => !concrete.some((r) => r.path.startsWith(prefix)))
+}
+
 let fx: Fixtures
 
 beforeAll(async () => {
@@ -53,6 +167,10 @@ function idFor(f: TenantFixture, entity: string): string {
     gdpr: f.deviceId, // /v1/devices/:id/erase — the :id is a device
     sms: f.deviceId, // POST /v1/devices/:id/sms — the :id is a device (cross-tenant → 404 before any send)
     tenant: f.id,
+    // action routes hung off a PARENT resource: the entity names what the route creates, the :id
+    // names what it hangs off. See PARAM_ENTITY.
+    exportOnAccount: f.accounts[0],
+    commandOnDevice: f.deviceId,
     quarantine: '356307042440000', // a real 15-digit IMEI for the claim path param
     // affiliate/commission are PLATFORM-scoped (no tenant fixture) — any non-empty UUID makes the
     // path match so the tsp_admin RBAC gate fires (403) BEFORE the handler ever looks the id up
@@ -61,6 +179,37 @@ function idFor(f: TenantFixture, entity: string): string {
     deal_registration: '00000000-0000-0000-0000-0000000000d1',
   }
   return map[entity] ?? ''
+}
+/**
+ * Routes whose `:id` is NOT an id of the route's own `entity`.
+ *
+ * `entity` is load-bearing for authz — it keys WRITE_POLICY in crud.ts — so these entries cannot be
+ * renamed in the manifest to make `idFor` line up. The manifest is right and the test lookup has to
+ * bend. Getting this wrong does not fail; it passes VACUOUSLY, because an id of the wrong KIND
+ * matches no row in any tenant and the 404 arrives before the scope predicate is ever consulted:
+ * `/v1/accounts/<exportJobUuid>/export` finds no such account anywhere, and `toBigId('<uuid>')`
+ * returns null for `/v1/devices/<commandUuid>/commands` before `devices.get` runs at all. Delete
+ * every tenant predicate in the codebase and both assertions still pass green.
+ */
+const PARAM_ENTITY: Record<string, string> = {
+  // keyed on METHOD + path, not path alone: `/v1/devices/:id/commands` is BOTH a GET (entity
+  // `device`) and a POST (entity `command`), and a path-only key would rewrite the id kind for both.
+  // Harmless for this pair — they resolve to the same fixture id — but the next such pair would
+  // silently mis-key one of them into exactly the vacuous pass described above.
+  'POST /v1/accounts/:id/export': 'exportOnAccount',
+  'POST /v1/devices/:id/commands': 'commandOnDevice',
+}
+const paramEntity = (m: { method: string; path: string; entity: string }): string =>
+  PARAM_ENTITY[`${m.method.toUpperCase()} ${m.path}`] ?? m.entity
+
+/**
+ * Collection entities whose rows have no id to check for, and why — so that a NEW collection entity
+ * without a fixture id fails loudly instead of joining them in silence.
+ */
+const COLLECTIONS_WITHOUT_ID: Record<string, string> = {
+  branding: 'GET /v1/tenant/branding returns a single object, and its scope is the JWT tenant — there is no foreign id it could contain. branding.spec.ts:112 covers it',
+  usage: 'daily aggregate rows carry no id; the tenant predicate is asserted directly below',
+  webhookDelivery: 'covered by webhooks.spec.ts:142, which seeds a delivery in each tenant and compares the lists',
 }
 // replace the FIRST :param (`:id`, `:imei`, …) so param-carrying routes get a realistic
 // path. All current routes are single-param; a future two-param route would need a
@@ -72,7 +221,7 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     const items = fx.manifest.filter((m) => m.shape === 'item' && m.scopeClass !== 'platform')
     expect(items.length).toBeGreaterThan(0)
     for (const m of items) {
-      const rid = idFor(fx.t2, m.entity)
+      const rid = idFor(fx.t2, paramEntity(m))
       // A missing fixture id used to make this test VACUOUS rather than red: `idFor` returned '',
       // `itemPath` produced `/v1/accounts//preferences`, and Hono answered 404 from the ROUTER —
       // the handler was never reached, the scope check never ran, and the assertion passed anyway.
@@ -90,9 +239,19 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     for (const m of collections) {
       const res = await req(m.path, fx.t1.tokenTenant)
       expect(res.status).toBe(200)
+      // The item loop guards against a missing fixture id; this loop did not, and the same vacuity
+      // applies with none of the noise: `idFor` returns '', no row has an id of '', the assertion
+      // passes, and a whole collection route is untested while showing green.
+      const rid = idFor(fx.t2, m.entity)
+      expect(rid !== '' || COLLECTIONS_WITHOUT_ID[m.entity] !== undefined,
+        `no fixture id for collection entity '${m.entity}' — seed one, or record in COLLECTIONS_WITHOUT_ID why ${m.path} cannot be id-checked`).toBe(true)
+      if (rid === '') continue
       const body = (await res.json()) as unknown[] | { id?: string }[]
-      const ids = new Set((Array.isArray(body) ? body : []).map((r) => String((r as { id?: string }).id)))
-      expect(ids.has(idFor(fx.t2, m.entity)), `${m.path} leaked T2 ${m.entity}`).toBe(false)
+      // A `{items, nextCursor}` envelope would make `Array.isArray` false and silently empty the id
+      // set — §6.6 mandates cursor pagination, so assert the shape rather than degrade to a no-op.
+      expect(Array.isArray(body), `${m.path} is declared shape:'collection' but did not return an array — the leak check below would be a no-op`).toBe(true)
+      const ids = new Set((body as { id?: string }[]).map((r) => String(r.id)))
+      expect(ids.has(rid), `${m.path} leaked T2 ${m.entity}`).toBe(false)
     }
   })
 
@@ -100,7 +259,7 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     const platform = fx.manifest.filter((m) => m.scopeClass === 'platform')
     expect(platform.length).toBeGreaterThan(0)
     for (const m of platform) {
-      const path = itemPath(m.path, idFor(fx.t2, m.entity))
+      const path = itemPath(m.path, idFor(fx.t2, paramEntity(m)))
       const res = await req(path, fx.t1.tokenTenant, m.method.toUpperCase())
       expect(res.status, `${m.method} ${path} as tsp_admin`).toBe(403)
     }
@@ -118,7 +277,7 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
   it('positive control: T1 admin CAN reach its own resources (proves 404s are scope, not breakage)', async () => {
     // GET item routes only — action routes (POST /verify, DELETE) aren't GET-testable
     for (const m of fx.manifest.filter((x) => x.shape === 'item' && x.method === 'get' && x.scopeClass !== 'platform')) {
-      const res = await req(itemPath(m.path, idFor(fx.t1, m.entity)), fx.t1.tokenTenant)
+      const res = await req(itemPath(m.path, idFor(fx.t1, paramEntity(m))), fx.t1.tokenTenant)
       expect(res.status, `own ${m.path}`).toBe(200)
     }
   })
@@ -215,6 +374,39 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     expect((await req(`/v1/audit/${fx.t1.auditId}`, fx.t1.tokenAccountAdminA1)).status).toBe(403)
     // …and a genuinely tenant-wide admin still reads it
     expect((await req('/v1/audit', fx.t1.tokenTenant)).status).toBe(200)
+  })
+
+  it('every TENANT-WIDE surface refuses an account-pinned admin — not just the two that were fixed', async () => {
+    // The audit test above fixed `audit`, and `usage` got the same line. Three MORE surfaces of the
+    // identical shape were left on a role-only gate, and they are the expensive ones:
+    //   · POST /v1/billing/portal returned a live Stripe Customer Portal URL for the TENANT's
+    //     customer — the reseller's invoices, payment method and cancel button — to one end-
+    //     customer's admin. /checkout let them open a subscription on it.
+    //   · DELETE /v1/tenant/domains/:id removed the tenant's VERIFIED white-label host, taking every
+    //     sibling account's login page and on-demand certificate down with it.
+    //   · PATCH /v1/tenant/branding rewrote the product name, logo and colours every sibling
+    //     account's users see, pre-auth and in branded mail.
+    // What made this survivable for so long is that both dimensions were tested separately and
+    // neither alone is red: billing.spec/branding.spec test the ROLE axis (viewer → 403), and the
+    // manifest sweep tests the TENANT axis with an unpinned admin. Nothing crossed them.
+    // collected, not asserted per-route: when this list grows the interesting output is EVERY
+    // surface still open, not whichever one happens to sort first.
+    const open: string[] = []
+    for (const [method, path, entity] of TENANT_WIDE_ONLY) {
+      const target = entity === undefined ? path : itemPath(path, idFor(fx.t1, entity))
+      const res = await req(target, fx.t1.tokenAccountAdminA1, method)
+      if (res.status !== 403) open.push(`${method} ${target} → ${res.status}`)
+    }
+    expect(open, 'these tenant-wide surfaces still accept an account-pinned admin').toEqual([])
+    // …and the same routes still work for a genuinely tenant-wide admin, so the 403s above are the
+    // pin and not a blanket breakage.
+    for (const path of ['/v1/billing', '/v1/tenant/domains', '/v1/usage']) {
+      expect((await req(path, fx.t1.tokenTenant)).status, `tenant-wide admin on ${path}`).toBe(200)
+    }
+    // GET /v1/tenant/branding is deliberately NOT in the list: READ_POLICY.branding is every role
+    // ("viewers see the theme") and the payload has no per-account data, so gating it would blank
+    // the UI theme for every account-scoped user to defend nothing.
+    expect((await req('/v1/tenant/branding', fx.t1.tokenAccountAdminA1)).status).toBe(200)
   })
 
   it('POSITIVE CONTROL: an in-scope empty PATCH still 200s on every generic-repo entity', async () => {
@@ -362,34 +554,62 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       jwtSecret: 'x'.repeat(32), jwtTtlS: 900, refreshTtlS: 3600,
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
-    // Hono exposes registered routes; the auth/public + infra routes are exempt.
-    // `routing` (ADR-029) is a stateless OSRM proxy — reads/writes NO tenant data,
-    // so there is no tenant boundary for the manifest harness to defend.
-    // NOTE: the filter below is `path.startsWith('/v1/')`, so this harness structurally cannot see a
-    // route outside /v1 — the public short link `/r/:code` is the first one. Adding it to EXEMPT
-    // would read as "considered and exempted" while changing nothing; it is covered by its own tests
-    // in apps/api/__tests__/partner.spec.ts instead.
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/signup|public\/verify-email|public\/share|public\/manifest\.webmanifest|driver-scores|routing|stream|reports|api-keys|billing|webhooks|push|partner|webhooks\/ses|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
-    const registered = (app.routes as { method: string; path: string }[])
-      .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
-      .map((r) => `${r.method} ${r.path}`)
+    // NOTE: the filter is `path.startsWith('/v1/')`, so this harness structurally cannot see a
+    // route outside /v1 — the public short link `/r/:code` is the first one. Adding it to the
+    // exemptions would read as "considered and exempted" while changing nothing; it is covered by
+    // its own tests in apps/api/__tests__/partner.spec.ts instead.
     const manifested = new Set(fx.manifest.map((m) => `${m.method.toUpperCase()} ${m.path}`))
-    const missing = registered.filter((r) => !manifested.has(r))
-    expect(missing, 'these live routes are not in the manifest — register them').toEqual([])
+    const missing = unexemptedRoutes(app as never).filter((r) => !manifested.has(r))
+    expect(missing, 'these live routes are not in the manifest — register them, or add an EXEMPT_ROUTES entry saying which spec covers them').toEqual([])
+    expect(mountsExposeTheirRoutes(app as never), 'a sub-app mount contributed no concrete routes — its whole subtree is now invisible to this test').toEqual([])
+    // `unexemptedRoutes` drops every method-ALL record as middleware. That is only sound while no
+    // HANDLER uses `app.all()` on a concrete path — and the codebase already has ALL records on
+    // concrete paths (the rate-limit middleware on /v1/public/*), so the shape is not exotic here.
+    // Without this, `app.all('/v1/anything', handler)` is invisible to the meta-test AND to the
+    // isolation sweep at once.
+    const concreteAll = (app.routes as { method: string; path: string }[])
+      .filter((r) => r.method === 'ALL' && !r.path.endsWith('/*') && !EXEMPT_PREFIXES.test(r.path))
+      .map((r) => r.path)
+    expect(concreteAll, 'a method-ALL record on a concrete /v1 path: if that is a handler it is untested; if it is middleware, exempt its path explicitly').toEqual([])
   })
 
-  it('detects a route added OUTSIDE the manifest (probe)', () => {
+  it('every EXEMPT_ROUTES entry still exists — a stale exemption silently un-covers its successor', () => {
     const app = createApp({
       redis: {} as never, redisSub: {} as never, db: {} as never,
       jwtSecret: 'x'.repeat(32), jwtTtlS: 900, refreshTtlS: 3600,
       lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
     })
-    app.get('/v1/sneaky', (c) => c.json({}))
-    const EXEMPT = /^\/(healthz|metrics)$|^\/v1\/(auth|ws-ticket|devices\/last|profiles|branding|internal\/caddy-ask|public\/pilot-request|public\/signup|public\/verify-email|public\/share|public\/manifest\.webmanifest|driver-scores|routing|stream|reports|api-keys|billing|webhooks|push|partner|webhooks\/ses|openapi\.json|docs)(?:\/|$)|^\/v1\/\*$/
-    const registered = (app.routes as { method: string; path: string }[])
-      .filter((r) => r.path.startsWith('/v1/') && !EXEMPT.test(r.path))
-      .map((r) => `${r.method} ${r.path}`)
+    // An exemption that outlives its route is worse than none: rename `/v1/billing/portal` to
+    // `/v1/billing/manage` and the old key sits there looking deliberate while the new route is
+    // simply unlisted — and the reader of the list believes billing is accounted for.
+    const live = new Set((app.routes as { method: string; path: string }[]).map((r) => `${r.method} ${r.path}`))
+    const stale = Object.keys(EXEMPT_ROUTES).filter((r) => !live.has(r))
+    expect(stale, 'these exemptions name routes that no longer exist — delete them').toEqual([])
+  })
+
+  it('detects a route added OUTSIDE the manifest (probe) — including under an exempted sibling', () => {
+    const app = createApp({
+      redis: {} as never, redisSub: {} as never, db: {} as never,
+      jwtSecret: 'x'.repeat(32), jwtTtlS: 900, refreshTtlS: 3600,
+      lockout: { maxFails: 5, windowS: 900 }, secureCookies: false, trustProxy: false,
+    })
+    // The bare `/v1/sneaky` case only ever proved the filter runs at all. The cases that MATTER are
+    // the ones the old prefix regex swallowed: a new route whose neighbour is exempt. Each of these
+    // is a plausible next feature — send a test payload to a webhook, rotate a key without minting a
+    // new one, expose an invoice list, a per-account usage breakdown — and each is tenant data.
+    for (const p of ['/v1/sneaky', '/v1/webhooks/:id/test', '/v1/api-keys/:id/rotate', '/v1/billing/invoices', '/v1/reports/:type/schedule', '/v1/push/broadcast', '/v1/driver-scores/:id']) {
+      app.get(p, (c) => c.json({}))
+    }
     const manifested = new Set(fx.manifest.map((m) => `${m.method.toUpperCase()} ${m.path}`))
-    expect(registered.filter((r) => !manifested.has(r))).toContain('GET /v1/sneaky')
+    const caught = unexemptedRoutes(app as never).filter((r) => !manifested.has(r))
+    expect(caught).toEqual([
+      'GET /v1/sneaky',
+      'GET /v1/webhooks/:id/test',
+      'GET /v1/api-keys/:id/rotate',
+      'GET /v1/billing/invoices',
+      'GET /v1/reports/:type/schedule',
+      'GET /v1/push/broadcast',
+      'GET /v1/driver-scores/:id',
+    ])
   })
 })

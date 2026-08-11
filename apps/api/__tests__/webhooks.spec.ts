@@ -119,13 +119,20 @@ describe('E06-4 webhooks CRUD', () => {
 
 describe('E06-4b webhook deliveries — cross-account isolation (audit A1)', () => {
   it('an account_manager sees only its account + tenant-shared deliveries, never a sibling account', async () => {
-    // three webhooks: one per account + one tenant-shared (null account)
+    // three webhooks: one per account + one tenant-shared (null account). The DELIVERIES of the
+    // shared webhook are NOT shared: the worker stamps every log row with the account of the device
+    // whose event fired it (`rec()` in webhookWorker closes over a non-null accountId, and returns
+    // early when the device cannot be scoped), so a shared hook firing for a Fleet A device writes a
+    // Fleet-A row. This fixture used to seed that row with a NULL account — a shape the writer
+    // cannot produce — which is what made `nullableAccount` on the read side look justified.
+    // Visibility is unchanged either way; what changes is that an unattributed row, if some future
+    // writer ever made one, is now invisible rather than broadcast to every account in the tenant.
     const whA1 = (await (await req('/v1/webhooks', t1Admin, 'POST', { accountId: acct1, url: 'https://hooks.example.com/d-a1', secret: SECRET })).json()) as { id: string }
     const whA2 = (await (await req('/v1/webhooks', t1Admin, 'POST', { accountId: acct2, url: 'https://hooks.example.com/d-a2', secret: SECRET })).json()) as { id: string }
     const whShared = (await (await req('/v1/webhooks', t1Admin, 'POST', { accountId: null, url: 'https://hooks.example.com/d-shared', secret: SECRET })).json()) as { id: string }
     await seedDelivery(whA1.id, acct1, 'evt-a1')
     await seedDelivery(whA2.id, acct2, 'evt-a2')
-    await seedDelivery(whShared.id, null, 'evt-shared')
+    await seedDelivery(whShared.id, acct1, 'evt-shared') // shared hook, Fleet A device
 
     // tenant-wide admin sees every delivery in the tenant (all three)
     const adminEvents = new Set(((await (await req('/v1/webhook-deliveries', t1Admin)).json()) as { eventId: string }[]).map((d) => d.eventId))
