@@ -11,6 +11,7 @@ import { createDb, type Db } from '@orbetra/db'
 import { seedProfiles } from '../../../packages/db/seed/profiles.js'
 import { seedUser } from '../../../packages/db/seed/users.js'
 import { createApp } from '../src/app.js'
+import { reserveDeviceBudget, settleDeviceBudget } from '../src/routes/crud.js'
 import { luhnValid, parseCsv } from '../src/routes/deviceImport.js'
 import { tenantDevicesKey } from '../src/routes/deviceRegistry.js'
 import { mintTestToken, TEST_JWT_SECRET } from './helpers/auth.js'
@@ -88,6 +89,201 @@ beforeEach(async () => {
   await redis.flushall()
   await db.devices.list({ tenantId }).then(async (ds) => {
     for (const d of ds) await db.devices.retire({ tenantId }, { userId: '00000000-0000-0000-0000-000000000000' }, d.id.toString())
+  })
+})
+
+describe('the device-creation ceiling sanitizes its own knob', () => {
+  // The knob can refuse every create on the platform, so the values it accepts matter as much as the
+  // ceiling itself. These are the shapes an env var actually arrives in.
+  const spentFor = async (t: string): Promise<number> => Number((await redis.get(`devcreate:rl:${t}`)) ?? 0)
+  const reserveWith = async (limit: unknown, t: string): Promise<unknown> =>
+    reserveDeviceBudget({ redis, deviceCreateLimit: limit } as unknown as Parameters<typeof reserveDeviceBudget>[0], t, 1)
+
+  it('NaN from a typo falls back to the default instead of refusing every tenant', async () => {
+    // `Number('abc')` and `Number('10_000')` — the literal form the default is written in — are NaN.
+    // Unguarded, every comparison against NaN is false and nobody on the platform can add a device.
+    const t = 'tenant-nan'
+    await redis.del(`devcreate:rl:${t}`)
+    expect(await reserveWith({ max: Number('10_000'), windowS: 3600 }, t)).toEqual({ reserved: 1 })
+    expect(await spentFor(t)).toBe(1)
+  })
+
+  it('a fractional window falls back — EXPIRE rejects one, and the throw would unmeter the platform', async () => {
+    // a throwing script is treated as `degraded`, i.e. fail-open: the ceiling silently absent
+    const t = 'tenant-frac'
+    await redis.del(`devcreate:rl:${t}`)
+    expect(await reserveWith({ max: 5, windowS: 3600.5 }, t)).toEqual({ reserved: 1 })
+    expect(await redis.ttl(`devcreate:rl:${t}`)).toBeGreaterThan(0)
+  })
+
+  it('max 0 is HONOURED as a freeze, not corrected away', async () => {
+    // the one value at that end of the range with a real use: an operator stopping device creation
+    // platform-wide. It is also what an empty env var produces, which is stated in the code.
+    const t = 'tenant-freeze'
+    await redis.del(`devcreate:rl:${t}`)
+    const r = await reserveWith({ max: 0, windowS: 60 }, t)
+    expect(r).toHaveProperty('retryAfterS')
+    expect(await spentFor(t)).toBe(0) // …and the refusal still hands the reservation back
+  })
+})
+
+describe('device creation is metered per TENANT (audit 2026-08-11 #2)', () => {
+  it('a tenant that blows its hourly budget gets 429 — and its neighbour is untouched', async () => {
+    // A resource guard, not an anti-squat measure: targeted squatting needs a few hundred specific
+    // IMEIs, far under any ceiling a real fleet could live with. What this stops is one trial tenant
+    // driving unbounded rows into `devices` from a loop, each taking an IMEI hold platform-wide.
+    //
+    // The neighbour assertion is the point of the test. A ceiling keyed globally instead of per
+    // tenant would turn this guard into the very denial-of-onboarding it exists to bound: one
+    // runaway integration and nobody else on the platform can add a device.
+    const throttled: string[] = []
+    const app = createApp({
+      redis, redisSub, db,
+      jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
+      lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+      getRemoteAddr: () => '127.0.0.1',
+      deviceCreateLimit: { max: 2, windowS: 60 },
+      onDeviceCreateThrottled: (why) => throttled.push(why),
+    })
+    const server = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+    const p = await new Promise<number>((r) => server.on('listening', () => r((server.address() as { port: number }).port)))
+    const spent = async (): Promise<number> => Number((await redis.get(`devcreate:rl:${tenantId}`)) ?? 0)
+    // drive the refund path directly: these are the two shapes a live request produces when the key
+    // vanishes underneath it (expiry, or an operator DEL) and when more is handed back than is owed
+
+    // Drive the PRODUCTION functions, not a copy of their Lua. An earlier version of this test
+    // called `redis.eval(RL_REFUND_SCRIPT, …)` directly and therefore asserted a property of an
+    // exported string that nothing proved production used: swapping both real call sites back to
+    // `RL_ADD_SCRIPT` with a negative amount — the literal pre-fix defect — left it green.
+    const budgetDeps = { redis, deviceCreateLimit: { max: 2, windowS: 60 } } as unknown as Parameters<typeof settleDeviceBudget>[0]
+    const settle = (reserved: number, created: number): Promise<void> => settleDeviceBudget(budgetDeps, tenantId, reserved, created)
+    const post = (tok: string, imei: string, acct: string) =>
+      fetch(`http://127.0.0.1:${p}/v1/devices`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${tok}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ accountId: acct, profileId, imei, name: imei }),
+      })
+    try {
+      // a REFUSED create is not billed either: this IMEI is held by another tenant, so it 409s and
+      // the budget must be untouched — otherwise a bad CSV of foreign IMEIs costs a real onboarding
+      const foreign = await seedUser({ databaseUrl, email: 'foreign@x.test', password: 'password12', role: 'tsp_admin', tenantName: 'Foreign Co', accountName: 'FF' })
+      const foreignAccount = (await db.accounts.list({ tenantId: foreign.tenantId }))[0]!.id
+      await db.devices.create({ tenantId: foreign.tenantId }, { userId: foreign.userId }, { accountId: foreignAccount, profileId, imei: '356307042441009', name: 'theirs' })
+      expect((await post(token, '356307042441009', accountId)).status).toBe(409)
+      // the reservation is taken atomically and handed straight back, so the key exists at zero.
+      // Asserting the VALUE, not the key's absence: what matters is that a refused create costs the
+      // tenant nothing, and the reserve-then-refund shape is what makes the ceiling race-free.
+      expect(await spent()).toBe(0)
+
+      expect((await post(token, '356307042441001', accountId)).status).toBe(201)
+      expect((await post(token, '356307042441002', accountId)).status).toBe(201)
+      const over = await post(token, '356307042441003', accountId)
+      expect(over.status).toBe(429)
+      // a throttled client needs a basis to back off. Asserted as a RANGE, not '60': Retry-After is
+      // the key's remaining TTL, so an exact match would require four HTTP round trips with Postgres
+      // writes to finish inside the first second — a flake waiting for a loaded CI box.
+      const retry = Number(over.headers.get('retry-after'))
+      expect(retry).toBeGreaterThan(0)
+      expect(retry).toBeLessThanOrEqual(60)
+      expect(throttled).toEqual(['limit'])
+
+      // A REJECTED request must not deepen the hole it just reported. Charging on the way in meant
+      // 9500 spent + two 1000-row imports that both 429 left the counter at 11500, so the tenant
+      // could not add one device by hand for the rest of the hour — the guard punishing the
+      // customer for hitting it. Check-then-charge: the 429 above cost nothing.
+      expect(await spent()).toBe(2)
+      expect((await post(token, '356307042441003', accountId)).status).toBe(429)
+      expect(await spent()).toBe(2)
+
+      // A REFUND MUST NOT RESURRECT THE COUNTER. `INCRBY -n` on a missing key creates it at -n, and
+      // the window-stamping branch then gives it a fresh full hour — so a refund landing after the
+      // key expired, or after on-call ran the `DEL devcreate:rl:<tenantId>` the runbook prescribes
+      // mid-onboarding, handed the tenant its whole ceiling again plus n free creates. Measured at
+      // -1000 with ttl=3600 on a real Redis before the fix.
+      await redis.del(`devcreate:rl:${tenantId}`)
+      await settle(1000, 0) // a 1000-row import settling after its window rolled, or after an operator DEL
+      expect(await redis.get(`devcreate:rl:${tenantId}`)).toBeNull() // no key conjured
+      expect(await spent()).toBe(0)
+
+      // and a refund larger than what is on the counter clamps at zero rather than going negative,
+      // without restarting the window
+      await redis.del(`devcreate:rl:${tenantId}`)
+      expect((await post(token, '356307042441007', accountId)).status).toBe(201)
+      const ttlBefore = await redis.ttl(`devcreate:rl:${tenantId}`)
+      await settle(5, 0) // more handed back than is owed
+      expect(await spent()).toBe(0)
+      expect(await redis.ttl(`devcreate:rl:${tenantId}`)).toBeLessThanOrEqual(ttlBefore)
+
+      // CHARGE ACCOUNTING UNDER CONCURRENCY. Be exact about what this proves: it fails against the
+      // GET-then-work-then-INCRBY shape that let five concurrent 100-row imports past a ceiling of 2
+      // and create 500 devices, and it does NOT prove atomicity — instrumenting that shape showed
+      // the ten requests here read 0,0,2,2,2,… because the preceding account lookup staggers them,
+      // so an adjacent GET/INCRBY pair would still pass. Atomicity comes from the reservation being
+      // a single Lua INCRBY; this test guards the accounting around it.
+      await redis.del(`devcreate:rl:${tenantId}`)
+      const burst = await Promise.all(
+        Array.from({ length: 10 }, (_, i) => post(token, `35630704244200${i}`, accountId)),
+      )
+      expect(burst.filter((r) => r.status === 201)).toHaveLength(2)
+      expect(burst.filter((r) => r.status === 429)).toHaveLength(8)
+      expect(await spent()).toBe(2)
+
+      // THE IMPORT PATH, which is where the measured defect lived and where nothing was asserted:
+      // a rejected batch must cost nothing, and an applied batch must cost what it CREATED rather
+      // than what was uploaded. Charging the upload was what left a tenant at 11500/10000 after two
+      // refused imports and locked them out of the UI form for the hour.
+      await redis.del(`devcreate:rl:${tenantId}`)
+      const importCsv = ['imei,name,profileKey,accountId',
+        `${validImei(35630704254000n)},Imp A,fmb1xx,${accountId}`,
+        `${validImei(35630704255000n)},Imp B,fmb1xx,${accountId}`,
+        `${validImei(35630704256000n)},Imp C,fmb1xx,${accountId}`].join('\n')
+      const doImport = (tok: string) =>
+        fetch(`http://127.0.0.1:${p}/v1/devices/import`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${tok}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ csv: importCsv }),
+        })
+      // 3 rows against a ceiling of 2: refused, and the refusal is free
+      const tooBig = await doImport(token)
+      expect(tooBig.status).toBe(429)
+      const retryImport = Number(tooBig.headers.get('retry-after'))
+      expect(retryImport).toBeGreaterThan(0)
+      expect(retryImport).toBeLessThanOrEqual(60)
+      expect(await spent()).toBe(0)
+      // re-applying the SAME csv creates nothing the second time, so it must cost nothing either
+      await redis.set(`devcreate:rl:${tenantId}`, '0', 'EX', 60)
+      const app10 = createApp({
+        redis, redisSub, db,
+        jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
+        lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
+        getRemoteAddr: () => '127.0.0.1',
+        deviceCreateLimit: { max: 10, windowS: 60 },
+      })
+      const s10 = serve({ fetch: app10.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+      const p10 = await new Promise<number>((r) => s10.on('listening', () => r((s10.address() as { port: number }).port)))
+      try {
+        const send = () => fetch(`http://127.0.0.1:${p10}/v1/devices/import`, {
+          method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ csv: importCsv }),
+        })
+        expect((await send()).status).toBe(201)
+        expect(await spent()).toBe(3)
+        expect((await send()).status).toBe(201) // all three are updates now
+        expect(await spent()).toBe(3) // …and cost nothing
+      } finally {
+        s10.closeAllConnections?.()
+        await new Promise<void>((r) => s10.close(() => r()))
+      }
+
+      await redis.del(`devcreate:rl:${tenantId}`)
+      const other = await seedUser({ databaseUrl, email: 'neighbour@x.test', password: 'password12', role: 'tsp_admin', tenantName: 'Neighbour Co', accountName: 'NF' })
+      const otherAccount = (await db.accounts.list({ tenantId: other.tenantId }))[0]!.id
+      const otherToken = await mintTestToken({ userId: other.userId, tenantId: other.tenantId, role: 'tsp_admin' })
+      expect((await post(otherToken, '356307042441004', otherAccount)).status).toBe(201)
+    } finally {
+      server.closeAllConnections?.()
+      await new Promise<void>((r) => server.close(() => r()))
+    }
   })
 })
 

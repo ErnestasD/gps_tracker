@@ -105,6 +105,13 @@ export interface ApiDeps extends WsDeps {
   smsQuota?: { perDevicePerDay: number; perTenantPerDay: number; globalPerDay: number }
   /** Fired when a send is refused by a quota; wired to `sms_quota_rejected_total` in main.ts. */
   onSmsQuotaRejected?: (scope: 'device' | 'tenant' | 'global') => void
+  /** Per-tenant device-creation ceiling; default DEFAULT_DEVICE_CREATE_LIMIT. */
+  deviceCreateLimit?: { max: number; windowS: number }
+  /** Fired when a tenant hits that ceiling (`limit`), when Redis could not be consulted and the
+   *  create was let THROUGH (`degraded`), or when a reservation could not be handed back so the
+   *  tenant now carries a phantom charge (`refund_failed` — the opposite reflex to `degraded`);
+   *  wired to `device_create_throttled_total` in main.ts. */
+  onDeviceCreateThrottled?: (why: 'limit' | 'degraded' | 'refund_failed') => void
   /** Fired when a verified Stripe subscription webhook provisioned nothing; wired to a counter. */
   onWebhookUnmatched?: (reason: 'no_tenant' | 'unmappable') => void
   /** GDPR job enqueuers (E08-4, ADR-020 addendum); routes 503 when absent. */
@@ -169,6 +176,7 @@ export interface ApiProm {
   setWsClients: (n: number) => void
   /** Sends refused by an SMS quota, by which ceiling tripped. `global` = the platform breaker. */
   smsQuotaRejected: Counter
+  deviceCreateThrottled: Counter
   /** Verified Stripe subscription webhooks that provisioned NOTHING — a paying customer with no plan. */
   billingWebhookUnmatched: Counter
   /** Live sockets dropped for exceeding the send-buffer ceiling: a client that stopped reading. */
@@ -209,6 +217,12 @@ export function createApiProm(): ApiProm {
     name: 'sms_quota_rejected_total',
     help: 'SMS sends refused by a quota (device | tenant | global platform breaker)',
     labelNames: ['scope'],
+    registers: [registry],
+  })
+  const deviceCreateThrottled = new Counter({
+    name: 'device_create_throttled_total',
+    help: 'device creations refused by the per-tenant ceiling (limit), let through because Redis could not be consulted (degraded), or over-charged because a reservation could not be handed back (refund_failed)',
+    labelNames: ['why'],
     registers: [registry],
   })
   const billingWebhookUnmatched = new Counter({
@@ -274,7 +288,7 @@ export function createApiProm(): ApiProm {
     buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [registry],
   })
-  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, signupEmailInUse, affiliateSilentFailure, emailVerification, tenantRestored, httpRequests, httpDuration }
+  return { registry, setWsClients: (n) => g.set(n), smsQuotaRejected, deviceCreateThrottled, billingWebhookUnmatched, wsSlowConsumer, authLockoutTripped, signupEmailInUse, affiliateSilentFailure, emailVerification, tenantRestored, httpRequests, httpDuration }
 }
 
 /**
@@ -592,7 +606,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
-  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, ...(deps.platformDomain !== undefined ? { platformDomain: deps.platformDomain } : {}), ...(deps.edgeHostname !== undefined ? { edgeHostname: deps.edgeHostname } : {}), pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding, sms: deps.sms, smsQuota: deps.smsQuota, onSmsQuotaRejected: deps.onSmsQuotaRejected }), deps.db)
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, ...(deps.platformDomain !== undefined ? { platformDomain: deps.platformDomain } : {}), ...(deps.edgeHostname !== undefined ? { edgeHostname: deps.edgeHostname } : {}), pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding, sms: deps.sms, smsQuota: deps.smsQuota, onSmsQuotaRejected: deps.onSmsQuotaRejected, ...(deps.deviceCreateLimit !== undefined ? { deviceCreateLimit: deps.deviceCreateLimit } : {}), ...(deps.onDeviceCreateThrottled !== undefined ? { onDeviceCreateThrottled: deps.onDeviceCreateThrottled } : {}) }), deps.db)
 
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.

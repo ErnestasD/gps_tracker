@@ -84,12 +84,76 @@ const RL_SCRIPT = `local n = redis.call('INCR', KEYS[1])
 if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return n`
 
+/** As RL_SCRIPT, but the caller says how much to add — one CSV import is N devices, not one event. */
+const RL_ADD_SCRIPT = `local n = redis.call('INCRBY', KEYS[1], ARGV[2])
+if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return n`
+
+/**
+ * Hand a reservation back. Deliberately NOT `RL_ADD_SCRIPT` with a negative amount.
+ *
+ * That is what it was, and it defeated the ceiling it exists to enforce. Redis materialises a
+ * missing key at 0 before applying INCRBY, so refunding against a key that had expired — or that
+ * on-call had just cleared with the `DEL devcreate:rl:<tenantId>` the runbook tells them to run,
+ * which is by definition done mid-onboarding — left the counter at MINUS the refund, and the
+ * `TTL < 0` branch then stamped a fresh FULL window on it. Measured against a real Redis: a
+ * 1000-row import spanning the window boundary came back at `-1000` with `ttl=3600` — a tenant
+ * handed 1000 free creates on top of the whole ceiling, for an hour. The window is set once at key
+ * creation and never extended, and MAX_IMPORT_ROWS is the amplitude, so "spanning the boundary" is
+ * an ordinary import rather than a stunt.
+ *
+ * So: never create the key, and never fall below zero. KEEPTTL because clamping must not restart
+ * the window either.
+ */
+const RL_REFUND_SCRIPT = `if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+local n = redis.call('INCRBY', KEYS[1], ARGV[1])
+if n < 0 then redis.call('SET', KEYS[1], 0, 'KEEPTTL') n = 0 end
+return n`
+
+/**
+ * Devices a tenant may CREATE per hour.
+ *
+ * Be honest about what this is and is not. It is a RESOURCE guard: without it one trial tenant can
+ * drive an unbounded number of rows into `devices` from a loop, and every one of them takes an IMEI
+ * hold against the rest of the platform (audit 2026-08-11 #2). It is NOT an anti-squat measure —
+ * targeted squatting needs a few hundred specific IMEIs, far under any ceiling a real fleet could
+ * live with. The remedy for squatting is the platform quarantine claim, which can now override a
+ * retired holder.
+ *
+ * Keyed per TENANT, not per account, and that is a deliberate mismatch with the boundary this
+ * codebase uses everywhere else: a runaway integration in one account of a white-label TSP does
+ * throttle its sibling end-customers. The ceiling guards `devices` ROWS, and rows are a tenant-level
+ * resource; at 10 000/hour the sibling case is unreachable in practice, which is why it is
+ * acceptable rather than why it is right.
+ *
+ * The ceiling is therefore set where no real customer can reach it. PROJECT_PLAN §5 ("Performance envelope") designs the
+ * whole PLATFORM for 5000 devices and names 200 vehicles as a large single fleet, and
+ * `DIRECT_DEVICE_LIMIT` tops out at 100 — so an hour's budget is twice everything we expect to run,
+ * arriving at once. A cap tight enough to inconvenience an onboarding would be a regression dressed
+ * as a control.
+ */
+export const DEFAULT_DEVICE_CREATE_LIMIT = { max: 10_000, windowS: 3600 }
+
 export interface CrudDeps {
   db: Db
   /** SMS ceilings; defaults to DEFAULT_SMS_QUOTA. */
   smsQuota?: { perDevicePerDay: number; perTenantPerDay: number; globalPerDay: number }
   /** Fired when a send is refused by a quota — a rejection nobody can see is not a guard. */
   onSmsQuotaRejected?: (scope: 'device' | 'tenant' | 'global') => void
+  /** Per-tenant device-creation ceiling; defaults to DEFAULT_DEVICE_CREATE_LIMIT. */
+  deviceCreateLimit?: { max: number; windowS: number }
+  /**
+   * Fired when a tenant hits the device-creation ceiling (`limit`), when Redis could not be
+   * consulted and the create was let through (`degraded`), or when a reservation could not be handed
+   * back (`refund_failed`).
+   *
+   * The three are NOT interchangeable and the third was originally folded into the second, which
+   * inverted its meaning: `degraded` says the guard was absent and traffic flowed, while a failed
+   * hand-back says the guard OVER-charged — a tenant now carries a phantom charge (up to a whole
+   * 1000-row import) for the rest of the window, and the remedy is `DEL devcreate:rl:<tenantId>`.
+   * On-call reading "the create was let through" would do nothing, which is the wrong action.
+   */
+  onDeviceCreateThrottled?: (why: 'limit' | 'degraded' | 'refund_failed') => void
   /** Device CRUD syncs the ingest/worker Redis registries (E03-3). */
   redis: Redis
   /** DNS TXT resolver for domain verification (E03-5); injectable for tests. */
@@ -300,6 +364,96 @@ function toMaintView(
  * isolation suite. Registration is driven from this array — the meta-test fails if
  * a live /v1 route is missing here.
  */
+/**
+ * The sanitized ceiling, and an honest note about what it does and does not catch.
+ *
+ * `Number('abc')` and `Number('10_000')` are NaN and would refuse every caller on the platform;
+ * those this rejects. `Number('')` is 0, and 0 is NOT rejected — it is an intentional freeze, which
+ * is a thing an operator legitimately wants and the only value with a real use at that end of the
+ * range. So an EMPTY `DEVICE_CREATE_MAX_PER_WINDOW` still freezes device creation everywhere, and
+ * the only thing standing in front of that is the real default in `docker-compose.apps.yml`
+ * (`${DEVICE_CREATE_MAX_PER_WINDOW:-10000}`) — `main.ts` uses `??`, which does not treat the empty
+ * string as absent. Run the api outside compose with that variable set and empty and nobody can add
+ * a device. Stated rather than papered over, because a freeze that looks like a typo and a typo
+ * that looks like a freeze are the same string.
+ */
+function deviceLimits(deps: CrudDeps): { max: number; windowS: number } {
+  const rl = deps.deviceCreateLimit ?? DEFAULT_DEVICE_CREATE_LIMIT
+  return {
+    // `max: 0` is honoured — an explicit platform-wide freeze, the one legitimate reason to set it
+    // to a number no fleet could live with. `windowS` must be a WHOLE number of seconds: EXPIRE
+    // rejects a fractional argument, the script would throw on every call, and this limiter treats a
+    // throw as `degraded` and lets the create through — the ceiling silently absent platform-wide.
+    max: Number.isInteger(rl.max) && rl.max >= 0 ? rl.max : DEFAULT_DEVICE_CREATE_LIMIT.max,
+    windowS: Number.isInteger(rl.windowS) && rl.windowS > 0 ? rl.windowS : DEFAULT_DEVICE_CREATE_LIMIT.windowS,
+  }
+}
+
+/** A reservation that was taken (`reserved` devices), or the basis for a 429. */
+type DeviceBudget = { reserved: number } | { retryAfterS: number }
+
+/**
+ * Reserve `cost` devices up front, ATOMICALLY, and hand back whatever is not used.
+ *
+ * Two earlier shapes were both wrong and the second was worse. Charging on the way in billed work
+ * that never happened — a re-uploaded CSV creates nothing (`applyImport` only writes its create
+ * rows) yet cost 1000, and a request that itself 429'd deepened the hole it had just reported:
+ * review measured 9500 spent plus two rejected 1000-row imports leaving the counter at 11500, with
+ * the tenant then unable to add one device by hand for the rest of the hour. Replacing that with
+ * GET-then-work-then-INCRBY fixed the billing and threw away atomicity: review measured five
+ * concurrent 100-row imports against a ceiling of 2 creating 500 devices, because every one of them
+ * read the counter before any of them wrote it. Overshoot is `in-flight requests × MAX_IMPORT_ROWS`,
+ * and a runaway loop — the exact thing this bounds — is by definition a client that does not wait
+ * for responses, so the guard was weakest against its own stated threat. Nothing serializes these
+ * either: `withDeviceCapLock` returns immediately when the plan is uncapped, which TSP plans are.
+ *
+ * So: reserve atomically, refuse if the reservation crosses the ceiling and give it straight back,
+ * then refund the difference once the work reports what it actually created. (The SMS quota below
+ * is NOT this pattern and is no precedent for it: it charges on the way in and refunds only when
+ * the enqueue fails, so a send refused by the tenant ceiling keeps the device unit it already
+ * spent. An earlier version of this comment claimed otherwise.)
+ *
+ * One accepted rough edge: a large reservation that trips the ceiling briefly makes a small
+ * concurrent request 429 as well, until the hand-back lands a round trip later. Bounded by an RTT
+ * and self-healing, unlike every failure above.
+ *
+ * FAIL-OPEN on a Redis fault (`reserved: 0`), in line with every other limiter here: this ceiling
+ * exists to stop a runaway loop, and refusing a customer's onboarding because Redis blipped is the
+ * worse failure. The degraded path fires the hook so the absence is visible rather than silent.
+ */
+export async function reserveDeviceBudget(deps: CrudDeps, tenantId: string, cost: number): Promise<DeviceBudget> {
+  const { max, windowS } = deviceLimits(deps)
+  const key = `devcreate:rl:${tenantId}`
+  let used: number
+  try {
+    used = (await deps.redis.eval(RL_ADD_SCRIPT, 1, key, String(windowS), String(cost))) as number
+  } catch {
+    deps.onDeviceCreateThrottled?.('degraded')
+    return { reserved: 0 }
+  }
+  if (used <= max) return { reserved: cost }
+  // Refused: hand the reservation back through the SAME function the success path settles with, so
+  // one tested code path owns both. They used to be two copies of the same eval, and review showed
+  // the copy here was undefended — reverting just this line to the pre-fix negative-INCRBY shape
+  // left the whole spec green, which is exactly how a regression rounds 2-4 kept re-introducing
+  // would have walked back in.
+  await settleDeviceBudget(deps, tenantId, cost, 0)
+  deps.onDeviceCreateThrottled?.('limit')
+  // the remaining TTL, not the full window: a tenant that trips at minute 59 must not be told to
+  // wait an hour when the counter expires in sixty seconds
+  const ttl = await deps.redis.ttl(key).catch(() => -1)
+  return { retryAfterS: ttl > 0 ? ttl : windowS }
+}
+
+/** Give back the reserved devices that were never created. Never throws. */
+export async function settleDeviceBudget(deps: CrudDeps, tenantId: string, reserved: number, created: number): Promise<void> {
+  const unused = reserved - created
+  if (unused <= 0) return
+  await deps.redis
+    .eval(RL_REFUND_SCRIPT, 1, `devcreate:rl:${tenantId}`, String(-unused))
+    .catch(() => deps.onDeviceCreateThrottled?.('refund_failed'))
+}
+
 export function buildRoutes(deps: CrudDeps): RouteDef[] {
   const { db } = deps
   const auth = (c: Context<AuthEnv>) => c.get('auth')
@@ -491,12 +645,25 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if ((await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        const budget = await reserveDeviceBudget(deps, a.tenantId, 1)
+        if ('retryAfterS' in budget) {
+          c.header('Retry-After', String(budget.retryAfterS))
+          return problem(c, 429, 'Too Many Requests', 'device creation rate exceeded for this tenant')
+        }
         // tenant-plan device cap (WP2): Direct plans cap non-retired devices; TSP plans are uncapped
         // (deviceLimit null). Counted at TENANT scope. The count-then-create is serialized per tenant
         // by a short Redis lock so concurrent creates can't each pass at limit-1 and overshoot the
         // hard cap (review MED). A concurrent create loses the lock → 409, retry (rare admin path).
+        // one device is reserved; `created` decides how much of it is kept. Every path out of here
+        // that does NOT create a device — plan cap, bad profile, duplicate IMEI, a lost lock whose
+        // own answer is "retry", and any THROW — must give the reservation back, or a customer pays
+        // for rejections they were told to retry. The entitlement read lives inside the try for
+        // exactly that reason: a pool blip there used to leak the reservation, and ten of them lock
+        // a tenant out for the rest of the window.
+        let created = 0
+        try {
         const cap = (await db.tenants.getEntitlements(a.tenantId)).deviceLimit
-        return withDeviceCapLock(deps.redis, a.tenantId, cap, async () => {
+        return await withDeviceCapLock(deps.redis, a.tenantId, cap, async () => {
           if (cap !== null && (await db.devices.countActive({ tenantId: a.tenantId })) + 1 > cap) {
             return problem(c, 403, 'Forbidden', 'device_limit_reached')
           }
@@ -518,8 +685,12 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
             id: device.id, imei: device.imei, tenantId: a.tenantId, accountId,
             config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
           })
+          created = 1 // the row exists; the reservation is now a real charge
           return json(c, device, 201)
         }, () => problem(c, 409, 'Conflict', 'device_create_in_progress'))
+        } finally {
+          await settleDeviceBudget(deps, a.tenantId, budget.reserved, created)
+        }
       } },
     { method: 'patch', path: '/v1/devices/:id', scopeClass: 'account', entity: 'device', shape: 'item',
       handler: async (c) => {
@@ -928,19 +1099,38 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const profiles = await db.profiles.map()
         const rows = rowsToImport(parseCsv(parsed.csv))
         if (rows.length > MAX_IMPORT_ROWS) return problem(c, 400, 'Bad Request', `too many rows (max ${MAX_IMPORT_ROWS})`)
+        // Checked on the APPLY path only — the preview reads nothing it could not read anyway and
+        // creates nothing, so metering it would make a two-step UI cost twice its own budget. The
+        // CHARGE happens after the apply, for the rows that actually became devices.
+        const importBudget = await reserveDeviceBudget(deps, a.tenantId, rows.length)
+        if ('retryAfterS' in importBudget) {
+          c.header('Retry-After', String(importBudget.retryAfterS))
+          return problem(c, 429, 'Too Many Requests', 'device creation rate exceeded for this tenant')
+        }
         // tenant-plan device cap (WP2): reject the whole batch if it could push the fleet over the
         // cap. Conservative bound (rows.length, before dedup/updates) — Direct plans are small and
         // this admin path is low-frequency, so refusing a would-be-over batch is the safe default.
+        // the whole batch is reserved; only the rows that became devices are kept. `applyImport`
+        // writes its create-rows and reports the rest, so a re-uploaded CSV, a file of duplicates
+        // and a batch of bad IMEIs all settle back to zero — as do the plan-cap 403, the lost-lock
+        // 409 whose own answer is "retry", and any throw. The entitlement read is inside the try so
+        // a pool blip cannot leak a 1000-device reservation.
+        let imported = 0
+        try {
         const cap = (await db.tenants.getEntitlements(a.tenantId)).deviceLimit
         // SAME lock as the single create (audit MED): two concurrent 5-row imports on a 10-device
         // plan with 5 active devices both saw `5 + 5 > 10` as false and both proceeded.
-        return withDeviceCapLock(deps.redis, a.tenantId, cap, async () => {
+        return await withDeviceCapLock(deps.redis, a.tenantId, cap, async () => {
           if (cap !== null && (await db.devices.countActive({ tenantId: a.tenantId })) + rows.length > cap) {
             return problem(c, 403, 'Forbidden', 'device_limit_reached')
           }
           const result = await applyImport(db, deps.redis, scopeOf(a), { userId: a.userId }, rows, profiles, a.accountId)
+          imported = result.created
           return json(c, result, 201)
         }, () => problem(c, 409, 'Conflict', 'device_create_in_progress'))
+        } finally {
+          await settleDeviceBudget(deps, a.tenantId, importBudget.reserved, imported)
+        }
       } },
 
     // ── rules (account) ──────────────────────────────────────────────────────

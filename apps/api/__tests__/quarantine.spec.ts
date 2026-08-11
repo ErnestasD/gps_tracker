@@ -145,6 +145,50 @@ describe('E03-4 claim', () => {
     expect(dup.status).toBe(409)
   })
 
+  it('AUDIT #2: a claim releases a RETIRED holder in ANOTHER tenant — the remedy for an IMEI squat', async () => {
+    // Retiring frees the plan slot (countActive filters retiredAt) but used to keep the IMEI blocked
+    // against every other tenant forever, so create->retire in a loop squatted IMEIs for free from a
+    // trial account — and nothing could release one: deleting the squatting tenant fails on a
+    // RESTRICT foreign key. A customer whose own hardware was squatted had to wait for manual SQL.
+    const imei = '356307042449600'
+    const squatter = await seedUser({ databaseUrl, email: 'squat@x.test', password: 'password12', role: 'tsp_admin', tenantName: 'Squatter Ltd', accountName: 'SF' })
+    const squatterAccount = (await db.accounts.list({ tenantId: squatter.tenantId }))[0]!.id
+    const parked = await db.devices.create({ tenantId: squatter.tenantId }, { userId: squatter.userId }, { accountId: squatterAccount, profileId, imei, name: 'parked' })
+    await db.devices.retire({ tenantId: squatter.tenantId }, { userId: squatter.userId }, String(parked.id))
+
+    // quarantine membership is the PRECONDITION for the override — not evidence of anything. Anyone
+    // with a socket can create an entry (the IMEI is the only identity on the ingest path), and a
+    // tracker retired but never uninstalled lands here exactly like a squatted one. All it buys is
+    // that the override cannot be aimed at a hold at rest.
+    await quarantine(imei, 2000, 7)
+    const res = await req(`/v1/quarantine/${imei}/claim`, platformToken, 'POST', { tenantId, accountId, profileId, name: 'Reclaimed' })
+    expect(res.status).toBe(201)
+    expect(await redis.hget('device:tenant', ((await res.json()) as { deviceId: string }).deviceId)).toBe(tenantId)
+
+    // the LOSING tenant gets a record too — a transfer nobody can see is how a support dispute
+    // becomes unresolvable
+    const trail = await db.audit.list({ tenantId: squatter.tenantId }, {})
+    expect(trail.some((e) => JSON.stringify(e.after ?? {}).includes('released'))).toBe(true)
+  })
+
+  it('AUDIT #2: a claim NEVER releases an ACTIVE holder, platform_admin or not', async () => {
+    // The reason the hold exists at all: an active holder means the tracker is in service in another
+    // account and its positions are being delivered there. Handing the IMEI over would point another
+    // company's vehicle into a stranger's map — a data leak, not an onboarding inconvenience.
+    //
+    // This one is a regression guard for `devices_imei_active_key`, NOT a test of the override: it
+    // passes with this whole change reverted, because a global partial unique index makes two live
+    // rows on one IMEI impossible whatever the application does. Kept because the behaviour is
+    // worth locking; labelled because a test that looks like it proves the new code and does not is
+    // how a guarantee quietly disappears.
+    const imei = '356307042449700'
+    const owner = await seedUser({ databaseUrl, email: 'owner@x.test', password: 'password12', role: 'tsp_admin', tenantName: 'Owner Co', accountName: 'OC' })
+    const ownerAccount = (await db.accounts.list({ tenantId: owner.tenantId }))[0]!.id
+    await db.devices.create({ tenantId: owner.tenantId }, { userId: owner.userId }, { accountId: ownerAccount, profileId, imei, name: 'in service' })
+    await quarantine(imei, 3000, 2)
+    expect((await req(`/v1/quarantine/${imei}/claim`, platformToken, 'POST', { tenantId, accountId, profileId, name: 'Steal' })).status).toBe(409)
+  })
+
   it('claim of an IMEI not in quarantine still creates the device (zset is a hint)', async () => {
     const res = await req('/v1/quarantine/356307042449400/claim', platformToken, 'POST', { tenantId, accountId, profileId, name: 'Fresh' })
     expect(res.status).toBe(201)

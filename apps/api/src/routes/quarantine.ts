@@ -53,6 +53,9 @@ export type ClaimResult =
  * validating the account belongs to that tenant, then activate the registry and
  * drop the IMEI from quarantine. Idempotent ZREM/DEL — a claim of an IMEI no
  * longer in quarantine still creates the device.
+ *
+ * The zset stays a HINT for the ordinary claim, and is a PRECONDITION for exactly one thing:
+ * overriding a retired holder in another tenant. See the comment at the create call.
  */
 export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: ClaimInput): Promise<ClaimResult> {
   const scope = { tenantId: input.tenantId } // platform admin acts on the target tenant
@@ -82,12 +85,46 @@ export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: Cla
     }
     let device
     try {
+      // A RETIRED holder in ANOTHER tenant blocks this path unless the IMEI is currently in
+      // quarantine (audit 2026-08-11 #2). An ACTIVE one always blocks — enforced by the global
+      // partial unique index, with the repo predicate as defence in depth.
+      //
+      // Be precise about what the quarantine check buys, because every looser wording of this
+      // comment has been wrong. It is NOT proof of possession. Over TCP the IMEI is the only
+      // identity on the handshake, and over UDP the source and the IMEI are both attacker-chosen
+      // (`apps/ingest/src/registry.ts`), so one datagram from anywhere creates an entry with no
+      // device behind it. Nor does membership mean "transmitting right now": the zset has no TTL —
+      // it is trimmed by RANK to the newest 10 000 — so an entry persists until that many other
+      // unknown IMEIs push it out. And the honest case is indistinguishable from the abusive one: a
+      // tracker retired but never uninstalled is rejected by ingest and quarantined exactly like a
+      // squatted IMEI.
+      //
+      // All the check buys is that this override cannot be aimed at a hold AT REST: a platform
+      // admin cannot quietly reassign an IMEI nothing has ever sent us. Deciding who owns the
+      // hardware is an off-platform judgement — an invoice, a serial, a phone call — and this flag
+      // is how that decision gets carried out. Without it there was no way to carry it out at all:
+      // retiring a device kept its IMEI blocked platform-wide forever, and deleting the squatting
+      // tenant fails on a RESTRICT foreign key, so a customer who could not onboard their own
+      // hardware waited for someone to run manual SQL.
+      //
+      // Known consequence, worth stating rather than discovering: because the trim is by rank, a
+      // flood of 10 000 unknown IMEIs evicts a genuine victim's entry and denies them this remedy
+      // until their tracker is seen again. That is a reason to keep the remedy operator-driven, not
+      // a reason to trust the zset.
+      const inQuarantine = (await redis
+        .zscore('quarantine:imei', input.imei)
+        .catch((e: unknown) => {
+          // a blip disables the override — the safe direction, but not a silent one: the caller
+          // gets a 409 that is indistinguishable from a genuine conflict unless this is logged
+          console.error('quarantine: membership check unavailable, retired-holder override disabled', input.imei, e)
+          return null
+        })) !== null
       device = await db.devices.create(scope, actor, {
         accountId: input.accountId,
         profileId: input.profileId,
         imei: input.imei,
         name: input.name,
-      })
+      }, { overrideRetiredHolder: inQuarantine })
     } catch (err) {
       if (err instanceof DuplicateImeiError) return { ok: false, status: 409, reason: 'IMEI already registered' }
       throw err
