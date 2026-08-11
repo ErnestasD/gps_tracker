@@ -125,6 +125,8 @@ export function graceDaysFromEnv(env: NodeJS.ProcessEnv = process.env): number {
  * the same protection: whatever a bad billing state, a clock skew or a bad grace value does, it does
  * to at most this many customers before someone sees the alert. The rest wait for tomorrow.
  */
+export /** the re-assert walks whole device lists at two Redis round trips each — give it its own ceiling */
+const MAX_REASSERTS_PER_RUN = 200
 export const MAX_SUSPENSIONS_PER_RUN = 50
 
 export interface SweepDeps {
@@ -183,6 +185,48 @@ export async function runLapseSweep(deps: SweepDeps, nowMs: number, graceDays: n
     }
   }
 
+  /**
+   * 2. RE-ASSERT every already-suspended teardown, BEFORE the grace check.
+   *
+   * It used to live inside the ladder loop, below `if (past < 0) continue` — and `past` is derived
+   * from `lastBillingEventAt`, which `applySubscriptionEvent` overwrites on ANY applied event. So a
+   * suspended tenant who later received, say, `customer.subscription.deleted` had their clock reset,
+   * fell back inside the grace window, and was skipped by this loop forever after.
+   *
+   * That mattered because suspension is implemented as the ABSENCE of registry keys, and the boot
+   * rehydrate republishes every non-retired device on the platform with no suspension predicate.
+   * One deploy put the whole fleet back on the air, and the only thing that would have torn it down
+   * again was this re-assert — which was no longer running. Free, unmetered service for the whole
+   * grace window (14 days by default), while the database still said "suspended".
+   *
+   * Hoisting it is not a behaviour change so much as a correction of where it belongs: it is keyed
+   * on `suspendedAt`, a fact about the tenant, and has nothing to do with how far along a ladder
+   * they are. The restore pass above runs first, so a tenant who has paid is no longer in `lapsed`
+   * and can never be torn down here.
+   */
+  let reasserted = 0
+  for (const t of lapsed) {
+    if (t.suspendedAt === null || deps.redis === undefined) continue
+    if (reasserted >= MAX_REASSERTS_PER_RUN) {
+      // BOUNDED like the suspension branch: this walks every suspended tenant's whole device list at
+      // two Redis round trips per device, on the connection the pipeline also uses. An unbounded
+      // walk here is head-of-line blocking dressed as hygiene.
+      console.warn('billing: re-assert budget reached; remaining suspended fleets wait for the next sweep')
+      break
+    }
+    try {
+      // RE-READ, never the snapshot. `lapsed` was listed at the top of the run, so a platform admin
+      // clicking Restore in between would otherwise have this tear the registry straight back down
+      // while the row already says not-suspended: a DARK fleet flagged Active, invisible to the
+      // restore pass (not suspended) and to this one.
+      if (!(await deps.db.tenants.isSuspended(t.tenantId))) continue
+      await suspendTenantDevices(deps.redis, await deps.db.tenants.registryDevicesFor(t.tenantId))
+      reasserted++
+    } catch (err) {
+      console.error('billing: re-assert failed for tenant', t.tenantId, err instanceof Error ? err.message : String(err))
+    }
+  }
+
   for (const t of lapsed) {
     const past = daysPastGrace(t, nowMs, graceDays)
     if (past === null || past < 0) continue // still inside the grace window
@@ -233,10 +277,10 @@ export async function runLapseSweep(deps: SweepDeps, nowMs: number, graceDays: n
       // tenant a human deliberately just un-suspended). Being restored mid-run means SKIP for today
       // — tomorrow's sweep sees the real state and, because an override keeps the ladder, cuts them
       // off again immediately if they are still unpaid (review MED-HIGH).
-      if (t.suspendedAt !== null) {
-        if (!(await deps.db.tenants.isSuspended(t.tenantId))) continue
-        if (deps.redis !== undefined) await suspendTenantDevices(deps.redis, await deps.db.tenants.registryDevicesFor(t.tenantId))
-      } else if (readyToSuspend && deps.redis !== undefined && canMail && result.suspended < MAX_SUSPENSIONS_PER_RUN) {
+      // already suspended ⇒ the teardown was re-asserted in the pass above, and there is nothing
+      // further the ladder can do to them
+      if (t.suspendedAt !== null) continue
+      if (readyToSuspend && deps.redis !== undefined && canMail && result.suspended < MAX_SUSPENSIONS_PER_RUN) {
         // COUNT from the DB write, not the Redis one: the flag is what every other pass keys on, so
         // it is the honest definition of "this tenant was cut off today".
         if (await deps.db.tenants.suspend(t.tenantId, new Date(nowMs))) {

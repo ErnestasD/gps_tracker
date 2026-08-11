@@ -196,6 +196,43 @@ describe('runLapseSweep', () => {
     expect(sent).toEqual([]) // and does not re-mail them either
   })
 
+  it('re-asserts a suspended teardown even when the billing clock says they are back inside grace', async () => {
+    /**
+     * The one that cost real money. The re-assert used to sit BELOW `if (past < 0) continue`, and
+     * `past` comes from `lastBillingEventAt`, which `applySubscriptionEvent` overwrites on ANY
+     * applied event — so a suspended tenant who later received `customer.subscription.deleted` had
+     * their clock reset, fell back inside grace, and was never re-asserted again.
+     *
+     * Suspension is the ABSENCE of registry keys, and the boot rehydrate republishes every
+     * non-retired device with no suspension predicate. One deploy put the fleet back on the air and
+     * nothing tore it down: free, unmetered service for the whole grace window while the database
+     * still said "suspended".
+     */
+    const { db, suspends } = fakeDb([
+      // suspended a week ago, but the billing clock was refreshed two days ago ⇒ past = -12
+      lapsed({ lapsedAt: daysAgo(2), noticeStage: 3, suspendedAt: daysAgo(7) }),
+    ])
+    const { redis, touched } = fakeRedis()
+    const r = await runLapseSweep({ db, redis, mail: mailer([]), appBaseUrl: 'https://app.test' }, NOW, GRACE)
+
+    // the REGISTRY teardown is what suspension actually is — assert on Redis, not on the DB flag,
+    // which is already set and must not be written again
+    expect(touched.length).toBeGreaterThan(0)
+    expect(suspends).toEqual([]) // a re-assert, not a new suspension
+    expect(r.suspended).toBe(0)
+  })
+
+  it('a tenant restored by a human mid-run is NOT torn back down', async () => {
+    // the snapshot says suspended, the live read says not — being restored mid-run means skip for
+    // today, or the sweep undoes a platform admin's rescue while the row reads Active
+    const rows = [lapsed({ lapsedAt: daysAgo(2), noticeStage: 3, suspendedAt: daysAgo(7) })]
+    const { db } = fakeDb(rows)
+    db.tenants.isSuspended = () => Promise.resolve(false) // a human clicked Restore between the two
+    const { redis, touched } = fakeRedis()
+    await runLapseSweep({ db, redis, mail: mailer([]), appBaseUrl: 'https://app.test' }, NOW, GRACE)
+    expect(touched).toEqual([]) // nothing was torn down
+  })
+
   it('RESTORES a suspended tenant that paid — before anything else in the run', async () => {
     // `listLapsedTenants` returns only floored tenants, so a tenant that paid is simply absent from
     // it; the restore pass therefore reads its own set
