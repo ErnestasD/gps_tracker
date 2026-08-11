@@ -4,6 +4,7 @@ import { Decoder } from 'cbor-x'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
+import { buildCodec8Packet, buildCodec8Record } from '../../../packages/codec/__tests__/helpers.js'
 import { crc16ibm } from '@orbetra/codec'
 import { runScenario, liveDrive, corruptCrc, oversize, slowLoris, bufferedFlood } from '@orbetra/simulator'
 
@@ -142,6 +143,49 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     expect(await redis.xlen(UNSUPPORTED_STREAM)).toBe(before + 1)
     expect(await redis.xlen('rejects')).toBe(0)
     expect(ingest!.metrics.unsupportedCodecTotal).toBe(1)
+  }, 30_000)
+
+  it('a session whose shard is ALREADY over depth does not persist its first frame', async () => {
+    /**
+     * TEST FIRST — the behaviour, not the implementation.
+     *
+     * `maybeBackpressure()` runs AFTER the persist, so a brand-new session always writes its first
+     * frame before anything looks at the shard. That is the one genuinely un-gated injection path:
+     * admission control counts connections and per-IP rates, never depth. After a network partition
+     * a whole fleet reconnects at once and each fresh session injects a full frame into a shard
+     * that is already over the pause threshold — a few hundred sessions is enough to eat the
+     * headroom between `pauseAboveDepth` and MAXLEN, and past MAXLEN the trim destroys entries that
+     * were already ACKed to their devices. That loss is permanent.
+     *
+     * An existing session is already governed: it was paused on its previous frame. It is the FIRST
+     * frame that has nothing in front of it.
+     */
+    const port = await startIngest({ pauseAboveDepth: 1, depthCacheMs: 0 })
+    // put the shard over the threshold before anyone connects
+    await redis.xadd(`raw:${SHARD}`, '*', 'p', 'x')
+    await redis.xadd(`raw:${SHARD}`, '*', 'p', 'y')
+    const before = await redis.xlen(`raw:${SHARD}`)
+
+    const sock = connect(port, '127.0.0.1')
+    await new Promise((r) => sock.once('connect', r))
+    const imeiBuf = Buffer.from(IMEI, 'ascii')
+    sock.write(Buffer.concat([Buffer.from([0x00, imeiBuf.length]), imeiBuf]))
+    await new Promise((r) => sock.once('data', r)) // 0x01 accept
+    sock.write(buildCodec8Packet([buildCodec8Record({ priority: 0, satellites: 7 })]))
+
+    // no ACK is the point: nothing was persisted, so per rule 4 nothing may be acknowledged, and
+    // the device keeps the records and retries
+    const acked = await Promise.race([
+      new Promise<boolean>((r) => sock.once('data', () => r(true))),
+      new Promise<boolean>((r) => setTimeout(() => r(false), 1200)),
+    ])
+    // read the gauge BEFORE destroying: `destroy()` releases the pause and decrements it
+    const pausedWhileOpen = ingest!.metrics.pausedSockets
+    sock.destroy()
+
+    expect(acked).toBe(false)
+    expect(await redis.xlen(`raw:${SHARD}`)).toBe(before) // the frame was NOT injected
+    expect(pausedWhileOpen).toBeGreaterThan(0) // …and the socket really is paused, not just silent
   }, 30_000)
 
   it('oversize declared length: socket closed + frame violation counted', async () => {

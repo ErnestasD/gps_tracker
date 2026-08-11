@@ -52,6 +52,8 @@ export class Session {
   private readonly codec: TeltonikaCodec
   private state: 'AWAIT_IMEI' | 'STREAMING' = 'AWAIT_IMEI'
   private imei = ''
+  /** has this session had its shard depth checked at least once? See the gate in handleStreamFrame. */
+  private gatedFirstFrame = false
   private deviceId: bigint | null = null
   private shard = 0
   private paused = false
@@ -357,6 +359,27 @@ export class Session {
       // would make Codec-12 command delivery (E08-2) silently dead for exactly that hardware
       await this.drainPending()
       return
+    }
+    /**
+     * GATE THE FIRST FRAME. Backpressure ran only AFTER a persist, so every new session injected one
+     * full frame before anything looked at the shard.
+     *
+     * That was the one genuinely un-gated path into the stream: admission control counts
+     * connections and per-IP rates, never depth. After a network partition a whole fleet reconnects
+     * at once, and a few hundred fresh sessions is enough to eat the headroom between
+     * `pauseAboveDepth` and MAXLEN — past which the trim destroys entries that were already ACKed to
+     * their devices, which is permanent loss.
+     *
+     * Only the FIRST frame needs this: every later one is already governed, because the session was
+     * paused at the end of its predecessor. Costing one cached depth read per session, not per frame.
+     *
+     * Pausing without an ACK is the correct refusal under rule 4 — nothing was persisted, so nothing
+     * may be acknowledged, and the device keeps its records and retries. `pollForDrain` resumes it.
+     */
+    if (!this.gatedFirstFrame) {
+      this.gatedFirstFrame = true
+      await this.maybeBackpressure()
+      if (this.paused) return
     }
     // persist to the device's shard stream, THEN ack (rule 4 / I1). The shared helper writes the
     // SAME payload as the UDP listener (udp.ts) and durably records sanity rejects — see persist.ts.
