@@ -41,7 +41,7 @@ export interface ConsumerDeps {
   onFieldNulled?: (field: string) => void
   /** pending entries Redis deleted because the stream had already trimmed past them — the only
    *  post-hoc proof that a stalled consumer's backlog was destroyed rather than merely delayed */
-  onPendingEvicted?: (count: number) => void
+  onPendingEvicted?: (shard: number, count: number) => void
 }
 
 /**
@@ -179,14 +179,21 @@ export class ShardConsumer {
      * nothing to point at afterwards.
      *
      * It is NOT a complete loss signal and must not be read as one: entries evicted before any
-     * consumer took delivery were never in a PEL, so they can never appear here. `stream_depth`
-     * (with StreamDepthCritical at 90 k) remains the leading indicator. This is the POST-HOC proof
-     * for the crashed-or-stalled-consumer case — the one where a human later has to say whether
-     * data was lost, and today could only shrug. Same precedent as `rejects_dropped_total`.
+     * consumer took delivery were never in a PEL, so they can never appear here.
+     *
+     * And it is a LOWER BOUND — the autoclaim COUNT caps the deleted-id list per call, so a shard
+     * that trimmed past a large PEL reports it 200 at a time across successive cycles.
+     *
+     * `stream_depth` is NOT a reliable precursor to this, contrary to the obvious assumption:
+     * depth is lag + pending, while MAXLEN trims on total XLEN (acked included). A batch that
+     * `process()` threw on stays pending while the loop reads and ACKs newer ones, so it can be
+     * trimmed away with depth in the low hundreds and StreamDepthCritical (90 k) never close. That
+     * is exactly why this counter is the only signal for the stalled-consumer case, and why the
+     * alert must not send a responder to look at depth first.
      */
     const evicted = res[2] ?? []
     if (evicted.length > 0) {
-      this.deps.onPendingEvicted?.(evicted.length)
+      this.deps.onPendingEvicted?.(this.shard, evicted.length)
       console.error('pipeline: pending entries were TRIMMED from the stream before this consumer claimed them', {
         stream: this.stream,
         count: evicted.length,

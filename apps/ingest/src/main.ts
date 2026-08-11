@@ -46,15 +46,29 @@ const config = {
   maxConn: Number(process.env['INGEST_MAX_CONN'] ?? DEFAULT_CONFIG.maxConn),
   maxConnPerIp: Number(process.env['INGEST_MAX_CONN_PER_IP'] ?? DEFAULT_CONFIG.maxConnPerIp),
 }
+/** IMEIs already named in a parse-failure log — see the note at the call site. */
+const warnedParseFail = new Set<string>()
+const warnParseFail = (imei: string, reason: string): void => {
+  if (warnedParseFail.has(imei)) return
+  warnedParseFail.add(imei)
+  console.warn('ingest: packet rejected (first for this device)', JSON.stringify({ imei, reason }))
+}
+
 const { server, metrics } = createIngestServer(
   redis,
   config,
   (ms) => preMetricsHolder.hist?.(ms),
   // NAMED, not just counted. `ParseFailSpike` fires on a rate; the failure that actually costs data
   // is one device stuck resending bytes we will never accept, and until now nothing said which. The
-  // IMEI is not a secret (rule 12 covers credentials), and without it an operator has a graph and
-  // no capture to pull.
-  (imei, reason) => console.warn('ingest: packet rejected', JSON.stringify({ imei, reason })),
+  // IMEI is not a secret here (rule 12 is about credentials, and session.ts already logs it), but
+  // container stdout has neither a retention window nor a GDPR erase path, which is the second
+  // reason to say it ONCE.
+  //
+  // Once per device per process lifetime — the same shape as the worker's clock-skew warning. A
+  // wedged device resends forever, so printing per packet turns "name the device" into a log flood
+  // at exactly the rate the alert is trying to describe. The counter carries the rate; this line
+  // carries the identity, and the identity does not change.
+  warnParseFail,
 )
 const prom = startIngestProm(metrics, promPort)
 preMetricsHolder.hist = (ms) => prom.ackLatencyMs.observe(ms)
@@ -75,6 +89,7 @@ const udp =
           maxDatagramsPerSec: Number(process.env['INGEST_UDP_MAX_DGRAMS_PER_SEC'] ?? 50_000),
         },
         (ms) => preMetricsHolder.hist?.(ms),
+        warnParseFail, // same dedupe set as TCP: one device, one line, whichever transport it uses
       )
     : null
 udp?.socket.bind(udpPort, () => console.log(`orbetra ingest listening on udp:${udpPort}`))

@@ -10,6 +10,8 @@ Alertmanager routes them to the founders' Telegram.
 | StreamDepthHigh / Critical | `stream_depth` (consumer-group lag + pending, **not** XLEN) > 50k / 90k | warn / crit |
 | PipelineLagHigh / Critical | `pipeline_lag_ms` > 30s / 120s | warn / crit |
 | ParseFailSpike | `rate(ingest_parse_fail_total[5m])` > 5/s for 10m | warn |
+| IngestSheddingDatagrams | `rate(ingest_udp_inflight_drops_total[5m])` > 0 for 5m | crit |
+| PipelinePendingEvicted | `increase(pipeline_pending_evicted_total[1h])` > 0 for 1m | crit |
 | AckLatencyHigh | ACK p99 > 250ms (§5 SLA) | warn |
 | BackpressureSustained | `ingest_paused_sockets` > 0 for 10m | warn |
 | UnsupportedCodecSeen | `rate(ingest_unsupported_codec_total[15m])` > 0 for 15m | warn |
@@ -150,3 +152,26 @@ docker exec orbetra-alertmanager-1 amtool alert add \
   alertname=TestPage severity=critical --alertmanager.url=http://localhost:9093
 ```
 Should arrive in the Telegram chat within `group_wait` (0s for critical).
+
+## PipelinePendingEvicted
+
+Records that were ACKed to their devices — so the devices deleted their own copies — were trimmed
+out of the stream by `MAXLEN` before a consumer claimed them. **They are gone.** Nothing re-derives
+them, and the reported number is a LOWER BOUND: the autoclaim `COUNT` caps the deleted-id list per
+call, so a shard that trimmed past a large pending list reports it 200 at a time.
+
+**Do not start at `stream_depth`.** It is lag + pending, while the trim is on total XLEN, so a batch
+stuck pending while the loop reads and ACKs newer ones can be destroyed with depth in the low
+hundreds and `StreamDepthCritical` never close. That is exactly why this counter exists.
+
+Start at what stopped the consumer for the labelled shard: a worker restart loop, a poison batch
+throwing inside `process()`, a DB outage, or shard-lease churn. `pipeline_dead_lettered_total` and
+the worker logs for that shard are the next stop.
+
+## IngestSheddingDatagrams
+
+The UDP in-flight handler cap is being hit, which happens when Redis is slow or unreachable. Devices
+re-send, so nothing is lost — but ingest is refusing traffic and no other signal shows it:
+`up{job="ingest"}` stays 1 because `/metrics` never touches Redis, and
+`ingest_udp_backpressure_drops_total` is gated behind a shard-depth READ (itself a Redis call), so
+it stays flat during exactly this stall. Check Redis latency and `stream_depth` first.

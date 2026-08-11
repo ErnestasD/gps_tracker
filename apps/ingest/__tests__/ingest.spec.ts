@@ -106,7 +106,10 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     // to pull and no device to configure.
     expect(parseFailures).toHaveLength(5)
     expect(new Set(parseFailures.map((f) => f.imei))).toEqual(new Set([IMEI]))
-    expect(parseFailures[0]?.reason).toMatch(/crc|frame|parse/i)
+    // the REASON must be the decoder's own words, not a class name — an operator pulling a capture
+    // needs to know it was the checksum and not, say, a record-count mismatch
+    expect(parseFailures[0]?.reason).toMatch(/crc/i)
+    expect(parseFailures[0]?.reason.length).toBeGreaterThan(10)
   }, 30_000)
 
   it('codec 16: frame is PARKED and the declared count ACKed — never an endless resend loop', async () => {

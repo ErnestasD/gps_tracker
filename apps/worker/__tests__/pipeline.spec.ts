@@ -187,7 +187,10 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
 
     // …and while A is away, the stream is trimmed past everything it held
     await redis.xtrim(`raw:${SHARD}`, 'MAXLEN', 0)
-    await new Promise((r) => setTimeout(r, 150)) // exceed autoclaimMinIdleMs
+    // NOT for min-idle: Redis checks "does this entry still exist" BEFORE the idle threshold, so a
+    // deleted PEL entry is reported at any age. The wait is only so worker A's claim is genuinely
+    // stale, matching how the chaos test above sequences the same handoff.
+    await new Promise((r) => setTimeout(r, 150))
 
     const evicted: number[] = []
     const b = consumerFor('workerB', { onPendingEvicted: (n: number) => evicted.push(n) })

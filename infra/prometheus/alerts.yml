@@ -70,16 +70,19 @@ groups:
 
       # PERMANENT LOSS, after the fact. These entries were ACKed to a device — which therefore
       # deleted them from its own buffer — and were then trimmed out of the stream before their
-      # consumer claimed them. Nothing re-derives them. `StreamDepthCritical` is the warning that
-      # this is coming; this is the proof that it happened, and any non-zero value deserves an
-      # incident rather than a dashboard.
+      # consumer claimed them. Nothing re-derives them.
+      #
+      # This is the ONLY signal for the stalled-consumer case. StreamDepthCritical is not a
+      # precursor to it: depth is lag+pending while MAXLEN trims on total XLEN, so a batch stuck
+      # pending while the loop ACKs newer ones can be destroyed with depth in the low hundreds.
+      # Any non-zero value deserves an incident rather than a dashboard.
       - alert: PipelinePendingEvicted
         expr: increase(pipeline_pending_evicted_total[1h]) > 0
         for: 1m
         labels: { severity: critical, component: worker }
         annotations:
-          summary: "Pipeline lost {{ $value | humanize }} pending entries to stream trimming"
-          description: "Entries already ACKed to their devices were deleted by MAXLEN before a consumer claimed them. The devices have dropped their copies, so these positions are gone. Check what stalled the consumer (worker restart loop, DB outage, shard lease churn) and how long stream_depth sat above the trim threshold."
+          summary: "Pipeline lost at least {{ $value | humanize }} pending entries on shard {{ $labels.shard }}"
+          description: "Entries already ACKed to their devices were deleted by MAXLEN before a consumer claimed them. The devices have dropped their copies, so these positions are gone, and the number is a LOWER BOUND (the autoclaim COUNT caps it per call). Do NOT start at stream_depth: it is lag+pending while the trim is on total XLEN, so a stalled consumer's batch can be destroyed with depth in the low hundreds. Start at what stopped the consumer for this shard — worker restart loop, a poison batch throwing in process(), a DB outage, shard lease churn."
 
       # p99 ACK latency SLA (§5: p99 < 250 ms).
       - alert: AckLatencyHigh

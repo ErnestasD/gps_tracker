@@ -221,7 +221,16 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
   const billingLapseUnreachable = new Counter({ name: 'billing_lapse_unreachable_total', help: 'lapsed tenants whose billing contact address is suppressed (bounce/complaint) — the notice ladder cannot run and suspension is blocked until someone fixes the address', registers: [registry] })
   /** pending stream entries destroyed by MAXLEN before their consumer claimed them — records that
    *  were ACKed to a device (so it dropped them) and will never reach `positions` */
-  const pendingEvicted = new Counter({ name: 'pipeline_pending_evicted_total', help: 'pending stream entries Redis deleted because MAXLEN had already trimmed past them — permanent loss of records already ACKed to their device', registers: [registry] })
+  const pendingEvicted = new Counter({
+    name: 'pipeline_pending_evicted_total',
+    // A FLOOR, not a count: XAUTOCLAIM's COUNT caps the deleted-id list per call (200 by default),
+    // so a shard that trimmed past a large PEL reports 200 at a time across successive autoclaims.
+    // Labelled by shard, like stream_depth — an unlabelled counter tells an operator a rate and
+    // nothing else, which is the very defect the other half of this change exists to fix.
+    help: 'pending stream entries Redis deleted because MAXLEN had already trimmed past them — permanent loss of records already ACKed to their device. A LOWER BOUND: capped by the autoclaim COUNT per call.',
+    labelNames: ['shard'],
+    registers: [registry],
+  })
   const jobFailed = new Counter({ name: 'worker_job_failed_total', help: 'background job runs that threw, by job (retention | scheduled_reports | stripe_usage | …)', labelNames: ['job'], registers: [registry] })
   const clockSkewed = new Counter({ name: 'positions_clock_skewed_total', help: 'records whose device clock ran ahead of server time — kept in positions, excluded from live state and the motion engines', registers: [registry] })
   const usageSweepFailed = new Counter({ name: 'usage_sweep_failed_total', help: 'usage sweeps that threw (billing pipeline stalled — investigate)', registers: [registry] })

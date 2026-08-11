@@ -45,6 +45,8 @@ export function createIngestUdpServer(
   metrics: IngestMetrics,
   config: UdpConfig,
   observeAckLatencyMs?: (ms: number) => void,
+  /** a datagram failed CRC/structure, WITH the imei — mirrors the TCP session's hook */
+  onParseFailure?: (imei: string, reason: string) => void,
   now: () => number = Date.now,
 ): IngestUdpServer {
   const registry = new DeviceRegistry(redis)
@@ -122,6 +124,13 @@ export function createIngestUdpServer(
       else throw err
       // structurally corrupt body from a KNOWN device — ACK nothing persisted (device resends)
       send(encodeUdpAck(head.packetId, head.avlPacketId, 0), rinfo)
+      // …and NAME IT, exactly as the TCP path does. `ParseFailSpike` fires on both transports; an
+      // attributable TCP failure and an anonymous UDP one is half a fix, and the imei is right here.
+      try {
+        onParseFailure?.(head.imei, err instanceof Error ? err.message : String(err))
+      } catch {
+        /* a logging fault is not a datagram fault */
+      }
       return
     }
 
