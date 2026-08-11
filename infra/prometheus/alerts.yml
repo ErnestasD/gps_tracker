@@ -68,6 +68,19 @@ groups:
           summary: "Ingest is shedding UDP datagrams ({{ $value | humanize }}/s)"
           description: "The in-flight handler cap is being hit, which happens when Redis is slow or unreachable. Devices re-send so data is not lost, but ingest is refusing traffic and no other signal shows it. Check Redis latency and `stream_depth` first."
 
+      # PERMANENT LOSS, after the fact. These entries were ACKed to a device — which therefore
+      # deleted them from its own buffer — and were then trimmed out of the stream before their
+      # consumer claimed them. Nothing re-derives them. `StreamDepthCritical` is the warning that
+      # this is coming; this is the proof that it happened, and any non-zero value deserves an
+      # incident rather than a dashboard.
+      - alert: PipelinePendingEvicted
+        expr: increase(pipeline_pending_evicted_total[1h]) > 0
+        for: 1m
+        labels: { severity: critical, component: worker }
+        annotations:
+          summary: "Pipeline lost {{ $value | humanize }} pending entries to stream trimming"
+          description: "Entries already ACKed to their devices were deleted by MAXLEN before a consumer claimed them. The devices have dropped their copies, so these positions are gone. Check what stalled the consumer (worker restart loop, DB outage, shard lease churn) and how long stream_depth sat above the trim threshold."
+
       # p99 ACK latency SLA (§5: p99 < 250 ms).
       - alert: AckLatencyHigh
         expr: histogram_quantile(0.99, sum(rate(ack_latency_ms_bucket[5m])) by (le)) > 250

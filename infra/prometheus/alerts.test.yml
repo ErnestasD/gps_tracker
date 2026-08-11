@@ -246,6 +246,29 @@ tests:
         alertname: IngestSheddingDatagrams
         exp_alerts: []
 
+  # permanent loss, after the fact: any non-zero increase must page, silence must stay silent
+  - interval: 1m
+    input_series:
+      - series: 'pipeline_pending_evicted_total'
+        values: '0+5x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PipelinePendingEvicted
+        exp_alerts:
+          - exp_labels: { severity: critical, component: worker }
+            exp_annotations:
+              summary: "Pipeline lost 100 pending entries to stream trimming"
+              description: "Entries already ACKed to their devices were deleted by MAXLEN before a consumer claimed them. The devices have dropped their copies, so these positions are gone. Check what stalled the consumer (worker restart loop, DB outage, shard lease churn) and how long stream_depth sat above the trim threshold."
+
+  - interval: 1m
+    input_series:
+      - series: 'pipeline_pending_evicted_total'
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PipelinePendingEvicted
+        exp_alerts: []
+
   # an API that is UP but answering 5xx — the case `up == 0` could never catch
   - interval: 1m
     input_series:

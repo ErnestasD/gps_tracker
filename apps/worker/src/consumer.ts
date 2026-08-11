@@ -39,6 +39,9 @@ export interface ConsumerDeps {
   /** Fired per field normalization had to null (out of column range). Non-zero ⇒ firmware quirk or
    *  spoofed frames; without it a nulled speed is indistinguishable from a device that reports none. */
   onFieldNulled?: (field: string) => void
+  /** pending entries Redis deleted because the stream had already trimmed past them — the only
+   *  post-hoc proof that a stalled consumer's backlog was destroyed rather than merely delayed */
+  onPendingEvicted?: (count: number) => void
 }
 
 /**
@@ -169,6 +172,26 @@ export class ShardConsumer {
       String(this.deps.batchSize ?? 200),
     )) as [Buffer, [Buffer, Buffer[]][], Buffer[]] | null
     if (!res) return []
+    /**
+     * `res[2]` is the list of pending ids Redis DELETED from the group because the entries no
+     * longer exist in the stream — trimmed away by `MAXLEN` before this consumer got back to them.
+     * It was typed here and thrown away, which made it the one loss the pipeline could suffer with
+     * nothing to point at afterwards.
+     *
+     * It is NOT a complete loss signal and must not be read as one: entries evicted before any
+     * consumer took delivery were never in a PEL, so they can never appear here. `stream_depth`
+     * (with StreamDepthCritical at 90 k) remains the leading indicator. This is the POST-HOC proof
+     * for the crashed-or-stalled-consumer case — the one where a human later has to say whether
+     * data was lost, and today could only shrug. Same precedent as `rejects_dropped_total`.
+     */
+    const evicted = res[2] ?? []
+    if (evicted.length > 0) {
+      this.deps.onPendingEvicted?.(evicted.length)
+      console.error('pipeline: pending entries were TRIMMED from the stream before this consumer claimed them', {
+        stream: this.stream,
+        count: evicted.length,
+      })
+    }
     return (res[1] ?? []).map(([id, fields]) => [id.toString(), fields[1]!])
   }
 

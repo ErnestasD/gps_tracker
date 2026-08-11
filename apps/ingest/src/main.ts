@@ -46,7 +46,16 @@ const config = {
   maxConn: Number(process.env['INGEST_MAX_CONN'] ?? DEFAULT_CONFIG.maxConn),
   maxConnPerIp: Number(process.env['INGEST_MAX_CONN_PER_IP'] ?? DEFAULT_CONFIG.maxConnPerIp),
 }
-const { server, metrics } = createIngestServer(redis, config, (ms) => preMetricsHolder.hist?.(ms))
+const { server, metrics } = createIngestServer(
+  redis,
+  config,
+  (ms) => preMetricsHolder.hist?.(ms),
+  // NAMED, not just counted. `ParseFailSpike` fires on a rate; the failure that actually costs data
+  // is one device stuck resending bytes we will never accept, and until now nothing said which. The
+  // IMEI is not a secret (rule 12 covers credentials), and without it an operator has a graph and
+  // no capture to pull.
+  (imei, reason) => console.warn('ingest: packet rejected', JSON.stringify({ imei, reason })),
+)
 const prom = startIngestProm(metrics, promPort)
 preMetricsHolder.hist = (ms) => prom.ackLatencyMs.observe(ms)
 

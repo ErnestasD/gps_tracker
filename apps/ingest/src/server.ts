@@ -34,6 +34,8 @@ export function createIngestServer(
   redis: Redis,
   config: IngestConfig = DEFAULT_CONFIG,
   observeAckLatencyMs?: (ms: number) => void,
+  /** a packet failed CRC/structure, WITH the imei — see the note at the Session call site */
+  onParseFailure?: (imei: string, reason: string) => void,
 ): IngestServer {
   const metrics = new IngestMetrics()
   const registry = new DeviceRegistry(redis)
@@ -65,6 +67,7 @@ export function createIngestServer(
       registry,
       metrics,
       observeAckLatencyMs,
+      onParseFailure,
       config,
       onAuthenticated: (imei, s) => {
         // duplicate IMEI: newest wins, old socket closed (E01-5 edge case —
