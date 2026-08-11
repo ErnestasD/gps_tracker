@@ -269,3 +269,46 @@ would have let it assert the shard stream, which is the seam the change actually
   the slot that finding #4 added for diagnosing a real wedge.
 - Add `ingest_bad_records_parked_total` and a park-failure counter; do not raise `parseFailTotal`
   for a packet that parsed and was fully ACKed.
+
+---
+
+## Finding #5 — attempt rejected. The plan already forbids the obvious fix.
+
+**`PROJECT_PLAN.md` §6.1, Round 7:** *"Backpressure ordering clarified: persist → ACK → depth-check
+→ pause (**never pause before ACK of an accepted packet**)."* The attempt did exactly that, for a
+packet that framed and CRC-verified clean, with no ADR superseding the decision. Read that line
+before touching this again — it was red-teamed once already.
+
+The reviewer then executed five reproductions showing why the plan is right:
+
+- **The gated frame is destroyed, not deferred.** `codec.feed()` has already removed the bytes from
+  the framer (`frame.ts:53`), so the early return drops the last reference. And the device is
+  stop-and-wait (§3.2): it sent one packet and blocks on the 4-byte count, so resuming the socket
+  achieves nothing — measured, the shard drained, `pollForDrain` resumed, and no ACK ever arrived
+  while `raw:{shard}` stayed empty. The idle timer is a plain `setTimeout` that `socket.pause()`
+  does not stop, so the device then holds a dead connection slot for `readIdleTimeoutMs` — **40
+  minutes in production** — during the reconnect storm the change was written for.
+- **The gate does not hold.** `gatedFirstFrame` is a one-shot flag set before the await, and the
+  frame loop only breaks on `socket.destroyed`. Two packets in one chunk (exactly a buffered flood,
+  or plain TCP coalescing): the second skips the gate and persists **while over depth**, and the
+  peer receives ONE 4-byte ACK for TWO packets. The Teltonika ACK is a bare count with no packet
+  identity, so the device can advance past records that were never persisted — a rule-4 violation
+  introduced by a fix meant to prevent loss.
+- **The drop is unobservable**: no counter attributes it, and `pausedSockets` cannot distinguish
+  "paused after ACK" (no loss) from "paused and discarded" (loss).
+- **No precedent for no-ACK-and-hold-open**: every other refusal path terminates the socket.
+
+**UDP is the counter-argument, not the model.** `udp.ts:159` already checks depth before persisting
+on every datagram, with its own counter — and that is safe precisely because a dropped datagram
+strands no session state. Copying the shape onto a stateful TCP session is what produces the
+40-minute dead socket.
+
+**If this is fixed at all**, the shape is: refuse and CLOSE the socket (so the device reconnects in
+seconds), counted with its own metric — and it needs an ADR that supersedes the Round-7 decision and
+says why it was wrong.
+
+**The test was also vacuous.** Its fixture inherits `tsMs = 2019-06-10`, below `minTsMs`, so the
+record goes to `rejects` rather than the shard **on `main` too** — `expect(xlen).toBe(before)` is
+true either way. Of three assertions only "no ACK was sent" carried information, so any change that
+suppresses the ACK would have passed. `pauseAboveDepth: 1, depthCacheMs: 0` is also unrepresentative:
+production is 50 000 with a 1 s cache that no env var can lower.
