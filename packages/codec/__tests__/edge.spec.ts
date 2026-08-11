@@ -36,14 +36,51 @@ describe('protocol edge cases (synthetic mutations of wiki-spec packets)', () =>
     expect(rec.speed).toBe(77)
   })
 
-  it('priority=2 (PANIC) survives parse; priority>2 rejected', () => {
+  it('priority=2 (PANIC) survives parse; priority>2 is ISOLATED, not thrown', () => {
     const ok = parseFrame(frameOf(buildCodec8Packet([buildCodec8Record({ priority: 2 })])))
     if (ok.kind !== 'avl') expect.unreachable()
     expect(ok.records[0]!.priority).toBe(2)
 
-    expect(() =>
-      parseFrame(frameOf(buildCodec8Packet([buildCodec8Record({ priority: 5 })]))),
-    ).toThrow(FrameError)
+    // CHANGED DELIBERATELY. This used to assert a throw, i.e. that one unexpected byte discards the
+    // whole packet. Traccar stores priority unvalidated and the wiki defines only 0/1/2, so an
+    // unexpected value is a firmware quirk — and throwing made it a livelock: the device resends
+    // the identical bytes forever and its own buffer overwrites its oldest records. The record is
+    // now isolated with a reason, so the caller can park it and ACK what the device sent.
+    const bad = parseFrame(frameOf(buildCodec8Packet([buildCodec8Record({ priority: 5 })])))
+    if (bad.kind !== 'avl') expect.unreachable()
+    expect(bad.records).toHaveLength(0)
+    expect(bad.badRecords?.[0]?.reason).toMatch(/priority 5/)
+    expect(bad.declaredCount).toBe(1) // …and the device still gets its count back
+  })
+
+  it('ONE bad record does not discard the good ones in the same packet', () => {
+    /**
+     * TEST FIRST — this is the behaviour, not the implementation.
+     *
+     * `parseAvl` throws out of a `.map()`, so a single unexpected byte in the LAST record discards
+     * every record before it. On its own that is not loss: the count mismatch makes the device
+     * resend the whole packet. It becomes permanent loss the moment the failure is DETERMINISTIC —
+     * a repeated AVL id, which our walker accepts and the wrapped parser refuses — because the
+     * resend fails identically forever, the device's ACK cursor never moves, and its own buffer
+     * eventually overwrites its OLDEST records. Two good fixes queued behind one poison record are
+     * gone, and nothing anywhere says so.
+     *
+     * The packet must therefore survive with the good records intact and the bad one identified,
+     * so the caller can persist what it can and park the rest — the same shape codec 16 already
+     * uses, and the one the protocol actually honours.
+     */
+    const good = buildCodec8Record({ priority: 0, satellites: 7 })
+    const bad = buildCodec8Record({ priority: 5 }) // outside 0..2
+    const parsed = parseFrame(frameOf(buildCodec8Packet([good, good, bad])))
+    if (parsed.kind !== 'avl') expect.unreachable()
+
+    expect(parsed.records).toHaveLength(2) // the two good ones survived
+    expect(parsed.records.every((r) => r.satellites === 7)).toBe(true)
+    // …and the packet still declares three, so the caller can ACK what the device sent rather than
+    // under-ACKing and inviting the very resend this avoids
+    expect(parsed.declaredCount).toBe(3)
+    expect(parsed.badRecords).toHaveLength(1)
+    expect(parsed.badRecords?.[0]?.reason).toMatch(/priority 5/)
   })
 
   it('record N disagreeing with group counts → FrameError (walker cross-check)', () => {

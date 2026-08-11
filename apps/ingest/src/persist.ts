@@ -115,6 +115,33 @@ const UNSUPPORTED_MAXLEN = 10_000
  * Shared by the TCP session and the UDP listener: both transports funnel through the same parser,
  * so both must park + ACK identically or the wedge simply moves to the quieter channel.
  */
+/**
+ * Park ONE record that framed and CRC-verified but could not be decoded.
+ *
+ * Deliberately `rejects`, NOT `raw:unsupported`. The latter is a 10k ring with no consumer anywhere
+ * — parking here would be indistinguishable from dropping. `rejects` is drained into `raw_rejects`
+ * by the worker, which is what makes this evidence somebody can read rather than a shelf.
+ *
+ * Same payload shape as the §3.6 sanity rejects one function above, so one reader handles both.
+ */
+export async function parkBadRecord(
+  redis: Redis,
+  imei: string,
+  raw: Uint8Array,
+  tsMs: number,
+  reason: string,
+): Promise<void> {
+  await redis.xadd(
+    'rejects',
+    'MAXLEN',
+    '~',
+    100_000,
+    '*',
+    'p',
+    cbor.encode({ imei, tsMs, raw: Buffer.from(raw), reason }),
+  )
+}
+
 export async function parkUndecodableFrame(
   redis: Redis,
   imei: string,

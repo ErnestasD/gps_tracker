@@ -9,7 +9,7 @@ import {
   type TeltonikaCodec,
 } from '@orbetra/codec'
 
-import { parkUndecodableFrame, persistAvlBatch } from './persist.js'
+import { parkBadRecord, parkUndecodableFrame, persistAvlBatch } from './persist.js'
 import type { DeviceRegistry } from './registry.js'
 import type { IngestMetrics } from './metrics.js'
 
@@ -368,7 +368,42 @@ export class Session {
       this.deps.metrics,
       this.now(),
     )
-    this.socket.write(this.codec.encodeAck(persisted))
+    /**
+     * PARK the records that could not be decoded, then ACK what the DEVICE sent.
+     *
+     * `persisted` counts only the good ones, and ACKing that under-ACKs a packet that carried a bad
+     * record — which makes the device resend the whole thing, fail identically, and resend again:
+     * the livelock that ends with its own buffer overwriting its oldest fixes. Codec 16 already
+     * solved this exact problem the same way two branches above, and this is that precedent applied
+     * to a per-record failure rather than a whole-codec one.
+     *
+     * Parked into `rejects`, NOT the codec-16 ring: `raw:unsupported` has no consumer anywhere, so
+     * parking there is indistinguishable from dropping. `rejects` is drained into `raw_rejects` by
+     * the worker, which is what makes this evidence somebody can read. Failing to park is not a
+     * reason to under-ACK — the record is already unusable either way, and an un-advanced cursor
+     * costs the device every good fix behind it.
+     */
+    let acked = persisted
+    const bad = parsed.badRecords ?? []
+    if (bad.length > 0) {
+      for (const b of bad) {
+        try {
+          await parkBadRecord(this.deps.redis, this.imei, b.raw, this.now(), b.reason)
+        } catch (err) {
+          console.warn('ingest: could not park an undecodable record', err instanceof Error ? err.message : String(err))
+        }
+      }
+      acked = parsed.declaredCount ?? persisted + bad.length
+      // told the device these are accepted, so I1 reconciliation must see them too
+      this.deps.metrics.ackedRecordsTotal += acked - persisted
+      this.deps.metrics.parseFailTotal++
+      try {
+        this.deps.onParseFailure?.(this.imei, `${bad.length} record(s) undecodable: ${bad[0]?.reason ?? ''}`)
+      } catch {
+        /* a logging fault is not a session fault */
+      }
+    }
+    this.socket.write(this.codec.encodeAck(acked))
     this.deps.observeAckLatencyMs?.(this.now() - t0)
 
     // depth check AFTER ack (§6.1 order: persist → ACK → depth-check → maybe pause)

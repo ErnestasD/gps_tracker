@@ -90,20 +90,40 @@ function parseAvl(bytes: Buffer, dataLen: number, codecId: 0x08 | 0x8e): ParsedP
 
   const ioPerRecord = decodeIoWithLib(bytes, n1)
 
-  const records: AvlRecord[] = rawSlices.map((raw, i) => {
+  /**
+   * PER-RECORD ISOLATION. A record that cannot be decoded is collected, not thrown.
+   *
+   * Throwing out of this loop discarded every good record in the packet alongside the bad one. That
+   * is survivable while the failure is transient — the count mismatch makes the device resend — but
+   * a DETERMINISTIC failure (a repeated AVL id, which our walker accepts and the wrapped parser
+   * refuses) resends identically forever: the ACK cursor never moves and the device's own buffer
+   * eventually overwrites its OLDEST records. Good fixes queued behind one poison record are lost
+   * permanently, and nothing anywhere says so.
+   *
+   * Structural failures ABOVE this loop still throw the packet — a lying length or a count mismatch
+   * means we cannot trust where any record begins, so isolating one would be guesswork.
+   */
+  const badRecords: { index: number; reason: string; raw: Buffer }[] = []
+  const records: AvlRecord[] = []
+  rawSlices.forEach((raw, i) => {
     const tsMs = Number(raw.readBigUInt64BE(0))
     const priority = raw[8]!
-    if (priority > 2) throw new FrameError(`priority ${priority} outside 0..2`, bytes)
+    if (priority > 2) {
+      badRecords.push({ index: i, reason: `priority ${priority} outside 0..2`, raw: Buffer.from(raw) })
+      return
+    }
     const idSize = codecId === 0x8e ? 2 : 1
     const io = ioPerRecord[i]!
     if (codecId === 0x8e) {
       // NX-group elements: our raw extraction is authoritative (lib returns NaN for these)
       for (const [id, buf] of extractNx8e(raw)) io.set(id, buf)
     }
-    for (const [id, v] of io) {
-      if (v === null) throw new FrameError(`undecodable IO value for AVL id ${id}`, bytes)
+    const undecodable = [...io].find(([, v]) => v === null)
+    if (undecodable !== undefined) {
+      badRecords.push({ index: i, reason: `undecodable IO value for AVL id ${undecodable[0]}`, raw: Buffer.from(raw) })
+      return
     }
-    return {
+    records.push({
       tsMs,
       priority: priority as 0 | 1 | 2,
       // GPS element (wiki §Codec 8): lon/lat int32 two's complement of deg×1e7
@@ -116,9 +136,11 @@ function parseAvl(bytes: Buffer, dataLen: number, codecId: 0x08 | 0x8e): ParsedP
       eventIoId: idSize === 2 ? raw.readUInt16BE(24) : raw[24]!,
       io: io as Map<number, bigint | Buffer>,
       raw: Buffer.from(raw), // detached copy: framer buffers get reused
-    }
+    })
   })
-  return { kind: 'avl', codec, records }
+  // `declaredCount` is what the DEVICE sent, which is what it expects back: ACKing only the good
+  // ones would under-ACK and invite the very resend this isolation exists to stop.
+  return { kind: 'avl', codec, records, badRecords, declaredCount: rawSlices.length }
 }
 
 /** Minimal shape we rely on from the wrapped parser — never re-exported (ADR-010). */

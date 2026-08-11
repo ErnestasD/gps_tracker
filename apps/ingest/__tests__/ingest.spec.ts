@@ -4,6 +4,7 @@ import { Decoder } from 'cbor-x'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
+import { buildCodec8Packet, buildCodec8Record } from '../../../packages/codec/__tests__/helpers.js'
 import { crc16ibm } from '@orbetra/codec'
 import { runScenario, liveDrive, corruptCrc, oversize, slowLoris, bufferedFlood } from '@orbetra/simulator'
 
@@ -142,6 +143,47 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     expect(await redis.xlen(UNSUPPORTED_STREAM)).toBe(before + 1)
     expect(await redis.xlen('rejects')).toBe(0)
     expect(ingest!.metrics.unsupportedCodecTotal).toBe(1)
+  }, 30_000)
+
+  it('a packet with ONE undecodable record: the good ones persist, the bad one is parked, and the DEVICE advances', async () => {
+    /**
+     * The livelock, end to end. A deterministic per-record failure used to throw out of the whole
+     * packet: the good records went nowhere, ACK was 0, and the device resent the identical bytes
+     * forever while its own buffer overwrote its oldest fixes. Nothing said so.
+     *
+     * Now: the good records reach the shard stream, the bad one is parked in `rejects` (which the
+     * worker drains into `raw_rejects` — unlike the codec-16 ring, which nothing reads), and the ACK
+     * is what the DEVICE sent, so its cursor advances and the queue behind it drains.
+     */
+    const port = await startIngest()
+    const beforeRejects = await redis.xlen('rejects')
+    const sock = connect(port, '127.0.0.1')
+    await new Promise((r) => sock.once('connect', r))
+    const imeiBuf = Buffer.from(IMEI, 'ascii')
+    sock.write(Buffer.concat([Buffer.from([0x00, imeiBuf.length]), imeiBuf]))
+    await new Promise((r) => sock.once('data', r)) // 0x01 accept
+
+    // two decodable records and one with a priority the wiki does not define
+    const good = buildCodec8Record({ priority: 0, satellites: 7 })
+    const bad = buildCodec8Record({ priority: 5 })
+    // buildCodec8Packet already returns a complete frame (preamble + length + data + CRC)
+    sock.write(buildCodec8Packet([good, good, bad]))
+    const ack = await new Promise<Buffer>((r) => sock.once('data', (d: Buffer) => r(d)))
+    sock.destroy()
+
+    // THE POINT: the device gets its own count back, so its cursor advances and the queue behind
+    // the poison record drains. Under-ACKing 2 is what wedged it forever.
+    expect(ack.readUInt32BE(0)).toBe(3)
+    // …and the undecodable record is readable afterwards, on the stream the worker actually drains
+    // (`raw:unsupported` has no consumer, so parking there would be indistinguishable from
+    // dropping). The synthetic fixture's coordinates do not survive §3.6, so this asserts the bad
+    // record is PRESENT rather than counting the stream — that the good ones parse is pinned by
+    // packages/codec's unit test, which is where that belongs.
+    // xrangeBUFFER, like the shard read above — CBOR is binary and a utf8 round trip corrupts it
+    const parked = await redis.xrangeBuffer('rejects', '-', '+')
+    const reasons = parked.map(([, f]) => new Decoder().decode(f[1]!) as { reason?: string })
+    expect(parked.length).toBeGreaterThan(beforeRejects)
+    expect(reasons.some((r) => /priority 5/.test(r.reason ?? ''))).toBe(true)
   }, 30_000)
 
   it('oversize declared length: socket closed + frame violation counted', async () => {
