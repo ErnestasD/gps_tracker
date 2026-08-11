@@ -79,3 +79,64 @@ reads, and from a signal nobody exported.**
 **#6 was confirmed twice in the 2026-08-04 audit and never entered the remediation tracker** (74
 findings; it is not among them). The memory note "113 findings, all closed" is false for at least
 one. Before trusting that tracker again, diff the audit's confirmed set against it.
+
+---
+
+## Finding #1 — two rejected attempts, and the design that survived review
+
+Both attempts were written, reviewed by an independent hostile reviewer, and **rejected**. Neither
+was merged or deployed. They are recorded because each failed for a reason worth not repeating.
+
+### Attempt 1 — a guard on the write (rejected)
+
+Added `HSET_IF_FREE_OR_MINE` to `activateDevice` plus a repair pass. Rejected because:
+
+- it guarded a function **the boot path does not call** — `rehydrate` writes `registry:imei` through
+  a raw pipelined `hset`, so the guard covered nothing that mattered;
+- a refused write was **silent and partial**: the mapping absent while `device:tenant`,
+  `device:account`, `device:config` and the index all said the device was live, and
+  `restoreTenantDevices` still reported `{ ok: true }` so `unsuspend` cleared the flag;
+- its repair pass could **delete the mapping of the device that legitimately reclaimed the IMEI** —
+  verbatim the failure the neighbouring delete-if-mine guard exists to prevent;
+- the test fake decided "is this guarded?" from a regex over the script text. A blind write that
+  keeps the tokens satisfies all three predicates — **verified by executing them** — so every test
+  passed while production stole every mapping.
+
+### Attempt 2 — reconcile `registry:imei` against the DB after the pipeline (rejected)
+
+Closer, and the *delete* direction is right. Rejected because:
+
+- **the "add missing" loop is a regression `main` does not have.** Retire tears Redis down *before*
+  the DB soft-delete commits, so a retire landing between the reconcile's read and its exec is
+  **undone**. The losing window becomes strictly larger than `main`'s, and the resulting state is
+  worse than either: the mapping is back while the id-keyed hashes stay deleted, so ingest accepts
+  and persists, the live feed is silent (`liveState` sees a null tenant), and `usageWorker` — which
+  has no `retiredAt` filter — **meters the customer for a device they retired**;
+- **the two branches need contradictory read orderings.** Delete is sound only if the DB read is the
+  newer; add is sound only if the Redis read is. `Promise.all` guarantees neither. A device created
+  between the DB statement start and the HGETALL gets **HDEL'd while showing Active in the UI**;
+- **no blast-radius guard.** An empty `listAllForRegistry()` — wrong `DATABASE_URL`, a restored empty
+  DB — deletes every mapping on the platform. On `main` an empty read is a harmless no-op;
+- **the suspension case gets worse**, not better: the add loop undoes a suspension that races the
+  boot, and nothing reliably re-tears it down (see finding #3);
+- **two of the four new tests pass against `main`** — verified by aliasing the module. The headline
+  correction branch has **zero** coverage: deleting those five lines leaves all 13 tests green.
+
+### The design to build next
+
+1. **Delete branch only.** Its whole reachable population is teardowns that must not be undone plus
+   hset failures the existing `failed` counter already reports. Drop the add loop.
+2. **Sequence the reads, Redis first**: `HGETALL` (or better `HSCAN`) *then* the DB read, so the DB
+   snapshot is strictly the newer one — the ordering the delete branch needs.
+3. **Blast-radius guard**: refuse to delete when the DB read is empty and the hash is not, and cap
+   the proportion removed in one pass without an explicit override. Log loudly either way.
+4. **`listAllForRegistry` must filter suspended tenants** (`tenant: { suspendedAt: null }`). That
+   repairs the additive pass and the reconcile at once, and closes most of finding #3.
+5. **Reconcile the id-keyed keys in the same pass** — `device:tenant`, `device:account`,
+   `device:config` and the per-tenant index — or the fix leaves a half-torn device that ingest
+   refuses while the UI still lists it.
+6. **Cheaper**: select `id, imei` only, and `HSCAN` rather than `HGETALL` (single-threaded Redis; the
+   same function 40 lines below rejects `KEYS` for exactly this reason).
+7. **A metric**, `rehydrate_imei_reconciled_total{action}`, so a mass delete is a graph and not a grep.
+8. **Tests that fail against `main`.** Check every new test by aliasing the module to the `main`
+   version first — that is what caught two useless ones here.
