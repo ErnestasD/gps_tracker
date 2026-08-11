@@ -140,3 +140,52 @@ Closer, and the *delete* direction is right. Rejected because:
 7. **A metric**, `rehydrate_imei_reconciled_total{action}`, so a mass delete is a graph and not a grep.
 8. **Tests that fail against `main`.** Check every new test by aliasing the module to the `main`
    version first — that is what caught two useless ones here.
+
+---
+
+## Finding #3 — attempt rejected, and the design that survived review
+
+The direction is right and was confirmed: the re-assert belongs above the grace check, it is keyed
+on `suspendedAt` and not on ladder progress, the restore/warn/suspend order still holds, and the
+ladder loop's replacement `continue` drops nothing (mail, `markLapseNotice`, `result.warned` and the
+suppression path all sit above it). **The regressions were all in what the attempt ADDED.**
+
+- **The budget is a category error and a strict regression.** `main` re-asserted every past-grace
+  suspended tenant on every run, uncapped. The attempt added `MAX_REASSERTS_PER_RUN = 200` with a
+  bare `break`, over a query with **no `ORDER BY`** — so Postgres heap order decides who is covered,
+  the same first 200 are re-asserted daily, and 201+ are re-asserted *never*. Since the ladder loop
+  now `continue`s unconditionally there is no second path to pick them up. Re-asserting is
+  idempotent maintenance, not a destructive novel action like suspending; it does not want a blast
+  radius. **Drop the cap.** If one is ever needed it must rotate (`orderBy: suspendedAt`, a
+  persisted cursor) and report what it deferred.
+- **It re-reads the wrong half of the predicate.** `isSuspended` is re-read; "still lapsed" comes
+  from the snapshot. The restore-on-payment webhook commits `status = 'active'` **before**
+  `unsuspend`, so a tenant is paid-but-still-flagged for the seconds its fleet takes to restore. The
+  new pass tears that fleet down again, the webhook then clears the flag, and the result is a dark
+  fleet flagged Active — invisible to `listSuspended` (not suspended) and to `listLapsedTenants`
+  (paid), repairable only by an API restart. `main` was protected from this **only by the bug being
+  fixed.** Gate on a re-read of the whole predicate (`suspendedAt` AND lapsed), and after the walk
+  re-check `isSuspended`: if it flipped, restore immediately and log.
+- **`reasserted++` sits inside the `try`, after the walk**, so when Redis is degraded — the exact
+  scenario the cap was written for — nothing increments, `break` never fires, and every suspended
+  tenant is attempted. Count attempts, not successes.
+- **Nothing is observable.** `reasserted` is a local; `LapseSweepResult` and
+  `billing_lapse_action_total` gain nothing, budget exhaustion is a bare `console.warn`. And the one
+  gauge that should have caught the original incident still cannot: `billing_lapsed_actionable` is
+  fed by `isActionable`, which excludes `past < 0` — precisely the clock-refreshed tenant.
+- **`billing_lapsed_devices` silently changes meaning**: it now counts devices the same run has just
+  removed from the registry, while its help text and runbook say "still ingesting for free".
+- **`registryDevicesFor` runs an unfiltered platform-wide `deviceProfile.findMany` per tenant**, so
+  the pass is 200 full profile scans a day. Resolve the profile map once per sweep.
+
+### Tests — two lessons, both worth keeping
+
+1. The second new test (`a tenant restored by a human mid-run is NOT torn back down`) **passes on
+   `main` and passes with the entire new pass deleted** — its fixture is inside grace, so nothing
+   runs either way. It asserts only a negative and never checks that the guard was consulted.
+2. **The fix can be INVERTED with all 25 tests green.** Swap `suspendTenantDevices` for
+   `restoreTenantDevices` — turning the pass into "re-arm every suspended fleet daily", the exact
+   catastrophe — and everything still passes, because the fake Redis records only `'eval'` and
+   `'multi'`, which both calls produce. A double that records command *names* and not command
+   *shapes* cannot tell a teardown from a restore. Record keys and fields, then assert the teardown
+   wrote `hdel device:tenant`.
