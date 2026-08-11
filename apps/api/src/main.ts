@@ -10,7 +10,7 @@ import { createDb, createPool, poolOptionsFromEnv } from '@orbetra/db'
 import { smsConfigured } from '@orbetra/shared'
 
 import { createApiProm, createApp } from './app.js'
-import { DEFAULT_SMS_QUOTA } from './routes/crud.js'
+import { DEFAULT_DEVICE_CREATE_LIMIT, DEFAULT_SMS_QUOTA } from './routes/crud.js'
 import { rehydrateRegistries } from './rehydrate.js'
 import { createStripeGateway, stripeConfigFromEnv } from './billing/stripe.js'
 import { attachWsGateway } from './ws.js'
@@ -152,6 +152,14 @@ const deps = {
     globalPerDay: Number(process.env['SMS_QUOTA_GLOBAL_PER_DAY'] ?? DEFAULT_SMS_QUOTA.globalPerDay),
   },
   onSmsQuotaRejected: (scope: 'device' | 'tenant' | 'global') => prom.smsQuotaRejected.inc({ scope }),
+  // Per-tenant device-creation ceiling. Tunable because it can refuse a real customer: a genuinely
+  // enormous onboarding is the one legitimate way to reach it, and the operator must be able to
+  // raise it without a redeploy (see the runbook — `DEL devcreate:rl:<tenantId>` clears one tenant).
+  deviceCreateLimit: {
+    max: Number(process.env['DEVICE_CREATE_MAX_PER_WINDOW'] ?? DEFAULT_DEVICE_CREATE_LIMIT.max),
+    windowS: Number(process.env['DEVICE_CREATE_WINDOW_S'] ?? DEFAULT_DEVICE_CREATE_LIMIT.windowS),
+  },
+  onDeviceCreateThrottled: (why: 'limit' | 'degraded' | 'refund_failed') => prom.deviceCreateThrottled.inc({ why }),
   onWebhookUnmatched: (reason: 'no_tenant' | 'unmappable') => prom.billingWebhookUnmatched.inc({ reason }),
   onLockout: (gate: 'credential' | 'ip' | 'email' | 'degraded') => prom.authLockoutTripped.inc({ gate }),
   onSignupEmailInUse: () => prom.signupEmailInUse.inc(),

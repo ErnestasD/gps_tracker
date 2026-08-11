@@ -27,6 +27,7 @@ Alertmanager routes them to the founders' Telegram.
 | ApiErrorRate | 5xx share > 5% for 5m | crit |
 | ApiLatencyHigh | p95 > 2s on a route for 10m | warn |
 | SmsQuotaTripped | `increase(sms_quota_rejected_total{scope="global"}[1h])` > 0 for 5m | crit |
+| DeviceCreateThrottled | `increase(device_create_throttled_total[1h])` > 0 | warn |
 | DiskFillingUp / Critical | root FS < 15% / 5% free | warn / crit |
 | TargetDown | any of ingest/worker/api unscrapeable 2m | crit |
 | CertExpiringSoon | TLS cert < 14d to expiry (Caddy renew safety net) | warn |
@@ -116,6 +117,38 @@ returns 503 for **every** tenant.
 
 Per-device (5/day) and per-tenant (100/day) rejections are informational — they mean a caller is
 retrying, not that the platform is at risk.
+
+## DeviceCreateThrottled
+
+`device_create_throttled_total{why="limit"}` — a tenant hit the per-tenant device-creation ceiling
+(`DEVICE_CREATE_MAX_PER_WINDOW`, default 10 000/hour). Only successful creations are *billed*, so
+this is usually not a bad CSV or a retry storm — but reservations are taken before the work, and a
+1000-row import reserves 1000, so enough concurrent imports can trip the ceiling having created
+nothing. Step 1 tells the two apart.
+
+1. Which tenant: `SELECT "tenantId", count(*) FROM devices WHERE "createdAt" > now() - interval '1 hour' GROUP BY 1 ORDER BY 2 DESC LIMIT 5`.
+   **If this finds nothing**, the ceiling was tripped by concurrent in-flight reservations rather
+   than by creations — benign, self-clearing, no action.
+2. If it is a genuine onboarding, clear that one tenant with `DEL devcreate:rl:<tenantId>` — it takes
+   effect immediately and leaves everyone else's budget alone. Raise
+   `DEVICE_CREATE_MAX_PER_WINDOW` in `/opt/orbetra/.env` and restart the api only if it recurs.
+3. If it is not, look at whether those devices ever reported: a fleet of rows that never connect is
+   what an IMEI squat looks like (`SELECT count(*) FROM devices d WHERE d."tenantId" = $1 AND NOT
+   EXISTS (SELECT 1 FROM positions p WHERE p.device_id = d.id)`). The remedy for a squatted IMEI is
+   a platform quarantine claim, which releases a retired holder in another tenant — see
+   `docs/audit/tenant-isolation-2026-08-11.md`. **Precondition:** the claim only overrides a retired
+   holder while the IMEI is in quarantine (`ZSCORE quarantine:imei <imei>`). If the victim's tracker
+   is powered off, or its entry was pushed out by the 10 000-entry rank trim, the claim answers 409
+   like any other conflict — have them power the tracker on so ingest re-adds it, then claim.
+
+`why="degraded"` is the opposite problem: Redis could not be consulted and the create was let
+through. The ceiling is fail-open on purpose, but a sustained degraded rate means the guard is
+absent, not that it is quiet.
+
+`why="refund_failed"` is the third case and needs the opposite reflex to `degraded`: a reservation
+could not be handed back, so a tenant is carrying a phantom charge — up to a whole 1000-row import —
+for the rest of the window, and may hit `limit` having created far fewer devices than the ceiling.
+Clear it with `DEL devcreate:rl:<tenantId>`.
 
 ## Telegram (BLOCKED-INFO — founder must provision, like SES)
 

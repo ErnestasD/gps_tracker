@@ -13,7 +13,7 @@ authz layer.
 | # | Finding | Verdict | State |
 |---|---|---|---|
 | 1 | Account-pinned `tsp_admin` reaches tenant-wide surfaces (billing, branding, domains, accounts-create) | **CONFIRMED HIGH** (executed) | **FIXED** |
-| 2 | Retired device blocks an IMEI against every other tenant forever; no rate limit; no admin remedy | **CONFIRMED HIGH** (executed) | **OPEN — needs a product decision, see below** |
+| 2 | Retired device blocks an IMEI against every other tenant forever; no rate limit; no admin remedy | **CONFIRMED HIGH** (executed) | **FIXED** — operator remedy + metered creation |
 | 3 | Isolation suite: prefix exemptions swallow whole subtrees; two vacuous item assertions; unguarded collection loop | CONFIRMED (measured) | **FIXED** |
 | 4 | `usage.tenantSummary` takes a `Scope` and honours half of it | REFUTED as a leak — guard at `crud.ts:1236`; but the guard was **untested** | **FIXED** (test) |
 | 5 | `webhook_deliveries.accountId` nullable + read with `nullableAccount` | LATENT (auditor's proof was a mock, not an insert) | **FIXED** |
@@ -69,7 +69,7 @@ a pinned admin still sees Billing and Branding in the sidebar and gets a raw unt
 mints a `tsp_admin` writes `accountId: null` explicitly, and `apps/web` never calls `/v1/users`), so
 this is cosmetic for a configuration only a hand-made API call produces.
 
-## Finding #2 — OPEN. The IMEI squat, and the product question behind it
+## Finding #2 — FIXED. The IMEI squat, and why the obvious fix was the wrong one
 
 The auditor framed this as a cross-tenant existence oracle. The verifier **re-scoped it**: the
 oracle is LOW (IMEIs are printed on device labels, and a 409 never reveals *which* tenant holds it).
@@ -97,26 +97,64 @@ Compounding facts, each verified:
 - IMEI = 8-digit TAC + 6-digit serial; `deviceCreateSchema` is `/^\d{15}$/` with no Luhn check, so
   one Teltonika model's TAC is a 10⁶ space.
 
-### Why this is not fixed in this PR
+### Why the obvious fix was rejected
 
-A rate limit is the obvious move and it is **not sufficient**: targeted squatting needs a few hundred
-specific IMEIs, not a million. The real fix changes **IMEI ownership semantics**, and that is a
-product decision with revenue and support consequences, not an engineering one:
+Three options were on the table. The first two change **IMEI ownership semantics**, and both open a
+worse hole than they close:
 
-- **(a) Age out the block.** Allow another tenant to claim an IMEI whose blocking row has been
-  retired for more than N days. Matches how resold GPS hardware actually moves. Cost: a tenant who
-  retires a tracker temporarily (unit in for repair) can have it sniped, and the oracle tells an
-  attacker exactly when. Needs a value for N.
-- **(b) Require evidence of possession.** A device that has never reported should not hold an IMEI
-  against another tenant. Principled — the block is held by possession, not by registration. Cost:
-  pre-provisioned devices (registered before the tracker ships) lose their block if retired first.
-- **(c) Keep the block permanent, bound the abuse.** Per-tenant rate limit on device creation plus a
-  metric and an alert on a tenant creating devices that never report, plus a platform-admin release
-  path for a retired holder. Cost: does nothing against targeted squatting of a known fleet.
+- **(a) Age out the block** — let another tenant claim an IMEI retired more than N days ago. This is
+  the first idea anyone has, and it is wrong here. The hold is not identifier hygiene: a retired
+  tracker may still be wired to a vehicle and transmitting, and whoever holds the IMEI in
+  `registry:imei` receives its live positions. A timer hands every tracker its owner retired but
+  never uninstalled to whoever waits longest — a data leak in place of an onboarding nuisance.
+- **(b) Require evidence of possession** — only a device that has reported may hold an IMEI.
+  Principled in the abstract, unimplementable in fact: the honest case and the abusive one produce
+  the *same* evidence. A tracker retired without being uninstalled is rejected by ingest and
+  quarantined exactly like a squatted IMEI, and over UDP an entry needs nothing but one spoofed
+  datagram. No automatic signal distinguishes them.
+- **(c) SHIPPED — keep the hold, make it releasable by a human, and meter creation.** This is how
+  identifier disputes are settled across this industry: an operator verifies ownership off-platform
+  and carries the decision out. A `platform_admin` claiming out of quarantine may override a
+  **retired** holder; an **active** one is refused always — that case is hardware in service, and
+  the guarantee is enforced by the global partial unique index, not by application code.
 
-**Question for the founder:** does a retired IMEI ever become claimable by another company, and after
-how long? Everything else follows from that answer. (c) is safe to ship immediately regardless and is
-worth doing even if (a) or (b) is chosen.
+Quarantine membership is a **precondition, not evidence**, and the code now says so: it bounds only
+*where* the override can be aimed — never at a hold at rest — because anyone with a socket can
+create an entry. The first version of this fix claimed membership was proof of possession; review
+disproved it three ways, and the wording was corrected in the code rather than quietly dropped.
+
+**Known limitation, recorded rather than discovered later:** the quarantine zset has no TTL and is
+trimmed by rank to the newest 10 000, so a flood of unknown IMEIs can **evict** a genuine victim's
+entry and deny them this remedy until their tracker is seen again. A reason to keep the remedy
+operator-driven, not a reason to trust the zset.
+
+### The metering, described honestly
+
+`DEVICE_CREATE_MAX_PER_WINDOW` (default 10 000/hour per tenant) is a **resource guard, not an
+anti-squat measure** — targeted squatting needs a few hundred specific IMEIs, far below any ceiling a
+real fleet could live with. What it bounds is one trial tenant driving unbounded rows into `devices`,
+each taking a hold platform-wide. Reserve-then-refund, so a rejected request costs nothing; metric
+`device_create_throttled_total{why}`; alert `DeviceCreateThrottled`; runbook section in
+`w7-alerting.md`.
+
+**Five** hostile review rounds were needed for this fix, and every one found a real defect — three of
+them defects created by the previous round's fix:
+
+1. The possession-evidence rationale was false (comment-only correction; no test can fail on prose).
+2. A rejected import was charged its full row count — measured: a tenant locked out for an hour after
+   two refused batches.
+3. Fixing that by checking before and charging after destroyed atomicity — measured: five concurrent
+   100-row imports past a ceiling of 2 created 500 devices.
+4. Fixing THAT introduced a refund that resurrected an expired counter key at a NEGATIVE value with a
+   fresh full window — measured `-1000 / ttl=3600` — which the runbook's own
+   `DEL devcreate:rl:<tenantId>` triggered deterministically.
+5. Round 4 found two fixes reported as shipped that were **not in the tree** (an edit script had
+   aborted on an assertion and the success message came from a later one), and round 5 found that
+   only one of the two refund call sites was covered — reverting the other left the spec green.
+
+Items 2, 3 and 4 each have a test that fails without them, proven by mutation; item 5's lesson is
+process, and the response was to verify every edit in the file rather than trust the tool's output.
+Both refund call sites now go through one function, so one test defends both.
 
 ## Finding #3 — what the isolation suite was actually asserting
 

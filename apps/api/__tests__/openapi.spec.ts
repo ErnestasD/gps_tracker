@@ -70,4 +70,14 @@ describe('E06-5 OpenAPI document', () => {
     expect(spec.paths['/v1/devices/{id}']).toBeDefined()
     expect(spec.paths['/v1/devices/:id']).toBeUndefined()
   })
+
+  it('the metered device routes advertise 429 — a client that cannot see it will not honour Retry-After', () => {
+    // the branch is keyed on the raw manifest path, so renaming either route silently drops the
+    // documented 429 and the manifest meta-test would not notice
+    const doc = buildOpenApi(apiManifest()) as { paths: Record<string, Record<string, { responses: Record<string, unknown> }>> }
+    expect(doc.paths['/v1/devices']!['post']!.responses['429']).toBeDefined()
+    expect(doc.paths['/v1/devices/import']!['post']!.responses['429']).toBeDefined()
+    // …and an ordinary write does not, so the branch is not just "429 on everything"
+    expect(doc.paths['/v1/rules']!['post']!.responses['429']).toBeUndefined()
+  })
 })

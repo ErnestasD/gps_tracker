@@ -47,6 +47,43 @@ export class DuplicateImeiError extends Error {
   }
 }
 
+/** Bound on the displaced-holder audit fan-out; more than a handful means something is very wrong. */
+const MAX_DISPLACED_HOLDERS = 20
+
+/**
+ * Permission to take an IMEI whose only other holders are RETIRED rows.
+ *
+ * The cross-tenant hold exists for data protection, not identifier hygiene: a retired tracker may
+ * still be wired to a vehicle and transmitting, and whoever holds the IMEI in `registry:imei`
+ * receives its live positions. That is why the hold must never expire on a timer — a timer would
+ * hand any tracker its owner retired but never uninstalled to whoever waited long enough.
+ *
+ * What the hold lacked was a way OUT, and that is what made it a weapon: `countActive` filters
+ * `retiredAt: null` while the hold predicate does not, so create→retire in a loop squatted IMEIs
+ * against every other tenant for free, from a trial account, permanently — deleting the squatting
+ * tenant fails on a RESTRICT foreign key, so releasing one meant manual SQL (audit 2026-08-11 #2).
+ *
+ * ★ THIS FLAG IS OPERATOR DISCRETION, NOT EVIDENCE. Say so plainly, because the first version of
+ * this comment claimed the opposite and review proved it false. The one caller requires the IMEI to
+ * be in quarantine, and quarantine membership is NOT proof of possession: any TCP client can put an
+ * arbitrary IMEI there by opening a Teltonika handshake — the IMEI *is* the identity on that path,
+ * there is no credential (`apps/ingest/src/session.ts`). Worse, the honest case and the abusive one
+ * produce the SAME entry: a device someone retired without uninstalling is rejected by ingest and
+ * quarantined exactly like a squatted one. Membership only proves that somebody, somewhere, was
+ * seen sending this IMEI at some point — the zset has no TTL, it is trimmed by rank — and never
+ * who should own it. That question is settled off-platform, by a human looking at an invoice, and
+ * this flag is how they carry out that decision.
+ *
+ * An ACTIVE holder is refused regardless, and note where that guarantee really lives: the global
+ * partial unique index `devices_imei_active_key ON devices(imei) WHERE "retiredAt" IS NULL`
+ * (migration 20260805150000) makes two live rows on one IMEI a database impossibility. The
+ * predicate below narrows to `retiredAt: null` as defence in depth on top of that, not instead
+ * of it.
+ */
+export interface ImeiHoldOverride {
+  overrideRetiredHolder?: boolean
+}
+
 /**
  * Devices repo (E03-3). Account-scoped (non-null accountId), like rules. NOT the
  * generic repo: `Device.id` is a BigInt PK, so the route `:id` string must be
@@ -84,7 +121,11 @@ export interface DeviceRepo {
   imeisIn(imeis: readonly string[]): Promise<Map<string, bigint>>
   get(scope: Scope, id: string): Promise<Device | null>
   getByImei(scope: Scope, imei: string): Promise<Device | null>
-  create(scope: Scope, actor: Actor, data: DeviceCreate): Promise<Device>
+  /**
+   * @param opts.overrideRetiredHolder Let the create proceed when the IMEI is held ONLY by RETIRED
+   * rows in other tenants. An ACTIVE holder still refuses, always — see `ImeiHoldOverride`.
+   */
+  create(scope: Scope, actor: Actor, data: DeviceCreate, opts?: ImeiHoldOverride): Promise<Device>
   update(scope: Scope, actor: Actor, id: string, data: DeviceUpdate): Promise<Device | null>
   /** Sets retiredAt=now (soft delete); returns the row or null if out of scope. */
   retire(scope: Scope, actor: Actor, id: string): Promise<Device | null>
@@ -123,7 +164,7 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
     // new one, and every caller of this wants the device that is in service today
     getByImei: (scope, imei) =>
       prisma.device.findFirst({ where: { ...scopedWhere(scope), imei }, orderBy: [{ retiredAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }] }),
-    create: async (scope, actor, data) => {
+    create: async (scope, actor, data, opts) => {
       // Retiring FREES an IMEI (partial unique index, migration 20260805150000) so returned hardware
       // can be re-installed — but only by whoever had it. The physical tracker may still be wired to
       // the vehicle and transmitting, and whoever holds the IMEI in `registry:imei` receives its
@@ -138,9 +179,15 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
       // IMEI account A just retired and starts receiving A's vehicle. A TENANT-scoped caller
       // (tsp_admin / platform_admin, no accountId pin) may still move a device between accounts they
       // both own; that is their fleet to reorganise.
+      //
+      // `overrideRetiredHolder` (platform_admin claiming out of quarantine) narrows this to ACTIVE
+      // holders only. It is a narrowing of WHICH rows block, never a bypass: the predicate is
+      // re-evaluated with `retiredAt: null` rather than skipped, so a squatter who parks a retired
+      // row beside a live device cannot use the override as a skeleton key.
       const held = await prisma.device.findFirst({
         where: {
           imei: data.imei,
+          ...(opts?.overrideRetiredHolder === true ? { retiredAt: null } : {}),
           NOT:
             scope.accountId === undefined
               ? { tenantId: scope.tenantId }
@@ -171,6 +218,64 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
         throw err
       }
       await audit.record(scope, actor, { action: 'create', entity: 'device', entityId: String(row.id), after: row })
+      // A transfer with no record on the LOSING side is how a support dispute becomes unresolvable:
+      // the gaining tenant gets the device-create entry above, and the tenant whose hold was
+      // released would otherwise have nothing at all. Filed in THEIR scope so their own admins can
+      // read it, with the platform admin who decided it as the actor.
+      //
+      // AFTER the create, never before: audit_log is append-only with no update or delete, so a row
+      // written ahead of a create that then fails on the unique index is a permanent record of a
+      // release that never happened, and nothing can retract it.
+      //
+      // The payload deliberately does NOT name the gaining tenant. `DuplicateImeiError` above
+      // promises the API never reveals that an IMEI exists elsewhere, and in the squat case the
+      // displaced tenant IS the attacker — handing them the victim's tenant id through their own
+      // audit feed (READ_POLICY.audit = TENANT_ADMINS) would undo that in the one case it matters.
+      if (opts?.overrideRetiredHolder === true) {
+        // EVERYTHING here is best-effort, and the try has to cover the QUERY as well as the writes.
+        // The device row is COMMITTED by this point. Letting anything throw out of here hands the
+        // caller a 500 for a device that exists and holds the IMEI, while the registry activation
+        // and the quarantine cleanup in the caller never run — the admin retries and meets their
+        // own new row as a 409 for something they were told had failed. A missing breadcrumb is the
+        // smaller loss. (An earlier version caught only the individual audit writes and left the
+        // findMany bare, which is the same orphan one level down.)
+        try {
+          const found = await prisma.device.findMany({
+            where: {
+              imei: data.imei,
+              retiredAt: { not: null },
+              NOT:
+                scope.accountId === undefined
+                  ? { tenantId: scope.tenantId }
+                  : { AND: [{ tenantId: scope.tenantId }, { accountId: scope.accountId }] },
+            },
+            select: { id: true, tenantId: true },
+            // ordered and over-fetched by one: without an order the surviving 20 were an arbitrary
+            // subset, so past the bound some tenants lost their record with nothing saying so
+            orderBy: { id: 'asc' },
+            take: MAX_DISPLACED_HOLDERS + 1,
+          })
+          if (found.length > MAX_DISPLACED_HOLDERS) {
+            console.warn('devices: more retired holders than the audit fan-out bound; the rest are released without a record', {
+              imei: data.imei, bound: MAX_DISPLACED_HOLDERS,
+            })
+          }
+          const displaced = found.slice(0, MAX_DISPLACED_HOLDERS)
+        for (const d of displaced) {
+          await audit
+            .record({ tenantId: d.tenantId }, actor, {
+              action: 'update',
+              entity: 'device',
+              entityId: String(d.id),
+              before: { imeiHold: 'held' },
+              after: { imeiHold: 'released', reason: 'released by a platform administrator' },
+            })
+            .catch((e: unknown) => console.error('devices: could not record the released IMEI hold', { deviceId: String(d.id), imei: data.imei }, e))
+        }
+        } catch (e: unknown) {
+          console.error('devices: could not record the released IMEI holds', { imei: data.imei }, e)
+        }
+      }
       return row
     },
     update: async (scope, actor, id, data) => {

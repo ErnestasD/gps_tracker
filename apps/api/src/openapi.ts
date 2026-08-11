@@ -46,7 +46,14 @@ function op(entity: string, method: string, path: string, params: string[]): Ope
     summary: `${method.toUpperCase()} ${path}`,
     security: read ? READ_SEC : WRITE_SEC,
     ...(params.length > 0 ? { parameters: pathParams(params) } : {}),
-    responses: read ? RESPONSES.read : RESPONSES.write,
+    responses: read
+      ? RESPONSES.read
+      : // device creation is metered per tenant (DEVICE_CREATE_MAX_PER_WINDOW), so these two can
+        // answer 429 with Retry-After where no other write does. A client that ignores it and
+        // retries hard sees the same 429 for the rest of the window.
+        path === '/v1/devices' || path === '/v1/devices/import'
+        ? { ...RESPONSES.write, '429': { description: 'Rate limited — per-tenant device creation ceiling; honour Retry-After' } }
+        : RESPONSES.write,
   }
 }
 

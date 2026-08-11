@@ -246,6 +246,31 @@ tests:
         alertname: IngestSheddingDatagrams
         exp_alerts: []
 
+  # the device-creation ceiling: a hit must be visible, and a quiet platform must stay silent.
+  # `why` is a label, so the alert must carry it through — an operator seeing this needs to know
+  # whether the guard fired or went missing.
+  - interval: 1m
+    input_series:
+      - series: 'device_create_throttled_total{why="limit"}'
+        values: '0+1x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: DeviceCreateThrottled
+        exp_alerts:
+          - exp_labels: { severity: warning, component: api, why: "limit" }
+            exp_annotations:
+              summary: "Device-creation ceiling hit or unavailable (limit)"
+              description: "why=limit: one tenant reached DEVICE_CREATE_MAX_PER_WINDOW — check whether those devices ever reported, since a fleet of rows that never connect is what an IMEI squat looks like. why=degraded: Redis could not be consulted and creates were let THROUGH, so the guard is absent. why=refund_failed: the opposite — a reservation could not be handed back, so a tenant carries a phantom charge; clear it with `DEL devcreate:rl:<tenantId>`. See the runbook."
+
+  - interval: 1m
+    input_series:
+      - series: 'device_create_throttled_total{why="limit"}'
+        values: '0+0x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: DeviceCreateThrottled
+        exp_alerts: []
+
   # permanent loss, after the fact: any non-zero increase must page, silence must stay silent
   - interval: 1m
     input_series:

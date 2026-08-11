@@ -120,6 +120,12 @@ services:
       PG_POOL_MAX: ${PG_POOL_MAX:-}
       PG_ACQUIRE_TIMEOUT_MS: ${PG_ACQUIRE_TIMEOUT_MS:-}
       PG_STATEMENT_TIMEOUT_MS: ${PG_STATEMENT_TIMEOUT_MS:-}
+      # Per-tenant device-creation ceiling. Listed here so the runbook's "raise it in
+      # /opt/orbetra/.env and restart the api" is actually true — `--env-file` only feeds compose
+      # interpolation, so a variable absent from this map never reaches the process. Real defaults
+      # rather than `:-`, because the empty string an unset `:-` passes is `Number('') === 0`.
+      DEVICE_CREATE_MAX_PER_WINDOW: ${DEVICE_CREATE_MAX_PER_WINDOW:-10000}
+      DEVICE_CREATE_WINDOW_S: ${DEVICE_CREATE_WINDOW_S:-3600}
       TRUST_PROXY: "1"
       # staging is reachable over plain HTTP by IP until DNS lands — Secure cookies
       # would silently break login there. Flip to 1 the day TLS is on.

@@ -124,6 +124,19 @@ groups:
           summary: "Platform-wide SMS breaker tripped"
           description: "Config-SMS onboarding is refused for ALL tenants. Investigate the source, then `DEL sms:q:global` in Redis to reset — see the runbook."
 
+      # 10 000 devices created by ONE tenant in an hour. Only successful creations are BILLED, so
+      # this is usually not a bad CSV or a retry storm — but reservations are taken before the work,
+      # so enough concurrent 1000-row imports trip it having created nothing. The runbook's step 1
+      # tells the two apart. Each real creation takes an IMEI hold against the whole platform (audit
+      # 2026-08-11 #2). `degraded` and `refund_failed` are the two opposite failures of the guard
+      # itself and need opposite reflexes — see the runbook.
+      - alert: DeviceCreateThrottled
+        expr: increase(device_create_throttled_total[1h]) > 0
+        labels: { severity: warning, component: api }
+        annotations:
+          summary: "Device-creation ceiling hit or unavailable ({{ $labels.why }})"
+          description: "why=limit: one tenant reached DEVICE_CREATE_MAX_PER_WINDOW — check whether those devices ever reported, since a fleet of rows that never connect is what an IMEI squat looks like. why=degraded: Redis could not be consulted and creates were let THROUGH, so the guard is absent. why=refund_failed: the opposite — a reservation could not be handed back, so a tenant carries a phantom charge; clear it with `DEL devcreate:rl:<tenantId>`. See the runbook."
+
       # a position field that did not fit its column, or a device clock running ahead of ours. Both
       # mean the row is kept but does NOT drive live state / trips / geofences — customer-visible
       # wrongness with no other signal (the audit's recurring "counter nobody alerts on" pattern).
