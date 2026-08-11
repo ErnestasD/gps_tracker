@@ -202,6 +202,20 @@ const id = (c: Context): string => c.req.param('id') ?? ''
  * alone and such an admin read the whole tenant's trail, including sibling accounts' device
  * names, user emails and geofence changes. A white-label TSP running unrelated customers as
  * accounts is exactly the shape this breaks. Audit MED.
+ *
+ * FOUR surfaces need this, not one. Fixing `audit` and leaving the others was half a fix, and the
+ * half that was left out was the expensive one: `/v1/billing/*` handed a pinned admin a Stripe
+ * Customer Portal session for the RESELLER's customer, and `/v1/tenant/domains` let them delete the
+ * tenant's verified white-label host — a whole-tenant outage triggered by one end-customer's admin.
+ * The rule for anything added later: if the repo behind a route has no accountId column to be scoped
+ * by, the route needs this test. `tests/isolation/suite.spec.ts` (TENANT_WIDE_ONLY) sweeps a pinned
+ * admin over every route listed there — which is a list a human maintains, not a derived set, so
+ * adding the guard here without adding the route there leaves it locked by nothing. Review found
+ * `POST /v1/accounts` that way: the fifth surface of this shape, missed by the first four fixes.
+ *
+ * NOT applied to `GET /v1/tenant/branding`: `READ_POLICY.branding` is every role on purpose
+ * ("viewers see the theme"), and the response carries no per-account data — gating it would blank
+ * the UI theme for every account-scoped user to defend nothing.
  */
 const tenantWide = (c: Context<AuthEnv>): boolean => c.get('auth').accountId === undefined
 
@@ -303,6 +317,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'post', path: '/v1/accounts', scopeClass: 'tenant', entity: 'account', shape: 'collection', entitlement: 'subAccounts',
       handler: async (c) => {
+        // `accounts.create` is the ONE account method that does not honour the pin: list/get/update/
+        // remove all go through listWhere/findScoped, while create writes `tenantId` from the scope
+        // and ignores `scope.accountId` entirely. A pinned admin therefore added siblings to the
+        // reseller's tenant — unbounded (there is no per-tenant account cap the way domains have
+        // MAX_DOMAINS_PER_TENANT) and burning the reseller's `subAccounts` entitlement. Not privesc:
+        // they can neither see nor manage what they created. Still theirs to answer for.
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'accounts are tenant-wide')
         const data = await body(c, accountCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         return json(c, await db.accounts.create(scopeOf(auth(c)), { userId: auth(c).userId }, data), 201)
@@ -1340,6 +1361,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'patch', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection', entitlement: 'whiteLabel',
       handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'branding is tenant-wide')
         const data = await body(c, brandingSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const a = auth(c)
@@ -1351,14 +1373,16 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     // `Array.isArray(body) ? body : []`, so an object body turns its cross-tenant leak check into a
     // vacuous pass. The config rides on GET /v1/tenant/branding instead, which the same page loads.
     { method: 'get', path: '/v1/tenant/domains', scopeClass: 'tenant', entity: 'domain', shape: 'collection', entitlement: 'customDomains',
-      handler: async (c) => json(c, await db.tenantDomains.list(scopeOf(auth(c)))) },
+      handler: async (c) => tenantWide(c) ? json(c, await db.tenantDomains.list(scopeOf(auth(c)))) : problem(c, 403, 'Forbidden', 'domains are tenant-wide') },
     { method: 'get', path: '/v1/tenant/domains/:id', scopeClass: 'tenant', entity: 'domain', shape: 'item', entitlement: 'customDomains',
       handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'domains are tenant-wide')
         const row = await db.tenantDomains.get(scopeOf(auth(c)), id(c))
         return row === null ? problem(c, 404, 'Not Found') : json(c, row)
       } },
     { method: 'post', path: '/v1/tenant/domains', scopeClass: 'tenant', entity: 'domain', shape: 'collection', entitlement: 'customDomains',
       handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'domains are tenant-wide')
         const data = await body(c, domainCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const a = auth(c)
@@ -1390,11 +1414,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'delete', path: '/v1/tenant/domains/:id', scopeClass: 'tenant', entity: 'domain', shape: 'item', entitlement: 'customDomains',
       handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'domains are tenant-wide')
         const ok = await db.tenantDomains.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
       } },
     { method: 'post', path: '/v1/tenant/domains/:id/verify', scopeClass: 'tenant', entity: 'domain', shape: 'item', entitlement: 'customDomains',
       handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'domains are tenant-wide')
         const a = auth(c)
         const row = await db.tenantDomains.get(scopeOf(a), id(c))
         if (row === null) return problem(c, 404, 'Not Found')

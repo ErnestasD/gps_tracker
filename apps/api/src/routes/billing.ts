@@ -5,7 +5,7 @@ import type { Db, PaidInvoice, SubscriptionUpdate } from '@orbetra/db'
 import type { BillingPlanView, BillingView, Role } from '@orbetra/shared'
 
 import type { StripeGateway } from '../billing/stripe.js'
-import { problem, type AuthEnv } from '../auth/middleware.js'
+import { problem, type AuthContext, type AuthEnv } from '../auth/middleware.js'
 
 /**
  * Billing API (Stripe, ADR-024). Tenant-self routes — tenant is taken from the JWT, NEVER a param
@@ -15,7 +15,19 @@ import { problem, type AuthEnv } from '../auth/middleware.js'
  * written ONLY by the signature-verified webhook — the browser is never trusted to report payment.
  */
 const TENANT_ADMINS: Role[] = ['platform_admin', 'tsp_admin']
-const isAdmin = (role: Role): boolean => TENANT_ADMINS.includes(role)
+/**
+ * Billing is TENANT-WIDE state, so the admin role is not enough — the admin must also be tenant-wide.
+ *
+ * `POST /v1/users` accepts `{role:'tsp_admin', accountId:<uuid>}` and `canGrantRole('tsp_admin',
+ * 'tsp_admin')` is true, so an admin PINNED to one account is a principal the API creates on
+ * request. Every repo honours that pin through `scopedWhere`; `tenants.getBilling` does not, because
+ * a subscription belongs to the tenant and has no accountId to be scoped by. Gating on role alone
+ * therefore handed one end-customer's admin a Stripe Customer Portal session for the RESELLER —
+ * their invoices, their payment method, and the cancel button — plus the ability to start a new
+ * subscription on the reseller's customer. `crud.ts` already applies this same test (`tenantWide`)
+ * to `/v1/usage` and `/v1/audit`; billing was the third surface of the same shape and was missed.
+ */
+const isTenantWideAdmin = (auth: AuthContext): boolean => TENANT_ADMINS.includes(auth.role) && auth.accountId === undefined
 
 export interface BillingDeps {
   db: Db
@@ -85,7 +97,7 @@ function baseUrl(configured: string | undefined, origin: string | undefined): st
 export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
   app.get('/v1/billing', async (c) => {
     const auth = c.get('auth')
-    if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
+    if (!isTenantWideAdmin(auth)) return problem(c, 403, 'Forbidden')
     c.header('Cache-Control', 'no-store')
     if (deps.stripe === undefined) {
       const view: BillingView = { configured: false, hasCustomer: false, status: null, active: false, currentPeriodEnd: null, suspendedAt: null, canSubscribe: false, localTrial: false }
@@ -108,7 +120,7 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
 
   app.get('/v1/billing/plans', async (c) => {
     const auth = c.get('auth')
-    if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
+    if (!isTenantWideAdmin(auth)) return problem(c, 403, 'Forbidden')
     c.header('Cache-Control', 'no-store')
     if (deps.stripe === undefined) return c.json([] as BillingPlanView[])
     const plans = await deps.stripe.listPlans()
@@ -117,7 +129,7 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
 
   app.post('/v1/billing/checkout', async (c) => {
     const auth = c.get('auth')
-    if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
+    if (!isTenantWideAdmin(auth)) return problem(c, 403, 'Forbidden')
     if (deps.stripe === undefined) return problem(c, 503, 'Service Unavailable', 'billing_not_configured')
     const base = baseUrl(deps.appBaseUrl, c.req.header('origin'))
     if (base === null) return problem(c, 400, 'Bad Request', 'no_return_url')
@@ -178,7 +190,7 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
 
   app.post('/v1/billing/portal', async (c) => {
     const auth = c.get('auth')
-    if (!isAdmin(auth.role)) return problem(c, 403, 'Forbidden')
+    if (!isTenantWideAdmin(auth)) return problem(c, 403, 'Forbidden')
     if (deps.stripe === undefined) return problem(c, 503, 'Service Unavailable', 'billing_not_configured')
     const base = baseUrl(deps.appBaseUrl, c.req.header('origin'))
     if (base === null) return problem(c, 400, 'Bad Request', 'no_return_url')

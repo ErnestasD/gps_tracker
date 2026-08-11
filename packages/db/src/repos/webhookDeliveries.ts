@@ -54,8 +54,18 @@ export function createWebhookDeliveryRepo(prisma: PrismaClient): WebhookDelivery
         // ACCOUNT-scope, not just tenant: webhook_deliveries carries an accountId (stamped by the
         // worker), and webhooks are account-scoped-with-tenant-shared. Without this an account_manager
         // could read a sibling account's delivery logs in the same tenant (review MED cross-account
-        // leak). nullableAccount ⇒ an account user also sees tenant-shared (null-account) rows.
-        where: { ...scopedWhere(scope, { nullableAccount: true }), ...(uuid(opts.webhookId) ? { webhookId: opts.webhookId } : {}) },
+        // leak).
+        //
+        // STRICT account scope, unlike geofences/webhooks/api-keys. For those three a null accountId
+        // is a real state with a meaning — "tenant-shared, applies to every account" — so an account
+        // user must see them. A DELIVERY has no such meaning: even a tenant-shared webhook stamps
+        // each delivery with the account of the device whose event fired it (webhookWorker), and the
+        // worker DROPS the log line rather than write an unattributed one. So a null here is an
+        // anomaly, and `nullableAccount` would have broadcast every future anomaly — a second
+        // writer, a replay, a backfill — to every account in the tenant. The column is nullable at
+        // the DB level, so this is the only thing deciding which way such a row fails; it now fails
+        // closed (invisible) instead of open (visible to all).
+        where: { ...scopedWhere(scope), ...(uuid(opts.webhookId) ? { webhookId: opts.webhookId } : {}) },
         orderBy: { id: 'desc' },
         take,
         ...(numeric(opts.cursor) ? { cursor: { id: BigInt(opts.cursor!) }, skip: 1 } : {}),
