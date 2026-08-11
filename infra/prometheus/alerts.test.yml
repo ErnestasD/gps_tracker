@@ -223,6 +223,29 @@ tests:
               summary: "Worker job failing: auth_email:verify-email"
               description: "A background job has thrown in the last hour. `stripe_usage` is silent under-billing (no backfill exists); `retention` means data is growing past policy; `auth_email:*` means a transactional message — an activation link, a password reset, the final warning before a fleet is cut off — is not being delivered, and the recipient has no way to know."
 
+  # the shed path: any non-zero rate must fire, and a quiet ingest must stay silent
+  - interval: 1m
+    input_series:
+      - series: 'ingest_udp_inflight_drops_total'
+        values: '0+2x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: IngestSheddingDatagrams
+        exp_alerts:
+          - exp_labels: { severity: critical, component: ingest }
+            exp_annotations:
+              summary: "Ingest is shedding UDP datagrams (33.33m/s)"
+              description: "The in-flight handler cap is being hit, which happens when Redis is slow or unreachable. Devices re-send so data is not lost, but ingest is refusing traffic and no other signal shows it. Check Redis latency and `stream_depth` first."
+
+  - interval: 1m
+    input_series:
+      - series: 'ingest_udp_inflight_drops_total'
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: IngestSheddingDatagrams
+        exp_alerts: []
+
   # an API that is UP but answering 5xx — the case `up == 0` could never catch
   - interval: 1m
     input_series:

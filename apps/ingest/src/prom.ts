@@ -46,6 +46,19 @@ export function startIngestProm(metrics: IngestMetrics, port: number): IngestPro
   reflect('ingest_udp_datagrams_total', 'datagrams received on the UDP channel', () => metrics.udpDatagramsTotal)
   reflect('ingest_udp_rate_limited_total', 'UDP datagrams dropped by the per-IP flood guard', () => metrics.udpRateLimitedTotal)
   reflect('ingest_udp_backpressure_drops_total', 'UDP datagrams shed above shard depth (I4)', () => metrics.udpBackpressureDropsTotal)
+  /**
+   * The two LOSS counters that were incremented and never exported (2026-08-04 audit #80 — confirmed
+   * twice then, and it never entered the remediation tracker).
+   *
+   * `ingest_udp_inflight_drops_total` is the one that mattered: it is a pure drop path that fires
+   * exactly when Redis is slow or down, and the sibling that looked like a substitute cannot cover
+   * it — `ingest_udp_backpressure_drops_total` is gated behind a shard-depth read, itself a Redis
+   * call, so during precisely the stall that drives `inFlight` to its cap the exported counter
+   * stays flat while ingest sheds every datagram. And `up{job="ingest"}` stays 1, because /metrics
+   * never touches Redis.
+   */
+  reflect('ingest_udp_inflight_drops_total', 'UDP datagrams dropped at the in-flight cap — Redis is not keeping up', () => metrics.udpInflightDropsTotal)
+  reflect('ingest_session_errors_total', 'sessions destroyed by an unexpected error (TCP and UDP)', () => metrics.sessionErrorsTotal)
 
   const ackLatencyMs = new Histogram({
     name: 'ack_latency_ms',
