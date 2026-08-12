@@ -43,7 +43,7 @@ import { FALLBACK_AVL_TABLE } from './normalize.js'
 export type AvlFallbackReason = 'no_config' | 'no_field' | 'malformed' | 'unknown_table' | 'redis_error'
 
 export class AvlTableCache {
-  private readonly cache = new Map<string, { table: AvlTable; at: number }>()
+  private readonly cache = new Map<string, { table: AvlTable; at: number; reason?: AvlFallbackReason }>()
 
   constructor(
     private readonly redis: Redis,
@@ -71,13 +71,21 @@ export class AvlTableCache {
       })
       stale.forEach((id, i) => {
         const r = failed ? { table: FALLBACK_AVL_TABLE, reason: 'redis_error' as const } : parseTable(raw[i])
-        // Record the reason only when this device will ACTUALLY decode on the fallback. On a Redis
-        // failure that is precisely "we have no cached table for it": a device whose entry merely
-        // expired keeps its own table through the blip and has not fallen back at all.
-        if (r.reason !== undefined && (!failed || !this.cache.has(id))) why.set(id, r.reason)
+        // Report only when this device ACTUALLY decodes on the fallback — but "actually" has to
+        // account for what it was already doing. Three cases, and the middle one was silent:
+        //   - Redis fine            → the reason we just derived, if any.
+        //   - Redis down, no cache  → it falls back now: `redis_error`.
+        //   - Redis down, WITH a cached entry → it keeps whatever it had. If that was already the
+        //     fallback (a device with no config row, or a bad profile), it is still decoding wrong
+        //     and must keep saying so; if it was its own table, nothing fell back and it stays
+        //     quiet. Reporting on the branch got the first of those wrong; reporting only on
+        //     "no cache" got the second wrong for the whole outage.
+        const cached = this.cache.get(id)
+        const reason = failed ? (cached === undefined ? r.reason : cached.reason) : r.reason
+        if (reason !== undefined) why.set(id, reason)
         // A Redis failure is NOT cached: caching it would hold the whole shard on the fallback for
         // the full TTL after the blip cleared, and the next batch is the natural retry.
-        if (!failed) this.cache.set(id, { table: r.table, at: now })
+        if (!failed) this.cache.set(id, { table: r.table, at: now, ...(r.reason !== undefined ? { reason: r.reason } : {}) })
       })
     }
     const out = new Map<string, AvlTable>()

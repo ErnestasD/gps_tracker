@@ -12,8 +12,20 @@ import type { NormalizedRecord } from '@orbetra/shared'
  * ONLY id 168 would be read under the name and scaled ×0.001 — out of scope for v1 (FMB120
  * sends id 67); flagged for the promote-to-column ADR if a 168-only model appears.
  *
- * All AVL ids cited from packages/codec/dictionaries/fmb1xx.json (wiki FMB120 table):
+ * All AVL ids cited from packages/codec/dictionaries/fmb120.json (wiki FMB120 table):
  * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+ *
+ * AND THAT CITATION IS NOW A LIMITATION, not just provenance. Since the device profile selects the
+ * dictionary, `attrs` keys are a PER-MODEL vocabulary and these accessors still speak only FMB120's.
+ * Measured across the 34 shipped tables, id 236 is "Alarm" on 16, "Alarm button" on atc700 and
+ * "Axis X" on the six FMx6xx tables; id 252 is "Unplug" on 15, "Unplug detection" on the 11
+ * FTC/ATC tables and "Authorized Driving" on the FMx6xx ones. So a panic or power-cut rule created
+ * against an FMC650 cannot fire — and BEFORE the profile chose a dictionary the same device decoded
+ * as FMB120 and fired the panic rule off its accelerometer instead, which is the worse of the two.
+ * Neither is right. The fix is a per-table semantic index (which id, if any, carries "alarm" on
+ * THIS model) plus gating rule creation on the model actually having the parameter — the same work
+ * as the dictionary-driven read path, tracked in the README's known-gap note. Recorded here rather
+ * than left for the next reader to rediscover from a customer's support ticket.
  */
 
 // AVL ids (fmb1xx dictionary)

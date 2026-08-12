@@ -69,6 +69,12 @@ const CAN_GROUPS = new Set([
   'CAN ADAPTERS', 'CAN ADAPTERS ELEMENTS', 'CAN CHIP', 'MANUAL CAN', 'MANUAL CAN ELEMENTS',
   'MANUAL CAN I/O ELEMENTS', 'CAN GOVECS', 'CAN BOSCH', 'DEFAULT J1939', 'FMS ELEMENTS',
   'FMS ECO DRIVING ELEMENTS', 'EV FMS ELEMENTS', 'ISOBUS',
+  // …and the ten this list MISSED, which is the point the docblock above makes about
+  // enumeration: `ALLCAN300/LVCAN200 I/O ELEMENTS` is fm36's spelling, and its absence reported
+  // FM36/FM3612/FM36M1 as can:false while their table carries 89 CAN rows. An incomplete
+  // enumeration is a substring match with extra steps.
+  'ALLCAN300/LVCAN200 I/O ELEMENTS', 'LVCAN200, CANCONTROL', 'LV-CAN200 + DTC', 'CANCONTROL',
+  'LVCAN, ALLCAN300', 'LVCAN', 'LVCAN ELEMENTS', 'EUROSCAN IO', 'TRANSCAN IO', 'CAN ASKOLL',
 ])
 const BLE_GROUPS = new Set([
   'BLUETOOTH LOW ENERGY', 'BLUETOOTH®LOW ENERGY', 'BLUETOOTH® LOW ENERGY', 'BLE ELEMENTS',
@@ -87,9 +93,16 @@ const OBD_GROUPS = new Set(['OBD ELEMENTS', 'OBD OEM ELEMENTS'])
  */
 function hwCovers(hwSupport: string | undefined, model: string): boolean {
   if (hwSupport === undefined || hwSupport.trim() === '') return true
-  const tokens = hwSupport.toUpperCase().split(/[\s,]+/).filter(Boolean)
   const m = model.toUpperCase()
-  return tokens.some((t) => t === m || (t.includes('X') && new RegExp(`^${t.replace(/X/g, '.')}$`).test(m)))
+  return hwSupport
+    .toUpperCase()
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    // `[Expand]` is the wiki's collapse control, captured verbatim into 62 rows on fmb120 alone.
+    // Left in, it is compiled below as a CHARACTER CLASS — a regex that matches nothing useful and
+    // throws no error, which is the worst way for a token to fail.
+    .filter((t) => t !== '[EXPAND]')
+    .some((t) => t === m || (t.includes('X') && new RegExp(`^${t.replace(/[^A-Z0-9X]/g, '').replace(/X/g, '.')}$`).test(m)))
 }
 
 /**
@@ -97,10 +110,28 @@ function hwCovers(hwSupport: string | undefined, model: string): boolean {
  * pages state that the number of CAN parameters depends on the vehicle's model, year and equipment,
  * so `can: true` means "this model has the CAN line", not "you will get engine data".
  */
-function capabilitiesFor(model: string, table: string): Record<string, unknown> {
+function capabilitiesFor(model: string, table: string, sharedTable: boolean): Record<string, unknown> {
   const entries = Object.values(dictionaryFor(table))
+  // WHEN IS THE HW COLUMN A FILTER AT ALL? Two cases where it is not, and both were shipping lies:
+  //
+  //  - a SINGLE-MODEL table. It was scraped from that model's OWN wiki page, so every row on it is
+  //    documented for it; the HW column there names whichever family the row belongs to. Filtering
+  //    denied 59 model×capability pairs — fmm880.json carries 44 BLE and 39 OBD rows and not one
+  //    names FMM880 (they say `FMBXXX`, which does not match an FMM code). Worst was the pair an
+  //    operator compares side by side: FMB641's page carries 196 CAN and 73 tachograph rows whose
+  //    column reads "FMB640 FMC640 FMM640", so FMB641 advertised can:false / tacho:false beside
+  //    FMB640's true — a false differentiator on the exact feature FMB641 exists for.
+  //
+  //  - a model the column NEVER names. Then it is not describing that model, and filtering by it
+  //    returns a uniformly false answer rather than an answer. All 137 rows of the FM36 page read
+  //    "FM3612, FM36M1"; the bare FM36 is a family label the page itself does not list, so it came
+  //    back with no capabilities at all while its table carries 89 CAN rows.
+  //
+  // A filter that excludes everything is not evidence of absence.
+  const named = entries.some((e) => (e.hwSupport ?? '').trim() !== '' && hwCovers(e.hwSupport, model))
+  const filter = sharedTable && named
   const has = (groups: Set<string>): boolean =>
-    entries.some((e) => groups.has((e.group ?? '').trim().toUpperCase()) && hwCovers(e.hwSupport, model))
+    entries.some((e) => groups.has((e.group ?? '').trim().toUpperCase()) && (!filter || hwCovers(e.hwSupport, model)))
   return { can: has(CAN_GROUPS), ble: has(BLE_GROUPS), tacho: has(TACHO_GROUPS), obd: has(OBD_GROUPS) }
 }
 
@@ -129,14 +160,27 @@ const LEGACY: ProfileSeed[] = [
 ]
 
 /** One profile per model the AVL generator found a table for. */
+/** How many models share each table — a table with one model IS that model's own page. */
+const modelsPerTable = new Map<string, number>()
+for (const m of (catalogue as { models: { model: string; dictionary: string }[] }).models) {
+  modelsPerTable.set(m.dictionary, (modelsPerTable.get(m.dictionary) ?? 0) + 1)
+}
+
 const MODELS: ProfileSeed[] = (catalogue as { models: { model: string; dictionary: string }[] }).models.map((m) => {
-  const asset = ASSET_FAMILIES.some((f) => m.model.startsWith(f))
+  // The prefix list is a PRODUCT classification — TAT/TMT/TST/TFT/GH tables do carry id 239, but
+  // those trackers are battery-powered and nobody wires their ignition, so they run in noIgnition
+  // mode by default. What follows it is a HARD derivation from the table, and it is not cosmetic:
+  // a table with no id 239 at all cannot drive the ignition branch of the trip engine
+  // (`engine.ts`: `t.noIgnition ? speed > … : r.ignition === true && …`), so `moving` stays false
+  // forever — no trip, no distance, no report, ever. ATC700/ATM700 are exactly that: 40 ids of
+  // battery voltage, alarm button and last-fix age, and the prefix list did not know about them.
+  const asset = ASSET_FAMILIES.some((f) => m.model.startsWith(f)) || dictionaryFor(m.dictionary)['239'] === undefined
   return {
     key: m.model.toLowerCase(),
     name: `Teltonika ${m.model}`,
     model: m.model,
     avlTable: m.dictionary,
-    capabilities: capabilitiesFor(m.model, m.dictionary),
+    capabilities: capabilitiesFor(m.model, m.dictionary, modelsPerTable.get(m.dictionary)! > 1),
     presenceRules: asset ? ASSET : VEHICLE,
     commandPresets: asset ? ASSET_PRESETS : VEHICLE_PRESETS,
     readIdleMin: asset ? 1560 : 40, // 26 h for an asset tracker that reports on a schedule
@@ -149,6 +193,7 @@ export async function seedProfiles(databaseUrl: string): Promise<Record<string, 
   const prisma = new PrismaClient({ datasourceUrl: databaseUrl })
   try {
     const idByKey: Record<string, string> = {}
+    const changed: string[] = []
     for (const p of DEVICE_PROFILES) {
       const presenceRules = p.presenceRules as never
       const commandPresets = p.commandPresets as never
@@ -162,12 +207,28 @@ export async function seedProfiles(databaseUrl: string): Promise<Record<string, 
         legacy: p.legacy ?? false,
         ...(p.model !== undefined ? { model: p.model } : {}),
       }
+      // The seed OVERWRITES on re-run, deliberately: it is how a corrected classification reaches
+      // an existing deployment (ATC700 moving from vehicle to asset rules is exactly that). But it
+      // is also the only channel an operator has for a wrong decode today — there is no profile
+      // editor — so a re-seed silently reverting `UPDATE device_profiles SET "avlTable"=…` would
+      // un-fix their fix with no output at all. It still reverts; it no longer does it in silence.
+      const before = await prisma.deviceProfile.findUnique({ where: { key: p.key }, select: { avlTable: true, presenceRules: true } })
+      if (before !== null && before.avlTable !== p.avlTable) {
+        changed.push(`${p.key}: avlTable ${before.avlTable} → ${p.avlTable}`)
+      }
+      if (before !== null && JSON.stringify(before.presenceRules) !== JSON.stringify(p.presenceRules)) {
+        changed.push(`${p.key}: presenceRules ${JSON.stringify(before.presenceRules)} → ${JSON.stringify(p.presenceRules)}`)
+      }
       const row = await prisma.deviceProfile.upsert({
         where: { key: p.key },
         create: { key: p.key, ...shared },
         update: shared,
       })
       idByKey[p.key] = row.id
+    }
+    if (changed.length > 0) {
+      console.error(`profile seed CHANGED ${changed.length} existing value(s) — if one of these was a manual correction, it has just been reverted:`)
+      for (const c of changed) console.error(`  ${c}`)
     }
     return idByKey
   } finally {

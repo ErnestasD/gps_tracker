@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyTypeConsensus, parseAvlTable, type AvlEntry } from '../src/parse.js'
+import { applyRangeConsensus, applyTypeConsensus, parseAvlTable, type AvlEntry } from '../src/parse.js'
 
 /**
  * The dictionary is the only place this repo is allowed to assert what an AVL id MEANS (rule 8), so
@@ -337,5 +337,80 @@ describe('header shapes that actually occur on the wiki', () => {
     const r = parseAvlTable(html)
     expect(r.warnings).toContain('id 84: a data cell spans rows or columns — column alignment is not guaranteed for this row')
     expect(r.warnings.filter((w) => w.startsWith('id 85:'))).toEqual([]) // …and only the row that spans
+  })
+})
+
+describe('cross-page RANGE consensus', () => {
+  const e = (o: Partial<AvlEntry> & { name: string }): AvlEntry =>
+    ({ bytes: '2', type: 'Signed', multiplier: '0.1', units: '°C', ...o })
+
+  it('adopts a negative range from a page documenting the same parameter', () => {
+    // The real case, and the only one in the corpus: FM36 types id 115 Signed and writes its range
+    // as 0…65535 — the WIRE range — where six other tables write −600…1270, the VALUE range. Left
+    // alone, applySign refuses (a non-negative minimum has no sign to extend) and an FM3612 at
+    // −5 °C surfaces as 6548.6 °C, while the FMB120 fallback reads it correctly.
+    const fm36 = { '115': e({ name: 'LVCAN Engine Temperature', min: '0', max: '65535' }) }
+    const donor = { '115': e({ name: 'Engine Coolant Temperature', min: '-600', max: '1270' }) }
+    const notes = applyRangeConsensus([fm36, donor])
+    expect(fm36['115'].min).toBe('-600')
+    expect(fm36['115'].max).toBe('1270')
+    expect(notes).toHaveLength(1)
+    expect(notes[0]!.table).toBe(0) // attributed to the table that was CHANGED, not the donor
+  })
+
+  it('keys on id+width+multiplier+units, NEVER on the name', () => {
+    // fm36 calls it "LVCAN Engine Temperature" and the donors "Engine Coolant Temperature". A
+    // name-keyed rule would miss the only case there is — which is why this one is not name-keyed.
+    expect(applyRangeConsensus([
+      { '115': e({ name: 'Totally Different Name', min: '0', max: '65535' }) },
+      { '115': e({ name: 'Engine Coolant Temperature', min: '-600', max: '1270' }) },
+    ])).toHaveLength(1)
+  })
+
+  it('does NOT transfer across a different width, multiplier or unit', () => {
+    // Those four fields are what make it the same parameter. Without them the key is weak enough
+    // that 150 pairs across the corpus collide on materially different meanings.
+    for (const differs of [{ bytes: '4' }, { multiplier: '0.01' }, { units: 'mV' }]) {
+      const recipient = { '115': e({ name: 'X', min: '0', max: '65535', ...differs }) }
+      expect(applyRangeConsensus([recipient, { '115': e({ name: 'Y', min: '-600', max: '1270' }) }]), JSON.stringify(differs)).toEqual([])
+      expect(recipient['115'].min).toBe('0')
+    }
+  })
+
+  it('leaves a NON-Signed entry alone — this reconciles a range, it never creates one', () => {
+    const recipient = { '115': e({ name: 'X', type: 'Unsigned', min: '0', max: '65535' }) }
+    expect(applyRangeConsensus([recipient, { '115': e({ name: 'Y', min: '-600', max: '1270' }) }])).toEqual([])
+    expect(recipient['115'].min).toBe('0')
+  })
+
+  it('leaves an entry that ALREADY documents a negative minimum alone', () => {
+    const recipient = { '115': e({ name: 'X', min: '-4', max: '1270' }) }
+    expect(applyRangeConsensus([recipient, { '115': e({ name: 'Y', min: '-600', max: '1270' }) }])).toEqual([])
+    expect(recipient['115'].min).toBe('-4')
+  })
+
+  it('DECLINES when two donor pages disagree, rather than picking by file order', () => {
+    // Which donor wins would otherwise depend on the order of models.json, and that is not
+    // evidence. One key in the corpus already carries two ranges (151|2|0.1|°C is −600..1270 on
+    // fmb120/fmb930 and −255..65535 on fm36); it has no recipient today, so this is the guard for
+    // the day it does.
+    const recipient = { '151': e({ name: 'X', min: '0', max: '65535' }) }
+    const notes = applyRangeConsensus([
+      recipient,
+      { '151': e({ name: 'A', min: '-600', max: '1270' }) },
+      { '151': e({ name: 'B', min: '-255', max: '65535' }) },
+    ])
+    expect(recipient['151'].min).toBe('0') // untouched
+    expect(notes).toHaveLength(1)
+    expect(notes[0]!.note).toContain('DISAGREE')
+  })
+
+  it('ignores a donor that documents only half a range', () => {
+    const recipient = { '115': e({ name: 'X', min: '0', max: '65535' }) }
+    const half = e({ name: 'Y', min: '-600' })
+    delete half.max
+    const donor = { '115': half }
+    expect(applyRangeConsensus([recipient, donor])).toEqual([])
+    expect(recipient['115'].max).toBe('65535')
   })
 })

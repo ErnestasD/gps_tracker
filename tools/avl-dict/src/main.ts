@@ -159,6 +159,16 @@ async function coverage(models: ModelEntry[]): Promise<void> {
   if (gone.length > 0) process.exitCode = 1
 }
 
+/** Models that produced no dictionary at all. Shared so a bail-out path cannot omit them. */
+function reportFailures(failed: { model: string; reason: string }[]): void {
+  if (failed.length === 0) return
+  console.error(`\n${failed.length} model(s) produced NO dictionary — they must be offered with an empty one or not at all:`)
+  for (const f of failed) console.error(`  ${f.model}: ${f.reason}`)
+  // A 404 used to exit 0: the model vanished from the catalogue, every element for it became
+  // unnamed, and `pnpm gen && git commit` would land it as a success.
+  process.exitCode = 1
+}
+
 async function main(): Promise<void> {
   const fresh = process.argv.includes('--fresh')
   const models = JSON.parse(readFileSync(join(TOOL, 'models.json'), 'utf8')) as ModelEntry[]
@@ -236,12 +246,23 @@ async function main(): Promise<void> {
   const cataloguePath = join(OUT, 'catalogue.json')
   const cataloguePrev = existsSync(cataloguePath) ? readFileSync(cataloguePath, 'utf8') : ''
   let prevModels: { model: string; dictionary: string }[] = []
-  try {
-    // A half-written catalogue used to be simply overwritten; an unguarded parse turned it into an
-    // unhandled SyntaxError. This tool deploys by rsync — a truncated file is a real shape.
-    if (cataloguePrev !== '') prevModels = (JSON.parse(cataloguePrev) as { models: { model: string; dictionary: string }[] }).models
-  } catch {
-    console.error('catalogue.json is unreadable — treating it as absent and rewriting it')
+  if (cataloguePrev !== '') {
+    try {
+      // UNREADABLE IS NOT ABSENT, and conflating them disabled this whole guard. A half-written
+      // catalogue (this tool deploys by rsync) parsed to "no previous mapping", so `remapped` came
+      // back empty, a truncated page's brand-new dictionary was written, and the run exited 0 — the
+      // exact silent landing the guard exists to prevent, reachable by damaging the one file the
+      // guard reads. Validate the SHAPE too: `JSON.parse('{}').models` is `undefined`, which used
+      // to throw one line later, outside the try.
+      const parsed = JSON.parse(cataloguePrev) as { models?: unknown }
+      if (!Array.isArray(parsed.models)) throw new Error('no models array')
+      prevModels = parsed.models as { model: string; dictionary: string }[]
+    } catch {
+      console.error('catalogue.json exists but is unreadable — cannot tell whether a regrouping happened, so NOTHING was written')
+      console.error('  delete it deliberately if you mean to rebuild the mapping from scratch')
+      process.exitCode = 1
+      return
+    }
   }
   const prevMap = new Map(prevModels.map((m) => [m.model, m.dictionary]))
   const remapped = named.flatMap(({ group, key }) =>
@@ -253,6 +274,11 @@ async function main(): Promise<void> {
     say(`\n${remapped.length} model(s) moved to a DIFFERENT dictionary — a wiki regrouping, or a parse that truncated one page out of its family:`)
     for (const m of remapped) say(`  ${m}`)
     if (!allow) {
+      // …and report the OTHER failures before bailing. A 404 and a regrouping in the same run used
+      // to cost two round trips: the operator saw only the remap, fixed it, re-ran, and only then
+      // learned a page had 404'd. A tool whose whole point is that failures are not silent must not
+      // hide one behind another.
+      reportFailures(failed)
       console.error('  NOTHING was written — re-run with --allow-remap once you have checked those pages')
       process.exitCode = 1
       return
@@ -318,13 +344,7 @@ async function main(): Promise<void> {
     for (const s of shrunk) console.error(`  ${s}`)
     process.exitCode = 1
   }
-  if (failed.length > 0) {
-    console.log(`\n${failed.length} model(s) produced NO dictionary — they must be offered with an empty one or not at all:`)
-    for (const f of failed) console.log(`  ${f.model}: ${f.reason}`)
-    // A 404 used to exit 0: the model vanished from the catalogue, every element for it became
-    // unnamed, and `pnpm gen && git commit` would land it as a success.
-    process.exitCode = 1
-  }
+  reportFailures(failed)
   const stale = readdirSync(OUT).filter((f) => f.endsWith('.json') && f !== 'catalogue.json' && !summary.some((s) => `${s.dictionary}.json` === f))
   if (stale.length > 0) console.log(`\nfiles no model maps to any more (delete them): ${stale.join(', ')}`)
 }

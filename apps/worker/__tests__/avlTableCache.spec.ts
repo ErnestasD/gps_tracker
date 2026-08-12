@@ -111,6 +111,21 @@ describe('AvlTableCache', () => {
     expect(f.reasons).toEqual([])
   })
 
+  it('a device ALREADY on the fallback keeps saying so through an outage', async () => {
+    // The under-report the outcome-gate introduced: a device with no config row falls back, caches
+    // the fallback, and then — once Redis is down and it is no longer "newly" falling back —
+    // reported nothing at all. It is still decoding every IO element with the wrong table, for the
+    // whole outage, which is exactly when an operator most needs to see it. The reason is cached
+    // with the table so it survives the blip.
+    const r = fakeRedis({})
+    const f = collect()
+    const c = new AvlTableCache(r.redis, 60_000, f.on)
+    expect((await c.resolveBatch([7n], 1_000)).get('7')).toBe(FALLBACK_AVL_TABLE)
+    r.fail(true)
+    for (const t of [61_001, 121_001]) expect((await c.resolveBatch([7n], t)).get('7')).toBe(FALLBACK_AVL_TABLE)
+    expect(f.reasons).toEqual(['no_config', 'no_config', 'no_config'])
+  })
+
   it('…and it is STILL not counted during a Redis outage, which is where the name test failed', async () => {
     // The discriminating case, and the one the previous version of this guard got wrong. It asked
     // "is the resolved table the fallback?" — which is true for these 45 models even when nothing

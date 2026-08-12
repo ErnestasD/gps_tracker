@@ -157,8 +157,11 @@ Every new variable must be added to the table here AND match the `.env` contract
 
 ## Devices (E03-3)
 
-- `pnpm db:seed:profiles` seeds the four device profiles (fmb1xx, fmc, fmb6xx-stub,
-  tat-asset). Create devices via the web Devices page or `POST /v1/devices`; each
+- `pnpm db:seed:profiles` seeds **109** device profiles — one per Teltonika model with an AVL page
+  (105) plus the four pre-catalogue family rows (fmb1xx, fmc, fmb6xx-stub, tat-asset), which are
+  kept because live devices reference them and hidden from the picker. `make migrate` runs it: the
+  migration marks those four `legacy`, and until the seed lands `GET /v1/profiles` is empty and no
+  device can be created. Create devices via the web Devices page or `POST /v1/devices`; each
   create/retire **syncs the ingest/worker Redis registries** (`registry:imei`,
   `device:tenant`, `device:account`) — a device is invisible to ingest until created
   and rejected (0x00) on the next connect after retire.
@@ -321,6 +324,15 @@ Every new variable must be added to the table here AND match the `.env` contract
 - Elements the table does not name (and ids whose name is ambiguous **within** a table, where two
   parameters share a name) surface as `io_<id>`. That is deliberate: resolving a name collision by
   arrival order would label a percentage and a kilogram count identically.
+- **KNOWN GAP — the read path is still model-blind.** The decoder now uses each device's own
+  dictionary; the code that READS `positions.attrs` does not. Only AVL id 67 (Battery Voltage) means
+  the same thing on all 34 tables. Id 85 is "Engine RPM" on some and "Engine Current Load" on
+  others; 32 is "Coolant Temperature" or "Axle 5 Load"; 89 is "Fuel Level" or "Axle weight 1"; 236
+  is "Alarm" or "Axis X". So on FMx6xx and the FTC/ATC families the CAN and fuel panels can read the
+  wrong parameter or nothing at all, and a panic / power-cut rule may be impossible on a model whose
+  table has no such element. Ids whose meaning is CONSTANT and only spelled differently (21 GSM, 66
+  external voltage, 78 iButton) are handled. The rest needs a per-table semantic index — which is
+  the same work as the dictionary-driven renderer below, and is not in this change.
 - Regenerate with `pnpm --filter @orbetra/avl-dict gen` (`--fresh` refetches; `--coverage` diffs
   `models.json` against the wiki's own page index). The JSON is generated — never hand-edit it.
 

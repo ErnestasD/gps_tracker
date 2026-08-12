@@ -11,7 +11,20 @@ import { isPgSafeDate } from './dateGuard.js'
  *   GSM Signal (AVL 21, 1–5) · External Voltage (AVL 66, V ×0.001) · Battery Voltage (AVL 67, V ×0.001)
  * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
  * normalize() stores these under the dictionary NAME, falling back to io_<id> on a
- * name collision, so the reader coalesces both. Voltages are raw mV — scaled to V here.
+ * name collision, so the reader coalesces both.
+ *
+ * AND ACROSS SPELLINGS, because the name is now the DEVICE'S OWN table's name, not FMB120's.
+ * These three ids mean the same thing on all 34 shipped tables and differ only in how the wiki
+ * types them: id 21 is "GSM Signal" on 32 tables, "GSM signal" on atc700 and "GSM level" on fm36;
+ * id 66 is "External Voltage" on 21 and "External Power Voltage" on fm36; id 67 is "Battery
+ * Voltage" everywhere. Before the profile chose a dictionary every device decoded as FMB120, so one
+ * spelling sufficed — an FM36 or an ATC700 now writes its own, and without these the health chart
+ * for those models goes blank with no error.
+ *
+ * A spelling union is only safe BECAUSE the meaning is constant for these ids. It is NOT safe in
+ * general: id 85 is "Engine RPM" on some tables and "Engine Current Load" on others, id 32 is
+ * "Coolant Temperature" or "Axle 5 Load", id 89 "Fuel Level" or "Axle weight 1". Those need the
+ * device's table, not a wider COALESCE — see the read-path note in README. Voltages are raw mV — scaled to V here.
  * (AVL 168 is ALSO named "Battery Voltage" but is likewise mV, so ×0.001 holds whichever
  * key wins the collision.) jsonb values are coerced defensively in JS (a ::numeric cast on
  * garbage would 500).
@@ -49,8 +62,8 @@ export async function readHealthSeries(pool: Pool, deviceId: bigint, opts: Healt
   if (isPgSafeDate(opts.to)) where.push(`fix_time <= $${params.push(new Date(opts.to!))}`)
   const res = await pool.query<PgHealthRow>(
     `SELECT fix_time,
-            COALESCE(attrs->>'GSM Signal', attrs->>'io_21') AS gsm,
-            COALESCE(attrs->>'External Voltage', attrs->>'io_66') AS ext_mv,
+            COALESCE(attrs->>'GSM Signal', attrs->>'GSM signal', attrs->>'GSM level', attrs->>'io_21') AS gsm,
+            COALESCE(attrs->>'External Voltage', attrs->>'External Power Voltage', attrs->>'io_66') AS ext_mv,
             COALESCE(attrs->>'Battery Voltage', attrs->>'io_67') AS bat_mv
      FROM positions WHERE ${where.join(' AND ')}
      ORDER BY fix_time DESC, rec_hash DESC LIMIT ${limit}`,

@@ -367,56 +367,6 @@ export function parseAvlTable(rawHtml: string): ParseResult {
  * second page contradicts them, so there is nothing to reconcile against, and correcting them would
  * be inference. Both are flagged by the Min cross-check for a human to raise with Teltonika.
  */
-/**
- * Reconcile the value RANGE across pages, for Signed parameters only.
- *
- * The Type column is not the only cell a page can get wrong, and the other one is just as
- * load-bearing: `applySign` refuses to sign-extend an entry whose own minimum is not negative,
- * because an identifier or a bitmask typed `Signed` must not be reinterpreted. That rule is right,
- * and on ONE entry the wiki makes it produce the exact failure this module exists to prevent.
- *
- * FM36 documents id 115 as `Signed`, 2 bytes, ×0.1 °C — and writes its range as `0…65535`, the raw
- * WIRE range, where six other tables write `−600…1270`, the VALUE range. Left alone, an FM3612
- * reporting −5 °C surfaces as 6548.6 °C on its own table while the FMB120 fallback reads it
- * correctly: naming the device's true model makes its data worse, which is the one outcome this
- * whole per-model dictionary effort is supposed to remove.
- *
- * NARROW ON PURPOSE, because consensus rules on this file have twice been too broad. It keys on
- * (id, bytes, multiplier, units) — NOT the name, since fm36 calls it "LVCAN Engine Temperature" and
- * the donors "Engine Coolant Temperature", so a name-keyed rule would miss the only case there is.
- * Both sides must already be `Signed`; this reconciles a range, it never creates one. Measured over
- * the 34 tables it corrects exactly ONE entry, and every correction is recorded.
- */
-export function applyRangeConsensus(tables: Record<string, AvlEntry>[]): { table: number; note: string }[] {
-  const sig = (id: string, e: AvlEntry): string => `${id}|${e.bytes}|${e.multiplier ?? ''}|${e.units ?? ''}`
-  const negative = (e: AvlEntry): boolean => {
-    const mn = Number(e.min)
-    return Number.isFinite(mn) && mn < 0
-  }
-  const donors = new Map<string, { min?: string; max?: string; name: string }>()
-  for (const t of tables) {
-    for (const [id, e] of Object.entries(t)) {
-      if (e.type === 'Signed' && negative(e)) donors.set(sig(id, e), { ...(e.min !== undefined ? { min: e.min } : {}), ...(e.max !== undefined ? { max: e.max } : {}), name: e.name })
-    }
-  }
-  const corrections: { table: number; note: string }[] = []
-  for (const [index, t] of tables.entries()) {
-    for (const [id, e] of Object.entries(t)) {
-      if (e.type !== 'Signed' || negative(e)) continue
-      const d = donors.get(sig(id, e))
-      if (d === undefined) continue
-      const was = `${e.min ?? '?'}..${e.max ?? '?'}`
-      if (d.min !== undefined) e.min = d.min
-      if (d.max !== undefined) e.max = d.max
-      corrections.push({
-        table: index,
-        note: `id ${id}: range was ${was} here but ${d.min ?? '?'}..${d.max ?? '?'} on another Teltonika page for the same id, width, multiplier and units (there as "${d.name}") — adopted, so a negative reading is sign-extended rather than surfacing as a large positive`,
-      })
-    }
-  }
-  return corrections
-}
-
 export function applyTypeConsensus(tables: Record<string, AvlEntry>[]): { table: number; note: string }[] {
   // min/max are part of the identity, not decoration. Without them 156 signatures across the 34
   // tables resolve to entries with different ranges or descriptions — "Neighbouring Cell 1 MNC" is
@@ -460,6 +410,77 @@ export function applyTypeConsensus(tables: Record<string, AvlEntry>[]): { table:
           note: `id ${id}: Type was ${was} here but Signed on another Teltonika page for the same name, width, multiplier, units and value range${range} — corrected to Signed. Description and HW Support were NOT compared and do differ`,
         })
       }
+    }
+  }
+  return corrections
+}
+
+/**
+ * Reconcile the value RANGE across pages, for Signed parameters only.
+ *
+ * The Type column is not the only cell a page can get wrong, and the other one is just as
+ * load-bearing: `applySign` refuses to sign-extend an entry whose own minimum is not negative,
+ * because an identifier or a bitmask typed `Signed` must not be reinterpreted. That rule is right,
+ * and on ONE entry the wiki makes it produce the exact failure this module exists to prevent.
+ *
+ * FM36 documents id 115 as `Signed`, 2 bytes, ×0.1 °C — and writes its range as `0…65535`, the raw
+ * WIRE range, where six other tables write `−600…1270`, the VALUE range. Left alone, an FM3612
+ * reporting −5 °C surfaces as 6548.6 °C on its own table while the FMB120 fallback reads it
+ * correctly: naming the device's true model makes its data worse, which is the one outcome this
+ * whole per-model dictionary effort is supposed to remove.
+ *
+ * NARROW ON PURPOSE, because consensus rules on this file have twice been too broad. It keys on
+ * (id, bytes, multiplier, units) — NOT the name, since fm36 calls it "LVCAN Engine Temperature" and
+ * the donors "Engine Coolant Temperature", so a name-keyed rule would miss the only case there is.
+ * Both sides must already be `Signed`; this reconciles a range, it never creates one. Measured over
+ * the 34 tables it corrects exactly ONE entry, and every correction is recorded.
+ */
+export function applyRangeConsensus(tables: Record<string, AvlEntry>[]): { table: number; note: string }[] {
+  const sig = (id: string, e: AvlEntry): string => `${id}|${e.bytes}|${e.multiplier ?? ''}|${e.units ?? ''}`
+  const negative = (e: AvlEntry): boolean => {
+    const mn = Number(e.min)
+    return Number.isFinite(mn) && mn < 0
+  }
+  // Donors are collected as a SET of ranges per key, not last-write-wins. The key is weak on its own
+  // — 150 keys across the corpus collide on materially different names — and the only thing keeping
+  // this rule to one correction is that both sides must be Signed. If two donors ever disagree, the
+  // one that would be transplanted depends purely on the order of `models.json`, which is not
+  // evidence; the rule declines and says so instead. One key already carries conflicting ranges
+  // today (151|2|0.1|°C is −600..1270 on fmb120/fmb930 and −255..65535 on fm36), with no recipient.
+  const donors = new Map<string, Map<string, { min?: string; max?: string; name: string; table: number }>>()
+  for (const [index, t] of tables.entries()) {
+    for (const [id, e] of Object.entries(t)) {
+      if (e.type !== 'Signed' || !negative(e)) continue
+      // min AND max together: adopting one without the other would leave a range that is half this
+      // page's and half another's, which is not a reading either page supports.
+      if (e.min === undefined || e.max === undefined) continue
+      const key = sig(id, e)
+      const byRange = donors.get(key) ?? new Map<string, { min?: string; max?: string; name: string; table: number }>()
+      byRange.set(`${e.min}..${e.max}`, { min: e.min, max: e.max, name: e.name, table: index })
+      donors.set(key, byRange)
+    }
+  }
+  const corrections: { table: number; note: string }[] = []
+  for (const [index, t] of tables.entries()) {
+    for (const [id, e] of Object.entries(t)) {
+      if (e.type !== 'Signed' || negative(e)) continue
+      const byRange = donors.get(sig(id, e))
+      if (byRange === undefined) continue
+      if (byRange.size > 1) {
+        corrections.push({
+          table: index,
+          note: `id ${id}: another Teltonika page documents a negative range for the same id, width, multiplier and units, but the pages DISAGREE on it (${[...byRange.keys()].join(' vs ')}) — left as documented here rather than picked by file order`,
+        })
+        continue
+      }
+      const d = [...byRange.values()][0]!
+      const was = `${e.min ?? '?'}..${e.max ?? '?'}`
+      e.min = d.min
+      e.max = d.max
+      corrections.push({
+        table: index,
+        note: `id ${id}: range was ${was} here but ${d.min!}..${d.max!} on another Teltonika page for the same id, width, multiplier and units (there as "${d.name}") — adopted, so a negative reading is sign-extended rather than surfacing as a large positive`,
+      })
     }
   }
   return corrections
