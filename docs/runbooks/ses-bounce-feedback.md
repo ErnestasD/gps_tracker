@@ -157,6 +157,22 @@ Step 4 (`SES_CONFIG_SET=orbetra-prod`) is already set on the server.
 
 ## 7 — Subscribe the topic to our endpoint (AFTER the endpoint is deployed)
 
+> **DO THIS FIRST — set `SES_SNS_TOPIC_ARN` on the API before subscribing.**
+> The endpoint accepts messages from exactly one topic. A valid AWS signature only proves *AWS* sent
+> the message: the same regional certificate signs every AWS customer's topics, so without this
+> binding anyone with an AWS account could publish a fake "permanent bounce" for any address and have
+> it blackholed platform-wide (audit C2). The check therefore **fails closed** — with the variable
+> unset the API refuses everything with 403, *including the subscription handshake below*, and the
+> subscription will sit at **Pending confirmation** forever.
+>
+> ```sh
+> # on the server, in /opt/orbetra/.env — copy the ARN from step 1
+> SES_SNS_TOPIC_ARN=arn:aws:sns:eu-central-1:<account-id>:orbetra-ses-events
+> ```
+> Restart the api container, then create the subscription. A wrong ARN logs
+> `SES: refused message from an unexpected SNS topic` — distinct from the signature refusal, so the
+> two failures are never confused.
+
 **SNS → Topics → `orbetra-ses-events` → Create subscription**
 
 | Field | Value |

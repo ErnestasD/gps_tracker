@@ -117,6 +117,10 @@ const deps = {
   // sheet renders as a visible gap rather than as somebody else's brand.
   onboarding: { host: process.env['INGEST_PUBLIC_HOST'] ?? '', port: Number(process.env['INGEST_TCP_PORT'] ?? 5027) },
   ...(stripe !== undefined ? { stripe } : {}),
+  // The SNS topic our SES feedback must come from. NOT optional-by-omission: the endpoint is public
+  // and an AWS signature only proves AWS signed it, so an unset value makes /v1/webhooks/ses refuse
+  // everything rather than accept a bounce published from a stranger's topic.
+  ...(process.env['SES_SNS_TOPIC_ARN'] ? { sesTopicArn: process.env['SES_SNS_TOPIC_ARN'] } : {}),
   ...(process.env['APP_BASE_URL'] ? { appBaseUrl: process.env['APP_BASE_URL'] } : {}),
   // where a partner's short link `/r/<code>` lands — the marketing site, not the dashboard
   ...(process.env['SITE_BASE_URL'] ? { siteUrl: process.env['SITE_BASE_URL'].replace(/\/+$/, '') } : {}),

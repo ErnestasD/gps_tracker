@@ -128,6 +128,14 @@ export interface ApiDeps extends WsDeps {
   siteUrl?: string
   /** an SES feedback event arrived (bounce | complaint | other | rejected-signature) */
   onSesEvent?: (kind: 'bounce' | 'complaint' | 'other' | 'rejected') => void
+  /**
+   * The ONE SNS topic ARN whose SES feedback we act on (`SES_SNS_TOPIC_ARN`).
+   *
+   * A valid AWS signature proves AWS sent the message, NOT that it came from our topic — the same
+   * regional certificate signs every AWS customer's topics. Unset ⇒ the endpoint refuses every
+   * message (fails closed) rather than believing any signed publisher.
+   */
+  sesTopicArn?: string
   /** where a partner's payout request lands (PARTNER_OPS_EMAIL). Absent ⇒ recorded, not mailed. */
   opsEmail?: string
   /** the partner short link's click counter failed (swallowed — see affiliateSilentFailure) */
@@ -484,6 +492,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // credential. Its security is the signature, verified inside. Manifest-EXEMPT.
   app.route('/', createSesWebhookRoutes({
     db: deps.db,
+    expectedTopicArn: deps.sesTopicArn,
     ...(deps.onSesEvent !== undefined ? { onEvent: deps.onSesEvent } : {}),
   }))
 
