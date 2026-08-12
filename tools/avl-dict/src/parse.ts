@@ -99,17 +99,16 @@ const NON_NUMERIC = new Set(['HEX', 'ASCII', '<STRING>'])
  */
 function topLevelBlocks(html: string, tag: string): string[] {
   const out: string[] = []
-  const re = new RegExp(`<(/?)(?:${tag})\\b[^>]*?(/?)>`, 'gi')
+  const re = new RegExp(`<(/?)(?:${tag})\\b[^>]*>`, 'gi')
   let depth = 0
   let start = 0
   for (let m = re.exec(html); m !== null; m = re.exec(html)) {
-    // `<td/>` opens and closes in one tag. Without this the empty cell swallows the rest of the row
-    // — every later column shifts one place left and the row parses to blanks with no warning. No
-    // page uses the form today; the cost of allowing for it is one capture group.
-    if (m[1] === '' && m[2] === '/') {
-      if (depth === 0) out.push(m[0])
-      continue
-    }
+    // NOTE, because this was tried and reverted: `<td/>` is NOT a self-closing cell. HTML5 ignores
+    // a trailing solidus on a non-void element and treats it as a START tag, so `<td class="x" />2`
+    // is a cell containing "2". A branch that read it as an empty cell therefore BLANKED a
+    // populated one — same cell count, so neither the over-wide-row warning nor the shrink guard
+    // could see it, and a blanked Type cell means every negative temperature on that model reads
+    // as a large positive. Zero pages in the corpus use the form; matching the spec is free.
     if (m[1] === '') {
       if (depth === 0) start = m.index
       depth += 1
@@ -267,19 +266,25 @@ export function parseAvlTable(rawHtml: string): ParseResult {
         continue
       }
       if (seen.has(id)) {
-        // …and compare the WHOLE entry, not just the name. 62 distinct ids are repeated on their own
-        // page with the same name but different columns (109 warnings across the 34 tables) —
-        // FMB640's id 239 "Ignition" appears with max "1" in Permanent I/O and "0xFF" in FMS Eco
-        // Driving, FMC650's 10889 with multiplier "0.03125" and "0,03125".
+        // …and compare the WHOLE entry, not just the name. 62 distinct ids repeat on their own page;
+        // 44 of them keep the same name while a column differs — FMB640's id 239 "Ignition" appears
+        // with max "1" in Permanent I/O and "0xFF" in FMS Eco Driving, FMC650's 10889 with
+        // multiplier "0.03125" and "0,03125". The other 19 are genuine redefinitions and get the
+        // "defined twice" warning below instead.
         //
-        // ELEVEN of them differ in BYTES, which IS the class that changes decoding: TFT100 lists
-        // 815 "Throttle Position", 828 "Remaining Capacity", 833 "Total Distance" and eight more at
-        // both 1/2/4 bytes and 8. First wins, so tft100.json ships the narrow width. Nothing decodes
-        // wrongly today — all eleven are Unsigned, so applySign returns early — but `bytes` is what
-        // the width guard in applySign reads, and this comment previously claimed no such case
-        // existed. It does; it is warned, and it is a question for Teltonika, not for us to resolve.
+        // THE NAME CHECK IS PART OF THE MESSAGE'S TRUTH, not an optimisation: without it this line
+        // fired on rows whose names differ too, so 57 of 109 warnings said "with the same name"
+        // about a pair that has none — tft100's 20016 is "LTE RSRP" on one row and "Central Stand
+        // Lock" on the other. `warnings` is the rule-8 audit trail; half of it was mislabelled.
+        //
+        // ELEVEN of the same-name ids differ in BYTES, which IS the class that changes decoding:
+        // TFT100 lists 815 "Throttle Position", 828 "Remaining Capacity", 833 "Total Distance" and
+        // eight more at both a narrow width and 8. First wins, so tft100.json ships the narrow one.
+        // Nothing decodes wrongly today — all eleven are Unsigned, so applySign returns early — but
+        // `bytes` is what applySign's width guard reads, and an earlier version of this comment
+        // claimed no such case existed. It does; it is warned; it is a question for Teltonika.
         const first = elements[id]
-        if (first !== undefined && JSON.stringify(first) !== JSON.stringify(candidate(cells, idx, name))) {
+        if (seen.get(id) === name && first !== undefined && JSON.stringify(first) !== JSON.stringify(candidate(cells, idx, name))) {
           warnings.push(`id ${id}: repeated with the same name but different columns — kept the first`)
         }
         // The wiki really does define some ids twice with different meanings (TAT100 463/467/471/475,

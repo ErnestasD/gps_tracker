@@ -60,6 +60,7 @@ export class AvlTableCache {
       const e = this.cache.get(id)
       return e === undefined || now - e.at >= this.ttlMs
     })
+    const why = new Map<string, AvlFallbackReason>()
     if (stale.length > 0) {
       // A Redis blip must not stop the pipeline: the batch decodes on the fallback and the next
       // one retries. Throwing here would dead-letter every entry in the batch as "malformed".
@@ -70,14 +71,24 @@ export class AvlTableCache {
       })
       stale.forEach((id, i) => {
         const r = failed ? { table: FALLBACK_AVL_TABLE, reason: 'redis_error' as const } : parseTable(raw[i])
-        if (r.reason !== undefined) this.onFallback?.(r.reason)
+        if (r.reason !== undefined) why.set(id, r.reason)
         // A Redis failure is NOT cached: caching it would hold the whole shard on the fallback for
         // the full TTL after the blip cleared, and the next batch is the natural retry.
         if (!failed) this.cache.set(id, { table: r.table, at: now })
       })
     }
     const out = new Map<string, AvlTable>()
-    for (const id of ids) out.set(id, this.cache.get(id)?.table ?? FALLBACK_AVL_TABLE)
+    for (const id of ids) {
+      const table = this.cache.get(id)?.table ?? FALLBACK_AVL_TABLE
+      out.set(id, table)
+      // Report from the OUTCOME, not from the branch. Not caching a Redis failure means a device
+      // whose entry merely EXPIRED keeps its own correct table through the blip — and the counter
+      // used to claim a fallback there anyway, so an operator paging on it would hunt positions
+      // that were fine. Only a device that actually decodes on the fallback counts, and only when
+      // we know why (a profile whose table genuinely IS fmb120 is not a fallback).
+      const reason = why.get(id)
+      if (reason !== undefined && table === FALLBACK_AVL_TABLE) this.onFallback?.(reason)
+    }
     return out
   }
 }

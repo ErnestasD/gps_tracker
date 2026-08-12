@@ -9,13 +9,9 @@
  "warnings": [
   "id 210: Min is -4 but Type is \"Unsigned\" — negative values will read as large positives",
   "id 502: Type \"unsigned\" normalised to Unsigned",
-  "id 270: repeated with the same name but different columns — kept the first",
   "id 270: defined twice — kept \"Escort LLS Fuel level #1\", ignored \"BLE Fuel Level #1\"",
-  "id 273: repeated with the same name but different columns — kept the first",
   "id 273: defined twice — kept \"Escort LLS Fuel level #2\", ignored \"BLE Fuel Level #2\"",
-  "id 276: repeated with the same name but different columns — kept the first",
   "id 276: defined twice — kept \"Escort LLS Fuel level #3\", ignored \"BLE Fuel Level #3\"",
-  "id 279: repeated with the same name but different columns — kept the first",
   "id 279: defined twice — kept \"Escort LLS Fuel level #4\", ignored \"BLE Fuel Level #4\"",
   "id 463: Type \"UNSIGNED LONG INT\" normalised to Unsigned",
   "id 464: Type \"UNSIGNED LONG INT\" normalised to Unsigned",

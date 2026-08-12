@@ -313,8 +313,10 @@ Every new variable must be added to the table here AND match the `.env` contract
 - **Fallback** is `fmb120` (the table 45 models render identically) whenever the answer is
   unavailable: no config row yet, a config written before the field existed, a malformed value, an
   unknown table name, or Redis unreachable. Every one of those increments
-  `pipeline_avl_fallback_total{reason}` — a non-zero rate means devices are being decoded with the
-  wrong dictionary, which looks like data, not like an error.
+  `pipeline_avl_table_unresolved_total{reason}` (alert `AvlTableUnresolved`) — a non-zero rate means
+  devices are being decoded with the wrong dictionary, which looks like data, not like an error. It
+  counts device→table RESOLUTIONS, which are cached for ~60 s, so read it as "how many devices", not
+  "how many positions".
 - Elements the table does not name (and ids whose name is ambiguous **within** a table, where two
   parameters share a name) surface as `io_<id>`. That is deliberate: resolving a name collision by
   arrival order would label a percentage and a kilogram count identically.

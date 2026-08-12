@@ -244,8 +244,10 @@ async function main(): Promise<void> {
     // is not a guard, it is a note attached to the damage: the operator reads "treat as a parser
     // failure" with the bad dictionary committed under their cursor, and `git checkout` is the only
     // way back. The good file stays, the exit code is non-zero, and the run is repeatable.
-    if (lost) console.error(`  ${key}: NOT written — the existing file is kept`)
-    else if (stripDate(prev) !== stripDate(next)) writeFileSync(path, next)
+    if (lost) {
+      console.error(`  ${key}: NOT written — the existing file is kept`)
+      unchanged++ // it was not rewritten; counting it as such would tell the operator the opposite
+    } else if (stripDate(prev) !== stripDate(next)) writeFileSync(path, next)
     else unchanged++
     for (const m of group.models) catalogue.push({ model: m, dictionary: key })
     summary.push({ dictionary: key, elements: Object.keys(group.elements).length, models: group.models.length, warnings: group.warnings.length })
@@ -255,6 +257,32 @@ async function main(): Promise<void> {
   const cataloguePath = join(OUT, 'catalogue.json')
   const catalogueNext = `${JSON.stringify({ retrieved_at: retrieved, models: catalogue }, null, 1)}\n`
   const cataloguePrev = existsSync(cataloguePath) ? readFileSync(cataloguePath, 'utf8') : ''
+  // A REGROUPING is the shrink guard's blind spot, and it is the more dangerous shape.
+  //
+  // That guard compares a table against the file already on disk — so it only sees a truncation
+  // that KEEPS the group's identity. Deduplication is by content hash, and a truncated page no
+  // longer hashes with its family: FMC130 currently renders byte-identical to FMB120 and lives in
+  // the 45-model `fmb120` group, but a truncated FMC130 page becomes its own group keyed `fmc130`,
+  // whose file does not exist, so nothing shrank, nothing was reported, and a brand-new truncated
+  // dictionary is written with the run exiting 0. Every FMC130 then decodes against it.
+  //
+  // Teltonika splitting or merging a template is a REAL event that belongs in a diff a human reads,
+  // so this reports rather than fails silently, and `--allow-remap` is how that human says yes.
+  const prevMap = new Map<string, string>(
+    cataloguePrev === '' ? [] : (JSON.parse(cataloguePrev) as { models: { model: string; dictionary: string }[] }).models.map((m) => [m.model, m.dictionary]),
+  )
+  const remapped = catalogue.filter((m) => prevMap.has(m.model) && prevMap.get(m.model) !== m.dictionary)
+  if (remapped.length > 0) {
+    const allow = process.argv.includes('--allow-remap')
+    const say = allow ? console.log : console.error
+    say(`\n${remapped.length} model(s) moved to a DIFFERENT dictionary — a wiki regrouping, or a parse that truncated one page out of its family:`)
+    for (const m of remapped) say(`  ${m.model}: ${prevMap.get(m.model)!} → ${m.dictionary}`)
+    if (!allow) {
+      console.error('  re-run with --allow-remap once you have checked the pages; nothing was written to the catalogue')
+      process.exitCode = 1
+      return
+    }
+  }
   // same reason as the dictionaries: a date-only rewrite is noise that hides the real change
   if (stripDate(cataloguePrev) !== stripDate(catalogueNext)) writeFileSync(cataloguePath, catalogueNext)
 

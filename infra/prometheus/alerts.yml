@@ -114,6 +114,19 @@ groups:
           summary: "Records quarantined to raw:dead ({{ $value | humanize }}/s, reason={{ $labels.reason }})"
           description: "Positions are being dropped from the pipeline. Inspect raw:dead payloads — rejected_by_db means a value no column accepts."
 
+      # a device decoded with the DEFAULT dictionary instead of its own model's. The records land
+      # and look normal — every IO element is simply named and SIGNED by the wrong table, durably,
+      # in positions.attrs where nothing recomputes it. `no_config` is EXCLUDED: it is expected for
+      # a short window after a Redis flush until the API's boot rehydrate republishes device:config,
+      # and paging on a self-healing state trains people to ignore the alert.
+      - alert: AvlTableUnresolved
+        expr: rate(pipeline_avl_table_unresolved_total{reason!="no_config"}[15m]) > 0
+        for: 15m
+        labels: { severity: warning, component: pipeline }
+        annotations:
+          summary: "Devices decoding on the fallback AVL dictionary (reason={{ $labels.reason }})"
+          description: "Attribute names and signs are wrong for these devices and the rows are already written. reason=redis_error: the worker cannot read device:config — treat as an incident. reason=unknown_table: a device profile names a dictionary this build does not ship, so the profile row is wrong. reason=malformed/no_field: something wrote device:config without going through deviceConfigValue. See the runbook."
+
       # the platform-wide SMS breaker refuses config SMS for EVERY tenant until the window rolls,
       # so it must page rather than sit in a log line. device/tenant rejections are informational.
       - alert: SmsQuotaTripped

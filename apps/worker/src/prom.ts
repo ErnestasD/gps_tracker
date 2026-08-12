@@ -237,7 +237,18 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
    * Labelled by REASON because the reasons want different responses: `redis_error` is an incident,
    * `no_config` is a device the rehydrate has not reached, `unknown_table` is a bad profile row.
    */
-  const avlFallback = new Counter({ name: 'pipeline_avl_fallback_total', help: 'records decoded with the fallback AVL dictionary rather than the device profile\'s own table, by reason (no_config | no_field | malformed | unknown_table | redis_error)', labelNames: ['reason'], registers: [registry] })
+  const avlFallback = new Counter({
+    name: 'pipeline_avl_table_unresolved_total',
+    // NOT a record count, and the name says so. It counts device→table RESOLUTIONS that fell back,
+    // and resolutions are cached, so a device stuck on the fallback at 60 records/min contributes
+    // ~1 per TTL, not 60. `redis_error` is the one reason that is deliberately not cached (so the
+    // next batch retries immediately), and it is therefore the one that can repeat per batch —
+    // only for devices with no cached table at all, since a device whose entry merely expired
+    // keeps its own table through the blip and is not counted.
+    help: 'device→AVL-table resolutions that fell back to the default dictionary, by reason (no_config | no_field | malformed | unknown_table | redis_error). Sampled at most once per device per cache TTL, except redis_error which is not cached',
+    labelNames: ['reason'],
+    registers: [registry],
+  })
   /** transactional mail actually handed to SES, by kind — the denominator that makes a failure rate
    *  meaningful and the only evidence that activation mail is flowing at all */
   const authEmailSent = new Counter({ name: 'worker_auth_email_sent_total', help: 'transactional emails handed to the transport, by kind (verify-email | password-reset | signup-exists | lapse | partner)', labelNames: ['kind'], registers: [registry] })

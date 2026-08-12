@@ -96,8 +96,12 @@ function fakeDb(rows: LapsedTenant[], suspended: { tenantId: string; suspendedAt
     tenants: {
       listLapsedTenants: () => Promise.resolve(rows),
       listSuspended: () => Promise.resolve(suspended),
+      // `avlTable` is here because the restore REBUILDS device:config: a field missing from these
+      // rows is deleted from the fleet's config, not merely left stale. The type requires it in
+      // production, but this double is cast through `as unknown as Db`, so the cast — not the
+      // compiler — decides what this test proves. It proved the fallback state until now.
       registryDevicesFor: (tenantId: string) =>
-        Promise.resolve([{ id: 1n, imei: '860000000000001', tenantId, accountId: 'a1', presenceRules: {}, odometerSource: 'auto' }]),
+        Promise.resolve([{ id: 1n, imei: '860000000000001', tenantId, accountId: 'a1', presenceRules: {}, odometerSource: 'auto', avlTable: 'fmc650' }]),
       markLapseNotice: (tenantId: string, stage: number) => { notices.push([tenantId, stage]); return Promise.resolve() },
       // answers from the SAME state `listLapsedTenants` reports, because the sweep re-reads it
       // before re-asserting a teardown — trusting the snapshot let a concurrent platform restore
@@ -110,10 +114,16 @@ function fakeDb(rows: LapsedTenant[], suspended: { tenantId: string; suspendedAt
   return { db, notices, suspends, unsuspends }
 }
 
-/** Redis double: the registry calls only hget/eval/multi, and we only care THAT they happened. */
+/** Redis double: the registry calls only hget/eval/multi, and we only care THAT they happened —
+ *  except for `device:config`, whose CONTENT the restore rebuilds and can therefore silently lose. */
 function fakeRedis() {
   const chain: Record<string, unknown> = {}
-  for (const m of ['hset', 'hdel', 'sadd', 'srem', 'del']) chain[m] = () => chain
+  const written: Record<string, string> = {}
+  for (const m of ['hdel', 'sadd', 'srem', 'del']) chain[m] = () => chain
+  chain['hset'] = (key: string, field: string, value: string) => {
+    if (key === 'device:config') written[field] = value
+    return chain
+  }
   chain['exec'] = () => Promise.resolve([])
   const touched: string[] = []
   const redis = {
@@ -121,7 +131,7 @@ function fakeRedis() {
     eval: () => { touched.push('eval'); return Promise.resolve(1) },
     multi: () => { touched.push('multi'); return chain },
   } as unknown as Redis
-  return { redis, touched }
+  return { redis, touched, written }
 }
 
 const mailer = (sent: Sent[]) => ({ enqueueLapseEmail: (j: { email: string; daysLeft: number }) => { sent.push({ email: j.email, daysLeft: j.daysLeft }); return Promise.resolve() } })
@@ -201,11 +211,15 @@ describe('runLapseSweep', () => {
     // it; the restore pass therefore reads its own set
     const sent: Sent[] = []
     const { db, unsuspends } = fakeDb([], [{ tenantId: 'paid-up', suspendedAt: daysAgo(5) }])
-    const { redis, touched } = fakeRedis()
+    const { redis, touched, written } = fakeRedis()
     const r = await runLapseSweep({ db, redis, mail: mailer(sent), appBaseUrl: 'https://app.test' }, NOW, GRACE)
     expect(unsuspends).toEqual(['paid-up'])
     expect(touched.length).toBeGreaterThan(0) // the registry was rebuilt
     expect(r.restored).toBe(1)
+    // …and rebuilt WHOLE. A restore writes device:config from scratch, so anything the row does not
+    // carry is dropped — a fleet that comes back decoding on the fallback dictionary, with every IO
+    // attribute plausibly named and wrong, the moment the customer pays.
+    expect(JSON.parse(written['1'] ?? '{}')).toEqual({ presenceRules: {}, odometerSource: 'auto', avlTable: 'fmc650' })
   })
 
   it('does NOT restore a suspended tenant that is still lapsed', async () => {

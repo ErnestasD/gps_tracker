@@ -309,13 +309,18 @@ describe('header shapes that actually occur on the wiki', () => {
     expect(Object.keys(parseAvlTable(html).elements).sort()).toEqual(['239', '69'])
   })
 
-  it('a self-closing <td/> is one empty cell, not a cell that swallows the rest of the row', () => {
+  it('`<td … />` is a START tag, per HTML5 — it must not blank a populated cell', () => {
+    // Treating it as self-closing was tried and reverted: it dropped the cell's content while
+    // keeping the cell COUNT, so nothing could detect it — and a blanked Type cell means every
+    // negative temperature on that model reads as a large positive, which is the defect the
+    // dictionary exists to prevent, arriving through a defence added for it.
     const html = `<table>
       <tr><th>Property ID in AVL packet</th><th>Property Name</th><th>Bytes</th><th>Type</th><th>Units</th></tr>
-      <tr><td>84</td><td>Fuel Level</td><td/><td>Unsigned</td><td>l</td></tr>
+      <tr><td>84</td><td>Fuel Level</td><td class="x" />2</td><td>Signed</td><td>l</td></tr>
     </table>`
     const e = parseAvlTable(html).elements['84']
-    expect(e?.type).toBe('Unsigned') // …and not '' from a column that slid left
+    expect(e?.bytes).toBe('2')
+    expect(e?.type).toBe('Signed')
     expect(e?.units).toBe('l')
   })
 

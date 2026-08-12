@@ -93,32 +93,43 @@ export function applySign(entry: AvlDictionaryEntry | undefined, value: bigint):
   // NARROWER width than another shipped table gives them. Passing the raw value through leaves it
   // visibly odd; truncating makes it plausible and wrong.
   if (value >= 1n << BigInt(bits)) return value
-  // …and a range the dictionary itself says is impossible for a signed field of this width means
-  // the Type column is not describing two's complement. Teltonika types id 127 Engine Coolant
+  // TWO refusals follow, and both took a hostile round each to get right. The Type column alone is
+  // not sufficient evidence to reinterpret bytes, so the entry's own RANGE has to agree.
+  const max = Number(entry.max)
+  const min = Number(entry.min)
+
+  // (1) A field whose documented minimum is NOT NEGATIVE has no sign to extend. This is the
+  // strongest and simplest of the two, and it was missing: fm36 types eleven EIGHT-BYTE fields
+  // `Signed` with `min: "0"` and an unreadable max ("max", "-1E+19") — 78 iButton ID, 75/76/77
+  // the Dallas sensor IDs, 147–150 the LVCAN driver IDs, 101 ModuleID and the 124/132 flag words.
+  // Those are identifiers and bitmasks, not quantities. `asIntN` turned iButton ROM
+  // 0x8B0000021C4A2801 into -8430738493373011967, so roughly half of all ROM codes (the ones with
+  // the high bit set) were corrupted — durably, in positions.attrs, breaking driver assignment,
+  // exports and any rule keyed on the value. Worse: the FMB120 fallback got it RIGHT, so naming
+  // the device's true model made its data worse, which is the opposite of this module's purpose.
+  //
+  // Requiring a readable, negative Min also means an entry whose range we cannot parse is left
+  // alone rather than reinterpreted on the strength of one word in the Type column.
+  if (!(Number.isFinite(min) && min < 0)) return value
+
+  // (2) …and a range the dictionary says is impossible for a signed field of this width means the
+  // Type column is not describing two's complement either. Teltonika types id 127 Engine Coolant
   // Temperature as `Signed`, 1 byte, range −40…210 — and 210 does not fit int8, because the wire
   // byte is 0…250 with the description "Offset by -40". Reinterpreting it turns a 130 °C engine
   // into −86 °C, so an over-temperature rule can never fire.
   //
-  // BUT "max is too big" ALONE IS NOT THAT SHAPE, and testing only max was a bug of its own that
-  // review caught before it shipped: it silenced sign extension on 64 entries — every ELD, reefer
-  // and Frigo temperature on the FMx6xx tables, e.g. fmc650 id 13396 "Frigo Comp 1 Supply",
-  // 2 bytes, −32768…32768. That `32768` is a wiki off-by-one on a field whose own Min is EXACTLY
-  // the int16 floor; the field is unambiguously two's complement, and passing it through turned
-  // −5.0 °C into 65486 — the very failure this function exists to prevent. Worse, it armed on the
-  // devices this table wiring newly decodes CORRECTLY.
+  // BUT "max is too big" ALONE IS NOT THAT SHAPE, and testing only max was a bug of its own: it
+  // silenced sign extension on 64 entries — every ELD, reefer and Frigo temperature on the FMx6xx
+  // tables, e.g. fmc650 id 13396 "Frigo Comp 1 Supply", 2 bytes, −32768…32768. That `32768` is a
+  // wiki off-by-one on a field whose own Min is EXACTLY the int16 floor; the field is unambiguously
+  // two's complement, and passing it through turned −5.0 °C into 65486.
   //
   // An offset encoding has a signature, and it is the whole range, not one end: the span fits the
   // UNSIGNED width (the wire really is 0…2^bits−1) and the minimum sits ABOVE the signed floor
-  // (there is an offset to subtract, not a sign bit). Measured over the 34 shipped tables that is
-  // 12 entries — ids 127 and 10893 at −40…210, plus three the wiki types Signed over a plainly
-  // unsigned range (13378 "Sensor 7 Unit" 0…255, fm36 115 at 0…65535) — and 0 of the 64.
-  const max = Number(entry.max)
-  const min = Number(entry.min)
-  const offsetEncoded =
-    Number.isFinite(max) &&
-    Number.isFinite(min) &&
-    max - min <= 2 ** bits - 1 &&
-    min > -(2 ** (bits - 1))
+  // (there is an offset to subtract, not a sign bit). After (1) this clause is load-bearing for
+  // exactly ids 127 and 10893 (−40…210); the rest of what it used to catch has a Min of 0 and is
+  // now refused earlier, which is the more honest reason.
+  const offsetEncoded = Number.isFinite(max) && max - min <= 2 ** bits - 1 && min > -(2 ** (bits - 1))
   if (offsetEncoded && max > 2 ** (bits - 1) - 1) return value
   return BigInt.asIntN(bits, value)
 }

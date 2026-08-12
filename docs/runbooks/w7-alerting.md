@@ -16,6 +16,7 @@ Alertmanager routes them to the founders' Telegram.
 | BackpressureSustained | `ingest_paused_sockets` > 0 for 10m | warn |
 | UnsupportedCodecSeen | `rate(ingest_unsupported_codec_total[15m])` > 0 for 15m | warn |
 | DeadLetteredRows | `rate(pipeline_dead_lettered_total[15m])` > 0 for 15m | warn |
+| AvlTableUnresolved | `rate(pipeline_avl_table_unresolved_total{reason!="no_config"}[15m])` > 0 for 15m | warn |
 | BillingWebhookUnmatched | `increase(billing_webhook_unmatched_total{reason="no_tenant"}[1h])` > 0 for 5m | crit |
 | WorkerJobFailing | `increase(worker_job_failed_total[1h])` > 0 for 10m | crit |
 | UsageSweepFailing | `increase(usage_sweep_failed_total[1h])` > 0 for 10m | crit |
@@ -50,6 +51,30 @@ A record was dropped from the pipeline and quarantined in `raw:dead`. Check `rea
   Inspect the payload and add a bound in `normalize.ts` so the next one is nulled rather than dropped.
 
 Both are *customer-visible data loss for that record*, so any sustained rate deserves a fix, not a mute.
+
+### AvlTableUnresolved
+
+Devices are being decoded with the **fallback** AVL dictionary (`fmb120`) instead of the one their
+device profile names. Nothing looks broken: positions arrive, the map moves, trips close. What is
+wrong is every IO attribute's NAME and SIGN — id 141 is "Battery Temperature" (Signed) on an FMx6xx
+and "Driver 1 Cumulative Break Time" (Unsigned) on the fallback, so a −0.1 °C reading is stored as
+65535. It is written to `positions.attrs` and **nothing recomputes it**, so the rows produced during
+the incident stay wrong after it is fixed. Check `reason`:
+
+- `redis_error` — the worker cannot read `device:config`. An incident, not a data problem: fix Redis
+  and the next batch self-corrects. Only devices with no cached table at all are affected; a device
+  whose cache entry merely expired keeps decoding correctly throughout.
+- `unknown_table` — a device profile names a dictionary this build does not ship. The profile row is
+  wrong (or the deploy is older than the profile seed). Find it with
+  `SELECT key, "avlTable" FROM device_profiles WHERE "avlTable" NOT IN (…shipped tables…)`.
+- `malformed` / `no_field` — something wrote `device:config` without going through
+  `deviceConfigValue`. Find the writer; that helper exists precisely so the six of them cannot drift.
+- `no_config` — **excluded from the alert.** Expected briefly after a Redis flush until the API's
+  boot rehydrate republishes the fleet. If it persists, the rehydrate is not running.
+
+The counter counts RESOLUTIONS, not records, and resolutions are cached for ~60 s — so a device
+stuck on the fallback at 60 records/min contributes about 1, not 60. Read it as "how many devices",
+not "how many positions".
 
 ### WorkerJobFailing / UsageSweepFailing
 

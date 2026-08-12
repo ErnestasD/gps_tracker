@@ -252,11 +252,42 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
     expect(applySign({ name: 'Sensor 7 Unit', bytes: '1', type: 'Signed', min: '0', max: '255' }, 200n)).toBe(200n)
   })
 
-  it('and every shipped entry the refusal fires on is one of the 12 known offset encodings', () => {
-    // The unit cases above pin the rule; this pins the BLAST RADIUS against the real corpus, which
-    // is what actually went wrong — the rule looked right and hit 76 entries instead of 12.
+  it('an IDENTIFIER typed Signed is not sign-extended — a min of 0 has no sign to extend', () => {
+    // Round two found this in round one's fix. fm36 types eleven EIGHT-BYTE fields `Signed` with
+    // min "0" and an unreadable max ("max", "-1E+19"): 78 iButton ID, the Dallas sensor IDs, the
+    // LVCAN driver IDs, ModuleID and two flag words. Those are identifiers and bitmasks, and the
+    // predicate — which demanded a READABLE range before refusing — treated the garbage max as
+    // permission to reinterpret. An iButton ROM with the high bit set came out negative, so about
+    // half of all ROM codes were corrupted durably in attrs, breaking driver assignment.
+    //
+    // The sharpest part: fmb120, the "wrong" fallback table, decoded it CORRECTLY. Naming the
+    // device's true model made its data worse, which is the exact opposite of the point.
+    const rom = 0x8b0000021c4a2801n
+    const ibutton = { name: 'iButton ID', bytes: '8', type: 'Signed', min: '0', max: '-1E+19' }
+    expect(applySign(ibutton, rom)).toBe(rom)
+    expect(applySign({ name: 'LVCAN Driver1 ID High', bytes: '8', type: 'Signed', min: '0', max: 'max' }, rom)).toBe(rom)
+    // …and the real fm36 entry, not just a hand-built one
+    expect(applySign(loadDictionary('fm36').get(78), rom)).toBe(rom)
+    expect(applySign(loadDictionary('fmb120').get(78), rom)).toBe(rom) // the fallback always agreed
+  })
+
+  it('a range we cannot READ is left alone rather than reinterpreted on the Type column alone', () => {
+    // The corpus really does carry `max: "max"`, `max: "9,9"`, `min: "0 bytes"` and
+    // `max: "4211081.215 l"`. Type is one word; the range is the evidence. With no readable
+    // negative minimum there is nothing to justify rewriting the bytes.
+    expect(applySign({ name: 'X', bytes: '2', type: 'Signed', max: '9,9' }, 65_531n)).toBe(65_531n)
+    expect(applySign({ name: 'X', bytes: '2', type: 'Signed', min: '0 bytes', max: '100' }, 65_531n)).toBe(65_531n)
+    // …while a readable negative minimum still gets the reinterpretation it asks for
+    expect(applySign({ name: 'X', bytes: '2', type: 'Signed', min: '-32768', max: '32767' }, 65_531n)).toBe(-5n)
+  })
+
+  it('the refusals over the REAL corpus are exactly these, and each for a stated reason', () => {
+    // The unit cases pin the rules; this pins the BLAST RADIUS, which is what went wrong twice —
+    // a rule that looked right hit 76 entries instead of 12, and its replacement missed 18.
+    // Split by reason so a change shows up as a MOVE between lists, not as a bare count.
     const BITS: Record<string, number> = { '1': 8, '2': 16, '4': 32, '8': 64 }
-    const refused: string[] = []
+    const nonNegative: string[] = []
+    const offsetEncoded: string[] = []
     for (const table of avlTables()) {
       for (const [id, e] of loadDictionary(table)) {
         if (e.type !== 'Signed') continue
@@ -264,11 +295,38 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
         if (bits === undefined) continue
         // a positive reading inside the declared width that comes back UNCHANGED was refused
         const probe = (1n << BigInt(bits)) - 2n
-        if (applySign(e, probe) === probe) refused.push(`${table}#${id} ${e.name}`)
+        if (applySign(e, probe) !== probe) continue
+        const min = Number(e.min)
+        ;(Number.isFinite(min) && min < 0 ? offsetEncoded : nonNegative).push(`${table}#${id} ${e.name}`)
       }
     }
-    expect(refused.sort()).toEqual([
+    // identifiers, bitmasks, a presence bit, and three the wiki types Signed over a plainly
+    // unsigned range — none of them a quantity that can go negative
+    expect(nonNegative.sort()).toEqual([
+      'fm36#101 LVCAN ModuleID',
       'fm36#115 LVCAN Engine Temperature',
+      'fm36#124 LVCAN Agricultural Machinery Flags',
+      'fm36#132 LVCAN Security State Flags',
+      'fm36#147 LVCAN Driver1 ID High',
+      'fm36#148 LVCAN Driver1 ID Low',
+      'fm36#149 LVCAN Driver2 ID High',
+      'fm36#150 LVCAN Driver2 ID Low',
+      'fm36#75 Dallas Temperature Sensor ID1',
+      'fm36#76 Dallas Temperature Sensor ID2',
+      'fm36#77 Dallas Temperature Sensor ID3',
+      'fm36#78 iButton ID',
+      'fmc650#13378 Sensor 7 Unit',
+      'fmm650#13378 Sensor 7 Unit',
+      'ftc134#1474 Beacon Presence',
+      'ftc164#1474 Beacon Presence',
+      'ftc305#1474 Beacon Presence',
+      'ftc308#1474 Beacon Presence',
+      'ftc887#1474 Beacon Presence',
+      'ftc924#1474 Beacon Presence',
+      'ftc927#1474 Beacon Presence',
+    ])
+    // …and the genuine SAE J1939 offset encodings: −40…210 on a byte whose wire range is 0…250
+    expect(offsetEncoded.sort()).toEqual([
       'fm6300#127 Engine Coolant Temperature',
       'fmb640#127 Engine Coolant Temperature',
       'fmb641#10893 High Voltage Battery Temperature',
@@ -276,10 +334,8 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
       'fmc640#127 Engine Coolant Temperature',
       'fmc650#10893 High Voltage Battery Temperature',
       'fmc650#127 Engine Coolant Temperature',
-      'fmc650#13378 Sensor 7 Unit',
       'fmm650#10893 High Voltage Battery Temperature',
       'fmm650#127 Engine Coolant Temperature',
-      'fmm650#13378 Sensor 7 Unit',
     ])
   })
 
