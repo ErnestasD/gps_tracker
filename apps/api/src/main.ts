@@ -234,7 +234,7 @@ if (process.env['TRUST_PROXY'] !== '1') {
 const redisReady = redis.status === 'ready' ? Promise.resolve() : new Promise<void>((r) => redis.once('ready', () => r()))
 void redisReady
   .then(() => rehydrateRegistries(redis, db))
-  .then((r) => console.log(`rehydrated Redis registries: ${r.devices} devices, ${r.geofences} geofences, ${r.ibuttons} iButtons`))
+  .then((r) => console.log(`rehydrated Redis registries: ${r.devices} devices, ${r.geofences} geofences, ${r.rules} rules, ${r.ibuttons} iButtons`))
   .catch((e: unknown) => console.error('rehydrate failed (non-fatal)', e))
 
 // Last resort. Every known throw path is handled, but an unhandled 'error' event anywhere in a

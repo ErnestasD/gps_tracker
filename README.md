@@ -125,6 +125,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `TRIP_ORPHAN_MAX_IDLE_MS` | apps/worker | An open trip whose device has been silent this long is closed by the startup sweep, default `21600000` (6 h). Otherwise `engineHours` bills it to `now()` forever |
 | `SHARD_STOP_TIMEOUT_MS` | apps/worker | How long to wait for a consumer's in-flight batch before abandoning its Redis connection, default `15000`. Connections use `maxRetriesPerRequest: null`, so an unbounded wait would make a Redis partition a permanent shard outage |
 | `SMS_QUOTA_DEVICE_PER_DAY` / `SMS_QUOTA_TENANT_PER_DAY` / `SMS_QUOTA_GLOBAL_PER_DAY` | apps/api | Config-SMS ceilings, default `5` / `100` / `1000`. Every send is a real billable message from the platform's Twilio sender; the global one is a breaker that 503s SMS for ALL tenants when tripped (alert `SmsQuotaTripped`, reset with `DEL sms:q:global`) |
+| `NOTIFY_CONCURRENCY` / `WEBHOOK_CONCURRENCY` | apps/worker | How many notification / webhook jobs run at once, default `8` each (clamped to 1..32; an unparseable value falls back to the default rather than crash-looping the worker at boot). BullMQ's own default is ONE, which makes a single slow SMTP socket or customer endpoint the whole platform's problem — notify carries panic and overspeed |
 | `DEVICE_CREATE_MAX_PER_WINDOW` / `DEVICE_CREATE_WINDOW_S` | apps/api | Devices one TENANT may create per window, default `10000` / `3600`. A resource guard, not an anti-squat measure — it bounds a runaway loop driving rows into `devices` (each taking an IMEI hold platform-wide), and is set at twice the whole platform's designed size (PROJECT_PLAN: 5000 devices; the largest single fleet named is 200) so no real onboarding reaches it. Reserve-then-refund, so only creations that succeed are billed (a rejected batch costs nothing); reservations are taken before the work, so concurrent large imports can trip the ceiling having created nothing. Metric `device_create_throttled_total{why}`; clear one tenant with `DEL devcreate:rl:<tenantId>` |
 | `WS_MAX_SOCKET_LIFETIME_MS` | apps/api | Hard ceiling on one live WS socket, default `14400000` (4 h). A stream is authorized only at connect, so this is what makes a plan/role change reach an already-open one; clients reconnect automatically |
 | `PUBLIC_API_URL` | apps/api | Absolute API base advertised in the generated OpenAPI `servers[]` (`GET /v1/openapi.json`, `/v1/docs`); unset = omitted |
@@ -234,7 +235,10 @@ Every new variable must be added to the table here AND match the `.env` contract
   device's tenant/account from the Redis registry (`device:tenant`/`device:account`) and
   writes `trips` rows (`open` on start, `closed` on stop; close is guarded on `status='open'`
   so a replay is a no-op). A trip is never written with a guessed tenant. Metrics:
-  `trips_opened_total`, `trips_closed_total`.
+  `trips_opened_total`, `trips_closed_total` (counted only when a row was actually written),
+  `trip_close_missed_total` (a close that matched no open row — never normal),
+  `trip_odometer_rejected_total` (an odometer delta the distance column cannot hold; the GPS
+  distance was stored instead).
 - **Recompute** (E04-2, `apps/worker/src/trip/recompute.ts` + `jobs/`) — the streaming
   engine drops out-of-order records, so a late/buffered batch (§3.6) can't reconcile
   already-persisted trips. `recomputeTrips(device, window)` rebuilds trips **authoritatively**

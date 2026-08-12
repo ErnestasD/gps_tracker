@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { buildEmailTransport, isDeliverableAddress, type MailSender, type SmtpOptions } from '../src/notify/emailTransport.js'
+import { buildEmailTransport, isDeliverableAddress, suppressionLookup, type MailSender, type SmtpOptions } from '../src/notify/emailTransport.js'
 
 /** A recording fake so we exercise env-gating + send mapping without a live SMTP server. */
 function fakeMailer() {
@@ -109,5 +109,55 @@ describe('isDeliverableAddress', () => {
     for (const ok of ['a@orbetra.com', 'b@fleet.co', 'c@sub.company.lt', 'd@x.io']) {
       expect(isDeliverableAddress(ok), ok).toBe(true)
     }
+  })
+})
+
+describe('suppressed recipients (SES bounce/complaint feedback)', () => {
+  it('drops a suppressed address, keeps the rest of a comma list, and skips the send when none remain', async () => {
+    // Alert and scheduled-report mail went out through this transport and consulted nothing, while
+    // only the AUTH worker checked. The customer gets nothing either way — what this protects is the
+    // sending identity: bounces are scored account-wide on the one identity that also carries every
+    // password reset, so a rule firing at event rate against a dead address is a slow way to have
+    // SES pause the platform.
+    const f = fakeMailer()
+    const dead = new Set(['dead@example.lt'])
+    const t = buildEmailTransport({ ...FULL }, f.create, (addrs) => Promise.resolve(new Set(addrs.filter((a) => dead.has(a)))))!
+
+    await t.send('live@example.lt, dead@example.lt', 'Panic', 'text')
+    expect(f.calls[0]!.to).toBe('live@example.lt')
+
+    await t.send('dead@example.lt', 'Panic', 'text')
+    expect(f.calls).toHaveLength(1) // no second send at all
+  })
+
+  it('FAILS OPEN: a database fault must not silence a live customer', async () => {
+    // The fail-open lives in `suppressionLookup`, not in the transport, so test it there — a
+    // transport-level assertion would only prove that whatever the caller injected was honoured.
+    // The worst case of sending one extra message to a dead address is one bounce; the worst case
+    // of the opposite is an owner who never learns their vehicle was stolen.
+    const brokenRepo = { suppressedAmong: () => Promise.reject(new Error('pg down')) }
+    await expect(suppressionLookup(brokenRepo)(['live@example.lt'])).resolves.toEqual(new Set())
+
+    const f = fakeMailer()
+    const t = buildEmailTransport({ ...FULL }, f.create, suppressionLookup(brokenRepo))!
+    await t.send('live@example.lt', 'Panic', 'text')
+    expect(f.calls.at(-1)!.to).toBe('live@example.lt')
+  })
+
+  it('asks the repo ONCE for the whole recipient list', async () => {
+    // a scheduled-report row can carry a dozen recipients; one round trip per address would put a
+    // fan-out on the same pool the hot path uses. The repo owns the lower-casing and the SQL.
+    const seen: (readonly string[])[] = []
+    const repo = { suppressedAmong: (a: readonly string[]) => { seen.push(a); return Promise.resolve(new Set<string>()) } }
+    await suppressionLookup(repo)(['A@Example.LT', ' b@example.lt '])
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toEqual(['A@Example.LT', ' b@example.lt '])
+  })
+
+  it('with no lookup injected, behaviour is exactly as before', async () => {
+    const f = fakeMailer()
+    const t = buildEmailTransport({ ...FULL }, f.create)!
+    await t.send('anyone@example.lt', 'Panic', 'text')
+    expect(f.calls[0]!.to).toBe('anyone@example.lt')
   })
 })

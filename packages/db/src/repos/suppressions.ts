@@ -21,6 +21,12 @@ export interface SuppressionRepo {
   suppress(address: string, reason: 'bounce' | 'complaint', detail: string | null, messageId: string | null): Promise<void>
   /** Is this address suppressed? Called on the send path, so it is a single indexed primary-key read. */
   isSuppressed(address: string): Promise<boolean>
+  /**
+   * Which of these are suppressed? One query for a whole recipient list — a scheduled-report row
+   * carries a dozen addresses, and one round trip each would put that fan-out on the send path.
+   * Returns the lower-cased suppressed subset; an empty input never reaches the database.
+   */
+  suppressedAmong(addresses: readonly string[]): Promise<ReadonlySet<string>>
   /** The suppression, for support answering "why did they never get the mail?". Null when clear. */
   get(address: string): Promise<EmailSuppression | null>
   /**
@@ -54,6 +60,12 @@ export function createSuppressionRepo(prisma: PrismaClient): SuppressionRepo {
       const a = key(address)
       if (a === '') return false
       return (await prisma.emailSuppression.findUnique({ where: { address: a }, select: { address: true } })) !== null
+    },
+    suppressedAmong: async (addresses) => {
+      const keys = [...new Set(addresses.map(key).filter((a) => a !== ''))]
+      if (keys.length === 0) return new Set()
+      const rows = await prisma.emailSuppression.findMany({ where: { address: { in: keys } }, select: { address: true } })
+      return new Set(rows.map((r) => r.address))
     },
     get: (address) => prisma.emailSuppression.findUnique({ where: { address: key(address) } }),
     release: async (address) => {

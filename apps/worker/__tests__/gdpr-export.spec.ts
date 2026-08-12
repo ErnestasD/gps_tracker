@@ -1,5 +1,5 @@
 import { gunzipSync } from 'node:zlib'
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, utimesSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -110,6 +110,40 @@ describe('E08-4 runExport (real pg)', () => {
     expect(raw).not.toContain('SUPER-SECRET-HASH')
     expect(raw).not.toContain('THE-HMAC-SECRET')
     expect(byType('geofence')[0]!.data['geometry']).toContain('Polygon')
+  })
+
+  it('a retry after a FAILED attempt still publishes — the terminal write accepts \'failed\', not only \'pending\'', async () => {
+    // The worker parks the row at 'failed' before rethrowing, and the queue retries 3x. With the
+    // terminal UPDATE scoped to `status='pending'` the retry matched no row, so the file was
+    // published and then DELETED by the orphan guard while `onDone` reported success: a subject
+    // access request failing silently against a green metric, on a one-month statutory clock.
+    await pool.query(`UPDATE export_jobs SET status='failed', path=NULL, "sizeBytes"=NULL, error='boom' WHERE id=$1`, [JOB])
+    const r = await runExport(pool, exportDir, JOB)
+    expect(r.bytes).toBeGreaterThan(0)
+    const job = (await pool.query<{ status: string; path: string }>(`SELECT status, path FROM export_jobs WHERE id=$1`, [JOB])).rows[0]!
+    expect(job.status).toBe('done')
+    expect(existsSync(job.path)).toBe(true)
+  })
+
+  it('a re-delivery of a DONE job is a no-op — it never re-reads the account or touches the file', async () => {
+    const before = (await pool.query<{ path: string; sizeBytes: string }>(`SELECT path, "sizeBytes" FROM export_jobs WHERE id=$1`, [JOB])).rows[0]!
+    const r = await runExport(pool, exportDir, JOB)
+    expect(r.bytes).toBe(0) // returned early on the terminal status it used to read and discard
+    const after = (await pool.query<{ status: string; path: string; sizeBytes: string }>(`SELECT status, path, "sizeBytes" FROM export_jobs WHERE id=$1`, [JOB])).rows[0]!
+    expect(after).toEqual({ status: 'done', path: before.path, sizeBytes: before.sizeBytes })
+    expect(existsSync(before.path)).toBe(true) // the customer can still download it
+  })
+
+  it('an ERASED job never gets a fresh dump written for it', async () => {
+    // The erase expires the row precisely so the data stops being available. A re-delivery that
+    // ignored the status put a brand-new copy of the erased account's data back on a named volume
+    // that survives restarts, with nothing referencing it and no sweep that would ever collect it.
+    await pool.query(`UPDATE export_jobs SET status='expired', path=NULL WHERE id=$1`, [JOB])
+    const final = join(exportDir, `${JOB}.ndjson.gz`)
+    rmSync(final, { force: true })
+    const r = await runExport(pool, exportDir, JOB)
+    expect(r.bytes).toBe(0)
+    expect(existsSync(final)).toBe(false)
   })
 
   it('throws on an unknown job id (BullMQ retries; status untouched)', async () => {

@@ -88,13 +88,20 @@ async function eraseRawRejects(pool: Pool, data: EraseJobData): Promise<void> {
  * row this expired.
  */
 async function expireAccountExports(pool: Pool, accountId: string): Promise<void> {
-  const stale = await pool.query<{ id: string; path: string | null }>(
-    `SELECT id, path FROM export_jobs WHERE "accountId" = $1 AND status IN ('done','pending')`,
+  // Claim the rows FIRST and unlink what the UPDATE hands back — never what an earlier SELECT said.
+  // Reading paths up front and then updating row by row loses the race it exists to win: a pending
+  // export that publishes between the read (path NULL, nothing to unlink) and its own row's update
+  // (which then NULLs the only reference) leaves a complete personal-data dump on the named volume
+  // with nothing pointing at it. The hourly sweep only visits `status='done'` rows and the tmp
+  // sweeper only `*.tmp`, so nothing would ever collect it. One statement, no window.
+  const claimed = await pool.query<{ path: string | null }>(
+    `UPDATE export_jobs SET status = 'expired', path = NULL
+      WHERE "accountId" = $1 AND status IN ('done','pending')
+      RETURNING path`,
     [accountId],
   )
-  for (const row of stale.rows) {
+  for (const row of claimed.rows) {
     if (row.path !== null) await unlink(row.path).catch(() => undefined)
-    await pool.query(`UPDATE export_jobs SET status = 'expired', path = NULL WHERE id = $1 AND status IN ('done','pending')`, [row.id])
   }
 }
 

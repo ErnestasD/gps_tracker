@@ -126,6 +126,11 @@ interface DeviceState {
   config: DeviceTripConfig
 }
 
+/** ~198 km/h. Above this a road vehicle is not driving, the reading is wrong. */
+const MAX_PLAUSIBLE_SPEED_MS = 55
+/** Floor for the plausibility ceiling, so a trip whose duration rounds to ~0 is not judged at 0 m. */
+const MIN_ODO_CEILING_M = 50_000
+
 export class TripEngine {
   private readonly state = new Map<string, DeviceState>() // bounded by device count
   // devices that saw an out-of-order (late) record since the last drain, with the
@@ -133,9 +138,14 @@ export class TripEngine {
   // durable positions must reconcile that region (E04-2). Bounded by device count.
   private readonly late = new Map<string, Date>()
   private readonly defaultConfig: DeviceTripConfig
+  /** Fired when a trip's odometer delta was refused as garbage and the haversine used instead.
+   *  Wired to `trip_odometer_rejected_total`: silently substituting a distance source is exactly
+   *  the kind of correction that should be visible, not inferred from a support ticket. */
+  private readonly onOdometerRejected?: (deviceId: bigint) => void
 
-  constructor(thresholds: TripThresholds = DEFAULT_THRESHOLDS) {
+  constructor(thresholds: TripThresholds = DEFAULT_THRESHOLDS, onOdometerRejected?: (deviceId: bigint) => void) {
     this.defaultConfig = { thresholds, odometerSource: 'auto' }
+    if (onOdometerRejected !== undefined) this.onOdometerRejected = onOdometerRejected
   }
 
   /** Feed fix_valid, fixTime-sorted records. `configFor` supplies per-device thresholds
@@ -323,9 +333,29 @@ export class TripEngine {
     // 'auto' additionally requires monotonicity throughout (odoBroken guard, E04-1 behaviour).
     const src = st.config.odometerSource
     const odoDelta = trip.odoStart !== null && trip.odoLast !== null ? Number(trip.odoLast - trip.odoStart) : null
-    const useOdo =
-      src === 'gps' ? false : odoDelta !== null && odoDelta >= 0 && (src === 'device' || !trip.odoBroken)
-    const distanceM = useOdo ? odoDelta! : Math.round(trip.haversineM)
+    // An odometer delta no VEHICLE could have travelled is a broken reading, not a long journey.
+    //
+    // The bound is physical, not int4. Using the storage limit caught the 0xFFFFFFFF sentinel and
+    // nothing else: one flipped high bit on a real 1000 km odometer gives ~1.07e9, which fits the
+    // column and lands 1,073,742 km in a customer report and a driver score labelled
+    // `distanceSource: 'odometer'`. Time is the honest ceiling — a road vehicle cannot average
+    // 198 km/h — and unlike a GPS-ratio test it does not punish a device that reports rarely, or a
+    // loop that returns to its start with almost no straight-line displacement. The floor covers a
+    // trip whose duration rounds to nothing.
+    //
+    // The only odometer sanity check that existed was a DECREASE (odoBroken), which a stuck-high or
+    // sentinel value never trips, and 'device' ignores even that. When this fires the haversine
+    // distance for the same trip is already computed and correct, so rejecting costs nothing.
+    const durationS = Math.max(0, (endTime.getTime() - trip.startTime.getTime()) / 1000)
+    const odoCeilingM = Math.max(MIN_ODO_CEILING_M, durationS * MAX_PLAUSIBLE_SPEED_MS)
+    const odoImplausible = odoDelta !== null && odoDelta > odoCeilingM
+    // …and only count it when the odometer would OTHERWISE have been used: a device deliberately set
+    // to `gps` because its odometer is known bad would else raise this on every single trip, turning
+    // the alert into a permanent warning about a configuration someone already fixed.
+    const wouldHaveUsedOdo = src !== 'gps' && odoDelta !== null && odoDelta >= 0 && (src === 'device' || !trip.odoBroken)
+    const useOdo = wouldHaveUsedOdo && !odoImplausible
+    const distanceM = useOdo ? odoDelta : Math.round(trip.haversineM)
+    if (odoImplausible && wouldHaveUsedOdo) this.onOdometerRejected?.(deviceId)
     out.push({
       type: 'close',
       deviceId,

@@ -40,8 +40,8 @@ describe('E04-1 TripPersister', () => {
     const redis = fakeRedis({ '42': { t: 'ten-1', a: 'acc-1' } })
     const p = new TripPersister(pool, redis)
 
-    await p.apply([openEv(42n)])
-    await p.apply([closeEv(42n)])
+    await p.apply([openEv(42n)], 0)
+    await p.apply([closeEv(42n)], 0)
 
     const insert = calls.find((c) => c.sql.startsWith('INSERT INTO trips'))!
     expect(insert.params.slice(0, 3)).toEqual(['ten-1', 'acc-1', '42']) // scoped from the registry
@@ -53,7 +53,7 @@ describe('E04-1 TripPersister', () => {
   it('an unregistered device (registry miss) writes NO trip, and its later close is dropped', async () => {
     const { pool, calls } = fakePool()
     const p = new TripPersister(pool, fakeRedis({})) // empty registry
-    await p.apply([openEv(7n), closeEv(7n)])
+    await p.apply([openEv(7n), closeEv(7n)], 0)
     expect(calls.some((c) => c.sql.startsWith('INSERT INTO trips'))).toBe(false)
     expect(calls.some((c) => c.sql.includes('UPDATE trips'))).toBe(false)
   })
@@ -61,7 +61,7 @@ describe('E04-1 TripPersister', () => {
   it('a close with no known open (post-restart / skipped open) is dropped, never a wrong-row update', async () => {
     const { pool, calls } = fakePool()
     const p = new TripPersister(pool, fakeRedis({ '9': { t: 't', a: 'a' } }))
-    await p.apply([closeEv(9n)]) // close arrives with no prior open in this process
+    await p.apply([closeEv(9n)], 0) // close arrives with no prior open in this process
     expect(calls.some((c) => c.sql.includes('UPDATE trips'))).toBe(false)
   })
 
@@ -74,14 +74,14 @@ describe('E04-1 TripPersister', () => {
       'ten-1:acc-2': { '2712847316': 'drv-OTHER' },
     })
     const p = new TripPersister(pool, redis)
-    await p.apply([openEv(42n)])
-    await p.apply([closeEv(42n, '2712847316')])
+    await p.apply([openEv(42n)], 0)
+    await p.apply([closeEv(42n, '2712847316')], 0)
     const update = calls.find((c) => c.sql.includes('UPDATE trips'))!
     expect(update.sql).toContain('COALESCE("driverId"')
     expect(update.params[8]).toBe('drv-9') // acc-1's driver — never drv-OTHER from acc-2
     // a close with an UNKNOWN iButton resolves to null (no driver), never errors
-    await p.apply([openEv(42n)])
-    await p.apply([closeEv(42n, '9999999999')])
+    await p.apply([openEv(42n)], 0)
+    await p.apply([closeEv(42n, '9999999999')], 0)
     const update2 = calls.filter((c) => c.sql.includes('UPDATE trips'))[1]!
     expect(update2.params[8]).toBeNull()
   })
@@ -90,7 +90,7 @@ describe('E04-1 TripPersister', () => {
     const { pool, calls } = fakePool()
     const redis = fakeRedis({ '1': { t: 't', a: 'a' }, '2': { t: 't', a: 'a' } })
     const p = new TripPersister(pool, redis)
-    await p.apply([openEv(1n), openEv(2n), closeEv(1n), closeEv(2n)])
+    await p.apply([openEv(1n), openEv(2n), closeEv(1n), closeEv(2n)], 0)
     const updates = calls.filter((c) => c.sql.includes('UPDATE trips'))
     expect(updates).toHaveLength(2)
     expect(updates[0]!.params[0]).toBe('100') // device 1 → first insert id
@@ -123,7 +123,7 @@ describe('E04-1 TripPersister crash posture (audit high)', () => {
     const { pool, calls } = poolWith([{ id: '77', deviceId: '42', tenantId: 't1', accountId: 'a1' }], [])
     const p = new TripPersister(pool, fakeRedis({ '42': { t: 't1', a: 'a1' } }))
     expect(await p.warmStart([0, 1], 16)).toBe(1)
-    const res = await p.apply([closeEv(42n)])
+    const res = await p.apply([closeEv(42n)], 0)
     expect(res.closed).toBe(1)
     const upd = calls.find((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))
     expect(upd?.params[0]).toBe('77') // the warm-started id, not a guess
@@ -134,7 +134,7 @@ describe('E04-1 TripPersister crash posture (audit high)', () => {
     const { pool, calls } = poolWith([{ id: '77', deviceId: '42', tenantId: 't1', accountId: 'a1' }], [])
     const p = new TripPersister(pool, fakeRedis({ '42': { t: 't1', a: 'a1' } }))
     await p.warmStart([0, 1], 16)
-    await p.apply([openEv(42n)])
+    await p.apply([openEv(42n)], 0)
     const closes = calls.filter((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))
     expect(closes).toHaveLength(1)
     expect(closes[0]!.params[0]).toBe('77')
@@ -175,7 +175,59 @@ describe('E04-1 TripPersister crash posture (audit high)', () => {
     const p = new TripPersister(pool, fakeRedis({ '42': { t: 't1', a: 'a1' } }))
     await p.warmStart([3], 16)
     p.forgetShard(3)
-    await p.apply([closeEv(42n)])
+    await p.apply([closeEv(42n)], 0)
     expect(calls.some((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))).toBe(false)
+  })
+})
+
+describe('the bookkeeping that keeps a close attributable', () => {
+  it('a runtime-opened trip is forgotten on a handoff — not only warm-started ones', async () => {
+    // `shardOf` was written ONLY by warmStart, so forgetShard skipped every trip this process had
+    // opened itself: precisely the population a handoff most needs to release, and precisely the
+    // trips whose ids a peer is about to warm-start for itself.
+    const { pool } = fakePool()
+    const redis = fakeRedis({ '42': { t: 'ten-1', a: 'acc-1' } })
+    const p = new TripPersister(pool, redis)
+    expect(await p.apply([openEv(42n)], 3)).toMatchObject({ opened: 1 })
+    p.forgetShard(3)
+    // the close now has no id to attach to — which is the CORRECT outcome after a handoff, and is
+    // reported rather than counted as a success
+    expect(await p.apply([closeEv(42n)], 3)).toEqual({ opened: 0, closed: 0, missed: 1 })
+  })
+
+  it('forgetShard leaves OTHER shards alone', async () => {
+    const { pool } = fakePool()
+    const redis = fakeRedis({ '42': { t: 'ten-1', a: 'acc-1' } })
+    const p = new TripPersister(pool, redis)
+    await p.apply([openEv(42n)], 3)
+    p.forgetShard(7)
+    expect(await p.apply([closeEv(42n)], 3)).toMatchObject({ closed: 1, missed: 0 })
+  })
+
+  it('a close that writes NO row is reported as missed, never as closed', async () => {
+    // trips_closed_total used to increment on the 0-row no-op too, so every dropped close was
+    // recorded as a success and the one metric that could expose the class instead concealed it.
+    const calls: { sql: string }[] = []
+    const query = vi.fn((sql: string) => {
+      calls.push({ sql })
+      if (/^INSERT INTO trips/.test(sql)) return Promise.resolve({ rows: [{ id: 100 }], rowCount: 1 })
+      return Promise.resolve({ rows: [], rowCount: /^UPDATE trips/.test(sql) ? 0 : 1 }) // the row was already closed
+    })
+    const p = new TripPersister({ query } as unknown as Pool, fakeRedis({ '42': { t: 'ten-1', a: 'acc-1' } }))
+    await p.apply([openEv(42n)], 1)
+    expect(await p.apply([closeEv(42n)], 1)).toEqual({ opened: 0, closed: 0, missed: 1 })
+  })
+
+  it('the orphan sweep only takes fix_valid positions for the trip end', async () => {
+    // it ended the trip at an INVALID fix's time and coordinates — (0,0) for sentinel firmware —
+    // two lines under a comment explaining why Null Island must be avoided. It also decided WHETHER
+    // a trip looked orphaned: a device parked underground reports satellites=0 on schedule, and
+    // those rows kept the sweep's freshness check satisfied so the stranded trip stayed invisible.
+    const { pool, calls } = fakePool()
+    const p = new TripPersister(pool, fakeRedis({}))
+    await p.closeOrphans(6 * 3_600_000, [0], 16)
+    const sweep = calls.find((c) => /FROM trips t/.test(c.sql))!
+    const lateral = sweep.sql.slice(sweep.sql.indexOf('SELECT fix_time, lat, lon'))
+    expect(lateral.slice(0, lateral.indexOf('ORDER BY'))).toContain('fix_valid')
   })
 })

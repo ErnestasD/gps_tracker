@@ -246,6 +246,52 @@ tests:
         alertname: IngestSheddingDatagrams
         exp_alerts: []
 
+  # a close that found no open row must page; a healthy pipeline must stay silent
+  - interval: 1m
+    input_series:
+      - series: 'trip_close_missed_total'
+        values: '0+1x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: TripCloseMissed
+        exp_alerts:
+          - exp_labels: { severity: warning, component: worker }
+            exp_annotations:
+              summary: "Trip closes are not finding their open row"
+              description: "A close event matched no open trip, so that journey keeps a 0 km force-close instead of its mileage. Two causes: the open-trip id was forgotten or overwritten (look for shard flapping — a lease lost and re-gained — at the same timestamps), or the OPEN was skipped because the device was missing from the Redis registry (check device:tenant for the device)."
+
+  - interval: 1m
+    input_series:
+      - series: 'trip_close_missed_total'
+        values: '0+0x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: TripCloseMissed
+        exp_alerts: []
+
+  # a refused odometer must be visible; a fleet whose odometers are fine must stay silent
+  - interval: 1m
+    input_series:
+      - series: 'trip_odometer_rejected_total'
+        values: '0+1x400'
+    alert_rule_test:
+      - eval_time: 380m
+        alertname: TripOdometerRejected
+        exp_alerts:
+          - exp_labels: { severity: warning, component: worker }
+            exp_annotations:
+              summary: "A device's odometer reading was refused as garbage"
+              description: "An odometer delta exceeded what a road vehicle could travel in the trip's own duration (the usual cause is the 0xFFFFFFFF sentinel, a stuck-high total, or a corrupt bit). The trip stored its GPS distance instead. Find the device and check its configuration — no data was lost."
+
+  - interval: 1m
+    input_series:
+      - series: 'trip_odometer_rejected_total'
+        values: '0+0x400'
+    alert_rule_test:
+      - eval_time: 380m
+        alertname: TripOdometerRejected
+        exp_alerts: []
+
   # the device-creation ceiling: a hit must be visible, and a quiet platform must stay silent.
   # `why` is a label, so the alert must carry it through — an operator seeing this needs to know
   # whether the guard fired or went missing.

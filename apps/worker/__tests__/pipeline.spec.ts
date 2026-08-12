@@ -178,12 +178,18 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
      * delivery were never in a PEL and can never appear here. `stream_depth` is the leading
      * indicator; this is the receipt.
      */
-    await ingestRecords(5)
+    // SEVEN, not five, and the number matters. `onPendingEvicted` is `(shard, count)`, and this test
+    // used to declare a ONE-argument callback — which binds `shard`, not the count. This IMEI shards
+    // to 5, the test ingested 5 records, and the assertion summed to 5 either way: it passed on a
+    // coincidence, and stayed green with the production count wired to a literal 999 (verified).
+    // Seven records on shard 5 makes the two numbers un-confusable, and both are now asserted.
+    const RECORDS = 7
+    await ingestRecords(RECORDS)
     const a = consumerFor('workerA')
     await a.ensureGroup()
     // A takes delivery and never ACKs — the crash point, exactly as the chaos test above
     const entries = await (a as unknown as { read(b?: number): Promise<[string, Buffer][]> }).read()
-    expect(entries.length).toBe(5)
+    expect(entries.length).toBe(RECORDS)
 
     // …and while A is away, the stream is trimmed past everything it held
     await redis.xtrim(`raw:${SHARD}`, 'MAXLEN', 0)
@@ -192,11 +198,12 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     // stale, matching how the chaos test above sequences the same handoff.
     await new Promise((r) => setTimeout(r, 150))
 
-    const evicted: number[] = []
-    const b = consumerFor('workerB', { onPendingEvicted: (n: number) => evicted.push(n) })
+    const evicted: { shard: number; count: number }[] = []
+    const b = consumerFor('workerB', { onPendingEvicted: (shard: number, count: number) => evicted.push({ shard, count }) })
     await b.tick()
 
-    expect(evicted.reduce((x, y) => x + y, 0)).toBe(5) // all five reported as destroyed
+    expect(evicted.reduce((x, e) => x + e.count, 0)).toBe(RECORDS) // all seven reported as destroyed
+    expect(evicted.every((e) => e.shard === SHARD)).toBe(true) // …attributed to the right shard, which is what the alert pages on
   }, 60_000)
 
   it('malformed CBOR entry → raw:dead, shard keeps flowing', async () => {

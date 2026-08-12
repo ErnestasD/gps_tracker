@@ -141,7 +141,28 @@ export async function runNotify(deps: NotifyWorkerDeps, job: Job<NotifyJob>): Pr
   if (result.failed.length > 0) throw new Error(`notify: ${result.failed.length} channel(s) failed for rule ${ruleId}`)
 }
 
+/**
+ * The same lesson the webhook worker already learned, on the queue where it matters most.
+ *
+ * BullMQ's default concurrency is ONE, and this worker was left on it while its siblings were fixed
+ * — webhooks 8, sms 4, auth-email 4. Every job is pure I/O with a real budget behind it: up to three
+ * 10 s SMTP phases, a 10 s Telegram call, and 10 s PER web-push endpoint in a sequential loop over
+ * every browser an account has registered. `dispatchEvent` walks the channels one at a time, so one
+ * account with a throttled SES socket or a wide push fan-out held up EVERY tenant's alerts behind
+ * it — panic and overspeed included, which is the §6.5 priority-2 kind.
+ *
+ * Nothing here needs serialising: ordering rule 5 is about positions on a device's shard, and each
+ * channel's idempotency lives in the per-job Redis sent-set, not in the queue's arrival order.
+ */
+/** A typo here must not take the worker down. `Number('eight')` is NaN, BullMQ rejects a
+ *  non-finite concurrency at construction, and this runs at boot — so an unparseable value
+ *  would crash-loop the process and stop trips, geofences, rules and billing with it. */
+const NOTIFY_CONCURRENCY = ((n: number) => (Number.isFinite(n) ? n : 8))(Number(process.env['NOTIFY_CONCURRENCY']?.trim() || 8))
+
 /** BullMQ worker delivering notifications. Caller must close() on shutdown. */
 export function startNotifyWorker(deps: NotifyWorkerDeps): Worker<NotifyJob> {
-  return new Worker<NotifyJob>(NOTIFY_QUEUE, (job) => runNotify(deps, job), { connection: deps.connection })
+  return new Worker<NotifyJob>(NOTIFY_QUEUE, (job) => runNotify(deps, job), {
+    connection: deps.connection,
+    concurrency: Math.min(32, Math.max(1, NOTIFY_CONCURRENCY)),
+  })
 }

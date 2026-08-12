@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg'
 
 import { motionRecords } from '../motion.js'
 import { DEFAULT_THRESHOLDS, TripEngine, type DeviceTripConfig } from './engine.js'
+import { clampInt4 } from './writer.js'
 
 const DEFAULT_CONFIG: DeviceTripConfig = { thresholds: DEFAULT_THRESHOLDS, odometerSource: 'auto' }
 
@@ -109,6 +110,8 @@ export async function recomputeTrips(
   // streaming path, else the authoritative rebuild silently diverges (asset segmentation,
   // odometer source) for exactly the devices E04-5 targets.
   config: DeviceTripConfig = DEFAULT_CONFIG,
+  /** Same hook the streaming engine gets — see the engine construction below. */
+  onOdometerRejected?: (deviceId: bigint) => void,
 ): Promise<RecomputeResult> {
   const thresholds = config.thresholds
   const dev = deviceId.toString()
@@ -191,7 +194,9 @@ export async function recomputeTrips(
   }
   const records = rows.map((r) => toRecord(deviceId, r as Record<string, unknown>))
 
-  const engine = new TripEngine(thresholds)
+  // …with the same rejection hook. A late buffered flood carrying the bad reading lands HERE, not
+  // on the stream, so a counter blind to the rebuild is blind to the common case.
+  const engine = new TripEngine(thresholds, onOdometerRejected)
   const events = engine.feed(motionRecords(records), () => config) // I5: invalid fixes filtered; per-device config (H2)
 
   // keep only CLOSED trips that START within the core span. A trailing open snapshot is
@@ -238,7 +243,11 @@ export async function recomputeTrips(
       const r = await client.query<{ id: string }>(
         `INSERT INTO trips ("tenantId","accountId","deviceId","status","startTime","endTime","startLat","startLon","endLat","endLon","distanceM","distanceSource","maxSpeed","idleS")
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
-        [scope.tenantId, scope.accountId, dev, t.status, t.startTime, t.endTime, t.startLat, t.startLon, t.endLat, t.endLon, t.distanceM, t.distanceSource, t.maxSpeed, t.idleS],
+        // same int4 clamp as the streaming close: the rebuild runs the SAME engine over the SAME
+        // positions, so an odometer that overflows the column there overflows it here — and here it
+        // aborts the whole transaction, which is how a single bad reading used to make recompute
+        // permanently unable to repair the window that contained it
+        [scope.tenantId, scope.accountId, dev, t.status, t.startTime, t.endTime, t.startLat, t.startLon, t.endLat, t.endLon, clampInt4(t.distanceM), t.distanceSource, clampInt4(t.maxSpeed), clampInt4(t.idleS)],
       )
       inserted.push(r.rows[0]!.id)
     }

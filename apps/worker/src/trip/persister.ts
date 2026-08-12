@@ -24,7 +24,9 @@ import { closeTrip, openTrip } from './writer.js'
  */
 export class TripPersister {
   private readonly openIds = new Map<string, { id: string; tenantId: string; accountId: string }>() // deviceId → open trip id + its scope (for iButton→driver resolution at close)
-  /** deviceId → the shard it was warm-started from, so a shard handed to a peer can be forgotten. */
+  /** deviceId → the shard its open trip belongs to, so a shard handed to a peer can be forgotten.
+   *  Written by BOTH warmStart and the open path — writing it in only one of them made forgetShard
+   *  a no-op for every trip the running process had opened. */
   private readonly shardOf = new Map<string, number>()
 
   constructor(
@@ -70,7 +72,8 @@ export class TripPersister {
     shardCount: number,
     nowMs: number = Date.now(),
     /** Bounded per run: the FIRST deploy carrying this sweep sees every historically-stranded row
-     *  at once, and it is awaited before the consumers start. */
+     *  at once. NOTE it is NOT awaited before the consumers start — main.ts deliberately fires it
+     *  after them — which is why the delete below is id-checked. */
     limit = 500,
   ): Promise<number> {
     const cutoff = new Date(nowMs - maxIdleMs)
@@ -89,8 +92,14 @@ export class TripPersister {
          FROM trips t
          JOIN devices d ON d."id" = t."deviceId"::bigint
          LEFT JOIN LATERAL (
+           -- fix_valid, like the max_speed lateral below and like tripDistanceM. Without it this
+           -- query was half-I5-correct: it ended the trip at an INVALID fix's time and coordinates,
+           -- i.e. (0,0) for sentinel firmware — two lines under a comment explaining why Null Island
+           -- must be avoided. It also decided WHETHER the trip looked orphaned at all: a device
+           -- parked underground reports satellites=0 on schedule, so those rows kept lastFix
+           -- fresh and hid a stranded trip from this sweep entirely.
            SELECT fix_time, lat, lon FROM positions
-            WHERE device_id = t."deviceId"::bigint AND fix_time >= t."startTime"
+            WHERE device_id = t."deviceId"::bigint AND fix_time >= t."startTime" AND fix_valid
             ORDER BY fix_time DESC LIMIT 1
          ) p ON true
          LEFT JOIN LATERAL (
@@ -115,14 +124,29 @@ export class TripPersister {
         idleS: 0, // not reconstructible without replaying the state machine; 0 is honest
         driverId: null,
       })
-      this.openIds.delete(r.deviceId)
+      // ONLY if it is still the row we just closed. This sweep runs CONCURRENTLY with the consumers
+      // (main.ts fires it as a bare `void (async …)()` after they start), and it awaits an aggregate
+      // and a ST_Length per row — during which the returning device's buffered flood can force-close
+      // this stale trip and open a NEW one. Deleting by device then dropped the live trip's mapping,
+      // so its close was silently ignored AND the next open no longer found a row to force-close:
+      // two open rows for one device, both billing engine-hours to now() until the next boot.
+      if (this.openIds.get(r.deviceId)?.id === r.id) this.openIds.delete(r.deviceId)
     }
     return res.rows.length
   }
 
   /** Returns how many trips were actually opened/closed (for metrics). */
-  async apply(events: TripEvent[]): Promise<{ opened: number; closed: number }> {
+  /**
+   * @param shard the consumer's own shard. Required so a trip OPENED at runtime can be forgotten on
+   * a handoff: `shardOf` used to be written only by `warmStart`, which meant `forgetShard` silently
+   * skipped every trip this process opened itself — the exact population a handoff most needs to
+   * release. It cannot be derived here: the shard is `imei % shardCount` (see warmStart's query) and
+   * a TripEvent carries the numeric device id, not the IMEI, so `deviceId % shardCount` would be a
+   * different number that happens to look plausible. The caller is the shard consumer and knows it.
+   */
+  async apply(events: TripEvent[], shard: number): Promise<{ opened: number; closed: number; missed: number }> {
     let opened = 0
+    let missed = 0
     let closed = 0
     for (const ev of events) {
       const key = ev.deviceId.toString()
@@ -148,14 +172,15 @@ export class TripPersister {
           startLon: ev.startLon,
         })
         this.openIds.set(key, { id, tenantId: scope.tenantId, accountId: scope.accountId })
+        this.shardOf.set(key, shard)
         opened++
       } else {
         const open = this.openIds.get(key)
-        if (open === undefined) continue // no known open row → leave to E04-2 recompute
+        if (open === undefined) { missed++; continue } // no known open row → leave to E04-2 recompute
         // V2 Part B: resolve the trip's iButton to a driver via the tenant's Redis map (best-effort;
         // a lookup miss/blip just leaves driverId null — closeTrip won't overwrite a manual assign)
         const driverId = ev.ibutton !== null ? await this.resolveDriver(open.tenantId, open.accountId, ev.ibutton) : null
-        await closeTrip(this.pool, open.id, {
+        const wrote = await closeTrip(this.pool, open.id, {
           endTime: ev.endTime,
           endLat: ev.endLat,
           endLon: ev.endLon,
@@ -166,10 +191,17 @@ export class TripPersister {
           driverId,
         })
         this.openIds.delete(key)
-        closed++
+        this.shardOf.delete(key) // nothing reads it for a device with no open trip; keeping it grew unbounded
+        // `closed` used to increment unconditionally, which meant `trips_closed_total` counted the
+        // 0-row no-ops too — so every close this class of bug drops was recorded as a success and
+        // the one metric that could have exposed it instead concealed it. A miss here is not fatal
+        // (the guard exists so a replay is idempotent) but it is never NORMAL: it means the row was
+        // already closed, or its id was forgotten under us.
+        if (wrote) closed++
+        else missed++
       }
     }
-    return { opened, closed }
+    return { opened, closed, missed }
   }
 
   /**

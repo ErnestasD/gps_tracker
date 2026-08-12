@@ -116,7 +116,10 @@ export async function runWebhook(deps: WebhookWorkerDeps, job: Job<WebhookJob>):
  * per-request deadline, so several in flight cost nothing and one sick endpoint now delays at most
  * its own share.
  */
-const WEBHOOK_CONCURRENCY = Number(process.env['WEBHOOK_CONCURRENCY']?.trim() || 8)
+/** A typo here must not take the worker down. `Number('eight')` is NaN, BullMQ rejects a
+ *  non-finite concurrency at construction, and this runs at boot — so an unparseable value
+ *  would crash-loop the process and stop trips, geofences, rules and billing with it. */
+const WEBHOOK_CONCURRENCY = ((n: number) => (Number.isFinite(n) ? n : 8))(Number(process.env['WEBHOOK_CONCURRENCY']?.trim() || 8))
 
 export function startWebhookWorker(deps: WebhookWorkerDeps): Worker<WebhookJob> {
   return new Worker<WebhookJob>(WEBHOOK_QUEUE, (job) => runWebhook(deps, job), {

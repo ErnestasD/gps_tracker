@@ -55,11 +55,13 @@ function fakeDb(
   ibuttons: { tenantId: string; accountId: string; ibutton: string; driverId: string }[],
   devices: FakeDevice[] = [],
   profiles: { id: string; presenceRules: unknown }[] = [],
+  rules: unknown[] = [],
 ): Db {
   return {
     devices: { listAllForRegistry: () => Promise.resolve(devices) },
     profiles: { list: () => Promise.resolve(profiles) },
     geofences: { listAll: () => Promise.resolve(geofences) },
+    rules: { listAll: () => Promise.resolve(rules) },
     drivers: { listAllIbuttons: () => Promise.resolve(ibuttons) },
   } as unknown as Db
 }
@@ -71,13 +73,32 @@ describe('rehydrateRegistries', () => {
     const db = fakeDb([gf], [{ tenantId: T, accountId: A, ibutton: 'a1b2c3d4', driverId: 'drv-1' }])
     const res = await rehydrateRegistries(fakeRedis(store), db)
 
-    expect(res).toEqual({ devices: 0, geofences: 1, ibuttons: 1 })
+    expect(res).toEqual({ devices: 0, geofences: 1, rules: 0, ibuttons: 1 })
     // geofence published under geofence:tenant:{t} keyed by geofence id (matches syncGeofence / worker cache)
     expect(store.get(`geofence:tenant:${T}`)?.['gf-1']).toContain('Depot')
     // iButton map keyed by tenant AND account, field = the CANONICAL decimal (not the raw hex)
     const map = store.get(`driver:ibutton:${T}:${A}`)!
     expect(map[ibuttonKeyFromHex('a1b2c3d4')!]).toBe('drv-1')
     expect(map['a1b2c3d4']).toBeUndefined() // never the raw hex
+  })
+
+  it('repopulates the RULE cache — the registry this rebuild used to forget', async () => {
+    // An empty `rule:tenant:*` does not degrade the product, it silences it: RuleCache holds no DB
+    // handle (one HGETALL behind a 30 s TTL), so the worker skips the rule engine outright and
+    // overspeed, ignition, power_cut, low_battery, fuel_theft, device_offline and PANIC stop firing.
+    // Geofences WERE rehydrated and keep working, which is what hid this, and the UI keeps showing
+    // every rule as enabled. Two triggers: a Redis flush, and a single swallowed sync on rule create.
+    const store = new Map<string, Record<string, string>>()
+    const rule = { id: 'r-1', tenantId: T, accountId: A, kind: 'panic', name: 'Panic', config: {}, scope: {}, cooldownS: 0, enabled: true }
+    const disabled = { ...rule, id: 'r-2', name: 'Off', enabled: false }
+    const res = await rehydrateRegistries(fakeRedis(store), fakeDb([], [], [], [], [rule, disabled]))
+
+    expect(res.rules).toBe(2)
+    const cache = store.get(`rule:tenant:${T}`)!
+    expect(JSON.parse(cache['r-1']!)).toEqual({ accountId: A, kind: 'panic', name: 'Panic', config: {}, cooldownS: 0, enabled: true, scope: {} })
+    // a DISABLED rule is published too, with its flag — CRUD writes it that way, and a rehydrate
+    // that dropped it would silently re-enable nothing while leaving the two paths out of step
+    expect((JSON.parse(cache['r-2']!) as { enabled: boolean }).enabled).toBe(false)
   })
 
   it('skips a driver whose iButton is not valid hex (never hsets a null field)', async () => {

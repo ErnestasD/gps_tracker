@@ -8,6 +8,7 @@ import { configureEmailPlatform } from '@orbetra/shared'
 import { ShardConsumer } from './consumer.js'
 import { LiveState } from './liveState.js'
 import { MotionFeed } from './motion.js'
+import { DEFAULT_THRESHOLDS, TripEngine } from './trip/engine.js'
 import { isClockSkewed } from './normalize.js'
 import { startWorkerProm } from './prom.js'
 
@@ -44,7 +45,7 @@ import { createWebhookQueue, enqueueWebhook } from './jobs/webhookQueue.js'
 import { startWebhookWorker } from './jobs/webhookWorker.js'
 import { startRecomputeWorker } from './jobs/recomputeWorker.js'
 import { driversFromEnv } from './notify/drivers.js'
-import { buildEmailTransport } from './notify/emailTransport.js'
+import { buildEmailTransport, suppressionLookup } from './notify/emailTransport.js'
 import { startAuthEmailWorker } from './jobs/authEmailWorker.js'
 import { createAuthEmailQueue, enqueueAuthEmail } from './jobs/authEmailQueue.js'
 import { smsDriverFromEnv } from './sms/drivers.js'
@@ -102,9 +103,6 @@ async function main(): Promise<void> {
     runShardOp(shard, async () => {
       const c = consumersByShard.get(shard)
       consumersByShard.delete(shard) // drop the slot INSIDE the queued op, never before the await
-      // …and forget this shard's open-trip ids: the new owner is authoritative for them now, and a
-      // later re-gain would otherwise close rows it has already closed or replaced
-      tripPersister.forgetShard(shard)
       // BOUNDED: every connection here is `maxRetriesPerRequest: null`, so during a Redis partition
       // an in-flight blocking XREADGROUP queues forever — `stop()` would never resolve, the shard's
       // op chain would block permanently, and the shard would stay dead even after Redis recovered.
@@ -112,6 +110,16 @@ async function main(): Promise<void> {
       if (c !== undefined) {
         await Promise.race([c.stop(), new Promise<void>((r) => setTimeout(r, SHARD_STOP_TIMEOUT_MS))])
       }
+      // …and only THEN forget this shard's open-trip ids. `stop()` is graceful — the in-flight batch
+      // finishes and XACKs before it resolves — so clearing them first deleted the ids while the
+      // consumer was still inside `tripPersister.apply()`, and every close in that batch was
+      // silently dropped: the row stayed open, the device's NEXT journey force-closed it at 0 km
+      // with an end time an hour or a day later, and the real mileage was gone. No peer required —
+      // a ≥30 s event-loop stall expires the lease and the leaser fires onLost on its own, which is
+      // the flap this codebase has already seen live (see the geofence engine's chunking comment).
+      // Doing it after the drain is safe even in a genuine handoff: at worst both owners close, and
+      // closeTrip's `WHERE status='open'` makes the loser a 0-row no-op.
+      tripPersister.forgetShard(shard)
       // `disconnect()`, not `quit()`: quit() queues BEHIND the pending commands we just gave up on
       consumerConnByShard.get(shard)?.disconnect()
       consumerConnByShard.delete(shard)
@@ -143,7 +151,10 @@ async function main(): Promise<void> {
   // dedicated connection: scrape XLENs must not queue behind consumers' blocking reads
   const prom = startWorkerProm(redis.duplicate(), Number(process.env['PROMETHEUS_PORT'] ?? 9102), () => poolStats(pool))
   const liveState = new LiveState(redis)
-  const motionFeed = new MotionFeed() // I5 seam (E02-7): trip engine (E04-1) + geofence stub (E05-x)
+  // I5 seam (E02-7): trip engine (E04-1) + geofence stub (E05-x). The trip engine reports when it
+  // refuses an odometer delta the distance column cannot hold — substituting a distance source is a
+  // correction the operator should see rather than infer from a customer's mileage complaint.
+  const motionFeed = new MotionFeed(new TripEngine(DEFAULT_THRESHOLDS, () => prom.tripOdometerRejected.inc()))
   const configCache = new DeviceConfigCache(redis) // per-device trip thresholds/odometerSource (E04-5)
   const geofenceCache = new GeofenceCache(redis) // per-tenant geofence geoms (E05-2)
   const geofenceEvents = new GeofenceEventPersister(pool, redis) // geofence transitions → events
@@ -163,6 +174,7 @@ async function main(): Promise<void> {
     connection: recomputeConn,
     pool,
     redis,
+    onOdometerRejected: () => prom.tripOdometerRejected.inc(),
     onDone: (r) => {
       prom.tripRecomputes.inc()
       prom.tripRecomputeDeleted.inc(r.deleted)
@@ -192,7 +204,7 @@ async function main(): Promise<void> {
     name: 'Orbetra',
     ...(process.env['EMAIL_LOGO_URL'] ? { logoUrl: process.env['EMAIL_LOGO_URL'] } : {}),
   })
-  const emailTransport = buildEmailTransport(process.env)
+  const emailTransport = buildEmailTransport(process.env, undefined, suppressionLookup(db.suppressions))
   const drivers = driversFromEnv(process.env, { emailTransport, subscriptions: db.pushSubscriptions })
   const notifyWorker = startNotifyWorker({
     connection: recomputeConn,
@@ -322,7 +334,13 @@ async function main(): Promise<void> {
     db,
     redis,
     graceDays: graceDaysFromEnv(),
-    ...(process.env['APP_BASE_URL'] !== undefined && emailTransport !== undefined ? { appBaseUrl: process.env['APP_BASE_URL'], mail: lapseMail } : {}),
+    // Truthiness, not `!== undefined`. `docker-compose.apps.yml` writes `APP_BASE_URL: ${APP_BASE_URL:-}`,
+    // which passes an EMPTY STRING when the variable is unset — so the old test admitted a config in
+    // which the ladder mails a customer three notices whose billing button renders as `#` (safeHref
+    // rejects a relative URL) and then disconnects their fleet, while the COUNT-ONLY boot warning
+    // stays silent because it tests `=== undefined` too. `graceDaysFromEnv` in the sweep already
+    // rejects '' explicitly for this reason, and apps/api's own main.ts already uses truthiness here.
+    ...(process.env['APP_BASE_URL']?.trim() && emailTransport !== undefined ? { appBaseUrl: process.env['APP_BASE_URL'].trim(), mail: lapseMail } : {}),
     onSwept: (r) => {
       prom.billingLapsedTenants.set(r.tenants)
       prom.billingLapsedDevices.set(r.devices)
@@ -517,9 +535,14 @@ async function main(): Promise<void> {
           )
           if (tripEvents.length > 0) {
             try {
-              const { opened, closed } = await tripPersister.apply(tripEvents)
+              const { opened, closed, missed } = await tripPersister.apply(tripEvents, s)
               prom.tripsOpened.inc(opened)
               prom.tripsClosed.inc(closed)
+              // A close the persister could not attribute to an open row. Not fatal on its own —
+              // the id guard exists so a replay is idempotent — but never normal, and it is the
+              // only outward sign of a whole class of bug (a forgotten or overwritten open-trip id)
+              // that otherwise looks exactly like success.
+              if (missed > 0) prom.tripCloseMissed.inc(missed)
             } catch (err) {
               // The engine has already emitted these events and dropped the trips from memory, so a
               // swallowed failure loses every CLOSE in the batch with nothing to notice — the trips
