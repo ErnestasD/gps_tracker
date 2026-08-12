@@ -260,6 +260,7 @@ async function main(): Promise<void> {
     } catch {
       console.error('catalogue.json exists but is unreadable — cannot tell whether a regrouping happened, so NOTHING was written')
       console.error('  delete it deliberately if you mean to rebuild the mapping from scratch')
+      reportFailures(failed) // …and do not hide a 404 behind it: that costs the operator a second run
       process.exitCode = 1
       return
     }
@@ -268,6 +269,16 @@ async function main(): Promise<void> {
   const remapped = named.flatMap(({ group, key }) =>
     group.models.filter((m) => prevMap.has(m) && prevMap.get(m) !== key).map((m) => `${m}: ${prevMap.get(m)!} → ${key}`),
   )
+  // A MODEL THAT PRODUCED NOTHING gets the same treatment as a regrouping, and for the same reason.
+  // A 404 or an unparseable page used to be reported while the catalogue was still rewritten WITHOUT
+  // that model — so it silently left `DEVICE_PROFILES` (generated from the catalogue) and the
+  // picker, and its dictionary was orphaned on disk. Both are "the wiki changed under us"; both
+  // must leave the tree untouched so the operator decides.
+  if (failed.length > 0) {
+    reportFailures(failed)
+    console.error('  NOTHING was written — check those pages, or remove the model from models.json')
+    return
+  }
   if (remapped.length > 0) {
     const allow = process.argv.includes('--allow-remap')
     const say = allow ? console.log : console.error

@@ -13,7 +13,20 @@ const AVL_TOTAL_ODOMETER = 16
 // series readable; values stay raw (multipliers apply at read, like every other attr).
 // https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
 // (48 = OBD Fuel Level %, 84 = Fuel level l ×0.1, 89 = Fuel level %)
+//
+// AND IT IS CONDITIONAL ON THE ENTRY, because this list was written against the FMB120 table and
+// then applied to all 34. On the six FMx6xx tables those ids are "Tacho Data Source",
+// "Acceleration Pedal Position" and "Axle weight 1" — unique names that need no forcing — and
+// forcing them anyway was the WRITER-side cause of a defect the README had blamed on the readers:
+// `readFuelSeries` reads `io_89` as a percentage, so an FMC650 reporting 7500 kg of axle weight
+// rendered a fuel gauge at 7500 %, and a parked truck being unloaded 7500 → 2000 kg satisfies the
+// `fuel_theft` rule (a 15 % drop, two samples, cooldown-bypassed) — a theft alert on every unload,
+// while the real tank on those models sits at id 87 and is never watched. Forcing now applies only
+// where the id actually IS a fuel level on this device's table, which is the condition the comment
+// above always described.
 const FORCED_ID_KEYS = new Set([48, 84, 89])
+const forcedFuelKey = (id: number, entry: { name: string } | undefined): boolean =>
+  FORCED_ID_KEYS.has(id) && (entry === undefined || /fuel/i.test(entry.name))
 
 /**
  * Every id whose dictionary NAME is shared with another id in the same table.
@@ -156,7 +169,7 @@ export function normalize(
     }
     else {
       const entry = dict.get(id)
-      const name = FORCED_ID_KEYS.has(id) || ambiguousInTable(dict).has(id) ? undefined : entry?.name
+      const name = forcedFuelKey(id, entry) || ambiguousInTable(dict).has(id) ? undefined : entry?.name
       // §3.7 never-dropped. Every ambiguous id is already forced to `io_<id>` above, so this is now
       // a backstop rather than the mechanism: it used to be the only thing standing between two
       // same-named parameters, and it resolved them by ARRIVAL ORDER, which is not a property the

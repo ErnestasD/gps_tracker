@@ -326,9 +326,9 @@ Every new variable must be added to the table here AND match the `.env` contract
   arrival order would label a percentage and a kilogram count identically.
 - **KNOWN GAP — the read path is still model-blind.** The decoder now uses each device's own
   dictionary; the code that READS `positions.attrs` does not. Most of the vocabulary is stable —
-  1593 of the 2194 ids that appear on more than one table carry one name everywhere — but the ids
-  our readers key on are disproportionately the CAN and fuel ones Teltonika reuses, and of those 18
-  only id 67 (Battery Voltage) is constant. Id 85 is "Engine RPM" on some tables and "Engine
+  1098 of the 1712 ids that appear on more than one table carry a byte-identical name everywhere —
+  but the ids our readers key on are disproportionately the CAN and fuel ones Teltonika reuses, and
+  of those 18 only id 67 (Battery Voltage) is constant. Id 85 is "Engine RPM" on some tables and "Engine
   Current Load" on others; 32 is "Coolant Temperature" or "Axle 5 Load"; 89 is "Fuel Level" or
   "Axle weight 1"; 236 is "Alarm" or "Axis X". So on FMx6xx and the FTC/ATC families the CAN and fuel panels can read the
   wrong parameter or nothing at all, and a panic / power-cut rule may be impossible on a model whose

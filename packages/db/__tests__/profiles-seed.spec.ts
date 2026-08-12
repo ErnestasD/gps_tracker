@@ -38,9 +38,9 @@ describe('device profile catalogue', () => {
     expect(isAsset('FMB120')).toBe(false)
   })
 
-  it('a SINGLE-MODEL table does not filter its own page by the HW Support column', () => {
-    // The table was scraped from that model's own wiki page, so every row on it is documented for
-    // it. Filtering by HW Support denied 59 model×capability pairs: FMM880's page carries 44 BLE
+  it('the HW column filters PER CAPABILITY GROUP, and only where it discriminates', () => {
+    // The HW column excludes every row of a capability group for 60 (model, capability) pairs
+    // across 31 models — for those it is not describing the model at all. FMM880's page carries 44 BLE
     // and 39 OBD rows and not one names FMM880 (they say `FMBXXX`, which does not match an FMM
     // code). Worst was the pair an operator compares side by side — FMB641's page carries 196 CAN
     // and 73 tachograph rows whose HW column reads "FMB640 FMC640 FMM640", so FMB641 advertised
@@ -52,6 +52,15 @@ describe('device profile catalogue', () => {
     expect(caps('FMB641').can).toBe(caps('FMB640').can)
     expect(caps('FMB641').tacho).toBe(caps('FMB640').tacho)
     expect(caps('FMM650')).toMatchObject({ can: true, tacho: true })
+
+    // …and NO DISCONTINUITY. The first attempt scoped the exemption to single-model tables, which
+    // made the answer depend on a hash collision: FMM880 (its own table) got ble:true while FMM920
+    // (in the 45-model fmb120 group) got ble:false off the SAME hwSupport string, and FMC13A —
+    // named on 0 of 640 rows — got every capability while FMC230, named on exactly 1, got none.
+    // Being mentioned less bought more. Same evidence must give the same answer.
+    expect(caps('FMM920').ble).toBe(caps('FMM880').ble)
+    expect(caps('FMC920').ble).toBe(caps('FMC880').ble)
+    expect(caps('FMC13A')).toEqual(caps('FMC230'))
   })
 
   it('the CAN group vocabulary is ENUMERATED, and fm36 proves an incomplete list is a wrong answer', () => {

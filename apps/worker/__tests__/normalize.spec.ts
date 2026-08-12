@@ -226,3 +226,32 @@ describe('ambiguous dictionary names never depend on arrival order', () => {
     expect(rec.attrs['GSM Signal']).toBe(4)
   })
 })
+
+describe('the forced fuel keys are forced only where the id IS a fuel level', () => {
+  it('fmb120: 48/84/89 keep their deterministic io_<id> keys — the names there collide', () => {
+    // "Fuel Level" / "Fuel level" is the same string on several ids, so a record carrying only one
+    // of them would land under a key whose UNIT the reader cannot know (litres or percent).
+    const r = normalize({ ...basePayload, io: [[48, 70n], [84, 350n], [89, 62n]] }, hash, 'fmb120')
+    expect(r.attrs).toEqual(expect.objectContaining({ io_48: 70, io_84: 350, io_89: 62 }))
+  })
+
+  it('fmc650: the SAME ids are not fuel at all, and must keep their own names', () => {
+    // On the six FMx6xx tables 48/84/89 are "Tacho Data Source", "Acceleration Pedal Position" and
+    // "Axle weight 1" — unique names needing no forcing. Forcing them anyway is what made
+    // readFuelSeries render 7500 kg of axle weight as a 7500 % fuel gauge, and what let a parked
+    // truck being unloaded satisfy the cooldown-bypassed `fuel_theft` rule on every unload.
+    const r = normalize({ ...basePayload, io: [[48, 1n], [84, 80n], [89, 7500n]] }, hash, 'fmc650')
+    expect(r.attrs).toEqual(expect.objectContaining({
+      'Tacho Data Source': 1,
+      'Acceleration Pedal Position': 80,
+      'Axle weight 1': 7500,
+    }))
+    for (const k of ['io_48', 'io_84', 'io_89']) expect(r.attrs[k], k).toBeUndefined()
+  })
+
+  it('an id absent from the table still gets its io_<id> key, so nothing is dropped (§3.7)', () => {
+    const r = normalize({ ...basePayload, io: [[48, 70n]] }, hash, 'atc700')
+    expect(r.attrs['io_48']).toBe(70)
+  })
+})
+

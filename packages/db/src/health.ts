@@ -38,6 +38,9 @@ export interface HealthOpts {
   from?: string
   to?: string
   limit?: number
+  /** The device profile's AVL table. Only AVL 66's scale varies by model (see extVoltageScale);
+   *  omitted ⇒ the 20-table majority factor, which is what an unattributed read gets. */
+  avlTable?: string
 }
 
 const MAX_PAGE = 10_000
@@ -53,6 +56,21 @@ interface PgHealthRow {
   ext_mv: string | null
   bat_mv: string | null
 }
+
+/**
+ * AVL 66 does NOT scale the same on every model, and the wiki says so in its own words.
+ *
+ * 20 tables give it multiplier 0.001 over a 0…30000 mV range. FMB930's page gives 0.01 over
+ * 0…65535 and adds: "Note: FMB930 shows external voltage 10 times lower than it actually is.
+ * Multiply the value by 10 at the backend in order to get an accurate value."
+ * https://wiki.teltonika-gps.com/view/FMB930_Teltonika_Data_Sending_Parameters_ID
+ *
+ * So the effective factor there is 0.01 × 10 = 0.1, and applying the usual 0.001 renders a 12.6 V
+ * vehicle battery as 0.126 V — a number a support agent would quote to a customer. This is a
+ * per-MODEL correction the wiki instructs the backend to make, not an inference of ours; without
+ * the caller naming the table we cannot make it, which is why `avlTable` is threaded through.
+ */
+const extVoltageScale = (avlTable: string | undefined): number => (avlTable === 'fmb930' ? 0.1 : 0.001)
 
 export async function readHealthSeries(pool: Pool, deviceId: bigint, opts: HealthOpts = {}): Promise<HealthSampleView[]> {
   const limit = Math.trunc(Math.min(Math.max(Number.isFinite(opts.limit) ? Number(opts.limit) : MAX_PAGE, 1), MAX_PAGE))
@@ -80,7 +98,7 @@ export async function readHealthSeries(pool: Pool, deviceId: bigint, opts: Healt
     out.push({
       fixTime: r.fix_time.toISOString(),
       gsm,
-      extV: extMv === null ? null : extMv * 0.001, // AVL 66 multiplier (wiki)
+      extV: extMv === null ? null : extMv * extVoltageScale(opts.avlTable), // AVL 66 (wiki, per table)
       battV: batMv === null ? null : batMv * 0.001, // AVL 67 multiplier (wiki)
     })
   }

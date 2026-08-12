@@ -99,8 +99,10 @@ function hwCovers(hwSupport: string | undefined, model: string): boolean {
     .split(/[\s,]+/)
     .filter(Boolean)
     // `[Expand]` is the wiki's collapse control, captured verbatim into 62 rows on fmb120 alone.
-    // Left in, it is compiled below as a CHARACTER CLASS — a regex that matches nothing useful and
-    // throws no error, which is the worst way for a token to fail.
+    // INERT today — compiled below it becomes `^[E.PAND]$`, a one-character class that matches no
+    // model code — so this changes no answer (verified over all 46 677 row×model evaluations).
+    // Dropped so it STAYS inert: a token that fails by matching nothing, silently, is one edit away
+    // from failing by matching something.
     .filter((t) => t !== '[EXPAND]')
     .some((t) => t === m || (t.includes('X') && new RegExp(`^${t.replace(/[^A-Z0-9X]/g, '').replace(/X/g, '.')}$`).test(m)))
 }
@@ -110,28 +112,35 @@ function hwCovers(hwSupport: string | undefined, model: string): boolean {
  * pages state that the number of CAN parameters depends on the vehicle's model, year and equipment,
  * so `can: true` means "this model has the CAN line", not "you will get engine data".
  */
-function capabilitiesFor(model: string, table: string, sharedTable: boolean): Record<string, unknown> {
+function capabilitiesFor(model: string, table: string): Record<string, unknown> {
   const entries = Object.values(dictionaryFor(table))
-  // WHEN IS THE HW COLUMN A FILTER AT ALL? Two cases where it is not, and both were shipping lies:
+  // WHEN IS THE HW COLUMN A FILTER AT ALL? Per CAPABILITY GROUP, and only when it discriminates.
   //
-  //  - a SINGLE-MODEL table. It was scraped from that model's OWN wiki page, so every row on it is
-  //    documented for it; the HW column there names whichever family the row belongs to. Filtering
-  //    denied 59 model×capability pairs — fmm880.json carries 44 BLE and 39 OBD rows and not one
-  //    names FMM880 (they say `FMBXXX`, which does not match an FMM code). Worst was the pair an
-  //    operator compares side by side: FMB641's page carries 196 CAN and 73 tachograph rows whose
-  //    column reads "FMB640 FMC640 FMM640", so FMB641 advertised can:false / tacho:false beside
-  //    FMB640's true — a false differentiator on the exact feature FMB641 exists for.
+  // A filter that excludes every row of a group is not evidence of absence — it is evidence the
+  // column is not describing this model. Measured over the corpus, the HW column excludes EVERY row
+  // of a capability group for 60 (model, capability) pairs across 31 models. All 137 rows of the
+  // FM36 page read "FM3612, FM36M1", so the bare FM36 matched nothing and came back with no
+  // capabilities while its table carries 89 CAN rows. fmm880.json carries 44 BLE and 39 OBD rows
+  // and not one names FMM880 (they say `FMBXXX`, which does not match an FMM code).
   //
-  //  - a model the column NEVER names. Then it is not describing that model, and filtering by it
-  //    returns a uniformly false answer rather than an answer. All 137 rows of the FM36 page read
-  //    "FM3612, FM36M1"; the bare FM36 is a family label the page itself does not list, so it came
-  //    back with no capabilities at all while its table carries 89 CAN rows.
+  // THE FIRST ATTEMPT AT THIS SCOPED THE EXEMPTION TO SINGLE-MODEL TABLES, and review showed the
+  // premise was false: every model in a hash group contributed a BYTE-IDENTICAL page, so "this came
+  // from the model's own page" is true for all 105, and keying on group size made the answer depend
+  // on a hash collision. FMM880 (its own table) got ble:true while FMM920 (in the fmb120 group) got
+  // ble:false off the same hwSupport string. It was also discontinuous in the wrong direction:
+  // FMC13A, named on 0 of 640 rows, got every capability; FMC230, named on exactly 1, got none.
+  // Being mentioned LESS bought more.
   //
-  // A filter that excludes everything is not evidence of absence.
-  const named = entries.some((e) => (e.hwSupport ?? '').trim() !== '' && hwCovers(e.hwSupport, model))
-  const filter = sharedTable && named
-  const has = (groups: Set<string>): boolean =>
-    entries.some((e) => groups.has((e.group ?? '').trim().toUpperCase()) && (!filter || hwCovers(e.hwSupport, model)))
+  // Per-group is the coherent form of the same idea, and it is the strongest claim this source can
+  // support: "this model's AVL table documents these elements, and where Teltonika distinguishes
+  // models within the group we honour that". It is NOT a per-SKU hardware promise — the flags are
+  // stored and not yet surfaced anywhere, and putting them in front of a customer needs a source
+  // that answers at SKU granularity, which an AVL page is not.
+  const has = (groups: Set<string>): boolean => {
+    const rows = entries.filter((e) => groups.has((e.group ?? '').trim().toUpperCase()))
+    const discriminates = rows.some((e) => (e.hwSupport ?? '').trim() !== '' && hwCovers(e.hwSupport, model))
+    return rows.some((e) => !discriminates || hwCovers(e.hwSupport, model))
+  }
   return { can: has(CAN_GROUPS), ble: has(BLE_GROUPS), tacho: has(TACHO_GROUPS), obd: has(OBD_GROUPS) }
 }
 
@@ -160,12 +169,6 @@ const LEGACY: ProfileSeed[] = [
 ]
 
 /** One profile per model the AVL generator found a table for. */
-/** How many models share each table — a table with one model IS that model's own page. */
-const modelsPerTable = new Map<string, number>()
-for (const m of (catalogue as { models: { model: string; dictionary: string }[] }).models) {
-  modelsPerTable.set(m.dictionary, (modelsPerTable.get(m.dictionary) ?? 0) + 1)
-}
-
 const MODELS: ProfileSeed[] = (catalogue as { models: { model: string; dictionary: string }[] }).models.map((m) => {
   // The prefix list is a PRODUCT classification — TAT/TMT/TST/TFT/GH tables do carry id 239, but
   // those trackers are battery-powered and nobody wires their ignition, so they run in noIgnition
@@ -180,7 +183,7 @@ const MODELS: ProfileSeed[] = (catalogue as { models: { model: string; dictionar
     name: `Teltonika ${m.model}`,
     model: m.model,
     avlTable: m.dictionary,
-    capabilities: capabilitiesFor(m.model, m.dictionary, modelsPerTable.get(m.dictionary)! > 1),
+    capabilities: capabilitiesFor(m.model, m.dictionary),
     presenceRules: asset ? ASSET : VEHICLE,
     commandPresets: asset ? ASSET_PRESETS : VEHICLE_PRESETS,
     readIdleMin: asset ? 1560 : 40, // 26 h for an asset tracker that reports on a schedule

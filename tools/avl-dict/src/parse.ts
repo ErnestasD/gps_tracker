@@ -464,6 +464,12 @@ export function applyRangeConsensus(tables: Record<string, AvlEntry>[]): { table
   for (const [index, t] of tables.entries()) {
     for (const [id, e] of Object.entries(t)) {
       if (e.type !== 'Signed' || negative(e)) continue
+      // …and the recipient must HAVE a range for this to reconcile one. The donor guard required
+      // min AND max; the recipient guard required neither, so an entry whose page documents no
+      // range at all was handed one — `applySign` would then sign-extend a parameter its own page
+      // never said could go negative, which is the R1/R2/R3 failure re-entering by another door.
+      // The note even read "range was ?..? here". Zero occurrences today; the guard is the point.
+      if (e.min === undefined || e.max === undefined) continue
       const byRange = donors.get(sig(id, e))
       if (byRange === undefined) continue
       if (byRange.size > 1) {

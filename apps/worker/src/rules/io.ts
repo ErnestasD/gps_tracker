@@ -41,10 +41,22 @@ const FUEL_LITERS_MULTIPLIER = 0.1
  * integer (mV), so the engine scales to volts here. Standard across FMB/FMC/TAT families. */
 const BATTERY_VOLTAGE_MULTIPLIER = 0.001
 
-/** Read an AVL id's value regardless of whether it kept the dictionary name or fell back
- * to `io_<id>` on collision (see file header). Returns a finite number or null. */
-function attrNumber(attrs: Record<string, unknown>, id: number, name: string): number | null {
-  const raw = attrs[`io_${id}`] ?? attrs[name]
+/**
+ * Read an AVL id's value regardless of whether it kept the dictionary name or fell back to
+ * `io_<id>` on collision (see file header). Returns a finite number or null.
+ *
+ * TAKES EVERY SPELLING, because the attrs key is the DEVICE'S OWN table's name. Where the wiki
+ * types one parameter several ways this is a pure lookup problem with no semantics in it — id 252
+ * is "Unplug" on 15 tables and "Unplug detection" on 11, and reading only the first meant a trailer
+ * fleet on ATC/FTC hardware could create a power-cut rule the API accepted and that never fired
+ * when the tracker was ripped out. Spellings that mean something ELSE are simply not listed, so an
+ * FMx6xx (where 252 is "Authorized Driving" — "Authorized driving" on fm36, lower-case d — and 236
+ * is "Axis X") matches nothing and the rule stays silent rather than firing off an accelerometer.
+ * See the header note.
+ */
+function attrNumber(attrs: Record<string, unknown>, id: number, ...names: string[]): number | null {
+  let raw = attrs[`io_${id}`]
+  for (const n of names) raw ??= attrs[n]
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : null
 }
 
@@ -55,19 +67,19 @@ export function ignitionOf(r: NormalizedRecord): boolean | null {
 
 /** Digital Input 1 (AVL 1) as a boolean (0/1). */
 export function din1Of(r: NormalizedRecord): boolean | null {
-  const v = attrNumber(r.attrs, AVL_DIN1, 'Digital Input 1')
+  const v = attrNumber(r.attrs, AVL_DIN1, 'Digital Input 1', 'Digital Input Status 1')
   return v === null ? null : v !== 0
 }
 
 /** Unplug (AVL 252): true ⇒ battery unplugged (external power cut). */
 export function unplugOf(r: NormalizedRecord): boolean | null {
-  const v = attrNumber(r.attrs, AVL_UNPLUG, 'Unplug')
+  const v = attrNumber(r.attrs, AVL_UNPLUG, 'Unplug', 'Unplug detection')
   return v === null ? null : v !== 0
 }
 
 /** Alarm (AVL 236): true ⇒ alarm/panic event occurred. */
 export function alarmOf(r: NormalizedRecord): boolean | null {
-  const v = attrNumber(r.attrs, AVL_ALARM, 'Alarm')
+  const v = attrNumber(r.attrs, AVL_ALARM, 'Alarm', 'Alarm button')
   return v === null ? null : v !== 0
 }
 

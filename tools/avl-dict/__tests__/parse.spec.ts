@@ -405,6 +405,18 @@ describe('cross-page RANGE consensus', () => {
     expect(notes[0]!.note).toContain('DISAGREE')
   })
 
+  it('never CREATES a range on a recipient whose own page documents none', () => {
+    // The donor guard required min AND max; the recipient guard required neither, so an entry with
+    // no range at all was handed one — and applySign would then sign-extend a parameter its own
+    // page never said could go negative. The emitted note even read "range was ?..? here".
+    const bare = e({ name: 'X' })
+    delete bare.min
+    delete bare.max
+    const recipient = { '115': bare }
+    expect(applyRangeConsensus([recipient, { '115': e({ name: 'Y', min: '-600', max: '1270' }) }])).toEqual([])
+    expect(recipient['115'].min).toBeUndefined()
+  })
+
   it('ignores a donor that documents only half a range', () => {
     const recipient = { '115': e({ name: 'X', min: '0', max: '65535' }) }
     const half = e({ name: 'Y', min: '-600' })

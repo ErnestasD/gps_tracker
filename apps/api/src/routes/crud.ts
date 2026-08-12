@@ -755,10 +755,14 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (device === null) return problem(c, 404, 'Not Found')
         if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
         const q = c.req.query.bind(c.req)
+        // the profile's table decides AVL 66's scale — FMB930 reports external voltage on a
+        // different factor and the wiki instructs the backend to correct it (see health.ts)
+        const healthProfile = await db.profiles.get(device.profileId)
         const series = await readHealthSeries(deps.pool, device.id, {
           ...(q('from') !== undefined ? { from: q('from')! } : {}),
           ...(q('to') !== undefined ? { to: q('to')! } : {}),
           ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
+          ...(healthProfile !== null ? { avlTable: healthProfile.avlTable } : {}),
         })
         // firmware = newest acked getver response (E08-2 commands)
         const cmds = await db.commands.listForDevice(scope, device.id)

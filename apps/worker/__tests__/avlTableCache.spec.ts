@@ -126,6 +126,28 @@ describe('AvlTableCache', () => {
     expect(f.reasons).toEqual(['no_config', 'no_config', 'no_config'])
   })
 
+  it('…and at most once per TTL, not once per BATCH, while the outage lasts', async () => {
+    // A Redis failure is deliberately not cached, so the entry never stops being stale — re-emitting
+    // the cached reason on every batch turned this into a per-batch rate for the whole outage (61
+    // emissions across 60 batches in one TTL window), against a metric the README and the runbook
+    // both describe as roughly one per device per minute. It is one device on the fallback; the
+    // counter must say one device.
+    // The batches have to run AFTER the TTL expires: inside it the device is served from cache and
+    // never reaches this path at all — which is exactly how a first version of this test passed
+    // against the unfixed code. A failure is not cached, so `at` never advances and the entry stays
+    // stale for EVERY subsequent batch; that is what made the emission per-batch.
+    const r = fakeRedis({})
+    const f = collect()
+    const c = new AvlTableCache(r.redis, 60_000, f.on)
+    await c.resolveBatch([7n], 1_000)
+    expect(f.reasons).toEqual(['no_config'])
+    r.fail(true)
+    for (let t = 61_001; t < 120_000; t += 5_000) await c.resolveBatch([7n], t) // 12 stale, failing batches
+    expect(f.reasons).toEqual(['no_config', 'no_config']) // one more, not twelve
+    await c.resolveBatch([7n], 180_000) // a later window reports again — it is still wrong
+    expect(f.reasons).toEqual(['no_config', 'no_config', 'no_config'])
+  })
+
   it('…and it is STILL not counted during a Redis outage, which is where the name test failed', async () => {
     // The discriminating case, and the one the previous version of this guard got wrong. It asked
     // "is the resolved table the fallback?" — which is true for these 45 models even when nothing

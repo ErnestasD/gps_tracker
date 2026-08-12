@@ -43,7 +43,7 @@ import { FALLBACK_AVL_TABLE } from './normalize.js'
 export type AvlFallbackReason = 'no_config' | 'no_field' | 'malformed' | 'unknown_table' | 'redis_error'
 
 export class AvlTableCache {
-  private readonly cache = new Map<string, { table: AvlTable; at: number; reason?: AvlFallbackReason }>()
+  private readonly cache = new Map<string, { table: AvlTable; at: number; reason?: AvlFallbackReason; reportedAt?: number }>()
 
   constructor(
     private readonly redis: Redis,
@@ -82,10 +82,27 @@ export class AvlTableCache {
         //     "no cache" got the second wrong for the whole outage.
         const cached = this.cache.get(id)
         const reason = failed ? (cached === undefined ? r.reason : cached.reason) : r.reason
-        if (reason !== undefined) why.set(id, reason)
+        // …AT MOST ONCE PER TTL, even on the failed path. A Redis failure is deliberately not
+        // cached, so the entry never stops being stale and re-emitting the cached reason turned the
+        // counter into a per-BATCH rate for the duration of an outage — 61 emissions over 60
+        // batches in one TTL window, against a metric both the README and the runbook describe as
+        // roughly one per device per minute. The device is genuinely on the fallback; it is one
+        // device, and the counter must say one device.
+        if (reason !== undefined && (cached?.reportedAt === undefined || now - cached.reportedAt >= this.ttlMs)) {
+          why.set(id, reason)
+          if (cached !== undefined) cached.reportedAt = now
+        }
         // A Redis failure is NOT cached: caching it would hold the whole shard on the fallback for
         // the full TTL after the blip cleared, and the next batch is the natural retry.
-        if (!failed) this.cache.set(id, { table: r.table, at: now, ...(r.reason !== undefined ? { reason: r.reason } : {}) })
+        if (!failed) {
+          const reportedAt = why.has(id) ? now : cached?.reportedAt
+          this.cache.set(id, {
+            table: r.table,
+            at: now,
+            ...(r.reason !== undefined ? { reason: r.reason } : {}),
+            ...(reportedAt !== undefined ? { reportedAt } : {}),
+          })
+        }
       })
     }
     const out = new Map<string, AvlTable>()
