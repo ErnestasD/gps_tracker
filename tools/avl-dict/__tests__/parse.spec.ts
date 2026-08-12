@@ -100,7 +100,7 @@ describe('AVL table parser', () => {
 
 describe('cross-page Type consensus', () => {
   const entry = (o: Partial<AvlEntry> & { name: string; type: string }): AvlEntry =>
-    ({ bytes: '2', multiplier: '0.1', units: '°C', ...o }) as AvlEntry
+    ({ bytes: '2', multiplier: '0.1', units: '°C', ...o })
 
   it('corrects a page that says Unsigned when another page says Signed for the SAME definition', () => {
     // 141 Battery Temperature: Min −600 on all six pages that define it, yet four say Unsigned.
@@ -108,7 +108,7 @@ describe('cross-page Type consensus', () => {
     const a = { '141': entry({ name: 'Battery Temperature', type: 'Signed' }) }
     const b = { '141': entry({ name: 'Battery Temperature', type: 'Unsigned' }) }
     const notes = applyTypeConsensus([a, b])
-    expect(b['141']!.type).toBe('Signed')
+    expect(b['141'].type).toBe('Signed')
     expect(notes).toHaveLength(1)
   })
 
@@ -118,7 +118,7 @@ describe('cross-page Type consensus', () => {
     const a = { '1002': entry({ name: 'Engine Coolant Temperature', type: 'Unsigned', bytes: '1', multiplier: undefined }) }
     const b = { '1002': entry({ name: 'Engine Coolant Temperature', type: 'Unsigned', bytes: '1', multiplier: undefined }) }
     expect(applyTypeConsensus([a, b])).toEqual([])
-    expect(a['1002']!.type).toBe('Unsigned')
+    expect(a['1002'].type).toBe('Unsigned')
   })
 
   it('does NOT unify ids that merely share a number — the definition has to match', () => {
@@ -127,7 +127,7 @@ describe('cross-page Type consensus', () => {
     const fmx = { '141': entry({ name: 'Battery Temperature', type: 'Signed' }) }
     const fmb = { '141': entry({ name: 'Driver 1 Cumulative Break Time', type: 'Unsigned', multiplier: undefined, units: 'min.' }) }
     expect(applyTypeConsensus([fmx, fmb])).toEqual([])
-    expect(fmb['141']!.type).toBe('Unsigned')
+    expect(fmb['141'].type).toBe('Unsigned')
   })
 })
 
@@ -154,5 +154,37 @@ describe('ids that cannot exist on the wire', () => {
     ))
     expect(Object.keys(r.elements)).toEqual(['12450'])
     expect(r.warnings.some((w) => w.includes('124451') && w.includes('65535'))).toBe(true)
+  })
+})
+
+describe('consensus: the cases the first version got wrong', () => {
+  const e = (o: Partial<AvlEntry> & { name: string; type: string }): AvlEntry =>
+    ({ bytes: '2', multiplier: '0.01*', units: '°C', min: '-4000', max: '4000', ...o })
+
+  it('corrects a BLANK Type, not only the word "Unsigned"', () => {
+    // BLE Temperature #1–#4: fmb120 says Signed, the CAN-line tables leave the cell EMPTY, and the
+    // definitions are byte-identical with Min −4000. Testing `=== 'Unsigned'` skipped exactly the
+    // case the rule exists for, and these are cold-chain sensors: −5.00 °C decoded as +650.36 °C.
+    const src = { '25': e({ name: 'BLE Temperature #1', type: 'Signed' }) }
+    const blank = { '25': e({ name: 'BLE Temperature #1', type: '' }) }
+    const notes = applyTypeConsensus([src, blank])
+    expect(blank['25'].type).toBe('Signed')
+    expect(notes[0]!.note).toContain('was blank')
+  })
+
+  it('never rewrites a non-numeric type, which has no sign to correct', () => {
+    const src = { '264': e({ name: 'Barcode ID', type: 'Signed' }) }
+    const hex = { '264': e({ name: 'Barcode ID', type: 'HEX' }) }
+    expect(applyTypeConsensus([src, hex])).toEqual([])
+    expect(hex['264'].type).toBe('HEX')
+  })
+
+  it('the RANGE is part of the identity — same id, name and units but a different range is a different parameter', () => {
+    // 156 signatures across the 34 tables resolve to entries with different ranges; without min/max
+    // the rule was relying on luck rather than on the evidence its own comment cites.
+    const a = { '13373': e({ name: 'Neighbouring Cell 1 MNC', type: 'Signed', min: '0', max: '999' }) }
+    const b = { '13373': e({ name: 'Neighbouring Cell 1 MNC', type: 'Unsigned', min: '0', max: '99' }) }
+    expect(applyTypeConsensus([a, b])).toEqual([])
+    expect(b['13373'].type).toBe('Unsigned')
   })
 })

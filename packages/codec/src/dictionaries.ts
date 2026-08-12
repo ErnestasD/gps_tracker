@@ -109,24 +109,36 @@ export function buildDictionary(file: DictionaryFile): Map<number, AvlDictionary
  * serves a handful of models, so eagerly parsing every table would cost memory for tables nobody
  * on this deployment owns. Cached after the first read, so the ordered pipeline pays it once.
  *
- * An UNKNOWN table is an empty dictionary, not a throw and not a fallback to another table. Both
- * alternatives are worse: throwing takes a shard down over a naming mistake, and substituting a
+ * A table we do not SHIP is an empty dictionary, not a throw and not a fallback to another table.
+ * Both alternatives are worse: throwing takes a shard down over a naming mistake, and substituting a
  * neighbouring table is exactly the defect this rewrite exists to remove — a wrong parameter name is
  * worse than none, because a customer can act on it. With an empty dictionary every element still
  * reaches `attrs` as `io_<id>`; §3.7's never-dropped rule holds and nothing is mislabelled.
+ *
+ * A table we DO ship that fails to load is the opposite case and must be LOUD. Only ENOENT means
+ * "not shipped"; a truncated file, a permission error or an I/O fault means something is wrong with
+ * this deployment, and swallowing it would strip every parameter's name AND its sign fleet-wide —
+ * `applySign` on an absent entry is a pass-through, so every temperature and accelerometer axis
+ * would silently read as a large positive, looking exactly like broken devices. This repo deploys
+ * by rsync, so a half-written file is a real shape.
+ *
+ * Nor is a failure cached: an empty map cached on a transient fault poisons that table for the
+ * lifetime of the process, with no retry and nothing to notice.
  */
 export function loadDictionary(table: AvlTable): Map<number, AvlDictionaryEntry> {
   const cached = cache.get(table)
   if (cached) return cached
-  let map: Map<number, AvlDictionaryEntry>
+  let raw: string
   try {
-    const file = JSON.parse(readFileSync(join(DICT_DIR, `${table}.json`), 'utf8')) as DictionaryFile
-    map = buildDictionary(file)
+    raw = readFileSync(join(DICT_DIR, `${table}.json`), 'utf8')
   } catch (err) {
-    if (err instanceof FrameError) throw err // a malformed dictionary is a bug, not a missing one
-    console.warn(`codec: no dictionary for table '${table}' — elements will surface unnamed as io_<id>`)
-    map = new Map()
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+    console.warn(`codec: no dictionary shipped for table '${table}' — elements will surface unnamed as io_<id>`)
+    const empty = new Map<number, AvlDictionaryEntry>()
+    cache.set(table, empty) // a table that does not exist will not start existing; caching is right here
+    return empty
   }
+  const map = buildDictionary(JSON.parse(raw) as DictionaryFile)
   cache.set(table, map)
   return map
 }

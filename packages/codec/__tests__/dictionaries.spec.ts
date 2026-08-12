@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
+import { chmodSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { applySign, avlTables, buildDictionary, loadDictionary, tableForModel, type DictionaryFile } from '../src/dictionaries.js'
+
+/** A scratch file inside the real dictionary directory, so the REAL load path is exercised. */
+const probePath = (name: string): string => join(dirname(fileURLToPath(import.meta.url)), '..', 'dictionaries', name)
 
 describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
   it('fmb120: the table 45 models share — core IDs match the wiki', () => {
@@ -10,6 +17,7 @@ describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
     expect(d.get(240)?.name).toBe('Movement')
     expect(d.get(21)?.name).toBe('GSM Signal')
     expect(d.get(66)?.name).toBe('External Voltage')
+    expect(d.get(66)?.multiplier).toBe('0.001')
     expect(d.get(66)?.units).toBe('V')
     expect(d.get(78)?.name).toBe('iButton')
     expect(d.get(78)?.bytes).toBe('8')
@@ -53,7 +61,12 @@ describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
     // the generator drops it. If it ever reaches a dictionary, buildDictionary throws and the table
     // stops loading entirely, which is a far larger failure than one unnamed element.
     for (const table of avlTables()) {
-      for (const [id, entry] of loadDictionary(table)) {
+      // …and the table must actually be THERE. Without this the empty-map fallback makes the loop
+      // body never run, so deleting a shipped dictionary left this suite green — the one test that
+      // walks every table could not detect a missing one.
+      const d = loadDictionary(table)
+      expect(d.size, `${table} is in the catalogue but ships no elements`).toBeGreaterThan(0)
+      for (const [id, entry] of d) {
         expect(Number.isInteger(id) && id >= 0 && id <= 0xffff, `${table}#${id}`).toBe(true)
         expect(entry.name.length, `${table}#${id}`).toBeGreaterThan(0)
       }
@@ -125,6 +138,36 @@ describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
 })
 
 describe('loading is defensive in the two ways that matter', () => {
+  it('a CORRUPT shipped dictionary throws from loadDictionary, not just from buildDictionary', () => {
+    // The empty-map path is for a table we do not ship. A shipped file that is truncated or
+    // unreadable must be loud: swallowing it strips every name AND every sign fleet-wide, and
+    // `applySign` on an absent entry is a pass-through, so temperatures read as large positives.
+    // The previous test called buildDictionary directly and never exercised this path at all.
+    const path = probePath('zz-corrupt-probe.json')
+    writeFileSync(path, '{ "table": "zz-corrupt-probe", "elements": {')
+    try {
+      expect(() => loadDictionary('zz-corrupt-probe')).toThrow()
+    } finally {
+      rmSync(path, { force: true })
+    }
+  })
+
+  it('an UNREADABLE shipped dictionary throws too — only ENOENT means "not shipped"', () => {
+    // This is the case the previous test does NOT reach: a readable-but-corrupt file throws from
+    // JSON.parse regardless of how the catch is written, so only a genuine read FAULT exercises the
+    // ENOENT discrimination. Without it, a permission or I/O error decodes a whole fleet as io_<id>.
+    const path = probePath('zz-unreadable-probe.json')
+    writeFileSync(path, '{}')
+    chmodSync(path, 0o000)
+    try {
+      if (process.getuid?.() === 0) return // root ignores the mode bits; nothing to assert
+      expect(() => loadDictionary('zz-unreadable-probe')).toThrow()
+    } finally {
+      chmodSync(path, 0o600)
+      rmSync(path, { force: true })
+    }
+  })
+
   it('a MALFORMED dictionary throws — it is a bug in our generator, not a missing table', () => {
     // The empty-map fallback exists for a table we do not ship. A table we DO ship that fails
     // validation (a bad id, a nameless entry, a missing source_url) must be loud: silently decoding

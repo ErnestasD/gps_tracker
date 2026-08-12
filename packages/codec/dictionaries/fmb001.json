@@ -29,7 +29,7 @@
   "id 476: Type \"UNSIGNED LONG INT\" normalised to Unsigned",
   "id 477: Type \"UNSIGNED LONG INT\" normalised to Unsigned",
   "id 478: Type \"UNSIGNED LONG INT\" normalised to Unsigned",
-  "id 210: Type says Unsigned here but Signed on another Teltonika page for an otherwise identical definition — corrected to Signed"
+  "id 210: Type was Unsigned here but Signed on another Teltonika page for an otherwise identical definition — corrected to Signed"
  ],
  "elements": {
   "1": {"name":"Digital Input 1","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","hwSupport":"FMBXXX FMB001 FMC001 FMB010 FMB110 FMB120 FMB122 FMB125 FMU125 FMC125 FMM125 FMB130 FMU130 FMC130 FMM130 FMB140 FMB150 FMC150 FMM150 FMB900 FMB920 FMB962 FMB964 FMB202 FMB204 FMB206 MTB100","group":"Permanent I/O elements"},

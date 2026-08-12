@@ -39,6 +39,10 @@ const strip = (s: string): string =>
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
+    // numeric entities too: atc700 id 11399 carried a literal "&#160;" into its Type AND its Bytes
+    // cell. Harmless for applySign, but the same path reaches `name`, and a dictionary is the one
+    // place in this repo allowed to say what a parameter IS.
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)))
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -138,7 +142,7 @@ export function parseAvlTable(html: string): ParseResult {
       const entry: AvlEntry = { name, bytes: pick('bytes') ?? '', type: pick('type') ?? '' }
       if (idx['min'] !== undefined) {
         const mn = cells[idx['min']] ?? ''
-        const mx = cells[idx['min']! + 1] ?? ''
+        const mx = cells[idx['min'] + 1] ?? ''
         if (!blank(mn)) entry.min = mn
         if (!blank(mx)) entry.max = mx
       }
@@ -193,22 +197,47 @@ export function parseAvlTable(html: string): ParseResult {
  * This rule is therefore what keeps the correction alive: regenerating without it would silently
  * return four dictionaries to Unsigned, and a −1.0 °C battery would surface as 6552.6 °C.
  *
- * It must NOT fire on the ~34 CAN parameters whose Min is negative while Unsigned is correct:
- * coolant temperature (−40 °C), aftertreatment temperatures (−273 °C), percent torque (−125 %).
- * Those are SAE J1939 OFFSET encodings — unsigned on the wire, offset applied on display — and no
- * page marks any of them Signed, so consensus never sees a conflict. A rule keyed on "Min < 0"
- * alone would have broken all 34 in order to fix these 2.
+ * It must NOT fire on the parameters whose Min is negative while Unsigned is CORRECT. Counted, not
+ * estimated: 32 distinct (id, name) pairs carry a negative Min without being Signed, and most are
+ * SAE J1939 OFFSET encodings — coolant temperature (−40 °C), aftertreatment temperatures (−273 °C),
+ * percent torque (−125 %) — unsigned on the wire with the offset applied on display. No page marks
+ * any of those Signed, so consensus never sees a conflict there. A rule keyed on "Min < 0" alone
+ * would have rewritten all 32 in order to fix 2.
+ *
+ * Two of the 32 are NOT offset encodings and are probably wiki Type errors we cannot prove:
+ * id 1333 "Steering wheel turn counter" (Min −32, Max 29, ONE byte — a symmetric range in a byte is
+ * a signed field) and id 618 "ADAS Ahead speed" (Min −128, Max 126, km/h). They stay untouched: no
+ * second page contradicts them, so there is nothing to reconcile against, and correcting them would
+ * be inference. Both are flagged by the Min cross-check for a human to raise with Teltonika.
  */
-export function applyTypeConsensus(tables: Record<string, AvlEntry>[]): string[] {
-  const sig = (id: string, e: AvlEntry): string => `${id}|${e.name}|${e.bytes}|${e.multiplier ?? ''}|${e.units ?? ''}`
+export function applyTypeConsensus(tables: Record<string, AvlEntry>[]): { table: number; note: string }[] {
+  // min/max are part of the identity, not decoration. Without them 156 signatures across the 34
+  // tables resolve to entries with different ranges or descriptions — "Neighbouring Cell 1 MNC" is
+  // documented for Cell #1 on some pages and Cell #4 on others under the same key. None of those
+  // currently carries a Type disagreement, so the rule does not mis-fire today; it was luck, and
+  // the range is exactly what the comment above claims to rely on.
+  const sig = (id: string, e: AvlEntry): string =>
+    `${id}|${e.name}|${e.bytes}|${e.multiplier ?? ''}|${e.units ?? ''}|${e.min ?? ''}|${e.max ?? ''}`
   const signed = new Set<string>()
   for (const t of tables) for (const [id, e] of Object.entries(t)) if (e.type === 'Signed') signed.add(sig(id, e))
-  const corrections: string[] = []
-  for (const t of tables) {
+  // Attributed to the table whose entry was actually rewritten. Attribution by bare id put the
+  // note on every table defining that id — including `fmb120`, whose id 141 is "Driver 1 Cumulative
+  // Break Time", an unrelated parameter the rule must never touch, and including the SOURCE tables
+  // that were already Signed. `warnings` is the audit trail for a rule-8 artefact; a reader who
+  // greps it and finds a correction that did not happen cannot tell which record is lying.
+  const corrections: { table: number; note: string }[] = []
+  for (const [index, t] of tables.entries()) {
     for (const [id, e] of Object.entries(t)) {
-      if (e.type === 'Unsigned' && signed.has(sig(id, e))) {
+      // `!== 'Signed'`, not `=== 'Unsigned'`. The losing side is not always spelled Unsigned — for
+      // BLE Temperature #1–#4 (ids 25–28) the CAN-line pages leave the Type cell EMPTY while
+      // fmb120 says Signed, with a byte-identical definition and Min −4000. Testing for the word
+      // "Unsigned" skipped exactly the case the rule exists for, and those are cold-chain
+      // temperature sensors: −5.00 °C would have decoded as +650.36 °C on five models.
+      // Non-numeric types are excluded — HEX and ASCII carry no sign to correct.
+      if (e.type !== 'Signed' && !NON_NUMERIC.has(e.type.toUpperCase()) && signed.has(sig(id, e))) {
+        const was = e.type === '' ? 'blank' : e.type
         e.type = 'Signed'
-        corrections.push(`id ${id}: Type says Unsigned here but Signed on another Teltonika page for an otherwise identical definition — corrected to Signed`)
+        corrections.push({ table: index, note: `id ${id}: Type was ${was} here but Signed on another Teltonika page for an otherwise identical definition — corrected to Signed` })
       }
     }
   }

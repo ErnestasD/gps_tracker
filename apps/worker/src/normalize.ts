@@ -75,10 +75,18 @@ export type FieldNulled = (field: string) => void
  *
  * `fmb120` is the 640-element table that 45 Teltonika models render identically — the whole FMB1xx
  * family plus most of FMC/FMM/FMU/FMP/FMT — so it is the safest thing to decode an unattributed
- * record with, and it is what the platform effectively used before tables existed. It is a FALLBACK,
- * not a default to rely on: a TAT or FMx6xx device decoded with it is mislabelled, not merely
- * unnamed (id 520 is "Tamper detection Event" on a TAT and "Agricultural State Flags P4" here), so
- * every caller that knows the device should pass its table.
+ * record with. It is a FALLBACK, not a default to rely on: a TAT or FMx6xx device decoded with it is
+ * MISLABELLED, not merely unnamed (id 520 is "Tamper detection Event" on a TAT and "Agricultural
+ * State Flags P4" here), so every caller that knows the device must pass its table.
+ *
+ * AND IT IS NOT A PURE UPGRADE ON THE OLD HAND-MADE FILE. The live FMB120 table has since dropped
+ * ten ids the old file carried, four of them Signed °C: 269/272/275/278 "Escort LLS Temperature
+ * #1–#4", their battery-voltage siblings 271/274/277/280, plus 8 "Authorized iButton" and 244
+ * "DIN2/AIN2 spec event". A device still emitting 269 goes from −3 °C to `io_269 = 65533` until its
+ * profile names a table. They are not retired parameters — the Escort block is alive on fmb150,
+ * fmc150, fmm150, fmc250, fmm80a and fmb010, and id 8 on the FMx6xx tables — so wiring profile →
+ * table restores every one of them with the correct sign. That wiring is the reason this window is
+ * short, and it is why the fallback must not become permanent.
  */
 export const FALLBACK_AVL_TABLE: AvlTable = 'fmb120'
 
