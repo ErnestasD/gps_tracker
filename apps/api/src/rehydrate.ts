@@ -22,7 +22,9 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
   const pipe = redis.pipeline()
   // device registry (audit D1): reuse deviceRegistry.activateDevice's exact keys/shape so a rehydrate
   // and an incremental CRUD activate can never drift. profile presence_rules resolved once, in memory.
-  const profileRules = new Map((await db.profiles.list()).map((p) => [p.id, p.presenceRules]))
+  // all(), not list(): list() hides the legacy family profiles from the picker, and a device still
+  // sitting on one must not come back from a Redis rebuild with no presence rules at all
+  const profileRules = new Map((await db.profiles.all()).map((p) => [p.id, p.presenceRules]))
   let devices = 0
   const registryRows = await db.devices.listAllForRegistry()
   // The per-tenant index is repaired ADDITIVELY here and reconciled member-by-member below — never

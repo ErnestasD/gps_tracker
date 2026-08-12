@@ -59,7 +59,7 @@ function fakeDb(
 ): Db {
   return {
     devices: { listAllForRegistry: () => Promise.resolve(devices) },
-    profiles: { list: () => Promise.resolve(profiles) },
+    profiles: { all: () => Promise.resolve(profiles) },
     geofences: { listAll: () => Promise.resolve(geofences) },
     rules: { listAll: () => Promise.resolve(rules) },
     drivers: { listAllIbuttons: () => Promise.resolve(ibuttons) },

@@ -443,7 +443,12 @@ function CreateDeviceForm({
   const [busy, setBusy] = useState(false)
 
   const acc = accountId || accounts[0]?.id || ''
-  const prof = profileId || profiles[0]?.id || ''
+  // FMB120 rather than "whatever sorts first". The list is 105 models ordered by key, so the first
+  // entry is ATC700 — an asset tracker nobody adding a vehicle wants, chosen by the alphabet. The
+  // profile decides which AVL dictionary decodes the device, so a wrong default is a wrong decode,
+  // not just an odd label; FMB120 is the table 45 models share and the safest thing to land on.
+  const fallback = profiles.find((p) => p.key === 'fmb120')?.id ?? profiles[0]?.id ?? ''
+  const prof = profileId || fallback
 
   const submit = (e: FormEvent) => {
     e.preventDefault()

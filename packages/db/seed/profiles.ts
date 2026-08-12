@@ -1,59 +1,149 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { PrismaClient } from '@prisma/client'
 
+import catalogue from '../../codec/dictionaries/catalogue.json' with { type: 'json' }
+
 /**
- * Device-profile seed (E03-3): the four launch profiles (keys align with codec
- * dictionary families). presenceRules feed the trip state machine (§6.4) and the
- * offline sweeper (§6.5); commandPresets are the Codec-12 preset grid (E08-2);
- * readIdleMin is ingest's per-profile read-idle timeout (§6.1). Idempotent upsert
- * by key — safe to re-run. Run: pnpm db:seed:profiles.
+ * Device MODELS (was: four families).
+ *
+ * The picker offered four options while Teltonika ships ~105 trackers that have an AVL page, and the
+ * profile decided nothing about decoding — `normalize()` had a defaulted dictionary and its only
+ * caller passed undefined, so every device decoded against the FMB1xx table whatever an operator
+ * picked. This seed is generated FROM `packages/codec/dictionaries/catalogue.json`, which the AVL
+ * generator writes, so the model list and the dictionaries cannot drift apart: a model that appears
+ * here always has a table, and a table always has at least one model.
+ *
+ * presenceRules feed the trip state machine (§6.4) and the offline sweeper (§6.5); commandPresets
+ * are the Codec-12 preset grid (E08-2); readIdleMin is ingest's per-profile read-idle timeout
+ * (§6.1). Idempotent upsert by key — safe to re-run. Run: pnpm db:seed:profiles.
  */
 
 interface ProfileSeed {
   key: string
   name: string
+  model?: string
+  avlTable: string
+  capabilities?: Record<string, unknown>
+  legacy?: boolean
   presenceRules: Record<string, unknown>
   commandPresets: unknown[]
   readIdleMin: number
 }
 
-export const DEVICE_PROFILES: ProfileSeed[] = [
-  {
-    key: 'fmb1xx',
-    name: 'Teltonika FMB1xx (vehicle)',
-    presenceRules: { moveSpeedKmh: 6, movingSustainS: 90, parkedIgnitionOffS: 180, idleSustainS: 120 },
-    commandPresets: [
-      { name: 'Get info', text: 'getinfo' },
-      { name: 'Get GPS', text: 'getgps' },
-      { name: 'Get version', text: 'getver' },
-    ],
-    readIdleMin: 40,
-  },
-  {
-    key: 'fmc',
-    name: 'Teltonika FMC (CAN vehicle)',
-    presenceRules: { moveSpeedKmh: 6, movingSustainS: 90, parkedIgnitionOffS: 180, idleSustainS: 120 },
-    commandPresets: [
-      { name: 'Get info', text: 'getinfo' },
-      { name: 'Get version', text: 'getver' },
-    ],
-    readIdleMin: 40,
-  },
-  {
-    key: 'fmb6xx-stub',
-    name: 'Teltonika FMB6xx (stub)',
-    presenceRules: { moveSpeedKmh: 6, movingSustainS: 90, parkedIgnitionOffS: 180, idleSustainS: 120 },
-    commandPresets: [{ name: 'Get version', text: 'getver' }],
-    readIdleMin: 40,
-  },
-  {
-    key: 'tat-asset',
-    name: 'Teltonika TAT (asset tracker)',
-    // asset trackers report infrequently — no-ignition presence + long offline window
-    presenceRules: { noIgnition: true, moveSpeedKmh: 3, movingSustainS: 300, parkedDisplaceM: 100, offlineAfterH: 26 },
-    commandPresets: [{ name: 'Get GPS', text: 'getgps' }],
-    readIdleMin: 1560, // 26 h
-  },
+/**
+ * A vehicle tracker's defaults, and an asset tracker's.
+ *
+ * The split is taken from the wiki's own page STRUCTURE, not from marketing copy: TAT/TMT/TST/TFT
+ * and GH share one AVL template built around BLE sensor elements and battery life, and they report
+ * on a schedule rather than on ignition. Everything on the FM, FT and AT pages is an ignition-wired
+ * tracker. These are STARTING POINTS for trip segmentation, not claims about a model — an operator
+ * who knows their fleet should be able to tune them, which is a separate piece of work.
+ */
+const VEHICLE = { moveSpeedKmh: 6, movingSustainS: 90, parkedIgnitionOffS: 180, idleSustainS: 120 }
+const ASSET = { noIgnition: true, moveSpeedKmh: 3, movingSustainS: 300, parkedDisplaceM: 100, offlineAfterH: 26 }
+const ASSET_FAMILIES = ['TAT', 'TMT', 'TST', 'TFT', 'GH5']
+
+/** Codec-12 presets. `getinfo`/`getver`/`getgps` are the three every FM-series device answers. */
+const VEHICLE_PRESETS = [
+  { name: 'Get info', text: 'getinfo' },
+  { name: 'Get GPS', text: 'getgps' },
+  { name: 'Get version', text: 'getver' },
 ]
+const ASSET_PRESETS = [{ name: 'Get GPS', text: 'getgps' }]
+
+/**
+ * What a model can do, derived from the wiki's own Parameter Group and HW Support columns.
+ *
+ * The group names are matched EXPLICITLY, never by substring. There are 52 distinct group values
+ * across the 34 tables and the same concept is spelled several ways — "Bluetooth Low Energy",
+ * "Bluetooth®Low Energy", "Bluetooth® Low Energy", "BLE elements", "Bluetooth accessories I/O
+ * elements" — so a `group.includes('BLE')` test silently reported that almost no model has
+ * Bluetooth, TAT100 included. Substring matching on a vocabulary you have not enumerated is how you
+ * ship a confident, wrong answer; the list below is the enumeration.
+ */
+const CAN_GROUPS = new Set([
+  'ALLCAN300', 'ALLCAN300, CANCONTROL', 'LVCAN200, ALLCAN300, CANCONTROL', 'LVCAN, ALLCAN300, CANCONTROL',
+  'CAN ADAPTERS', 'CAN ADAPTERS ELEMENTS', 'CAN CHIP', 'MANUAL CAN', 'MANUAL CAN ELEMENTS',
+  'MANUAL CAN I/O ELEMENTS', 'CAN GOVECS', 'CAN BOSCH', 'DEFAULT J1939', 'FMS ELEMENTS',
+  'FMS ECO DRIVING ELEMENTS', 'EV FMS ELEMENTS', 'ISOBUS',
+])
+const BLE_GROUPS = new Set([
+  'BLUETOOTH LOW ENERGY', 'BLUETOOTH®LOW ENERGY', 'BLUETOOTH® LOW ENERGY', 'BLE ELEMENTS',
+  'BLUETOOTH ACCESSORIES I/O ELEMENTS',
+])
+const TACHO_GROUPS = new Set(['TACHOGRAPH DATA ELEMENTS', 'TACHO'])
+const OBD_GROUPS = new Set(['OBD ELEMENTS', 'OBD OEM ELEMENTS'])
+
+/**
+ * Does the wiki's HW Support column cover this model?
+ *
+ * The column mixes exact codes with family wildcards — "FMBXXX FMB110 FMB120 …" — so an exact-match
+ * test misses every model covered only by the wildcard. `FMBXXX` matches FMB120, `FMX6XX` matches
+ * FMC640. An EMPTY column is treated as "applies", because most tables leave it blank and the
+ * alternative is claiming a model cannot do something the page never restricted.
+ */
+function hwCovers(hwSupport: string | undefined, model: string): boolean {
+  if (hwSupport === undefined || hwSupport.trim() === '') return true
+  const tokens = hwSupport.toUpperCase().split(/[\s,]+/).filter(Boolean)
+  const m = model.toUpperCase()
+  return tokens.some((t) => t === m || (t.includes('X') && new RegExp(`^${t.replace(/X/g, '.')}$`).test(m)))
+}
+
+/**
+ * A capability is what the DEVICE can carry, never a promise about a vehicle. Both Teltonika adapter
+ * pages state that the number of CAN parameters depends on the vehicle's model, year and equipment,
+ * so `can: true` means "this model has the CAN line", not "you will get engine data".
+ */
+function capabilitiesFor(model: string, table: string): Record<string, unknown> {
+  const entries = Object.values(dictionaryFor(table))
+  const has = (groups: Set<string>): boolean =>
+    entries.some((e) => groups.has((e.group ?? '').trim().toUpperCase()) && hwCovers(e.hwSupport, model))
+  return { can: has(CAN_GROUPS), ble: has(BLE_GROUPS), tacho: has(TACHO_GROUPS), obd: has(OBD_GROUPS) }
+}
+
+/** Read a generated dictionary once, for the capability derivation above. */
+const dictCache = new Map<string, Record<string, { group?: string; hwSupport?: string }>>()
+function dictionaryFor(table: string): Record<string, { group?: string; hwSupport?: string }> {
+  const hit = dictCache.get(table)
+  if (hit) return hit
+  const path = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'codec', 'dictionaries', `${table}.json`)
+  const parsed = JSON.parse(readFileSync(path, 'utf8')) as { elements: Record<string, { group?: string; hwSupport?: string }> }
+  dictCache.set(table, parsed.elements)
+  return parsed.elements
+}
+
+/**
+ * The four pre-catalogue rows. KEPT, not deleted: live devices reference them by id, so removing
+ * them would orphan a fleet. They are hidden from the picker and now point at the table that
+ * actually decodes them — until this change `tat-asset` and `fmb6xx-stub` devices were being
+ * decoded as FMB1xx, which is mislabelling rather than missing data.
+ */
+const LEGACY: ProfileSeed[] = [
+  { key: 'fmb1xx', name: 'Teltonika FMB1xx (vehicle)', avlTable: 'fmb120', legacy: true, presenceRules: VEHICLE, commandPresets: VEHICLE_PRESETS, readIdleMin: 40 },
+  { key: 'fmc', name: 'Teltonika FMC (CAN vehicle)', avlTable: 'fmb120', legacy: true, presenceRules: VEHICLE, commandPresets: VEHICLE_PRESETS, readIdleMin: 40 },
+  { key: 'fmb6xx-stub', name: 'Teltonika FMB6xx (stub)', avlTable: 'fmb640', legacy: true, presenceRules: VEHICLE, commandPresets: [{ name: 'Get version', text: 'getver' }], readIdleMin: 40 },
+  { key: 'tat-asset', name: 'Teltonika TAT (asset tracker)', avlTable: 'tat100', legacy: true, presenceRules: ASSET, commandPresets: ASSET_PRESETS, readIdleMin: 1560 },
+]
+
+/** One profile per model the AVL generator found a table for. */
+const MODELS: ProfileSeed[] = (catalogue as { models: { model: string; dictionary: string }[] }).models.map((m) => {
+  const asset = ASSET_FAMILIES.some((f) => m.model.startsWith(f))
+  return {
+    key: m.model.toLowerCase(),
+    name: `Teltonika ${m.model}`,
+    model: m.model,
+    avlTable: m.dictionary,
+    capabilities: capabilitiesFor(m.model, m.dictionary),
+    presenceRules: asset ? ASSET : VEHICLE,
+    commandPresets: asset ? ASSET_PRESETS : VEHICLE_PRESETS,
+    readIdleMin: asset ? 1560 : 40, // 26 h for an asset tracker that reports on a schedule
+  }
+})
+
+export const DEVICE_PROFILES: ProfileSeed[] = [...MODELS, ...LEGACY]
 
 export async function seedProfiles(databaseUrl: string): Promise<Record<string, string>> {
   const prisma = new PrismaClient({ datasourceUrl: databaseUrl })
@@ -62,10 +152,20 @@ export async function seedProfiles(databaseUrl: string): Promise<Record<string, 
     for (const p of DEVICE_PROFILES) {
       const presenceRules = p.presenceRules as never
       const commandPresets = p.commandPresets as never
+      const shared = {
+        name: p.name,
+        presenceRules,
+        commandPresets,
+        readIdleMin: p.readIdleMin,
+        avlTable: p.avlTable,
+        capabilities: (p.capabilities ?? {}) as never,
+        legacy: p.legacy ?? false,
+        ...(p.model !== undefined ? { model: p.model } : {}),
+      }
       const row = await prisma.deviceProfile.upsert({
         where: { key: p.key },
-        create: { key: p.key, name: p.name, presenceRules, commandPresets, readIdleMin: p.readIdleMin },
-        update: { name: p.name, presenceRules, commandPresets, readIdleMin: p.readIdleMin },
+        create: { key: p.key, ...shared },
+        update: shared,
       })
       idByKey[p.key] = row.id
     }
