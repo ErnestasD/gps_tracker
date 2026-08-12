@@ -83,6 +83,31 @@ async function ingestRecords(count: number, scenario = liveDrive, startMs = Date
 const consumerFor = (workerId: string, extra: Partial<ConstructorParameters<typeof ShardConsumer>[1]> = {}) =>
   new ShardConsumer(SHARD, { redis, pool, hash, workerId, autoclaimMinIdleMs: 100, ...extra })
 
+const cborEnc = new Encoder()
+
+/** XADD one synthetic record per spec, run the shard, and hand back each device's decoded attrs. */
+async function decodeBatch(specs: { deviceId: bigint; io: [number, bigint][] }[]): Promise<Map<string, Record<string, unknown>>> {
+  let t = Date.now() - 600_000
+  for (const spec of specs) {
+    await redis.xadd(
+      `raw:${SHARD}`, '*', 'p',
+      cborEnc.encode({
+        deviceId: spec.deviceId, imei: IMEI, serverTimeMs: Date.now(), tsMs: (t += 1_000), priority: 0,
+        lat: 54.6872, lon: 25.2797, altitude: 100, angle: 0, satellites: 9, speed: 10, eventIoId: 0,
+        io: spec.io, raw: new Uint8Array([1]),
+      }),
+    )
+  }
+  const out = new Map<string, Record<string, unknown>>()
+  const c = consumerFor('w-dict', { onBatch: (records) => { for (const r of records) out.set(r.deviceId.toString(), r.attrs) } })
+  await c.ensureGroup()
+  while ((await c.tick()) > 0) void 0
+  return out
+}
+
+const decodeOne = async (io: [number, bigint][]): Promise<Record<string, unknown>> =>
+  (await decodeBatch([{ deviceId: 42n, io }])).get('42') ?? {}
+
 describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () => {
   it('I1: ingest-ACKed count == stream entries == rows inserted', async () => {
     const res = await ingestRecords(50)
@@ -346,6 +371,54 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     await short.release()
     await redis.del('shards:lease:0')
   }, 30_000)
+
+  /**
+   * THE DEVICE'S OWN DICTIONARY DECODES IT — not FMB120's.
+   *
+   * `normalize()` has taken a table since the catalogue landed, and until now nothing passed one:
+   * every model in the fleet was decoded with the FMB120 fallback. That is not "unnamed", it is
+   * MISLABELLED, which is worse, because a wrong name looks like data. AVL id 141 is the cleanest
+   * proof: 2 bytes on the wire either way, "Driver 1 Cumulative Break Time" and UNSIGNED on
+   * fmb120, "Battery Temperature" and SIGNED (min −600 = −60.0 °C) on the FMx6xx tables. So the
+   * same 0xFFFF is 65535 minutes on one reading and −0.1 °C on the other — a difference a customer
+   * sees in a column, with nothing to tell them which one they are looking at.
+   */
+  it('a device decodes with the AVL table its PROFILE names, not the fallback', async () => {
+    await redis.hset('device:config', '42', JSON.stringify({ presenceRules: {}, odometerSource: 'device', avlTable: 'fmc650' }))
+    const seen = await decodeOne([[141, 0xffffn]])
+    expect(seen['Battery Temperature']).toBe(-1)
+    expect(seen['Driver 1 Cumulative Break Time']).toBeUndefined()
+  }, 60_000)
+
+  it('…and falls back rather than refusing when the config cannot say', async () => {
+    // Four ways the answer is missing, and none of them may cost a position: no config row at all
+    // (a device activated before this field existed), a config written without it, a corrupt value,
+    // and a table name the codec does not ship (a profile row edited by hand). Dropping the record
+    // would turn a labelling problem into data loss.
+    for (const cfg of [null, JSON.stringify({ presenceRules: {}, odometerSource: 'device' }), 'not json', JSON.stringify({ avlTable: 'fmb999' })]) {
+      await redis.del('device:config')
+      if (cfg !== null) await redis.hset('device:config', '42', cfg)
+      const seen = await decodeOne([[141, 0xffffn]])
+      expect(seen['Driver 1 Cumulative Break Time'], String(cfg)).toBe(65535)
+    }
+  }, 60_000)
+
+  it('the table is resolved per DEVICE, so one batch can carry two models', async () => {
+    // The cache is keyed by device id and the resolve is one HMGET for the whole batch; a bug that
+    // resolved once per batch and reused it would be invisible in a single-device test and wrong
+    // for every real shard, which carries every model a tenant owns.
+    await redis
+      .multi()
+      .hset('device:config', '42', JSON.stringify({ presenceRules: {}, odometerSource: 'device', avlTable: 'fmc650' }))
+      .hset('device:config', '43', JSON.stringify({ presenceRules: {}, odometerSource: 'device', avlTable: 'fmb120' }))
+      .exec()
+    const byDevice = await decodeBatch([
+      { deviceId: 42n, io: [[141, 0xffffn]] },
+      { deviceId: 43n, io: [[141, 0xffffn]] },
+    ])
+    expect(byDevice.get('42')?.['Battery Temperature']).toBe(-1)
+    expect(byDevice.get('43')?.['Driver 1 Cumulative Break Time']).toBe(65535)
+  }, 60_000)
 
   it('shard leases are exclusive: second worker cannot claim an owned shard', async () => {
     const l1 = new ShardLeaser(redis, 'w-one', 10_000)

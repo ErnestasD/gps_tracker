@@ -69,7 +69,8 @@
   "id 476: Type \"UNSIGNED LONG INT\" normalised to Unsigned",
   "id 477: Type \"UNSIGNED LONG INT\" normalised to Unsigned",
   "id 478: Type \"UNSIGNED LONG INT\" normalised to Unsigned",
-  "id 210: Type was Unsigned here but Signed on another Teltonika page for an otherwise identical definition — corrected to Signed"
+  "id 210: Type was Unsigned here but Signed on another Teltonika page for the same name, width, multiplier, units and value range (range -4..32767) — corrected to Signed. Description and HW Support were NOT compared and do differ",
+  "source: 52 element(s) are documented on another Teltonika page whose HW Support column names a model of this table, yet are absent from this table's own page (e.g. 410 \"OEM Battery charge state\", 412 \"OEM Battery power consumption\", 1176 \"ELD Mileage\"). Teltonika's page is the authority, so nothing is copied across — this records the gap rather than hiding it."
  ],
  "elements": {
   "1": {"name":"Digital Input 1","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","hwSupport":"FMBXXX FMB001 FMC001 FMB010 FMB110 FMB120 FMB122 FMB125 FMU125 FMC125 FMM125 FMB130 FMU130 FMC130 FMM130 FMB140 FMB150 FMC150 FMM150 FMB900 FMB920 FMB962 FMB964 FMB202 FMB204 FMB206 MTB100","group":"Permanent I/O elements"},

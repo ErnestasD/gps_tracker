@@ -106,9 +106,14 @@ describe('tenant suspension', () => {
     // and skips device:config entirely: the fleet returns with default presence rules and GPS
     // odometry instead of CAN, and nobody notices because data is flowing. Three call sites did this
     // mapping by hand; the third forgot (review HIGH).
+    //
+    // avlTable joined that list: a restore REBUILDS device:config, so a field missing from these
+    // rows is not merely un-updated, it is deleted — every device in a tenant that lapsed and paid
+    // would come back decoding on the FMB120 fallback, with plausible-looking wrong attribute names
+    // and no error anywhere. Exactly the drift this test exists to catch, one field later.
     const { redis, hashes } = fakeRedis()
-    await restoreTenantDevices(redis, [{ ...dev(1n, 'a'), presenceRules: { minStopS: 120 }, odometerSource: 'can' }])
-    expect(JSON.parse(hashes['device:config']!['1']!)).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'can' })
+    await restoreTenantDevices(redis, [{ ...dev(1n, 'a'), presenceRules: { minStopS: 120 }, odometerSource: 'can', avlTable: 'fmc650' }])
+    expect(JSON.parse(hashes['device:config']!['1']!)).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'can', avlTable: 'fmc650' })
   })
 
   it('suspend → restore → suspend is idempotent in both directions', async () => {

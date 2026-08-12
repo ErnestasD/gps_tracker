@@ -12,9 +12,14 @@
   "id 10189: Type \"Unsiged\" normalised to Unsigned",
   "id 10190: Type \"Unsiged\" normalised to Unsigned",
   "id 10191: Type \"Unsiged\" normalised to Unsigned",
+  "id 239: repeated with the same name but different columns — kept the first",
+  "id 250: repeated with the same name but different columns — kept the first",
+  "id 192: repeated with the same name but different columns — kept the first",
   "id 192: defined twice — kept \"Odometer\", ignored \"Total Distance\"",
+  "id 138: repeated with the same name but different columns — kept the first",
   "id 138: defined twice — kept \"High Resolution Engine Total Fuel Used\", ignored \"Engine Fuel used\"",
-  "id 141: Type was Unsigned here but Signed on another Teltonika page for an otherwise identical definition — corrected to Signed"
+  "id 141: Type was Unsigned here but Signed on another Teltonika page for the same name, width, multiplier, units and value range (range -600..1270) — corrected to Signed. Description and HW Support were NOT compared and do differ",
+  "source: 1 element(s) are documented on another Teltonika page whose HW Support column names a model of this table, yet are absent from this table's own page (e.g. 177 \"Event Reserved01\"). Teltonika's page is the authority, so nothing is copied across — this records the gap rather than hiding it."
  ],
  "elements": {
   "1": {"name":"Digital Input 1","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","hwSupport":"FMB640 FMC640 FMM640","group":"Permanent I/O elements"},

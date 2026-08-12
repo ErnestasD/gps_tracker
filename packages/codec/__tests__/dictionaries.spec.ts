@@ -73,6 +73,33 @@ describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
     }
   })
 
+  it('no table has silently SHRUNK — a truncated parse ships a plausible-looking dictionary', () => {
+    // `size > 0` was the only quality gate the shipped artefact had, and a 12-of-137 `fm36` passed
+    // it: a non-greedy table match ended the FM36 table at a nested <table> in a Description cell,
+    // and the missing 125 elements — Ignition, Movement, the Dallas temperatures, the odometer —
+    // simply surfaced as io_<id>, which reads to a customer like the DEVICE being broken. The
+    // generator has its own shrink guard, but that only fires when someone regenerates; this
+    // protects the FILES, which a hand-edit or a bad merge can also mangle.
+    //
+    // Floors are 90% of the count at capture (2026-08-12), so ordinary wiki churn never touches
+    // them and only a collapse does. Lowering one is a deliberate act that belongs in a diff: check
+    // the wiki page actually lost those rows before you do it.
+    const FLOOR: Record<string, number> = {
+      fmc650: 1077, fmm650: 844, fmc640: 842, fmb640: 801, fmb641: 682, fmb120: 576, fmb930: 499, tft100: 492,
+      fmc150: 379, fmb150: 378, fmm150: 378, fmb001: 313, fmc250: 309, tst100: 265, ftc305: 244, fm6300: 238,
+      gh5200: 231, tat100: 216, fmc880: 214, fmm880: 213, ftc308: 191, ftc164: 189, fmb010: 187, ftc134: 186,
+      fmm80a: 185, ftc927: 176, ftc924: 173, ftc887: 171, fm36: 123, ftc920: 72, atc704: 69, ftm927: 68,
+      atc774: 67, atc700: 36,
+    }
+    // …and the map must COVER the catalogue. Without this a new table added with a truncated parse
+    // gets no floor at all and the loop above waves it through — which is exactly the case the
+    // generator's own guard cannot see either, because there is no previous file to compare to.
+    expect(avlTables().slice().sort()).toEqual(Object.keys(FLOOR).sort())
+    for (const table of avlTables()) {
+      expect(loadDictionary(table).size, `${table} lost elements`).toBeGreaterThanOrEqual(FLOOR[table]!)
+    }
+  })
+
   it('id 141 Battery Temperature is SIGNED on every table that defines it', () => {
     // Teltonika corrected this cell themselves (Template:FMX650 AVL ID rev 114084, 2026-06-05), but
     // the four pages that transclude the older FMX640 template still read Unsigned. Read unsigned,
@@ -181,5 +208,34 @@ describe('loading is defensive in the two ways that matter', () => {
     // without it must not throw a TypeError there, and must not guess a width either.
     expect(applySign({ name: 'x', bytes: undefined as unknown as string, type: 'Signed' }, 250n)).toBe(250n)
     expect(applySign({ name: 'x', bytes: '3', type: 'Signed' }, 250n)).toBe(250n) // 3 bytes: no AVL width
+  })
+})
+
+describe('applySign refuses what it cannot honestly reinterpret', () => {
+  it('passes a value WIDER than the declared width through untouched', () => {
+    // BigInt.asIntN truncates rather than declining. Until profile → table is wired every device
+    // decodes against fmb120, which correctly describes 45 of 105 models, and eight ids are Signed
+    // there at a NARROWER width than another shipped table gives them. Measured on the real path:
+    // 5000 against a 1-byte Signed entry came out as −120 and was written durably to attrs.
+    const oneByte = { name: 'Coolant Temperature', bytes: '1', type: 'Signed', min: '-128', max: '127' }
+    expect(applySign(oneByte, 5000n)).toBe(5000n) // odd, and visibly so — not plausible and wrong
+    expect(applySign(oneByte, 251n)).toBe(-5n) // …while a genuine 1-byte reading still works
+  })
+
+  it('refuses a range the width says is impossible — an OFFSET encoding is not two\'s complement', () => {
+    // Teltonika types id 127 Engine Coolant Temperature as Signed, 1 byte, −40…210, described
+    // "Offset by -40": the wire byte is 0…250 and the value is byte − 40. 210 does not fit int8.
+    // Reinterpreting turns a 130 °C engine (byte 170) into −86 °C, so an over-temp rule can never
+    // fire. 70 entries across the pro-CAN tables have this shape; fmb120 has none, so they arm the
+    // moment a device is decoded with its own table.
+    const offset = { name: 'Engine Coolant Temperature', bytes: '1', type: 'Signed', min: '-40', max: '210' }
+    expect(applySign(offset, 170n)).toBe(170n)
+  })
+
+  it('entries are frozen — one mutation would poison every shard for the process lifetime', () => {
+    const e = loadDictionary('fmb120').get(21)!
+    expect(Object.isFrozen(e)).toBe(true)
+    expect(() => { (e as { name: string }).name = 'PWNED' }).toThrow()
+    expect(loadDictionary('fmb120').get(21)?.name).toBe('GSM Signal')
   })
 })

@@ -131,7 +131,7 @@ export async function claimDevice(db: Db, redis: Redis, actor: Actor, input: Cla
     }
     await activateDevice(redis, {
       id: device.id, imei: device.imei, tenantId: input.tenantId, accountId: input.accountId,
-      config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
+      config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource, avlTable: profile.avlTable }, // E04-5
     })
     await redis.multi().zrem('quarantine:imei', input.imei).del(`quarantine:rejects:${input.imei}`).exec()
     return { ok: true, deviceId: device.id.toString() }

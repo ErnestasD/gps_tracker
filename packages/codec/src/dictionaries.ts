@@ -26,8 +26,16 @@ export interface AvlDictionaryEntry {
   name: string
   bytes: string
   type: string
+  /** The wiki's own value range. Declared because it is EVIDENCE, not metadata: `applySign` uses
+   *  `max` to refuse a two's-complement reading the range says is impossible, and it was already in
+   *  the generated JSON while being invisible to anyone reading this type. */
+  min?: string
+  max?: string
   multiplier?: string
   units?: string
+  /** which models can actually produce this element, and which hardware it needs */
+  hwSupport?: string
+  group?: string
   description?: string
 }
 
@@ -76,6 +84,24 @@ export function applySign(entry: AvlDictionaryEntry | undefined, value: bigint):
   if (typeof entry.bytes !== 'string') return value
   const bits = { '1': 8, '2': 16, '4': 32, '8': 64 }[entry.bytes.trim()]
   if (bits === undefined) return value
+  // A value WIDER than the dictionary claims is not ours to reinterpret. `BigInt.asIntN` truncates
+  // rather than declining, so a 2-byte reading against a 1-byte entry silently becomes a different
+  // number — 5000 arriving on an entry the table calls 1 byte came out as −120 and was written
+  // durably to positions.attrs with no signal. That happens whenever the table we decode with is
+  // not the table the device speaks, which is every device until profile → table is wired: fmb120
+  // correctly describes 45 of the 105 catalogued models, and eight ids are Signed there at a
+  // NARROWER width than another shipped table gives them. Passing the raw value through leaves it
+  // visibly odd; truncating makes it plausible and wrong.
+  if (value >= 1n << BigInt(bits)) return value
+  // …and a range the dictionary itself says is impossible for a signed field of this width means
+  // the Type column is not describing two's complement. Teltonika types id 127 Engine Coolant
+  // Temperature as `Signed`, 1 byte, range −40…210 — and 210 does not fit int8, because the wire
+  // byte is 0…250 with the description "Offset by -40". Reinterpreting it turns a 130 °C engine
+  // into −86 °C, so an over-temperature rule can never fire. 70 entries across the pro-CAN tables
+  // have this shape; none is in fmb120, so nothing is live today and all of them arm the moment a
+  // device is decoded with its own table.
+  const max = Number(entry.max)
+  if (Number.isFinite(max) && max > 2 ** (bits - 1) - 1) return value
   return BigInt.asIntN(bits, value)
 }
 
@@ -97,7 +123,10 @@ export function buildDictionary(file: DictionaryFile): Map<number, AvlDictionary
     if (!entry.name) {
       throw new FrameError(`dictionary ${file.table ?? file.family}: AVL id ${id} has no name`)
     }
-    map.set(id, entry)
+    // Frozen: `loadDictionary` hands out the cached map and its entries BY REFERENCE to all 16
+    // shards for the lifetime of the process. One caller mutating an entry would change what every
+    // later record decodes as, fleet-wide, with nothing to debug from.
+    map.set(id, Object.freeze(entry))
   }
   return map
 }

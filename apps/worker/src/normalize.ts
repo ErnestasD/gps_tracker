@@ -8,12 +8,37 @@ const AVL_MOVEMENT = 240
 const AVL_TOTAL_ODOMETER = 16
 
 // Fuel ids kept under FORCED io_<id> keys (E08-3). 84 (l, ×0.1) and 89 (%) share the
-// dictionary name "Fuel level" — a record carrying only ONE of them would store its value
+// dictionary name "Fuel Level" — a record carrying only ONE of them would store its value
 // under a key whose unit the reader cannot know. Deterministic id-keys make the fuel
 // series readable; values stay raw (multipliers apply at read, like every other attr).
 // https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
 // (48 = OBD Fuel Level %, 84 = Fuel level l ×0.1, 89 = Fuel level %)
 const FORCED_ID_KEYS = new Set([48, 84, 89])
+
+/**
+ * Every id whose dictionary NAME is shared with another id in the same table.
+ *
+ * The hand-maintained list above covered the fuel trio and nothing else, because it was written
+ * against a 323-id table. Regenerating from the live wiki produced new collisions — 857 and 858 are
+ * both "LNG Level" now (they were "LNG Level Proc" and "LNG Level kg", one a percentage and one
+ * kilograms), and 281/282 both became "Fault Codes". Under a shared name the old rule kept whichever
+ * arrived FIRST and pushed the other to `io_<id>`, so which value a reader found under "LNG Level"
+ * depended on the order the device happened to send them: 80 (%) or 1234 (kg).
+ *
+ * Deriving the set per table fixes the ones regeneration created, the pre-existing 67/168 "Battery
+ * Voltage" pair, and every future one — a dictionary is regenerated, a hand-written list is not.
+ */
+const ambiguousIds = new WeakMap<Map<number, { name: string }>, Set<number>>()
+function ambiguousInTable(dict: Map<number, { name: string }>): Set<number> {
+  const cached = ambiguousIds.get(dict)
+  if (cached) return cached
+  const byName = new Map<string, number[]>()
+  for (const [id, e] of dict) byName.set(e.name, [...(byName.get(e.name) ?? []), id])
+  const set = new Set<number>()
+  for (const ids of byName.values()) if (ids.length > 1) for (const id of ids) set.add(id)
+  ambiguousIds.set(dict, set)
+  return set
+}
 
 export type HashFn = (data: Uint8Array) => bigint
 
@@ -85,8 +110,13 @@ export type FieldNulled = (field: string) => void
  * "DIN2/AIN2 spec event". A device still emitting 269 goes from −3 °C to `io_269 = 65533` until its
  * profile names a table. They are not retired parameters — the Escort block is alive on fmb150,
  * fmc150, fmm150, fmc250, fmm80a and fmb010, and id 8 on the FMx6xx tables — so wiring profile →
- * table restores every one of them with the correct sign. That wiring is the reason this window is
- * short, and it is why the fallback must not become permanent.
+ * table restores every one of them with the correct sign.
+ *
+ * THAT WIRING NOW EXISTS: the device profile's `avlTable` travels through `device:config` and the
+ * consumer resolves it per device (AvlTableCache). This stays the fallback for the cases where the
+ * answer is genuinely unavailable — a config row written before the field existed, a Redis blip, a
+ * table name the codec no longer ships — because a position decoded with imperfect IO names is
+ * worth incomparably more to a customer than no position. It is NOT a default to design against.
  */
 export const FALLBACK_AVL_TABLE: AvlTable = 'fmb120'
 
@@ -126,9 +156,11 @@ export function normalize(
     }
     else {
       const entry = dict.get(id)
-      const name = FORCED_ID_KEYS.has(id) ? undefined : entry?.name
-      // §3.7 never-dropped: dictionary names are NOT unique across ids (e.g. two
-      // "Battery Voltage" rows) — on collision the later id keeps its io_<id> key
+      const name = FORCED_ID_KEYS.has(id) || ambiguousInTable(dict).has(id) ? undefined : entry?.name
+      // §3.7 never-dropped. Every ambiguous id is already forced to `io_<id>` above, so this is now
+      // a backstop rather than the mechanism: it used to be the only thing standing between two
+      // same-named parameters, and it resolved them by ARRIVAL ORDER, which is not a property the
+      // device guarantees.
       let key = name ?? `io_${id}`
       if (key in attrs) key = `io_${id}`
       // Two's-complement reinterpretation for the parameters the wiki marks Signed (audit MED). The

@@ -54,7 +54,7 @@ function fakeDb(
   geofences: unknown[],
   ibuttons: { tenantId: string; accountId: string; ibutton: string; driverId: string }[],
   devices: FakeDevice[] = [],
-  profiles: { id: string; presenceRules: unknown }[] = [],
+  profiles: { id: string; presenceRules: unknown; avlTable?: string }[] = [],
   rules: unknown[] = [],
 ): Db {
   return {
@@ -112,14 +112,19 @@ describe('rehydrateRegistries', () => {
   it('rebuilds the DEVICE registry (audit D1) — registry:imei + device:tenant/account/config', async () => {
     const store = new Map<string, Record<string, string>>()
     const dev: FakeDevice = { id: 42n, imei: '356307042440000', tenantId: T, accountId: A, profileId: 'prof-1', odometerSource: 'gps' }
-    const db = fakeDb([], [], [dev], [{ id: 'prof-1', presenceRules: { minStopS: 120 } }])
+    const db = fakeDb([], [], [dev], [{ id: 'prof-1', presenceRules: { minStopS: 120 }, avlTable: 'fmc650' }])
     const res = await rehydrateRegistries(fakeRedis(store), db)
 
     expect(res.devices).toBe(1)
     expect(store.get('registry:imei')?.['356307042440000']).toBe('42') // ingest resolves the fleet again
     expect(store.get('device:tenant')?.['42']).toBe(T)
     expect(store.get('device:account')?.['42']).toBe(A)
-    expect(JSON.parse(store.get('device:config')?.['42'] ?? '{}')).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'gps' })
+    // …INCLUDING avlTable. This is the second writer of `device:config` — CRUD is the first — and
+    // the worker decodes every IO element with whatever table it finds here. A rehydrate that
+    // dropped the field would put the whole fleet back on the FMB120 fallback after any restart,
+    // with correct-looking positions and silently mislabelled attributes. Both writers now go
+    // through `deviceConfigValue`; this is the test that notices if one stops.
+    expect(JSON.parse(store.get('device:config')?.['42'] ?? '{}')).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'gps', avlTable: 'fmc650' })
   })
 
   it('rebuilds the per-tenant device INDEX too — else /v1/devices/last is empty after a Redis flush', async () => {

@@ -3,7 +3,7 @@ import type { Redis } from 'ioredis'
 import type { Db } from '@orbetra/db'
 import { ibuttonKeyFromHex } from '@orbetra/shared'
 
-import { tenantDevicesKey } from './routes/deviceRegistry.js'
+import { deviceConfigValue, tenantDevicesKey } from './routes/deviceRegistry.js'
 import { geofenceCacheEntry } from './routes/geofenceRegistry.js'
 import { ruleCacheEntry } from './routes/ruleRegistry.js'
 
@@ -24,7 +24,7 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
   // and an incremental CRUD activate can never drift. profile presence_rules resolved once, in memory.
   // all(), not list(): list() hides the legacy family profiles from the picker, and a device still
   // sitting on one must not come back from a Redis rebuild with no presence rules at all
-  const profileRules = new Map((await db.profiles.all()).map((p) => [p.id, p.presenceRules]))
+  const profileCfg = new Map((await db.profiles.all()).map((p) => [p.id, { presenceRules: p.presenceRules, avlTable: p.avlTable }]))
   let devices = 0
   const registryRows = await db.devices.listAllForRegistry()
   // The per-tenant index is repaired ADDITIVELY here and reconciled member-by-member below — never
@@ -49,7 +49,9 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
     pipe.hset('registry:imei', d.imei, id)
     pipe.hset('device:tenant', id, d.tenantId)
     pipe.hset('device:account', id, d.accountId)
-    pipe.hset('device:config', id, JSON.stringify({ presenceRules: profileRules.get(d.profileId) ?? {}, odometerSource: d.odometerSource }))
+    // deviceConfigValue, not a literal: this is the SAME shape activateDevice writes, and the one
+    // time these two drifted the rehydrate silently dropped a field the worker reads.
+    pipe.hset('device:config', id, deviceConfigValue({ presenceRules: profileCfg.get(d.profileId)?.presenceRules ?? {}, odometerSource: d.odometerSource, avlTable: profileCfg.get(d.profileId)?.avlTable }))
     pipe.sadd(tenantDevicesKey(d.tenantId), id)
     devices++
   }

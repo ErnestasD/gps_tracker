@@ -22,7 +22,8 @@ import { applyTypeConsensus, parseAvlTable, type AvlEntry } from './parse.js'
  * the same 640 rows today — while a handful carry their own inline table that happens to be the same
  * anyway. Hashing the parsed elements collapses both cases without us having to decide which is
  * which, and it answers the genuinely ambiguous ones empirically: FMC650 and FMM650 look like a wiki
- * bookkeeping error until you parse them and find 1198 versus 938 elements.
+ * bookkeeping error until you parse them and find 1198 versus 938 rows (1197 usable — one id is
+ * above the AVL ceiling, see parseAvlTable).
  */
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TOOL = resolve(HERE, '..')
@@ -70,6 +71,43 @@ ${rows.join(',\n')}
 `
 }
 
+interface Group { models: string[]; page: string; elements: Record<string, AvlEntry>; warnings: string[] }
+
+/**
+ * Elements that Teltonika's OWN "HW Support" column says a model produces, on a page that model's
+ * table does not include. This is a property of the wiki, not of the parse, and it is large:
+ *
+ *   FMM650 and FMB641 transclude `Template:FMX640 AVL ID` (last edited 2026-02-25) while the newer
+ *   `Template:FMX650 AVL ID` renders only on FMC650. So 305 elements whose HW Support literally
+ *   reads "FMC650, FMM650" — the CAN adapter block, the iCam states, `449 Ignition On Counter` —
+ *   are documented for FMM650 on one page and missing from its own. FMB641: 298. FMC640: 27.
+ *
+ * Nothing is copied across: the wiki is the authority (CLAUDE.md) and inferring an element onto a
+ * model from a HW Support string is exactly the inference rule 8 forbids. What we CAN do is stop it
+ * being invisible — a support question of the form "why does my FMM650 not report ground speed?"
+ * should land on a recorded fact, not on a shrug. One summary line per table, not one per element.
+ */
+function crossPageGaps(groups: Group[]): (string | undefined)[] {
+  const tokens = (hw: string | undefined): Set<string> => new Set((hw ?? '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean))
+  return groups.map((g) => {
+    // exact model tokens only — HW Support also carries family wildcards like FMBXXX/FMX6XX, and
+    // "this table's models appear in that wildcard" is a guess, not a claim the wiki made
+    const mine = g.models.map((m) => m.toUpperCase())
+    const missing = new Map<string, string>()
+    for (const other of groups) {
+      if (other === g) continue
+      for (const [id, e] of Object.entries(other.elements)) {
+        if (id in g.elements || missing.has(id)) continue
+        const hw = tokens(e.hwSupport)
+        if (mine.some((m) => hw.has(m))) missing.set(id, e.name)
+      }
+    }
+    if (missing.size === 0) return undefined
+    const eg = [...missing.entries()].slice(0, 3).map(([id, n]) => `${id} "${n}"`).join(', ')
+    return `source: ${missing.size} element(s) are documented on another Teltonika page whose HW Support column names a model of this table, yet are absent from this table's own page (e.g. ${eg}). Teltonika's page is the authority, so nothing is copied across — this records the gap rather than hiding it.`
+  })
+}
+
 /** Stable identity for a parsed table: same elements ⇒ same dictionary file. */
 const fingerprint = (els: Record<string, AvlEntry>): string =>
   createHash('sha256')
@@ -77,10 +115,55 @@ const fingerprint = (els: Record<string, AvlEntry>): string =>
     .digest('hex')
     .slice(0, 12)
 
+/**
+ * Is `models.json` COMPLETE? Nothing else in this tool can answer that: a model we never listed
+ * produces no dictionary, no failure and no warning — it is simply absent from the picker, and the
+ * only symptom is a customer who cannot find their device. So ask the wiki for its own index
+ * (`list=allpages`, ~6.8k mainspace titles) and diff the AVL-parameter pages against our list.
+ *
+ *   pnpm --filter @orbetra/avl-dict gen --coverage
+ *
+ * Run 2026-08-12: 115 AVL-parameter pages exist, all 105 of ours are among them, and the 10 extras
+ * are NOT missing models. Eight are accessory/aggregate articles (ADAS, DSM, DashCam, Dashcam,
+ * DualCam, Iridium Edge, "AVL ID differences between FMB and FT platforms", "Full AVL ID List
+ * (Mobility)"); the other two, `FMB630 AVL ID` and `FMB962 AVL ID`, are older duplicate titles for
+ * models we already have — fetched and compared id-for-id, both carry exactly the same set as the
+ * `…_Teltonika_Data_Sending_Parameters_ID` page we use (265 and 640), so there is nothing to gain.
+ *
+ * The accessory pages stay out deliberately. Their elements already appear in the model tables
+ * Teltonika chose to put them in (FMC650 carries the iCam/DualCam block); folding them into a model
+ * that does not list them would be asserting hardware support the wiki never claimed, which is the
+ * inference rule 8 exists to prevent. `crossPageGaps` already records where that bites.
+ */
+async function coverage(models: ModelEntry[]): Promise<void> {
+  const titles: string[] = []
+  let cont: string | undefined
+  do {
+    const url = `https://wiki.teltonika-gps.com/api.php?action=query&list=allpages&apnamespace=0&aplimit=500&format=json${cont ? `&apcontinue=${encodeURIComponent(cont)}` : ''}`
+    const res = await fetch(url, { headers: { 'user-agent': UA } })
+    if (!res.ok) throw new Error(`wiki index: HTTP ${res.status}`)
+    const body = (await res.json()) as { query?: { allpages?: { title: string }[] }; continue?: { apcontinue?: string } }
+    for (const p of body.query?.allpages ?? []) titles.push(p.title)
+    cont = body.continue?.apcontinue
+  } while (cont !== undefined)
+
+  const avlPages = titles.filter((t) => /(Data Sending Parameters ID|AVL ID)/i.test(t))
+  const have = new Set(models.map((m) => m.page.replace(/_/g, ' ')))
+  const extra = avlPages.filter((t) => !have.has(t)).sort()
+  const gone = [...have].filter((t) => !avlPages.includes(t)).sort()
+  console.log(`wiki index: ${titles.length} mainspace pages, ${avlPages.length} AVL-parameter pages; models.json lists ${have.size}`)
+  // A page we list that the index no longer has is the serious direction — it means a model page
+  // was renamed or removed and our dictionary is pinned to a URL that will 404 on the next --fresh.
+  if (gone.length > 0) console.error(`\n${gone.length} page(s) in models.json are NOT in the wiki index:\n  ${gone.join('\n  ')}`)
+  console.log(`\n${extra.length} AVL page(s) on the wiki are not in models.json — each is either an accessory page or a duplicate title, and each needs a human decision:\n  ${extra.join('\n  ')}`)
+  if (gone.length > 0) process.exitCode = 1
+}
+
 async function main(): Promise<void> {
   const fresh = process.argv.includes('--fresh')
   const models = JSON.parse(readFileSync(join(TOOL, 'models.json'), 'utf8')) as ModelEntry[]
-  const byPrint = new Map<string, { models: string[]; page: string; elements: Record<string, AvlEntry>; warnings: string[] }>()
+  if (process.argv.includes('--coverage')) return coverage(models)
+  const byPrint = new Map<string, Group>()
   const failed: { model: string; reason: string }[] = []
 
   for (const m of models) {
@@ -108,11 +191,15 @@ async function main(): Promise<void> {
   // importantly, why it is deliberately narrow. Warnings are attributed to the group they corrected.
   const groups = [...byPrint.values()]
   for (const c of applyTypeConsensus(groups.map((g) => g.elements))) groups[c.table]!.warnings.push(c.note)
+  // …and record what Teltonika documents for these models elsewhere but not here. Runs AFTER
+  // consensus so a table's warnings read in the order they were established.
+  for (const [i, note] of crossPageGaps(groups).entries()) if (note !== undefined) groups[i]!.warnings.push(note)
 
   mkdirSync(OUT, { recursive: true })
   const retrieved = new Date().toISOString().slice(0, 10)
   const catalogue: { model: string; dictionary: string }[] = []
   let unchanged = 0
+  const shrunk: string[] = []
   const summary: { dictionary: string; elements: number; models: number; warnings: number }[] = []
 
   for (const [, group] of byPrint) {
@@ -140,6 +227,17 @@ async function main(): Promise<void> {
     const path = join(OUT, `${key}.json`)
     const next = serialise(file)
     const prev = existsSync(path) ? readFileSync(path, 'utf8') : ''
+    // A dictionary that SHRINKS is a parser failure, not a smaller table. A non-greedy table match
+    // once truncated FM36 at a nested <table> inside a Description cell and shipped 12 of 137
+    // elements — losing Ignition, Movement, the Dallas temperatures and the odometer — with an
+    // empty warnings array and a successful run. The only quality gate was "more than zero".
+    if (prev !== '') {
+      const before = ((/^ {2}"\d+":/gm.exec(prev) ? prev.match(/^ {2}"\d+":/gm) : null) ?? []).length
+      const after = Object.keys(group.elements).length
+      if (before > 0 && after < before * 0.9) {
+        shrunk.push(`${key}: ${before} → ${after} elements`)
+      }
+    }
     if (stripDate(prev) !== stripDate(next)) writeFileSync(path, next)
     else unchanged++
     for (const m of group.models) catalogue.push({ model: m, dictionary: key })
@@ -156,9 +254,17 @@ async function main(): Promise<void> {
   summary.sort((a, b) => b.elements - a.elements)
   for (const s of summary) console.log(`${s.dictionary.padEnd(10)} ${String(s.elements).padStart(5)} elements  ${String(s.models).padStart(3)} models  ${s.warnings} warnings`)
   console.log(`\n${summary.length} dictionaries for ${catalogue.length} models (${unchanged} unchanged, ${summary.length - unchanged} rewritten)`)
+  if (shrunk.length > 0) {
+    console.error(`\n${shrunk.length} dictionary/ies LOST elements — treat as a parser failure, not a smaller table:`)
+    for (const s of shrunk) console.error(`  ${s}`)
+    process.exitCode = 1
+  }
   if (failed.length > 0) {
     console.log(`\n${failed.length} model(s) produced NO dictionary — they must be offered with an empty one or not at all:`)
     for (const f of failed) console.log(`  ${f.model}: ${f.reason}`)
+    // A 404 used to exit 0: the model vanished from the catalogue, every element for it became
+    // unnamed, and `pnpm gen && git commit` would land it as a success.
+    process.exitCode = 1
   }
   const stale = readdirSync(OUT).filter((f) => f.endsWith('.json') && f !== 'catalogue.json' && !summary.some((s) => `${s.dictionary}.json` === f))
   if (stale.length > 0) console.log(`\nfiles no model maps to any more (delete them): ${stale.join(', ')}`)

@@ -152,8 +152,12 @@ export async function seedDemo(opts: {
 
     // device profiles + fleet
     await seedProfiles(opts.databaseUrl)
-    const profile = (await db.profiles.list()).find((p) => p.key === 'fmb1xx')
-    if (profile === undefined) throw new Error('fmb1xx profile missing after seed')
+    // `fmb120`, the model, not `fmb1xx`, the retired family row. Profiles became per-MODEL, and the
+    // four family rows are now legacy — kept because live devices reference them, hidden from
+    // `list()`, which is the picker's list. The demo fleet should look like a fleet an operator
+    // would actually create.
+    const profile = (await db.profiles.list()).find((p) => p.key === 'fmb120')
+    if (profile === undefined) throw new Error('fmb120 profile missing after seed — run the profile seed first')
     const { devices, drives } = planDemoFleet(nowMs)
     let created = 0
     let existing = 0

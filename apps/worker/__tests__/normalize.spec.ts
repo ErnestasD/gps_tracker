@@ -207,3 +207,22 @@ describe('normalize (E02-3)', () => {
     expect(() => normalize({ nonsense: true }, hash)).toThrow()
   })
 })
+
+describe('ambiguous dictionary names never depend on arrival order', () => {
+  it('857/858 "LNG Level" (% and kg) both keep their id key, whichever order they arrive in', () => {
+    // Regenerating from the live wiki renamed 857 "LNG Level Proc" and 858 "LNG Level kg" to the
+    // SAME "LNG Level". Under the old rule the first to arrive took the name and the second fell to
+    // io_<id>, so a reader of "LNG Level" got a percentage or a kilogram count depending on the
+    // order the device happened to send them — with no way to tell which.
+    const a = normalize({ ...basePayload, io: [[857, 80n], [858, 1234n]] }, hash)
+    const b = normalize({ ...basePayload, io: [[858, 1234n], [857, 80n]] }, hash)
+    expect(a.attrs).toEqual(expect.objectContaining({ io_857: 80, io_858: 1234 }))
+    expect(b.attrs).toEqual(expect.objectContaining({ io_857: 80, io_858: 1234 }))
+    expect(a.attrs['LNG Level']).toBeUndefined()
+  })
+
+  it('an UNAMBIGUOUS name is still used — this must not turn every attr into io_<id>', () => {
+    const rec = normalize({ ...basePayload, io: [[21, 4n]] }, hash)
+    expect(rec.attrs['GSM Signal']).toBe(4)
+  })
+})

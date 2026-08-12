@@ -683,7 +683,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           }
           await activateDevice(deps.redis, {
             id: device.id, imei: device.imei, tenantId: a.tenantId, accountId,
-            config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
+            config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource, avlTable: profile.avlTable }, // E04-5
           })
           created = 1 // the row exists; the reservation is now a real charge
           return json(c, device, 201)
@@ -702,7 +702,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // (skip a retired device — it's out of the registry; syncing would leave an orphan key)
         if (row.retiredAt === null && (data.odometerSource !== undefined || data.profileId !== undefined)) {
           const profile = await db.profiles.get(row.profileId)
-          await syncDeviceConfig(deps.redis, row.id, profile?.presenceRules, row.odometerSource)
+          await syncDeviceConfig(deps.redis, row.id, profile?.presenceRules, row.odometerSource, profile?.avlTable)
         }
         return json(c, row)
       } },

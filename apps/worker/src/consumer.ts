@@ -4,6 +4,7 @@ import type { Pool } from 'pg'
 
 import type { NormalizedRecord } from '@orbetra/shared'
 
+import { AvlTableCache } from './avlTableCache.js'
 import { normalize, type HashFn } from './normalize.js'
 import { PIPELINE_GROUP } from './shards.js'
 import { writePositions } from './writer.js'
@@ -75,10 +76,15 @@ export class ShardConsumer {
   private stopped: Promise<void> = Promise.resolve()
   readonly stats: ShardStats = { processed: 0, inserted: 0, deadLettered: 0 }
 
+  /** Per-shard, because rule 5 pins a device to one shard: the entries never overlap. */
+  private readonly tables: AvlTableCache
+
   constructor(
     private readonly shard: number,
     private readonly deps: ConsumerDeps,
-  ) {}
+  ) {
+    this.tables = new AvlTableCache(deps.redis)
+  }
 
   get stream(): string {
     return `raw:${this.shard}`
@@ -228,9 +234,30 @@ export class ShardConsumer {
     // record → its stream entry, so a row Postgres rejects can be quarantined WITH its original
     // bytes; `records` is sorted below, so positional correspondence with `ids` does not survive.
     const entryOf = new Map<NormalizedRecord, [string, Buffer]>()
+
+    // DECODE FIRST, then resolve each device's AVL dictionary, then normalize. normalize() is
+    // synchronous and the table lookup is a Redis read, so the two cannot be interleaved per entry
+    // without a round-trip per record. Splitting the loop costs one HMGET per batch (cached 60 s)
+    // and is what stops every model in the fleet being decoded as an FMB120 — see AvlTableCache.
+    // A payload that fails CBOR decode or has no usable deviceId is dead-lettered exactly as before.
+    const decoded: [string, Buffer, unknown, bigint | undefined][] = []
     for (const [id, payload] of entries) {
       try {
-        const rec = normalize(cbor.decode(payload), this.deps.hash, undefined, this.deps.onFieldNulled)
+        const p = cbor.decode(payload) as { deviceId?: unknown }
+        const d = p.deviceId
+        decoded.push([id, payload, p, typeof d === 'bigint' ? d : typeof d === 'number' ? BigInt(d) : undefined])
+      } catch {
+        dead.push([id, payload])
+      }
+    }
+    const tables = await this.tables.resolveBatch(
+      decoded.map(([, , , d]) => d).filter((d): d is bigint => d !== undefined),
+      Date.now(),
+    )
+    for (const [id, payload, p, deviceId] of decoded) {
+      try {
+        const table = deviceId === undefined ? undefined : tables.get(deviceId.toString())
+        const rec = normalize(p, this.deps.hash, table, this.deps.onFieldNulled)
         records.push(rec)
         entryOf.set(rec, [id, payload])
         ids.push(id)
