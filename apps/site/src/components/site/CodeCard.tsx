@@ -9,22 +9,31 @@ export function CodeCard() {
         </div>
         <span className="mono text-[10px] tracking-widest text-muted-foreground uppercase">curl · GET · v1</span>
       </div>
+      {/* A REAL request and a REAL response. This card used to show an invented API — an
+          `Authorization: Bearer` key (the API takes `X-Api-Key`), a `?tenant=` parameter (scope comes
+          from the credential), a `{data, meta}` envelope and snake_case fields that no endpoint
+          returns. The first code a prospect reads has to be the API they actually get. Shape:
+          `GET /v1/devices/last` → `{ devices: LiveEvent[] }` (packages/shared liveEventSchema). */}
       <pre className="p-5 leading-relaxed text-ink/85 overflow-x-auto text-[13px] mono">
-{`$ curl -H "Authorization: Bearer $ORBETRA_KEY" \\
-    https://api.orbetra.com/v1/devices?tenant=your-tenant
+{`$ curl -H "X-Api-Key: $ORBETRA_KEY" \\
+    https://dash.orbetra.com/v1/devices/last
 
 {
-  "data": [
+  "devices": [
     {
-      "id": "<device-id>",
-      "name": "Van 01",
-      "position": { "lat": 52.229, "lng": 21.012 },
-      "speed_kmh": 48,
+      "deviceId": "1042",
+      "accountId": "<account-id>",
+      "fixTimeMs": 1754303735000,
+      "lat": 54.6872,
+      "lon": 25.2797,
+      "speed": 48,
+      "course": 137,
+      "satellites": 11,
+      "fixValid": true,
       "ignition": true,
-      "last_seen": "2025-07-04T10:22:15Z"
+      "priority": 0
     }
-  ],
-  "meta": { "count": 1 }
+  ]
 }`}
       </pre>
     </div>

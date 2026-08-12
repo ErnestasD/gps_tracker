@@ -57,7 +57,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `INGEST_UDP_MAX_DGRAMS_PER_SEC` | apps/ingest | Global UDP datagram rate cap across all sources, default `50000` |
 | `INGEST_MAX_CONN` | apps/ingest | Total concurrent connection cap, default `20000` |
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
-| `INGEST_PUBLIC_HOST` | apps/api | Public ingest host shown to devices in onboarding config, default `orbetra.com` (paired with `INGEST_TCP_PORT`) |
+| `INGEST_PUBLIC_HOST` | apps/api | Public ingest host shown to devices in onboarding config (paired with `INGEST_TCP_PORT`). **No default** — unset ⇒ the onboarding sheet renders the host as a visible gap and `POST /v1/devices/:id/sms` answers 503. Deliberate: a fallback would point a reseller's customer's hardware at *our* domain, written permanently into the device |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
 | `EXPORT_DIR` | apps/worker | GDPR export output directory (E08-4), default `var/exports`; R2/S3 upload is the follow-up when creds exist |
 | `WEBHOOK_DELIVERY_RETENTION_DAYS` | apps/worker | Days to keep webhook delivery-log rows before the daily retention sweep prunes them, default `30` |

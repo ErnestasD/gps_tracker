@@ -1,6 +1,17 @@
 import type { LocalizedDoc } from "./types";
 
 /**
+ * The host that actually serves `/v1` today (the dashboard host). Kept in ONE place because the
+ * published base URL used to be a vanity `api.orbetra.com` that no vhost answered on, repeated
+ * across four locales — a single constant is what stops the four from drifting apart again.
+ *
+ * Deliberately NOT a dedicated `api.` hostname: this is a white-label product, and a reseller's
+ * customers reach the same `/v1` surface on the RESELLER's verified domain. Naming our own host as
+ * "the" API host in the public docs would leak Orbetra into their brand.
+ */
+const API_BASE = "https://dash.orbetra.com";
+
+/**
  * docs — long-form content authored EN (source of truth) + LT/PL/DE translations (W9 i18n).
  * Generated from the extraction/translation workflow; edit the prose here directly going forward.
  */
@@ -11,16 +22,16 @@ export const docs: LocalizedDoc = {
     "updated": "August 2026",
     "blocks": [
       {
-        "p": "Everything in Orbetra is available over a REST API — the same one our own dashboard uses. Base URL: `https://api.orbetra.com`"
+        "p": `Everything in Orbetra is available over a REST API — the same one our own dashboard uses. Base URL: \`${API_BASE}\` (white-label customers use their own verified domain).`
       },
       {
         "h2": "Getting started"
       },
       {
-        "p": "Create an account, add your first tracker, then generate an API key in the app under Settings → API keys. Keys are scoped per account and can be revoked at any time."
+        "p": "Create an account, add your first tracker, then generate an API key in the app under Settings → API keys. Keys are scoped per account and can be revoked at any time. **REST API access is part of the White-label / TSP plans** — on a Direct plan the API-keys screen is not available; [see pricing](/pricing)."
       },
       {
-        "code": "curl https://api.orbetra.com/v1/devices \\\n  -H \"Authorization: Bearer <your-api-key>\""
+        "code": `curl ${API_BASE}/v1/devices \\\n  -H "X-Api-Key: orb_live_<your-api-key>"`
       },
       {
         "p": "No account yet? [Create one free](/signup) or [open the live demo](/demo)."
@@ -29,10 +40,10 @@ export const docs: LocalizedDoc = {
         "h2": "Authentication"
       },
       {
-        "p": "All requests use a bearer token over HTTPS. Requests without a valid key return `401`. Endpoints are rate-limited per key; exceeding a limit returns `429` with a `Retry-After` header."
+        "p": "Send your key in the `X-Api-Key` header over HTTPS. (`Authorization: Bearer` is the dashboard session token, not an API key — a key sent that way is rejected.) Requests without a valid key return `401`. Endpoints are rate-limited per key; exceeding a limit returns `429` with a `Retry-After` header."
       },
       {
-        "code": "Authorization: Bearer <your-api-key>\nContent-Type: application/json"
+        "code": "X-Api-Key: orb_live_<your-api-key>\nContent-Type: application/json"
       },
       {
         "h2": "REST endpoints"
@@ -53,7 +64,12 @@ export const docs: LocalizedDoc = {
             [
               "GET",
               "/v1/devices/{id}",
-              "Single device with last known position."
+              "Single device: name, plate, profile, status."
+            ],
+            [
+              "GET",
+              "/v1/devices/last",
+              "Last known position of every device — the live snapshot."
             ],
             [
               "GET",
@@ -68,7 +84,7 @@ export const docs: LocalizedDoc = {
             [
               "POST",
               "/v1/geofences",
-              "Create a polygon, circle or corridor geofence."
+              "Create a polygon, circle or corridor geofence. **Dashboard session only.**"
             ],
             [
               "GET",
@@ -78,7 +94,7 @@ export const docs: LocalizedDoc = {
             [
               "POST",
               "/v1/webhooks",
-              "Register an HTTPS endpoint for push events."
+              "Register an HTTPS endpoint for push events. **Dashboard session only.**"
             ]
           ]
         }
@@ -90,7 +106,7 @@ export const docs: LocalizedDoc = {
         "p": "Register an HTTPS endpoint and Orbetra pushes events as they happen. Every delivery is signed with HMAC-SHA256 in the `X-Signature` header (`sha256=<hex>` over the exact body bytes) and carries an `X-Webhook-Id` for idempotency — verify the signature before trusting the payload. Failed deliveries are retried with exponential backoff."
       },
       {
-        "code": "{\n  \"kind\": \"geofence\",\n  \"deviceId\": \"<device-id>\",\n  \"at\": \"2026-08-03T09:41:12Z\",\n  \"payload\": { \"geofence\": \"Depot\", \"direction\": \"exit\" }\n}"
+        "code": "{\n  \"kind\": \"geofence\",\n  \"deviceId\": \"<device-id>\",\n  \"at\": \"2026-08-03T09:41:12Z\",\n  \"payload\": { \"geofenceId\": \"<geofence-id>\", \"name\": \"Depot\", \"transition\": \"exit\" }\n}"
       },
       {
         "p": "Event kinds: `geofence`, `overspeed`, `ignition`, `din_change`, `power_cut`, `low_battery`, `panic`, `device_offline`, `fuel_theft`. Subscribe to none and you get them all."
@@ -115,16 +131,16 @@ export const docs: LocalizedDoc = {
     "updated": "2026 m. rugpjūtis",
     "blocks": [
       {
-        "p": "Viskas Orbetra sistemoje pasiekiama per REST API — tą patį, kurį naudoja mūsų pačių valdymo skydelis. Bazinis URL: `https://api.orbetra.com`"
+        "p": `Viskas Orbetra sistemoje pasiekiama per REST API — tą patį, kurį naudoja mūsų pačių valdymo skydelis. Bazinis URL: \`${API_BASE}\` (white-label klientai naudoja savo patvirtintą domeną).`
       },
       {
         "h2": "Darbo pradžia"
       },
       {
-        "p": "Susikurkite paskyrą, pridėkite pirmąjį sekiklį, tada programoje sugeneruokite API raktą skiltyje Nustatymai → API raktai. Raktai galioja konkrečiai paskyrai ir bet kada gali būti atšaukti."
+        "p": "Susikurkite paskyrą, pridėkite pirmąjį sekiklį, tada programoje sugeneruokite API raktą skiltyje Nustatymai → API raktai. Raktai galioja konkrečiai paskyrai ir bet kada gali būti atšaukti. **REST API prieiga įeina į White-label / TSP planus** — Direct plane API raktų skiltis neprieinama; [žr. kainas](/pricing)."
       },
       {
-        "code": "curl https://api.orbetra.com/v1/devices \\\n  -H \"Authorization: Bearer <your-api-key>\""
+        "code": `curl ${API_BASE}/v1/devices \\\n  -H "X-Api-Key: orb_live_<your-api-key>"`
       },
       {
         "p": "Dar neturite paskyros? [Susikurkite ją nemokamai](/signup) arba [atverkite tiesioginę demonstraciją](/demo)."
@@ -133,10 +149,10 @@ export const docs: LocalizedDoc = {
         "h2": "Autentifikavimas"
       },
       {
-        "p": "Visos užklausos naudoja bearer prieigos raktą per HTTPS. Užklausos be galiojančio rakto grąžina `401`. Galinių taškų užklausų dažnis ribojamas kiekvienam raktui; viršijus ribą grąžinama `429` su antrašte `Retry-After`."
+        "p": "Raktą siųskite antraštėje `X-Api-Key` per HTTPS. (`Authorization: Bearer` yra valdymo skydelio sesijos raktas, ne API raktas — taip atsiųstas API raktas atmetamas.) Užklausos be galiojančio rakto grąžina `401`. Užklausų dažnis ribojamas kiekvienam raktui; viršijus ribą grąžinama `429` su antrašte `Retry-After`."
       },
       {
-        "code": "Authorization: Bearer <your-api-key>\nContent-Type: application/json"
+        "code": "X-Api-Key: orb_live_<your-api-key>\nContent-Type: application/json"
       },
       {
         "h2": "REST galiniai taškai"
@@ -157,7 +173,12 @@ export const docs: LocalizedDoc = {
             [
               "GET",
               "/v1/devices/{id}",
-              "Vienas įrenginys su paskutine žinoma pozicija."
+              "Vienas įrenginys: pavadinimas, valst. numeris, profilis, būsena."
+            ],
+            [
+              "GET",
+              "/v1/devices/last",
+              "Paskutinė kiekvieno įrenginio pozicija — momentinis vaizdas."
             ],
             [
               "GET",
@@ -172,7 +193,7 @@ export const docs: LocalizedDoc = {
             [
               "POST",
               "/v1/geofences",
-              "Sukurti daugiakampio, apskritimo ar koridoriaus geografinę zoną."
+              "Sukurti daugiakampio, apskritimo ar koridoriaus geozoną. **Tik su skydelio sesija.**"
             ],
             [
               "GET",
@@ -182,7 +203,7 @@ export const docs: LocalizedDoc = {
             [
               "POST",
               "/v1/webhooks",
-              "Užregistruoti HTTPS galinį tašką įvykių gavimui."
+              "Užregistruoti HTTPS galinį tašką įvykių gavimui. **Tik su skydelio sesija.**"
             ]
           ]
         }
@@ -194,7 +215,7 @@ export const docs: LocalizedDoc = {
         "p": "Užregistruokite HTTPS galinį tašką ir Orbetra siųs įvykius jiems įvykus. Kiekvienas pristatymas pasirašomas HMAC-SHA256 antraštėje `X-Signature` (`sha256=<hex>` iš tikslių turinio baitų) ir turi `X-Webhook-Id` idempotentiškumui — patikrinkite parašą prieš pasitikėdami turiniu. Nepavykę pristatymai kartojami taikant eksponentinį atidėjimą."
       },
       {
-        "code": "{\n  \"kind\": \"geofence\",\n  \"deviceId\": \"<device-id>\",\n  \"at\": \"2026-08-03T09:41:12Z\",\n  \"payload\": { \"geofence\": \"Depot\", \"direction\": \"exit\" }\n}"
+        "code": "{\n  \"kind\": \"geofence\",\n  \"deviceId\": \"<device-id>\",\n  \"at\": \"2026-08-03T09:41:12Z\",\n  \"payload\": { \"geofenceId\": \"<geofence-id>\", \"name\": \"Depot\", \"transition\": \"exit\" }\n}"
       },
       {
         "p": "Įvykių tipai: `geofence`, `overspeed`, `ignition`, `din_change`, `power_cut`, `low_battery`, `panic`, `device_offline`, `fuel_theft`. Neužsiprenumeravus nė vieno, gausite visus."
@@ -219,16 +240,16 @@ export const docs: LocalizedDoc = {
     "updated": "Sierpień 2026",
     "blocks": [
       {
-        "p": "Wszystko w Orbetrze jest dostępne przez REST API — to samo, którego używa nasz własny panel. Bazowy adres URL: `https://api.orbetra.com`"
+        "p": `Wszystko w Orbetrze jest dostępne przez REST API — to samo, którego używa nasz własny panel. Bazowy adres URL: \`${API_BASE}\` (klienci white-label używają własnej zweryfikowanej domeny).`
       },
       {
         "h2": "Pierwsze kroki"
       },
       {
-        "p": "Utwórz konto, dodaj pierwszy tracker, a następnie wygeneruj klucz API w aplikacji w sekcji Ustawienia → Klucze API. Klucze mają zasięg ograniczony do konta i można je odwołać w dowolnym momencie."
+        "p": "Utwórz konto, dodaj pierwszy tracker, a następnie wygeneruj klucz API w aplikacji w sekcji Ustawienia → Klucze API. Klucze mają zasięg ograniczony do konta i można je odwołać w dowolnym momencie. **Dostęp do REST API wchodzi w skład planów White-label / TSP** — w planie Direct sekcja kluczy API jest niedostępna; [zobacz cennik](/pricing)."
       },
       {
-        "code": "curl https://api.orbetra.com/v1/devices \\\n  -H \"Authorization: Bearer <your-api-key>\""
+        "code": `curl ${API_BASE}/v1/devices \\\n  -H "X-Api-Key: orb_live_<your-api-key>"`
       },
       {
         "p": "Nie masz jeszcze konta? [Załóż je za darmo](/signup) lub [otwórz demo na żywo](/demo)."
@@ -237,10 +258,10 @@ export const docs: LocalizedDoc = {
         "h2": "Uwierzytelnianie"
       },
       {
-        "p": "Wszystkie żądania używają tokena bearer przez HTTPS. Żądania bez ważnego klucza zwracają `401`. Punkty końcowe mają ograniczenie liczby żądań na klucz; przekroczenie limitu zwraca `429` z nagłówkiem `Retry-After`."
+        "p": "Klucz wysyłaj w nagłówku `X-Api-Key` przez HTTPS. (`Authorization: Bearer` to token sesji panelu, a nie klucz API — klucz wysłany w ten sposób zostanie odrzucony.) Żądania bez ważnego klucza zwracają `401`. Liczba żądań jest ograniczana na klucz; przekroczenie limitu zwraca `429` z nagłówkiem `Retry-After`."
       },
       {
-        "code": "Authorization: Bearer <your-api-key>\nContent-Type: application/json"
+        "code": "X-Api-Key: orb_live_<your-api-key>\nContent-Type: application/json"
       },
       {
         "h2": "Punkty końcowe REST"
@@ -261,7 +282,12 @@ export const docs: LocalizedDoc = {
             [
               "GET",
               "/v1/devices/{id}",
-              "Pojedyncze urządzenie z ostatnią znaną pozycją."
+              "Pojedyncze urządzenie: nazwa, numer rejestracyjny, profil, status."
+            ],
+            [
+              "GET",
+              "/v1/devices/last",
+              "Ostatnia znana pozycja każdego urządzenia — migawka na żywo."
             ],
             [
               "GET",
@@ -276,7 +302,7 @@ export const docs: LocalizedDoc = {
             [
               "POST",
               "/v1/geofences",
-              "Utwórz geofence w postaci wielokąta, okręgu lub korytarza."
+              "Utwórz geofence w postaci wielokąta, okręgu lub korytarza. **Tylko sesja panelu.**"
             ],
             [
               "GET",
@@ -286,7 +312,7 @@ export const docs: LocalizedDoc = {
             [
               "POST",
               "/v1/webhooks",
-              "Zarejestruj punkt końcowy HTTPS do odbioru zdarzeń push."
+              "Zarejestruj punkt końcowy HTTPS do odbioru zdarzeń push. **Tylko sesja panelu.**"
             ]
           ]
         }
@@ -298,7 +324,7 @@ export const docs: LocalizedDoc = {
         "p": "Zarejestruj punkt końcowy HTTPS, a Orbetra będzie przesyłać zdarzenia w miarę ich występowania. Każda dostawa jest podpisana algorytmem HMAC-SHA256 w nagłówku `X-Signature` (`sha256=<hex>` z dokładnych bajtów treści) i zawiera `X-Webhook-Id` zapewniający idempotentność — zweryfikuj podpis, zanim zaufasz ładunkowi. Nieudane dostawy są ponawiane z wykładniczym odstępem."
       },
       {
-        "code": "{\n  \"kind\": \"geofence\",\n  \"deviceId\": \"<device-id>\",\n  \"at\": \"2026-08-03T09:41:12Z\",\n  \"payload\": { \"geofence\": \"Depot\", \"direction\": \"exit\" }\n}"
+        "code": "{\n  \"kind\": \"geofence\",\n  \"deviceId\": \"<device-id>\",\n  \"at\": \"2026-08-03T09:41:12Z\",\n  \"payload\": { \"geofenceId\": \"<geofence-id>\", \"name\": \"Depot\", \"transition\": \"exit\" }\n}"
       },
       {
         "p": "Rodzaje zdarzeń: `geofence`, `overspeed`, `ignition`, `din_change`, `power_cut`, `low_battery`, `panic`, `device_offline`, `fuel_theft`. Nie subskrybuj żadnego, a otrzymasz wszystkie."
@@ -323,16 +349,16 @@ export const docs: LocalizedDoc = {
     "updated": "August 2026",
     "blocks": [
       {
-        "p": "Alles in Orbetra ist über eine REST-API verfügbar — dieselbe, die auch unser eigenes Dashboard nutzt. Basis-URL: `https://api.orbetra.com`"
+        "p": `Alles in Orbetra ist über eine REST-API verfügbar — dieselbe, die auch unser eigenes Dashboard nutzt. Basis-URL: \`${API_BASE}\` (White-Label-Kunden nutzen ihre eigene verifizierte Domain).`
       },
       {
         "h2": "Erste Schritte"
       },
       {
-        "p": "Erstellen Sie ein Konto, fügen Sie Ihren ersten Tracker hinzu und generieren Sie dann in der App unter Einstellungen → API-Schlüssel einen API-Schlüssel. Schlüssel gelten pro Konto und können jederzeit widerrufen werden."
+        "p": "Erstellen Sie ein Konto, fügen Sie Ihren ersten Tracker hinzu und generieren Sie dann in der App unter Einstellungen → API-Schlüssel einen API-Schlüssel. Schlüssel gelten pro Konto und können jederzeit widerrufen werden. **Der REST-API-Zugang ist Teil der White-label-/TSP-Tarife** — im Direct-Tarif ist der API-Schlüssel-Bereich nicht verfügbar; [siehe Preise](/pricing)."
       },
       {
-        "code": "curl https://api.orbetra.com/v1/devices \\\n  -H \"Authorization: Bearer <your-api-key>\""
+        "code": `curl ${API_BASE}/v1/devices \\\n  -H "X-Api-Key: orb_live_<your-api-key>"`
       },
       {
         "p": "Noch kein Konto? [Kostenlos erstellen](/signup) oder [die Live-Demo öffnen](/demo)."
@@ -341,10 +367,10 @@ export const docs: LocalizedDoc = {
         "h2": "Authentifizierung"
       },
       {
-        "p": "Alle Anfragen verwenden ein Bearer-Token über HTTPS. Anfragen ohne gültigen Schlüssel geben `401` zurück. Endpunkte sind pro Schlüssel ratenbegrenzt; bei Überschreitung eines Limits wird `429` mit einem `Retry-After`-Header zurückgegeben."
+        "p": "Senden Sie Ihren Schlüssel im Header `X-Api-Key` über HTTPS. (`Authorization: Bearer` ist das Sitzungs-Token des Dashboards, kein API-Schlüssel — so gesendet wird ein Schlüssel abgelehnt.) Anfragen ohne gültigen Schlüssel geben `401` zurück. Endpunkte sind pro Schlüssel ratenbegrenzt; bei Überschreitung wird `429` mit einem `Retry-After`-Header zurückgegeben."
       },
       {
-        "code": "Authorization: Bearer <your-api-key>\nContent-Type: application/json"
+        "code": "X-Api-Key: orb_live_<your-api-key>\nContent-Type: application/json"
       },
       {
         "h2": "REST-Endpunkte"
@@ -365,7 +391,12 @@ export const docs: LocalizedDoc = {
             [
               "GET",
               "/v1/devices/{id}",
-              "Einzelnes Gerät mit der letzten bekannten Position."
+              "Einzelnes Gerät: Name, Kennzeichen, Profil, Status."
+            ],
+            [
+              "GET",
+              "/v1/devices/last",
+              "Letzte bekannte Position jedes Geräts — die Live-Momentaufnahme."
             ],
             [
               "GET",
@@ -380,7 +411,7 @@ export const docs: LocalizedDoc = {
             [
               "POST",
               "/v1/geofences",
-              "Erstellen Sie einen Polygon-, Kreis- oder Korridor-Geofence."
+              "Erstellen Sie einen Polygon-, Kreis- oder Korridor-Geofence. **Nur mit Dashboard-Sitzung.**"
             ],
             [
               "GET",
@@ -390,7 +421,7 @@ export const docs: LocalizedDoc = {
             [
               "POST",
               "/v1/webhooks",
-              "Registrieren Sie einen HTTPS-Endpunkt für Push-Ereignisse."
+              "Registrieren Sie einen HTTPS-Endpunkt für Push-Ereignisse. **Nur mit Dashboard-Sitzung.**"
             ]
           ]
         }
@@ -402,7 +433,7 @@ export const docs: LocalizedDoc = {
         "p": "Registrieren Sie einen HTTPS-Endpunkt, und Orbetra sendet Ereignisse, sobald sie eintreten. Jede Zustellung wird mit HMAC-SHA256 im `X-Signature`-Header signiert (`sha256=<hex>` über die exakten Body-Bytes) und trägt zur Idempotenz eine `X-Webhook-Id` — verifizieren Sie die Signatur, bevor Sie dem Payload vertrauen. Fehlgeschlagene Zustellungen werden mit exponentiellem Backoff wiederholt."
       },
       {
-        "code": "{\n  \"kind\": \"geofence\",\n  \"deviceId\": \"<device-id>\",\n  \"at\": \"2026-08-03T09:41:12Z\",\n  \"payload\": { \"geofence\": \"Depot\", \"direction\": \"exit\" }\n}"
+        "code": "{\n  \"kind\": \"geofence\",\n  \"deviceId\": \"<device-id>\",\n  \"at\": \"2026-08-03T09:41:12Z\",\n  \"payload\": { \"geofenceId\": \"<geofence-id>\", \"name\": \"Depot\", \"transition\": \"exit\" }\n}"
       },
       {
         "p": "Ereignistypen: `geofence`, `overspeed`, `ignition`, `din_change`, `power_cut`, `low_battery`, `panic`, `device_offline`, `fuel_theft`. Abonnieren Sie keines, erhalten Sie alle."
