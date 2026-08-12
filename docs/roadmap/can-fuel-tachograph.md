@@ -58,13 +58,23 @@ the ground-truth of what we already do, the real gaps, competitor approaches (6 
 
 ## 2. Part A — Deep CAN + Fuel Management
 
-### Teltonika CAN acquisition paths
+### Teltonika CAN acquisition paths (wiki-confirmed)
 - **OBD-II dongle** (FMB001/003) — light vehicles, standard PIDs.
-- **LV-CAN200 / ALL-CAN300 adapter** (FMB1xx via RS232) — trucks/buses, full fleet CAN.
-- **Built-in CAN** (FMC640 / professional) — direct.
-All arrive as AVL IO elements → **our pipeline already ingests them**.
-*(TODO: confirm exact LV-CAN200 vs ALL-CAN300 parameter coverage from the wiki when populating the
-FMB6xx dictionary — the fifth research thread on hardware specifics was not captured here.)*
+- **LV-CAN200 adapter** (FMB1xx via RS232): total fuel, fuel level (dashboard), mileage, door status
+  (4 doors+trunk+hood), RPM, oil pressure/level, engine temp, speed, accelerator pedal, CNG; DTC
+  fault codes only with the **LV-CAN200 + DTC** variant.
+- **ALL-CAN300 adapter** (superset): adds fuel level in **% or Litres**, VIN, lights, **AdBlue**,
+  Webasto, **SIMPLE TACHO** (basic tacho over CAN), seatbelts, EV data (charge/battery/range), and
+  heavy/agri: **axle loads**, harvesting metrics, PTO, hydraulics.
+- **Built-in CAN** (FMC640/FMB640/FMM640/FMx650) — native FMS + tacho CAN.
+
+**⚠️ CRITICAL codec gotcha (wiki-confirmed):** the same numeric AVL ID decodes **differently** for a
+built-in-CAN device ("FMS elements": 84=Fuel Level %-adjacent, 85=Engine Load, 87=Fuel Level %, 88=RPM)
+vs an external-adapter device ("CAN adapters elements": 81=Speed, 84=**Fuel Level L**, 85=**RPM**,
+87=**Total Mileage**, 89=Fuel % , 90=Door, 110=Fuel Rate, 111/112=AdBlue, 115=Engine Temp). Our
+`fmb1xx.json` was generated from the FMB120 page (built-in/OBD set) — **an FMB130 + LV-CAN200 would
+mis-map 84/85/87**. **ACTION:** split/verify adapter-vs-built-in dictionaries per device family
+before relying on adapter CAN. This is a real correctness item, not cosmetic.
 
 ### Gaps and effort (mostly product/analytics on data we already have)
 | Gap | Effort | Note |
@@ -87,13 +97,32 @@ every tracker provides CAN.
 ## 3. Part B — Tachograph
 
 ### The two layers (do not conflate)
-- **(A) Real-time tacho-over-CAN/FMS** — driver 1/2 driving times, card ID, driving/working state.
-  **We already capture these.** → build a **driver working-time dashboard** ("tacho-lite"). No extra
-  hardware. **🟢–🟡 LOW–MEDIUM.** Real selling point without the legal download.
-- **(B) Remote DDD download + legal 561/2006 analysis** — the compliance product. Requires signed
-  `.DDD` (driver card) + `.V1B/.C1B` (VU) files, periodic download (driver card ≤28 d, VU ≤90 d per
-  EU Reg 165/2014), archived ≥1 yr, and infringement analysis per EU Reg 561/2006. **🟡 integration
-  project** (see below) — NOT a from-scratch build.
+- **(A) Real-time tacho-over-CAN/FMS** — **we already capture these** (arrive as ordinary AVL IO
+  elements; HW: FMB640/FMC640/FMM640). Wiki-confirmed AVL IDs: **56/57** Driver 1/2 continuous
+  driving, **58/59** break, **69** cumulative driving, **184/185** working state (0 Rest…3 Drive),
+  **186** over-speed, **187/188** card presence, **189/190** time-related states (4.5h/9h reached,
+  card-expiry + next-mandatory-download warnings), **191** speed, **195–198** driver IDs, **231–235**
+  VRN/VIN. → build a **driver working-time dashboard** ("tacho-lite"). No extra hardware. **🟢–🟡.**
+- **(B) Remote DDD download + legal 561/2006 analysis** — the compliance product. Signed
+  `.DDD`/`.V1B`/`.C1B`/`.TGD` files, periodic download (driver card ≤28 d, VU ≤90 d per EU Reg
+  165/2014), archived ≥12 mo, infringement analysis per EU Reg 561/2006. **🟡 integration project**
+  — NOT a from-scratch build.
+
+### Tachograph hardware (wiki-confirmed — IMPORTANT)
+- Remote DDD download ("**WEB Tacho**") is **ONLY on the Professional family**: FMB630, **FMB640,
+  FMM640, FMC640**, FMB641, FMC650, FMM650, FM6300/6320, FM5300+KNL200 — **NOT** the mass-market
+  FMB1xx/FMC1xx. Smart Tacho v2 needs FMx640/650 + firmware ≥01.02.28.
+- Supported tachographs: **VDO DTCO 1381** (1.3a/1.4+), **Stoneridge SE5000** (7.1+), **Intellic
+  EFAS-4** (4.5+), Smart Tacho v2 (newer pro devices).
+- **Company card is server-side & central:** Teltonika "**Remote SCard Reader**" software on a 24/7
+  PC with the company card in a smart-card reader (rec. Cryptotech CLOUD 2700 R) authenticates every
+  remote session. One reader per TSP — confirms the central-card model.
+- Wiring: **RDD over FMS** (CAN H/L on PIN 6/9) for DAF/IVECO/Renault/Volvo; **direct to the tacho
+  "C" connector** (C5/C7/C8) otherwise; MAN/Mercedes/Scania need manufacturer involvement. A
+  Tachocheck SMS validates a session can open.
+- **Teltonika WEB Tacho = download + scheduling + archive ONLY (NO infringement analysis)**, licensed
+  **per-device/year** ("TACHOWEB LIC"); Teltonika also licenses the comms protocol to build your own
+  download handler. So Teltonika gives us the DOWNLOAD layer; we integrate a 3rd party for ANALYSIS.
 
 ### How competitors do the legal layer (6 vendors)
 | Vendor | Remote DDD | Analysis engine | Company card |
@@ -126,14 +155,21 @@ signal that partnering is the norm in your market.
 
 ### Recommended architecture for Orbetra
 ```
-Teltonika FMC640 (+ tacho cable)          ← native remote DDD download (wiki: DIGITAL_TACHOGRAPH_MONITORING)
-  → central COMPANY CARD (server-side, one reader per TSP; Mapon "Tacho Hotel" / flespi Tacho Bridge model)
-  → DDD files to our server → ARCHIVE in R2/S3 (we already run R2 for exports), retention ≥1 yr, immutable, per driver/vehicle
-  → PARSE + 561/2006 analysis: INTEGRATE — TACHO•API (primary) | DAKO | flespi(parse)+own-rules | Tachogram
-  → surface infringements/working-time/reports in the dashboard
+Teltonika FMC640/FMB640 (Professional; + tacho "C"/FMS wiring)
+  → Teltonika WEB Tacho (download + schedule + archive; per-device/year license)
+      + central server-side COMPANY CARD (Remote SCard Reader, one per TSP)   ← Teltonika does the
+        regulated remote-download crypto handshake for us                        DOWNLOAD layer
+  → DDD (.DDD/.V1B/.C1B/.TGD) also archived in our R2/S3 (we run R2 for exports), ≥12 mo, immutable, per driver/vehicle
+  → PARSE + 561/2006 analysis: INTEGRATE — TACHO•API (primary, Polish, white-label JSON/XML + 24-country penalties)
+        | DAKO Smart Services | Tachogram | flespi(parse)+own-rules
+  → surface infringements / working-time / reports in the dashboard
 ```
-Teltonika handles step 1 (acquire DDD) natively, so the build-vs-buy decision is only steps 3–4
-(binary parse + rule engine) — exactly what TACHO•API/DAKO let us outsource.
+Teltonika WEB Tacho handles the hard regulated DOWNLOAD (company-card Remote Session, VU handshake),
+so build-vs-buy reduces to **binary parse + 561/2006 rule engine** — outsourced to TACHO•API/DAKO.
+The genuinely hard parts we thereby avoid: **ERCA-rooted signature verification (RSA Gen1 / ECC Gen2)**,
+Annex 1B/1C binary parsing, and maintaining the 561/2006 rule set + per-country penalty tariffs.
+Alternative to WEB Tacho for download: flespi (open-source Tacho Bridge, Teltonika-native) — but WEB
+Tacho is the first-party path.
 
 ### Effort
 | Piece | Effort |
