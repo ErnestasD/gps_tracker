@@ -68,13 +68,20 @@ the ground-truth of what we already do, the real gaps, competitor approaches (6 
   heavy/agri: **axle loads**, harvesting metrics, PTO, hydraulics.
 - **Built-in CAN** (FMC640/FMB640/FMM640/FMx650) — native FMS + tacho CAN.
 
-**⚠️ CRITICAL codec gotcha (wiki-confirmed):** the same numeric AVL ID decodes **differently** for a
-built-in-CAN device ("FMS elements": 84=Fuel Level %-adjacent, 85=Engine Load, 87=Fuel Level %, 88=RPM)
-vs an external-adapter device ("CAN adapters elements": 81=Speed, 84=**Fuel Level L**, 85=**RPM**,
-87=**Total Mileage**, 89=Fuel % , 90=Door, 110=Fuel Rate, 111/112=AdBlue, 115=Engine Temp). Our
-`fmb1xx.json` was generated from the FMB120 page (built-in/OBD set) — **an FMB130 + LV-CAN200 would
-mis-map 84/85/87**. **ACTION:** split/verify adapter-vs-built-in dictionaries per device family
-before relying on adapter CAN. This is a real correctness item, not cosmetic.
+**⚠️ Codec gotcha — VERIFIED against our own dictionaries 2026-07-14 (agent's specific claim CORRECTED):**
+the same numeric AVL ID decodes **differently** for external-adapter vs built-in-FMS devices.
+- **External-adapter set ("CAN adapters elements", FMB1xx/FMC1xx + LV-CAN200/ALL-CAN300):** 81=Vehicle
+  Speed, 84=**Fuel Level (L)**, 85=**Engine RPM**, 87=**Total Mileage**, 89=Fuel %, 110=Fuel Rate.
+- **Built-in-FMS set (FMC640/FMB640 professional):** 85=Engine Load, 86=Total Fuel Used, 87=Fuel
+  Level %, **88=Engine RPM**, 135=Fuel Rate — a DIFFERENT id→name map.
+- **What we actually have (verified):** `fmb1xx.json` and `fmc.json` were generated from the FMB120 /
+  FMC130 wiki pages and **already carry the ADAPTER set** (84=Fuel level, 85=Engine RPM, 87=Total
+  Mileage — confirmed by reading the JSON). So **FMB1xx/FMC1xx + LV-CAN200/ALL-CAN300 decode
+  CORRECTLY today** — the earlier "FMB130 would mis-map" claim was wrong.
+- **The REAL gap:** the **Professional built-in-FMS family (FMC640/FMB640/FMM640)** uses the FMS-element
+  ids and its dictionary `fmb6xx.stub.json` is **EMPTY**. **ACTION:** when adding tacho/pro-CAN support,
+  build the FMS-elements dictionary for the pro family from its own wiki page — **do NOT reuse
+  fmb1xx**, or 85/87/88 will be mis-decoded. (This same family is the tacho hardware — see §3.)
 
 ### Gaps and effort (mostly product/analytics on data we already have)
 | Gap | Effort | Note |
