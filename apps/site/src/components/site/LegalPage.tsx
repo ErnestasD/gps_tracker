@@ -19,7 +19,9 @@ export function LegalPage({
       </div>
       <h1 className="display text-4xl md:text-5xl font-bold mt-4 text-ink">{title}</h1>
       <p className="mono text-xs tracking-widest text-muted-foreground mt-2">LAST UPDATED · {updated}</p>
-      <div className="mt-10 prose prose-slate max-w-none prose-headings:font-display prose-headings:text-ink prose-p:text-ink/80 prose-a:text-[var(--brand-blue)]">
+      {/* No @tailwindcss/typography in this app — long-form children style themselves explicitly
+          (see LegalContent). This is just the width/rhythm container. */}
+      <div className="mt-8 max-w-none">
         {children ?? (
           <p className="text-muted-foreground">
             Placeholder legal content — TODO-LEGAL. Replace with the finalized text before launch.
