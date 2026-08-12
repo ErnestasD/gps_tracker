@@ -1,4 +1,4 @@
-import { applySign, loadDictionary, type DictionaryFamily } from '@orbetra/codec'
+import { applySign, loadDictionary, type AvlTable } from '@orbetra/codec'
 import { rawStreamPayloadSchema, type NormalizedRecord, type RawStreamPayload } from '@orbetra/shared'
 
 // Core AVL ids (wiki FMB120 table, PROJECT_PLAN §3.7): promoted to columns.
@@ -70,10 +70,22 @@ const BIGINT_MAX = 2n ** 63n - 1n
 /** Reports a field that was nulled, so the operator sees a firmware quirk instead of silent gaps. */
 export type FieldNulled = (field: string) => void
 
+/**
+ * The table used when the caller does not name one.
+ *
+ * `fmb120` is the 640-element table that 45 Teltonika models render identically — the whole FMB1xx
+ * family plus most of FMC/FMM/FMU/FMP/FMT — so it is the safest thing to decode an unattributed
+ * record with, and it is what the platform effectively used before tables existed. It is a FALLBACK,
+ * not a default to rely on: a TAT or FMx6xx device decoded with it is mislabelled, not merely
+ * unnamed (id 520 is "Tamper detection Event" on a TAT and "Agricultural State Flags P4" here), so
+ * every caller that knows the device should pass its table.
+ */
+export const FALLBACK_AVL_TABLE: AvlTable = 'fmb120'
+
 export function normalize(
   payload: unknown,
   hash: HashFn,
-  family: DictionaryFamily = 'fmb1xx',
+  table: AvlTable = FALLBACK_AVL_TABLE,
   onFieldNulled?: FieldNulled,
 ): NormalizedRecord {
   const inRangeOrNull = (field: string, v: number | null, min: number, max: number): number | null => {
@@ -87,7 +99,7 @@ export function normalize(
   const smallintOrNull = (field: string, v: number | null): number | null =>
     inRangeOrNull(field, v, SMALLINT_MIN, SMALLINT_MAX)
   const p: RawStreamPayload = rawStreamPayloadSchema.parse(payload)
-  const dict = loadDictionary(family)
+  const dict = loadDictionary(table)
 
   let ignition: boolean | null = null
   let movement: boolean | null = null

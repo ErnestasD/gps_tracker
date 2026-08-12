@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import xxhash from 'xxhash-wasm'
 
-import { isClockSkewed, normalize } from '../src/normalize.js'
+import { isClockSkewed, normalize, FALLBACK_AVL_TABLE } from '../src/normalize.js'
 
 const hasher = await xxhash()
 const hash = (d: Uint8Array): bigint => hasher.h64Raw(d)
@@ -92,7 +92,7 @@ describe('normalize (E02-3)', () => {
 
   it('duplicate dictionary names do not overwrite each other (§3.7 never-dropped)', async () => {
     const { loadDictionary } = await import('@orbetra/codec')
-    const dict = loadDictionary('fmb1xx')
+    const dict = loadDictionary(FALLBACK_AVL_TABLE)
     const byName = new Map<string, number[]>()
     for (const [id, e] of dict) {
       const ids = byName.get(e.name) ?? []
@@ -100,7 +100,7 @@ describe('normalize (E02-3)', () => {
       byName.set(e.name, ids)
     }
     const dup = [...byName.values()].find((ids) => ids.length >= 2)
-    expect(dup, 'fmb1xx has at least one duplicated name').toBeDefined()
+    expect(dup, `${FALLBACK_AVL_TABLE} has at least one duplicated name`).toBeDefined()
     const [id1, id2] = dup!
     const rec = normalize({ ...basePayload, io: [[id1!, 1n], [id2!, 2n]] }, hash)
     const values = Object.values(rec.attrs)
@@ -110,7 +110,7 @@ describe('normalize (E02-3)', () => {
   })
 
   it('fuel ids (48/84/89) always keep their io_<id> key — never the ambiguous dictionary name (E08-3)', () => {
-    // 84 (l ×0.1) and 89 (%) are BOTH named "Fuel level" in fmb1xx — a single-id record
+    // 84 (l ×0.1) and 89 (%) are BOTH named "Fuel Level" in the fmb120 table — a single-id record
     // would land under one indistinguishable key. Forced id-keys make read-side units safe.
     const rec = normalize({ ...basePayload, io: [[89, 76n], [84, 412n], [48, 51n]] }, hash)
     expect(rec.attrs['io_89']).toBe(76)
