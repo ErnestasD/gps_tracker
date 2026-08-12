@@ -325,10 +325,12 @@ Every new variable must be added to the table here AND match the `.env` contract
   parameters share a name) surface as `io_<id>`. That is deliberate: resolving a name collision by
   arrival order would label a percentage and a kilogram count identically.
 - **KNOWN GAP — the read path is still model-blind.** The decoder now uses each device's own
-  dictionary; the code that READS `positions.attrs` does not. Only AVL id 67 (Battery Voltage) means
-  the same thing on all 34 tables. Id 85 is "Engine RPM" on some and "Engine Current Load" on
-  others; 32 is "Coolant Temperature" or "Axle 5 Load"; 89 is "Fuel Level" or "Axle weight 1"; 236
-  is "Alarm" or "Axis X". So on FMx6xx and the FTC/ATC families the CAN and fuel panels can read the
+  dictionary; the code that READS `positions.attrs` does not. Most of the vocabulary is stable —
+  1593 of the 2194 ids that appear on more than one table carry one name everywhere — but the ids
+  our readers key on are disproportionately the CAN and fuel ones Teltonika reuses, and of those 18
+  only id 67 (Battery Voltage) is constant. Id 85 is "Engine RPM" on some tables and "Engine
+  Current Load" on others; 32 is "Coolant Temperature" or "Axle 5 Load"; 89 is "Fuel Level" or
+  "Axle weight 1"; 236 is "Alarm" or "Axis X". So on FMx6xx and the FTC/ATC families the CAN and fuel panels can read the
   wrong parameter or nothing at all, and a panic / power-cut rule may be impossible on a model whose
   table has no such element. Ids whose meaning is CONSTANT and only spelled differently (21 GSM, 66
   external voltage, 78 iButton) are handled. The rest needs a per-table semantic index — which is
