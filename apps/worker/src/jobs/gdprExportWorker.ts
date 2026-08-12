@@ -47,7 +47,13 @@ interface JobRow {
 export async function runExport(pool: Pool, exportDir: string, exportId: string): Promise<{ exportId: string; bytes: number }> {
   const jobRes = await pool.query<JobRow>(`SELECT "tenantId", "accountId", status FROM export_jobs WHERE id = $1`, [exportId])
   if (jobRes.rowCount === 0) throw new Error(`export job ${exportId} not found`)
-  const { tenantId, accountId } = jobRes.rows[0]!
+  const { tenantId, accountId, status } = jobRes.rows[0]!
+  // A job that already reached a TERMINAL state is not re-run. The status was read and discarded,
+  // so a stalled re-delivery re-read the whole account, gzipped it and renamed over the published
+  // file — wasted work whose only visible trace was a `sizeBytes` that no longer matched. For an
+  // 'expired' row it was worse: the erase had just removed the dump, and the re-delivery put a
+  // fresh copy of the erased account's data back on the volume.
+  if (status === 'done' || status === 'expired') return { exportId, bytes: 0 }
 
   await mkdir(exportDir, { recursive: true })
   const finalPath = path.join(exportDir, `${exportId}.ndjson.gz`)
@@ -163,7 +169,32 @@ export async function runExport(pool: Pool, exportDir: string, exportId: string)
   // `status = 'pending'`, not `<> 'done'`: a GDPR erase running concurrently marks this row
   // 'expired' precisely so the dump stops being downloadable, and `<> 'done'` would flip it straight
   // back with a fresh path — publishing the erased device's data after the erase completed.
-  await pool.query(`UPDATE export_jobs SET status = 'done', path = $2, "sizeBytes" = $3 WHERE id = $1 AND status = 'pending'`, [exportId, finalPath, bytes])
+  // `IN ('pending','failed')`, not `= 'pending'`. A failed attempt parks the row at 'failed' before
+  // rethrowing (see the worker's catch, which says "a later success overwrites" — with `= 'pending'`
+  // it did not), and the queue retries 3×. So attempt 2 published the file, matched no row, and then
+  // the unlink below removed it while `onDone` reported success: a subject-access request failing
+  // silently against a green metric, on a one-month statutory clock. 'done' and 'expired' stay
+  // excluded, which is the property the guard is actually for.
+  const published = await pool.query(`UPDATE export_jobs SET status = 'done', path = $2, "sizeBytes" = $3 WHERE id = $1 AND status IN ('pending','failed')`, [exportId, finalPath, bytes])
+  // …and if the row moved out from under us, the FILE has to go with it. The erase deliberately
+  // expires 'pending' rows (a large account's export can be minutes in flight), which leaves the
+  // row saying erased and `path` NULL while this rename has just published a personal-data dump on
+  // a NAMED docker volume that survives restarts. Nothing else would ever collect it: the sweep
+  // only looks at 'done' rows with a path, and the tmp sweeper only at `*.tmp`. Nobody can download
+  // it — the route 410s on 'expired' before touching a path — so this is a retention failure rather
+  // than an exposure, which is exactly the kind that is never noticed until an audit asks.
+  if (published.rowCount === 0) {
+    // …but ONLY when nothing points at this file. `rowCount === 0` has two causes and they need
+    // opposite handling: the erase expired the row (delete the dump), or a stalled BullMQ
+    // re-delivery lost the race to an attempt that already finished (KEEP the dump — the row says
+    // 'done' and references this exact path). `finalPath` is deterministic while `tmpPath` is
+    // per-attempt, precisely because this worker assumes duplicate attempts exist, so an unlink
+    // here without the check turns a healthy export into a permanent 410 for the customer.
+    const claimed = await pool.query(`SELECT 1 FROM export_jobs WHERE id = $1 AND status = 'done' AND path = $2`, [exportId, finalPath])
+    if (claimed.rowCount === 0) {
+      await unlink(finalPath).catch((e: unknown) => console.error('gdpr export: could not remove a dump whose row was expired mid-flight', { exportId, finalPath }, e))
+    }
+  }
   return { exportId, bytes }
 }
 

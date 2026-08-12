@@ -369,6 +369,62 @@ describe('E04-1 trip state machine (§6.4)', () => {
     expect(auto[0]!.distanceSource).toBe('gps') // auto is strict about the mid-trip dip
   })
 
+  it('an odometer no VEHICLE could have produced is refused, even on odometerSource=device', () => {
+    // The 0xFFFFFFFF sentinel — monotonic, so the only odometer sanity check that existed (a
+    // DECREASE) waves it through, and 'device' ignores even that. Before this the value went
+    // straight at `trips."distanceM"` (int4), which raised 22003 on the hot path: the engine had
+    // already dropped the trip, the row stayed open until the next journey force-closed it at 0 km,
+    // and the compensating recompute carried the same value and died too.
+    const moving = drive(0, 20, { odoStart: 100_000n, odoStep: 100n })
+    const lastLat = 54.0 + 19 * 0.0002
+    const sentinel = 4_294_967_295n
+    const stop = [rec(200, { lat: lastLat, ign: false, speed: 0, odo: sentinel }), rec(380, { lat: lastLat, ign: false, speed: 0, odo: sentinel })]
+    const rejected: bigint[] = []
+    const dev = closes(new TripEngine(DEFAULT_THRESHOLDS, (d) => rejected.push(d)).feed([...moving, ...stop], () => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: 'device' })))
+    expect(dev[0]!.distanceSource).toBe('gps') // the haversine for the same trip was already correct
+    expect(dev[0]!.distanceM).toBeLessThan(10_000)
+    expect(rejected).toHaveLength(1) // …and the substitution is visible, not inferred from a complaint
+  })
+
+  it('refuses a CORRUPT reading that still fits the column — the bound is physical, not int4', () => {
+    // One flipped high bit on a real 1000 km odometer gives ~1.07e9 m: it fits int4 perfectly and
+    // would have been stored as 1,073,742 km, labelled 'odometer', into reports and driver scores.
+    // A storage-sized threshold catches only the sentinel; time is the honest ceiling.
+    const moving = drive(0, 20, { odoStart: 1_000_000n, odoStep: 100n })
+    const lastLat = 54.0 + 19 * 0.0002
+    const corrupt = 0x400f4240n // 1,074,791,488 — one bit away from 1,000,000
+    const stop = [rec(200, { lat: lastLat, ign: false, speed: 0, odo: corrupt }), rec(380, { lat: lastLat, ign: false, speed: 0, odo: corrupt })]
+    const rejected: bigint[] = []
+    const dev = closes(new TripEngine(DEFAULT_THRESHOLDS, (d) => rejected.push(d)).feed([...moving, ...stop], () => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: 'device' })))
+    expect(dev[0]!.distanceSource).toBe('gps')
+    expect(rejected).toHaveLength(1)
+  })
+
+  it('a genuinely long haul is NOT refused — the ceiling scales with time, not with GPS sampling', () => {
+    // The regression risk of any such bound: a device that reports rarely, or a route that loops
+    // back to its start, has almost no straight-line displacement while the odometer is right. The
+    // ceiling must not be a ratio against the haversine.
+    const moving = drive(0, 20, { odoStart: 0n, odoStep: 100n })
+    const lastLat = 54.0 + 19 * 0.0002
+    const eightHours = 8 * 3600
+    const odoEnd = 600_000n // 600 km in eight hours — 75 km/h average, entirely ordinary
+    const stop = [rec(eightHours, { lat: lastLat, ign: false, speed: 0, odo: odoEnd }), rec(eightHours + 180, { lat: lastLat, ign: false, speed: 0, odo: odoEnd })]
+    const rejected: bigint[] = []
+    const dev = closes(new TripEngine(DEFAULT_THRESHOLDS, (d) => rejected.push(d)).feed([...moving, ...stop], () => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: 'device' })))
+    expect(dev[0]!.distanceSource).toBe('odometer')
+    expect(dev[0]!.distanceM).toBe(600_000)
+    expect(rejected).toHaveLength(0)
+  })
+
+  it('a device pinned to gps does NOT raise the counter — its odometer is known bad by configuration', () => {
+    const moving = drive(0, 20, { odoStart: 100_000n, odoStep: 100n })
+    const lastLat = 54.0 + 19 * 0.0002
+    const stop = [rec(200, { lat: lastLat, ign: false, speed: 0, odo: 4_294_967_295n }), rec(380, { lat: lastLat, ign: false, speed: 0, odo: 4_294_967_295n })]
+    const rejected: bigint[] = []
+    closes(new TripEngine(DEFAULT_THRESHOLDS, (d) => rejected.push(d)).feed([...moving, ...stop], () => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: 'gps' })))
+    expect(rejected).toHaveLength(0) // else the alert fires forever about a config someone already fixed
+  })
+
   it('E04-5 (H1) a config change between trips takes effect on the next trip', () => {
     const engine = new TripEngine()
     let src: 'auto' | 'gps' = 'auto'

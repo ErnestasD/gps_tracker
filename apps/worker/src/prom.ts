@@ -19,6 +19,8 @@ export interface WorkerProm {
   setDataAgeMs: (ms: number) => void
   tripsOpened: Counter
   tripsClosed: Counter
+  tripCloseMissed: Counter
+  tripOdometerRejected: Counter
   tripPersistErrors: Counter
   tripRecomputes: Counter
   tripRecomputeDeleted: Counter
@@ -191,7 +193,17 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
   })
 
   const tripsOpened = new Counter({ name: 'trips_opened_total', help: 'trips opened by the state machine (E04-1)', registers: [registry] })
-  const tripsClosed = new Counter({ name: 'trips_closed_total', help: 'trips closed by the state machine (E04-1)', registers: [registry] })
+  const tripsClosed = new Counter({ name: 'trips_closed_total', help: 'trips closed by the state machine (E04-1) — counted only when a row was actually written', registers: [registry] })
+  const tripOdometerRejected = new Counter({
+    name: 'trip_odometer_rejected_total',
+    help: 'trips whose odometer delta exceeded what trips."distanceM" (int4) can hold, so the GPS distance was used instead. A stuck-high or sentinel odometer; the trip is correct, the device is not',
+    registers: [registry],
+  })
+  const tripCloseMissed = new Counter({
+    name: 'trip_close_missed_total',
+    help: 'close events that matched no open row (forgotten/overwritten open-trip id, or an already-closed row). Non-fatal, never normal: the trip keeps its 0 km force-close instead of its real mileage',
+    registers: [registry],
+  })
   // streaming trip persistence is advisory (E04-2 recompute is authoritative); a
   // non-zero rate here means trips are being dropped from the stream path → alert.
   const tripPersistErrors = new Counter({ name: 'trip_persist_errors_total', help: 'trip open/close DB writes that failed (advisory; E04-2 recompute reconciles)', registers: [registry] })
@@ -269,5 +281,5 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, authEmailSent, pendingEvicted, billingLapseUnreachable, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripCloseMissed, tripOdometerRejected, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, authEmailSent, pendingEvicted, billingLapseUnreachable, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

@@ -25,6 +25,8 @@ export interface RecomputeWorkerDeps {
   /** registry connection (device:tenant/device:account) for first-computation scope. */
   redis: Redis
   onDone?: (r: RecomputeResult) => void
+  /** A rebuilt trip whose odometer delta was refused as implausible; same counter as the stream. */
+  onOdometerRejected?: (deviceId: bigint) => void
 }
 
 /**
@@ -58,7 +60,7 @@ export function startRecomputeWorker(deps: RecomputeWorkerDeps): Worker<Recomput
       const scope = await resolveTripScope(deps.pool, deps.redis, deviceId)
       if (scope === null) return // unregistered + no prior trip → nothing to scope
       const config = await resolveConfig(deps.redis, deviceId) // H2: match the streaming per-device config
-      const res = await recomputeTrips(deps.pool, BigInt(deviceId), new Date(from), new Date(to), scope, config)
+      const res = await recomputeTrips(deps.pool, BigInt(deviceId), new Date(from), new Date(to), scope, config, deps.onOdometerRejected)
       deps.onDone?.(res)
     },
     { connection: deps.connection },

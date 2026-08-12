@@ -45,9 +45,46 @@ export function isDeliverableAddress(addr: string): boolean {
   return !RESERVED_TLDS.has(domain.split('.').pop() ?? '')
 }
 
+/**
+ * Which of these addresses has SES already told us are dead? Returns the SUPPRESSED subset.
+ *
+ * Injected rather than built from a `pg.Pool` here: a mail transport had no database coupling at
+ * all, and giving it one to answer a yes/no question puts raw SQL in the wrong module and makes the
+ * behaviour untestable without a container. One query for the whole recipient list, not one per
+ * address — a comma-separated scheduled-report row can carry a dozen.
+ */
+export type SuppressionLookup = (addresses: readonly string[]) => Promise<ReadonlySet<string>>
+
+/**
+ * Read the suppression list on the SEND path. Fails OPEN, deliberately: a lookup fault must never
+ * silence a live customer — the worst case of sending one extra message to a dead address is one
+ * bounce; the worst case of the opposite is an owner who never learns their vehicle was stolen.
+ *
+ * The query itself lives in the suppressions REPO, which owns this table. Hand-writing it here
+ * would have been the third copy of the same SELECT in the codebase, in a module that otherwise has
+ * no database coupling at all (hard rule 2).
+ */
+export function suppressionLookup(repo: { suppressedAmong(a: readonly string[]): Promise<ReadonlySet<string>> }): SuppressionLookup {
+  return async (addresses) => {
+    try {
+      return await repo.suppressedAmong(addresses)
+    } catch {
+      return new Set()
+    }
+  }
+}
+
+/**
+ * @param suppressed the suppression check. The auth worker made the argument one level down —
+ * "dropped here rather than at each producer: there are five of them and one send path" — and then
+ * the rule-event alerts and the scheduled reports went out through a DIFFERENT send path that
+ * checked nothing. Every sender in the product converges on this transport, so the check belongs
+ * here; omitting it keeps the old behaviour for a caller that has no database.
+ */
 export function buildEmailTransport(
   env: NodeJS.ProcessEnv,
   createTransport: CreateTransport = (opts) => nodemailer.createTransport(opts),
+  suppressed?: SuppressionLookup,
 ): EmailTransport | undefined {
   const host = env['SMTP_HOST']
   const user = env['SMTP_USER']
@@ -99,9 +136,15 @@ export function buildEmailTransport(
       }
       // drop reserved-TLD recipients before they reach SES (bounce-reputation guard). A comma-list
       // keeps only its deliverable addresses; if none remain the send is a logged no-op, not an error.
-      const deliverable = to.split(',').map((s) => s.trim()).filter((s) => s !== '' && isDeliverableAddress(s))
+      const addressable = to.split(',').map((s) => s.trim()).filter((s) => s !== '' && isDeliverableAddress(s))
+      // …and drop the ones SES has told us are dead. Not for the customer's sake — they get nothing
+      // either way — but for the sending identity's: bounces are scored account-wide on the one
+      // identity that also carries every password reset and activation mail, so an alert rule firing
+      // at event rate against a hard-bounced address is a slow way to have SES pause the platform.
+      const dead = suppressed === undefined ? new Set<string>() : await suppressed(addressable)
+      const deliverable = addressable.filter((a) => !dead.has(a.trim().toLowerCase()))
       if (deliverable.length === 0) {
-        console.warn('email skipped: no deliverable recipients (reserved/undeliverable TLD)') // count/addresses omitted (PII)
+        console.warn('email skipped: no deliverable recipients (reserved TLD or suppressed)') // count/addresses omitted (PII)
         return
       }
       await mailer.sendMail({

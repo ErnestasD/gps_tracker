@@ -5,17 +5,19 @@ import { ibuttonKeyFromHex } from '@orbetra/shared'
 
 import { tenantDevicesKey } from './routes/deviceRegistry.js'
 import { geofenceCacheEntry } from './routes/geofenceRegistry.js'
+import { ruleCacheEntry } from './routes/ruleRegistry.js'
 
 /**
  * Boot-time DB→Redis rehydrate (resolves the crud.ts follow-up). The pipeline resolves EVERY device
  * against `registry:imei` (+ `device:tenant`/`device:account`/`device:config`), and the worker
- * evaluates geofences / resolves iButton→driver against `geofence:tenant:*` / `driver:ibutton:*` —
+ * evaluates geofences and RULES / resolves iButton→driver against `geofence:tenant:*`,
+ * `rule:tenant:*` and `driver:ibutton:*` —
  * all published incrementally by CRUD. If Redis is flushed/lost these are empty until each row is
  * next edited: an empty `registry:imei` QUARANTINES THE WHOLE FLEET (ingest rejects every unknown
  * IMEI) — audit D1. On API start we repopulate them from the durable DB so a deploy/restart is the
  * backfill. Idempotent (hset overwrites); best-effort per row.
  */
-export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devices: number; geofences: number; ibuttons: number }> {
+export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devices: number; geofences: number; rules: number; ibuttons: number }> {
   // one pipeline for all writes — a boot backfill over every tenant must not be N serial round-trips
   const pipe = redis.pipeline()
   // device registry (audit D1): reuse deviceRegistry.activateDevice's exact keys/shape so a rehydrate
@@ -54,6 +56,15 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
     const [k, field, value] = geofenceCacheEntry(g) // same shape CRUD writes (no drift)
     pipe.hset(k, field, value)
     geofences++
+  }
+  // Rules were the registry this function forgot, and the omission was silent: an empty
+  // `rule:tenant:*` makes the worker skip the rule engine entirely (RuleCache has no DB fallback),
+  // so PANIC stops firing while geofence events keep working and hide it.
+  let rules = 0
+  for (const r of await db.rules.listAll()) {
+    const [k, field, value] = ruleCacheEntry(r) // same shape CRUD writes (no drift)
+    pipe.hset(k, field, value)
+    rules++
   }
   let ibuttons = 0
   for (const d of await db.drivers.listAllIbuttons()) {
@@ -115,5 +126,5 @@ export async function rehydrateRegistries(redis: Redis, db: Db): Promise<{ devic
   } while (cursor !== '0')
   if (pruned > 0) console.log(`rehydrate: pruned ${pruned} stale device-index entries`)
 
-  return { devices, geofences, ibuttons }
+  return { devices, geofences, rules, ibuttons }
 }

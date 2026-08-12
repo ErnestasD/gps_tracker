@@ -260,6 +260,28 @@ groups:
           summary: "Trip open/close writes failing"
           description: "Streaming trip persistence is advisory (recompute reconciles), but a non-zero rate means trips are being dropped from the live path."
 
+      # A close that matched no open row. The id guard exists so a REPLAY is idempotent, so this is
+      # not fatal — but it is never normal: it means the open-trip id was forgotten or overwritten,
+      # and the journey keeps a 0 km force-close instead of its real mileage. `trips_closed_total`
+      # used to count these as successes, which is why the class went unnoticed.
+      - alert: TripCloseMissed
+        expr: increase(trip_close_missed_total[1h]) > 0
+        for: 15m
+        labels: { severity: warning, component: worker }
+        annotations:
+          summary: "Trip closes are not finding their open row"
+          description: "A close event matched no open trip, so that journey keeps a 0 km force-close instead of its mileage. Two causes: the open-trip id was forgotten or overwritten (look for shard flapping — a lease lost and re-gained — at the same timestamps), or the OPEN was skipped because the device was missing from the Redis registry (check device:tenant for the device)."
+
+      # A device whose odometer exceeded what the distance column can hold: the GPS distance was used
+      # instead, so the TRIP is right and the DEVICE is not. Worth seeing because the substitution is
+      # otherwise invisible, and a stuck odometer usually means the install or the firmware is wrong.
+      - alert: TripOdometerRejected
+        expr: increase(trip_odometer_rejected_total[6h]) > 0
+        labels: { severity: warning, component: worker }
+        annotations:
+          summary: "A device's odometer reading was refused as garbage"
+          description: "An odometer delta exceeded what a road vehicle could travel in the trip's own duration (the usual cause is the 0xFFFFFFFF sentinel, a stuck-high total, or a corrupt bit). The trip stored its GPS distance instead. Find the device and check its configuration — no data was lost."
+
       - alert: GdprJobFailing
         expr: increase(gdpr_failed_total[1h]) > 0
         for: 10m
