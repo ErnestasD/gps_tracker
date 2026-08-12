@@ -62,8 +62,11 @@ and "Driver 1 Cumulative Break Time" (Unsigned) on the fallback, so a −0.1 °C
 the incident stay wrong after it is fixed. Check `reason`:
 
 - `redis_error` — the worker cannot read `device:config`. An incident, not a data problem: fix Redis
-  and the next batch self-corrects. Only devices with no cached table at all are affected; a device
-  whose cache entry merely expired keeps decoding correctly throughout.
+  and the next batch self-corrects. Only devices with no cached table at all are counted here, and
+  they are the only ones affected — a device whose cache entry merely expired keeps its own table
+  and decodes correctly throughout the outage. This reason is not cached (so the next batch retries
+  immediately), so it repeats per batch while the outage lasts; read its rate as "an outage is
+  happening", not as a device count.
 - `unknown_table` — a device profile names a dictionary this build does not ship. The profile row is
   wrong (or the deploy is older than the profile seed). Find it with
   `SELECT key, "avlTable" FROM device_profiles WHERE "avlTable" NOT IN (…shipped tables…)`.

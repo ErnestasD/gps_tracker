@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { applyTypeConsensus, parseAvlTable, type AvlEntry } from './parse.js'
+import { applyRangeConsensus, applyTypeConsensus, parseAvlTable, type AvlEntry } from './parse.js'
 
 /**
  * Regenerate the AVL dictionaries from the Teltonika wiki (CLAUDE.md rule 8).
@@ -191,6 +191,9 @@ async function main(): Promise<void> {
   // importantly, why it is deliberately narrow. Warnings are attributed to the group they corrected.
   const groups = [...byPrint.values()]
   for (const c of applyTypeConsensus(groups.map((g) => g.elements))) groups[c.table]!.warnings.push(c.note)
+  // …and the RANGE, which applySign now reads as evidence too. AFTER the type pass, because it only
+  // considers entries that are already Signed.
+  for (const c of applyRangeConsensus(groups.map((g) => g.elements))) groups[c.table]!.warnings.push(c.note)
   // …and record what Teltonika documents for these models elsewhere but not here. Runs AFTER
   // consensus so a table's warnings read in the order they were established.
   for (const [i, note] of crossPageGaps(groups).entries()) if (note !== undefined) groups[i]!.warnings.push(note)
@@ -202,12 +205,61 @@ async function main(): Promise<void> {
   const shrunk: string[] = []
   const summary: { dictionary: string; elements: number; models: number; warnings: number }[] = []
 
-  for (const [, group] of byPrint) {
+  // Name every group FIRST, so a regrouping can be caught BEFORE a single file is written.
+  const named = [...byPrint.values()].map((group) => ({
+    group,
     // Named after a CANONICAL model where the group has one, else alphabetically. Purely for the
     // human reading the repo: the 45-model master table sorts to `fm3001`, and nobody debugging an
     // FMB120 would think to open that file. The name has no runtime meaning — the catalogue maps
     // model → dictionary — so this is readability, not behaviour.
-    const key = (CANONICAL.find((c) => group.models.includes(c)) ?? [...group.models].sort()[0]!).toLowerCase()
+    key: (CANONICAL.find((c) => group.models.includes(c)) ?? [...group.models].sort()[0]!).toLowerCase(),
+  }))
+
+  /**
+   * A REGROUPING is the shrink guard's blind spot, and it is the more dangerous shape.
+   *
+   * That guard compares a table against the file already on disk, so it only sees a truncation that
+   * KEEPS the group's identity. Deduplication is by content hash, and a truncated page no longer
+   * hashes with its family: FMC130 renders byte-identical to FMB120 today and lives in the 45-model
+   * `fmb120` group, but a truncated FMC130 page becomes its own group keyed `fmc130`, whose file
+   * does not exist — so nothing shrank, nothing was reported, and a new truncated dictionary would
+   * be written with the run exiting 0.
+   *
+   * THIS RUNS BEFORE THE WRITE LOOP, and that placement is the whole point. A first version checked
+   * after the loop and returned early: it left 34 rewritten dictionaries on disk beside a catalogue
+   * that still pointed at the old grouping, while printing "nothing was written to the catalogue" —
+   * which reads as "nothing was written". Detect it while the tree is still untouched.
+   *
+   * Teltonika splitting or merging a template is a REAL event that belongs in a diff a human reads,
+   * so this reports rather than fails silently, and `--allow-remap` is how that human says yes.
+   */
+  const cataloguePath = join(OUT, 'catalogue.json')
+  const cataloguePrev = existsSync(cataloguePath) ? readFileSync(cataloguePath, 'utf8') : ''
+  let prevModels: { model: string; dictionary: string }[] = []
+  try {
+    // A half-written catalogue used to be simply overwritten; an unguarded parse turned it into an
+    // unhandled SyntaxError. This tool deploys by rsync — a truncated file is a real shape.
+    if (cataloguePrev !== '') prevModels = (JSON.parse(cataloguePrev) as { models: { model: string; dictionary: string }[] }).models
+  } catch {
+    console.error('catalogue.json is unreadable — treating it as absent and rewriting it')
+  }
+  const prevMap = new Map(prevModels.map((m) => [m.model, m.dictionary]))
+  const remapped = named.flatMap(({ group, key }) =>
+    group.models.filter((m) => prevMap.has(m) && prevMap.get(m) !== key).map((m) => `${m}: ${prevMap.get(m)!} → ${key}`),
+  )
+  if (remapped.length > 0) {
+    const allow = process.argv.includes('--allow-remap')
+    const say = allow ? console.log : console.error
+    say(`\n${remapped.length} model(s) moved to a DIFFERENT dictionary — a wiki regrouping, or a parse that truncated one page out of its family:`)
+    for (const m of remapped) say(`  ${m}`)
+    if (!allow) {
+      console.error('  NOTHING was written — re-run with --allow-remap once you have checked those pages')
+      process.exitCode = 1
+      return
+    }
+  }
+
+  for (const { group, key } of named) {
     const file = {
       table: key,
       // the page of the model the file is NAMED after, not whichever model sorted first into the
@@ -254,35 +306,7 @@ async function main(): Promise<void> {
   }
 
   catalogue.sort((a, b) => a.model.localeCompare(b.model))
-  const cataloguePath = join(OUT, 'catalogue.json')
   const catalogueNext = `${JSON.stringify({ retrieved_at: retrieved, models: catalogue }, null, 1)}\n`
-  const cataloguePrev = existsSync(cataloguePath) ? readFileSync(cataloguePath, 'utf8') : ''
-  // A REGROUPING is the shrink guard's blind spot, and it is the more dangerous shape.
-  //
-  // That guard compares a table against the file already on disk — so it only sees a truncation
-  // that KEEPS the group's identity. Deduplication is by content hash, and a truncated page no
-  // longer hashes with its family: FMC130 currently renders byte-identical to FMB120 and lives in
-  // the 45-model `fmb120` group, but a truncated FMC130 page becomes its own group keyed `fmc130`,
-  // whose file does not exist, so nothing shrank, nothing was reported, and a brand-new truncated
-  // dictionary is written with the run exiting 0. Every FMC130 then decodes against it.
-  //
-  // Teltonika splitting or merging a template is a REAL event that belongs in a diff a human reads,
-  // so this reports rather than fails silently, and `--allow-remap` is how that human says yes.
-  const prevMap = new Map<string, string>(
-    cataloguePrev === '' ? [] : (JSON.parse(cataloguePrev) as { models: { model: string; dictionary: string }[] }).models.map((m) => [m.model, m.dictionary]),
-  )
-  const remapped = catalogue.filter((m) => prevMap.has(m.model) && prevMap.get(m.model) !== m.dictionary)
-  if (remapped.length > 0) {
-    const allow = process.argv.includes('--allow-remap')
-    const say = allow ? console.log : console.error
-    say(`\n${remapped.length} model(s) moved to a DIFFERENT dictionary — a wiki regrouping, or a parse that truncated one page out of its family:`)
-    for (const m of remapped) say(`  ${m.model}: ${prevMap.get(m.model)!} → ${m.dictionary}`)
-    if (!allow) {
-      console.error('  re-run with --allow-remap once you have checked the pages; nothing was written to the catalogue')
-      process.exitCode = 1
-      return
-    }
-  }
   // same reason as the dictionaries: a date-only rewrite is noise that hides the real change
   if (stripDate(cataloguePrev) !== stripDate(catalogueNext)) writeFileSync(cataloguePath, catalogueNext)
 

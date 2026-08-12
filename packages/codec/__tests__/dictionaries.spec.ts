@@ -4,7 +4,7 @@ import { chmodSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { applySign, avlTables, buildDictionary, loadDictionary, tableForModel, type DictionaryFile } from '../src/dictionaries.js'
+import { applySign, avlTables, buildDictionary, loadDictionary, tableForModel, type AvlDictionaryEntry, type DictionaryFile } from '../src/dictionaries.js'
 
 /** A scratch file inside the real dictionary directory, so the REAL load path is exercised. */
 const probePath = (name: string): string => join(dirname(fileURLToPath(import.meta.url)), '..', 'dictionaries', name)
@@ -300,11 +300,13 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
         ;(Number.isFinite(min) && min < 0 ? offsetEncoded : nonNegative).push(`${table}#${id} ${e.name}`)
       }
     }
-    // identifiers, bitmasks, a presence bit, and three the wiki types Signed over a plainly
-    // unsigned range — none of them a quantity that can go negative
+    // identifiers, bitmasks, a presence bit and two unit codes — none of them a quantity that can
+    // go negative. `fm36#115 LVCAN Engine Temperature` used to be on this list, and it was the
+    // proof that a count is not a check: it IS a quantity that goes negative, FM36's page just
+    // writes the wire range instead of the value range. applyRangeConsensus now repairs it from
+    // the six tables that document the same parameter as −600…1270.
     expect(nonNegative.sort()).toEqual([
       'fm36#101 LVCAN ModuleID',
-      'fm36#115 LVCAN Engine Temperature',
       'fm36#124 LVCAN Agricultural Machinery Flags',
       'fm36#132 LVCAN Security State Flags',
       'fm36#147 LVCAN Driver1 ID High',
@@ -337,6 +339,41 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
       'fmm650#10893 High Voltage Battery Temperature',
       'fmm650#127 Engine Coolant Temperature',
     ])
+  })
+
+  it('THE INVARIANT: naming a device\'s true model never decodes worse than the fallback', () => {
+    // This is what the whole per-model dictionary effort is for, and it has been broken twice —
+    // once by sign-extending iButton IDs, once by REFUSING an engine temperature. Both times the
+    // symptom was the same and absurd: the "wrong" fmb120 fallback read the value correctly while
+    // the device's own table did not. So state the invariant executably instead of trusting that
+    // each rule's blast radius was checked.
+    //
+    // Compared per PARAMETER, not per id: id 18 is "Fuel Rate" (Unsigned, l/h) on fmb640 and
+    // "Axis Y" (Signed, mG) on fmb120 — genuinely different things sharing a number, and the
+    // fallback being wrong about that is the defect this module removes, not a violation. Same id,
+    // same width, same multiplier, same units and Signed on both sides is the same parameter.
+    const BITS: Record<string, number> = { '1': 8, '2': 16, '4': 32, '8': 64 }
+    const key = (id: number, e: { bytes: string; multiplier?: string; units?: string }): string =>
+      `${id}|${e.bytes}|${e.multiplier ?? ''}|${e.units ?? ''}`
+    const rows: [string, number, AvlDictionaryEntry][] = []
+    for (const table of avlTables()) for (const [id, e] of loadDictionary(table)) rows.push([table, id, e])
+
+    const widened = (e: AvlDictionaryEntry, bits: number): boolean => applySign(e, (1n << BigInt(bits)) - 5n) !== (1n << BigInt(bits)) - 5n
+    const extendsIt = new Map<string, string>()
+    for (const [table, id, e] of rows) {
+      if (e.type !== 'Signed') continue
+      const bits = BITS[(e.bytes ?? '').trim()]
+      if (bits !== undefined && widened(e, bits)) extendsIt.set(key(id, e), `${table}#${id} ${e.name}`)
+    }
+    const disagreements: string[] = []
+    for (const [table, id, e] of rows) {
+      if (e.type !== 'Signed') continue
+      const bits = BITS[(e.bytes ?? '').trim()]
+      if (bits === undefined || widened(e, bits)) continue
+      const other = extendsIt.get(key(id, e))
+      if (other !== undefined) disagreements.push(`${table}#${id} "${e.name}" (${String(e.min)}..${String(e.max)}) refuses, but ${other} extends`)
+    }
+    expect(disagreements).toEqual([])
   })
 
   it('entries are frozen — one mutation would poison every shard for the process lifetime', () => {

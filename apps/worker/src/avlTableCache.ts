@@ -71,7 +71,10 @@ export class AvlTableCache {
       })
       stale.forEach((id, i) => {
         const r = failed ? { table: FALLBACK_AVL_TABLE, reason: 'redis_error' as const } : parseTable(raw[i])
-        if (r.reason !== undefined) why.set(id, r.reason)
+        // Record the reason only when this device will ACTUALLY decode on the fallback. On a Redis
+        // failure that is precisely "we have no cached table for it": a device whose entry merely
+        // expired keeps its own table through the blip and has not fallen back at all.
+        if (r.reason !== undefined && (!failed || !this.cache.has(id))) why.set(id, r.reason)
         // A Redis failure is NOT cached: caching it would hold the whole shard on the fallback for
         // the full TTL after the blip cleared, and the next batch is the natural retry.
         if (!failed) this.cache.set(id, { table: r.table, at: now })
@@ -79,15 +82,14 @@ export class AvlTableCache {
     }
     const out = new Map<string, AvlTable>()
     for (const id of ids) {
-      const table = this.cache.get(id)?.table ?? FALLBACK_AVL_TABLE
-      out.set(id, table)
-      // Report from the OUTCOME, not from the branch. Not caching a Redis failure means a device
-      // whose entry merely EXPIRED keeps its own correct table through the blip — and the counter
-      // used to claim a fallback there anyway, so an operator paging on it would hunt positions
-      // that were fine. Only a device that actually decodes on the fallback counts, and only when
-      // we know why (a profile whose table genuinely IS fmb120 is not a fallback).
+      out.set(id, this.cache.get(id)?.table ?? FALLBACK_AVL_TABLE)
+      // Report from the OUTCOME, decided above where the information exists. Comparing the resolved
+      // NAME to the fallback name — the previous attempt — is wrong for the 45 catalogued models
+      // whose profile genuinely IS fmb120: during a Redis blip those kept their own correct table
+      // and were still counted, on every batch, against an alert whose runbook sends the operator
+      // hunting positions that are fine. `why` already knows the difference; the name does not.
       const reason = why.get(id)
-      if (reason !== undefined && table === FALLBACK_AVL_TABLE) this.onFallback?.(reason)
+      if (reason !== undefined) this.onFallback?.(reason)
     }
     return out
   }

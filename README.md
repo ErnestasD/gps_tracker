@@ -316,7 +316,8 @@ Every new variable must be added to the table here AND match the `.env` contract
   `pipeline_avl_table_unresolved_total{reason}` (alert `AvlTableUnresolved`) — a non-zero rate means
   devices are being decoded with the wrong dictionary, which looks like data, not like an error. It
   counts device→table RESOLUTIONS, which are cached for ~60 s, so read it as "how many devices", not
-  "how many positions".
+  "how many positions" — except `redis_error`, which is deliberately not cached so the next batch
+  retries, and therefore repeats per batch for as long as the outage lasts.
 - Elements the table does not name (and ids whose name is ambiguous **within** a table, where two
   parameters share a name) surface as `io_<id>`. That is deliberate: resolving a name collision by
   arrival order would label a percentage and a kilogram count identically.

@@ -110,4 +110,18 @@ describe('AvlTableCache', () => {
     expect((await c.resolveBatch([1n], 1_000)).get('1')).toBe(FALLBACK_AVL_TABLE)
     expect(f.reasons).toEqual([])
   })
+
+  it('…and it is STILL not counted during a Redis outage, which is where the name test failed', async () => {
+    // The discriminating case, and the one the previous version of this guard got wrong. It asked
+    // "is the resolved table the fallback?" — which is true for these 45 models even when nothing
+    // fell back — so a blip counted every one of them, on every batch. The question has to be "did
+    // this device fall back?", and only the resolve path knows that.
+    const r = fakeRedis({ '1': cfg(FALLBACK_AVL_TABLE) })
+    const f = collect()
+    const c = new AvlTableCache(r.redis, 60_000, f.on)
+    await c.resolveBatch([1n], 1_000)
+    r.fail(true)
+    for (const t of [61_001, 62_000, 63_000]) expect((await c.resolveBatch([1n], t)).get('1')).toBe(FALLBACK_AVL_TABLE)
+    expect(f.reasons).toEqual([]) // its own table, all three batches — nothing fell back
+  })
 })

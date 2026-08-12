@@ -109,6 +109,12 @@ function topLevelBlocks(html: string, tag: string): string[] {
     // populated one — same cell count, so neither the over-wide-row warning nor the shrink guard
     // could see it, and a blanked Type cell means every negative temperature on that model reads
     // as a large positive. Zero pages in the corpus use the form; matching the spec is free.
+    //
+    // KNOWN GAP, stated rather than papered over: `<td/>` with NO matching `</td>` still parses to
+    // one blank-looking cell here, where HTML5 would end it at the next `<td>` and keep the rest of
+    // the row. Closing that needs a real tokenizer, not a depth counter. It is unreachable today
+    // (`grep -ohE '<t[dh][^>]*/>' .cache/*.html` → 0 across all 105 pages) and it is why the
+    // over-wide-row warning exists for the shape that IS reachable.
     if (m[1] === '') {
       if (depth === 0) start = m.index
       depth += 1
@@ -269,8 +275,9 @@ export function parseAvlTable(rawHtml: string): ParseResult {
         // …and compare the WHOLE entry, not just the name. 62 distinct ids repeat on their own page;
         // 44 of them keep the same name while a column differs — FMB640's id 239 "Ignition" appears
         // with max "1" in Permanent I/O and "0xFF" in FMS Eco Driving, FMC650's 10889 with
-        // multiplier "0.03125" and "0,03125". The other 19 are genuine redefinitions and get the
-        // "defined twice" warning below instead.
+        // multiplier "0.03125" and "0,03125". 19 are genuine redefinitions and get the "defined
+        // twice" warning below instead; id 828 appears three times and is in both sets, which is
+        // why 44 + 19 is 63 and the union is 62.
         //
         // THE NAME CHECK IS PART OF THE MESSAGE'S TRUTH, not an optimisation: without it this line
         // fired on rows whose names differ too, so 57 of 109 warnings said "with the same name"
@@ -360,6 +367,56 @@ export function parseAvlTable(rawHtml: string): ParseResult {
  * second page contradicts them, so there is nothing to reconcile against, and correcting them would
  * be inference. Both are flagged by the Min cross-check for a human to raise with Teltonika.
  */
+/**
+ * Reconcile the value RANGE across pages, for Signed parameters only.
+ *
+ * The Type column is not the only cell a page can get wrong, and the other one is just as
+ * load-bearing: `applySign` refuses to sign-extend an entry whose own minimum is not negative,
+ * because an identifier or a bitmask typed `Signed` must not be reinterpreted. That rule is right,
+ * and on ONE entry the wiki makes it produce the exact failure this module exists to prevent.
+ *
+ * FM36 documents id 115 as `Signed`, 2 bytes, ×0.1 °C — and writes its range as `0…65535`, the raw
+ * WIRE range, where six other tables write `−600…1270`, the VALUE range. Left alone, an FM3612
+ * reporting −5 °C surfaces as 6548.6 °C on its own table while the FMB120 fallback reads it
+ * correctly: naming the device's true model makes its data worse, which is the one outcome this
+ * whole per-model dictionary effort is supposed to remove.
+ *
+ * NARROW ON PURPOSE, because consensus rules on this file have twice been too broad. It keys on
+ * (id, bytes, multiplier, units) — NOT the name, since fm36 calls it "LVCAN Engine Temperature" and
+ * the donors "Engine Coolant Temperature", so a name-keyed rule would miss the only case there is.
+ * Both sides must already be `Signed`; this reconciles a range, it never creates one. Measured over
+ * the 34 tables it corrects exactly ONE entry, and every correction is recorded.
+ */
+export function applyRangeConsensus(tables: Record<string, AvlEntry>[]): { table: number; note: string }[] {
+  const sig = (id: string, e: AvlEntry): string => `${id}|${e.bytes}|${e.multiplier ?? ''}|${e.units ?? ''}`
+  const negative = (e: AvlEntry): boolean => {
+    const mn = Number(e.min)
+    return Number.isFinite(mn) && mn < 0
+  }
+  const donors = new Map<string, { min?: string; max?: string; name: string }>()
+  for (const t of tables) {
+    for (const [id, e] of Object.entries(t)) {
+      if (e.type === 'Signed' && negative(e)) donors.set(sig(id, e), { ...(e.min !== undefined ? { min: e.min } : {}), ...(e.max !== undefined ? { max: e.max } : {}), name: e.name })
+    }
+  }
+  const corrections: { table: number; note: string }[] = []
+  for (const [index, t] of tables.entries()) {
+    for (const [id, e] of Object.entries(t)) {
+      if (e.type !== 'Signed' || negative(e)) continue
+      const d = donors.get(sig(id, e))
+      if (d === undefined) continue
+      const was = `${e.min ?? '?'}..${e.max ?? '?'}`
+      if (d.min !== undefined) e.min = d.min
+      if (d.max !== undefined) e.max = d.max
+      corrections.push({
+        table: index,
+        note: `id ${id}: range was ${was} here but ${d.min ?? '?'}..${d.max ?? '?'} on another Teltonika page for the same id, width, multiplier and units (there as "${d.name}") — adopted, so a negative reading is sign-extended rather than surfacing as a large positive`,
+      })
+    }
+  }
+  return corrections
+}
+
 export function applyTypeConsensus(tables: Record<string, AvlEntry>[]): { table: number; note: string }[] {
   // min/max are part of the identity, not decoration. Without them 156 signatures across the 34
   // tables resolve to entries with different ranges or descriptions — "Neighbouring Cell 1 MNC" is
