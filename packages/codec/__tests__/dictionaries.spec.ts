@@ -226,10 +226,61 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
     // Teltonika types id 127 Engine Coolant Temperature as Signed, 1 byte, −40…210, described
     // "Offset by -40": the wire byte is 0…250 and the value is byte − 40. 210 does not fit int8.
     // Reinterpreting turns a 130 °C engine (byte 170) into −86 °C, so an over-temp rule can never
-    // fire. 70 entries across the pro-CAN tables have this shape; fmb120 has none, so they arm the
+    // fire. 12 entries across the shipped tables have this shape; fmb120 has none, so they arm the
     // moment a device is decoded with its own table.
     const offset = { name: 'Engine Coolant Temperature', bytes: '1', type: 'Signed', min: '-40', max: '210' }
     expect(applySign(offset, 170n)).toBe(170n)
+  })
+
+  it('…but an OFF-BY-ONE max on a genuinely signed field is NOT an offset encoding', () => {
+    // The refusal above first tested `max` alone, and review caught it: that silenced sign
+    // extension on 64 entries — every ELD, reefer and Frigo temperature on the FMx6xx tables —
+    // because the wiki writes their range as −32768…32768 and 32768 is one past int16. A field
+    // whose own Min is EXACTLY the signed floor is two's complement whatever its Max says, and
+    // passing it through turns −5.0 °C into 65486: the precise failure applySign exists to stop,
+    // armed by the same commit that made these tables reachable.
+    //
+    // The signature of a real offset encoding is the WHOLE range, not one end — the span fits the
+    // UNSIGNED width and the minimum sits above the signed floor. These four cover both sides of
+    // each half of that test.
+    const frigo = { name: 'Frigo Comp 1 Supply', bytes: '2', type: 'Signed', min: '-32768', max: '32768' }
+    expect(applySign(frigo, 0xffcen)).toBe(-50n) // −5.0 °C, not 65486
+    const slope = { name: 'LVCAN Slope of Arm', bytes: '2', type: 'Signed', min: '-65535', max: '65535' }
+    expect(applySign(slope, 0xffffn)).toBe(-1n) // span 131070 > 65535: not an offset either
+    // …while both genuine shapes still refuse: a real offset, and a range that is plainly unsigned
+    expect(applySign({ name: 'HV Battery Temperature', bytes: '1', type: 'Signed', min: '-40', max: '210' }, 250n)).toBe(250n)
+    expect(applySign({ name: 'Sensor 7 Unit', bytes: '1', type: 'Signed', min: '0', max: '255' }, 200n)).toBe(200n)
+  })
+
+  it('and every shipped entry the refusal fires on is one of the 12 known offset encodings', () => {
+    // The unit cases above pin the rule; this pins the BLAST RADIUS against the real corpus, which
+    // is what actually went wrong — the rule looked right and hit 76 entries instead of 12.
+    const BITS: Record<string, number> = { '1': 8, '2': 16, '4': 32, '8': 64 }
+    const refused: string[] = []
+    for (const table of avlTables()) {
+      for (const [id, e] of loadDictionary(table)) {
+        if (e.type !== 'Signed') continue
+        const bits = BITS[(e.bytes ?? '').trim()]
+        if (bits === undefined) continue
+        // a positive reading inside the declared width that comes back UNCHANGED was refused
+        const probe = (1n << BigInt(bits)) - 2n
+        if (applySign(e, probe) === probe) refused.push(`${table}#${id} ${e.name}`)
+      }
+    }
+    expect(refused.sort()).toEqual([
+      'fm36#115 LVCAN Engine Temperature',
+      'fm6300#127 Engine Coolant Temperature',
+      'fmb640#127 Engine Coolant Temperature',
+      'fmb641#10893 High Voltage Battery Temperature',
+      'fmb641#127 Engine Coolant Temperature',
+      'fmc640#127 Engine Coolant Temperature',
+      'fmc650#10893 High Voltage Battery Temperature',
+      'fmc650#127 Engine Coolant Temperature',
+      'fmc650#13378 Sensor 7 Unit',
+      'fmm650#10893 High Voltage Battery Temperature',
+      'fmm650#127 Engine Coolant Temperature',
+      'fmm650#13378 Sensor 7 Unit',
+    ])
   })
 
   it('entries are frozen — one mutation would poison every shard for the process lifetime', () => {

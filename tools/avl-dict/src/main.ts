@@ -231,14 +231,21 @@ async function main(): Promise<void> {
     // once truncated FM36 at a nested <table> inside a Description cell and shipped 12 of 137
     // elements — losing Ignition, Movement, the Dallas temperatures and the odometer — with an
     // empty warnings array and a successful run. The only quality gate was "more than zero".
+    let lost = false
     if (prev !== '') {
       const before = ((/^ {2}"\d+":/gm.exec(prev) ? prev.match(/^ {2}"\d+":/gm) : null) ?? []).length
       const after = Object.keys(group.elements).length
       if (before > 0 && after < before * 0.9) {
         shrunk.push(`${key}: ${before} → ${after} elements`)
+        lost = true
       }
     }
-    if (stripDate(prev) !== stripDate(next)) writeFileSync(path, next)
+    // …and DO NOT WRITE IT. Reporting a parser failure while the truncated file is already on disk
+    // is not a guard, it is a note attached to the damage: the operator reads "treat as a parser
+    // failure" with the bad dictionary committed under their cursor, and `git checkout` is the only
+    // way back. The good file stays, the exit code is non-zero, and the run is repeatable.
+    if (lost) console.error(`  ${key}: NOT written — the existing file is kept`)
+    else if (stripDate(prev) !== stripDate(next)) writeFileSync(path, next)
     else unchanged++
     for (const m of group.models) catalogue.push({ model: m, dictionary: key })
     summary.push({ dictionary: key, elements: Object.keys(group.elements).length, models: group.models.length, warnings: group.warnings.length })

@@ -43,6 +43,7 @@ export interface WorkerProm {
   /** Entries moved to `raw:dead` by reason. A poison row is otherwise indistinguishable from a
    *  quiet fleet — the audit's "catch-and-continue with no signal" pattern. Non-zero ⇒ alert. */
   deadLettered: Counter
+  avlFallback: Counter
   /** Background jobs that THREW, by job name. Several workers exposed an onFailed hook that
    *  nothing wired, and several exposed none at all — a job failing every run was invisible. */
   jobFailed: Counter
@@ -226,6 +227,17 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
   // a stalled metering pipeline is silent under-billing — alert on any non-zero rate
   const deadLettered = new Counter({ name: 'pipeline_dead_lettered_total', help: 'stream entries quarantined to raw:dead by reason (malformed payload | rejected by postgres)', labelNames: ['reason'], registers: [registry] })
   const fieldNulled = new Counter({ name: 'positions_field_nulled_total', help: 'position fields nulled because the value did not fit its column (firmware quirk / spoof)', labelNames: ['field'], registers: [registry] })
+  /**
+   * Records decoded with the FMB120 FALLBACK instead of the device's own AVL dictionary.
+   *
+   * Silent-by-default is not acceptable here: the fallback names and SIGNS every IO element, the
+   * result is written durably to `positions.attrs`, and nothing recomputes it. A device that falls
+   * back for five minutes because Redis was unreachable produces five minutes of positions whose
+   * "Battery Temperature" column is actually a break-time counter — plausible, wrong and permanent.
+   * Labelled by REASON because the reasons want different responses: `redis_error` is an incident,
+   * `no_config` is a device the rehydrate has not reached, `unknown_table` is a bad profile row.
+   */
+  const avlFallback = new Counter({ name: 'pipeline_avl_fallback_total', help: 'records decoded with the fallback AVL dictionary rather than the device profile\'s own table, by reason (no_config | no_field | malformed | unknown_table | redis_error)', labelNames: ['reason'], registers: [registry] })
   /** transactional mail actually handed to SES, by kind — the denominator that makes a failure rate
    *  meaningful and the only evidence that activation mail is flowing at all */
   const authEmailSent = new Counter({ name: 'worker_auth_email_sent_total', help: 'transactional emails handed to the transport, by kind (verify-email | password-reset | signup-exists | lapse | partner)', labelNames: ['kind'], registers: [registry] })
@@ -281,5 +293,5 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripCloseMissed, tripOdometerRejected, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, clockSkewed, jobFailed, authEmailSent, pendingEvicted, billingLapseUnreachable, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripCloseMissed, tripOdometerRejected, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, avlFallback, clockSkewed, jobFailed, authEmailSent, pendingEvicted, billingLapseUnreachable, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

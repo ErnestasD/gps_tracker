@@ -97,11 +97,29 @@ export function applySign(entry: AvlDictionaryEntry | undefined, value: bigint):
   // the Type column is not describing two's complement. Teltonika types id 127 Engine Coolant
   // Temperature as `Signed`, 1 byte, range −40…210 — and 210 does not fit int8, because the wire
   // byte is 0…250 with the description "Offset by -40". Reinterpreting it turns a 130 °C engine
-  // into −86 °C, so an over-temperature rule can never fire. 70 entries across the pro-CAN tables
-  // have this shape; none is in fmb120, so nothing is live today and all of them arm the moment a
-  // device is decoded with its own table.
+  // into −86 °C, so an over-temperature rule can never fire.
+  //
+  // BUT "max is too big" ALONE IS NOT THAT SHAPE, and testing only max was a bug of its own that
+  // review caught before it shipped: it silenced sign extension on 64 entries — every ELD, reefer
+  // and Frigo temperature on the FMx6xx tables, e.g. fmc650 id 13396 "Frigo Comp 1 Supply",
+  // 2 bytes, −32768…32768. That `32768` is a wiki off-by-one on a field whose own Min is EXACTLY
+  // the int16 floor; the field is unambiguously two's complement, and passing it through turned
+  // −5.0 °C into 65486 — the very failure this function exists to prevent. Worse, it armed on the
+  // devices this table wiring newly decodes CORRECTLY.
+  //
+  // An offset encoding has a signature, and it is the whole range, not one end: the span fits the
+  // UNSIGNED width (the wire really is 0…2^bits−1) and the minimum sits ABOVE the signed floor
+  // (there is an offset to subtract, not a sign bit). Measured over the 34 shipped tables that is
+  // 12 entries — ids 127 and 10893 at −40…210, plus three the wiki types Signed over a plainly
+  // unsigned range (13378 "Sensor 7 Unit" 0…255, fm36 115 at 0…65535) — and 0 of the 64.
   const max = Number(entry.max)
-  if (Number.isFinite(max) && max > 2 ** (bits - 1) - 1) return value
+  const min = Number(entry.min)
+  const offsetEncoded =
+    Number.isFinite(max) &&
+    Number.isFinite(min) &&
+    max - min <= 2 ** bits - 1 &&
+    min > -(2 ** (bits - 1))
+  if (offsetEncoded && max > 2 ** (bits - 1) - 1) return value
   return BigInt.asIntN(bits, value)
 }
 

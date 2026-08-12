@@ -95,7 +95,7 @@ describe('tenant suspension', () => {
     // without device:account the device connects and is then dropped by the worker for want of a
     // tenant — a "restored" fleet that still shows nothing on the map
     const { redis, hashes } = fakeRedis()
-    await restoreTenantDevices(redis, [{ ...dev(1n, 'a'), presenceRules: { minStopS: 120 }, odometerSource: 'can' }])
+    await restoreTenantDevices(redis, [{ ...dev(1n, 'a'), presenceRules: { minStopS: 120 }, odometerSource: 'can', avlTable: 'fmb120' }])
     expect(hashes['registry:imei']?.['a']).toBe('1')
     expect(hashes['device:account']?.['1']).toBe('a1')
     expect(hashes['device:config']?.['1']).toContain('odometerSource')
@@ -118,7 +118,7 @@ describe('tenant suspension', () => {
 
   it('suspend → restore → suspend is idempotent in both directions', async () => {
     const { redis, hashes } = fakeRedis()
-    const one = [{ ...dev(1n, 'a'), presenceRules: {}, odometerSource: 'auto' }]
+    const one = [{ ...dev(1n, 'a'), presenceRules: {}, odometerSource: 'auto', avlTable: 'fmb120' }]
     await restoreTenantDevices(redis, one)
     await restoreTenantDevices(redis, one)
     expect(hashes['registry:imei']?.['a']).toBe('1')

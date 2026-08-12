@@ -65,7 +65,7 @@ interface SeedResult {
 async function seedDirectDemo(
   db: Db,
   redis: Redis,
-  profile: { id: string; presenceRules: unknown },
+  profile: { id: string; presenceRules: unknown; avlTable: string },
   passwordHash: string,
   log: (line: string) => void,
 ): Promise<SeedResult['direct']> {
@@ -93,7 +93,7 @@ async function seedDirectDemo(
     }
     try {
       const dev = await db.devices.create(scope, ACTOR, { accountId, profileId: profile.id, imei, name: `Direct Van ${String(i + 1).padStart(2, '0')}`, plate: `DIR ${100 + i}` })
-      await activateDevice(redis, { id: dev.id, imei, tenantId: tenant.id, accountId, config: { presenceRules: profile.presenceRules ?? {}, odometerSource: 'auto' } })
+      await activateDevice(redis, { id: dev.id, imei, tenantId: tenant.id, accountId, config: { presenceRules: profile.presenceRules ?? {}, odometerSource: 'auto', avlTable: profile.avlTable } })
       created++
     } catch (err) {
       if (err instanceof DuplicateImeiError) {
@@ -172,7 +172,7 @@ export async function seedDemo(opts: {
       try {
         const dev = await db.devices.create(scope, ACTOR, { accountId, profileId: profile.id, imei: spec.imei, name: spec.name, plate: spec.plate })
         // same config shape the CRUD path syncs (profile presence rules, not hardcoded)
-        await activateDevice(redis, { id: dev.id, imei: spec.imei, tenantId: tenant.id, accountId, config: { presenceRules: profile.presenceRules ?? {}, odometerSource: 'auto' } })
+        await activateDevice(redis, { id: dev.id, imei: spec.imei, tenantId: tenant.id, accountId, config: { presenceRules: profile.presenceRules ?? {}, odometerSource: 'auto', avlTable: profile.avlTable } })
         created++
       } catch (err) {
         if (err instanceof DuplicateImeiError) {

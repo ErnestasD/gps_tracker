@@ -2,6 +2,7 @@ import type { Hono } from 'hono'
 import type { Redis } from 'ioredis'
 
 import type { Db, PaidInvoice, SubscriptionUpdate } from '@orbetra/db'
+import type { TenantDeviceRow } from '@orbetra/registry'
 import type { BillingPlanView, BillingView, Role } from '@orbetra/shared'
 
 import type { StripeGateway } from '../billing/stripe.js'
@@ -51,7 +52,13 @@ export interface BillingDeps {
   onWebhookUnmatched?: (reason: 'no_tenant' | 'unmappable') => void
   /** Re-register a restored tenant's devices in the ingest registry. Injected rather than imported
    *  so this route stays testable without Redis; absent ⇒ the daily sweep does it instead. */
-  restoreDevices?: (devices: readonly { id: bigint; imei: string; tenantId: string; accountId: string; presenceRules: unknown; odometerSource: string }[]) => Promise<void>
+  /**
+   * Restore a suspended tenant's fleet. Typed as the REGISTRY's own row rather than an inline
+   * structural copy: two copies of this shape existed and both silently accepted a row missing
+   * `avlTable`, which a restore would then have written as "no dictionary" for the whole fleet.
+   * A shape with a single owner cannot drift from it.
+   */
+  restoreDevices?: (devices: readonly TenantDeviceRow[]) => Promise<void>
   /** a suspended tenant paid and was restored on the spot */
   onTenantRestored?: () => void
 }

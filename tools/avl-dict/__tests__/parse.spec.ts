@@ -264,9 +264,10 @@ describe('header shapes that actually occur on the wiki', () => {
   it('…and the nested table does not shift the columns AFTER the Description cell either', () => {
     // Same defect one level down, and it survived the table-level fix: the CELL match was still
     // non-greedy, so the Description cell ended at the nested table's first </td> and the two
-    // trailing columns slid left. FM36 shipped 137 elements — correct count — while 19 of them,
-    // including 239 Ignition and 240 Movement Sensor, silently lost HW Support and Parameter Group
-    // and carried a truncated description. A right-looking count is not a right parse.
+    // trailing columns slid left. With only the table level fixed, FM36 parsed to 137 elements — a
+    // correct count — while 19 of them, including 239 Ignition and 240 Movement Sensor, carried the
+    // NESTED table's text in HW Support and Parameter Group. A right-looking count is not a right
+    // parse; that intermediate was measured, never committed.
     const html = `<table>
       <tr><th>Property ID in AVL packet</th><th>Property Name</th><th>Bytes</th><th>Type</th>
           <th>Description</th><th>HW Support</th><th>Parameter Group</th></tr>
@@ -278,6 +279,44 @@ describe('header shapes that actually occur on the wiki', () => {
     expect(e?.hwSupport).toBe('FM3612, FM36M1')
     expect(e?.group).toBe('Permanent I/O elements')
     expect(e?.description).toBe('codes: 0 off end') // the whole cell, nested rows flattened
+  })
+
+  it('a row WIDER than the header is reported — the colspan handling alone does not defend', () => {
+    // The "span comes from the markup" test above pins the arithmetic but not the protection: drop
+    // the `colspan="2"` from `Value range` and `col += span` under-advances, so Multiplier is read
+    // from the Max column and Units from Multiplier — a silent factor-of-ten in a customer-visible
+    // number — while `warnings` stays empty, because the range cross-check reads the shifted cells
+    // too. Zero rows on the live wiki are over-wide, so this cannot fire until it matters.
+    const html = `<table>
+      <tr><th>Property ID in AVL packet</th><th>Property Name</th><th>Bytes</th><th>Type</th>
+          <th>Value range</th><th>Multiplier</th><th>Units</th></tr>
+      <tr><th>Min</th><th>Max</th></tr>
+      <tr><td>84</td><td>Fuel Level</td><td>2</td><td>Unsigned</td><td>0</td><td>65535</td><td>0.1</td><td>l</td></tr>
+    </table>`
+    const r = parseAvlTable(html)
+    expect(r.warnings).toContain('id 84: row has 8 cells but the header declares 7 columns — column alignment is not guaranteed')
+  })
+
+  it('a commented-out closing tag does not close the table', () => {
+    // The depth counter reads tag text, so `<!-- </table> -->` in a Description cell ends the table
+    // there: every later row belongs to no match and the page parses to NOTHING, which main.ts
+    // reports as "no AVL table found on the page" — a message a reader blames on the fetch.
+    const html = `<table>
+      <tr><th>Property ID in AVL packet</th><th>Property Name</th><th>Bytes</th><th>Type</th></tr>
+      <tr><td>69</td><td>GNSS Status</td><td>1</td><td>Unsigned<!-- </table> --></td></tr>
+      <tr><td>239</td><td>Ignition</td><td>1</td><td>Unsigned</td></tr>
+    </table>`
+    expect(Object.keys(parseAvlTable(html).elements).sort()).toEqual(['239', '69'])
+  })
+
+  it('a self-closing <td/> is one empty cell, not a cell that swallows the rest of the row', () => {
+    const html = `<table>
+      <tr><th>Property ID in AVL packet</th><th>Property Name</th><th>Bytes</th><th>Type</th><th>Units</th></tr>
+      <tr><td>84</td><td>Fuel Level</td><td/><td>Unsigned</td><td>l</td></tr>
+    </table>`
+    const e = parseAvlTable(html).elements['84']
+    expect(e?.type).toBe('Unsigned') // …and not '' from a column that slid left
+    expect(e?.units).toBe('l')
   })
 
   it('a data cell that SPANS is reported — reading by column index stops being sound there', () => {

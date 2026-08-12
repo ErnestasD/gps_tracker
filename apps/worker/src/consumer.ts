@@ -4,7 +4,7 @@ import type { Pool } from 'pg'
 
 import type { NormalizedRecord } from '@orbetra/shared'
 
-import { AvlTableCache } from './avlTableCache.js'
+import { AvlTableCache, type AvlFallbackReason } from './avlTableCache.js'
 import { normalize, type HashFn } from './normalize.js'
 import { PIPELINE_GROUP } from './shards.js'
 import { writePositions } from './writer.js'
@@ -43,6 +43,11 @@ export interface ConsumerDeps {
   /** pending entries Redis deleted because the stream had already trimmed past them — the only
    *  post-hoc proof that a stalled consumer's backlog was destroyed rather than merely delayed */
   onPendingEvicted?: (shard: number, count: number) => void
+  /** Fired per device decoded with the FALLBACK dictionary instead of its profile's own table.
+   *  The records still land, with every IO element named and SIGNED by the wrong table, and the
+   *  result is written durably to `positions.attrs` where nothing recomputes it — so without this
+   *  a Redis blip is indistinguishable from a fleet that simply reports different parameters. */
+  onAvlFallback?: (reason: AvlFallbackReason) => void
 }
 
 /**
@@ -83,7 +88,7 @@ export class ShardConsumer {
     private readonly shard: number,
     private readonly deps: ConsumerDeps,
   ) {
-    this.tables = new AvlTableCache(deps.redis)
+    this.tables = new AvlTableCache(deps.redis, undefined, (reason) => deps.onAvlFallback?.(reason))
   }
 
   get stream(): string {

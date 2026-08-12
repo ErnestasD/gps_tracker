@@ -87,8 +87,11 @@ const NON_NUMERIC = new Set(['HEX', 'ASCII', '<STRING>'])
  *     shipped 12 of 137 elements — losing Ignition, Movement, the Dallas temperatures, iButton and
  *     the odometer — with an empty `warnings` array;
  *   - at CELL level the same shape ended the Description cell at the nested table's first `</td>`,
- *     which truncated the description AND shifted the two trailing columns off the row: 19 FM36 rows
- *     (again including 239 Ignition and 240 Movement Sensor) lost `hwSupport` and `group` entirely.
+ *     which truncated the description AND shifted the two trailing columns off the row. Fixing only
+ *     the table level would have produced 137 FM36 elements — a right-looking count — with 19 of
+ *     them (again including 239 Ignition and 240 Movement Sensor) carrying the NESTED table's text
+ *     in `hwSupport` and `group`: `hwSupport: "1 – ignition on"`. That state was measured on the
+ *     intermediate fix and never committed; what shipped before was the 12-element truncation.
  *
  * Truncation that reports success is the worst shape a generator can have, so there is exactly one
  * extractor and all three levels use it. Depth counting works for rows and cells as well as tables
@@ -96,10 +99,17 @@ const NON_NUMERIC = new Set(['HEX', 'ASCII', '<STRING>'])
  */
 function topLevelBlocks(html: string, tag: string): string[] {
   const out: string[] = []
-  const re = new RegExp(`<(/?)(?:${tag})\\b[^>]*>`, 'gi')
+  const re = new RegExp(`<(/?)(?:${tag})\\b[^>]*?(/?)>`, 'gi')
   let depth = 0
   let start = 0
   for (let m = re.exec(html); m !== null; m = re.exec(html)) {
+    // `<td/>` opens and closes in one tag. Without this the empty cell swallows the rest of the row
+    // — every later column shifts one place left and the row parses to blanks with no warning. No
+    // page uses the form today; the cost of allowing for it is one capture group.
+    if (m[1] === '' && m[2] === '/') {
+      if (depth === 0) out.push(m[0])
+      continue
+    }
     if (m[1] === '') {
       if (depth === 0) start = m.index
       depth += 1
@@ -197,16 +207,23 @@ function candidate(cells: string[], idx: Record<string, number>, name: string): 
   return entry
 }
 
-export function parseAvlTable(html: string): ParseResult {
+export function parseAvlTable(rawHtml: string): ParseResult {
   const warnings: string[] = []
   const elements: Record<string, AvlEntry> = {}
   const seen = new Map<string, string>() // id → the name we kept, for duplicate reporting
+  // Comments FIRST: the depth counter reads tag text, and a commented-out `</table>` inside a cell
+  // closes the table for it. The wiki's skin injects ~639 comments per page and none contains table
+  // markup today, so this is prophylactic — but the failure mode is the whole page parsing to
+  // nothing, which `main.ts` reports as "no AVL table found" and a reader would blame on the fetch.
+  const html = rawHtml.replace(/<!--[\s\S]*?-->/g, ' ')
 
   for (const table of topLevelTables(html)) {
     const rows = topLevelRows(table)
     if (rows.length < 2) continue
-    const idx = headerIndex(headerCells(rows[0]!))
+    const header = headerCells(rows[0]!)
+    const idx = headerIndex(header)
     if (idx === null) continue
+    const headerWidth = header.reduce((n, h) => n + h.span, 0)
 
     for (const row of rows.slice(1)) {
       const rawCells = topLevelCells(row)
@@ -223,6 +240,16 @@ export function parseAvlTable(html: string): ParseResult {
       // "264 Barcode ID" one cell early, which drops Parameter Group and shifts nothing.)
       const spans = rawCells.some((c) => [...c.matchAll(/(?:row|col)span\s*=\s*["']?(\d+)/gi)].some((m) => Number(m[1]) > 1))
       if (spans) warnings.push(`id ${id}: a data cell spans rows or columns — column alignment is not guaranteed for this row`)
+      // …and the row must not be WIDER than the header, which is the case the colspan handling above
+      // does NOT cover and review proved: `col += span` under-advances if the wiki ever drops the
+      // `colspan="2"` from `Value range`, and then every later column slides — Multiplier read as
+      // Units, a silent factor-of-ten in a customer-visible number, with a clean `warnings: []`
+      // because the range cross-check is reading the shifted cells too. A row SHORT of the header is
+      // different and deliberately unflagged: 53 pages end "264 Barcode ID" one cell early, which
+      // drops Parameter Group and shifts nothing. Over-wide rows today: zero.
+      if (rawCells.length > headerWidth) {
+        warnings.push(`id ${id}: row has ${rawCells.length} cells but the header declares ${headerWidth} columns — column alignment is not guaranteed`)
+      }
       // An AVL element id is 2 bytes on the wire (Codec 8E and 16 both), so anything above 65535
       // cannot arrive from a device and must not enter a dictionary. Today this catches exactly one
       // row: FMC650 lists "Auxil ext valve number 9" as 124451, sitting in a sequence that runs
@@ -240,12 +267,17 @@ export function parseAvlTable(html: string): ParseResult {
         continue
       }
       if (seen.has(id)) {
-        // …and compare the WHOLE entry, not just the name. 46 ids are repeated on their own page
-        // with the same name but different columns — FMB640's id 239 "Ignition" appears with max
-        // "1" in Permanent I/O and "0xFF" in FMS Eco Driving, FMC650's 10889 with multiplier
-        // "0.03125" and "0,03125". None currently differs in bytes or type, which is the class that
-        // would change decoding, but `warnings` is documented as the audit trail and it was silent
-        // on all 46.
+        // …and compare the WHOLE entry, not just the name. 62 distinct ids are repeated on their own
+        // page with the same name but different columns (109 warnings across the 34 tables) —
+        // FMB640's id 239 "Ignition" appears with max "1" in Permanent I/O and "0xFF" in FMS Eco
+        // Driving, FMC650's 10889 with multiplier "0.03125" and "0,03125".
+        //
+        // ELEVEN of them differ in BYTES, which IS the class that changes decoding: TFT100 lists
+        // 815 "Throttle Position", 828 "Remaining Capacity", 833 "Total Distance" and eight more at
+        // both 1/2/4 bytes and 8. First wins, so tft100.json ships the narrow width. Nothing decodes
+        // wrongly today — all eleven are Unsigned, so applySign returns early — but `bytes` is what
+        // the width guard in applySign reads, and this comment previously claimed no such case
+        // existed. It does; it is warned, and it is a question for Teltonika, not for us to resolve.
         const first = elements[id]
         if (first !== undefined && JSON.stringify(first) !== JSON.stringify(candidate(cells, idx, name))) {
           warnings.push(`id ${id}: repeated with the same name but different columns — kept the first`)
@@ -315,9 +347,9 @@ export function parseAvlTable(html: string): ParseResult {
  * SAE J1939 OFFSET encodings — coolant temperature (−40 °C), aftertreatment temperatures (−273 °C),
  * percent torque (−125 %) — unsigned on the wire with the offset applied on display. No page marks
  * any of those Signed, so consensus never sees a conflict there. A rule keyed on "Min < 0" alone
- * would have rewritten all 32 in order to fix 2.
+ * would have rewritten all 28 in order to fix 2.
  *
- * Two of the 32 are NOT offset encodings and are probably wiki Type errors we cannot prove:
+ * Two of the 28 are NOT offset encodings and are probably wiki Type errors we cannot prove:
  * id 1333 "Steering wheel turn counter" (Min −32, Max 29, ONE byte — a symmetric range in a byte is
  * a signed field) and id 618 "ADAS Ahead speed" (Min −128, Max 126, km/h). They stay untouched: no
  * second page contradicts them, so there is nothing to reconcile against, and correcting them would

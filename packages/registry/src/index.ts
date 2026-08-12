@@ -156,9 +156,16 @@ export interface TenantDeviceRow {
   accountId: string
   presenceRules: unknown
   odometerSource: string
-  /** The profile's AVL dictionary — see `deviceConfigValue`. Optional ONLY so an older caller still
-   *  compiles; a restore that omits it puts the tenant's whole fleet on the decoding fallback. */
-  avlTable?: string
+  /**
+   * The profile's AVL dictionary — see `deviceConfigValue`. REQUIRED, deliberately.
+   *
+   * Making it optional repeats this file's own docblock incident one field later: a restore
+   * REBUILDS `device:config`, so a caller that simply omits the field typechecks and silently puts
+   * the tenant's whole fleet on the decoding fallback the moment they pay. The one real producer
+   * (`TenantRegistryDevice`) has always had it, so requiring it costs nothing and the compiler
+   * catches the next caller instead of a customer.
+   */
+  avlTable: string
 }
 
 /**

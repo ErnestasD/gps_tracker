@@ -297,6 +297,30 @@ Every new variable must be added to the table here AND match the `.env` contract
   trips stay consistent. A profile-content edit re-syncs on the device's next registry write
   (full profile-edit propagation is a follow-up).
 
+## The model decides the dictionary (AVL tables)
+
+- A device profile carries an **`avlTable`** — the generated dictionary that names and signs that
+  model's IO elements (`packages/codec/dictionaries/<table>.json`, 105 models → 34 tables, built
+  from the Teltonika wiki by `tools/avl-dict`). It rides the **same `device:config` key** as the
+  trip config above, written by the one `deviceConfigValue` helper, and the worker resolves it per
+  batch through a cache with the same ≈60 s TTL.
+- **Picking the wrong model is not cosmetic.** The dictionary decides both the NAME and the SIGN of
+  every IO element, and the result is written durably into `positions.attrs` where nothing
+  recomputes it. AVL id 141 is 2 bytes either way: "Driver 1 Cumulative Break Time" (Unsigned) on
+  the FMB120 table, "Battery Temperature" (Signed) on the FMx6xx tables — so the same reading is
+  65535 minutes or −0.1 °C. Correcting a profile relabels **future** positions only; rows already
+  written keep the names they were decoded with.
+- **Fallback** is `fmb120` (the table 45 models render identically) whenever the answer is
+  unavailable: no config row yet, a config written before the field existed, a malformed value, an
+  unknown table name, or Redis unreachable. Every one of those increments
+  `pipeline_avl_fallback_total{reason}` — a non-zero rate means devices are being decoded with the
+  wrong dictionary, which looks like data, not like an error.
+- Elements the table does not name (and ids whose name is ambiguous **within** a table, where two
+  parameters share a name) surface as `io_<id>`. That is deliberate: resolving a name collision by
+  arrival order would label a percentage and a kilogram count identically.
+- Regenerate with `pnpm --filter @orbetra/avl-dict gen` (`--fresh` refetches; `--coverage` diffs
+  `models.json` against the wiki's own page index). The JSON is generated — never hand-edit it.
+
 ## Geofences (E05-1)
 
 - **CRUD API** `GET/POST/PATCH/DELETE /v1/geofences` — account-scoped, `accountId` nullable

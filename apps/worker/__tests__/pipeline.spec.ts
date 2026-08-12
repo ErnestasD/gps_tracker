@@ -86,7 +86,10 @@ const consumerFor = (workerId: string, extra: Partial<ConstructorParameters<type
 const cborEnc = new Encoder()
 
 /** XADD one synthetic record per spec, run the shard, and hand back each device's decoded attrs. */
-async function decodeBatch(specs: { deviceId: bigint; io: [number, bigint][] }[]): Promise<Map<string, Record<string, unknown>>> {
+async function decodeBatch(
+  specs: { deviceId: bigint; io: [number, bigint][] }[],
+  extra: Partial<ConstructorParameters<typeof ShardConsumer>[1]> = {},
+): Promise<Map<string, Record<string, unknown>>> {
   let t = Date.now() - 600_000
   for (const spec of specs) {
     await redis.xadd(
@@ -99,7 +102,7 @@ async function decodeBatch(specs: { deviceId: bigint; io: [number, bigint][] }[]
     )
   }
   const out = new Map<string, Record<string, unknown>>()
-  const c = consumerFor('w-dict', { onBatch: (records) => { for (const r of records) out.set(r.deviceId.toString(), r.attrs) } })
+  const c = consumerFor('w-dict', { onBatch: (records) => { for (const r of records) out.set(r.deviceId.toString(), r.attrs) }, ...extra })
   await c.ensureGroup()
   while ((await c.tick()) > 0) void 0
   return out
@@ -107,6 +110,13 @@ async function decodeBatch(specs: { deviceId: bigint; io: [number, bigint][] }[]
 
 const decodeOne = async (io: [number, bigint][]): Promise<Record<string, unknown>> =>
   (await decodeBatch([{ deviceId: 42n, io }])).get('42') ?? {}
+
+/** Same as decodeOne, but hands back WHY the fallback was used (empty ⇒ the profile's table won). */
+async function fallbackReasons(io: [number, bigint][]): Promise<string[]> {
+  const reasons: string[] = []
+  await decodeBatch([{ deviceId: 42n, io }], { onAvlFallback: (r) => reasons.push(r) })
+  return reasons
+}
 
 describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () => {
   it('I1: ingest-ACKed count == stream entries == rows inserted', async () => {
@@ -401,6 +411,30 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
       const seen = await decodeOne([[141, 0xffffn]])
       expect(seen['Driver 1 Cumulative Break Time'], String(cfg)).toBe(65535)
     }
+  }, 60_000)
+
+  it('every fallback is COUNTED, with the reason — otherwise it is indistinguishable from real data', async () => {
+    // The fallback names and SIGNS every IO element and the result goes durably into
+    // positions.attrs, where nothing recomputes it. A Redis blip therefore produces minutes of
+    // positions whose "Battery Temperature" column is really a break-time counter — plausible,
+    // wrong and permanent. The reasons are separate because the responses are: `redis_error` is an
+    // incident, `no_config` is a device the rehydrate has not reached, `unknown_table` is a bad
+    // profile row someone has to correct.
+    await redis.del('device:config')
+    expect(await fallbackReasons([[141, 1n]])).toEqual(['no_config'])
+
+    await redis.hset('device:config', '42', JSON.stringify({ presenceRules: {}, odometerSource: 'device' }))
+    expect(await fallbackReasons([[141, 1n]])).toEqual(['no_field'])
+
+    await redis.hset('device:config', '42', 'not json')
+    expect(await fallbackReasons([[141, 1n]])).toEqual(['malformed'])
+
+    await redis.hset('device:config', '42', JSON.stringify({ avlTable: 'fmb999' }))
+    expect(await fallbackReasons([[141, 1n]])).toEqual(['unknown_table'])
+
+    // …and the device's own table fires NOTHING. Without this the counter could be a constant.
+    await redis.hset('device:config', '42', JSON.stringify({ presenceRules: {}, odometerSource: 'device', avlTable: 'fmc650' }))
+    expect(await fallbackReasons([[141, 1n]])).toEqual([])
   }, 60_000)
 
   it('the table is resolved per DEVICE, so one batch can carry two models', async () => {
