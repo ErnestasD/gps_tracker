@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -46,6 +46,9 @@ async function fetchPage(page: string, fresh: boolean): Promise<string> {
   writeFileSync(cached, html)
   return html
 }
+
+/** Compare two dictionary files ignoring the capture date, so an unchanged table is not rewritten. */
+const stripDate = (json: string): string => json.replace(/^ "retrieved_at": ".*",$/m, '')
 
 /**
  * One element per LINE. Fully indented JSON put every field on its own line and turned a routine
@@ -117,6 +120,7 @@ async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true })
   const retrieved = new Date().toISOString().slice(0, 10)
   const catalogue: { model: string; dictionary: string }[] = []
+  let unchanged = 0
   const summary: { dictionary: string; elements: number; models: number; warnings: number }[] = []
 
   for (const [, group] of byPrint) {
@@ -134,7 +138,15 @@ async function main(): Promise<void> {
       warnings: group.warnings,
       elements: group.elements,
     }
-    writeFileSync(join(OUT, `${key}.json`), serialise(file))
+    // Rewrite ONLY when the content changed. `retrieved_at` is today's date, so writing
+    // unconditionally would rewrite all 34 files on every run and turn "regenerate and read the
+    // diff" — the whole point of having a generator — into a wall of date changes that hides the one
+    // element Teltonika actually edited. The date therefore means "when this CONTENT was captured".
+    const path = join(OUT, `${key}.json`)
+    const next = serialise(file)
+    const prev = existsSync(path) ? readFileSync(path, 'utf8') : ''
+    if (stripDate(prev) !== stripDate(next)) writeFileSync(path, next)
+    else unchanged++
     for (const m of group.models) catalogue.push({ model: m, dictionary: key })
     summary.push({ dictionary: key, elements: Object.keys(group.elements).length, models: group.models.length, warnings: group.warnings.length })
   }
@@ -144,7 +156,7 @@ async function main(): Promise<void> {
 
   summary.sort((a, b) => b.elements - a.elements)
   for (const s of summary) console.log(`${s.dictionary.padEnd(10)} ${String(s.elements).padStart(5)} elements  ${String(s.models).padStart(3)} models  ${s.warnings} warnings`)
-  console.log(`\n${summary.length} dictionaries for ${catalogue.length} models`)
+  console.log(`\n${summary.length} dictionaries for ${catalogue.length} models (${unchanged} unchanged, ${summary.length - unchanged} rewritten)`)
   if (failed.length > 0) {
     console.log(`\n${failed.length} model(s) produced NO dictionary — they must be offered with an empty one or not at all:`)
     for (const f of failed) console.log(`  ${f.model}: ${f.reason}`)
