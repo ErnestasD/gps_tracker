@@ -23,7 +23,7 @@ interface Operation {
   summary: string
   security: Record<string, string[]>[]
   parameters?: unknown[]
-  responses: Record<string, { description: string }>
+  responses: Record<string, { description: string; headers?: Record<string, unknown> }>
 }
 
 const PARAM = /:([a-zA-Z0-9_]+)/g
@@ -86,6 +86,22 @@ const POST_CREATES_ON_ITEM_PATH = new Set([
 ])
 /** Collection-path POSTs that are NOT creates — they answer 200 with a computed result. */
 const POST_RETURNS_OK = new Set(['/v1/devices/import/preview'])
+/**
+ * Response headers worth documenting. The trips lists have no cursor: they cap (500 default, 5000
+ * max) and signal a possibly-incomplete page in a header, which is invisible to anyone reading only
+ * the document — so it is declared here rather than left as folklore.
+ */
+const TRUNCATION_HEADER = {
+  'X-Result-Truncated': {
+    description: 'Present and "true" when the page hit the row cap, so the range may be incomplete. Narrow from/to to see the rest — this list has no cursor.',
+    schema: { type: 'string', enum: ['true'] },
+  },
+}
+const RESPONSE_HEADERS: Record<string, Record<string, unknown>> = {
+  '/v1/trips': TRUNCATION_HEADER,
+  '/v1/devices/{id}/trips': TRUNCATION_HEADER,
+}
+
 /** Statuses a specific operation can return beyond its shape's set (throttles, conflicts, outages). */
 const EXTRA: Record<string, Record<string, { description: string }>> = {
   '/v1/devices': {
@@ -153,7 +169,14 @@ function op(
     // EXTRA is per operation and WRITES ONLY: keyed on the path alone it leaked a device-creation
     // 409/429 onto GET /v1/devices — a read that can return neither, i.e. the very defect this
     // response work exists to remove, reintroduced on a different verb.
-    responses: !read && EXTRA[path] !== undefined ? { ...base, ...EXTRA[path] } : base,
+    responses: (() => {
+      const out: Record<string, { description: string; headers?: Record<string, unknown> }> =
+        !read && EXTRA[path] !== undefined ? { ...base, ...EXTRA[path] } : { ...base }
+      const hdrs = read ? RESPONSE_HEADERS[path] : undefined
+      const ok = out['200']
+      if (hdrs !== undefined && ok !== undefined) out['200'] = { ...ok, headers: hdrs }
+      return out
+    })(),
   }
 }
 

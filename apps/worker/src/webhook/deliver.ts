@@ -65,8 +65,15 @@ export async function deliverWebhook(opts: DeliverOptions): Promise<DeliverResul
     // Omitted for an IP-literal webhook URL: RFC 6066 forbids an IP as SNI and node warns (DEP0123);
     // identity is still checked, as `IP: … is not in the cert's list`.
     // `hostname` is UNBRACKETED first: WHATWG URL keeps the brackets on an IPv6 literal
-    // (`https://[2001:db8::1]/` → hostname `[2001:db8::1]`), which `isIP` does not recognise — so
-    // the carve-out was missed and we sent a bracketed SNI that no handshake can complete.
+    // (`https://[2001:db8::1]/` → hostname `[2001:db8::1]`), which `isIP` does not recognise, so the
+    // carve-out was missed and we sent a bracketed SNI that no handshake can complete. Unbracketing
+    // matches what guard.ts already does, and stops the bogus SNI.
+    //
+    // It does NOT, on its own, make an IPv6-literal https webhook deliverable, and nothing here can:
+    // with no servername node checks identity against the ADDRESS, which only succeeds if the peer's
+    // certificate carries a matching IP SAN. A public CA will not issue one for most addresses, so
+    // such a URL still fails — correctly, and at the certificate check rather than on a malformed
+    // SNI. http:// IPv6 literals are unaffected (the guard's private-range rules still apply).
     ...(isHttps ? { rejectUnauthorized: true, ...(isIP(bareHostname) ? {} : { servername: bareHostname }) } : {}),
   }
 

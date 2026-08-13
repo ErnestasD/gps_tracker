@@ -79,7 +79,13 @@ function isAwsUrl(raw: string): boolean {
 
 /** The canonical string AWS signed: `key\nvalue\n` for each present field, in the fixed order. */
 export function stringToSign(msg: Record<string, unknown>): string | null {
-  const fields = SIGNED_FIELDS[str(msg['Type'])]
+  // OWN KEYS ONLY. A plain object literal inherits from Object.prototype, so `Type: "constructor"`
+  // (or "toString", "valueOf", "__proto__") used to resolve to an inherited FUNCTION: not undefined,
+  // so the guard passed, and the for..of below then threw a TypeError out of verifySnsMessage — a
+  // 500 on the one endpoint an unauthenticated caller can reach, where every other unknown type is
+  // a quiet 403.
+  const type = str(msg['Type'])
+  const fields = Object.hasOwn(SIGNED_FIELDS, type) ? SIGNED_FIELDS[type] : undefined
   if (fields === undefined) return null
   let out = ''
   for (const f of fields) {
@@ -140,9 +146,25 @@ export function createSesWebhookRoutes(deps: SesWebhookDeps): Hono<AuthEnv> {
   const certCache = new Map<string, { pem: string; at: number }>()
   const CERT_TTL_MS = 24 * 3_600_000
   const CERT_CACHE_MAX = 8
+  // AWS serves these from a fixed filename under the topic's regional host. Requiring that exact
+  // shape is what makes the cache a cache: keyed on the full URL, `?nonce=1`, `?nonce=2`, … are
+  // distinct keys, so an anonymous caller could force one outbound fetch per POST anyway AND push
+  // the genuine certificate out of an 8-entry map. Not tightened inside isAwsUrl, because
+  // SubscribeURL legitimately carries a query string and shares that helper.
+  const CERT_PATH_RE = /^\/SimpleNotificationService-[A-Za-z0-9._-]+\.pem$/
+  const isCanonicalCertUrl = (raw: string): boolean => {
+    try {
+      const u = new URL(raw)
+      return u.search === '' && u.hash === '' && CERT_PATH_RE.test(u.pathname)
+    } catch {
+      return false
+    }
+  }
   const fetchCert =
     deps.fetchCert ??
     (async (url: string) => {
+      // refuse rather than fetch: a certificate URL that is not the canonical shape is not ours
+      if (!isCanonicalCertUrl(url)) throw new Error('non-canonical signing certificate url')
       const hit = certCache.get(url)
       if (hit !== undefined && Date.now() - hit.at < CERT_TTL_MS) return hit.pem
       // a hung AWS response must not pin the handler open — the whole verify budget is seconds
