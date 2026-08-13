@@ -114,6 +114,15 @@ if (sms === undefined) console.warn('SMS gateway not configured (TWILIO_ACCOUNT_
 const stripeConfig = stripeConfigFromEnv()
 const stripe = stripeConfig !== null ? createStripeGateway(stripeConfig) : undefined
 if (stripe === undefined) console.warn('Stripe not configured (STRIPE_SECRET_KEY/WEBHOOK_SECRET/PRICE_ID) — billing routes disabled')
+// LOUD, because this one turns a LIVE feature off rather than leaving an unstarted one off. The SES
+// feedback subscription is confirmed and delivering in production (a simulator bounce landed in
+// email_suppressions on 2026-08-10), and the endpoint refuses everything without this variable — so
+// a deploy that forgets it silently stops us learning about dead addresses, and SNS retries into
+// 403s until it disables the subscription. Every other absent var here disables something that was
+// never on; this one breaks something that is.
+if (!process.env['SES_SNS_TOPIC_ARN']) {
+  console.error('SES_SNS_TOPIC_ARN is NOT set — POST /v1/webhooks/ses will refuse EVERY message (403), including AWS retries. The bounce/complaint feed is off until this is set in /opt/orbetra/.env and the api restarted. See docs/runbooks/ses-bounce-feedback.md.')
+}
 
 const deps = {
   redis,
