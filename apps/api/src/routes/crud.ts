@@ -1337,14 +1337,26 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const data = await body(c, markServicedSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const at = data.at != null ? new Date(data.at) : new Date()
-        // ABSENT IS NOT NULL. `data.odoKm ?? null` wrote null over the previous baseline whenever the
-        // optional field was omitted, and a distance-interval reminder with no baseline can never
-        // compute its next due distance — the reminder silently stopped firing. The sibling PATCH
-        // twenty lines above already distinguishes the two with the `in` idiom; do the same here:
-        // an EXPLICIT null still clears (unchanged semantics), an omitted field keeps what we had.
-        const baseline = 'odoKm' in data ? data.odoKm ?? null : item.lastServiceOdoKm
+        // ABSENT IS NOT NULL, and absent is not "keep the old number" either.
+        //
+        // `data.odoKm ?? null` used to write null over the baseline whenever the optional field was
+        // omitted, and a km reminder with no baseline can never compute its next due distance. But
+        // simply RETAINING the previous baseline is wrong too: the reason to mark an item serviced is
+        // usually that it came due, so keeping the old number leaves kmRemaining negative and the
+        // item reads 'overdue' for ever — the one action meant to reset the countdown cannot.
+        //
+        // So an omitted odoKm re-baselines to the device's CURRENT odometer, exactly the decision the
+        // create path 40 lines above documents, and falls back to the stored baseline only when no
+        // odometer is known. An EXPLICIT null still clears, unchanged.
+        const odoNow = await odoMap([item.deviceId])
+        const curKm = odoNow.get(item.deviceId.toString())
+        const baseline = 'odoKm' in data
+          ? data.odoKm ?? null
+          : item.intervalKm != null && curKm != null
+            ? Math.round(curKm)
+            : item.lastServiceOdoKm
         const row = await db.maintenance.markServiced(scope, { userId: auth(c).userId }, id(c), at, baseline)
-        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, await odoMap([row.deviceId])))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, odoNow))
       } },
 
     // ── geofences (account-scoped, nullable account = tenant-shared, E05-1) ────

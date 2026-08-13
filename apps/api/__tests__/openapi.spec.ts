@@ -79,5 +79,29 @@ describe('E06-5 OpenAPI document', () => {
     expect(doc.paths['/v1/devices/import']!['post']!.responses['429']).toBeDefined()
     // …and an ordinary write does not, so the branch is not just "429 on everything"
     expect(doc.paths['/v1/rules']!['post']!.responses['429']).toBeUndefined()
+    // …and neither does the READ on the same path. Keyed on the path alone, the metered-create rider
+    // leaked a 409 'IMEI already registered' and a creation-ceiling 429 onto GET /v1/devices — a list
+    // that can return neither. Advertising a status a handler cannot produce is the defect this whole
+    // response work exists to remove, so it is guarded on both sides.
+    expect(doc.paths['/v1/devices']!['get']!.responses['409']).toBeUndefined()
+    expect(doc.paths['/v1/devices']!['get']!.responses['429']).toBeUndefined()
+  })
+
+  it('documents the success status each POST actually returns, item paths included', () => {
+    const doc = buildOpenApi(apiManifest()) as { paths: Record<string, Record<string, { responses: Record<string, unknown> }>> }
+    // item-path POSTs that CREATE answer 201 — a generated client coded for 200 treats the real
+    // response as undeclared and falls into its error branch on success
+    for (const p of ['/v1/devices/{id}/commands', '/v1/devices/{id}/shares', '/v1/accounts/{id}/export']) {
+      expect(doc.paths[p]!['post']!.responses['201']).toBeDefined()
+    }
+    // …while a genuine action answers 200 and must NOT claim to create
+    expect(doc.paths['/v1/maintenance/{id}/serviced']!['post']!.responses['200']).toBeDefined()
+    expect(doc.paths['/v1/maintenance/{id}/serviced']!['post']!.responses['201']).toBeUndefined()
+    // a collection POST that computes rather than creates (import preview) answers 200
+    expect(doc.paths['/v1/devices/import/preview']!['post']!.responses['200']).toBeDefined()
+    expect(doc.paths['/v1/devices/import/preview']!['post']!.responses['201']).toBeUndefined()
+    // DELETE never creates
+    expect(doc.paths['/v1/rules/{id}']!['delete']!.responses['201']).toBeUndefined()
+    expect(doc.paths['/v1/rules/{id}']!['delete']!.responses['404']).toBeDefined()
   })
 })

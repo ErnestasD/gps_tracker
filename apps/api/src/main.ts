@@ -46,7 +46,15 @@ const prom = createApiProm()
 
 // GDPR job producers (E08-4, ADR-020 addendum): the api enqueues, the worker consumes.
 // BullMQ wants its own connection options; jobIds dedupe double-submits.
-const gdprConn = { url: redisUrl }
+//
+// BOUNDED ON PURPOSE. This is a PRODUCER connection on the request path, and BullMQ forces
+// `maxRetriesPerRequest: null` on it — so with the default offline queue a `.add()` during a Redis
+// outage waits FOREVER instead of rejecting. Every enqueue site here already has a catch that
+// degrades gracefully; none of them can run if the promise never settles. The visible damage was on
+// /forgot-password: the rate limiter fails open (deliberately), the handler continues, and the
+// enqueue then hung holding an HTTP socket — which also made "known address" (hangs) distinguishable
+// from "unknown address" (fast 200), an account-existence oracle on an unauthenticated endpoint.
+const gdprConn = { url: redisUrl, enableOfflineQueue: false, commandTimeout: 2_000 }
 const gdprEraseQueue = new Queue('gdpr-erase', { connection: gdprConn })
 const gdprExportQueue = new Queue('gdpr-export', { connection: gdprConn })
 // removeOnFail: TRUE (review HIGH-2) — a job parked in the failed set blocks its jobId, so a

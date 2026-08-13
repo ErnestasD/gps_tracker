@@ -48,7 +48,7 @@ code{font-family:ui-monospace,monospace;background:#0001;padding:.1rem .3rem;bor
 <body>
 <h1 id="title">Orbetra API</h1>
 <p class="lede" id="desc"></p>
-<p class="lede">Auth: <code>Authorization: Bearer &lt;jwt&gt;</code> (web) or <code>X-Api-Key: orb_live_…</code> (integrations, read-only). Machine-readable route &amp; auth inventory: <a href="/v1/openapi.json">/v1/openapi.json</a> (request and response bodies are described below, not in the document).</p>
+<p class="lede">Auth: <code>Authorization: Bearer &lt;jwt&gt;</code> (web) or <code>X-Api-Key: orb_live_…</code> (integrations, read-only). Machine-readable route &amp; auth inventory: <a href="/v1/openapi.json">/v1/openapi.json</a> — routes, auth and status codes; it does not model request or response bodies.</p>
 <main id="out">Loading…</main>
 <script>
 const M={get:'get',post:'post',patch:'patch',delete:'delete',put:'post'};

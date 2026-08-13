@@ -62,11 +62,49 @@ const RESPONSES = {
   readItem: { ...R.ok, ...R.unauth, ...R.forbidden, ...R.notFound },
   /** POST on a collection path — the create routes answer 201 with the row. */
   create: { ...R.created, ...R.badRequest, ...R.unauth, ...R.forbidden },
-  /** POST on an item path (…/{id}/serviced, …/retire) — an action, answered 200. */
+  /** POST on an item path (…/{id}/serviced, …/verify) — an action, answered 200. */
   action: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden, ...R.notFound },
   update: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden, ...R.notFound },
   remove: { ...R.ok, ...R.unauth, ...R.forbidden, ...R.notFound },
   publicPost: { ...R.ok, ...R.badRequest, '429': { description: 'Rate limited' } },
+}
+
+/**
+ * Where the method-shape heuristic guesses wrong, the truth is listed instead of inferred.
+ *
+ * The heuristic — collection POST creates (201), item POST acts (200) — is right for most routes and
+ * wrong for these. Guessing is exactly what produced "DELETE returns 201"; an explicit table is the
+ * only thing that keeps the document honest for the exceptions.
+ */
+const POST_CREATES_ON_ITEM_PATH = new Set([
+  '/v1/devices/{id}/commands',
+  '/v1/devices/{id}/shares',
+  '/v1/devices/{id}/sms',
+  '/v1/accounts/{id}/export',
+  '/v1/quarantine/{imei}/claim',
+  '/v1/affiliates/{id}/set-password-token',
+])
+/** Collection-path POSTs that are NOT creates — they answer 200 with a computed result. */
+const POST_RETURNS_OK = new Set(['/v1/devices/import/preview'])
+/** Statuses a specific operation can return beyond its shape's set (throttles, conflicts, outages). */
+const EXTRA: Record<string, Record<string, { description: string }>> = {
+  '/v1/devices': {
+    '409': { description: 'IMEI already registered, or a create for it is already in flight' },
+    '429': { description: 'Rate limited — per-tenant device creation ceiling; honour Retry-After' },
+  },
+  '/v1/devices/import': {
+    '409': { description: 'IMEI already registered, or a create for it is already in flight' },
+    '429': { description: 'Rate limited — per-tenant device creation ceiling; honour Retry-After' },
+  },
+  '/v1/devices/{id}/sms': {
+    '429': { description: 'Rate limited — per-device / per-tenant / platform SMS quota' },
+    '503': { description: 'SMS gateway not configured' },
+  },
+  '/v1/devices/{id}/erase': {
+    '409': { description: 'Device retired too recently to erase' },
+    '503': { description: 'GDPR job queue not configured' },
+  },
+  '/v1/accounts/{id}': { '409': { description: 'Account still has users' } },
 }
 // GET accepts a JWT or an API key; writes require the JWT (API keys are read-only).
 const READ_SEC: Record<string, string[]>[] = [{ bearerAuth: [] }, { apiKeyAuth: [] }]
@@ -91,7 +129,8 @@ function op(
   // READ_POLICY excludes `viewer` — every one of them 403s a key. Offer it only where a key can
   // actually be used.
   const keyMayRead = read && (opts.roles === undefined || opts.roles.includes(API_KEY_ROLE))
-  const responses = read
+  const isCreate = method === 'post' && (params.length > 0 ? POST_CREATES_ON_ITEM_PATH.has(path) : !POST_RETURNS_OK.has(path))
+  const base = read
     ? params.length > 0
       ? RESPONSES.readItem
       : RESPONSES.readCollection
@@ -99,24 +138,22 @@ function op(
       ? RESPONSES.remove
       : method === 'patch' || method === 'put'
         ? RESPONSES.update
-        : params.length > 0
-          ? RESPONSES.action
-          : RESPONSES.create
+        : isCreate
+          // an item-path create can still 404 on the parent it hangs off
+          ? { ...RESPONSES.create, ...(params.length > 0 ? R.notFound : {}) }
+          : params.length > 0
+            ? RESPONSES.action
+            // a collection-path POST that computes rather than creates (import/preview): 200, no 404
+            : { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden }
   return {
     tags: [entity],
     summary: `${method.toUpperCase()} ${path}`,
     security: keyMayRead ? READ_SEC : WRITE_SEC,
     ...(params.length > 0 ? { parameters: pathParams(params) } : {}),
-    responses:
-      // device creation is metered per tenant (DEVICE_CREATE_MAX_PER_WINDOW) and the IMEI is globally
-      // unique, so these two answer 429 and 409 where no other write does.
-      path === '/v1/devices' || path === '/v1/devices/import'
-        ? {
-            ...responses,
-            '409': { description: 'IMEI already registered, or a create for it is already in flight' },
-            '429': { description: 'Rate limited — per-tenant device creation ceiling; honour Retry-After' },
-          }
-        : responses,
+    // EXTRA is per operation and WRITES ONLY: keyed on the path alone it leaked a device-creation
+    // 409/429 onto GET /v1/devices — a read that can return neither, i.e. the very defect this
+    // response work exists to remove, reintroduced on a different verb.
+    responses: !read && EXTRA[path] !== undefined ? { ...base, ...EXTRA[path] } : base,
   }
 }
 
@@ -173,10 +210,17 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
     summary: 'Run a report (trips/mileage/stops/overspeed/geofence/engine_hours)',
     security: READ_SEC,
     parameters: pathParams(['type']),
-    // the real outcomes: an unknown type or an impossible range is 400, the per-user limiter answers
-    // 429, and a deployment without the raw-SQL pool answers 503. The old template's 403/404 cannot
-    // occur on this route.
-    responses: { ...R.ok, ...R.badRequest, ...R.unauth, '429': { description: 'Rate limited — per-user report ceiling' }, '503': { description: 'Reporting unavailable (no database pool)' } },
+    // the real outcomes, checked against routes/reports.ts: an unknown {type} is the FIRST branch and
+    // answers 404; an impossible range or an out-of-scope account is 400; an X-Api-Key whose tenant
+    // lacks apiAccess is 403 from the /v1/* middleware; the per-user limiter answers 429; and a
+    // deployment without the raw-SQL pool answers 503.
+    responses: {
+      ...R.ok, ...R.badRequest, ...R.unauth,
+      '403': { description: 'API key whose tenant lacks the apiAccess entitlement' },
+      '404': { description: 'Unknown report type' },
+      '429': { description: 'Rate limited — per-user report ceiling' },
+      '503': { description: 'Reporting unavailable (no database pool)' },
+    },
   })
   add('get', '/v1/driver-scores', { tags: ['driver'], summary: 'Driver safety scores over a window (V2)', security: READ_SEC, responses: RESPONSES.readCollection })
   add('post', '/v1/routing/optimize', {

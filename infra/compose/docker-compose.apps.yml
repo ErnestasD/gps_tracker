@@ -136,6 +136,12 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_PRICES: ${STRIPE_PRICES:-}
       STRIPE_OVERAGE_MAP: ${STRIPE_OVERAGE_MAP:-}
+      # The ONE SNS topic POST /v1/webhooks/ses accepts feedback from. A valid AWS signature only
+      # proves AWS sent the message — the same regional certificate signs every customer's topics —
+      # so the endpoint refuses anything from another topic, and FAILS CLOSED when this is unset.
+      # It must be listed here or it never reaches the process (`--env-file` only feeds compose
+      # interpolation), and the bounce feed would refuse even the subscription handshake for ever.
+      SES_SNS_TOPIC_ARN: ${SES_SNS_TOPIC_ARN:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
       SITE_BASE_URL: ${SITE_BASE_URL:-}
       # White-label hosting. PLATFORM_DOMAIN turns on the zero-setup `<slug>.<domain>` option (it
