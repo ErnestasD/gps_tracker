@@ -26,7 +26,7 @@ const idLte = (a: string, b: string): boolean => {
   return ams < bms || (ams === bms && aseq <= bseq)
 }
 
-function fakes(entries: [Buffer, Buffer[]][], opts: { throwOnRead?: Error; erasedImei?: string } = {}) {
+function fakes(entries: [Buffer, Buffer[]][], opts: { throwOnRead?: Error; erasedImei?: string; oldestId?: string } = {}) {
   const erasedImei = opts.erasedImei
   const store = new Map<string, string>()
   const inserted: RawRejectRow[][] = []
@@ -45,6 +45,8 @@ function fakes(entries: [Buffer, Buffer[]][], opts: { throwOnRead?: Error; erase
       store.set(key, next)
       return Promise.resolve(1)
     }),
+    // the stream's OLDEST SURVIVING entry — the only sound way to detect trimming past the cursor
+    xrange: vi.fn(() => Promise.resolve(opts.oldestId !== undefined ? [[opts.oldestId, ['p', '']]] : [])),
     callBuffer: vi.fn((...args: unknown[]) => {
       calls.push(args)
       if (opts.throwOnRead) return Promise.reject(opts.throwOnRead)
@@ -169,10 +171,25 @@ describe('reject drain (rejects stream → raw_rejects)', () => {
   })
 
   it('reports entries MAXLEN trimmed past the cursor — an invisible loss reads as a healthy drain', async () => {
+    // trimming really happened: the OLDEST surviving entry is already newer than the cursor
     const dropped: number[] = []
-    const { redis, db, store } = fakes([entry('x', 9000, new Uint8Array())])
-    store.set(REJECT_CURSOR_KEY, '1000-0') // the stream has moved far past it
+    const { redis, db, store } = fakes([entry('x', 9000, new Uint8Array())], { oldestId: '5000-0' })
+    store.set(REJECT_CURSOR_KEY, '1000-0')
     await runRejectDrain({ connection: {}, redis, db, onDropped: (n) => dropped.push(n) })
-    expect(dropped.length).toBeGreaterThan(0)
+    expect(dropped).toEqual([1])
+  })
+
+  it('…and stays SILENT on the ordinary case, which it used to report on every tick', async () => {
+    // The old predicate asked "is this id more than one step past the cursor?" — but Redis stream
+    // ids are (ms, seq) and are not dense, so any entry in a later millisecond looked like a
+    // trimmed window. Measured on staging: every drain tick that found anything incremented the
+    // counter while XLEN only grew and nothing was lost. A counter that fires constantly on a
+    // healthy pipeline teaches an operator to ignore it, and the real event it exists for produces
+    // the identical signal.
+    const dropped: number[] = []
+    const { redis, db, store } = fakes([entry('x', 9000, new Uint8Array())], { oldestId: '1000-0' })
+    store.set(REJECT_CURSOR_KEY, '1000-0') // nothing before the cursor is gone
+    await runRejectDrain({ connection: {}, redis, db, onDropped: (n) => dropped.push(n) })
+    expect(dropped).toEqual([])
   })
 })

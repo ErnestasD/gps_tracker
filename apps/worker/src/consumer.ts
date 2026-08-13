@@ -158,6 +158,8 @@ export class ShardConsumer {
       try {
         const now = Date.now()
         if (ownPending) {
+          // `read` ACKs and reports tombstones itself, so an empty result here genuinely means the
+          // PEL is drained — it is no longer possible for this to spin on an entry it cannot take.
           const mine = await this.read(0, '0')
           if (mine.length === 0) ownPending = false
           else {
@@ -263,10 +265,38 @@ export class ShardConsumer {
       from,
     ]
     const res = (await this.deps.redis.callBuffer('XREADGROUP', ...args)) as
-      | [Buffer, [Buffer, Buffer[]][]][]
+      | [Buffer, ([Buffer, Buffer[] | null] | null)[]][]
       | null
     if (!res || res.length === 0) return []
-    return res[0]![1].map(([id, fields]) => [id.toString(), fields[1]!])
+    // TOMBSTONES. A '0' read returns every id still in this consumer's PEL, INCLUDING ones whose
+    // stream data MAXLEN already deleted — Redis answers those with a nil field array. Dereferencing
+    // it (`fields[1]!`) threw a TypeError out of the drain, the loop re-armed the drain and retried
+    // the same read a second later, forever, and because the drain runs BEFORE the autoclaim block
+    // the one thing that removes a tombstone from a PEL was never reached. The shard stopped
+    // consuming entirely while its lease kept renewing, so no peer took over and nothing detected
+    // it. That is strictly worse than the silent loss the drain was added to prevent, and it was
+    // introduced by that fix — so the entries are separated here and dealt with by the caller.
+    const out: [string, Buffer][] = []
+    const trimmed: string[] = []
+    for (const row of res[0]![1]) {
+      if (row === null) continue
+      const [id, fields] = row
+      const payload = fields?.[1]
+      if (payload === undefined) trimmed.push(id.toString())
+      else out.push([id.toString(), payload])
+    }
+    if (trimmed.length > 0) {
+      // The data is GONE — there is nothing to decode and nothing to quarantine. ACK them so the
+      // PEL can drain, and count them, because `pipeline_pending_evicted` is documented as the only
+      // post-hoc proof that a backlog was destroyed rather than merely delayed.
+      await this.deps.redis.xack(this.stream, GROUP, ...trimmed)
+      this.deps.onPendingEvicted?.(this.shard, trimmed.length)
+      console.error('pipeline: PEL entries had already been TRIMMED from the stream — acked, data unrecoverable', {
+        stream: this.stream,
+        count: trimmed.length,
+      })
+    }
+    return out
   }
 
   private async process(entries: [string, Buffer][]): Promise<void> {
