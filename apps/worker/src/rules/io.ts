@@ -95,8 +95,19 @@ function fuelIo(attrs: Record<string, unknown>, id: number): number | null {
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : null
 }
 
-/** Fuel level as { pct, liters } (E08-3 semantics): pct from io_89 (fallback io_48, both %,
- *  no multiplier); liters from io_84 (wiki ×0.1). Either may be null if the model omits it. */
+/**
+ * Fuel level as { pct, liters } (E08-3 semantics): pct from io_89 (fallback io_48, both %, no
+ * multiplier); liters from io_84 (wiki ×0.1). Either may be null if the model omits it.
+ *
+ * KNOWN LIMITATION, one model. `fm36` (FM36/FM3612/FM36M1) is the only table in the corpus where
+ * AVL 89 carries a multiplier — 0.1 — so its percentage arrives here ten times too large, and
+ * `fuel_theft` compares percentage-POINT thresholds, which makes a rule set to "alert on a 15 %
+ * drop" fire on a real 1.5-point change. The READ path is fixed (packages/db/src/fuel.ts scales by
+ * the device's table), but this accessor is handed a NormalizedRecord, which does not carry the
+ * table — closing it properly means threading the dictionary into the rule engine, which is the
+ * same work as the read-path semantic index the README already tracks. Recorded here so the next
+ * reader does not rediscover it from a customer's false theft alert.
+ */
 export function fuelLevelOf(r: NormalizedRecord): { pct: number | null; liters: number | null } {
   const pct = fuelIo(r.attrs, 89) ?? fuelIo(r.attrs, 48)
   const l84 = fuelIo(r.attrs, 84)

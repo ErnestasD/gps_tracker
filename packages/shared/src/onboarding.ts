@@ -21,9 +21,21 @@ export interface OnboardingInput {
   port: number
   /** carrier APN (optional — the SMS omits the APN command when absent). */
   apn?: string
-  /** device profile family key (fmb1xx/fmc/tat-asset). FMB/FMC share the 2004/2005 params;
-   * an unknown family still gets the FMB syntax + a caveat. */
+  /** device profile key, for display. FMB/FMC share the 2004/2005 params. */
   family?: string
+  /**
+   * The profile is a legacy FAMILY row (`fmb1xx`, `fmc`, `fmb6xx-stub`, `tat-asset`) rather than one
+   * of the catalogued per-MODEL profiles — i.e. we do not know which hardware this actually is.
+   *
+   * This is what the caveat is for, and keying it on a NAME got it backwards. `KNOWN_FAMILIES` held
+   * the three legacy keys, which are exactly the ones the picker no longer offers, so every device
+   * created through today's 105-model picker was told "this device family may use different
+   * parameters — verify against the Teltonika wiki". A warning on 100% of devices carries no
+   * information, and it made the genuinely-unknown case indistinguishable from a plain FMB120 whose
+   * commands the generator derived from that model's own wiki page. Defaults to true when the
+   * caller does not say, because "unknown" is the safe side of this.
+   */
+  legacyProfile?: boolean
 }
 
 export interface OnboardingSheet {
@@ -46,7 +58,6 @@ export interface OnboardingSheet {
   familyCaveat: boolean
 }
 
-const KNOWN_FAMILIES = new Set(['fmb1xx', 'fmc', 'fmb6xx-stub'])
 // host and APN both land in a ';'/':' -separated setparam string, so NEITHER may contain those
 // separators (or spaces) — else a crafted value injects extra params (e.g. redirect the device
 // to another server, rewrite the APN password). Both are constrained to hostname/APN charsets.
@@ -73,7 +84,7 @@ export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
   // triplet in ONE setparam when an APN is given — ~55 chars, well under one 160-char segment.
   const smsAuto = host === null ? null : `  setparam ${apnSafe !== null ? `2001:${apnSafe};` : ''}2004:${host};2005:${port};2006:0`
 
-  const familyCaveat = input.family !== undefined && !KNOWN_FAMILIES.has(input.family)
+  const familyCaveat = input.legacyProfile ?? true
   const steps = [
     'Insert a working data SIM into the tracker and power it on.',
     smsApn !== null

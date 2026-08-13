@@ -465,6 +465,26 @@ describe('E03-3 import unit helpers', () => {
     expect(body.errors[0]!.row).toBe(2) // named, not 0
   })
 
+  it('PATCH refuses a field it cannot change instead of answering 200 and doing nothing', async () => {
+    // Non-strict, zod stripped the unknown key and the handler issued an empty update that returned
+    // the unchanged row with 200. The two an operator actually tries are the expensive ones: an
+    // IMEI is typed by hand at creation and no route can correct it — a mistyped one is then held
+    // platform-wide against every other tenant while the real tracker is rejected into quarantine —
+    // and a device created under the wrong sub-account cannot be moved. Both said "success".
+    const created = await (await authed('/v1/devices', 'POST', { accountId, profileId, imei: '860000000000811', name: 'Strict' })).json() as { id: string; imei: string }
+    for (const bad of [{ imei: '860000000000899' }, { accountId: '00000000-0000-0000-0000-0000000000ff' }, { tenantId: 'x' }]) {
+      const res = await authed(`/v1/devices/${created.id}`, 'PATCH', bad)
+      expect(res.status, JSON.stringify(bad)).toBe(400)
+    }
+    // …and the row is untouched
+    const after = await (await authed(`/v1/devices/${created.id}`)).json() as { imei: string; accountId: string }
+    expect(after.imei).toBe('860000000000811')
+    expect(after.accountId).toBe(accountId)
+    // a field it CAN change still works, and an empty patch is still a legitimate no-op
+    expect((await authed(`/v1/devices/${created.id}`, 'PATCH', { name: 'Renamed' })).status).toBe(200)
+    expect((await authed(`/v1/devices/${created.id}`, 'PATCH', {})).status).toBe(200)
+  })
+
   it('luhnValid: accepts a valid IMEI, rejects a broken checksum / wrong length', () => {
     const good = validImei(35630704248000n)
     expect(luhnValid(good)).toBe(true)

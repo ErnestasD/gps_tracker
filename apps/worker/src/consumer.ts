@@ -114,6 +114,12 @@ export class ShardConsumer {
     await this.stopped
   }
 
+  /** The consumer's OWN un-ACKed entries. Exposed so a test can prove the drain path exists at all;
+   *  the loop uses the same call before it reads anything new. */
+  async readOwnPendingForTest(): Promise<[string, Buffer][]> {
+    return this.read(0, '0')
+  }
+
   /** One full pass; exposed for deterministic tests. */
   async tick(): Promise<number> {
     const claimed = await this.autoclaim()
@@ -144,9 +150,22 @@ export class ShardConsumer {
   private async loop(): Promise<void> {
     await this.ensureGroup()
     let lastAutoclaim = 0
+    // Our own PEL is drained BEFORE any new entry is read, and stays the priority until it is
+    // empty. Set on start too: a worker that crashed mid-batch owns those entries by name, and
+    // XAUTOCLAIM will not hand them back to it until they have been idle a minute.
+    let ownPending = true
     while (this.running) {
       try {
         const now = Date.now()
+        if (ownPending) {
+          const mine = await this.read(0, '0')
+          if (mine.length === 0) ownPending = false
+          else {
+            if (!(await this.ownsShard())) return void this.fence()
+            await this.process(mine)
+            continue // keep draining before touching '>' again
+          }
+        }
         if (now - lastAutoclaim > 30_000) {
           // §6.1: XAUTOCLAIM on start + every 30 s to recover a crashed peer's pending
           const claimed = await this.autoclaim()
@@ -165,6 +184,10 @@ export class ShardConsumer {
         }
       } catch (err) {
         console.error(`shard ${this.shard} consumer error`, err)
+        // Whatever failed, assume it left entries un-ACKed under our name and re-drain before
+        // reading anything new. Without this the failure is silently converted into a backlog that
+        // only MAXLEN resolves.
+        ownPending = true
         await new Promise((r) => setTimeout(r, 1_000))
       }
     }
@@ -213,17 +236,31 @@ export class ShardConsumer {
     return (res[1] ?? []).map(([id, fields]) => [id.toString(), fields[1]!])
   }
 
-  private async read(blockMs = 0): Promise<[string, Buffer][]> {
+  /**
+   * `from = '>'` delivers NEW entries; `from = '0'` re-delivers OUR OWN un-ACKed ones.
+   *
+   * The loop used to read `'>'` unconditionally, which meant a consumer never retried its own
+   * failures. A transient Postgres error makes `process()` throw before the XACK, so those entries
+   * stay in this consumer's PEL — and the only thing that touched them again was XAUTOCLAIM, gated
+   * at once per 30 s, `COUNT` 200, and a 60 s minimum idle. Meanwhile the loop kept consuming NEW
+   * entries at full rate. At shard rates the PEL grows far faster than that drains, ingest keeps
+   * XADDing under `MAXLEN ~100000`, and Redis deletes the stranded entries out from under the PEL —
+   * records ingest had ALREADY ACKed to the tracker (rule 4), so the device dropped them from its
+   * buffer. Permanent, silent history loss, with `pipeline_pending_evicted` as the only trace.
+   */
+  private async read(blockMs = 0, from: '>' | '0' = '>'): Promise<[string, Buffer][]> {
     const args = [
       'GROUP',
       GROUP,
       this.deps.workerId,
       'COUNT',
       String(this.deps.batchSize ?? 200),
-      ...(blockMs > 0 ? ['BLOCK', String(blockMs)] : []),
+      // BLOCK is meaningless for a '0' read — it returns immediately with whatever is pending —
+      // and passing it would stall the drain for no reason.
+      ...(blockMs > 0 && from === '>' ? ['BLOCK', String(blockMs)] : []),
       'STREAMS',
       this.stream,
-      '>',
+      from,
     ]
     const res = (await this.deps.redis.callBuffer('XREADGROUP', ...args)) as
       | [Buffer, [Buffer, Buffer[]][]][]
