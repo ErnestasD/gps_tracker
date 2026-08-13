@@ -154,6 +154,36 @@ describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
     expect(applySign(d.get(239), 251n)).toBe(251n) // unsigned parameters must not be touched
   })
 
+  it('an UNSIGNED entry is never reinterpreted, whatever its documented range says', () => {
+    // The Type check was the ONE applySign rule with no test: removing it left all 119 codec tests
+    // green while 34 real corpus entries changed value. The existing probe could not see it —
+    // fmb120's id 239 has min "0", so the non-negative-min guard refuses it first and the Type
+    // check is never the reason it passes.
+    //
+    // id 1333 "Steering wheel turn counter" is the case that discriminates: Unsigned, 1 byte, and
+    // the wiki documents its range as −32…29 — negative, so the min guard lets it through, and
+    // narrow, so the offset guard does not fire either. Only the Type check stands between a wire
+    // 200 and −56. It is a real row on fmb150/fmc150/fmc250/fmm150.
+    const turnCounter = { name: 'Steering wheel turn counter', bytes: '1', type: 'Unsigned', min: '-32', max: '29' }
+    expect(applySign(turnCounter, 200n)).toBe(200n)
+    expect(BigInt.asIntN(8, 200n)).toBe(-56n) // …which is what it would become
+    expect(applySign(loadDictionary('fmb150').get(1333), 200n)).toBe(200n) // and on the real entry
+
+    // …and across the whole corpus: nothing the wiki types as anything but Signed is ever rewritten.
+    const BITS: Record<string, number> = { '1': 8, '2': 16, '4': 32, '8': 64 }
+    const rewritten: string[] = []
+    for (const table of avlTables()) {
+      for (const [id, e] of loadDictionary(table)) {
+        if (e.type === 'Signed') continue
+        const bits = BITS[(e.bytes ?? '').trim()]
+        if (bits === undefined) continue
+        const probe = (1n << BigInt(bits)) - 56n
+        if (applySign(e, probe) !== probe) rewritten.push(`${table}#${id} ${e.name} (${e.type})`)
+      }
+    }
+    expect(rewritten).toEqual([])
+  })
+
   it('applySign never guesses: an unknown id, an unknown width, or an already-negative value pass through', () => {
     // Guessing is how a correct reading becomes a wrong one — and every one of these is a shape a
     // future dictionary revision could introduce.

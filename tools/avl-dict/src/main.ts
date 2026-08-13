@@ -274,26 +274,23 @@ async function main(): Promise<void> {
   // that model — so it silently left `DEVICE_PROFILES` (generated from the catalogue) and the
   // picker, and its dictionary was orphaned on disk. Both are "the wiki changed under us"; both
   // must leave the tree untouched so the operator decides.
-  if (failed.length > 0) {
-    reportFailures(failed)
-    console.error('  NOTHING was written — check those pages, or remove the model from models.json')
-    return
-  }
+  // BOTH REPORTS, THEN ONE BAIL. Each of these was fixed in turn and each fix hid the other: the
+  // remap branch bailed before the 404 report, then the 404 branch was added ABOVE it and bailed
+  // before the remap report. Either way the operator repairs one problem, re-runs, and only then
+  // learns of the second — the exact two-round-trip cost both fixes were written to remove. A tool
+  // whose whole point is that failures are not silent must not hide one behind another, in EITHER
+  // order, so nothing returns until everything wrong has been said.
+  const allowRemap = process.argv.includes('--allow-remap')
   if (remapped.length > 0) {
-    const allow = process.argv.includes('--allow-remap')
-    const say = allow ? console.log : console.error
+    const say = allowRemap ? console.log : console.error
     say(`\n${remapped.length} model(s) moved to a DIFFERENT dictionary — a wiki regrouping, or a parse that truncated one page out of its family:`)
     for (const m of remapped) say(`  ${m}`)
-    if (!allow) {
-      // …and report the OTHER failures before bailing. A 404 and a regrouping in the same run used
-      // to cost two round trips: the operator saw only the remap, fixed it, re-ran, and only then
-      // learned a page had 404'd. A tool whose whole point is that failures are not silent must not
-      // hide one behind another.
-      reportFailures(failed)
-      console.error('  NOTHING was written — re-run with --allow-remap once you have checked those pages')
-      process.exitCode = 1
-      return
-    }
+  }
+  reportFailures(failed) // sets exitCode 1 itself when non-empty
+  if (failed.length > 0 || (remapped.length > 0 && !allowRemap)) {
+    console.error('  NOTHING was written — check those pages; a regrouping you have verified is accepted with --allow-remap')
+    process.exitCode = 1
+    return
   }
 
   for (const { group, key } of named) {

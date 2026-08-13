@@ -249,6 +249,19 @@ describe('the forced fuel keys are forced only where the id IS a fuel level', ()
     for (const k of ['io_48', 'io_84', 'io_89']) expect(r.attrs[k], k).toBeUndefined()
   })
 
+  it('a fuel-named id OUTSIDE the set keeps its own name — the set is a whitelist, not a pattern', () => {
+    // The gate is `FORCED_ID_KEYS.has(id) && /fuel/i.test(name)`, and only the second half was
+    // pinned. Dropping the id-set check survived both the unit and the pipeline suites while
+    // flipping 547 (table, id) pairs from their dictionary name to io_<id> — on fmb120 alone
+    // 201 "LLS 1 Fuel Level", 270 "BLE Fuel Level #1", 13 "Fuel Rate GPS" and 30 more. Every
+    // name-keyed reader downstream would go blank.
+    const r = normalize({ ...basePayload, io: [[201, 500n], [270, 4200n], [13, 66n]] }, hash, 'fmb120')
+    expect(r.attrs['LLS 1 Fuel Level']).toBe(500)
+    expect(r.attrs['BLE Fuel Level #1']).toBe(4200)
+    expect(r.attrs['Fuel Rate GPS']).toBe(66)
+    for (const k of ['io_201', 'io_270', 'io_13']) expect(r.attrs[k], k).toBeUndefined()
+  })
+
   it('an id absent from the table still gets its io_<id> key, so nothing is dropped (§3.7)', () => {
     const r = normalize({ ...basePayload, io: [[48, 70n]] }, hash, 'atc700')
     expect(r.attrs['io_48']).toBe(70)

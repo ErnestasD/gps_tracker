@@ -38,28 +38,28 @@ describe('device profile catalogue', () => {
     expect(isAsset('FMB120')).toBe(false)
   })
 
-  it('the HW column filters PER CAPABILITY GROUP, and only where it discriminates', () => {
-    // The HW column excludes every row of a capability group for 60 (model, capability) pairs
-    // across 31 models — for those it is not describing the model at all. FMM880's page carries 44 BLE
-    // and 39 OBD rows and not one names FMM880 (they say `FMBXXX`, which does not match an FMM
-    // code). Worst was the pair an operator compares side by side — FMB641's page carries 196 CAN
-    // and 73 tachograph rows whose HW column reads "FMB640 FMC640 FMM640", so FMB641 advertised
-    // can:false / tacho:false beside FMB640's true: a false differentiator on the exact feature
-    // FMB641 exists for.
-    expect(caps('FMM880')).toMatchObject({ ble: true, obd: true })
-    expect(caps('FMC880')).toMatchObject({ ble: true, obd: true })
-    expect(caps('FMB641')).toMatchObject({ can: true, tacho: true })
-    expect(caps('FMB641').can).toBe(caps('FMB640').can)
-    expect(caps('FMB641').tacho).toBe(caps('FMB640').tacho)
-    expect(caps('FMM650')).toMatchObject({ can: true, tacho: true })
+  it('a capability is a TABLE-level claim: present iff the dictionary documents that group', () => {
+    // What this test asserted before could not fail. It compared two models that share a table and
+    // required them to be equal — true by construction under any rule that reads only the table,
+    // which is every rule this function has ever had. Review proved the shipped predicate was a
+    // tautology (420 of 420 evaluations equal `rows.length > 0`) and the assertion could not see it.
+    //
+    // So assert the rule that actually exists, in the direction that can fail: a group the table
+    // documents ⇒ true, a group it does not ⇒ false. Mutating any group vocabulary now shows up
+    // here, which is what the old assertion was supposed to do.
+    expect(caps('FMB120')).toEqual({ can: true, ble: true, tacho: false, obd: true })
+    expect(caps('FMC650')).toEqual({ can: true, ble: true, tacho: true, obd: false })
+    expect(caps('ATC700')).toEqual({ can: false, ble: false, tacho: false, obd: false })
 
-    // …and NO DISCONTINUITY. The first attempt scoped the exemption to single-model tables, which
-    // made the answer depend on a hash collision: FMM880 (its own table) got ble:true while FMM920
-    // (in the 45-model fmb120 group) got ble:false off the SAME hwSupport string, and FMC13A —
-    // named on 0 of 640 rows — got every capability while FMC230, named on exactly 1, got none.
-    // Being mentioned less bought more. Same evidence must give the same answer.
-    expect(caps('FMM920').ble).toBe(caps('FMM880').ble)
-    expect(caps('FMC920').ble).toBe(caps('FMC880').ble)
+    // FMB641 and FMB640 sit on DIFFERENT tables and still agree — that is evidence about the two
+    // tables, not an artefact. Earlier formulations had FMB641 advertising can:false / tacho:false
+    // beside FMB640's true, a false differentiator on the exact feature FMB641 exists for.
+    expect(caps('FMB641')).toEqual(caps('FMB640'))
+    expect(caps('FMM880')).toMatchObject({ ble: true, obd: true })
+
+    // …and two models that SHARE a table are identical by design, not by accident. Stated so the
+    // next reader does not mistake it for a discrimination the flags do not carry: an AVL page does
+    // not answer at SKU granularity, and nothing renders these flags yet.
     expect(caps('FMC13A')).toEqual(caps('FMC230'))
   })
 

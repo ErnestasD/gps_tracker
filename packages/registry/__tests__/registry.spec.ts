@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Redis } from 'ioredis'
 
-import { activateDevice, deactivateDevice, restoreTenantDevices, suspendTenantDevices, tenantDevicesKey } from '../src/index.js'
+import { activateDevice, deactivateDevice, restoreTenantDevices, suspendTenantDevices, syncDeviceConfig, tenantDevicesKey } from '../src/index.js'
 
 /**
  * The registry is the switch that decides whether a tracker's data is accepted at all, and it now
@@ -26,6 +26,12 @@ function fakeRedis(hashes: Record<string, Record<string, string>> = {}) {
   const evals: { keys: string[]; args: string[] }[] = []
   const redis = {
     hget: (key: string, field: string) => Promise.resolve(hashes[key]?.[field] ?? null),
+    // DIRECT hset, not just the MULTI chain: `syncDeviceConfig` writes outside a transaction, and
+    // its absence from this double is why the one writer of `device:config` with no test had none.
+    hset: (key: string, field: string, value: string) => {
+      ;(hashes[key] ??= {})[field] = value
+      return Promise.resolve(1)
+    },
     // A tiny Lua interpreter for the ONE script this package ships, so the test exercises the SCRIPT
     // rather than a re-implementation of it: swap `HDEL_IF_MINE` for a blind HDEL and this fake
     // stops guarding, which is the whole point. (The end-to-end guard also has real-Redis coverage
@@ -113,6 +119,16 @@ describe('tenant suspension', () => {
     // and no error anywhere. Exactly the drift this test exists to catch, one field later.
     const { redis, hashes } = fakeRedis()
     await restoreTenantDevices(redis, [{ ...dev(1n, 'a'), presenceRules: { minStopS: 120 }, odometerSource: 'can', avlTable: 'fmc650' }])
+    expect(JSON.parse(hashes['device:config']!['1']!)).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'can', avlTable: 'fmc650' })
+  })
+
+  it('syncDeviceConfig carries the avlTable — the PATCH path is how a wrong model gets corrected', async () => {
+    // The one writer of `device:config` with no test at all. Dropping `avlTable` here survived the
+    // registry, rehydrate and lapseSweep suites together — and it is precisely the path an operator
+    // takes after picking the wrong model in the picker, so the headline fix of this whole change
+    // would silently not apply to any device that was ever edited.
+    const { redis, hashes } = fakeRedis()
+    await syncDeviceConfig(redis, 1n, { minStopS: 120 }, 'can', 'fmc650')
     expect(JSON.parse(hashes['device:config']!['1']!)).toEqual({ presenceRules: { minStopS: 120 }, odometerSource: 'can', avlTable: 'fmc650' })
   })
 
