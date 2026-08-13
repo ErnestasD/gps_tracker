@@ -22,6 +22,8 @@ interface Opt {
   odo?: bigint | null
   fixValid?: boolean
   ib?: string | number // AVL 78 iButton value (decimal), stashed in attrs
+  /** which of the wiki's three spellings of id 78 this device's table uses */
+  ibKey?: string
 }
 const rec = (tSec: number, o: Opt = {}): NormalizedRecord => ({
   deviceId: DEV,
@@ -39,7 +41,7 @@ const rec = (tSec: number, o: Opt = {}): NormalizedRecord => ({
   odometerM: o.odo ?? null,
   priority: 0,
   recHash: BigInt(T0 + tSec),
-  attrs: o.ib !== undefined ? { iButton: o.ib } : {},
+  attrs: o.ib !== undefined ? { [o.ibKey ?? 'iButton']: o.ib } : {},
 })
 
 const closes = (ev: TripEvent[]): CloseEvent[] => ev.filter((e): e is CloseEvent => e.type === 'close')
@@ -461,5 +463,20 @@ describe('E04-1 trip state machine (§6.4)', () => {
     const ev = engine.feed(batch)
     expect(ev.filter((e) => e.type === 'open' && e.deviceId === 1n)).toHaveLength(1)
     expect(ev.filter((e) => e.type === 'open' && e.deviceId === 2n)).toHaveLength(1)
+  })
+
+  it('picks up the driver under ALL THREE of the wiki\'s spellings of AVL 78', () => {
+    // Once the profile chose the dictionary, the attrs key became the DEVICE'S OWN table's name for
+    // id 78 — "iButton" on 21 tables, "IButton ID" on the four FTC tables, "iButton ID" on fm36.
+    // Reading only the FMB120 spelling meant every FTC305/FM36 trip silently lost its driver: no
+    // error and no metric, just empty driver scorecards and unattributed trips.
+    for (const key of ['iButton', 'iButton ID', 'IButton ID', 'io_78']) {
+      const moving = drive(0, 20)
+      moving[3] = rec(30, { lat: 54.0 + 3 * 0.0002, speed: 8, ign: true, mov: true, ib: 2712847316, ibKey: key })
+      const lastLat = 54.0 + 19 * 0.0002
+      const stop = [rec(200, { lat: lastLat, ign: false, speed: 0 }), rec(380, { lat: lastLat, ign: false, speed: 0 })]
+      const ev = closes(new TripEngine().feed([...moving, ...stop]))
+      expect(ev[0]?.ibutton, key).toBe('2712847316')
+    }
   })
 })

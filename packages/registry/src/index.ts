@@ -27,7 +27,7 @@ export interface RegistryDevice {
   accountId: string
   /** Trip config for the worker (E04-5): the device's profile presence_rules + odometerSource.
    *  Absent ⇒ the worker's trip engine uses defaults. */
-  config?: { presenceRules: unknown; odometerSource: string }
+  config?: { presenceRules: unknown; odometerSource: string; avlTable?: string }
 }
 
 /** The minimum a teardown needs — id and imei identify the mapping, tenantId the index member. */
@@ -51,15 +51,38 @@ export async function activateDevice(redis: Redis, d: RegistryDevice): Promise<v
     .sadd(tenantDevicesKey(d.tenantId), id)
   if (prevTenant !== null && prevTenant !== d.tenantId) m.srem(tenantDevicesKey(prevTenant), id)
   if (d.config !== undefined) {
-    m.hset('device:config', id, JSON.stringify({ presenceRules: d.config.presenceRules ?? {}, odometerSource: d.config.odometerSource }))
+    m.hset('device:config', id, deviceConfigValue(d.config))
   }
   await m.exec()
 }
 
+/**
+ * The `device:config` VALUE — one writer for a shape three call sites and a boot rehydrate produce.
+ *
+ * `avlTable` is the device profile's dictionary, and it is the only thing that tells the worker HOW
+ * TO READ this model's IO elements. Without it every device is decoded with the FMB120 fallback,
+ * which for an FMx6xx or a TAT is not "unnamed" but MISLABELLED — id 520 is "Tamper detection Event"
+ * on a TAT100 and "Agricultural State Flags P4" on FMB120, and a Signed temperature read as
+ * unsigned turns −3 °C into 65533. Optional because a config written before this field existed must
+ * keep working: the worker falls back rather than refusing to decode.
+ */
+export const deviceConfigValue = (c: { presenceRules: unknown; odometerSource: string; avlTable?: string }): string =>
+  JSON.stringify({
+    presenceRules: c.presenceRules ?? {},
+    odometerSource: c.odometerSource,
+    ...(c.avlTable !== undefined ? { avlTable: c.avlTable } : {}),
+  })
+
 /** Update ONLY the worker trip config for a device (E04-5) — used when a PATCH changes
  * odometerSource or profile without re-activating the whole registry entry. */
-export async function syncDeviceConfig(redis: Redis, id: bigint, presenceRules: unknown, odometerSource: string): Promise<void> {
-  await redis.hset('device:config', id.toString(), JSON.stringify({ presenceRules: presenceRules ?? {}, odometerSource }))
+export async function syncDeviceConfig(
+  redis: Redis,
+  id: bigint,
+  presenceRules: unknown,
+  odometerSource: string,
+  avlTable?: string,
+): Promise<void> {
+  await redis.hset('device:config', id.toString(), deviceConfigValue({ presenceRules, odometerSource, avlTable }))
 }
 
 /**
@@ -133,6 +156,16 @@ export interface TenantDeviceRow {
   accountId: string
   presenceRules: unknown
   odometerSource: string
+  /**
+   * The profile's AVL dictionary — see `deviceConfigValue`. REQUIRED, deliberately.
+   *
+   * Making it optional repeats this file's own docblock incident one field later: a restore
+   * REBUILDS `device:config`, so a caller that simply omits the field typechecks and silently puts
+   * the tenant's whole fleet on the decoding fallback the moment they pay. The one real producer
+   * (`TenantRegistryDevice`) has always had it, so requiring it costs nothing and the compiler
+   * catches the next caller instead of a customer.
+   */
+  avlTable: string
 }
 
 /**
@@ -154,7 +187,7 @@ export async function restoreTenantDevices(redis: Redis, devices: readonly Tenan
       imei: d.imei,
       tenantId: d.tenantId,
       accountId: d.accountId,
-      config: { presenceRules: d.presenceRules, odometerSource: d.odometerSource },
+      config: { presenceRules: d.presenceRules, odometerSource: d.odometerSource, avlTable: d.avlTable },
     })
   }
   return devices.length

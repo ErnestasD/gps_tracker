@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import xxhash from 'xxhash-wasm'
 
-import { isClockSkewed, normalize } from '../src/normalize.js'
+import { isClockSkewed, normalize, FALLBACK_AVL_TABLE } from '../src/normalize.js'
 
 const hasher = await xxhash()
 const hash = (d: Uint8Array): bigint => hasher.h64Raw(d)
@@ -92,7 +92,7 @@ describe('normalize (E02-3)', () => {
 
   it('duplicate dictionary names do not overwrite each other (§3.7 never-dropped)', async () => {
     const { loadDictionary } = await import('@orbetra/codec')
-    const dict = loadDictionary('fmb1xx')
+    const dict = loadDictionary(FALLBACK_AVL_TABLE)
     const byName = new Map<string, number[]>()
     for (const [id, e] of dict) {
       const ids = byName.get(e.name) ?? []
@@ -100,7 +100,7 @@ describe('normalize (E02-3)', () => {
       byName.set(e.name, ids)
     }
     const dup = [...byName.values()].find((ids) => ids.length >= 2)
-    expect(dup, 'fmb1xx has at least one duplicated name').toBeDefined()
+    expect(dup, `${FALLBACK_AVL_TABLE} has at least one duplicated name`).toBeDefined()
     const [id1, id2] = dup!
     const rec = normalize({ ...basePayload, io: [[id1!, 1n], [id2!, 2n]] }, hash)
     const values = Object.values(rec.attrs)
@@ -110,7 +110,7 @@ describe('normalize (E02-3)', () => {
   })
 
   it('fuel ids (48/84/89) always keep their io_<id> key — never the ambiguous dictionary name (E08-3)', () => {
-    // 84 (l ×0.1) and 89 (%) are BOTH named "Fuel level" in fmb1xx — a single-id record
+    // 84 (l ×0.1) and 89 (%) are BOTH named "Fuel Level" in the fmb120 table — a single-id record
     // would land under one indistinguishable key. Forced id-keys make read-side units safe.
     const rec = normalize({ ...basePayload, io: [[89, 76n], [84, 412n], [48, 51n]] }, hash)
     expect(rec.attrs['io_89']).toBe(76)
@@ -207,3 +207,64 @@ describe('normalize (E02-3)', () => {
     expect(() => normalize({ nonsense: true }, hash)).toThrow()
   })
 })
+
+describe('ambiguous dictionary names never depend on arrival order', () => {
+  it('857/858 "LNG Level" (% and kg) both keep their id key, whichever order they arrive in', () => {
+    // Regenerating from the live wiki renamed 857 "LNG Level Proc" and 858 "LNG Level kg" to the
+    // SAME "LNG Level". Under the old rule the first to arrive took the name and the second fell to
+    // io_<id>, so a reader of "LNG Level" got a percentage or a kilogram count depending on the
+    // order the device happened to send them — with no way to tell which.
+    const a = normalize({ ...basePayload, io: [[857, 80n], [858, 1234n]] }, hash)
+    const b = normalize({ ...basePayload, io: [[858, 1234n], [857, 80n]] }, hash)
+    expect(a.attrs).toEqual(expect.objectContaining({ io_857: 80, io_858: 1234 }))
+    expect(b.attrs).toEqual(expect.objectContaining({ io_857: 80, io_858: 1234 }))
+    expect(a.attrs['LNG Level']).toBeUndefined()
+  })
+
+  it('an UNAMBIGUOUS name is still used — this must not turn every attr into io_<id>', () => {
+    const rec = normalize({ ...basePayload, io: [[21, 4n]] }, hash)
+    expect(rec.attrs['GSM Signal']).toBe(4)
+  })
+})
+
+describe('the forced fuel keys are forced only where the id IS a fuel level', () => {
+  it('fmb120: 48/84/89 keep their deterministic io_<id> keys — the names there collide', () => {
+    // "Fuel Level" / "Fuel level" is the same string on several ids, so a record carrying only one
+    // of them would land under a key whose UNIT the reader cannot know (litres or percent).
+    const r = normalize({ ...basePayload, io: [[48, 70n], [84, 350n], [89, 62n]] }, hash, 'fmb120')
+    expect(r.attrs).toEqual(expect.objectContaining({ io_48: 70, io_84: 350, io_89: 62 }))
+  })
+
+  it('fmc650: the SAME ids are not fuel at all, and must keep their own names', () => {
+    // On the six FMx6xx tables 48/84/89 are "Tacho Data Source", "Acceleration Pedal Position" and
+    // "Axle weight 1" — unique names needing no forcing. Forcing them anyway is what made
+    // readFuelSeries render 7500 kg of axle weight as a 7500 % fuel gauge, and what let a parked
+    // truck being unloaded satisfy the cooldown-bypassed `fuel_theft` rule on every unload.
+    const r = normalize({ ...basePayload, io: [[48, 1n], [84, 80n], [89, 7500n]] }, hash, 'fmc650')
+    expect(r.attrs).toEqual(expect.objectContaining({
+      'Tacho Data Source': 1,
+      'Acceleration Pedal Position': 80,
+      'Axle weight 1': 7500,
+    }))
+    for (const k of ['io_48', 'io_84', 'io_89']) expect(r.attrs[k], k).toBeUndefined()
+  })
+
+  it('a fuel-named id OUTSIDE the set keeps its own name — the set is a whitelist, not a pattern', () => {
+    // The gate is `FORCED_ID_KEYS.has(id) && /fuel/i.test(name)`, and only the second half was
+    // pinned. Dropping the id-set check survived both the unit and the pipeline suites while
+    // flipping 547 (table, id) pairs from their dictionary name to io_<id> — on fmb120 alone
+    // 201 "LLS 1 Fuel Level", 270 "BLE Fuel Level #1", 13 "Fuel Rate GPS" and 30 more. Every
+    // name-keyed reader downstream would go blank.
+    const r = normalize({ ...basePayload, io: [[201, 500n], [270, 4200n], [13, 66n]] }, hash, 'fmb120')
+    expect(r.attrs['LLS 1 Fuel Level']).toBe(500)
+    expect(r.attrs['BLE Fuel Level #1']).toBe(4200)
+    expect(r.attrs['Fuel Rate GPS']).toBe(66)
+    for (const k of ['io_201', 'io_270', 'io_13']) expect(r.attrs[k], k).toBeUndefined()
+  })
+
+  it('an id absent from the table still gets its io_<id> key, so nothing is dropped (§3.7)', () => {
+    const r = normalize({ ...basePayload, io: [[48, 70n]] }, hash, 'atc700')
+    expect(r.attrs['io_48']).toBe(70)
+  })
+})
+

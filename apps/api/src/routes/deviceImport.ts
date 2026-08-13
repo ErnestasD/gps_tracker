@@ -200,8 +200,11 @@ export async function applyImport(
   const errors = [...dr.errors]
   let created = 0
   let consecutiveFailures = 0
-  // profileId → presence_rules, resolved once for the worker trip config (E04-5)
-  const rulesByProfile = new Map((await db.profiles.list()).map((p) => [p.id, p.presenceRules]))
+  // profileId → the worker's per-device config, resolved once (E04-5 presence rules + the AVL
+  // dictionary that decodes this model). `all()`, NOT `list()`: the CSV resolves profiles through
+  // `profiles.map()`, which includes the four legacy family keys, so a device imported onto one of
+  // them would come back from `list()` as undefined and run on default rules with no table.
+  const cfgByProfile = new Map((await db.profiles.all()).map((p) => [p.id, { presenceRules: p.presenceRules, avlTable: p.avlTable }]))
   // Only the create-rows are applied; updates/errors are reported, not mutated (v1).
   //
   // EVERY per-row failure is a per-row error, not just a duplicate IMEI (audit MED). Rethrowing
@@ -233,7 +236,7 @@ export async function applyImport(
       try {
         await activateDevice(redis, {
           id: device.id, imei: device.imei, tenantId: scope.tenantId, accountId,
-          config: { presenceRules: rulesByProfile.get(profileId) ?? {}, odometerSource: device.odometerSource }, // E04-5
+          config: { presenceRules: cfgByProfile.get(profileId)?.presenceRules ?? {}, odometerSource: device.odometerSource, avlTable: cfgByProfile.get(profileId)?.avlTable }, // E04-5
         })
       } catch (err) {
         console.error('device import: created but not activated', { imei: row.imei, row: row.row }, err)

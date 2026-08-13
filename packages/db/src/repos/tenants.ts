@@ -181,6 +181,11 @@ export interface TenantRegistryDevice {
   accountId: string
   presenceRules: unknown
   odometerSource: string
+  /** The profile's AVL dictionary. Carried here for the same reason presenceRules is: a restore
+   *  rebuilds `device:config` wholesale, so anything missing from this row is DROPPED from the
+   *  fleet's config until the next restart or device edit — here that would put every device in a
+   *  restored tenant back on the FMB120 fallback and silently mislabel its IO attributes. */
+  avlTable: string
 }
 
 /**
@@ -617,14 +622,19 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         select: { id: true, imei: true, tenantId: true, accountId: true, profileId: true, odometerSource: true },
       })
       if (rows.length === 0) return []
-      const profiles = new Map((await prisma.deviceProfile.findMany({ select: { id: true, presenceRules: true } })).map((p) => [p.id, p.presenceRules]))
+      const profiles = new Map(
+        (await prisma.deviceProfile.findMany({ select: { id: true, presenceRules: true, avlTable: true } })).map((p) => [p.id, p]),
+      )
       return rows.map((r) => ({
         id: r.id,
         imei: r.imei,
         tenantId: r.tenantId,
         accountId: r.accountId,
-        presenceRules: profiles.get(r.profileId) ?? {},
+        presenceRules: profiles.get(r.profileId)?.presenceRules ?? {},
         odometerSource: r.odometerSource,
+        // a device whose profile row vanished is not a reason to decode it as nothing — the worker
+        // treats an unknown table as the fallback, so name the fallback explicitly rather than ''
+        avlTable: profiles.get(r.profileId)?.avlTable ?? 'fmb120',
       }))
     },
     markLapseNotice: async (tenantId, stage, forLapse) => {

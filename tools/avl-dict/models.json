@@ -1,0 +1,422 @@
+[
+ {
+  "model": "ATC700",
+  "page": "ATC700_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "ATC704",
+  "page": "ATC704_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "ATC774",
+  "page": "ATC774_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "ATM700",
+  "page": "ATM700_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "ATM704",
+  "page": "ATM704_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FM3001",
+  "page": "FM3001_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FM36",
+  "page": "FM36_AVL_ID"
+ },
+ {
+  "model": "FM3612",
+  "page": "FM3612_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FM36M1",
+  "page": "FM36M1_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FM6300",
+  "page": "FM6300_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB001",
+  "page": "FMB001_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB002",
+  "page": "FMB002_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB003",
+  "page": "FMB003_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB010",
+  "page": "FMB010_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB020",
+  "page": "FMB020_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB110",
+  "page": "FMB110_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB120",
+  "page": "FMB120_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB122",
+  "page": "FMB122_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB125",
+  "page": "FMB125_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB130",
+  "page": "FMB130_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB140",
+  "page": "FMB140_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB150",
+  "page": "FMB150_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB202",
+  "page": "FMB202_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB204",
+  "page": "FMB204_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB208",
+  "page": "FMB208_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB209",
+  "page": "FMB209_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB225",
+  "page": "FMB225_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB230",
+  "page": "FMB230_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB240",
+  "page": "FMB240_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB630",
+  "page": "FMB630_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB640",
+  "page": "FMB640_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB641",
+  "page": "FMB641_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB900",
+  "page": "FMB900_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB910",
+  "page": "FMB910_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB920",
+  "page": "FMB920_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB930",
+  "page": "FMB930_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB962",
+  "page": "FMB962_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB964",
+  "page": "FMB964_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMB965",
+  "page": "FMB965_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC001",
+  "page": "FMC001_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC003",
+  "page": "FMC003_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC00A",
+  "page": "FMC00A_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC125",
+  "page": "FMC125_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC130",
+  "page": "FMC130_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC13A",
+  "page": "FMC13A_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC150",
+  "page": "FMC150_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC225",
+  "page": "FMC225_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC230",
+  "page": "FMC230_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC234",
+  "page": "FMC234_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC250",
+  "page": "FMC250_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC640",
+  "page": "FMC640_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC650",
+  "page": "FMC650_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC800",
+  "page": "FMC800_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC880",
+  "page": "FMC880_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMC920",
+  "page": "FMC920_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM001",
+  "page": "FMM001_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM003",
+  "page": "FMM003_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM00A",
+  "page": "FMM00A_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM125",
+  "page": "FMM125_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM130",
+  "page": "FMM130_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM13A",
+  "page": "FMM13A_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM150",
+  "page": "FMM150_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM230",
+  "page": "FMM230_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM250",
+  "page": "FMM250_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM640",
+  "page": "FMM640_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM650",
+  "page": "FMM650_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM800",
+  "page": "FMM800_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM80A",
+  "page": "FMM80A_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM880",
+  "page": "FMM880_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMM920",
+  "page": "FMM920_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMP100",
+  "page": "FMP100_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMT100",
+  "page": "FMT100_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMU125",
+  "page": "FMU125_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMU126",
+  "page": "FMU126_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FMU130",
+  "page": "FMU130_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC134",
+  "page": "FTC134_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC164",
+  "page": "FTC164_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC305",
+  "page": "FTC305_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC308",
+  "page": "FTC308_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC880",
+  "page": "FTC880_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC881",
+  "page": "FTC881_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC887",
+  "page": "FTC887_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC920",
+  "page": "FTC920_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC921",
+  "page": "FTC921_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC924",
+  "page": "FTC924_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC927",
+  "page": "FTC927_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC961",
+  "page": "FTC961_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTC965",
+  "page": "FTC965_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTM134",
+  "page": "FTM134_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTM164",
+  "page": "FTM164_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTM305",
+  "page": "FTM305_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTM308",
+  "page": "FTM308_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTM880",
+  "page": "FTM880_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTM887",
+  "page": "FTM887_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "FTM927",
+  "page": "FTM927_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "GH5200",
+  "page": "GH5200_AVL_ID_List"
+ },
+ {
+  "model": "MSP500",
+  "page": "MSP500_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "MTB100",
+  "page": "MTB100_Teltonika_Data_Sending_Parameters_ID"
+ },
+ {
+  "model": "TAT100",
+  "page": "TAT100_AVL_ID_List"
+ },
+ {
+  "model": "TAT140",
+  "page": "TAT140_AVL_ID_List"
+ },
+ {
+  "model": "TAT141",
+  "page": "TAT141_AVL_ID_List"
+ },
+ {
+  "model": "TAT240",
+  "page": "TAT240_AVL_ID_List"
+ },
+ {
+  "model": "TFT100",
+  "page": "TFT100_AVL_ID_List"
+ },
+ {
+  "model": "TMT250",
+  "page": "TMT250_AVL_ID_List"
+ },
+ {
+  "model": "TST100",
+  "page": "TST100_AVL_ID_List"
+ }
+]

@@ -12,8 +12,20 @@ import type { NormalizedRecord } from '@orbetra/shared'
  * ONLY id 168 would be read under the name and scaled ×0.001 — out of scope for v1 (FMB120
  * sends id 67); flagged for the promote-to-column ADR if a 168-only model appears.
  *
- * All AVL ids cited from packages/codec/dictionaries/fmb1xx.json (wiki FMB120 table):
+ * All AVL ids cited from packages/codec/dictionaries/fmb120.json (wiki FMB120 table):
  * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+ *
+ * AND THAT CITATION IS NOW A LIMITATION, not just provenance. Since the device profile selects the
+ * dictionary, `attrs` keys are a PER-MODEL vocabulary and these accessors still speak only FMB120's.
+ * Measured across the 34 shipped tables, id 236 is "Alarm" on 16, "Alarm button" on atc700 and
+ * "Axis X" on the six FMx6xx tables; id 252 is "Unplug" on 15, "Unplug detection" on the 11
+ * FTC/ATC tables and "Authorized Driving" on the FMx6xx ones. So a panic or power-cut rule created
+ * against an FMC650 cannot fire — and BEFORE the profile chose a dictionary the same device decoded
+ * as FMB120 and fired the panic rule off its accelerometer instead, which is the worse of the two.
+ * Neither is right. The fix is a per-table semantic index (which id, if any, carries "alarm" on
+ * THIS model) plus gating rule creation on the model actually having the parameter — the same work
+ * as the dictionary-driven read path, tracked in the README's known-gap note. Recorded here rather
+ * than left for the next reader to rediscover from a customer's support ticket.
  */
 
 // AVL ids (fmb1xx dictionary)
@@ -29,10 +41,22 @@ const FUEL_LITERS_MULTIPLIER = 0.1
  * integer (mV), so the engine scales to volts here. Standard across FMB/FMC/TAT families. */
 const BATTERY_VOLTAGE_MULTIPLIER = 0.001
 
-/** Read an AVL id's value regardless of whether it kept the dictionary name or fell back
- * to `io_<id>` on collision (see file header). Returns a finite number or null. */
-function attrNumber(attrs: Record<string, unknown>, id: number, name: string): number | null {
-  const raw = attrs[`io_${id}`] ?? attrs[name]
+/**
+ * Read an AVL id's value regardless of whether it kept the dictionary name or fell back to
+ * `io_<id>` on collision (see file header). Returns a finite number or null.
+ *
+ * TAKES EVERY SPELLING, because the attrs key is the DEVICE'S OWN table's name. Where the wiki
+ * types one parameter several ways this is a pure lookup problem with no semantics in it — id 252
+ * is "Unplug" on 15 tables and "Unplug detection" on 11, and reading only the first meant a trailer
+ * fleet on ATC/FTC hardware could create a power-cut rule the API accepted and that never fired
+ * when the tracker was ripped out. Spellings that mean something ELSE are simply not listed, so an
+ * FMx6xx (where 252 is "Authorized Driving" — "Authorized driving" on fm36, lower-case d — and 236
+ * is "Axis X") matches nothing and the rule stays silent rather than firing off an accelerometer.
+ * See the header note.
+ */
+function attrNumber(attrs: Record<string, unknown>, id: number, ...names: string[]): number | null {
+  let raw = attrs[`io_${id}`]
+  for (const n of names) raw ??= attrs[n]
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : null
 }
 
@@ -43,19 +67,19 @@ export function ignitionOf(r: NormalizedRecord): boolean | null {
 
 /** Digital Input 1 (AVL 1) as a boolean (0/1). */
 export function din1Of(r: NormalizedRecord): boolean | null {
-  const v = attrNumber(r.attrs, AVL_DIN1, 'Digital Input 1')
+  const v = attrNumber(r.attrs, AVL_DIN1, 'Digital Input 1', 'Digital Input Status 1')
   return v === null ? null : v !== 0
 }
 
 /** Unplug (AVL 252): true ⇒ battery unplugged (external power cut). */
 export function unplugOf(r: NormalizedRecord): boolean | null {
-  const v = attrNumber(r.attrs, AVL_UNPLUG, 'Unplug')
+  const v = attrNumber(r.attrs, AVL_UNPLUG, 'Unplug', 'Unplug detection')
   return v === null ? null : v !== 0
 }
 
 /** Alarm (AVL 236): true ⇒ alarm/panic event occurred. */
 export function alarmOf(r: NormalizedRecord): boolean | null {
-  const v = attrNumber(r.attrs, AVL_ALARM, 'Alarm')
+  const v = attrNumber(r.attrs, AVL_ALARM, 'Alarm', 'Alarm button')
   return v === null ? null : v !== 0
 }
 

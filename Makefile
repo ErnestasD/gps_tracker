@@ -10,9 +10,14 @@ smoke:
 down:
 	docker compose -f infra/compose/docker-compose.yml down
 
+# The profile seed is PART of migrating, not a follow-up. 20260812120000 marks the four
+# pre-catalogue profiles `legacy`, and the picker lists only non-legacy rows — so between the
+# migration and the seed `GET /v1/profiles` returns [] and nobody can add a device at all. The
+# seed is idempotent by key, so running it every time costs nothing and closes that window.
 migrate:
 	cd packages/db && pnpm exec prisma migrate deploy
 	pnpm exec tsx packages/db/sql/migrate.ts
+	pnpm db:seed:profiles
 
 # Run all quality gates (the commit gate re-verifies staged packages via turbo cache)
 gates:

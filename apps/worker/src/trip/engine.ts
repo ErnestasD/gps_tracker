@@ -3,10 +3,18 @@ import { ibuttonKeyFromAvl, type NormalizedRecord } from '@orbetra/shared'
 import { haversineM } from '../geo.js'
 import { isClockSkewed } from '../normalize.js'
 
-/** The trip's driver iButton (V2, Part B): the canonical key of AVL 78 seen during the trip, or
- * null. PURE — the persister resolves it to a driverId via the Redis driver:ibutton map. */
+/**
+ * The trip's driver iButton (V2, Part B): the canonical key of AVL 78 seen during the trip, or
+ * null. PURE — the persister resolves it to a driverId via the Redis driver:ibutton map.
+ *
+ * ALL THREE SPELLINGS, because the attrs key is now the device's OWN table's name for id 78 rather
+ * than FMB120's. The wiki writes it "iButton" on 21 tables, "IButton ID" on the four FTC tables and
+ * "iButton ID" on fm36 — the same parameter, typed three ways. Reading only "iButton" meant that
+ * the moment a device decoded with its own dictionary, every FTC/FM36 trip lost its driver: no
+ * error, no metric, just empty driver scorecards and unattributed trips.
+ */
 function recordIbutton(r: NormalizedRecord): string | null {
-  return ibuttonKeyFromAvl(r.attrs['iButton'] ?? r.attrs['io_78'])
+  return ibuttonKeyFromAvl(r.attrs['iButton'] ?? r.attrs['iButton ID'] ?? r.attrs['IButton ID'] ?? r.attrs['io_78'])
 }
 
 /**

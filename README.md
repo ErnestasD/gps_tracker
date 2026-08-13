@@ -57,7 +57,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `INGEST_UDP_MAX_DGRAMS_PER_SEC` | apps/ingest | Global UDP datagram rate cap across all sources, default `50000` |
 | `INGEST_MAX_CONN` | apps/ingest | Total concurrent connection cap, default `20000` |
 | `INGEST_MAX_CONN_PER_IP` | apps/ingest | Per-IP connection cap, default `200` |
-| `INGEST_PUBLIC_HOST` | apps/api | Public ingest host shown to devices in onboarding config, default `orbetra.com` (paired with `INGEST_TCP_PORT`) |
+| `INGEST_PUBLIC_HOST` | apps/api | Public ingest host shown to devices in onboarding config (paired with `INGEST_TCP_PORT`). **No default** — unset ⇒ the onboarding sheet renders the host as a visible gap and `POST /v1/devices/:id/sms` answers 503. Deliberate: a fallback would point a reseller's customer's hardware at *our* domain, written permanently into the device |
 | `PROMETHEUS_PORT` | apps/ingest (9101), apps/worker (9102) | /metrics exposition port |
 | `EXPORT_DIR` | apps/worker | GDPR export output directory (E08-4), default `var/exports`; R2/S3 upload is the follow-up when creds exist |
 | `WEBHOOK_DELIVERY_RETENTION_DAYS` | apps/worker | Days to keep webhook delivery-log rows before the daily retention sweep prunes them, default `30` |
@@ -157,8 +157,11 @@ Every new variable must be added to the table here AND match the `.env` contract
 
 ## Devices (E03-3)
 
-- `pnpm db:seed:profiles` seeds the four device profiles (fmb1xx, fmc, fmb6xx-stub,
-  tat-asset). Create devices via the web Devices page or `POST /v1/devices`; each
+- `pnpm db:seed:profiles` seeds **109** device profiles — one per Teltonika model with an AVL page
+  (105) plus the four pre-catalogue family rows (fmb1xx, fmc, fmb6xx-stub, tat-asset), which are
+  kept because live devices reference them and hidden from the picker. `make migrate` runs it: the
+  migration marks those four `legacy`, and until the seed lands `GET /v1/profiles` is empty and no
+  device can be created. Create devices via the web Devices page or `POST /v1/devices`; each
   create/retire **syncs the ingest/worker Redis registries** (`registry:imei`,
   `device:tenant`, `device:account`) — a device is invisible to ingest until created
   and rejected (0x00) on the next connect after retire.
@@ -296,6 +299,44 @@ Every new variable must be added to the table here AND match the `.env` contract
   and the authoritative E04-2 recompute reads the same `device:config`, so live and reconciled
   trips stay consistent. A profile-content edit re-syncs on the device's next registry write
   (full profile-edit propagation is a follow-up).
+
+## The model decides the dictionary (AVL tables)
+
+- A device profile carries an **`avlTable`** — the generated dictionary that names and signs that
+  model's IO elements (`packages/codec/dictionaries/<table>.json`, 105 models → 34 tables, built
+  from the Teltonika wiki by `tools/avl-dict`). It rides the **same `device:config` key** as the
+  trip config above, written by the one `deviceConfigValue` helper, and the worker resolves it per
+  batch through a cache with the same ≈60 s TTL.
+- **Picking the wrong model is not cosmetic.** The dictionary decides both the NAME and the SIGN of
+  every IO element, and the result is written durably into `positions.attrs` where nothing
+  recomputes it. AVL id 141 is 2 bytes either way: "Driver 1 Cumulative Break Time" (Unsigned) on
+  the FMB120 table, "Battery Temperature" (Signed) on the FMx6xx tables — so the same reading is
+  65535 minutes or −0.1 °C. Correcting a profile relabels **future** positions only; rows already
+  written keep the names they were decoded with.
+- **Fallback** is `fmb120` (the table 45 models render identically) whenever the answer is
+  unavailable: no config row yet, a config written before the field existed, a malformed value, an
+  unknown table name, or Redis unreachable. Every one of those increments
+  `pipeline_avl_table_unresolved_total{reason}` (alert `AvlTableUnresolved`) — a non-zero rate means
+  devices are being decoded with the wrong dictionary, which looks like data, not like an error. It
+  counts device→table RESOLUTIONS, which are cached for ~60 s, so read it as "how many devices", not
+  "how many positions" — except `redis_error`, which is deliberately not cached so the next batch
+  retries, and therefore repeats per batch for as long as the outage lasts.
+- Elements the table does not name (and ids whose name is ambiguous **within** a table, where two
+  parameters share a name) surface as `io_<id>`. That is deliberate: resolving a name collision by
+  arrival order would label a percentage and a kilogram count identically.
+- **KNOWN GAP — the read path is still model-blind.** The decoder now uses each device's own
+  dictionary; the code that READS `positions.attrs` does not. Most of the vocabulary is stable —
+  1098 of the 1712 ids that appear on more than one table carry a byte-identical name everywhere —
+  but the ids our readers key on are disproportionately the CAN and fuel ones Teltonika reuses, and
+  of those 18 only id 67 (Battery Voltage) is constant. Id 85 is "Engine RPM" on some tables and "Engine
+  Current Load" on others; 32 is "Coolant Temperature" or "Axle 5 Load"; 89 is "Fuel Level" or
+  "Axle weight 1"; 236 is "Alarm" or "Axis X". So on FMx6xx and the FTC/ATC families the CAN and fuel panels can read the
+  wrong parameter or nothing at all, and a panic / power-cut rule may be impossible on a model whose
+  table has no such element. Ids whose meaning is CONSTANT and only spelled differently (21 GSM, 66
+  external voltage, 78 iButton) are handled. The rest needs a per-table semantic index — which is
+  the same work as the dictionary-driven renderer below, and is not in this change.
+- Regenerate with `pnpm --filter @orbetra/avl-dict gen` (`--fresh` refetches; `--coverage` diffs
+  `models.json` against the wiki's own page index). The JSON is generated — never hand-edit it.
 
 ## Geofences (E05-1)
 
