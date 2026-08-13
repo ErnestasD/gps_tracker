@@ -136,6 +136,29 @@ describe('IMEI hold across tenants', () => {
     ).rejects.toBeInstanceOf(DuplicateImeiError)
   })
 
+  it('a SUSPENDED tenant\'s devices are not offered to the boot rehydrate', async () => {
+    // Billing suspension IS the removal of the Redis registry keys; `suspendedAt` is the durable
+    // record. The rehydrate rebuilds that registry from `devices`, so without this predicate every
+    // API restart put a cut-off fleet back on the air — customer emailed "your fleet has been
+    // stopped", vehicles back on the map, admin panel still saying suspended, traffic metered. The
+    // daily lapse sweep re-asserted it eventually, and never at all for a tenant suspended by a
+    // platform admin rather than by the ladder.
+    const before = await db.devices.listAllForRegistry()
+    expect(before.some((d) => d.tenantId === squatter.tenantId)).toBe(true)
+    const c = new pg.Client({ connectionString: url })
+    await c.connect()
+    try {
+      await c.query(`UPDATE tenants SET "suspendedAt" = now() WHERE id = $1`, [squatter.tenantId])
+      const during = await db.devices.listAllForRegistry()
+      expect(during.some((d) => d.tenantId === squatter.tenantId)).toBe(false)
+      expect(during.some((d) => d.tenantId === victim.tenantId)).toBe(true) // …and only that tenant
+      await c.query(`UPDATE tenants SET "suspendedAt" = NULL WHERE id = $1`, [squatter.tenantId])
+      expect((await db.devices.listAllForRegistry()).some((d) => d.tenantId === squatter.tenantId)).toBe(true)
+    } finally {
+      await c.end()
+    }
+  })
+
   it('the index that actually enforces it is still there, and still partial on retiredAt', async () => {
     // Drop or widen this index and the two tests above keep passing while the guarantee is gone.
     // This is the one that notices.

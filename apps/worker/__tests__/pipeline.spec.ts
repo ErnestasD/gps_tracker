@@ -14,7 +14,7 @@ import { runScenario, liveDrive, bufferedFlood } from '@orbetra/simulator'
 import { migrate } from '@orbetra/db/sql/migrate.js'
 
 import { ShardConsumer } from '../src/consumer.js'
-import { ShardLeaser, leaseKey, ownsShardLease } from '../src/shards.js'
+import { PIPELINE_GROUP, ShardLeaser, leaseKey, ownsShardLease } from '../src/shards.js'
 
 const IMEI = '356307042441013'
 const SHARD = Number(BigInt(IMEI) % BigInt(SHARD_COUNT))
@@ -453,6 +453,28 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     expect(byDevice.get('42')?.['Battery Temperature']).toBe(-1)
     expect(byDevice.get('43')?.['Driver 1 Cumulative Break Time']).toBe(65535)
   }, 60_000)
+
+  it('a failed batch is RE-DELIVERED to itself, not left for MAXLEN to destroy', async () => {
+    // A transient Postgres error makes process() throw before the XACK, so those entries stay in
+    // this consumer's own PEL. The loop used to read only '>' — new entries — so the only thing
+    // that ever came back for them was XAUTOCLAIM: once per 30 s, COUNT 200, after 60 s idle,
+    // while ingest kept XADDing under MAXLEN ~100000. The stranded entries are deleted out from
+    // under the PEL, and ingest had already ACKed them to the tracker, so the device dropped them
+    // from its buffer. Permanently lost history.
+    await ingestRecords(20)
+    const pool2 = new pg.Pool({ connectionString: `postgresql://postgres:test@${pgC.getHost()}:${pgC.getMappedPort(5432)}/pipe` })
+    await pool2.end() // a pool that rejects every query — stands in for the blip
+    const c = new ShardConsumer(SHARD, { redis, pool: pool2, hash, workerId: 'w-drain', autoclaimMinIdleMs: 3_600_000 })
+    await c.ensureGroup()
+    await expect(c.tick()).rejects.toThrow() // the batch is read, the write fails, nothing is ACKed
+    const pending = (await redis.xpending(`raw:${SHARD}`, PIPELINE_GROUP)) as [number, ...unknown[]]
+    expect(pending[0]).toBeGreaterThan(0) // …and they are sitting in OUR PEL
+
+    // a healthy consumer with the SAME name must get them back without waiting for autoclaim
+    const healthy = new ShardConsumer(SHARD, { redis, pool, hash, workerId: 'w-drain', autoclaimMinIdleMs: 3_600_000 })
+    const own = await healthy.readOwnPendingForTest()
+    expect(own.length).toBe(20)
+  }, 90_000)
 
   it('shard leases are exclusive: second worker cannot claim an owned shard', async () => {
     const l1 = new ShardLeaser(redis, 'w-one', 10_000)

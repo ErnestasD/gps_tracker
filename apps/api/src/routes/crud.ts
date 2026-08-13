@@ -741,10 +741,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (device === null) return problem(c, 404, 'Not Found')
         if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
         const q = c.req.query.bind(c.req)
+        // the profile's table decides AVL 89's scale — fm36 documents it ×0.1 (see fuel.ts)
+        const fuelProfile = await db.profiles.get(device.profileId)
         return json(c, await readFuelSeries(deps.pool, device.id, {
           ...(q('from') !== undefined ? { from: q('from')! } : {}),
           ...(q('to') !== undefined ? { to: q('to')! } : {}),
           ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
+          ...(fuelProfile !== null ? { avlTable: fuelProfile.avlTable } : {}),
         }))
       } },
     // device-health series + summary (V1-nice) — GSM/voltage trend, last-seen, firmware
@@ -880,7 +883,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
             host: target.host,
             port: target.port,
             ...(apnRaw !== undefined ? { apn: apnRaw } : {}),
-            ...(profile !== null ? { family: profile.key } : {}),
+            ...(profile !== null ? { family: profile.key, legacyProfile: profile.legacy } : {}),
           }),
           smsEnabled: deps.sms !== undefined,
         })
@@ -950,7 +953,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           host: target.host,
           port: target.port,
           ...(data.apn !== undefined ? { apn: data.apn } : {}),
-          ...(profile !== null ? { family: profile.key } : {}),
+          ...(profile !== null ? { family: profile.key, legacyProfile: profile.legacy } : {}),
         })
         // smsAuto = APN (when supplied) + server params in ONE setparam, so a device with no
         // auto-APN gets data AND the server address from a single SMS (server-only when no APN)

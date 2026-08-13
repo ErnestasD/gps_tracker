@@ -108,8 +108,9 @@ export interface DeviceRepo {
   list(scope: Scope): Promise<Device[]>
   /** Count of NON-retired devices in scope — the denominator for the plan deviceLimit cap check. */
   countActive(scope: Scope): Promise<number>
-  /** Boot registry-rehydrate ONLY (UNSCOPED, platform-level): every non-retired device with the
-   *  fields ingest/worker need in Redis. Never a request path — those are always tenant-scoped. */
+  /** Boot registry-rehydrate ONLY (UNSCOPED, platform-level): every non-retired device OF AN
+   *  UNSUSPENDED TENANT, with the fields ingest/worker need in Redis. The suspension predicate is
+   *  load-bearing, not hygiene — see the query. Never a request path; those are tenant-scoped. */
   listAllForRegistry(): Promise<RegistryDeviceRow[]>
   /** UNSCOPED IMEI → device id for the worker's reject drain. Two jobs: a rejection whose device
    *  was GDPR-ERASED must not be written back (the drain runs on a timer after the erase), and the
@@ -154,11 +155,25 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
       })
       return new Map(rows.map((r) => [r.imei, r.id]))
     },
-    listAllForRegistry: () =>
-      prisma.device.findMany({
-        where: { retiredAt: null },
+    listAllForRegistry: async () => {
+      // Two queries because `Device` carries `tenantId` without a relation field, so Prisma cannot
+      // express this as a nested filter. Suspended tenants are a handful at most; this runs once,
+      // at boot.
+      const suspended = await prisma.tenant.findMany({ where: { suspendedAt: { not: null } }, select: { id: true } })
+      return prisma.device.findMany({
+        // …and NOT a suspended tenant's. Billing suspension IS the removal of these Redis keys
+        // (`suspendTenantDevices` → `deactivateDevice`), while `suspendedAt` is the durable record.
+        // Rebuilding the registry from `devices` alone put every cut-off fleet back on the air on
+        // any API restart: the customer we had just emailed "your fleet has been stopped" watched
+        // their vehicles reappear, the admin panel still said suspended, and we metered the traffic.
+        // Nothing re-asserted the teardown until the DAILY lapse sweep — and a tenant suspended by
+        // a platform admin is never on the lapsed list at all, so for those the resurrection was
+        // permanent. It also bypassed `POST /v1/tenants/:id/restore`, which exists precisely to make
+        // putting a fleet back a deliberate, audited act.
+        where: { retiredAt: null, ...(suspended.length > 0 ? { tenantId: { notIn: suspended.map((t) => t.id) } } : {}) },
         select: { id: true, imei: true, tenantId: true, accountId: true, profileId: true, odometerSource: true },
-      }),
+      })
+    },
     get: (scope, id) => scopedById(scope, id),
     // ACTIVE first: after a re-registration the same IMEI can exist on both a retired row and the
     // new one, and every caller of this wants the device that is in service today
