@@ -481,7 +481,9 @@ export const scheduledReportCreateSchema = z
     hourUtc: z.number().int().min(0).max(23),
     weekday: z.number().int().min(0).max(6).optional(), // 0=Sun … 6=Sat (weekly only)
     recipients: z.array(z.string().email()).min(1).max(20),
-    timezone: z.string().min(1).max(64).optional(),
+    // the SAME validator the account preferences use: an unresolvable zone makes the reporter fall
+    // back to UTC, so accepting one means silently emailing every report in the wrong timezone
+    timezone: ianaTimezoneSchema.optional(),
     enabled: z.boolean().optional(),
   })
   .refine((d) => d.cadence !== 'weekly' || d.weekday !== undefined, { message: 'weekly cadence requires a weekday' })
@@ -492,7 +494,7 @@ export const scheduledReportUpdateSchema = z
     hourUtc: z.number().int().min(0).max(23),
     weekday: z.number().int().min(0).max(6).nullable(),
     recipients: z.array(z.string().email()).min(1).max(20),
-    timezone: z.string().min(1).max(64),
+    timezone: ianaTimezoneSchema,
     enabled: z.boolean(),
   })
   .partial()
@@ -513,15 +515,27 @@ export interface ScheduledReportView {
 }
 
 // ── webhooks ─────────────────────────────────────────────────────────────────
+/**
+ * The event kinds a webhook can actually receive: every rule kind the engine emits, plus the
+ * geofence transition the worker emits directly (it carries no ruleId). `events: []` / omitted means
+ * "all of them" — that is the documented default and stays untouched.
+ *
+ * Validated as an ENUM rather than free strings: an unknown kind used to be accepted with 201 and
+ * then never fire, leaving the customer with a subscription that looks configured and delivers
+ * nothing, and no delivery-log row to explain why.
+ */
+export const webhookEventKindSchema = ruleKindSchema
+export const WEBHOOK_EVENT_KINDS = ruleKindSchema.options
+
 export const webhookCreateSchema = z.object({
   accountId: z.string().uuid().nullable(),
   url: z.string().url().max(2048),
   secret: z.string().min(16).max(256),
-  events: z.array(z.string()).optional(),
+  events: z.array(webhookEventKindSchema).optional(),
   enabled: z.boolean().optional(),
 })
 export const webhookUpdateSchema = z
-  .object({ url: z.string().url().max(2048), events: z.array(z.string()), enabled: z.boolean() })
+  .object({ url: z.string().url().max(2048), events: z.array(webhookEventKindSchema), enabled: z.boolean() })
   .partial()
 
 // ── tenants (platform) ───────────────────────────────────────────────────────

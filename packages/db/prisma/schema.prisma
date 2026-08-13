@@ -140,6 +140,7 @@ model Tenant {
   /// the admin registry aggregates referred tenants per partner, and the accrual path resolves a
   /// tenant's referrer on every paid invoice — both were unindexed scans (migration 20260808070000)
   @@index([referredByAffiliateId])
+  apiKeys             ApiKey[]
   commissions         Commission[]       @relation("TenantCommissions")
   dealConversions     DealRegistration[] @relation("DealConversions")
   usageReports        UsageReport[]
@@ -793,6 +794,12 @@ model ApiKey {
   lastUsedAt DateTime? @db.Timestamptz()
   revokedAt  DateTime? @db.Timestamptz()
   createdAt  DateTime  @default(now()) @db.Timestamptz()
+
+  /// Deleting a tenant deletes its keys. Without the relation the rows outlived the tenant: the key
+  /// still resolved as active, and the entitlement lookup behind it then threw on a tenant that was
+  /// no longer there — a 500 on every request instead of a clean 401, with no cleanup path able to
+  /// see the orphans (audit C16).
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@map("api_keys")

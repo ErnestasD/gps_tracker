@@ -9,6 +9,7 @@ import { emailDomain, FREE_MAIL_DOMAINS, signupSchema } from '@orbetra/shared'
 
 import { hashPassword } from '../auth/passwords.js'
 import { clientIp } from '../net.js'
+import { problem } from '../auth/middleware.js'
 import { sendVerificationEmail } from './verifyEmail.js'
 
 /**
@@ -137,7 +138,7 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
 
   app.post('/v1/public/signup', async (c: Context) => {
     const parsed = signupSchema.safeParse(await c.req.json().catch(() => null))
-    if (!parsed.success) return c.json({ error: 'invalid request' }, 400)
+    if (!parsed.success) return problem(c, 400, 'Bad Request', 'invalid request')
     const body = parsed.data
 
     // FAIL CLOSED (unlike pilot-request, which fails open because a lost lead is unrecoverable).
@@ -156,12 +157,12 @@ export function createSignupRoute(deps: SignupRouteDeps): Hono {
     try {
       const ip = clientIp(c.req.header('x-forwarded-for'), deps.getRemoteAddr(c), deps.trustProxy)
       const perIp = (await deps.redis.eval(RL_SCRIPT, 1, `signup:rl:${ip}`, String(limit.windowS))) as number
-      if (perIp > limit.max) return c.json({ error: 'rate limited' }, 429)
+      if (perIp > limit.max) return problem(c, 429, 'Too Many Requests', 'rate limited')
       const global = (await deps.redis.eval(RL_SCRIPT, 1, 'signup:rl:global', String(limit.windowS))) as number
-      if (global > limit.globalMax) return c.json({ error: 'rate limited' }, 429)
+      if (global > limit.globalMax) return problem(c, 429, 'Too Many Requests', 'rate limited')
     } catch (err) {
       console.error('signup rate-limit unavailable', err)
-      return c.json({ error: 'temporarily unavailable' }, 503)
+      return problem(c, 503, 'Service Unavailable', 'temporarily unavailable')
     }
 
     // HONEYPOT: a fake success indistinguishable from the real thing — same body shape, random id,

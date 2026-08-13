@@ -19,7 +19,12 @@ export interface ApiKeyAuthDeps {
   /** injected for deterministic tests; defaults to Date.now */
   now?: () => number
 }
-export type ApiKeyOutcome = { ok: AuthContext } | { error: 'unauthorized' | 'rate_limited' }
+export type ApiKeyOutcome =
+  | { ok: AuthContext }
+  | { error: 'unauthorized' }
+  /** `retryAfterS` = whole seconds left in the fixed window, so the 429 can carry `Retry-After`
+   *  the way the published docs promise. The limiter is the only place that knows the window. */
+  | { error: 'rate_limited'; retryAfterS: number }
 export interface ApiKeyAuth {
   resolve(rawKey: string): Promise<ApiKeyOutcome>
 }
@@ -36,11 +41,15 @@ export function createApiKeyAuth(deps: ApiKeyAuthDeps): ApiKeyAuth {
       // (600/min is a soft cap; the edge proxy provides per-IP defense). A Redis blip must
       // NOT break API access, so the limiter fails OPEN (skip throttle, still authenticated).
       try {
-        const bucket = Math.floor(now() / 60_000)
+        const t = now()
+        const bucket = Math.floor(t / 60_000)
         const rlKey = `apikey:rl:${resolved.id}:${bucket}`
         const n = await deps.redis.incr(rlKey)
         if (n === 1) await deps.redis.expire(rlKey, 60)
-        if (n > deps.perMin) return { error: 'rate_limited' }
+        // seconds until this fixed window rolls over — a throttled client needs a basis for backoff
+        // rather than a guess (the docs promise Retry-After on this 429). Floor of 1: a header of 0
+        // invites an immediate retry that is still inside the window.
+        if (n > deps.perMin) return { error: 'rate_limited', retryAfterS: Math.max(1, 60 - Math.floor((t % 60_000) / 1_000)) }
       } catch {
         // Redis unavailable → allow the request rather than 500 the whole API-key surface
       }

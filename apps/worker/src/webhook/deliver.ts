@@ -50,6 +50,9 @@ export async function deliverWebhook(opts: DeliverOptions): Promise<DeliverResul
   headers['host'] = opts.url.host
   headers['content-length'] = String(Buffer.byteLength(opts.body))
 
+  // WHATWG URL keeps the brackets on an IPv6 literal; every check below wants the bare address.
+  const bareHostname = opts.url.hostname.replace(/^\[|\]$/g, '')
+
   const options: RequestOptions = {
     host: opts.ip,
     port,
@@ -61,7 +64,10 @@ export async function deliverWebhook(opts: DeliverOptions): Promise<DeliverResul
     // `servername` the handshake would send no SNI and then fail identity checks against an IP.
     // Omitted for an IP-literal webhook URL: RFC 6066 forbids an IP as SNI and node warns (DEP0123);
     // identity is still checked, as `IP: … is not in the cert's list`.
-    ...(isHttps ? { rejectUnauthorized: true, ...(isIP(opts.url.hostname) ? {} : { servername: opts.url.hostname }) } : {}),
+    // `hostname` is UNBRACKETED first: WHATWG URL keeps the brackets on an IPv6 literal
+    // (`https://[2001:db8::1]/` → hostname `[2001:db8::1]`), which `isIP` does not recognise — so
+    // the carve-out was missed and we sent a bracketed SNI that no handshake can complete.
+    ...(isHttps ? { rejectUnauthorized: true, ...(isIP(bareHostname) ? {} : { servername: bareHostname }) } : {}),
   }
 
   return await new Promise<DeliverResult>((resolve, reject) => {

@@ -520,7 +520,16 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     // atomic per IP+email rate limit — over the cap we STILL return the generic 200 (no signal) but
     // do no work, so a flood can neither mail-bomb a victim nor time-probe for account existence.
     const rlKey = `auth:reset:${ip}:${sha256(email).slice(0, 16)}`
-    const attempts = Number(await deps.redis.eval(LOCKOUT_SCRIPT, 1, rlKey, String(RESET_RL_WINDOW_S)))
+    // FAILS OPEN, deliberately and in one place. With `enableOfflineQueue: false` a disconnected
+    // Redis rejects immediately, so an unguarded eval turned "Redis is down" into a 500 on the one
+    // flow a locked-out customer needs. Losing the ceiling for the duration of an outage costs at
+    // most extra mail to a real address; losing the endpoint costs everyone their account.
+    let attempts = 0
+    try {
+      attempts = Number(await deps.redis.eval(LOCKOUT_SCRIPT, 1, rlKey, String(RESET_RL_WINDOW_S)))
+    } catch {
+      deps.onLockout?.('degraded')
+    }
     if (attempts > RESET_RL_MAX) return c.json({ ok: true })
 
     if (deps.mail !== undefined && deps.appBaseUrl !== undefined) {

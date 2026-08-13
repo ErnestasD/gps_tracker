@@ -239,6 +239,11 @@ export async function applyImport(
         console.error('device import: created but not activated', { imei: row.imei, row: row.row }, err)
         errors.push({ row: row.row, imei: row.imei, reason: 'created, but not yet reachable by the pipeline — retry not needed' })
       }
+      // A ROW THAT LANDED PROVES THE ENVIRONMENT IS ALIVE. The reset used to live only in the
+      // DuplicateImei branch below, so successes never cleared the counter and the tally was of
+      // TOTAL unexpected failures, not CONSECUTIVE ones: a long file with a handful of scattered
+      // faults aborted mid-way and reported an outage that was not happening.
+      consecutiveFailures = 0
     } catch (err) {
       if (err instanceof DuplicateImeiError) {
         errors.push({ row: row.row, imei: row.imei, reason: 'IMEI already registered' })

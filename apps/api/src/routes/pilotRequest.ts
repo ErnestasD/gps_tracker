@@ -8,6 +8,7 @@ import type { Db } from '@orbetra/db'
 import { pilotRequestSchema } from '@orbetra/shared'
 
 import { clientIp } from '../net.js'
+import { problem } from '../auth/middleware.js'
 
 /**
  * PUBLIC pilot-request endpoint (W9-S1, §6.6/§6.9) — the marketing site's only form and
@@ -42,7 +43,7 @@ export function createPilotRequestRoute(deps: PilotRequestDeps): Hono {
 
   app.post('/v1/public/pilot-request', async (c: Context) => {
     const parsed = pilotRequestSchema.safeParse(await c.req.json().catch(() => null))
-    if (!parsed.success) return c.json({ error: 'invalid request' }, 400)
+    if (!parsed.success) return problem(c, 400, 'Bad Request', 'invalid request')
     const body = parsed.data
 
     // honeypot: indistinguishable fake success — random id, store nothing
@@ -51,7 +52,7 @@ export function createPilotRequestRoute(deps: PilotRequestDeps): Hono {
     try {
       const ip = clientIp(c.req.header('x-forwarded-for'), deps.getRemoteAddr(c), deps.trustProxy)
       const n = (await deps.redis.eval(RL_SCRIPT, 1, `pilot:rl:${ip}`, String(limit.windowS))) as number
-      if (n > limit.max) return c.json({ error: 'rate limited' }, 429)
+      if (n > limit.max) return problem(c, 429, 'Too Many Requests', 'rate limited')
     } catch {
       /* fail OPEN — see header */
     }

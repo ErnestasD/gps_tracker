@@ -79,8 +79,12 @@ async function handle<T>(res: Response): Promise<T> {
   const text = await res.text()
   const data = text ? safeJson(text) : null
   if (!res.ok) {
-    const d = data as { message?: string; error?: string; detail?: string } | null
-    throw new ApiError(d?.message || d?.error || `Request failed (${res.status})`, res.status, d?.detail ?? null)
+    // `title` FIRST: the API answers RFC 7807 problem+json, where the human-readable summary lives
+    // in `title` and the specifics in `detail`. `message`/`error` stay as fallbacks for the handful
+    // of public routes that predate the convention, so this keeps working during the changeover
+    // rather than degrading every error to "Request failed (400)".
+    const d = data as { title?: string; message?: string; error?: string; detail?: string } | null
+    throw new ApiError(d?.title || d?.message || d?.error || `Request failed (${res.status})`, res.status, d?.detail ?? null)
   }
   return data as T
 }
