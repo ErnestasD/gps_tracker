@@ -26,12 +26,14 @@ function makeSigner() {
 }
 
 const CERT_URL = 'https://sns.eu-central-1.amazonaws.com/SimpleNotificationService-abc.pem'
+/** OUR topic. A signature proves AWS sent the message; this proves it came from us. */
+const TOPIC = 'arn:aws:sns:eu-central-1:1:orbetra-ses-events'
 
 function envelope(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     Type: 'Notification',
     MessageId: 'msg-1',
-    TopicArn: 'arn:aws:sns:eu-central-1:1:orbetra-ses-events',
+    TopicArn: TOPIC,
     Timestamp: '2026-08-10T08:00:00.000Z',
     SignatureVersion: '2',
     SigningCertURL: CERT_URL,
@@ -101,7 +103,7 @@ describe('POST /v1/webhooks/ses', () => {
   it('suppresses a hard-bounced address and ignores a transient one', async () => {
     const { certPem, sign } = makeSigner()
     const { db, suppressed } = fakeDb()
-    const app = createSesWebhookRoutes({ db, fetchCert: () => Promise.resolve(certPem) })
+    const app = createSesWebhookRoutes({ db, expectedTopicArn: TOPIC, fetchCert: () => Promise.resolve(certPem) })
 
     const hard = envelope()
     hard['Signature'] = sign(hard)
@@ -122,7 +124,7 @@ describe('POST /v1/webhooks/ses', () => {
   it('records a complaint', async () => {
     const { certPem, sign } = makeSigner()
     const { db, suppressed } = fakeDb()
-    const app = createSesWebhookRoutes({ db, fetchCert: () => Promise.resolve(certPem) })
+    const app = createSesWebhookRoutes({ db, expectedTopicArn: TOPIC, fetchCert: () => Promise.resolve(certPem) })
     const msg = envelope({
       Message: JSON.stringify({ eventType: 'Complaint', complaint: { complaintFeedbackType: 'abuse', complainedRecipients: [{ emailAddress: 'angry@example.lt' }] } }),
     })
@@ -133,7 +135,7 @@ describe('POST /v1/webhooks/ses', () => {
 
   it('an UNSIGNED post changes nothing — 403, and no address is touched', async () => {
     const { db, suppressed } = fakeDb()
-    const app = createSesWebhookRoutes({ db, fetchCert: () => Promise.resolve('x') })
+    const app = createSesWebhookRoutes({ db, expectedTopicArn: TOPIC, fetchCert: () => Promise.resolve('x') })
     // exactly what an attacker sends to silence someone: a well-formed bounce, no valid signature
     const res = await post(app, envelope({ Signature: 'ZmFrZQ==' }))
     expect(res.status).toBe(403)
@@ -146,6 +148,7 @@ describe('POST /v1/webhooks/ses', () => {
     const visited: string[] = []
     const app = createSesWebhookRoutes({
       db,
+      expectedTopicArn: TOPIC,
       fetchCert: () => Promise.resolve(certPem),
       confirmSubscription: (u) => { visited.push(u); return Promise.resolve() },
     })
@@ -161,6 +164,75 @@ describe('POST /v1/webhooks/ses', () => {
     evil['Signature'] = sign(evil)
     expect((await post(app, evil)).status).toBe(403)
     expect(visited).toHaveLength(1)
+  })
+})
+
+/**
+ * A VALID AWS SIGNATURE IS NOT AUTHORIZATION (audit C2). AWS signs every customer's topic with the
+ * same regional certificate, so "the signature verifies" only proves AWS sent it — not that it came
+ * from OUR topic. Without this binding, anyone with a free AWS account could publish a permanent
+ * bounce for any address from their own topic and blackhole it platform-wide.
+ */
+describe('SNS topic binding', () => {
+  it("refuses a PERFECTLY SIGNED bounce published from a stranger's topic", async () => {
+    const { certPem, sign } = makeSigner()
+    const { db, suppressed } = fakeDb()
+    const app = createSesWebhookRoutes({ db, expectedTopicArn: TOPIC, fetchCert: () => Promise.resolve(certPem) })
+
+    // the attacker's own topic — everything else is genuine, and the signature really does verify
+    const msg = envelope({ TopicArn: 'arn:aws:sns:eu-central-1:999:attacker-topic' })
+    msg['Signature'] = sign(msg)
+
+    expect((await post(app, msg)).status).toBe(403)
+    expect(suppressed).toEqual([]) // the victim's address is untouched
+  })
+
+  it("refuses a subscription handshake from a stranger's topic, so it is never confirmed", async () => {
+    const { certPem, sign } = makeSigner()
+    const { db } = fakeDb()
+    const visited: string[] = []
+    const app = createSesWebhookRoutes({
+      db,
+      expectedTopicArn: TOPIC,
+      fetchCert: () => Promise.resolve(certPem),
+      confirmSubscription: (u) => { visited.push(u); return Promise.resolve() },
+    })
+    const msg = envelope({
+      Type: 'SubscriptionConfirmation', Token: 'tok',
+      TopicArn: 'arn:aws:sns:eu-central-1:999:attacker-topic',
+      SubscribeURL: 'https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription',
+    })
+    msg['Signature'] = sign(msg)
+    expect((await post(app, msg)).status).toBe(403)
+    expect(visited).toEqual([]) // never auto-confirmed into someone else's topic
+  })
+
+  it('FAILS CLOSED when SES_SNS_TOPIC_ARN is not configured', async () => {
+    const { certPem, sign } = makeSigner()
+    const { db, suppressed } = fakeDb()
+    // a deployment without the env var: refusing beats trusting any signed publisher
+    const app = createSesWebhookRoutes({ db, expectedTopicArn: undefined, fetchCert: () => Promise.resolve(certPem) })
+    const msg = envelope()
+    msg['Signature'] = sign(msg)
+    expect((await post(app, msg)).status).toBe(403)
+    expect(suppressed).toEqual([])
+  })
+
+  it('refuses a non-object JSON body with 400, not a 500', async () => {
+    const { certPem } = makeSigner()
+    const { db } = fakeDb()
+    const app = createSesWebhookRoutes({ db, expectedTopicArn: TOPIC, fetchCert: () => Promise.resolve(certPem) })
+    // `JSON.parse('null')` is valid JSON and NOT an object; asserting Record<string, unknown> over
+    // it made the first property read throw, so this one body answered 500 while every other
+    // non-object shape answered a clean refusal. A 500 on a public endpoint is a probing signal.
+    for (const body of ['null', '[]', '"x"', '123', 'true']) {
+      const res = await app.request('/v1/webhooks/ses', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      })
+      expect(res.status).toBeLessThan(500)
+    }
   })
 })
 

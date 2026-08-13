@@ -195,7 +195,18 @@ export function createPartnerRoutes(deps: PartnerRouteDeps): Hono<PartnerEnv> {
 
   // ── PUBLIC: set/reset password via a one-time token ──────────────────────────
   app.post('/v1/partner/set-password', async (c) => {
-    if (Number(await deps.redis.eval(RL_SCRIPT, 1, `partner:redeem:${ip(c)}`, String(RL_WINDOW_S))) > (deps.loginLimits?.setPwRedeemMax ?? REDEEM_RL_MAX)) {
+    // FAILS OPEN: the login route immediately above already routes every counter through a
+    // `.catch()` for exactly this reason, and this one was left unguarded. On the shared
+    // `enableOfflineQueue: false` client a disconnected Redis rejects instantly, so a blip turned
+    // the one link that activates a partner account into a 500 — and the link is single-use, so the
+    // partner cannot tell a dead invite from a transient failure.
+    let redeemAttempts = 0
+    try {
+      redeemAttempts = Number(await deps.redis.eval(RL_SCRIPT, 1, `partner:redeem:${ip(c)}`, String(RL_WINDOW_S)))
+    } catch {
+      /* degraded: ceiling lost for the outage, endpoint kept */
+    }
+    if (redeemAttempts > (deps.loginLimits?.setPwRedeemMax ?? REDEEM_RL_MAX)) {
       return problem(c, 429, 'Too Many Requests')
     }
     const parsed = partnerSetPasswordSchema.safeParse(await c.req.json().catch(() => null))

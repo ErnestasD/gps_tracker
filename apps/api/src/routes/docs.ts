@@ -10,7 +10,9 @@ import type { ManifestEntry } from './registry.js'
  * it (SELF-CONTAINED — no external CDN/resources; a Scalar/Stoplight embed can replace the
  * renderer later behind an ADR for the bundle). It uses an inline script/style, so a future
  * strict CSP would need a nonce/hash — none is set today. The spec is generated from the
- * route manifest so it cannot drift from the live routes.
+ * route manifest, so the CRUD half cannot drift from the live routes. The curated half (auth,
+ * billing, push, reports, …) is hand-maintained and CAN drift — it is a selection of the routes an
+ * integrator needs, not a mirror of every registered route.
  */
 export function mountDocs(app: Hono<AuthEnv>, opts: { manifest: ManifestEntry[]; serverUrl?: string }): void {
   const spec = buildOpenApi(opts.manifest, opts.serverUrl ?? '/')
@@ -46,7 +48,7 @@ code{font-family:ui-monospace,monospace;background:#0001;padding:.1rem .3rem;bor
 <body>
 <h1 id="title">Orbetra API</h1>
 <p class="lede" id="desc"></p>
-<p class="lede">Auth: <code>Authorization: Bearer &lt;jwt&gt;</code> (web) or <code>X-Api-Key: orb_live_…</code> (integrations, read-only). Full spec: <a href="/v1/openapi.json">/v1/openapi.json</a>.</p>
+<p class="lede">Auth: <code>Authorization: Bearer &lt;jwt&gt;</code> (web) or <code>X-Api-Key: orb_live_…</code> (integrations, read-only). Machine-readable route &amp; auth inventory: <a href="/v1/openapi.json">/v1/openapi.json</a> — routes, auth and status codes; it does not model request or response bodies.</p>
 <main id="out">Loading…</main>
 <script>
 const M={get:'get',post:'post',patch:'patch',delete:'delete',put:'post'};

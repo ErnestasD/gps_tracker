@@ -289,7 +289,10 @@ function MaintForm({ devices, onCreated, onCancel }: {
   const u = useUnits()
   // the form reads in the display distance unit; storage stays km, so convert mi → km on submit
   const mi = u.prefs.unitDistance === 'mi'
-  const toKm = (v: string): number => (mi ? miToKm(Number(v)) : Number(v))
+  // ROUNDED, because both fields are `z.number().int()` server-side. Unrounded, a miles account
+  // could never create a distance reminder at all: 5000 mi → 8046.72 km → 400, with the form
+  // showing only its generic save error. The same rounding also accepts a km user typing "1000.5".
+  const toKm = (v: string): number => Math.round(mi ? miToKm(Number(v)) : Number(v))
   const [deviceId, setDeviceId] = useState('')
   const [title, setTitle] = useState('')
   const [intervalKm, setIntervalKm] = useState('')

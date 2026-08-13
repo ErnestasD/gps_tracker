@@ -12,6 +12,17 @@ import type { AuditRepo } from './audit.js'
  * driver name. `assignDriver` is the ONLY write here — a light metadata update (driverId), scoped,
  * validating the driver belongs to the same scope. Serialized (BigInt→string, Date→ISO) by json().
  */
+/**
+ * The page size a trips list actually returns: default 500, hard ceiling 5000.
+ *
+ * EXPORTED because the API layer has to know it too — a full page is indistinguishable from "there
+ * is more", and the route sets a truncation header off exactly this number. Two copies of the cap
+ * would drift and the header would start lying.
+ */
+export function clampTripsTake(take: unknown): number {
+  return Math.min(Math.max(Number.isFinite(take) ? Number(take) : 500, 1), 5_000)
+}
+
 export interface TripListOpts {
   deviceId?: string
   from?: string // ISO
@@ -75,7 +86,7 @@ export function createTripRepo(prisma: PrismaClient, audit: AuditRepo): TripRead
             : {}),
         },
         orderBy: { startTime: 'desc' },
-        take: Math.min(Math.max(Number.isFinite(opts.take) ? Number(opts.take) : 500, 1), 5_000),
+        take: clampTripsTake(opts.take),
         ...withDriver,
       })
       return rows.map(flat)

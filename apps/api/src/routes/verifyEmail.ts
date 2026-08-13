@@ -7,6 +7,7 @@ import type { Redis } from 'ioredis'
 import type { Db } from '@orbetra/db'
 
 import { clientIp } from '../net.js'
+import { problem } from '../auth/middleware.js'
 
 /**
  * Public e-mail verification for self-serve signup (audit MED #67).
@@ -109,14 +110,14 @@ export function createVerifyEmailRoute(deps: VerifyEmailRouteDeps): Hono {
     const body = (await c.req.json().catch(() => null)) as { token?: unknown } | null
     const token = typeof body?.token === 'string' ? body.token.trim() : ''
     // shape-check before touching Redis or the DB: a 4 MB "token" must not become a hash + a query
-    if (token.length < 32 || token.length > 256) return c.json({ error: 'invalid_or_expired' }, 400)
+    if (token.length < 32 || token.length > 256) return problem(c, 400, 'Bad Request', 'invalid_or_expired')
 
     // per-IP only — the input is an unguessable secret, so there is no account to protect here; the
     // limit exists so a bot cannot spend our CPU hashing garbage
     try {
       const ip = clientIp(c.req.header('x-forwarded-for'), deps.getRemoteAddr(c), deps.trustProxy)
       const n = (await deps.redis.eval(RL_SCRIPT, 1, `verify:rl:${ip}`, String(RESEND_WINDOW_S))) as number
-      if (n > 60) return c.json({ error: 'rate limited' }, 429)
+      if (n > 60) return problem(c, 429, 'Too Many Requests', 'rate limited')
     } catch (err) {
       // fails OPEN, unlike signup: refusing to verify would leave a legitimate customer unable to
       // use the account they just paid attention to, and the token is still the only thing that
@@ -125,7 +126,7 @@ export function createVerifyEmailRoute(deps: VerifyEmailRouteDeps): Hono {
     }
 
     const consumed = await deps.db.auth.emailVerificationTokens.consume(sha256(token), new Date())
-    if (consumed === null) return c.json({ error: 'invalid_or_expired' }, 400)
+    if (consumed === null) return problem(c, 400, 'Bad Request', 'invalid_or_expired')
     deps.onVerified?.()
     // no session is minted here — signup never mints tokens either, and a verification link arriving
     // from a mail client (prefetched by a scanner, forwarded, logged in a proxy) must not BE a login

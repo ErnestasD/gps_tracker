@@ -46,7 +46,47 @@ const prom = createApiProm()
 
 // GDPR job producers (E08-4, ADR-020 addendum): the api enqueues, the worker consumes.
 // BullMQ wants its own connection options; jobIds dedupe double-submits.
-const gdprConn = { url: redisUrl }
+//
+// BOUNDED ON PURPOSE — a PRODUCER connection on the request path. Every enqueue site below has a
+// catch that degrades gracefully, and none of them can run if the promise never settles. The
+// visible damage was on /forgot-password: the rate limiter fails open (deliberately), the handler
+// continues, and the enqueue then hung holding an HTTP socket — which also made "known address"
+// (hangs) distinguishable from "unknown address" (fast 200), an account-existence oracle on an
+// unauthenticated endpoint. Both settings below serve that one goal: the request path must always
+// answer, and it must answer in the SAME time whether the address exists or not.
+//
+// TWO DIFFERENT HANGS, which is why it takes two mechanisms:
+//   · mid-life, socket down — `enableOfflineQueue: false` makes the command reject at once instead
+//     of buffering until reconnect. (BullMQ does NOT force `maxRetriesPerRequest: null` here: it
+//     sets that only for BLOCKING connections, and a Queue is built with `blocking: false`
+//     — redis-connection.js `if (this.extraOptions.blocking)`. Producers keep ioredis's default 20.)
+//   · Redis down AT BOOT — nothing above helps. BullMQ awaits `waitUntilReady()`, which resolves
+//     only on ioredis's `ready` event, BEFORE it ever issues a command, so there is no command for
+//     the offline queue or `commandTimeout` to reject; the default retry strategy reconnects for
+//     ever and never emits `end`. Only a deadline on the enqueue itself settles this.
+//
+// THE ACCEPTED COST, measured rather than assumed: a Redis blip shorter than the reconnect drops a
+// password-reset mail that buffering would have delivered (~1 s in a live probe). Turning the
+// offline queue back on is NOT the fix, and was rejected 9-1 by a jury that tested it: the hit path
+// would then block for the reconnect while the miss path stays instant, rebuilding the very oracle
+// this closes — and an enqueue abandoned by the deadline still lands on reconnect, so the caller is
+// told it failed and the mail goes out anyway (auth-email carries no jobId, so a retry sends two).
+const gdprConn = { url: redisUrl, enableOfflineQueue: false, commandTimeout: 2_000 }
+const ENQUEUE_TIMEOUT_MS = 2_000
+const bounded = async <T>(p: Promise<T>): Promise<T> => {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('enqueue timeout')), ENQUEUE_TIMEOUT_MS)
+        timer.unref()
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
 const gdprEraseQueue = new Queue('gdpr-erase', { connection: gdprConn })
 const gdprExportQueue = new Queue('gdpr-export', { connection: gdprConn })
 // removeOnFail: TRUE (review HIGH-2) — a job parked in the failed set blocks its jobId, so a
@@ -54,10 +94,10 @@ const gdprExportQueue = new Queue('gdpr-export', { connection: gdprConn })
 // surfaced via gdpr_job_failed_total + logs, so dropping the corpse re-opens the retry path.
 const gdpr = {
   enqueueErase: async (data: { deviceId: string; tenantId: string }): Promise<void> => {
-    await gdprEraseQueue.add('erase', data, { jobId: `erase-${data.deviceId}`, attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true })
+    await bounded(gdprEraseQueue.add('erase', data, { jobId: `erase-${data.deviceId}`, attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true }))
   },
   enqueueExport: async (data: { exportId: string }): Promise<void> => {
-    await gdprExportQueue.add('export', data, { jobId: `export-${data.exportId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true })
+    await bounded(gdprExportQueue.add('export', data, { jobId: `export-${data.exportId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true }))
   },
 }
 
@@ -67,23 +107,23 @@ const authEmailQueue = new Queue('auth-email', { connection: gdprConn })
 const authEmailOpts = { attempts: 5, backoff: { type: 'exponential' as const, delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 }
 const mail = {
   enqueueResetEmail: async (job: { kind: 'password-reset'; email: string; tenantId: string; locale: string; resetUrl: string; expiresMinutes: number }): Promise<void> => {
-    await authEmailQueue.add('auth-email', job, authEmailOpts)
+    await bounded(authEmailQueue.add('auth-email', job, authEmailOpts))
   },
   // audit MED #67: signup no longer tells an anonymous caller that an address is taken, so the
   // address's OWNER is told instead. Same queue, same worker, no token in the payload.
   enqueueSignupExistsEmail: async (job: { kind: 'signup-exists'; email: string; tenantId: string; locale: string; loginUrl: string; resetUrl: string }): Promise<void> => {
-    await authEmailQueue.add('auth-email', job, authEmailOpts)
+    await bounded(authEmailQueue.add('auth-email', job, authEmailOpts))
   },
   // …and the other half: the mail that ACTIVATES a real signup. Without it the new account can
   // never log in, which is what makes the two branches indistinguishable.
   enqueueVerifyEmail: async (job: { kind: 'verify-email'; email: string; tenantId: string; locale: string; verifyUrl: string; expiresHours: number }): Promise<void> => {
-    await authEmailQueue.add('auth-email', job, authEmailOpts)
+    await bounded(authEmailQueue.add('auth-email', job, authEmailOpts))
   },
   // A partner heard NOTHING before this: they were handed a link and had to log in on a hunch to
   // find out whether it had worked. `tenantId: ''` is load-bearing — the worker short-circuits
   // branding for this kind, so the mail is ours whatever tenant the referral belongs to.
   enqueuePartnerEmail: async (job: { kind: 'partner'; event: 'referral' | 'commission' | 'payout-request'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void> => {
-    await authEmailQueue.add('auth-email', job, authEmailOpts)
+    await bounded(authEmailQueue.add('auth-email', job, authEmailOpts))
   },
 }
 
@@ -96,7 +136,7 @@ const smsQueue = smsConfigured(process.env) ? new Queue('sms', { connection: gdp
 const sms = smsQueue !== undefined
   ? {
       enqueue: (job: { smsDeliveryId: string; deviceId: string; tenantId: string; to: string; body: string; provider: string }) =>
-        smsQueue.add('sms', job, { jobId: `sms-${job.smsDeliveryId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 }),
+        bounded(smsQueue.add('sms', job, { jobId: `sms-${job.smsDeliveryId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 })),
     }
   : undefined
 if (sms === undefined) console.warn('SMS gateway not configured (TWILIO_ACCOUNT_SID/TWILIO_FROM + auth token or API key) — config-SMS routes disabled')
@@ -106,6 +146,15 @@ if (sms === undefined) console.warn('SMS gateway not configured (TWILIO_ACCOUNT_
 const stripeConfig = stripeConfigFromEnv()
 const stripe = stripeConfig !== null ? createStripeGateway(stripeConfig) : undefined
 if (stripe === undefined) console.warn('Stripe not configured (STRIPE_SECRET_KEY/WEBHOOK_SECRET/PRICE_ID) — billing routes disabled')
+// LOUD, because this one turns a LIVE feature off rather than leaving an unstarted one off. The SES
+// feedback subscription is confirmed and delivering in production (a simulator bounce landed in
+// email_suppressions on 2026-08-10), and the endpoint refuses everything without this variable — so
+// a deploy that forgets it silently stops us learning about dead addresses, and SNS retries into
+// 403s until it disables the subscription. Every other absent var here disables something that was
+// never on; this one breaks something that is.
+if (!process.env['SES_SNS_TOPIC_ARN']) {
+  console.error('SES_SNS_TOPIC_ARN is NOT set — POST /v1/webhooks/ses will refuse EVERY message (403), including AWS retries. The bounce/complaint feed is off until this is set in /opt/orbetra/.env and the api restarted. See docs/runbooks/ses-bounce-feedback.md.')
+}
 
 const deps = {
   redis,
@@ -117,6 +166,10 @@ const deps = {
   // sheet renders as a visible gap rather than as somebody else's brand.
   onboarding: { host: process.env['INGEST_PUBLIC_HOST'] ?? '', port: Number(process.env['INGEST_TCP_PORT'] ?? 5027) },
   ...(stripe !== undefined ? { stripe } : {}),
+  // The SNS topic our SES feedback must come from. NOT optional-by-omission: the endpoint is public
+  // and an AWS signature only proves AWS signed it, so an unset value makes /v1/webhooks/ses refuse
+  // everything rather than accept a bounce published from a stranger's topic.
+  ...(process.env['SES_SNS_TOPIC_ARN'] ? { sesTopicArn: process.env['SES_SNS_TOPIC_ARN'] } : {}),
   ...(process.env['APP_BASE_URL'] ? { appBaseUrl: process.env['APP_BASE_URL'] } : {}),
   // where a partner's short link `/r/<code>` lands — the marketing site, not the dashboard
   ...(process.env['SITE_BASE_URL'] ? { siteUrl: process.env['SITE_BASE_URL'].replace(/\/+$/, '') } : {}),

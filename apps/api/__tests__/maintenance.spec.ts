@@ -95,4 +95,31 @@ describe('V2 maintenance API', () => {
     expect(view.lastServiceOdoKm).toBe(250000)
     expect(view.due.status).toBe('ok')
   })
+
+  /**
+   * OMITTED, NULL and A NUMBER are three different instructions, and the difference is load-bearing:
+   * the handler distinguishes them with `'odoKm' in data`, which only works because zod leaves an
+   * absent optional key OFF the parsed object. Nothing asserted that, so a `.default(null)`, a
+   * `.transform` or a zod major bump could silently turn "omitted" back into "wipe the baseline"
+   * with the whole suite green. These two tests pin the semantics from the outside.
+   */
+  it('mark-serviced with odoKm OMITTED re-bases on the current odometer instead of wiping or freezing it', async () => {
+    const created = (await (await req('/v1/maintenance', 'POST', { deviceId: devId, title: 'Belt', intervalKm: 10000 })).json()) as { id: string }
+    // drive past the interval so the item is overdue — the usual reason someone marks it serviced
+    await req(`/v1/maintenance/${created.id}`, 'PATCH', { lastServiceOdoKm: 1000 })
+    const res = await req(`/v1/maintenance/${created.id}/serviced`, 'POST', {})
+    expect(res.status).toBe(200)
+    const view = (await res.json()) as { lastServiceOdoKm: number | null; due: { status: string } }
+    // NOT null (the old bug) and NOT the stale 1000 (which would leave it overdue for ever)
+    expect(view.lastServiceOdoKm).not.toBeNull()
+    expect(view.lastServiceOdoKm).not.toBe(1000)
+    expect(view.due.status).toBe('ok')
+  })
+
+  it('mark-serviced with an EXPLICIT null still clears the baseline', async () => {
+    const created = (await (await req('/v1/maintenance', 'POST', { deviceId: devId, title: 'Oil', intervalKm: 10000, lastServiceOdoKm: 5000 })).json()) as { id: string }
+    const res = await req(`/v1/maintenance/${created.id}/serviced`, 'POST', { odoKm: null })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { lastServiceOdoKm: number | null }).lastServiceOdoKm).toBeNull()
+  })
 })

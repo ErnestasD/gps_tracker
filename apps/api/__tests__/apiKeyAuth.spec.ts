@@ -43,10 +43,19 @@ describe('E06-3 API-key auth', () => {
     expect(await auth.resolve('orb_live_bad')).toEqual({ error: 'unauthorized' })
   })
 
-  it('rate-limits once the per-minute counter is exceeded', async () => {
+  it('rate-limits once the per-minute counter is exceeded, and says WHEN to retry', async () => {
     const auth = createApiKeyAuth({ apiKeys: fakeRepo(resolved), redis: fakeRedis(600).redis, perMin: 600, now: () => 0 })
-    // counter starts at 600 → first incr returns 601 > 600 → limited
-    expect(await auth.resolve('orb_live_x')).toEqual({ error: 'rate_limited' })
+    // counter starts at 600 → first incr returns 601 > 600 → limited.
+    // `retryAfterS` is the whole point of the shape: the published docs promise a Retry-After header
+    // on this 429, and the limiter is the only thing that knows when its fixed window rolls over.
+    expect(await auth.resolve('orb_live_x')).toEqual({ error: 'rate_limited', retryAfterS: 60 })
+  })
+
+  it('counts Retry-After down within the window rather than always answering a full minute', async () => {
+    // 42 s into the window ⇒ 18 s left. A flat 60 would park a well-behaved client for a window it
+    // has already mostly waited out.
+    const auth = createApiKeyAuth({ apiKeys: fakeRepo(resolved), redis: fakeRedis(600).redis, perMin: 600, now: () => 42_000 })
+    expect(await auth.resolve('orb_live_x')).toEqual({ error: 'rate_limited', retryAfterS: 18 })
   })
 
   it('sets a TTL on the first request of a window', async () => {

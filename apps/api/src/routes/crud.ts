@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 
-import { AccountHasUsersError, AffiliateConflictError, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -788,12 +788,16 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const device = await db.devices.get(scope, id(c))
         if (device === null) return problem(c, 404, 'Not Found')
         const q = c.req.query.bind(c.req)
-        return json(c, await db.trips.list(scope, {
+        const take = clampTripsTake(q('limit') !== undefined ? Number(q('limit')) : undefined)
+        const rows = await db.trips.list(scope, {
           deviceId: device.id.toString(),
           ...(q('from') !== undefined ? { from: q('from')! } : {}),
           ...(q('to') !== undefined ? { to: q('to')! } : {}),
-          ...(q('limit') !== undefined ? { take: Number(q('limit')) } : {}),
-        }))
+          take,
+        })
+        // same truncation signal as the collection route — a full page may not be the whole history
+        if (rows.length >= take) c.header('X-Result-Truncated', 'true')
+        return json(c, rows)
       } },
 
     // ── Codec-12 commands (E08-2, §3.5) — device-scope gated ──────────────────
@@ -1335,12 +1339,31 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'post', path: '/v1/maintenance/:id/serviced', scopeClass: 'account', entity: 'maintenance', shape: 'item',
       handler: async (c) => {
         const scope = scopeOf(auth(c))
-        if (await db.maintenance.get(scope, id(c)) === null) return problem(c, 404, 'Not Found')
+        const item = await db.maintenance.get(scope, id(c))
+        if (item === null) return problem(c, 404, 'Not Found')
         const data = await body(c, markServicedSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const at = data.at != null ? new Date(data.at) : new Date()
-        const row = await db.maintenance.markServiced(scope, { userId: auth(c).userId }, id(c), at, data.odoKm ?? null)
-        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, await odoMap([row.deviceId])))
+        // ABSENT IS NOT NULL, and absent is not "keep the old number" either.
+        //
+        // `data.odoKm ?? null` used to write null over the baseline whenever the optional field was
+        // omitted, and a km reminder with no baseline can never compute its next due distance. But
+        // simply RETAINING the previous baseline is wrong too: the reason to mark an item serviced is
+        // usually that it came due, so keeping the old number leaves kmRemaining negative and the
+        // item reads 'overdue' for ever — the one action meant to reset the countdown cannot.
+        //
+        // So an omitted odoKm re-baselines to the device's CURRENT odometer, exactly the decision the
+        // create path 40 lines above documents, and falls back to the stored baseline only when no
+        // odometer is known. An EXPLICIT null still clears, unchanged.
+        const odoNow = await odoMap([item.deviceId])
+        const curKm = odoNow.get(item.deviceId.toString())
+        const baseline = 'odoKm' in data
+          ? data.odoKm ?? null
+          : item.intervalKm != null && curKm != null
+            ? Math.round(curKm)
+            : item.lastServiceOdoKm
+        const row = await db.maintenance.markServiced(scope, { userId: auth(c).userId }, id(c), at, baseline)
+        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, odoNow))
       } },
 
     // ── geofences (account-scoped, nullable account = tenant-shared, E05-1) ────
@@ -1490,12 +1513,19 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'get', path: '/v1/trips', scopeClass: 'account', entity: 'trip', shape: 'collection',
       handler: async (c) => {
         const q = c.req.query.bind(c.req)
-        return json(c, await db.trips.list(scopeOf(auth(c)), {
+        const take = clampTripsTake(q('limit') !== undefined ? Number(q('limit')) : undefined)
+        const rows = await db.trips.list(scopeOf(auth(c)), {
           ...(q('deviceId') !== undefined ? { deviceId: q('deviceId')! } : {}),
           ...(q('from') !== undefined ? { from: q('from')! } : {}),
           ...(q('to') !== undefined ? { to: q('to')! } : {}),
-          ...(q('limit') !== undefined ? { take: Number(q('limit')) } : {}),
-        }))
+          take,
+        })
+        // A FULL PAGE IS NOT "ALL OF THEM". This list has no cursor, so a fleet with more trips than
+        // the cap used to lose the remainder with nothing in the response to say so — silently wrong
+        // totals in an integrator's report. The header says it without changing the array shape
+        // every existing client already parses; narrow the window (from/to) to see the rest.
+        if (rows.length >= take) c.header('X-Result-Truncated', 'true')
+        return json(c, rows)
       } },
     { method: 'get', path: '/v1/trips/:id', scopeClass: 'account', entity: 'trip', shape: 'item',
       handler: async (c) => {

@@ -1,18 +1,29 @@
 import type { ManifestEntry } from './routes/registry.js'
 
 /**
- * OpenAPI 3.1 document for the public API (E06-5, §6.6). Generated from the route MANIFEST
- * (so new CRUD routes appear automatically and can't drift) plus the curated non-manifest
- * routes (auth, reports, api-keys, ws-ticket, billing, web push, public share). Two security schemes: a Bearer JWT (web) and
- * X-Api-Key (integrations). Read (GET) operations accept either; writes require the JWT (an
- * API key is read-only → 403). Served at /v1/openapi.json; the docs page renders it.
+ * OpenAPI 3.1 document for the public API (E06-5, §6.6).
+ *
+ * SCOPE, precisely — the document is a route + auth INVENTORY, not a full schema contract. Request
+ * and response BODIES are deliberately not modelled; the prose docs describe payload shapes.
+ *
+ * Two sources, with different drift guarantees:
+ *  - the route MANIFEST (all CRUD routes): generated, so a new route appears automatically and the
+ *    openapi spec test keeps it honest.
+ *  - a HAND-CURATED list below (auth, reports, api-keys, ws-ticket, billing, web push, public
+ *    share). This half CAN drift: it is a selection, not a mirror. It does not claim to enumerate
+ *    every route in those groups — e.g. the /v1/auth block lists the operations an integrator needs,
+ *    while the browser-only ones (PATCH /me, forgot/reset-password) are described in the prose docs.
+ *
+ * Two security schemes: a Bearer JWT (web) and X-Api-Key (integrations). An API key resolves to role
+ * `viewer`, so it is offered only on operations whose policy actually admits that role — writes, and
+ * reads restricted to higher roles, are JWT-only. Served at /v1/openapi.json; the docs page renders it.
  */
 interface Operation {
   tags: string[]
   summary: string
   security: Record<string, string[]>[]
   parameters?: unknown[]
-  responses: Record<string, { description: string }>
+  responses: Record<string, { description: string; headers?: Record<string, unknown> }>
 }
 
 const PARAM = /:([a-zA-Z0-9_]+)/g
@@ -30,30 +41,160 @@ function pathParams(names: string[]): unknown[] {
   return names.map((name) => ({ name, in: 'path', required: true, schema: { type: 'string' } }))
 }
 
+/**
+ * Response sets, PER METHOD SHAPE rather than one template for every write.
+ *
+ * The single `write` template advertised `201 Created` on DELETE and PATCH — statuses those
+ * handlers never return — and omitted `404` on every item route, which they all can. A generated
+ * client branching on the document was therefore branching on statuses that do not exist and
+ * missing the one it will actually meet.
+ */
+const R = {
+  ok: { '200': { description: 'OK' } },
+  created: { '201': { description: 'Created' } },
+  badRequest: { '400': { description: 'Bad request — payload failed validation' } },
+  unauth: { '401': { description: 'Unauthenticated' } },
+  forbidden: { '403': { description: 'Forbidden — role or plan entitlement' } },
+  notFound: { '404': { description: 'Not found, or outside the caller\'s scope' } },
+} as const
 const RESPONSES = {
-  read: { '200': { description: 'OK' }, '401': { description: 'Unauthenticated' }, '403': { description: 'Forbidden' }, '404': { description: 'Not found' } },
-  write: { '200': { description: 'OK' }, '201': { description: 'Created' }, '400': { description: 'Bad request' }, '401': { description: 'Unauthenticated' }, '403': { description: 'Forbidden' } },
-  publicPost: { '200': { description: 'OK' }, '400': { description: 'Bad request' }, '429': { description: 'Rate limited' } },
+  readCollection: { ...R.ok, ...R.unauth, ...R.forbidden },
+  readItem: { ...R.ok, ...R.unauth, ...R.forbidden, ...R.notFound },
+  /** POST on a collection path — the create routes answer 201 with the row. */
+  create: { ...R.created, ...R.badRequest, ...R.unauth, ...R.forbidden },
+  /** POST on an item path (…/{id}/serviced, …/verify) — an action, answered 200. */
+  action: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden, ...R.notFound },
+  update: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden, ...R.notFound },
+  remove: { ...R.ok, ...R.unauth, ...R.forbidden, ...R.notFound },
+  publicPost: { ...R.ok, ...R.badRequest, '429': { description: 'Rate limited' } },
+}
+
+/**
+ * Where the method-shape heuristic guesses wrong, the truth is listed instead of inferred.
+ *
+ * The heuristic — collection POST creates (201), item POST acts (200) — is right for most routes and
+ * wrong for these. Guessing is exactly what produced "DELETE returns 201"; an explicit table is the
+ * only thing that keeps the document honest for the exceptions.
+ */
+const POST_CREATES_ON_ITEM_PATH = new Set([
+  '/v1/devices/{id}/commands',
+  '/v1/devices/{id}/shares',
+  '/v1/devices/{id}/sms',
+  '/v1/accounts/{id}/export',
+  '/v1/quarantine/{imei}/claim',
+  '/v1/affiliates/{id}/set-password-token',
+])
+/** Collection-path POSTs that are NOT creates — they answer 200 with a computed result. */
+const POST_RETURNS_OK = new Set(['/v1/devices/import/preview'])
+/**
+ * POSTs that HAND OFF rather than complete: the response says the work is queued, not done.
+ * 202 is the whole contract here — a client that reads 200 concludes the device is already erased
+ * and stops polling. The heuristic cannot see this (the path shape is an ordinary item action), so
+ * the status is listed, and the shape's 200 is dropped rather than sitting alongside it.
+ */
+const POST_ACCEPTED: Record<string, { description: string }> = {
+  '/v1/devices/{id}/erase': { description: 'Accepted — erase queued; the device is not yet erased' },
+}
+/**
+ * Response headers worth documenting. The trips lists have no cursor: they cap (500 default, 5000
+ * max) and signal a possibly-incomplete page in a header, which is invisible to anyone reading only
+ * the document — so it is declared here rather than left as folklore.
+ */
+const TRUNCATION_HEADER = {
+  'X-Result-Truncated': {
+    description: 'Present and "true" when the page hit the row cap, so the range may be incomplete. Narrow from/to to see the rest — this list has no cursor.',
+    schema: { type: 'string', enum: ['true'] },
+  },
+}
+const RESPONSE_HEADERS: Record<string, Record<string, unknown>> = {
+  '/v1/trips': TRUNCATION_HEADER,
+  '/v1/devices/{id}/trips': TRUNCATION_HEADER,
+}
+
+/** Statuses a specific operation can return beyond its shape's set (throttles, conflicts, outages). */
+const EXTRA: Record<string, Record<string, { description: string }>> = {
+  '/v1/devices': {
+    '409': { description: 'IMEI already registered, or a create for it is already in flight' },
+    '429': { description: 'Rate limited — per-tenant device creation ceiling; honour Retry-After' },
+  },
+  '/v1/devices/import': {
+    '409': { description: 'IMEI already registered, or a create for it is already in flight' },
+    '429': { description: 'Rate limited — per-tenant device creation ceiling; honour Retry-After' },
+  },
+  '/v1/devices/{id}/sms': {
+    '429': { description: 'Rate limited — per-device / per-tenant / platform SMS quota' },
+    '503': { description: 'SMS gateway not configured' },
+  },
+  '/v1/devices/{id}/erase': {
+    '409': { description: 'Device retired too recently to erase' },
+    '503': { description: 'GDPR job queue not configured' },
+  },
+  '/v1/accounts/{id}': { '409': { description: 'Account still has users' } },
+  // 200 AND 201: an export request that finds one already pending returns THAT row, unchanged, with
+  // 200 — a double-click must not pile up full-history files on disk. Declaring only the 201 is the
+  // exact defect this response work exists to remove, on the branch a real client meets most often.
+  '/v1/accounts/{id}/export': { '200': { description: 'An export was already pending — that job is returned unchanged' } },
 }
 // GET accepts a JWT or an API key; writes require the JWT (API keys are read-only).
 const READ_SEC: Record<string, string[]>[] = [{ bearerAuth: [] }, { apiKeyAuth: [] }]
 const WRITE_SEC: Record<string, string[]>[] = [{ bearerAuth: [] }]
 
-function op(entity: string, method: string, path: string, params: string[]): Operation {
+/** The role every API key resolves to (auth/apiKey.ts). A route whose policy excludes it is
+ *  JWT-only however read-only it looks, so the document must not offer apiKeyAuth on it. */
+const API_KEY_ROLE = 'viewer'
+
+function op(
+  entity: string,
+  method: string,
+  rawPath: string,
+  params: string[],
+  opts: { roles?: readonly string[] } = {},
+): Operation {
   const read = method === 'get'
+  // C21: the summary is part of the published document — it must speak OpenAPI's `{id}`, not
+  // Hono's `:id`. Both forms used to render side by side on the docs page.
+  const { path } = toPath(rawPath)
+  // C11: security followed the HTTP verb alone, so ~27 GETs advertised apiKeyAuth while their
+  // READ_POLICY excludes `viewer` — every one of them 403s a key. Offer it only where a key can
+  // actually be used.
+  const keyMayRead = read && (opts.roles === undefined || opts.roles.includes(API_KEY_ROLE))
+  const isCreate = method === 'post' && (params.length > 0 ? POST_CREATES_ON_ITEM_PATH.has(path) : !POST_RETURNS_OK.has(path))
+  const base = read
+    ? params.length > 0
+      ? RESPONSES.readItem
+      : RESPONSES.readCollection
+    : method === 'delete'
+      ? RESPONSES.remove
+      : method === 'patch' || method === 'put'
+        ? RESPONSES.update
+        : isCreate
+          // an item-path create can still 404 on the parent it hangs off
+          ? { ...RESPONSES.create, ...(params.length > 0 ? R.notFound : {}) }
+          : params.length > 0
+            ? RESPONSES.action
+            // a collection-path POST that computes rather than creates (import/preview): 200, no 404
+            : { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden }
   return {
     tags: [entity],
     summary: `${method.toUpperCase()} ${path}`,
-    security: read ? READ_SEC : WRITE_SEC,
+    security: keyMayRead ? READ_SEC : WRITE_SEC,
     ...(params.length > 0 ? { parameters: pathParams(params) } : {}),
-    responses: read
-      ? RESPONSES.read
-      : // device creation is metered per tenant (DEVICE_CREATE_MAX_PER_WINDOW), so these two can
-        // answer 429 with Retry-After where no other write does. A client that ignores it and
-        // retries hard sees the same 429 for the rest of the window.
-        path === '/v1/devices' || path === '/v1/devices/import'
-        ? { ...RESPONSES.write, '429': { description: 'Rate limited — per-tenant device creation ceiling; honour Retry-After' } }
-        : RESPONSES.write,
+    // EXTRA is per operation and WRITES ONLY: keyed on the path alone it leaked a device-creation
+    // 409/429 onto GET /v1/devices — a read that can return neither, i.e. the very defect this
+    // response work exists to remove, reintroduced on a different verb.
+    responses: (() => {
+      const out: Record<string, { description: string; headers?: Record<string, unknown> }> =
+        !read && EXTRA[path] !== undefined ? { ...base, ...EXTRA[path] } : { ...base }
+      const accepted = method === 'post' ? POST_ACCEPTED[path] : undefined
+      if (accepted !== undefined) {
+        delete out['200']
+        out['202'] = accepted
+      }
+      const hdrs = read ? RESPONSE_HEADERS[path] : undefined
+      const ok = out['200']
+      if (hdrs !== undefined && ok !== undefined) out['200'] = { ...ok, headers: hdrs }
+      return out
+    })(),
   }
 }
 
@@ -66,7 +207,7 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
 
   for (const m of manifest) {
     const { params } = toPath(m.path)
-    add(m.method, m.path, op(m.entity, m.method, m.path, params))
+    add(m.method, m.path, op(m.entity, m.method, m.path, params, { roles: m.roles }))
   }
 
   // curated non-manifest routes (registered outside the CRUD manifest)
@@ -75,13 +216,13 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
   // logout is PUBLIC (no auth middleware): it clears the refresh cookie and best-effort revokes
   // its family, returning 200 to any caller — so it advertises no security requirement.
   add('post', '/v1/auth/logout', { tags: ['auth'], summary: 'Revoke the refresh family', security: [], responses: { '200': { description: 'OK' } } })
-  add('get', '/v1/auth/me', { tags: ['auth'], summary: 'Current user', security: WRITE_SEC, responses: RESPONSES.read })
-  add('post', '/v1/auth/password', { tags: ['auth'], summary: 'Change own password', security: WRITE_SEC, responses: RESPONSES.write })
+  add('get', '/v1/auth/me', { tags: ['auth'], summary: 'Current user', security: WRITE_SEC, responses: RESPONSES.readCollection })
+  add('post', '/v1/auth/password', { tags: ['auth'], summary: 'Change own password', security: WRITE_SEC, responses: { ...R.ok, ...R.badRequest, ...R.unauth, '429': { description: 'Rate limited — per-user password-change ceiling' } } })
   // ws-ticket is mounted under /v1/* which accepts EITHER a JWT or an X-Api-Key → READ_SEC (both)
-  add('get', '/v1/ws-ticket', { tags: ['live'], summary: 'Single-use WebSocket ticket', security: READ_SEC, responses: RESPONSES.read })
-  add('get', '/v1/devices/last', { tags: ['device'], summary: 'Last-known position snapshot', security: READ_SEC, responses: RESPONSES.read })
-  add('get', '/v1/profiles', { tags: ['device'], summary: 'Device profiles (global reference data)', security: READ_SEC, responses: RESPONSES.read })
-  add('get', '/v1/branding', { tags: ['tenant'], summary: 'Public branding by Host', security: [], responses: RESPONSES.read })
+  add('get', '/v1/ws-ticket', { tags: ['live'], summary: 'Single-use WebSocket ticket', security: READ_SEC, responses: RESPONSES.readCollection })
+  add('get', '/v1/devices/last', { tags: ['device'], summary: 'Last-known position snapshot', security: READ_SEC, responses: RESPONSES.readCollection })
+  add('get', '/v1/profiles', { tags: ['device'], summary: 'Device profiles (global reference data)', security: READ_SEC, responses: RESPONSES.readCollection })
+  add('get', '/v1/branding', { tags: ['tenant'], summary: 'Public branding by Host', security: [], responses: RESPONSES.readCollection })
   add('post', '/v1/public/pilot-request', { tags: ['public'], summary: 'Pilot request from the marketing site (rate-limited, honeypotted)', security: [], responses: { ...RESPONSES.publicPost, '201': { description: 'Created' } } })
   // The three self-serve signup endpoints. Their RESPONSE CODES are part of the security contract,
   // not an implementation detail: signup answers 201 whether or not the address is already
@@ -110,9 +251,19 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
     summary: 'Run a report (trips/mileage/stops/overspeed/geofence/engine_hours)',
     security: READ_SEC,
     parameters: pathParams(['type']),
-    responses: RESPONSES.read,
+    // the real outcomes, checked against routes/reports.ts: an unknown {type} is the FIRST branch and
+    // answers 404; an impossible range or an out-of-scope account is 400; an X-Api-Key whose tenant
+    // lacks apiAccess is 403 from the /v1/* middleware; the per-user limiter answers 429; and a
+    // deployment without the raw-SQL pool answers 503.
+    responses: {
+      ...R.ok, ...R.badRequest, ...R.unauth,
+      '403': { description: 'API key whose tenant lacks the apiAccess entitlement' },
+      '404': { description: 'Unknown report type' },
+      '429': { description: 'Rate limited — per-user report ceiling' },
+      '503': { description: 'Reporting unavailable (no database pool)' },
+    },
   })
-  add('get', '/v1/driver-scores', { tags: ['driver'], summary: 'Driver safety scores over a window (V2)', security: READ_SEC, responses: RESPONSES.read })
+  add('get', '/v1/driver-scores', { tags: ['driver'], summary: 'Driver safety scores over a window (V2)', security: READ_SEC, responses: RESPONSES.readCollection })
   add('post', '/v1/routing/optimize', {
     tags: ['routing'],
     summary: 'Optimize a multi-stop route (self-hosted OSRM trip, ADR-029)',
@@ -134,16 +285,16 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
 
   // billing (Stripe, ADR-024) — tenant-admin only, so JWT-only (an API key is 403). The webhook
   // is public (Stripe carries no JWT; it is signature-verified instead).
-  add('get', '/v1/billing', { tags: ['billing'], summary: 'Billing/subscription status', security: WRITE_SEC, responses: RESPONSES.read })
-  add('get', '/v1/billing/plans', { tags: ['billing'], summary: 'Available subscription plans', security: WRITE_SEC, responses: RESPONSES.read })
-  add('post', '/v1/billing/checkout', { tags: ['billing'], summary: 'Start a Stripe Checkout session', security: WRITE_SEC, responses: { ...RESPONSES.write, '409': { description: 'Already subscribed' }, '503': { description: 'Billing not configured' } } })
-  add('post', '/v1/billing/portal', { tags: ['billing'], summary: 'Open the Stripe billing portal', security: WRITE_SEC, responses: { ...RESPONSES.write, '409': { description: 'No customer' }, '503': { description: 'Billing not configured' } } })
+  add('get', '/v1/billing', { tags: ['billing'], summary: 'Billing/subscription status', security: WRITE_SEC, responses: RESPONSES.readCollection })
+  add('get', '/v1/billing/plans', { tags: ['billing'], summary: 'Available subscription plans', security: WRITE_SEC, responses: RESPONSES.readCollection })
+  add('post', '/v1/billing/checkout', { tags: ['billing'], summary: 'Start a Stripe Checkout session', security: WRITE_SEC, responses: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden, '409': { description: 'Already subscribed' }, '503': { description: 'Billing not configured' } } })
+  add('post', '/v1/billing/portal', { tags: ['billing'], summary: 'Open the Stripe billing portal', security: WRITE_SEC, responses: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden, '409': { description: 'No customer' }, '503': { description: 'Billing not configured' } } })
   add('post', '/v1/webhooks/stripe', { tags: ['billing'], summary: 'Stripe webhook (signature-verified, no auth header)', security: [], responses: { '200': { description: 'OK' }, '400': { description: 'Invalid signature' }, '503': { description: 'Billing not configured' } } })
 
   // web push (ADR-026) — subscribe/unsubscribe MUTATE → JWT writers only; vapid-key is a safe read.
-  add('get', '/v1/push/vapid-key', { tags: ['push'], summary: 'VAPID public key for PushManager.subscribe', security: READ_SEC, responses: RESPONSES.read })
-  add('post', '/v1/push/subscribe', { tags: ['push'], summary: 'Register a browser push subscription', security: WRITE_SEC, responses: RESPONSES.write })
-  add('post', '/v1/push/unsubscribe', { tags: ['push'], summary: 'Remove a browser push subscription', security: WRITE_SEC, responses: RESPONSES.write })
+  add('get', '/v1/push/vapid-key', { tags: ['push'], summary: 'VAPID public key for PushManager.subscribe', security: READ_SEC, responses: RESPONSES.readCollection })
+  add('post', '/v1/push/subscribe', { tags: ['push'], summary: 'Register a browser push subscription', security: WRITE_SEC, responses: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden } })
+  add('post', '/v1/push/unsubscribe', { tags: ['push'], summary: 'Remove a browser push subscription', security: WRITE_SEC, responses: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden } })
 
   // PUBLIC temporary share-link resolver (E03-5) — the token IS the capability; no auth.
   add('get', '/v1/public/share/{token}', {

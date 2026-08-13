@@ -41,6 +41,25 @@ STRIPE_INCLUDED=price_1TtAmhDn0hX6WL8dNH1SVNyT:200,price_1TtAmiDn0hX6WL8dTT0Ki7H
 ```
 (TSP base monthly+yearly both map to the same overage price + included count.)
 
+## `STRIPE_PLAN_MAP` (base → tenant plan) — the one that was missing
+
+**This variable was absent from this runbook until 2026-08-13, and therefore absent from the
+server.** `planFor` then returns undefined for every price, so a successful checkout never writes
+the tenant's plan: the customer is billed in full and silently keeps the TRIAL entitlements — no API
+access, no SMS gateway, no white-label. Stripe reports success, the webhook returns 200, and nothing
+anywhere says otherwise. It must also be listed in the **api** service env map in
+`infra/compose/docker-compose.apps.yml`, or it never reaches the process (audit 2026-08-13, PR #202).
+
+Every price in the `STRIPE_PRICES` allowlist needs an entry — both the monthly and the yearly id of
+a tier map to the same plan. An unknown plan string is dropped by the parser rather than written,
+so a typo fails the same silent way as omission.
+
+```
+STRIPE_PLAN_MAP=price_1TtAmYDn0hX6WL8d8xxAMGq1:direct_5,price_1TtAmZDn0hX6WL8d4qBJ1GgM:direct_5,price_1TtAmaDn0hX6WL8d1SOxJP5e:direct_10,price_1TtAmbDn0hX6WL8dd7Q4hDaQ:direct_10,price_1TtAmcDn0hX6WL8dAklBgPtS:direct_25,price_1TtAmcDn0hX6WL8dzGWI0i93:direct_25,price_1TtAmeDn0hX6WL8d7xyIUN85:direct_50,price_1TtAmeDn0hX6WL8dj2qcwO5d:direct_50,price_1TtAmgDn0hX6WL8dwuKbOe92:direct_100,price_1TtAmgDn0hX6WL8ddo1HSkE7:direct_100,price_1TtAmhDn0hX6WL8dNH1SVNyT:tsp_start,price_1TtAmiDn0hX6WL8dTT0Ki7Hv:tsp_start,price_1TtAmkDn0hX6WL8dq9DzMnGj:tsp_grow,price_1TtAmkDn0hX6WL8dFDPl7wdZ:tsp_grow,price_1TtAmmDn0hX6WL8dTgThzpEU:tsp_scale,price_1TtAmmDn0hX6WL8dnmyBGbFy:tsp_scale
+```
+
+`tsp_enterprise` has no entry on purpose: it is sales-led and has no self-serve price.
+
 ## `STRIPE_PRICES` allowlist (the 16 subscribable base/flat prices)
 ```
 price_1TtAmYDn0hX6WL8d8xxAMGq1,price_1TtAmZDn0hX6WL8d4qBJ1GgM,price_1TtAmaDn0hX6WL8d1SOxJP5e,price_1TtAmbDn0hX6WL8dd7Q4hDaQ,price_1TtAmcDn0hX6WL8dAklBgPtS,price_1TtAmcDn0hX6WL8dzGWI0i93,price_1TtAmeDn0hX6WL8d7xyIUN85,price_1TtAmeDn0hX6WL8dj2qcwO5d,price_1TtAmgDn0hX6WL8dwuKbOe92,price_1TtAmgDn0hX6WL8ddo1HSkE7,price_1TtAmhDn0hX6WL8dNH1SVNyT,price_1TtAmiDn0hX6WL8dTT0Ki7Hv,price_1TtAmkDn0hX6WL8dq9DzMnGj,price_1TtAmkDn0hX6WL8dFDPl7wdZ,price_1TtAmmDn0hX6WL8dTgThzpEU,price_1TtAmmDn0hX6WL8dnmyBGbFy

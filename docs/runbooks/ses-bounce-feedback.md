@@ -49,8 +49,21 @@ the rest of this guide fixes, but it stops one bad address becoming ten bounces.
 | Display name | leave blank |
 
 Everything else stays default. Press Create and **copy the ARN** — it looks like
-`arn:aws:sns:eu-central-1:123456789012:orbetra-ses-events`. You will not need to paste it anywhere if
-you use the console in step 3, but keep it for the verification step.
+`arn:aws:sns:eu-central-1:123456789012:orbetra-ses-events` (the middle number is your AWS account id,
+shown in the console's top-right account menu).
+
+**Keep it — you WILL need to paste it.** The endpoint accepts feedback from this one topic only, and
+refuses everything when the value is missing, so it goes into `/opt/orbetra/.env` as
+`SES_SNS_TOPIC_ARN=…` before step 7 (see the warning there). A signature alone cannot be trusted:
+the same regional certificate signs every AWS customer's topics, so without this binding anyone with
+an AWS account could publish a fake bounce for any address of ours.
+
+Lost it later? **SNS console → Topics →** `orbetra-ses-events` — the ARN is at the top of the detail
+page. Or from a shell with AWS credentials:
+
+```sh
+aws sns list-topics --region eu-central-1 --query "Topics[?contains(TopicArn,'orbetra-ses-events')].TopicArn" --output text
+```
 
 ---
 
@@ -156,6 +169,36 @@ Step 4 (`SES_CONFIG_SET=orbetra-prod`) is already set on the server.
 ---
 
 ## 7 — Subscribe the topic to our endpoint (AFTER the endpoint is deployed)
+
+> **⚠️ THE FEED IS ALREADY LIVE. Set `SES_SNS_TOPIC_ARN` BEFORE the next API deploy, not just
+> before subscribing.**
+>
+> Steps 1–7 were completed earlier and verified with the SES simulator — a bounce for
+> `bounce@simulator.amazonses.com` reached the endpoint and landed in `email_suppressions` on
+> 2026-08-10. The subscription is confirmed and delivering.
+>
+> That means the topic check does not merely delay a feature that never started: **an api deploy
+> without this variable stops a working one.** Every notification answers 403, SNS retries into those
+> 403s, and after enough failures AWS disables the subscription — which then has to be recreated by
+> hand. The api logs an explicit error at boot when the variable is missing, so the failure is at
+> least visible in `docker logs orbetra-api-1` rather than silent.
+>
+> Get the ARN from **SNS console → Topics → `orbetra-ses-events`** (top of the detail page), put it in
+> `/opt/orbetra/.env`, restart the api, and only then deploy.
+> The endpoint accepts messages from exactly one topic. A valid AWS signature only proves *AWS* sent
+> the message: the same regional certificate signs every AWS customer's topics, so without this
+> binding anyone with an AWS account could publish a fake "permanent bounce" for any address and have
+> it blackholed platform-wide (audit C2). The check therefore **fails closed** — with the variable
+> unset the API refuses everything with 403, *including the subscription handshake below*, and the
+> subscription will sit at **Pending confirmation** forever.
+>
+> ```sh
+> # on the server, in /opt/orbetra/.env — copy the ARN from step 1
+> SES_SNS_TOPIC_ARN=arn:aws:sns:eu-central-1:<account-id>:orbetra-ses-events
+> ```
+> Restart the api container, then create the subscription. A wrong ARN logs
+> `SES: refused message from an unexpected SNS topic` — distinct from the signature refusal, so the
+> two failures are never confused.
 
 **SNS → Topics → `orbetra-ses-events` → Create subscription**
 
