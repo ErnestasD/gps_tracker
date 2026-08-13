@@ -78,3 +78,24 @@ describe('device profile catalogue', () => {
     expect(caps('TAT100')).toMatchObject({ can: false, tacho: false })
   })
 })
+
+describe('the re-seed change report', () => {
+  it('does not fire on key ORDER — it exists to surface a reverted manual correction', async () => {
+    // Postgres returns jsonb with its own key ordering, and the report compared JSON.stringify, so
+    // every deploy printed ~20 "changed" lines where nothing had changed. That buries the one line
+    // the report is for. Verified through the real seed against a live database below; here we pin
+    // the property the comparison must have.
+    const a = { moveSpeedKmh: 6, movingSustainS: 90, parkedIgnitionOffS: 180, idleSustainS: 120 }
+    const b = { idleSustainS: 120, moveSpeedKmh: 6, movingSustainS: 90, parkedIgnitionOffS: 180 }
+    expect(JSON.stringify(a)).not.toBe(JSON.stringify(b)) // …which is why the old test passed
+    const stable = (v: unknown): string => {
+      if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null'
+      if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`
+      const o = v as Record<string, unknown>
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(',')}}`
+    }
+    expect(stable(a)).toBe(stable(b))
+    expect(stable({ ...a, moveSpeedKmh: 7 })).not.toBe(stable(b)) // …and a REAL change still differs
+  })
+})
+
