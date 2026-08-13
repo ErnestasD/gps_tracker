@@ -1,0 +1,21 @@
+{
+  "name": "@orbetra/hw-check",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "check": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@orbetra/codec": "workspace:*",
+    "@orbetra/db": "workspace:*",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0",
+    "eslint": "^9.30.0",
+    "typescript": "^5.8.0"
+  }
+}

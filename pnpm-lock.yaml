@@ -558,6 +558,28 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
 
+  tools/hw-check:
+    dependencies:
+      '@orbetra/codec':
+        specifier: workspace:*
+        version: link:../../packages/codec
+      '@orbetra/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      pg:
+        specifier: ^8.13.0
+        version: 8.22.0
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.0
+        version: 8.20.0
+      eslint:
+        specifier: ^9.30.0
+        version: 9.39.4(jiti@2.7.0)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   tools/loadtest:
     dependencies:
       '@orbetra/ingest':
