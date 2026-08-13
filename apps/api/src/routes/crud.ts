@@ -683,7 +683,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           }
           await activateDevice(deps.redis, {
             id: device.id, imei: device.imei, tenantId: a.tenantId, accountId,
-            config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource }, // E04-5
+            config: { presenceRules: profile.presenceRules, odometerSource: device.odometerSource, avlTable: profile.avlTable }, // E04-5
           })
           created = 1 // the row exists; the reservation is now a real charge
           return json(c, device, 201)
@@ -702,7 +702,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // (skip a retired device — it's out of the registry; syncing would leave an orphan key)
         if (row.retiredAt === null && (data.odometerSource !== undefined || data.profileId !== undefined)) {
           const profile = await db.profiles.get(row.profileId)
-          await syncDeviceConfig(deps.redis, row.id, profile?.presenceRules, row.odometerSource)
+          await syncDeviceConfig(deps.redis, row.id, profile?.presenceRules, row.odometerSource, profile?.avlTable)
         }
         return json(c, row)
       } },
@@ -741,10 +741,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (device === null) return problem(c, 404, 'Not Found')
         if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
         const q = c.req.query.bind(c.req)
+        // the profile's table decides AVL 89's scale — fm36 documents it ×0.1 (see fuel.ts)
+        const fuelProfile = await db.profiles.get(device.profileId)
         return json(c, await readFuelSeries(deps.pool, device.id, {
           ...(q('from') !== undefined ? { from: q('from')! } : {}),
           ...(q('to') !== undefined ? { to: q('to')! } : {}),
           ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
+          ...(fuelProfile !== null ? { avlTable: fuelProfile.avlTable } : {}),
         }))
       } },
     // device-health series + summary (V1-nice) — GSM/voltage trend, last-seen, firmware
@@ -755,10 +758,14 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (device === null) return problem(c, 404, 'Not Found')
         if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
         const q = c.req.query.bind(c.req)
+        // the profile's table decides AVL 66's scale — FMB930 reports external voltage on a
+        // different factor and the wiki instructs the backend to correct it (see health.ts)
+        const healthProfile = await db.profiles.get(device.profileId)
         const series = await readHealthSeries(deps.pool, device.id, {
           ...(q('from') !== undefined ? { from: q('from')! } : {}),
           ...(q('to') !== undefined ? { to: q('to')! } : {}),
           ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
+          ...(healthProfile !== null ? { avlTable: healthProfile.avlTable } : {}),
         })
         // firmware = newest acked getver response (E08-2 commands)
         const cmds = await db.commands.listForDevice(scope, device.id)
@@ -880,7 +887,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
             host: target.host,
             port: target.port,
             ...(apnRaw !== undefined ? { apn: apnRaw } : {}),
-            ...(profile !== null ? { family: profile.key } : {}),
+            ...(profile !== null ? { family: profile.key, legacyProfile: profile.legacy } : {}),
           }),
           smsEnabled: deps.sms !== undefined,
         })
@@ -950,7 +957,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           host: target.host,
           port: target.port,
           ...(data.apn !== undefined ? { apn: data.apn } : {}),
-          ...(profile !== null ? { family: profile.key } : {}),
+          ...(profile !== null ? { family: profile.key, legacyProfile: profile.legacy } : {}),
         })
         // smsAuto = APN (when supplied) + server params in ONE setparam, so a device with no
         // auto-APN gets data AND the server address from a single SMS (server-only when no APN)

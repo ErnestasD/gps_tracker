@@ -36,6 +36,9 @@ beforeAll(async () => {
   await seed(7, 3, { 'GSM Signal': 'x', 'External Voltage': 'NaN' }) // garbage → skipped
   await seed(7, 4, { odometer: 1000 }) // no health keys → not selected
   await seed(8, 0, { 'GSM Signal': 2 }) // another device — must not leak
+  await seed(9, 0, { 'GSM level': 4, 'External Power Voltage': 12400 }) // fm36's spellings
+  await seed(9, 1, { 'GSM signal': 3 }) // atc700's spelling
+  await seed(10, 0, { 'External Voltage': 126 }) // FMB930: its own factor, see extVoltageScale
 }, 240_000)
 
 afterAll(async () => { await pool?.end(); await container?.stop() })
@@ -49,6 +52,22 @@ describe('V1-nice readHealthSeries', () => {
       [5, null, null],  // GSM only
       // garbage row skipped; no-health row not selected
     ])
+  })
+
+  it('reads EVERY spelling of an id whose meaning is constant across tables', async () => {
+    // The attrs key is the device's OWN table's name now. id 21 is "GSM Signal" on 32 tables,
+    // "GSM signal" on atc700 and "GSM level" on fm36; id 66 is "External Voltage" on 21 and
+    // "External Power Voltage" on fm36. One spelling sufficed only while every device decoded as
+    // FMB120 — without the union, an FM36 or ATC700 health chart is blank with no error.
+    expect((await readHealthSeries(pool, 9n)).map((r) => [r.gsm, r.extV])).toEqual([[4, 12.4], [3, null]])
+  })
+
+  it('scales AVL 66 by the MODEL — FMB930 reports it on a different factor', async () => {
+    // The wiki says so itself: "FMB930 shows external voltage 10 times lower than it actually is.
+    // Multiply the value by 10 at the backend." Effective factor 0.01 × 10 = 0.1. Applying the
+    // usual 0.001 renders a 12.6 V vehicle battery as 0.126 V.
+    expect((await readHealthSeries(pool, 10n, { avlTable: 'fmb930' }))[0]?.extV).toBeCloseTo(12.6)
+    expect((await readHealthSeries(pool, 10n))[0]?.extV).toBeCloseTo(0.126) // unattributed → majority factor
   })
 
   it('scopes strictly by device id', async () => {

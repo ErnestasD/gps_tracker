@@ -96,7 +96,11 @@ function ClaimDialog({ entry, onClose, onClaimed }: { entry: QuarantineEntry; on
   const tid = tenantId || tenants.data?.[0]?.id || ''
   const accounts = useQuery({ queryKey: ['tenant-accounts', tid], queryFn: () => listTenantAccounts(tid), enabled: tid !== '' })
   const acc = accountId || accounts.data?.[0]?.id || ''
-  const prof = profileId || profiles.data?.[0]?.id || ''
+  // fmb120, not profiles[0]. With 105 models the alphabetical first is ATC700 — a 40-id battery
+  // asset table — so an operator who claims a quarantined FMB120 without touching the dropdown
+  // gets every IO element decoded as io_<id> and a blank health/CAN panel, written durably. The
+  // create form already fell back this way; this is the same product decision on the FASTER path.
+  const prof = profileId || profiles.data?.find((p) => p.key === 'fmb120')?.id || profiles.data?.[0]?.id || ''
 
   const submit = () => {
     setBusy(true)

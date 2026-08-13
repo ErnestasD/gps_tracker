@@ -1,0 +1,3 @@
+# Fetched wiki pages. ~89 MB of HTML that the generator only needs to avoid refetching; the
+# dictionaries it produces ARE the artefact and they are committed. Never in git.
+.cache/

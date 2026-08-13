@@ -65,7 +65,7 @@ interface SeedResult {
 async function seedDirectDemo(
   db: Db,
   redis: Redis,
-  profile: { id: string; presenceRules: unknown },
+  profile: { id: string; presenceRules: unknown; avlTable: string },
   passwordHash: string,
   log: (line: string) => void,
 ): Promise<SeedResult['direct']> {
@@ -93,7 +93,7 @@ async function seedDirectDemo(
     }
     try {
       const dev = await db.devices.create(scope, ACTOR, { accountId, profileId: profile.id, imei, name: `Direct Van ${String(i + 1).padStart(2, '0')}`, plate: `DIR ${100 + i}` })
-      await activateDevice(redis, { id: dev.id, imei, tenantId: tenant.id, accountId, config: { presenceRules: profile.presenceRules ?? {}, odometerSource: 'auto' } })
+      await activateDevice(redis, { id: dev.id, imei, tenantId: tenant.id, accountId, config: { presenceRules: profile.presenceRules ?? {}, odometerSource: 'auto', avlTable: profile.avlTable } })
       created++
     } catch (err) {
       if (err instanceof DuplicateImeiError) {
@@ -152,8 +152,12 @@ export async function seedDemo(opts: {
 
     // device profiles + fleet
     await seedProfiles(opts.databaseUrl)
-    const profile = (await db.profiles.list()).find((p) => p.key === 'fmb1xx')
-    if (profile === undefined) throw new Error('fmb1xx profile missing after seed')
+    // `fmb120`, the model, not `fmb1xx`, the retired family row. Profiles became per-MODEL, and the
+    // four family rows are now legacy — kept because live devices reference them, hidden from
+    // `list()`, which is the picker's list. The demo fleet should look like a fleet an operator
+    // would actually create.
+    const profile = (await db.profiles.list()).find((p) => p.key === 'fmb120')
+    if (profile === undefined) throw new Error('fmb120 profile missing after seed — run the profile seed first')
     const { devices, drives } = planDemoFleet(nowMs)
     let created = 0
     let existing = 0
@@ -168,7 +172,7 @@ export async function seedDemo(opts: {
       try {
         const dev = await db.devices.create(scope, ACTOR, { accountId, profileId: profile.id, imei: spec.imei, name: spec.name, plate: spec.plate })
         // same config shape the CRUD path syncs (profile presence rules, not hardcoded)
-        await activateDevice(redis, { id: dev.id, imei: spec.imei, tenantId: tenant.id, accountId, config: { presenceRules: profile.presenceRules ?? {}, odometerSource: 'auto' } })
+        await activateDevice(redis, { id: dev.id, imei: spec.imei, tenantId: tenant.id, accountId, config: { presenceRules: profile.presenceRules ?? {}, odometerSource: 'auto', avlTable: profile.avlTable } })
         created++
       } catch (err) {
         if (err instanceof DuplicateImeiError) {

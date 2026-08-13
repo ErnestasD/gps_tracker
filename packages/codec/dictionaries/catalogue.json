@@ -1,0 +1,425 @@
+{
+ "retrieved_at": "2026-08-12",
+ "models": [
+  {
+   "model": "ATC700",
+   "dictionary": "atc700"
+  },
+  {
+   "model": "ATC704",
+   "dictionary": "atc704"
+  },
+  {
+   "model": "ATC774",
+   "dictionary": "atc774"
+  },
+  {
+   "model": "ATM700",
+   "dictionary": "atc700"
+  },
+  {
+   "model": "ATM704",
+   "dictionary": "atc704"
+  },
+  {
+   "model": "FM3001",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FM36",
+   "dictionary": "fm36"
+  },
+  {
+   "model": "FM3612",
+   "dictionary": "fm36"
+  },
+  {
+   "model": "FM36M1",
+   "dictionary": "fm36"
+  },
+  {
+   "model": "FM6300",
+   "dictionary": "fm6300"
+  },
+  {
+   "model": "FMB001",
+   "dictionary": "fmb001"
+  },
+  {
+   "model": "FMB002",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB003",
+   "dictionary": "fmb001"
+  },
+  {
+   "model": "FMB010",
+   "dictionary": "fmb010"
+  },
+  {
+   "model": "FMB020",
+   "dictionary": "fmb010"
+  },
+  {
+   "model": "FMB110",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB120",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB122",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB125",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB130",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB140",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB150",
+   "dictionary": "fmb150"
+  },
+  {
+   "model": "FMB202",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB204",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB208",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB209",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB225",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB230",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB240",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB630",
+   "dictionary": "fm6300"
+  },
+  {
+   "model": "FMB640",
+   "dictionary": "fmb640"
+  },
+  {
+   "model": "FMB641",
+   "dictionary": "fmb641"
+  },
+  {
+   "model": "FMB900",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB910",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB920",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB930",
+   "dictionary": "fmb930"
+  },
+  {
+   "model": "FMB962",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB964",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMB965",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC001",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC003",
+   "dictionary": "fmb001"
+  },
+  {
+   "model": "FMC00A",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC125",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC130",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC13A",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC150",
+   "dictionary": "fmc150"
+  },
+  {
+   "model": "FMC225",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC230",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC234",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC250",
+   "dictionary": "fmc250"
+  },
+  {
+   "model": "FMC640",
+   "dictionary": "fmc640"
+  },
+  {
+   "model": "FMC650",
+   "dictionary": "fmc650"
+  },
+  {
+   "model": "FMC800",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMC880",
+   "dictionary": "fmc880"
+  },
+  {
+   "model": "FMC920",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMM001",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMM003",
+   "dictionary": "fmb001"
+  },
+  {
+   "model": "FMM00A",
+   "dictionary": "fmb001"
+  },
+  {
+   "model": "FMM125",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMM130",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMM13A",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMM150",
+   "dictionary": "fmm150"
+  },
+  {
+   "model": "FMM230",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMM250",
+   "dictionary": "fmc250"
+  },
+  {
+   "model": "FMM640",
+   "dictionary": "fmc640"
+  },
+  {
+   "model": "FMM650",
+   "dictionary": "fmm650"
+  },
+  {
+   "model": "FMM800",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMM80A",
+   "dictionary": "fmm80a"
+  },
+  {
+   "model": "FMM880",
+   "dictionary": "fmm880"
+  },
+  {
+   "model": "FMM920",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMP100",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMT100",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMU125",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMU126",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FMU130",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "FTC134",
+   "dictionary": "ftc134"
+  },
+  {
+   "model": "FTC164",
+   "dictionary": "ftc164"
+  },
+  {
+   "model": "FTC305",
+   "dictionary": "ftc305"
+  },
+  {
+   "model": "FTC308",
+   "dictionary": "ftc308"
+  },
+  {
+   "model": "FTC880",
+   "dictionary": "atc774"
+  },
+  {
+   "model": "FTC881",
+   "dictionary": "atc774"
+  },
+  {
+   "model": "FTC887",
+   "dictionary": "ftc887"
+  },
+  {
+   "model": "FTC920",
+   "dictionary": "ftc920"
+  },
+  {
+   "model": "FTC921",
+   "dictionary": "ftc920"
+  },
+  {
+   "model": "FTC924",
+   "dictionary": "ftc924"
+  },
+  {
+   "model": "FTC927",
+   "dictionary": "ftc927"
+  },
+  {
+   "model": "FTC961",
+   "dictionary": "ftc920"
+  },
+  {
+   "model": "FTC965",
+   "dictionary": "ftc924"
+  },
+  {
+   "model": "FTM134",
+   "dictionary": "ftc134"
+  },
+  {
+   "model": "FTM164",
+   "dictionary": "ftc164"
+  },
+  {
+   "model": "FTM305",
+   "dictionary": "ftc305"
+  },
+  {
+   "model": "FTM308",
+   "dictionary": "ftc308"
+  },
+  {
+   "model": "FTM880",
+   "dictionary": "atc774"
+  },
+  {
+   "model": "FTM887",
+   "dictionary": "ftc887"
+  },
+  {
+   "model": "FTM927",
+   "dictionary": "ftm927"
+  },
+  {
+   "model": "GH5200",
+   "dictionary": "gh5200"
+  },
+  {
+   "model": "MSP500",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "MTB100",
+   "dictionary": "fmb120"
+  },
+  {
+   "model": "TAT100",
+   "dictionary": "tat100"
+  },
+  {
+   "model": "TAT140",
+   "dictionary": "tat100"
+  },
+  {
+   "model": "TAT141",
+   "dictionary": "tat100"
+  },
+  {
+   "model": "TAT240",
+   "dictionary": "tat100"
+  },
+  {
+   "model": "TFT100",
+   "dictionary": "tft100"
+  },
+  {
+   "model": "TMT250",
+   "dictionary": "gh5200"
+  },
+  {
+   "model": "TST100",
+   "dictionary": "tst100"
+  }
+ ]
+}

@@ -14,7 +14,7 @@ import { runScenario, liveDrive, bufferedFlood } from '@orbetra/simulator'
 import { migrate } from '@orbetra/db/sql/migrate.js'
 
 import { ShardConsumer } from '../src/consumer.js'
-import { ShardLeaser, leaseKey, ownsShardLease } from '../src/shards.js'
+import { PIPELINE_GROUP, ShardLeaser, leaseKey, ownsShardLease } from '../src/shards.js'
 
 const IMEI = '356307042441013'
 const SHARD = Number(BigInt(IMEI) % BigInt(SHARD_COUNT))
@@ -82,6 +82,41 @@ async function ingestRecords(count: number, scenario = liveDrive, startMs = Date
 
 const consumerFor = (workerId: string, extra: Partial<ConstructorParameters<typeof ShardConsumer>[1]> = {}) =>
   new ShardConsumer(SHARD, { redis, pool, hash, workerId, autoclaimMinIdleMs: 100, ...extra })
+
+const cborEnc = new Encoder()
+
+/** XADD one synthetic record per spec, run the shard, and hand back each device's decoded attrs. */
+async function decodeBatch(
+  specs: { deviceId: bigint; io: [number, bigint][] }[],
+  extra: Partial<ConstructorParameters<typeof ShardConsumer>[1]> = {},
+): Promise<Map<string, Record<string, unknown>>> {
+  let t = Date.now() - 600_000
+  for (const spec of specs) {
+    await redis.xadd(
+      `raw:${SHARD}`, '*', 'p',
+      cborEnc.encode({
+        deviceId: spec.deviceId, imei: IMEI, serverTimeMs: Date.now(), tsMs: (t += 1_000), priority: 0,
+        lat: 54.6872, lon: 25.2797, altitude: 100, angle: 0, satellites: 9, speed: 10, eventIoId: 0,
+        io: spec.io, raw: new Uint8Array([1]),
+      }),
+    )
+  }
+  const out = new Map<string, Record<string, unknown>>()
+  const c = consumerFor('w-dict', { onBatch: (records) => { for (const r of records) out.set(r.deviceId.toString(), r.attrs) }, ...extra })
+  await c.ensureGroup()
+  while ((await c.tick()) > 0) void 0
+  return out
+}
+
+const decodeOne = async (io: [number, bigint][]): Promise<Record<string, unknown>> =>
+  (await decodeBatch([{ deviceId: 42n, io }])).get('42') ?? {}
+
+/** Same as decodeOne, but hands back WHY the fallback was used (empty ⇒ the profile's table won). */
+async function fallbackReasons(io: [number, bigint][]): Promise<string[]> {
+  const reasons: string[] = []
+  await decodeBatch([{ deviceId: 42n, io }], { onAvlFallback: (r) => reasons.push(r) })
+  return reasons
+}
 
 describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () => {
   it('I1: ingest-ACKed count == stream entries == rows inserted', async () => {
@@ -346,6 +381,100 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     await short.release()
     await redis.del('shards:lease:0')
   }, 30_000)
+
+  /**
+   * THE DEVICE'S OWN DICTIONARY DECODES IT — not FMB120's.
+   *
+   * `normalize()` has taken a table since the catalogue landed, and until now nothing passed one:
+   * every model in the fleet was decoded with the FMB120 fallback. That is not "unnamed", it is
+   * MISLABELLED, which is worse, because a wrong name looks like data. AVL id 141 is the cleanest
+   * proof: 2 bytes on the wire either way, "Driver 1 Cumulative Break Time" and UNSIGNED on
+   * fmb120, "Battery Temperature" and SIGNED (min −600 = −60.0 °C) on the FMx6xx tables. So the
+   * same 0xFFFF is 65535 minutes on one reading and −0.1 °C on the other — a difference a customer
+   * sees in a column, with nothing to tell them which one they are looking at.
+   */
+  it('a device decodes with the AVL table its PROFILE names, not the fallback', async () => {
+    await redis.hset('device:config', '42', JSON.stringify({ presenceRules: {}, odometerSource: 'device', avlTable: 'fmc650' }))
+    const seen = await decodeOne([[141, 0xffffn]])
+    expect(seen['Battery Temperature']).toBe(-1)
+    expect(seen['Driver 1 Cumulative Break Time']).toBeUndefined()
+  }, 60_000)
+
+  it('…and falls back rather than refusing when the config cannot say', async () => {
+    // Four ways the answer is missing, and none of them may cost a position: no config row at all
+    // (a device activated before this field existed), a config written without it, a corrupt value,
+    // and a table name the codec does not ship (a profile row edited by hand). Dropping the record
+    // would turn a labelling problem into data loss.
+    for (const cfg of [null, JSON.stringify({ presenceRules: {}, odometerSource: 'device' }), 'not json', JSON.stringify({ avlTable: 'fmb999' })]) {
+      await redis.del('device:config')
+      if (cfg !== null) await redis.hset('device:config', '42', cfg)
+      const seen = await decodeOne([[141, 0xffffn]])
+      expect(seen['Driver 1 Cumulative Break Time'], String(cfg)).toBe(65535)
+    }
+  }, 60_000)
+
+  it('every fallback is COUNTED, with the reason — otherwise it is indistinguishable from real data', async () => {
+    // The fallback names and SIGNS every IO element and the result goes durably into
+    // positions.attrs, where nothing recomputes it. A Redis blip therefore produces minutes of
+    // positions whose "Battery Temperature" column is really a break-time counter — plausible,
+    // wrong and permanent. The reasons are separate because the responses are: `redis_error` is an
+    // incident, `no_config` is a device the rehydrate has not reached, `unknown_table` is a bad
+    // profile row someone has to correct.
+    await redis.del('device:config')
+    expect(await fallbackReasons([[141, 1n]])).toEqual(['no_config'])
+
+    await redis.hset('device:config', '42', JSON.stringify({ presenceRules: {}, odometerSource: 'device' }))
+    expect(await fallbackReasons([[141, 1n]])).toEqual(['no_field'])
+
+    await redis.hset('device:config', '42', 'not json')
+    expect(await fallbackReasons([[141, 1n]])).toEqual(['malformed'])
+
+    await redis.hset('device:config', '42', JSON.stringify({ avlTable: 'fmb999' }))
+    expect(await fallbackReasons([[141, 1n]])).toEqual(['unknown_table'])
+
+    // …and the device's own table fires NOTHING. Without this the counter could be a constant.
+    await redis.hset('device:config', '42', JSON.stringify({ presenceRules: {}, odometerSource: 'device', avlTable: 'fmc650' }))
+    expect(await fallbackReasons([[141, 1n]])).toEqual([])
+  }, 60_000)
+
+  it('the table is resolved per DEVICE, so one batch can carry two models', async () => {
+    // The cache is keyed by device id and the resolve is one HMGET for the whole batch; a bug that
+    // resolved once per batch and reused it would be invisible in a single-device test and wrong
+    // for every real shard, which carries every model a tenant owns.
+    await redis
+      .multi()
+      .hset('device:config', '42', JSON.stringify({ presenceRules: {}, odometerSource: 'device', avlTable: 'fmc650' }))
+      .hset('device:config', '43', JSON.stringify({ presenceRules: {}, odometerSource: 'device', avlTable: 'fmb120' }))
+      .exec()
+    const byDevice = await decodeBatch([
+      { deviceId: 42n, io: [[141, 0xffffn]] },
+      { deviceId: 43n, io: [[141, 0xffffn]] },
+    ])
+    expect(byDevice.get('42')?.['Battery Temperature']).toBe(-1)
+    expect(byDevice.get('43')?.['Driver 1 Cumulative Break Time']).toBe(65535)
+  }, 60_000)
+
+  it('a failed batch is RE-DELIVERED to itself, not left for MAXLEN to destroy', async () => {
+    // A transient Postgres error makes process() throw before the XACK, so those entries stay in
+    // this consumer's own PEL. The loop used to read only '>' — new entries — so the only thing
+    // that ever came back for them was XAUTOCLAIM: once per 30 s, COUNT 200, after 60 s idle,
+    // while ingest kept XADDing under MAXLEN ~100000. The stranded entries are deleted out from
+    // under the PEL, and ingest had already ACKed them to the tracker, so the device dropped them
+    // from its buffer. Permanently lost history.
+    await ingestRecords(20)
+    const pool2 = new pg.Pool({ connectionString: `postgresql://postgres:test@${pgC.getHost()}:${pgC.getMappedPort(5432)}/pipe` })
+    await pool2.end() // a pool that rejects every query — stands in for the blip
+    const c = new ShardConsumer(SHARD, { redis, pool: pool2, hash, workerId: 'w-drain', autoclaimMinIdleMs: 3_600_000 })
+    await c.ensureGroup()
+    await expect(c.tick()).rejects.toThrow() // the batch is read, the write fails, nothing is ACKed
+    const pending = (await redis.xpending(`raw:${SHARD}`, PIPELINE_GROUP)) as [number, ...unknown[]]
+    expect(pending[0]).toBeGreaterThan(0) // …and they are sitting in OUR PEL
+
+    // a healthy consumer with the SAME name must get them back without waiting for autoclaim
+    const healthy = new ShardConsumer(SHARD, { redis, pool, hash, workerId: 'w-drain', autoclaimMinIdleMs: 3_600_000 })
+    const own = await healthy.readOwnPendingForTest()
+    expect(own.length).toBe(20)
+  }, 90_000)
 
   it('shard leases are exclusive: second worker cannot claim an owned shard', async () => {
     const l1 = new ShardLeaser(redis, 'w-one', 10_000)

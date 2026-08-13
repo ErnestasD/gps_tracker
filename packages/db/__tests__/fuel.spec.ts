@@ -39,6 +39,7 @@ beforeAll(async () => {
   await seed(7, 1, { io_89: 79, io_84: 412 }) // % + liters (412 raw → 41.2 l)
   await seed(7, 2, { io_84: 405 }) // liters only
   await seed(7, 3, { io_48: 51 }) // OBD % fallback
+  await seed(11, 0, { io_89: 200, io_84: 412 }) // an FM3612: AVL 89 is ×0.1 on ITS table
   await seed(7, 4, { io_89: 'garbage', io_84: 'NaN' }) // fuel keys with junk values → skipped
   await seed(7, 5, { 'GSM Signal': 4 }) // no fuel keys at all → not selected
   await seed(7, 6, { io_89: 76, io_89_note: 'x' })
@@ -51,6 +52,20 @@ afterAll(async () => {
 })
 
 describe('E08-3 readFuelSeries', () => {
+  it('scales AVL 89 by the MODEL — fm36 is the one table that gives it a multiplier', async () => {
+    // 12 tables document id 89 as a plain percent; fm36 (FM36/FM3612/FM36M1) types it "LVCAN Fuel
+    // Level (percentage)", 1 byte, 0…255, multiplier 0.1. A half tank (wire 200 = 20.0 %) came
+    // back as pct 200 and the playback badge printed "200%", while the litres series on the same
+    // panel was right because AVL 84 is ×0.1 on both tables — one fuel panel disagreeing with
+    // itself by a factor of ten.
+    const fm36 = await readFuelSeries(pool, 11n, { avlTable: 'fm36' })
+    expect(fm36[0]?.pct).toBeCloseTo(20)
+    expect(fm36[0]?.liters).toBeCloseTo(41.2)
+    // …and every other model is unchanged
+    expect((await readFuelSeries(pool, 11n))[0]?.pct).toBe(200)
+    expect((await readFuelSeries(pool, 7n, { avlTable: 'fmb120' }))[0]?.pct).toBe(80)
+  })
+
   it('returns the chronological fuel series with wiki unit conversion (84 ×0.1)', async () => {
     const rows = await readFuelSeries(pool, 7n)
     expect(rows.map((r) => [r.pct, r.liters])).toEqual([

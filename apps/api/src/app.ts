@@ -23,6 +23,8 @@ import { createSignupRoute } from './routes/signup.js'
 import { createVerifyEmailRoute } from './routes/verifyEmail.js'
 import { buildRoutes } from './routes/crud.js'
 import { restoreTenantDevices, tenantDevicesKey } from './routes/deviceRegistry.js'
+import type { TenantDeviceRow } from '@orbetra/registry'
+
 import { mountRoutes, toManifest, type ManifestEntry } from './routes/registry.js'
 import { mountReports } from './routes/reports.js'
 import { mountDriverScores } from './routes/driverScores.js'
@@ -69,7 +71,13 @@ export interface ApiDeps extends WsDeps {
   /** a suspended tenant paid and its fleet was restored on the spot (audit MED #22). */
   onTenantRestored?: () => void
   /** override the registry rebuild on restore (tests); production builds it from `redis`. */
-  restoreDevices?: (devices: readonly { id: bigint; imei: string; tenantId: string; accountId: string; presenceRules: unknown; odometerSource: string }[]) => Promise<void>
+  /**
+   * Restore a suspended tenant's fleet. Typed as the REGISTRY's own row rather than an inline
+   * structural copy: two copies of this shape existed and both silently accepted a row missing
+   * `avlTable`, which a restore would then have written as "no dictionary" for the whole fleet.
+   * A shape with a single owner cannot drift from it.
+   */
+  restoreDevices?: (devices: readonly TenantDeviceRow[]) => Promise<void>
   /** a login presented the right password for an unverified account — invisible in the response. */
   onUnverifiedLogin?: () => void
   /** a public signup hit an address that already has an account. Since the response no longer says

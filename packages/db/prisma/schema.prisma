@@ -510,10 +510,21 @@ model EmailVerificationToken {
 }
 
 model DeviceProfile {
-  id             String @id @default(uuid()) @db.Uuid
-  /// seed keys: fmb1xx, fmc, fmb6xx-stub, tat-asset (E03-3)
-  key            String @unique
+  id             String  @id @default(uuid()) @db.Uuid
+  /// model code lower-cased (e.g. `fmc650`); the four pre-catalogue rows keep their family keys
+  key            String  @unique
   name           String
+  /// exact model code as printed on the device, e.g. `FMC650`. Null on the legacy family rows.
+  model          String?
+  /// the generated dictionary that decodes this model (packages/codec/dictionaries/<avlTable>.json).
+  /// ~105 models resolve to ~34 tables: the wiki's master template takes no parameters, so 45 model
+  /// pages render a byte-identical table, while FMB640 shares only 264 ids with FMB120 and 211 of
+  /// those mean something different.
+  avlTable       String  @default("fmb120")
+  /// what the model can do, taken from the wiki rather than from marketing
+  capabilities   Json    @default("{}")
+  /// pre-catalogue family rows: kept because live devices reference them, hidden from the picker
+  legacy         Boolean @default(false)
   /// trip/presence thresholds (§6.4); offline sweeper reads these (§6.5)
   presenceRules  Json   @default("{}")
   commandPresets Json   @default("[]")

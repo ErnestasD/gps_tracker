@@ -4,7 +4,8 @@ import { buildOnboarding } from '../src/onboarding.js'
 
 describe('V1-nice buildOnboarding (SMS device onboarding)', () => {
   it('builds the server-pointing SMS with the empty login+password prefix', () => {
-    const s = buildOnboarding({ imei: '860000000000001', host: 'orbetra.com', port: 5027, family: 'fmb1xx' })
+    // a catalogued MODEL profile — the ordinary case since the picker offers 105 of them
+    const s = buildOnboarding({ imei: '860000000000001', host: 'orbetra.com', port: 5027, family: 'fmb120', legacyProfile: false })
     // two leading spaces = empty login + empty password (Teltonika SMS contract); 2006:0 = TCP
     // (2003 is the APN PASSWORD, not the protocol — must never appear here)
     expect(s.smsServer!).toBe('  setparam 2004:orbetra.com;2005:5027;2006:0')
@@ -49,10 +50,23 @@ describe('V1-nice buildOnboarding (SMS device onboarding)', () => {
     expect(buildOnboarding({ imei: '1', host: 'h', port: 99999 }).port).toBe(5027)
   })
 
-  it('flags an unknown device family with a caveat step', () => {
-    const s = buildOnboarding({ imei: '1', host: 'h', port: 5027, family: 'exotic-x' })
-    expect(s.familyCaveat).toBe(true)
-    expect(s.steps.some((x) => x.includes('may use different parameters'))).toBe(true)
+  it('the caveat means "we do not know this hardware", not "the name is unfamiliar"', () => {
+    // It used to be keyed on a name allow-list holding the three LEGACY family keys — precisely
+    // the ones the picker stopped offering — so every device created through the 105-model picker
+    // was told its parameters might be wrong, including a plain FMB120 whose commands come from
+    // that model's own wiki page. A warning on 100% of devices carries no information.
+    const legacy = buildOnboarding({ imei: '1', host: 'h', port: 5027, family: 'fmb1xx', legacyProfile: true })
+    expect(legacy.familyCaveat).toBe(true)
+    expect(legacy.steps.some((x) => x.includes('may use different parameters'))).toBe(true)
+
+    for (const model of ['fmb120', 'fmc650', 'atc700', 'exotic-x']) {
+      const s = buildOnboarding({ imei: '1', host: 'h', port: 5027, family: model, legacyProfile: false })
+      expect(s.familyCaveat, model).toBe(false)
+      expect(s.steps.some((x) => x.includes('may use different parameters')), model).toBe(false)
+    }
+
+    // …and an omitted flag still warns: unknown is the safe side.
+    expect(buildOnboarding({ imei: '1', host: 'h', port: 5027 }).familyCaveat).toBe(true)
   })
 
   it('rejects a non-ASCII APN (would be mangled over GSM)', () => {

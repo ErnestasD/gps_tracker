@@ -11,7 +11,20 @@ import { isPgSafeDate } from './dateGuard.js'
  *   GSM Signal (AVL 21, 1–5) · External Voltage (AVL 66, V ×0.001) · Battery Voltage (AVL 67, V ×0.001)
  * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
  * normalize() stores these under the dictionary NAME, falling back to io_<id> on a
- * name collision, so the reader coalesces both. Voltages are raw mV — scaled to V here.
+ * name collision, so the reader coalesces both.
+ *
+ * AND ACROSS SPELLINGS, because the name is now the DEVICE'S OWN table's name, not FMB120's.
+ * These three ids mean the same thing on all 34 shipped tables and differ only in how the wiki
+ * types them: id 21 is "GSM Signal" on 32 tables, "GSM signal" on atc700 and "GSM level" on fm36;
+ * id 66 is "External Voltage" on 21 and "External Power Voltage" on fm36; id 67 is "Battery
+ * Voltage" everywhere. Before the profile chose a dictionary every device decoded as FMB120, so one
+ * spelling sufficed — an FM36 or an ATC700 now writes its own, and without these the health chart
+ * for those models goes blank with no error.
+ *
+ * A spelling union is only safe BECAUSE the meaning is constant for these ids. It is NOT safe in
+ * general: id 85 is "Engine RPM" on some tables and "Engine Current Load" on others, id 32 is
+ * "Coolant Temperature" or "Axle 5 Load", id 89 "Fuel Level" or "Axle weight 1". Those need the
+ * device's table, not a wider COALESCE — see the read-path note in README. Voltages are raw mV — scaled to V here.
  * (AVL 168 is ALSO named "Battery Voltage" but is likewise mV, so ×0.001 holds whichever
  * key wins the collision.) jsonb values are coerced defensively in JS (a ::numeric cast on
  * garbage would 500).
@@ -25,6 +38,9 @@ export interface HealthOpts {
   from?: string
   to?: string
   limit?: number
+  /** The device profile's AVL table. Only AVL 66's scale varies by model (see extVoltageScale);
+   *  omitted ⇒ the 20-table majority factor, which is what an unattributed read gets. */
+  avlTable?: string
 }
 
 const MAX_PAGE = 10_000
@@ -41,6 +57,21 @@ interface PgHealthRow {
   bat_mv: string | null
 }
 
+/**
+ * AVL 66 does NOT scale the same on every model, and the wiki says so in its own words.
+ *
+ * 20 tables give it multiplier 0.001 over a 0…30000 mV range. FMB930's page gives 0.01 over
+ * 0…65535 and adds: "Note: FMB930 shows external voltage 10 times lower than it actually is.
+ * Multiply the value by 10 at the backend in order to get an accurate value."
+ * https://wiki.teltonika-gps.com/view/FMB930_Teltonika_Data_Sending_Parameters_ID
+ *
+ * So the effective factor there is 0.01 × 10 = 0.1, and applying the usual 0.001 renders a 12.6 V
+ * vehicle battery as 0.126 V — a number a support agent would quote to a customer. This is a
+ * per-MODEL correction the wiki instructs the backend to make, not an inference of ours; without
+ * the caller naming the table we cannot make it, which is why `avlTable` is threaded through.
+ */
+const extVoltageScale = (avlTable: string | undefined): number => (avlTable === 'fmb930' ? 0.1 : 0.001)
+
 export async function readHealthSeries(pool: Pool, deviceId: bigint, opts: HealthOpts = {}): Promise<HealthSampleView[]> {
   const limit = Math.trunc(Math.min(Math.max(Number.isFinite(opts.limit) ? Number(opts.limit) : MAX_PAGE, 1), MAX_PAGE))
   const params: unknown[] = [deviceId.toString()]
@@ -49,8 +80,8 @@ export async function readHealthSeries(pool: Pool, deviceId: bigint, opts: Healt
   if (isPgSafeDate(opts.to)) where.push(`fix_time <= $${params.push(new Date(opts.to!))}`)
   const res = await pool.query<PgHealthRow>(
     `SELECT fix_time,
-            COALESCE(attrs->>'GSM Signal', attrs->>'io_21') AS gsm,
-            COALESCE(attrs->>'External Voltage', attrs->>'io_66') AS ext_mv,
+            COALESCE(attrs->>'GSM Signal', attrs->>'GSM signal', attrs->>'GSM level', attrs->>'io_21') AS gsm,
+            COALESCE(attrs->>'External Voltage', attrs->>'External Power Voltage', attrs->>'io_66') AS ext_mv,
             COALESCE(attrs->>'Battery Voltage', attrs->>'io_67') AS bat_mv
      FROM positions WHERE ${where.join(' AND ')}
      ORDER BY fix_time DESC, rec_hash DESC LIMIT ${limit}`,
@@ -67,7 +98,7 @@ export async function readHealthSeries(pool: Pool, deviceId: bigint, opts: Healt
     out.push({
       fixTime: r.fix_time.toISOString(),
       gsm,
-      extV: extMv === null ? null : extMv * 0.001, // AVL 66 multiplier (wiki)
+      extV: extMv === null ? null : extMv * extVoltageScale(opts.avlTable), // AVL 66 (wiki, per table)
       battV: batMv === null ? null : batMv * 0.001, // AVL 67 multiplier (wiki)
     })
   }

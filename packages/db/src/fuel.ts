@@ -17,6 +17,8 @@ import { isPgSafeDate } from './dateGuard.js'
  * values are coerced defensively in JS (a ::numeric cast on garbage would 500).
  */
 export interface FuelOpts {
+  /** the device profile's AVL table — only AVL 89's scale varies by model (see pctScale) */
+  avlTable?: string
   from?: string
   to?: string
   limit?: number
@@ -37,6 +39,18 @@ interface PgFuelRow {
   l84: string | null
 }
 
+/**
+ * AVL 89's percentage does NOT carry the same scale on every model.
+ *
+ * 12 tables document it as a plain percent with no multiplier; `fm36` — FM36, FM3612, FM36M1 —
+ * types it "LVCAN Fuel Level (percentage)", 1 byte, 0…255, MULTIPLIER 0.1. It is the only table in
+ * the corpus where 89 carries one. Applying the majority scale to an FM3612 turned a half tank
+ * (wire 200 = 20.0 %) into `pct: 200`, which the playback badge printed as "200%" — while the
+ * litres series on the SAME panel was right, because AVL 84 is ×0.1 on both tables. Same defect
+ * class as the FMB930 external-voltage scale in health.ts, same shape of fix.
+ */
+const pctScale = (avlTable: string | undefined): number => (avlTable === 'fm36' ? 0.1 : 1)
+
 export async function readFuelSeries(pool: Pool, deviceId: bigint, opts: FuelOpts = {}): Promise<FuelSampleView[]> {
   // NOTE: `attrs ?| ...` can't use the (device_id, fix_time) index as a filter, so a call
   // WITHOUT from/to scans the device's whole history before LIMIT applies. Fine at V1 scale
@@ -54,7 +68,8 @@ export async function readFuelSeries(pool: Pool, deviceId: bigint, opts: FuelOpt
   )
   const out: FuelSampleView[] = []
   for (const row of res.rows) {
-    const pct = num(row.pct89) ?? num(row.pct48) // both %, no multiplier (wiki)
+    const pct89 = num(row.pct89)
+    const pct = (pct89 === null ? null : pct89 * pctScale(opts.avlTable)) ?? num(row.pct48)
     const l84 = num(row.l84)
     const liters = l84 === null ? null : l84 * 0.1 // AVL 84 multiplier ×0.1 (wiki)
     if (pct === null && liters === null) continue // garbage-only row — skip, never 500

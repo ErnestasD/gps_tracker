@@ -44,7 +44,11 @@ if (!i18n.isInitialized) {
     },
     // Always start in EN so SSR markup and the first client render match.
     // The stored / browser language is applied after hydration.
-    lng: "en",
+    // Resolve the stored / browser language SYNCHRONOUSLY at init so the very first render is
+    // already correct. Pure client SPA (createRoot, no SSR/prerender) — there is no server markup
+    // to match, and deferring the switch to a post-mount effect races component subscriptions:
+    // the header updated while the hero/footer/long-form content stayed English ("half-English").
+    lng: detectLang(),
     fallbackLng: "en",
     interpolation: {
       escapeValue: false,

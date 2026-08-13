@@ -115,6 +115,18 @@ export const deviceUpdateSchema = z
     odometerSource: odometerSourceSchema,
   })
   .partial()
+  /**
+   * STRICT, so a field this route cannot change is a 400 rather than a silent 200.
+   *
+   * Non-strict, zod stripped unknown keys and the handler then issued an empty update that returned
+   * the unchanged row with status 200. The two an operator actually tries are the expensive ones:
+   * `PATCH {imei}` — an IMEI is typed by hand at creation and no route can correct it, and a
+   * mistyped one is held platform-wide against every other tenant while the real tracker is
+   * rejected into quarantine — and `PATCH {accountId}`, because the create form pre-selects the
+   * first account and nothing can move the device afterwards. Both answered "success" and changed
+   * nothing. Saying no is honest; saying yes and doing nothing is not.
+   */
+  .strict()
 /** CSV import body: raw text + whether to apply (else dry-run preview). */
 export const deviceImportSchema = z.object({
   csv: z.string().min(1).max(2_000_000),
