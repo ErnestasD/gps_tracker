@@ -49,8 +49,21 @@ the rest of this guide fixes, but it stops one bad address becoming ten bounces.
 | Display name | leave blank |
 
 Everything else stays default. Press Create and **copy the ARN** — it looks like
-`arn:aws:sns:eu-central-1:123456789012:orbetra-ses-events`. You will not need to paste it anywhere if
-you use the console in step 3, but keep it for the verification step.
+`arn:aws:sns:eu-central-1:123456789012:orbetra-ses-events` (the middle number is your AWS account id,
+shown in the console's top-right account menu).
+
+**Keep it — you WILL need to paste it.** The endpoint accepts feedback from this one topic only, and
+refuses everything when the value is missing, so it goes into `/opt/orbetra/.env` as
+`SES_SNS_TOPIC_ARN=…` before step 7 (see the warning there). A signature alone cannot be trusted:
+the same regional certificate signs every AWS customer's topics, so without this binding anyone with
+an AWS account could publish a fake bounce for any address of ours.
+
+Lost it later? **SNS console → Topics →** `orbetra-ses-events` — the ARN is at the top of the detail
+page. Or from a shell with AWS credentials:
+
+```sh
+aws sns list-topics --region eu-central-1 --query "Topics[?contains(TopicArn,'orbetra-ses-events')].TopicArn" --output text
+```
 
 ---
 
