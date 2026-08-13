@@ -94,6 +94,12 @@ describe('E06-5 OpenAPI document', () => {
     for (const p of ['/v1/devices/{id}/commands', '/v1/devices/{id}/shares', '/v1/accounts/{id}/export']) {
       expect(doc.paths[p]!['post']!.responses['201']).toBeDefined()
     }
+    // …and export declares 200 TOO, because it has two success branches: a request that finds an
+    // export already pending returns that job unchanged with 200 rather than starting a second one.
+    // A client coded from the 201 alone falls into its error branch on every double-click.
+    expect(doc.paths['/v1/accounts/{id}/export']!['post']!.responses['200']).toBeDefined()
+    // the sibling item-creates have ONE success branch and must not gain a spurious 200
+    expect(doc.paths['/v1/devices/{id}/commands']!['post']!.responses['200']).toBeUndefined()
     // …while a genuine action answers 200 and must NOT claim to create
     expect(doc.paths['/v1/maintenance/{id}/serviced']!['post']!.responses['200']).toBeDefined()
     expect(doc.paths['/v1/maintenance/{id}/serviced']!['post']!.responses['201']).toBeUndefined()
@@ -103,5 +109,19 @@ describe('E06-5 OpenAPI document', () => {
     // DELETE never creates
     expect(doc.paths['/v1/rules/{id}']!['delete']!.responses['201']).toBeUndefined()
     expect(doc.paths['/v1/rules/{id}']!['delete']!.responses['404']).toBeDefined()
+  })
+
+  it('erase documents 202 and NOT 200 — the difference is whether the device is already erased', () => {
+    const doc = buildOpenApi(apiManifest()) as { paths: Record<string, Record<string, { responses: Record<string, unknown> }>> }
+    const erase = doc.paths['/v1/devices/{id}/erase']!['post']!.responses
+    // the handler's only success return is 202 (crud.ts, `{ queued: true }`). A client reading the
+    // documented 200 concludes the erase has HAPPENED and stops polling — on a GDPR path, where
+    // "we deleted it" is an assertion made to a regulator.
+    expect(erase['202']).toBeDefined()
+    expect(erase['200']).toBeUndefined()
+    // the failure statuses the shape and its EXTRA entry contribute survive the override
+    for (const s of ['400', '401', '403', '404', '409', '503']) expect(erase[s]).toBeDefined()
+    // …and the override is keyed per path, so a sibling action still answers 200
+    expect(doc.paths['/v1/maintenance/{id}/serviced']!['post']!.responses['202']).toBeUndefined()
   })
 })

@@ -87,6 +87,15 @@ const POST_CREATES_ON_ITEM_PATH = new Set([
 /** Collection-path POSTs that are NOT creates — they answer 200 with a computed result. */
 const POST_RETURNS_OK = new Set(['/v1/devices/import/preview'])
 /**
+ * POSTs that HAND OFF rather than complete: the response says the work is queued, not done.
+ * 202 is the whole contract here — a client that reads 200 concludes the device is already erased
+ * and stops polling. The heuristic cannot see this (the path shape is an ordinary item action), so
+ * the status is listed, and the shape's 200 is dropped rather than sitting alongside it.
+ */
+const POST_ACCEPTED: Record<string, { description: string }> = {
+  '/v1/devices/{id}/erase': { description: 'Accepted — erase queued; the device is not yet erased' },
+}
+/**
  * Response headers worth documenting. The trips lists have no cursor: they cap (500 default, 5000
  * max) and signal a possibly-incomplete page in a header, which is invisible to anyone reading only
  * the document — so it is declared here rather than left as folklore.
@@ -121,6 +130,10 @@ const EXTRA: Record<string, Record<string, { description: string }>> = {
     '503': { description: 'GDPR job queue not configured' },
   },
   '/v1/accounts/{id}': { '409': { description: 'Account still has users' } },
+  // 200 AND 201: an export request that finds one already pending returns THAT row, unchanged, with
+  // 200 — a double-click must not pile up full-history files on disk. Declaring only the 201 is the
+  // exact defect this response work exists to remove, on the branch a real client meets most often.
+  '/v1/accounts/{id}/export': { '200': { description: 'An export was already pending — that job is returned unchanged' } },
 }
 // GET accepts a JWT or an API key; writes require the JWT (API keys are read-only).
 const READ_SEC: Record<string, string[]>[] = [{ bearerAuth: [] }, { apiKeyAuth: [] }]
@@ -172,6 +185,11 @@ function op(
     responses: (() => {
       const out: Record<string, { description: string; headers?: Record<string, unknown> }> =
         !read && EXTRA[path] !== undefined ? { ...base, ...EXTRA[path] } : { ...base }
+      const accepted = method === 'post' ? POST_ACCEPTED[path] : undefined
+      if (accepted !== undefined) {
+        delete out['200']
+        out['202'] = accepted
+      }
       const hdrs = read ? RESPONSE_HEADERS[path] : undefined
       const ok = out['200']
       if (hdrs !== undefined && ok !== undefined) out['200'] = { ...ok, headers: hdrs }

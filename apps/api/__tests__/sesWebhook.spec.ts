@@ -217,6 +217,23 @@ describe('SNS topic binding', () => {
     expect((await post(app, msg)).status).toBe(403)
     expect(suppressed).toEqual([])
   })
+
+  it('refuses a non-object JSON body with 400, not a 500', async () => {
+    const { certPem } = makeSigner()
+    const { db } = fakeDb()
+    const app = createSesWebhookRoutes({ db, expectedTopicArn: TOPIC, fetchCert: () => Promise.resolve(certPem) })
+    // `JSON.parse('null')` is valid JSON and NOT an object; asserting Record<string, unknown> over
+    // it made the first property read throw, so this one body answered 500 while every other
+    // non-object shape answered a clean refusal. A 500 on a public endpoint is a probing signal.
+    for (const body of ['null', '[]', '"x"', '123', 'true']) {
+      const res = await app.request('/v1/webhooks/ses', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      })
+      expect(res.status).toBeLessThan(500)
+    }
+  })
 })
 
 /** Guards the assumption the signer above leans on. */

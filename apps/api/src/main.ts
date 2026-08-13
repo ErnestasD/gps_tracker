@@ -54,7 +54,28 @@ const prom = createApiProm()
 // /forgot-password: the rate limiter fails open (deliberately), the handler continues, and the
 // enqueue then hung holding an HTTP socket — which also made "known address" (hangs) distinguishable
 // from "unknown address" (fast 200), an account-existence oracle on an unauthenticated endpoint.
+// …but `enableOfflineQueue: false` is NOT sufficient on its own, and believing it was is how this
+// stayed open. BullMQ awaits `waitUntilReady()` — which resolves only on ioredis's `ready` event —
+// BEFORE it ever issues a command, so with Redis down at boot the hang happens at connection setup,
+// where neither the offline-queue rejection nor `commandTimeout` has anything to act on. ioredis's
+// default retry strategy reconnects for ever and never emits `end`, so nothing settles the promise.
+// The enqueue itself therefore has to carry the deadline.
 const gdprConn = { url: redisUrl, enableOfflineQueue: false, commandTimeout: 2_000 }
+const ENQUEUE_TIMEOUT_MS = 2_000
+const bounded = async <T>(p: Promise<T>): Promise<T> => {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('enqueue timeout')), ENQUEUE_TIMEOUT_MS)
+        timer.unref()
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
 const gdprEraseQueue = new Queue('gdpr-erase', { connection: gdprConn })
 const gdprExportQueue = new Queue('gdpr-export', { connection: gdprConn })
 // removeOnFail: TRUE (review HIGH-2) — a job parked in the failed set blocks its jobId, so a
@@ -62,10 +83,10 @@ const gdprExportQueue = new Queue('gdpr-export', { connection: gdprConn })
 // surfaced via gdpr_job_failed_total + logs, so dropping the corpse re-opens the retry path.
 const gdpr = {
   enqueueErase: async (data: { deviceId: string; tenantId: string }): Promise<void> => {
-    await gdprEraseQueue.add('erase', data, { jobId: `erase-${data.deviceId}`, attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true })
+    await bounded(gdprEraseQueue.add('erase', data, { jobId: `erase-${data.deviceId}`, attempts: 5, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true }))
   },
   enqueueExport: async (data: { exportId: string }): Promise<void> => {
-    await gdprExportQueue.add('export', data, { jobId: `export-${data.exportId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true })
+    await bounded(gdprExportQueue.add('export', data, { jobId: `export-${data.exportId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: true }))
   },
 }
 
@@ -75,23 +96,23 @@ const authEmailQueue = new Queue('auth-email', { connection: gdprConn })
 const authEmailOpts = { attempts: 5, backoff: { type: 'exponential' as const, delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 }
 const mail = {
   enqueueResetEmail: async (job: { kind: 'password-reset'; email: string; tenantId: string; locale: string; resetUrl: string; expiresMinutes: number }): Promise<void> => {
-    await authEmailQueue.add('auth-email', job, authEmailOpts)
+    await bounded(authEmailQueue.add('auth-email', job, authEmailOpts))
   },
   // audit MED #67: signup no longer tells an anonymous caller that an address is taken, so the
   // address's OWNER is told instead. Same queue, same worker, no token in the payload.
   enqueueSignupExistsEmail: async (job: { kind: 'signup-exists'; email: string; tenantId: string; locale: string; loginUrl: string; resetUrl: string }): Promise<void> => {
-    await authEmailQueue.add('auth-email', job, authEmailOpts)
+    await bounded(authEmailQueue.add('auth-email', job, authEmailOpts))
   },
   // …and the other half: the mail that ACTIVATES a real signup. Without it the new account can
   // never log in, which is what makes the two branches indistinguishable.
   enqueueVerifyEmail: async (job: { kind: 'verify-email'; email: string; tenantId: string; locale: string; verifyUrl: string; expiresHours: number }): Promise<void> => {
-    await authEmailQueue.add('auth-email', job, authEmailOpts)
+    await bounded(authEmailQueue.add('auth-email', job, authEmailOpts))
   },
   // A partner heard NOTHING before this: they were handed a link and had to log in on a hunch to
   // find out whether it had worked. `tenantId: ''` is load-bearing — the worker short-circuits
   // branding for this kind, so the mail is ours whatever tenant the referral belongs to.
   enqueuePartnerEmail: async (job: { kind: 'partner'; event: 'referral' | 'commission' | 'payout-request'; email: string; tenantId: string; locale: string; customer: string; amount?: string; portalUrl: string }): Promise<void> => {
-    await authEmailQueue.add('auth-email', job, authEmailOpts)
+    await bounded(authEmailQueue.add('auth-email', job, authEmailOpts))
   },
 }
 
@@ -104,7 +125,7 @@ const smsQueue = smsConfigured(process.env) ? new Queue('sms', { connection: gdp
 const sms = smsQueue !== undefined
   ? {
       enqueue: (job: { smsDeliveryId: string; deviceId: string; tenantId: string; to: string; body: string; provider: string }) =>
-        smsQueue.add('sms', job, { jobId: `sms-${job.smsDeliveryId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 }),
+        bounded(smsQueue.add('sms', job, { jobId: `sms-${job.smsDeliveryId}`, attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 500 })),
     }
   : undefined
 if (sms === undefined) console.warn('SMS gateway not configured (TWILIO_ACCOUNT_SID/TWILIO_FROM + auth token or API key) — config-SMS routes disabled')

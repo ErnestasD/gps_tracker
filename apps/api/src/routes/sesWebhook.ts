@@ -188,7 +188,15 @@ export function createSesWebhookRoutes(deps: SesWebhookDeps): Hono<AuthEnv> {
     const raw = await c.req.text()
     let msg: Record<string, unknown>
     try {
-      msg = JSON.parse(raw) as Record<string, unknown>
+      // the cast is NOT a formality: `JSON.parse` happily returns null / an array / a scalar, and
+      // asserting `Record<string, unknown>` over `null` makes the very next property read throw a
+      // TypeError that surfaces as a 500. A body of literal `null` was the one non-object shape
+      // that reached the handler as a server error instead of the 403 every other one gets.
+      const parsed: unknown = JSON.parse(raw)
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return c.text('bad json', 400)
+      }
+      msg = parsed as Record<string, unknown>
     } catch {
       return c.text('bad json', 400)
     }

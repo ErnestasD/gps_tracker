@@ -581,7 +581,17 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     // belt-and-suspenders per-IP throttle on the redeem endpoint (token guessing is already
     // infeasible at 256-bit, but this caps DB-write abuse / brute-force floods)
     const ip = clientIp(c.req.header('x-forwarded-for'), getRemoteAddr(c), deps.trustProxy)
-    if (Number(await deps.redis.eval(LOCKOUT_SCRIPT, 1, `auth:redeem:${ip}`, String(RESET_RL_WINDOW_S))) > RESET_REDEEM_RL_MAX) {
+    // FAILS OPEN, for the same reason the request half above does — and it is the same outage. A
+    // customer who followed a mail link during a Redis blip met a 500 on the LAST step of the
+    // recovery, having already been let through the first. The throttle is belt-and-braces over a
+    // 256-bit single-use token; the endpoint is the only way back into the account.
+    let redeemAttempts = 0
+    try {
+      redeemAttempts = Number(await deps.redis.eval(LOCKOUT_SCRIPT, 1, `auth:redeem:${ip}`, String(RESET_RL_WINDOW_S)))
+    } catch {
+      deps.onLockout?.('degraded')
+    }
+    if (redeemAttempts > RESET_REDEEM_RL_MAX) {
       return problem(c, 429, 'Too Many Requests')
     }
     const body = resetPasswordSchema.safeParse(await c.req.json().catch(() => null))
