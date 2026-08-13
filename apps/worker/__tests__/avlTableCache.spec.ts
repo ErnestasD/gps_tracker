@@ -101,6 +101,26 @@ describe('AvlTableCache', () => {
     expect(f.reasons.sort()).toEqual(['malformed', 'no_config', 'no_field', 'unknown_table'])
   })
 
+  it('a JSON value that is not an object cannot take the SHARD down', async () => {
+    // `JSON.parse('null')` succeeds and returns null; the dereference sat outside the try, so this
+    // threw a TypeError out of resolveBatch. The consumer awaits that BEFORE its per-entry try, so
+    // the throw unwound past every record in the batch: nothing normalised, nothing ACKed, up to
+    // 200 entries from every tenant on the shard left PENDING, and XAUTOCLAIM re-serving the same
+    // poison value until MAXLEN trimmed them away unread. Ten of ten verifiers agreed; it is the
+    // only finding of round seven that reached the threshold.
+    //
+    // The co-batched device matters as much as the poisoned one: a healthy FMC650 sharing the batch
+    // never resolved either.
+    for (const bad of ['null', '123', '"fmb150"', 'true', '[]']) {
+      const r = fakeRedis({ '5': bad, '6': cfg('fmc650') })
+      const f = collect()
+      const c = new AvlTableCache(r.redis, 60_000, f.on)
+      const out = await c.resolveBatch([5n, 6n], 1_000)
+      expect(out.get('5'), bad).toBe(FALLBACK_AVL_TABLE)
+      expect(out.get('6'), bad).toBe('fmc650')
+    }
+  })
+
   it('a profile whose table genuinely IS the fallback is not counted as one', async () => {
     // Otherwise the counter is a constant: 45 of the 105 catalogued models render exactly this
     // table, so the most common correct answer would look like the failure state.

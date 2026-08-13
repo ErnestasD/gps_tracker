@@ -123,19 +123,30 @@ export class AvlTableCache {
 /** `device:config` JSON → a table name the codec actually ships, and WHY if it is the fallback. */
 function parseTable(rawValue: string | null | undefined): { table: AvlTable; reason?: AvlFallbackReason } {
   if (rawValue === null || rawValue === undefined) return { table: FALLBACK_AVL_TABLE, reason: 'no_config' }
-  let parsed: { avlTable?: unknown }
+  let parsed: unknown
   try {
-    parsed = JSON.parse(rawValue) as { avlTable?: unknown }
+    parsed = JSON.parse(rawValue)
   } catch {
     return { table: FALLBACK_AVL_TABLE, reason: 'malformed' }
   }
-  if (typeof parsed.avlTable !== 'string') return { table: FALLBACK_AVL_TABLE, reason: 'no_field' }
+  // `JSON.parse('null')` SUCCEEDS and returns null, and the dereference used to sit outside the try
+  // — so one corrupt hash field threw a TypeError out of `resolveBatch`. That await in the consumer
+  // happens BEFORE the per-entry try, so it unwound past every record: nothing normalised, nothing
+  // written, nothing ACKed, the whole ≤200-entry batch left PENDING for every tenant on that shard,
+  // XAUTOCLAIM re-serving the same poison value every loop until MAXLEN trimmed the entries away
+  // unread. A wedged shard and silent position loss, from a single bad byte in Redis — the exact
+  // inversion of this file's own contract that a malformed value resolves to the fallback. The
+  // three sibling readers of this same key (trip/configCache, recomputeWorker, offlineWorker) all
+  // dereference inside their try; this one is now consistent with them.
+  if (parsed === null || typeof parsed !== 'object') return { table: FALLBACK_AVL_TABLE, reason: 'malformed' }
+  const avlTable = (parsed as { avlTable?: unknown }).avlTable
+  if (typeof avlTable !== 'string') return { table: FALLBACK_AVL_TABLE, reason: 'no_field' }
   // Validated against the catalogue rather than trusted. `loadDictionary` answers an unknown name
   // with an EMPTY map, which would strip every IO name for that device and read, to the customer,
   // exactly like the tracker having stopped reporting them — a silent total loss where a wrong
   // profile row is meant to cost at most some wrong labels. tableForModel also accepts a model
   // code (`FMC650`), so a profile row carrying the model instead of the table still resolves.
-  const table = tableForModel(parsed.avlTable) ?? knownTable(parsed.avlTable)
+  const table = tableForModel(avlTable) ?? knownTable(avlTable)
   return table === undefined ? { table: FALLBACK_AVL_TABLE, reason: 'unknown_table' } : { table }
 }
 
