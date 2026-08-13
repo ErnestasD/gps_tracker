@@ -268,3 +268,33 @@ describe('the forced fuel keys are forced only where the id IS a fuel level', ()
   })
 })
 
+describe('the device odometer is whichever id THIS model calls Total Odometer', () => {
+  it('fmb120: id 16, as it always was', () => {
+    expect(normalize({ ...basePayload, io: [[16, 987654n]] }, hash, 'fmb120').odometerM).toBe(987654n)
+  })
+
+  it('fmc640: id 216 — and id 16 there is the CAN adapter\'s VEHICLE mileage, not the odometer', () => {
+    // The truck/tacho family, where a hardware odometer is the reason the device was bought.
+    // Hardcoded to 16, `odometerSource: 'device'` silently fell back to GPS when no adapter was
+    // fitted, and silently trusted a vehicle counter when one was.
+    const own = normalize({ ...basePayload, io: [[216, 987654n]] }, hash, 'fmc640')
+    expect(own.odometerM).toBe(987654n)
+
+    const withCan = normalize({ ...basePayload, io: [[216, 988654n], [16, 111111n]] }, hash, 'fmc640')
+    expect(withCan.odometerM).toBe(988654n)                             // the tracker's own
+    expect(withCan.attrs['Total Mileage (Counted)']).toBe(111111)       // …the CAN one stays an attr
+  })
+
+  it('216 is NOT promoted globally — on fifteen tables it is "Geofence zone 35"', () => {
+    // The tempting fix would have written geofence state into positions.odometer_m for most of the
+    // fleet.
+    const r = normalize({ ...basePayload, io: [[216, 35n]] }, hash, 'fmb120')
+    expect(r.odometerM).toBeNull()
+    expect(r.attrs['Geofence zone 35']).toBe(35)
+  })
+
+  it('a table with no Total Odometer at all promotes nothing', () => {
+    expect(normalize({ ...basePayload, io: [[16, 5n]] }, hash, 'atc700').odometerM).toBeNull()
+  })
+})
+

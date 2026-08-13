@@ -476,6 +476,34 @@ describe('E02-3 worker pipeline (I1–I3 against real ingest + simulator)', () =
     expect(own.length).toBe(20)
   }, 90_000)
 
+  it('a TRIMMED pending entry is acked and counted, not retried until the shard stops', async () => {
+    // The drain added in round eight crashed on exactly the case it was written for. Redis answers
+    // a '0' read for a PEL entry whose stream data MAXLEN already deleted with a NIL field array;
+    // `fields[1]!` threw, the loop re-armed the drain and re-read the same id a second later
+    // forever, and because the drain runs BEFORE the autoclaim block, the one thing that clears a
+    // tombstone was never reached. The shard consumed nothing at all while its lease kept renewing,
+    // so no peer took over — strictly worse than the silent loss the drain was meant to prevent.
+    await ingestRecords(5)
+    const evicted: number[] = []
+    const c = consumerFor('w-tomb', { onPendingEvicted: (_s, n) => evicted.push(n) })
+    await c.ensureGroup()
+    // claim them into OUR pel without acking: read, then destroy the stream data underneath
+    const mine = await c.readOwnPendingForTest()
+    expect(mine.length).toBe(0) // nothing pending yet
+    await c.tick() // reads + writes + acks 5
+    await ingestRecords(3)
+    const raw = `raw:${SHARD}`
+    const pendingBefore = (await redis.xreadgroup('GROUP', PIPELINE_GROUP, 'w-tomb', 'COUNT', 10, 'STREAMS', raw, '>')) as unknown
+    expect(pendingBefore).not.toBeNull() // 3 entries now sit UNACKED in our PEL
+    const ids = (await redis.xrange(raw, '-', '+')).map(([id]) => id)
+    await redis.xdel(raw, ...ids) // MAXLEN would do this; XDEL is the deterministic equivalent
+
+    const drained = await c.readOwnPendingForTest()
+    expect(drained).toEqual([])            // no throw, and nothing to process
+    expect(evicted).toEqual([3])           // …counted, so the loss is not silent
+    expect((await redis.xpending(raw, PIPELINE_GROUP))[0]).toBe(0) // …and the PEL is clear
+  }, 90_000)
+
   it('shard leases are exclusive: second worker cannot claim an owned shard', async () => {
     const l1 = new ShardLeaser(redis, 'w-one', 10_000)
     const l2 = new ShardLeaser(redis, 'w-two', 10_000)

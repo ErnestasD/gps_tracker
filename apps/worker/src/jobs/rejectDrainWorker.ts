@@ -42,14 +42,24 @@ export const REJECTS_STREAM = 'rejects'
 
 const cbor = new Decoder()
 
-/** True when `id` is more than one step past `cursor` — i.e. entries were trimmed in between. Stream
- *  ids compare on (ms, seq) numerically; a string compare would put '9-0' after '10-0'. */
-function idAfter(id: string, cursor: string): boolean {
+/**
+ * Strictly newer, comparing on (ms, seq) numerically — a string compare would put '9-0' after '10-0'.
+ *
+ * This used to try to answer "were entries trimmed between the cursor and here?" from the id gap
+ * alone, and that question CANNOT be answered that way: Redis stream ids are (millisecond, seq) and
+ * are not dense, so any entry arriving in a later millisecond than the cursor — the ordinary,
+ * healthy case — looked like a trimmed window. Measured on staging: every drain tick that found
+ * anything at all incremented `rejects_dropped_total` while XLEN only grew and nothing was lost.
+ * A counter that fires constantly on a healthy pipeline is worse than no counter: an operator
+ * learns to ignore it, and the real event it exists for — MAXLEN trimming past the cursor during a
+ * flood, which is exactly when raw_rejects matters — produces the identical signal.
+ */
+function idNewer(id: string, cursor: string): boolean {
   const [ims, iseq] = id.split('-').map(Number)
   const [cms, cseq] = cursor.split('-').map(Number)
   if (ims === undefined || cms === undefined || Number.isNaN(ims) || Number.isNaN(cms)) return false
   if (ims !== cms) return ims > cms
-  return (iseq ?? 0) > (cseq ?? 0) + 1
+  return (iseq ?? 0) > (cseq ?? 0)
 }
 
 /** Move the cursor forward only. Stream ids sort lexicographically within equal length, so compare
@@ -121,9 +131,14 @@ async function drainOnce(deps: RejectDrainDeps): Promise<{ read: number; written
   }
   if (!res || res.length === 0) return { read: 0, written: 0 }
 
-  // If MAXLEN trimmed past the cursor, XRANGE simply resumes at the oldest survivor and the entries
-  // in between are gone. Report the gap: an invisible loss reads exactly like a healthy drain.
-  if (from !== '0-0' && idAfter(res[0]![0].toString(), from)) deps.onDropped?.(1)
+  // If MAXLEN trimmed past the cursor, XRANGE resumes at the oldest survivor and the entries in
+  // between are gone. The only sound test is against the stream's OLDEST SURVIVING id: if even that
+  // is newer than the cursor, everything between them was trimmed. Asking the same question of the
+  // first id we happened to read cannot work, because ids are not dense — see idNewer.
+  if (from !== '0-0') {
+    const oldest = (await deps.redis.xrange(REJECTS_STREAM, '-', '+', 'COUNT', 1)) as [string, string[]][] | null
+    if (oldest !== null && oldest.length > 0 && idNewer(oldest[0]![0], from)) deps.onDropped?.(1)
+  }
 
   const rows: RawRejectRow[] = []
   for (const [, fields] of res) {

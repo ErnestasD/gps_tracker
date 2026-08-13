@@ -5,7 +5,38 @@ import { rawStreamPayloadSchema, type NormalizedRecord, type RawStreamPayload } 
 // https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
 const AVL_IGNITION = 239
 const AVL_MOVEMENT = 240
-const AVL_TOTAL_ODOMETER = 16
+
+/**
+ * The device's own Total Odometer, RESOLVED PER TABLE — it is not the same id on every model.
+ *
+ * It was hardcoded to 16, which is right for 26 of the 34 tables. On the six FMx6xx tables
+ * (fm6300, fmb640, fmb641, fmc640, fmc650, fmm650) id 16 is "Total Mileage (Counted)", a CAN
+ * ADAPTERS element reporting the VEHICLE's mileage, and the tracker's own odometer is id 216. That
+ * is the truck and tachograph family — exactly where a hardware odometer is the reason the customer
+ * bought the device — and the consequence went both ways. With no CAN adapter fitted, id 16 never
+ * arrives, `odometer_m` stays NULL and `odometerSource: 'device'` (and the `auto` default) silently
+ * fall back to GPS haversine with no error, no metric and no log. With an adapter fitted, a vehicle
+ * mileage counter that appears and disappears with the adapter is written into `odometer_m` and
+ * labelled `distanceSource: 'odometer'` in mileage reports and any per-km billing.
+ *
+ * Resolved by NAME from the device's own dictionary, never by promoting 216 globally: on fifteen
+ * tables id 216 is "Geofence zone 35", so a blanket rule would write geofence state into the
+ * odometer column for most of the fleet. Exactly one id is named "Total Odometer" on 32 of the 34
+ * tables; atc700 and fm36 have none, and those models correctly get no device odometer at all.
+ */
+const odometerIds = new WeakMap<Map<number, { name: string }>, number | undefined>()
+function odometerIdFor(dict: Map<number, { name: string }>): number | undefined {
+  if (odometerIds.has(dict)) return odometerIds.get(dict)
+  let found: number | undefined
+  for (const [id, e] of dict) {
+    if (e.name === 'Total Odometer') {
+      found = id
+      break
+    }
+  }
+  odometerIds.set(dict, found)
+  return found
+}
 
 // Fuel ids kept under FORCED io_<id> keys (E08-3). 84 (l, ×0.1) and 89 (%) share the
 // dictionary name "Fuel Level" — a record carrying only ONE of them would store its value
@@ -151,6 +182,7 @@ export function normalize(
     inRangeOrNull(field, v, SMALLINT_MIN, SMALLINT_MAX)
   const p: RawStreamPayload = rawStreamPayloadSchema.parse(payload)
   const dict = loadDictionary(table)
+  const odoId = odometerIdFor(dict)
 
   let ignition: boolean | null = null
   let movement: boolean | null = null
@@ -161,7 +193,7 @@ export function normalize(
     const v = typeof value === 'number' ? BigInt(value) : value
     if (id === AVL_IGNITION && typeof v === 'bigint') ignition = v === 1n
     else if (id === AVL_MOVEMENT && typeof v === 'bigint') movement = v === 1n
-    else if (id === AVL_TOTAL_ODOMETER && typeof v === 'bigint') {
+    else if (id === odoId && typeof v === 'bigint') {
       // odometer_m is bigint, but AVL id 16 arrives as an unbounded N8 value — a ≥2^63 reading
       // raises 22003 and poisons the whole batch exactly as an out-of-range speed did.
       if (v < BIGINT_MIN || v > BIGINT_MAX) onFieldNulled?.('odometerM')
