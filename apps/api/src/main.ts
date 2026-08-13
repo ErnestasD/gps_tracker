@@ -47,19 +47,30 @@ const prom = createApiProm()
 // GDPR job producers (E08-4, ADR-020 addendum): the api enqueues, the worker consumes.
 // BullMQ wants its own connection options; jobIds dedupe double-submits.
 //
-// BOUNDED ON PURPOSE. This is a PRODUCER connection on the request path, and BullMQ forces
-// `maxRetriesPerRequest: null` on it — so with the default offline queue a `.add()` during a Redis
-// outage waits FOREVER instead of rejecting. Every enqueue site here already has a catch that
-// degrades gracefully; none of them can run if the promise never settles. The visible damage was on
-// /forgot-password: the rate limiter fails open (deliberately), the handler continues, and the
-// enqueue then hung holding an HTTP socket — which also made "known address" (hangs) distinguishable
-// from "unknown address" (fast 200), an account-existence oracle on an unauthenticated endpoint.
-// …but `enableOfflineQueue: false` is NOT sufficient on its own, and believing it was is how this
-// stayed open. BullMQ awaits `waitUntilReady()` — which resolves only on ioredis's `ready` event —
-// BEFORE it ever issues a command, so with Redis down at boot the hang happens at connection setup,
-// where neither the offline-queue rejection nor `commandTimeout` has anything to act on. ioredis's
-// default retry strategy reconnects for ever and never emits `end`, so nothing settles the promise.
-// The enqueue itself therefore has to carry the deadline.
+// BOUNDED ON PURPOSE — a PRODUCER connection on the request path. Every enqueue site below has a
+// catch that degrades gracefully, and none of them can run if the promise never settles. The
+// visible damage was on /forgot-password: the rate limiter fails open (deliberately), the handler
+// continues, and the enqueue then hung holding an HTTP socket — which also made "known address"
+// (hangs) distinguishable from "unknown address" (fast 200), an account-existence oracle on an
+// unauthenticated endpoint. Both settings below serve that one goal: the request path must always
+// answer, and it must answer in the SAME time whether the address exists or not.
+//
+// TWO DIFFERENT HANGS, which is why it takes two mechanisms:
+//   · mid-life, socket down — `enableOfflineQueue: false` makes the command reject at once instead
+//     of buffering until reconnect. (BullMQ does NOT force `maxRetriesPerRequest: null` here: it
+//     sets that only for BLOCKING connections, and a Queue is built with `blocking: false`
+//     — redis-connection.js `if (this.extraOptions.blocking)`. Producers keep ioredis's default 20.)
+//   · Redis down AT BOOT — nothing above helps. BullMQ awaits `waitUntilReady()`, which resolves
+//     only on ioredis's `ready` event, BEFORE it ever issues a command, so there is no command for
+//     the offline queue or `commandTimeout` to reject; the default retry strategy reconnects for
+//     ever and never emits `end`. Only a deadline on the enqueue itself settles this.
+//
+// THE ACCEPTED COST, measured rather than assumed: a Redis blip shorter than the reconnect drops a
+// password-reset mail that buffering would have delivered (~1 s in a live probe). Turning the
+// offline queue back on is NOT the fix, and was rejected 9-1 by a jury that tested it: the hit path
+// would then block for the reconnect while the miss path stays instant, rebuilding the very oracle
+// this closes — and an enqueue abandoned by the deadline still lands on reconnect, so the caller is
+// told it failed and the mail goes out anyway (auth-email carries no jobId, so a retry sends two).
 const gdprConn = { url: redisUrl, enableOfflineQueue: false, commandTimeout: 2_000 }
 const ENQUEUE_TIMEOUT_MS = 2_000
 const bounded = async <T>(p: Promise<T>): Promise<T> => {
