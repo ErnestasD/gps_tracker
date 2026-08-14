@@ -172,6 +172,11 @@ services:
       TWILIO_FROM: ${TWILIO_FROM:-}
       # Web Push (ADR-026) — the API serves the PUBLIC key to the browser; absent ⇒ push unavailable
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      # The platform console's infrastructure panel reads firing alerts from here. Listed because a
+      # variable absent from this map never reaches the process — the same omission that left
+      # STRIPE_PLAN_MAP and SES_SNS_TOPIC_ARN silently unset. Absent ⇒ the panel says "not
+      # configured" instead of erroring, so a deploy without Prometheus stays a supported shape.
+      ALERTMANAGER_URL: ${ALERTMANAGER_URL:-}
       # OSRM route optimization (ADR-029) — empty until staging preps the osrm volume
       # (infra/osrm/README.md), then set OSRM_URL=http://osrm:5000 in /opt/orbetra/.env;
       # absent ⇒ POST /v1/routing/optimize answers 503 and the web page degrades
