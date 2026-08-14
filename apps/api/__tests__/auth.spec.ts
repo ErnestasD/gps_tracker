@@ -190,6 +190,32 @@ describe('E03-1 login', () => {
     expect(bad.status).toBe(400)
   })
 
+  it('a DISABLED account is refused exactly like a wrong password, and lastLoginAt is stamped on success', async () => {
+    const email = seeded.viewer.email
+    // a normal login works and records the visit — the console reads this to tell a seat nobody
+    // uses from a customer who is here daily
+    expect((await login(email, PW)).status).toBe(200)
+    const before = await db.platform.users({ limit: 500 })
+    expect(before.find((u) => u.email === email)?.lastLoginAt).not.toBeNull()
+
+    const target = before.find((u) => u.email === email)!
+    await db.platform.setUserDisabled({ userId: '00000000-0000-0000-0000-0000000000aa' }, target.id, true)
+
+    // …and now it is refused. The status, the content type and the body must be IDENTICAL to a
+    // wrong password: any difference tells an anonymous caller this address exists and is switched
+    // off, which is the account oracle the unverified branch was folded in to close.
+    const disabled = await login(email, PW)
+    const wrong = await login(email, 'definitely-not-the-password')
+    expect(disabled.status).toBe(wrong.status)
+    expect(disabled.status).toBe(401)
+    expect(disabled.headers.get('content-type')).toBe(wrong.headers.get('content-type'))
+    expect(await disabled.text()).toBe(await wrong.text())
+
+    // re-enabling restores access — a disable must be reversible, or it is a delete with extra steps
+    await db.platform.setUserDisabled({ userId: '00000000-0000-0000-0000-0000000000aa' }, target.id, false)
+    expect((await login(email, PW)).status).toBe(200)
+  })
+
   it('email case/whitespace normalized', async () => {
     expect((await login(`  ${seeded.viewer.email.toUpperCase()}  `, PW)).status).toBe(200)
   })

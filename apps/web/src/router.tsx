@@ -26,6 +26,12 @@ import { RoutePlannerPage } from '@/routes/app/routing'
 import { ApiKeysPage } from '@/routes/app/apiKeys'
 import { AffiliatesPage } from '@/routes/app/affiliates'
 import { PlatformPage } from '@/routes/app/platform'
+import { ConsoleShell } from '@/components/ConsoleShell'
+import { ConsoleOverviewPage } from '@/routes/platform/overview'
+import { ConsoleUsersPage } from '@/routes/platform/users'
+import { ConsoleBillingPage } from '@/routes/platform/billing'
+import { ConsoleLapsesPage } from '@/routes/platform/lapses'
+import { ConsoleErrorsPage } from '@/routes/platform/errors'
 import { EventsPage } from '@/routes/app/events'
 import { ReportsPage } from '@/routes/app/reports'
 import { RulesPage } from '@/routes/app/rules'
@@ -240,16 +246,26 @@ const webhooksRoute = createRoute({
   component: WebhooksPage,
 })
 
+/**
+ * The two pages that moved into the console keep their old URLs as REDIRECTS.
+ *
+ * Rendering them in both places would be two addresses for one screen — a bookmark, a link in a
+ * chat and the sidebar would each land somewhere slightly different, and a fix applied to one would
+ * quietly not apply to the other. Redirecting keeps every old link working and leaves exactly one
+ * place where each page lives.
+ */
 const platformRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/platform',
-  component: PlatformPage,
+  // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+  beforeLoad: () => { throw redirect({ to: '/platform/tenants' }) },
 })
 
 const affiliatesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/affiliates',
-  component: AffiliatesPage,
+  // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+  beforeLoad: () => { throw redirect({ to: '/platform/partners' }) },
 })
 
 const auditRoute = createRoute({
@@ -264,6 +280,41 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 })
 
+/**
+ * The platform console lives at `/platform`, a SIBLING of `/app` rather than a page inside it.
+ *
+ * A platform admin is not a customer with extra buttons — they run the business the customers are
+ * on, and their home should be that business. Signing in used to land them on an ordinary fleet
+ * dashboard belonging to whichever tenant their user row happened to live in.
+ *
+ * The route only checks for a session; the ROLE gate is the server's. Every endpoint behind these
+ * pages is `scopeClass: 'platform'` and answers 403 to anyone else, so a non-admin who types the
+ * URL gets a console full of refusals rather than data — the boundary is where it can be enforced.
+ */
+const consoleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/platform',
+  beforeLoad: async ({ location }) => {
+    if (!(await hasSession())) {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+      throw redirect({ to: '/login', search: { redirect: location.href } })
+    }
+  },
+  component: () => (
+    <ConsoleShell>
+      <Outlet />
+    </ConsoleShell>
+  ),
+})
+
+const consoleIndexRoute = createRoute({ getParentRoute: () => consoleRoute, path: '/', component: ConsoleOverviewPage })
+const consoleTenantsRoute = createRoute({ getParentRoute: () => consoleRoute, path: '/tenants', component: PlatformPage })
+const consoleUsersRoute = createRoute({ getParentRoute: () => consoleRoute, path: '/users', component: ConsoleUsersPage })
+const consoleBillingRoute = createRoute({ getParentRoute: () => consoleRoute, path: '/billing', component: ConsoleBillingPage })
+const consoleLapsesRoute = createRoute({ getParentRoute: () => consoleRoute, path: '/lapses', component: ConsoleLapsesPage })
+const consolePartnersRoute = createRoute({ getParentRoute: () => consoleRoute, path: '/partners', component: AffiliatesPage })
+const consoleErrorsRoute = createRoute({ getParentRoute: () => consoleRoute, path: '/errors', component: ConsoleErrorsPage })
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -271,6 +322,7 @@ const routeTree = rootRoute.addChildren([
   resetPasswordRoute,
   verifyEmailRoute,
   shareRoute,
+  consoleRoute.addChildren([consoleIndexRoute, consoleTenantsRoute, consoleUsersRoute, consoleBillingRoute, consoleLapsesRoute, consolePartnersRoute, consoleErrorsRoute]),
   appRoute.addChildren([appIndexRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
 ])
 

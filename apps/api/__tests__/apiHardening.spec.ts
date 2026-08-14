@@ -234,3 +234,44 @@ describe('audit LOW: auth CSRF same-origin guard', () => {
     expect(res.status).not.toBe(403)
   })
 })
+
+/**
+ * `createApp` forwards its deps to the route builder through a HAND-WRITTEN list. An optional field
+ * missing from that list is dropped silently, and the type checker cannot complain, because
+ * dropping an optional property is legal TypeScript.
+ *
+ * That is not hypothetical: `alertmanagerUrl` was declared, set in the environment, delivered to the
+ * container — and the console still reported "not configured", because one hop in the middle never
+ * copied it. The variable existed everywhere except the twenty characters that mattered.
+ *
+ * This asserts the wire, not the feature.
+ */
+describe('optional deps survive the forwarding list', () => {
+  const stub = { get: () => Promise.resolve(null), set: () => Promise.resolve('OK'), eval: () => Promise.resolve(0) } as unknown as Redis
+  const base = {
+    redis: stub,
+    redisSub: stub,
+    db: fakeDb([]),
+    jwtSecret: TEST_JWT_SECRET,
+    jwtTtlS: 900,
+    refreshTtlS: 3600,
+    lockout: { maxFails: 5, windowS: 900 },
+    secureCookies: false,
+    trustProxy: false,
+    getRemoteAddr: () => '127.0.0.1',
+  }
+
+  it('alertmanagerUrl reaches the route: configured=true when set, false when not', async () => {
+    const token = await mintTestToken({ userId: 'pa', tenantId: 'T', role: 'platform_admin' })
+    const withUrl = createApp({ ...base, alertmanagerUrl: 'http://alertmanager.invalid:9093' })
+    const res = await withUrl.request('/v1/platform/alerts', { headers: { authorization: `Bearer ${token}` } })
+    expect(res.status).toBe(200)
+    // `configured: true` is the assertion — the fetch itself fails against .invalid and is caught,
+    // which is the documented degradation. What must not happen is the route believing it is unset.
+    expect(((await res.json()) as { configured: boolean }).configured).toBe(true)
+
+    const without = createApp(base)
+    const res2 = await without.request('/v1/platform/alerts', { headers: { authorization: `Bearer ${token}` } })
+    expect(((await res2.json()) as { configured: boolean }).configured).toBe(false)
+  })
+})

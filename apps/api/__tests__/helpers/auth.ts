@@ -40,6 +40,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
         findByIdForAuth: (id: string) => Promise.resolve(users.find((u) => u.id === id) ?? null),
         setPassword: () => Promise.resolve(),
         setLocale: () => Promise.resolve(),
+        touchLogin: () => Promise.resolve(),
       },
       refreshTokens: {
         create: () => Promise.resolve(),
@@ -78,6 +79,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     smsDeliveries: { create: notImpl, get: notImpl, listForDevice: notImpl, markSent: notImpl, markFailed: notImpl },
     exports: { create: notImpl, get: notImpl, list: notImpl, findPending: notImpl, pathOf: notImpl },
     leads: { create: notImpl, list: notImpl },
+    platform: { overview: notImpl, users: notImpl, setUserDisabled: notImpl, touchLogin: notImpl, billing: notImpl, lapses: notImpl, failures: notImpl },
     webhookDeliveries: { list: notImpl, pruneOlderThan: notImpl },
     rawRejects: { insertMany: notImpl, pruneOlderThan: notImpl },
     usage: { platformSummary: notImpl, tenantSummary: notImpl, reportedOverage: notImpl, recordOverageReport: notImpl },

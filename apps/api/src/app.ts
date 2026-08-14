@@ -39,6 +39,15 @@ import { issueTicket, revokedAfter, type WsDeps } from './ws.js'
 
 export interface ApiDeps extends WsDeps {
   db: Db
+  /**
+   * Alertmanager base URL for the platform console's infrastructure panel.
+   *
+   * Declared here as well as on CrudDeps because `buildRoutes` below is a HAND-WRITTEN forwarding
+   * list: an optional field that is not named in it is dropped silently, and the type checker
+   * cannot object, since dropping an optional property is legal. That is exactly how this variable
+   * reached the container, was set in the environment, and still produced "not configured".
+   */
+  alertmanagerUrl?: string
   /** raw-SQL pool for positions history reads (E04-3); positions are not in Prisma. */
   pool?: Pool
   jwtSecret: string
@@ -623,7 +632,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
-  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, ...(deps.platformDomain !== undefined ? { platformDomain: deps.platformDomain } : {}), ...(deps.edgeHostname !== undefined ? { edgeHostname: deps.edgeHostname } : {}), pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding, sms: deps.sms, smsQuota: deps.smsQuota, onSmsQuotaRejected: deps.onSmsQuotaRejected, ...(deps.deviceCreateLimit !== undefined ? { deviceCreateLimit: deps.deviceCreateLimit } : {}), ...(deps.onDeviceCreateThrottled !== undefined ? { onDeviceCreateThrottled: deps.onDeviceCreateThrottled } : {}) }), deps.db)
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, resolveTxt: deps.resolveTxt ?? defaultTxtResolver, ...(deps.platformDomain !== undefined ? { platformDomain: deps.platformDomain } : {}), ...(deps.edgeHostname !== undefined ? { edgeHostname: deps.edgeHostname } : {}), pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding, sms: deps.sms, smsQuota: deps.smsQuota, onSmsQuotaRejected: deps.onSmsQuotaRejected, ...(deps.deviceCreateLimit !== undefined ? { deviceCreateLimit: deps.deviceCreateLimit } : {}), ...(deps.onDeviceCreateThrottled !== undefined ? { onDeviceCreateThrottled: deps.onDeviceCreateThrottled } : {}), ...(deps.alertmanagerUrl !== undefined ? { alertmanagerUrl: deps.alertmanagerUrl } : {}) }), deps.db)
 
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.

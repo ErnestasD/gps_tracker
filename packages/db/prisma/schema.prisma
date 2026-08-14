@@ -432,6 +432,14 @@ model User {
   /// sends the column explicitly as null, so the default never reaches the path that must stay
   /// unverified.
   emailVerifiedAt   DateTime? @default(dbgenerated("now()")) @db.Timestamptz()
+  /// Last SUCCESSFUL login. A user row proves an account was created, not that anyone came back —
+  /// without this a never-used seat and a daily user are indistinguishable, and a customer quietly
+  /// churning looks identical to a healthy one until they cancel.
+  lastLoginAt       DateTime? @db.Timestamptz()
+  /// Set ⇒ the account cannot log in. Deleting a user destroys their audit attribution; disabling
+  /// keeps the history and removes the access. Refused at login EXACTLY like a wrong password, for
+  /// the same reason an unverified account is: any distinguishable answer is an account oracle.
+  disabledAt        DateTime? @db.Timestamptz()
 
   tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   account                 Account?                 @relation(fields: [accountId], references: [id], onDelete: SetNull)
@@ -445,6 +453,7 @@ model User {
   /// login is cross-tenant (email may exist in N tenants) — the composite unique
   /// can't serve an email-only lookup, so index email alone (E03-1, review LOW)
   @@index([email])
+  @@index([lastLoginAt])
   @@map("users")
 }
 

@@ -22,7 +22,7 @@ type ResetJob = { kind: 'password-reset'; email: string; tenantId: string; local
 
 function makeUser(over: Partial<AuthUserRow> = {}): AuthUserRow {
   return { id: 'u1', tenantId: 't1', accountId: null, email: 'u@orbetra.test', passwordHash: oldHash, role: 'tsp_admin', locale: 'en', plan: 'tsp_grow', subscriptionStatus: null, currentPeriodEnd: null, stripeSubscriptionId: null,
-  emailVerifiedAt: new Date(), ...over }
+  emailVerifiedAt: new Date(), disabledAt: null, ...over }
 }
 
 /** Minimal fake redis: `eval` = fixed-window INCR counter per key; `set` records revoke markers. */
