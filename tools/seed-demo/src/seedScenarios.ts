@@ -6,6 +6,7 @@ import { Redis } from 'ioredis'
 
 import { activateDevice, hashPassword, syncGeofence, syncRule } from '@orbetra/api'
 import { createDb, DuplicateImeiError, type Db, type Scope } from '@orbetra/db'
+import { liveDrive, runScenario } from '@orbetra/simulator'
 import { seedProfiles } from '../../../packages/db/seed/profiles.js'
 import { PARTNERS, PLATFORM_TENANT, SEED_ACTOR, SEED_PASSWORD_DEFAULT, SUPER_ADMIN_EMAIL, TENANTS, type TenantSpec } from './scenarios.js'
 
@@ -35,6 +36,9 @@ export async function seedScenarios(opts: {
   databaseUrl: string
   redisUrl: string
   password?: string
+  /** drive real history through simulator → ingest → worker for a few devices per tenant */
+  history?: { host: string; port: number; devicesPerTenant: number; days: number }
+  nowMs?: number
   log?: (line: string) => void
 }): Promise<ScenarioSeedResult> {
   const log = opts.log ?? console.log
@@ -96,6 +100,46 @@ export async function seedScenarios(opts: {
         partner: spec.referredBy,
       })
       log(`tenant: ${spec.name} [${spec.plan}] ${tenantId} — ${devices} devices, ${users} users`)
+    }
+
+    // ── history through the REAL pipeline, so the maps and reports are not empty
+    //
+    // A few devices per tenant rather than all 492: the value is that EVERY tenant has something to
+    // show, not that every vehicle does. Each drive ends with an ignition-off tail longer than the
+    // parked threshold, because a trip only appears once the engine has demonstrably stopped — a
+    // drive without that tail leaves an open trip and an empty trips list, which reads as "broken".
+    if (opts.history !== undefined) {
+      const now = opts.nowMs ?? Date.now()
+      let drives = 0
+      let acked = 0
+      let rejected = 0
+      for (const spec of TENANTS) {
+        const n = Math.min(opts.history.devicesPerTenant, spec.devices)
+        for (let i = 0; i < n; i++) {
+          const imei = (spec.imeiBase + BigInt(i)).toString()
+          for (let d = opts.history.days; d >= 1; d--) {
+            // one drive per device per day, staggered by device so a fleet's trips do not all
+            // start at the same second (which would look synthetic on every report)
+            const startMs = now - d * 86_400_000 + (8 + i) * 3_600_000
+            const res = await runScenario(liveDrive, {
+              imei,
+              seed: Number(spec.imeiBase % 100000n) + i * 31 + d,
+              count: 180,
+              startMs,
+              startDistanceM: (d + i) * 12_000,
+              parkTailS: 240, // > parkedIgnitionOffS(180) → the trip CLOSES
+              hz: 0, // as fast as the socket allows; record timestamps carry the spacing
+              host: opts.history.host,
+              port: opts.history.port,
+            })
+            drives++
+            acked += res.ackedRecords
+            if (res.rejectedByImei) rejected++
+          }
+        }
+        log(`  history: ${spec.name} — ${n} devices × ${opts.history.days} days`)
+      }
+      log(`history sent: ${drives} drives, ${acked} records acked${rejected > 0 ? `, ${rejected} REJECTED (is ingest reachable?)` : ''}`)
     }
 
     // ── the platform admin, last: it belongs to no customer
@@ -255,10 +299,21 @@ async function main(): Promise<void> {
     console.error(`refusing to seed against a non-loopback target (db=${hostOf(databaseUrl)}, redis=${hostOf(redisUrl)}); set SEED_DEMO_ALLOW=1 or pass --yes`)
     process.exit(2)
   }
+  const withHistory = process.argv.includes('--with-history')
   const res = await seedScenarios({
     databaseUrl,
     redisUrl,
     ...(process.env['DEMO_PASSWORD'] !== undefined ? { password: process.env['DEMO_PASSWORD'] } : {}),
+    ...(withHistory
+      ? {
+          history: {
+            host: process.env['INGEST_HOST'] ?? '127.0.0.1',
+            port: Number(process.env['INGEST_PORT'] ?? 5027),
+            devicesPerTenant: Number(process.env['HISTORY_DEVICES'] ?? 3),
+            days: Number(process.env['HISTORY_DAYS'] ?? 3),
+          },
+        }
+      : {}),
   })
   console.log('')
   console.log(`=== seeded ${res.totals.tenants} tenants, ${res.totals.users} users, ${res.totals.devices} devices ===`)
