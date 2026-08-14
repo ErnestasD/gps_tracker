@@ -192,6 +192,44 @@ alerts are still visible in the Alertmanager UI and Prometheus `/alerts` (no Tel
 
 Same `TELEGRAM_BOT_TOKEN` also unblocks E05-5 notification delivery — set it once.
 
+### Email is the fallback, and it is why the null receiver is no longer acceptable
+
+**What the null receiver cost (2026-08-13):** `WalArchiveFailing` — critical — fired
+continuously for eight days while `pg_wal` grew to 11 GB, about twelve days short of the
+disk filling and PostgreSQL refusing writes. The rule was right, the alert was right, and
+nobody was told, because "visible in the UI" means visible to whoever opens the UI. A
+working alarm with no live recipient is worse than no alarm: it reads as coverage.
+
+So the entrypoint now picks the first receiver it can actually deliver with:
+
+| Order | Receiver | Needs |
+|---|---|---|
+| 1 | Telegram | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALERT_CHAT_ID` (founder-provisioned) |
+| 2 | **Email** | `ALERT_EMAIL_TO` + the SES SMTP vars the platform ALREADY mails with |
+| 3 | null | neither — UI only, and now a state to fix rather than accept |
+
+Email needs **no new credential**. The SMTP password is written to a file and referenced as
+`smtp_auth_password_file` rather than substituted into the config: an SES secret is base64
+and may contain `/` or `+`, and `&` is a back-reference in a `sed` replacement.
+
+Which tier rendered is stated at container start:
+
+```sh
+docker logs orbetra-alertmanager-1 | grep "alertmanager: routing"
+```
+
+Prove the whole path end to end — this sends a real message:
+
+```sh
+docker exec orbetra-alertmanager-1 wget -qO- \
+  --post-data='[{"labels":{"alertname":"PipelineTest","severity":"critical","component":"selftest"},
+  "annotations":{"summary":"test","description":"test"}}]' \
+  --header='Content-Type: application/json' http://127.0.0.1:9093/api/v2/alerts
+# then: non-zero sends, zero failures
+docker exec orbetra-alertmanager-1 wget -qO- http://127.0.0.1:9093/metrics \
+  | grep -E 'alertmanager_notifications_(total|failed_total)\{integration="email"'
+```
+
 ## Verify
 
 ```sh
