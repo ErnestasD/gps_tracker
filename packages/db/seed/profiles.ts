@@ -167,6 +167,15 @@ const MODELS: ProfileSeed[] = (catalogue as { models: { model: string; dictionar
 
 export const DEVICE_PROFILES: ProfileSeed[] = [...MODELS, ...LEGACY]
 
+/** Key-order-independent JSON serialisation, so a comparison is about values. */
+function stable(v: unknown): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null'
+  if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`
+  const o = v as Record<string, unknown>
+  return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(',')}}`
+}
+const sameJson = (a: unknown, b: unknown): boolean => stable(a) === stable(b)
+
 export async function seedProfiles(databaseUrl: string): Promise<Record<string, string>> {
   const prisma = new PrismaClient({ datasourceUrl: databaseUrl })
   try {
@@ -194,8 +203,13 @@ export async function seedProfiles(databaseUrl: string): Promise<Record<string, 
       if (before !== null && before.avlTable !== p.avlTable) {
         changed.push(`${p.key}: avlTable ${before.avlTable} → ${p.avlTable}`)
       }
-      if (before !== null && JSON.stringify(before.presenceRules) !== JSON.stringify(p.presenceRules)) {
-        changed.push(`${p.key}: presenceRules ${JSON.stringify(before.presenceRules)} → ${JSON.stringify(p.presenceRules)}`)
+      // Compared by VALUE, not by serialisation. `JSON.stringify` is key-ORDER sensitive and
+      // Postgres returns jsonb with its own ordering, so every deploy reported ~20 profiles as
+      // "changed" when nothing had. A change report that fires on every run is worse than none: it
+      // buries the one line that matters — an operator's manual correction being reverted — under
+      // twenty that do not. That is the whole reason this report exists.
+      if (before !== null && !sameJson(before.presenceRules, p.presenceRules)) {
+        changed.push(`${p.key}: presenceRules ${stable(before.presenceRules)} → ${stable(p.presenceRules)}`)
       }
       const row = await prisma.deviceProfile.upsert({
         where: { key: p.key },
