@@ -678,7 +678,11 @@
     "plate": "Kennzeichen (optional)",
     "retireSure": "{{name}} ({{imei}}) stilllegen? Diese IMEI wird ab sofort abgelehnt.",
     "eraseSure": "Alle Daten von {{name}} dauerhaft löschen? Verlauf, Fahrten, Ereignisse und Befehle werden gelöscht. Dies kann nicht rückgängig gemacht werden.",
-    "odoError": "Kilometerzähler-Quelle konnte nicht geändert werden — bitte erneut versuchen."
+    "odoError": "Kilometerzähler-Quelle konnte nicht geändert werden — bitte erneut versuchen.",
+    "model": "Modell",
+    "modelChange": "Gerätemodell ändern",
+    "modelChangeConfirm": "Modell ändern",
+    "modelChangeSure": "{{name}} von {{from}} auf {{to}} ändern?\n\nDas bestimmt, wie KÜNFTIGE Positionen dekodiert werden. Bereits gespeicherte Positionen behalten die Parameternamen, mit denen sie dekodiert wurden, und werden nicht neu geschrieben."
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",

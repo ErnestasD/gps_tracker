@@ -1,7 +1,7 @@
 import { createSocket, type RemoteInfo, type Socket as UdpSocket } from 'node:dgram'
 import type { Redis } from 'ioredis'
 
-import { CrcError, decodeUdpHeader, encodeUdpAck, FrameError, parseUdpAvl } from '@orbetra/codec'
+import { CrcError, decodeUdpHeader, encodeUdpAck, FrameError, UndecodableRecordsError, parseUdpAvl } from '@orbetra/codec'
 
 import { GlobalRateLimiter, HandshakeRateLimiter } from './limits.js'
 import type { IngestMetrics } from './metrics.js'
@@ -119,6 +119,22 @@ export function createIngestUdpServer(
     try {
       parsed = parseUdpAvl(head.avlData)
     } catch (err) {
+      // Same treatment as TCP, for the same reason — and UDP is on by default, so handling only the
+      // TCP path would leave the wedge live in every deployment and make it LESS visible.
+      if (err instanceof UndecodableRecordsError) {
+        metrics.parseFailTotal++
+        await parkUndecodableFrame(redis, head.imei, head.avlData, now(), 'undecodable-records')
+        metrics.unsupportedCodecTotal++
+        metrics.ackedRecordsTotal += err.declaredCount
+        send(encodeUdpAck(head.packetId, head.avlPacketId, err.declaredCount), rinfo)
+        try {
+          onParseFailure?.(head.imei, err.message)
+        } catch {
+          /* a logging fault is not a datagram fault */
+        }
+        observeAckLatencyMs?.(now() - t0)
+        return
+      }
       if (err instanceof FrameError) metrics.frameViolationsTotal++
       else if (err instanceof CrcError) metrics.parseFailTotal++
       else throw err

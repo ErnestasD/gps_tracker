@@ -95,6 +95,13 @@ export function DevicesPage() {
     if (openPanelId !== null) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [openPanelId])
 
+  // A model change is not destructive but it IS consequential and one-directional: it decides how
+  // FUTURE positions are decoded and leaves everything already stored under the names it was
+  // decoded with. An operator who picked the wrong model at creation had no way to see that, let
+  // alone correct it — the model was write-once and invisible after the create form.
+  const [modelChange, setModelChange] = useState<{ device: Device; profileId: string } | null>(null)
+  const profileName = (id: string): string => profiles.data?.find((p) => p.id === id)?.name ?? '—'
+
   const columns: Column<Device>[] = [
     {
       key: 'name',
@@ -117,6 +124,25 @@ export function DevicesPage() {
       header: t('devices.imei'),
       hideOnMobile: true,
       cell: (r) => <span className="mono text-xs">{r.imei}</span>,
+    },
+    {
+      key: 'model',
+      header: t('devices.model'),
+      hideOnMobile: true,
+      sortable: true,
+      sortValue: (r) => profileName(r.profileId).toLowerCase(),
+      cell: (r) => (
+        <div className="w-44">
+          <Combobox
+            value={r.profileId}
+            disabled={r.retiredAt !== null || !canWrite}
+            aria-label={t('devices.model')}
+            data-testid={`model-${r.imei}`}
+            onChange={(v) => { if (v !== r.profileId) setModelChange({ device: r, profileId: v }) }}
+            options={(profiles.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+          />
+        </div>
+      ),
     },
     {
       key: 'status',
@@ -281,6 +307,29 @@ export function DevicesPage() {
 
       {getCurrentUser()?.role === 'platform_admin' && <QuarantineSection />}
 
+      <ConfirmDialog
+        open={modelChange !== null}
+        onOpenChange={(o) => {
+          if (!o) setModelChange(null)
+        }}
+        title={t('devices.modelChange')}
+        description={
+          modelChange !== null
+            ? t('devices.modelChangeSure', {
+                name: modelChange.device.name,
+                from: profileName(modelChange.device.profileId),
+                to: profileName(modelChange.profileId),
+              })
+            : undefined
+        }
+        confirmLabel={t('devices.modelChangeConfirm')}
+        onConfirm={() => {
+          const c = modelChange
+          if (c === null) return
+          setModelChange(null)
+          void updateDevice(c.device.id, { profileId: c.profileId }).then(refresh).catch(() => setOdoError(true))
+        }}
+      />
       <ConfirmDialog
         open={retireFor !== null}
         onOpenChange={(o) => {

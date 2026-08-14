@@ -4,7 +4,7 @@ import { parseFrame } from './parse.js'
 import type { Frame, ParsedPacket, TeltonikaCodec } from './types.js'
 
 export { crc16ibm } from './crc16.js'
-export { CrcError, FrameError } from './errors.js'
+export { CrcError, FrameError, UndecodableRecordsError } from './errors.js'
 export { StreamFramer } from './frame.js'
 export { parseFrame } from './parse.js'
 export { encodeCodec12, decodeCodec12 } from './codec12.js'

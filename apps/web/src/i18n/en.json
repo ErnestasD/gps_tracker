@@ -678,7 +678,11 @@
     "plate": "Plate (optional)",
     "retireSure": "Retire {{name}} ({{imei}})? Ingest will reject this IMEI from now on.",
     "eraseSure": "Permanently erase all data of {{name}}? History, trips, events and commands will be deleted. This cannot be undone.",
-    "odoError": "Couldn't change the odometer source — try again."
+    "odoError": "Couldn't change the odometer source — try again.",
+    "model": "Model",
+    "modelChange": "Change device model",
+    "modelChangeConfirm": "Change model",
+    "modelChangeSure": "Change {{name}} from {{from}} to {{to}}?\n\nThis decides how FUTURE positions are decoded. Positions already stored keep the parameter names they were decoded with, and are not rewritten."
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",

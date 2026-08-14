@@ -678,7 +678,11 @@
     "plate": "Nr rejestracyjny (opcjonalnie)",
     "retireSure": "Wycofać {{name}} ({{imei}})? Od teraz ten IMEI będzie odrzucany.",
     "eraseSure": "Trwale usunąć wszystkie dane {{name}}? Historia, trasy, zdarzenia i polecenia zostaną usunięte. Tego nie można cofnąć.",
-    "odoError": "Nie udało się zmienić źródła licznika — spróbuj ponownie."
+    "odoError": "Nie udało się zmienić źródła licznika — spróbuj ponownie.",
+    "model": "Model",
+    "modelChange": "Zmień model urządzenia",
+    "modelChangeConfirm": "Zmień model",
+    "modelChangeSure": "Zmienić {{name}} z {{from}} na {{to}}?\n\nTo decyduje, jak będą dekodowane PRZYSZŁE pozycje. Już zapisane pozycje zachowują nazwy parametrów, z którymi zostały zdekodowane, i nie są przepisywane."
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",
