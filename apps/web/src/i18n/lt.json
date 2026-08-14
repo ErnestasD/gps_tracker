@@ -679,7 +679,11 @@
     "plate": "Valst. numeris (nebūtina)",
     "retireSure": "Išregistruoti {{name}} ({{imei}})? Nuo šiol šis IMEI bus atmetamas.",
     "eraseSure": "Negrįžtamai ištrinti visus {{name}} duomenis? Istorija, kelionės, įvykiai ir komandos bus ištrinti. To atšaukti negalima.",
-    "odoError": "Nepavyko pakeisti odometro šaltinio — bandykite dar kartą."
+    "odoError": "Nepavyko pakeisti odometro šaltinio — bandykite dar kartą.",
+    "model": "Modelis",
+    "modelChange": "Keisti įrenginio modelį",
+    "modelChangeConfirm": "Keisti modelį",
+    "modelChangeSure": "Keisti {{name}} iš {{from}} į {{to}}?\n\nTai nulemia, kaip bus dekoduojamos BŪSIMOS pozicijos. Jau įrašytos pozicijos išlaiko parametrų pavadinimus, su kuriais buvo dekoduotos, ir nėra perrašomos."
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",
