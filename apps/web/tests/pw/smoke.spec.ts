@@ -325,7 +325,9 @@ test('quarantine: unknown IMEI → rejected → appears in quarantine → claim 
   await page.getByTestId('email-input').fill(PLATFORM_EMAIL)
   await page.getByTestId('password-input').fill(PLATFORM_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  // a platform_admin now lands in the CONSOLE, not on a fleet map — their home is the business,
+  // not whichever tenant their user row happens to live in
+  await page.waitForURL('**/platform')
   await page.goto('/app/devices')
 
   await expect(page.getByTestId('quarantine-card')).toBeVisible()
@@ -661,9 +663,12 @@ test('affiliates: a platform_admin invites a partner → appears pending → act
   await page.getByTestId('email-input').fill(PLATFORM_EMAIL)
   await page.getByTestId('password-input').fill(PLATFORM_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL('**/platform')
 
+  // the OLD in-app URL now redirects into the console — asserting the landing here means a stale
+  // bookmark or an old link keeps working rather than 404-ing after the pages moved
   await page.goto('/app/affiliates')
+  await page.waitForURL('**/platform/partners')
   await page.getByTestId('affiliate-add-open').click()
   await expect(page.getByTestId('affiliate-name')).toBeVisible()
   const email = `partner-${Date.now()}@e2e.test`
