@@ -1,7 +1,7 @@
 import { ProtocolParser } from 'complete-teltonika-parser'
 
 import { crc16ibm } from './crc16.js'
-import { CrcError, FrameError } from './errors.js'
+import { CrcError, FrameError, UndecodableRecordsError } from './errors.js'
 import { extractNx8e, walkRecords } from './walk.js'
 import type { AvlRecord, Frame, ParsedPacket } from './types.js'
 
@@ -141,13 +141,17 @@ function decodeIoWithLib(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     if (/crc/i.test(msg)) throw new CrcError(msg, bytes)
-    throw new FrameError(`wrapped parser rejected packet: ${msg}`, bytes)
+    // UNDECODABLE, not malformed: `parseAvl` has already checked framing, CRC and that the two
+    // NumberOfData bytes agree, so the frame's STRUCTURE is sound and re-sending it will produce
+    // the identical bytes. The caller must park and ACK rather than ACK 0 — see the error's docs.
+    throw new UndecodableRecordsError(`wrapped parser rejected packet: ${msg}`, expectedCount, bytes)
   }
   const content = parsed.Content as { AVL_Datas?: unknown } | undefined
   const rawDatas = content?.AVL_Datas
   if (!Array.isArray(rawDatas) || rawDatas.length !== expectedCount) {
-    throw new FrameError(
+    throw new UndecodableRecordsError(
       `wrapped parser saw ${Array.isArray(rawDatas) ? rawDatas.length : 0} records, expected ${expectedCount}`,
+      expectedCount,
       bytes,
     )
   }
