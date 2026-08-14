@@ -77,7 +77,6 @@
     "settings": "Einstellungen",
     "apiKeys": "API-Schlüssel",
     "webhooks": "Webhooks",
-    "platform": "Plattform",
     "drivers": "Fahrer",
     "maintenance": "Wartung",
     "billing": "Abrechnung",
@@ -91,7 +90,7 @@
     "palettePages": "Seiten",
     "paletteDevices": "Geräte",
     "paletteEmpty": "Keine Treffer",
-    "affiliates": "Partner"
+    "console": "Plattform-Konsole"
   },
   "routing": {
     "title": "Routenplaner",

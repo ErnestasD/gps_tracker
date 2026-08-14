@@ -77,7 +77,6 @@
     "settings": "Ustawienia",
     "apiKeys": "Klucze API",
     "webhooks": "Webhooki",
-    "platform": "Platforma",
     "drivers": "Kierowcy",
     "maintenance": "Konserwacja",
     "billing": "Płatności",
@@ -91,7 +90,7 @@
     "palettePages": "Strony",
     "paletteDevices": "Urządzenia",
     "paletteEmpty": "Brak wyników",
-    "affiliates": "Partnerzy"
+    "console": "Konsola platformy"
   },
   "routing": {
     "title": "Planer tras",

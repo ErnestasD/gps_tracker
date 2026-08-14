@@ -5,7 +5,6 @@ import {
   BarChart3,
   Bell,
   Building2,
-  Handshake,
   Car,
   ChevronsLeft,
   ChevronsRight,
@@ -91,8 +90,11 @@ const SECTIONS: NavSection[] = [
       { key: 'shell.billing', icon: CreditCard, to: '/app/billing', adminOnly: true },
       { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true, entitlement: 'apiAccess' },
       { key: 'shell.webhooks', icon: Webhook, to: '/app/webhooks', adminOnly: true, entitlement: 'webhooks' },
-      { key: 'shell.platform', icon: Building2, to: '/app/platform', platformOnly: true },
-      { key: 'shell.affiliates', icon: Handshake, to: '/app/affiliates', platformOnly: true },
+      // ONE way back to the console, not two links into copies of its pages. The customer app and
+      // the platform console are different places now; a platform admin standing in the app needs a
+      // door home, and previously there was none — you could walk from the console into the app and
+      // not back out.
+      { key: 'shell.console', icon: Building2, to: '/platform', platformOnly: true },
       { key: 'shell.audit', icon: ScrollText, to: '/app/audit', adminOnly: true },
       { key: 'shell.settings', icon: Settings, to: '/app/settings' },
     ],

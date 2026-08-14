@@ -77,7 +77,6 @@
     "settings": "Nustatymai",
     "apiKeys": "API raktai",
     "webhooks": "Webhooks",
-    "platform": "Platforma",
     "drivers": "Vairuotojai",
     "maintenance": "Priežiūra",
     "billing": "Atsiskaitymai",
@@ -91,7 +90,7 @@
     "palettePages": "Puslapiai",
     "paletteDevices": "Įrenginiai",
     "paletteEmpty": "Nieko nerasta",
-    "affiliates": "Partneriai"
+    "console": "Platformos pultas"
   },
   "routing": {
     "title": "Maršrutų planuoklė",

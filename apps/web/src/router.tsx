@@ -246,16 +246,26 @@ const webhooksRoute = createRoute({
   component: WebhooksPage,
 })
 
+/**
+ * The two pages that moved into the console keep their old URLs as REDIRECTS.
+ *
+ * Rendering them in both places would be two addresses for one screen — a bookmark, a link in a
+ * chat and the sidebar would each land somewhere slightly different, and a fix applied to one would
+ * quietly not apply to the other. Redirecting keeps every old link working and leaves exactly one
+ * place where each page lives.
+ */
 const platformRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/platform',
-  component: PlatformPage,
+  // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+  beforeLoad: () => { throw redirect({ to: '/platform/tenants' }) },
 })
 
 const affiliatesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/affiliates',
-  component: AffiliatesPage,
+  // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+  beforeLoad: () => { throw redirect({ to: '/platform/partners' }) },
 })
 
 const auditRoute = createRoute({
