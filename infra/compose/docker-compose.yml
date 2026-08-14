@@ -104,6 +104,15 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
+      # Email fallback: the SAME SES credentials the platform mails with, so an alert has a
+      # live recipient without waiting on a Telegram token. Absent ALERT_EMAIL_TO, behaviour
+      # is unchanged (UI only). See entrypoint.sh for why this tier exists.
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     volumes:
       - ../alertmanager/alertmanager.yml.tmpl:/etc/alertmanager/alertmanager.yml.tmpl:ro
       - ../alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro

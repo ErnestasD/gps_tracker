@@ -67,6 +67,35 @@ Box, add network-transfer time. The drill now asserts restored row counts agains
 baseline (non-zero + ≥ baseline) and exits non-zero on mismatch — a green drill means the
 DATA came back, not just that a process ran.
 
+## ⚠ THE ONE THAT ACTUALLY HAPPENED: a stale bind mount (2026-08-13)
+
+Archiving was dead for **eight days** and the cause was not pgBackRest, the repo, or the
+config — all three were correct. `/etc/pgbackrest` is a bind mount of
+`/opt/orbetra/app/infra/pgbackrest`, and **rsync REPLACES a directory rather than writing
+through it**. The container kept its handle on the old, now-unlinked inode, so the host had
+the four config files while the container saw an empty directory. `archive_command` failed
+every time (`failed_count` 33 213 against 2 288 archived), `pg_wal` grew to **11 GB**, and
+the disk was roughly twelve days from PostgreSQL refusing writes.
+
+**Symptom that identifies it in seconds** — the host has the files, the container does not:
+
+```sh
+ls /opt/orbetra/app/infra/pgbackrest/          # four files
+docker exec orbetra-pg-1 ls /etc/pgbackrest/   # empty  ⇒ stale mount
+```
+
+**Fix** — recreate the container so the mount re-resolves. Nothing else is needed; the repo
+volume and the stanza survive:
+
+```sh
+docker compose --env-file /opt/orbetra/.env -f docker-compose.yml -f docker-compose.apps.yml \
+  up -d --force-recreate pg
+```
+
+The backlog then drains by itself (11 GB → 513 MB in about half an hour here). **Any deploy
+that rsyncs over a bind-mounted config directory can do this to any container** — pg is
+merely the one where the consequence is a database that stops accepting writes.
+
 ## ⚠ archive_mode=on failure mode (READ THIS)
 
 Enabling WAL archiving means **live write availability now depends on `archive-push`
