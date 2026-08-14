@@ -60,12 +60,18 @@ receivers:
       - to: '${ALERT_EMAIL_TO}'
         send_resolved: true
         headers:
-          subject: '[{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }} — Orbetra'
+          # STATUS FIRST, and the resolved mail says RESOLVED rather than repeating the
+          # severity. Sent as-was, "it started" and "it is over" arrived with an identical
+          # `[CRITICAL] …` subject — so on a phone at night the two are the same message,
+          # and the one that means "go and look" is indistinguishable from the one that
+          # means "go back to sleep".
+          subject: '{{ if eq .Status "firing" }}[{{ .CommonLabels.severity | toUpper }}]{{ else }}[RESOLVED]{{ end }} {{ .CommonLabels.alertname }} — Orbetra'
         html: |
-          <h3>[{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}</h3>
+          <h3>{{ if eq .Status "firing" }}[{{ .CommonLabels.severity | toUpper }}]{{ else }}[RESOLVED]{{ end }} {{ .CommonLabels.alertname }}</h3>
           {{ range .Alerts }}<p><b>{{ .Annotations.summary }}</b><br>
           {{ .Annotations.description }}</p>
           {{ end }}
+          <p style="color:#888;font-size:12px">${ALERT_ENV_LABEL:-orbetra} · {{ .Alerts | len }} alert(s)</p>
 
 inhibit_rules:
   - source_matchers: [ severity="critical" ]
