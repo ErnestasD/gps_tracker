@@ -397,7 +397,8 @@
     "search": "Search devices…",
     "empty": "No devices yet — they appear as they report.",
     "noMatch": "Nothing matches the search.",
-    "count": "{{shown}} of {{total}}"
+    "count": "{{shown}} of {{total}}",
+    "noFix": "no fix yet"
   },
   "info": {
     "speed": "Speed",
@@ -682,7 +683,9 @@
     "model": "Model",
     "modelChange": "Change device model",
     "modelChangeConfirm": "Change model",
-    "modelChangeSure": "Change {{name}} from {{from}} to {{to}}?\n\nThis decides how FUTURE positions are decoded. Positions already stored keep the parameter names they were decoded with, and are not rewritten."
+    "modelChangeSure": "Change {{name}} from {{from}} to {{to}}?\n\nThis decides how FUTURE positions are decoded. Positions already stored keep the parameter names they were decoded with, and are not rewritten.",
+    "waiting": "Waiting",
+    "waitingHint": "Registered, but this device has never reported a position. Check the IMEI, the SIM's APN, and that the tracker has been sent the server SMS."
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",

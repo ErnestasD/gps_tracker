@@ -59,11 +59,22 @@ export function MapPage() {
 
   const selected = snap.selectedId !== null ? snap.devices.find((d) => d.ev.deviceId === snap.selectedId) : undefined
 
+  // Active devices the live set has never heard from. The registry list is already fetched above
+  // (it bounds the live set); the panel used to ignore it, so a fleet of eight read "3 of 3" and
+  // the five that had never called in were simply absent — indistinguishable from not existing.
+  const silent = useMemo(() => {
+    const live = new Set(snap.devices.map((d) => d.ev.deviceId))
+    return (devices.data ?? [])
+      .filter((d) => d.retiredAt === null && !live.has(d.id))
+      .map((d) => ({ id: d.id, name: d.name }))
+  }, [devices.data, snap.devices])
+
   return (
     <>
       <LiveMap />
       <DeviceList
         devices={snap.devices}
+        silent={silent}
         selectedId={snap.selectedId}
         onSelect={(id) => liveStore.select(id)}
         nameOf={nameOf}

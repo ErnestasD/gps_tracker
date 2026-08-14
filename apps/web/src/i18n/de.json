@@ -397,7 +397,8 @@
     "search": "Geräte suchen…",
     "empty": "Noch keine Geräte — sie erscheinen, sobald sie melden.",
     "noMatch": "Keine Treffer.",
-    "count": "{{shown}} von {{total}}"
+    "count": "{{shown}} von {{total}}",
+    "noFix": "noch keine Position"
   },
   "info": {
     "speed": "Geschwindigkeit",
@@ -682,7 +683,9 @@
     "model": "Modell",
     "modelChange": "Gerätemodell ändern",
     "modelChangeConfirm": "Modell ändern",
-    "modelChangeSure": "{{name}} von {{from}} auf {{to}} ändern?\n\nDas bestimmt, wie KÜNFTIGE Positionen dekodiert werden. Bereits gespeicherte Positionen behalten die Parameternamen, mit denen sie dekodiert wurden, und werden nicht neu geschrieben."
+    "modelChangeSure": "{{name}} von {{from}} auf {{to}} ändern?\n\nDas bestimmt, wie KÜNFTIGE Positionen dekodiert werden. Bereits gespeicherte Positionen behalten die Parameternamen, mit denen sie dekodiert wurden, und werden nicht neu geschrieben.",
+    "waiting": "Wartet",
+    "waitingHint": "Registriert, aber dieses Gerät hat noch nie eine Position gesendet. Prüfe IMEI, den APN der SIM und ob dem Tracker die Server-SMS geschickt wurde."
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",

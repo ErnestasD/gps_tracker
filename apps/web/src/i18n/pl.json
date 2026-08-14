@@ -397,7 +397,8 @@
     "search": "Szukaj urządzeń…",
     "empty": "Brak urządzeń — pojawią się, gdy zaczną raportować.",
     "noMatch": "Brak wyników wyszukiwania.",
-    "count": "{{shown}} z {{total}}"
+    "count": "{{shown}} z {{total}}",
+    "noFix": "brak sygnału"
   },
   "info": {
     "speed": "Prędkość",
@@ -682,7 +683,9 @@
     "model": "Model",
     "modelChange": "Zmień model urządzenia",
     "modelChangeConfirm": "Zmień model",
-    "modelChangeSure": "Zmienić {{name}} z {{from}} na {{to}}?\n\nTo decyduje, jak będą dekodowane PRZYSZŁE pozycje. Już zapisane pozycje zachowują nazwy parametrów, z którymi zostały zdekodowane, i nie są przepisywane."
+    "modelChangeSure": "Zmienić {{name}} z {{from}} na {{to}}?\n\nTo decyduje, jak będą dekodowane PRZYSZŁE pozycje. Już zapisane pozycje zachowują nazwy parametrów, z którymi zostały zdekodowane, i nie są przepisywane.",
+    "waiting": "Oczekuje",
+    "waitingHint": "Zarejestrowane, ale to urządzenie nigdy nie wysłało pozycji. Sprawdź IMEI, APN karty SIM oraz czy do lokalizatora wysłano SMS z adresem serwera."
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",
