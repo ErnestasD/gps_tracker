@@ -41,12 +41,25 @@ export function LoginPage() {
     liveStore.reset() // no stale prior-session devices (E02-6 review HIGH)
     qc.clear() // and no stale prior-session query cache (R4 HIGH cross-tenant leak) before a new login
     login(email, password)
-      .then(async () => {
+      .then(async (user) => {
+        // A PLATFORM ADMIN lands in the console, not on a fleet map. They run the business the
+        // customers are on; their user row lives in some tenant only because it has to live
+        // somewhere, and sending them to that tenant's map showed them either an empty screen or,
+        // worse, a real customer's vehicles as though they were their own. An explicit `?redirect`
+        // still wins — a deep link the user followed is a stronger signal than their role.
+        if (search.redirect !== undefined) {
+          void navigate({ to: search.redirect })
+          return
+        }
+        if (user.role === 'platform_admin') {
+          void navigate({ to: '/platform' })
+          return
+        }
         // best-effort map warm-up: a failed snapshot must NOT block navigation or surface a
         // misleading credentials/network error — the user is already authenticated, and the WS
         // delivers positions anyway (map.tsx treats the same call as best-effort)
         liveStore.seed(await getLastPositions().catch(() => []))
-        void navigate({ to: search.redirect ?? '/app/map' })
+        void navigate({ to: '/app/map' })
       })
       .catch((err: unknown) => setError(t(errorKey(err))))
       .finally(() => setBusy(false))
