@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { MoreHorizontal, Plus, Upload } from 'lucide-react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { DataTable, type Column } from '@/components/admin/DataTable'
+import { getLastPositions } from '@/lib/api'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -42,7 +43,21 @@ const selectStyle: React.CSSProperties = {
   color: 'var(--admin-ink)',
 }
 
-const statusOf = (d: Device): 'active' | 'retired' => (d.retiredAt === null ? 'active' : 'retired')
+/**
+ * THREE states, because two were a lie by omission.
+ *
+ * This used to be `retiredAt === null ? 'active' : 'retired'` — a LIFECYCLE flag. So a device typed
+ * into the form thirty seconds ago, never powered on, never wired to anything, was labelled
+ * "Active" the instant it was saved. An operator reads that as "the device is working", and the map
+ * simultaneously did not show it at all: the product asserted two contradictory things about the
+ * same tracker, and the one that sounded confident was the wrong one.
+ *
+ * `waiting` is the honest state for the most common moment in this product's life — a device has
+ * been registered and is not talking yet — and it is exactly the moment when the operator needs to
+ * know whether the problem is theirs (wrong IMEI, no APN, no SIM credit) or simply time.
+ */
+const statusOf = (d: Device, everSeen: ReadonlySet<string>): 'active' | 'waiting' | 'retired' =>
+  d.retiredAt !== null ? 'retired' : everSeen.has(d.id) ? 'active' : 'waiting'
 
 /** Devices page (E03-3), rebuilt on the orbetra_design_new app.devices layout (ADR-028 round 2):
  * PageHeader actions open right Sheets (CSV import wizard + create form), the list is the shared
@@ -53,6 +68,10 @@ export function DevicesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
+  // which devices have EVER reported — the same snapshot the live map seeds from, so the two
+  // surfaces can no longer disagree about one tracker
+  const lastSeen = useQuery({ queryKey: ['devices-last'], queryFn: getLastPositions })
+  const everSeen = useMemo(() => new Set((lastSeen.data ?? []).map((e) => e.deviceId)), [lastSeen.data])
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles })
   const [addOpen, setAddOpen] = useState(false)
@@ -148,25 +167,24 @@ export function DevicesPage() {
       key: 'status',
       header: t('devices.status'),
       sortable: true,
-      sortValue: statusOf,
-      filterValue: statusOf,
+      sortValue: (r) => statusOf(r, everSeen),
+      filterValue: (r) => statusOf(r, everSeen),
       filterOptions: [
         { value: 'active', label: t('devices.active') },
+        { value: 'waiting', label: t('devices.waiting') },
         { value: 'retired', label: t('devices.retired') },
       ],
       // colored status dot inside the Badge (Lovable tile-row idiom)
-      cell: (r) =>
-        r.retiredAt === null ? (
-          <Badge tone="success">
+      cell: (r) => {
+        const st = statusOf(r, everSeen)
+        const tone = st === 'active' ? 'success' : st === 'waiting' ? 'warning' : 'neutral'
+        return (
+          <Badge tone={tone} title={st === 'waiting' ? t('devices.waitingHint') : undefined}>
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }} aria-hidden />
-            {t('devices.active')}
+            {t(`devices.${st}`)}
           </Badge>
-        ) : (
-          <Badge tone="neutral">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }} aria-hidden />
-            {t('devices.retired')}
-          </Badge>
-        ),
+        )
+      },
     },
     {
       key: 'odometer',

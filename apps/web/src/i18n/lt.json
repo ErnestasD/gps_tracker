@@ -398,7 +398,8 @@
     "search": "Ieškoti įrenginių…",
     "empty": "Įrenginių dar nėra — jie atsiras, kai atsiųs duomenis.",
     "noMatch": "Paieška nieko nerado.",
-    "count": "{{shown}} iš {{total}}"
+    "count": "{{shown}} iš {{total}}",
+    "noFix": "dar nesusisiekė"
   },
   "info": {
     "speed": "Greitis",
@@ -683,7 +684,9 @@
     "model": "Modelis",
     "modelChange": "Keisti įrenginio modelį",
     "modelChangeConfirm": "Keisti modelį",
-    "modelChangeSure": "Keisti {{name}} iš {{from}} į {{to}}?\n\nTai nulemia, kaip bus dekoduojamos BŪSIMOS pozicijos. Jau įrašytos pozicijos išlaiko parametrų pavadinimus, su kuriais buvo dekoduotos, ir nėra perrašomos."
+    "modelChangeSure": "Keisti {{name}} iš {{from}} į {{to}}?\n\nTai nulemia, kaip bus dekoduojamos BŪSIMOS pozicijos. Jau įrašytos pozicijos išlaiko parametrų pavadinimus, su kuriais buvo dekoduotos, ir nėra perrašomos.",
+    "waiting": "Laukiama",
+    "waitingHint": "Užregistruotas, bet šis įrenginys dar niekada neatsiuntė pozicijos. Patikrink IMEI, SIM kortelės APN ir ar sekikliui išsiųsta serverio SMS."
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",
