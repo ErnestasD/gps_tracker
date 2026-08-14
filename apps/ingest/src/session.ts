@@ -6,6 +6,7 @@ import {
   CrcError,
   encodeCodec12,
   FrameError,
+  UndecodableRecordsError,
   type TeltonikaCodec,
 } from '@orbetra/codec'
 
@@ -274,6 +275,36 @@ export class Session {
     try {
       parsed = this.codec.parse(frame)
     } catch (err) {
+      /**
+       * UNDECODABLE CONTENT gets the codec-16 treatment, not ACK 0.
+       *
+       * The frame is framed, CRC-verified and its two NumberOfData bytes agree — only the records
+       * inside defeat our decoder — so re-sending produces the identical bytes and the device's ACK
+       * cursor never moves. It then re-sends forever while its own buffer overwrites its OLDEST
+       * unsent records: one poison packet costs the customer everything queued behind it, silently.
+       * Reproduced live against staging ingest: the same frame answered `00000000` on every attempt,
+       * and the perfectly valid record sharing that frame was discarded with it.
+       *
+       * So park the bytes for diagnosis and ACK what the device declared, exactly as the codec-16
+       * path does and for exactly the same reason. This trades one undecodable frame for the rest
+       * of that device's history, which is the right way round.
+       */
+      if (err instanceof UndecodableRecordsError && this.deviceId !== null) {
+        this.deps.metrics.parseFailTotal++
+        await parkUndecodableFrame(this.deps.redis, this.imei, frame.bytes, this.now(), 'undecodable-records')
+        this.deps.metrics.unsupportedCodecTotal++
+        this.deps.metrics.ackedRecordsTotal += err.declaredCount // told the device they landed (I1)
+        this.socket.write(this.codec.encodeAck(err.declaredCount))
+        try {
+          this.deps.onParseFailure?.(this.imei, err.message)
+        } catch {
+          /* a logging fault is not a session fault */
+        }
+        this.deps.observeAckLatencyMs?.(this.now() - t0)
+        await this.maybeBackpressure()
+        await this.drainPending()
+        return
+      }
       if (err instanceof CrcError || err instanceof FrameError) {
         // corrupt packet: ACK the count actually persisted — zero (rule 4; device re-sends)
         this.deps.metrics.parseFailTotal++

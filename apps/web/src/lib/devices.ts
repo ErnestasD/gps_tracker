@@ -52,6 +52,9 @@ export interface DeviceUpdateInput {
   odometerSource?: OdometerSource
   simMsisdn?: string | null
   simIccid?: string | null
+  /** the device MODEL. Changing it changes how FUTURE positions are decoded; already-stored
+   *  positions keep the attribute names they were decoded with. */
+  profileId?: string
 }
 export interface ImportError {
   row: number

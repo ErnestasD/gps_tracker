@@ -144,6 +144,52 @@ describe('E01-5 ingest TCP server (e2e vs real simulator)', () => {
     expect(ingest!.metrics.unsupportedCodecTotal).toBe(1)
   }, 30_000)
 
+  it('a repeated AVL id: the frame is parked and ACKed, NOT retried forever', async () => {
+    // Reproduced live against staging before this change: a two-record frame whose second record
+    // repeats IO id 1 answered `00000000` on every attempt, including a deliberate re-send. Teltonika
+    // retransmits WHOLE packets, so that device's ACK cursor never moves and its own buffer
+    // eventually overwrites its OLDEST unsent records — one poison packet costing everything queued
+    // behind it, silently, plus the perfectly valid record sharing the frame.
+    //
+    // Structure, CRC and both NumberOfData bytes are sound here; only the CONTENT defeats the
+    // decoder, and re-sending produces identical bytes. So it gets the codec-16 treatment: park the
+    // evidence, ACK what the device declared, let the device move on.
+    const port = await startIngest()
+    const before = await redis.xlen(UNSUPPORTED_STREAM)
+    const sock = connect(port, '127.0.0.1')
+    await new Promise((r) => sock.once('connect', r))
+    const imeiBuf = Buffer.from(IMEI, 'ascii')
+    sock.write(Buffer.concat([Buffer.from([0x00, imeiBuf.length]), imeiBuf]))
+    await new Promise((r) => sock.once('data', r))
+
+    const rec = (repeat: boolean): Buffer => {
+      const ts = Buffer.alloc(8); ts.writeBigUInt64BE(BigInt(1_560_161_086_000))
+      const gps = Buffer.alloc(15)
+      gps.writeInt32BE(252_797_000, 0); gps.writeInt32BE(546_872_000, 4)
+      gps.writeUInt8(9, 12)
+      const io = repeat
+        ? Buffer.from([0x01, 0x02, 0x02, 0x01, 0x05, 0x01, 0x07, 0x00, 0x00, 0x00])
+        : Buffer.from([0x01, 0x01, 0x01, 0x01, 0x05, 0x00, 0x00, 0x00])
+      return Buffer.concat([ts, Buffer.from([0]), gps, io])
+    }
+    const records = Buffer.concat([rec(false), rec(true)])
+    const body = Buffer.concat([Buffer.from([0x08, 0x02]), records, Buffer.from([0x02])])
+    const frame = Buffer.concat([
+      Buffer.from([0, 0, 0, 0]),
+      (() => { const b = Buffer.alloc(4); b.writeUInt32BE(body.length); return b })(),
+      body,
+      (() => { const b = Buffer.alloc(4); b.writeUInt32BE(crc16ibm(body)); return b })(),
+    ])
+    sock.write(frame)
+    const ack = await new Promise<Buffer>((r) => sock.once('data', (d: Buffer) => r(d)))
+    sock.destroy()
+
+    expect(ack.readUInt32BE(0)).toBe(2)                              // the DECLARED count, not 0
+    expect(await redis.xlen(UNSUPPORTED_STREAM)).toBe(before + 1)    // …and the bytes are kept
+    expect(parseFailures.at(-1)?.imei).toBe(IMEI)                    // …and the device is named
+    expect(parseFailures.at(-1)?.reason).toMatch(/repeated id/i)
+  }, 30_000)
+
   it('oversize declared length: socket closed + frame violation counted', async () => {
     const port = await startIngest()
     const res = await runScenario(oversize, { ...base, count: 1, host: '127.0.0.1', port })
