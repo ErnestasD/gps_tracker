@@ -761,6 +761,17 @@ export const maintenanceCreateSchema = z.object({
   active: z.boolean().optional(),
 })
 export const maintenanceUpdateSchema = maintenanceCreateSchema.omit({ deviceId: true }).partial()
+/**
+ * Platform console: the only user field a platform admin flips from outside the tenant.
+ *
+ * Deliberately NOT role or account — those belong to the tenant's own admin, who knows why someone
+ * is a manager. Reaching across a tenant boundary to re-grant privileges inside it is a different
+ * and much larger decision than switching an account off.
+ */
+export const platformUserUpdateSchema = z.object({
+  disabled: z.boolean(),
+})
+
 export const markServicedSchema = z.object({
   at: z.string().datetime().optional(), // defaults to now server-side
   odoKm: z.number().int().min(0).max(10_000_000).nullable().optional(),

@@ -25,7 +25,7 @@ let currentHash = ''
 interface Row { familyId: string; userId: string; tokenHash: string; rotatedAt: Date | null; revokedAt: Date | null; expiresAt: Date; createdAt: Date }
 
 function makeUser(): AuthUserRow {
-  return { id: 'u1', tenantId: 't1', accountId: null, email: 'u@orbetra.test', passwordHash: currentHash, role: 'tsp_admin', locale: 'en', plan: 'tsp_grow', subscriptionStatus: null, currentPeriodEnd: null, stripeSubscriptionId: null, emailVerifiedAt: new Date() }
+  return { id: 'u1', tenantId: 't1', accountId: null, email: 'u@orbetra.test', passwordHash: currentHash, role: 'tsp_admin', locale: 'en', plan: 'tsp_grow', subscriptionStatus: null, currentPeriodEnd: null, stripeSubscriptionId: null, emailVerifiedAt: new Date() , disabledAt: null}
 }
 
 function makeDeps(): { deps: AuthRouteDeps; rows: Map<string, Row>; revokeAllSpy: ReturnType<typeof vi.fn>; seed: (raw: string, familyId: string) => void } {

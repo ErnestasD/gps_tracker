@@ -322,6 +322,15 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
     // increment that shows up as a later 429 — reopens the oracle for the price of one extra
     // request. The login screen tells everyone to check their mail on a failed attempt, and
     // `POST /v1/public/verify-email/resend` is one click away, which is where that cost is paid back.
+    // A DISABLED account is folded into the wrong-password branch for the same reason an unverified
+    // one is: any distinguishable answer — a different status, a different body, a skipped lockout
+    // increment visible as a later 429 — tells an anonymous caller that this address exists and is
+    // switched off. It is dropped BEFORE the verified list is examined so the rest of the branch
+    // (single tenant, ambiguous identity) never sees it.
+    const live = verified.filter((u) => u.disabledAt === null)
+    verified.length = 0
+    verified.push(...live)
+
     const unverified = verified.filter((u) => u.emailVerifiedAt === null)
     if (unverified.length > 0 && unverified.length === verified.length) {
       deps.onUnverifiedLogin?.()
@@ -373,6 +382,10 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       deps.redis.setex(okIpKey, KNOWN_GOOD_TTL_S, '1').catch(() => undefined),
     ])
     const user = verified[0]!
+    // Stamp the login BEST-EFFORT. It is a statistic the platform console reads to tell a seat
+    // nobody uses from a customer who is here daily; a write failure must never cost a user their
+    // session over it, so it is caught and dropped rather than awaited into the response.
+    void deps.db.users.touchLogin(user.id, new Date()).catch(() => undefined)
     const { session, rawRefresh } = await issueSession(user, randomUUID())
     setRefreshCookie(c, rawRefresh)
     c.header('Cache-Control', 'no-store')

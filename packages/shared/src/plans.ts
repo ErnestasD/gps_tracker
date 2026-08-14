@@ -143,6 +143,30 @@ const DIRECT_DEVICE_LIMIT: Record<string, number> = {
   direct_100: 100,
 }
 
+/**
+ * List monthly price in EUR per plan (PRICING_STRATEGY.md §2 Track A, §3 Track B).
+ *
+ * Here so the platform console can state recurring revenue without calling Stripe on every page
+ * load. It is a LIST price, not an invoice: a tenant on an annual term, a negotiated discount or a
+ * coupon pays something else, and only Stripe knows what. Treat the derived figure as "what this
+ * book of business is worth at list", which is the number a founder actually steers on.
+ *
+ * `tsp_enterprise` is deliberately null — it is quoted per deal (§3, "contact"), so inventing a
+ * figure for it would silently understate or overstate every total it appears in. The console
+ * counts those tenants separately rather than pricing them.
+ */
+export const PLAN_MONTHLY_EUR: Record<TenantPlan, number | null> = {
+  direct_5: 9,
+  direct_10: 15,
+  direct_25: 35,
+  direct_50: 65,
+  direct_100: 119,
+  tsp_start: 149,
+  tsp_grow: 399,
+  tsp_scale: 899,
+  tsp_enterprise: null, // quoted per deal
+}
+
 /** True for the self-service Track A plans (`direct_*`), false for every `tsp_*` plan. */
 export function isDirectPlan(p: TenantPlan): boolean {
   return p.startsWith('direct_')

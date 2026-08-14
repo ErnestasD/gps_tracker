@@ -14,6 +14,7 @@ export { type CommandRepo, type CommandView, type CommandCreate } from './repos/
 export { createSmsDeliveryRepo, type SmsDeliveryRepo, type SmsDeliveryCreate } from './repos/smsDeliveries.js'
 export { type ExportRepo, type ExportJobView } from './repos/exports.js'
 export { type LeadRepo, type LeadView, type LeadCreate } from './repos/leads.js'
+export { type PlatformRepo, type PlatformOverview, type PlatformUser, type PlatformBillingRow, type PlatformLapse, type PlatformFailure } from './repos/platform.js'
 export { type ProfileRepo } from './repos/profiles.js'
 export { type RuleRepo, type RuleCreate, type RuleUpdate } from './repos/rules.js'
 export { hashShareToken, type ShareLinkRepo, type ShareLinkView, type ShareLinkCreate, type CreatedShareLink, type ShareLinkResolved } from './repos/shareLinks.js'

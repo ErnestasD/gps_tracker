@@ -7,6 +7,7 @@ import { createAuditRepo, type AuditRepo } from './repos/audit.js'
 import { createCommandRepo, type CommandRepo } from './repos/commands.js'
 import { createExportRepo, type ExportRepo } from './repos/exports.js'
 import { createLeadRepo, type LeadRepo } from './repos/leads.js'
+import { createPlatformRepo, type PlatformRepo } from './repos/platform.js'
 import { createDeviceRepo, type DeviceRepo } from './repos/devices.js'
 import { createDriverRepo, type DriverRepo } from './repos/drivers.js'
 import { createMaintenanceRepo, type MaintenanceRepo } from './repos/maintenance.js'
@@ -64,6 +65,8 @@ export interface Db {
   geofences: GeofenceRepo
   exports: ExportRepo
   leads: LeadRepo
+  /** UNSCOPED, platform_admin only — the console's aggregates (see repos/platform.ts) */
+  platform: PlatformRepo
   audit: AuditRepo
   $disconnect(): Promise<void>
 }
@@ -102,6 +105,7 @@ export function createDb(databaseUrl: string): Db {
     geofences: createGeofenceRepo(prisma, audit),
     exports: createExportRepo(prisma, audit),
     leads: createLeadRepo(prisma),
+    platform: createPlatformRepo(prisma, audit),
     audit,
     $disconnect: () => prisma.$disconnect(),
   }

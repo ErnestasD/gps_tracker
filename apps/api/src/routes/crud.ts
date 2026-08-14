@@ -47,6 +47,9 @@ import {
   scheduledReportUpdateSchema,
   webhookUpdateSchema,
   type Role,
+  PLAN_MONTHLY_EUR,
+  platformUserUpdateSchema,
+  type TenantPlan,
 } from '@orbetra/shared'
 
 import { hashPassword } from '../auth/passwords.js'
@@ -154,6 +157,12 @@ export interface CrudDeps {
    * On-call reading "the create was let through" would do nothing, which is the wrong action.
    */
   onDeviceCreateThrottled?: (why: 'limit' | 'degraded' | 'refund_failed') => void
+  /**
+   * Alertmanager base URL (`ALERTMANAGER_URL`, e.g. http://alertmanager:9093) for the console's
+   * infrastructure feed. Unset ⇒ the alerts panel reports "not configured" rather than an error:
+   * a self-hosted deploy without Prometheus is a supported shape, not a fault.
+   */
+  alertmanagerUrl?: string
   /** Device CRUD syncs the ingest/worker Redis registries (E03-3). */
   redis: Redis
   /** DNS TXT resolver for domain verification (E03-5); injectable for tests. */
@@ -1444,6 +1453,86 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const ok = await db.webhooks.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+
+    // ── platform console (founder decision 2026-08-14) ───────────────────────
+    //
+    // The view from ABOVE. A platform admin steers a business: how many customers, who is paying,
+    // who is about to be cut off, whose integration is broken. Per-tenant operational detail — a
+    // geofence crossing, one trip — belongs to that tenant's own screens, where the scope check
+    // lives. Everything here is therefore an aggregate or a bounded exception list.
+    { method: 'get', path: '/v1/platform/overview', scopeClass: 'platform', entity: 'usage', shape: 'collection',
+      handler: async (c) => {
+        const o = await db.platform.overview(new Date())
+        // Priced HERE, not in the repo: packages/shared owns the plan→price map, and the database
+        // layer has no business knowing what a plan costs.
+        let monthlyEurAtList = 0
+        let pricedTenants = 0
+        for (const [plan, n] of Object.entries(o.tenants.payingByPlan)) {
+          const price = PLAN_MONTHLY_EUR[plan as TenantPlan]
+          if (price === null || price === undefined) continue // enterprise: quoted per deal
+          monthlyEurAtList += price * n
+          pricedTenants += n
+        }
+        const unpricedTenants = o.tenants.paying - pricedTenants
+        return json(c, { ...o, revenue: { monthlyEurAtList, pricedTenants, unpricedTenants } })
+      } },
+    { method: 'get', path: '/v1/platform/users', scopeClass: 'platform', entity: 'user', shape: 'collection',
+      handler: async (c) => {
+        const raw = Number(c.req.query('limit') ?? 200)
+        const limit = Number.isFinite(raw) ? Math.min(Math.max(Math.trunc(raw), 1), 1000) : 200
+        const search = c.req.query('search')
+        return json(c, await db.platform.users({ limit, ...(search !== undefined ? { search } : {}) }))
+      } },
+    { method: 'patch', path: '/v1/platform/users/:id', scopeClass: 'platform', entity: 'user', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, platformUserUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        // A platform admin must not be able to lock themselves out — the only way back would be a
+        // database console. Refusing is cheaper than explaining that recovery.
+        if (data.disabled && id(c) === auth(c).userId) return problem(c, 400, 'Bad Request', 'cannot disable your own account')
+        const row = await db.platform.setUserDisabled({ userId: auth(c).userId }, id(c), data.disabled)
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'get', path: '/v1/platform/billing', scopeClass: 'platform', entity: 'usage', shape: 'collection',
+      handler: async (c) => json(c, await db.platform.billing()) },
+    { method: 'get', path: '/v1/platform/lapses', scopeClass: 'platform', entity: 'usage', shape: 'collection',
+      handler: async (c) => json(c, await db.platform.lapses(new Date())) },
+    { method: 'get', path: '/v1/platform/errors', scopeClass: 'platform', entity: 'usage', shape: 'collection',
+      handler: async (c) => {
+        const hoursRaw = Number(c.req.query('hours') ?? 24)
+        const hours = Number.isFinite(hoursRaw) ? Math.min(Math.max(Math.trunc(hoursRaw), 1), 720) : 24
+        const since = new Date(Date.now() - hours * 3_600_000)
+        return json(c, await db.platform.failures(since, 100))
+      } },
+    { method: 'get', path: '/v1/platform/alerts', scopeClass: 'platform', entity: 'usage', shape: 'collection',
+      handler: async (c) => {
+        const base = deps.alertmanagerUrl
+        if (base === undefined || base === '') return json(c, { configured: false, alerts: [] })
+        try {
+          // Bounded: the console must render even when Alertmanager is the thing that is down —
+          // which is precisely when someone opens it.
+          const res = await fetch(`${base.replace(/\/$/, '')}/api/v2/alerts`, { signal: AbortSignal.timeout(3_000) })
+          if (!res.ok) return json(c, { configured: true, alerts: [], error: `alertmanager ${res.status}` })
+          const raw: unknown = await res.json()
+          const alerts = Array.isArray(raw)
+            ? raw.slice(0, 100).map((a) => {
+                const row = a as { labels?: Record<string, string>; annotations?: Record<string, string>; startsAt?: string; status?: { state?: string } }
+                return {
+                  name: row.labels?.['alertname'] ?? 'unknown',
+                  severity: row.labels?.['severity'] ?? 'unknown',
+                  component: row.labels?.['component'] ?? null,
+                  summary: row.annotations?.['summary'] ?? null,
+                  description: row.annotations?.['description'] ?? null,
+                  startsAt: row.startsAt ?? null,
+                  state: row.status?.state ?? null,
+                }
+              })
+            : []
+          return json(c, { configured: true, alerts })
+        } catch {
+          return json(c, { configured: true, alerts: [], error: 'alertmanager unreachable' })
+        }
       } },
 
     // ── platform audit trail (affiliates/commissions — no subject tenant) ─────

@@ -181,6 +181,9 @@ const deps = {
   ...(process.env['PLATFORM_DOMAIN'] ? { platformDomain: process.env['PLATFORM_DOMAIN'] } : {}),
   ...(process.env['EDGE_HOSTNAME'] ? { edgeHostname: process.env['EDGE_HOSTNAME'] } : {}),
   ...(process.env['VAPID_PUBLIC_KEY'] ? { vapidPublicKey: process.env['VAPID_PUBLIC_KEY'] } : {}),
+  // Alertmanager feed for the platform console's infrastructure panel. Unset ⇒ the panel reports
+  // "not configured" rather than an error: a deploy without Prometheus is a supported shape.
+  ...(process.env['ALERTMANAGER_URL'] ? { alertmanagerUrl: process.env['ALERTMANAGER_URL'] } : {}),
   // OSRM route optimization (ADR-029): unset ⇒ POST /v1/routing/optimize answers 503
   // route optimization (ADR-034): Mapbox by default — worldwide, no dataset to build or refresh,
   // $0 at our volume. OSRM stays wired as the alternative driver for the >12-stop case.

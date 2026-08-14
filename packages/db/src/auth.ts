@@ -50,6 +50,8 @@ export interface AuthUserRow {
   /** NULL ⇒ the address was never proven and the account cannot authenticate (audit MED #67).
    *  Only public self-serve signup ever creates such a row. */
   emailVerifiedAt: Date | null
+  /** Set ⇒ switched off by a platform admin; refused at login exactly like a wrong password. */
+  disabledAt: Date | null
 }
 
 export interface RefreshTokenRow {
@@ -73,6 +75,9 @@ export interface AuthDb {
      * so the language choice follows the user across devices + localizes server emails.
      * UNSCOPED BY DESIGN. */
     setLocale(id: string, locale: string): Promise<void>
+    /** Stamp a successful login. UNSCOPED BY DESIGN: the id comes from a credential we just
+     *  verified. Best-effort — the caller drops failures rather than lose the session over a stat. */
+    touchLogin(id: string, at: Date): Promise<void>
   }
   refreshTokens: {
     create(row: { id: string; familyId: string; userId: string; tokenHash: string; expiresAt: Date }): Promise<void>
@@ -194,6 +199,7 @@ const AUTH_USER_SELECT = {
   role: true,
   locale: true,
   emailVerifiedAt: true,
+  disabledAt: true,
   // join the owning tenant's plan + live billing window so the session hint can be TRIAL-AWARE
   // (an expired F2 trial must not advertise features the server already floors) — login computes
   // entitlements with effectiveEntitlementsAt, the same helper the authoritative gate uses.
@@ -222,6 +228,11 @@ export function buildAuthMethods(prisma: PrismaClient): Omit<AuthDb, '$disconnec
       findByIdForAuth: async (id) => {
         const row = await prisma.user.findUnique({ where: { id }, select: AUTH_USER_SELECT })
         return row === null ? null : flattenAuthRow(row)
+      },
+      touchLogin: async (id, at) => {
+        // updateMany, not update: a user deleted between the credential check and this write must
+        // not turn a successful login into a 500 over a statistic.
+        await prisma.user.updateMany({ where: { id }, data: { lastLoginAt: at } })
       },
       setPassword: async (id, passwordHash) => {
         await prisma.user.update({ where: { id }, data: { passwordHash } })
