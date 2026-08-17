@@ -83,7 +83,10 @@ export function Combobox({
   }
 
   return (
-    <Popover open={open} onOpenChange={disabled === true ? undefined : setOpen}>
+    // modal: the option list must stay wheel-scrollable when the Combobox sits inside a modal
+    // Sheet/Dialog — the dialog's scroll lock blocks wheel events on the body-portalled popover
+    // otherwise (radix-ui/primitives#1159; 105-model profile picker in the add-device sheet)
+    <Popover open={open} onOpenChange={disabled === true ? undefined : setOpen} modal>
       <PopoverTrigger asChild>
         <button
           type="button"
