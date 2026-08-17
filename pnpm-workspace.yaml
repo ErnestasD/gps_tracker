@@ -3,3 +3,12 @@ packages:
   - packages/*
   - tools/*
   - tests/*
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - cbor-extract
+  - cpu-features
+  - msgpackr-extract
+  - prisma
+  - protobufjs
+  - ssh2
