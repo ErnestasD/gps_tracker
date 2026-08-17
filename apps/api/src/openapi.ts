@@ -26,6 +26,167 @@ interface Operation {
   responses: Record<string, { description: string; headers?: Record<string, unknown> }>
 }
 
+/**
+ * Human wording for the generated half of the document (founder feedback 2026-08-17: the
+ * Scalar page rendered "GET /v1/devices" as its own summary — a reference with no prose).
+ * Three layers, all data: nouns turn plain CRUD into "List devices" / "Create a device";
+ * SUMMARY_OVERRIDES names every sub-resource action the noun rule cannot express; TAG_META
+ * gives each sidebar group a display name and an intro paragraph. None of it is load-bearing
+ * for clients (summaries are prose), so drift here mis-labels, never mis-types.
+ */
+const NOUNS: Record<string, { one: string; many: string }> = {
+  account: { one: 'an account', many: 'accounts' },
+  affiliate: { one: 'a partner', many: 'partners' },
+  apiKey: { one: 'an API key', many: 'API keys' },
+  audit: { one: 'an audit entry', many: 'audit log entries' },
+  deal_registration: { one: 'a deal registration', many: 'deal registrations' },
+  device: { one: 'a device', many: 'devices' },
+  domain: { one: 'a custom domain', many: 'custom domains' },
+  driver: { one: 'a driver', many: 'drivers' },
+  event: { one: 'an event', many: 'events' },
+  export: { one: 'an export job', many: 'export jobs' },
+  geofence: { one: 'a geofence', many: 'geofences' },
+  maintenance: { one: 'a maintenance task', many: 'maintenance tasks' },
+  rule: { one: 'an alert rule', many: 'alert rules' },
+  scheduledReport: { one: 'a scheduled report', many: 'scheduled reports' },
+  share: { one: 'a share link', many: 'share links' },
+  tenant: { one: 'a tenant', many: 'tenants' },
+  trip: { one: 'a trip', many: 'trips' },
+  user: { one: 'a user', many: 'users' },
+  webhook: { one: 'a webhook', many: 'webhooks' },
+  webhookDelivery: { one: 'a webhook delivery', many: 'webhook delivery attempts' },
+}
+
+const SUMMARY_OVERRIDES: Record<string, string> = {
+  'POST /v1/accounts/{id}/export': 'Request a GDPR data export of an account',
+  'PATCH /v1/accounts/{id}/preferences': 'Update account preferences (time zone, units, report day)',
+  'GET /v1/affiliates/{id}/commissions': "List a partner's commissions",
+  'POST /v1/affiliates/{id}/set-password-token': 'Issue a one-time partner sign-in link',
+  'GET /v1/commands/{id}': 'Get a command and its device reply',
+  'PATCH /v1/commissions/{id}': 'Update a commission (approve / void / mark paid)',
+  'PATCH /v1/deals/{id}': 'Approve or reject a deal registration',
+  'POST /v1/devices/import': 'Bulk-import devices from CSV',
+  'POST /v1/devices/import/preview': 'Validate a CSV import without applying it',
+  'GET /v1/devices/{id}/can': 'Read CAN-bus data for a device',
+  'GET /v1/devices/{id}/commands': 'List commands sent to a device',
+  'POST /v1/devices/{id}/commands': 'Send a GPRS command to a device',
+  'POST /v1/devices/{id}/erase': 'Queue GDPR erasure of a device',
+  'GET /v1/devices/{id}/fuel': 'Fuel-level history for a device',
+  'GET /v1/devices/{id}/health': 'Device health: battery, signal, last contact',
+  'GET /v1/devices/{id}/onboarding': 'Onboarding sheet — the exact config SMS for this device',
+  'GET /v1/devices/{id}/positions': 'Position history for a device',
+  'GET /v1/devices/{id}/shares': 'List public share links for a device',
+  'POST /v1/devices/{id}/shares': 'Create a temporary public share link',
+  'GET /v1/devices/{id}/sms': 'List SMS messages sent to a device',
+  'POST /v1/devices/{id}/sms': "Send an SMS to the device's SIM",
+  'GET /v1/devices/{id}/trips': 'List trips driven by a device',
+  'GET /v1/exports/{id}/download': 'Download a finished export archive',
+  'POST /v1/maintenance/{id}/serviced': 'Mark a maintenance task as serviced',
+  'GET /v1/platform/alerts': 'Platform alerts needing attention (superadmin)',
+  'GET /v1/platform/audit': 'Cross-tenant audit log (superadmin)',
+  'GET /v1/platform/billing': 'Billing state of every tenant (superadmin)',
+  'GET /v1/platform/errors': 'Recent device/integration errors (superadmin)',
+  'GET /v1/platform/lapses': 'Tenants in the payment-lapse ladder (superadmin)',
+  'GET /v1/platform/leads': 'Pilot requests and signups (superadmin)',
+  'GET /v1/platform/overview': 'Business overview KPIs (superadmin)',
+  'GET /v1/platform/usage': 'Usage across all tenants (superadmin)',
+  'GET /v1/platform/users': 'List users across all tenants (superadmin)',
+  'PATCH /v1/platform/users/{id}': 'Enable or disable any user (superadmin)',
+  'GET /v1/quarantine': 'List unclaimed IMEIs in quarantine',
+  'POST /v1/quarantine/{imei}/claim': 'Claim a quarantined IMEI into the fleet',
+  'GET /v1/tenant/branding': "Get this tenant's white-label branding",
+  'PATCH /v1/tenant/branding': "Update this tenant's white-label branding",
+  'POST /v1/tenant/domains': 'Add a custom domain',
+  'POST /v1/tenant/domains/{id}/verify': 'Trigger DNS verification for a domain',
+  'GET /v1/tenants/{id}/accounts': 'List accounts inside a tenant',
+  'GET /v1/tenants/{id}/domains': "List a tenant's custom domains",
+  'POST /v1/tenants/{id}/restore': 'Restore a suspended tenant',
+  'PATCH /v1/trips/{id}/driver': 'Assign a driver to a trip',
+  'GET /v1/usage': 'Usage for the current tenant (devices, SMS, geofences)',
+}
+
+/** Sidebar display names + section intros; tag NAMES stay stable (they are anchor URLs). */
+const TAG_META: Record<string, { title: string; description: string }> = {
+  account: { title: 'Accounts', description: 'Sub-accounts inside a tenant — each is an isolated fleet with its own users, devices and preferences.' },
+  accountPrefs: { title: 'Account preferences', description: 'Per-account rendering rules: time zone, units and where the report day starts.' },
+  affiliate: { title: 'Partners', description: 'The referral partner registry: commission terms, sign-in links and each partner\'s ledger. Partner-facing counterparts live under /v1/partner/* (portal auth).' },
+  apiKey: { title: 'API keys', description: 'Read-only integration keys (`orb_live_…`). Tenant-admin managed; the raw key is shown once at creation.' },
+  audit: { title: 'Audit log', description: 'Who changed what, when — every write lands here with actor, entity and before/after.' },
+  auth: { title: 'Authentication', description: 'Email + password login mints a short-lived JWT; the httpOnly refresh cookie rotates it. See the intro for the API-key alternative.' },
+  billing: { title: 'Billing', description: 'Stripe subscription lifecycle: plans, checkout, the billing portal and the signature-verified webhook.' },
+  branding: { title: 'Branding', description: 'White-label identity — name, logo, colors — served publicly by Host so login pages brand before authentication.' },
+  command: { title: 'Commands', description: 'GPRS (Codec-12) commands to the device over its open TCP session: free, instant, with the reply captured.' },
+  commission: { title: 'Commissions', description: 'Individual commission ledger entries — accrued from referred customers\' payments, then approved, paid or voided.' },
+  deal_registration: { title: 'Deal registrations', description: 'A partner\'s claim on a fleet they introduced personally — 90-day protection once approved, even for a link-less signup.' },
+  device: { title: 'Devices', description: 'The tracker registry. A device must exist (IMEI + model profile) before ingest accepts its first frame; the profile selects which AVL dictionary decodes it.' },
+  domain: { title: 'Custom domains', description: 'Tenant-owned dashboard domains with DNS verification and automatic TLS.' },
+  driver: { title: 'Drivers', description: 'Driver registry with iButton/DL numbers, trip assignment and safety scores.' },
+  event: { title: 'Events', description: 'Everything the rules engine emitted: geofence crossings, overspeed, ignition, power cuts, panic — with position and payload.' },
+  export: { title: 'Data exports', description: 'Full-history GDPR exports of an account, generated async and downloaded as an archive.' },
+  gdpr: { title: 'GDPR', description: 'Irreversible erasure of a retired device\'s history — queued, audited, and refused while the resurrection window is open.' },
+  geofence: { title: 'Geofences', description: 'Polygons and circles evaluated in the pipeline; crossings become events and can alarm.' },
+  lead: { title: 'Leads', description: 'Inbound pilot requests and self-serve signups, as the platform team sees them.' },
+  live: { title: 'Live', description: 'Realtime positions: a single-use ticket authenticates the WebSocket that pushes every fix for the fleet as it arrives.' },
+  maintenance: { title: 'Maintenance', description: 'Odometer- and calendar-based service reminders per vehicle.' },
+  public: { title: 'Public', description: 'Unauthenticated surface: signup, email verification, pilot requests and share-token resolution. Uniform answers by design — nothing here confirms whether an address exists.' },
+  push: { title: 'Web push', description: 'Browser push notifications (VAPID) for alerts when the dashboard tab is closed.' },
+  quarantine: { title: 'Quarantine', description: 'Where frames from unknown IMEIs wait. Claiming one creates the device and releases its buffered history.' },
+  report: { title: 'Reports', description: 'On-demand fleet reports — trips, mileage, stops, overspeed, geofence time, engine hours — over any window, in the account\'s time zone.' },
+  routing: { title: 'Routing', description: 'Multi-stop route optimization.' },
+  rule: { title: 'Alert rules', description: 'The automation layer: geofence / overspeed / ignition / power-cut / panic conditions fanned out to email, push, webhooks or SMS.' },
+  scheduledReport: { title: 'Scheduled reports', description: 'The same reports, emailed on a schedule instead of requested by hand.' },
+  share: { title: 'Share links', description: 'Temporary public links to one vehicle\'s live position — the token is the whole capability.' },
+  sms: { title: 'SMS', description: 'SMS to the device SIM for configuration when no GPRS session exists (Twilio-backed, quota-metered, at-most-once).' },
+  tenant: { title: 'Tenants', description: 'Platform-level tenant administration: plans, suspension, restoration (superadmin).' },
+  trip: { title: 'Trips', description: 'Ignition-to-ignition journeys computed in the pipeline: distance, duration, path and the driver behind the wheel.' },
+  usage: { title: 'Usage & platform', description: 'Metered consumption against plan ceilings, and the superadmin views across every tenant.' },
+  user: { title: 'Users', description: 'Dashboard users and their roles, from viewer to tenant admin.' },
+  webhook: { title: 'Webhooks', description: 'HTTP fan-out of events to your systems — signed, retried, with per-delivery status.' },
+  webhookDelivery: { title: 'Webhook deliveries', description: 'The delivery log per webhook: attempts, response codes and retry state.' },
+}
+
+/** Sidebar sections (x-tagGroups). Every tag must appear in exactly one group — Scalar hides
+ *  ungrouped tags once groups exist, so buildOpenApi() appends any stragglers to "Other". */
+const TAG_GROUPS: { name: string; tags: string[] }[] = [
+  { name: 'Authentication', tags: ['auth', 'apiKey'] },
+  { name: 'Fleet', tags: ['device', 'command', 'sms', 'quarantine', 'driver', 'maintenance', 'share'] },
+  { name: 'Positions & trips', tags: ['live', 'trip', 'routing'] },
+  { name: 'Automation', tags: ['geofence', 'rule', 'event', 'webhook', 'webhookDelivery', 'push'] },
+  { name: 'Reports', tags: ['report', 'scheduledReport'] },
+  { name: 'Organization', tags: ['account', 'accountPrefs', 'user', 'audit', 'usage', 'export', 'gdpr'] },
+  { name: 'White-label', tags: ['tenant', 'branding', 'domain'] },
+  { name: 'Billing & partners', tags: ['billing', 'affiliate', 'commission', 'deal_registration', 'lead'] },
+  { name: 'Public', tags: ['public'] },
+]
+
+const INFO_DESCRIPTION = `The REST API behind the Orbetra platform. Everything the dashboard does — the live map, trips, geofences, alerts, reports, billing — goes through these endpoints, so anything you can see in the UI you can automate.
+
+## Authentication
+
+| Scheme | Header | Use |
+|---|---|---|
+| **Bearer JWT** | \`Authorization: Bearer <jwt>\` | Full read/write. Obtain via \`POST /v1/auth/login\`; the access token is short-lived and rotated through the httpOnly refresh cookie. |
+| **API key** | \`X-Api-Key: orb_live_…\` | Server-to-server, **read-only** (resolves to the viewer role). Created under *Settings → API keys*; requires the \`apiAccess\` plan entitlement. |
+
+Operations below advertise exactly the schemes they accept — a write never accepts an API key.
+
+## Conventions
+
+- **IDs** are ULIDs — sortable, URL-safe strings.
+- **Times** are ISO-8601 in **UTC**. Rendering in the account's time zone is the client's job; reports do it server-side using the account preference.
+- **Errors** are RFC 7807 \`application/problem+json\`: \`{ "title", "status", "detail" }\`.
+- **Pagination**: larger collections take \`cursor\` + \`limit\` and return the next cursor. The trip lists instead cap the page and set \`X-Result-Truncated: true\` when the range needs narrowing.
+- **Rate limits** answer \`429\` with \`Retry-After\` — honour it.
+- **Tenancy**: every request is scoped to the authenticated tenant. A resource outside your scope answers \`404\`, never \`403\` — existence itself is tenant-scoped information.
+
+## Live positions
+
+For a cheap snapshot, poll \`GET /v1/devices/last\`. For realtime, fetch \`GET /v1/ws-ticket\` and connect to the WebSocket with the single-use ticket — every fix for the fleet is pushed the moment it arrives.
+
+## Scope of this document
+
+Routes, auth and status codes are generated from the live route registry and cannot drift. Request/response **bodies are not yet modelled** — field shapes are described in the [developer guide](https://orbetra.com/docs).`
+
 const PARAM = /:([a-zA-Z0-9_]+)/g
 /** `/v1/devices/:id` → `/v1/devices/{id}` and collect the path params. */
 function toPath(path: string): { path: string; params: string[] } {
@@ -154,6 +315,19 @@ function op(
   // C21: the summary is part of the published document — it must speak OpenAPI's `{id}`, not
   // Hono's `:id`. Both forms used to render side by side on the docs page.
   const { path } = toPath(rawPath)
+  // Prose summary: explicit override → CRUD noun phrase → the method+path fallback (which is
+  // also the safety net for a new sub-resource route until someone words it here).
+  const noun = NOUNS[entity]
+  const summary =
+    SUMMARY_OVERRIDES[`${method.toUpperCase()} ${path}`] ??
+    (noun !== undefined
+      ? params.length === 0
+        ? method === 'get' ? `List ${noun.many}` : method === 'post' ? `Create ${noun.one}` : undefined
+        : path.endsWith('}')
+          ? method === 'get' ? `Get ${noun.one}` : method === 'patch' || method === 'put' ? `Update ${noun.one}` : method === 'delete' ? `Delete ${noun.one}` : undefined
+          : undefined
+      : undefined) ??
+    `${method.toUpperCase()} ${path}`
   // C11: security followed the HTTP verb alone, so ~27 GETs advertised apiKeyAuth while their
   // READ_POLICY excludes `viewer` — every one of them 403s a key. Offer it only where a key can
   // actually be used.
@@ -176,7 +350,7 @@ function op(
             : { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden }
   return {
     tags: [entity],
-    summary: `${method.toUpperCase()} ${path}`,
+    summary,
     security: keyMayRead ? READ_SEC : WRITE_SEC,
     ...(params.length > 0 ? { parameters: pathParams(params) } : {}),
     // EXTRA is per operation and WRITES ONLY: keyed on the path alone it leaked a device-creation
@@ -305,17 +479,30 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
     responses: { '200': { description: 'OK' }, '404': { description: 'Not found' }, '429': { description: 'Rate limited' }, '503': { description: 'Unavailable' } },
   })
 
-  const tags = [...new Set(Object.values(paths).flatMap((ops) => Object.values(ops).flatMap((o) => o.tags)))].sort().map((name) => ({ name }))
+  const tagNames = [...new Set(Object.values(paths).flatMap((ops) => Object.values(ops).flatMap((o) => o.tags)))].sort()
+  const tags = tagNames.map((name) => {
+    const meta = TAG_META[name]
+    return meta !== undefined ? { name, description: meta.description, 'x-displayName': meta.title } : { name }
+  })
+  // x-tagGroups hide any tag they don't mention, so a tag missing from the static groups is
+  // appended to "Other" rather than silently vanishing from the sidebar.
+  const grouped = new Set(TAG_GROUPS.flatMap((g) => g.tags))
+  const stragglers = tagNames.filter((name) => !grouped.has(name))
+  const tagGroups = [
+    ...TAG_GROUPS.map((g) => ({ name: g.name, tags: g.tags.filter((name) => tagNames.includes(name)) })),
+    ...(stragglers.length > 0 ? [{ name: 'Other', tags: stragglers }] : []),
+  ]
 
   return {
     openapi: '3.1.0',
     info: {
       title: 'Orbetra API',
       version: '1.0.0',
-      description: 'Multi-tenant GPS tracking API. Authenticate with a Bearer JWT (web) or X-Api-Key (integrations, read-only). Times are ISO-8601 UTC.',
+      description: INFO_DESCRIPTION,
     },
     servers: [{ url: serverUrl }],
     tags,
+    'x-tagGroups': tagGroups,
     paths,
     components: {
       securitySchemes: {
