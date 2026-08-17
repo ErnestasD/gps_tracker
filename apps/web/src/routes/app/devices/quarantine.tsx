@@ -131,8 +131,8 @@ function ClaimDialog({ entry, onClose, onClaimed }: { entry: QuarantineEntry; on
               options={(accounts.data ?? []).map((x) => ({ value: x.id, label: x.name }))} />
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted">
-            {t('quarantine.profile')}
-            <Combobox value={prof} onChange={setProfileId} data-testid="claim-profile" aria-label={t('quarantine.profile')}
+            {t('devices.model')}
+            <Combobox value={prof} onChange={setProfileId} data-testid="claim-profile" aria-label={t('devices.model')}
               options={(profiles.data ?? []).map((x) => ({ value: x.id, label: x.name }))} />
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted">

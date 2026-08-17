@@ -563,8 +563,8 @@ function CreateDeviceForm({
         <Combobox value={acc} onChange={setAccountId} data-testid="device-account" aria-label={t('devices.account')}
           options={accounts.map((a) => ({ value: a.id, label: a.name }))} />
       </Field>
-      <Field label={t('devices.profile')}>
-        <Combobox value={prof} onChange={setProfileId} data-testid="device-profile" aria-label={t('devices.profile')}
+      <Field label={t('devices.model')}>
+        <Combobox value={prof} onChange={setProfileId} data-testid="device-profile" aria-label={t('devices.model')}
           options={profiles.map((pr) => ({ value: pr.id, label: pr.name }))} />
       </Field>
       <Field label={t('devices.odometer')}>
