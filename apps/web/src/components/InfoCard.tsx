@@ -22,6 +22,7 @@ function relTime(fixTimeMs: number, lang: string): string {
 /** Bottom-left selected-device card (spec §4: Cloudflare-style info card). */
 export function InfoCard({
   device,
+  name,
   follow,
   trail,
   onFollow,
@@ -29,6 +30,8 @@ export function InfoCard({
   onClose,
 }: {
   device: DeviceLive
+  /** display label from the registry (name + plate); the raw deviceId is the fallback, not the title */
+  name?: string
   follow: boolean
   trail: boolean
   onFollow: (v: boolean) => void
@@ -50,7 +53,7 @@ export function InfoCard({
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="flex items-center gap-2 font-mono text-sm">
           <StatusDot status={status} />
-          {ev.deviceId}
+          {name ?? ev.deviceId}
         </CardTitle>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label={t('info.close')}>
           <X className="h-4 w-4" />

@@ -84,6 +84,7 @@ export function MapPage() {
       {selected && (
         <InfoCard
           device={selected}
+          name={nameOf(selected.ev.deviceId)}
           follow={snap.follow}
           trail={snap.trail}
           onFollow={(v) => liveStore.setFollow(v)}
