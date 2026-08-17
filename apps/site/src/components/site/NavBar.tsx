@@ -79,12 +79,26 @@ export function NavBar() {
               "Sign in" there meant that visiting any other page — pricing, docs, the front page —
               stranded them: the only route to their own dashboard was to authenticate a second
               time. The token lives in this browser, so the header knows. */}
-          <Link
-            to={partnerToken !== null ? "/partner/dashboard" : "/login"}
-            className="hidden lg:inline-flex text-sm text-muted-foreground hover:text-ink"
-          >
-            {partnerToken !== null ? t("cta.partnerDashboard") : t("cta.signin")}
-          </Link>
+          {(() => {
+            // same active treatment as the NAV items: while ON the dashboard the entry is lit
+            // and underlined — the router no-ops a same-route click, and an unmarked entry that
+            // "does nothing" read as broken (founder report)
+            const active = partnerToken !== null && location.pathname === "/partner/dashboard";
+            return (
+              <Link
+                to={partnerToken !== null ? "/partner/dashboard" : "/login"}
+                className={cn(
+                  "hidden lg:inline-flex text-sm transition-colors relative",
+                  active ? "text-ink font-medium" : "text-muted-foreground hover:text-ink"
+                )}
+              >
+                {partnerToken !== null ? t("cta.partnerDashboard") : t("cta.signin")}
+                {active && (
+                  <span className="absolute -bottom-2 left-0 right-0 h-[2px] bg-[#B45309] rounded-full" />
+                )}
+              </Link>
+            );
+          })()}
           <Link to="/signup" className="hidden sm:inline-flex pill-primary hover:pill-primary-hover">
             {t("cta.trial")}
           </Link>
