@@ -1,4 +1,5 @@
-import { Link, useRouterState } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   AlertTriangle,
   Building2,
@@ -12,6 +13,7 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import { getCurrentUser, logout } from '@/lib/auth'
+import { liveStore } from '@/lib/liveStore'
 
 /**
  * The platform console shell — a SEPARATE panel, not a tab inside the customer dashboard.
@@ -46,7 +48,21 @@ const NAV: NavItem[] = [
 export function ConsoleShell({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const navigate = useNavigate()
+  const qc = useQueryClient()
   const user = getCurrentUser()
+
+  // same teardown as AppShell's logout: revoke server-side, then clear everything the next
+  // user on this tab must not inherit (live markers + query cache), then leave for /login —
+  // logout without the navigation looks like a dead button
+  const onLogout = () => {
+    void (async () => {
+      await logout()
+      liveStore.reset()
+      qc.clear()
+      void navigate({ to: '/login' })
+    })()
+  }
 
   return (
     <div className="admin-root flex min-h-screen">
@@ -100,7 +116,7 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
           </div>
           <button
             type="button"
-            onClick={() => void logout()}
+            onClick={onLogout}
             className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm"
             style={{ color: 'var(--admin-ink-soft)' }}
             data-testid="console-logout"
