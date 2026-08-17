@@ -34,7 +34,9 @@ export function dashUrl(lang: string, path = '/login'): string {
 /** Where "Live demo" points: the built-in read-only mock admin by default. */
 export const DEMO_URL: string = (import.meta.env.VITE_DEMO_URL as string | undefined) || '/app'
 
-export const DOCS_URL = '/docs'
+/** Header/footer "Docs" target: the Scalar API reference served by the dashboard origin
+ * (ADR-037) — founder decision 2026-08-17. The prose guide remains reachable at /docs. */
+export const DOCS_URL = `${DASH_URL}/v1/docs`
 
 /** Error carrying the HTTP status so callers can branch (409 vs 429 vs 401). */
 export class ApiError extends Error {
