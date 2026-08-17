@@ -24,13 +24,18 @@ export function ResetPasswordPage() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (password.length < MIN_PW) return setError(t('reset.tooShort', { min: MIN_PW }))
-    if (password !== confirm) return setError(t('reset.mismatch'))
+    // read the inputs, not the state — a password manager fills the DOM without events
+    // React sees, and submitting state made the button act on fields that "weren't there"
+    const form = e.currentTarget
+    const pw = (form.elements.namedItem('password') as HTMLInputElement | null)?.value ?? password
+    const cf = (form.elements.namedItem('confirm') as HTMLInputElement | null)?.value ?? confirm
+    if (pw.length < MIN_PW) return setError(t('reset.tooShort', { min: MIN_PW }))
+    if (pw !== cf) return setError(t('reset.mismatch'))
     setBusy(true)
     setError(null)
-    resetPassword(token ?? '', password)
+    resetPassword(token ?? '', pw)
       .then(() => setDone(true))
       .catch((err: unknown) => setError(t(err instanceof ApiError && err.status === 400 ? 'reset.invalidToken' : 'forgot.error')))
       .finally(() => setBusy(false))
@@ -56,6 +61,7 @@ export function ResetPasswordPage() {
         <form onSubmit={submit} className="space-y-4">
           <AuthField
             id="password"
+            name="password"
             label={t('reset.newPassword')}
             type="password"
             autoComplete="new-password"
@@ -66,6 +72,7 @@ export function ResetPasswordPage() {
           />
           <AuthField
             id="confirm"
+            name="confirm"
             label={t('reset.confirmPassword')}
             type="password"
             autoComplete="new-password"
@@ -79,7 +86,7 @@ export function ResetPasswordPage() {
               {error}
             </p>
           )}
-          <button type="submit" className="auth-submit" disabled={busy || password === '' || confirm === ''} data-testid="reset-submit">
+          <button type="submit" className="auth-submit" disabled={busy} data-testid="reset-submit">
             {t('reset.submit')}
           </button>
         </form>

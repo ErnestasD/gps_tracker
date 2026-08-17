@@ -18,11 +18,15 @@ export function ForgotPasswordPage() {
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false)
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    // read the input, not the state — Chrome autofill fills the DOM without events React
+    // sees, and submitting state made the button act on an email that "wasn't there"
+    const emailValue = ((e.currentTarget.elements.namedItem('email') as HTMLInputElement | null)?.value ?? email).trim()
+    setEmail(emailValue)
     setBusy(true)
     setError(null)
-    requestPasswordReset(email.trim())
+    requestPasswordReset(emailValue)
       .then(() => setSent(true))
       .catch((err: unknown) => setError(t(err instanceof ApiError && err.status === 429 ? 'login.tooManyAttempts' : 'forgot.error')))
       .finally(() => setBusy(false))
@@ -47,6 +51,7 @@ export function ForgotPasswordPage() {
             <input
               className="auth-input"
               id="email"
+              name="email"
               type="email"
               autoComplete="username"
               value={email}
@@ -60,7 +65,7 @@ export function ForgotPasswordPage() {
               {error}
             </p>
           )}
-          <button type="submit" className="auth-submit" disabled={busy || email.trim() === ''} data-testid="forgot-submit">
+          <button type="submit" className="auth-submit" disabled={busy} data-testid="forgot-submit">
             {t('forgot.submit')}
           </button>
           <p className="text-center text-xs">

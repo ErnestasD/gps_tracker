@@ -34,13 +34,20 @@ export function LoginPage() {
     return 'login.networkError' // fetch threw (no response): offline / DNS / TLS — a real connectivity failure
   }
 
-  const submit = (e: FormEvent) => {
+  const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    // Chrome autofill writes into the DOM without events React sees, so `email`/`password`
+    // state can be empty while the fields visibly hold credentials — submitting state made
+    // an autofilled login send nothing. The inputs themselves are the truth; state only
+    // mirrors what the user typed.
+    const form = e.currentTarget
+    const emailValue = (form.elements.namedItem('email') as HTMLInputElement | null)?.value ?? email
+    const passwordValue = (form.elements.namedItem('password') as HTMLInputElement | null)?.value ?? password
     setBusy(true)
     setError(null)
     liveStore.reset() // no stale prior-session devices (E02-6 review HIGH)
     qc.clear() // and no stale prior-session query cache (R4 HIGH cross-tenant leak) before a new login
-    login(email, password)
+    login(emailValue, passwordValue)
       .then(async (user) => {
         // A PLATFORM ADMIN lands in the console, not on a fleet map. They run the business the
         // customers are on; their user row lives in some tenant only because it has to live
@@ -70,6 +77,7 @@ export function LoginPage() {
       <form onSubmit={submit} className="grid gap-4">
         <AuthField
           id="email"
+          name="email"
           label={t('login.emailLabel')}
           type="email"
           autoComplete="username"
@@ -80,6 +88,7 @@ export function LoginPage() {
         />
         <AuthField
           id="password"
+          name="password"
           label={t('login.passwordLabel')}
           type="password"
           autoComplete="current-password"
@@ -110,7 +119,10 @@ export function LoginPage() {
             )}
           </>
         )}
-        <button type="submit" className="auth-submit" disabled={busy || email.trim() === '' || password === ''} data-testid="login-submit">
+        {/* busy-only: gating on state left the button silently dead when Chrome autofill
+            filled the fields without updating state; truly empty fields are caught by the
+            inputs' `required` validation, which at least SAYS something */}
+        <button type="submit" className="auth-submit" disabled={busy} data-testid="login-submit">
           {t('login.submit')}
         </button>
         <p className="border-t pt-4 text-center text-xs" style={{ borderColor: 'var(--auth-hairline)' }}>
