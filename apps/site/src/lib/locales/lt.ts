@@ -70,7 +70,6 @@ export const lt: Translation = {
     legal: "Teisinė informacija",
     language: "Kalba",
     tagline: "GPS sekimas mažiems autoparkams ir perpardavėjams, dirbantiems su white-label sprendimu. ES serveriai. Paruošimas per vieną popietę.",
-    appSoon: "Mobilioji programėlė · netrukus",
     copyright: "© {{year}} Orbetra · MB Dokigo",
     terms: "Sąlygos",
     privacy: "Privatumas",
@@ -88,8 +87,6 @@ export const lt: Translation = {
     accept: "Sutikti",
   },
   fab: {
-    soon: "Mobilioji · netrukus",
-    soonTitle: "Mobilioji programėlė netrukus",
     demoTitle: "Interaktyvi sistemos demonstracija tik peržiūrai, su pavyzdiniais duomenimis",
   },
   errors: {

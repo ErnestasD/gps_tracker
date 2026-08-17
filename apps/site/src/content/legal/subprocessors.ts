@@ -28,7 +28,7 @@ export const subprocessors: LocalizedDoc = {
             ],
             [
               "Mapbox, Inc.",
-              "Map tiles rendered in the web and mobile app",
+              "Map tiles rendered in the web app",
               "USA — request metadata only, SCCs in place"
             ],
             [
@@ -102,7 +102,7 @@ export const subprocessors: LocalizedDoc = {
             ],
             [
               "Mapbox, Inc.",
-              "Žemėlapio išklotinės, atvaizduojamos žiniatinklio ir mobiliojoje programoje",
+              "Žemėlapio išklotinės, atvaizduojamos žiniatinklio programoje",
               "JAV — tik užklausų metaduomenys, taikomos standartinės sutarčių sąlygos"
             ],
             [
@@ -176,7 +176,7 @@ export const subprocessors: LocalizedDoc = {
             ],
             [
               "Mapbox, Inc.",
-              "Kafelki mapy renderowane w aplikacji webowej i mobilnej",
+              "Kafelki mapy renderowane w aplikacji webowej",
               "USA — wyłącznie metadane żądań, obowiązują standardowe klauzule umowne"
             ],
             [
@@ -250,7 +250,7 @@ export const subprocessors: LocalizedDoc = {
             ],
             [
               "Mapbox, Inc.",
-              "In der Web- und mobilen App gerenderte Kartenkacheln",
+              "In der Web-App gerenderte Kartenkacheln",
               "USA — nur Anfrage-Metadaten, Standardvertragsklauseln vereinbart"
             ],
             [

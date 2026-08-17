@@ -73,7 +73,6 @@ export const en = {
     legal: "Legal",
     language: "Language",
     tagline: "GPS tracking for small fleets and for resellers who white-label it. EU-hosted. Setup in an afternoon.",
-    appSoon: "Mobile app · Coming soon",
     copyright: "© {{year}} Orbetra · MB Dokigo",
     terms: "Terms",
     privacy: "Privacy",
@@ -91,8 +90,6 @@ export const en = {
     accept: "Accept",
   },
   fab: {
-    soon: "Mobile · Soon",
-    soonTitle: "Native mobile app launching soon",
     demoTitle: "Interactive read-only admin demo with example data",
   },
   errors: {

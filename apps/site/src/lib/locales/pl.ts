@@ -65,7 +65,6 @@ export const pl: Translation = {
     legal: "Informacje prawne",
     language: "Język",
     tagline: "Monitoring GPS dla małych flot i dla resellerów w modelu white-label. Hosting w UE. Wdrożenie w jedno popołudnie.",
-    appSoon: "Aplikacja mobilna · wkrótce",
     copyright: "© {{year}} Orbetra · MB Dokigo",
     terms: "Regulamin",
     privacy: "Prywatność",
@@ -83,8 +82,6 @@ export const pl: Translation = {
     accept: "Akceptuj",
   },
   fab: {
-    soon: "Mobilna · wkrótce",
-    soonTitle: "Natywna aplikacja mobilna już wkrótce",
     demoTitle: "Interaktywne demo panelu, tylko do odczytu, z przykładowymi danymi",
   },
   errors: {

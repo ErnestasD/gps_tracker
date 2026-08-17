@@ -65,7 +65,6 @@ export const de: Translation = {
     legal: "Rechtliches",
     language: "Sprache",
     tagline: "GPS-Ortung für kleine Flotten und für Reseller im White-Label. EU-gehostet. Einrichtung an einem Nachmittag.",
-    appSoon: "Mobile App · demnächst",
     copyright: "© {{year}} Orbetra · MB Dokigo",
     terms: "AGB",
     privacy: "Datenschutz",
@@ -83,8 +82,6 @@ export const de: Translation = {
     accept: "Akzeptieren",
   },
   fab: {
-    soon: "Mobil · demnächst",
-    soonTitle: "Native Mobile-App erscheint demnächst",
     demoTitle: "Interaktive Demo des Adminbereichs, nur lesend, mit Beispieldaten",
   },
   errors: {

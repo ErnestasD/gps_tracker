@@ -13,16 +13,6 @@ export function Footer() {
         <div>
           <OrbetraWordmark className="h-7 w-auto" />
           <p className="mt-3 text-sm text-muted-foreground max-w-xs">{t("footer.tagline")}</p>
-          <div
-            className="mt-4 inline-flex items-center gap-2 rounded-full px-3 py-1 mono text-[10px] tracking-[0.18em] uppercase text-[#4c4dcf]"
-            style={{
-              background: "rgba(76,77,207,0.08)",
-              border: "1px solid rgba(76,77,207,0.35)",
-            }}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-[#4c4dcf] animate-pulse-dot" />
-            {t("footer.appSoon")}
-          </div>
           <p className="mt-4 mono text-[10px] tracking-widest text-muted-foreground">
             LAT 54.68 · LON 25.28
           </p>
