@@ -583,7 +583,9 @@
         "server_address": "Server address",
         "deleterecords": "Delete records"
       },
-      "asciiError": "Commands may contain printable ASCII characters only."
+      "asciiError": "Commands may contain printable ASCII characters only.",
+      "termEmpty": "{{name}} console ready. Pick a command above or type your own — Enter sends, ↑ recalls the previous one.",
+      "waiting": "waiting for the device to reply…"
     },
     "erase": "Erase data",
     "eraseConfirm": "Confirm erase — irreversible",

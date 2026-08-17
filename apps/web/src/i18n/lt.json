@@ -583,7 +583,9 @@
         "server_address": "Serverio adresas",
         "deleterecords": "Trinti įrašus"
       },
-      "asciiError": "Komandoje leidžiami tik spausdinami ASCII simboliai."
+      "asciiError": "Komandoje leidžiami tik spausdinami ASCII simboliai.",
+      "termEmpty": "{{name}} konsolė paruošta. Pasirinkite komandą viršuje arba įveskite savo — Enter išsiunčia, ↑ pakartoja ankstesnę.",
+      "waiting": "laukiama įrenginio atsakymo…"
     },
     "erase": "Ištrinti duomenis",
     "eraseConfirm": "Patvirtinti trynimą — negrįžtama",

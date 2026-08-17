@@ -583,7 +583,9 @@
         "server_address": "Adres serwera",
         "deleterecords": "Usuń zapisy"
       },
-      "asciiError": "Polecenia mogą zawierać tylko drukowalne znaki ASCII."
+      "asciiError": "Polecenia mogą zawierać tylko drukowalne znaki ASCII.",
+      "termEmpty": "Konsola {{name}} gotowa. Wybierz komendę powyżej lub wpisz własną — Enter wysyła, ↑ przywołuje poprzednią.",
+      "waiting": "oczekiwanie na odpowiedź urządzenia…"
     },
     "erase": "Usuń dane",
     "eraseConfirm": "Potwierdź usunięcie — nieodwracalne",

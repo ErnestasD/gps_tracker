@@ -583,7 +583,9 @@
         "server_address": "Serveradresse",
         "deleterecords": "Daten löschen"
       },
-      "asciiError": "Befehle dürfen nur druckbare ASCII-Zeichen enthalten."
+      "asciiError": "Befehle dürfen nur druckbare ASCII-Zeichen enthalten.",
+      "termEmpty": "{{name}}-Konsole bereit. Wählen Sie oben einen Befehl oder tippen Sie einen eigenen — Enter sendet, ↑ ruft den vorherigen auf.",
+      "waiting": "warte auf Antwort des Geräts…"
     },
     "erase": "Daten löschen",
     "eraseConfirm": "Löschen bestätigen — unwiderruflich",
