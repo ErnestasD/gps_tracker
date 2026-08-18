@@ -119,8 +119,14 @@ export interface SmsDeliveryView {
  * Requires the account SID + a From number + EITHER auth method: an Auth Token, OR an API Key
  * (SID + secret — the recommended, revocable Twilio credential). Absent ⇒ feature off. Secrets stay
  * in the server .env (rule 12); this reads presence only, never logs values.
+ *
+ * A Messaging Service is required TOO, because this queue carries device commands and nothing else:
+ * without Smart Encoding every one of them loses its password prefix and does nothing (see
+ * `twilioSafeBody`). Credentials alone would light up a "Send config SMS" button whose every press
+ * fails — the same lying-button shape that made a plan-gated 403 look like a mystery outage.
+ * Better the feature reads OFF and the sheet falls back to copy-paste.
  */
 export function smsConfigured(env: NodeJS.ProcessEnv): boolean {
   const auth = Boolean(env['TWILIO_AUTH_TOKEN']) || Boolean(env['TWILIO_API_KEY_SID'] && env['TWILIO_API_KEY_SECRET'])
-  return Boolean(env['TWILIO_ACCOUNT_SID'] && env['TWILIO_FROM']) && auth
+  return Boolean(env['TWILIO_ACCOUNT_SID'] && env['TWILIO_FROM'] && env['TWILIO_MESSAGING_SERVICE_SID']) && auth
 }

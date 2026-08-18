@@ -28,9 +28,17 @@ describe('SMS_STATUSES', () => {
 })
 
 describe('smsConfigured', () => {
-  const full = { TWILIO_ACCOUNT_SID: 'AC123', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+15005550006' }
-  it('true only when all three Twilio vars are present', () => {
+  const full = { TWILIO_ACCOUNT_SID: 'AC123', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+15005550006', TWILIO_MESSAGING_SERVICE_SID: 'MG1' }
+  it('true only when every Twilio var is present', () => {
     expect(smsConfigured(full)).toBe(true)
+  })
+
+  it('false without a Messaging Service — credentials alone cannot send a device command', () => {
+    // This queue carries device commands and nothing else, and without Smart Encoding every one of
+    // them loses its password prefix and does nothing (twilioSafeBody). Reporting the feature as
+    // configured would light up a Send button whose every press fails — the lying-button shape.
+    expect(smsConfigured({ ...full, TWILIO_MESSAGING_SERVICE_SID: undefined })).toBe(false)
+    expect(smsConfigured({ ...full, TWILIO_MESSAGING_SERVICE_SID: '' })).toBe(false)
   })
   it('false when the account sid, From, or auth is missing', () => {
     expect(smsConfigured({})).toBe(false)
@@ -39,7 +47,7 @@ describe('smsConfigured', () => {
     expect(smsConfigured({ ...full, TWILIO_ACCOUNT_SID: undefined })).toBe(false)
   })
   it('accepts an API key (SID + secret) as the auth in place of the Auth Token', () => {
-    const apiKey = { TWILIO_ACCOUNT_SID: 'AC123', TWILIO_FROM: '+15005550006', TWILIO_API_KEY_SID: 'SK123', TWILIO_API_KEY_SECRET: 'sec' }
+    const apiKey = { TWILIO_ACCOUNT_SID: 'AC123', TWILIO_FROM: '+15005550006', TWILIO_MESSAGING_SERVICE_SID: 'MG1', TWILIO_API_KEY_SID: 'SK123', TWILIO_API_KEY_SECRET: 'sec' }
     expect(smsConfigured(apiKey)).toBe(true)
     expect(smsConfigured({ ...apiKey, TWILIO_API_KEY_SECRET: undefined })).toBe(false) // half an API key ≠ configured
   })

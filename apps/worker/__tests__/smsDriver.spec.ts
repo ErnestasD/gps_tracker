@@ -154,11 +154,14 @@ describe('smsDriverFromEnv', () => {
   it('returns undefined when SMS is not configured', () => {
     expect(smsDriverFromEnv({})).toBeUndefined()
     expect(smsDriverFromEnv({ TWILIO_ACCOUNT_SID: 'AC', TWILIO_FROM: '+1' })).toBeUndefined() // no auth
+    // credentials but no Messaging Service: every device command would lose its password prefix and
+    // do nothing, so the feature reads OFF rather than offering a button that always fails
+    expect(smsDriverFromEnv({ TWILIO_ACCOUNT_SID: 'AC', TWILIO_FROM: '+1', TWILIO_AUTH_TOKEN: 'tok' })).toBeUndefined()
   })
 
   it('builds an auth-token driver when the token is present', async () => {
     const fetchImpl = fakeFetch({ ok: true, status: 201, body: { sid: 'SM1' } })
-    const driver = smsDriverFromEnv({ TWILIO_ACCOUNT_SID: 'AC', TWILIO_FROM: '+1', TWILIO_AUTH_TOKEN: 'tok' }, fetchImpl)
+    const driver = smsDriverFromEnv({ TWILIO_ACCOUNT_SID: 'AC', TWILIO_FROM: '+1', TWILIO_MESSAGING_SERVICE_SID: 'MG', TWILIO_AUTH_TOKEN: 'tok' }, fetchImpl)
     expect(driver).toBeDefined()
     await driver!.send('+370', 'x')
     const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
@@ -168,7 +171,7 @@ describe('smsDriverFromEnv', () => {
 
   it('builds an API-key driver when only the key pair is present', async () => {
     const fetchImpl = fakeFetch({ ok: true, status: 201, body: { sid: 'SM1' } })
-    const driver = smsDriverFromEnv({ TWILIO_ACCOUNT_SID: 'AC', TWILIO_FROM: '+1', TWILIO_API_KEY_SID: 'SK', TWILIO_API_KEY_SECRET: 'sec' }, fetchImpl)
+    const driver = smsDriverFromEnv({ TWILIO_ACCOUNT_SID: 'AC', TWILIO_FROM: '+1', TWILIO_MESSAGING_SERVICE_SID: 'MG', TWILIO_API_KEY_SID: 'SK', TWILIO_API_KEY_SECRET: 'sec' }, fetchImpl)
     expect(driver).toBeDefined()
     await driver!.send('+370', 'x')
     const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
