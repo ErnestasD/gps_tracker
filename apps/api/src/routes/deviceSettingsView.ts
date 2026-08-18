@@ -100,6 +100,27 @@ export function currentSettings(
     }
   }
 
+  /**
+   * The FIRST reading after a write is the one that judges it — later ones only report the present.
+   *
+   * Seen live on 2026-08-18: a write asked for 0, the verification that followed confirmed 0, and
+   * hours later the value was changed to 2 by SMS. Judging the old write against the newest reading
+   * then declared it `rejected` — the loudest badge on the screen — for a command that had been
+   * applied exactly as asked and merely superseded since. The platform cannot see an SMS, so
+   * "the device holds something else NOW" is not evidence about what it did with a write hours ago.
+   */
+  const oldestFirst = [...rows].reverse()
+  const firstReadAfter = (param: string, writeAt: string): { value: number | null } | undefined => {
+    for (const row of oldestFirst) {
+      if (row.response === null || row.createdAt <= writeAt) continue
+      const asked = requestedIds(row.text)
+      if (!asked.includes(param)) continue
+      const raw = parseGetparamReply(row.response, asked).get(param)
+      return { value: raw !== undefined && raw !== null && /^-?\d+$/.test(raw) ? Number(raw) : null }
+    }
+    return undefined
+  }
+
   // Pass 2 — what the customer asked for, and whether it got there. Only the most recent write per
   // parameter matters; older ones are history.
   const claimed = new Set<string>()
@@ -125,8 +146,10 @@ export function currentSettings(
         slot.state = 'sent'
       } else {
         // THE case this whole feature exists for: the device answered AFTER the write, and it
-        // disagrees with what was asked for.
-        slot.state = slot.value === value ? 'confirmed' : 'rejected'
+        // disagrees with what was asked for. Judged by the FIRST reading that followed the write,
+        // never by a later one that may be reporting a change made somewhere we cannot see.
+        const verdict = firstReadAfter(param, row.createdAt)
+        slot.state = verdict === undefined || verdict.value === null ? 'sent' : verdict.value === value ? 'confirmed' : 'rejected'
       }
     }
   }
