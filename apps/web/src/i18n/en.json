@@ -422,7 +422,12 @@
   "map": {
     "connecting": "Connecting…",
     "reconnecting": "Reconnecting…",
-    "live": "Live"
+    "live": "Live",
+    "inspector": {
+      "overview": "Overview",
+      "commands": "Commands",
+      "settings": "Settings"
+    }
   },
   "units": {
     "kmh": "km/h",
@@ -723,7 +728,8 @@
       },
       "menu": "Tracking settings",
       "queuing": "Queueing…",
-      "outOfRange": "device holds {{value}}, outside the range we offer"
+      "outOfRange": "device holds {{value}}, outside the range we offer",
+      "reread": "Re-read from device"
     }
   },
   "quarantine": {

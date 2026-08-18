@@ -205,6 +205,7 @@ const PARAM_ENTITY: Record<string, string> = {
   // :id is a DEVICE. Without this the sweep sent a command UUID, toBigId returned null, and the
   // 404 arrived before any tenant predicate ran — the vacuous pass described above.
   'POST /v1/devices/:id/settings': 'commandOnDevice',
+  'POST /v1/devices/:id/settings/refresh': 'commandOnDevice',
   // FLEET-1: the log/document routes hang off the DEVICE — the :id is a device id
   'GET /v1/devices/:id/service-log': 'device',
   'POST /v1/devices/:id/service-log': 'device',

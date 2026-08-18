@@ -31,6 +31,20 @@ export interface SettingsResponse {
 export const getDeviceSettings = (deviceId: string) =>
   getJson<SettingsResponse>(`/v1/devices/${encodeURIComponent(deviceId)}/settings`)
 
+/**
+ * Ask the device what it currently holds.
+ *
+ * The page reports only what the DEVICE last told us, so a change made anywhere else — an SMS, the
+ * command console, a technician with a laptop — stays invisible until someone asks again. Reads are
+ * free over GPRS and cannot misconfigure anything, so this is always available, even to a viewer.
+ */
+export const refreshDeviceSettings = (deviceId: string) =>
+  mutate<{ queued: boolean; commandId: string }>(
+    'POST',
+    `/v1/devices/${encodeURIComponent(deviceId)}/settings/refresh`,
+    {},
+  )
+
 export const saveDeviceSettings = (deviceId: string, changes: Record<string, number>) =>
   mutate<{ queued: boolean; commandId: string; verifyCommandId: string; text: string }>(
     'POST',

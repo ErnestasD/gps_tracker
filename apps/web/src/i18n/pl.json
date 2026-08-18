@@ -422,7 +422,12 @@
   "map": {
     "connecting": "Łączenie…",
     "reconnecting": "Ponowne łączenie…",
-    "live": "Na żywo"
+    "live": "Na żywo",
+    "inspector": {
+      "overview": "Przegląd",
+      "commands": "Polecenia",
+      "settings": "Ustawienia"
+    }
   },
   "units": {
     "kmh": "km/h",
@@ -723,7 +728,8 @@
       },
       "menu": "Ustawienia śledzenia",
       "queuing": "Dodawanie do kolejki…",
-      "outOfRange": "urządzenie ma {{value}}, poza oferowanym zakresem"
+      "outOfRange": "urządzenie ma {{value}}, poza oferowanym zakresem",
+      "reread": "Odczytaj z urządzenia"
     }
   },
   "quarantine": {

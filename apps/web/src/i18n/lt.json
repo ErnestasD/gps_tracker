@@ -422,7 +422,12 @@
   "map": {
     "connecting": "Jungiamasi…",
     "reconnecting": "Jungiamasi iš naujo…",
-    "live": "Gyvai"
+    "live": "Gyvai",
+    "inspector": {
+      "overview": "Apžvalga",
+      "commands": "Komandos",
+      "settings": "Nustatymai"
+    }
   },
   "units": {
     "kmh": "km/val",
@@ -723,7 +728,8 @@
       },
       "menu": "Sekimo nustatymai",
       "queuing": "Įtraukiama į eilę…",
-      "outOfRange": "įrenginyje {{value}} — už siūlomo intervalo ribų"
+      "outOfRange": "įrenginyje {{value}} — už siūlomo intervalo ribų",
+      "reread": "Perskaityti iš įrenginio"
     }
   },
   "quarantine": {

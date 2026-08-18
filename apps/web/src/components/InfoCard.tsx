@@ -1,4 +1,5 @@
 import { Crosshair, Route, X } from 'lucide-react'
+import type * as React from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -28,6 +29,7 @@ export function InfoCard({
   onFollow,
   onTrail,
   onClose,
+  tabs,
 }: {
   device: DeviceLive
   /** display label from the registry (name + plate); the raw deviceId is the fallback, not the title */
@@ -37,6 +39,9 @@ export function InfoCard({
   onFollow: (v: boolean) => void
   onTrail: (v: boolean) => void
   onClose: () => void
+  /** Optional tab strip rendered under the header — the map inspector's other panels (E08-2b
+   *  commands, tracking settings) hang off the same card rather than a second implementation. */
+  tabs?: React.ReactNode
 }) {
   const { t, i18n } = useTranslation()
   const { speed } = useUnits()
@@ -60,6 +65,7 @@ export function InfoCard({
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
+        {tabs}
         <dl className="grid grid-cols-3 gap-2 text-xs">
           <div>
             <dt className="text-muted">{t('info.speed')}</dt>

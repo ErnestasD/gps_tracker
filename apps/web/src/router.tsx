@@ -147,9 +147,23 @@ const appRoute = createRoute({
   ),
 })
 
+/**
+ * The map is the landing page (founder decision 2026-08-18).
+ *
+ * It is the screen an operator actually works from — the fleet, the live positions, and now the
+ * per-device command and settings panels are all on it. The dashboard's aggregate cards are a
+ * report you consult, not a place you sit, so it keeps its own route and stays one click away in
+ * the nav; landing there put a summary in front of someone who came to look at their vehicles.
+ */
 const appIndexRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/',
+  component: MapPage,
+})
+
+const dashboardRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/dashboard',
   component: DashboardPage,
 })
 
@@ -323,7 +337,7 @@ const routeTree = rootRoute.addChildren([
   verifyEmailRoute,
   shareRoute,
   consoleRoute.addChildren([consoleIndexRoute, consoleTenantsRoute, consoleUsersRoute, consoleBillingRoute, consoleLapsesRoute, consolePartnersRoute, consoleErrorsRoute]),
-  appRoute.addChildren([appIndexRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([appIndexRoute, dashboardRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })
