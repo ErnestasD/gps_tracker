@@ -16,6 +16,8 @@ import { ApiError } from '@/lib/http'
 import { eraseDevice } from '@/lib/gdpr'
 import { liveStore } from '@/lib/liveStore'
 import { CommandsCard } from '@/routes/app/devices/commands'
+import { VehicleCardPanel } from '@/routes/app/devices/vehicleCard'
+import { listDrivers } from '@/lib/drivers'
 import { HealthCard } from '@/routes/app/devices/health'
 import { CanCard } from '@/routes/app/devices/can'
 import { ShareCard } from '@/routes/app/devices/share'
@@ -74,12 +76,15 @@ export function DevicesPage() {
   const everSeen = useMemo(() => new Set((lastSeen.data ?? []).map((e) => e.deviceId)), [lastSeen.data])
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles })
+  // FLEET-1 F1: the vehicle card assigns a driver from the tenant's registry
+  const driversQ = useQuery({ queryKey: ['drivers'], queryFn: listDrivers })
   const [addOpen, setAddOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [retireError, setRetireError] = useState<string | null>(null)
   const [odoError, setOdoError] = useState(false) // inline odometer-source change failed (was swallowed)
   const [commandsForId, setCommandsForId] = useState<string | null>(null)
   const [healthForId, setHealthForId] = useState<string | null>(null)
+  const [vehicleForId, setVehicleForId] = useState<string | null>(null)
   const [shareForId, setShareForId] = useState<string | null>(null)
   const [onboardForId, setOnboardForId] = useState<string | null>(null)
   // APN carried from the create form into an auto-opened onboarding card (unified add flow); '' for
@@ -100,6 +105,7 @@ export function DevicesPage() {
   // closes/updates the panel instead of leaving a stale device you can still command
   const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
   const healthFor: Device | null = (devices.data ?? []).find((d) => d.id === healthForId && d.retiredAt === null) ?? null
+  const vehicleFor: Device | null = (devices.data ?? []).find((d) => d.id === vehicleForId && d.retiredAt === null) ?? null
   const shareFor: Device | null = (devices.data ?? []).find((d) => d.id === shareForId && d.retiredAt === null) ?? null
   const onboardFor: Device | null = (devices.data ?? []).find((d) => d.id === onboardForId && d.retiredAt === null) ?? null
   const retireFor: Device | null = (devices.data ?? []).find((d) => d.id === retireForId && d.retiredAt === null) ?? null
@@ -109,7 +115,7 @@ export function DevicesPage() {
   // click could land the panel off-screen — to the user the menu item looked dead. Scroll the
   // freshly-opened panel into view (and focus it for a11y) whenever which panel is open changes.
   const panelRef = useRef<HTMLDivElement>(null)
-  const openPanelId = healthFor?.id ?? onboardFor?.id ?? commandsFor?.id ?? shareFor?.id ?? null
+  const openPanelId = healthFor?.id ?? onboardFor?.id ?? commandsFor?.id ?? shareFor?.id ?? vehicleFor?.id ?? null
   useEffect(() => {
     if (openPanelId !== null) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [openPanelId])
@@ -299,6 +305,7 @@ export function DevicesPage() {
               isAdmin={isAdmin}
               canWrite={canWrite}
               onHealth={() => setHealthForId((cur) => (cur === d.id ? null : d.id))}
+              onVehicle={() => setVehicleForId((cur) => (cur === d.id ? null : d.id))}
               onOnboard={() => {
                 setPendingApn('') // manual open → no pre-filled APN (only the create flow carries one)
                 setOnboardForId((cur) => (cur === d.id ? null : d.id))
@@ -316,6 +323,7 @@ export function DevicesPage() {
           switch (a confirm armed for device A must not send with one click on device B).
           panelRef anchors the scroll-into-view so an opened panel is never off-screen. */}
       <div ref={panelRef} className="scroll-mt-4">
+        {vehicleFor !== null && <VehicleCardPanel key={`veh-${vehicleFor.id}`} device={vehicleFor} drivers={driversQ.data ?? []} canWrite={canWrite} />}
         {healthFor !== null && <HealthCard key={healthFor.id} device={healthFor} />}
         {healthFor !== null && <CanCard key={`can-${healthFor.id}`} device={healthFor} />}
         {onboardFor !== null && <OnboardingCard key={onboardFor.id} device={onboardFor} initialApn={pendingApn} />}
@@ -399,6 +407,7 @@ export function DevicesPage() {
  * retire behind ConfirmDialog; retired devices expose GDPR erase (admin-only). */
 function RowMenu({
   device,
+  onVehicle,
   isAdmin,
   canWrite,
   onHealth,
@@ -413,6 +422,7 @@ function RowMenu({
   /** account_manager+; gates the write items (commands/share/retire) that 403 for viewers */
   canWrite: boolean
   onHealth: () => void
+  onVehicle: () => void
   onOnboard: () => void
   onCommands: () => void
   onShare: () => void
@@ -456,6 +466,7 @@ function RowMenu({
           <>
             {/* read-only items stay for viewers; the write items (commands/share/retire) 403 for
                 them, so gate them on canWrite — mirrors the page's add/import/odometer gating */}
+            {item(`vehicle-${device.imei}`, t('fleet.cardBtn'), onVehicle)}
             {item(`health-${device.imei}`, t('devices.healthBtn'), onHealth)}
             {item(`onboarding-${device.imei}`, t('devices.onboard'), onOnboard)}
             {canWrite && (

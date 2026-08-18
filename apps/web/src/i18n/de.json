@@ -1006,7 +1006,28 @@
     "everyMi": "alle {{n}} mi",
     "miLeft": "noch {{n}} mi",
     "intervalMi": "Alle (mi)",
-    "currentOdoMi": "Aktueller Kilometerstand (mi)"
+    "currentOdoMi": "Aktueller Kilometerstand (mi)",
+    "everyEngineH": "alle {{n}} Bh",
+    "hLeft": "{{n}} h übrig",
+    "intervalEngineH": "Intervall (Betriebsstunden)",
+    "forecast": "Prognose",
+    "servicedCost": "Kosten (€)",
+    "servicedVendor": "Werkstatt / Lieferant",
+    "servicedNotes": "Notizen",
+    "plans": "Wartungspläne",
+    "plansDesc": "Intervallsatz einmal definieren und in einem Schritt auf die ganze Flotte anwenden.",
+    "planAdd": "Neuer Plan",
+    "plansEmpty": "Noch keine Pläne.",
+    "planApply": "Anwenden",
+    "planApplyTitle": "Plan „{{name}}“ anwenden",
+    "planApplied": "{{created}} erstellt, {{skipped}} übersprungen (bereits vorhanden).",
+    "planName": "Planname",
+    "planAddItem": "Position hinzufügen",
+    "planDelete": "Plan löschen",
+    "planDeleteSure": "Plan „{{name}}“ löschen? Bereits angewendete Erinnerungen bleiben.",
+    "planApplyAll": "Alle Fahrzeuge ({{n}})",
+    "planApplyN": "Anwenden ({{n}})",
+    "expiringDocs": "Ablaufende Dokumente"
   },
   "scheduled": {
     "title": "Geplante Berichte",
@@ -1052,7 +1073,8 @@
     "pickDate": "Datum wählen",
     "loadError": "Konnte nicht geladen werden — bitte erneut versuchen.",
     "loading": "Wird geladen…",
-    "save": "Speichern"
+    "save": "Speichern",
+    "delete": "Löschen"
   },
   "dash": {
     "title": "Übersicht",
@@ -1315,5 +1337,63 @@
       "emptyTitle": "Nichts fehlgeschlagen",
       "emptyDesc": "In diesem Zeitraum keine Webhook-, SMS- oder E-Mail-Ausfälle."
     }
+  },
+  "fleet": {
+    "cardBtn": "Fahrzeugkarte",
+    "cardTitle": "Fahrzeug — {{name}}",
+    "profile": "Profil",
+    "make": "Marke",
+    "model": "Modell",
+    "year": "Jahr",
+    "vin": "VIN",
+    "fuel": "Kraftstoff",
+    "status": "Status",
+    "fuelType": {
+      "petrol": "Benzin",
+      "diesel": "Diesel",
+      "electric": "Elektrisch",
+      "hybrid": "Hybrid",
+      "lpg": "LPG",
+      "cng": "CNG",
+      "other": "Andere"
+    },
+    "vstatus": {
+      "active": "Im Einsatz",
+      "in_service": "In der Werkstatt",
+      "reserve": "Reserve"
+    },
+    "purchaseDate": "Kaufdatum",
+    "purchasePrice": "Kaufpreis (€)",
+    "assignedDriver": "Zugewiesener Fahrer",
+    "noDriver": "— kein Fahrer —",
+    "saved": "Gespeichert",
+    "saveError": "Speichern fehlgeschlagen.",
+    "documents": "Dokumente",
+    "noDocuments": "Noch keine Dokumente.",
+    "validTo": "bis {{date}}",
+    "docDays": "noch {{n}} Tage",
+    "docOverdue": "{{n}} Tage überfällig",
+    "docKindLabel": "Typ",
+    "docKind": {
+      "insurance": "Versicherung",
+      "inspection": "HU (TÜV)",
+      "tachograph": "Tachographen-Kalibrierung",
+      "permit": "Genehmigung",
+      "leasing": "Leasing",
+      "other": "Andere"
+    },
+    "docTitle": "Titel",
+    "docNumber": "Nummer",
+    "docValidTo": "Gültig bis",
+    "addDocument": "Hinzufügen",
+    "serviceLog": "Serviceheft",
+    "noServiceLog": "Noch keine Einträge — Wartung als erledigt markieren oder manuell hinzufügen.",
+    "totalCost": "Gesamt: {{eur}} €",
+    "atKm": "{{n}} km",
+    "atH": "{{n}} h",
+    "slogTitle": "Ausgeführte Arbeit",
+    "slogCost": "Kosten (€)",
+    "slogVendor": "Werkstatt",
+    "addEntry": "Hinzufügen"
   }
 }

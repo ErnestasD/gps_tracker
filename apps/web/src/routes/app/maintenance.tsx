@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, MoreHorizontal, Plus, Wrench } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, MoreHorizontal, Plus, Trash2, Wrench } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -14,6 +14,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getCurrentUser } from '@/lib/auth'
 import { listDevices } from '@/lib/devices'
 import { createMaintenance, deleteMaintenance, dueVariant, listMaintenance, markServiced, type MaintenanceView } from '@/lib/maintenance'
+import { applyPlan, createPlan, deletePlan, docVariant, listDocuments, listPlans, type MaintenancePlanView, type PlanItemInput } from '@/lib/fleet'
+import { useFmt } from '@/lib/datetime'
 import { kmToMi, miToKm, useUnits, type Units } from '@/lib/units'
 
 /** row model for the DataTable: the view plus the resolved device name (searchable/sortable). */
@@ -29,6 +31,7 @@ const STATUS_RANK: Record<string, number> = { overdue: 0, due_soon: 1, ok: 2, un
 export function MaintenancePage() {
   const { t } = useTranslation()
   const u = useUnits()
+  const { d } = useFmt()
   const qc = useQueryClient()
   const items = useQuery({ queryKey: ['maintenance'], queryFn: listMaintenance })
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
@@ -73,6 +76,7 @@ export function MaintenancePage() {
             // display-only conversion: the stored interval stays km (input fields too)
             r.intervalKm !== null ? (u.prefs.unitDistance === 'mi' ? t('maint.everyMi', { n: Math.round(kmToMi(r.intervalKm)) }) : t('maint.everyKm', { n: r.intervalKm })) : null,
             r.intervalDays !== null ? t('maint.everyDays', { n: r.intervalDays }) : null,
+            r.intervalEngineH !== null ? t('maint.everyEngineH', { n: r.intervalEngineH }) : null,
           ]
             .filter((p) => p !== null)
             .join(' · ')}
@@ -86,6 +90,20 @@ export function MaintenancePage() {
       cell: (r) => (
         <span className="text-xs tabular-nums" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`maint-remaining-${r.id}`}>
           {remaining(r, t, u) || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'forecast',
+      header: t('maint.forecast'),
+      hideOnMobile: true,
+      align: 'right',
+      sortable: true,
+      sortValue: (r) => r.predictedDueAt ?? '9999',
+      // km-forecast from the 30-day average daily km (FLEET-1 F2); day-based dues are exact
+      cell: (r) => (
+        <span className="text-xs tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>
+          {r.predictedDueAt !== null ? d(r.predictedDueAt) : '—'}
         </span>
       ),
     },
@@ -193,22 +211,28 @@ export function MaintenancePage() {
         />
       )}
 
-      {/* mark-serviced changes data (re-baselines the countdown) → default-tone confirm */}
-      <ConfirmDialog
-        open={servicedFor !== null}
-        onOpenChange={(o) => {
-          if (!o) setServicedForId(null)
-        }}
-        title={t('maint.markServiced')}
-        description={servicedFor !== null ? t('maint.servicedSure', { title: servicedFor.title }) : undefined}
-        confirmLabel={t('maint.markServiced')}
-        onConfirm={() => {
-          const m = servicedFor
-          if (m === null) return
-          clearErr()
-          void markServiced(m.id, m.currentOdoKm).then(refresh).catch(onActionErr)
-        }}
-      />
+      {canWrite && <PlansSection devices={devices.data ?? []} onApplied={refresh} />}
+      <ExpiringDocsSection deviceName={deviceName} />
+
+      {/* mark-serviced re-baselines the countdown AND writes a service-log row (FLEET-1 F2) —
+          the sheet captures the optional cost/vendor/notes that ride into history */}
+      <Sheet open={servicedFor !== null} onOpenChange={(o) => { if (!o) setServicedForId(null) }}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{t('maint.markServiced')}</SheetTitle>
+          </SheetHeader>
+          {servicedFor !== null && (
+            <ServicedForm
+              key={servicedFor.id}
+              item={servicedFor}
+              onDone={() => { setServicedForId(null); refresh() }}
+              onCancel={() => setServicedForId(null)}
+              onError={() => { setServicedForId(null); onActionErr() }}
+              clearErr={clearErr}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
       <ConfirmDialog
         open={deleteFor !== null}
         onOpenChange={(o) => {
@@ -277,6 +301,7 @@ function remaining(m: MaintenanceView, t: (k: string, o?: Record<string, unknown
     parts.push(u.prefs.unitDistance === 'mi' ? t('maint.miLeft', { n: Math.round(kmToMi(m.due.kmRemaining)) }) : t('maint.kmLeft', { n: m.due.kmRemaining }))
   }
   if (m.due.daysRemaining !== null) parts.push(t('maint.daysLeft', { n: m.due.daysRemaining }))
+  if (m.due.engineHRemaining !== null) parts.push(t('maint.hLeft', { n: m.due.engineHRemaining }))
   return parts.join(' · ')
 }
 
@@ -297,6 +322,7 @@ function MaintForm({ devices, onCreated, onCancel }: {
   const [title, setTitle] = useState('')
   const [intervalKm, setIntervalKm] = useState('')
   const [intervalDays, setIntervalDays] = useState('')
+  const [intervalEngineH, setIntervalEngineH] = useState('')
   const [odoKm, setOdoKm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -308,14 +334,15 @@ function MaintForm({ devices, onCreated, onCancel }: {
     if (title.trim() === '' || dev === '') { setError(t('maint.needFields')); return }
     const km = intervalKm.trim() === '' ? null : toKm(intervalKm)
     const days = intervalDays.trim() === '' ? null : Number(intervalDays)
-    if (km === null && days === null) { setError(t('maint.needInterval')); return }
+    const engineH = intervalEngineH.trim() === '' ? null : Number(intervalEngineH)
+    if (km === null && days === null && engineH === null) { setError(t('maint.needInterval')); return }
     setBusy(true)
     try {
       // only send an explicit odometer baseline when the operator typed one; otherwise the server
       // baselines a km reminder to the device's CURRENT odometer (full interval remaining), never 0
       await createMaintenance({
         deviceId: dev, title: title.trim(),
-        intervalKm: km, intervalDays: days,
+        intervalKm: km, intervalDays: days, intervalEngineH: engineH,
         ...(km !== null && odoKm.trim() !== '' ? { lastServiceOdoKm: toKm(odoKm) } : {}),
       })
       onCreated() // parent closes the sheet; unmount resets the form
@@ -341,6 +368,9 @@ function MaintForm({ devices, onCreated, onCancel }: {
         <Field label={mi ? t('maint.intervalMi') : t('maint.intervalKm')}><AdminInput type="number" min={1} value={intervalKm} onChange={(e) => setIntervalKm(e.target.value)} data-testid="maint-km" /></Field>
         <Field label={t('maint.intervalDays')}><AdminInput type="number" min={1} value={intervalDays} onChange={(e) => setIntervalDays(e.target.value)} data-testid="maint-days" /></Field>
       </div>
+      {/* engine hours (FLEET-1 F2) — for machinery where km is meaningless; hours are derived
+          from trips server-side, starting at 0 from creation unless a baseline is set later */}
+      <Field label={t('maint.intervalEngineH')}><AdminInput type="number" min={1} value={intervalEngineH} onChange={(e) => setIntervalEngineH(e.target.value)} data-testid="maint-engineh" /></Field>
       {/* no placeholder: a blank field baselines to the device's CURRENT odometer (never 0) */}
       <Field label={mi ? t('maint.currentOdoMi') : t('maint.currentOdo')}><AdminInput type="number" min={0} value={odoKm} onChange={(e) => setOdoKm(e.target.value)} data-testid="maint-odo" /></Field>
       {error !== null && <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="maint-error">{error}</p>}
@@ -358,5 +388,281 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {label}
       {children}
     </label>
+  )
+}
+
+/** FLEET-1 F2: the serviced form — one confirm that re-baselines the reminder and records the
+ * completed service (cost/vendor/notes optional) into the vehicle's history. */
+function ServicedForm({ item, onDone, onCancel, onError, clearErr }: {
+  item: MaintenanceView & { deviceName: string }
+  onDone: () => void
+  onCancel: () => void
+  onError: () => void
+  clearErr: () => void
+}) {
+  const { t } = useTranslation()
+  const [costEur, setCostEur] = useState('')
+  const [vendor, setVendor] = useState('')
+  const [notes, setNotes] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    clearErr()
+    void markServiced(item.id, item.currentOdoKm, {
+      costCents: costEur.trim() === '' ? null : Math.round(Number(costEur) * 100),
+      vendor: vendor.trim() === '' ? null : vendor.trim(),
+      notes: notes.trim() === '' ? null : notes.trim(),
+    })
+      .then(onDone)
+      .catch(onError)
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-2 flex flex-col gap-3" data-testid="serviced-form">
+      <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('maint.servicedSure', { title: item.title })}</p>
+      <Field label={t('maint.servicedCost')}><AdminInput type="number" min={0} step="0.01" value={costEur} onChange={(e) => setCostEur(e.target.value)} data-testid="serviced-cost" /></Field>
+      <Field label={t('maint.servicedVendor')}><AdminInput value={vendor} onChange={(e) => setVendor(e.target.value)} maxLength={160} data-testid="serviced-vendor" /></Field>
+      <Field label={t('maint.servicedNotes')}><AdminInput value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} data-testid="serviced-notes" /></Field>
+      <SheetFooter className="mt-2">
+        <AdminButton variant="secondary" onClick={onCancel}>{t('admin.cancel')}</AdminButton>
+        <AdminButton type="submit" disabled={busy} data-testid="serviced-confirm">{t('maint.markServiced')}</AdminButton>
+      </SheetFooter>
+    </form>
+  )
+}
+
+/** FLEET-1 F2: maintenance plan templates — define interval sets once, apply to many vehicles.
+ * Apply is idempotent per (device, title), so re-running over the fleet never duplicates. */
+function PlansSection({ devices, onApplied }: {
+  devices: { id: string; name: string; plate?: string | null }[]
+  onApplied: () => void
+}) {
+  const { t } = useTranslation()
+  const qc = useQueryClient()
+  const plans = useQuery({ queryKey: ['maintenance-plans'], queryFn: listPlans })
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['maintenance-plans'] })
+  const [createOpen, setCreateOpen] = useState(false)
+  const [applyFor, setApplyFor] = useState<MaintenancePlanView | null>(null)
+  const [deleteFor, setDeleteFor] = useState<MaintenancePlanView | null>(null)
+  const [applied, setApplied] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+
+  const intervalLabel = (i: PlanItemInput): string =>
+    [
+      i.intervalKm != null ? t('maint.everyKm', { n: i.intervalKm }) : null,
+      i.intervalDays != null ? t('maint.everyDays', { n: i.intervalDays }) : null,
+      i.intervalEngineH != null ? t('maint.everyEngineH', { n: i.intervalEngineH }) : null,
+    ].filter((x) => x !== null).join(' · ')
+
+  return (
+    <div className="admin-card space-y-3 p-4" data-testid="maint-plans">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('maint.plans')}</div>
+          <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('maint.plansDesc')}</p>
+        </div>
+        <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+          <SheetTrigger asChild>
+            <AdminButton variant="secondary" data-testid="plan-add-open"><Plus className="h-4 w-4" aria-hidden />{t('maint.planAdd')}</AdminButton>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-md">
+            <SheetHeader><SheetTitle>{t('maint.planAdd')}</SheetTitle></SheetHeader>
+            <PlanForm onCreated={() => { refresh(); setCreateOpen(false) }} onCancel={() => setCreateOpen(false)} />
+          </SheetContent>
+        </Sheet>
+      </div>
+      {(plans.data ?? []).length === 0 && !plans.isLoading && (
+        <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('maint.plansEmpty')}</p>
+      )}
+      <div className="space-y-1">
+        {(plans.data ?? []).map((p) => (
+          <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm" style={{ borderColor: 'var(--admin-hairline)' }} data-testid={`plan-${p.id}`}>
+            <span className="font-medium">{p.name}</span>
+            <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+              {p.items.map((i) => `${i.title} (${intervalLabel(i)})`).join(' · ')}
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <AdminButton variant="secondary" data-testid={`plan-apply-${p.id}`} onClick={() => setApplyFor(p)}>{t('maint.planApply')}</AdminButton>
+              <button type="button" aria-label={t('maint.delete')} data-testid={`plan-del-${p.id}`}
+                onClick={() => setDeleteFor(p)}
+                className="grid h-7 w-7 place-items-center rounded transition-colors hover:bg-[var(--admin-surface-sunken)]">
+                <Trash2 className="h-3.5 w-3.5" style={{ color: 'var(--admin-danger)' }} aria-hidden />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {applied !== null && <p className="text-xs" style={{ color: 'var(--admin-success)' }} data-testid="plan-applied">{applied}</p>}
+      {error && <p role="alert" className="text-xs" style={{ color: 'var(--admin-danger)' }}>{t('maint.actionError')}</p>}
+
+      <Sheet open={applyFor !== null} onOpenChange={(o) => { if (!o) setApplyFor(null) }}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader><SheetTitle>{applyFor !== null ? t('maint.planApplyTitle', { name: applyFor.name }) : ''}</SheetTitle></SheetHeader>
+          {applyFor !== null && (
+            <PlanApplyForm
+              key={applyFor.id}
+              devices={devices}
+              onApply={async (deviceIds) => {
+                setError(false)
+                try {
+                  const res = await applyPlan(applyFor.id, deviceIds)
+                  setApplied(t('maint.planApplied', { created: res.created, skipped: res.skipped }))
+                  setApplyFor(null)
+                  onApplied()
+                } catch { setError(true) }
+              }}
+              onCancel={() => setApplyFor(null)}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <ConfirmDialog
+        open={deleteFor !== null}
+        onOpenChange={(o) => { if (!o) setDeleteFor(null) }}
+        tone="danger"
+        title={t('maint.planDelete')}
+        description={deleteFor !== null ? t('maint.planDeleteSure', { name: deleteFor.name }) : undefined}
+        confirmLabel={t('maint.delete')}
+        onConfirm={() => {
+          const p = deleteFor
+          if (p === null) return
+          setError(false)
+          void deletePlan(p.id).then(refresh).catch(() => setError(true))
+        }}
+      />
+    </div>
+  )
+}
+
+/** Plan create form: up to five interval rows (a plan bigger than that is usually two plans). */
+function PlanForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const { t } = useTranslation()
+  const empty = { title: '', km: '', days: '', engineH: '' }
+  const [name, setName] = useState('')
+  const [rows, setRows] = useState([{ ...empty }])
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const setRow = (idx: number, patch: Partial<typeof empty>) =>
+    setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    const items: PlanItemInput[] = []
+    for (const r of rows) {
+      if (r.title.trim() === '') continue
+      const item: PlanItemInput = {
+        title: r.title.trim(),
+        intervalKm: r.km.trim() === '' ? null : Number(r.km),
+        intervalDays: r.days.trim() === '' ? null : Number(r.days),
+        intervalEngineH: r.engineH.trim() === '' ? null : Number(r.engineH),
+      }
+      if (item.intervalKm === null && item.intervalDays === null && item.intervalEngineH === null) {
+        setError(t('maint.needInterval')); return
+      }
+      items.push(item)
+    }
+    if (name.trim() === '' || items.length === 0) { setError(t('maint.needFields')); return }
+    setBusy(true)
+    try {
+      await createPlan({ name: name.trim(), items })
+      onCreated()
+    } catch { setError(t('maint.saveError')) } finally { setBusy(false) }
+  }
+
+  return (
+    <form onSubmit={(e) => void submit(e)} className="mt-2 flex flex-col gap-3" data-testid="plan-form">
+      <Field label={t('maint.planName')}><AdminInput value={name} onChange={(e) => setName(e.target.value)} maxLength={120} data-testid="plan-name" /></Field>
+      {rows.map((r, i) => (
+        <div key={i} className="space-y-2 rounded-md border p-2" style={{ borderColor: 'var(--admin-hairline)' }}>
+          <Field label={t('maint.itemTitle')}><AdminInput value={r.title} onChange={(e) => setRow(i, { title: e.target.value })} maxLength={120} data-testid={`plan-item-title-${i}`} /></Field>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label={t('maint.intervalKm')}><AdminInput type="number" min={1} value={r.km} onChange={(e) => setRow(i, { km: e.target.value })} data-testid={`plan-item-km-${i}`} /></Field>
+            <Field label={t('maint.intervalDays')}><AdminInput type="number" min={1} value={r.days} onChange={(e) => setRow(i, { days: e.target.value })} /></Field>
+            <Field label={t('maint.intervalEngineH')}><AdminInput type="number" min={1} value={r.engineH} onChange={(e) => setRow(i, { engineH: e.target.value })} /></Field>
+          </div>
+        </div>
+      ))}
+      {rows.length < 5 && (
+        <AdminButton variant="secondary" onClick={() => setRows((rs) => [...rs, { ...empty }])} data-testid="plan-item-add">
+          <Plus className="h-4 w-4" aria-hidden />{t('maint.planAddItem')}
+        </AdminButton>
+      )}
+      {error !== null && <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="plan-error">{error}</p>}
+      <SheetFooter className="mt-2">
+        <AdminButton variant="secondary" onClick={onCancel}>{t('admin.cancel')}</AdminButton>
+        <AdminButton type="submit" disabled={busy} data-testid="plan-create">{t('maint.create')}</AdminButton>
+      </SheetFooter>
+    </form>
+  )
+}
+
+/** Device multi-select for plan apply: check the vehicles (or all) the plan lands on. */
+function PlanApplyForm({ devices, onApply, onCancel }: {
+  devices: { id: string; name: string; plate?: string | null }[]
+  onApply: (deviceIds: string[]) => Promise<void>
+  onCancel: () => void
+}) {
+  const { t } = useTranslation()
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState(false)
+  const toggle = (id: string) => setChecked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const allChecked = checked.size === devices.length && devices.length > 0
+
+  return (
+    <div className="mt-2 flex flex-col gap-3" data-testid="plan-apply-form">
+      <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--admin-ink)' }}>
+        <input type="checkbox" checked={allChecked} onChange={() => setChecked(allChecked ? new Set() : new Set(devices.map((d) => d.id)))} data-testid="plan-apply-all" />
+        {t('maint.planApplyAll', { n: devices.length })}
+      </label>
+      <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2" style={{ borderColor: 'var(--admin-hairline)' }}>
+        {devices.map((d) => (
+          <label key={d.id} className="flex items-center gap-2 text-sm" style={{ color: 'var(--admin-ink)' }}>
+            <input type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d.id)} data-testid={`plan-apply-dev-${d.id}`} />
+            {d.name}{d.plate != null && d.plate !== '' ? ` (${d.plate})` : ''}
+          </label>
+        ))}
+      </div>
+      <SheetFooter className="mt-2">
+        <AdminButton variant="secondary" onClick={onCancel}>{t('admin.cancel')}</AdminButton>
+        <AdminButton
+          disabled={busy || checked.size === 0}
+          data-testid="plan-apply-confirm"
+          onClick={() => { setBusy(true); void onApply([...checked]).finally(() => setBusy(false)) }}
+        >
+          {t('maint.planApplyN', { n: checked.size })}
+        </AdminButton>
+      </SheetFooter>
+    </div>
+  )
+}
+
+/** FLEET-1 F3: fleet-wide expiring documents — the "act this month" list (due_soon + overdue). */
+function ExpiringDocsSection({ deviceName }: { deviceName: (id: string) => string }) {
+  const { t } = useTranslation()
+  const { d } = useFmt()
+  const docs = useQuery({ queryKey: ['documents', 'expiring'], queryFn: () => listDocuments('soon') })
+  if (docs.isLoading || (docs.data ?? []).length === 0) return null
+  return (
+    <div className="admin-card space-y-2 p-4" data-testid="expiring-docs">
+      <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('maint.expiringDocs')}</div>
+      <div className="space-y-1">
+        {(docs.data ?? []).map((doc) => (
+          <div key={doc.id} className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm" style={{ borderColor: 'var(--admin-hairline)' }} data-testid={`expdoc-${doc.id}`}>
+            <span className="font-medium">{deviceName(doc.deviceId)}</span>
+            <span style={{ color: 'var(--admin-ink-soft)' }}>{t(`fleet.docKind.${doc.kind}`)} · {doc.title}</span>
+            <span className="ml-auto text-xs tabular-nums" style={{ color: 'var(--admin-ink-soft)' }}>{d(doc.validTo)}</span>
+            <Badge variant={docVariant(doc.due.status)}>
+              {doc.due.status === 'overdue' ? t('fleet.docOverdue', { n: -doc.due.daysRemaining }) : t('fleet.docDays', { n: doc.due.daysRemaining })}
+            </Badge>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

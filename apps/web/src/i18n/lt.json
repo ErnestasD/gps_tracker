@@ -1006,7 +1006,28 @@
     "everyMi": "kas {{n}} mi",
     "miLeft": "liko {{n}} mi",
     "intervalMi": "Kas (mi)",
-    "currentOdoMi": "Dabartinė rida (mi)"
+    "currentOdoMi": "Dabartinė rida (mi)",
+    "everyEngineH": "kas {{n}} variklio val.",
+    "hLeft": "liko {{n}} val.",
+    "intervalEngineH": "Intervalas (variklio val.)",
+    "forecast": "Prognozė",
+    "servicedCost": "Kaina (€)",
+    "servicedVendor": "Servisas / tiekėjas",
+    "servicedNotes": "Pastabos",
+    "plans": "Priežiūros planai",
+    "plansDesc": "Apibrėžkite intervalų rinkinį kartą ir pritaikykite visam parkui vienu veiksmu.",
+    "planAdd": "Naujas planas",
+    "plansEmpty": "Planų dar nėra.",
+    "planApply": "Taikyti",
+    "planApplyTitle": "Taikyti planą „{{name}}“",
+    "planApplied": "Sukurta {{created}}, praleista {{skipped}} (jau buvo).",
+    "planName": "Plano pavadinimas",
+    "planAddItem": "Pridėti darbą",
+    "planDelete": "Šalinti planą",
+    "planDeleteSure": "Šalinti planą „{{name}}“? Jau pritaikyti priminimai lieka.",
+    "planApplyAll": "Visos transporto priemonės ({{n}})",
+    "planApplyN": "Taikyti ({{n}})",
+    "expiringDocs": "Besibaigiantys dokumentai"
   },
   "scheduled": {
     "title": "Suplanuotos ataskaitos",
@@ -1052,7 +1073,8 @@
     "pickDate": "Pasirinkti datą",
     "loadError": "Nepavyko įkelti — bandykite dar kartą.",
     "loading": "Įkeliama…",
-    "save": "Išsaugoti"
+    "save": "Išsaugoti",
+    "delete": "Šalinti"
   },
   "dash": {
     "title": "Apžvalga",
@@ -1322,5 +1344,63 @@
       "emptyTitle": "Niekas nekrenta",
       "emptyDesc": "Per šį laikotarpį webhook'ų, SMS ar el. laiškų gedimų nebuvo."
     }
+  },
+  "fleet": {
+    "cardBtn": "Kortelė",
+    "cardTitle": "Transporto priemonė — {{name}}",
+    "profile": "Profilis",
+    "make": "Markė",
+    "model": "Modelis",
+    "year": "Metai",
+    "vin": "VIN",
+    "fuel": "Kuras",
+    "status": "Būsena",
+    "fuelType": {
+      "petrol": "Benzinas",
+      "diesel": "Dyzelinas",
+      "electric": "Elektra",
+      "hybrid": "Hibridas",
+      "lpg": "Dujos (LPG)",
+      "cng": "Dujos (CNG)",
+      "other": "Kita"
+    },
+    "vstatus": {
+      "active": "Naudojama",
+      "in_service": "Servise",
+      "reserve": "Rezervas"
+    },
+    "purchaseDate": "Įsigijimo data",
+    "purchasePrice": "Įsigijimo kaina (€)",
+    "assignedDriver": "Priskirtas vairuotojas",
+    "noDriver": "— be vairuotojo —",
+    "saved": "Išsaugota",
+    "saveError": "Nepavyko išsaugoti.",
+    "documents": "Dokumentai",
+    "noDocuments": "Dokumentų dar nėra.",
+    "validTo": "iki {{date}}",
+    "docDays": "liko {{n}} d.",
+    "docOverdue": "pradelsta {{n}} d.",
+    "docKindLabel": "Tipas",
+    "docKind": {
+      "insurance": "Draudimas",
+      "inspection": "Techninė apžiūra",
+      "tachograph": "Tachografo patikra",
+      "permit": "Leidimas",
+      "leasing": "Lizingas",
+      "other": "Kita"
+    },
+    "docTitle": "Pavadinimas",
+    "docNumber": "Numeris",
+    "docValidTo": "Galioja iki",
+    "addDocument": "Pridėti",
+    "serviceLog": "Serviso žurnalas",
+    "noServiceLog": "Įrašų dar nėra — pažymėkite priežiūros darbą atliktu arba pridėkite ranka.",
+    "totalCost": "Iš viso: {{eur}} €",
+    "atKm": "{{n}} km",
+    "atH": "{{n}} val.",
+    "slogTitle": "Darbas",
+    "slogCost": "Kaina (€)",
+    "slogVendor": "Servisas",
+    "addEntry": "Pridėti"
   }
 }

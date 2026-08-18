@@ -1006,7 +1006,28 @@
     "everyMi": "co {{n}} mi",
     "miLeft": "pozostało {{n}} mi",
     "intervalMi": "Co (mi)",
-    "currentOdoMi": "Aktualny przebieg (mi)"
+    "currentOdoMi": "Aktualny przebieg (mi)",
+    "everyEngineH": "co {{n}} mth",
+    "hLeft": "pozostało {{n}} h",
+    "intervalEngineH": "Interwał (motogodziny)",
+    "forecast": "Prognoza",
+    "servicedCost": "Koszt (€)",
+    "servicedVendor": "Serwis / dostawca",
+    "servicedNotes": "Uwagi",
+    "plans": "Plany przeglądów",
+    "plansDesc": "Zdefiniuj zestaw interwałów raz i zastosuj do całej floty jednym działaniem.",
+    "planAdd": "Nowy plan",
+    "plansEmpty": "Brak planów.",
+    "planApply": "Zastosuj",
+    "planApplyTitle": "Zastosuj plan „{{name}}”",
+    "planApplied": "Utworzono {{created}}, pominięto {{skipped}} (już były).",
+    "planName": "Nazwa planu",
+    "planAddItem": "Dodaj pozycję",
+    "planDelete": "Usuń plan",
+    "planDeleteSure": "Usunąć plan „{{name}}”? Zastosowane przypomnienia pozostają.",
+    "planApplyAll": "Wszystkie pojazdy ({{n}})",
+    "planApplyN": "Zastosuj ({{n}})",
+    "expiringDocs": "Wygasające dokumenty"
   },
   "scheduled": {
     "title": "Zaplanowane raporty",
@@ -1052,7 +1073,8 @@
     "pickDate": "Wybierz datę",
     "loadError": "Nie udało się załadować — spróbuj ponownie.",
     "loading": "Ładowanie…",
-    "save": "Zapisz"
+    "save": "Zapisz",
+    "delete": "Usuń"
   },
   "dash": {
     "title": "Przegląd",
@@ -1329,5 +1351,63 @@
       "emptyTitle": "Nic nie zawodzi",
       "emptyDesc": "W tym okresie brak awarii webhooków, SMS-ów ani e-maili."
     }
+  },
+  "fleet": {
+    "cardBtn": "Karta pojazdu",
+    "cardTitle": "Pojazd — {{name}}",
+    "profile": "Profil",
+    "make": "Marka",
+    "model": "Model",
+    "year": "Rok",
+    "vin": "VIN",
+    "fuel": "Paliwo",
+    "status": "Status",
+    "fuelType": {
+      "petrol": "Benzyna",
+      "diesel": "Diesel",
+      "electric": "Elektryczny",
+      "hybrid": "Hybryda",
+      "lpg": "LPG",
+      "cng": "CNG",
+      "other": "Inne"
+    },
+    "vstatus": {
+      "active": "W użyciu",
+      "in_service": "W serwisie",
+      "reserve": "Rezerwa"
+    },
+    "purchaseDate": "Data zakupu",
+    "purchasePrice": "Cena zakupu (€)",
+    "assignedDriver": "Przypisany kierowca",
+    "noDriver": "— brak kierowcy —",
+    "saved": "Zapisano",
+    "saveError": "Nie udało się zapisać.",
+    "documents": "Dokumenty",
+    "noDocuments": "Brak dokumentów.",
+    "validTo": "do {{date}}",
+    "docDays": "pozostało {{n}} dni",
+    "docOverdue": "przeterminowane {{n}} dni",
+    "docKindLabel": "Typ",
+    "docKind": {
+      "insurance": "Ubezpieczenie",
+      "inspection": "Przegląd techniczny",
+      "tachograph": "Kalibracja tachografu",
+      "permit": "Zezwolenie",
+      "leasing": "Leasing",
+      "other": "Inne"
+    },
+    "docTitle": "Nazwa",
+    "docNumber": "Numer",
+    "docValidTo": "Ważne do",
+    "addDocument": "Dodaj",
+    "serviceLog": "Historia serwisowa",
+    "noServiceLog": "Brak wpisów — oznacz przegląd jako wykonany lub dodaj ręcznie.",
+    "totalCost": "Razem: {{eur}} €",
+    "atKm": "{{n}} km",
+    "atH": "{{n}} h",
+    "slogTitle": "Wykonana praca",
+    "slogCost": "Koszt (€)",
+    "slogVendor": "Serwis",
+    "addEntry": "Dodaj"
   }
 }

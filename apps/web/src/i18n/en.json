@@ -1006,7 +1006,28 @@
     "everyMi": "every {{n}} mi",
     "miLeft": "{{n}} mi left",
     "intervalMi": "Every (mi)",
-    "currentOdoMi": "Current odometer (mi)"
+    "currentOdoMi": "Current odometer (mi)",
+    "everyEngineH": "every {{n}} engine h",
+    "hLeft": "{{n}} h left",
+    "intervalEngineH": "Interval (engine hours)",
+    "forecast": "Forecast",
+    "servicedCost": "Cost (€)",
+    "servicedVendor": "Vendor / workshop",
+    "servicedNotes": "Notes",
+    "plans": "Maintenance plans",
+    "plansDesc": "Define an interval set once and apply it to the whole fleet in one action.",
+    "planAdd": "New plan",
+    "plansEmpty": "No plans yet.",
+    "planApply": "Apply",
+    "planApplyTitle": "Apply plan “{{name}}”",
+    "planApplied": "Created {{created}}, skipped {{skipped}} (already present).",
+    "planName": "Plan name",
+    "planAddItem": "Add item",
+    "planDelete": "Delete plan",
+    "planDeleteSure": "Delete plan “{{name}}”? Already-applied reminders stay.",
+    "planApplyAll": "All vehicles ({{n}})",
+    "planApplyN": "Apply ({{n}})",
+    "expiringDocs": "Expiring documents"
   },
   "scheduled": {
     "title": "Scheduled reports",
@@ -1052,7 +1073,8 @@
     "pickDate": "Pick a date",
     "loadError": "Couldn't load — please try again.",
     "loading": "Loading…",
-    "save": "Save"
+    "save": "Save",
+    "delete": "Delete"
   },
   "dash": {
     "title": "Overview",
@@ -1315,5 +1337,63 @@
       "emptyTitle": "Nothing failing",
       "emptyDesc": "No webhook, SMS or email failures in this window."
     }
+  },
+  "fleet": {
+    "cardBtn": "Vehicle card",
+    "cardTitle": "Vehicle — {{name}}",
+    "profile": "Profile",
+    "make": "Make",
+    "model": "Model",
+    "year": "Year",
+    "vin": "VIN",
+    "fuel": "Fuel",
+    "status": "Status",
+    "fuelType": {
+      "petrol": "Petrol",
+      "diesel": "Diesel",
+      "electric": "Electric",
+      "hybrid": "Hybrid",
+      "lpg": "LPG",
+      "cng": "CNG",
+      "other": "Other"
+    },
+    "vstatus": {
+      "active": "In use",
+      "in_service": "In service",
+      "reserve": "Reserve"
+    },
+    "purchaseDate": "Purchase date",
+    "purchasePrice": "Purchase price (€)",
+    "assignedDriver": "Assigned driver",
+    "noDriver": "— no driver —",
+    "saved": "Saved",
+    "saveError": "Could not save.",
+    "documents": "Documents",
+    "noDocuments": "No documents yet.",
+    "validTo": "until {{date}}",
+    "docDays": "{{n}} d left",
+    "docOverdue": "{{n}} d overdue",
+    "docKindLabel": "Type",
+    "docKind": {
+      "insurance": "Insurance",
+      "inspection": "Roadworthiness (TA)",
+      "tachograph": "Tachograph calibration",
+      "permit": "Permit",
+      "leasing": "Leasing",
+      "other": "Other"
+    },
+    "docTitle": "Title",
+    "docNumber": "Number",
+    "docValidTo": "Valid until",
+    "addDocument": "Add",
+    "serviceLog": "Service log",
+    "noServiceLog": "No entries yet — mark a maintenance task serviced or add one by hand.",
+    "totalCost": "Total: {{eur}} €",
+    "atKm": "{{n}} km",
+    "atH": "{{n}} h",
+    "slogTitle": "Work done",
+    "slogCost": "Cost (€)",
+    "slogVendor": "Workshop",
+    "addEntry": "Add"
   }
 }

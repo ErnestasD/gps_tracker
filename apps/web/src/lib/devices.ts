@@ -17,6 +17,16 @@ export interface Device {
   /** device SIM ICCID (audit/support only) — never used to send. Null until set. */
   simIccid: string | null
   retiredAt: string | null
+  // vehicle profile (FLEET-1 F1)
+  make: string | null
+  vehicleModel: string | null
+  year: number | null
+  vin: string | null
+  fuelType: string | null
+  vehicleStatus: 'active' | 'in_service' | 'reserve'
+  purchaseDate: string | null
+  purchasePriceCents: number | null
+  driverId: string | null
 }
 export interface Account {
   id: string
@@ -55,6 +65,18 @@ export interface DeviceUpdateInput {
   /** the device MODEL. Changing it changes how FUTURE positions are decoded; already-stored
    *  positions keep the attribute names they were decoded with. */
   profileId?: string
+  name?: string
+  plate?: string | null
+  // vehicle profile (FLEET-1 F1)
+  make?: string | null
+  vehicleModel?: string | null
+  year?: number | null
+  vin?: string | null
+  fuelType?: string | null
+  vehicleStatus?: 'active' | 'in_service' | 'reserve'
+  purchaseDate?: string | null
+  purchasePriceCents?: number | null
+  driverId?: string | null
 }
 export interface ImportError {
   row: number

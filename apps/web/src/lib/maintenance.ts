@@ -10,9 +10,18 @@ export interface MaintenanceInput {
   title: string
   intervalKm?: number | null
   intervalDays?: number | null
+  intervalEngineH?: number | null
   lastServiceOdoKm?: number | null
   lastServiceAt?: string | null
+  lastServiceEngineH?: number | null
   active?: boolean
+}
+
+/** Optional extras "mark serviced" records into the service log (FLEET-1 F2). */
+export interface ServicedExtras {
+  costCents?: number | null
+  vendor?: string | null
+  notes?: string | null
 }
 
 export const listMaintenance = () => getJson<MaintenanceView[]>('/v1/maintenance')
@@ -29,8 +38,13 @@ export const deleteMaintenance = (id: string) => mutate<{ ok: boolean }>('DELETE
  * entirely rather than sending an explicit null: the API reads absence as "re-base on the device's
  * current odometer" and an explicit null as "clear it", which are different instructions.
  */
-export const markServiced = (id: string, odoKm: number | null) =>
-  mutate<MaintenanceView>('POST', `/v1/maintenance/${encodeURIComponent(id)}/serviced`, odoKm === null ? {} : { odoKm: Math.round(odoKm) })
+export const markServiced = (id: string, odoKm: number | null, extras: ServicedExtras = {}) =>
+  mutate<MaintenanceView>('POST', `/v1/maintenance/${encodeURIComponent(id)}/serviced`, {
+    ...(odoKm === null ? {} : { odoKm: Math.round(odoKm) }),
+    ...(extras.costCents != null ? { costCents: extras.costCents } : {}),
+    ...(extras.vendor != null && extras.vendor !== '' ? { vendor: extras.vendor } : {}),
+    ...(extras.notes != null && extras.notes !== '' ? { notes: extras.notes } : {}),
+  })
 
 /** Badge variant for a due status — pure, unit-tested. */
 export function dueVariant(status: MaintenanceStatus): 'success' | 'warn' | 'danger' | 'outline' {
