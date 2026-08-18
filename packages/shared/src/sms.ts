@@ -39,7 +39,12 @@ export type SmsSendRequest = z.infer<typeof smsSendRequestSchema>
  * here: this list must admit every string the sheet itself generates, or an operator who pastes our
  * own FTC887 command back into the body field is refused by our own validator.
  */
-const SETPARAM = /^ {1,2}setparam (?:\d{1,5}:[A-Za-z0-9._@/\-+]{1,64})(?:;\d{1,5}:[A-Za-z0-9._@/\-+]{1,64})*$/
+// `{0,64}` — an EMPTY value is how Teltonika clears a parameter ("leave field empty if there is no
+// APN username", https://wiki.teltonika-gps.com/view/FTC887_First_Start). Requiring one character
+// meant the platform could set a wrong APN but never take it back, and an operator returning a
+// device to stock had to reach for a phone. Empty carries no text, so it widens nothing: `;` and
+// `:` stay excluded from values, which is what keeps a second command from being injected.
+const SETPARAM = /^ {1,2}setparam (?:\d{1,5}:[A-Za-z0-9._@/\-+]{0,64})(?:;\d{1,5}:[A-Za-z0-9._@/\-+]{0,64})*$/
 const BARE_COMMANDS = /^ {1,2}(?:getinfo|getstatus|getgps|getver|cpureset)$/
 /** `getparam` takes a parameter id — the bare form does nothing on the device, so require the id. */
 const GETPARAM = /^ {1,2}getparam \d{1,5}$/
