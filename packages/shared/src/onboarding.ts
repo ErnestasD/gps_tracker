@@ -21,7 +21,10 @@ export interface OnboardingInput {
   port: number
   /** carrier APN (optional — the SMS omits the APN command when absent). */
   apn?: string
-  /** device profile key, for display. FMB/FMC share the 2004/2005 params. */
+  /**
+   * Device profile key (e.g. `ftc887`, `fmc150`). Displayed, and — since it is the only thing here
+   * that identifies the hardware — it selects the SMS command PREFIX. See `smsPrefixFor`.
+   */
   family?: string
   /**
    * The profile is a legacy FAMILY row (`fmb1xx`, `fmc`, `fmb6xx-stub`, `tat-asset`) rather than one
@@ -67,6 +70,45 @@ export interface OnboardingSheet {
 const SAFE_HOST = /^[a-zA-Z0-9.-]{1,253}$/
 const SAFE_APN = /^[a-zA-Z0-9._-]{1,63}$/
 
+/**
+ * The FT / "Fast & Easy" platform: FTC*, FTM*, ATC*, ATM*. 25 of the 105 catalogued models.
+ *
+ * Teltonika documents these on a differently-NAMED page (`<model>_SMS/GPRS_Command_List`, versus
+ * `<model>_SMS/GPRS_Commands` for everything else), and the difference is not cosmetic — the
+ * command prefix differs. See `smsPrefixFor`.
+ */
+const FT_PLATFORM = /^(?:ftc|ftm|atc|atm)/i
+
+/**
+ * The leading whitespace that stands in for an unset SMS password — ONE space or TWO, by platform.
+ *
+ * This is the whole config SMS. Get it wrong and the device receives a perfectly deliverable
+ * message, parses nothing, replies nothing, and simply never connects — indistinguishable at the
+ * server from a dead SIM, a wrong APN or a device that was never powered on. It cost a real
+ * hardware session on an FTC887: Twilio reported `delivered`, the tracker's lights were on, and
+ * ingest saw not one TCP SYN in 90 seconds.
+ *
+ * FMB-generation firmware parses `<SMS login><space><SMS password><space><command>`, so with the
+ * factory-empty login AND password the message begins with TWO spaces:
+ *   https://wiki.teltonika-gps.com/view/FMB120_SMS/GPRS_Commands
+ *   — "If SMS login and password are not set leave two spaces before command"
+ *
+ * The FT platform parses `<password><space><command>` — there is no separate login field, so an
+ * unset password means ONE space:
+ *   https://wiki.teltonika-gps.com/view/FTC887_SMS/GPRS_Command_List
+ *   — "Before every SMS command, enter the password OR a whitespace (when the password is not set)"
+ *   — example given: `getinfo` with no password is sent as " getinfo"
+ *
+ * Checked against both wikis for FTC134 / FTC881 / FTC887 / FTM134 / ATC700 / ATM700 (one space)
+ * and FMB120 / TAT100 / TAT240 / GH5200 / TST100 / TMT250 / MSP500 / MTB100 / TFT100 (two).
+ *
+ * An unknown or legacy family gets TWO — the FMB reading — because that is what the other 80
+ * models take and what every device created before the per-model picker used.
+ */
+export function smsPrefixFor(family: string | undefined): '  ' | ' ' {
+  return family !== undefined && FT_PLATFORM.test(family.trim()) ? ' ' : '  '
+}
+
 export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
   // NO fallback host. It used to be `'orbetra.com'`, so a deployment that never set
   // INGEST_PUBLIC_HOST told a reseller's installer to point their customer's hardware at OUR
@@ -75,17 +117,21 @@ export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
   // visible gap and the send route refuses; a missing configuration must look missing.
   const host = SAFE_HOST.test(input.host) ? input.host : null
   const port = Number.isInteger(input.port) && input.port > 0 && input.port < 65536 ? input.port : 5027
-  // empty login + password → two leading spaces (Teltonika SMS contract). 2006:0 = protocol TCP
-  // (our ingest is TCP-only); the APN password (2003) is deliberately left untouched.
-  const smsServer = host === null ? null : `  setparam 2004:${host};2005:${port};2006:0`
+  // the unset-password prefix, ONE space or TWO depending on the platform (smsPrefixFor).
+  // 2006:0 = protocol TCP (our ingest is TCP-only); the APN password (2003) is left untouched.
+  // The parameter IDs themselves are shared: FTC887's own Parameter List documents 2001 APN,
+  // 2004 Domain, 2005 Port, 2006 Data protocol (0 – TCP) exactly as FMB120 does.
+  // https://wiki.teltonika-gps.com/view/FTC887_Parameter_List
+  const prefix = smsPrefixFor(input.family)
+  const smsServer = host === null ? null : `${prefix}setparam 2004:${host};2005:${port};2006:0`
   const apn = input.apn?.trim()
   // reject any APN carrying a separator/space (';'/':' would inject a second setparam) — drop to
   // null on a bad value, exactly as host falls back; the {1,63} bound also caps length server-side
   const apnSafe = apn !== undefined && apn !== '' && SAFE_APN.test(apn) ? apn : null
-  const smsApn = apnSafe !== null ? `  setparam 2001:${apnSafe}` : null
+  const smsApn = apnSafe !== null ? `${prefix}setparam 2001:${apnSafe}` : null
   // combined single SMS for the automated gateway: prepend the APN param (2001) to the server
   // triplet in ONE setparam when an APN is given — ~55 chars, well under one 160-char segment.
-  const smsAuto = host === null ? null : `  setparam ${apnSafe !== null ? `2001:${apnSafe};` : ''}2004:${host};2005:${port};2006:0`
+  const smsAuto = host === null ? null : `${prefix}setparam ${apnSafe !== null ? `2001:${apnSafe};` : ''}2004:${host};2005:${port};2006:0`
 
   const familyCaveat = input.legacyProfile ?? true
   /**

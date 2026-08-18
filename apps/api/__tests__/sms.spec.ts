@@ -40,7 +40,8 @@ let adminToken: string // tsp_admin on the tsp_grow tenant (has smsGateway)
 let viewerToken: string // viewer on the same tenant/account (wrong role)
 let crossToken: string // tsp_admin on a SECOND tenant (cross-tenant 404)
 let directToken: string // tsp_admin on a direct_10 tenant (lacks smsGateway)
-let deviceId: string // device WITH a simMsisdn
+let deviceId: string // device WITH a simMsisdn (FMB120 — two-space SMS prefix)
+let ftDeviceId: string // an FT-platform device (FTC887 — ONE-space SMS prefix)
 let noMsisdnId: string // device WITHOUT a simMsisdn
 let directDeviceId: string
 const MSISDN = '+37060000001'
@@ -68,9 +69,17 @@ beforeAll(async () => {
   const s1 = await seedUser({ databaseUrl, email: 'a@c1.test', password: 'password12', role: 'tsp_admin', tenantName: 'C1', accountName: 'Fleet' })
   const acct1 = (await db.accounts.list({ tenantId: s1.tenantId }))[0]!.id
   const scope1 = { tenantId: s1.tenantId, accountId: acct1 }
-  const profile = (await db.profiles.list())[0]!
+  // NAME the model. This was `list()[0]` — alphabetically first, i.e. atc700, which is FT platform
+  // and takes a ONE-space SMS prefix. So the CONFIG_SMS constant below was silently asserting the
+  // prefix of whatever model happened to sort first, and would have flipped again on any catalogue
+  // addition. The FT prefix has its own coverage in packages/shared; here we pin FMB120.
+  const profile = (await db.profiles.list()).find((p) => p.key === 'fmb120')!
   const dev = await db.devices.create(scope1, { userId: s1.userId }, { imei: '356307042440010', name: 'Truck', profileId: profile.id, accountId: acct1, simMsisdn: MSISDN })
   deviceId = dev.id.toString()
+  // …and one on an FT-platform model, whose config SMS must carry the OTHER prefix
+  const ftProfile = (await db.profiles.list()).find((p) => p.key === 'ftc887')!
+  const ftDev = await db.devices.create(scope1, { userId: s1.userId }, { imei: '356307042440013', name: 'FT', profileId: ftProfile.id, accountId: acct1, simMsisdn: MSISDN })
+  ftDeviceId = ftDev.id.toString()
   const noSim = await db.devices.create(scope1, { userId: s1.userId }, { imei: '356307042440011', name: 'NoSim', profileId: profile.id, accountId: acct1 })
   noMsisdnId = noSim.id.toString()
 
@@ -126,6 +135,27 @@ describe('SMS gateway API — POST /v1/devices/:id/sms', () => {
     // and GET lists it back (the UI polls this)
     const list = (await (await req(port, `/v1/devices/${deviceId}/sms`, adminToken)).json()) as { id: string }[]
     expect(list.some((d) => d.id === delivery.id)).toBe(true)
+  })
+
+  it('the SENT body carries the prefix of the DEVICE’s own platform, not one constant', async () => {
+    /**
+     * The generator is unit-tested in packages/shared; what this proves is that the route actually
+     * hands it the device's model. It passes `profile.key`, and if that ever stopped travelling —
+     * dropped, or swapped for a field the matcher does not recognise — every FT device would
+     * silently go back to the FMB prefix and the failure would be invisible from the server: the
+     * SMS is delivered, the device parses nothing, answers nothing, and never connects.
+     *
+     * Found on real hardware 2026-08-18 (FTC887, Twilio `delivered`, zero SYNs at ingest).
+     * https://wiki.teltonika-gps.com/view/FTC887_SMS/GPRS_Command_List
+     */
+    const before = enqueued.length
+    const res = await req(port, `/v1/devices/${ftDeviceId}/sms`, adminToken, 'POST', {})
+    expect(res.status).toBe(201)
+    const body = enqueued[before]!.body
+    expect(body).toBe(' setparam 2004:orbetra.com;2005:5027;2006:0')
+    expect(body.startsWith('  '), 'an FT device must NOT get the FMB double space').toBe(false)
+    // the FMB device, same deployment, still gets two — the difference is the hardware
+    expect(CONFIG_SMS.startsWith('  ')).toBe(true)
   })
 
   it('201: an APN is combined into the sent SMS (2001 + server params in one setparam)', async () => {

@@ -30,19 +30,23 @@ export type SmsSendRequest = z.infer<typeof smsSendRequestSchema>
  * text is a smishing relay wearing a device-command costume — and every message is unrecoverable
  * platform spend. Until an arbitrary-command feature is actually designed, a supplied body must be
  * a Teltonika configuration command of the same shape the onboarding sheet generates:
- * `  setparam <id>:<value>[;<id>:<value>…]` (two leading spaces = empty SMS login+password, the
- * Teltonika SMS contract — https://wiki.teltonika-gps.com/view/FMB_SMS/GPRS_Commands), or one of
- * the parameterless diagnostics. `;` and `:` inside a value would inject a second command, so the
- * value charset excludes them, exactly as the APN sanitizer does.
+ * `<prefix>setparam <id>:<value>[;<id>:<value>…]`, or one of the parameterless diagnostics. `;` and
+ * `:` inside a value would inject a second command, so the value charset excludes them, exactly as
+ * the APN sanitizer does.
+ *
+ * The prefix stands in for an unset SMS password and is ONE space or TWO depending on the platform
+ * — see `smsPrefixFor` in onboarding.ts, which carries the two wiki citations. Both are accepted
+ * here: this list must admit every string the sheet itself generates, or an operator who pastes our
+ * own FTC887 command back into the body field is refused by our own validator.
  */
-const SETPARAM = /^ {2}setparam (?:\d{1,5}:[A-Za-z0-9._@/\-+]{1,64})(?:;\d{1,5}:[A-Za-z0-9._@/\-+]{1,64})*$/
-const BARE_COMMANDS = new Set(['  getinfo', '  getstatus', '  getgps', '  getver', '  cpureset'])
+const SETPARAM = /^ {1,2}setparam (?:\d{1,5}:[A-Za-z0-9._@/\-+]{1,64})(?:;\d{1,5}:[A-Za-z0-9._@/\-+]{1,64})*$/
+const BARE_COMMANDS = /^ {1,2}(?:getinfo|getstatus|getgps|getver|cpureset)$/
 /** `getparam` takes a parameter id — the bare form does nothing on the device, so require the id. */
-const GETPARAM = /^ {2}getparam \d{1,5}$/
+const GETPARAM = /^ {1,2}getparam \d{1,5}$/
 
 export function isAllowedSmsCommand(body: string): boolean {
   if (body.length > 320) return false
-  return SETPARAM.test(body) || GETPARAM.test(body) || BARE_COMMANDS.has(body)
+  return SETPARAM.test(body) || GETPARAM.test(body) || BARE_COMMANDS.test(body)
 }
 
 /** What an SmsDriver returns on a successful send — the provider's message id (for audit + status). */
