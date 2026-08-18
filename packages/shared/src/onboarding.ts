@@ -36,6 +36,9 @@ export interface OnboardingInput {
    * caller does not say, because "unknown" is the safe side of this.
    */
   legacyProfile?: boolean
+  /** the platform can send this SMS itself (gateway configured AND the plan allows it AND a SIM
+   *  number is saved) — the steps then say "press Send" instead of "send it yourself". */
+  canSend?: boolean
 }
 
 export interface OnboardingSheet {
@@ -85,14 +88,30 @@ export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
   const smsAuto = host === null ? null : `  setparam ${apnSafe !== null ? `2001:${apnSafe};` : ''}2004:${host};2005:${port};2006:0`
 
   const familyCaveat = input.legacyProfile ?? true
-  const steps = [
-    'Insert a working data SIM into the tracker and power it on.',
-    smsApn !== null
-      ? 'Send the APN SMS below to the tracker’s phone number, wait ~30 s.'
-      : 'Set the carrier APN on the tracker (ask your SIM provider for the APN).',
-    'Send the server SMS below to the tracker’s phone number.',
-    'Within ~1 minute the device connects and appears online here — then manage it fully from the Commands panel (no more SMS).',
-  ]
+  /**
+   * The steps change when WE can send the SMS, because otherwise the sheet tells a customer to do
+   * by hand something the platform will do for them — the copy-paste commands stay below either
+   * way, as a fallback and as the record of what was sent.
+   *
+   * This is the first minute anyone spends with the product. "Type this setparam string into an
+   * SMS" is where they are lost, and it was being printed even on deployments with a working SMS
+   * gateway and a saved SIM number.
+   */
+  const steps = input.canSend === true
+    ? [
+        'Insert a working data SIM into the tracker and power it on.',
+        'Save the tracker’s SIM phone number above.',
+        'Press “Send config SMS” — we send the APN and server settings to the device for you.',
+        'Within ~1 minute the device connects and appears online here — then manage it fully from the Commands panel (no more SMS).',
+      ]
+    : [
+        'Insert a working data SIM into the tracker and power it on.',
+        smsApn !== null
+          ? 'Send the APN SMS below to the tracker’s phone number, wait ~30 s.'
+          : 'Set the carrier APN on the tracker (ask your SIM provider for the APN).',
+        'Send the server SMS below to the tracker’s phone number.',
+        'Within ~1 minute the device connects and appears online here — then manage it fully from the Commands panel (no more SMS).',
+      ]
   if (familyCaveat) steps.push('NOTE: this device family may use different parameters — verify against the Teltonika wiki for your model.')
 
   return { imei: input.imei, host, port, smsServer, smsApn, smsAuto, steps, familyCaveat }

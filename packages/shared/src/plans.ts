@@ -177,6 +177,14 @@ export function isDirectPlan(p: TenantPlan): boolean {
  *   - whiteLabel/customDomains/subAccounts/apiAccess/webhooks/prioritySupport → true for ALL tsp_*, false for all direct_*.
  *   - sla999 → true ONLY for tsp_scale + tsp_enterprise (a support commitment, not a code path).
  *   - deviceLimit → 5/10/25/50/100 for direct_N, null (uncapped) for all tsp_*.
+ *   - smsGateway → EVERY plan (founder decision 2026-08-18, was tsp-only).
+ *
+ * The smsGateway change is a product decision, not a cleanup: pointing a tracker at the server is
+ * the first minute a customer ever spends with this product, and making them hand-type
+ * `setparam 2004:…` into an SMS is where they are lost. Two messages over a device's lifetime is a
+ * few cents of Twilio, and `sms_deliveries` already carries an at-most-once charge guard. It stays
+ * an explicit line rather than being folded into some "basic features" default so that reversing it
+ * is one edit and one decision.
  */
 export function planEntitlements(plan: TenantPlan): Entitlements {
   const tsp = !isDirectPlan(plan)
@@ -188,7 +196,7 @@ export function planEntitlements(plan: TenantPlan): Entitlements {
     apiAccess: tsp,
     webhooks: tsp,
     prioritySupport: tsp,
-    smsGateway: tsp,
+    smsGateway: true, // every plan — see the docblock; deliberately NOT `tsp`
     sla999: scalePlus,
     // FAIL-CLOSED on the cap: an unmapped direct_* plan (e.g. a future enum value added without a
     // DIRECT_DEVICE_LIMIT entry) caps at 0 rather than silently uncapping (review LOW). tsp_* = null (uncapped).

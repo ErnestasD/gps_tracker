@@ -52,6 +52,7 @@ import {
   type TenantPlan,
 } from '@orbetra/shared'
 
+import { hasEntitlement } from '../auth/entitlements.js'
 import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { activateDevice, deactivateDevice, syncDeviceConfig } from './deviceRegistry.js'
@@ -888,6 +889,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const profile = await db.profiles.get(device.profileId)
         const target = deps.onboarding ?? { host: '', port: 5027 }
         const apnRaw = c.req.query('apn')
+        const smsEnabled = deps.sms !== undefined && (await hasEntitlement(db, scopeOf(auth(c)).tenantId, 'smsGateway'))
+        // the steps only promise "press Send" when the button will actually be there: gateway on,
+        // plan allows it, AND this device has a saved SIM number to send to
+        const canSend = smsEnabled && device.simMsisdn !== null && device.simMsisdn.trim() !== ''
         // smsEnabled: whether the platform can actually SEND this config SMS (Twilio configured) — the
         // web hides the "Send config SMS" button when false and falls back to manual copy-paste.
         return json(c, {
@@ -897,8 +902,16 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
             port: target.port,
             ...(apnRaw !== undefined ? { apn: apnRaw } : {}),
             ...(profile !== null ? { family: profile.key, legacyProfile: profile.legacy } : {}),
+            canSend,
           }),
-          smsEnabled: deps.sms !== undefined,
+          // BOTH conditions, from the same places the SEND route consults.
+          //
+          // This used to be `deps.sms !== undefined` alone — i.e. "is Twilio configured" — while the
+          // POST is gated on the `smsGateway` ENTITLEMENT. So a tenant whose plan lacked it was shown
+          // a working "Send config SMS" button that answered 403, with no delivery row and no log
+          // line to explain it; the operator saw only "sending failed, try again". A UI that offers
+          // an action the API will refuse is worse than one that offers nothing.
+          smsEnabled,
         })
       } },
 

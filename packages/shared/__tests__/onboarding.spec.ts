@@ -104,3 +104,25 @@ describe('an unconfigured ingest host is a VISIBLE gap, never our domain', () =>
     }
   })
 })
+
+describe('the steps change when WE can send the SMS', () => {
+  it('canSend: press the button — not "type this setparam into an SMS yourself"', () => {
+    // The sheet was printing hand-send instructions even on a deployment with a working gateway and
+    // a saved SIM number. This is the first minute anyone spends with the product, and telling a
+    // customer to hand-type `setparam 2004:…` is where they are lost.
+    const s = buildOnboarding({ imei: '1', host: 'h', port: 5027, apn: 'internet', legacyProfile: false, canSend: true })
+    expect(s.steps.some((x) => x.includes('Send config SMS'))).toBe(true)
+    expect(s.steps.some((x) => x.includes('Send the APN SMS below'))).toBe(false)
+    expect(s.steps.some((x) => x.includes('Send the server SMS below'))).toBe(false)
+    // …and the copy-paste commands are STILL there: the fallback, and the record of what was sent
+    expect(s.smsApn).toBe('  setparam 2001:internet')
+    expect(s.smsServer).toBe('  setparam 2004:h;2005:5027;2006:0')
+  })
+
+  it('without it, the manual instructions stay exactly as they were', () => {
+    const s = buildOnboarding({ imei: '1', host: 'h', port: 5027, apn: 'internet', legacyProfile: false })
+    expect(s.steps.some((x) => x.includes('Send the APN SMS below'))).toBe(true)
+    expect(s.steps.some((x) => x.includes('Send config SMS'))).toBe(false)
+  })
+})
+
