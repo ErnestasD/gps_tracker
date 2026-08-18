@@ -49,6 +49,51 @@ export function isAllowedSmsCommand(body: string): boolean {
   return SETPARAM.test(body) || GETPARAM.test(body) || BARE_COMMANDS.test(body)
 }
 
+/**
+ * Twilio destroys the Teltonika SMS password prefix, and this is the encoding that survives it.
+ *
+ * Every Teltonika config command begins with whitespace standing in for an unset SMS password —
+ * one space on the FT platform, two on FMB (see `smsPrefixFor` in onboarding.ts). Twilio's Messages
+ * API **trims leading ASCII whitespace from `Body`**. It is undocumented; we found it in Twilio's
+ * own record of our sends, which came back with the prefix already gone:
+ *
+ *   sent " setparam 2001:internet;…"  →  Twilio stored "setparam 2001:internet;…"
+ *   sent " getinfo"                   →  Twilio stored "getinfo"
+ *
+ * The device then reads `setparam` as the PASSWORD and the rest as the command, and discards the
+ * message in silence — no error, no reply, no effect. Two hardware sessions were lost to it, and
+ * the July FMC150 failure that was blamed on an alphanumeric sender was almost certainly this.
+ * Percent-encoding the space (`%20` instead of the `+` URLSearchParams emits) does not help: the
+ * trim happens server-side, after decoding.
+ *
+ * What survives is a Unicode space that is not ASCII whitespace, converted back to a real 0x20 at
+ * send time by Twilio's Smart Encoding — which is why this REQUIRES a Messaging Service with Smart
+ * Encoding enabled (a bare `From` number does not run it). Measured against the live API, reading
+ * back the transmitted body:
+ *
+ *   U+202F narrow no-break space  →  " "   (one space — FT platform)
+ *   U+2007 figure space           →  "  "  (two spaces — FMB generation)
+ *   U+00A0 no-break space         →  "'"   (an apostrophe — would corrupt the command)
+ *   U+2000-2006, U+2008-200B, U+2009, U+205F, U+3000, U+FEFF  →  removed entirely
+ *
+ * Confirmed end-to-end on real hardware 2026-08-18: an FTC887 that had ignored every prior attempt
+ * accepted the U+202F form, connected, and flushed 22 buffered records.
+ *
+ * Only the LEADING run is rewritten — interior spaces are ordinary text and must stay as they are.
+ */
+// Escapes, never literals: these characters are INVISIBLE. A copy-paste, a lint autofix or an
+// editor that trims whitespace would silently turn them back into the ASCII spaces Twilio eats,
+// and the failure that follows is completely silent — which is the whole point of this comment.
+const NARROW_NO_BREAK_SPACE = '\u202F' // Twilio Smart Encoding renders this as ONE 0x20
+const FIGURE_SPACE = '\u2007' //          …and this one as TWO
+const TWILIO_SAFE_PREFIX: Record<number, string> = { 1: NARROW_NO_BREAK_SPACE, 2: FIGURE_SPACE }
+
+export function twilioSafeBody(body: string): string {
+  const spaces = body.length - body.replace(/^ +/, '').length
+  const replacement = TWILIO_SAFE_PREFIX[spaces]
+  return replacement === undefined ? body : replacement + body.slice(spaces)
+}
+
 /** What an SmsDriver returns on a successful send — the provider's message id (for audit + status). */
 export interface SmsDriverResult {
   providerMessageId: string

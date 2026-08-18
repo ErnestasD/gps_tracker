@@ -70,6 +70,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `TWILIO_ACCOUNT_SID` | apps/worker + apps/api | Twilio account SID for the SMS gateway (ADR-032); worker sends config SMS, api reads it to compute `smsConfigured`. All three `TWILIO_*` absent ⇒ SMS channel disabled, send route 503s, web button hidden |
 | `TWILIO_AUTH_TOKEN` | apps/worker + apps/api | Twilio auth token (ADR-032); HTTP Basic auth with the SID over native fetch, no `twilio` SDK. Server `.env` only, never git (rule 12) |
 | `TWILIO_FROM` | apps/worker + apps/api | Twilio sender phone number (E.164, e.g. `+3706…`) for outbound config SMS (ADR-032) |
+| `TWILIO_MESSAGING_SERVICE_SID` | apps/worker | **Required for device config SMS.** `MG…` of a Messaging Service with **Smart Encoding ON**, containing `TWILIO_FROM`. Twilio trims the leading space that carries the Teltonika SMS password prefix; Smart Encoding restores it from the Unicode space we substitute (see `twilioSafeBody`). Without it a device command is REFUSED rather than sent as a silent no-op. Plain notification SMS still work without it |
 | `VAPID_PUBLIC_KEY` | apps/worker + apps/api | Web Push VAPID public key (ADR-026); the worker signs pushes, the api serves it to the browser. All VAPID vars absent ⇒ webpush channel skipped |
 | `VAPID_PRIVATE_KEY` | apps/worker | Web Push VAPID private key (ADR-026); server `.env` only, never git (rule 12) |
 | `VAPID_SUBJECT` | apps/worker | Web Push VAPID subject (`mailto:`/URL), default `mailto:ops@orbetra.com` |

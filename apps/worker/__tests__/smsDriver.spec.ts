@@ -19,6 +19,66 @@ const decodeBasic = (auth: string): [string, string] => {
   return [raw.slice(0, i), raw.slice(i + 1)]
 }
 
+/**
+ * The Teltonika password prefix and Twilio's trim.
+ *
+ * A config SMS begins with whitespace standing in for an unset SMS password — one space on the FT
+ * platform, two on FMB. Twilio's Messages API TRIMS leading ASCII whitespace from `Body`, which
+ * turns the command into `<password=setparam> <command=2001:...>` and the device discards it in
+ * silence: no error, no reply, no effect, and a `delivered` receipt. Two hardware sessions were
+ * lost to it before Twilio's own record of our sends showed the prefix already gone.
+ *
+ * U+202F and U+2007 are not ASCII whitespace, so they survive the trim, and Smart Encoding turns
+ * them back into one and two real spaces at send time. Measured against the live API; confirmed on
+ * an FTC887 that connected and flushed 22 buffered records once it finally received its space.
+ */
+describe('the leading space Twilio eats — the prefix is re-encoded, or the send is refused', () => {
+  const svc = { accountSid: 'AC1', from: '+1', messagingServiceSid: 'MG1', authToken: 't' } as TwilioConfig
+  const bodyOf = (f: ReturnType<typeof fakeFetch>) =>
+    new URLSearchParams((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).get('Body')
+
+  it('one leading space is sent as U+202F (FT platform), two as U+2007 (FMB)', async () => {
+    const one = fakeFetch({ ok: true, status: 201, body: { sid: 'SM1' } })
+    await twilioDriver(svc, one).send('+370', ' setparam 2004:x;2005:5027;2006:0')
+    expect(bodyOf(one)).toBe('\u202Fsetparam 2004:x;2005:5027;2006:0')
+
+    const two = fakeFetch({ ok: true, status: 201, body: { sid: 'SM2' } })
+    await twilioDriver(svc, two).send('+370', '  setparam 2004:x;2005:5027;2006:0')
+    expect(bodyOf(two)).toBe('\u2007setparam 2004:x;2005:5027;2006:0')
+
+    // and NOT the ASCII spaces Twilio would eat
+    expect(bodyOf(one)!.startsWith(' ')).toBe(false)
+    expect(bodyOf(two)!.startsWith(' ')).toBe(false)
+  })
+
+  it('sends via the Messaging Service, not the bare From — Smart Encoding runs for neither otherwise', async () => {
+    const f = fakeFetch({ ok: true, status: 201, body: { sid: 'SM3' } })
+    await twilioDriver(svc, f).send('+370', ' getinfo')
+    const form = new URLSearchParams((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect(form.get('MessagingServiceSid')).toBe('MG1')
+    expect(form.get('From')).toBeNull()
+  })
+
+  it('REFUSES a prefixed command when no Messaging Service is configured', async () => {
+    // Without Smart Encoding the Unicode prefix reaches the device raw and the command fails just as
+    // silently as before — while we charge for it and report `sent`. Fail loudly instead.
+    const f = fakeFetch({ ok: true, status: 201, body: { sid: 'SM4' } })
+    const noSvc = { accountSid: 'AC1', from: '+1', authToken: 't' } as TwilioConfig
+    await expect(twilioDriver(noSvc, f).send('+370', ' getinfo')).rejects.toThrow(SmsSendError)
+    expect(f).not.toHaveBeenCalled() // nothing sent, nothing charged
+  })
+
+  it('ordinary text is untouched, and interior spaces are never rewritten', async () => {
+    const f = fakeFetch({ ok: true, status: 201, body: { sid: 'SM5' } })
+    await twilioDriver(svc, f).send('+370', 'your tracker is offline')
+    expect(bodyOf(f)).toBe('your tracker is offline')
+
+    const g = fakeFetch({ ok: true, status: 201, body: { sid: 'SM6' } })
+    await twilioDriver(svc, g).send('+370', ' setparam 2001:a b')
+    expect(bodyOf(g)).toBe('\u202Fsetparam 2001:a b') // the interior space survives as itself
+  })
+})
+
 describe('twilioDriver', () => {
   it('POSTs the Messages resource with Account-SID auth, form body, and returns the sid', async () => {
     const fetchImpl = fakeFetch({ ok: true, status: 201, body: { sid: 'SM_abc' } })
