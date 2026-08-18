@@ -3,10 +3,11 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DeviceList } from '@/components/DeviceList'
-import { InfoCard } from '@/components/InfoCard'
+import { Inspector } from '@/components/Inspector'
 import { LiveMap } from '@/components/LiveMap'
 import { Badge } from '@/components/admin/AdminKit'
 import { getLastPositions, getWsTicket, wsUrl, ApiError } from '@/lib/api'
+import { getCurrentUser } from '@/lib/auth'
 import { listDevices } from '@/lib/devices'
 import { liveStore } from '@/lib/liveStore'
 import { LiveSocket } from '@/lib/ws'
@@ -58,6 +59,15 @@ export function MapPage() {
   }, [devices.data])
 
   const selected = snap.selectedId !== null ? snap.devices.find((d) => d.ev.deviceId === snap.selectedId) : undefined
+  // The CRUD row behind the selected marker. Absent for a device streaming positions we have no
+  // registry record for — it can still be watched, but not commanded, and the inspector says so by
+  // offering only the overview.
+  const registryRow = useMemo(
+    () => (devices.data ?? []).find((d) => d.id === snap.selectedId && d.retiredAt === null),
+    [devices.data, snap.selectedId],
+  )
+  // device writes require account_manager+ (WRITE_POLICY.device), same rule as the devices table
+  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
 
   // Active devices the live set has never heard from. The registry list is already fetched above
   // (it bounds the live set); the panel used to ignore it, so a fleet of eight read "3 of 3" and
@@ -82,11 +92,13 @@ export function MapPage() {
         loading={devices.isLoading || (snap.devices.length === 0 && snap.connection !== 'open')}
       />
       {selected && (
-        <InfoCard
-          device={selected}
+        <Inspector
+          live={selected}
+          device={registryRow}
           name={nameOf(selected.ev.deviceId)}
           follow={snap.follow}
           trail={snap.trail}
+          canWrite={canWrite}
           onFollow={(v) => liveStore.setFollow(v)}
           onTrail={(v) => liveStore.setTrail(v)}
           onClose={() => liveStore.select(null)}

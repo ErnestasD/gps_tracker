@@ -401,7 +401,20 @@
     "empty": "No devices yet — they appear as they report.",
     "noMatch": "Nothing matches the search.",
     "count": "{{shown}} of {{total}}",
-    "noFix": "no fix yet"
+    "noFix": "no fix yet",
+    "filter": {
+      "all": "All",
+      "online": "Driving",
+      "stale": "Idle",
+      "offline": "Offline",
+      "silent": "Never reported"
+    },
+    "sort": {
+      "label": "Sort",
+      "status": "By status",
+      "name": "By name",
+      "speed": "By speed"
+    }
   },
   "info": {
     "speed": "Speed",
@@ -422,7 +435,12 @@
   "map": {
     "connecting": "Connecting…",
     "reconnecting": "Reconnecting…",
-    "live": "Live"
+    "live": "Live",
+    "inspector": {
+      "overview": "Overview",
+      "commands": "Commands",
+      "settings": "Settings"
+    }
   },
   "units": {
     "kmh": "km/h",
@@ -723,7 +741,9 @@
       },
       "menu": "Tracking settings",
       "queuing": "Queueing…",
-      "outOfRange": "device holds {{value}}, outside the range we offer"
+      "outOfRange": "device holds {{value}}, outside the range we offer",
+      "reread": "Re-read from device",
+      "readQueued": "Read queued — waiting for the device to connect."
     }
   },
   "quarantine": {

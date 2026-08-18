@@ -24,12 +24,12 @@ test('login → map: Mapbox mark visible, WS live, simulator devices appear', as
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   // E03-1: session survives reload — access token is memory-only, the httpOnly
   // refresh cookie + router guard restore it without bouncing to /login
   await page.reload()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   // AC[2]/ADR-030: the Mapbox mark stays visible on every map view (TOS). The offline
   // e2e style has no tile sources, so the TEXT attribution is empty here — but mapbox-gl
@@ -74,7 +74,7 @@ test('invalid-fix: no-fix stretch renders a dashed trail gap (I5, E02-7 AC[2])',
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
   await expect(page.getByTestId('conn-badge')).toHaveText(/Live/i, { timeout: 15_000 })
 
   // make the trail device exist in the panel (one clean liveDrive record)
@@ -130,7 +130,7 @@ test('settings: theme toggle + password change → re-login with the new passwor
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/settings')
   await expect(page.getByTestId('settings-page')).toBeVisible()
@@ -161,7 +161,7 @@ test('settings: theme toggle + password change → re-login with the new passwor
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(NEW_PW)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   // restore the original password so later serial tests can still log in
   await page.goto('/app/settings')
@@ -178,7 +178,7 @@ test('devices: create in UI → appears → retire → ingest rejects that IMEI 
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/devices')
   // design round 2: the create form lives in a right Sheet behind "Add device"
@@ -222,7 +222,7 @@ test('devices: CSV import dry-run shows per-row errors then applies (E03-3 AC[1]
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
   await page.goto('/app/devices')
 
   // a tenant-wide caller must name the account per row — read it from the create form
@@ -255,7 +255,7 @@ test('commands: preset queues in history; destructive needs a second confirming 
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/devices')
   for (const [imei, name] of [[IMEI, 'E2E Cmd Van'], [IMEI2, 'E2E Cmd Van 2']] as const) {
@@ -352,7 +352,7 @@ test('quarantine: a tenant admin does NOT see the quarantine section (E03-4 AC[2
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
   await page.goto('/app/devices')
   await expect(page.getByTestId('devices-table').or(page.getByText(/No devices/i))).toBeVisible()
   await expect(page.getByTestId('quarantine-card')).toHaveCount(0)
@@ -363,7 +363,7 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/branding')
   await expect(page.getByTestId('branding-productName')).toBeVisible()
@@ -399,7 +399,7 @@ test('audit: an admin sees the mutation trail, filters it, and expands a snapsho
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   // cause a fresh, findable mutation (branding update → a branding:update audit row)
   await page.goto('/app/branding')
@@ -426,7 +426,7 @@ test('playback: history page loads a device trail with a scrubbable speed chart 
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   // drive the base device so it has fresh positions in the last-24h default range
   expect(
@@ -472,7 +472,7 @@ test('trips: the trips page lists trips (or empty) and a row opens its route det
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/trips')
   await expect(page.getByTestId('trips-device')).toBeVisible()
@@ -492,7 +492,7 @@ test('geofences: the terra-draw editor mounts on the map and the list renders (E
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/geofences')
   // the map + terra-draw editor initialise without crashing (real Mapbox GL + terra-draw)
@@ -514,7 +514,7 @@ test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', as
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/rules')
   // design round 2: the create form lives in a right Sheet behind "Add rule"
@@ -553,7 +553,7 @@ test('events: timeline page loads with filters (E05-6)', async ({ page }) => {
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/events')
   // filters are present; the list is either a table or the empty state (no events required)
@@ -572,7 +572,7 @@ test('reports: run a report over a range (E06-2)', async ({ page }) => {
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/reports')
   await expect(page.getByTestId('report-type')).toBeVisible()
@@ -600,7 +600,7 @@ test('api keys: create shows the plaintext once, then revoke (E06-3 UI)', async 
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/api-keys')
   // design round 2: the create form lives in a right Sheet behind "Create a key"
@@ -630,7 +630,7 @@ test('webhooks: create (secret shown once) → toggle → delete (E06-4 UI)', as
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/webhooks')
   // design round 2: the create form lives in a right Sheet behind "Add a webhook"
@@ -689,7 +689,7 @@ test('affiliates: a tenant admin cannot reach the affiliates panel (platform gat
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
   // nav link is platform-only; direct URL renders the in-page denied notice (server also 403s the API)
   await page.goto('/app/affiliates')
   await expect(page.getByTestId('affiliates-denied')).toBeVisible()
@@ -701,12 +701,12 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL('**/app/map')
+  await page.waitForURL(/\/app\/?$/)
 }
 
 test('dashboard: stat cards, 7/30/90 range toggle, charts and lists render (PR #100)', async ({ page }) => {
   await login(page)
-  await page.goto('/app')
+  await page.goto('/app/dashboard')
   // the four stat cards render from real seeded data (devices/positions/events/mileage)
   await expect(page.getByTestId('dash-devices')).toBeVisible()
   await expect(page.getByTestId('dash-online')).toBeVisible({ timeout: 15_000 })

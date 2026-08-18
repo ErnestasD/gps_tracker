@@ -75,7 +75,7 @@ const indexRoute = createRoute({
     // login page in their browser's language, with the parameter thrown away before anything read
     // it. `search: true` keeps it, and i18next reads it on the next render.
     // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
-    throw redirect({ to: (await hasSession()) ? '/app/map' : '/login', search: true })
+    throw redirect({ to: (await hasSession()) ? '/app' : '/login', search: true })
   },
 })
 
@@ -147,15 +147,40 @@ const appRoute = createRoute({
   ),
 })
 
+/**
+ * The map is the landing page (founder decision 2026-08-18).
+ *
+ * It is the screen an operator actually works from — the fleet, the live positions, and now the
+ * per-device command and settings panels are all on it. The dashboard's aggregate cards are a
+ * report you consult, not a place you sit, so it keeps its own route and stays one click away in
+ * the nav; landing there put a summary in front of someone who came to look at their vehicles.
+ */
 const appIndexRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/',
+  component: MapPage,
+})
+
+const dashboardRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/dashboard',
   component: DashboardPage,
 })
 
+/**
+ * `/app/map` is kept as a redirect, not a second copy of the page.
+ *
+ * Two canonical URLs for one screen meant no sidebar item highlighted at `/app/map` (active state
+ * is an exact pathname match), no breadcrumb, and clicking "Map" from it remounted the page and
+ * burned a fresh WS ticket. Old links and bookmarks still work; they just arrive at the real route.
+ */
 const mapRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/map',
+  beforeLoad: () => {
+    // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+    throw redirect({ to: '/app' })
+  },
   component: MapPage,
 })
 
@@ -323,7 +348,7 @@ const routeTree = rootRoute.addChildren([
   verifyEmailRoute,
   shareRoute,
   consoleRoute.addChildren([consoleIndexRoute, consoleTenantsRoute, consoleUsersRoute, consoleBillingRoute, consoleLapsesRoute, consolePartnersRoute, consoleErrorsRoute]),
-  appRoute.addChildren([appIndexRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([appIndexRoute, dashboardRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

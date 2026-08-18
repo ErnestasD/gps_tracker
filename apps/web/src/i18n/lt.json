@@ -401,7 +401,20 @@
     "empty": "Įrenginių dar nėra — jie atsiras, kai atsiųs duomenis.",
     "noMatch": "Paieška nieko nerado.",
     "count": "{{shown}} iš {{total}}",
-    "noFix": "dar nesusisiekė"
+    "noFix": "dar nesusisiekė",
+    "filter": {
+      "all": "Visi",
+      "online": "Aktyvūs",
+      "stale": "Pasenę",
+      "offline": "Neprisijungę",
+      "silent": "Niekada nepranešė"
+    },
+    "sort": {
+      "label": "Rikiuoti",
+      "status": "Pagal būseną",
+      "name": "Pagal pavadinimą",
+      "speed": "Pagal greitį"
+    }
   },
   "info": {
     "speed": "Greitis",
@@ -422,7 +435,12 @@
   "map": {
     "connecting": "Jungiamasi…",
     "reconnecting": "Jungiamasi iš naujo…",
-    "live": "Gyvai"
+    "live": "Gyvai",
+    "inspector": {
+      "overview": "Apžvalga",
+      "commands": "Komandos",
+      "settings": "Nustatymai"
+    }
   },
   "units": {
     "kmh": "km/val",
@@ -723,7 +741,9 @@
       },
       "menu": "Sekimo nustatymai",
       "queuing": "Įtraukiama į eilę…",
-      "outOfRange": "įrenginyje {{value}} — už siūlomo intervalo ribų"
+      "outOfRange": "įrenginyje {{value}} — už siūlomo intervalo ribų",
+      "reread": "Perskaityti iš įrenginio",
+      "readQueued": "Skaitymas eilėje — laukiama, kol įrenginys prisijungs."
     }
   },
   "quarantine": {

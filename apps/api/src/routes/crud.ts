@@ -1052,6 +1052,44 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // avoid. The UI says "waiting for the device".
         return json(c, { queued: true, commandId: set.id, verifyCommandId: verify.id, text: setText }, 202)
       } },
+    { method: 'post', path: '/v1/devices/:id/settings/refresh', scopeClass: 'account', entity: 'command', shape: 'item',
+      handler: async (c) => {
+        /**
+         * Ask the device what it currently holds.
+         *
+         * The settings page reports only what the DEVICE last told us, which is the right rule and
+         * has one consequence: a change made by any other route — an SMS, the command console, a
+         * technician with a laptop — is invisible until someone asks again. Proven on hardware
+         * 2026-08-18: parameters set over SMS still read as their pre-SMS values here until a
+         * `getparam` was queued, at which point the device answered with the current ones.
+         *
+         * So the page needs a way to ask. Reads are free over GPRS and cannot misconfigure
+         * anything, which is why this is a separate, always-available action rather than something
+         * bundled into a write.
+         */
+        const a = auth(c)
+        const scope = scopeOf(a)
+        const device = await db.devices.get(scope, id(c)) // scope gate FIRST (404 else)
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (device.retiredAt !== null) return problem(c, 400, 'Bad Request', 'device is retired')
+        const profile = await db.profiles.get(device.profileId)
+        const available = settingsForModel(profile?.model)
+        if (available.length === 0) return problem(c, 400, 'Bad Request', 'no tracking settings for this model')
+        const text = `getparam ${available.map((s) => s.param).join(';')}`
+        const cmd = await db.commands.create(scope, { userId: a.userId }, { deviceId: device.id, accountId: device.accountId, text })
+        try {
+          await deps.redis
+            .multi()
+            .rpush(`cmd:pending:${device.id.toString()}`, JSON.stringify({ id: cmd.id, text: cmd.text, attempt: 0, expiresAtMs: Date.parse(cmd.expiresAt) }))
+            .expire(`cmd:pending:${device.id.toString()}`, 24 * 3_600)
+            .sadd('cmd:active', device.id.toString())
+            .exec()
+        } catch (err) {
+          console.error('settings refresh enqueue failed', err)
+          return problem(c, 503, 'Unavailable', 'could not queue the read — try again')
+        }
+        return json(c, { queued: true, commandId: cmd.id, text }, 202)
+      } },
     { method: 'get', path: '/v1/commands/:id', scopeClass: 'account', entity: 'command', shape: 'item',
       handler: async (c) => {
         const row = await db.commands.get(scopeOf(auth(c)), id(c))

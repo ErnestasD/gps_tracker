@@ -152,4 +152,30 @@ describe('currentSettings', () => {
   it('a model with no settings yields an empty map rather than throwing', () => {
     expect(currentSettings([], [reply('getparam 10055', 'Param ID:10055 Value:30')]).current).toEqual({})
   })
+
+  it('a reading taken BEFORE the write cannot judge it — that is "sent", never "rejected"', () => {
+    /**
+     * The sequence the re-read button invites: read the device, then change something. Comparing a
+     * pre-change reading against the new value reported `rejected` — "the device answered and kept
+     * something else" — while the device had said nothing since. On a parked vehicle the real
+     * verification is hours away, so this was the common case, not an edge.
+     */
+    const { current } = currentSettings(FTC887, [
+      { text: 'setparam 10055:2', response: 'OK', status: 'acked', createdAt: '2026-08-18T16:00:00.000Z', sentAt: '2026-08-18T16:00:00.000Z' },
+      reply('getparam 10055', 'Param ID:10055 Value:120', '2026-08-18T15:00:00.000Z'),
+    ])
+    expect(current['movingSendPeriod']!.state).toBe('sent')
+    expect(current['movingSendPeriod']!.requested).toBe(2)
+    // the device's last word is still reported as its state, with the time it was taken
+    expect(current['movingSendPeriod']!.value).toBe(120)
+    expect(current['movingSendPeriod']!.checkedAt).toBe('2026-08-18T15:00:00.000Z')
+  })
+
+  it('…and a reading taken AFTER it still judges it', () => {
+    const { current } = currentSettings(FTC887, [
+      reply('getparam 10055', 'Param ID:10055 Value:120', '2026-08-18T16:05:00.000Z'),
+      { text: 'setparam 10055:2', response: 'OK', status: 'acked', createdAt: '2026-08-18T16:00:00.000Z', sentAt: '2026-08-18T16:00:00.000Z' },
+    ])
+    expect(current['movingSendPeriod']!.state).toBe('rejected')
+  })
 })

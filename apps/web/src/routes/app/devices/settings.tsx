@@ -17,6 +17,7 @@ import {
   getDeviceSettings,
   isInFlight,
   isRejected,
+  refreshDeviceSettings,
   saveDeviceSettings,
   settingsView,
   type CurrentSetting,
@@ -42,10 +43,14 @@ export function SettingsCard({ device, canWrite }: { device: Device; canWrite: b
   const q = useQuery({ queryKey: ['device-settings', device.id], queryFn: () => getDeviceSettings(device.id) })
   const [draft, setDraft] = useState<Partial<Record<SettingKey, number>>>({})
   const [saving, setSaving] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const available = q.data?.available ?? []
   const current = q.data?.current ?? {}
+  // an outstanding read is one whose answer has not arrived; the API reports it as a change in
+  // flight on every setting it asked about
+  const readPending = Object.values(current).some((c) => c.state === 'sent' || c.state === 'waiting')
 
   // positions and pending come from ONE function on purpose: they are similarly-shaped records, and
   // handing the save path the positions (which fall back to the factory value) is what once armed
@@ -74,6 +79,20 @@ export function SettingsCard({ device, canWrite }: { device: Device; canWrite: b
         setError(e instanceof ApiError && e.detail !== undefined ? e.detail : t('devices.settings.saveError')),
       )
       .finally(() => setSaving(false))
+  }
+
+  const refresh = () => {
+    setRefreshing(true)
+    setError(null)
+    refreshDeviceSettings(device.id)
+      .then(async () => {
+        await qc.invalidateQueries({ queryKey: ['device-settings', device.id] })
+        void qc.invalidateQueries({ queryKey: ['commands', device.id] })
+      })
+      .catch((e: unknown) =>
+        setError(e instanceof ApiError && e.detail !== undefined ? e.detail : t('devices.settings.saveError')),
+      )
+      .finally(() => setRefreshing(false))
   }
 
   return (
@@ -165,10 +184,24 @@ export function SettingsCard({ device, canWrite }: { device: Device; canWrite: b
 
             {error !== null && <p className="text-sm text-danger" role="alert" data-testid="settings-error">{error}</p>}
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button onClick={save} disabled={!canWrite || !dirty || saving} data-testid="settings-save">
                 {saving ? t('devices.settings.queuing') : t('devices.settings.save')}
               </Button>
+              {/* A write, per WRITE_POLICY.command — a viewer's click would 403, so it is gated
+                  exactly like Apply rather than promising a permission the server refuses. */}
+              <Button
+                variant="secondary"
+                onClick={refresh}
+                disabled={!canWrite || refreshing || readPending}
+                data-testid="settings-refresh"
+              >
+                {refreshing ? t('devices.settings.queuing') : t('devices.settings.reread')}
+              </Button>
+              {/* The reply is hours away on a parked vehicle. Without this the button flips back in
+                  200 ms, nothing moves, and the operator concludes the numbers on screen ARE
+                  current — the inference this whole card exists to prevent. */}
+              {readPending && <span className="text-xs text-muted" data-testid="settings-read-pending">{t('devices.settings.readQueued')}</span>}
               {dirty && <span className="text-xs text-muted">{t('devices.settings.queuedNote')}</span>}
             </div>
           </>
