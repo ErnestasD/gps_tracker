@@ -706,7 +706,7 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
 
 test('dashboard: stat cards, 7/30/90 range toggle, charts and lists render (PR #100)', async ({ page }) => {
   await login(page)
-  await page.goto('/app')
+  await page.goto('/app/dashboard')
   // the four stat cards render from real seeded data (devices/positions/events/mileage)
   await expect(page.getByTestId('dash-devices')).toBeVisible()
   await expect(page.getByTestId('dash-online')).toBeVisible({ timeout: 15_000 })

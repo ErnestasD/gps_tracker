@@ -75,7 +75,7 @@ const indexRoute = createRoute({
     // login page in their browser's language, with the parameter thrown away before anything read
     // it. `search: true` keeps it, and i18next reads it on the next render.
     // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
-    throw redirect({ to: (await hasSession()) ? '/app/map' : '/login', search: true })
+    throw redirect({ to: (await hasSession()) ? '/app' : '/login', search: true })
   },
 })
 
@@ -167,9 +167,20 @@ const dashboardRoute = createRoute({
   component: DashboardPage,
 })
 
+/**
+ * `/app/map` is kept as a redirect, not a second copy of the page.
+ *
+ * Two canonical URLs for one screen meant no sidebar item highlighted at `/app/map` (active state
+ * is an exact pathname match), no breadcrumb, and clicking "Map" from it remounted the page and
+ * burned a fresh WS ticket. Old links and bookmarks still work; they just arrive at the real route.
+ */
 const mapRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/map',
+  beforeLoad: () => {
+    // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+    throw redirect({ to: '/app' })
+  },
   component: MapPage,
 })
 

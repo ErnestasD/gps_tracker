@@ -75,6 +75,9 @@ export function currentSettings(
    */
   const rows = [...history].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
 
+  /** When the settling reply was ASKED — a reading older than a write proves nothing about it. */
+  const readAt = new Map<string, string>()
+
   // Pass 1 — the device's own answers. The FIRST reply that ASKED about a parameter settles it,
   // even if that reply could not be read: "we asked and the device did not tell us" is a different
   // fact from "we never asked", and letting an older reading survive an unreadable newer one
@@ -89,6 +92,7 @@ export function currentSettings(
       const key = wanted.get(param)
       if (key === undefined || settled.has(param)) continue
       settled.add(param)
+      readAt.set(param, row.createdAt)
       const raw = reported.get(param)
       const slot = current[key]!
       slot.checkedAt = row.sentAt ?? row.createdAt
@@ -110,11 +114,18 @@ export function currentSettings(
         slot.state = row.status === 'queued' ? 'waiting' : 'sent'
       } else if (TERMINAL_UNDELIVERED.has(row.status)) {
         slot.state = 'undelivered'
-      } else if (slot.value === null) {
-        // delivered and acked, but no verification has come back yet
+      } else if (slot.value === null || (readAt.get(param) ?? '') < row.createdAt) {
+        /**
+         * Delivered and acked, but nothing has come back SINCE. A reading taken before the write
+         * says nothing about it — and comparing them anyway turned the ordinary "re-read, then
+         * change" sequence into the loudest badge on the screen: `rejected`, meaning the device
+         * answered and kept something else, when in truth it had not spoken since. On a parked
+         * vehicle the verification is hours away, so this is the common case, not the edge.
+         */
         slot.state = 'sent'
       } else {
-        // THE case this whole feature exists for: the device answered, and it disagrees.
+        // THE case this whole feature exists for: the device answered AFTER the write, and it
+        // disagrees with what was asked for.
         slot.state = slot.value === value ? 'confirmed' : 'rejected'
       }
     }

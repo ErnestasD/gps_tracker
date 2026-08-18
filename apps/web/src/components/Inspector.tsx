@@ -56,14 +56,23 @@ export function Inspector({
 }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<InspectorTab>('overview')
+  // selecting another vehicle returns to its position, rather than dropping the operator into a
+  // terminal for a device they have not looked at yet
+  const [lastId, setLastId] = useState(live.ev.deviceId)
+  if (lastId !== live.ev.deviceId) {
+    setLastId(live.ev.deviceId)
+    setTab('overview')
+  }
 
-  // Only the overview works without a registry row, so never leave a tab selected that cannot show
-  // anything — a blank panel reads as broken.
-  const effective: InspectorTab = device === undefined ? 'overview' : tab
-
+  /**
+   * Commands and settings are WRITES, and the devices table gates them on `canWrite` for a stated
+   * reason: a viewer's click 403s. Offering them here anyway would have put the Codec-12 console —
+   * `cpureset`, `deleterecords` — one click from the landing page for a role the server refuses,
+   * with a bare "could not send" as the only feedback. Authorization held; the gate did not.
+   */
   const tabs: { id: InspectorTab; label: string; icon: typeof Activity }[] = [
     { id: 'overview', label: t('map.inspector.overview'), icon: Activity },
-    ...(device !== undefined
+    ...(device !== undefined && canWrite
       ? [
           { id: 'commands' as const, label: t('map.inspector.commands'), icon: Terminal },
           { id: 'settings' as const, label: t('map.inspector.settings'), icon: SlidersHorizontal },
@@ -71,10 +80,14 @@ export function Inspector({
       : []),
   ]
 
+  // Never leave a tab selected that cannot render: a device with no registry row, or a viewer who
+  // may not write, has only the overview, and a blank panel reads as broken.
+  const effective: InspectorTab = tabs.some((x) => x.id === tab) ? tab : 'overview'
+
   if (effective === 'overview') {
     // The overview IS the InfoCard — one implementation, and it keeps its own testids and layout.
     return (
-      <div className="absolute bottom-4 left-[352px] z-10 w-72" data-testid="inspector">
+      <div data-testid="inspector">
         <InfoCard
           device={live}
           name={name}

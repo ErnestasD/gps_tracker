@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Input } from '@/components/ui/input'
 import { StatusDot } from '@/components/ui-x/StatusDot'
+import { filterFleet, fleetPanelCounts, sortFleet, type FleetFilter, type FleetSort } from '@/lib/fleetFilter'
 import type { DeviceLive } from '@/lib/liveStore'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
@@ -44,19 +45,17 @@ export function DeviceList({
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<FleetFilter>('all')
+  const [sort, setSort] = useState<FleetSort>('status')
   const label = (deviceId: string) => nameOf?.(deviceId) ?? deviceId
 
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return q === '' ? devices : devices.filter((d) => label(d.ev.deviceId).toLowerCase().includes(q))
-  }, [devices, query, nameOf])
+  const counts = useMemo(() => fleetPanelCounts(devices, silent), [devices, silent])
+  const { shown, shownSilent } = useMemo(() => {
+    const r = filterFleet(devices, silent, { query, filter, label })
+    return { shown: sortFleet(r.devices, sort, label), shownSilent: r.silent }
+  }, [devices, silent, query, filter, sort, nameOf])
 
-  const shownSilent = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return q === '' ? silent : silent.filter((d) => d.name.toLowerCase().includes(q))
-  }, [silent, query])
-
-  const total = devices.length + silent.length
+  const total = counts.total
 
   return (
     <div
@@ -74,8 +73,48 @@ export function DeviceList({
             aria-label={t('deviceList.search')}
           />
         </div>
-        <div className="pt-1.5 text-[11px] text-muted">
-          {t('deviceList.count', { shown: shown.length + shownSilent.length, total })}
+        {/* Status chips double as the filter and as the fleet's headline numbers. `silent` is its
+            own chip because "has never reported" is not a status the device claimed — it is the
+            absence of any claim, and folding it into "offline" is how this counter once showed
+            "3 of 3" for a fleet of eight. */}
+        <div className="flex flex-wrap gap-1 pt-2">
+          {([
+            ['all', total, 'deviceList.filter.all'],
+            ['online', counts.online, 'deviceList.filter.online'],
+            ['stale', counts.stale, 'deviceList.filter.stale'],
+            ['offline', counts.offline, 'deviceList.filter.offline'],
+            ['silent', counts.silent, 'deviceList.filter.silent'],
+          ] as const).map(([id, n, key]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setFilter((f) => (f === id ? 'all' : id))}
+              aria-pressed={filter === id}
+              data-testid={`fleet-filter-${id}`}
+              className={cn(
+                'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                filter === id ? 'border-accent text-accent' : 'border-line text-muted hover:text-text',
+              )}
+            >
+              {t(key)} {n}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center justify-between pt-1.5">
+          <span className="text-[11px] text-muted">
+            {t('deviceList.count', { shown: shown.length + shownSilent.length, total })}
+          </span>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.currentTarget.value as FleetSort)}
+            aria-label={t('deviceList.sort.label')}
+            data-testid="fleet-sort"
+            className="rounded border border-line bg-transparent px-1 py-0.5 text-[11px] text-muted"
+          >
+            <option value="status">{t('deviceList.sort.status')}</option>
+            <option value="name">{t('deviceList.sort.name')}</option>
+            <option value="speed">{t('deviceList.sort.speed')}</option>
+          </select>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto" role="listbox" aria-label={t('deviceList.title')}>

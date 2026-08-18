@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { filterFleet, fleetCounts, sortFleet, type FleetFilter } from '../src/lib/fleetFilter'
+import { filterFleet, fleetPanelCounts, sortFleet, type FleetFilter } from '../src/lib/fleetFilter'
 import type { DeviceLive, DeviceStatus } from '../src/lib/liveStore'
 
 /**
@@ -14,16 +14,16 @@ import type { DeviceLive, DeviceStatus } from '../src/lib/liveStore'
 const dev = (id: string, status: DeviceStatus, speed: number | null = 0): DeviceLive =>
   ({ ev: { deviceId: id, speed } as DeviceLive['ev'], status, fix: { lon: 25, lat: 54, course: 0 } })
 
-const label = (id: string) => ({ '1': 'Alfa (ABC 123)', '2': 'beta', '3': 'Gama', '10': 'Delta' })[id] ?? id
+const label = (id: string) => ({ '1': 'Alfa (ABC 123)', '2': 'Delta 2', '3': 'Gama', '10': 'Delta 10' })[id] ?? id
 
-describe('fleetCounts', () => {
+describe('fleetPanelCounts', () => {
   it('counts every device in the fleet, including those that have never reported', () => {
-    const c = fleetCounts([dev('1', 'online'), dev('2', 'stale'), dev('3', 'offline')], [{ id: '9', name: 'New' }])
+    const c = fleetPanelCounts([dev('1', 'online'), dev('2', 'stale'), dev('3', 'offline')], [{ id: '9', name: 'New' }])
     expect(c).toEqual({ online: 1, stale: 1, offline: 1, silent: 1, total: 4 })
   })
 
   it('an empty fleet is zeroes, not a crash', () => {
-    expect(fleetCounts([], [])).toEqual({ online: 0, stale: 0, offline: 0, silent: 0, total: 0 })
+    expect(fleetPanelCounts([], [])).toEqual({ online: 0, stale: 0, offline: 0, silent: 0, total: 0 })
   })
 })
 
@@ -75,8 +75,10 @@ describe('filterFleet', () => {
 
 describe('sortFleet', () => {
   it('by name, naturally — "Delta 10" after "Delta 2", not before', () => {
+    // A plain string sort puts "Delta 10" first because '1' < '2'. The numeric collator is the
+    // point of this test, so the labels have to actually contain competing numerals.
     const out = sortFleet([dev('10', 'online'), dev('2', 'online'), dev('1', 'online')], 'name', label)
-    expect(out.map((d) => label(d.ev.deviceId))).toEqual(['Alfa (ABC 123)', 'beta', 'Delta'])
+    expect(out.map((d) => label(d.ev.deviceId))).toEqual(['Alfa (ABC 123)', 'Delta 2', 'Delta 10'])
   })
 
   it('by speed, fastest first — and an UNKNOWN speed is not zero', () => {

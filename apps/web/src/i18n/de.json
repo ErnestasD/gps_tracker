@@ -401,7 +401,20 @@
     "empty": "Noch keine Geräte — sie erscheinen, sobald sie melden.",
     "noMatch": "Keine Treffer.",
     "count": "{{shown}} von {{total}}",
-    "noFix": "noch keine Position"
+    "noFix": "noch keine Position",
+    "filter": {
+      "all": "Alle",
+      "online": "Aktiv",
+      "stale": "Veraltet",
+      "offline": "Offline",
+      "silent": "Nie gemeldet"
+    },
+    "sort": {
+      "label": "Sortieren",
+      "status": "Nach Status",
+      "name": "Nach Name",
+      "speed": "Nach Geschwindigkeit"
+    }
   },
   "info": {
     "speed": "Geschwindigkeit",
@@ -729,7 +742,8 @@
       "menu": "Tracking-Einstellungen",
       "queuing": "Wird eingereiht…",
       "outOfRange": "Gerät hält {{value}}, außerhalb des angebotenen Bereichs",
-      "reread": "Vom Gerät neu einlesen"
+      "reread": "Vom Gerät neu einlesen",
+      "readQueued": "Lesevorgang eingereiht — warten auf die Verbindung des Geräts."
     }
   },
   "quarantine": {

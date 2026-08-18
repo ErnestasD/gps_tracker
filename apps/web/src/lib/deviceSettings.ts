@@ -35,8 +35,10 @@ export const getDeviceSettings = (deviceId: string) =>
  * Ask the device what it currently holds.
  *
  * The page reports only what the DEVICE last told us, so a change made anywhere else — an SMS, the
- * command console, a technician with a laptop — stays invisible until someone asks again. Reads are
- * free over GPRS and cannot misconfigure anything, so this is always available, even to a viewer.
+ * command console, a technician with a laptop — stays invisible until someone asks again.
+ *
+ * Manifested as a WRITE (entity: command), so it needs the same role as Apply: the server refuses a
+ * viewer, and the button is gated to match rather than promising a permission it does not have.
  */
 export const refreshDeviceSettings = (deviceId: string) =>
   mutate<{ queued: boolean; commandId: string }>(

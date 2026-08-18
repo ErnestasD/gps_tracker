@@ -3,6 +3,10 @@ import type { DeviceLive, DeviceStatus } from './liveStore'
 /**
  * Filtering, counting and ordering for the fleet panel.
  *
+ * Named `fleetPanelCounts` rather than `fleetCounts` because `lib/dashboard.ts` already exports a
+ * differently-shaped `fleetCounts`, and two same-named counters over the same fleet is how a
+ * denominator quietly changes meaning.
+ *
  * Pure and separate from the panel because these are the decisions an operator reads as facts —
  * "4 driving, 2 offline" is a claim about their fleet, and a counter that quietly redefines its own
  * denominator has already been a real defect here: the panel once showed "3 of 3" for a fleet of
@@ -18,7 +22,7 @@ export interface SilentDevice {
 /** `silent` is its own bucket: not a status the device reported, but the absence of any report. */
 export type FleetFilter = 'all' | DeviceStatus | 'silent'
 
-export interface FleetCounts {
+export interface FleetPanelCounts {
   online: number
   stale: number
   offline: number
@@ -26,8 +30,8 @@ export interface FleetCounts {
   total: number
 }
 
-export function fleetCounts(devices: readonly DeviceLive[], silent: readonly SilentDevice[]): FleetCounts {
-  const c: FleetCounts = { online: 0, stale: 0, offline: 0, silent: silent.length, total: devices.length + silent.length }
+export function fleetPanelCounts(devices: readonly DeviceLive[], silent: readonly SilentDevice[]): FleetPanelCounts {
+  const c: FleetPanelCounts = { online: 0, stale: 0, offline: 0, silent: silent.length, total: devices.length + silent.length }
   for (const d of devices) c[d.status] += 1
   return c
 }

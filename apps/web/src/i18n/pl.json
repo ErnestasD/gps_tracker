@@ -401,7 +401,20 @@
     "empty": "Brak urządzeń — pojawią się, gdy zaczną raportować.",
     "noMatch": "Brak wyników wyszukiwania.",
     "count": "{{shown}} z {{total}}",
-    "noFix": "brak sygnału"
+    "noFix": "brak sygnału",
+    "filter": {
+      "all": "Wszystkie",
+      "online": "Aktywne",
+      "stale": "Nieaktualne",
+      "offline": "Offline",
+      "silent": "Nigdy nie zgłosiły"
+    },
+    "sort": {
+      "label": "Sortuj",
+      "status": "Wg statusu",
+      "name": "Wg nazwy",
+      "speed": "Wg prędkości"
+    }
   },
   "info": {
     "speed": "Prędkość",
@@ -729,7 +742,8 @@
       "menu": "Ustawienia śledzenia",
       "queuing": "Dodawanie do kolejki…",
       "outOfRange": "urządzenie ma {{value}}, poza oferowanym zakresem",
-      "reread": "Odczytaj z urządzenia"
+      "reread": "Odczytaj z urządzenia",
+      "readQueued": "Odczyt w kolejce — oczekiwanie na połączenie urządzenia."
     }
   },
   "quarantine": {

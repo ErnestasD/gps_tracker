@@ -66,7 +66,7 @@ export function LoginPage() {
         // misleading credentials/network error — the user is already authenticated, and the WS
         // delivers positions anyway (map.tsx treats the same call as best-effort)
         liveStore.seed(await getLastPositions().catch(() => []))
-        void navigate({ to: '/app/map' })
+        void navigate({ to: '/app' })
       })
       .catch((err: unknown) => setError(t(errorKey(err))))
       .finally(() => setBusy(false))
