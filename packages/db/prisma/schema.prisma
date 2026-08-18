@@ -78,6 +78,32 @@ enum OdometerSource {
   gps
 }
 
+enum FuelType {
+  petrol
+  diesel
+  electric
+  hybrid
+  lpg
+  cng
+  other
+}
+
+/// Operational availability of the VEHICLE, orthogonal to retiredAt (which is about the tracker).
+enum VehicleStatus {
+  active
+  in_service
+  reserve
+}
+
+enum VehicleDocumentKind {
+  insurance
+  inspection
+  tachograph
+  permit
+  leasing
+  other
+}
+
 model Tenant {
   id                    String     @id @default(uuid()) @db.Uuid
   name                  String
@@ -568,10 +594,25 @@ model Device {
   retiredAt      DateTime?      @db.Timestamptz()
   createdAt      DateTime       @default(now()) @db.Timestamptz()
 
+  // ── vehicle profile (FLEET-1 F1) — identity of the VEHICLE the tracker is installed in ──
+  make               String?
+  vehicleModel       String?
+  year               Int?
+  vin                String?
+  fuelType           FuelType?
+  vehicleStatus      VehicleStatus @default(active)
+  purchaseDate       DateTime?     @db.Date
+  purchasePriceCents Int?
+  /// assigned (default) driver — SET NULL on driver delete so the vehicle survives
+  driverId           String?       @db.Uuid
+
   account          Account           @relation(fields: [accountId], references: [id])
   profile          DeviceProfile     @relation(fields: [profileId], references: [id])
+  driver           Driver?           @relation(fields: [driverId], references: [id], onDelete: SetNull)
   shareLinks       ShareLink[]
   maintenanceItems MaintenanceItem[]
+  serviceLog       ServiceLogEntry[]
+  documents        VehicleDocument[]
 
   @@index([tenantId, accountId])
   // plain lookup index (migration 20260805160000). Declared HERE so `prisma migrate dev` does not
@@ -622,7 +663,8 @@ model Driver {
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz()
 
-  trips Trip[]
+  trips   Trip[]
+  devices Device[]
 
   @@unique([tenantId, ibutton])
   @@index([tenantId, accountId])
@@ -639,8 +681,12 @@ model MaintenanceItem {
   title            String
   intervalKm       Int?
   intervalDays     Int?
+  /// engine-hour interval (FLEET-1 F2) — for machinery where km is meaningless. Current engine
+  /// hours are DERIVED at read time: lastServiceEngineH + Σ trip durations since lastServiceAt.
+  intervalEngineH  Int?
   lastServiceOdoKm Int?
   lastServiceAt    DateTime? @db.Timestamptz()
+  lastServiceEngineH Int?
   active           Boolean   @default(true)
   createdAt        DateTime  @default(now()) @db.Timestamptz()
 
@@ -649,6 +695,70 @@ model MaintenanceItem {
   @@index([tenantId, accountId])
   @@index([deviceId])
   @@map("maintenance_items")
+}
+
+/// Completed-service history (FLEET-1 F2). Immutable log — "mark serviced" writes one and
+/// re-baselines the item; ad-hoc entries (no maintenanceItemId) record work outside any schedule.
+model ServiceLogEntry {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @db.Uuid
+  accountId         String   @db.Uuid
+  deviceId          BigInt
+  /// SET NULL when the schedule item is deleted — history outlives the reminder that produced it
+  maintenanceItemId String?  @db.Uuid
+  title             String
+  at                DateTime @db.Timestamptz()
+  odoKm             Int?
+  engineH           Int?
+  costCents         Int?
+  currency          String   @default("EUR") @db.Char(3)
+  vendor            String?
+  notes             String?
+  createdAt         DateTime @default(now()) @db.Timestamptz()
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, accountId])
+  @@index([deviceId, at])
+  @@map("service_log_entries")
+}
+
+/// Per-vehicle document with an expiry (FLEET-1 F3): insurance, roadworthiness (TA), tachograph
+/// calibration, permits, leasing. Due state (ok / due_soon / overdue) is computed at read time.
+model VehicleDocument {
+  id        String              @id @default(uuid()) @db.Uuid
+  tenantId  String              @db.Uuid
+  accountId String              @db.Uuid
+  deviceId  BigInt
+  kind      VehicleDocumentKind
+  title     String
+  number    String?
+  validFrom DateTime?           @db.Date
+  validTo   DateTime            @db.Date
+  note      String?
+  createdAt DateTime            @default(now()) @db.Timestamptz()
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, accountId])
+  @@index([tenantId, validTo])
+  @@index([deviceId])
+  @@map("vehicle_documents")
+}
+
+/// Maintenance plan template (FLEET-1 F2): a named set of interval items defined once and
+/// applied to many devices. Items live as JSONB (validated by shared zod) — applying a plan
+/// creates ordinary maintenance_items rows; the plan itself is never referenced afterwards.
+model MaintenancePlan {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  accountId String?  @db.Uuid
+  name      String
+  items     Json
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@index([tenantId])
+  @@map("maintenance_plans")
 }
 
 model RawReject {

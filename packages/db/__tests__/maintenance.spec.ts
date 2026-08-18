@@ -68,7 +68,7 @@ describe('V2 maintenance repo', () => {
     expect(upd?.intervalDays).toBe(365)
     // mark serviced → baseline set
     const at = new Date('2026-07-01T00:00:00Z')
-    const serviced = await db.maintenance.markServiced(s.aScope, actor, item.id, at, 42000)
+    const serviced = await db.maintenance.markServiced(s.aScope, actor, item.id, at, 42000, null)
     expect(serviced?.lastServiceOdoKm).toBe(42000)
     expect(serviced?.lastServiceAt?.toISOString()).toBe(at.toISOString())
     expect(await db.maintenance.remove(s.aScope, actor, item.id)).toBe(true)

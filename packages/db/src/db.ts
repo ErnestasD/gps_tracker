@@ -11,6 +11,14 @@ import { createPlatformRepo, type PlatformRepo } from './repos/platform.js'
 import { createDeviceRepo, type DeviceRepo } from './repos/devices.js'
 import { createDriverRepo, type DriverRepo } from './repos/drivers.js'
 import { createMaintenanceRepo, type MaintenanceRepo } from './repos/maintenance.js'
+import {
+  createMaintenancePlanRepo,
+  createServiceLogRepo,
+  createVehicleDocumentRepo,
+  type MaintenancePlanRepo,
+  type ServiceLogRepo,
+  type VehicleDocumentRepo,
+} from './repos/fleet.js'
 import { createEventRepo, type EventRepo } from './repos/events.js'
 import { createGeofenceRepo, type GeofenceRepo } from './repos/geofences.js'
 import { createProfileRepo, type ProfileRepo } from './repos/profiles.js'
@@ -48,6 +56,9 @@ export interface Db {
   devices: DeviceRepo
   drivers: DriverRepo
   maintenance: MaintenanceRepo
+  serviceLog: ServiceLogRepo
+  vehicleDocuments: VehicleDocumentRepo
+  maintenancePlans: MaintenancePlanRepo
   commands: CommandRepo
   smsDeliveries: SmsDeliveryRepo
   profiles: ProfileRepo
@@ -88,6 +99,9 @@ export function createDb(databaseUrl: string): Db {
     devices: createDeviceRepo(prisma, audit, shareLinksRepo),
     drivers: createDriverRepo(prisma, audit),
     maintenance: createMaintenanceRepo(prisma, audit),
+    serviceLog: createServiceLogRepo(prisma, audit),
+    vehicleDocuments: createVehicleDocumentRepo(prisma, audit),
+    maintenancePlans: createMaintenancePlanRepo(prisma, audit),
     commands: createCommandRepo(prisma, audit),
     smsDeliveries: createSmsDeliveryRepo(prisma),
     profiles: createProfileRepo(prisma),

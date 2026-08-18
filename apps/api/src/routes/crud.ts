@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
+import { z } from 'zod'
 
 import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
@@ -33,9 +34,19 @@ import {
   tripAssignDriverSchema,
   maintenanceCreateSchema,
   maintenanceUpdateSchema,
+  maintenancePlanApplySchema,
+  maintenancePlanCreateSchema,
+  maintenancePlanItemSchema,
+  maintenancePlanUpdateSchema,
   markServicedSchema,
   maintenanceDue,
+  predictKmDueDate,
+  serviceLogCreateSchema,
+  vehicleDocumentCreateSchema,
+  vehicleDocumentUpdateSchema,
+  documentDue,
   type MaintenanceView,
+  type VehicleDocumentView,
   shareCreateSchema,
   tenantCreateSchema,
   tenantUpdateSchema,
@@ -228,6 +239,9 @@ const READ_POLICY: Record<string, Role[]> = {
   geofence: [...ROLES],
   driver: [...ROLES], // the driver roster is broadly readable
   maintenance: [...ROLES], // maintenance schedule is broadly readable
+  serviceLog: [...ROLES], // FLEET-1: service history is broadly readable
+  document: [...ROLES], // FLEET-1: vehicle documents are broadly readable
+  maintenancePlan: [...ROLES], // FLEET-1: plan templates are broadly readable
   command: [...ROLES], // reading command status is broad; SENDING is a write (below)
   webhookDelivery: ACCOUNT_WRITERS, // webhook delivery log — same readers as webhooks
   usage: TENANT_ADMINS, // billing data — a tenant admin can see their own bill
@@ -248,6 +262,9 @@ const WRITE_POLICY: Record<string, Role[]> = {
   geofence: ACCOUNT_WRITERS,
   driver: ACCOUNT_WRITERS,
   maintenance: ACCOUNT_WRITERS,
+  serviceLog: ACCOUNT_WRITERS, // FLEET-1: recording/removing service history
+  document: ACCOUNT_WRITERS, // FLEET-1: vehicle documents
+  maintenancePlan: ACCOUNT_WRITERS, // FLEET-1: templates + apply create maintenance items
   trip: ACCOUNT_WRITERS, // assigning a driver to a trip is an operator action
   command: ACCOUNT_WRITERS, // sending a Codec-12 command controls hardware → writers only
   export: TENANT_ADMINS, // requesting a GDPR export
@@ -351,21 +368,66 @@ const json = (c: Context, data: unknown, status: 200 | 201 | 202 = 200): Respons
   return c.json(toJson(data), status)
 }
 
-/** Serialize a maintenance row + attach the device's current odometer + the computed due (V2). */
+/** Serialize a maintenance row + attach current odometer, derived engine hours, due and the
+ * km-forecast date (V2 + FLEET-1 F2). Engine hours are DERIVED: baseline + hours driven since
+ * the baseline instant, keyed per (device, baseline) because two items on one device may hold
+ * different baselines. */
 function toMaintView(
-  item: { id: string; deviceId: bigint; title: string; intervalKm: number | null; intervalDays: number | null; lastServiceOdoKm: number | null; lastServiceAt: Date | null; active: boolean; createdAt: Date },
+  item: { id: string; deviceId: bigint; title: string; intervalKm: number | null; intervalDays: number | null; intervalEngineH: number | null; lastServiceOdoKm: number | null; lastServiceAt: Date | null; lastServiceEngineH: number | null; active: boolean; createdAt: Date },
   odo: Map<string, number>,
+  drivenS: Map<string, number>,
+  avgKm: Map<string, number>,
 ): MaintenanceView {
   const deviceId = item.deviceId.toString()
   const currentOdoKm = odo.get(deviceId) ?? null
   const lastServiceAt = item.lastServiceAt?.toISOString() ?? null
+  const drivenKey = item.lastServiceAt !== null ? `${deviceId}:${item.lastServiceAt.getTime()}` : null
+  const currentEngineH =
+    item.lastServiceEngineH != null && drivenKey !== null && drivenS.has(drivenKey)
+      ? item.lastServiceEngineH + Math.floor((drivenS.get(drivenKey) ?? 0) / 3600)
+      : null
+  const due = maintenanceDue(
+    { intervalKm: item.intervalKm, intervalDays: item.intervalDays, intervalEngineH: item.intervalEngineH, lastServiceOdoKm: item.lastServiceOdoKm, lastServiceAt, lastServiceEngineH: item.lastServiceEngineH },
+    currentOdoKm, Date.now(), currentEngineH,
+  )
   return {
     id: item.id, deviceId, title: item.title,
-    intervalKm: item.intervalKm, intervalDays: item.intervalDays,
-    lastServiceOdoKm: item.lastServiceOdoKm, lastServiceAt,
+    intervalKm: item.intervalKm, intervalDays: item.intervalDays, intervalEngineH: item.intervalEngineH,
+    lastServiceOdoKm: item.lastServiceOdoKm, lastServiceAt, lastServiceEngineH: item.lastServiceEngineH,
     active: item.active, createdAt: item.createdAt.toISOString(),
-    currentOdoKm,
-    due: maintenanceDue({ intervalKm: item.intervalKm, intervalDays: item.intervalDays, lastServiceOdoKm: item.lastServiceOdoKm, lastServiceAt }, currentOdoKm, Date.now()),
+    currentOdoKm, currentEngineH, due,
+    predictedDueAt: predictKmDueDate(due.kmRemaining, avgKm.get(deviceId) ?? null, Date.now()),
+  }
+}
+
+/** FLEET-1 F3: vehicle document row → view with the computed due state. */
+function toDocView(row: { id: string; deviceId: bigint; kind: string; title: string; number: string | null; validFrom: Date | null; validTo: Date; note: string | null; createdAt: Date }): VehicleDocumentView {
+  const validTo = row.validTo.toISOString().slice(0, 10)
+  return {
+    id: row.id, deviceId: row.deviceId.toString(),
+    kind: row.kind as VehicleDocumentView['kind'], title: row.title, number: row.number,
+    validFrom: row.validFrom !== null ? row.validFrom.toISOString().slice(0, 10) : null,
+    validTo, note: row.note, createdAt: row.createdAt.toISOString(),
+    due: documentDue(validTo, Date.now()),
+  }
+}
+
+/** Date-only string (already zod-validated) → Date at UTC midnight. */
+const dateOnly = (d: string): Date => new Date(`${d}T00:00:00.000Z`)
+
+/** FLEET-1 F1: map the zod vehicle-profile fields onto repo types (dates parsed, VIN uppercased).
+ *  Only keys PRESENT in the body are forwarded — PATCH is partial, absent must not clear. */
+function vehiclePatch(data: Partial<z.infer<typeof deviceCreateSchema>>) {
+  return {
+    ...('make' in data ? { make: data.make ?? null } : {}),
+    ...('vehicleModel' in data ? { vehicleModel: data.vehicleModel ?? null } : {}),
+    ...('year' in data ? { year: data.year ?? null } : {}),
+    ...('vin' in data ? { vin: data.vin != null ? data.vin.toUpperCase() : null } : {}),
+    ...('fuelType' in data ? { fuelType: data.fuelType ?? null } : {}),
+    ...(data.vehicleStatus !== undefined ? { vehicleStatus: data.vehicleStatus } : {}),
+    ...('purchaseDate' in data ? { purchaseDate: data.purchaseDate != null ? dateOnly(data.purchaseDate) : null } : {}),
+    ...('purchasePriceCents' in data ? { purchasePriceCents: data.purchasePriceCents ?? null } : {}),
+    ...('driverId' in data ? { driverId: data.driverId ?? null } : {}),
   }
 }
 
@@ -469,6 +531,19 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
   const auth = (c: Context<AuthEnv>) => c.get('auth')
   // odometer(s) for maintenance due — empty map (km-due null) when the positions pool is absent
   const odoMap = (ids: bigint[]) => (deps.pool !== undefined ? readOdometersKm(deps.pool, ids) : Promise.resolve(new Map<string, number>()))
+  /** FLEET-1: assemble maintenance views in three batched reads (odometers, driven seconds for
+   *  the engine-hour items, 30-day average km for the forecast) however many items there are. */
+  const maintViews = async (scope: Parameters<typeof db.maintenance.list>[0], items: Awaited<ReturnType<typeof db.maintenance.list>>): Promise<MaintenanceView[]> => {
+    const deviceIds = [...new Set(items.map((i) => i.deviceId))]
+    const odo = await odoMap(deviceIds)
+    const ehPairs = items
+      .filter((i) => i.intervalEngineH != null && i.lastServiceEngineH != null && i.lastServiceAt != null)
+      .map((i) => ({ deviceId: i.deviceId, since: i.lastServiceAt! }))
+    const drivenS = ehPairs.length > 0 ? await db.trips.drivenSecondsSince(scope, ehPairs) : new Map<string, number>()
+    const kmDevices = [...new Set(items.filter((i) => i.intervalKm != null).map((i) => i.deviceId))]
+    const avgKm = kmDevices.length > 0 ? await db.trips.avgDailyKm(scope, kmDevices, 30) : new Map<string, number>()
+    return items.map((i) => toMaintView(i, odo, drivenS, avgKm))
+  }
 
   const raw: Omit<RouteDef, 'roles'>[] = [
     // ── accounts (tenant) ────────────────────────────────────────────────────
@@ -655,6 +730,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const accountId = a.accountId !== undefined ? a.accountId : data.accountId
         if ((await db.accounts.get(scopeOf(a), accountId)) === null) return problem(c, 400, 'Bad Request', 'accountId not in scope')
+        // FLEET-1 F1: an assigned driver must be in the caller's scope (never another account's)
+        if (data.driverId != null && (await db.drivers.get(scopeOf(a), data.driverId)) === null) return problem(c, 400, 'Bad Request', 'driverId not in scope')
         const budget = await reserveDeviceBudget(deps, a.tenantId, 1)
         if ('retryAfterS' in budget) {
           c.header('Retry-After', String(budget.retryAfterS))
@@ -686,7 +763,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           // is not a 500 and does not reveal the other tenant's row (review HIGH)
           let device
           try {
-            device = await db.devices.create(scopeOf(a), { userId: a.userId }, { ...data, accountId })
+            device = await db.devices.create(scopeOf(a), { userId: a.userId }, {
+              accountId, profileId: data.profileId, imei: data.imei, name: data.name,
+              plate: data.plate ?? null, groupName: data.groupName ?? null,
+              simMsisdn: data.simMsisdn ?? null, simIccid: data.simIccid ?? null,
+              ...(data.odometerSource !== undefined ? { odometerSource: data.odometerSource } : {}),
+              ...vehiclePatch(data),
+            })
           } catch (err) {
             if (err instanceof DuplicateImeiError) return problem(c, 409, 'Conflict', 'IMEI already registered')
             throw err
@@ -706,7 +789,19 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       handler: async (c) => {
         const data = await body(c, deviceUpdateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
-        const row = await db.devices.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), data)
+        const scope = scopeOf(auth(c))
+        // FLEET-1 F1: an assigned driver must be in the caller's scope
+        if (data.driverId != null && (await db.drivers.get(scope, data.driverId)) === null) return problem(c, 400, 'Bad Request', 'driverId not in scope')
+        const row = await db.devices.update(scope, { userId: auth(c).userId }, id(c), {
+          ...(data.name !== undefined ? { name: data.name } : {}),
+          ...('plate' in data ? { plate: data.plate ?? null } : {}),
+          ...('groupName' in data ? { groupName: data.groupName ?? null } : {}),
+          ...('simMsisdn' in data ? { simMsisdn: data.simMsisdn ?? null } : {}),
+          ...('simIccid' in data ? { simIccid: data.simIccid ?? null } : {}),
+          ...(data.profileId !== undefined ? { profileId: data.profileId } : {}),
+          ...(data.odometerSource !== undefined ? { odometerSource: data.odometerSource } : {}),
+          ...vehiclePatch(data),
+        })
         if (row === null) return problem(c, 404, 'Not Found')
         // E04-5: odometerSource / profile may have changed → re-sync the worker's trip config
         // (skip a retired device — it's out of the registry; syncing would leave an orphan key)
@@ -1304,14 +1399,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // optional device filter — toDeviceId range-guards int8 (a huge-but-numeric id must not 500)
         const bid = toDeviceId(c.req.query('deviceId') ?? '')
         const items = await db.maintenance.list(scope, ...(bid !== null ? ([bid] as const) : ([] as const)))
-        const odo = await odoMap([...new Set(items.map((i) => i.deviceId))]) // one batched read
-        return json(c, items.map((i) => toMaintView(i, odo)))
+        return json(c, await maintViews(scope, items))
       } },
     { method: 'get', path: '/v1/maintenance/:id', scopeClass: 'account', entity: 'maintenance', shape: 'item',
       handler: async (c) => {
         const item = await db.maintenance.get(scopeOf(auth(c)), id(c))
         if (item === null) return problem(c, 404, 'Not Found')
-        return json(c, toMaintView(item, await odoMap([item.deviceId])))
+        return json(c, (await maintViews(scopeOf(auth(c)), [item]))[0])
       } },
     { method: 'post', path: '/v1/maintenance', scopeClass: 'account', entity: 'maintenance', shape: 'collection',
       handler: async (c) => {
@@ -1329,14 +1423,18 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const kmBaseline = data.intervalKm != null && data.lastServiceOdoKm == null
           ? (odo.get(device.id.toString()) != null ? Math.round(odo.get(device.id.toString())!) : null)
           : (data.lastServiceOdoKm ?? null)
+        // engine-hour reminders start from an explicit baseline or 0 "hours driven from now" —
+        // the derivation needs lastServiceAt as its SINCE, so that default widens to cover them
         const created = await db.maintenance.create(scope, { userId: a.userId }, {
           accountId: device.accountId, deviceId: device.id, title: data.title,
           intervalKm: data.intervalKm ?? null, intervalDays: data.intervalDays ?? null,
+          intervalEngineH: data.intervalEngineH ?? null,
           lastServiceOdoKm: kmBaseline,
-          lastServiceAt: data.lastServiceAt != null ? new Date(data.lastServiceAt) : (data.intervalDays != null ? new Date() : null),
+          lastServiceAt: data.lastServiceAt != null ? new Date(data.lastServiceAt) : (data.intervalDays != null || data.intervalEngineH != null ? new Date() : null),
+          lastServiceEngineH: data.lastServiceEngineH ?? (data.intervalEngineH != null ? 0 : null),
           ...(data.active !== undefined ? { active: data.active } : {}),
         })
-        return json(c, toMaintView(created, odo), 201)
+        return json(c, (await maintViews(scope, [created]))[0], 201)
       } },
     { method: 'patch', path: '/v1/maintenance/:id', scopeClass: 'account', entity: 'maintenance', shape: 'item',
       handler: async (c) => {
@@ -1347,10 +1445,12 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           ...('intervalKm' in data ? { intervalKm: data.intervalKm ?? null } : {}),
           ...('intervalDays' in data ? { intervalDays: data.intervalDays ?? null } : {}),
           ...('lastServiceOdoKm' in data ? { lastServiceOdoKm: data.lastServiceOdoKm ?? null } : {}),
+          ...('intervalEngineH' in data ? { intervalEngineH: data.intervalEngineH ?? null } : {}),
           ...('lastServiceAt' in data ? { lastServiceAt: data.lastServiceAt != null ? new Date(data.lastServiceAt) : null } : {}),
+          ...('lastServiceEngineH' in data ? { lastServiceEngineH: data.lastServiceEngineH ?? null } : {}),
           ...('active' in data ? { active: data.active } : {}),
         })
-        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, await odoMap([row.deviceId])))
+        return row === null ? problem(c, 404, 'Not Found') : json(c, (await maintViews(scopeOf(auth(c)), [row]))[0])
       } },
     { method: 'delete', path: '/v1/maintenance/:id', scopeClass: 'account', entity: 'maintenance', shape: 'item',
       handler: async (c) => {
@@ -1384,8 +1484,168 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           : item.intervalKm != null && curKm != null
             ? Math.round(curKm)
             : item.lastServiceOdoKm
-        const row = await db.maintenance.markServiced(scope, { userId: auth(c).userId }, id(c), at, baseline)
-        return row === null ? problem(c, 404, 'Not Found') : json(c, toMaintView(row, odoNow))
+        // engine-hour baseline follows the same shape: explicit wins; omitted re-baselines to the
+        // DERIVED current hours (old baseline + driven since), so the countdown truly resets
+        let ehBaseline = item.lastServiceEngineH
+        if ('engineH' in data) ehBaseline = data.engineH ?? null
+        else if (item.intervalEngineH != null && item.lastServiceEngineH != null && item.lastServiceAt != null) {
+          const driven = await db.trips.drivenSecondsSince(scope, [{ deviceId: item.deviceId, since: item.lastServiceAt }])
+          ehBaseline = item.lastServiceEngineH + Math.floor((driven.get(`${item.deviceId}:${item.lastServiceAt.getTime()}`) ?? 0) / 3600)
+        }
+        const row = await db.maintenance.markServiced(scope, { userId: auth(c).userId }, id(c), at, baseline, ehBaseline)
+        if (row === null) return problem(c, 404, 'Not Found')
+        // FLEET-1 F2: the completed service becomes a HISTORY row — cost/vendor/notes ride along
+        await db.serviceLog.create(scope, { userId: auth(c).userId }, {
+          accountId: item.accountId, deviceId: item.deviceId, maintenanceItemId: item.id,
+          title: item.title, at, odoKm: baseline, engineH: ehBaseline,
+          costCents: data.costCents ?? null, ...(data.currency !== undefined ? { currency: data.currency } : {}),
+          vendor: data.vendor ?? null, notes: data.notes ?? null,
+        })
+        return json(c, (await maintViews(scope, [row]))[0])
+      } },
+
+    // ── service log (account, FLEET-1 F2) — completed-service history per device ──
+    { method: 'get', path: '/v1/devices/:id/service-log', scopeClass: 'account', entity: 'serviceLog', shape: 'item',
+      handler: async (c) => {
+        const device = await db.devices.get(scopeOf(auth(c)), id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        return json(c, await db.serviceLog.list(scopeOf(auth(c)), device.id))
+      } },
+    { method: 'post', path: '/v1/devices/:id/service-log', scopeClass: 'account', entity: 'serviceLog', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        const data = await body(c, serviceLogCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const row = await db.serviceLog.create(scope, { userId: auth(c).userId }, {
+          accountId: device.accountId, deviceId: device.id, title: data.title,
+          at: data.at != null ? new Date(data.at) : new Date(),
+          odoKm: data.odoKm ?? null, engineH: data.engineH ?? null,
+          costCents: data.costCents ?? null, ...(data.currency !== undefined ? { currency: data.currency } : {}),
+          vendor: data.vendor ?? null, notes: data.notes ?? null,
+        })
+        return json(c, row, 201)
+      } },
+    { method: 'delete', path: '/v1/service-log/:id', scopeClass: 'account', entity: 'serviceLog', shape: 'item',
+      handler: async (c) => {
+        const ok = await db.serviceLog.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+
+    // ── vehicle documents (account, FLEET-1 F3) — expiry-tracked per vehicle ──
+    { method: 'get', path: '/v1/documents', scopeClass: 'account', entity: 'document', shape: 'collection',
+      handler: async (c) => {
+        // fleet-wide, soonest-expiring first; ?due=soon narrows to due_soon+overdue (the reminder list)
+        const rows = await db.vehicleDocuments.list(scopeOf(auth(c)))
+        const views = rows.map(toDocView)
+        return json(c, c.req.query('due') === 'soon' ? views.filter((v) => v.due.status !== 'ok') : views)
+      } },
+    { method: 'get', path: '/v1/devices/:id/documents', scopeClass: 'account', entity: 'document', shape: 'item',
+      handler: async (c) => {
+        const device = await db.devices.get(scopeOf(auth(c)), id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        return json(c, (await db.vehicleDocuments.list(scopeOf(auth(c)), device.id)).map(toDocView))
+      } },
+    { method: 'post', path: '/v1/devices/:id/documents', scopeClass: 'account', entity: 'document', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        const data = await body(c, vehicleDocumentCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const row = await db.vehicleDocuments.create(scope, { userId: auth(c).userId }, {
+          accountId: device.accountId, deviceId: device.id, kind: data.kind, title: data.title,
+          number: data.number ?? null,
+          validFrom: data.validFrom != null ? dateOnly(data.validFrom) : null,
+          validTo: dateOnly(data.validTo),
+          note: data.note ?? null,
+        })
+        return json(c, toDocView(row), 201)
+      } },
+    { method: 'patch', path: '/v1/documents/:id', scopeClass: 'account', entity: 'document', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, vehicleDocumentUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const row = await db.vehicleDocuments.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), {
+          ...('kind' in data && data.kind !== undefined ? { kind: data.kind } : {}),
+          ...('title' in data && data.title !== undefined ? { title: data.title } : {}),
+          ...('number' in data ? { number: data.number ?? null } : {}),
+          ...('validFrom' in data ? { validFrom: data.validFrom != null ? dateOnly(data.validFrom) : null } : {}),
+          ...('validTo' in data && data.validTo !== undefined ? { validTo: dateOnly(data.validTo) } : {}),
+          ...('note' in data ? { note: data.note ?? null } : {}),
+        })
+        return row === null ? problem(c, 404, 'Not Found') : json(c, toDocView(row))
+      } },
+    { method: 'delete', path: '/v1/documents/:id', scopeClass: 'account', entity: 'document', shape: 'item',
+      handler: async (c) => {
+        const ok = await db.vehicleDocuments.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+
+    // ── maintenance plans (tenant-wide templates, FLEET-1 F2) ──
+    { method: 'get', path: '/v1/maintenance-plans', scopeClass: 'account', entity: 'maintenancePlan', shape: 'collection',
+      handler: async (c) => json(c, await db.maintenancePlans.list(scopeOf(auth(c)))) },
+    { method: 'post', path: '/v1/maintenance-plans', scopeClass: 'account', entity: 'maintenancePlan', shape: 'collection',
+      handler: async (c) => {
+        const data = await body(c, maintenancePlanCreateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const a = auth(c)
+        const row = await db.maintenancePlans.create(scopeOf(a), { userId: a.userId }, {
+          accountId: a.accountId ?? null, name: data.name, items: data.items,
+        })
+        return json(c, row, 201)
+      } },
+    { method: 'patch', path: '/v1/maintenance-plans/:id', scopeClass: 'account', entity: 'maintenancePlan', shape: 'item',
+      handler: async (c) => {
+        const data = await body(c, maintenancePlanUpdateSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const row = await db.maintenancePlans.update(scopeOf(auth(c)), { userId: auth(c).userId }, id(c), {
+          ...(data.name !== undefined ? { name: data.name } : {}),
+          ...(data.items !== undefined ? { items: data.items } : {}),
+        })
+        return row === null ? problem(c, 404, 'Not Found') : json(c, row)
+      } },
+    { method: 'delete', path: '/v1/maintenance-plans/:id', scopeClass: 'account', entity: 'maintenancePlan', shape: 'item',
+      handler: async (c) => {
+        const ok = await db.maintenancePlans.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
+        return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+    // apply a plan to devices: create its items as ordinary maintenance rows. IDEMPOTENT per
+    // (device, title) — re-applying skips items the device already has, so "apply to the whole
+    // fleet" can be re-run after adding vehicles without duplicating anything.
+    { method: 'post', path: '/v1/maintenance-plans/:id/apply', scopeClass: 'account', entity: 'maintenancePlan', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const plan = await db.maintenancePlans.get(scope, id(c))
+        if (plan === null) return problem(c, 404, 'Not Found')
+        const data = await body(c, maintenancePlanApplySchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const items = z.array(maintenancePlanItemSchema).safeParse(plan.items)
+        if (!items.success) return problem(c, 500, 'Internal Server Error', 'stored plan items are invalid')
+        let createdCount = 0
+        let skipped = 0
+        const missing: string[] = []
+        for (const deviceIdRaw of data.deviceIds) {
+          const device = await db.devices.get(scope, deviceIdRaw)
+          if (device === null) { missing.push(deviceIdRaw); continue }
+          const existing = new Set((await db.maintenance.list(scope, device.id)).map((i) => i.title))
+          const odo = await odoMap([device.id])
+          for (const item of items.data) {
+            if (existing.has(item.title)) { skipped++; continue }
+            const curKm = odo.get(device.id.toString())
+            await db.maintenance.create(scope, { userId: auth(c).userId }, {
+              accountId: device.accountId, deviceId: device.id, title: item.title,
+              intervalKm: item.intervalKm ?? null, intervalDays: item.intervalDays ?? null,
+              intervalEngineH: item.intervalEngineH ?? null,
+              lastServiceOdoKm: item.intervalKm != null && curKm != null ? Math.round(curKm) : null,
+              lastServiceAt: item.intervalDays != null || item.intervalEngineH != null ? new Date() : null,
+              lastServiceEngineH: item.intervalEngineH != null ? 0 : null,
+            })
+            createdCount++
+          }
+        }
+        return json(c, { created: createdCount, skipped, missingDevices: missing })
       } },
 
     // ── geofences (account-scoped, nullable account = tenant-shared, E05-1) ────

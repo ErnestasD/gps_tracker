@@ -91,6 +91,25 @@ export const userUpdateSchema = z
 
 // ── devices ──────────────────────────────────────────────────────────────────
 export const odometerSourceSchema = z.enum(['auto', 'device', 'gps'])
+
+// vehicle profile (FLEET-1 F1) — identity of the VEHICLE the tracker sits in. All optional:
+// a bare tracker registration stays as cheap as before; the card fills in over time.
+export const fuelTypeSchema = z.enum(['petrol', 'diesel', 'electric', 'hybrid', 'lpg', 'cng', 'other'])
+export const vehicleStatusSchema = z.enum(['active', 'in_service', 'reserve'])
+const VEHICLE_PROFILE_FIELDS = {
+  make: z.string().max(64).nullable().optional(),
+  vehicleModel: z.string().max(64).nullable().optional(),
+  year: z.number().int().min(1950).max(2100).nullable().optional(),
+  // VIN is 17 chars without I/O/Q, but older/import vehicles deviate — validate charset, not length
+  vin: z.string().regex(/^[A-HJ-NPR-Z0-9]{5,17}$/i).nullable().optional(),
+  fuelType: fuelTypeSchema.nullable().optional(),
+  vehicleStatus: vehicleStatusSchema.optional(),
+  purchaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  purchasePriceCents: z.number().int().min(0).max(2_000_000_000).nullable().optional(),
+  /** assigned driver from the tenant's registry; the route scope-gates the id */
+  driverId: z.string().uuid().nullable().optional(),
+} as const
+
 export const deviceCreateSchema = z.object({
   accountId: z.string().uuid(),
   profileId: z.string().uuid(),
@@ -103,6 +122,7 @@ export const deviceCreateSchema = z.object({
   simMsisdn: z.string().regex(/^\+[1-9]\d{6,14}$/).nullable().optional(),
   simIccid: z.string().regex(/^\d{18,22}$/).nullable().optional(),
   odometerSource: odometerSourceSchema.optional(),
+  ...VEHICLE_PROFILE_FIELDS,
 })
 export const deviceUpdateSchema = z
   .object({
@@ -113,6 +133,7 @@ export const deviceUpdateSchema = z
     simIccid: z.string().regex(/^\d{18,22}$/).nullable().optional(),
     profileId: z.string().uuid(),
     odometerSource: odometerSourceSchema,
+    ...VEHICLE_PROFILE_FIELDS,
   })
   .partial()
   /**
@@ -748,7 +769,7 @@ export function driverScore(agg: { trips: number; distanceM: number; maxSpeed: n
   return Math.max(0, Math.min(100, Math.round(100 - overspeedPenalty - speedPenalty - idlePenalty)))
 }
 
-// ── maintenance reminders (V2) ─────────────────────────────────────────────────────────────
+// ── maintenance reminders (V2, engine hours + plans in FLEET-1) ────────────────────────────
 export const maintenanceCreateSchema = z.object({
   deviceId: z.string().min(1), // stringified BigInt; the route validates the device is in scope
   // accountId is intentionally NOT accepted — it's derived from the device's account (a body value
@@ -756,11 +777,98 @@ export const maintenanceCreateSchema = z.object({
   title: z.string().min(1).max(120),
   intervalKm: z.number().int().min(1).max(10_000_000).nullish(),
   intervalDays: z.number().int().min(1).max(3650).nullish(),
+  intervalEngineH: z.number().int().min(1).max(1_000_000).nullish(),
   lastServiceOdoKm: z.number().int().min(0).max(10_000_000).nullish(),
   lastServiceAt: z.string().datetime().nullish(),
+  lastServiceEngineH: z.number().int().min(0).max(1_000_000).nullish(),
   active: z.boolean().optional(),
 })
 export const maintenanceUpdateSchema = maintenanceCreateSchema.omit({ deviceId: true }).partial()
+
+/** Plan template item (FLEET-1 F2): the intervals only — baselines are set at APPLY time from
+ *  the device's current odometer/now, exactly like a hand-created item. */
+export const maintenancePlanItemSchema = z
+  .object({
+    title: z.string().min(1).max(120),
+    intervalKm: z.number().int().min(1).max(10_000_000).nullish(),
+    intervalDays: z.number().int().min(1).max(3650).nullish(),
+    intervalEngineH: z.number().int().min(1).max(1_000_000).nullish(),
+  })
+  .refine((i) => i.intervalKm != null || i.intervalDays != null || i.intervalEngineH != null, {
+    message: 'an item needs at least one interval (km, days or engine hours)',
+  })
+export const maintenancePlanCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  items: z.array(maintenancePlanItemSchema).min(1).max(50),
+})
+export const maintenancePlanUpdateSchema = maintenancePlanCreateSchema.partial()
+/** Apply a plan: create its items for each device. Idempotent per (device, title) — an item
+ *  with the same title already on the device is skipped, not duplicated. */
+export const maintenancePlanApplySchema = z.object({
+  deviceIds: z.array(z.string().min(1)).min(1).max(500),
+})
+export type MaintenancePlanItem = z.infer<typeof maintenancePlanItemSchema>
+
+/** Ad-hoc service-log entry (FLEET-1 F2) — work done outside any schedule. */
+export const serviceLogCreateSchema = z.object({
+  title: z.string().min(1).max(160),
+  at: z.string().datetime().optional(), // defaults to now server-side
+  odoKm: z.number().int().min(0).max(10_000_000).nullish(),
+  engineH: z.number().int().min(0).max(1_000_000).nullish(),
+  costCents: z.number().int().min(0).max(2_000_000_000).nullish(),
+  currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+  vendor: z.string().max(160).nullish(),
+  notes: z.string().max(2000).nullish(),
+})
+export interface ServiceLogView {
+  id: string
+  deviceId: string
+  maintenanceItemId: string | null
+  title: string
+  at: string
+  odoKm: number | null
+  engineH: number | null
+  costCents: number | null
+  currency: string
+  vendor: string | null
+  notes: string | null
+  createdAt: string
+}
+
+// ── vehicle documents (FLEET-1 F3) ─────────────────────────────────────────────────────────
+export const vehicleDocumentKindSchema = z.enum(['insurance', 'inspection', 'tachograph', 'permit', 'leasing', 'other'])
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
+export const vehicleDocumentCreateSchema = z.object({
+  kind: vehicleDocumentKindSchema,
+  title: z.string().min(1).max(160),
+  number: z.string().max(64).nullish(),
+  validFrom: z.string().regex(DATE_ONLY).nullish(),
+  validTo: z.string().regex(DATE_ONLY),
+  note: z.string().max(2000).nullish(),
+})
+export const vehicleDocumentUpdateSchema = vehicleDocumentCreateSchema.partial()
+export type DocumentDueStatus = 'ok' | 'due_soon' | 'overdue'
+/** "Expiring" window for documents — insurance/TA renewals need lead time to act on. */
+export const DOC_DUE_SOON_DAYS = 30
+/** Pure due state for a document expiry (date-only, UTC midnight semantics — one source for
+ *  API and web, like maintenanceDue below). */
+export function documentDue(validTo: string, nowMs: number): { daysRemaining: number; status: DocumentDueStatus } {
+  const due = Date.parse(`${validTo}T23:59:59.999Z`) // valid THROUGH the stated day
+  const daysRemaining = Math.floor((due - nowMs) / 86_400_000)
+  return { daysRemaining, status: daysRemaining < 0 ? 'overdue' : daysRemaining <= DOC_DUE_SOON_DAYS ? 'due_soon' : 'ok' }
+}
+export interface VehicleDocumentView {
+  id: string
+  deviceId: string
+  kind: z.infer<typeof vehicleDocumentKindSchema>
+  title: string
+  number: string | null
+  validFrom: string | null
+  validTo: string
+  note: string | null
+  createdAt: string
+  due: { daysRemaining: number; status: DocumentDueStatus }
+}
 /**
  * Platform console: the only user field a platform admin flips from outside the tenant.
  *
@@ -775,6 +883,12 @@ export const platformUserUpdateSchema = z.object({
 export const markServicedSchema = z.object({
   at: z.string().datetime().optional(), // defaults to now server-side
   odoKm: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  engineH: z.number().int().min(0).max(1_000_000).nullable().optional(),
+  // FLEET-1 F2: marking serviced writes a service-log row — these enrich it (optional)
+  costCents: z.number().int().min(0).max(2_000_000_000).nullish(),
+  currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+  vendor: z.string().max(160).nullish(),
+  notes: z.string().max(2000).nullish(),
 })
 
 /** Computed maintenance due state (V2) — never stored; derived from the device's current odometer
@@ -783,6 +897,8 @@ export type MaintenanceStatus = 'ok' | 'due_soon' | 'overdue' | 'unknown'
 export interface MaintenanceDue {
   kmRemaining: number | null
   daysRemaining: number | null
+  /** engine hours remaining (FLEET-1 F2) — null when no engine-hour interval/baseline */
+  engineHRemaining: number | null
   status: MaintenanceStatus
 }
 export interface MaintenanceView {
@@ -791,13 +907,20 @@ export interface MaintenanceView {
   title: string
   intervalKm: number | null
   intervalDays: number | null
+  intervalEngineH: number | null
   lastServiceOdoKm: number | null
   lastServiceAt: string | null
+  lastServiceEngineH: number | null
   active: boolean
   createdAt: string
   /** the device's current odometer (km) at read time — null if the device reports none. */
   currentOdoKm: number | null
+  /** derived engine hours at read time (baseline + driven hours since) — null if not computable */
+  currentEngineH: number | null
   due: MaintenanceDue
+  /** forecast (FLEET-1 F2): the km-due date predicted from the device's avg daily km over the
+   *  last 30 days; ISO date or null when not computable. Day-due dates are exact, not forecast. */
+  predictedDueAt: string | null
 }
 
 /** "Due soon" thresholds (V2). Overdue = past the interval; due_soon = within this window. */
@@ -807,10 +930,21 @@ const DAY_MS = 86_400_000
 
 /** Pure due computation — the single source of truth for both API and web. Given the item, the
  *  device's current odometer (km, or null), and now (ms): compute km/day remaining + a status. */
+/** "Due soon" window for engine-hour intervals (FLEET-1 F2). */
+export const MAINT_DUE_SOON_ENGINE_H = 50
+
 export function maintenanceDue(
-  item: { intervalKm: number | null; intervalDays: number | null; lastServiceOdoKm: number | null; lastServiceAt: string | null },
+  item: {
+    intervalKm: number | null
+    intervalDays: number | null
+    intervalEngineH?: number | null
+    lastServiceOdoKm: number | null
+    lastServiceAt: string | null
+    lastServiceEngineH?: number | null
+  },
   currentOdoKm: number | null,
   nowMs: number,
+  currentEngineH: number | null = null,
 ): MaintenanceDue {
   const kmRemaining =
     item.intervalKm != null && item.lastServiceOdoKm != null && currentOdoKm != null
@@ -821,13 +955,33 @@ export function maintenanceDue(
     const dueAt = Date.parse(item.lastServiceAt) + item.intervalDays * DAY_MS
     if (Number.isFinite(dueAt)) daysRemaining = Math.floor((dueAt - nowMs) / DAY_MS)
   }
+  const engineHRemaining =
+    item.intervalEngineH != null && item.lastServiceEngineH != null && currentEngineH != null
+      ? item.lastServiceEngineH + item.intervalEngineH - currentEngineH
+      : null
   let status: MaintenanceStatus = 'unknown'
-  if (kmRemaining !== null || daysRemaining !== null) {
-    const overdue = (kmRemaining !== null && kmRemaining < 0) || (daysRemaining !== null && daysRemaining < 0)
-    const soon = (kmRemaining !== null && kmRemaining <= MAINT_DUE_SOON_KM) || (daysRemaining !== null && daysRemaining <= MAINT_DUE_SOON_DAYS)
+  if (kmRemaining !== null || daysRemaining !== null || engineHRemaining !== null) {
+    const overdue =
+      (kmRemaining !== null && kmRemaining < 0) ||
+      (daysRemaining !== null && daysRemaining < 0) ||
+      (engineHRemaining !== null && engineHRemaining < 0)
+    const soon =
+      (kmRemaining !== null && kmRemaining <= MAINT_DUE_SOON_KM) ||
+      (daysRemaining !== null && daysRemaining <= MAINT_DUE_SOON_DAYS) ||
+      (engineHRemaining !== null && engineHRemaining <= MAINT_DUE_SOON_ENGINE_H)
     status = overdue ? 'overdue' : soon ? 'due_soon' : 'ok'
   }
-  return { kmRemaining, daysRemaining, status }
+  return { kmRemaining, daysRemaining, engineHRemaining, status }
+}
+
+/** Forecast the km-due date from average daily km (FLEET-1 F2). Pure; null when the average is
+ *  unusable (≤0), the item already lacks a km due, or the item is overdue (the date is "now"). */
+export function predictKmDueDate(kmRemaining: number | null, avgKmPerDay: number | null, nowMs: number): string | null {
+  if (kmRemaining === null || avgKmPerDay === null || avgKmPerDay <= 0) return null
+  if (kmRemaining < 0) return null
+  const days = kmRemaining / avgKmPerDay
+  if (!Number.isFinite(days) || days > 3650) return null
+  return new Date(nowMs + days * DAY_MS).toISOString().slice(0, 10)
 }
 
 // ── iButton driver resolution (V2, Part B) ─────────────────────────────────────────────────

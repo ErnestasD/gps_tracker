@@ -11,16 +11,20 @@ export interface MaintenanceCreate {
   title: string
   intervalKm?: number | null
   intervalDays?: number | null
+  intervalEngineH?: number | null
   lastServiceOdoKm?: number | null
   lastServiceAt?: Date | null
+  lastServiceEngineH?: number | null
   active?: boolean
 }
 export interface MaintenanceUpdate {
   title?: string
   intervalKm?: number | null
   intervalDays?: number | null
+  intervalEngineH?: number | null
   lastServiceOdoKm?: number | null
   lastServiceAt?: Date | null
+  lastServiceEngineH?: number | null
   active?: boolean
 }
 
@@ -36,8 +40,9 @@ export interface MaintenanceRepo {
   create(scope: Scope, actor: Actor, data: MaintenanceCreate): Promise<MaintenanceItem>
   update(scope: Scope, actor: Actor, id: string, data: MaintenanceUpdate): Promise<MaintenanceItem | null>
   remove(scope: Scope, actor: Actor, id: string): Promise<boolean>
-  /** Record a completed service: set lastServiceOdoKm/lastServiceAt (baseline for the next due). */
-  markServiced(scope: Scope, actor: Actor, id: string, at: Date, odoKm: number | null): Promise<MaintenanceItem | null>
+  /** Record a completed service: set lastServiceOdoKm/lastServiceAt/lastServiceEngineH (the
+   *  baselines for the next due). */
+  markServiced(scope: Scope, actor: Actor, id: string, at: Date, odoKm: number | null, engineH: number | null): Promise<MaintenanceItem | null>
 }
 
 export function createMaintenanceRepo(prisma: PrismaClient, audit: AuditRepo): MaintenanceRepo {
@@ -56,8 +61,10 @@ export function createMaintenanceRepo(prisma: PrismaClient, audit: AuditRepo): M
           title: data.title,
           intervalKm: data.intervalKm ?? null,
           intervalDays: data.intervalDays ?? null,
+          intervalEngineH: data.intervalEngineH ?? null,
           lastServiceOdoKm: data.lastServiceOdoKm ?? null,
           lastServiceAt: data.lastServiceAt ?? null,
+          lastServiceEngineH: data.lastServiceEngineH ?? null,
           ...(data.active !== undefined ? { active: data.active } : {}),
         },
       })
@@ -78,10 +85,10 @@ export function createMaintenanceRepo(prisma: PrismaClient, audit: AuditRepo): M
       await audit.record(scope, actor, { action: 'delete', entity: 'maintenance', entityId: id, before: serialize(before) })
       return true
     },
-    markServiced: async (scope, actor, id, at, odoKm) => {
+    markServiced: async (scope, actor, id, at, odoKm, engineH) => {
       const before = await scopedById(scope, id)
       if (before === null) return null
-      const row = await prisma.maintenanceItem.update({ where: { id: before.id }, data: { lastServiceAt: at, lastServiceOdoKm: odoKm } })
+      const row = await prisma.maintenanceItem.update({ where: { id: before.id }, data: { lastServiceAt: at, lastServiceOdoKm: odoKm, lastServiceEngineH: engineH } })
       await audit.record(scope, actor, { action: 'update', entity: 'maintenance', entityId: id, before: serialize(before), after: serialize(row) })
       return row
     },

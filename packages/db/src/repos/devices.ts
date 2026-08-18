@@ -1,4 +1,4 @@
-import type { Device, OdometerSource, PrismaClient } from '@prisma/client'
+import type { Device, FuelType, OdometerSource, PrismaClient, VehicleStatus } from '@prisma/client'
 
 import type { AuditRepo } from './audit.js'
 import type { ShareLinkRepo } from './shareLinks.js'
@@ -19,6 +19,16 @@ export interface DeviceCreate {
   /** SIM ICCID (18–22 digits) — informational. */
   simIccid?: string | null
   odometerSource?: OdometerSource
+  // vehicle profile (FLEET-1 F1)
+  make?: string | null
+  vehicleModel?: string | null
+  year?: number | null
+  vin?: string | null
+  fuelType?: FuelType | null
+  vehicleStatus?: VehicleStatus
+  purchaseDate?: Date | null
+  purchasePriceCents?: number | null
+  driverId?: string | null
 }
 export interface DeviceUpdate {
   name?: string
@@ -28,6 +38,16 @@ export interface DeviceUpdate {
   simIccid?: string | null
   profileId?: string
   odometerSource?: OdometerSource
+  // vehicle profile (FLEET-1 F1)
+  make?: string | null
+  vehicleModel?: string | null
+  year?: number | null
+  vin?: string | null
+  fuelType?: FuelType | null
+  vehicleStatus?: VehicleStatus
+  purchaseDate?: Date | null
+  purchasePriceCents?: number | null
+  driverId?: string | null
 }
 
 /**
@@ -225,6 +245,16 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
             simMsisdn: data.simMsisdn ?? null,
             simIccid: data.simIccid ?? null,
             ...(data.odometerSource !== undefined ? { odometerSource: data.odometerSource } : {}),
+            // vehicle profile (FLEET-1 F1) — all optional; absent stays at column defaults
+            make: data.make ?? null,
+            vehicleModel: data.vehicleModel ?? null,
+            year: data.year ?? null,
+            vin: data.vin ?? null,
+            fuelType: data.fuelType ?? null,
+            ...(data.vehicleStatus !== undefined ? { vehicleStatus: data.vehicleStatus } : {}),
+            purchaseDate: data.purchaseDate ?? null,
+            purchasePriceCents: data.purchasePriceCents ?? null,
+            driverId: data.driverId ?? null,
           },
         })
       } catch (err) {

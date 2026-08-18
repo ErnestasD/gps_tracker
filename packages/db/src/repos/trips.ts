@@ -49,6 +49,13 @@ export interface TripReadRepo {
    * nulled, a trip is an aggregate: "120 km on 3 March", with no way back to where.
    */
   stripCoordinatesOlderThan(cutoff: Date, batchSize?: number): Promise<number>
+  /** FLEET-1 F2: average km/day per device over the trailing `days` window (closed trips'
+   *  distance ÷ window). Devices with no trips are simply absent from the map. */
+  avgDailyKm(scope: Scope, deviceIds: bigint[], days: number): Promise<Map<string, number>>
+  /** FLEET-1 F2: seconds driven (closed-trip durations) per (device, since) pair — the derived
+   *  engine-hours input (baseline + driven time since the baseline date). Keyed
+   *  `${deviceId}:${since.getTime()}` because two items on one device can hold different baselines. */
+  drivenSecondsSince(scope: Scope, pairs: { deviceId: bigint; since: Date }[]): Promise<Map<string, number>>
 }
 
 const withDriver = { include: { driver: { select: { name: true } } } } as const
@@ -106,6 +113,41 @@ export function createTripRepo(prisma: PrismaClient, audit: AuditRepo): TripRead
       const row = flat(await prisma.trip.update({ where: { id: before.id }, data: { driverId }, ...withDriver }))
       await audit.record(scope, actor, { action: 'update', entity: 'trip', entityId: tripId, before: { driverId: before.driverId }, after: { driverId: row.driverId } })
       return row
+    },
+    avgDailyKm: async (scope, deviceIds, days) => {
+      const out = new Map<string, number>()
+      if (deviceIds.length === 0 || days <= 0) return out
+      const since = new Date(Date.now() - days * 86_400_000)
+      const rows = await prisma.trip.groupBy({
+        by: ['deviceId'],
+        where: { ...scopedWhere(scope), deviceId: { in: deviceIds }, status: 'closed', startTime: { gte: since } },
+        _sum: { distanceM: true },
+      })
+      for (const r of rows) out.set(r.deviceId.toString(), (r._sum.distanceM ?? 0) / 1000 / days)
+      return out
+    },
+    drivenSecondsSince: async (scope, pairs) => {
+      const out = new Map<string, number>()
+      // one aggregate per device — pairs come from ONE maintenance list view's engine-hour items
+      // (small by construction), so a few indexed queries beat a raw UNION nobody can read.
+      // Duration = Σ(endTime-startTime); prisma cannot aggregate a difference, hence raw SQL.
+      // Idle time is deliberately INCLUDED: engine hours count running, not moving.
+      const seen = new Map<string, { deviceId: bigint; since: Date }>()
+      for (const p of pairs) seen.set(`${p.deviceId}:${p.since.getTime()}`, p)
+      await Promise.all(
+        [...seen.entries()].map(async ([key, { deviceId, since }]) => {
+          const rows = await prisma.$queryRaw<{ s: number | null }[]>`
+            SELECT EXTRACT(EPOCH FROM SUM("endTime" - "startTime"))::float8 AS s
+              FROM trips
+             WHERE "tenantId" = ${scope.tenantId}::uuid
+               AND "deviceId" = ${deviceId}
+               AND status = 'closed'
+               AND "endTime" IS NOT NULL
+               AND "startTime" >= ${since}`
+          out.set(key, rows[0]?.s ?? 0)
+        }),
+      )
+      return out
     },
     stripCoordinatesOlderThan: async (cutoff, batchSize = 5_000) => {
       const size = Math.min(Math.max(Math.trunc(batchSize), 1), 50_000)

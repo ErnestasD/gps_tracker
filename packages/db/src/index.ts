@@ -10,6 +10,14 @@ export { type UserRepo, type UserView, type UserCreate, type UserUpdate } from '
 export { DuplicateImeiError, type DeviceRepo, type DeviceCreate, type DeviceUpdate, type ImeiHoldOverride } from './repos/devices.js'
 export { DriverIbuttonConflictError, type DriverRepo, type DriverCreate, type DriverUpdate } from './repos/drivers.js'
 export { toDeviceId, type MaintenanceRepo, type MaintenanceCreate, type MaintenanceUpdate } from './repos/maintenance.js'
+export {
+  type ServiceLogRepo,
+  type ServiceLogCreate,
+  type VehicleDocumentRepo,
+  type VehicleDocumentCreate,
+  type VehicleDocumentUpdate,
+  type MaintenancePlanRepo,
+} from './repos/fleet.js'
 export { type CommandRepo, type CommandView, type CommandCreate } from './repos/commands.js'
 export { createSmsDeliveryRepo, type SmsDeliveryRepo, type SmsDeliveryCreate } from './repos/smsDeliveries.js'
 export { type ExportRepo, type ExportJobView } from './repos/exports.js'
