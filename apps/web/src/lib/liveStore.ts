@@ -50,9 +50,22 @@ export interface MapFrame {
   follow: boolean
 }
 
-// StatusDot semantics (DASHBOARD_UI_SPEC §3): online ≤60 s freshness, then stale,
-// offline after 10 min. One place — DeviceList/InfoCard/map arrows all read this.
-export const ONLINE_MS = 60_000
+/**
+ * StatusDot semantics (DASHBOARD_UI_SPEC §3). One place — DeviceList/InfoCard/map arrows all read
+ * this.
+ *
+ * `online` was 60 s, which is shorter than how often a Teltonika device actually speaks. These
+ * trackers BATCH: they record on distance/angle/time and then send on a separate *send period*,
+ * 120 s by default on the FT platform. So a device driving perfectly — recording every 1–5 s, as an
+ * FTC887 was measured doing — arrives in bursts up to two minutes apart, and a 60 s window made it
+ * flap between "online" and "stale" the whole trip. The dot was reporting our impatience, not the
+ * vehicle.
+ *
+ * 180 s covers the default send period with margin. It is a floor, not a guess at any one device:
+ * a tracker configured to send immediately still shows online instantly, and one that has genuinely
+ * stopped talking still goes stale, just without the false alarm in between.
+ */
+export const ONLINE_MS = 180_000
 export const STALE_MS = 600_000
 const TRAIL_CAP = 3_600 // ≈1 h at 1 Hz; ring buffer, oldest dropped
 

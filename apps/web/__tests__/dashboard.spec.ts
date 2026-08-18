@@ -8,8 +8,10 @@ const pos = (ageMs: number): LiveEvent => ({ deviceId: '1', accountId: 'a', fixT
 
 describe('ADR-028 dashboard helpers', () => {
   it('fleetCounts buckets by the live-map freshness thresholds', () => {
-    const c = fleetCounts([pos(10_000), pos(59_999), pos(60_001), pos(599_999), pos(600_001)], NOW)
-    expect(c).toEqual({ online: 2, stale: 2, offline: 1 })
+    // 120 s — one default FT send period — counts as ONLINE: these devices batch, so a healthy
+    // vehicle is silent between bursts and must not be reported as degraded.
+    const c = fleetCounts([pos(10_000), pos(120_000), pos(179_999), pos(180_001), pos(599_999), pos(600_001)], NOW)
+    expect(c).toEqual({ online: 3, stale: 2, offline: 1 })
   })
 
   it('eventSeverity maps kinds to the shared severity buckets', () => {
