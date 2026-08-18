@@ -162,6 +162,9 @@ function idFor(f: TenantFixture, entity: string): string {
     export: f.exportId,
     driver: f.driverId,
     maintenance: f.maintenanceId,
+    serviceLog: f.serviceLogId,
+    document: f.documentId,
+    maintenancePlan: f.maintenancePlanId,
     scheduledReport: f.scheduledReportId,
     share: f.shareId,
     gdpr: f.deviceId, // /v1/devices/:id/erase — the :id is a device
@@ -198,6 +201,11 @@ const PARAM_ENTITY: Record<string, string> = {
   // silently mis-key one of them into exactly the vacuous pass described above.
   'POST /v1/accounts/:id/export': 'exportOnAccount',
   'POST /v1/devices/:id/commands': 'commandOnDevice',
+  // FLEET-1: the log/document routes hang off the DEVICE — the :id is a device id
+  'GET /v1/devices/:id/service-log': 'device',
+  'POST /v1/devices/:id/service-log': 'device',
+  'GET /v1/devices/:id/documents': 'device',
+  'POST /v1/devices/:id/documents': 'device',
 }
 const paramEntity = (m: { method: string; path: string; entity: string }): string =>
   PARAM_ENTITY[`${m.method.toUpperCase()} ${m.path}`] ?? m.entity

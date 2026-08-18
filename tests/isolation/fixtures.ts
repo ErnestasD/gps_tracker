@@ -42,6 +42,9 @@ export interface TenantFixture {
   exportId: string
   driverId: string // a driver (V2 registry cross-tenant tests)
   maintenanceId: string // a maintenance item (V2 cross-tenant tests)
+  serviceLogId: string // a service-log entry (FLEET-1 cross-tenant tests)
+  documentId: string // a vehicle document (FLEET-1 cross-tenant tests)
+  maintenancePlanId: string // a maintenance plan template (FLEET-1 cross-tenant tests)
   scheduledReportId: string // a scheduled report (V1-nice cross-tenant tests)
   shareId: string // an active share link (temporary public link cross-tenant tests)
   /** platform_admin token (tenant-wide). */
@@ -117,6 +120,9 @@ async function seedTenant(
   const webhookShared = await db.webhooks.create({ tenantId: tenant.id }, actor, { accountId: null, url: 'https://shared.test/h', secret: 'secret-secret-16' })
   const driver = await db.drivers.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, name: `${name} Driver` })
   const maint = await db.maintenance.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, deviceId: device.id, title: 'Oil', intervalKm: 15000 })
+  const slog = await db.serviceLog.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, deviceId: device.id, title: 'Oil change', at: new Date() })
+  const doc = await db.vehicleDocuments.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, deviceId: device.id, kind: 'insurance', title: 'CA', validTo: new Date('2027-01-01T00:00:00Z') })
+  const mplan = await db.maintenancePlans.create({ tenantId: tenant.id }, actor, { accountId: a1.id, name: 'Standard', items: [{ title: 'Oil', intervalKm: 10000 }] })
   const sched = await db.scheduledReports.create({ tenantId: tenant.id, accountId: a1.id }, actor, { accountId: a1.id, reportType: 'trips', cadence: 'daily', hourUtc: 6, recipients: ['ops@x.test'] })
   const share = await db.shareLinks.create(scope, actor, { deviceId: device.id, accountId: a1.id, ttlHours: 24 })
   const pwHash = await hashPassword('irrelevant-not-logging-in')
@@ -160,6 +166,9 @@ async function seedTenant(
     exportId,
     driverId: driver.id,
     maintenanceId: maint.id,
+    serviceLogId: slog.id,
+    documentId: doc.id,
+    maintenancePlanId: mplan.id,
     scheduledReportId: sched.id,
     shareId: share.view.id,
     tokenPlatform: await token(platform.id, tenant.id, 'platform_admin'),
