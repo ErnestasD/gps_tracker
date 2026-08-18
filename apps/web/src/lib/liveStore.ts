@@ -6,6 +6,21 @@ export type ConnState = 'connecting' | 'open' | 'closed'
 export interface DeviceLive {
   ev: LiveEvent
   status: DeviceStatus
+  /**
+   * The last position this device was actually SEEN at — carried forward across invalid fixes,
+   * `null` until the very first valid one.
+   *
+   * Invariant I6 says an invalid fix must never affect map trails, and `buildTrailFeatures` honours
+   * it, but the device MARKER read `ev.lon/ev.lat` unconditionally. A tracker reporting
+   * `satellites=0` sends lat/lon `0/0`, so a brand-new device sitting indoors in Vilnius was drawn
+   * in the Gulf of Guinea — with the info card correctly saying "no GPS fix" right beside it.
+   * Showing a customer their vehicle 6000 km out to sea is worse than showing nothing.
+   *
+   * Per spec §3.4 an invalid record merely repeats the last valid position while the device has no
+   * fix, so the marker holds still rather than jumping — and a device that has NEVER had a fix is
+   * not placed on the map at all. It stays in the list, where "no GPS fix" is the honest answer.
+   */
+  fix: { lon: number; lat: number; course: number } | null
 }
 
 export interface LiveSnapshot {
@@ -28,6 +43,10 @@ export interface MapFrame {
   devices: GeoJSON.FeatureCollection
   trail: GeoJSON.FeatureCollection
   selected: LiveEvent | null
+  /** Where to CENTRE on when following — the selected device's last valid fix, `null` if it has
+   *  never had one. Separate from `selected` because that event's own lat/lon may be an invalid
+   *  0/0, and following it would fly the map into the Atlantic (see `DeviceLive.fix`). */
+  selectedFix: { lon: number; lat: number } | null
   follow: boolean
 }
 
@@ -131,7 +150,9 @@ export class LiveStore {
   ingest(ev: LiveEvent): void {
     const current = this.byId.get(ev.deviceId)
     if (current && current.ev.fixTimeMs >= ev.fixTimeMs) return // max-wins
-    this.byId.set(ev.deviceId, { ev, status: statusOf(this.now() - ev.fixTimeMs) })
+    // only a VALID fix moves the marker; an invalid one keeps whatever we last knew (see `fix`)
+    const fix = ev.fixValid ? { lon: ev.lon, lat: ev.lat, course: ev.course ?? 0 } : (current?.fix ?? null)
+    this.byId.set(ev.deviceId, { ev, status: statusOf(this.now() - ev.fixTimeMs), fix })
     if (this.snapshot.trail && ev.deviceId === this.snapshot.selectedId) {
       this.trailPoints.push({ lon: ev.lon, lat: ev.lat, fixValid: ev.fixValid, fixTimeMs: ev.fixTimeMs })
       if (this.trailPoints.length > TRAIL_CAP) this.trailPoints.shift()
@@ -233,7 +254,7 @@ export class LiveStore {
     for (const [, dev] of this.byId) {
       const status = statusOf(now - dev.ev.fixTimeMs)
       if (status !== dev.status) {
-        this.byId.set(dev.ev.deviceId, { ev: dev.ev, status })
+        this.byId.set(dev.ev.deviceId, { ev: dev.ev, status, fix: dev.fix })
         changed = true
       }
     }
@@ -254,22 +275,30 @@ export class LiveStore {
   private pushMapFrame(): void {
     if (!this.mapSink) return
     const { selectedId, follow } = this.snapshot
-    const features: GeoJSON.Feature[] = this.snapshot.devices.map(({ ev, status }) => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [ev.lon, ev.lat] },
-      properties: {
-        deviceId: ev.deviceId,
-        course: ev.course ?? 0,
-        status,
-        selected: ev.deviceId === selectedId,
-      },
-    }))
+    // flatMap, not map: a device with no valid fix YET contributes no marker at all rather than a
+    // confident dot at 0,0 — see `DeviceLive.fix`.
+    const features: GeoJSON.Feature[] = this.snapshot.devices.flatMap(({ ev, status, fix }) =>
+      fix === null
+        ? []
+        : [{
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [fix.lon, fix.lat] },
+            properties: {
+              deviceId: ev.deviceId,
+              course: fix.course,
+              status,
+              selected: ev.deviceId === selectedId,
+            },
+          }],
+    )
     const trail: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
       features: buildTrailFeatures(this.trailPoints),
     }
-    const selected = selectedId !== null ? (this.byId.get(selectedId)?.ev ?? null) : null
-    this.mapSink({ devices: { type: 'FeatureCollection', features }, trail, selected, follow })
+    const selectedLive = selectedId !== null ? (this.byId.get(selectedId) ?? null) : null
+    const selected = selectedLive?.ev ?? null
+    const selectedFix = selectedLive?.fix ?? null
+    this.mapSink({ devices: { type: 'FeatureCollection', features }, trail, selected, selectedFix, follow })
   }
 
   // ── useSyncExternalStore contract ─────────────────────────────────────────
