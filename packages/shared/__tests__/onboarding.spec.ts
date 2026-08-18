@@ -130,6 +130,18 @@ describe('the SMS password prefix is per-PLATFORM, not one constant', () => {
     for (const family of ['xftc887', 'my-atc700', 'fmb-atm']) expect(smsPrefixFor(family), family).toBe('  ')
   })
 
+  it('an EMPTY value is allowed — clearing a parameter is how a device goes back to stock', () => {
+    // Teltonika's own quick-config documents the empty form ("leave field empty if there is no APN
+    // username"). Requiring a character meant we could set a wrong APN and never take it back.
+    expect(isAllowedSmsCommand(' setparam 2001:')).toBe(true)
+    expect(isAllowedSmsCommand(' setparam 2001:;2004:;2005:0;2006:0')).toBe(true)
+    expect(isAllowedSmsCommand('  setparam 2004:')).toBe(true)
+    // …and it widens nothing else: an injected second command is still refused
+    expect(isAllowedSmsCommand(' setparam 2001:;evil')).toBe(false)
+    expect(isAllowedSmsCommand(' setparam :')).toBe(false)
+    expect(isAllowedSmsCommand(' setparam 2001: 2004:x')).toBe(false)
+  })
+
   it('the allow-list accepts what the sheet generates — for BOTH platforms', () => {
     // The route validates a caller-supplied body against isAllowedSmsCommand. If that regex demanded
     // two spaces, an operator pasting our own FTC887 command back in would be refused by our own
