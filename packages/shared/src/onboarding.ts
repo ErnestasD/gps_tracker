@@ -80,6 +80,34 @@ const SAFE_APN = /^[a-zA-Z0-9._-]{1,63}$/
 const FT_PLATFORM = /^(?:ftc|ftm|atc|atm)/i
 
 /**
+ * FTC and FTM models ship with their own position hidden, and the config SMS turns that off.
+ *
+ * Parameter 11813 "GPS data masking" defaults to `1` — "GNSS data sent as zero" — and it applies in
+ * the device's Private mode, which these models cannot leave: switching needs a DIN input FTC887
+ * does not physically have, and the weekly Business window is factory-set to 00:00–00:00, i.e.
+ * empty. So a brand-new tracker, correctly onboarded, transmits zeros for position, satellite count
+ * AND the GNSS date, forever.
+ *
+ * That is indistinguishable from a tracker that cannot see the sky, and it cost most of a day on
+ * real hardware: the device reported `GNSS Status 2` (on, searching), `satellites 0`, HDOP/PDOP
+ * 1000 and `Date:1970-01-01` for eight hours on a windowsill. Setting 11813 to 0 produced 16
+ * satellites and a valid Vilnius fix in the same minute — the receiver had been tracking all along.
+ * The customer would blame us, and from where they stand they would be right to.
+ *
+ * Founder decision 2026-08-18: masked position contradicts the purpose of a fleet-tracking
+ * platform, so we clear it at onboarding rather than leaving each customer to discover it. The
+ * command is visible in the sheet, so this is disclosed, not silent. A fleet that genuinely needs
+ * private/business trips configures it deliberately afterwards.
+ *
+ * NOT the whole FT family: ATC and ATM have no parameter 11813 (checked against ATC700's list), and
+ * naming an id a model does not have risks the device rejecting the entire setparam. Verified
+ * present with default 1 on FTC881, FTC887, FTC921 and FTM134; absent on FMB120 and FMC150.
+ * https://wiki.teltonika-gps.com/view/FTC887_Parameter_List
+ */
+const MASKS_ITS_OWN_POSITION = /^(?:ftc|ftm)/i
+const UNMASK = ';11813:0'
+
+/**
  * The leading whitespace that stands in for an unset SMS password — ONE space or TWO, by platform.
  *
  * This is the whole config SMS. Get it wrong and the device receives a perfectly deliverable
@@ -123,7 +151,12 @@ export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
   // 2004 Domain, 2005 Port, 2006 Data protocol (0 – TCP) exactly as FMB120 does.
   // https://wiki.teltonika-gps.com/view/FTC887_Parameter_List
   const prefix = smsPrefixFor(input.family)
-  const smsServer = host === null ? null : `${prefix}setparam 2004:${host};2005:${port};2006:0`
+  // …and, on the models that ship with their position masked, the parameter that unmasks it. It
+  // rides on the SERVER command rather than the APN one because it belongs to "make this tracker
+  // report to us", and because that is the command an operator copy-pastes when sending by hand —
+  // leaving it off there would reproduce the whole failure for anyone not using the button.
+  const unmask = input.family !== undefined && MASKS_ITS_OWN_POSITION.test(input.family.trim()) ? UNMASK : ''
+  const smsServer = host === null ? null : `${prefix}setparam 2004:${host};2005:${port};2006:0${unmask}`
   const apn = input.apn?.trim()
   // reject any APN carrying a separator/space (';'/':' would inject a second setparam) — drop to
   // null on a bad value, exactly as host falls back; the {1,63} bound also caps length server-side
@@ -131,7 +164,7 @@ export function buildOnboarding(input: OnboardingInput): OnboardingSheet {
   const smsApn = apnSafe !== null ? `${prefix}setparam 2001:${apnSafe}` : null
   // combined single SMS for the automated gateway: prepend the APN param (2001) to the server
   // triplet in ONE setparam when an APN is given — ~55 chars, well under one 160-char segment.
-  const smsAuto = host === null ? null : `${prefix}setparam ${apnSafe !== null ? `2001:${apnSafe};` : ''}2004:${host};2005:${port};2006:0`
+  const smsAuto = host === null ? null : `${prefix}setparam ${apnSafe !== null ? `2001:${apnSafe};` : ''}2004:${host};2005:${port};2006:0${unmask}`
 
   const familyCaveat = input.legacyProfile ?? true
   /**

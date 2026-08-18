@@ -152,7 +152,9 @@ describe('SMS gateway API — POST /v1/devices/:id/sms', () => {
     const res = await req(port, `/v1/devices/${ftDeviceId}/sms`, adminToken, 'POST', {})
     expect(res.status).toBe(201)
     const body = enqueued[before]!.body
-    expect(body).toBe(' setparam 2004:orbetra.com;2005:5027;2006:0')
+    // one space (FT prefix) AND the unmask parameter, both of which depend on the route passing
+    // `profile.key` through — FTC887 ships with GPS data masking on and reports zeros without it.
+    expect(body).toBe(' setparam 2004:orbetra.com;2005:5027;2006:0;11813:0')
     expect(body.startsWith('  '), 'an FT device must NOT get the FMB double space').toBe(false)
     // the FMB device, same deployment, still gets two — the difference is the hardware
     expect(CONFIG_SMS.startsWith('  ')).toBe(true)
