@@ -200,10 +200,16 @@ describe('SMS gateway API — POST /v1/devices/:id/sms', () => {
     expect(enqueued.length).toBe(before) // nothing enqueued on a rejected request
   })
 
-  it('403: a Direct-plan (direct_10) tenant lacks smsGateway → plan_upgrade_required', async () => {
+  it('a DIRECT-plan tenant can send too — the gateway is not a reseller privilege (2026-08-18)', async () => {
+    // It was `smsGateway: tsp`, so a direct customer got 403 with no delivery row and no log line;
+    // the UI, which keyed the button on "is Twilio configured" instead of the entitlement, showed a
+    // working button and the operator saw only "sending failed, try again". Pointing a tracker at
+    // the server is the first minute anyone spends with this product — making them hand-type
+    // `setparam 2004:…` into an SMS is where they are lost, so it is on for every plan.
+    const before = enqueued.length
     const res = await req(port, `/v1/devices/${directDeviceId}/sms`, directToken, 'POST', {})
-    expect(res.status).toBe(403)
-    expect(((await res.json()) as { detail?: string }).detail).toBe('plan_upgrade_required')
+    expect(res.status).toBe(201)
+    expect(enqueued.length).toBe(before + 1)
   })
 
   it('404: a cross-tenant device (never leaks the row); an unknown device id → 404', async () => {

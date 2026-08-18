@@ -43,11 +43,18 @@ describe('tenant plans contract', () => {
 })
 
 describe('planEntitlements matrix (founder-locked 2026-07-20)', () => {
-  const TSP_PLUS = ['whiteLabel', 'customDomains', 'subAccounts', 'apiAccess', 'webhooks', 'prioritySupport', 'smsGateway'] as const
+  // `smsGateway` left this list on 2026-08-18: pointing a tracker at the server is the first minute
+  // a customer spends with the product, and making a direct customer hand-type `setparam 2004:…`
+  // into an SMS is where they are lost. It is asserted for EVERY plan below instead.
+  const TSP_PLUS = ['whiteLabel', 'customDomains', 'subAccounts', 'apiAccess', 'webhooks', 'prioritySupport'] as const
   // `sso` and `dataResidency` used to be here. They granted nothing — no SSO code path, no
   // residency routing existed — so they were removed from the matrix rather than left as promises
   // the product cannot keep. Re-add them WITH the implementation (audit finding, founder decision).
   const SCALE_PLUS = ['sla999'] as const
+
+  it('smsGateway is on for EVERY plan — a direct customer must not have to hand-type setparam', () => {
+    for (const p of TENANT_PLANS) expect(planEntitlements(p).smsGateway, p).toBe(true)
+  })
 
   it('direct_5: deviceLimit 5 and every TSP-plus feature false', () => {
     const e = planEntitlements('direct_5')

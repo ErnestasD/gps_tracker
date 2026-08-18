@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { planEntitlements, type EntitlementKey } from '@orbetra/shared'
+import { FLOOR_ENTITLEMENTS, planEntitlements, type EntitlementKey } from '@orbetra/shared'
 
 import { setup, type Fixtures } from './fixtures.js'
 
@@ -127,24 +127,57 @@ describe('WP5 tenant-plan entitlement gating (real API+DB)', () => {
 })
 
 describe('WP5 meta-test: every entitlement-tagged manifest route is plan-gated (mirrors the role/isolation meta-tests)', () => {
+  const taggedWrites = () =>
+    fx.manifest.filter((m) => m.entitlement !== undefined && (m.method === 'post' || m.method === 'patch'))
+  // itemPath: swap the first :param so param-carrying routes resolve; the plan gate runs BEFORE
+  // the handler, so the placeholder id is never dereferenced — a 403 is returned regardless.
+  const itemPath = (path: string) => path.replace(/:[a-zA-Z]+/, '00000000-0000-0000-0000-000000000000')
+
   it('a plan LACKING an entitlement 403s (plan_upgrade_required) on every tagged WRITE route', async () => {
     // WRITE methods only. GET and DELETE on a tagged route are deliberately open, so that a tenant
     // that lapsed or downgraded can still SEE and REMOVE what the plan no longer covers — the
     // delivery side does not consult the plan, so being unable to turn a paid feature off is the
     // worst shape of the bug. The meta-test still guarantees every tagged route's CREATE/MODIFY
     // path is gated, which is the property that protects revenue (audit MED).
-    const tagged = fx.manifest.filter((m) => m.entitlement !== undefined && (m.method === 'post' || m.method === 'patch'))
-    expect(tagged.length, 'at least one route must carry an entitlement tag').toBeGreaterThan(0)
     const directEnts = planEntitlements(fx.directTenant.plan)
-    // itemPath: swap the first :param so param-carrying routes resolve; the plan gate runs BEFORE
-    // the handler, so the placeholder id is never dereferenced — a 403 is returned regardless.
-    const itemPath = (path: string) => path.replace(/:[a-zA-Z]+/, '00000000-0000-0000-0000-000000000000')
-    for (const m of tagged) {
-      // every currently-tagged entitlement is one the direct_10 plan lacks — assert that precondition
-      // so this meta-test can't silently pass on a route the fixture plan happens to HAVE.
-      expect(directEnts[m.entitlement as EntitlementKey], `direct_10 must lack ${m.entitlement} for ${m.method} ${m.path}`).toBe(false)
+    expect(taggedWrites().length, 'at least one route must carry an entitlement tag').toBeGreaterThan(0)
+    const byPlan = taggedWrites().filter((m) => !directEnts[m.entitlement as EntitlementKey])
+    expect(byPlan.length, 'the direct_10 plan must lack at least one tagged entitlement').toBeGreaterThan(0)
+    for (const m of byPlan) {
       const res = await call(itemPath(m.path), fx.directTenant.tokenTenant, m.method.toUpperCase())
       await expect403(res, 'plan_upgrade_required', `${m.method.toUpperCase()} ${m.path}`)
+    }
+  })
+
+  it('a tag EVERY plan grants is not decorative — the lapsed floor still 403s it', async () => {
+    // `smsGateway` became universal on 2026-08-18 (config SMS is onboarding, not a reseller perk),
+    // which retired the "direct_10 lacks it" precondition this meta-test used to assert for every
+    // tagged route. Deleting the tag instead would have been wrong: the entitlement is still refused
+    // to a tenant whose subscription lapsed, and `requireEntitlement` reads EFFECTIVE entitlements
+    // (plan ∩ live Stripe status), not the plan matrix. So the property to hold is not "some plan
+    // lacks it" but "somebody is still refused" — otherwise a tag that gates nobody sits there
+    // looking like protection.
+    const directEnts = planEntitlements(fx.directTenant.plan)
+    const universal = taggedWrites().filter((m) => directEnts[m.entitlement as EntitlementKey])
+    for (const m of universal) {
+      // no plan-matrix escape hatch: the floor must deny it, or the tag is genuinely dead.
+      expect(FLOOR_ENTITLEMENTS[m.entitlement as EntitlementKey], `${m.entitlement} is granted by every plan AND by the lapsed floor — ${m.method} ${m.path} can never 403, so drop the tag or narrow the entitlement`).toBe(false)
+    }
+    if (universal.length === 0) return // nothing universal today; the assertion above is the guard
+
+    const prev = await fx.setSubscriptionStatus(fx.directTenant.id, 'canceled')
+    try {
+      for (const m of universal) {
+        const res = await call(itemPath(m.path), fx.directTenant.tokenTenant, m.method.toUpperCase())
+        await expect403(res, 'plan_upgrade_required', `lapsed ${m.method.toUpperCase()} ${m.path}`)
+      }
+    } finally {
+      await fx.setSubscriptionStatus(fx.directTenant.id, prev)
+    }
+    // and the same tenant, restored, is allowed again — so the 403 above was the lapse, not the route
+    for (const m of universal) {
+      const res = await call(itemPath(m.path), fx.directTenant.tokenTenant, m.method.toUpperCase())
+      expect(res.status, `restored ${m.method.toUpperCase()} ${m.path} must not be plan-refused`).not.toBe(403)
     }
   })
 })

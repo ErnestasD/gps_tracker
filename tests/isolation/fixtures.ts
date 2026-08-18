@@ -67,6 +67,16 @@ export interface Fixtures {
   directTenant: TenantFixture
   /** the shared fmb1xx profile id — for device-create positive/negative controls in plan tests. */
   profileId: string
+  /**
+   * Set a tenant's LIVE Stripe subscription status, so the lapsed-entitlement floor can be
+   * exercised against the real gate rather than asserted from the plan matrix.
+   *
+   * An entitlement every plan grants (`smsGateway`) still 403s for a canceled/unpaid tenant —
+   * that is the only thing keeping its route tag from being decorative, and it is not visible
+   * from `planEntitlements` alone. Returns the PREVIOUS value, so a test restores what it found
+   * rather than what it assumed the seed used.
+   */
+  setSubscriptionStatus(tenantId: string, status: string | null): Promise<string | null>
   stop(): Promise<void>
 }
 
@@ -279,6 +289,17 @@ export async function setup(): Promise<Fixtures> {
     t2,
     directTenant,
     profileId,
+    // SQL side (createPool) on purpose — @prisma/client is lint-banned in this suite.
+    setSubscriptionStatus: async (tenantId, status) => {
+      // read-then-write, not a sub-SELECT in RETURNING: whether that subquery sees the row before
+      // or after its own UPDATE is a snapshot subtlety, and a restore value must not depend on one.
+      const { rows } = await pool.query<{ subscriptionStatus: string | null }>(
+        'SELECT "subscriptionStatus" FROM tenants WHERE id = $1',
+        [tenantId],
+      )
+      await pool.query('UPDATE tenants SET "subscriptionStatus" = $2 WHERE id = $1', [tenantId, status])
+      return rows[0]?.subscriptionStatus ?? null
+    },
     stop: async () => {
       server.closeAllConnections?.()
       await new Promise<void>((r) => server.close(() => r()))
