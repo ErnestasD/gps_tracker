@@ -97,13 +97,20 @@ describe('LiveStore', () => {
     expect(store.getSnapshot().devices.map((d) => d.ev.deviceId)).toEqual(['1', '2', '10'])
   })
 
-  it('status thresholds: online ≤60 s, stale ≤10 min, offline beyond', () => {
+  it('status thresholds: online ≤3 min, stale ≤10 min, offline beyond', () => {
     let now = T0
     const store = makeStore(() => now)
     store.ingest(ev('1', T0))
     store.flush()
     expect(store.getSnapshot().devices[0]!.status).toBe('online')
-    now = T0 + 61_000
+    // a Teltonika device BATCHES: it records on distance/angle and sends on a separate send period,
+    // 120 s by default on the FT platform. At the old 60 s window a device driving perfectly —
+    // recording every 1-5 s, as an FTC887 was measured doing — flapped online/stale all trip, so
+    // the dot reported our impatience rather than the vehicle. 120 s must still read online.
+    now = T0 + 121_000
+    store.flush()
+    expect(store.getSnapshot().devices[0]!.status, 'one default send period is not "stale"').toBe('online')
+    now = T0 + 181_000
     store.flush()
     expect(store.getSnapshot().devices[0]!.status).toBe('stale')
     now = T0 + 601_000
