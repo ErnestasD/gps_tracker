@@ -30,6 +30,15 @@ export interface CommandRepo {
   create(scope: Scope, actor: Actor, data: CommandCreate): Promise<CommandView>
   get(scope: Scope, id: string): Promise<CommandView | null>
   listForDevice(scope: Scope, deviceId: bigint): Promise<CommandView[]>
+  /**
+   * The setparam/getparam rows the tracking-settings page derives device state from.
+   *
+   * Deliberately NOT `listForDevice`: that is a generic 100-row window, and a settings save adds
+   * two rows to it. Roughly fifty saves — or any other command traffic at all — would push the last
+   * verification out of the window and every setting would silently read as "unknown". Filtering in
+   * SQL keeps the window spent on the rows that answer the question.
+   */
+  listParamHistory(scope: Scope, deviceId: bigint, take?: number): Promise<CommandView[]>
 }
 
 const EXPIRY_MS = 24 * 3_600_000
@@ -66,6 +75,18 @@ export function createCommandRepo(prisma: PrismaClient, audit: AuditRepo): Comma
     },
     listForDevice: async (scope, deviceId) => {
       const rows = await prisma.command.findMany({ where: { ...scopedWhere(scope), deviceId }, orderBy: { createdAt: 'desc' }, take: 100 })
+      return rows.map(toView)
+    },
+    listParamHistory: async (scope, deviceId, take = 200) => {
+      const rows = await prisma.command.findMany({
+        where: {
+          ...scopedWhere(scope),
+          deviceId,
+          OR: [{ text: { startsWith: 'setparam' } }, { text: { startsWith: 'getparam' } }],
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+      })
       return rows.map(toView)
     },
   }

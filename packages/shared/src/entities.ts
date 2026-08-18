@@ -311,6 +311,16 @@ export const commandCreateSchema = z.object({
   text: z.string().min(1).max(512).regex(/^[\x20-\x7e]+$/, 'command must be printable ASCII'),
 })
 
+/**
+ * Tracking-settings write (device settings). A map of named settings to whole numbers; the bounds
+ * are per MODEL and enforced by `isSettingInRange` in the handler, not here, because zod cannot see
+ * which device this is for. Keys are validated there too — an unknown one is a 400, never ignored.
+ */
+export const deviceSettingsWriteSchema = z.object({
+  changes: z.record(z.string(), z.number().int()).refine((r) => Object.keys(r).length > 0, 'no changes'),
+})
+export type DeviceSettingsWriteInput = z.infer<typeof deviceSettingsWriteSchema>
+
 /** Non-idempotent commands that must NOT be auto-retried on timeout (a cpureset causes the
  * >30 s silence that looks like a timeout — retrying resets the just-rebooted device). */
 export function isRetryableCommand(text: string): boolean {

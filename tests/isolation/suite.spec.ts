@@ -201,6 +201,10 @@ const PARAM_ENTITY: Record<string, string> = {
   // silently mis-key one of them into exactly the vacuous pass described above.
   'POST /v1/accounts/:id/export': 'exportOnAccount',
   'POST /v1/devices/:id/commands': 'commandOnDevice',
+  // tracking settings: manifested entity 'command' (so WRITE_POLICY gates it as a write), but the
+  // :id is a DEVICE. Without this the sweep sent a command UUID, toBigId returned null, and the
+  // 404 arrived before any tenant predicate ran — the vacuous pass described above.
+  'POST /v1/devices/:id/settings': 'commandOnDevice',
   // FLEET-1: the log/document routes hang off the DEVICE — the :id is a device id
   'GET /v1/devices/:id/service-log': 'device',
   'POST /v1/devices/:id/service-log': 'device',
