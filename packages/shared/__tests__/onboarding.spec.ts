@@ -103,7 +103,9 @@ describe('the SMS password prefix is per-PLATFORM, not one constant', () => {
     for (const family of ['ftc887', 'ftc134', 'ftc881', 'ftm134', 'atc700', 'atm700', 'FTC887']) {
       expect(smsPrefixFor(family), family).toBe(' ')
       const s = buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'internet', family, legacyProfile: false })
-      expect(s.smsAuto, family).toBe(' setparam 2001:internet;2004:orbetra.com;2005:5027;2006:0')
+      // FTC/FTM additionally carry the unmask parameter — see the separate describe below
+      const unmask = /^(ftc|ftm)/i.test(family) ? ';11813:0' : ''
+      expect(s.smsAuto, family).toBe(` setparam 2001:internet;2004:orbetra.com;2005:5027;2006:0${unmask}`)
       expect(s.smsServer!.startsWith('  '), `${family} must NOT carry the FMB double space`).toBe(false)
       expect(s.smsServer!.startsWith(' '), family).toBe(true)
     }
@@ -147,6 +149,63 @@ describe('the SMS password prefix is per-PLATFORM, not one constant', () => {
     expect(isAllowedSmsCommand('   getinfo')).toBe(false)
     expect(isAllowedSmsCommand(' Your parcel is held, pay at http://x.example')).toBe(false)
     expect(isAllowedSmsCommand(' setparam 2004:evil.com x')).toBe(false)
+  })
+})
+
+/**
+ * FTC and FTM ship with their position masked, and onboarding clears it.
+ *
+ * Parameter 11813 "GPS data masking" defaults to 1 — "GNSS data sent as zero" — inside a Private
+ * mode these models cannot leave (switching needs a DIN they do not have; the weekly Business
+ * window is factory 00:00–00:00). A brand-new, correctly onboarded tracker therefore transmits
+ * zeros for position, satellite count AND the GNSS date, forever, which is indistinguishable from
+ * one that cannot see the sky.
+ *
+ * Measured on hardware 2026-08-18: eight hours of `GNSS Status 2` / `satellites 0` / `Date:1970`
+ * on a windowsill, then 16 satellites and a valid fix in the same minute that 11813 went to 0.
+ * Founder decision the same day: a masked position contradicts the purpose of the platform.
+ */
+describe('the models that hide their own position are told not to', () => {
+  const sheetFor = (family: string) =>
+    buildOnboarding({ imei: '1', host: 'h.example', port: 5027, apn: 'banga', family, legacyProfile: false })
+
+  it('FTC and FTM get 11813:0 on both the sent command and the copy-paste one', () => {
+    for (const family of ['ftc887', 'ftc881', 'ftc921', 'ftm134', 'FTM887']) {
+      const s = sheetFor(family)
+      expect(s.smsAuto, family).toBe(' setparam 2001:banga;2004:h.example;2005:5027;2006:0;11813:0')
+      // the manual path must not reproduce the failure for anyone who does not use the button
+      expect(s.smsServer, family).toBe(' setparam 2004:h.example;2005:5027;2006:0;11813:0')
+    }
+  })
+
+  it('ATC and ATM do NOT — they have no such parameter, and naming a missing id risks the whole command', () => {
+    // ATC700's parameter list has no 11813; a setparam naming an id the model does not implement
+    // may be rejected outright, which would break the onboarding it was meant to fix.
+    for (const family of ['atc700', 'atm700', 'atc704']) {
+      const s = sheetFor(family)
+      expect(s.smsAuto, family).not.toContain('11813')
+      expect(s.smsServer, family).toBe(' setparam 2004:h.example;2005:5027;2006:0')
+    }
+  })
+
+  it('the FMB generation does not either — the parameter does not exist there', () => {
+    for (const family of ['fmb120', 'fmc150', 'fmm130', 'tat100']) {
+      expect(sheetFor(family).smsAuto, family).not.toContain('11813')
+    }
+  })
+
+  it('an unknown or legacy family is left alone — we only name ids we know the model has', () => {
+    for (const family of ['fmb1xx', 'tat-asset', 'exotic-x']) {
+      expect(sheetFor(family).smsAuto, family).not.toContain('11813')
+    }
+    expect(buildOnboarding({ imei: '1', host: 'h', port: 5027 }).smsAuto).not.toContain('11813')
+  })
+
+  it('still one SMS segment, and still passes our own command allow-list', () => {
+    const s = buildOnboarding({ imei: '1', host: '185.80.129.33', port: 5027, apn: 'banga', family: 'ftc887', legacyProfile: false })
+    expect(s.smsAuto!.length).toBeLessThanOrEqual(160)
+    expect(isAllowedSmsCommand(s.smsAuto!)).toBe(true)
+    expect(isAllowedSmsCommand(s.smsServer!)).toBe(true)
   })
 })
 

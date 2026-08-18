@@ -67,6 +67,35 @@ paste, or better, use the platform's Send button (Twilio preserves the exact byt
 box, **UDP 5027 is not** (the firewall allows only tcp). A device left on UDP will look completely
 dead — no connection, no log, nothing in quarantine.
 
+## 2b. FTC/FTM ship with their position hidden — onboarding clears it
+
+Worth knowing, because the symptom is a perfect impostor. Parameter **11813 "GPS data masking"**
+defaults to `1` — *"GNSS data sent as zero"* — inside a Private mode these models cannot leave:
+switching needs a DIN input FTC887 does not physically have, and the weekly Business window is
+factory-set to 00:00–00:00.
+
+So a brand-new FTC/FTM transmits zeros for position, satellite count **and the GNSS date**, forever.
+On the server that is indistinguishable from a tracker that cannot see the sky:
+
+```
+GNSS Status: 2        (module ON, searching)
+satellites:  0
+HDOP/PDOP:   1000     (the no-fix sentinel)
+getgps:      GPS:0 Sat:0 LAT:0 LON:0 Date:1970-01-01
+```
+
+It cost most of 2026-08-18 — eight hours on a windowsill with those numbers, then **16 satellites
+and a valid fix in the same minute** that `11813` went to 0. The receiver had been tracking the
+whole time.
+
+The config SMS now carries `;11813:0` for FTC/FTM (founder decision 2026-08-18: a masked position
+contradicts the purpose of the platform). **ATC/ATM and the FMB generation do not have this
+parameter and must never be sent it** — naming an id a model does not implement risks the device
+rejecting the whole `setparam`.
+
+If you ever meet the signature above on a device onboarded some other way, send `setparam 11813:0`
+before suspecting the antenna.
+
 ## 3. Watch it arrive
 
 ```sh
