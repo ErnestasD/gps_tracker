@@ -39,6 +39,15 @@ export interface CommandRepo {
    * SQL keeps the window spent on the rows that answer the question.
    */
   listParamHistory(scope: Scope, deviceId: bigint, take?: number): Promise<CommandView[]>
+  /**
+   * Mark a still-queued command as never-to-be-delivered, because a later instruction replaced it.
+   *
+   * `expired` rather than a new status: it already means exactly this — the command did not reach
+   * the device and no longer will — and the read side already presents it that way. Only a `queued`
+   * row is touched; once the dispatcher has sent it, the device has it and the truth is whatever
+   * the device now holds.
+   */
+  markSuperseded(scope: Scope, id: string): Promise<void>
 }
 
 const EXPIRY_MS = 24 * 3_600_000
@@ -76,6 +85,10 @@ export function createCommandRepo(prisma: PrismaClient, audit: AuditRepo): Comma
     listForDevice: async (scope, deviceId) => {
       const rows = await prisma.command.findMany({ where: { ...scopedWhere(scope), deviceId }, orderBy: { createdAt: 'desc' }, take: 100 })
       return rows.map(toView)
+    },
+    markSuperseded: async (scope, id) => {
+      if (!uuid(id)) return
+      await prisma.command.updateMany({ where: { ...scopedWhere(scope), id, status: 'queued' }, data: { status: 'expired' } })
     },
     listParamHistory: async (scope, deviceId, take = 200) => {
       const rows = await prisma.command.findMany({

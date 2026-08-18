@@ -689,7 +689,42 @@
     "modelChangeConfirm": "Change model",
     "modelChangeSure": "Change {{name}} from {{from}} to {{to}}?\n\nThis decides how FUTURE positions are decoded. Positions already stored keep the parameter names they were decoded with, and are not rewritten.",
     "waiting": "Waiting",
-    "waitingHint": "Registered, but this device has never reported a position. Check the IMEI, the SIM's APN, and that the tracker has been sent the server SMS."
+    "waitingHint": "Registered, but this device has never reported a position. Check the IMEI, the SIM's APN, and that the tracker has been sent the server SMS.",
+    "settings": {
+      "title": "Tracking settings — {{name}}",
+      "loadError": "Could not load the settings.",
+      "saveError": "Could not queue the change.",
+      "unsupported": "We have no parameter list for this model, so its tracking settings cannot be offered here. Use the command console if you know the parameter ids.",
+      "save": "Apply to device",
+      "queuedNote": "The change is sent when the device next connects.",
+      "estimate": "About {{day}} MB per {{hours}} h of driving, ~{{month}} MB a month.",
+      "estimateAssumes": "Assumes an average of {{speed}} km/h; turns add records, so treat this as a floor.",
+      "homeProfileOnly": "Applies on the home network. Abroad, most trackers use a separate roaming profile that ships set to not transmit.",
+      "key": {
+        "movingSendPeriod": "How often it reports while driving",
+        "movingByTime": "How often it records while driving",
+        "movingByDistance": "Record every",
+        "movingByAngle": "Record on a turn of",
+        "parkedByTime": "How often it records while parked",
+        "parkedSendPeriod": "How often it reports while parked"
+      },
+      "unit": {
+        "seconds": "s",
+        "metres": "m",
+        "degrees": "°"
+      },
+      "state": {
+        "waiting": "waiting for the device",
+        "sent": "sent, awaiting confirmation",
+        "rejected": "the device kept {{value}}",
+        "undelivered": "never reached the device",
+        "checked": "confirmed {{when}}",
+        "unknown": "not read from the device yet"
+      },
+      "menu": "Tracking settings",
+      "queuing": "Queueing…",
+      "outOfRange": "device holds {{value}}, outside the range we offer"
+    }
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",
@@ -1398,5 +1433,8 @@
     "slogCost": "Cost (€)",
     "slogVendor": "Workshop",
     "addEntry": "Add"
+  },
+  "common": {
+    "saving": "Saving…"
   }
 }

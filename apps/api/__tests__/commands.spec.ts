@@ -179,6 +179,39 @@ describe('device tracking settings', () => {
     expect(body.current['movingSendPeriod']!.value).toBeNull() // the tracker still has not answered
   })
 
+  it('a NEW write drops a queued one for the same parameter — the last instruction wins', async () => {
+    /**
+     * Live proof, 2026-08-18: a settings command queued at 14:17 was corrected at 14:53 by another
+     * route, and when the parked tracker finally connected at 14:54 the STALE command drained and
+     * re-applied the value that had just been undone. The vehicle went silent for five hours and
+     * the platform reported no fault at all. Commands wait for hours on a parked vehicle — long
+     * enough for the customer to change their mind twice.
+     */
+    await redis.del(`cmd:pending:${deviceId}`)
+    const first = await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', { changes: { movingSendPeriod: 10 } })
+    expect(first.status).toBe(202)
+    const firstId = ((await first.json()) as { commandId: string }).commandId
+
+    const second = await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', { changes: { movingSendPeriod: 60 } })
+    expect(second.status).toBe(202)
+
+    const texts = (await redis.lrange(`cmd:pending:${deviceId}`, 0, -1)).map((j) => (JSON.parse(j) as { text: string }).text)
+    const writes = texts.filter((t) => t.startsWith('setparam'))
+    expect(writes, 'the superseded write must be gone from the queue').toEqual(['setparam 10055:60'])
+
+    // …and its row must not sit "waiting" for 24 h either
+    const row = (await (await req(`/v1/commands/${firstId}`, t1Token)).json()) as { status: string }
+    expect(row.status).toBe('expired')
+  })
+
+  it('leaves a queued write for a DIFFERENT parameter alone', async () => {
+    await redis.del(`cmd:pending:${deviceId}`)
+    await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', { changes: { movingByDistance: 50 } })
+    await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', { changes: { movingSendPeriod: 60 } })
+    const texts = (await redis.lrange(`cmd:pending:${deviceId}`, 0, -1)).map((j) => (JSON.parse(j) as { text: string }).text)
+    expect(texts.filter((t) => t.startsWith('setparam')).sort()).toEqual(['setparam 10051:50', 'setparam 10055:60'])
+  })
+
   it('refuses a value outside what the model accepts, and names the bound', async () => {
     for (const [key, value] of [['movingSendPeriod', 0], ['movingSendPeriod', 121], ['movingByDistance', 5]] as const) {
       const res = await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', { changes: { [key]: value } })

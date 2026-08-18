@@ -75,7 +75,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     scheduledReports: { ...repo, listEnabled: notImpl, claimRun: notImpl },
     pushSubscriptions: { subscribe: notImpl, unsubscribe: notImpl, listByAccount: notImpl, deleteByEndpoint: notImpl },
     apiKeys: { list: notImpl, create: notImpl, revoke: notImpl, findActiveByHash: notImpl, touch: notImpl },
-    commands: { create: notImpl, get: notImpl, listForDevice: notImpl, listParamHistory: notImpl },
+    commands: { create: notImpl, get: notImpl, listForDevice: notImpl, listParamHistory: notImpl, markSuperseded: notImpl },
     smsDeliveries: { create: notImpl, get: notImpl, listForDevice: notImpl, markSent: notImpl, markFailed: notImpl },
     exports: { create: notImpl, get: notImpl, list: notImpl, findPending: notImpl, pathOf: notImpl },
     leads: { create: notImpl, list: notImpl },

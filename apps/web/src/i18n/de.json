@@ -689,7 +689,42 @@
     "modelChangeConfirm": "Modell ändern",
     "modelChangeSure": "{{name}} von {{from}} auf {{to}} ändern?\n\nDas bestimmt, wie KÜNFTIGE Positionen dekodiert werden. Bereits gespeicherte Positionen behalten die Parameternamen, mit denen sie dekodiert wurden, und werden nicht neu geschrieben.",
     "waiting": "Wartet",
-    "waitingHint": "Registriert, aber dieses Gerät hat noch nie eine Position gesendet. Prüfe IMEI, den APN der SIM und ob dem Tracker die Server-SMS geschickt wurde."
+    "waitingHint": "Registriert, aber dieses Gerät hat noch nie eine Position gesendet. Prüfe IMEI, den APN der SIM und ob dem Tracker die Server-SMS geschickt wurde.",
+    "settings": {
+      "title": "Tracking-Einstellungen — {{name}}",
+      "loadError": "Einstellungen konnten nicht geladen werden.",
+      "saveError": "Änderung konnte nicht eingereiht werden.",
+      "unsupported": "Für dieses Modell liegt uns keine Parameterliste vor, daher können die Tracking-Einstellungen hier nicht angeboten werden. Nutzen Sie die Befehlskonsole, wenn Sie die Parameter-IDs kennen.",
+      "save": "Auf Gerät anwenden",
+      "queuedNote": "Die Änderung wird gesendet, sobald sich das Gerät das nächste Mal verbindet.",
+      "estimate": "Etwa {{day}} MB pro {{hours}} h Fahrt, ~{{month}} MB im Monat.",
+      "estimateAssumes": "Angenommen im Mittel {{speed}} km/h; Kurven erzeugen zusätzliche Datensätze, dies ist also eine Untergrenze.",
+      "homeProfileOnly": "Gilt im Heimnetz. Im Ausland nutzen die meisten Tracker ein eigenes Roaming-Profil, das ab Werk nicht sendet.",
+      "key": {
+        "movingSendPeriod": "Meldeintervall während der Fahrt",
+        "movingByTime": "Aufzeichnungsintervall während der Fahrt",
+        "movingByDistance": "Aufzeichnen alle",
+        "movingByAngle": "Aufzeichnen bei Kurve von",
+        "parkedByTime": "Aufzeichnungsintervall im Stand",
+        "parkedSendPeriod": "Meldeintervall im Stand"
+      },
+      "unit": {
+        "seconds": "s",
+        "metres": "m",
+        "degrees": "°"
+      },
+      "state": {
+        "waiting": "wartet auf das Gerät",
+        "sent": "gesendet, Bestätigung ausstehend",
+        "rejected": "Gerät behielt {{value}}",
+        "undelivered": "hat das Gerät nie erreicht",
+        "checked": "bestätigt {{when}}",
+        "unknown": "noch nicht vom Gerät gelesen"
+      },
+      "menu": "Tracking-Einstellungen",
+      "queuing": "Wird eingereiht…",
+      "outOfRange": "Gerät hält {{value}}, außerhalb des angebotenen Bereichs"
+    }
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",
@@ -1398,5 +1433,8 @@
     "slogCost": "Kosten (€)",
     "slogVendor": "Werkstatt",
     "addEntry": "Hinzufügen"
+  },
+  "common": {
+    "saving": "Speichern…"
   }
 }

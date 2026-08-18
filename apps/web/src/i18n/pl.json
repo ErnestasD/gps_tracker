@@ -689,7 +689,42 @@
     "modelChangeConfirm": "Zmień model",
     "modelChangeSure": "Zmienić {{name}} z {{from}} na {{to}}?\n\nTo decyduje, jak będą dekodowane PRZYSZŁE pozycje. Już zapisane pozycje zachowują nazwy parametrów, z którymi zostały zdekodowane, i nie są przepisywane.",
     "waiting": "Oczekuje",
-    "waitingHint": "Zarejestrowane, ale to urządzenie nigdy nie wysłało pozycji. Sprawdź IMEI, APN karty SIM oraz czy do lokalizatora wysłano SMS z adresem serwera."
+    "waitingHint": "Zarejestrowane, ale to urządzenie nigdy nie wysłało pozycji. Sprawdź IMEI, APN karty SIM oraz czy do lokalizatora wysłano SMS z adresem serwera.",
+    "settings": {
+      "title": "Ustawienia śledzenia — {{name}}",
+      "loadError": "Nie udało się wczytać ustawień.",
+      "saveError": "Nie udało się dodać zmiany do kolejki.",
+      "unsupported": "Nie mamy listy parametrów dla tego modelu, więc ustawienia śledzenia nie są tu dostępne. Jeśli znasz identyfikatory parametrów, użyj konsoli poleceń.",
+      "save": "Zastosuj w urządzeniu",
+      "queuedNote": "Zmiana zostanie wysłana, gdy urządzenie połączy się następnym razem.",
+      "estimate": "Około {{day}} MB na {{hours}} h jazdy, ~{{month}} MB miesięcznie.",
+      "estimateAssumes": "Przy średniej {{speed}} km/h; zakręty dodają rekordy, więc to wartość minimalna.",
+      "homeProfileOnly": "Dotyczy sieci macierzystej. Za granicą większość lokalizatorów używa osobnego profilu roamingu, który fabrycznie nie wysyła danych.",
+      "key": {
+        "movingSendPeriod": "Jak często raportuje w czasie jazdy",
+        "movingByTime": "Jak często zapisuje w czasie jazdy",
+        "movingByDistance": "Zapis co",
+        "movingByAngle": "Zapis przy skręcie o",
+        "parkedByTime": "Jak często zapisuje na postoju",
+        "parkedSendPeriod": "Jak często raportuje na postoju"
+      },
+      "unit": {
+        "seconds": "s",
+        "metres": "m",
+        "degrees": "°"
+      },
+      "state": {
+        "waiting": "oczekiwanie na urządzenie",
+        "sent": "wysłano, oczekuje potwierdzenia",
+        "rejected": "urządzenie zachowało {{value}}",
+        "undelivered": "nie dotarło do urządzenia",
+        "checked": "potwierdzono {{when}}",
+        "unknown": "jeszcze nie odczytano z urządzenia"
+      },
+      "menu": "Ustawienia śledzenia",
+      "queuing": "Dodawanie do kolejki…",
+      "outOfRange": "urządzenie ma {{value}}, poza oferowanym zakresem"
+    }
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",
@@ -1412,5 +1447,8 @@
     "slogCost": "Koszt (€)",
     "slogVendor": "Serwis",
     "addEntry": "Dodaj"
+  },
+  "common": {
+    "saving": "Zapisywanie…"
   }
 }
