@@ -209,8 +209,9 @@ export function LiveMap() {
       if (map.getLayer('selected-halo')) {
         map.setFilter('selected-halo', ['==', ['get', 'deviceId'], frame.selected?.deviceId ?? ''])
       }
-      if (frame.follow && frame.selected) {
-        map.easeTo({ center: [frame.selected.lon, frame.selected.lat], duration: 900 })
+      // follow the last VALID fix; a device that has never had one is not on the map to follow
+      if (frame.follow && frame.selectedFix) {
+        map.easeTo({ center: [frame.selectedFix.lon, frame.selectedFix.lat], duration: 900 })
       }
     })
 

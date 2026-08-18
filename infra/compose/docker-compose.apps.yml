@@ -86,6 +86,16 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM: ${TWILIO_FROM:-}
+      # …and the Messaging Service that carries Smart Encoding. Twilio TRIMS the leading space that
+      # is the Teltonika SMS password prefix; Smart Encoding restores it from the Unicode space the
+      # driver substitutes, and it runs for a Messaging Service only. Absent ⇒ device commands are
+      # REFUSED rather than sent as a silent no-op (see twilioSafeBody). Plain SMS still work.
+      TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
+      # the API-key auth pair, the alternative to the Auth Token that Twilio recommends because it
+      # is revocable. `smsDriverFromEnv` has always read it; this file never passed it, so switching
+      # to it would have turned the gateway off with no message anywhere. Found by the meta-test.
+      TWILIO_API_KEY_SID: ${TWILIO_API_KEY_SID:-}
+      TWILIO_API_KEY_SECRET: ${TWILIO_API_KEY_SECRET:-}
       # Web Push (ADR-026) — VAPID_PRIVATE_KEY in /opt/orbetra/.env (rule 12); absent ⇒ webpush skipped
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -170,6 +180,14 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM: ${TWILIO_FROM:-}
+      # …and the Messaging Service, which `smsConfigured` now requires: without Smart Encoding a
+      # device command loses its password prefix and does nothing, so the button must not appear.
+      TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
+      # the API-key auth pair, the alternative to the Auth Token that Twilio recommends because it
+      # is revocable. `smsDriverFromEnv` has always read it; this file never passed it, so switching
+      # to it would have turned the gateway off with no message anywhere. Found by the meta-test.
+      TWILIO_API_KEY_SID: ${TWILIO_API_KEY_SID:-}
+      TWILIO_API_KEY_SECRET: ${TWILIO_API_KEY_SECRET:-}
       # Web Push (ADR-026) — the API serves the PUBLIC key to the browser; absent ⇒ push unavailable
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       # The platform console's infrastructure panel reads firing alerts from here. Listed because a

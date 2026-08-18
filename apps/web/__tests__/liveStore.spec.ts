@@ -22,6 +22,59 @@ const ev = (deviceId: string, fixTimeMs: number, extra: Partial<LiveEvent> = {})
 
 const makeStore = (nowMs: () => number) => new LiveStore(nowMs)
 
+/**
+ * A device with no GPS fix must not be drawn where it isn't.
+ *
+ * A tracker reporting `satellites=0` sends lat/lon 0/0, and invariant I6 says such a record never
+ * affects the map. `buildTrailFeatures` already honoured that; the device MARKER did not, so a
+ * brand-new FTC887 sitting indoors in Vilnius was drawn in the Gulf of Guinea — with the info card
+ * correctly reading "no GPS fix" right next to it. Reported from the live product, 2026-08-18.
+ */
+describe('an invalid fix never places a marker (invariant I6, read side)', () => {
+  const frameOf = (store: LiveStore): MapFrame => {
+    let out: MapFrame | null = null
+    store.onMapFrame((f) => { out = f })
+    store.flush(true)
+    return out!
+  }
+
+  it('a device whose ONLY fix is invalid gets no marker at all', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { fixValid: false, satellites: 0, lat: 0, lon: 0 }))
+    expect(frameOf(store).devices.features).toHaveLength(0)
+    // …but it is still in the list — "no GPS fix" is the honest answer, not absence
+    expect(store.getSnapshot().devices.map((d) => d.ev.deviceId)).toEqual(['1'])
+  })
+
+  it('an invalid fix HOLDS the marker at the last valid position instead of moving it to 0,0', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27, course: 90 }))
+    store.ingest(ev('1', T0 + 1_000, { fixValid: false, satellites: 0, lat: 0, lon: 0, course: 0 }))
+    const f = frameOf(store).devices.features
+    expect(f).toHaveLength(1)
+    expect((f[0]!.geometry as GeoJSON.Point).coordinates).toEqual([25.27, 54.68])
+    expect(f[0]!.properties!['course']).toBe(90) // the course of a no-fix record is meaningless too
+  })
+
+  it('a later VALID fix moves it again', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { fixValid: false, satellites: 0, lat: 0, lon: 0 }))
+    store.ingest(ev('1', T0 + 1_000, { lat: 54.9, lon: 23.9 }))
+    const f = frameOf(store).devices.features
+    expect((f[0]!.geometry as GeoJSON.Point).coordinates).toEqual([23.9, 54.9])
+  })
+
+  it('FOLLOW does not fly the map to 0,0 for a device that has never had a fix', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { fixValid: false, satellites: 0, lat: 0, lon: 0 }))
+    store.select('1')
+    store.setFollow(true)
+    const frame = frameOf(store)
+    expect(frame.selected?.deviceId).toBe('1') // the info card still has its event
+    expect(frame.selectedFix).toBeNull() // …but there is nowhere to centre on
+  })
+})
+
 describe('LiveStore', () => {
   it('max-wins: an older fixTimeMs never regresses the marker (server parity)', () => {
     const store = makeStore(() => T0 + 10_000)
