@@ -1004,13 +1004,44 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
          */
         const pendKey = `cmd:pending:${device.id.toString()}`
         const payload = (cmd: typeof set) => JSON.stringify({ id: cmd.id, text: cmd.text, attempt: 0, expiresAtMs: Date.parse(cmd.expiresAt) })
+        /**
+         * A superseded settings write must NOT still execute.
+         *
+         * Commands sit in this list until the device connects, which on a parked vehicle is
+         * measured in hours — long enough for the customer to change their mind, or for someone to
+         * fix the same parameter another way. Live proof, 2026-08-18: a settings command queued at
+         * 14:17 was corrected at 14:53 by another route, and when the tracker finally connected at
+         * 14:54 the STALE command drained and re-applied the value that had just been undone. The
+         * vehicle went silent for five hours and the platform showed no fault at all.
+         *
+         * So a new write drops any queued setparam that touches the same parameters — last
+         * instruction wins, which is what a customer dragging a slider twice already believes.
+         * Verification getparams are left alone: an extra read costs nothing and never harms.
+         */
+        const touched = new Set(writes.map((w) => w.param))
+        const supersedes = (text: string): boolean =>
+          /^\s*setparam\s/i.test(text) && [...text.matchAll(/(\d{1,7}):-?\d+/g)].some((m) => touched.has(m[1]!))
         try {
-          await deps.redis
-            .multi()
+          const queued = await deps.redis.lrange(pendKey, 0, -1)
+          const stale = queued.filter((raw) => {
+            try {
+              return supersedes((JSON.parse(raw) as { text?: string }).text ?? '')
+            } catch {
+              return false // not ours to judge; leave anything unparseable in place
+            }
+          })
+          const tx = deps.redis.multi()
+          for (const raw of stale) tx.lrem(pendKey, 0, raw)
+          await tx
             .rpush(pendKey, payload(set), payload(verify))
             .expire(pendKey, 24 * 3_600) // bound the list if the device never connects
             .sadd('cmd:active', device.id.toString())
             .exec()
+          // the DB rows for the dropped commands must not sit "waiting" forever either
+          for (const raw of stale) {
+            const id = (JSON.parse(raw) as { id?: string }).id
+            if (id !== undefined) await db.commands.markSuperseded(scope, id)
+          }
         } catch (err) {
           console.error('settings enqueue failed', err)
           return problem(c, 503, 'Unavailable', 'could not queue the change — try again')

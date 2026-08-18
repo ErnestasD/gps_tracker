@@ -22,6 +22,7 @@ import { HealthCard } from '@/routes/app/devices/health'
 import { CanCard } from '@/routes/app/devices/can'
 import { ShareCard } from '@/routes/app/devices/share'
 import { OnboardingCard } from '@/routes/app/devices/onboarding'
+import { SettingsCard } from '@/routes/app/devices/settings'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
   ODOMETER_SOURCES,
@@ -83,6 +84,7 @@ export function DevicesPage() {
   const [retireError, setRetireError] = useState<string | null>(null)
   const [odoError, setOdoError] = useState(false) // inline odometer-source change failed (was swallowed)
   const [commandsForId, setCommandsForId] = useState<string | null>(null)
+  const [settingsForId, setSettingsForId] = useState<string | null>(null)
   const [healthForId, setHealthForId] = useState<string | null>(null)
   const [vehicleForId, setVehicleForId] = useState<string | null>(null)
   const [shareForId, setShareForId] = useState<string | null>(null)
@@ -104,6 +106,7 @@ export function DevicesPage() {
   // derive the panel's device from the LIVE list (never a snapshot): a retire or refetch
   // closes/updates the panel instead of leaving a stale device you can still command
   const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
+  const settingsFor: Device | null = (devices.data ?? []).find((d) => d.id === settingsForId && d.retiredAt === null) ?? null
   const healthFor: Device | null = (devices.data ?? []).find((d) => d.id === healthForId && d.retiredAt === null) ?? null
   const vehicleFor: Device | null = (devices.data ?? []).find((d) => d.id === vehicleForId && d.retiredAt === null) ?? null
   const shareFor: Device | null = (devices.data ?? []).find((d) => d.id === shareForId && d.retiredAt === null) ?? null
@@ -115,7 +118,7 @@ export function DevicesPage() {
   // click could land the panel off-screen — to the user the menu item looked dead. Scroll the
   // freshly-opened panel into view (and focus it for a11y) whenever which panel is open changes.
   const panelRef = useRef<HTMLDivElement>(null)
-  const openPanelId = healthFor?.id ?? onboardFor?.id ?? commandsFor?.id ?? shareFor?.id ?? vehicleFor?.id ?? null
+  const openPanelId = healthFor?.id ?? onboardFor?.id ?? commandsFor?.id ?? settingsFor?.id ?? shareFor?.id ?? vehicleFor?.id ?? null
   useEffect(() => {
     if (openPanelId !== null) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [openPanelId])
@@ -311,6 +314,7 @@ export function DevicesPage() {
                 setOnboardForId((cur) => (cur === d.id ? null : d.id))
               }}
               onCommands={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
+              onSettings={() => setSettingsForId((cur) => (cur === d.id ? null : d.id))}
               onShare={() => setShareForId((cur) => (cur === d.id ? null : d.id))}
               onRetire={() => setRetireForId(d.id)}
               onErase={() => setEraseForId(d.id)}
@@ -328,6 +332,7 @@ export function DevicesPage() {
         {healthFor !== null && <CanCard key={`can-${healthFor.id}`} device={healthFor} />}
         {onboardFor !== null && <OnboardingCard key={onboardFor.id} device={onboardFor} initialApn={pendingApn} />}
         {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
+        {settingsFor !== null && <SettingsCard key={`set-${settingsFor.id}`} device={settingsFor} canWrite={canWrite} />}
         {shareFor !== null && <ShareCard key={shareFor.id} device={shareFor} />}
       </div>
 
@@ -413,6 +418,7 @@ function RowMenu({
   onHealth,
   onOnboard,
   onCommands,
+  onSettings,
   onShare,
   onRetire,
   onErase,
@@ -425,6 +431,7 @@ function RowMenu({
   onVehicle: () => void
   onOnboard: () => void
   onCommands: () => void
+  onSettings: () => void
   onShare: () => void
   onRetire: () => void
   onErase: () => void
@@ -472,6 +479,7 @@ function RowMenu({
             {canWrite && (
               <>
                 {item(`commands-${device.imei}`, t('devices.commands'), onCommands)}
+                {item(`settings-${device.imei}`, t('devices.settings.menu'), onSettings)}
                 {item(`share-${device.imei}`, t('devices.share.button'), onShare)}
                 <div className="admin-hairline-t my-1" aria-hidden />
                 {item(`retire-${device.imei}`, t('devices.retire'), onRetire, true)}

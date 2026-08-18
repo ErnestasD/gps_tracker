@@ -689,7 +689,42 @@
     "modelChangeConfirm": "Keisti modelį",
     "modelChangeSure": "Keisti {{name}} iš {{from}} į {{to}}?\n\nTai nulemia, kaip bus dekoduojamos BŪSIMOS pozicijos. Jau įrašytos pozicijos išlaiko parametrų pavadinimus, su kuriais buvo dekoduotos, ir nėra perrašomos.",
     "waiting": "Laukiama",
-    "waitingHint": "Užregistruotas, bet šis įrenginys dar niekada neatsiuntė pozicijos. Patikrink IMEI, SIM kortelės APN ir ar sekikliui išsiųsta serverio SMS."
+    "waitingHint": "Užregistruotas, bet šis įrenginys dar niekada neatsiuntė pozicijos. Patikrink IMEI, SIM kortelės APN ir ar sekikliui išsiųsta serverio SMS.",
+    "settings": {
+      "title": "Sekimo nustatymai — {{name}}",
+      "loadError": "Nepavyko įkelti nustatymų.",
+      "saveError": "Nepavyko įtraukti pakeitimo į eilę.",
+      "unsupported": "Šio modelio parametrų sąrašo neturime, tad sekimo nustatymų čia pasiūlyti negalime. Jei žinote parametrų numerius, naudokite komandų konsolę.",
+      "save": "Pritaikyti įrenginiui",
+      "queuedNote": "Pakeitimas bus išsiųstas, kai įrenginys kitą kartą prisijungs.",
+      "estimate": "Apie {{day}} MB per {{hours}} val. važiavimo, ~{{month}} MB per mėnesį.",
+      "estimateAssumes": "Skaičiuota vidutiniškai {{speed}} km/val.; posūkiai prideda įrašų, tad tai apatinė riba.",
+      "homeProfileOnly": "Galioja savame tinkle. Užsienyje dauguma sekiklių naudoja atskirą tarptinklinio ryšio profilį, kuris gamykliškai nustatytas nesiųsti duomenų.",
+      "key": {
+        "movingSendPeriod": "Kaip dažnai praneša važiuojant",
+        "movingByTime": "Kaip dažnai fiksuoja važiuojant",
+        "movingByDistance": "Fiksuoti kas",
+        "movingByAngle": "Fiksuoti pasisukus",
+        "parkedByTime": "Kaip dažnai fiksuoja stovint",
+        "parkedSendPeriod": "Kaip dažnai praneša stovint"
+      },
+      "unit": {
+        "seconds": "s",
+        "metres": "m",
+        "degrees": "°"
+      },
+      "state": {
+        "waiting": "laukiama įrenginio",
+        "sent": "išsiųsta, laukiama patvirtinimo",
+        "rejected": "įrenginyje liko {{value}}",
+        "undelivered": "įrenginio nepasiekė",
+        "checked": "patvirtinta {{when}}",
+        "unknown": "iš įrenginio dar neperskaityta"
+      },
+      "menu": "Sekimo nustatymai",
+      "queuing": "Įtraukiama į eilę…",
+      "outOfRange": "įrenginyje {{value}} — už siūlomo intervalo ribų"
+    }
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",
@@ -1405,5 +1440,8 @@
     "slogCost": "Kaina (€)",
     "slogVendor": "Servisas",
     "addEntry": "Pridėti"
+  },
+  "common": {
+    "saving": "Saugoma…"
   }
 }
