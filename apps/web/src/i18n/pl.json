@@ -234,7 +234,10 @@
       "scheduledReport": "Zaplanowany raport",
       "shareLink": "Link udostępniania",
       "affiliate": "Partner",
-      "commission": "Prowizja"
+      "commission": "Prowizja",
+      "serviceLog": "Historia serwisowa",
+      "document": "Dokument",
+      "maintenancePlan": "Plan przeglądów"
     },
     "a": {
       "create": "Utworzono",

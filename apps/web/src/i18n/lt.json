@@ -234,7 +234,10 @@
       "scheduledReport": "Suplanuota ataskaita",
       "shareLink": "Bendrinimo nuoroda",
       "affiliate": "Partneris",
-      "commission": "Komisinis"
+      "commission": "Komisinis",
+      "serviceLog": "Serviso žurnalas",
+      "document": "Dokumentas",
+      "maintenancePlan": "Priežiūros planas"
     },
     "a": {
       "create": "Sukurta",

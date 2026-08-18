@@ -30,7 +30,7 @@ export interface AuditFilters {
  * via audit.record (packages/db/src/repos), each with an audit.e.* label in all locales. */
 export const AUDIT_ENTITIES = [
   'account', 'accountPrefs', 'user', 'device', 'rule', 'webhook', 'domain', 'branding', 'tenant',
-  'geofence', 'trip', 'apiKey', 'command', 'driver', 'export', 'maintenance', 'scheduledReport', 'shareLink',
+  'geofence', 'trip', 'apiKey', 'command', 'driver', 'export', 'maintenance', 'maintenancePlan', 'serviceLog', 'document', 'scheduledReport', 'shareLink',
 ] as const
 export const AUDIT_ACTIONS = ['create', 'update', 'delete'] as const
 

@@ -234,7 +234,10 @@
       "scheduledReport": "Scheduled report",
       "shareLink": "Share link",
       "affiliate": "Affiliate",
-      "commission": "Commission"
+      "commission": "Commission",
+      "serviceLog": "Service log",
+      "document": "Document",
+      "maintenancePlan": "Maintenance plan"
     },
     "a": {
       "create": "Created",
