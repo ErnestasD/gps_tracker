@@ -121,3 +121,103 @@ describe('E08-2 Codec-12 commands API', () => {
     expect((await req(`/v1/devices/${deviceId}/onboarding`, t2Token)).status).toBe(404)
   })
 })
+
+/**
+ * Tracking settings — the customer-facing face of setparam.
+ *
+ * The properties worth defending: a value the device never confirmed is never presented as its
+ * state, a change is 202 (queued) and not 200 (saved), and every write is followed by the getparam
+ * that will tell us whether it took. On 2026-08-18 a setparam was accepted, queued, delivered and
+ * had no effect at all — reporting that as success is the failure this route is shaped around.
+ */
+describe('device tracking settings', () => {
+  it('GET lists what this model can be set to, and admits it knows no current values yet', async () => {
+    const res = await req(`/v1/devices/${deviceId}/settings`, t1Token)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      available: { key: string; min: number; max: number; factory: number; profile: string }[]
+      current: Record<string, { value: number | null; checkedAt: string | null; requested: number | null; state: string | null }>
+      profile: string
+    }
+    const send = body.available.find((s) => s.key === 'movingSendPeriod')!
+    expect(send.min).toBe(2) // never 0 — that means "do not send"
+    expect(send.max).toBe(120)
+    expect(send.factory).toBe(120)
+    // nothing has been read off the device, so nothing is claimed about it
+    expect(body.current['movingSendPeriod']).toEqual({ value: null, checkedAt: null, requested: null, state: null })
+    // and the UI is told which network profile these apply to
+    expect(body.profile).toBe('home')
+  })
+
+  it('POST queues ONE setparam with every change, then the getparam that verifies it', async () => {
+    const res = await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', {
+      changes: { movingSendPeriod: 30, movingByDistance: 50 },
+    })
+    // 202, not 200: the tracker has not seen this yet, and a parked device connects on its own
+    // schedule — a command sat queued for an hour on the day this was designed.
+    expect(res.status).toBe(202)
+    const body = (await res.json()) as { queued: boolean; commandId: string; verifyCommandId: string; text: string }
+    expect(body.queued).toBe(true)
+    expect(body.text).toMatch(/^setparam /)
+    expect(body.text).toContain('10055:30')
+    expect(body.text).toContain('10051:50')
+
+    // both commands exist, and the verification is queued AFTER the write — the pending list is FIFO
+    const queued = await redis.lrange(`cmd:pending:${deviceId}`, 0, -1)
+    const texts = queued.map((j) => (JSON.parse(j) as { text: string }).text)
+    const setAt = texts.findIndex((t) => t.startsWith('setparam 10055:30'))
+    const getAt = texts.findIndex((t) => t.startsWith('getparam'))
+    expect(setAt).toBeGreaterThanOrEqual(0)
+    expect(getAt).toBeGreaterThan(setAt)
+  })
+
+  it('the queued write is reported as WAITING, never as the device’s state', async () => {
+    const res = await req(`/v1/devices/${deviceId}/settings`, t1Token)
+    const body = (await res.json()) as { current: Record<string, { value: number | null; requested: number | null; state: string | null }> }
+    expect(body.current['movingSendPeriod']!.requested).toBe(30)
+    expect(body.current['movingSendPeriod']!.state).toBe('waiting')
+    expect(body.current['movingSendPeriod']!.value).toBeNull() // the tracker still has not answered
+  })
+
+  it('refuses a value outside what the model accepts, and names the bound', async () => {
+    for (const [key, value] of [['movingSendPeriod', 0], ['movingSendPeriod', 121], ['movingByDistance', 5]] as const) {
+      const res = await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', { changes: { [key]: value } })
+      expect(res.status, `${key}=${value}`).toBe(400)
+      expect((await res.json() as { detail?: string }).detail).toMatch(/must be an integer between/)
+    }
+  })
+
+  it('refuses an unknown setting rather than silently ignoring it', async () => {
+    const res = await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', { changes: { serverHost: 1 } })
+    expect(res.status).toBe(400)
+    expect((await res.json() as { detail?: string }).detail).toMatch(/unknown setting/)
+  })
+
+  it('rejects the whole request when ANY change is invalid — no partial application', async () => {
+    const before = await redis.llen(`cmd:pending:${deviceId}`)
+    const res = await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', {
+      changes: { movingSendPeriod: 30, movingByDistance: 999999 },
+    })
+    expect(res.status).toBe(400)
+    // the valid half must not have been queued: a half-applied settings change is worse than none
+    expect(await redis.llen(`cmd:pending:${deviceId}`)).toBe(before)
+  })
+
+  it('refuses a non-integer and an empty change set', async () => {
+    for (const changes of [{ movingSendPeriod: 2.5 }, {}]) {
+      const res = await req(`/v1/devices/${deviceId}/settings`, t1Token, 'POST', { changes })
+      expect(res.status, JSON.stringify(changes)).toBe(400)
+    }
+  })
+
+  it('a retired device is refused, and another tenant’s device is a 404 either way', async () => {
+    expect((await req(`/v1/devices/${retiredId}/settings`, t1Token, 'POST', { changes: { movingSendPeriod: 30 } })).status).toBe(400)
+    expect((await req(`/v1/devices/${deviceId}/settings`, t2Token)).status).toBe(404)
+    expect((await req(`/v1/devices/${deviceId}/settings`, t2Token, 'POST', { changes: { movingSendPeriod: 30 } })).status).toBe(404)
+  })
+
+  it('a viewer may look but not write — changing tracking density is a write', async () => {
+    expect((await req(`/v1/devices/${deviceId}/settings`, viewerToken)).status).toBe(200)
+    expect((await req(`/v1/devices/${deviceId}/settings`, viewerToken, 'POST', { changes: { movingSendPeriod: 30 } })).status).toBe(403)
+  })
+})

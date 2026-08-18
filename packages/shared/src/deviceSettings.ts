@@ -36,7 +36,8 @@ export type SettingUnit = 'seconds' | 'metres' | 'degrees'
 
 export interface SettingDef {
   key: SettingKey
-  /** Teltonika parameter id — the wire form, never shown to a customer. */
+  /** Teltonika parameter id. The API returns it (support needs to correlate a slider with a
+   *  setparam in the command log); the UI does not put it in front of a customer. */
   param: string
   unit: SettingUnit
   group: 'moving' | 'parked'

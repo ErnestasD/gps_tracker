@@ -25,6 +25,9 @@ import {
   geofenceUpdateSchema,
   deviceUpdateSchema,
   buildOnboarding,
+  deviceSettingsWriteSchema,
+  isSettingInRange,
+  settingsForModel,
   smsSendRequestSchema,
   commandCreateSchema,
   ruleCreateSchema,
@@ -64,6 +67,7 @@ import {
 } from '@orbetra/shared'
 
 import { hasEntitlement } from '../auth/entitlements.js'
+import { currentSettings } from './deviceSettingsView.js'
 import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { activateDevice, deactivateDevice, syncDeviceConfig } from './deviceRegistry.js'
@@ -933,6 +937,89 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           await deps.redis.sadd('cmd:active', device.id.toString())
         })
         return json(c, cmd, 201)
+      } },
+    // ── tracking settings (device settings) — named, bounded, verified ──────────
+    // The customer-facing face of Codec 12 setparam. Reads are answered from what the DEVICE last
+    // told us (its own getparam replies, already stored on the command rows) rather than from a
+    // copy of what we commanded: a write the tracker silently ignored looks identical to one it
+    // applied, and telling those apart is the entire reason this feature has a verification step.
+    { method: 'get', path: '/v1/devices/:id/settings', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        const profile = await db.profiles.get(device.profileId)
+        const available = settingsForModel(profile?.model)
+        const history = await db.commands.listParamHistory(scope, device.id)
+        return json(c, {
+          available,
+          ...currentSettings(available, history),
+          // Every offered id is the HOME-network profile. The roaming and unknown profiles ship
+          // with a send period of 0 on 80 of the 89 models we have pages for, so a vehicle abroad
+          // may be transmitting nothing whatever these values say. The UI states this.
+          profile: 'home' as const,
+        })
+      } },
+    { method: 'post', path: '/v1/devices/:id/settings', scopeClass: 'account', entity: 'command', shape: 'item',
+      handler: async (c) => {
+        const a = auth(c)
+        const scope = scopeOf(a)
+        const device = await db.devices.get(scope, id(c)) // scope gate FIRST (404 else)
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (device.retiredAt !== null) return problem(c, 400, 'Bad Request', 'device is retired')
+        const data = await body(c, deviceSettingsWriteSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const profile = await db.profiles.get(device.profileId)
+        const available = settingsForModel(profile?.model)
+        if (available.length === 0) return problem(c, 400, 'Bad Request', 'no tracking settings for this model')
+
+        // Validate EVERY change before writing any of them. A partially-applied settings change is
+        // worse than a rejected one: the customer would see some sliders move and have no idea
+        // which reached the device.
+        const writes: { param: string; value: number }[] = []
+        for (const [key, value] of Object.entries(data.changes)) {
+          const def = available.find((s) => s.key === key)
+          if (def === undefined) return problem(c, 400, 'Bad Request', `unknown setting: ${key}`)
+          if (!isSettingInRange(profile?.model, def.key, value)) {
+            return problem(c, 400, 'Bad Request', `${key} must be an integer between ${def.min} and ${def.max}`)
+          }
+          writes.push({ param: def.param, value })
+        }
+
+        // ONE setparam carrying every change, so the device applies them together or not at all,
+        // then a getparam for the same ids. Ordering holds because the pending list is FIFO.
+        const setText = `setparam ${writes.map((w) => `${w.param}:${w.value}`).join(';')}`
+        const getText = `getparam ${writes.map((w) => w.param).join(';')}`
+        const set = await db.commands.create(scope, { userId: a.userId }, { deviceId: device.id, accountId: device.accountId, text: setText })
+        const verify = await db.commands.create(scope, { userId: a.userId }, { deviceId: device.id, accountId: device.accountId, text: getText })
+        /**
+         * Both or neither, and NOT best-effort.
+         *
+         * Two sequential rpush calls can leave the write queued with no verification behind it —
+         * the customer's change would then go out with nothing ever checking whether it took, which
+         * is the one guarantee this route sells. And a swallowed Redis error would answer
+         * `queued: true` for a command no device will ever receive, while the rows sit "waiting"
+         * for 24 h: success reported for something the hardware has not seen, which is precisely
+         * the failure mode this endpoint is shaped around avoiding.
+         */
+        const pendKey = `cmd:pending:${device.id.toString()}`
+        const payload = (cmd: typeof set) => JSON.stringify({ id: cmd.id, text: cmd.text, attempt: 0, expiresAtMs: Date.parse(cmd.expiresAt) })
+        try {
+          await deps.redis
+            .multi()
+            .rpush(pendKey, payload(set), payload(verify))
+            .expire(pendKey, 24 * 3_600) // bound the list if the device never connects
+            .sadd('cmd:active', device.id.toString())
+            .exec()
+        } catch (err) {
+          console.error('settings enqueue failed', err)
+          return problem(c, 503, 'Unavailable', 'could not queue the change — try again')
+        }
+        // 202, never 200: nothing has reached the tracker yet. A parked device connects on its own
+        // schedule — a command sat queued for an hour on 2026-08-18 — and reporting "saved" for
+        // something the hardware has not seen is the false success this whole feature exists to
+        // avoid. The UI says "waiting for the device".
+        return json(c, { queued: true, commandId: set.id, verifyCommandId: verify.id, text: setText }, 202)
       } },
     { method: 'get', path: '/v1/commands/:id', scopeClass: 'account', entity: 'command', shape: 'item',
       handler: async (c) => {
