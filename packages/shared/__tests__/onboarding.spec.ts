@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildOnboarding } from '../src/onboarding.js'
+import { buildOnboarding, smsPrefixFor } from '../src/onboarding.js'
+import { isAllowedSmsCommand } from '../src/sms.js'
 
 describe('V1-nice buildOnboarding (SMS device onboarding)', () => {
   it('builds the server-pointing SMS with the empty login+password prefix', () => {
@@ -83,6 +84,69 @@ describe('V1-nice buildOnboarding (SMS device onboarding)', () => {
     expect(buildOnboarding({ imei: '1', host: 'h', port: 5027, apn: 'a'.repeat(64) }).smsApn).toBeNull()
     // a legitimate hostname-like APN with dots/dashes still works
     expect(buildOnboarding({ imei: '1', host: 'h', port: 5027, apn: 'wap.o2.co.uk' }).smsApn).toBe('  setparam 2001:wap.o2.co.uk')
+  })
+})
+
+/**
+ * The prefix that stands in for an unset SMS password. Found on real hardware, 2026-08-18: an
+ * FTC887 with its lights on, a config SMS Twilio reported as `delivered`, and not one TCP SYN at
+ * ingest in 90 seconds. The message was well-formed for the WRONG platform.
+ *
+ * FMB firmware parses `<login><space><password><space><command>` — two spaces when both are unset
+ * (https://wiki.teltonika-gps.com/view/FMB120_SMS/GPRS_Commands). The FT platform has no separate
+ * login field: `<password><space><command>`, so one space
+ * (https://wiki.teltonika-gps.com/view/FTC887_SMS/GPRS_Command_List). 25 of the 105 catalogued
+ * models are FT, and every one of them was being sent an unparseable command.
+ */
+describe('the SMS password prefix is per-PLATFORM, not one constant', () => {
+  it('FT platform (FTC/FTM/ATC/ATM) takes ONE space', () => {
+    for (const family of ['ftc887', 'ftc134', 'ftc881', 'ftm134', 'atc700', 'atm700', 'FTC887']) {
+      expect(smsPrefixFor(family), family).toBe(' ')
+      const s = buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'internet', family, legacyProfile: false })
+      expect(s.smsAuto, family).toBe(' setparam 2001:internet;2004:orbetra.com;2005:5027;2006:0')
+      expect(s.smsServer!.startsWith('  '), `${family} must NOT carry the FMB double space`).toBe(false)
+      expect(s.smsServer!.startsWith(' '), family).toBe(true)
+    }
+  })
+
+  it('everything else keeps TWO — the FMB reading the other 80 models take', () => {
+    for (const family of ['fmb120', 'fmc150', 'fmm130', 'fmu125', 'tat100', 'gh5200', 'tst100', 'tmt250', 'msp500', 'mtb100', 'tft100', 'fm36']) {
+      expect(smsPrefixFor(family), family).toBe('  ')
+      expect(buildOnboarding({ imei: '1', host: 'h', port: 5027, family, legacyProfile: false }).smsServer, family)
+        .toBe('  setparam 2004:h;2005:5027;2006:0')
+    }
+  })
+
+  it('an unknown or legacy family falls back to TWO, not to one', () => {
+    // "unknown" must land on the reading that covers 80 of 105 models — and the caveat step already
+    // tells the operator to check their model's page.
+    for (const family of [undefined, 'fmb1xx', 'fmb6xx-stub', 'tat-asset', 'exotic-x']) {
+      expect(smsPrefixFor(family), String(family)).toBe('  ')
+    }
+  })
+
+  it('a family that merely CONTAINS an FT name is not FT — the prefix is matched at the start', () => {
+    // guard against a loose `includes`: these are not FT platform devices.
+    for (const family of ['xftc887', 'my-atc700', 'fmb-atm']) expect(smsPrefixFor(family), family).toBe('  ')
+  })
+
+  it('the allow-list accepts what the sheet generates — for BOTH platforms', () => {
+    // The route validates a caller-supplied body against isAllowedSmsCommand. If that regex demanded
+    // two spaces, an operator pasting our own FTC887 command back in would be refused by our own
+    // validator — the sheet and the guard have to agree.
+    const ft = buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'internet', family: 'ftc887', legacyProfile: false })
+    const fmb = buildOnboarding({ imei: '1', host: 'orbetra.com', port: 5027, apn: 'internet', family: 'fmb120', legacyProfile: false })
+    for (const cmd of [ft.smsAuto!, ft.smsServer!, ft.smsApn!, fmb.smsAuto!, fmb.smsServer!, fmb.smsApn!]) {
+      expect(isAllowedSmsCommand(cmd), cmd).toBe(true)
+    }
+    // both diagnostic spellings stay allowed…
+    expect(isAllowedSmsCommand(' getinfo')).toBe(true)
+    expect(isAllowedSmsCommand('  getinfo')).toBe(true)
+    // …and the guard still refuses free text, a missing prefix, and an injected second command
+    expect(isAllowedSmsCommand('getinfo')).toBe(false)
+    expect(isAllowedSmsCommand('   getinfo')).toBe(false)
+    expect(isAllowedSmsCommand(' Your parcel is held, pay at http://x.example')).toBe(false)
+    expect(isAllowedSmsCommand(' setparam 2004:evil.com x')).toBe(false)
   })
 })
 

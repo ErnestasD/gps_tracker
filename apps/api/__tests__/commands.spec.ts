@@ -48,7 +48,10 @@ beforeAll(async () => {
   const s2 = await seedUser({ databaseUrl, email: 'a@c2.test', password: 'password12', role: 'tsp_admin', tenantName: 'C2' })
   const acct1 = (await db.accounts.list({ tenantId: s1.tenantId }))[0]!.id
   const scope1 = { tenantId: s1.tenantId, accountId: acct1 }
-  const profile = (await db.profiles.list())[0]!
+  // NAME the model: this spec asserts the onboarding sheet's SMS text, whose password prefix is
+  // per-platform (FMB two spaces, FT one). `list()[0]` is alphabetically first — atc700, an FT
+  // model — so the expectation tracked catalogue ordering rather than a decision.
+  const profile = (await db.profiles.list()).find((p) => p.key === 'fmb120')!
   const dev = await db.devices.create(scope1, { userId: s1.userId }, { imei: '356307042440010', name: 'Truck', profileId: profile.id, accountId: acct1 })
   deviceId = dev.id.toString()
   const rdev = await db.devices.create(scope1, { userId: s1.userId }, { imei: '356307042440011', name: 'Old', profileId: profile.id, accountId: acct1 })

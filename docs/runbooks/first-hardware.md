@@ -22,21 +22,46 @@ device → save. The picker now lists all 105 models; type `887` or `150` to fin
 
 ## 2. Point the tracker at the server
 
-Open the device → **Onboarding**. The sheet gives the exact SMS for that model. It is, for a
-staging test:
+Open the device → **Onboarding**, or just press **Send config SMS** and let the platform send it.
+
+The **leading whitespace is part of the message** — it stands in for the unset SMS password — and
+**how much of it depends on the platform**. Copy the sheet's string exactly rather than retyping it.
+
+| platform | models | syntax | prefix |
+|---|---|---|---|
+| FMB generation | FMB/FMC/FMM/FMU/FMP/FMT/FM, TAT, GH, TST, TMT, MSP, MTB, TFT (80 of 105) | `<login> <password> <command>` | **two** spaces |
+| FT "Fast & Easy" | FTC\*, FTM\*, ATC\*, ATM\* (25 of 105) | `<password> <command>` | **one** space |
+
+So for **FMC150**:
 
 ```
   setparam 2004:185.80.129.33;2005:5027;2006:0
 ```
 
-The **two leading spaces are part of the message** — they are the empty SMS login and password that
-Teltonika's syntax requires. Without them the device ignores the command.
-
-If the SIM needs an APN, send that first:
+and for **FTC887** — one space, not two:
 
 ```
-  setparam 2001:<apn>
+ setparam 2004:185.80.129.33;2005:5027;2006:0
 ```
+
+Sources: [FMB120](https://wiki.teltonika-gps.com/view/FMB120_SMS/GPRS_Commands) ("leave two spaces
+before command") and [FTC887](https://wiki.teltonika-gps.com/view/FTC887_SMS/GPRS_Command_List)
+("enter the password OR a whitespace"). Note even the page NAMES differ — `_Commands` vs
+`_Command_List` — which is a quick way to tell which family a new model belongs to.
+
+Get this wrong and there is no error anywhere: the SMS is delivered, the device parses nothing,
+answers nothing, and never connects. At the server that looks exactly like a dead SIM. It cost a
+live FTC887 session on 2026-08-18 before the platform sent the right prefix.
+
+If the SIM needs an APN, the sheet includes it (2001) in the same message. Sent alone it is:
+
+```
+  setparam 2001:<apn>      ← FMB;  one space for FT
+```
+
+**Sending it by hand from an iPhone is unreliable** — iOS strips leading whitespace when it
+data-detects an IP or URL in the message, which silently removes the prefix. Compose in Notes and
+paste, or better, use the platform's Send button (Twilio preserves the exact bytes).
 
 `2006:0` selects **TCP**, which is what we want: TCP 5027 is open to the internet on the staging
 box, **UDP 5027 is not** (the firewall allows only tcp). A device left on UDP will look completely
@@ -74,7 +99,12 @@ Read the output in this order:
 
 ## What we already know about these two
 
-**FTC887** — 190 elements, no parser warnings. Ignition 239, movement 240, odometer resolves to 16.
+**FTC887** — an **FT-platform, battery-mounted** tracker (Teltonika's "Fast & Easy" category), so:
+one-space SMS prefix per the table above, and note its own wiki warns that **SMS and GPRS commands
+are not received in Deep Sleep or Power Off Sleep** — the modem is off, so the device is not
+reachable at all. If a config SMS seems ignored, confirm it is awake before suspecting the command.
+
+190 elements, no parser warnings. Ignition 239, movement 240, odometer resolves to 16.
 It has **no id 66**: its external voltage is id **800**, also in mV, so the health chart scales
 correctly. It carries no iButton, no alarm input and no DIN1 — expect those columns empty, and that
 is the hardware, not us. Its id 252 is spelled `Unplug detection`; the power-cut rule reads that
