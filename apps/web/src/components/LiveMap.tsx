@@ -231,11 +231,33 @@ export function LiveMap() {
      * Fullscreen API either, so it fires no event at all. One observer covers every dock, present
      * and future.
      */
-    const resizeObserver = new ResizeObserver(() => map.resize())
+    /**
+     * Loop-proofed on purpose. `map.resize()` writes to the canvas inside the observed element, and
+     * a ResizeObserver that reacts to a size IT caused spins the callback forever — in a headless
+     * browser that pegs the CPU and every later assertion simply times out, which is a far worse
+     * failure than a wrong layout. So: ignore a notification that reports the size we already have,
+     * and coalesce the rest into one resize per frame.
+     */
+    let lastW = container.clientWidth
+    let lastH = container.clientHeight
+    let raf = 0
+    const resizeObserver = new ResizeObserver(() => {
+      const w = container.clientWidth
+      const h = container.clientHeight
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
+      if (raf !== 0) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        map.resize()
+      })
+    })
     resizeObserver.observe(container)
 
     return () => {
       disposed = true
+      if (raf !== 0) cancelAnimationFrame(raf)
       resizeObserver.disconnect()
       liveStore.onMapFrame(null)
       stopWatch()
