@@ -447,7 +447,21 @@
       "movement": "Bewegung",
       "odometer": "Kilometerstand (m)",
       "altitude": "Höhe (m)",
-      "paramsAt": "Wie das Gerät es {{when}} gemeldet hat"
+      "paramsAt": "Wie das Gerät es {{when}} gemeldet hat",
+      "events": "Ereignisse",
+      "fences": "Zonen",
+      "position": "Position",
+      "coords": "Koordinaten",
+      "lastPacket": "Letztes Paket",
+      "heading": "Kurs",
+      "telemetry": "Wichtigste Telemetrie",
+      "recentTrips": "Letzte Fahrten",
+      "noTrips": "Noch keine Fahrten erfasst.",
+      "paramsSearch": "Parameter suchen…",
+      "eventsError": "Ereignisse konnten nicht geladen werden.",
+      "noEvents": "Keine Ereignisse für dieses Gerät.",
+      "acknowledged": "Bestätigt",
+      "fencesHint": "Wählen Sie, welche Zonen die Karte zeichnet."
     },
     "title": "Live-Karte",
     "toggleList": "Fahrzeugliste ein- oder ausblenden",
@@ -462,7 +476,32 @@
       "noData": "keine Meldung um {{when}}",
       "noFix": "kein GPS-Fix",
       "button": "24 Std.",
-      "truncated": "{{points}} Punkte — mehr Verlauf als eine Seite; der frühere Teil wird gezeigt"
+      "truncated": "{{points}} Punkte — mehr Verlauf als eine Seite; der frühere Teil wird gezeigt",
+      "pickDevice": "Fahrzeug wählen, um die letzten 24 h zu sehen",
+      "replay": "Letzte 24 h abspielen",
+      "stopReplay": "Wiedergabe stoppen",
+      "quick": {
+        "h24": "-24 h",
+        "h12": "-12 h",
+        "h6": "-6 h",
+        "h1": "-1 h"
+      }
+    },
+    "eventFeed": "Ereignis-Feed",
+    "ctl": {
+      "zoomIn": "Vergrößern",
+      "zoomOut": "Verkleinern",
+      "fitAll": "Gesamte Flotte anzeigen",
+      "centerSelected": "Ausgewähltes Fahrzeug zentrieren"
+    },
+    "layers": {
+      "title": "Ebenen",
+      "geofences": "Geozonen",
+      "trails": "Bewegungsspuren",
+      "labels": "Gerätenamen",
+      "heat": "Dichte-Overlay",
+      "clusters": "Nahe Geräte gruppieren",
+      "fenceVisibility": "Sichtbarkeit der Zonen"
     }
   },
   "units": {

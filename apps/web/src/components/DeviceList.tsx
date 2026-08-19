@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react'
+import { ChevronRight, Gauge, Power, Satellite, Search } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -28,6 +28,11 @@ export function DeviceList({
   selectedId,
   onSelect,
   nameOf,
+  detailOf,
+  filter,
+  onFilter,
+  follow,
+  onFollow,
   loading = false,
 }: {
   devices: DeviceLive[]
@@ -46,12 +51,28 @@ export function DeviceList({
   onSelect: (id: string) => void
   // deviceId → human label (device name). Falls back to the id when the CRUD list hasn't loaded.
   nameOf?: (deviceId: string) => string
+  /**
+   * Per-device detail an operator recognises a vehicle by. Every field is optional and omitted when
+   * absent: a row must never imply a plate or a driver the fleet has not recorded.
+   */
+  detailOf?: (deviceId: string) => { plate?: string | null; driver?: string | null } | undefined
+  /**
+   * The status filter, owned by the workspace.
+   *
+   * Lifted out of this component because the toolbar shows the same four counters on a wide screen:
+   * two independent copies of "which statuses am I looking at" is how a chip ends up highlighted
+   * next to a list that is not filtered.
+   */
+  filter: FleetFilter
+  onFilter: (f: FleetFilter) => void
+  /** Camera-follows-selection, the same store flag the inspector's button drives. */
+  follow: boolean
+  onFollow: (v: boolean) => void
   // true during the initial connect/seed so we show a loader instead of flashing "No devices yet"
   loading?: boolean
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<FleetFilter>('all')
   const [sort, setSort] = useState<FleetSort>('status')
   const label = (deviceId: string) => nameOf?.(deviceId) ?? deviceId
 
@@ -91,7 +112,7 @@ export function DeviceList({
             <button
               key={id}
               type="button"
-              onClick={() => setFilter((f) => (f === id ? 'all' : id))}
+              onClick={() => onFilter(filter === id ? 'all' : id)}
               aria-pressed={filter === id}
               data-testid={`fleet-filter-${id}`}
               className={cn(
@@ -107,6 +128,16 @@ export function DeviceList({
           <span className="text-[11px] text-muted">
             {t('deviceList.count', { shown: shown.length + shownSilent.length, total })}
           </span>
+          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted">
+            <input
+              type="checkbox"
+              checked={follow}
+              onChange={(e) => onFollow(e.currentTarget.checked)}
+              data-testid="fleet-follow"
+              className="h-3.5 w-3.5 accent-[var(--admin-brand)]"
+            />
+            {t('info.follow')}
+          </label>
           <select
             value={sort}
             onChange={(e) => setSort(e.currentTarget.value as FleetSort)}
@@ -130,7 +161,14 @@ export function DeviceList({
         ) : (
           <>
             {shown.map((d) => (
-              <DeviceRow key={d.ev.deviceId} device={d} label={label(d.ev.deviceId)} selected={d.ev.deviceId === selectedId} onSelect={onSelect} />
+              <DeviceRow
+                key={d.ev.deviceId}
+                device={d}
+                label={label(d.ev.deviceId)}
+                detail={detailOf?.(d.ev.deviceId)}
+                selected={d.ev.deviceId === selectedId}
+                onSelect={onSelect}
+              />
             ))}
             {shownSilent.map((d) => (
               <SilentRow key={d.id} label={d.name} />
@@ -145,17 +183,27 @@ export function DeviceList({
 const DeviceRow = memo(function DeviceRow({
   device,
   label,
+  detail,
   selected,
   onSelect,
 }: {
   device: DeviceLive
   // resolved device name (stable string → memo stays effective); falls back to the id upstream
   label: string
+  detail?: { plate?: string | null; driver?: string | null } | undefined
   selected: boolean
   onSelect: (id: string) => void
 }) {
   const { speed } = useUnits()
   const { ev, status } = device
+  /**
+   * Two lines, because one was not enough to recognise a vehicle by.
+   *
+   * A dispatcher looking for a truck knows its plate and its driver, not its device name — the
+   * second line carries whatever the fleet has actually recorded and nothing else. An absent plate
+   * is simply absent; inventing a placeholder there would be a claim about the customer's records.
+   */
+  const sub = [detail?.plate, detail?.driver].filter((x): x is string => typeof x === 'string' && x !== '')
   return (
     <button
       type="button"
@@ -164,13 +212,34 @@ const DeviceRow = memo(function DeviceRow({
       data-testid={`device-row-${ev.deviceId}`}
       onClick={() => onSelect(ev.deviceId)}
       className={cn(
-        'device-row flex w-full items-center gap-2.5 border-b border-line/50 px-3 py-2.5 text-left hover:bg-surface-2',
+        'device-row flex w-full items-start gap-2.5 border-b border-line/50 px-3 py-2.5 text-left hover:bg-surface-2',
         selected && 'bg-surface-2 shadow-[inset_2px_0_0_0_var(--accent-2)]',
       )}
     >
-      <StatusDot status={status} />
-      <span className="min-w-0 flex-1 truncate text-xs text-text">{label}</span>
-      <span className="shrink-0 text-xs tabular-nums text-muted">{speed(ev.speed ?? 0)}</span>
+      <StatusDot status={status} className="mt-1" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-medium text-text">{label}</span>
+        {sub.length > 0 && <span className="block truncate text-[11px] text-muted">{sub.join(' · ')}</span>}
+        <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
+          <span className="inline-flex shrink-0 items-center gap-1 tabular-nums">
+            <Gauge className="h-3 w-3" aria-hidden />
+            {speed(ev.speed ?? 0)}
+          </span>
+          {ev.satellites > 0 && (
+            <span className="inline-flex shrink-0 items-center gap-1 tabular-nums">
+              <Satellite className="h-3 w-3" aria-hidden />
+              {ev.satellites}
+            </span>
+          )}
+          {/* ignition is null when the model does not report it — three states, not two */}
+          {ev.ignition !== null && (
+            <span className="inline-flex shrink-0 items-center gap-1">
+              <Power className={cn('h-3 w-3', ev.ignition && 'text-success')} aria-hidden />
+            </span>
+          )}
+        </span>
+      </span>
+      <ChevronRight className="mt-1 h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
     </button>
   )
 })

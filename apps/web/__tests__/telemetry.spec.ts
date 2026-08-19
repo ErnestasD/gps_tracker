@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { drawable, hasTelemetry, pointAt, telemetryRows, type TrackPoint } from '../src/lib/telemetry'
+import { drawable, hasTelemetry, highlightRows, pointAt, telemetryRows, type TrackPoint } from '../src/lib/telemetry'
 
 /**
  * The parameters list and the 24-hour track.
@@ -86,5 +86,40 @@ describe('the 24-hour track', () => {
     const points = [pt('2026-08-18T10:00:00Z')]
     expect(pointAt(points, Date.parse('2026-08-18T09:00:00Z'))).toBeUndefined()
     expect(pointAt([], Date.now())).toBeUndefined()
+  })
+})
+
+describe('highlightRows', () => {
+  it('promotes only what the device actually sent, in a fixed reading order', () => {
+    const rows = highlightRows({ 'External Voltage': 12004, 'GSM Signal': 4, Odd: 1 })
+    expect(rows.map((r) => r.label)).toEqual(['GSM Signal', 'External Voltage'])
+  })
+
+  it('draws a bar only where the scale is documented', () => {
+    // GSM signal is 1–5 and battery level is a percentage (FMB AVL 21 / 113), so both are a
+    // proportion of something. External voltage is millivolts with no model-independent maximum —
+    // inventing one would make the bar a claim about the vehicle.
+    const rows = highlightRows({ 'GSM Signal': 5, 'Battery Level': 50, 'External Voltage': 12004 })
+    const by = Object.fromEntries(rows.map((r) => [r.key, r.pct]))
+    expect(by).toEqual({ 'GSM Signal': 1, 'Battery Level': 0.5, 'External Voltage': null })
+  })
+
+  it('a value outside the documented range gets no bar rather than a clamped lie', () => {
+    // AVL 84 reports fuel in litres on some CAN adapters; 120 is not "120 %".
+    expect(highlightRows({ 'Fuel Level': 120 })[0]).toMatchObject({ value: '120', pct: null })
+  })
+
+  it('a low level reads as low — the tone carries it, not a second row of text', () => {
+    expect(highlightRows({ 'Fuel Level': 8 })[0]?.tone).toBe('danger')
+    expect(highlightRows({ 'Fuel Level': 30 })[0]?.tone).toBe('warn')
+    expect(highlightRows({ 'Fuel Level': 80 })[0]?.tone).toBe('accent')
+  })
+
+  it('matches the dictionary name whatever case it arrives in', () => {
+    expect(highlightRows({ 'gsm signal': 3 }).map((r) => r.label)).toEqual(['gsm signal'])
+  })
+
+  it('a device reporting none of them yields no section at all', () => {
+    expect(highlightRows({ 'Axis X': 12 })).toEqual([])
   })
 })

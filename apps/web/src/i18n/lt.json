@@ -447,7 +447,21 @@
       "movement": "Judėjimas",
       "odometer": "Rida (m)",
       "altitude": "Aukštis (m)",
-      "paramsAt": "Kaip įrenginys pranešė {{when}}"
+      "paramsAt": "Kaip įrenginys pranešė {{when}}",
+      "events": "Įvykiai",
+      "fences": "Geozonos",
+      "position": "Pozicija",
+      "coords": "Koordinatės",
+      "lastPacket": "Paskutinis paketas",
+      "heading": "Kryptis",
+      "telemetry": "Pagrindinė telemetrija",
+      "recentTrips": "Paskutinės kelionės",
+      "noTrips": "Kelionių dar neužfiksuota.",
+      "paramsSearch": "Ieškoti parametrų…",
+      "eventsError": "Nepavyko įkelti įvykių.",
+      "noEvents": "Šis įrenginys įvykių neturi.",
+      "acknowledged": "Patvirtinta",
+      "fencesHint": "Pasirinkite, kurias geozonas piešti žemėlapyje."
     },
     "title": "Gyvas žemėlapis",
     "toggleList": "Rodyti arba slėpti įrenginių sąrašą",
@@ -462,7 +476,32 @@
       "noData": "nėra įrašo {{when}}",
       "noFix": "nėra GPS fiksacijos",
       "button": "24 val.",
-      "truncated": "{{points}} taškų — istorijos daugiau nei vienas puslapis; rodoma ankstesnė dalis"
+      "truncated": "{{points}} taškų — istorijos daugiau nei vienas puslapis; rodoma ankstesnė dalis",
+      "pickDevice": "Pasirinkite automobilį, kad matytumėte pastarąsias 24 val.",
+      "replay": "Peržaisti pastarąsias 24 val.",
+      "stopReplay": "Stabdyti peržaidimą",
+      "quick": {
+        "h24": "-24 val.",
+        "h12": "-12 val.",
+        "h6": "-6 val.",
+        "h1": "-1 val."
+      }
+    },
+    "eventFeed": "Įvykių srautas",
+    "ctl": {
+      "zoomIn": "Priartinti",
+      "zoomOut": "Atitolinti",
+      "fitAll": "Rodyti visą parką",
+      "centerSelected": "Centruoti pasirinktą"
+    },
+    "layers": {
+      "title": "Sluoksniai",
+      "geofences": "Geozonos",
+      "trails": "Judėjimo pėdsakai",
+      "labels": "Įrenginių pavadinimai",
+      "heat": "Tankio sluoksnis",
+      "clusters": "Grupuoti artimus įrenginius",
+      "fenceVisibility": "Geozonų matomumas"
     }
   },
   "units": {

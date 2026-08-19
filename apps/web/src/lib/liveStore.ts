@@ -308,6 +308,17 @@ export class LiveStore {
     this.emit()
   }
 
+  /**
+   * The selected device's last VALID fix, for a camera move the operator asked for by hand.
+   *
+   * Not `selected.ev.lon/lat`: an invalid record carries 0/0, and "centre on this vehicle" landing
+   * in the Gulf of Guinea is the same defect `DeviceLive.fix` exists to prevent.
+   */
+  selectedFix(): { lon: number; lat: number } | null {
+    const id = this.snapshot.selectedId
+    return id === null ? null : (this.byId.get(id)?.fix ?? null)
+  }
+
   onMapFrame(sink: ((frame: MapFrame) => void) | null): void {
     this.mapSink = sink
     if (sink) this.pushMapFrame()

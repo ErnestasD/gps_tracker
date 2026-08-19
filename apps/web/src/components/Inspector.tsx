@@ -1,20 +1,22 @@
-import { Activity, Radio, SlidersHorizontal, Terminal, X } from 'lucide-react'
+import { Activity, Bell, Crosshair, Gauge, Radio, Route as RouteIcon, Satellite, Shield, SlidersHorizontal, Terminal, X } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { Device } from '@/lib/devices'
+import { listEvents } from '@/lib/events'
+import type { GeofenceView } from '@orbetra/shared'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
 import { useFmt } from '@/lib/datetime'
-import { getTelemetry, hasTelemetry, telemetryRows } from '@/lib/telemetry'
+import { getTelemetry, hasTelemetry, highlightRows, telemetryRows, type LatestTelemetry } from '@/lib/telemetry'
+import { fmtKm, listTrips } from '@/lib/trips'
+import { useUnits } from '@/lib/units'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { SettingsCard } from '@/routes/app/devices/settings'
-
-import { InfoCard } from './InfoCard'
 
 /**
  * The selected device's workspace on the map (ADR-028 admin idiom, founder design 2026-08-18).
@@ -29,19 +31,28 @@ import { InfoCard } from './InfoCard'
  * card in particular carries hard-won rules about never showing a value the device has not
  * confirmed.
  *
+ * Everything on the panel is conditional on the device having actually reported it. The design this
+ * was ported from shows fuel, battery and an address for every vehicle because its data was
+ * generated; here a tile that is missing means the tracker does not send that element, and that
+ * absence is itself the answer to "why can't I see the fuel level".
+ *
  * A tab whose data needs a `Device` (not just a live position) is only offered when the registry row
  * is available — a device streaming positions we have no CRUD record for can still be watched, but
  * cannot be commanded.
  */
-export type InspectorTab = 'overview' | 'params' | 'commands' | 'settings'
+export type InspectorTab = 'overview' | 'params' | 'commands' | 'settings' | 'events' | 'fences'
 
 export function Inspector({
   live,
   device,
   name,
+  driver,
   follow,
   trail,
   canWrite,
+  geofences,
+  visibleFences,
+  onToggleFence,
   onFollow,
   onTrail,
   onClose,
@@ -50,9 +61,14 @@ export function Inspector({
   /** The registry row, when we have it. Absent ⇒ only the overview is meaningful. */
   device: Device | undefined
   name?: string
+  /** The assigned driver's name, when the fleet has recorded one. */
+  driver?: string | null
   follow: boolean
   trail: boolean
   canWrite: boolean
+  geofences: GeofenceView[]
+  visibleFences: ReadonlySet<string>
+  onToggleFence: (id: string) => void
   onFollow: (v: boolean) => void
   onTrail: (v: boolean) => void
   onClose: () => void
@@ -67,6 +83,13 @@ export function Inspector({
     setTab('overview')
   }
 
+  const telemetry = useQuery({
+    queryKey: ['telemetry', live.ev.deviceId],
+    queryFn: () => getTelemetry(live.ev.deviceId),
+    refetchInterval: 30_000,
+  })
+  const latest = hasTelemetry(telemetry.data) ? telemetry.data : undefined
+
   /**
    * Commands and settings are WRITES, and the devices table gates them on `canWrite` for a stated
    * reason: a viewer's click 403s. Offering them here anyway would have put the Codec-12 console —
@@ -75,61 +98,150 @@ export function Inspector({
    */
   const tabs: { id: InspectorTab; label: string; icon: typeof Activity }[] = [
     { id: 'overview', label: t('map.inspector.overview'), icon: Activity },
-    // Parameters are a READ — every role sees what its own vehicle is reporting.
+    // Parameters and events are READS — every role sees what its own vehicle is reporting.
     ...(device !== undefined ? [{ id: 'params' as const, label: t('map.inspector.params'), icon: Radio }] : []),
+    { id: 'events', label: t('map.inspector.events'), icon: Bell },
     ...(device !== undefined && canWrite
       ? [
           { id: 'commands' as const, label: t('map.inspector.commands'), icon: Terminal },
           { id: 'settings' as const, label: t('map.inspector.settings'), icon: SlidersHorizontal },
         ]
       : []),
+    ...(geofences.length > 0 ? [{ id: 'fences' as const, label: t('map.inspector.fences'), icon: Shield }] : []),
   ]
 
   // Never leave a tab selected that cannot render: a device with no registry row, or a viewer who
   // may not write, has only the overview, and a blank panel reads as broken.
   const effective: InspectorTab = tabs.some((x) => x.id === tab) ? tab : 'overview'
 
-  if (effective === 'overview') {
-    // The overview IS the InfoCard — one implementation, and it keeps its own testids and layout.
-    return (
-      <div data-testid="inspector" className="min-h-0 flex-1">
-        <InfoCard
-          device={live}
-          name={name}
-          follow={follow}
-          trail={trail}
-          onFollow={onFollow}
-          onTrail={onTrail}
-          onClose={onClose}
-          tabs={tabs.length > 1 ? <TabStrip tabs={tabs} active={effective} onSelect={setTab} /> : undefined}
-        />
-      </div>
-    )
-  }
-
   return (
-    <Card data-testid="inspector" className="min-h-0 flex-1 rounded-none border-0 bg-transparent shadow-none">
-      <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="flex items-center gap-2 font-mono text-sm">
-          <StatusDot status={live.status} />
-          {name ?? live.ev.deviceId}
-        </CardTitle>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label={t('info.close')}>
-          <X className="h-4 w-4" />
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <TabStrip tabs={tabs} active={effective} onSelect={setTab} />
+    <div data-testid="inspector" className="flex min-h-0 flex-1 flex-col">
+      <Header
+        live={live}
+        device={device}
+        name={name}
+        driver={driver}
+        latest={latest}
+        onClose={onClose}
+      />
+      <TabStrip tabs={tabs} active={effective} onSelect={setTab} />
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {effective === 'overview' && (
+          <OverviewTab
+            live={live}
+            latest={latest}
+            follow={follow}
+            trail={trail}
+            onFollow={onFollow}
+            onTrail={onTrail}
+          />
+        )}
         {/* keyed by device so a panel never carries state across a selection change — an armed
             destructive confirm or a half-dragged slider must not follow the operator to another
             vehicle (the devices table keys these the same way, for the same reason) */}
-        {device !== undefined && effective === 'params' && <ParamsTab key={`par-${device.id}`} deviceId={device.id} />}
+        {device !== undefined && effective === 'params' && <ParamsTab key={`par-${device.id}`} latest={latest} loading={telemetry.isLoading} error={telemetry.isError} />}
+        {effective === 'events' && <EventsTab key={`ev-${live.ev.deviceId}`} deviceId={live.ev.deviceId} />}
         {device !== undefined && effective === 'commands' && <CommandsCard key={`cmd-${device.id}`} device={device} />}
         {device !== undefined && effective === 'settings' && (
           <SettingsCard key={`set-${device.id}`} device={device} canWrite={canWrite} />
         )}
-      </CardContent>
-    </Card>
+        {effective === 'fences' && (
+          <FencesTab geofences={geofences} visibleFences={visibleFences} onToggle={onToggleFence} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Relative time for Live contexts only (spec §3 time rule); Intl, no date math. */
+function relTime(fixTimeMs: number, lang: string): string {
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' })
+  const deltaS = Math.round((fixTimeMs - Date.now()) / 1_000)
+  if (deltaS > -60) return rtf.format(deltaS, 'second')
+  if (deltaS > -3_600) return rtf.format(Math.round(deltaS / 60), 'minute')
+  return rtf.format(Math.round(deltaS / 3_600), 'hour')
+}
+
+function Header({
+  live,
+  device,
+  name,
+  driver,
+  latest,
+  onClose,
+}: {
+  live: DeviceLive
+  device: Device | undefined
+  name?: string
+  driver?: string | null
+  latest: LatestTelemetry | undefined
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const { speed, distanceM } = useUnits()
+  const { ev, status } = live
+
+  /**
+   * The four numbers worth a glance, in the order they are worth it — and only the ones this
+   * vehicle actually sends. Speed and satellites come from the live event, so they are always
+   * there; odometer, voltage and levels come from `attrs` and appear per model.
+   */
+  const attrs = latest?.attrs ?? {}
+  const attr = (name: string): unknown => {
+    const key = Object.keys(attrs).find((k) => k.toLowerCase() === name)
+    return key === undefined ? undefined : attrs[key]
+  }
+  const tiles: { key: string; icon: typeof Gauge; value: string; unit: string }[] = [
+    { key: 'speed', icon: Gauge, value: speed(ev.speed ?? 0), unit: t('info.speed') },
+    { key: 'sats', icon: Satellite, value: String(ev.satellites), unit: t('info.satellites') },
+  ]
+  if (latest?.odometerM != null && latest.odometerM !== '') {
+    const m = Number(latest.odometerM)
+    if (Number.isFinite(m)) tiles.push({ key: 'odo', icon: RouteIcon, value: distanceM(m), unit: t('map.inspector.odometer') })
+  }
+  for (const [name, icon] of [['battery level', Activity], ['fuel level', Activity], ['gsm signal', Radio], ['external voltage', Activity]] as const) {
+    if (tiles.length >= 4) break
+    const v = attr(name)
+    if (typeof v === 'number') tiles.push({ key: name, icon, value: String(v), unit: name })
+  }
+
+  // plate · driver · IMEI — whatever of it the fleet has recorded, never a placeholder
+  const sub = [device?.plate, driver, device !== undefined ? `IMEI ${device.imei}` : undefined].filter(
+    (x): x is string => typeof x === 'string' && x !== '',
+  )
+
+  return (
+    <div className="shrink-0 border-b border-line p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <StatusDot status={status} />
+            <span className="truncate text-sm font-semibold text-text">{name ?? ev.deviceId}</span>
+            <Badge variant={status === 'online' ? 'success' : status === 'stale' ? 'warn' : 'default'}>
+              {t(`status.${status}`)}
+            </Badge>
+            {!ev.fixValid && <Badge variant="warn">{t('info.invalidFix')}</Badge>}
+          </div>
+          {sub.length > 0 && (
+            <div className="mt-0.5 truncate font-mono text-[11px] text-muted" data-testid="inspector-sub">
+              {sub.join(' · ')}
+            </div>
+          )}
+        </div>
+        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClose} aria-label={t('info.close')}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="mt-3 grid grid-cols-4 gap-1.5" data-testid="inspector-metrics">
+        {tiles.map((m) => (
+          <div key={m.key} className="rounded-md bg-surface-2 px-1.5 py-1.5 text-center">
+            <m.icon className="mx-auto h-3 w-3 text-muted" aria-hidden />
+            <div className="mt-0.5 truncate text-sm font-semibold tabular-nums text-text">{m.value}</div>
+            <div className="truncate text-[9px] uppercase tracking-wide text-muted" title={m.unit}>{m.unit}</div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -143,7 +255,7 @@ function TabStrip({
   onSelect: (t: InspectorTab) => void
 }) {
   return (
-    <div className="flex gap-1 border-b" role="tablist" data-testid="inspector-tabs">
+    <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-line" role="tablist" data-testid="inspector-tabs">
       {tabs.map((tb) => (
         <button
           key={tb.id}
@@ -165,6 +277,142 @@ function TabStrip({
   )
 }
 
+function Section({ title, icon: Icon, children }: { title: string; icon?: typeof Gauge; children: React.ReactNode }) {
+  return (
+    <div className="rounded-card border border-line p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+        {Icon !== undefined && <Icon className="h-3 w-3" aria-hidden />}
+        {title}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function OverviewTab({
+  live,
+  latest,
+  follow,
+  trail,
+  onFollow,
+  onTrail,
+}: {
+  live: DeviceLive
+  latest: LatestTelemetry | undefined
+  follow: boolean
+  trail: boolean
+  onFollow: (v: boolean) => void
+  onTrail: (v: boolean) => void
+}) {
+  const { t, i18n } = useTranslation()
+  const { dt } = useFmt()
+  const { ev } = live
+  const trips = useQuery({
+    queryKey: ['trips', 'device', ev.deviceId],
+    queryFn: () => listTrips({ deviceId: ev.deviceId, limit: 5 }),
+  })
+  const highlights = latest !== undefined ? highlightRows(latest.attrs) : []
+
+  return (
+    <div className="space-y-3" data-testid="overview-tab">
+      <Section title={t('map.inspector.position')}>
+        <dl className="grid grid-cols-2 gap-2 text-xs">
+          {/* The coordinate is only shown when it is a real one: a device with no fix reports 0/0,
+              and printing that as a position is how a vehicle ends up in the Gulf of Guinea. */}
+          <KV
+            k={t('map.inspector.coords')}
+            v={live.fix === null ? '—' : `${live.fix.lat.toFixed(5)}, ${live.fix.lon.toFixed(5)}`}
+          />
+          <KV k={t('map.inspector.lastPacket')} v={dt(new Date(ev.fixTimeMs).toISOString())} />
+          <KV k={t('map.inspector.heading')} v={ev.course === null ? '—' : `${Math.round(ev.course)}°`} />
+          <KV
+            k={t('info.ignition')}
+            v={ev.ignition === null ? '—' : ev.ignition ? t('info.on') : t('info.off')}
+          />
+        </dl>
+        <p className="mt-2 text-[11px] text-muted">{relTime(ev.fixTimeMs, i18n.language)}</p>
+      </Section>
+
+      {highlights.length > 0 && (
+        <Section title={t('map.inspector.telemetry')} icon={Satellite}>
+          <div className="space-y-2" data-testid="overview-telemetry">
+            {highlights.map((h) => (
+              <div key={h.key}>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="min-w-0 truncate text-muted">{h.label}</span>
+                  <span className="shrink-0 font-mono font-medium tabular-nums text-text">{h.value}</span>
+                </div>
+                {h.pct !== null && (
+                  <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-surface-2">
+                    <div
+                      className={cn(
+                        'h-full rounded-full',
+                        h.tone === 'danger' ? 'bg-danger' : h.tone === 'warn' ? 'bg-warn' : 'bg-accent',
+                      )}
+                      style={{ width: `${Math.max(2, Math.min(100, h.pct * 100))}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      <Section title={t('map.inspector.recentTrips')} icon={RouteIcon}>
+        {trips.isLoading ? (
+          <p className="text-xs text-muted">{t('admin.loading')}</p>
+        ) : (trips.data?.length ?? 0) === 0 ? (
+          <p className="text-xs text-muted">{t('map.inspector.noTrips')}</p>
+        ) : (
+          <ul className="space-y-1.5" data-testid="overview-trips">
+            {(trips.data ?? []).map((tr) => (
+              <li key={tr.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 truncate text-text">{dt(tr.startTime)}</span>
+                <span className="shrink-0 font-mono text-muted">{fmtKm(tr.distanceM)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      <div className="flex gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          className={cn(follow && 'border-accent text-accent')}
+          aria-pressed={follow}
+          onClick={() => onFollow(!follow)}
+          data-testid="follow-toggle"
+        >
+          <Crosshair className="h-3.5 w-3.5" aria-hidden />
+          {t('info.follow')}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className={cn(trail && 'border-accent text-accent')}
+          aria-pressed={trail}
+          onClick={() => onTrail(!trail)}
+          data-testid="trail-toggle"
+        >
+          <RouteIcon className="h-3.5 w-3.5" aria-hidden />
+          {t('info.trail')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function KV({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] uppercase tracking-wide text-muted">{k}</dt>
+      <dd className="truncate text-xs tabular-nums text-text">{v}</dd>
+    </div>
+  )
+}
+
 /**
  * Everything the device is reporting — the conditional list the founder asked for: a parameter is
  * here because the tracker sent it, and absent because it did not.
@@ -173,20 +421,24 @@ function TabStrip({
  * `GNSS Status 2`, `Sleep Mode 0`, `HDOP 1000` were all arriving and none of them were reachable
  * outside the database.
  */
-function ParamsTab({ deviceId }: { deviceId: string }) {
+function ParamsTab({
+  latest,
+  loading,
+  error,
+}: {
+  latest: LatestTelemetry | undefined
+  loading: boolean
+  error: boolean
+}) {
   const { t } = useTranslation()
   const { dt: dtFmt } = useFmt()
-  const q = useQuery({
-    queryKey: ['telemetry', deviceId],
-    queryFn: () => getTelemetry(deviceId),
-    refetchInterval: 30_000,
-  })
+  const [q, setQ] = useState('')
 
-  if (q.isLoading) return <p className="p-2 text-xs text-muted">{t('admin.loading')}</p>
-  if (q.isError) return <p className="p-2 text-xs text-danger" role="alert">{t('map.inspector.paramsError')}</p>
-  if (!hasTelemetry(q.data)) return <p className="p-2 text-xs text-muted">{t('map.inspector.paramsEmpty')}</p>
+  if (loading) return <p className="p-2 text-xs text-muted">{t('admin.loading')}</p>
+  if (error) return <p className="p-2 text-xs text-danger" role="alert">{t('map.inspector.paramsError')}</p>
+  if (latest === undefined) return <p className="p-2 text-xs text-muted">{t('map.inspector.paramsEmpty')}</p>
 
-  const d = q.data
+  const d = latest
   /**
    * The promoted columns are prepended, because `attrs` does NOT contain them.
    *
@@ -203,7 +455,8 @@ function ParamsTab({ deviceId }: { deviceId: string }) {
     { key: 'altitude', label: t('map.inspector.altitude'), value: d.altitude },
   ].filter((r) => r.value !== null && r.value !== undefined)
 
-  const rows = telemetryRows(d.attrs)
+  const term = q.trim().toLowerCase()
+  const rows = telemetryRows(d.attrs).filter((r) => term === '' || r.label.toLowerCase().includes(term) || r.key.toLowerCase().includes(term))
   return (
     <div data-testid="params-tab">
       {/* Age, always. A device that died three days ago would otherwise render a full, confident,
@@ -211,6 +464,15 @@ function ParamsTab({ deviceId }: { deviceId: string }) {
       <p className="pb-1 text-[11px] text-muted" data-testid="params-age">
         {t('map.inspector.paramsAt', { when: dtFmt(d.fixTime) })}
       </p>
+      <input
+        type="search"
+        value={q}
+        onChange={(e) => setQ(e.currentTarget.value)}
+        placeholder={t('map.inspector.paramsSearch')}
+        aria-label={t('map.inspector.paramsSearch')}
+        data-testid="params-search"
+        className="mb-2 h-7 w-full rounded border border-line bg-transparent px-2 text-xs text-text placeholder:text-muted"
+      />
       {promoted.length > 0 && (
         <dl className="divide-y divide-line border-b border-line text-xs">
           {promoted.map((r) => (
@@ -239,6 +501,74 @@ function ParamsTab({ deviceId }: { deviceId: string }) {
       {rows.some((r) => !r.documented) && (
         <p className="pt-2 text-[11px] text-muted">{t('map.inspector.paramsUndocumented')}</p>
       )}
+    </div>
+  )
+}
+
+/** What the pipeline decided about this vehicle: geofence crossings, overspeed, power cuts. */
+function EventsTab({ deviceId }: { deviceId: string }) {
+  const { t } = useTranslation()
+  const { dt } = useFmt()
+  const q = useQuery({
+    queryKey: ['events', 'device', deviceId],
+    queryFn: () => listEvents({ deviceId, limit: 15 }),
+    refetchInterval: 60_000,
+  })
+
+  if (q.isLoading) return <p className="p-2 text-xs text-muted">{t('admin.loading')}</p>
+  if (q.isError) return <p className="p-2 text-xs text-danger" role="alert">{t('map.inspector.eventsError')}</p>
+  const rows = q.data ?? []
+  if (rows.length === 0) return <p className="p-2 text-xs text-muted">{t('map.inspector.noEvents')}</p>
+
+  return (
+    <ul className="space-y-2" data-testid="events-tab">
+      {rows.map((e) => (
+        <li key={e.id} className="rounded-card border border-line p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <Badge variant={e.kind === 'panic' || e.kind === 'power_cut' ? 'danger' : 'default'}>
+              {t(`events.kind.${e.kind}`, { defaultValue: e.kind })}
+            </Badge>
+            <span className="shrink-0 text-[10px] tabular-nums text-muted">{dt(e.at)}</span>
+          </div>
+          {e.acknowledgedAt !== null && (
+            <p className="mt-1 text-[11px] text-muted">{t('map.inspector.acknowledged')}</p>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Which zones the map draws. A read-only switchboard: creating zones stays on the geofences page. */
+function FencesTab({
+  geofences,
+  visibleFences,
+  onToggle,
+}: {
+  geofences: GeofenceView[]
+  visibleFences: ReadonlySet<string>
+  onToggle: (id: string) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="space-y-2" data-testid="fences-tab">
+      <p className="text-[11px] text-muted">{t('map.inspector.fencesHint')}</p>
+      {geofences.map((g) => (
+        <label
+          key={g.id}
+          className="flex cursor-pointer items-center gap-2 rounded-card border border-line p-2.5 text-xs"
+        >
+          <input
+            type="checkbox"
+            checked={visibleFences.has(g.id)}
+            onChange={() => onToggle(g.id)}
+            className="h-3.5 w-3.5 accent-[var(--admin-brand)]"
+          />
+          <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: g.color }} aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-text">{g.name}</span>
+          <span className="shrink-0 text-[11px] text-muted">{t(`geofences.kind.${g.kind}`, { defaultValue: g.kind })}</span>
+        </label>
+      ))}
     </div>
   )
 }

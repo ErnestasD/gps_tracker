@@ -62,7 +62,7 @@ test('login → map: Mapbox mark visible, WS live, simulator devices appear', as
 
   // select → info card + trail/follow controls (spec §4)
   await page.getByTestId(`device-row-${BASE_IMEI}`).click()
-  await expect(page.getByTestId('info-card')).toBeVisible()
+  await expect(page.getByTestId('overview-tab')).toBeVisible()
   await page.getByTestId('trail-toggle').click()
   await page.getByTestId('follow-toggle').click()
 

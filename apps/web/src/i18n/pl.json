@@ -447,7 +447,21 @@
       "movement": "Ruch",
       "odometer": "Przebieg (m)",
       "altitude": "Wysokość (m)",
-      "paramsAt": "Zgodnie ze zgłoszeniem urządzenia {{when}}"
+      "paramsAt": "Zgodnie ze zgłoszeniem urządzenia {{when}}",
+      "events": "Zdarzenia",
+      "fences": "Strefy",
+      "position": "Pozycja",
+      "coords": "Współrzędne",
+      "lastPacket": "Ostatni pakiet",
+      "heading": "Kurs",
+      "telemetry": "Kluczowa telemetria",
+      "recentTrips": "Ostatnie trasy",
+      "noTrips": "Brak zarejestrowanych tras.",
+      "paramsSearch": "Szukaj parametrów…",
+      "eventsError": "Nie udało się wczytać zdarzeń.",
+      "noEvents": "Brak zdarzeń dla tego urządzenia.",
+      "acknowledged": "Potwierdzone",
+      "fencesHint": "Wybierz, które strefy rysuje mapa."
     },
     "title": "Mapa na żywo",
     "toggleList": "Pokaż lub ukryj listę pojazdów",
@@ -462,7 +476,32 @@
       "noData": "brak zgłoszenia o {{when}}",
       "noFix": "brak fixa GPS",
       "button": "24 godz.",
-      "truncated": "{{points}} punktów — historii więcej niż jedna strona; pokazano wcześniejszą część"
+      "truncated": "{{points}} punktów — historii więcej niż jedna strona; pokazano wcześniejszą część",
+      "pickDevice": "Wybierz pojazd, aby zobaczyć ostatnie 24 h",
+      "replay": "Odtwórz ostatnie 24 h",
+      "stopReplay": "Zatrzymaj odtwarzanie",
+      "quick": {
+        "h24": "-24 h",
+        "h12": "-12 h",
+        "h6": "-6 h",
+        "h1": "-1 h"
+      }
+    },
+    "eventFeed": "Strumień zdarzeń",
+    "ctl": {
+      "zoomIn": "Przybliż",
+      "zoomOut": "Oddal",
+      "fitAll": "Pokaż całą flotę",
+      "centerSelected": "Wyśrodkuj wybrany pojazd"
+    },
+    "layers": {
+      "title": "Warstwy",
+      "geofences": "Geostrefy",
+      "trails": "Ślady ruchu",
+      "labels": "Nazwy urządzeń",
+      "heat": "Warstwa gęstości",
+      "clusters": "Grupuj pobliskie urządzenia",
+      "fenceVisibility": "Widoczność stref"
     }
   },
   "units": {

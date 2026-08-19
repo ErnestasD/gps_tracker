@@ -71,6 +71,71 @@ export function telemetryRows(attrs: Record<string, unknown>): TelemetryRow[] {
   )
 }
 
+/**
+ * The handful of parameters an operator reads first, promoted out of the long list.
+ *
+ * A row is here because the device sent it — the same rule as the full list. What is added is a
+ * BAR, and only where the scale is a documented fact rather than a guess: Teltonika's tables give
+ * GSM signal as 1–5 (AVL 21) and battery/fuel level as a percentage (AVL 113 / 89), so those can be
+ * drawn as a proportion of something. Values whose scale depends on the model — external voltage in
+ * mV, RPM, temperatures — are shown as the device sent them, exactly as the parameters tab does.
+ * Drawing a bar for those would require a maximum we do not have, and an invented maximum is a
+ * claim about the vehicle.
+ * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+ */
+export interface HighlightRow {
+  key: string
+  label: string
+  value: string
+  /** 0..1 for a bar, or null when the scale is unknown and only the value is honest. */
+  pct: number | null
+  tone: 'accent' | 'warn' | 'danger'
+}
+
+/** name (lower-cased) → how to scale it. Matched on the dictionary NAME, never on a raw AVL id:
+ *  the same id means different things on different tables (see packages/codec dictionaries). */
+const SCALES: Record<string, { max: number; lowIsBad: boolean }> = {
+  'gsm signal': { max: 5, lowIsBad: true }, // AVL 21, range 1–5
+  'battery level': { max: 100, lowIsBad: true }, // AVL 113, %
+  'fuel level': { max: 100, lowIsBad: true }, // AVL 89, %
+}
+
+/** Order the highlights appear in. Anything not listed stays in the full parameters list. */
+const HIGHLIGHT_ORDER = [
+  'gsm signal',
+  'gnss status',
+  'external voltage',
+  'battery voltage',
+  'battery level',
+  'fuel level',
+  'engine rpm',
+  'coolant temperature',
+  'hdop',
+  'gnss hdop',
+  'sleep mode',
+]
+
+export function highlightRows(attrs: Record<string, unknown>): HighlightRow[] {
+  const byName = new Map(Object.keys(attrs).map((k) => [k.toLowerCase(), k]))
+  const out: HighlightRow[] = []
+  for (const wanted of HIGHLIGHT_ORDER) {
+    const key = byName.get(wanted)
+    if (key === undefined) continue
+    const raw = attrs[key]
+    const scale = SCALES[wanted]
+    let pct: number | null = null
+    let tone: HighlightRow['tone'] = 'accent'
+    if (scale !== undefined && typeof raw === 'number' && raw >= 0 && raw <= scale.max) {
+      pct = raw / scale.max
+      // a low signal or an empty tank is the thing worth noticing; the tone says so without
+      // needing a second row of text
+      if (scale.lowIsBad) tone = pct <= 0.15 ? 'danger' : pct <= 0.35 ? 'warn' : 'accent'
+    }
+    out.push({ key, label: key, value: fmt(raw), pct, tone })
+  }
+  return out
+}
+
 /** A point on the 24-hour track, as the positions endpoint returns it. */
 export interface TrackPoint {
   fixTime: string
