@@ -16,7 +16,7 @@ import { listDrivers } from '@/lib/drivers'
 import { listEvents } from '@/lib/events'
 import { fleetPanelCounts, type FleetFilter } from '@/lib/fleetFilter'
 import { geofenceFeatures, listGeofences } from '@/lib/geofences'
-import { buildTrailFeatures, liveStore } from '@/lib/liveStore'
+import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
 import { getTrack } from '@/lib/telemetry'
 import { cn } from '@/lib/utils'
@@ -35,6 +35,13 @@ const socket = new LiveSocket({
 })
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+
+/** The scrubber's 24 hours, bucketed to the minute so the same window is asked for repeatedly. */
+const TRACK_HOURS = 24
+const windowAt = (nowMs: number): { from: number; to: number } => {
+  const to = Math.floor(nowMs / 60_000) * 60_000
+  return { from: to - TRACK_HOURS * 3_600_000, to }
+}
 
 export function MapPage() {
   const { t } = useTranslation()
@@ -83,6 +90,9 @@ export function MapPage() {
     return () => {
       socket.stop()
       liveStore.stop()
+      // The store is a module singleton and outlives this page. Leaving a scrub set meant coming
+      // back to /app/map and having the camera eased into a moment the UI had already forgotten.
+      liveStore.setScrub(null)
     }
   }, [])
 
@@ -130,23 +140,46 @@ export function MapPage() {
 
   // ── the selected vehicle's 24 hours ──────────────────────────────────────
   /**
-   * The window is fixed at SELECTION and travels with the query, so the axis and the payload are
-   * always the same 24 hours. Letting `getTrack` call `new Date()` per fetch drifted the two apart
-   * every time the tab regained focus.
+   * The scrubber's window: one value, shared by the axis and the query.
+   *
+   * Two things have to be true at once, and getting either alone was a defect.
+   *
+   * The axis and the payload must be the SAME window — letting `getTrack` call `new Date()` per
+   * fetch meant the "-24 h" tick named a different moment than the earliest row we held, and a
+   * one-minute nudge off "now" jumped the map by however long the tab had been in the background.
+   *
+   * And "now" has to stay now. Freezing it at selection made a map that is open all day quietly
+   * wrong: keep a truck selected from 09:00 to 13:00 and the history line still ended at 09:00
+   * while the marker was four hours of driving away, and "-1 h" scrubbed to 08:00.
+   *
+   * So it advances on a minute tick while the operator is LIVE, and holds still the moment they
+   * start reading the past — nothing shifts under a scrubber in use. Bucketing to the minute keeps
+   * the query key reusable, so re-selecting a vehicle is a cache hit rather than another 10 000 rows.
    */
-  const [window, setWindow] = useState(() => ({ id: snap.selectedId, from: Date.now() - 24 * 3_600_000, to: Date.now() }))
-  if (window.id !== snap.selectedId) {
-    const now = Date.now()
-    setWindow({ id: snap.selectedId, from: now - 24 * 3_600_000, to: now })
+  const [scrubbing, setScrubbing] = useState(false)
+  const [trackWindow, setTrackWindow] = useState(() => windowAt(Date.now()))
+  const [windowFor, setWindowFor] = useState(snap.selectedId)
+  if (windowFor !== snap.selectedId) {
+    setWindowFor(snap.selectedId)
+    setTrackWindow(windowAt(Date.now()))
+    setScrubbing(false)
   }
+  useEffect(() => {
+    if (scrubbing) return
+    const iv = setInterval(() => setTrackWindow((w) => {
+      const next = windowAt(Date.now())
+      return next.to === w.to ? w : next
+    }), 30_000)
+    return () => clearInterval(iv)
+  }, [scrubbing])
+
   // One query, two consumers: the scrubber reads the points, the map draws the line. Fetching it
   // twice would double the load for a window that can hold thousands of rows.
   const track = useQuery({
-    queryKey: ['track', snap.selectedId, window.from, window.to],
-    queryFn: () => getTrack(snap.selectedId as string, window),
-    enabled: snap.selectedId !== null && window.id === snap.selectedId,
-    // The window is closed, so the answer barely changes; without this, every alt-tab re-pulled up
-    // to 10 000 rows for the selected vehicle.
+    queryKey: ['track', snap.selectedId, trackWindow.from, trackWindow.to],
+    queryFn: () => getTrack(snap.selectedId as string, trackWindow),
+    enabled: snap.selectedId !== null && windowFor === snap.selectedId,
+    // The window only moves once a minute, so an alt-tab must not re-pull up to 10 000 rows.
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   })
@@ -180,6 +213,12 @@ export function MapPage() {
     () => geofenceFeatures(fences.filter((g) => visibleFences.has(g.id))),
     [fences, visibleFences],
   )
+  /** Reading the past freezes the window; returning to live lets it keep up again. */
+  const onScrub = useCallback((p: ScrubState) => {
+    setScrubbing(p !== null)
+    liveStore.setScrub(p)
+  }, [])
+
   const toggleFence = useCallback((id: string) =>
     setHiddenFences((prev) => {
       const next = new Set(prev)
@@ -404,10 +443,10 @@ export function MapPage() {
         deviceId={snap.selectedId}
         name={snap.selectedId === null ? null : nameOf(snap.selectedId)}
         points={trackPoints}
-        window={window}
+        window={trackWindow}
         loading={track.isLoading}
         truncated={track.data?.truncated ?? false}
-        onScrub={(p) => liveStore.setScrub(p)}
+        onScrub={onScrub}
       />
     </div>
   )

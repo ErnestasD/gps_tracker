@@ -124,7 +124,20 @@ export function LiveMap({
 
     let disposed = false
     let lastFrame: MapFrame | null = null // re-applied when a theme swap rebuilds the style
-    let lastScrubKey = '' // camera moves on a CHANGE of scrub target, not on every frame
+    /**
+     * The collection the source actually holds — the JOINED one, with labels.
+     *
+     * Seeding a rebuilt style from `lastFrame.devices` (the store's raw collection) dropped every
+     * device name, and `flush` early-returns when nothing changed, so on a quiet or paused map the
+     * labels stayed blank until the next position arrived.
+     */
+    let lastDevicesJoined: GeoJSON.FeatureCollection | null = null
+    let lastDevicesRaw: GeoJSON.FeatureCollection | null = null
+    let lastTrail: GeoJSON.FeatureCollection | null = null
+    let lastLabelFn: ((id: string) => string) | undefined
+    // camera moves on a CHANGE of scrub target, and the FIRST frame is never a change: registering
+    // the sink on a remount would otherwise ease the new map into a scrub the operator left behind
+    let lastScrubKey: string | null = null
 
     // IDEMPOTENT setup (ADR-030): `style.load` fires for the initial style AND after
     // every theme `setStyle`, which drops ALL runtime images/sources/layers — re-add
@@ -138,7 +151,7 @@ export function LiveMap({
 
       map.addSource('devices', {
         type: 'geojson',
-        data: lastFrame?.devices ?? EMPTY_FC,
+        data: lastDevicesJoined ?? lastFrame?.devices ?? EMPTY_FC,
         cluster: true,
         clusterRadius: 50,
         clusterMaxZoom: 14,
@@ -350,22 +363,38 @@ export function LiveMap({
     liveStore.onMapFrame((frame: MapFrame) => {
       if (disposed) return
       lastFrame = frame
-      // The name label lives in the FEATURE, because a symbol layer can only read what the source
-      // carries. Joining it here rather than in the store keeps the store free of view concerns.
+      /**
+       * Nothing is re-uploaded unless it changed.
+       *
+       * The store hands out the SAME collection object when only the scrub moved — and a scrub
+       * moves dozens of times a second on a drag. Re-joining labels and calling `setData` on a
+       * clustered source re-indexes the whole supercluster in the worker each time, which threw
+       * away the exact saving the store's cache exists to make. Identity is the signal; the label
+       * function is part of it, because renaming a device must still redraw its label.
+       */
       const label = labelRef.current
-      const devices: GeoJSON.FeatureCollection =
-        label === undefined
-          ? frame.devices
-          : {
-              type: 'FeatureCollection',
-              features: frame.devices.features.map((f) => ({
-                ...f,
-                properties: { ...f.properties, label: label(String(f.properties?.['deviceId'] ?? '')) },
-              })),
-            }
-      pointsRef.current = devices.features.filter((f) => f.geometry.type === 'Point')
-      map.getSource<GeoJSONSource>('devices')?.setData(devices)
-      map.getSource<GeoJSONSource>('trail')?.setData(frame.trail)
+      if (frame.devices !== lastDevicesRaw || label !== lastLabelFn) {
+        lastDevicesRaw = frame.devices
+        lastLabelFn = label
+        // The name label lives in the FEATURE, because a symbol layer can only read what the source
+        // carries. Joining it here rather than in the store keeps the store free of view concerns.
+        lastDevicesJoined =
+          label === undefined
+            ? frame.devices
+            : {
+                type: 'FeatureCollection',
+                features: frame.devices.features.map((f) => ({
+                  ...f,
+                  properties: { ...f.properties, label: label(String(f.properties?.['deviceId'] ?? '')) },
+                })),
+              }
+        pointsRef.current = lastDevicesJoined.features.filter((f) => f.geometry.type === 'Point')
+        map.getSource<GeoJSONSource>('devices')?.setData(lastDevicesJoined)
+      }
+      if (frame.trail !== lastTrail) {
+        lastTrail = frame.trail
+        map.getSource<GeoJSONSource>('trail')?.setData(frame.trail)
+      }
       if (map.getLayer('selected-halo')) {
         map.setFilter('selected-halo', ['==', ['get', 'deviceId'], frame.selected?.deviceId ?? ''])
       }
@@ -381,7 +410,7 @@ export function LiveMap({
        * hold no position for that moment, so the camera HOLDS rather than flying to the present.
        */
       const scrubKey = frame.scrub === null ? '' : frame.scrub === 'unknown' ? 'unknown' : `${frame.scrub.lon},${frame.scrub.lat}`
-      const scrubChanged = scrubKey !== lastScrubKey
+      const scrubChanged = lastScrubKey !== null && scrubKey !== lastScrubKey
       lastScrubKey = scrubKey
       if (frame.scrub !== null) {
         if (frame.scrub !== 'unknown' && scrubChanged) {

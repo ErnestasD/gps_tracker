@@ -475,16 +475,12 @@
       "now": "teraz",
       "noData": "brak zgłoszenia o {{when}}",
       "noFix": "brak fixa GPS",
-      "button": "24 godz.",
       "truncated": "{{points}} punktów — historii więcej niż jedna strona; pokazano wcześniejszą część",
       "pickDevice": "Wybierz pojazd, aby zobaczyć ostatnie 24 h",
       "replay": "Odtwórz ostatnie 24 h",
       "stopReplay": "Zatrzymaj odtwarzanie",
       "quick": {
-        "h24": "-24 h",
-        "h12": "-12 h",
-        "h6": "-6 h",
-        "h1": "-1 h"
+        "hours": "-{{hours}} h"
       }
     },
     "eventFeed": "Strumień zdarzeń",

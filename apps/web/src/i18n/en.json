@@ -475,16 +475,12 @@
       "now": "now",
       "noData": "no report at {{when}}",
       "noFix": "no GPS fix",
-      "button": "24 h",
       "truncated": "{{points}} points — more history than one page; showing the earlier part",
       "pickDevice": "Select a vehicle to see its last 24 hours",
       "replay": "Replay the last 24 hours",
       "stopReplay": "Stop the replay",
       "quick": {
-        "h24": "-24 h",
-        "h12": "-12 h",
-        "h6": "-6 h",
-        "h1": "-1 h"
+        "hours": "-{{hours}} h"
       }
     },
     "eventFeed": "Event feed",

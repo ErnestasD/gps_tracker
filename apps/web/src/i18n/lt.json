@@ -475,16 +475,12 @@
       "now": "dabar",
       "noData": "nėra įrašo {{when}}",
       "noFix": "nėra GPS fiksacijos",
-      "button": "24 val.",
       "truncated": "{{points}} taškų — istorijos daugiau nei vienas puslapis; rodoma ankstesnė dalis",
       "pickDevice": "Pasirinkite automobilį, kad matytumėte pastarąsias 24 val.",
       "replay": "Peržaisti pastarąsias 24 val.",
       "stopReplay": "Stabdyti peržaidimą",
       "quick": {
-        "h24": "-24 val.",
-        "h12": "-12 val.",
-        "h6": "-6 val.",
-        "h1": "-1 val."
+        "hours": "-{{hours}} val."
       }
     },
     "eventFeed": "Įvykių srautas",

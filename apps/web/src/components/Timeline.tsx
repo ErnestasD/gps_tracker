@@ -1,5 +1,5 @@
 import { Pause, Play, Route as RouteIcon } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useFmt } from '@/lib/datetime'
@@ -31,13 +31,22 @@ import { cn } from '@/lib/utils'
 const REPLAY_STEP_MIN = 6
 const REPLAY_TICK_MS = 90
 
-const QUICK: { m: number; key: string }[] = [
-  { m: 1440, key: 'map.timeline.quick.h24' },
-  { m: 720, key: 'map.timeline.quick.h12' },
-  { m: 360, key: 'map.timeline.quick.h6' },
-  { m: 60, key: 'map.timeline.quick.h1' },
-  { m: 0, key: 'map.timeline.now' },
-]
+/**
+ * Quick jumps, derived from the window rather than hardcoded.
+ *
+ * They used to be literal 1440/720/360/60 while `spanMin` was computed — which agrees only as long
+ * as the window is exactly 24 h. Narrow it and "-24 h" becomes a slider value below `min`: the
+ * browser clamps the thumb while `back` says otherwise, the fill goes negative, and every moment
+ * resolves outside the fetched window.
+ */
+const quickJumps = (spanMin: number): { m: number; key: string; hours: number }[] =>
+  [
+    { m: spanMin, key: 'map.timeline.quick.hours', hours: spanMin / 60 },
+    { m: Math.round(spanMin / 2), key: 'map.timeline.quick.hours', hours: spanMin / 120 },
+    { m: Math.round(spanMin / 4), key: 'map.timeline.quick.hours', hours: spanMin / 240 },
+    { m: 60, key: 'map.timeline.quick.hours', hours: 1 },
+    { m: 0, key: 'map.timeline.now', hours: 0 },
+  ].filter((q, i, all) => q.m === 0 || all.findIndex((x) => x.m === q.m) === i)
 
 export function Timeline({
   deviceId,
@@ -82,10 +91,12 @@ export function Timeline({
 
   const spanMin = Math.max(1, Math.round((window.to - window.from) / 60_000))
   const atMs = window.to - back * 60_000
-  const current = back === 0 ? undefined : pointAt(points, atMs)
+  const current = useMemo(() => (back === 0 ? undefined : pointAt(points, atMs)), [points, atMs, back])
   const disabled = deviceId === null || points.length === 0
 
-  const scrub = (minutes: number) => {
+  const scrub = (rawMinutes: number) => {
+    // clamped, so no caller can name a moment outside the window the points were fetched for
+    const minutes = Math.min(spanMin, Math.max(0, rawMinutes))
     setBack(minutes)
     if (minutes === 0) {
       onScrub(null)
@@ -141,7 +152,15 @@ export function Timeline({
 
   const pct = ((spanMin - back) / spanMin) * 100
   const stamp = dt(new Date(atMs).toISOString())
-  const valid = points.filter((p) => p.fixValid).length
+  // O(n) over up to 10 000 points, and this component re-renders at the store's 1 Hz cadence
+  const valid = useMemo(() => points.filter((p) => p.fixValid).length, [points])
+  /** How far back the earliest row we hold sits — where a replay should begin. */
+  const firstBack = useMemo(() => {
+    const first = points[0]
+    if (first === undefined) return spanMin
+    const ms = Date.parse(first.fixTime)
+    return Number.isFinite(ms) ? Math.min(spanMin, Math.max(1, Math.round((window.to - ms) / 60_000))) : spanMin
+  }, [points, spanMin, window.to])
 
   return (
     <div
@@ -157,7 +176,10 @@ export function Timeline({
               setReplaying(false)
               return
             }
-            if (back === 0) scrub(spanMin)
+            // Start at the first row we hold, not at the window's edge: the window opens earlier
+            // than the earliest position by construction, so starting there spent the first ticks
+            // on 'unknown' — a frozen camera and "no report at …", which reads as broken.
+            if (back === 0) scrub(firstBack)
             setReplaying(true)
           }}
           aria-pressed={replaying}
@@ -217,7 +239,9 @@ export function Timeline({
               min={0}
               max={spanMin}
               step={1}
-              // the slider runs right-to-left in time: 0 (right) is now, 1440 (left) is 24 h ago
+              // reversed: the range's own value counts UP toward now, while `back` counts minutes
+              // backwards from it — so value 0 (left) is the start of the window and `spanMin`
+              // (right) is now
               value={spanMin - back}
               onChange={(e) => {
                 setReplaying(false)
@@ -231,16 +255,15 @@ export function Timeline({
           </div>
 
           <div className="mt-1 hidden justify-between text-[10px] text-muted sm:flex">
-            <span>{t('map.timeline.hoursAgo', { hours: 24 })}</span>
-            <span>{t('map.timeline.hoursAgo', { hours: 18 })}</span>
-            <span>{t('map.timeline.hoursAgo', { hours: 12 })}</span>
-            <span>{t('map.timeline.hoursAgo', { hours: 6 })}</span>
+            {[1, 0.75, 0.5, 0.25].map((f) => (
+              <span key={f}>{t('map.timeline.hoursAgo', { hours: Math.round((spanMin / 60) * f) })}</span>
+            ))}
             <span>{t('map.timeline.now')}</span>
           </div>
         </div>
 
         <div className="hidden shrink-0 items-center gap-1 md:flex">
-          {QUICK.map((q) => (
+          {quickJumps(spanMin).map((q) => (
             <button
               key={q.m}
               type="button"
@@ -256,7 +279,7 @@ export function Timeline({
                 back === q.m ? 'bg-surface-2 text-accent' : 'text-muted hover:text-text',
               )}
             >
-              {t(q.key, { hours: q.m / 60 })}
+              {t(q.key, { hours: q.hours })}
             </button>
           ))}
         </div>

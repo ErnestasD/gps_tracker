@@ -90,6 +90,11 @@ export const ONLINE_MS = 180_000
 export const STALE_MS = 600_000
 const TRAIL_CAP = 3_600 // ≈1 h at 1 Hz; ring buffer, oldest dropped
 
+/** By VALUE, not identity: the scrubber builds a fresh object per slider step, and a drag across a
+ *  parked vehicle resolves to the same position for hundreds of consecutive steps. */
+const sameScrub = (a: ScrubState, b: ScrubState): boolean =>
+  a === b || (a !== null && b !== null && a !== 'unknown' && b !== 'unknown' && a.lon === b.lon && a.lat === b.lat && a.course === b.course)
+
 const statusOf = (ageMs: number): DeviceStatus =>
   ageMs <= ONLINE_MS ? 'online' : ageMs <= STALE_MS ? 'stale' : 'offline'
 
@@ -203,12 +208,8 @@ export class LiveStore {
    * device must drop its marker + DeviceList row immediately, not leave it decaying to 'offline'
    * until logout. If it was the selected/trailed device, clear that too. Returns whether it existed. */
   evict(deviceId: string): boolean {
-    if (deviceId === this.snapshot.selectedId) this.scrubPoint = null
     if (!this.byId.delete(deviceId)) return false
-    if (this.snapshot.selectedId === deviceId) {
-      this.trailPoints = []
-      this.snapshot = { ...this.snapshot, selectedId: null, follow: false }
-    }
+    if (this.snapshot.selectedId === deviceId) this.deselect()
     this.dirty = true
     this.flush(true)
     return true
@@ -227,10 +228,7 @@ export class LiveStore {
       const dev = this.byId.get(id)
       if (dev !== undefined && now - dev.ev.fixTimeMs <= ONLINE_MS) continue // actively streaming — keep
       if (!keep.has(id) && this.byId.delete(id)) {
-        if (this.snapshot.selectedId === id) {
-          this.trailPoints = []
-          this.snapshot = { ...this.snapshot, selectedId: null, follow: false }
-        }
+        if (this.snapshot.selectedId === id) this.deselect()
         removed = true
       }
     }
@@ -238,6 +236,20 @@ export class LiveStore {
       this.dirty = true
       this.flush(true)
     }
+  }
+
+  /**
+   * Drop the selection and everything that belonged to it.
+   *
+   * One place, because there were three and one of them forgot the scrub: when another tab retired
+   * the selected device, `retain()` cleared the selection and the trail but left the scrub point
+   * set, so every later frame carried a scrub — which makes the follow branch unreachable. Turning
+   * Follow on then silently did nothing, with no marker and no text to explain why.
+   */
+  private deselect(): void {
+    this.trailPoints = []
+    this.scrubPoint = null
+    this.snapshot = { ...this.snapshot, selectedId: null, follow: false }
   }
 
   // ── UI state ──────────────────────────────────────────────────────────────
@@ -267,7 +279,7 @@ export class LiveStore {
    * rebuilt every marker and up to 3600 trail vertices per tick and re-rendered the whole page.
    */
   setScrub(point: ScrubState): void {
-    if (point === this.scrubPoint) return
+    if (sameScrub(point, this.scrubPoint)) return
     this.scrubPoint = point
     this.pushMapFrame()
   }
@@ -368,12 +380,9 @@ export class LiveStore {
           : [{
               type: 'Feature' as const,
               geometry: { type: 'Point' as const, coordinates: [fix.lon, fix.lat] },
-              properties: {
-                deviceId: ev.deviceId,
-                course: fix.course,
-                status,
-                selected: ev.deviceId === selectedId,
-              },
+              // no `selected` property: the halo is a `setFilter` on the frame's own selected id,
+              // and carrying it here made every row click invalidate the whole marker collection
+              properties: { deviceId: ev.deviceId, course: fix.course, status },
             }],
       )
       this.geo = {
