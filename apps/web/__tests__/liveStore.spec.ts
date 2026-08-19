@@ -393,7 +393,7 @@ describe('LiveStore', () => {
     // Selection travels on the FRAME, not on every marker: the halo is a `setFilter` against
     // `frame.selected`, and stamping a per-feature flag meant each row click invalidated the whole
     // marker collection to change a property nothing read.
-    expect(frame!.devices.features[0]!.properties).toEqual({ deviceId: '7', course: 90, status: 'online' })
+    expect(frame!.devices.features[0]!.properties).not.toHaveProperty('selected')
   })
 })
 

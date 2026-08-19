@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { drawable, hasTelemetry, highlightRows, placeAt, pointAt, telemetryRows, type TrackPoint } from '../src/lib/telemetry'
+import { drawable, hasTelemetry, highlightRows, placeAt, pointAt, telemetryRows, trackTimes, type TrackPoint } from '../src/lib/telemetry'
 
 /**
  * The parameters list and the 24-hour track.
@@ -161,5 +161,20 @@ describe('placeAt', () => {
   it('one unparseable timestamp does not truncate the scan', () => {
     const points = [pt('2026-08-19T10:00:00Z'), pt('not-a-date'), pt('2026-08-19T12:00:00Z')]
     expect(placeAt(points, at('2026-08-19T13:00:00Z'))?.fixTime).toBe('2026-08-19T12:00:00Z')
+  })
+})
+
+describe('pre-parsed timestamps', () => {
+  it('the fast path answers exactly what the slow one does, bad rows included', () => {
+    // A drag runs two scans per step over up to 10 000 points; parsing once is the whole point, and
+    // a fast path that disagrees with the slow one is worse than no fast path.
+    const points = [pt('2026-08-19T10:00:00Z'), pt('not-a-date'), pt('2026-08-19T11:00:00Z', false), pt('2026-08-19T12:00:00Z')]
+    const times = trackTimes(points)
+    expect(times[1]).toBeNaN()
+    for (const at of ['2026-08-19T09:00:00Z', '2026-08-19T10:30:00Z', '2026-08-19T11:30:00Z', '2026-08-19T13:00:00Z']) {
+      const ms = Date.parse(at)
+      expect(pointAt(points, ms, times)).toBe(pointAt(points, ms))
+      expect(placeAt(points, ms, times)).toBe(placeAt(points, ms))
+    }
   })
 })

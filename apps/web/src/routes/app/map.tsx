@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Bell, Layers, Maximize2, Minimize2, PanelLeft, Pause, Play, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -19,6 +19,7 @@ import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
 import { getTrack } from '@/lib/telemetry'
+import { WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
 import { cn } from '@/lib/utils'
 import { LiveSocket } from '@/lib/ws'
 import { router } from '@/router'
@@ -35,13 +36,6 @@ const socket = new LiveSocket({
 })
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
-
-/** The scrubber's 24 hours, bucketed to the minute so the same window is asked for repeatedly. */
-const TRACK_HOURS = 24
-const windowAt = (nowMs: number): { from: number; to: number } => {
-  const to = Math.floor(nowMs / 60_000) * 60_000
-  return { from: to - TRACK_HOURS * 3_600_000, to }
-}
 
 export function MapPage() {
   const { t } = useTranslation()
@@ -152,9 +146,15 @@ export function MapPage() {
    * wrong: keep a truck selected from 09:00 to 13:00 and the history line still ended at 09:00
    * while the marker was four hours of driving away, and "-1 h" scrubbed to 08:00.
    *
-   * So it advances on a minute tick while the operator is LIVE, and holds still the moment they
-   * start reading the past — nothing shifts under a scrubber in use. Bucketing to the minute keeps
-   * the query key reusable, so re-selecting a vehicle is a cache hit rather than another 10 000 rows.
+   * So it advances while the operator is LIVE and holds still the moment they start reading the
+   * past — nothing shifts under a scrubber in use — and it jumps forward the instant they come
+   * back to live, rather than up to a tick later.
+   *
+   * Every distinct window is a distinct query key, and a new key is a cache MISS: a window that
+   * advanced every minute re-downloaded the whole 24 hours every minute, which blanked the history
+   * line and disabled the scrubber while it was in flight. Hence the 5-minute bucket, the previous
+   * window kept on screen while the next lands, and a tick that stands down for a hidden tab — the
+   * store's own flush loop has skipped hidden tabs since E02-6 for the same reason.
    */
   const [scrubbing, setScrubbing] = useState(false)
   const [trackWindow, setTrackWindow] = useState(() => windowAt(Date.now()))
@@ -166,10 +166,13 @@ export function MapPage() {
   }
   useEffect(() => {
     if (scrubbing) return
-    const iv = setInterval(() => setTrackWindow((w) => {
-      const next = windowAt(Date.now())
-      return next.to === w.to ? w : next
-    }), 30_000)
+    const iv = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      setTrackWindow((w) => {
+        const next = windowAt(Date.now())
+        return next.to === w.to ? w : next
+      })
+    }, 30_000)
     return () => clearInterval(iv)
   }, [scrubbing])
 
@@ -179,8 +182,10 @@ export function MapPage() {
     queryKey: ['track', snap.selectedId, trackWindow.from, trackWindow.to],
     queryFn: () => getTrack(snap.selectedId as string, trackWindow),
     enabled: snap.selectedId !== null && windowFor === snap.selectedId,
-    // The window only moves once a minute, so an alt-tab must not re-pull up to 10 000 rows.
-    staleTime: 60_000,
+    // A new window is a new key and therefore a miss; keeping the previous answer on screen is what
+    // stops the history line blinking off and the scrubber going disabled every time it advances.
+    placeholderData: keepPreviousData,
+    staleTime: WINDOW_BUCKET_MS,
     refetchOnWindowFocus: false,
   })
   const trackPoints = useMemo(() => track.data?.points ?? [], [track.data])
@@ -213,9 +218,17 @@ export function MapPage() {
     () => geofenceFeatures(fences.filter((g) => visibleFences.has(g.id))),
     [fences, visibleFences],
   )
-  /** Reading the past freezes the window; returning to live lets it keep up again. */
+  /**
+   * Reading the past freezes the window; returning to live lets it keep up again — and catches it
+   * up immediately, because waiting for the next tick left the axis ending wherever the operator
+   * had been reading, so a "-1 h" pressed right after "now" still meant an hour before THAT.
+   */
   const onScrub = useCallback((p: ScrubState) => {
     setScrubbing(p !== null)
+    if (p === null) setTrackWindow((w) => {
+      const next = windowAt(Date.now())
+      return next.to === w.to ? w : next
+    })
     liveStore.setScrub(p)
   }, [])
 

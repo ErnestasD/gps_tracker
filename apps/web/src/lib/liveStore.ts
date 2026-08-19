@@ -208,8 +208,16 @@ export class LiveStore {
    * device must drop its marker + DeviceList row immediately, not leave it decaying to 'offline'
    * until logout. If it was the selected/trailed device, clear that too. Returns whether it existed. */
   evict(deviceId: string): boolean {
-    if (!this.byId.delete(deviceId)) return false
-    if (this.snapshot.selectedId === deviceId) this.deselect()
+    // The selection check is ABOVE the delete guard on purpose: a device that is selected but no
+    // longer in `byId` must still lose its scrub and its selection, and returning early on the
+    // delete left the store holding a scrub for a vehicle that no longer exists.
+    const wasSelected = this.snapshot.selectedId === deviceId
+    const existed = this.byId.delete(deviceId)
+    if (wasSelected) this.deselect()
+    if (!existed) {
+      if (wasSelected) this.flush(true)
+      return false
+    }
     this.dirty = true
     this.flush(true)
     return true

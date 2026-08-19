@@ -202,10 +202,11 @@ export const drawable = (points: readonly TrackPoint[]): TrackPoint[] => points.
  * place, and a moment before the window's first valid fix has no answer at all — `undefined` here
  * means "hold", never "fall back to live".
  */
-export function placeAt(points: readonly TrackPoint[], atMs: number): TrackPoint | undefined {
+export function placeAt(points: readonly TrackPoint[], atMs: number, times?: readonly number[]): TrackPoint | undefined {
   let place: TrackPoint | undefined
-  for (const p of points) {
-    const t = Date.parse(p.fixTime)
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!
+    const t = times?.[i] ?? Date.parse(p.fixTime)
     if (!Number.isFinite(t)) continue // one bad row must not truncate the scan
     if (t > atMs) break
     if (p.fixValid) place = p
@@ -213,10 +214,21 @@ export function placeAt(points: readonly TrackPoint[], atMs: number): TrackPoint
   return place
 }
 
-export function pointAt(points: readonly TrackPoint[], atMs: number): TrackPoint | undefined {
+/**
+ * The track's timestamps, parsed once.
+ *
+ * `Date.parse` is the expensive part of every scan, and a slider drag runs two scans per step over
+ * up to 10 000 points — 20 000 parses per step, dozens of steps a second. Scanning the same count
+ * of plain numbers is free by comparison. NaN is preserved rather than dropped, so the "skip a bad
+ * row, never truncate" rule survives.
+ */
+export const trackTimes = (points: readonly TrackPoint[]): number[] => points.map((p) => Date.parse(p.fixTime))
+
+export function pointAt(points: readonly TrackPoint[], atMs: number, times?: readonly number[]): TrackPoint | undefined {
   let found: TrackPoint | undefined
-  for (const p of points) {
-    const t = Date.parse(p.fixTime)
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!
+    const t = times?.[i] ?? Date.parse(p.fixTime)
     // skip, never break, on an unparseable timestamp: breaking cut the track at the bad row, so
     // every later moment froze on whatever preceded it
     if (!Number.isFinite(t)) continue

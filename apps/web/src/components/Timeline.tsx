@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next'
 
 import { useFmt } from '@/lib/datetime'
 import type { ScrubState } from '@/lib/liveStore'
-import { placeAt, pointAt, type TrackPoint } from '@/lib/telemetry'
+import { placeAt, pointAt, trackTimes, type TrackPoint } from '@/lib/telemetry'
+import { firstPlaceBack, quickJumps, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
@@ -31,22 +32,6 @@ import { cn } from '@/lib/utils'
 const REPLAY_STEP_MIN = 6
 const REPLAY_TICK_MS = 90
 
-/**
- * Quick jumps, derived from the window rather than hardcoded.
- *
- * They used to be literal 1440/720/360/60 while `spanMin` was computed — which agrees only as long
- * as the window is exactly 24 h. Narrow it and "-24 h" becomes a slider value below `min`: the
- * browser clamps the thumb while `back` says otherwise, the fill goes negative, and every moment
- * resolves outside the fetched window.
- */
-const quickJumps = (spanMin: number): { m: number; key: string; hours: number }[] =>
-  [
-    { m: spanMin, key: 'map.timeline.quick.hours', hours: spanMin / 60 },
-    { m: Math.round(spanMin / 2), key: 'map.timeline.quick.hours', hours: spanMin / 120 },
-    { m: Math.round(spanMin / 4), key: 'map.timeline.quick.hours', hours: spanMin / 240 },
-    { m: 60, key: 'map.timeline.quick.hours', hours: 1 },
-    { m: 0, key: 'map.timeline.now', hours: 0 },
-  ].filter((q, i, all) => q.m === 0 || all.findIndex((x) => x.m === q.m) === i)
 
 export function Timeline({
   deviceId,
@@ -68,7 +53,7 @@ export function Timeline({
    * "-24 h" tick meant a different moment than the earliest row we held, and nudging the slider one
    * minute off "now" jumped the map by however long the tab had been in the background.
    */
-  window: { from: number; to: number }
+  window: TrackWindow
   loading: boolean
   truncated: boolean
   /** null ⇒ back to live, 'unknown' ⇒ a moment we hold no position for: hold, never fall back. */
@@ -89,9 +74,11 @@ export function Timeline({
     setReplaying(false)
   }
 
-  const spanMin = Math.max(1, Math.round((window.to - window.from) / 60_000))
+  const spanMin = spanMinutes(window)
   const atMs = window.to - back * 60_000
-  const current = useMemo(() => (back === 0 ? undefined : pointAt(points, atMs)), [points, atMs, back])
+  // Parsed once per track, not once per scan: a drag runs two scans a step over up to 10 000 rows.
+  const times = useMemo(() => trackTimes(points), [points])
+  const current = useMemo(() => (back === 0 ? undefined : pointAt(points, atMs, times)), [points, times, atMs, back])
   const disabled = deviceId === null || points.length === 0
 
   const scrub = (rawMinutes: number) => {
@@ -111,7 +98,7 @@ export function Timeline({
      * position, so the camera holds at the last place the vehicle was actually seen; before the
      * first one there is nowhere to hold, and 'unknown' says exactly that.
      */
-    const place = placeAt(points, window.to - minutes * 60_000)
+    const place = placeAt(points, window.to - minutes * 60_000, times)
     onScrub(place !== undefined ? { lat: place.lat, lon: place.lon, course: place.course } : 'unknown')
   }
 
@@ -150,17 +137,12 @@ export function Timeline({
     if (disabled) setReplaying(false)
   }, [disabled])
 
+  const quick = useMemo(() => quickJumps(spanMin), [spanMin])
   const pct = ((spanMin - back) / spanMin) * 100
   const stamp = dt(new Date(atMs).toISOString())
   // O(n) over up to 10 000 points, and this component re-renders at the store's 1 Hz cadence
   const valid = useMemo(() => points.filter((p) => p.fixValid).length, [points])
-  /** How far back the earliest row we hold sits — where a replay should begin. */
-  const firstBack = useMemo(() => {
-    const first = points[0]
-    if (first === undefined) return spanMin
-    const ms = Date.parse(first.fixTime)
-    return Number.isFinite(ms) ? Math.min(spanMin, Math.max(1, Math.round((window.to - ms) / 60_000))) : spanMin
-  }, [points, spanMin, window.to])
+  const firstBack = useMemo(() => firstPlaceBack(points, window, times), [points, window, times])
 
   return (
     <div
@@ -263,7 +245,7 @@ export function Timeline({
         </div>
 
         <div className="hidden shrink-0 items-center gap-1 md:flex">
-          {quickJumps(spanMin).map((q) => (
+          {quick.map((q) => (
             <button
               key={q.m}
               type="button"
@@ -279,7 +261,7 @@ export function Timeline({
                 back === q.m ? 'bg-surface-2 text-accent' : 'text-muted hover:text-text',
               )}
             >
-              {t(q.key, { hours: q.hours })}
+              {q.m === 0 ? t('map.timeline.now') : t('map.timeline.quick.hours', { hours: q.hours })}
             </button>
           ))}
         </div>
