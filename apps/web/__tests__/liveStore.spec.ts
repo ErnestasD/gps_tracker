@@ -168,6 +168,23 @@ describe('the camera targets the map can be pointed at', () => {
     expect(store.getSnapshot().selectedId).toBeNull()
   })
 
+  it('evicting the selected device clears its scrub with the selection', () => {
+    // The state "selected but no longer in byId" is now unreachable — both removal paths deselect —
+    // and that is the claim worth pinning: a scrub must never outlive the vehicle it was taken from.
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
+    store.flush(true)
+    store.select('1')
+    let frame: MapFrame | null = null
+    store.onMapFrame((f) => { frame = f })
+    store.setScrub({ lat: 54.5, lon: 25.1, course: null })
+    expect(store.evict('1')).toBe(true)
+    expect((frame as unknown as MapFrame).scrub).toBeNull()
+    expect(store.getSnapshot().selectedId).toBeNull()
+    // evicting something that was never there changes nothing and says so
+    expect(store.evict('nope')).toBe(false)
+  })
+
   it('setting the same scrub twice does not re-emit', () => {
     const store = makeStore(() => T0)
     store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))

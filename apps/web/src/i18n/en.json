@@ -470,17 +470,18 @@
     "fullscreen": "Full screen",
     "timeline": {
       "summary": "{{points}} points, {{valid}} with a fix",
-      "scrub": "Scrub the last 24 hours",
+      "scrub": "Scrub the last {{hours}} hours",
       "hoursAgo": "{{hours}} h ago",
       "now": "now",
       "noData": "no report at {{when}}",
       "noFix": "no GPS fix",
       "truncated": "{{points}} points — more history than one page; showing the earlier part",
       "pickDevice": "Select a vehicle to see its last 24 hours",
-      "replay": "Replay the last 24 hours",
+      "replay": "Replay the last {{hours}} hours",
       "stopReplay": "Stop the replay",
       "quick": {
-        "hours": "-{{hours}} h"
+        "hours": "-{{hours}} h",
+        "minutes": "-{{minutes}} min"
       }
     },
     "eventFeed": "Event feed",

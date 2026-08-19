@@ -45,6 +45,29 @@ describe('where a replay begins', () => {
     expect(w.to - back * 60_000).toBeGreaterThanOrEqual(Date.parse('2026-08-18T12:30:40Z'))
   })
 
+  it('a tracker installed minutes ago has nothing behind it to replay', () => {
+    // The first placeable row sits inside the LAST minute of the window. Clamping that up to 1
+    // minute put the moment before the row — `placeAt` then found nothing and Play opened on a
+    // frozen camera reading "no report at …". Zero says "nothing behind us", and the button is
+    // disabled rather than lying.
+    for (const ageS of [0, 30, 59]) {
+      const points = [pt(new Date(w.to - ageS * 1_000).toISOString())]
+      expect(firstPlaceBack(points, w)).toBe(0)
+    }
+    // …and one minute is enough to have something
+    expect(firstPlaceBack([pt(new Date(w.to - 61_000).toISOString())], w)).toBe(1)
+  })
+
+  it('every start it returns is at or before the row it chose', () => {
+    // The property, checked across the whole window rather than at one sampled age.
+    for (const ageS of [0, 30, 61, 3_600, 86_000, 86_399]) {
+      const iso = new Date(w.to - ageS * 1_000).toISOString()
+      const back = firstPlaceBack([pt(iso)], w)
+      if (back === 0) continue // nothing to replay — the caller disables Play
+      expect(w.to - back * 60_000).toBeGreaterThanOrEqual(Date.parse(iso))
+    }
+  })
+
   it('an unparseable first row is skipped rather than taken as the start', () => {
     const points = [pt('not-a-date'), pt('2026-08-18T18:00:00Z')]
     expect(firstPlaceBack(points, w)).toBe(18 * 60)
@@ -67,7 +90,39 @@ describe('quick jumps', () => {
     expect(quickJumps(30).map((q) => q.m)).toEqual([30, 15, 8, 0])
   })
 
+  it('always run furthest-back first — clamping fixed the value, not the order', () => {
+    // A 90-minute span used to render -1.5 h · -45 min · -23 min · -1 h · now, where the fourth
+    // button jumped further back than the third.
+    for (const span of [1, 12, 45, 61, 90, 180, 200, 720, 1440]) {
+      const ms = quickJumps(span).map((q) => q.m)
+      expect(ms, `span ${span}`).toEqual([...ms].sort((a, b) => b - a))
+      expect(new Set(ms).size).toBe(ms.length)
+      expect(Math.max(...ms)).toBeLessThanOrEqual(span)
+    }
+  })
+
   it('always ends at "now"', () => {
     for (const span of [1, 12, 60, 720, 1440]) expect(quickJumps(span).at(-1)?.m).toBe(0)
+  })
+})
+
+describe('pairing points with pre-parsed timestamps', () => {
+  const w = { from: Date.parse('2026-08-18T12:00:00Z'), to: Date.parse('2026-08-19T12:00:00Z') }
+
+  it('a times array of the wrong LENGTH is refused, not partially believed', () => {
+    // The realistic mismatch is a memo that has not caught up with a refetched track. Length is the
+    // only mismatch detectable from here — a same-length array from another track is indetectable,
+    // which is why the pairing is the caller's contract and both memos derive from the same
+    // `points` in the same render. This guards the half that CAN be checked.
+    const points = [pt('2026-08-18T13:00:00Z'), pt('2026-08-18T14:00:00Z')]
+    const stale = [Date.parse('2000-01-01T00:00:00Z')] // one row short, wildly wrong value
+    expect(firstPlaceBack(points, w, stale)).toBe(firstPlaceBack(points, w))
+    expect(firstPlaceBack(points, w, [...stale, 0, 0])).toBe(firstPlaceBack(points, w))
+  })
+
+  it('a matching times array gives exactly the answer parsing would', () => {
+    const points = [pt('2026-08-18T13:00:00Z'), pt('2026-08-18T14:00:00Z')]
+    const times = points.map((p) => Date.parse(p.fixTime))
+    expect(firstPlaceBack(points, w, times)).toBe(firstPlaceBack(points, w))
   })
 })

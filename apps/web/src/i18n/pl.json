@@ -470,17 +470,18 @@
     "fullscreen": "Pełny ekran",
     "timeline": {
       "summary": "{{points}} punktów, {{valid}} z fixem",
-      "scrub": "Przewiń ostatnie 24 godziny",
+      "scrub": "Przewiń ostatnie {{hours}} h",
       "hoursAgo": "{{hours}} godz. temu",
       "now": "teraz",
       "noData": "brak zgłoszenia o {{when}}",
       "noFix": "brak fixa GPS",
       "truncated": "{{points}} punktów — historii więcej niż jedna strona; pokazano wcześniejszą część",
       "pickDevice": "Wybierz pojazd, aby zobaczyć ostatnie 24 h",
-      "replay": "Odtwórz ostatnie 24 h",
+      "replay": "Odtwórz ostatnie {{hours}} h",
       "stopReplay": "Zatrzymaj odtwarzanie",
       "quick": {
-        "hours": "-{{hours}} h"
+        "hours": "-{{hours}} h",
+        "minutes": "-{{minutes}} min"
       }
     },
     "eventFeed": "Strumień zdarzeń",

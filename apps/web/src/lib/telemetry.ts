@@ -1,4 +1,5 @@
 import { getJson } from './client'
+import { pairedTimes } from './trackWindow'
 
 /**
  * What the device is actually reporting, and its last 24 hours.
@@ -203,10 +204,11 @@ export const drawable = (points: readonly TrackPoint[]): TrackPoint[] => points.
  * means "hold", never "fall back to live".
  */
 export function placeAt(points: readonly TrackPoint[], atMs: number, times?: readonly number[]): TrackPoint | undefined {
+  const ts = pairedTimes(points, times)
   let place: TrackPoint | undefined
   for (let i = 0; i < points.length; i++) {
     const p = points[i]!
-    const t = times?.[i] ?? Date.parse(p.fixTime)
+    const t = ts?.[i] ?? Date.parse(p.fixTime)
     if (!Number.isFinite(t)) continue // one bad row must not truncate the scan
     if (t > atMs) break
     if (p.fixValid) place = p
@@ -225,10 +227,11 @@ export function placeAt(points: readonly TrackPoint[], atMs: number, times?: rea
 export const trackTimes = (points: readonly TrackPoint[]): number[] => points.map((p) => Date.parse(p.fixTime))
 
 export function pointAt(points: readonly TrackPoint[], atMs: number, times?: readonly number[]): TrackPoint | undefined {
+  const ts = pairedTimes(points, times)
   let found: TrackPoint | undefined
   for (let i = 0; i < points.length; i++) {
     const p = points[i]!
-    const t = times?.[i] ?? Date.parse(p.fixTime)
+    const t = ts?.[i] ?? Date.parse(p.fixTime)
     // skip, never break, on an unparseable timestamp: breaking cut the track at the bad row, so
     // every later moment froze on whatever preceded it
     if (!Number.isFinite(t)) continue

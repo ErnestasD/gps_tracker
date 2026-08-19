@@ -240,6 +240,12 @@ export class LiveStore {
         removed = true
       }
     }
+    // The loop only visits ids that ARE in byId, so a selection that is already gone was never
+    // deselected here — the same hole `evict` had, one method along.
+    if (this.snapshot.selectedId !== null && !this.byId.has(this.snapshot.selectedId)) {
+      this.deselect()
+      removed = true
+    }
     if (removed) {
       this.dirty = true
       this.flush(true)

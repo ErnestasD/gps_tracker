@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useFmt } from '@/lib/datetime'
 import type { ScrubState } from '@/lib/liveStore'
-import { placeAt, pointAt, trackTimes, type TrackPoint } from '@/lib/telemetry'
+import { placeAt, pointAt, type TrackPoint } from '@/lib/telemetry'
 import { firstPlaceBack, quickJumps, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
@@ -37,6 +37,7 @@ export function Timeline({
   deviceId,
   name,
   points,
+  times,
   window,
   loading,
   truncated,
@@ -46,6 +47,8 @@ export function Timeline({
   deviceId: string | null
   name: string | null
   points: readonly TrackPoint[]
+  /** `points`' timestamps, parsed once by the page that owns the query. */
+  times: readonly number[]
   /**
    * The window the points were FETCHED for — the axis and the payload must be the same window.
    *
@@ -76,8 +79,6 @@ export function Timeline({
 
   const spanMin = spanMinutes(window)
   const atMs = window.to - back * 60_000
-  // Parsed once per track, not once per scan: a drag runs two scans a step over up to 10 000 rows.
-  const times = useMemo(() => trackTimes(points), [points])
   const current = useMemo(() => (back === 0 ? undefined : pointAt(points, atMs, times)), [points, times, atMs, back])
   const disabled = deviceId === null || points.length === 0
 
@@ -152,7 +153,10 @@ export function Timeline({
       <div className="flex items-center gap-2 md:gap-3">
         <button
           type="button"
-          disabled={disabled}
+          // Nothing to replay when the only placeable row is inside the last minute — a tracker
+          // installed twenty minutes ago. Pressing Play there used to scrub to a moment BEFORE that
+          // row: a frozen camera reading "no report at …".
+          disabled={disabled || firstBack === 0}
           onClick={() => {
             if (replaying) {
               setReplaying(false)
@@ -165,7 +169,7 @@ export function Timeline({
             setReplaying(true)
           }}
           aria-pressed={replaying}
-          aria-label={t(replaying ? 'map.timeline.stopReplay' : 'map.timeline.replay')}
+          aria-label={t(replaying ? 'map.timeline.stopReplay' : 'map.timeline.replay', { hours: Math.round(spanMin / 60) })}
           data-testid="timeline-replay"
           className={cn(
             'grid h-8 w-8 shrink-0 place-items-center rounded-md border border-line transition-colors disabled:opacity-40',
@@ -229,7 +233,7 @@ export function Timeline({
                 setReplaying(false)
                 scrub(spanMin - Number(e.currentTarget.value))
               }}
-              aria-label={t('map.timeline.scrub')}
+              aria-label={t('map.timeline.scrub', { hours: Math.round(spanMin / 60) })}
               data-testid="timeline-scrub"
               disabled={disabled}
               className="absolute inset-0 h-1.5 w-full cursor-pointer appearance-none bg-transparent accent-[var(--admin-brand)] disabled:cursor-not-allowed"
@@ -261,7 +265,11 @@ export function Timeline({
                 back === q.m ? 'bg-surface-2 text-accent' : 'text-muted hover:text-text',
               )}
             >
-              {q.m === 0 ? t('map.timeline.now') : t('map.timeline.quick.hours', { hours: q.hours })}
+              {q.m === 0
+                ? t('map.timeline.now')
+                : q.m % 60 === 0
+                  ? t('map.timeline.quick.hours', { hours: q.m / 60 })
+                  : t('map.timeline.quick.minutes', { minutes: q.m })}
             </button>
           ))}
         </div>

@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Bell, Layers, Maximize2, Minimize2, PanelLeft, Pause, Play, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -18,7 +18,7 @@ import { fleetPanelCounts, type FleetFilter } from '@/lib/fleetFilter'
 import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
-import { getTrack } from '@/lib/telemetry'
+import { getTrack, trackTimes } from '@/lib/telemetry'
 import { WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
 import { cn } from '@/lib/utils'
 import { LiveSocket } from '@/lib/ws'
@@ -164,17 +164,30 @@ export function MapPage() {
     setTrackWindow(windowAt(Date.now()))
     setScrubbing(false)
   }
+  const catchUp = useCallback(() => {
+    setTrackWindow((w) => {
+      const next = windowAt(Date.now())
+      return next.to === w.to ? w : next
+    })
+  }, [])
   useEffect(() => {
     if (scrubbing) return
     const iv = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return
-      setTrackWindow((w) => {
-        const next = windowAt(Date.now())
-        return next.to === w.to ? w : next
-      })
+      catchUp()
     }, 30_000)
-    return () => clearInterval(iv)
-  }, [scrubbing])
+    // A tab hidden for six hours skips every tick, so REVEAL has to catch up itself: without this
+    // the markers jumped to the present within a second while the axis and the fetched track stayed
+    // six hours behind, and a scrub in that gap meant "-1 h" pointed seven hours back.
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && !document.hidden) catchUp()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [scrubbing, catchUp])
 
   // One query, two consumers: the scrubber reads the points, the map draws the line. Fetching it
   // twice would double the load for a window that can hold thousands of rows.
@@ -182,13 +195,23 @@ export function MapPage() {
     queryKey: ['track', snap.selectedId, trackWindow.from, trackWindow.to],
     queryFn: () => getTrack(snap.selectedId as string, trackWindow),
     enabled: snap.selectedId !== null && windowFor === snap.selectedId,
-    // A new window is a new key and therefore a miss; keeping the previous answer on screen is what
-    // stops the history line blinking off and the scrubber going disabled every time it advances.
-    placeholderData: keepPreviousData,
+    /**
+     * Keep the previous answer across a WINDOW advance — that is what stops the history line
+     * blinking off and the scrubber going disabled every five minutes — but never across a DEVICE
+     * change. `keepPreviousData` does not look at the key: selecting vehicle B handed it vehicle
+     * A's 24 hours, so the map painted A's route under B's name and a scrub flew the camera to A's
+     * historical positions. This panel's own contract is that an operator takes what they see as
+     * evidence.
+     */
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === snap.selectedId ? prev : undefined,
     staleTime: WINDOW_BUCKET_MS,
     refetchOnWindowFocus: false,
   })
   const trackPoints = useMemo(() => track.data?.points ?? [], [track.data])
+  // Parsed once for the whole page: the line and the scrubber both need the timestamps, and this
+  // window holds up to 10 000 rows.
+  const trackTimestamps = useMemo(() => trackTimes(trackPoints), [trackPoints])
   const history = useMemo<GeoJSON.FeatureCollection>(
     () =>
       snap.selectedId === null
@@ -198,10 +221,10 @@ export function MapPage() {
             // same segmentation as the live trail: invalid fixes never place a vertex (I6), and a
             // no-fix stretch becomes a dashed connector rather than a straight line never driven
             features: buildTrailFeatures(
-              trackPoints.map((p) => ({ lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Date.parse(p.fixTime) })),
+              trackPoints.map((p, i) => ({ lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: trackTimestamps[i] ?? 0 })),
             ),
           },
-    [trackPoints, snap.selectedId],
+    [trackPoints, trackTimestamps, snap.selectedId],
   )
 
   // ── geofences ────────────────────────────────────────────────────────────
@@ -225,12 +248,9 @@ export function MapPage() {
    */
   const onScrub = useCallback((p: ScrubState) => {
     setScrubbing(p !== null)
-    if (p === null) setTrackWindow((w) => {
-      const next = windowAt(Date.now())
-      return next.to === w.to ? w : next
-    })
+    if (p === null) catchUp()
     liveStore.setScrub(p)
-  }, [])
+  }, [catchUp])
 
   const toggleFence = useCallback((id: string) =>
     setHiddenFences((prev) => {
@@ -456,8 +476,12 @@ export function MapPage() {
         deviceId={snap.selectedId}
         name={snap.selectedId === null ? null : nameOf(snap.selectedId)}
         points={trackPoints}
+        times={trackTimestamps}
         window={trackWindow}
-        loading={track.isLoading}
+        /* `isLoading` is false whenever a placeholder is present — react-query forces the status to
+           success — so on its own it would present the PREVIOUS window's rows as this window's
+           finished answer. */
+        loading={track.isLoading || track.isPlaceholderData}
         truncated={track.data?.truncated ?? false}
         onScrub={onScrub}
       />
