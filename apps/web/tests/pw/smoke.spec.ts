@@ -934,10 +934,14 @@ test('scrubbing the 24 h timeline draws the vehicle where it WAS (founder report
    * Give the device a PAST: bufferedFlood replays stored records spanning the last two hours with
    * their original timestamps (§3.6), which is exactly the history a scrubber needs.
    *
-   * BASE_IMEI, not TRAIL_IMEI: the scrubber reads `/v1/devices/:id/positions`, which gates on the
-   * REGISTRY row, and TRAIL_IMEI is deliberately seeded outside the fleet — it reaches the map over
-   * the WS stream and 404s on the history endpoint. The trail test never noticed because it only
-   * ever asserts on the stream.
+   * Selected by NAME, not by the `device-row-<id>` testid, and this is the subtle part: the map's
+   * row id is the deviceId the WS stream carries, and the CSV-import test earlier in this file
+   * creates a real registry device for BASE_IMEI — which re-points `registry:imei` at the new
+   * database id. So this IMEI has TWO rows in the store by now: a stale one keyed by the seeded
+   * numeric IMEI, from the drives before the import, and the live one keyed by the database id.
+   * Clicking the stale one asks the history endpoint for a device that does not exist (404), which
+   * is exactly how this test failed first: the scrubber stayed disabled, correctly, for a device
+   * whose history we genuinely cannot fetch.
    */
   expect(
     await runToExit(
@@ -947,7 +951,8 @@ test('scrubbing the 24 h timeline draws the vehicle where it WAS (founder report
     ),
   ).toBe(0)
 
-  await page.getByTestId(`device-row-${BASE_IMEI}`).click({ timeout: 30_000 })
+  const row = page.locator('[data-testid^="device-row-"]').filter({ hasText: 'Good' }).first()
+  await row.click({ timeout: 30_000 })
 
   // the scrubber enables itself once the track lands and holds something placeable
   const scrub = page.getByTestId('timeline-scrub')
