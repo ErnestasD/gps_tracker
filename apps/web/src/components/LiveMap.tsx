@@ -135,13 +135,14 @@ export function LiveMap({
     let lastDevicesRaw: GeoJSON.FeatureCollection | null = null
     let lastTrail: GeoJSON.FeatureCollection | null = null
     let lastLabelFn: ((id: string) => string) | undefined
-    // camera moves on a CHANGE of scrub target, and the FIRST frame is never a change: registering
-    // the sink on a remount would otherwise ease the new map into a scrub the operator left behind
-    let lastScrubKey: string | null = null
+    /** The PLACE the camera was last sent to; '' when live or when we hold no position. */
+    let lastScrubKey = ''
     /** The ghost's own collection, so a theme swap re-seeds it like every other source. */
     let lastScrubFC: GeoJSON.FeatureCollection = EMPTY_FC
-    /** `undefined` = no frame seen yet; `null` = a frame that said "live". */
-    let lastScrubData: ScrubState | undefined
+    /** No frame seen yet. A SYMBOL, not `undefined`: the no-frame sentinel must be a value that
+     *  `ScrubState` can never grow into — it has already gone from two states to three. */
+    const NO_FRAME = Symbol('no-frame')
+    let lastScrubData: ScrubState | typeof NO_FRAME = NO_FRAME
 
     // IDEMPOTENT setup (ADR-030): `style.load` fires for the initial style AND after
     // every theme `setStyle`, which drops ALL runtime images/sources/layers — re-add
@@ -438,41 +439,45 @@ export function LiveMap({
         map.setFilter('selected-halo', ['==', ['get', 'deviceId'], frame.selected?.deviceId ?? ''])
       }
       /**
-       * Camera moves happen on CHANGE, never on every frame.
+       * ONE detector for "the value changed", nested inside it one for "the place changed".
        *
-       * `frame.scrub` holds the same point across every 1 Hz flush, and re-issuing `easeTo` each
-       * second made the map snap back a second after the operator panned it — unpannable for as
-       * long as a moment was selected, with nothing on screen saying why.
+       * There used to be two parallel detectors over the same value — an object-identity one for
+       * the ghost and a `lon,lat` string one for the camera — and that duplication WAS the bug:
+       * they disagreed whenever two moments shared a coordinate with different headings, which is
+       * the ordinary case for a parked vehicle, and the ghost's arrow kept whichever way it faced
+       * when the scrub first landed there. Nested, they cannot disagree: if the value did not
+       * change, the place cannot have.
        *
+       * `setScrub` early-returns on an unchanged value, so identity changes exactly when the value
+       * does — heading included — and the first frame after registration is a change like any other
+       * (the CAMERA is what must skip it, so a remount does not fly into a scrub left behind).
+       */
+      if (frame.scrub !== lastScrubData) {
+        const first = lastScrubData === NO_FRAME
+        lastScrubData = frame.scrub
+        lastScrubFC = scrubFeatures(frame.scrub)
+        map.getSource<GeoJSONSource>('scrub')?.setData(lastScrubFC)
+
+        /**
+         * Camera moves happen on a change of PLACE, never on every frame.
+         *
+         * `frame.scrub` holds the same point across every 1 Hz flush, and re-issuing `easeTo` each
+         * second made the map snap back a second after the operator panned it — unpannable for as
+         * long as a moment was selected, with nothing on screen saying why. A heading change at the
+         * same coordinate is a new ghost but not a new place.
+         */
+        const scrubKey = frame.scrub === null || frame.scrub === 'unknown' ? '' : `${frame.scrub.lon},${frame.scrub.lat}`
+        if (frame.scrub !== null && frame.scrub !== 'unknown' && !first && scrubKey !== lastScrubKey) {
+          map.easeTo({ center: [frame.scrub.lon, frame.scrub.lat], duration: 400 })
+        }
+        lastScrubKey = scrubKey
+      }
+      /**
        * Scrubbing wins over following: the operator asked to look at a moment in the past, and the
        * vehicle's present position is not what they are reading. `'unknown'` is a scrub too — we
        * hold no position for that moment, so the camera HOLDS rather than flying to the present.
        */
-      /**
-       * The GHOST follows the scrub VALUE; the CAMERA follows only the position.
-       *
-       * `setScrub` early-returns when the value is unchanged, so `frame.scrub`'s identity changes
-       * exactly when the value does — heading included. Keying the ghost on the camera's
-       * coordinate-only string dropped a redraw whenever two moments shared a coordinate with
-       * different headings, which is the ordinary case for a parked vehicle: the arrow kept
-       * whichever way it faced when the scrub first landed there. Identity also subsumes the
-       * first-frame case, which the camera deliberately skips.
-       */
-      if (frame.scrub !== lastScrubData) {
-        lastScrubData = frame.scrub
-        lastScrubFC = scrubFeatures(frame.scrub)
-        map.getSource<GeoJSONSource>('scrub')?.setData(lastScrubFC)
-      }
-      const scrubKey = frame.scrub === null ? '' : frame.scrub === 'unknown' ? 'unknown' : `${frame.scrub.lon},${frame.scrub.lat}`
-      const scrubChanged = lastScrubKey !== null && scrubKey !== lastScrubKey
-      lastScrubKey = scrubKey
-      if (frame.scrub !== null) {
-        // A heading change at the same coordinate is a new ghost but not a new place: re-easing to
-        // where the map already sits would interrupt a pan the operator just made.
-        if (frame.scrub !== 'unknown' && scrubChanged) {
-          map.easeTo({ center: [frame.scrub.lon, frame.scrub.lat], duration: 400 })
-        }
-      } else if (frame.follow && frame.selectedFix) {
+      if (frame.scrub === null && frame.follow && frame.selectedFix) {
         // follow the last VALID fix; a device that has never had one is not on the map to follow
         map.easeTo({ center: [frame.selectedFix.lon, frame.selectedFix.lat], duration: 900 })
       }

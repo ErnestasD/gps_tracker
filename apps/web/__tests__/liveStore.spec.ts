@@ -232,22 +232,16 @@ describe('the scrubbed moment, drawn', () => {
       .toEqual({ course: 0, hasCourse: true })
   })
 
-  it('a heading change at the same coordinate is a NEW scrub, so the ghost is redrawn', () => {
-    // A parked vehicle repeats its coordinate bit-for-bit while the angle moves. The map keyed the
-    // ghost on lon/lat alone and kept the first arrow; the store has always treated course as part
-    // of the value, and the ghost now follows the value's identity.
-    const store = new LiveStore(() => T0)
-    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
-    store.flush(true)
-    store.select('1')
-    const frames: MapFrame[] = []
-    store.onMapFrame((f) => frames.push(f))
-    store.setScrub({ lon: 25.1, lat: 54.5, course: 90 })
-    const after90 = frames.at(-1)!.scrub
-    store.setScrub({ lon: 25.1, lat: 54.5, course: 180 })
-    const after180 = frames.at(-1)!.scrub
-    expect(after90).not.toBe(after180)
-    expect(scrubFeatures(after180).features[0]!.properties).toMatchObject({ course: 180 })
+  it('two moments at one coordinate are two different ghosts', () => {
+    // A parked vehicle repeats its coordinate bit-for-bit while the angle moves, so the drawing
+    // must be a function of the whole value and not of the position. This pins the FEATURE side of
+    // that; the map's decision to redraw is inline in its effect and out of reach from here — the
+    // branch's honest gap, stated in the commit rather than papered over with a test that would
+    // pass either way.
+    const a = scrubFeatures({ lon: 25.1, lat: 54.5, course: 90 })
+    const b = scrubFeatures({ lon: 25.1, lat: 54.5, course: 180 })
+    expect(a.features[0]!.properties).not.toEqual(b.features[0]!.properties)
+    expect(b.features[0]!.properties).toMatchObject({ course: 180, hasCourse: true })
   })
 })
 
