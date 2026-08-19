@@ -500,7 +500,6 @@
       "trails": "Ślady ruchu",
       "labels": "Nazwy urządzeń",
       "heat": "Warstwa gęstości",
-      "clusters": "Grupuj pobliskie urządzenia",
       "fenceVisibility": "Widoczność stref"
     }
   },

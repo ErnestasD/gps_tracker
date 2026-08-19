@@ -500,7 +500,6 @@
       "trails": "Bewegungsspuren",
       "labels": "Gerätenamen",
       "heat": "Dichte-Overlay",
-      "clusters": "Nahe Geräte gruppieren",
       "fenceVisibility": "Sichtbarkeit der Zonen"
     }
   },

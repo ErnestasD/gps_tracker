@@ -157,14 +157,20 @@ export function LiveMap({
           'line-dasharray': [3, 2],
         },
       })
-      // The density overlay answers "where does this fleet actually spend its time" — one weight
-      // per device, so it is a picture of the fleet and not of how often each tracker reports.
+      /**
+       * The density overlay answers "where does this fleet actually spend its time".
+       *
+       * Weighted by `point_count`, because the source clusters: without it a bubble standing for
+       * forty vehicles counts exactly as much as one parked van, and the picture inverts — the
+       * emptiest part of the map glows brightest.
+       */
       map.addLayer({
         id: 'device-heat',
         type: 'heatmap',
         source: 'devices',
         layout: { visibility: 'none' },
         paint: {
+          'heatmap-weight': ['coalesce', ['get', 'point_count'], 1],
           'heatmap-radius': 40,
           'heatmap-opacity': 0.55,
           'heatmap-color': [
@@ -298,8 +304,6 @@ export function LiveMap({
       vis('history-gap', l.trails)
       vis('trail-line', l.trails)
       vis('trail-gap', l.trails)
-      vis('clusters', l.clusters)
-      vis('cluster-count', l.clusters)
     }
     const applyExtraData = () => {
       map.getSource<GeoJSONSource>('geofences')?.setData(dataRef.current.geofences)

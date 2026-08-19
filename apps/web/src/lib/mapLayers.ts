@@ -14,8 +14,6 @@ export interface MapLayers {
   labels: boolean
   /** Fleet density overlay — one weight per device. */
   heat: boolean
-  /** Group nearby devices into counted bubbles. Off = every vehicle drawn individually. */
-  clusters: boolean
 }
 
 export const DEFAULT_LAYERS: MapLayers = {
@@ -23,7 +21,6 @@ export const DEFAULT_LAYERS: MapLayers = {
   trails: true,
   labels: false,
   heat: false,
-  clusters: true,
 }
 
 const KEY = 'orbetra.map.layers'

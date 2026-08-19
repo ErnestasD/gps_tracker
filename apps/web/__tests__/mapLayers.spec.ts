@@ -30,10 +30,10 @@ describe('map layers', () => {
   it('a blob from an older build never widens the type', () => {
     // an unknown key is dropped, and a known key of the wrong type falls back to its default —
     // `layers.heat = "yes"` reaching setLayoutProperty is a runtime error inside the map
-    const s = store({ 'orbetra.map.layers': JSON.stringify({ heat: 'yes', ghosts: true, labels: true }) })
+    const s = store({ 'orbetra.map.layers': JSON.stringify({ heat: 'yes', clusters: true, labels: true }) })
     const out = loadLayers(s)
     expect(out).toEqual({ ...DEFAULT_LAYERS, labels: true })
-    expect('ghosts' in out).toBe(false)
+    expect('clusters' in out).toBe(false)
   })
 
   it('unreadable storage is not a broken map', () => {

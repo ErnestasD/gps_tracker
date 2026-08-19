@@ -500,7 +500,6 @@
       "trails": "Movement trails",
       "labels": "Device names",
       "heat": "Density overlay",
-      "clusters": "Group nearby devices",
       "fenceVisibility": "Zone visibility"
     }
   },
