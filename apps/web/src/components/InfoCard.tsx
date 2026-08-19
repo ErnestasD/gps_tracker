@@ -20,7 +20,8 @@ function relTime(fixTimeMs: number, lang: string): string {
   return rtf.format(Math.round(deltaS / 3_600), 'hour')
 }
 
-/** Bottom-left selected-device card (spec §4: Cloudflare-style info card). */
+/** The selected device's overview. Docked inside the inspector rail by the workspace shell, so it
+ *  carries no position of its own — it used to be an absolutely-placed card over the map. */
 export function InfoCard({
   device,
   name,
@@ -54,7 +55,7 @@ export function InfoCard({
     return () => clearInterval(iv)
   }, [])
   return (
-    <Card data-testid="info-card" className="absolute bottom-4 left-[352px] z-10 w-72 bg-surface/95 backdrop-blur">
+    <Card data-testid="info-card" className="rounded-none border-0 bg-transparent shadow-none">
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="flex items-center gap-2 font-mono text-sm">
           <StatusDot status={status} />

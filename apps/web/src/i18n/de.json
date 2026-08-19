@@ -440,7 +440,12 @@
       "overview": "Übersicht",
       "commands": "Befehle",
       "settings": "Einstellungen"
-    }
+    },
+    "title": "Live-Karte",
+    "toggleList": "Fahrzeugliste ein- oder ausblenden",
+    "pause": "Pause",
+    "resume": "Fortsetzen",
+    "fullscreen": "Vollbild"
   },
   "units": {
     "kmh": "km/h",

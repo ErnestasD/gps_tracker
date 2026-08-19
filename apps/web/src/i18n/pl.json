@@ -440,7 +440,12 @@
       "overview": "Przegląd",
       "commands": "Polecenia",
       "settings": "Ustawienia"
-    }
+    },
+    "title": "Mapa na żywo",
+    "toggleList": "Pokaż lub ukryj listę pojazdów",
+    "pause": "Wstrzymaj",
+    "resume": "Wznów",
+    "fullscreen": "Pełny ekran"
   },
   "units": {
     "kmh": "km/h",

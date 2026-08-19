@@ -440,7 +440,12 @@
       "overview": "Apžvalga",
       "commands": "Komandos",
       "settings": "Nustatymai"
-    }
+    },
+    "title": "Gyvas žemėlapis",
+    "toggleList": "Rodyti arba slėpti įrenginių sąrašą",
+    "pause": "Stabdyti",
+    "resume": "Tęsti",
+    "fullscreen": "Per visą ekraną"
   },
   "units": {
     "kmh": "km/val",

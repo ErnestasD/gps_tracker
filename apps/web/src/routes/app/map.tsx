@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { Maximize2, Minimize2, PanelLeft, Pause, Play } from 'lucide-react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DeviceList } from '@/components/DeviceList'
@@ -10,6 +11,7 @@ import { getLastPositions, getWsTicket, wsUrl, ApiError } from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { listDevices } from '@/lib/devices'
 import { liveStore } from '@/lib/liveStore'
+import { cn } from '@/lib/utils'
 import { LiveSocket } from '@/lib/ws'
 import { router } from '@/router'
 
@@ -31,11 +33,21 @@ export function MapPage() {
   // device retired/removed here or in another tab drops off the map instead of decaying to
   // 'offline' for the rest of the session (liveStore.byId never evicted on its own)
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
+  const [listOpen, setListOpen] = useState(true)
+  const [full, setFull] = useState(false)
+  /** Pausing stops the STORE, not the socket: the feed keeps arriving and the map simply stops
+   *  redrawing, so resuming shows the present rather than replaying a backlog. */
+  const [paused, setPaused] = useState(false)
 
   useEffect(() => {
     if (devices.data === undefined) return
     liveStore.retain(devices.data.filter((d) => d.retiredAt === null).map((d) => d.id))
   }, [devices.data])
+
+  useEffect(() => {
+    if (paused) liveStore.stop()
+    else liveStore.start()
+  }, [paused])
 
   useEffect(() => {
     liveStore.start()
@@ -80,31 +92,23 @@ export function MapPage() {
   }, [devices.data, snap.devices])
 
   return (
-    <>
-      <LiveMap />
-      <DeviceList
-        devices={snap.devices}
-        silent={silent}
-        selectedId={snap.selectedId}
-        onSelect={(id) => liveStore.select(id)}
-        nameOf={nameOf}
-        // still connecting/seeding: show a loader rather than flash "No devices yet"
-        loading={devices.isLoading || (snap.devices.length === 0 && snap.connection !== 'open')}
-      />
-      {selected && (
-        <Inspector
-          live={selected}
-          device={registryRow}
-          name={nameOf(selected.ev.deviceId)}
-          follow={snap.follow}
-          trail={snap.trail}
-          canWrite={canWrite}
-          onFollow={(v) => liveStore.setFollow(v)}
-          onTrail={(v) => liveStore.setTrail(v)}
-          onClose={() => liveStore.select(null)}
-        />
-      )}
-      <div className="absolute right-14 top-4 z-10">
+    <div
+      className={cn('flex flex-col', full ? 'fixed inset-0 z-50 bg-bg' : 'absolute inset-0')}
+      data-testid="map-workspace"
+    >
+      {/* ── toolbar ─────────────────────────────────────────────────────────── */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-line bg-surface px-2 py-2 md:px-4">
+        <button
+          type="button"
+          onClick={() => setListOpen((o) => !o)}
+          aria-label={t('map.toggleList')}
+          aria-pressed={listOpen}
+          data-testid="map-toggle-list"
+          className="hidden h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-bg hover:text-text lg:grid"
+        >
+          <PanelLeft className="h-4 w-4" aria-hidden />
+        </button>
+        <span className="truncate text-sm font-semibold text-text">{t('map.title')}</span>
         {/* admin idiom (ADR-028) tone Badge; live region so AT hears the drop to reconnecting.
             First-ever connect ('connecting') is a neutral "Connecting…", NOT the warning-tone
             "Reconnecting…" — that stays for a 'closed' drop after we were open. */}
@@ -116,7 +120,82 @@ export function MapPage() {
         >
           {snap.connection === 'open' ? t('map.live') : snap.connection === 'connecting' ? t('map.connecting') : t('map.reconnecting')}
         </Badge>
+
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setPaused((p) => !p)}
+            aria-pressed={paused}
+            data-testid="map-pause"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-2 text-xs text-muted transition-colors hover:text-text"
+          >
+            {paused ? <Play className="h-3.5 w-3.5" aria-hidden /> : <Pause className="h-3.5 w-3.5" aria-hidden />}
+            <span className="hidden sm:inline">{paused ? t('map.resume') : t('map.pause')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFull((f) => !f)}
+            aria-label={t('map.fullscreen')}
+            aria-pressed={full}
+            data-testid="map-fullscreen"
+            className="hidden h-8 w-8 place-items-center rounded-md border border-line text-muted transition-colors hover:text-text sm:grid"
+          >
+            {full ? <Minimize2 className="h-3.5 w-3.5" aria-hidden /> : <Maximize2 className="h-3.5 w-3.5" aria-hidden />}
+          </button>
+        </div>
       </div>
-    </>
+
+      {/* ── body: fleet | map | inspector ───────────────────────────────────── */}
+      <div className="relative flex min-h-0 flex-1">
+        {listOpen && (
+          /* Below lg the fleet list and the inspector share the bottom sheet: you pick a vehicle
+             from the list, and the vehicle replaces it. Hiding the list outright — as a bare
+             `hidden lg:flex` does — left a phone with a map and no way to choose anything. */
+          <aside
+            className={cn(
+              'absolute inset-x-0 bottom-0 z-10 max-h-[60%] flex-col overflow-hidden border-t border-line bg-surface',
+              'lg:static lg:inset-auto lg:z-auto lg:flex lg:max-h-none lg:w-[280px] lg:shrink-0 lg:border-r lg:border-t-0 xl:w-[300px]',
+              selected ? 'hidden' : 'flex',
+            )}
+          >
+            <DeviceList
+              devices={snap.devices}
+              silent={silent}
+              selectedId={snap.selectedId}
+              onSelect={(id) => liveStore.select(id)}
+              nameOf={nameOf}
+              // still connecting/seeding: show a loader rather than flash "No devices yet"
+              loading={devices.isLoading || (snap.devices.length === 0 && snap.connection !== 'open')}
+            />
+          </aside>
+        )}
+
+        <div className="relative min-w-0 flex-1">
+          <LiveMap />
+        </div>
+
+        {selected && (
+          /* A rail on a wide screen; a bottom sheet on a narrow one. Not `xl:flex` alone: that
+             left every viewport under 1280px with a selected device and no way to see it, which is
+             worse than the floating card this replaced. */
+          <aside
+            className="absolute inset-x-0 bottom-0 z-10 flex max-h-[60%] flex-col overflow-y-auto border-t border-line bg-surface lg:static lg:inset-auto lg:max-h-none lg:w-[340px] lg:shrink-0 lg:border-l lg:border-t-0"
+            data-testid="inspector-rail"
+          >
+            <Inspector
+              live={selected}
+              device={registryRow}
+              name={nameOf(selected.ev.deviceId)}
+              follow={snap.follow}
+              trail={snap.trail}
+              canWrite={canWrite}
+              onFollow={(v) => liveStore.setFollow(v)}
+              onTrail={(v) => liveStore.setTrail(v)}
+              onClose={() => liveStore.select(null)}
+            />
+          </aside>
+        )}
+      </div>
+    </div>
   )
 }

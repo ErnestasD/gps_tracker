@@ -87,7 +87,7 @@ export function Inspector({
   if (effective === 'overview') {
     // The overview IS the InfoCard — one implementation, and it keeps its own testids and layout.
     return (
-      <div data-testid="inspector">
+      <div data-testid="inspector" className="min-h-0 flex-1">
         <InfoCard
           device={live}
           name={name}
@@ -103,10 +103,7 @@ export function Inspector({
   }
 
   return (
-    <Card
-      data-testid="inspector"
-      className="absolute bottom-4 left-[352px] z-10 max-h-[calc(100vh-6rem)] w-[26rem] overflow-y-auto bg-surface/95 backdrop-blur"
-    >
+    <Card data-testid="inspector" className="min-h-0 flex-1 rounded-none border-0 bg-transparent shadow-none">
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="flex items-center gap-2 font-mono text-sm">
           <StatusDot status={live.status} />

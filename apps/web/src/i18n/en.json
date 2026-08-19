@@ -440,7 +440,12 @@
       "overview": "Overview",
       "commands": "Commands",
       "settings": "Settings"
-    }
+    },
+    "title": "Live map",
+    "toggleList": "Show or hide the fleet list",
+    "pause": "Pause",
+    "resume": "Resume",
+    "fullscreen": "Full screen"
   },
   "units": {
     "kmh": "km/h",
