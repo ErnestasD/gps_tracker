@@ -913,3 +913,57 @@ test('PWA: manifest served and service worker registers on the built app', async
   })
   expect(swReady).toBe('active')
 })
+
+test('scrubbing the 24 h timeline draws the vehicle where it WAS (founder report 2026-08-19)', async ({ page }) => {
+  /**
+   * The defect: dragging the scrubber panned the map and drew nothing, because every marker on the
+   * map is built from the LIVE frame — the operator was sent to an empty stretch of road.
+   *
+   * Asserted on RENDERED features through the `__map` handle, the same way the invalid-fix trail
+   * test does, because that is the only place the map's own decision is reachable: it lives inside
+   * a `useEffect` and this repo has no component-test harness.
+   */
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL(/\/app\/?$/)
+  await expect(page.getByTestId('conn-badge')).toHaveText(/Live/i, { timeout: 15_000 })
+
+  // give the device a PAST: bufferedFlood replays 300 stored records spanning the last two hours
+  // with their original timestamps (§3.6), which is exactly the history a scrubber needs
+  expect(
+    await runToExit(
+      TSX_BIN,
+      ['tools/simulator/src/main.ts', '--scenario', 'bufferedFlood', '--port', String(INGEST_PORT), '--imei', TRAIL_IMEI],
+      {},
+    ),
+  ).toBe(0)
+
+  await page.getByTestId(`device-row-${TRAIL_IMEI}`).click({ timeout: 30_000 })
+
+  // the scrubber enables itself once the track lands and holds something placeable
+  const scrub = page.getByTestId('timeline-scrub')
+  await expect(scrub).toBeEnabled({ timeout: 30_000 })
+
+  const ghostCount = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('[data-testid="live-map"]') as
+        | (HTMLDivElement & { __map?: { queryRenderedFeatures: (o: { layers: string[] }) => unknown[] } })
+        | null
+      return el?.__map?.queryRenderedFeatures({ layers: ['scrub-halo'] }).length ?? 0
+    })
+
+  // live: no ghost, because there is no past moment selected
+  expect(await ghostCount()).toBe(0)
+
+  // 60 minutes back — inside the flood, so a real record answers for that moment
+  await scrub.fill(String(24 * 60 - 60))
+  await expect.poll(ghostCount, { timeout: 15_000 }).toBeGreaterThan(0)
+
+  await page.screenshot({ path: 'test-results/scrub-ghost.png' }) // PR visual artifact
+
+  // …and back to live removes it: the ghost is a claim about a moment, not a second vehicle
+  await page.getByTestId('timeline-quick-0').click()
+  await expect.poll(ghostCount, { timeout: 15_000 }).toBe(0)
+})

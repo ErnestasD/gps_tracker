@@ -135,7 +135,9 @@ export function LiveMap({
     let lastDevicesRaw: GeoJSON.FeatureCollection | null = null
     let lastTrail: GeoJSON.FeatureCollection | null = null
     let lastLabelFn: ((id: string) => string) | undefined
-    /** The PLACE the camera was last sent to; '' when live or when we hold no position. */
+    /** The last scrub PLACE SEEN — not necessarily where the camera is: the first frame after
+     *  registration records the place without moving, so a remount does not fly into a scrub the
+     *  operator left behind. '' when live, and when we hold no position for the moment. */
     let lastScrubKey = ''
     /** The ghost's own collection, so a theme swap re-seeds it like every other source. */
     let lastScrubFC: GeoJSON.FeatureCollection = EMPTY_FC
@@ -295,8 +297,27 @@ export function LiveMap({
           'icon-size': 0.62,
         },
       })
+      if (map.getStyle()?.glyphs !== undefined) {
+        map.addLayer({
+          id: 'device-labels',
+          type: 'symbol',
+          source: 'devices',
+          filter: ['!', ['has', 'point_count']],
+          layout: {
+            visibility: 'none',
+            'text-field': ['get', 'label'],
+            'text-size': 11,
+            'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+            'text-offset': [0, 1.4],
+            'text-anchor': 'top',
+            'text-optional': true,
+          },
+          paint: { 'text-color': '#E6E9F2', 'text-halo-color': '#0A0E1A', 'text-halo-width': 1.2 },
+        })
+      }
       /**
-       * Where the vehicle WAS at the scrubbed moment — both halves ABOVE the live fleet.
+       * Where the vehicle WAS at the scrubbed moment — added LAST, so both halves sit above every
+       * live-fleet layer including the name labels.
        *
        * The camera moving there was not enough: the fleet's markers are the LIVE frame, so sliding
        * back in time panned the map to an empty patch of road while the vehicle's own arrow stayed
@@ -329,24 +350,6 @@ export function LiveMap({
           'icon-size': 0.7,
         },
       })
-      if (map.getStyle()?.glyphs !== undefined) {
-        map.addLayer({
-          id: 'device-labels',
-          type: 'symbol',
-          source: 'devices',
-          filter: ['!', ['has', 'point_count']],
-          layout: {
-            visibility: 'none',
-            'text-field': ['get', 'label'],
-            'text-size': 11,
-            'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-            'text-offset': [0, 1.4],
-            'text-anchor': 'top',
-            'text-optional': true,
-          },
-          paint: { 'text-color': '#E6E9F2', 'text-halo-color': '#0A0E1A', 'text-halo-width': 1.2 },
-        })
-      }
       applyLayers()
       applyExtraData()
     }
