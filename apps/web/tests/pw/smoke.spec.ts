@@ -930,17 +930,24 @@ test('scrubbing the 24 h timeline draws the vehicle where it WAS (founder report
   await page.waitForURL(/\/app\/?$/)
   await expect(page.getByTestId('conn-badge')).toHaveText(/Live/i, { timeout: 15_000 })
 
-  // give the device a PAST: bufferedFlood replays 300 stored records spanning the last two hours
-  // with their original timestamps (§3.6), which is exactly the history a scrubber needs
+  /**
+   * Give the device a PAST: bufferedFlood replays stored records spanning the last two hours with
+   * their original timestamps (§3.6), which is exactly the history a scrubber needs.
+   *
+   * BASE_IMEI, not TRAIL_IMEI: the scrubber reads `/v1/devices/:id/positions`, which gates on the
+   * REGISTRY row, and TRAIL_IMEI is deliberately seeded outside the fleet — it reaches the map over
+   * the WS stream and 404s on the history endpoint. The trail test never noticed because it only
+   * ever asserts on the stream.
+   */
   expect(
     await runToExit(
       TSX_BIN,
-      ['tools/simulator/src/main.ts', '--scenario', 'bufferedFlood', '--port', String(INGEST_PORT), '--imei', TRAIL_IMEI],
+      ['tools/simulator/src/main.ts', '--scenario', 'bufferedFlood', '--port', String(INGEST_PORT), '--imei', BASE_IMEI],
       {},
     ),
   ).toBe(0)
 
-  await page.getByTestId(`device-row-${TRAIL_IMEI}`).click({ timeout: 30_000 })
+  await page.getByTestId(`device-row-${BASE_IMEI}`).click({ timeout: 30_000 })
 
   // the scrubber enables itself once the track lands and holds something placeable
   const scrub = page.getByTestId('timeline-scrub')
