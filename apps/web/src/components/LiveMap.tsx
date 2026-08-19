@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
-import { liveStore, type MapFrame } from '@/lib/liveStore'
+import { liveStore, scrubFeatures, type MapFrame, type ScrubState } from '@/lib/liveStore'
 import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 import type { MapLayers } from '@/lib/mapLayers'
 
@@ -140,6 +140,8 @@ export function LiveMap({
     let lastScrubKey: string | null = null
     /** The ghost's own collection, so a theme swap re-seeds it like every other source. */
     let lastScrubFC: GeoJSON.FeatureCollection = EMPTY_FC
+    /** `undefined` = no frame seen yet; `null` = a frame that said "live". */
+    let lastScrubData: ScrubState | undefined
 
     // IDEMPOTENT setup (ADR-030): `style.load` fires for the initial style AND after
     // every theme `setStyle`, which drops ALL runtime images/sources/layers — re-add
@@ -242,20 +244,6 @@ export function LiveMap({
           'line-dasharray': [2, 2],
         },
       })
-      /**
-       * Where the vehicle WAS at the scrubbed moment.
-       *
-       * The camera moving there was not enough: the fleet's markers are the LIVE frame, so sliding
-       * back in time panned the map to an empty patch of road while the vehicle's own arrow stayed
-       * at its present position. The ghost is drawn in the history colour — the same one the 24-hour
-       * track is drawn in — so it reads as "then", not as a second vehicle.
-       */
-      map.addLayer({
-        id: 'scrub-halo',
-        type: 'circle',
-        source: 'scrub',
-        paint: { 'circle-radius': 18, 'circle-color': COLORS.history, 'circle-opacity': 0.28, 'circle-blur': 0.35 },
-      })
       map.addLayer({
         id: 'selected-halo',
         type: 'circle',
@@ -305,6 +293,23 @@ export function LiveMap({
           'icon-allow-overlap': true,
           'icon-size': 0.62,
         },
+      })
+      /**
+       * Where the vehicle WAS at the scrubbed moment — both halves ABOVE the live fleet.
+       *
+       * The camera moving there was not enough: the fleet's markers are the LIVE frame, so sliding
+       * back in time panned the map to an empty patch of road while the vehicle's own arrow stayed
+       * at its present position. Drawn in the history colour — the same one the 24-hour track uses —
+       * so it reads as "then", not as a second vehicle. The halo used to sit below the cluster
+       * bubbles, and the scrub eases the ghost to the viewport centre, which is exactly where a
+       * dense city fleet puts a bubble: for a record with no heading the halo is the only mark, and
+       * it was painted over — the original report, reproduced.
+       */
+      map.addLayer({
+        id: 'scrub-halo',
+        type: 'circle',
+        source: 'scrub',
+        paint: { 'circle-radius': 18, 'circle-color': COLORS.history, 'circle-opacity': 0.28, 'circle-blur': 0.35 },
       })
       map.addLayer({
         id: 'scrub-arrow',
@@ -443,28 +448,27 @@ export function LiveMap({
        * vehicle's present position is not what they are reading. `'unknown'` is a scrub too — we
        * hold no position for that moment, so the camera HOLDS rather than flying to the present.
        */
-      const scrubKey = frame.scrub === null ? '' : frame.scrub === 'unknown' ? 'unknown' : `${frame.scrub.lon},${frame.scrub.lat}`
-      const scrubChanged = lastScrubKey !== null && scrubKey !== lastScrubKey
-      const firstScrubFrame = lastScrubKey === null
-      lastScrubKey = scrubKey
-      // The ghost marker follows the scrub target itself, not the camera: it must appear on the
-      // FIRST frame after registration too, which the camera deliberately skips.
-      if (scrubChanged || firstScrubFrame) {
-        lastScrubFC =
-          frame.scrub === null || frame.scrub === 'unknown'
-            ? EMPTY_FC
-            : {
-                type: 'FeatureCollection',
-                features: [{
-                  type: 'Feature',
-                  geometry: { type: 'Point', coordinates: [frame.scrub.lon, frame.scrub.lat] },
-                  // a course we do not have must not read as "heading due north"
-                  properties: { course: frame.scrub.course ?? 0, hasCourse: frame.scrub.course !== null },
-                }],
-              }
+      /**
+       * The GHOST follows the scrub VALUE; the CAMERA follows only the position.
+       *
+       * `setScrub` early-returns when the value is unchanged, so `frame.scrub`'s identity changes
+       * exactly when the value does — heading included. Keying the ghost on the camera's
+       * coordinate-only string dropped a redraw whenever two moments shared a coordinate with
+       * different headings, which is the ordinary case for a parked vehicle: the arrow kept
+       * whichever way it faced when the scrub first landed there. Identity also subsumes the
+       * first-frame case, which the camera deliberately skips.
+       */
+      if (frame.scrub !== lastScrubData) {
+        lastScrubData = frame.scrub
+        lastScrubFC = scrubFeatures(frame.scrub)
         map.getSource<GeoJSONSource>('scrub')?.setData(lastScrubFC)
       }
+      const scrubKey = frame.scrub === null ? '' : frame.scrub === 'unknown' ? 'unknown' : `${frame.scrub.lon},${frame.scrub.lat}`
+      const scrubChanged = lastScrubKey !== null && scrubKey !== lastScrubKey
+      lastScrubKey = scrubKey
       if (frame.scrub !== null) {
+        // A heading change at the same coordinate is a new ghost but not a new place: re-easing to
+        // where the map already sits would interrupt a pan the operator just made.
         if (frame.scrub !== 'unknown' && scrubChanged) {
           map.easeTo({ center: [frame.scrub.lon, frame.scrub.lat], duration: 400 })
         }

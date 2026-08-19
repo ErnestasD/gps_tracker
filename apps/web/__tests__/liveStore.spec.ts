@@ -1,7 +1,7 @@
 import type { LiveEvent } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { LiveStore, buildTrailFeatures, type MapFrame, type TrailPoint } from '../src/lib/liveStore.js'
+import { LiveStore, buildTrailFeatures, scrubFeatures, type MapFrame, type TrailPoint } from '../src/lib/liveStore.js'
 
 const T0 = 1_751_600_000_000
 
@@ -194,6 +194,60 @@ describe('the camera targets the map can be pointed at', () => {
     frames = 0
     store.setScrub(null) // already null
     expect(frames).toBe(0)
+  })
+})
+
+/**
+ * The ghost marker at the scrubbed moment.
+ *
+ * The founder's report: dragging the timeline panned the map and drew nothing, because every marker
+ * on the map is built from the LIVE frame. This is what fills that gap — and it must not fill it
+ * with a claim the record does not support.
+ */
+describe('the scrubbed moment, drawn', () => {
+  it('live and unknown draw nothing at all', () => {
+    // 'unknown' means "we hold no position for that moment" — the camera holds and the map stays
+    // honest by showing nothing, rather than a ghost somewhere plausible.
+    expect(scrubFeatures(null).features).toEqual([])
+    expect(scrubFeatures('unknown').features).toEqual([])
+  })
+
+  it('places the ghost exactly where the record was', () => {
+    const fc = scrubFeatures({ lon: 25.27, lat: 54.68, course: 90 })
+    expect((fc.features[0]!.geometry as GeoJSON.Point).coordinates).toEqual([25.27, 54.68])
+    expect(fc.features[0]!.properties).toEqual({ course: 90, hasCourse: true })
+  })
+
+  it('a record with no heading gets no arrow — not an arrow pointing north', () => {
+    // The manufactured-heading defect, one layer along: `?? 0` plus `!== null` would have disagreed
+    // about what "missing" means and drawn due north for a record that carried nothing.
+    expect(scrubFeatures({ lon: 25.27, lat: 54.68, course: null }).features[0]!.properties)
+      .toEqual({ course: 0, hasCourse: false })
+  })
+
+  it('due north IS a heading', () => {
+    // 0 is a real course. A falsy check here would silently hide the arrow for every vehicle
+    // driving north.
+    expect(scrubFeatures({ lon: 25.27, lat: 54.68, course: 0 }).features[0]!.properties)
+      .toEqual({ course: 0, hasCourse: true })
+  })
+
+  it('a heading change at the same coordinate is a NEW scrub, so the ghost is redrawn', () => {
+    // A parked vehicle repeats its coordinate bit-for-bit while the angle moves. The map keyed the
+    // ghost on lon/lat alone and kept the first arrow; the store has always treated course as part
+    // of the value, and the ghost now follows the value's identity.
+    const store = new LiveStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
+    store.flush(true)
+    store.select('1')
+    const frames: MapFrame[] = []
+    store.onMapFrame((f) => frames.push(f))
+    store.setScrub({ lon: 25.1, lat: 54.5, course: 90 })
+    const after90 = frames.at(-1)!.scrub
+    store.setScrub({ lon: 25.1, lat: 54.5, course: 180 })
+    const after180 = frames.at(-1)!.scrub
+    expect(after90).not.toBe(after180)
+    expect(scrubFeatures(after180).features[0]!.properties).toMatchObject({ course: 180 })
   })
 })
 

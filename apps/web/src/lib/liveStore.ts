@@ -72,6 +72,29 @@ export interface MapFrame {
 }
 
 /**
+ * The ghost marker: where the vehicle WAS at the scrubbed moment.
+ *
+ * Pure and here rather than inline in the map, because it encodes a rule that has already been got
+ * wrong twice one layer up: a heading we do not have must not be drawn. `hasCourse` decides whether
+ * an arrow is rendered at all, and it agrees with `course` about what "missing" means — `?? 0`
+ * treating undefined as missing while `!== null` treated it as present would have produced an arrow
+ * pointing due north for a record that carried no heading.
+ *
+ * A course of exactly 0 is a real heading (due north), not a missing one.
+ */
+export function scrubFeatures(scrub: ScrubState): GeoJSON.FeatureCollection {
+  if (scrub === null || scrub === 'unknown') return { type: 'FeatureCollection', features: [] }
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [scrub.lon, scrub.lat] },
+      properties: { course: typeof scrub.course === 'number' ? scrub.course : 0, hasCourse: typeof scrub.course === 'number' },
+    }],
+  }
+}
+
+/**
  * StatusDot semantics (DASHBOARD_UI_SPEC §3). One place — DeviceList/InfoCard/map arrows all read
  * this.
  *
