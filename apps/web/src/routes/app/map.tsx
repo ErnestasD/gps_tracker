@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Bell, Layers, Maximize2, Minimize2, PanelLeft, Pause, Play, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DeviceList } from '@/components/DeviceList'
@@ -129,12 +129,26 @@ export function MapPage() {
   const counts = useMemo(() => fleetPanelCounts(snap.devices, silent), [snap.devices, silent])
 
   // ── the selected vehicle's 24 hours ──────────────────────────────────────
+  /**
+   * The window is fixed at SELECTION and travels with the query, so the axis and the payload are
+   * always the same 24 hours. Letting `getTrack` call `new Date()` per fetch drifted the two apart
+   * every time the tab regained focus.
+   */
+  const [window, setWindow] = useState(() => ({ id: snap.selectedId, from: Date.now() - 24 * 3_600_000, to: Date.now() }))
+  if (window.id !== snap.selectedId) {
+    const now = Date.now()
+    setWindow({ id: snap.selectedId, from: now - 24 * 3_600_000, to: now })
+  }
   // One query, two consumers: the scrubber reads the points, the map draws the line. Fetching it
   // twice would double the load for a window that can hold thousands of rows.
   const track = useQuery({
-    queryKey: ['track', snap.selectedId],
-    queryFn: () => getTrack(snap.selectedId as string, 24),
-    enabled: snap.selectedId !== null,
+    queryKey: ['track', snap.selectedId, window.from, window.to],
+    queryFn: () => getTrack(snap.selectedId as string, window),
+    enabled: snap.selectedId !== null && window.id === snap.selectedId,
+    // The window is closed, so the answer barely changes; without this, every alt-tab re-pulled up
+    // to 10 000 rows for the selected vehicle.
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   })
   const trackPoints = useMemo(() => track.data?.points ?? [], [track.data])
   const history = useMemo<GeoJSON.FeatureCollection>(
@@ -160,17 +174,21 @@ export function MapPage() {
     () => new Set(fences.filter((g) => !hiddenFences.has(g.id)).map((g) => g.id)),
     [fences, hiddenFences],
   )
+  // Built regardless of the layer toggle: the map hides the layer, and keeping the data resident is
+  // what makes switching zones back on free — gating BOTH meant re-paying the rebuild every time.
   const fenceFeatures = useMemo(
-    () => (layers.geofences ? geofenceFeatures(fences.filter((g) => visibleFences.has(g.id))) : EMPTY_FC),
-    [fences, visibleFences, layers.geofences],
+    () => geofenceFeatures(fences.filter((g) => visibleFences.has(g.id))),
+    [fences, visibleFences],
   )
-  const toggleFence = (id: string) =>
+  const toggleFence = useCallback((id: string) =>
     setHiddenFences((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
-    })
+    }), [])
+  // stable, because LayersMenu's Escape handler depends on it and MapPage re-renders every second
+  const closeLayers = useCallback(() => setLayersOpen(false), [])
 
   return (
     <div
@@ -263,7 +281,7 @@ export function MapPage() {
                 fences={fences}
                 visibleFences={visibleFences}
                 onToggleFence={toggleFence}
-                onClose={() => setLayersOpen(false)}
+                onClose={closeLayers}
               />
             )}
           </div>
@@ -310,44 +328,39 @@ export function MapPage() {
           </aside>
         )}
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="relative min-h-0 flex-1">
-            <LiveMap layers={layers} geofences={fenceFeatures} history={history} labelOf={nameOf} />
+        <div className="relative min-w-0 flex-1">
+          <LiveMap
+            layers={layers}
+            geofences={fenceFeatures}
+            history={history}
+            labelOf={nameOf}
+            hasSelection={snap.selectedId !== null}
+          />
 
             {/* What just happened, without leaving the map. Wide screens only — it is the first
                 thing that should give up its space. */}
-            {(eventsQ.data?.length ?? 0) > 0 && (
-              <div
-                className="absolute bottom-3 right-3 hidden w-72 overflow-hidden rounded-card border border-line bg-surface/90 shadow-card backdrop-blur 2xl:block"
-                data-testid="event-ticker"
-              >
-                <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
-                  <Bell className="h-3.5 w-3.5 text-muted" aria-hidden />
-                  <span className="text-[11px] font-medium text-text">{t('map.eventFeed')}</span>
-                </div>
-                <ul className="max-h-40 overflow-y-auto">
-                  {(eventsQ.data ?? []).map((e) => (
-                    <li key={e.id} className="border-b border-line/60 px-3 py-1.5 text-[11px] last:border-b-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="min-w-0 flex-1 truncate font-medium text-text">{nameOf(e.deviceId)}</span>
-                        <span className="shrink-0 text-muted">{t(`events.kind.${e.kind}`, { defaultValue: e.kind })}</span>
-                      </div>
-                      <div className="truncate text-muted">{dt(e.at)}</div>
-                    </li>
-                  ))}
-                </ul>
+          {(eventsQ.data?.length ?? 0) > 0 && (
+            <div
+              className="absolute bottom-3 right-3 hidden w-72 overflow-hidden rounded-card border border-line bg-surface/90 shadow-card backdrop-blur 2xl:block"
+              data-testid="event-ticker"
+            >
+              <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
+                <Bell className="h-3.5 w-3.5 text-muted" aria-hidden />
+                <span className="text-[11px] font-medium text-text">{t('map.eventFeed')}</span>
               </div>
-            )}
-          </div>
-
-          <Timeline
-            deviceId={snap.selectedId}
-            name={snap.selectedId === null ? null : nameOf(snap.selectedId)}
-            points={trackPoints}
-            loading={track.isLoading}
-            truncated={track.data?.truncated ?? false}
-            onScrub={(p) => liveStore.setScrub(p)}
-          />
+              <ul className="max-h-40 overflow-y-auto">
+                {(eventsQ.data ?? []).map((e) => (
+                  <li key={e.id} className="border-b border-line/60 px-3 py-1.5 text-[11px] last:border-b-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="min-w-0 flex-1 truncate font-medium text-text">{nameOf(e.deviceId)}</span>
+                      <span className="shrink-0 text-muted">{t(`events.kind.${e.kind}`, { defaultValue: e.kind })}</span>
+                    </div>
+                    <div className="truncate text-muted">{dt(e.at)}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {selected && (
@@ -379,6 +392,23 @@ export function MapPage() {
           </aside>
         )}
       </div>
+
+      {/*
+        The scrubber is a footer of the WORKSPACE, not of the map column.
+        Inside the column it was painted underneath the fleet and inspector bottom sheets at every
+        width below xl — present, disabled-looking and unreachable, which is exactly the defect the
+        old xl-only timeline button existed to avoid. As a sibling of the body it keeps its own row
+        at every size, and the sheets end above it.
+      */}
+      <Timeline
+        deviceId={snap.selectedId}
+        name={snap.selectedId === null ? null : nameOf(snap.selectedId)}
+        points={trackPoints}
+        window={window}
+        loading={track.isLoading}
+        truncated={track.data?.truncated ?? false}
+        onScrub={(p) => liveStore.setScrub(p)}
+      />
     </div>
   )
 }
@@ -406,7 +436,6 @@ function LayersMenu({
   onClose: () => void
 }) {
   const { t } = useTranslation()
-  const ref = useRef<HTMLDivElement>(null)
   // Escape closes it, because a menu that only closes by clicking the scrim is a menu keyboard
   // users cannot dismiss.
   useEffect(() => {
@@ -422,7 +451,6 @@ function LayersMenu({
     <>
       <div className="fixed inset-0 z-30" onClick={onClose} aria-hidden />
       <div
-        ref={ref}
         className="absolute right-0 top-10 z-40 w-64 rounded-card border border-line bg-surface p-3 shadow-card"
         data-testid="layers-menu"
         role="dialog"

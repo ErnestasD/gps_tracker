@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import en from '../src/i18n/en.json'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '../src/lib/mapLayers'
 
 const store = (initial: Record<string, string> = {}) => {
@@ -46,4 +47,12 @@ describe('map layers', () => {
     expect(loadLayers(throwing)).toEqual(DEFAULT_LAYERS)
     expect(() => saveLayers(DEFAULT_LAYERS, throwing)).not.toThrow()
   })
+})
+
+it('every layer has a label — a switch cannot ship showing its own i18n key', () => {
+  // The menu renders `t(`map.layers.${key}`)` over Object.keys(DEFAULT_LAYERS); i18next falls back
+  // to the key, so a layer added here and nowhere else appears to the operator as
+  // "map.layers.whatever" in all four languages.
+  const labels = (en as { map: { layers: Record<string, string> } }).map.layers
+  for (const key of Object.keys(DEFAULT_LAYERS)) expect(labels[key], key).toBeTypeOf('string')
 })

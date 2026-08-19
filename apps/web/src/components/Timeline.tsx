@@ -1,9 +1,10 @@
 import { Pause, Play, Route as RouteIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useFmt } from '@/lib/datetime'
-import { pointAt, type TrackPoint } from '@/lib/telemetry'
+import type { ScrubState } from '@/lib/liveStore'
+import { placeAt, pointAt, type TrackPoint } from '@/lib/telemetry'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
@@ -26,7 +27,6 @@ import { cn } from '@/lib/utils'
  * clicks is a bar nobody finds. With no vehicle selected it says so and does nothing — the history
  * we hold is per device, and pretending otherwise would mean replaying a fleet we never queried.
  */
-const SPAN_MIN = 24 * 60
 /** Replay speed: 6 minutes of history per 90 ms tick ⇒ a full day in ~3.6 s. */
 const REPLAY_STEP_MIN = 6
 const REPLAY_TICK_MS = 90
@@ -43,6 +43,7 @@ export function Timeline({
   deviceId,
   name,
   points,
+  window,
   loading,
   truncated,
   onScrub,
@@ -51,10 +52,18 @@ export function Timeline({
   deviceId: string | null
   name: string | null
   points: readonly TrackPoint[]
+  /**
+   * The window the points were FETCHED for — the axis and the payload must be the same window.
+   *
+   * Computing `to` here while the query recomputed its own on every refetch let the two drift: the
+   * "-24 h" tick meant a different moment than the earliest row we held, and nudging the slider one
+   * minute off "now" jumped the map by however long the tab had been in the background.
+   */
+  window: { from: number; to: number }
   loading: boolean
   truncated: boolean
-  /** null ⇒ back to live. The map draws the historic position when a moment is selected. */
-  onScrub: (point: { lat: number; lon: number; course: number | null } | null) => void
+  /** null ⇒ back to live, 'unknown' ⇒ a moment we hold no position for: hold, never fall back. */
+  onScrub: (point: ScrubState) => void
 }) {
   const { t } = useTranslation()
   const { dt } = useFmt()
@@ -63,22 +72,16 @@ export function Timeline({
   const [back, setBack] = useState(0)
   const [replaying, setReplaying] = useState(false)
 
-  /**
-   * The window is frozen per device, NOT recomputed from the data.
-   *
-   * Memoising it on the query result moved the moment under the operator: this app's query client
-   * refetches on window focus, so alt-tabbing away and back shifted `to` forward by however long
-   * they were gone, while the thumb and the map stayed put — the readout then named a different
-   * moment than the position on screen.
-   */
-  const [span, setSpan] = useState(() => ({ id: deviceId, to: Date.now() }))
-  if (span.id !== deviceId) {
-    setSpan({ id: deviceId, to: Date.now() })
+  // A new vehicle starts at "now", never at whatever moment the previous one was parked on.
+  const [lastId, setLastId] = useState(deviceId)
+  if (lastId !== deviceId) {
+    setLastId(deviceId)
     setBack(0)
     setReplaying(false)
   }
 
-  const atMs = span.to - back * 60_000
+  const spanMin = Math.max(1, Math.round((window.to - window.from) / 60_000))
+  const atMs = window.to - back * 60_000
   const current = back === 0 ? undefined : pointAt(points, atMs)
   const disabled = deviceId === null || points.length === 0
 
@@ -92,16 +95,13 @@ export function Timeline({
      * An invalid fix is a real state but not a place, so the map must not move to it — and it must
      * not fall back to LIVE either. Passing null there put the camera on the vehicle's present
      * position while the readout named a past moment with no fix, which is a worse lie than showing
-     * nothing. Per spec §3.4 a no-fix record repeats the last valid position, so the camera holds
-     * at the last place the vehicle was actually seen before that moment.
+     * nothing — and it fired on EVERY press of "-24 h", because the earliest row we hold is always
+     * later than the window's own start. Per spec §3.4 a no-fix record repeats the last valid
+     * position, so the camera holds at the last place the vehicle was actually seen; before the
+     * first one there is nowhere to hold, and 'unknown' says exactly that.
      */
-    const at = span.to - minutes * 60_000
-    let place: TrackPoint | undefined
-    for (const p of points) {
-      if (Date.parse(p.fixTime) > at) break
-      if (p.fixValid) place = p
-    }
-    onScrub(place !== undefined ? { lat: place.lat, lon: place.lon, course: place.course } : null)
+    const place = placeAt(points, window.to - minutes * 60_000)
+    onScrub(place !== undefined ? { lat: place.lat, lon: place.lon, course: place.course } : 'unknown')
   }
 
   /**
@@ -114,9 +114,11 @@ export function Timeline({
    * function React is allowed to call twice.
    */
   const backRef = useRef(back)
-  backRef.current = back
   const scrubRef = useRef(scrub)
-  scrubRef.current = scrub
+  useLayoutEffect(() => {
+    backRef.current = back
+    scrubRef.current = scrub
+  })
   useEffect(() => {
     if (!replaying) return
     const iv = setInterval(() => {
@@ -137,7 +139,7 @@ export function Timeline({
     if (disabled) setReplaying(false)
   }, [disabled])
 
-  const pct = ((SPAN_MIN - back) / SPAN_MIN) * 100
+  const pct = ((spanMin - back) / spanMin) * 100
   const stamp = dt(new Date(atMs).toISOString())
   const valid = points.filter((p) => p.fixValid).length
 
@@ -155,7 +157,7 @@ export function Timeline({
               setReplaying(false)
               return
             }
-            if (back === 0) scrub(SPAN_MIN)
+            if (back === 0) scrub(spanMin)
             setReplaying(true)
           }}
           aria-pressed={replaying}
@@ -184,9 +186,12 @@ export function Timeline({
                   ·{' '}
                   {current === undefined
                     ? t('map.timeline.noData', { when: stamp })
-                    : current.fixValid
-                      ? speed(current.speed ?? 0)
-                      : t('map.timeline.noFix')}
+                    : !current.fixValid
+                      ? t('map.timeline.noFix')
+                      : // null speed is "this model does not report it", not "stopped"
+                        current.speed === null
+                        ? '—'
+                        : speed(current.speed)}
                 </span>
               )}
             </span>
@@ -210,13 +215,13 @@ export function Timeline({
             <input
               type="range"
               min={0}
-              max={SPAN_MIN}
+              max={spanMin}
               step={1}
               // the slider runs right-to-left in time: 0 (right) is now, 1440 (left) is 24 h ago
-              value={SPAN_MIN - back}
+              value={spanMin - back}
               onChange={(e) => {
                 setReplaying(false)
-                scrub(SPAN_MIN - Number(e.currentTarget.value))
+                scrub(spanMin - Number(e.currentTarget.value))
               }}
               aria-label={t('map.timeline.scrub')}
               data-testid="timeline-scrub"

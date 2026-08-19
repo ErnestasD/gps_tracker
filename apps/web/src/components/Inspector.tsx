@@ -192,7 +192,9 @@ function Header({
     return key === undefined ? undefined : attrs[key]
   }
   const tiles: { key: string; icon: typeof Gauge; value: string; unit: string }[] = [
-    { key: 'speed', icon: Gauge, value: speed(ev.speed ?? 0), unit: t('info.speed') },
+    // a null speed means this model does not report it — "0" would read as "stopped", which is a
+    // different fact and the one an operator would act on
+    { key: 'speed', icon: Gauge, value: ev.speed === null ? '—' : speed(ev.speed), unit: t('info.speed') },
     { key: 'sats', icon: Satellite, value: String(ev.satellites), unit: t('info.satellites') },
   ]
   if (latest?.odometerM != null && latest.odometerM !== '') {
@@ -324,7 +326,11 @@ function OverviewTab({
             v={live.fix === null ? '—' : `${live.fix.lat.toFixed(5)}, ${live.fix.lon.toFixed(5)}`}
           />
           <KV k={t('map.inspector.lastPacket')} v={dt(new Date(ev.fixTimeMs).toISOString())} />
-          <KV k={t('map.inspector.heading')} v={ev.course === null ? '—' : `${Math.round(ev.course)}°`} />
+          {/* The heading comes from the same last-valid fix the marker is rotated by. Reading
+              `ev.course` printed "0°" — due north — for a device parked indoors, because a no-fix
+              record carries angle 0 (spec §3.4): a heading manufactured by the absence of a fix,
+              contradicting the arrow beside it. */}
+          <KV k={t('map.inspector.heading')} v={live.fix === null ? '—' : `${Math.round(live.fix.course)}°`} />
           <KV
             k={t('info.ignition')}
             v={ev.ignition === null ? '—' : ev.ignition ? t('info.on') : t('info.off')}

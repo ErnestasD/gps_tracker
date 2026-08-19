@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { drawable, hasTelemetry, highlightRows, pointAt, telemetryRows, type TrackPoint } from '../src/lib/telemetry'
+import { drawable, hasTelemetry, highlightRows, placeAt, pointAt, telemetryRows, type TrackPoint } from '../src/lib/telemetry'
 
 /**
  * The parameters list and the 24-hour track.
@@ -121,5 +121,45 @@ describe('highlightRows', () => {
 
   it('a device reporting none of them yields no section at all', () => {
     expect(highlightRows({ 'Axis X': 12 })).toEqual([])
+  })
+})
+
+/**
+ * Where to put the CAMERA at a moment — the I6-critical half of the scrubber.
+ *
+ * `undefined` here means "hold where you are". It used to be conflated with "back to live", and the
+ * map then flew to the vehicle's present position while the readout named a moment 24 hours ago.
+ */
+describe('placeAt', () => {
+  const at = (iso: string) => Date.parse(iso)
+
+  it('a moment before the first valid fix has no answer — and must not be one', () => {
+    const points = [pt('2026-08-19T10:00:00Z')]
+    expect(placeAt(points, at('2026-08-19T09:00:00Z'))).toBeUndefined()
+    expect(placeAt([], Date.now())).toBeUndefined()
+  })
+
+  it('the window start is one such moment, which is why -24 h kept jumping to live', () => {
+    // getTrack asks for [now-24h, now]; the earliest ROW is always later than the window's start,
+    // so the leftmost slider position never resolves to a point.
+    const to = at('2026-08-19T12:00:00Z')
+    const points = [pt('2026-08-19T02:00:00Z')]
+    expect(placeAt(points, to - 24 * 3_600_000)).toBeUndefined()
+  })
+
+  it('holds at the last VALID fix across a no-fix stretch (I6)', () => {
+    const points = [pt('2026-08-19T10:00:00Z'), pt('2026-08-19T11:00:00Z', false)]
+    const found = placeAt(points, at('2026-08-19T11:30:00Z'))
+    expect(found?.fixTime).toBe('2026-08-19T10:00:00Z')
+  })
+
+  it('never returns a point from the future of the moment asked about', () => {
+    const points = [pt('2026-08-19T10:00:00Z'), pt('2026-08-19T12:00:00Z')]
+    expect(placeAt(points, at('2026-08-19T11:00:00Z'))?.fixTime).toBe('2026-08-19T10:00:00Z')
+  })
+
+  it('one unparseable timestamp does not truncate the scan', () => {
+    const points = [pt('2026-08-19T10:00:00Z'), pt('not-a-date'), pt('2026-08-19T12:00:00Z')]
+    expect(placeAt(points, at('2026-08-19T13:00:00Z'))?.fixTime).toBe('2026-08-19T12:00:00Z')
   })
 })

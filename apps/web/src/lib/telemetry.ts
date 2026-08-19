@@ -164,9 +164,18 @@ export interface TrackPoint {
  */
 const TRACK_LIMIT = 10_000
 
-export async function getTrack(deviceId: string, hours = 24): Promise<{ points: TrackPoint[]; truncated: boolean }> {
-  const to = new Date()
-  const from = new Date(to.getTime() - hours * 3_600_000)
+/**
+ * The window is passed IN, not computed here.
+ *
+ * It used to call `new Date()` on every fetch while the scrubber's axis stayed frozen at selection
+ * time, so the two drifted apart: after half an hour away, a refetch returned points newer than any
+ * slider position could reach, the "-24 h" tick was really 24.5 h ago, and nudging the slider one
+ * minute off "now" jumped the map half an hour into the past. Axis and payload must be the same
+ * window, and the only way to guarantee that is to make it one value.
+ */
+export async function getTrack(deviceId: string, window: { from: number; to: number }): Promise<{ points: TrackPoint[]; truncated: boolean }> {
+  const from = new Date(window.from)
+  const to = new Date(window.to)
   const points = await getJson<TrackPoint[]>(
     `/v1/devices/${encodeURIComponent(deviceId)}/positions?from=${from.toISOString()}&to=${to.toISOString()}&limit=${TRACK_LIMIT}`,
   )
@@ -184,6 +193,26 @@ export const drawable = (points: readonly TrackPoint[]): TrackPoint[] => points.
  * Newest-at-or-before rather than nearest, because a track is a sequence of states — at 14:32 the
  * vehicle was wherever it last reported, not wherever it happens to report next.
  */
+/**
+ * Where the vehicle actually WAS at `atMs`: the newest point at or before it that had a fix.
+ *
+ * Distinct from `pointAt`, which answers "what did the tracker report" and may legitimately answer
+ * with a no-fix record. This one answers "where do I put the camera", so invariant I6 applies: an
+ * invalid record carries the last valid position by convention (spec §3.4) but is not itself a
+ * place, and a moment before the window's first valid fix has no answer at all — `undefined` here
+ * means "hold", never "fall back to live".
+ */
+export function placeAt(points: readonly TrackPoint[], atMs: number): TrackPoint | undefined {
+  let place: TrackPoint | undefined
+  for (const p of points) {
+    const t = Date.parse(p.fixTime)
+    if (!Number.isFinite(t)) continue // one bad row must not truncate the scan
+    if (t > atMs) break
+    if (p.fixValid) place = p
+  }
+  return place
+}
+
 export function pointAt(points: readonly TrackPoint[], atMs: number): TrackPoint | undefined {
   let found: TrackPoint | undefined
   for (const p of points) {

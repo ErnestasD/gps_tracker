@@ -223,7 +223,8 @@ const DeviceRow = memo(function DeviceRow({
         <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
           <span className="inline-flex shrink-0 items-center gap-1 tabular-nums">
             <Gauge className="h-3 w-3" aria-hidden />
-            {speed(ev.speed ?? 0)}
+            {/* null ⇒ the model does not report speed; "0" would read as "parked" */}
+            {ev.speed === null ? '—' : speed(ev.speed)}
           </span>
           {ev.satellites > 0 && (
             <span className="inline-flex shrink-0 items-center gap-1 tabular-nums">

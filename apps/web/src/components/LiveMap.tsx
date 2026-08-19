@@ -1,7 +1,7 @@
 import type { GeoJSONSource, Map as MbMap, MapMouseEvent } from 'mapbox-gl'
 import { Crosshair, MapPin, ZoomIn, ZoomOut } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
@@ -70,6 +70,7 @@ export function LiveMap({
   geofences = EMPTY_FC,
   history = EMPTY_FC,
   labelOf,
+  hasSelection = false,
 }: {
   layers: MapLayers
   /** Geofence polygons the operator has left visible (already filtered by the workspace). */
@@ -78,6 +79,9 @@ export function LiveMap({
   history?: GeoJSON.FeatureCollection
   /** deviceId → the label drawn beside the marker when the "names" layer is on. */
   labelOf?: (deviceId: string) => string
+  /** Whether a vehicle is selected — "centre on selected" is a no-op without one, and a control
+   *  that silently does nothing teaches the operator to distrust the others. */
+  hasSelection?: boolean
 }) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -86,11 +90,15 @@ export function LiveMap({
   // Props read inside the map's own callbacks, which are registered once and must not close over a
   // stale render. A ref keeps them current without tearing down the map on every keystroke.
   const labelRef = useRef(labelOf)
-  labelRef.current = labelOf
   const layersRef = useRef(layers)
-  layersRef.current = layers
   const dataRef = useRef({ geofences, history })
-  dataRef.current = { geofences, history }
+  // Written in a layout effect, not in the render body: a render React throws away must not commit
+  // its value into a ref that a once-registered map callback will later read.
+  useLayoutEffect(() => {
+    labelRef.current = labelOf
+    layersRef.current = layers
+    dataRef.current = { geofences, history }
+  })
   const applyRef = useRef<{ layers: () => void; data: () => void } | null>(null)
   /** The device points of the last flushed frame — what "fit the whole fleet" has to frame. */
   const pointsRef = useRef<GeoJSON.Feature[]>([])
@@ -116,6 +124,7 @@ export function LiveMap({
 
     let disposed = false
     let lastFrame: MapFrame | null = null // re-applied when a theme swap rebuilds the style
+    let lastScrubKey = '' // camera moves on a CHANGE of scrub target, not on every frame
 
     // IDEMPOTENT setup (ADR-030): `style.load` fires for the initial style AND after
     // every theme `setStyle`, which drops ALL runtime images/sources/layers — re-add
@@ -360,12 +369,26 @@ export function LiveMap({
       if (map.getLayer('selected-halo')) {
         map.setFilter('selected-halo', ['==', ['get', 'deviceId'], frame.selected?.deviceId ?? ''])
       }
-      // follow the last VALID fix; a device that has never had one is not on the map to follow
-      // Scrubbing wins over following: the operator asked to look at a moment in the past, and the
-      // vehicle's present position is not what they are reading.
-      if (frame.scrub) {
-        map.easeTo({ center: [frame.scrub.lon, frame.scrub.lat], duration: 400 })
+      /**
+       * Camera moves happen on CHANGE, never on every frame.
+       *
+       * `frame.scrub` holds the same point across every 1 Hz flush, and re-issuing `easeTo` each
+       * second made the map snap back a second after the operator panned it — unpannable for as
+       * long as a moment was selected, with nothing on screen saying why.
+       *
+       * Scrubbing wins over following: the operator asked to look at a moment in the past, and the
+       * vehicle's present position is not what they are reading. `'unknown'` is a scrub too — we
+       * hold no position for that moment, so the camera HOLDS rather than flying to the present.
+       */
+      const scrubKey = frame.scrub === null ? '' : frame.scrub === 'unknown' ? 'unknown' : `${frame.scrub.lon},${frame.scrub.lat}`
+      const scrubChanged = scrubKey !== lastScrubKey
+      lastScrubKey = scrubKey
+      if (frame.scrub !== null) {
+        if (frame.scrub !== 'unknown' && scrubChanged) {
+          map.easeTo({ center: [frame.scrub.lon, frame.scrub.lat], duration: 400 })
+        }
       } else if (frame.follow && frame.selectedFix) {
+        // follow the last VALID fix; a device that has never had one is not on the map to follow
         map.easeTo({ center: [frame.selectedFix.lon, frame.selectedFix.lat], duration: 900 })
       }
     })
@@ -468,7 +491,12 @@ export function LiveMap({
         <MapCtl onClick={fitAll} label={t('map.ctl.fitAll')} testId="map-fit-all">
           <Crosshair className="h-4 w-4" aria-hidden />
         </MapCtl>
-        <MapCtl onClick={centerSelected} label={t('map.ctl.centerSelected')} testId="map-center-selected">
+        <MapCtl
+          onClick={centerSelected}
+          label={t('map.ctl.centerSelected')}
+          testId="map-center-selected"
+          disabled={!hasSelection}
+        >
           <MapPin className="h-4 w-4" aria-hidden />
         </MapCtl>
       </div>
@@ -497,20 +525,23 @@ function MapCtl({
   onClick,
   label,
   testId,
+  disabled = false,
 }: {
   children: ReactNode
   onClick: () => void
   label: string
   testId: string
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
       data-testid={testId}
-      className="grid h-8 w-8 place-items-center rounded-md border border-line bg-surface/90 text-text shadow-card backdrop-blur transition-colors hover:bg-surface-2"
+      className="grid h-8 w-8 place-items-center rounded-md border border-line bg-surface/90 text-text shadow-card backdrop-blur transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
     </button>
