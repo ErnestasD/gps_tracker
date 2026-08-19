@@ -178,4 +178,30 @@ describe('currentSettings', () => {
     ])
     expect(current['movingSendPeriod']!.state).toBe('rejected')
   })
+
+  it('a write applied and LATER changed elsewhere is not "rejected" — the first read judges it', () => {
+    /**
+     * Seen live on 2026-08-18. A write asked for 0; the verification that followed confirmed 0; the
+     * value was then changed to 2 by SMS, which the platform cannot see. Judging that old write
+     * against the NEWEST reading declared it `rejected` — the loudest badge on the screen — for a
+     * command the device had obeyed exactly.
+     */
+    const { current } = currentSettings(FTC887, [
+      reply('getparam 10055', 'Param ID:10055 Value:2', '2026-08-18T20:14:00.000Z'), // after an SMS
+      reply('getparam 10055', 'Param ID:10055 Value:0', '2026-08-18T14:55:00.000Z'), // the verification
+      { text: 'setparam 10055:0', response: 'OK', status: 'acked', createdAt: '2026-08-18T14:17:00.000Z', sentAt: '2026-08-18T14:17:00.000Z' },
+    ])
+    // the device's current value is still reported honestly…
+    expect(current['movingSendPeriod']!.value).toBe(2)
+    // …and the write it obeyed is not slandered
+    expect(current['movingSendPeriod']!.state).toBe('confirmed')
+  })
+
+  it('…and a genuine refusal is still called one', () => {
+    const { current } = currentSettings(FTC887, [
+      reply('getparam 10055', 'Param ID:10055 Value:120', '2026-08-18T14:55:00.000Z'),
+      { text: 'setparam 10055:2', response: 'OK', status: 'acked', createdAt: '2026-08-18T14:17:00.000Z', sentAt: '2026-08-18T14:17:00.000Z' },
+    ])
+    expect(current['movingSendPeriod']!.state).toBe('rejected')
+  })
 })

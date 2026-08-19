@@ -36,7 +36,7 @@ export { hashKey, type ApiKeyRepo, type ApiKeyView, type ApiKeyCreate, type Crea
 export { type EventRepo, type EventListOpts } from './repos/events.js'
 export { DriverNotInScopeError, clampTripsTake, type TripReadRepo, type TripListOpts, type TripWithDriver } from './repos/trips.js'
 export { type GeofenceRepo, type GeofenceCreate, type GeofenceUpdate, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_GEOFENCES_PER_TENANT, MAX_TENANT_GEOFENCE_VERTICES } from './repos/geofences.js'
-export { readPositions, readLatestValidPosition, readOdometersKm, type PositionsOpts } from './positions.js'
+export { readPositions, readLatestValidPosition, readLatestTelemetry, readOdometersKm, type PositionsOpts, type LatestTelemetry } from './positions.js'
 export { readDriverScores, type DriverScoreScope, type DriverScoreOpts, type DriverScoreAgg } from './driverScores.js'
 export { readFuelSeries, type FuelOpts } from './fuel.js'
 export { readHealthSeries, type HealthOpts } from './health.js'

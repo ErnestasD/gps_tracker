@@ -210,13 +210,55 @@ export function LiveMap() {
         map.setFilter('selected-halo', ['==', ['get', 'deviceId'], frame.selected?.deviceId ?? ''])
       }
       // follow the last VALID fix; a device that has never had one is not on the map to follow
-      if (frame.follow && frame.selectedFix) {
+      // Scrubbing wins over following: the operator asked to look at a moment in the past, and the
+      // vehicle's present position is not what they are reading.
+      if (frame.scrub) {
+        map.easeTo({ center: [frame.scrub.lon, frame.scrub.lat], duration: 400 })
+      } else if (frame.follow && frame.selectedFix) {
         map.easeTo({ center: [frame.selectedFix.lon, frame.selectedFix.lat], duration: 900 })
       }
     })
 
+    /**
+     * Mapbox GL does not watch its own container.
+     *
+     * `_onWindowResize` is bound to `window: resize`, `orientationchange` and the Fullscreen API —
+     * nothing else. That was harmless while the panels floated ABOVE a full-bleed map, and became a
+     * visible defect the moment they were docked as flex siblings: selecting a vehicle takes 340px
+     * for the inspector rail, the WebGL canvas keeps its old width, the right edge is clipped, and
+     * every `easeTo(center)` — follow, cluster zoom, the timeline scrub — lands off-centre because
+     * the visual centre is no longer the geographic one. The CSS "full screen" button is not the
+     * Fullscreen API either, so it fires no event at all. One observer covers every dock, present
+     * and future.
+     */
+    /**
+     * Loop-proofed on purpose. `map.resize()` writes to the canvas inside the observed element, and
+     * a ResizeObserver that reacts to a size IT caused spins the callback forever — in a headless
+     * browser that pegs the CPU and every later assertion simply times out, which is a far worse
+     * failure than a wrong layout. So: ignore a notification that reports the size we already have,
+     * and coalesce the rest into one resize per frame.
+     */
+    let lastW = container.clientWidth
+    let lastH = container.clientHeight
+    let raf = 0
+    const resizeObserver = new ResizeObserver(() => {
+      const w = container.clientWidth
+      const h = container.clientHeight
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
+      if (raf !== 0) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        map.resize()
+      })
+    })
+    resizeObserver.observe(container)
+
     return () => {
       disposed = true
+      if (raf !== 0) cancelAnimationFrame(raf)
+      resizeObserver.disconnect()
       liveStore.onMapFrame(null)
       stopWatch()
       unsubscribe()

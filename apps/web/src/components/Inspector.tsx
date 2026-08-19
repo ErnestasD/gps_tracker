@@ -1,5 +1,6 @@
-import { Activity, SlidersHorizontal, Terminal, X } from 'lucide-react'
+import { Activity, Radio, SlidersHorizontal, Terminal, X } from 'lucide-react'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -8,6 +9,8 @@ import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { Device } from '@/lib/devices'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
+import { useFmt } from '@/lib/datetime'
+import { getTelemetry, hasTelemetry, telemetryRows } from '@/lib/telemetry'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { SettingsCard } from '@/routes/app/devices/settings'
 
@@ -30,7 +33,7 @@ import { InfoCard } from './InfoCard'
  * is available — a device streaming positions we have no CRUD record for can still be watched, but
  * cannot be commanded.
  */
-export type InspectorTab = 'overview' | 'commands' | 'settings'
+export type InspectorTab = 'overview' | 'params' | 'commands' | 'settings'
 
 export function Inspector({
   live,
@@ -72,6 +75,8 @@ export function Inspector({
    */
   const tabs: { id: InspectorTab; label: string; icon: typeof Activity }[] = [
     { id: 'overview', label: t('map.inspector.overview'), icon: Activity },
+    // Parameters are a READ — every role sees what its own vehicle is reporting.
+    ...(device !== undefined ? [{ id: 'params' as const, label: t('map.inspector.params'), icon: Radio }] : []),
     ...(device !== undefined && canWrite
       ? [
           { id: 'commands' as const, label: t('map.inspector.commands'), icon: Terminal },
@@ -87,7 +92,7 @@ export function Inspector({
   if (effective === 'overview') {
     // The overview IS the InfoCard — one implementation, and it keeps its own testids and layout.
     return (
-      <div data-testid="inspector">
+      <div data-testid="inspector" className="min-h-0 flex-1">
         <InfoCard
           device={live}
           name={name}
@@ -103,10 +108,7 @@ export function Inspector({
   }
 
   return (
-    <Card
-      data-testid="inspector"
-      className="absolute bottom-4 left-[352px] z-10 max-h-[calc(100vh-6rem)] w-[26rem] overflow-y-auto bg-surface/95 backdrop-blur"
-    >
+    <Card data-testid="inspector" className="min-h-0 flex-1 rounded-none border-0 bg-transparent shadow-none">
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="flex items-center gap-2 font-mono text-sm">
           <StatusDot status={live.status} />
@@ -121,6 +123,7 @@ export function Inspector({
         {/* keyed by device so a panel never carries state across a selection change — an armed
             destructive confirm or a half-dragged slider must not follow the operator to another
             vehicle (the devices table keys these the same way, for the same reason) */}
+        {device !== undefined && effective === 'params' && <ParamsTab key={`par-${device.id}`} deviceId={device.id} />}
         {device !== undefined && effective === 'commands' && <CommandsCard key={`cmd-${device.id}`} device={device} />}
         {device !== undefined && effective === 'settings' && (
           <SettingsCard key={`set-${device.id}`} device={device} canWrite={canWrite} />
@@ -158,6 +161,84 @@ function TabStrip({
           {tb.label}
         </button>
       ))}
+    </div>
+  )
+}
+
+/**
+ * Everything the device is reporting — the conditional list the founder asked for: a parameter is
+ * here because the tracker sent it, and absent because it did not.
+ *
+ * This is the view that would have ended the 2026-08-18 investigation in a minute instead of a day:
+ * `GNSS Status 2`, `Sleep Mode 0`, `HDOP 1000` were all arriving and none of them were reachable
+ * outside the database.
+ */
+function ParamsTab({ deviceId }: { deviceId: string }) {
+  const { t } = useTranslation()
+  const { dt: dtFmt } = useFmt()
+  const q = useQuery({
+    queryKey: ['telemetry', deviceId],
+    queryFn: () => getTelemetry(deviceId),
+    refetchInterval: 30_000,
+  })
+
+  if (q.isLoading) return <p className="p-2 text-xs text-muted">{t('admin.loading')}</p>
+  if (q.isError) return <p className="p-2 text-xs text-danger" role="alert">{t('map.inspector.paramsError')}</p>
+  if (!hasTelemetry(q.data)) return <p className="p-2 text-xs text-muted">{t('map.inspector.paramsEmpty')}</p>
+
+  const d = q.data
+  /**
+   * The promoted columns are prepended, because `attrs` does NOT contain them.
+   *
+   * The pipeline lifts AVL 239/240/16 (ignition, movement, odometer) and the GPS scalars into their
+   * own columns and removes them from attrs. This panel's contract is "a parameter is here because
+   * the tracker sent it, and absent because it did not" — so a correctly wired ignition showing no
+   * ignition row would read as "not being reported" and send a technician to a working vehicle.
+   */
+  const promoted = [
+    { key: 'satellites', label: t('info.satellites'), value: d.satellites },
+    { key: 'ignition', label: t('info.ignition'), value: d.ignition },
+    { key: 'movement', label: t('map.inspector.movement'), value: d.movement },
+    { key: 'odometer', label: t('map.inspector.odometer'), value: d.odometerM },
+    { key: 'altitude', label: t('map.inspector.altitude'), value: d.altitude },
+  ].filter((r) => r.value !== null && r.value !== undefined)
+
+  const rows = telemetryRows(d.attrs)
+  return (
+    <div data-testid="params-tab">
+      {/* Age, always. A device that died three days ago would otherwise render a full, confident,
+          present-tense list on a panel whose whole claim is "what this device is reporting now". */}
+      <p className="pb-1 text-[11px] text-muted" data-testid="params-age">
+        {t('map.inspector.paramsAt', { when: dtFmt(d.fixTime) })}
+      </p>
+      {promoted.length > 0 && (
+        <dl className="divide-y divide-line border-b border-line text-xs">
+          {promoted.map((r) => (
+            <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">
+              <dt className="min-w-0 truncate text-muted">{r.label}</dt>
+              <dd className="shrink-0 tabular-nums text-text">
+                {typeof r.value === 'boolean' ? (r.value ? t('info.on') : t('info.off')) : String(r.value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <dl className="divide-y divide-line text-xs">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">
+            <dt className={cn('min-w-0 truncate', r.documented ? 'text-muted' : 'text-muted italic')} title={r.key}>
+              {r.label}
+            </dt>
+            <dd className="shrink-0 tabular-nums text-text">{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {rows.length === 0 && <p className="p-2 text-xs text-muted">{t('map.inspector.paramsEmpty')}</p>}
+      {/* An `io_<id>` row means this model's own wiki page does not document that element — a fact
+          about Teltonika's documentation, not a gap in ours, and worth naming as such. */}
+      {rows.some((r) => !r.documented) && (
+        <p className="pt-2 text-[11px] text-muted">{t('map.inspector.paramsUndocumented')}</p>
+      )}
     </div>
   )
 }

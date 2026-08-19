@@ -288,3 +288,82 @@ describe('LiveStore', () => {
     expect(frame!.devices.features[0]!.properties!['selected']).toBe(true)
   })
 })
+
+/**
+ * Scrubbing the 24-hour timeline.
+ *
+ * The property that matters: examining one vehicle's past must not stop the map answering "where is
+ * everyone now". The scrub point rides ALONGSIDE the live frame rather than replacing it.
+ */
+describe('the timeline scrub point', () => {
+  const frameOf = (store: LiveStore): MapFrame => {
+    let out: MapFrame | null = null
+    store.onMapFrame((f) => { out = f })
+    store.flush(true)
+    return out!
+  }
+
+  it('is null while the map is live', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0))
+    expect(frameOf(store).scrub).toBeNull()
+  })
+
+  it('carries the historic point without disturbing the live markers', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.7, lon: 25.3 }))
+    store.ingest(ev('2', T0, { lat: 54.9, lon: 23.9 }))
+    let frame: MapFrame | null = null
+    store.onMapFrame((f) => { frame = f })
+    store.flush(true)
+    store.setScrub({ lat: 55.5, lon: 21.1, course: 90 })
+    expect(frame!.scrub).toEqual({ lat: 55.5, lon: 21.1, course: 90 })
+    // …and the fleet is still exactly where it is now
+    expect(frame!.devices.features).toHaveLength(2)
+    expect((frame!.devices.features[0]!.geometry as GeoJSON.Point).coordinates).toEqual([25.3, 54.7])
+  })
+
+  it('dies with the selection — it belongs to ONE vehicle', () => {
+    /**
+     * It used to survive: closing the inspector unmounted the Timeline without its own onClose, so
+     * the point stayed set and every 1 Hz frame re-centred the map on another vehicle's past —
+     * forever, unpannable, with nothing on screen saying why.
+     */
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0))
+    store.ingest(ev('2', T0))
+    let frame: MapFrame | null = null
+    store.onMapFrame((f) => { frame = f })
+    store.select('1')
+    store.setScrub({ lat: 55.5, lon: 21.1, course: null })
+    expect(frame!.scrub).not.toBeNull()
+
+    store.select('2') // another vehicle
+    expect(frame!.scrub).toBeNull()
+
+    store.setScrub({ lat: 55.5, lon: 21.1, course: null })
+    store.select(null) // deselect entirely
+    expect(frame!.scrub).toBeNull()
+  })
+
+  it('…and with the device itself', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0))
+    let frame: MapFrame | null = null
+    store.onMapFrame((f) => { frame = f })
+    store.select('1')
+    store.setScrub({ lat: 55.5, lon: 21.1, course: null })
+    store.evict('1')
+    expect(frame!.scrub).toBeNull()
+  })
+
+  it('returns to live on null', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0))
+    let frame: MapFrame | null = null
+    store.onMapFrame((f) => { frame = f })
+    store.setScrub({ lat: 55.5, lon: 21.1, course: null })
+    store.setScrub(null)
+    expect(frame!.scrub).toBeNull()
+  })
+})

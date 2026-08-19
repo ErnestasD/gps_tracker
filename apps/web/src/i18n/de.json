@@ -439,7 +439,30 @@
     "inspector": {
       "overview": "Übersicht",
       "commands": "Befehle",
-      "settings": "Einstellungen"
+      "settings": "Einstellungen",
+      "params": "Parameter",
+      "paramsEmpty": "Dieses Gerät hat noch nichts gemeldet.",
+      "paramsError": "Parameter konnten nicht geladen werden.",
+      "paramsUndocumented": "Zeilen mit „AVL <id>“ sind Elemente, die die Teltonika-Seite dieses Modells nicht dokumentiert.",
+      "movement": "Bewegung",
+      "odometer": "Kilometerstand (m)",
+      "altitude": "Höhe (m)",
+      "paramsAt": "Wie das Gerät es {{when}} gemeldet hat"
+    },
+    "title": "Live-Karte",
+    "toggleList": "Fahrzeugliste ein- oder ausblenden",
+    "pause": "Pause",
+    "resume": "Fortsetzen",
+    "fullscreen": "Vollbild",
+    "timeline": {
+      "summary": "{{points}} Punkte, {{valid}} mit Fix",
+      "scrub": "Die letzten 24 Stunden durchsuchen",
+      "hoursAgo": "vor {{hours}} h",
+      "now": "jetzt",
+      "noData": "keine Meldung um {{when}}",
+      "noFix": "kein GPS-Fix",
+      "button": "24 Std.",
+      "truncated": "{{points}} Punkte — mehr Verlauf als eine Seite; der frühere Teil wird gezeigt"
     }
   },
   "units": {

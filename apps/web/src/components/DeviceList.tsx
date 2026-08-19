@@ -10,7 +10,13 @@ import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
 /**
- * Floating 320px live panel (spec §4 Live Map). No virtualizer: 500 memoized rows
+ * The fleet panel — a DOCKED column in the map workspace (founder design 2026-08-18).
+ *
+ * It used to float over the map as a 320px card. Two overlaying cards took most of a laptop screen,
+ * and the thing an operator came to look at was underneath them; the workspace shell now gives this
+ * its own column and the map keeps what is left. Sizing and position belong to the shell, so this
+ * only fills the space it is given.
+ * No virtualizer: 500 memoized rows
  * re-render at most 1×/s and offscreen rows skip paint via content-visibility
  * (.device-row). Fallback if the founder-laptop check ever shows jank:
  * @tanstack/react-virtual — deliberately NOT added now (scope discipline).
@@ -58,10 +64,7 @@ export function DeviceList({
   const total = counts.total
 
   return (
-    <div
-      data-testid="device-list"
-      className="absolute bottom-4 left-4 top-4 z-10 flex w-80 flex-col overflow-hidden rounded-card border border-line bg-surface/95 shadow-card backdrop-blur"
-    >
+    <div data-testid="device-list" className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="border-b border-line p-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
