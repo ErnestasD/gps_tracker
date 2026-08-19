@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { drawable, hasTelemetry, pointAt, telemetryRows, type TrackPoint } from '../src/lib/telemetry'
+import { drawable, hasTelemetry, highlightRows, placeAt, pointAt, telemetryRows, trackTimes, type TrackPoint } from '../src/lib/telemetry'
 
 /**
  * The parameters list and the 24-hour track.
@@ -86,5 +86,95 @@ describe('the 24-hour track', () => {
     const points = [pt('2026-08-18T10:00:00Z')]
     expect(pointAt(points, Date.parse('2026-08-18T09:00:00Z'))).toBeUndefined()
     expect(pointAt([], Date.now())).toBeUndefined()
+  })
+})
+
+describe('highlightRows', () => {
+  it('promotes only what the device actually sent, in a fixed reading order', () => {
+    const rows = highlightRows({ 'External Voltage': 12004, 'GSM Signal': 4, Odd: 1 })
+    expect(rows.map((r) => r.label)).toEqual(['GSM Signal', 'External Voltage'])
+  })
+
+  it('draws a bar only where the scale is documented', () => {
+    // GSM signal is 1–5 and battery level is a percentage (FMB AVL 21 / 113), so both are a
+    // proportion of something. External voltage is millivolts with no model-independent maximum —
+    // inventing one would make the bar a claim about the vehicle.
+    const rows = highlightRows({ 'GSM Signal': 5, 'Battery Level': 50, 'External Voltage': 12004 })
+    const by = Object.fromEntries(rows.map((r) => [r.key, r.pct]))
+    expect(by).toEqual({ 'GSM Signal': 1, 'Battery Level': 0.5, 'External Voltage': null })
+  })
+
+  it('a value outside the documented range gets no bar rather than a clamped lie', () => {
+    // AVL 84 reports fuel in litres on some CAN adapters; 120 is not "120 %".
+    expect(highlightRows({ 'Fuel Level': 120 })[0]).toMatchObject({ value: '120', pct: null })
+  })
+
+  it('a low level reads as low — the tone carries it, not a second row of text', () => {
+    expect(highlightRows({ 'Fuel Level': 8 })[0]?.tone).toBe('danger')
+    expect(highlightRows({ 'Fuel Level': 30 })[0]?.tone).toBe('warn')
+    expect(highlightRows({ 'Fuel Level': 80 })[0]?.tone).toBe('accent')
+  })
+
+  it('matches the dictionary name whatever case it arrives in', () => {
+    expect(highlightRows({ 'gsm signal': 3 }).map((r) => r.label)).toEqual(['gsm signal'])
+  })
+
+  it('a device reporting none of them yields no section at all', () => {
+    expect(highlightRows({ 'Axis X': 12 })).toEqual([])
+  })
+})
+
+/**
+ * Where to put the CAMERA at a moment — the I6-critical half of the scrubber.
+ *
+ * `undefined` here means "hold where you are". It used to be conflated with "back to live", and the
+ * map then flew to the vehicle's present position while the readout named a moment 24 hours ago.
+ */
+describe('placeAt', () => {
+  const at = (iso: string) => Date.parse(iso)
+
+  it('a moment before the first valid fix has no answer — and must not be one', () => {
+    const points = [pt('2026-08-19T10:00:00Z')]
+    expect(placeAt(points, at('2026-08-19T09:00:00Z'))).toBeUndefined()
+    expect(placeAt([], Date.now())).toBeUndefined()
+  })
+
+  it('the window start is one such moment, which is why -24 h kept jumping to live', () => {
+    // getTrack asks for [now-24h, now]; the earliest ROW is always later than the window's start,
+    // so the leftmost slider position never resolves to a point.
+    const to = at('2026-08-19T12:00:00Z')
+    const points = [pt('2026-08-19T02:00:00Z')]
+    expect(placeAt(points, to - 24 * 3_600_000)).toBeUndefined()
+  })
+
+  it('holds at the last VALID fix across a no-fix stretch (I6)', () => {
+    const points = [pt('2026-08-19T10:00:00Z'), pt('2026-08-19T11:00:00Z', false)]
+    const found = placeAt(points, at('2026-08-19T11:30:00Z'))
+    expect(found?.fixTime).toBe('2026-08-19T10:00:00Z')
+  })
+
+  it('never returns a point from the future of the moment asked about', () => {
+    const points = [pt('2026-08-19T10:00:00Z'), pt('2026-08-19T12:00:00Z')]
+    expect(placeAt(points, at('2026-08-19T11:00:00Z'))?.fixTime).toBe('2026-08-19T10:00:00Z')
+  })
+
+  it('one unparseable timestamp does not truncate the scan', () => {
+    const points = [pt('2026-08-19T10:00:00Z'), pt('not-a-date'), pt('2026-08-19T12:00:00Z')]
+    expect(placeAt(points, at('2026-08-19T13:00:00Z'))?.fixTime).toBe('2026-08-19T12:00:00Z')
+  })
+})
+
+describe('pre-parsed timestamps', () => {
+  it('the fast path answers exactly what the slow one does, bad rows included', () => {
+    // A drag runs two scans per step over up to 10 000 points; parsing once is the whole point, and
+    // a fast path that disagrees with the slow one is worse than no fast path.
+    const points = [pt('2026-08-19T10:00:00Z'), pt('not-a-date'), pt('2026-08-19T11:00:00Z', false), pt('2026-08-19T12:00:00Z')]
+    const times = trackTimes(points)
+    expect(times[1]).toBeNaN()
+    for (const at of ['2026-08-19T09:00:00Z', '2026-08-19T10:30:00Z', '2026-08-19T11:30:00Z', '2026-08-19T13:00:00Z']) {
+      const ms = Date.parse(at)
+      expect(pointAt(points, ms, times)).toBe(pointAt(points, ms))
+      expect(placeAt(points, ms, times)).toBe(placeAt(points, ms))
+    }
   })
 })

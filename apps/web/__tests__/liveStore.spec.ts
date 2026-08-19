@@ -75,6 +75,128 @@ describe('an invalid fix never places a marker (invariant I6, read side)', () =>
   })
 })
 
+describe('the camera targets the map can be pointed at', () => {
+  const frameOf = (store: LiveStore): MapFrame => {
+    let out: MapFrame | null = null
+    store.onMapFrame((f) => { out = f })
+    store.flush(true)
+    return out!
+  }
+
+  it('selectedFix is the last VALID fix, never the raw event', () => {
+    // "centre on the selected vehicle" reads this. A no-fix record carries 0/0, and centring on
+    // that is the Gulf of Guinea defect with a button attached.
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
+    store.ingest(ev('1', T0 + 1_000, { fixValid: false, satellites: 0, lat: 0, lon: 0 }))
+    store.select('1')
+    expect(store.selectedFix()).toEqual({ lon: 25.27, lat: 54.68, course: 90 })
+  })
+
+  it('a device that has only ever reported invalid fixes has nothing to centre on', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { fixValid: false, satellites: 0, lat: 0, lon: 0 }))
+    store.select('1')
+    expect(store.selectedFix()).toBeNull()
+    store.select(null)
+    expect(store.selectedFix()).toBeNull()
+  })
+
+  it("a moment we hold no position for is 'unknown', which is NOT back-to-live", () => {
+    // Conflating the two flew the map to the vehicle's present position while the readout named a
+    // moment 24 hours ago — on every press of "-24 h".
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
+    store.select('1')
+    let frame: MapFrame | null = null
+    store.onMapFrame((f) => { frame = f })
+    store.setScrub('unknown')
+    expect((frame as unknown as MapFrame).scrub).toBe('unknown')
+    store.setScrub(null)
+    expect((frame as unknown as MapFrame).scrub).toBeNull()
+  })
+
+  it('scrubbing reuses the built collections instead of rebuilding every marker', () => {
+    // A slider drag fires dozens of times a second and replay ~11×/s; rebuilding the fleet and up
+    // to 3600 trail vertices per tick is exactly the per-message work the 1 Hz flush exists to avoid.
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
+    const first = frameOf(store)
+    let latest: MapFrame = first
+    store.onMapFrame((f) => { latest = f })
+    store.setScrub({ lat: 54.5, lon: 25.1, course: null })
+    expect(latest.devices).toBe(first.devices) // same object — not rebuilt
+    expect(latest.scrub).toEqual({ lat: 54.5, lon: 25.1, course: null })
+    // …but a real position change still rebuilds
+    store.ingest(ev('1', T0 + 1_000, { lat: 55, lon: 24 }))
+    store.flush()
+    expect(latest.devices).not.toBe(first.devices)
+  })
+
+  it('a drag that resolves to the same position does not re-emit — identity is not enough', () => {
+    // The scrubber builds a fresh object per slider step, so hundreds of consecutive steps over a
+    // parked vehicle produce hundreds of structurally identical, referentially distinct points.
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
+    store.flush(true)
+    let frames = 0
+    store.onMapFrame(() => { frames += 1 })
+    store.setScrub({ lat: 54.5, lon: 25.1, course: 12 })
+    frames = 0
+    store.setScrub({ lat: 54.5, lon: 25.1, course: 12 })
+    expect(frames).toBe(0)
+    store.setScrub({ lat: 54.5, lon: 25.1, course: 13 })
+    expect(frames).toBe(1)
+  })
+
+  it('a device retired in another tab clears the scrub with the selection', () => {
+    // retain() was the one deselecting path that forgot: the scrub survived, and a surviving scrub
+    // makes the follow branch unreachable — turning Follow on then silently did nothing.
+    let now = T0
+    const store = makeStore(() => now)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
+    store.flush(true)
+    store.select('1')
+    let frame: MapFrame | null = null
+    store.onMapFrame((f) => { frame = f })
+    store.setScrub({ lat: 54.5, lon: 25.1, course: null })
+    // a device still streaming inside ONLINE_MS is kept whatever the registry says — the WS stream
+    // is ground truth for presence — so age it past that first
+    now = T0 + 200_000
+    store.retain([]) // the registry no longer lists it
+    expect((frame as unknown as MapFrame).scrub).toBeNull()
+    expect(store.getSnapshot().selectedId).toBeNull()
+  })
+
+  it('evicting the selected device clears its scrub with the selection', () => {
+    // The state "selected but no longer in byId" is now unreachable — both removal paths deselect —
+    // and that is the claim worth pinning: a scrub must never outlive the vehicle it was taken from.
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
+    store.flush(true)
+    store.select('1')
+    let frame: MapFrame | null = null
+    store.onMapFrame((f) => { frame = f })
+    store.setScrub({ lat: 54.5, lon: 25.1, course: null })
+    expect(store.evict('1')).toBe(true)
+    expect((frame as unknown as MapFrame).scrub).toBeNull()
+    expect(store.getSnapshot().selectedId).toBeNull()
+    // evicting something that was never there changes nothing and says so
+    expect(store.evict('nope')).toBe(false)
+  })
+
+  it('setting the same scrub twice does not re-emit', () => {
+    const store = makeStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27 }))
+    store.flush(true)
+    let frames = 0
+    store.onMapFrame(() => { frames += 1 })
+    frames = 0
+    store.setScrub(null) // already null
+    expect(frames).toBe(0)
+  })
+})
+
 describe('LiveStore', () => {
   it('max-wins: an older fixTimeMs never regresses the marker (server parity)', () => {
     const store = makeStore(() => T0 + 10_000)
@@ -285,7 +407,10 @@ describe('LiveStore', () => {
     store.setFollow(true)
     expect(frame!.selected?.deviceId).toBe('7')
     expect(frame!.follow).toBe(true)
-    expect(frame!.devices.features[0]!.properties!['selected']).toBe(true)
+    // Selection travels on the FRAME, not on every marker: the halo is a `setFilter` against
+    // `frame.selected`, and stamping a per-feature flag meant each row click invalidated the whole
+    // marker collection to change a property nothing read.
+    expect(frame!.devices.features[0]!.properties).not.toHaveProperty('selected')
   })
 })
 

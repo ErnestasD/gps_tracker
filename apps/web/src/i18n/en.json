@@ -447,7 +447,21 @@
       "movement": "Movement",
       "odometer": "Odometer (m)",
       "altitude": "Altitude (m)",
-      "paramsAt": "As the device reported it {{when}}"
+      "paramsAt": "As the device reported it {{when}}",
+      "events": "Events",
+      "fences": "Zones",
+      "position": "Position",
+      "coords": "Coordinates",
+      "lastPacket": "Last packet",
+      "heading": "Heading",
+      "telemetry": "Key telemetry",
+      "recentTrips": "Recent trips",
+      "noTrips": "No trips recorded yet.",
+      "paramsSearch": "Search parameters…",
+      "eventsError": "Could not load the events.",
+      "noEvents": "No events for this device.",
+      "acknowledged": "Acknowledged",
+      "fencesHint": "Choose which zones the map draws."
     },
     "title": "Live map",
     "toggleList": "Show or hide the fleet list",
@@ -456,13 +470,36 @@
     "fullscreen": "Full screen",
     "timeline": {
       "summary": "{{points}} points, {{valid}} with a fix",
-      "scrub": "Scrub the last 24 hours",
+      "scrub": "Scrub the last {{hours}} hours",
       "hoursAgo": "{{hours}} h ago",
       "now": "now",
       "noData": "no report at {{when}}",
       "noFix": "no GPS fix",
-      "button": "24 h",
-      "truncated": "{{points}} points — more history than one page; showing the earlier part"
+      "truncated": "{{points}} points — more history than one page; showing the earlier part",
+      "pickDevice": "Select a vehicle to see its last 24 hours",
+      "replay": "Replay the last {{hours}} hours",
+      "stopReplay": "Stop the replay",
+      "quick": {
+        "hours": "-{{hours}} h",
+        "minutes": "-{{minutes}} min"
+      },
+      "nothingToReplay": "No history to replay for this vehicle",
+      "refreshing": "Refreshing…"
+    },
+    "eventFeed": "Event feed",
+    "ctl": {
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "fitAll": "Show the whole fleet",
+      "centerSelected": "Centre on the selected vehicle"
+    },
+    "layers": {
+      "title": "Layers",
+      "geofences": "Geofences",
+      "trails": "Movement trails",
+      "labels": "Device names",
+      "heat": "Density overlay",
+      "fenceVisibility": "Zone visibility"
     }
   },
   "units": {

@@ -62,7 +62,7 @@ test('login → map: Mapbox mark visible, WS live, simulator devices appear', as
 
   // select → info card + trail/follow controls (spec §4)
   await page.getByTestId(`device-row-${BASE_IMEI}`).click()
-  await expect(page.getByTestId('info-card')).toBeVisible()
+  await expect(page.getByTestId('overview-tab')).toBeVisible()
   await page.getByTestId('trail-toggle').click()
   await page.getByTestId('follow-toggle').click()
 
@@ -70,6 +70,13 @@ test('login → map: Mapbox mark visible, WS live, simulator devices appear', as
 })
 
 test('invalid-fix: no-fix stretch renders a dashed trail gap (I5, E02-7 AC[2])', async ({ page }) => {
+  // The trail layers are behind an operator-controlled, localStorage-backed toggle, and
+  // queryRenderedFeatures returns nothing from a layer whose visibility is 'none'. A fresh context
+  // defaults to on, so this passes either way — stating it makes the test independent of a default
+  // someone may reasonably change.
+  await page.addInitScript(() => {
+    localStorage.setItem('orbetra.map.layers', JSON.stringify({ geofences: true, trails: true, labels: false, heat: false }))
+  })
   await page.goto('/login')
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)

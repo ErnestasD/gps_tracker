@@ -8,11 +8,11 @@ import { cn } from '@/lib/utils'
  * stale = warn, offline = muted. Never color-only (§6) — label or aria-label
  * always accompanies the dot.
  */
-export function StatusDot({ status, withLabel = false }: { status: DeviceStatus; withLabel?: boolean }) {
+export function StatusDot({ status, withLabel = false, className }: { status: DeviceStatus; withLabel?: boolean; className?: string }) {
   const { t } = useTranslation()
   const label = t(`status.${status}`)
   return (
-    <span className="inline-flex items-center gap-1.5" aria-label={label} title={label}>
+    <span className={cn('inline-flex items-center gap-1.5', className)} aria-label={label} title={label}>
       <span
         data-status={status}
         className={cn(

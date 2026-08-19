@@ -447,7 +447,21 @@
       "movement": "Bewegung",
       "odometer": "Kilometerstand (m)",
       "altitude": "Höhe (m)",
-      "paramsAt": "Wie das Gerät es {{when}} gemeldet hat"
+      "paramsAt": "Wie das Gerät es {{when}} gemeldet hat",
+      "events": "Ereignisse",
+      "fences": "Zonen",
+      "position": "Position",
+      "coords": "Koordinaten",
+      "lastPacket": "Letztes Paket",
+      "heading": "Kurs",
+      "telemetry": "Wichtigste Telemetrie",
+      "recentTrips": "Letzte Fahrten",
+      "noTrips": "Noch keine Fahrten erfasst.",
+      "paramsSearch": "Parameter suchen…",
+      "eventsError": "Ereignisse konnten nicht geladen werden.",
+      "noEvents": "Keine Ereignisse für dieses Gerät.",
+      "acknowledged": "Bestätigt",
+      "fencesHint": "Wählen Sie, welche Zonen die Karte zeichnet."
     },
     "title": "Live-Karte",
     "toggleList": "Fahrzeugliste ein- oder ausblenden",
@@ -456,13 +470,36 @@
     "fullscreen": "Vollbild",
     "timeline": {
       "summary": "{{points}} Punkte, {{valid}} mit Fix",
-      "scrub": "Die letzten 24 Stunden durchsuchen",
+      "scrub": "Die letzten {{hours}} Stunden durchsuchen",
       "hoursAgo": "vor {{hours}} h",
       "now": "jetzt",
       "noData": "keine Meldung um {{when}}",
       "noFix": "kein GPS-Fix",
-      "button": "24 Std.",
-      "truncated": "{{points}} Punkte — mehr Verlauf als eine Seite; der frühere Teil wird gezeigt"
+      "truncated": "{{points}} Punkte — mehr Verlauf als eine Seite; der frühere Teil wird gezeigt",
+      "pickDevice": "Fahrzeug wählen, um die letzten 24 h zu sehen",
+      "replay": "Die letzten {{hours}} Stunden abspielen",
+      "stopReplay": "Wiedergabe stoppen",
+      "quick": {
+        "hours": "-{{hours}} h",
+        "minutes": "-{{minutes}} Min."
+      },
+      "nothingToReplay": "Keine Historie zum Abspielen für dieses Fahrzeug",
+      "refreshing": "Wird aktualisiert…"
+    },
+    "eventFeed": "Ereignis-Feed",
+    "ctl": {
+      "zoomIn": "Vergrößern",
+      "zoomOut": "Verkleinern",
+      "fitAll": "Gesamte Flotte anzeigen",
+      "centerSelected": "Ausgewähltes Fahrzeug zentrieren"
+    },
+    "layers": {
+      "title": "Ebenen",
+      "geofences": "Geozonen",
+      "trails": "Bewegungsspuren",
+      "labels": "Gerätenamen",
+      "heat": "Dichte-Overlay",
+      "fenceVisibility": "Sichtbarkeit der Zonen"
     }
   },
   "units": {

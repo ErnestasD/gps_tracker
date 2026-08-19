@@ -39,6 +39,19 @@ export interface TrailPoint {
   fixTimeMs: number
 }
 
+/**
+ * What the scrubber is pointing at.
+ *
+ * Three states, not two. `null` means live; a point means "the vehicle was here"; and `'unknown'`
+ * means "the operator has named a moment we hold no position for" — before the window's first fix,
+ * or in a stretch where the tracker never had one.
+ *
+ * `'unknown'` exists because folding it into `null` made the map fly to the vehicle's PRESENT
+ * position while the readout named a moment 24 hours ago. That is not a smaller lie than showing
+ * nothing; it is a bigger one, and it fired on every press of "-24 h" and on every replay.
+ */
+export type ScrubState = { lon: number; lat: number; course: number | null } | 'unknown' | null
+
 export interface MapFrame {
   devices: GeoJSON.FeatureCollection
   trail: GeoJSON.FeatureCollection
@@ -50,7 +63,7 @@ export interface MapFrame {
    * one vehicle is examined in the past, and conflating the two would make "where is everyone now"
    * unanswerable the moment someone opened the timeline.
    */
-  scrub: { lon: number; lat: number; course: number | null } | null
+  scrub: ScrubState
   /** Where to CENTRE on when following — the selected device's last valid fix, `null` if it has
    *  never had one. Separate from `selected` because that event's own lat/lon may be an invalid
    *  0/0, and following it would fly the map into the Atlantic (see `DeviceLive.fix`). */
@@ -76,6 +89,11 @@ export interface MapFrame {
 export const ONLINE_MS = 180_000
 export const STALE_MS = 600_000
 const TRAIL_CAP = 3_600 // ≈1 h at 1 Hz; ring buffer, oldest dropped
+
+/** By VALUE, not identity: the scrubber builds a fresh object per slider step, and a drag across a
+ *  parked vehicle resolves to the same position for hundreds of consecutive steps. */
+const sameScrub = (a: ScrubState, b: ScrubState): boolean =>
+  a === b || (a !== null && b !== null && a !== 'unknown' && b !== 'unknown' && a.lon === b.lon && a.lat === b.lat && a.course === b.course)
 
 const statusOf = (ageMs: number): DeviceStatus =>
   ageMs <= ONLINE_MS ? 'online' : ageMs <= STALE_MS ? 'stale' : 'offline'
@@ -190,11 +208,15 @@ export class LiveStore {
    * device must drop its marker + DeviceList row immediately, not leave it decaying to 'offline'
    * until logout. If it was the selected/trailed device, clear that too. Returns whether it existed. */
   evict(deviceId: string): boolean {
-    if (deviceId === this.snapshot.selectedId) this.scrubPoint = null
-    if (!this.byId.delete(deviceId)) return false
-    if (this.snapshot.selectedId === deviceId) {
-      this.trailPoints = []
-      this.snapshot = { ...this.snapshot, selectedId: null, follow: false }
+    // The selection check is ABOVE the delete guard on purpose: a device that is selected but no
+    // longer in `byId` must still lose its scrub and its selection, and returning early on the
+    // delete left the store holding a scrub for a vehicle that no longer exists.
+    const wasSelected = this.snapshot.selectedId === deviceId
+    const existed = this.byId.delete(deviceId)
+    if (wasSelected) this.deselect()
+    if (!existed) {
+      if (wasSelected) this.flush(true)
+      return false
     }
     this.dirty = true
     this.flush(true)
@@ -214,17 +236,42 @@ export class LiveStore {
       const dev = this.byId.get(id)
       if (dev !== undefined && now - dev.ev.fixTimeMs <= ONLINE_MS) continue // actively streaming — keep
       if (!keep.has(id) && this.byId.delete(id)) {
-        if (this.snapshot.selectedId === id) {
-          this.trailPoints = []
-          this.snapshot = { ...this.snapshot, selectedId: null, follow: false }
-        }
+        if (this.snapshot.selectedId === id) this.deselect()
         removed = true
       }
+    }
+    /**
+     * The loop only visits ids that ARE in byId, so a selection already gone was never deselected
+     * here — the same hole `evict` had, one method along.
+     *
+     * Scoped to what THIS call removed (`!keep.has`), not to "absent from the live set": a device
+     * can legitimately be selected while absent from byId — the fleet panel lists devices that have
+     * never reported — and deselecting on every `['devices']` settle would make clicking such a row
+     * cancel itself.
+     */
+    const sel = this.snapshot.selectedId
+    if (sel !== null && !keep.has(sel) && !this.byId.has(sel)) {
+      this.deselect()
+      removed = true
     }
     if (removed) {
       this.dirty = true
       this.flush(true)
     }
+  }
+
+  /**
+   * Drop the selection and everything that belonged to it.
+   *
+   * One place, because there were three and one of them forgot the scrub: when another tab retired
+   * the selected device, `retain()` cleared the selection and the trail but left the scrub point
+   * set, so every later frame carried a scrub — which makes the follow branch unreachable. Turning
+   * Follow on then silently did nothing, with no marker and no text to explain why.
+   */
+  private deselect(): void {
+    this.trailPoints = []
+    this.scrubPoint = null
+    this.snapshot = { ...this.snapshot, selectedId: null, follow: false }
   }
 
   // ── UI state ──────────────────────────────────────────────────────────────
@@ -243,15 +290,20 @@ export class LiveStore {
     this.flush(true)
   }
 
-  /** Point the map at a moment in this device's past, or back to live with null. */
-  setScrub(point: { lat: number; lon: number; course: number | null } | null): void {
-    // NOT pushed immediately: React maps a range's onChange to the native `input` event, so a drag
-    // fires this dozens of times a second, and pushMapFrame rebuilds every marker plus the whole
-    // trail — the exact per-message work the 1 Hz flush exists to avoid, with a camera animation
-    // restarted each time. Mark dirty and let the flush emit it.
+  /**
+   * Point the map at a moment in this device's past, `'unknown'` when we hold no position for it,
+   * or back to live with null.
+   *
+   * A drag fires this dozens of times a second (React maps a range's `onChange` to the native
+   * `input` event) and replay fires it ~11 times a second, so it must be cheap: it pushes a MAP
+   * frame only — no React emit, no fleet re-sort — and `pushMapFrame` reuses the cached device and
+   * trail collections because scrubbing changes neither. It used to call `flush(true)`, which
+   * rebuilt every marker and up to 3600 trail vertices per tick and re-rendered the whole page.
+   */
+  setScrub(point: ScrubState): void {
+    if (sameScrub(point, this.scrubPoint)) return
     this.scrubPoint = point
-    this.dirty = true
-    this.flush(true)
+    this.pushMapFrame()
   }
 
   setFollow(follow: boolean): void {
@@ -304,8 +356,23 @@ export class LiveStore {
     next.sort((a, b) => a.ev.deviceId.localeCompare(b.ev.deviceId, undefined, { numeric: true }))
     this.dirty = false
     this.snapshot = { ...this.snapshot, devices: next }
+    // Anything that reaches a flush may have moved a marker, so the cached collections die here —
+    // exactly once, and only on the path that can change them. Scrubbing never comes through here,
+    // which is the whole point of the cache.
+    this.geo = null
     this.pushMapFrame()
     this.emit()
+  }
+
+  /**
+   * The selected device's last VALID fix, for a camera move the operator asked for by hand.
+   *
+   * Not `selected.ev.lon/lat`: an invalid record carries 0/0, and "centre on this vehicle" landing
+   * in the Gulf of Guinea is the same defect `DeviceLive.fix` exists to prevent.
+   */
+  selectedFix(): { lon: number; lat: number } | null {
+    const id = this.snapshot.selectedId
+    return id === null ? null : (this.byId.get(id)?.fix ?? null)
   }
 
   onMapFrame(sink: ((frame: MapFrame) => void) | null): void {
@@ -313,35 +380,42 @@ export class LiveStore {
     if (sink) this.pushMapFrame()
   }
 
-  private scrubPoint: { lat: number; lon: number; course: number | null } | null = null
+  private scrubPoint: ScrubState = null
+  /**
+   * The last built collections, reused when only the scrub moved.
+   *
+   * Rebuilt on every `flush`, and ONLY there. Scrubbing a 24-hour slider fires dozens of times a
+   * second and replay ~11 times a second; rebuilding every marker and up to 3600 trail vertices per
+   * tick is the per-message work the 1 Hz flush exists to avoid.
+   */
+  private geo: { devices: GeoJSON.FeatureCollection; trail: GeoJSON.FeatureCollection } | null = null
 
   private pushMapFrame(): void {
     if (!this.mapSink) return
     const { selectedId, follow } = this.snapshot
-    // flatMap, not map: a device with no valid fix YET contributes no marker at all rather than a
-    // confident dot at 0,0 — see `DeviceLive.fix`.
-    const features: GeoJSON.Feature[] = this.snapshot.devices.flatMap(({ ev, status, fix }) =>
-      fix === null
-        ? []
-        : [{
-            type: 'Feature' as const,
-            geometry: { type: 'Point' as const, coordinates: [fix.lon, fix.lat] },
-            properties: {
-              deviceId: ev.deviceId,
-              course: fix.course,
-              status,
-              selected: ev.deviceId === selectedId,
-            },
-          }],
-    )
-    const trail: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: buildTrailFeatures(this.trailPoints),
+    if (this.geo === null) {
+      // flatMap, not map: a device with no valid fix YET contributes no marker at all rather than a
+      // confident dot at 0,0 — see `DeviceLive.fix`.
+      const features: GeoJSON.Feature[] = this.snapshot.devices.flatMap(({ ev, status, fix }) =>
+        fix === null
+          ? []
+          : [{
+              type: 'Feature' as const,
+              geometry: { type: 'Point' as const, coordinates: [fix.lon, fix.lat] },
+              // no `selected` property: the halo is a `setFilter` on the frame's own selected id,
+              // and carrying it here made every row click invalidate the whole marker collection
+              properties: { deviceId: ev.deviceId, course: fix.course, status },
+            }],
+      )
+      this.geo = {
+        devices: { type: 'FeatureCollection', features },
+        trail: { type: 'FeatureCollection', features: buildTrailFeatures(this.trailPoints) },
+      }
     }
     const selectedLive = selectedId !== null ? (this.byId.get(selectedId) ?? null) : null
     const selected = selectedLive?.ev ?? null
     const selectedFix = selectedLive?.fix ?? null
-    this.mapSink({ devices: { type: 'FeatureCollection', features }, trail, selected, selectedFix, follow, scrub: this.scrubPoint })
+    this.mapSink({ devices: this.geo.devices, trail: this.geo.trail, selected, selectedFix, follow, scrub: this.scrubPoint })
   }
 
   // ── useSyncExternalStore contract ─────────────────────────────────────────
@@ -359,6 +433,7 @@ export class LiveStore {
   /** Test/logout helper. */
   reset(): void {
     this.scrubPoint = null
+    this.geo = null
     this.byId.clear()
     this.trailPoints = []
     this.dirty = false
