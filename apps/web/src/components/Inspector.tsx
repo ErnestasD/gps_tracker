@@ -9,6 +9,7 @@ import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { Device } from '@/lib/devices'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
+import { useFmt } from '@/lib/datetime'
 import { getTelemetry, hasTelemetry, telemetryRows } from '@/lib/telemetry'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { SettingsCard } from '@/routes/app/devices/settings'
@@ -174,6 +175,7 @@ function TabStrip({
  */
 function ParamsTab({ deviceId }: { deviceId: string }) {
   const { t } = useTranslation()
+  const { dt: dtFmt } = useFmt()
   const q = useQuery({
     queryKey: ['telemetry', deviceId],
     queryFn: () => getTelemetry(deviceId),
@@ -184,9 +186,43 @@ function ParamsTab({ deviceId }: { deviceId: string }) {
   if (q.isError) return <p className="p-2 text-xs text-danger" role="alert">{t('map.inspector.paramsError')}</p>
   if (!hasTelemetry(q.data)) return <p className="p-2 text-xs text-muted">{t('map.inspector.paramsEmpty')}</p>
 
-  const rows = telemetryRows(q.data.attrs)
+  const d = q.data
+  /**
+   * The promoted columns are prepended, because `attrs` does NOT contain them.
+   *
+   * The pipeline lifts AVL 239/240/16 (ignition, movement, odometer) and the GPS scalars into their
+   * own columns and removes them from attrs. This panel's contract is "a parameter is here because
+   * the tracker sent it, and absent because it did not" — so a correctly wired ignition showing no
+   * ignition row would read as "not being reported" and send a technician to a working vehicle.
+   */
+  const promoted = [
+    { key: 'satellites', label: t('info.satellites'), value: d.satellites },
+    { key: 'ignition', label: t('info.ignition'), value: d.ignition },
+    { key: 'movement', label: t('map.inspector.movement'), value: d.movement },
+    { key: 'odometer', label: t('map.inspector.odometer'), value: d.odometerM },
+    { key: 'altitude', label: t('map.inspector.altitude'), value: d.altitude },
+  ].filter((r) => r.value !== null && r.value !== undefined)
+
+  const rows = telemetryRows(d.attrs)
   return (
     <div data-testid="params-tab">
+      {/* Age, always. A device that died three days ago would otherwise render a full, confident,
+          present-tense list on a panel whose whole claim is "what this device is reporting now". */}
+      <p className="pb-1 text-[11px] text-muted" data-testid="params-age">
+        {t('map.inspector.paramsAt', { when: dtFmt(d.fixTime) })}
+      </p>
+      {promoted.length > 0 && (
+        <dl className="divide-y divide-line border-b border-line text-xs">
+          {promoted.map((r) => (
+            <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">
+              <dt className="min-w-0 truncate text-muted">{r.label}</dt>
+              <dd className="shrink-0 tabular-nums text-text">
+                {typeof r.value === 'boolean' ? (r.value ? t('info.on') : t('info.off')) : String(r.value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
       <dl className="divide-y divide-line text-xs">
         {rows.map((r) => (
           <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">

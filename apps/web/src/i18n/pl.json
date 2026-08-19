@@ -443,7 +443,11 @@
       "params": "Parametry",
       "paramsEmpty": "To urządzenie jeszcze nic nie zgłosiło.",
       "paramsError": "Nie udało się wczytać parametrów.",
-      "paramsUndocumented": "Wiersze „AVL <id>” to elementy, których strona Teltoniki dla tego modelu nie dokumentuje."
+      "paramsUndocumented": "Wiersze „AVL <id>” to elementy, których strona Teltoniki dla tego modelu nie dokumentuje.",
+      "movement": "Ruch",
+      "odometer": "Przebieg (m)",
+      "altitude": "Wysokość (m)",
+      "paramsAt": "Zgodnie ze zgłoszeniem urządzenia {{when}}"
     },
     "title": "Mapa na żywo",
     "toggleList": "Pokaż lub ukryj listę pojazdów",
@@ -457,7 +461,8 @@
       "now": "teraz",
       "noData": "brak zgłoszenia o {{when}}",
       "noFix": "brak fixa GPS",
-      "button": "24 godz."
+      "button": "24 godz.",
+      "truncated": "{{points}} punktów — historii więcej niż jedna strona; pokazano wcześniejszą część"
     }
   },
   "units": {

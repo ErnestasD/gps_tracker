@@ -53,6 +53,13 @@ export function MapPage() {
     else liveStore.start()
   }, [paused])
 
+  // A timeline belongs to one vehicle. Selecting another (or none) closes it and resumes the feed;
+  // otherwise closing the inspector left `timelineOpen` and `paused` set with no visible control.
+  useEffect(() => {
+    setTimelineOpen(false)
+    setPaused(false)
+  }, [snap.selectedId])
+
   useEffect(() => {
     liveStore.start()
     socket.start()
@@ -146,7 +153,11 @@ export function MapPage() {
             aria-pressed={timelineOpen}
             disabled={selected === undefined}
             data-testid="map-timeline"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-2 text-xs text-muted transition-colors hover:text-text disabled:opacity-40"
+            /* xl and up only — the width at which the inspector becomes a RAIL. Below it the
+               inspector is an opaque bottom sheet in the same stacking context and later in the
+               DOM, so the timeline was painted underneath and completely unreachable, while
+               pressing this still paused the feed: a frozen map and no scrubber. */
+            className="hidden h-8 items-center gap-1.5 rounded-md border border-line px-2 text-xs text-muted transition-colors hover:text-text disabled:opacity-40 xl:inline-flex"
           >
             <Clock className="h-3.5 w-3.5" aria-hidden />
             <span className="hidden sm:inline">{t('map.timeline.button')}</span>
@@ -211,7 +222,10 @@ export function MapPage() {
              left every viewport under 1280px with a selected device and no way to see it, which is
              worse than the floating card this replaced. */
           <aside
-            className="absolute inset-x-0 bottom-0 z-10 flex max-h-[60%] flex-col overflow-y-auto border-t border-line bg-surface lg:static lg:inset-auto lg:max-h-none lg:w-[340px] lg:shrink-0 lg:border-l lg:border-t-0"
+            /* A rail from xl, a bottom sheet below it. Docking at lg made the map column ~164px on
+               a 1024px screen — narrower than either panel, on the very breakpoint where docking
+               first engages. The sheet keeps the device reachable at every width. */
+            className="absolute inset-x-0 bottom-0 z-20 flex max-h-[60%] flex-col overflow-y-auto border-t border-line bg-surface xl:static xl:inset-auto xl:z-auto xl:max-h-none xl:w-[340px] xl:shrink-0 xl:border-l xl:border-t-0"
             data-testid="inspector-rail"
           >
             <Inspector

@@ -443,7 +443,11 @@
       "params": "Parameters",
       "paramsEmpty": "This device has not reported anything yet.",
       "paramsError": "Could not load the parameters.",
-      "paramsUndocumented": "Rows shown as “AVL <id>” are elements this model’s own Teltonika page does not document."
+      "paramsUndocumented": "Rows shown as “AVL <id>” are elements this model’s own Teltonika page does not document.",
+      "movement": "Movement",
+      "odometer": "Odometer (m)",
+      "altitude": "Altitude (m)",
+      "paramsAt": "As the device reported it {{when}}"
     },
     "title": "Live map",
     "toggleList": "Show or hide the fleet list",
@@ -457,7 +461,8 @@
       "now": "now",
       "noData": "no report at {{when}}",
       "noFix": "no GPS fix",
-      "button": "24 h"
+      "button": "24 h",
+      "truncated": "{{points}} points — more history than one page; showing the earlier part"
     }
   },
   "units": {

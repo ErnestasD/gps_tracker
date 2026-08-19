@@ -60,10 +60,18 @@ describe('the 24-hour track', () => {
 
   it('…but invalid fixes are KEPT in the track itself', () => {
     // "The tracker was reporting, it just could not see the sky" and "the tracker said nothing"
-    // are different facts, and filtering at fetch time would make them indistinguishable.
+    // are different facts, and filtering at fetch time would make them indistinguishable. The
+    // assertion is on the SCRUBBER's answer, not on the array literal the test just wrote.
     const points = [pt('2026-08-18T10:00:00Z'), pt('2026-08-18T11:00:00Z', false)]
-    expect(points).toHaveLength(2)
     expect(pointAt(points, Date.parse('2026-08-18T11:30:00Z'))?.fixValid).toBe(false)
+    expect(drawable(points)).toHaveLength(1)
+  })
+
+  it('one unparseable timestamp does not truncate the scan', () => {
+    // `break`ing on NaN <= at silently cut the track at the bad row: a 13:00 scrub returned the
+    // 10:00 point and every later moment froze there.
+    const points = [pt('2026-08-18T10:00:00Z'), pt('not-a-date'), pt('2026-08-18T12:00:00Z')]
+    expect(pointAt(points, Date.parse('2026-08-18T13:00:00Z'))?.fixTime).toBe('2026-08-18T12:00:00Z')
   })
 
   it('the scrubber shows the newest point AT OR BEFORE the moment, not the nearest', () => {

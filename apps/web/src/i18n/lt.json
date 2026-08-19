@@ -443,7 +443,11 @@
       "params": "Parametrai",
       "paramsEmpty": "Šis įrenginys dar nieko neatsiuntė.",
       "paramsError": "Nepavyko įkelti parametrų.",
-      "paramsUndocumented": "Eilutės „AVL <id>“ — elementai, kurių šio modelio Teltonikos puslapis neaprašo."
+      "paramsUndocumented": "Eilutės „AVL <id>“ — elementai, kurių šio modelio Teltonikos puslapis neaprašo.",
+      "movement": "Judėjimas",
+      "odometer": "Rida (m)",
+      "altitude": "Aukštis (m)",
+      "paramsAt": "Kaip įrenginys pranešė {{when}}"
     },
     "title": "Gyvas žemėlapis",
     "toggleList": "Rodyti arba slėpti įrenginių sąrašą",
@@ -457,7 +461,8 @@
       "now": "dabar",
       "noData": "nėra įrašo {{when}}",
       "noFix": "nėra GPS fiksacijos",
-      "button": "24 val."
+      "button": "24 val.",
+      "truncated": "{{points}} taškų — istorijos daugiau nei vienas puslapis; rodoma ankstesnė dalis"
     }
   },
   "units": {

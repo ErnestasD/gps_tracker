@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useFmt } from '@/lib/datetime'
-import { drawable, getTrack, pointAt } from '@/lib/telemetry'
+import { drawable, getTrack, pointAt, type TrackPoint } from '@/lib/telemetry'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
@@ -42,11 +42,19 @@ export function Timeline({
   /** Minutes back from now: 0 is live. */
   const [back, setBack] = useState(0)
 
-  const points = useMemo(() => q.data ?? [], [q.data])
-  const span = useMemo(() => {
+  const points = useMemo(() => q.data?.points ?? [], [q.data])
+  /**
+   * The window is frozen at mount, NOT recomputed from the data.
+   *
+   * Memoising it on `q.data` moved the moment under the operator: this app's query client refetches
+   * on window focus, so alt-tabbing away and back shifted `to` forward by however long they were
+   * gone, while the thumb and the map stayed put — the readout then named a different moment than
+   * the position on screen.
+   */
+  const [span] = useState(() => {
     const now = Date.now()
     return { from: now - 24 * 3_600_000, to: now }
-  }, [q.data])
+  })
 
   const atMs = span.to - back * 60_000
   const current = back === 0 ? undefined : pointAt(points, atMs)
@@ -57,9 +65,20 @@ export function Timeline({
       onScrub(null)
       return
     }
-    const p = pointAt(points, span.to - minutes * 60_000)
-    // an invalid fix is a real state but not a place — never move the map to one
-    onScrub(p !== undefined && p.fixValid ? { lat: p.lat, lon: p.lon, course: p.course } : null)
+    /**
+     * An invalid fix is a real state but not a place, so the map must not move to it — and it must
+     * not fall back to LIVE either. Passing null there put the camera on the vehicle's present
+     * position while the readout named a past moment with no fix, which is a worse lie than showing
+     * nothing. Per spec §3.4 a no-fix record repeats the last valid position, so the camera holds
+     * at the last place the vehicle was actually seen before that moment.
+     */
+    const at = span.to - minutes * 60_000
+    let place: TrackPoint | undefined
+    for (const p of points) {
+      if (Date.parse(p.fixTime) > at) break
+      if (p.fixValid) place = p
+    }
+    onScrub(place !== undefined ? { lat: place.lat, lon: place.lon, course: place.course } : null)
   }
 
   const valid = drawable(points)
@@ -75,7 +94,9 @@ export function Timeline({
         <span className="shrink-0 text-muted">
           {q.isLoading
             ? t('admin.loading')
-            : t('map.timeline.summary', { points: points.length, valid: valid.length })}
+            : q.data?.truncated === true
+              ? t('map.timeline.truncated', { points: points.length })
+              : t('map.timeline.summary', { points: points.length, valid: valid.length })}
         </span>
         <button
           type="button"

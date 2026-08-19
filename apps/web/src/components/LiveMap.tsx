@@ -219,8 +219,24 @@ export function LiveMap() {
       }
     })
 
+    /**
+     * Mapbox GL does not watch its own container.
+     *
+     * `_onWindowResize` is bound to `window: resize`, `orientationchange` and the Fullscreen API —
+     * nothing else. That was harmless while the panels floated ABOVE a full-bleed map, and became a
+     * visible defect the moment they were docked as flex siblings: selecting a vehicle takes 340px
+     * for the inspector rail, the WebGL canvas keeps its old width, the right edge is clipped, and
+     * every `easeTo(center)` — follow, cluster zoom, the timeline scrub — lands off-centre because
+     * the visual centre is no longer the geographic one. The CSS "full screen" button is not the
+     * Fullscreen API either, so it fires no event at all. One observer covers every dock, present
+     * and future.
+     */
+    const resizeObserver = new ResizeObserver(() => map.resize())
+    resizeObserver.observe(container)
+
     return () => {
       disposed = true
+      resizeObserver.disconnect()
       liveStore.onMapFrame(null)
       stopWatch()
       unsubscribe()

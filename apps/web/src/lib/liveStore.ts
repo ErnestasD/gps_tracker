@@ -190,6 +190,7 @@ export class LiveStore {
    * device must drop its marker + DeviceList row immediately, not leave it decaying to 'offline'
    * until logout. If it was the selected/trailed device, clear that too. Returns whether it existed. */
   evict(deviceId: string): boolean {
+    if (deviceId === this.snapshot.selectedId) this.scrubPoint = null
     if (!this.byId.delete(deviceId)) return false
     if (this.snapshot.selectedId === deviceId) {
       this.trailPoints = []
@@ -230,14 +231,27 @@ export class LiveStore {
   select(deviceId: string | null): void {
     if (deviceId === this.snapshot.selectedId) return
     this.trailPoints = [] // trail is per-selection, from selection time onward
+    /**
+     * The scrub point belongs to the device it was taken from, and must die with the selection.
+     *
+     * It used to survive: closing the inspector unmounted the Timeline without its own onClose, so
+     * the point stayed set and every 1 Hz frame re-centred the map on another vehicle's past —
+     * forever, and unpannable, with nothing on screen saying why.
+     */
+    this.scrubPoint = null
     this.snapshot = { ...this.snapshot, selectedId: deviceId, follow: deviceId !== null && this.snapshot.follow }
     this.flush(true)
   }
 
   /** Point the map at a moment in this device's past, or back to live with null. */
   setScrub(point: { lat: number; lon: number; course: number | null } | null): void {
+    // NOT pushed immediately: React maps a range's onChange to the native `input` event, so a drag
+    // fires this dozens of times a second, and pushMapFrame rebuilds every marker plus the whole
+    // trail — the exact per-message work the 1 Hz flush exists to avoid, with a camera animation
+    // restarted each time. Mark dirty and let the flush emit it.
     this.scrubPoint = point
-    this.pushMapFrame()
+    this.dirty = true
+    this.flush(true)
   }
 
   setFollow(follow: boolean): void {

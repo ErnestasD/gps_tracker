@@ -90,12 +90,24 @@ export interface TrackPoint {
  * is exactly how "the tracker was reporting, it just could not see the sky" looks, and dropping it
  * silently would make that indistinguishable from a gap in reporting.
  */
-export async function getTrack(deviceId: string, hours = 24): Promise<TrackPoint[]> {
+/**
+ * The endpoint's page cap. It orders `fix_time ASC`, so a limit BELOW the number of records in the
+ * window returns the OLDEST ones — the first hour of the day, not the last. At 1000 that pinned
+ * roughly 23/24 of the scrubber to a single point and flew the map to where the vehicle was at
+ * 01:00, while the summary confidently reported "1000 points". The playback page, same endpoint and
+ * same client, has always used the full page.
+ */
+const TRACK_LIMIT = 10_000
+
+export async function getTrack(deviceId: string, hours = 24): Promise<{ points: TrackPoint[]; truncated: boolean }> {
   const to = new Date()
   const from = new Date(to.getTime() - hours * 3_600_000)
-  return getJson<TrackPoint[]>(
-    `/v1/devices/${encodeURIComponent(deviceId)}/positions?from=${from.toISOString()}&to=${to.toISOString()}&limit=1000`,
+  const points = await getJson<TrackPoint[]>(
+    `/v1/devices/${encodeURIComponent(deviceId)}/positions?from=${from.toISOString()}&to=${to.toISOString()}&limit=${TRACK_LIMIT}`,
   )
+  // A full page means there is more history than we asked for, and what we hold is the OLDER part.
+  // Saying so beats silently pinning the scrubber, which is indistinguishable from a parked vehicle.
+  return { points, truncated: points.length >= TRACK_LIMIT }
 }
 
 /** Only the points the map may draw — invariant I6: an invalid fix never places anything. */
@@ -110,7 +122,11 @@ export const drawable = (points: readonly TrackPoint[]): TrackPoint[] => points.
 export function pointAt(points: readonly TrackPoint[], atMs: number): TrackPoint | undefined {
   let found: TrackPoint | undefined
   for (const p of points) {
-    if (Date.parse(p.fixTime) <= atMs) found = p
+    const t = Date.parse(p.fixTime)
+    // skip, never break, on an unparseable timestamp: breaking cut the track at the bad row, so
+    // every later moment froze on whatever preceded it
+    if (!Number.isFinite(t)) continue
+    if (t <= atMs) found = p
     else break
   }
   return found
