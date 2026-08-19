@@ -138,13 +138,15 @@ export function LiveMap({
     // camera moves on a CHANGE of scrub target, and the FIRST frame is never a change: registering
     // the sink on a remount would otherwise ease the new map into a scrub the operator left behind
     let lastScrubKey: string | null = null
+    /** The ghost's own collection, so a theme swap re-seeds it like every other source. */
+    let lastScrubFC: GeoJSON.FeatureCollection = EMPTY_FC
 
     // IDEMPOTENT setup (ADR-030): `style.load` fires for the initial style AND after
     // every theme `setStyle`, which drops ALL runtime images/sources/layers — re-add
     // everything, seeded from the last flushed frame so the swap is seamless.
     const setup = () => {
       if (disposed) return
-      for (const [name, color] of [['arrow-online', COLORS.online], ['arrow-stale', COLORS.stale], ['arrow-offline', COLORS.offline]] as const) {
+      for (const [name, color] of [['arrow-online', COLORS.online], ['arrow-stale', COLORS.stale], ['arrow-offline', COLORS.offline], ['arrow-scrub', COLORS.history]] as const) {
         if (!map.hasImage(name)) map.addImage(name, arrowImage(color))
       }
       if (map.getSource('devices')) return // sources/layers survived (no style swap)
@@ -160,6 +162,7 @@ export function LiveMap({
       map.addSource('trail', { type: 'geojson', data: lastFrame?.trail ?? EMPTY_FC })
       map.addSource('geofences', { type: 'geojson', data: EMPTY_FC })
       map.addSource('history', { type: 'geojson', data: EMPTY_FC })
+      map.addSource('scrub', { type: 'geojson', data: lastScrubFC })
 
       // Zones sit UNDER everything else: they are context, and a filled polygon painted over the
       // vehicle it contains hides the thing the operator is looking for.
@@ -239,6 +242,20 @@ export function LiveMap({
           'line-dasharray': [2, 2],
         },
       })
+      /**
+       * Where the vehicle WAS at the scrubbed moment.
+       *
+       * The camera moving there was not enough: the fleet's markers are the LIVE frame, so sliding
+       * back in time panned the map to an empty patch of road while the vehicle's own arrow stayed
+       * at its present position. The ghost is drawn in the history colour — the same one the 24-hour
+       * track is drawn in — so it reads as "then", not as a second vehicle.
+       */
+      map.addLayer({
+        id: 'scrub-halo',
+        type: 'circle',
+        source: 'scrub',
+        paint: { 'circle-radius': 18, 'circle-color': COLORS.history, 'circle-opacity': 0.28, 'circle-blur': 0.35 },
+      })
       map.addLayer({
         id: 'selected-halo',
         type: 'circle',
@@ -287,6 +304,23 @@ export function LiveMap({
           'icon-rotation-alignment': 'map',
           'icon-allow-overlap': true,
           'icon-size': 0.62,
+        },
+      })
+      map.addLayer({
+        id: 'scrub-arrow',
+        type: 'symbol',
+        source: 'scrub',
+        // Only where the record carried a heading. Rotating by a defaulted 0 would point the ghost
+        // due north and call it the direction of travel — the same manufactured heading the
+        // inspector was fixed for.
+        filter: ['==', ['get', 'hasCourse'], true],
+        layout: {
+          'icon-image': 'arrow-scrub',
+          'icon-rotate': ['get', 'course'],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'icon-size': 0.7,
         },
       })
       if (map.getStyle()?.glyphs !== undefined) {
@@ -411,7 +445,25 @@ export function LiveMap({
        */
       const scrubKey = frame.scrub === null ? '' : frame.scrub === 'unknown' ? 'unknown' : `${frame.scrub.lon},${frame.scrub.lat}`
       const scrubChanged = lastScrubKey !== null && scrubKey !== lastScrubKey
+      const firstScrubFrame = lastScrubKey === null
       lastScrubKey = scrubKey
+      // The ghost marker follows the scrub target itself, not the camera: it must appear on the
+      // FIRST frame after registration too, which the camera deliberately skips.
+      if (scrubChanged || firstScrubFrame) {
+        lastScrubFC =
+          frame.scrub === null || frame.scrub === 'unknown'
+            ? EMPTY_FC
+            : {
+                type: 'FeatureCollection',
+                features: [{
+                  type: 'Feature',
+                  geometry: { type: 'Point', coordinates: [frame.scrub.lon, frame.scrub.lat] },
+                  // a course we do not have must not read as "heading due north"
+                  properties: { course: frame.scrub.course ?? 0, hasCourse: frame.scrub.course !== null },
+                }],
+              }
+        map.getSource<GeoJSONSource>('scrub')?.setData(lastScrubFC)
+      }
       if (frame.scrub !== null) {
         if (frame.scrub !== 'unknown' && scrubChanged) {
           map.easeTo({ center: [frame.scrub.lon, frame.scrub.lat], duration: 400 })
