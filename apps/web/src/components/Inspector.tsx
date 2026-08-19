@@ -187,9 +187,11 @@ function Header({
    * there; odometer, voltage and levels come from `attrs` and appear per model.
    */
   const attrs = latest?.attrs ?? {}
-  const attr = (name: string): unknown => {
-    const key = Object.keys(attrs).find((k) => k.toLowerCase() === name)
-    return key === undefined ? undefined : attrs[key]
+  /** Finds the element by its dictionary name, and returns the name AS THE DEVICE SPELLED IT —
+   *  the tile is labelled with the parameter's real name, not with the lower-case search term. */
+  const attr = (wanted: string): { key: string; value: unknown } | undefined => {
+    const key = Object.keys(attrs).find((k) => k.toLowerCase() === wanted)
+    return key === undefined ? undefined : { key, value: attrs[key] }
   }
   const tiles: { key: string; icon: typeof Gauge; value: string; unit: string }[] = [
     // a null speed means this model does not report it — "0" would read as "stopped", which is a
@@ -201,10 +203,12 @@ function Header({
     const m = Number(latest.odometerM)
     if (Number.isFinite(m)) tiles.push({ key: 'odo', icon: RouteIcon, value: distanceM(m), unit: t('map.inspector.odometer') })
   }
-  for (const [name, icon] of [['battery level', Activity], ['fuel level', Activity], ['gsm signal', Radio], ['external voltage', Activity]] as const) {
+  for (const [wanted, icon] of [['battery level', Activity], ['fuel level', Activity], ['gsm signal', Radio], ['external voltage', Activity]] as const) {
     if (tiles.length >= 4) break
-    const v = attr(name)
-    if (typeof v === 'number') tiles.push({ key: name, icon, value: String(v), unit: name })
+    const found = attr(wanted)
+    if (found !== undefined && typeof found.value === 'number') {
+      tiles.push({ key: wanted, icon, value: String(found.value), unit: found.key })
+    }
   }
 
   // plate · driver · IMEI — whatever of it the fleet has recorded, never a placeholder

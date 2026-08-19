@@ -482,7 +482,9 @@
       "quick": {
         "hours": "-{{hours}} val.",
         "minutes": "-{{minutes}} min."
-      }
+      },
+      "nothingToReplay": "Šio automobilio istorijos peržaisti nėra",
+      "refreshing": "Atnaujinama…"
     },
     "eventFeed": "Įvykių srautas",
     "ctl": {

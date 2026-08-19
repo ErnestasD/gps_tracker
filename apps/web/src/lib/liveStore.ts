@@ -240,9 +240,17 @@ export class LiveStore {
         removed = true
       }
     }
-    // The loop only visits ids that ARE in byId, so a selection that is already gone was never
-    // deselected here — the same hole `evict` had, one method along.
-    if (this.snapshot.selectedId !== null && !this.byId.has(this.snapshot.selectedId)) {
+    /**
+     * The loop only visits ids that ARE in byId, so a selection already gone was never deselected
+     * here — the same hole `evict` had, one method along.
+     *
+     * Scoped to what THIS call removed (`!keep.has`), not to "absent from the live set": a device
+     * can legitimately be selected while absent from byId — the fleet panel lists devices that have
+     * never reported — and deselecting on every `['devices']` settle would make clicking such a row
+     * cancel itself.
+     */
+    const sel = this.snapshot.selectedId
+    if (sel !== null && !keep.has(sel) && !this.byId.has(sel)) {
       this.deselect()
       removed = true
     }

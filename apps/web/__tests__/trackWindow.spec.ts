@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { TrackPoint } from '../src/lib/telemetry'
-import { firstPlaceBack, quickJumps, spanMinutes, windowAt, WINDOW_BUCKET_MS } from '../src/lib/trackWindow'
+import { canScrub, firstPlaceBack, quickJumps, spanMinutes, windowAt, WINDOW_BUCKET_MS } from '../src/lib/trackWindow'
 
 const pt = (iso: string, fixValid = true): TrackPoint =>
   ({ fixTime: iso, lat: 54.7, lon: 25.3, speed: 0, course: 0, ignition: null, fixValid })
@@ -41,8 +41,19 @@ describe('where a replay begins', () => {
     // 40 s past the minute: rounding away from now puts the moment before the point, `placeAt`
     // finds nothing, and the replay opens frozen. It was a coin flip on every press of Play.
     const points = [pt('2026-08-18T12:30:40Z')]
-    const back = firstPlaceBack(points, w)
+    const back = firstPlaceBack(points, w)!
     expect(w.to - back * 60_000).toBeGreaterThanOrEqual(Date.parse('2026-08-18T12:30:40Z'))
+  })
+
+  it('a track with NOTHING placeable is null, not the full span', () => {
+    // One value with two meanings, again: returning the span for both "the oldest placeable row is
+    // at the far edge" and "there is no placeable row" left a vehicle that spent the whole day
+    // underground with an enabled scrubber where every moment resolved to nowhere.
+    expect(firstPlaceBack([pt('2026-08-18T13:00:00Z', false), pt('2026-08-19T01:00:00Z', false)], w)).toBeNull()
+    expect(firstPlaceBack([], w)).toBeNull()
+    expect(canScrub(null)).toBe(false)
+    expect(canScrub(0)).toBe(false)
+    expect(canScrub(1)).toBe(true)
   })
 
   it('a tracker installed minutes ago has nothing behind it to replay', () => {
@@ -58,13 +69,16 @@ describe('where a replay begins', () => {
     expect(firstPlaceBack([pt(new Date(w.to - 61_000).toISOString())], w)).toBe(1)
   })
 
-  it('every start it returns is at or before the row it chose', () => {
-    // The property, checked across the whole window rather than at one sampled age.
-    for (const ageS of [0, 30, 61, 3_600, 86_000, 86_399]) {
+  it('every start it returns is at or before the row it chose — at every age', () => {
+    // The property across the whole window. `continue`-ing on 0 would skip exactly the ages the
+    // zero floor was introduced for, leaving the change covered by a literal and not by its rule.
+    for (const ageS of [0, 30, 59, 61, 3_600, 86_000, 86_399]) {
       const iso = new Date(w.to - ageS * 1_000).toISOString()
+      const ms = Date.parse(iso)
       const back = firstPlaceBack([pt(iso)], w)
-      if (back === 0) continue // nothing to replay — the caller disables Play
-      expect(w.to - back * 60_000).toBeGreaterThanOrEqual(Date.parse(iso))
+      expect(back).not.toBeNull()
+      if (back === 0) expect(w.to - ms).toBeLessThan(60_000) // "nothing behind us", and it is true
+      else expect(w.to - back! * 60_000).toBeGreaterThanOrEqual(ms)
     }
   })
 
@@ -73,10 +87,7 @@ describe('where a replay begins', () => {
     expect(firstPlaceBack(points, w)).toBe(18 * 60)
   })
 
-  it('a track with nothing placeable replays the whole window rather than nothing', () => {
-    expect(firstPlaceBack([pt('2026-08-18T13:00:00Z', false)], w)).toBe(spanMinutes(w))
-    expect(firstPlaceBack([], w)).toBe(spanMinutes(w))
-  })
+
 })
 
 describe('quick jumps', () => {

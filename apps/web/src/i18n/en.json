@@ -482,7 +482,9 @@
       "quick": {
         "hours": "-{{hours}} h",
         "minutes": "-{{minutes}} min"
-      }
+      },
+      "nothingToReplay": "No history to replay for this vehicle",
+      "refreshing": "Refreshing…"
     },
     "eventFeed": "Event feed",
     "ctl": {

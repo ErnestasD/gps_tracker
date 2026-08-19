@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useFmt } from '@/lib/datetime'
 import type { ScrubState } from '@/lib/liveStore'
 import { placeAt, pointAt, type TrackPoint } from '@/lib/telemetry'
-import { firstPlaceBack, quickJumps, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
+import { canScrub, firstPlaceBack, quickJumps, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
@@ -40,6 +40,7 @@ export function Timeline({
   times,
   window,
   loading,
+  stale = false,
   truncated,
   onScrub,
 }: {
@@ -58,6 +59,8 @@ export function Timeline({
    */
   window: TrackWindow
   loading: boolean
+  /** The points are the PREVIOUS window's, still being refreshed — usable, but say so. */
+  stale?: boolean
   truncated: boolean
   /** null ⇒ back to live, 'unknown' ⇒ a moment we hold no position for: hold, never fall back. */
   onScrub: (point: ScrubState) => void
@@ -78,9 +81,10 @@ export function Timeline({
   }
 
   const spanMin = spanMinutes(window)
+  const firstBack = useMemo(() => firstPlaceBack(points, window, times), [points, window, times])
   const atMs = window.to - back * 60_000
   const current = useMemo(() => (back === 0 ? undefined : pointAt(points, atMs, times)), [points, times, atMs, back])
-  const disabled = deviceId === null || points.length === 0
+  const disabled = deviceId === null || points.length === 0 || !canScrub(firstBack)
 
   const scrub = (rawMinutes: number) => {
     // clamped, so no caller can name a moment outside the window the points were fetched for
@@ -132,10 +136,18 @@ export function Timeline({
     return () => clearInterval(iv)
   }, [replaying])
 
-  // A device with no history cannot be replayed; leaving `replaying` set would spin an interval
-  // that scrubs to nothing forever.
+  /**
+   * A track that becomes unscrubbable under a scrubbed operator must return them to LIVE.
+   *
+   * Stopping the replay was not enough: `back` stayed set, every control greyed out at once, the
+   * page kept the window frozen because it still believed a scrub was in progress, and the camera
+   * stayed eased on a historic position — with no enabled control left to get back.
+   */
   useEffect(() => {
-    if (disabled) setReplaying(false)
+    if (!disabled) return
+    setReplaying(false)
+    setBack(0)
+    scrubRef.current(0)
   }, [disabled])
 
   const quick = useMemo(() => quickJumps(spanMin), [spanMin])
@@ -143,7 +155,6 @@ export function Timeline({
   const stamp = dt(new Date(atMs).toISOString())
   // O(n) over up to 10 000 points, and this component re-renders at the store's 1 Hz cadence
   const valid = useMemo(() => points.filter((p) => p.fixValid).length, [points])
-  const firstBack = useMemo(() => firstPlaceBack(points, window, times), [points, window, times])
 
   return (
     <div
@@ -156,7 +167,7 @@ export function Timeline({
           // Nothing to replay when the only placeable row is inside the last minute — a tracker
           // installed twenty minutes ago. Pressing Play there used to scrub to a moment BEFORE that
           // row: a frozen camera reading "no report at …".
-          disabled={disabled || firstBack === 0}
+          disabled={disabled}
           onClick={() => {
             if (replaying) {
               setReplaying(false)
@@ -165,11 +176,15 @@ export function Timeline({
             // Start at the first row we hold, not at the window's edge: the window opens earlier
             // than the earliest position by construction, so starting there spent the first ticks
             // on 'unknown' — a frozen camera and "no report at …", which reads as broken.
-            if (back === 0) scrub(firstBack)
+            if (back === 0 && canScrub(firstBack)) scrub(firstBack)
             setReplaying(true)
           }}
           aria-pressed={replaying}
-          aria-label={t(replaying ? 'map.timeline.stopReplay' : 'map.timeline.replay', { hours: Math.round(spanMin / 60) })}
+          aria-label={
+            disabled && deviceId !== null
+              ? t('map.timeline.nothingToReplay')
+              : t(replaying ? 'map.timeline.stopReplay' : 'map.timeline.replay', { hours: Math.round(spanMin / 60) })
+          }
           data-testid="timeline-replay"
           className={cn(
             'grid h-8 w-8 shrink-0 place-items-center rounded-md border border-line transition-colors disabled:opacity-40',
@@ -203,7 +218,11 @@ export function Timeline({
                 </span>
               )}
             </span>
-            <span className="hidden shrink-0 text-[11px] text-muted sm:inline" data-testid="timeline-summary">
+            <span
+              className={cn('hidden shrink-0 text-[11px] text-muted sm:inline', stale && 'opacity-60')}
+              title={stale ? t('map.timeline.refreshing') : undefined}
+              data-testid="timeline-summary"
+            >
               {deviceId === null
                 ? t('map.timeline.pickDevice')
                 : loading

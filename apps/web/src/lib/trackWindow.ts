@@ -44,8 +44,14 @@ export const spanMinutes = (w: TrackWindow): number => Math.max(1, Math.round((w
  * And a floor of ZERO, not one: a tracker installed twenty minutes ago has its first placeable row
  * inside the last minute of the window, and clamping that up to 1 puts the moment before the row
  * again. Zero means "there is nothing behind us to replay", and the caller says so.
+ *
+ * `null` — nothing in this window can be placed at all — is deliberately NOT the span. Returning
+ * the span for both "the oldest placeable row is at the far edge" and "there is no placeable row"
+ * gave one value two meanings, and the caller could only guard the first: a tracker that spent the
+ * whole day underground had points, so the scrubber was enabled, and every moment it named
+ * resolved to nowhere.
  */
-export function firstPlaceBack(points: readonly TrackPoint[], w: TrackWindow, times?: readonly number[]): number {
+export function firstPlaceBack(points: readonly TrackPoint[], w: TrackWindow, times?: readonly number[]): number | null {
   const span = spanMinutes(w)
   const ts = pairedTimes(points, times)
   for (let i = 0; i < points.length; i++) {
@@ -55,8 +61,17 @@ export function firstPlaceBack(points: readonly TrackPoint[], w: TrackWindow, ti
     if (!Number.isFinite(ms)) continue
     return Math.min(span, Math.max(0, Math.floor((w.to - ms) / 60_000)))
   }
-  return span
+  return null
 }
+
+/**
+ * Can this track be scrubbed at all?
+ *
+ * False when nothing in the window can be placed, and false when the only placeable row is inside
+ * the last minute — in both cases every past moment the slider can name resolves to nowhere, so the
+ * controls that would name one are disabled rather than answering "no report at …" to every press.
+ */
+export const canScrub = (earliest: number | null): earliest is number => earliest !== null && earliest > 0
 
 /**
  * A `times` array is only usable if it was built from THESE points.

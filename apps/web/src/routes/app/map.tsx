@@ -171,16 +171,16 @@ export function MapPage() {
     })
   }, [])
   useEffect(() => {
-    if (scrubbing) return
+    if (scrubbing || typeof document === 'undefined') return
     const iv = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return
+      if (document.hidden) return
       catchUp()
     }, 30_000)
     // A tab hidden for six hours skips every tick, so REVEAL has to catch up itself: without this
     // the markers jumped to the present within a second while the axis and the fetched track stayed
     // six hours behind, and a scrub in that gap meant "-1 h" pointed seven hours back.
     const onVisible = () => {
-      if (typeof document !== 'undefined' && !document.hidden) catchUp()
+      if (!document.hidden) catchUp()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
@@ -203,8 +203,15 @@ export function MapPage() {
      * historical positions. This panel's own contract is that an operator takes what they see as
      * evidence.
      */
-    placeholderData: (prev, prevQuery) =>
-      prevQuery?.queryKey[1] === snap.selectedId ? prev : undefined,
+    placeholderData: (prev, prevQuery) => {
+      // …and never across more than the ONE advance it was built for. `scrubbing` freezes the
+      // window for as long as the operator reads history, so coming back to live could otherwise
+      // pair a fresh axis with rows fetched hours earlier — the same axis-vs-payload mismatch, just
+      // smaller than the cross-device one.
+      const key = prevQuery?.queryKey as [string, string | null, number, number] | undefined
+      if (key === undefined || key[1] !== snap.selectedId) return undefined
+      return trackWindow.to - key[3] <= WINDOW_BUCKET_MS ? prev : undefined
+    },
     staleTime: WINDOW_BUCKET_MS,
     refetchOnWindowFocus: false,
   })
@@ -221,7 +228,12 @@ export function MapPage() {
             // same segmentation as the live trail: invalid fixes never place a vertex (I6), and a
             // no-fix stretch becomes a dashed connector rather than a straight line never driven
             features: buildTrailFeatures(
-              trackPoints.map((p, i) => ({ lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: trackTimestamps[i] ?? 0 })),
+              // `fixTimeMs` is unread by the segmenter, but an unparseable row must not put NaN in
+              // a field someone later trusts (`NaN ?? 0` is NaN — nullish, not falsy)
+              trackPoints.map((p, i) => {
+                const t = trackTimestamps[i]
+                return { lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Number.isFinite(t) ? (t as number) : 0 }
+              }),
             ),
           },
     [trackPoints, trackTimestamps, snap.selectedId],
@@ -478,10 +490,12 @@ export function MapPage() {
         points={trackPoints}
         times={trackTimestamps}
         window={trackWindow}
+        loading={track.isLoading}
         /* `isLoading` is false whenever a placeholder is present — react-query forces the status to
-           success — so on its own it would present the PREVIOUS window's rows as this window's
-           finished answer. */
-        loading={track.isLoading || track.isPlaceholderData}
+           success — so the scrubber needs telling separately. Not by blanking what the operator was
+           reading: the rows ARE this vehicle's, at most one bucket old, so the summary stays and
+           dims rather than trading one blink for another. */
+        stale={track.isPlaceholderData}
         truncated={track.data?.truncated ?? false}
         onScrub={onScrub}
       />
