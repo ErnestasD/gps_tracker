@@ -258,6 +258,11 @@ export function MapPage() {
    * up immediately, because waiting for the next tick left the axis ending wherever the operator
    * had been reading, so a "-1 h" pressed right after "now" still meant an hour before THAT.
    */
+  /** Rows are memoised, and this page re-renders at the store's 1 Hz cadence: a fresh arrow here
+   *  defeated the memo on every emit. It cost little when a row was a dot and a name; it costs
+   *  three times that now. */
+  const selectDevice = useCallback((id: string) => liveStore.select(id), [])
+
   const onScrub = useCallback((p: ScrubState) => {
     setScrubbing(p !== null)
     if (p === null) catchUp()
@@ -399,7 +404,7 @@ export function MapPage() {
               devices={snap.devices}
               silent={silent}
               selectedId={snap.selectedId}
-              onSelect={(id) => liveStore.select(id)}
+              onSelect={selectDevice}
               nameOf={nameOf}
               detailOf={detailOf}
               filter={filter}

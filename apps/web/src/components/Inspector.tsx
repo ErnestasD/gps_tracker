@@ -98,8 +98,10 @@ export function Inspector({
    */
   const tabs: { id: InspectorTab; label: string; icon: typeof Activity }[] = [
     { id: 'overview', label: t('map.inspector.overview'), icon: Activity },
-    // Parameters and events are READS — every role sees what its own vehicle is reporting.
-    ...(device !== undefined ? [{ id: 'params' as const, label: t('map.inspector.params'), icon: Radio }] : []),
+    // Parameters and events are READS — every role sees what its own vehicle is reporting, and a
+    // device with no registry row is exactly the one whose parameters answer "what IS this". It was
+    // gated on the registry row out of habit; the panel takes telemetry, never a `Device`.
+    { id: 'params', label: t('map.inspector.params'), icon: Radio },
     { id: 'events', label: t('map.inspector.events'), icon: Bell },
     ...(device !== undefined && canWrite
       ? [
@@ -139,7 +141,9 @@ export function Inspector({
         {/* keyed by device so a panel never carries state across a selection change — an armed
             destructive confirm or a half-dragged slider must not follow the operator to another
             vehicle (the devices table keys these the same way, for the same reason) */}
-        {device !== undefined && effective === 'params' && <ParamsTab key={`par-${device.id}`} latest={latest} loading={telemetry.isLoading} error={telemetry.isError} />}
+        {effective === 'params' && (
+          <ParamsTab key={`par-${live.ev.deviceId}`} latest={latest} loading={telemetry.isLoading} error={telemetry.isError} />
+        )}
         {effective === 'events' && <EventsTab key={`ev-${live.ev.deviceId}`} deviceId={live.ev.deviceId} />}
         {device !== undefined && effective === 'commands' && <CommandsCard key={`cmd-${device.id}`} device={device} />}
         {device !== undefined && effective === 'settings' && (

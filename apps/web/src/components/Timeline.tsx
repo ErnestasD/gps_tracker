@@ -181,7 +181,10 @@ export function Timeline({
           }}
           aria-pressed={replaying}
           aria-label={
-            disabled && deviceId !== null
+            // "no history" is a CLAIM, and during the first fetch we do not know it yet: the button
+            // was telling a screen-reader operator the vehicle had none while the summary beside it
+            // still said "Loading…"
+            disabled && deviceId !== null && !loading
               ? t('map.timeline.nothingToReplay')
               : t(replaying ? 'map.timeline.stopReplay' : 'map.timeline.replay', { hours: Math.round(spanMin / 60) })
           }
