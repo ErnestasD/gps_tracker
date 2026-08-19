@@ -210,7 +210,11 @@ export function LiveMap() {
         map.setFilter('selected-halo', ['==', ['get', 'deviceId'], frame.selected?.deviceId ?? ''])
       }
       // follow the last VALID fix; a device that has never had one is not on the map to follow
-      if (frame.follow && frame.selectedFix) {
+      // Scrubbing wins over following: the operator asked to look at a moment in the past, and the
+      // vehicle's present position is not what they are reading.
+      if (frame.scrub) {
+        map.easeTo({ center: [frame.scrub.lon, frame.scrub.lat], duration: 400 })
+      } else if (frame.follow && frame.selectedFix) {
         map.easeTo({ center: [frame.selectedFix.lon, frame.selectedFix.lat], duration: 900 })
       }
     })

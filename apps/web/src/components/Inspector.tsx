@@ -1,5 +1,6 @@
-import { Activity, SlidersHorizontal, Terminal, X } from 'lucide-react'
+import { Activity, Radio, SlidersHorizontal, Terminal, X } from 'lucide-react'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -8,6 +9,7 @@ import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { Device } from '@/lib/devices'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
+import { getTelemetry, hasTelemetry, telemetryRows } from '@/lib/telemetry'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { SettingsCard } from '@/routes/app/devices/settings'
 
@@ -30,7 +32,7 @@ import { InfoCard } from './InfoCard'
  * is available — a device streaming positions we have no CRUD record for can still be watched, but
  * cannot be commanded.
  */
-export type InspectorTab = 'overview' | 'commands' | 'settings'
+export type InspectorTab = 'overview' | 'params' | 'commands' | 'settings'
 
 export function Inspector({
   live,
@@ -72,6 +74,8 @@ export function Inspector({
    */
   const tabs: { id: InspectorTab; label: string; icon: typeof Activity }[] = [
     { id: 'overview', label: t('map.inspector.overview'), icon: Activity },
+    // Parameters are a READ — every role sees what its own vehicle is reporting.
+    ...(device !== undefined ? [{ id: 'params' as const, label: t('map.inspector.params'), icon: Radio }] : []),
     ...(device !== undefined && canWrite
       ? [
           { id: 'commands' as const, label: t('map.inspector.commands'), icon: Terminal },
@@ -118,6 +122,7 @@ export function Inspector({
         {/* keyed by device so a panel never carries state across a selection change — an armed
             destructive confirm or a half-dragged slider must not follow the operator to another
             vehicle (the devices table keys these the same way, for the same reason) */}
+        {device !== undefined && effective === 'params' && <ParamsTab key={`par-${device.id}`} deviceId={device.id} />}
         {device !== undefined && effective === 'commands' && <CommandsCard key={`cmd-${device.id}`} device={device} />}
         {device !== undefined && effective === 'settings' && (
           <SettingsCard key={`set-${device.id}`} device={device} canWrite={canWrite} />
@@ -155,6 +160,49 @@ function TabStrip({
           {tb.label}
         </button>
       ))}
+    </div>
+  )
+}
+
+/**
+ * Everything the device is reporting — the conditional list the founder asked for: a parameter is
+ * here because the tracker sent it, and absent because it did not.
+ *
+ * This is the view that would have ended the 2026-08-18 investigation in a minute instead of a day:
+ * `GNSS Status 2`, `Sleep Mode 0`, `HDOP 1000` were all arriving and none of them were reachable
+ * outside the database.
+ */
+function ParamsTab({ deviceId }: { deviceId: string }) {
+  const { t } = useTranslation()
+  const q = useQuery({
+    queryKey: ['telemetry', deviceId],
+    queryFn: () => getTelemetry(deviceId),
+    refetchInterval: 30_000,
+  })
+
+  if (q.isLoading) return <p className="p-2 text-xs text-muted">{t('admin.loading')}</p>
+  if (q.isError) return <p className="p-2 text-xs text-danger" role="alert">{t('map.inspector.paramsError')}</p>
+  if (!hasTelemetry(q.data)) return <p className="p-2 text-xs text-muted">{t('map.inspector.paramsEmpty')}</p>
+
+  const rows = telemetryRows(q.data.attrs)
+  return (
+    <div data-testid="params-tab">
+      <dl className="divide-y divide-line text-xs">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">
+            <dt className={cn('min-w-0 truncate', r.documented ? 'text-muted' : 'text-muted italic')} title={r.key}>
+              {r.label}
+            </dt>
+            <dd className="shrink-0 tabular-nums text-text">{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {rows.length === 0 && <p className="p-2 text-xs text-muted">{t('map.inspector.paramsEmpty')}</p>}
+      {/* An `io_<id>` row means this model's own wiki page does not document that element — a fact
+          about Teltonika's documentation, not a gap in ours, and worth naming as such. */}
+      {rows.some((r) => !r.documented) && (
+        <p className="pt-2 text-[11px] text-muted">{t('map.inspector.paramsUndocumented')}</p>
+      )}
     </div>
   )
 }

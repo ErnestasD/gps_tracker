@@ -43,6 +43,14 @@ export interface MapFrame {
   devices: GeoJSON.FeatureCollection
   trail: GeoJSON.FeatureCollection
   selected: LiveEvent | null
+  /**
+   * A historic position the operator is scrubbing to, or null when the map is live.
+   *
+   * Kept beside the live frame rather than replacing it: the fleet keeps moving underneath while
+   * one vehicle is examined in the past, and conflating the two would make "where is everyone now"
+   * unanswerable the moment someone opened the timeline.
+   */
+  scrub: { lon: number; lat: number; course: number | null } | null
   /** Where to CENTRE on when following — the selected device's last valid fix, `null` if it has
    *  never had one. Separate from `selected` because that event's own lat/lon may be an invalid
    *  0/0, and following it would fly the map into the Atlantic (see `DeviceLive.fix`). */
@@ -226,6 +234,12 @@ export class LiveStore {
     this.flush(true)
   }
 
+  /** Point the map at a moment in this device's past, or back to live with null. */
+  setScrub(point: { lat: number; lon: number; course: number | null } | null): void {
+    this.scrubPoint = point
+    this.pushMapFrame()
+  }
+
   setFollow(follow: boolean): void {
     this.snapshot = { ...this.snapshot, follow }
     this.flush(true)
@@ -285,6 +299,8 @@ export class LiveStore {
     if (sink) this.pushMapFrame()
   }
 
+  private scrubPoint: { lat: number; lon: number; course: number | null } | null = null
+
   private pushMapFrame(): void {
     if (!this.mapSink) return
     const { selectedId, follow } = this.snapshot
@@ -311,7 +327,7 @@ export class LiveStore {
     const selectedLive = selectedId !== null ? (this.byId.get(selectedId) ?? null) : null
     const selected = selectedLive?.ev ?? null
     const selectedFix = selectedLive?.fix ?? null
-    this.mapSink({ devices: { type: 'FeatureCollection', features }, trail, selected, selectedFix, follow })
+    this.mapSink({ devices: { type: 'FeatureCollection', features }, trail, selected, selectedFix, follow, scrub: this.scrubPoint })
   }
 
   // ── useSyncExternalStore contract ─────────────────────────────────────────
@@ -328,6 +344,7 @@ export class LiveStore {
 
   /** Test/logout helper. */
   reset(): void {
+    this.scrubPoint = null
     this.byId.clear()
     this.trailPoints = []
     this.dirty = false

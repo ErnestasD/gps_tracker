@@ -439,13 +439,26 @@
     "inspector": {
       "overview": "Overview",
       "commands": "Commands",
-      "settings": "Settings"
+      "settings": "Settings",
+      "params": "Parameters",
+      "paramsEmpty": "This device has not reported anything yet.",
+      "paramsError": "Could not load the parameters.",
+      "paramsUndocumented": "Rows shown as “AVL <id>” are elements this model’s own Teltonika page does not document."
     },
     "title": "Live map",
     "toggleList": "Show or hide the fleet list",
     "pause": "Pause",
     "resume": "Resume",
-    "fullscreen": "Full screen"
+    "fullscreen": "Full screen",
+    "timeline": {
+      "summary": "{{points}} points, {{valid}} with a fix",
+      "scrub": "Scrub the last 24 hours",
+      "hoursAgo": "{{hours}} h ago",
+      "now": "now",
+      "noData": "no report at {{when}}",
+      "noFix": "no GPS fix",
+      "button": "24 h"
+    }
   },
   "units": {
     "kmh": "km/h",

@@ -439,13 +439,26 @@
     "inspector": {
       "overview": "Apžvalga",
       "commands": "Komandos",
-      "settings": "Nustatymai"
+      "settings": "Nustatymai",
+      "params": "Parametrai",
+      "paramsEmpty": "Šis įrenginys dar nieko neatsiuntė.",
+      "paramsError": "Nepavyko įkelti parametrų.",
+      "paramsUndocumented": "Eilutės „AVL <id>“ — elementai, kurių šio modelio Teltonikos puslapis neaprašo."
     },
     "title": "Gyvas žemėlapis",
     "toggleList": "Rodyti arba slėpti įrenginių sąrašą",
     "pause": "Stabdyti",
     "resume": "Tęsti",
-    "fullscreen": "Per visą ekraną"
+    "fullscreen": "Per visą ekraną",
+    "timeline": {
+      "summary": "{{points}} taškų, {{valid}} su fiksacija",
+      "scrub": "Slinkti per paskutines 24 val.",
+      "hoursAgo": "prieš {{hours}} val.",
+      "now": "dabar",
+      "noData": "nėra įrašo {{when}}",
+      "noFix": "nėra GPS fiksacijos",
+      "button": "24 val."
+    }
   },
   "units": {
     "kmh": "km/val",

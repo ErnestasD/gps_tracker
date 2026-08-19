@@ -136,3 +136,73 @@ export async function readLatestValidPosition(pool: Pool, deviceId: bigint): Pro
     recHash: row.rec_hash,
   }
 }
+
+/**
+ * The newest position for one device, WITH everything the tracker sent in it.
+ *
+ * `readPositions` deliberately selects a fixed column list for the history graph; this is the other
+ * question — "what is this device actually reporting right now" — and the answer lives in `attrs`,
+ * which is per-model and open-ended. A dictionary-named key is there because the device sent it,
+ * and an `io_<id>` key is there because it sent something its own wiki page does not document.
+ *
+ * That distinction is not cosmetic. Diagnosing a real FTC887 on 2026-08-18 turned on exactly these
+ * values — `GNSS Status`, `Sleep Mode`, `External Voltage` — and none of them were reachable from
+ * the API, so the answer had to be dug out of the database by hand.
+ */
+export interface LatestTelemetry {
+  fixTime: string
+  serverTime: string
+  lat: number
+  lon: number
+  speed: number | null
+  course: number | null
+  altitude: number | null
+  satellites: number | null
+  fixValid: boolean
+  ignition: boolean | null
+  movement: boolean | null
+  odometerM: string | null
+  /** Every AVL element in the newest record, exactly as the pipeline stored it. */
+  attrs: Record<string, unknown>
+}
+
+export async function readLatestTelemetry(pool: Pool, deviceId: bigint): Promise<LatestTelemetry | null> {
+  const res = await pool.query<{
+    fix_time: Date
+    server_time: Date
+    lat: number
+    lon: number
+    speed: number | null
+    course: number | null
+    altitude: number | null
+    satellites: number | null
+    fix_valid: boolean
+    ignition: boolean | null
+    movement: boolean | null
+    odometer_m: string | null
+    attrs: Record<string, unknown>
+  }>(
+    `SELECT fix_time, server_time, lat, lon, speed, course, altitude, satellites, fix_valid,
+            ignition, movement, odometer_m::text, attrs
+       FROM positions WHERE device_id = $1
+      ORDER BY fix_time DESC, rec_hash DESC LIMIT 1`,
+    [deviceId.toString()],
+  )
+  const row = res.rows[0]
+  if (row === undefined) return null
+  return {
+    fixTime: row.fix_time.toISOString(),
+    serverTime: row.server_time.toISOString(),
+    lat: row.lat,
+    lon: row.lon,
+    speed: row.speed,
+    course: row.course,
+    altitude: row.altitude,
+    satellites: row.satellites,
+    fixValid: row.fix_valid,
+    ignition: row.ignition,
+    movement: row.movement,
+    odometerM: row.odometer_m,
+    attrs: row.attrs ?? {},
+  }
+}

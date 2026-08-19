@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { Maximize2, Minimize2, PanelLeft, Pause, Play } from 'lucide-react'
+import { Clock, Maximize2, Minimize2, PanelLeft, Pause, Play } from 'lucide-react'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DeviceList } from '@/components/DeviceList'
 import { Inspector } from '@/components/Inspector'
+import { Timeline } from '@/components/Timeline'
 import { LiveMap } from '@/components/LiveMap'
 import { Badge } from '@/components/admin/AdminKit'
 import { getLastPositions, getWsTicket, wsUrl, ApiError } from '@/lib/api'
@@ -38,6 +39,9 @@ export function MapPage() {
   /** Pausing stops the STORE, not the socket: the feed keeps arriving and the map simply stops
    *  redrawing, so resuming shows the present rather than replaying a backlog. */
   const [paused, setPaused] = useState(false)
+  /** The 24-hour scrubber, opened per device. Scrubbing pauses the live feed on purpose: a map that
+   *  keeps snapping back to the present while you are reading the past is unusable. */
+  const [timelineOpen, setTimelineOpen] = useState(false)
 
   useEffect(() => {
     if (devices.data === undefined) return
@@ -134,6 +138,21 @@ export function MapPage() {
           </button>
           <button
             type="button"
+            onClick={() => {
+              const next = !timelineOpen
+              setTimelineOpen(next)
+              setPaused(next)
+            }}
+            aria-pressed={timelineOpen}
+            disabled={selected === undefined}
+            data-testid="map-timeline"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-2 text-xs text-muted transition-colors hover:text-text disabled:opacity-40"
+          >
+            <Clock className="h-3.5 w-3.5" aria-hidden />
+            <span className="hidden sm:inline">{t('map.timeline.button')}</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setFull((f) => !f)}
             aria-label={t('map.fullscreen')}
             aria-pressed={full}
@@ -172,6 +191,19 @@ export function MapPage() {
 
         <div className="relative min-w-0 flex-1">
           <LiveMap />
+          {timelineOpen && selected && (
+            <Timeline
+              key={selected.ev.deviceId}
+              deviceId={selected.ev.deviceId}
+              name={nameOf(selected.ev.deviceId)}
+              onScrub={(p) => liveStore.setScrub(p)}
+              onClose={() => {
+                setTimelineOpen(false)
+                setPaused(false)
+                liveStore.setScrub(null)
+              }}
+            />
+          )}
         </div>
 
         {selected && (

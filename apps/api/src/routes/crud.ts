@@ -4,7 +4,7 @@ import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 import { z } from 'zod'
 
-import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
+import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readLatestTelemetry, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
   accountCreateSchema,
@@ -842,6 +842,27 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           ...(q('cursor') !== undefined ? { cursor: q('cursor')! } : {}),
           ...(q('limit') !== undefined ? { limit: Number(q('limit')) } : {}),
         }))
+      } },
+    /**
+     * Everything this device is actually reporting, named where its own model documents the id.
+     *
+     * The live event carries a fixed handful of fields; a Teltonika tracker sends anywhere from a
+     * dozen to hundreds of AVL elements, and until now none of them were reachable from the API.
+     * Diagnosing a real FTC887 on 2026-08-18 turned on exactly these — GNSS Status, Sleep Mode,
+     * External Voltage — and the answers had to be dug out of the database by hand.
+     *
+     * Nothing is invented: a key is present because the device sent it. An `io_<id>` key means the
+     * device sent something its own wiki page does not document, which is worth showing as such
+     * rather than hiding.
+     */
+    { method: 'get', path: '/v1/devices/:id/telemetry', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const device = await db.devices.get(scopeOf(auth(c)), id(c)) // scope gate FIRST (404 else)
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
+        const latest = await readLatestTelemetry(deps.pool, device.id)
+        // a device that has never reported is a real answer, not a 404: the UI says "nothing yet"
+        return json(c, latest ?? { empty: true })
       } },
     // fuel series for the playback fuel graph (E08-3) — same gate + raw-SQL shape as positions
     { method: 'get', path: '/v1/devices/:id/fuel', scopeClass: 'account', entity: 'device', shape: 'item',

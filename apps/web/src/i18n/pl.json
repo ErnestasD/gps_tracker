@@ -439,13 +439,26 @@
     "inspector": {
       "overview": "Przegląd",
       "commands": "Polecenia",
-      "settings": "Ustawienia"
+      "settings": "Ustawienia",
+      "params": "Parametry",
+      "paramsEmpty": "To urządzenie jeszcze nic nie zgłosiło.",
+      "paramsError": "Nie udało się wczytać parametrów.",
+      "paramsUndocumented": "Wiersze „AVL <id>” to elementy, których strona Teltoniki dla tego modelu nie dokumentuje."
     },
     "title": "Mapa na żywo",
     "toggleList": "Pokaż lub ukryj listę pojazdów",
     "pause": "Wstrzymaj",
     "resume": "Wznów",
-    "fullscreen": "Pełny ekran"
+    "fullscreen": "Pełny ekran",
+    "timeline": {
+      "summary": "{{points}} punktów, {{valid}} z fixem",
+      "scrub": "Przewiń ostatnie 24 godziny",
+      "hoursAgo": "{{hours}} godz. temu",
+      "now": "teraz",
+      "noData": "brak zgłoszenia o {{when}}",
+      "noFix": "brak fixa GPS",
+      "button": "24 godz."
+    }
   },
   "units": {
     "kmh": "km/h",
