@@ -44,9 +44,14 @@ export interface TrailPoint {
    * behaviour they guard. `null` still means "this model does not report it".
    */
   speed: number | null
-  /** AVL 240, where the read path has it — the device's own statement about whether it is moving.
-   *  Absent on the live WS trail, which does not carry the element. */
-  movement?: boolean | null
+  /**
+   * AVL 240 — the device's own statement about whether it is moving. REQUIRED for the same reason
+   * `speed` is: while it was optional the live trail omitted it and the two tracks for one vehicle
+   * could disagree in silence. `null` is the honest value where the source does not carry it — the
+   * live WS event does not.
+   * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+   */
+  movement: boolean | null
 }
 
 /**
@@ -81,15 +86,19 @@ function metresBetween(aLat: number, aLon: number, bLat: number, bLon: number): 
 /**
  * The device says it is not moving.
  *
- * BOTH axes, where we have both: GNSS speed is 0 *and* the movement element does not contradict it.
- * A `null` speed is not zero — it is "unreported", and a gate must not act on a fact it does not
- * have. `movement` is absent on the live trail (the WS event does not carry AVL 240) and null on a
- * model that does not report it; neither is treated as agreement, only `true` is treated as
- * disagreement. That way the gate still works for a model with one axis and defers to the device
- * the moment the other says otherwise — which is what protects an asset tracker whose whole working
- * area is smaller than the gate.
+ * A REPORTED zero speed is the strongest evidence there is, and it decides on its own. `movement`
+ * (AVL 240) only speaks where speed is silent, because on a wired install its source is usually the
+ * ignition — so it means "the engine is running", not "the vehicle is displaced". Letting it
+ * override a measured zero was backwards, and the founder's own device proves it: the records with
+ * speed 0 AND movement true were the *most* static of the day, 383 of them sharing 54 m, while the
+ * movement-false bucket carried 220 m across 142. Exempting the first bucket re-admitted the purest
+ * jitter on the map.
+ *
+ * A `null` speed is not zero — it is "unreported" — and there `movement === false` is the only
+ * statement we have. Neither `null` nor a missing field counts as agreement: this gate fails OPEN.
+ * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
  */
-const isStationary = (p: TrailPoint): boolean => p.speed === 0 && p.movement !== true
+const isStationary = (p: TrailPoint): boolean => p.speed === 0 || (p.speed === null && p.movement === false)
 
 /**
  * Drop the vertices a parked vehicle's GPS jitter would otherwise draw.
@@ -99,30 +108,20 @@ const isStationary = (p: TrailPoint): boolean => p.speed === 0 && p.movement !==
  * move, and a real drive is untouched. Invalid fixes pass through unchanged: they carry no vertex
  * anyway (I6) and they are what separates the solid runs from the dashed no-fix connectors, so
  * dropping one would silently merge two runs the vehicle did not join.
+ *
+ * A parked stretch collapses to its FIRST record and nothing else. An earlier version held the last
+ * one back too, to stop a one-point run "losing its dashed connector" — but that never happened:
+ * `buildTrailFeatures` builds the connector from `prev[prev.length - 1]` to `current[0]` whatever
+ * the run length, so a single-point run supplies its endpoint perfectly well. Only the solid LINE
+ * goes, which is correct — a parked run has no line to draw. The mechanism bought nothing and cost
+ * the whole filter: it handed every held-back record back at the next invalid fix, so a car park
+ * with a patchy sky view (records valid, valid, no-fix, repeat) kept every single point.
  */
 export function dropStationaryJitter(points: readonly TrailPoint[]): TrailPoint[] {
   const out: TrailPoint[] = []
   let anchor: TrailPoint | null = null
-  /** The most recent record we dropped, held back so a stationary stretch keeps BOTH its ends. */
-  let pending: TrailPoint | null = null
-
-  /**
-   * A dropped stretch still has to end somewhere.
-   *
-   * Keeping only its first record deleted whole runs: a vehicle that parked after a no-fix stretch
-   * collapsed to a single point, `buildTrailFeatures` needs two to draw a line, and the run — with
-   * the dashed I5 connector that led to it — disappeared entirely. "The track simply ends" is not a
-   * truer picture than a scribble; it is a different lie. First and last also keep the connector's
-   * endpoints on the records that actually straddled the fix loss.
-   */
-  const flush = (): void => {
-    if (pending !== null) out.push(pending)
-    pending = null
-  }
-
   for (const p of points) {
     if (!p.fixValid) {
-      flush()
       out.push(p)
       // A no-fix stretch ends the stationary stretch: the first valid record after it is a seam I5
       // marks, so it is never gated away.
@@ -130,20 +129,15 @@ export function dropStationaryJitter(points: readonly TrailPoint[]): TrailPoint[
       continue
     }
     if (!isStationary(p)) {
-      flush()
       out.push(p)
       anchor = p
       continue
     }
     if (anchor === null || metresBetween(anchor.lat, anchor.lon, p.lat, p.lon) > JITTER_GATE_M) {
-      flush()
       out.push(p)
       anchor = p
-      continue
     }
-    pending = p
   }
-  flush()
   return out
 }
 
@@ -333,7 +327,7 @@ export class LiveStore {
     const fix = ev.fixValid ? { lon: ev.lon, lat: ev.lat, course: ev.course ?? 0 } : (current?.fix ?? null)
     this.byId.set(ev.deviceId, { ev, status: statusOf(this.now() - ev.fixTimeMs), fix })
     if (this.snapshot.trail && ev.deviceId === this.snapshot.selectedId) {
-      this.trailPoints.push({ lon: ev.lon, lat: ev.lat, fixValid: ev.fixValid, fixTimeMs: ev.fixTimeMs, speed: ev.speed })
+      this.trailPoints.push({ lon: ev.lon, lat: ev.lat, fixValid: ev.fixValid, fixTimeMs: ev.fixTimeMs, speed: ev.speed, movement: null })
       if (this.trailPoints.length > TRAIL_CAP) this.trailPoints.shift()
     }
     this.dirty = true
