@@ -571,11 +571,13 @@ describe('stationary jitter', () => {
     expect(buildTrailFeatures(parked)).toHaveLength(0)
   })
 
-  it('a one-point run still supplies the dashed connector (why first-only is enough)', () => {
+  it('a COLLAPSED run still supplies the dashed connector (why first-only is enough)', () => {
     // The premise that once justified holding the last point back, checked rather than assumed:
-    // buildTrailFeatures joins prev[last] → current[0] whatever the run lengths.
+    // buildTrailFeatures joins prev[last] → current[0] whatever the run lengths. Run A has three
+    // records here so the filter genuinely collapses it — with one record the test would pass even
+    // if the filter did nothing.
     const points = [
-      at(54.68, 25.27, 0),                    // parked run A, collapses to one point
+      at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0), // run A → 1
       at(54.68, 25.27, 0, false),             // no fix
       at(54.6845, 25.27, 0),                  // parked run B, 500 m away — a tow
     ]
@@ -616,13 +618,37 @@ describe('stationary jitter', () => {
     expect((features[0]!.geometry as GeoJSON.LineString).coordinates).toHaveLength(3)
   })
 
-  it('measures 25 m across the antimeridian, not 23 000 km', () => {
-    // without wrapping the longitude delta the gate silently never fires anywhere near ±180
-    const points = [at(0, 179.9999, 0), at(0, -179.9999, 0)]
-    expect(dropStationaryJitter(points)).toHaveLength(1)
+  it('measures metres across the antimeridian, not 23 000 km', () => {
+    // without wrapping the longitude delta the gate silently never fires anywhere near ±180.
+    // Both sides of the gate, so a future change to its width cannot quietly invert this.
+    const inside = [at(0, 179.99995, 0), at(0, -179.99995, 0)] // ≈11 m apart
+    expect(dropStationaryJitter(inside)).toHaveLength(1)
+    const outside = [at(0, 179.9995, 0), at(0, -179.9995, 0)] // ≈111 m apart — a real move
+    expect(dropStationaryJitter(outside)).toHaveLength(2)
   })
 
-  it('the seam records around a no-fix stretch are never gated away (I5)', () => {
+  it('an asset that works inside the gate collapses — the cost, recorded not rediscovered', () => {
+    // A yard tracker shuttling 15 m at reported speed 0 loses its shift to one point. GNSS cannot
+    // honestly separate that from jitter; the previous rule tried to, by exempting movement=true,
+    // and that re-admitted the purest jitter of the day instead.
+    const yard = [at(54.68, 25.27, 0), at(54.6801, 25.27, 0), at(54.68, 25.27, 0)] // ~11 m hops
+    expect(dropStationaryJitter(yard)).toHaveLength(1)
+  })
+
+  it('the anchor SURVIVES a no-fix stretch — otherwise the scribble comes back in dashes', () => {
+    // The case that separates reset from no-reset: the record after the outage is a JITTER distance
+    // from the one before it. A parked car under a patchy sky reports valid, valid, no-fix in a
+    // loop, so resetting the anchor kept every third record and drew 233 m of dashes for a vehicle
+    // that never moved — an invalid record deciding which VALID vertices reach the map (rule 6).
+    const parked: TrailPoint[] = []
+    for (let i = 0; i < 30; i++) {
+      parked.push(at(54.68 + (i % 3) * JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0), at(54.68, 25.27, 0, false))
+    }
+    expect(dropStationaryJitter(parked).filter((p) => p.fixValid)).toHaveLength(1)
+    expect(buildTrailFeatures(parked)).toHaveLength(0)
+  })
+
+  it('…but a vehicle towed during the outage still draws both seams and the connector', () => {
     // the dashed connector marks WHERE the fix was lost; gating either end would move it by up to
     // the gate width, and the operator reads that line as evidence
     // the record right AFTER a no-fix stretch is never gated away: the anchor resets, so the

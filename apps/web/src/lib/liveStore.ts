@@ -46,9 +46,12 @@ export interface TrailPoint {
   speed: number | null
   /**
    * AVL 240 — the device's own statement about whether it is moving. REQUIRED for the same reason
-   * `speed` is: while it was optional the live trail omitted it and the two tracks for one vehicle
-   * could disagree in silence. `null` is the honest value where the source does not carry it — the
-   * live WS event does not.
+   * `speed` is: while it was optional a caller could omit it silently. `null` is the honest value
+   * where the source does not carry it, and the live WS event does not — `liveEventSchema` has no
+   * movement field. One residual divergence follows and is not closed here: for a model whose speed
+   * is UNREPORTED, the 24-hour track can gate on movement and the live trail cannot. Teltonika
+   * always sends speed (it is null only when the worker's range check rejects it), so this is a
+   * stated gap, not a live defect.
    * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
    */
   movement: boolean | null
@@ -87,12 +90,16 @@ function metresBetween(aLat: number, aLon: number, bLat: number, bLon: number): 
  * The device says it is not moving.
  *
  * A REPORTED zero speed is the strongest evidence there is, and it decides on its own. `movement`
- * (AVL 240) only speaks where speed is silent, because on a wired install its source is usually the
- * ignition — so it means "the engine is running", not "the vehicle is displaced". Letting it
- * override a measured zero was backwards, and the founder's own device proves it: the records with
- * speed 0 AND movement true were the *most* static of the day, 383 of them sharing 54 m, while the
- * movement-false bucket carried 220 m across 142. Exempting the first bucket re-admitted the purest
- * jitter on the map.
+ * (AVL 240) only speaks where speed is silent. Its SOURCE is a device setting, not a fixed meaning,
+ * so "movement true" is not a promise that the vehicle was displaced — measured on one wired FTC887
+ * over 24 h, the records reporting speed 0 AND movement true were the *most* static of the day, 383
+ * of them sharing 54 m, while the movement-false bucket carried 220 m across 142. That is an
+ * observation about that installation rather than a claim about the element, and it is enough to
+ * say a reported zero must not be overridden by it.
+ *
+ * The cost is recorded rather than rediscovered: a tracker whose whole working area is smaller than
+ * the gate — a yard asset shuttling 15 m — collapses its shift to one point. GNSS cannot honestly
+ * separate that from jitter, and inventing the difference is what this module exists not to do.
  *
  * A `null` speed is not zero — it is "unreported" — and there `movement === false` is the only
  * statement we have. Neither `null` nor a missing field counts as agreement: this gate fails OPEN.
@@ -109,7 +116,7 @@ const isStationary = (p: TrailPoint): boolean => p.speed === 0 || (p.speed === n
  * anyway (I6) and they are what separates the solid runs from the dashed no-fix connectors, so
  * dropping one would silently merge two runs the vehicle did not join.
  *
- * A parked stretch collapses to its FIRST record and nothing else. An earlier version held the last
+ * A parked stretch collapses to its FIRST record and nothing else, across no-fix stretches too. An earlier version held the last
  * one back too, to stop a one-point run "losing its dashed connector" — but that never happened:
  * `buildTrailFeatures` builds the connector from `prev[prev.length - 1]` to `current[0]` whatever
  * the run length, so a single-point run supplies its endpoint perfectly well. Only the solid LINE
@@ -122,10 +129,21 @@ export function dropStationaryJitter(points: readonly TrailPoint[]): TrailPoint[
   let anchor: TrailPoint | null = null
   for (const p of points) {
     if (!p.fixValid) {
+      /**
+       * The anchor SURVIVES a no-fix stretch, and that is the whole filter.
+       *
+       * Resetting it here — so the first valid record after the stretch could never be gated — read
+       * as protecting the I5 seam, and instead handed the scribble straight back: a parked car under
+       * a patchy sky reports valid, valid, no-fix in a loop, so every third record found a null
+       * anchor and was kept unconditionally. Measured on that shape, 90 records: 30 valid points
+       * survived and 233 m of line was drawn, in dashes, for a vehicle that never moved.
+       *
+       * It was also a rule-6 leak in its own right: an INVALID record was deciding which VALID
+       * vertices reached the map. Carried, the same 90 records collapse to one point and nothing is
+       * drawn — while a vehicle towed 500 m during the outage still draws both seams and the
+       * connector, because the far record clears the gate on its own merits.
+       */
       out.push(p)
-      // A no-fix stretch ends the stationary stretch: the first valid record after it is a seam I5
-      // marks, so it is never gated away.
-      anchor = null
       continue
     }
     if (!isStationary(p)) {
@@ -239,8 +257,8 @@ const lineFeature = (coordinates: [number, number][], gap: boolean): GeoJSON.Fea
  * A THIRD rule runs above those two since 2026-08-19: the vertices a stationary record would
  * contribute are dropped first (`dropStationaryJitter`), because a parked vehicle's GPS jitter is
  * not a path. It never touches an invalid point and never empties a run, so the segmentation this
- * comment describes is unchanged — a parked stretch simply arrives as its two ends instead of as
- * two hundred.
+ * comment describes is unchanged — a parked stretch simply arrives as its first record instead of
+ * as two hundred, and a run it empties keeps its connector, which spans the stretch correctly.
  */
 export function buildTrailFeatures(rawPoints: readonly TrailPoint[]): GeoJSON.Feature[] {
   // A parked vehicle's jitter is not a path. Dropped HERE, at the one place a track becomes
