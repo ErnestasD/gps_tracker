@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { Device } from '@/lib/devices'
-import { eventTone, listEvents, localizedEventSummary } from '@/lib/events'
+import { eventDetail, eventTone, listEvents } from '@/lib/events'
 import type { GeofenceView } from '@orbetra/shared'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
@@ -553,14 +553,14 @@ function EventsTab({ deviceId }: { deviceId: string }) {
          * that already existed for the events page, localized and unit-aware; this panel simply was
          * not calling it. One implementation, so the two pages cannot describe one event differently.
          */
-        const summary = localizedEventSummary(t, e, { fmtSpeed: u.speed, fmtVolume: u.volumeL })
+        const detail = eventDetail(t, e, { fmtSpeed: u.speed, fmtVolume: u.volumeL })
         return (
-          <li key={e.id} className="rounded-card border border-line p-2.5" data-testid={`event-${e.id}`}>
+          <li key={e.id} className="rounded-card border border-line p-2.5">
             <div className="flex items-center justify-between gap-2">
               <Badge variant={eventTone(e.kind)}>{t(`events.k.${e.kind}`, { defaultValue: e.kind })}</Badge>
               <span className="shrink-0 text-[10px] tabular-nums text-muted">{dt(e.at)}</span>
             </div>
-            {summary !== '' && <p className="mt-1 text-xs text-text">{summary}</p>}
+            {detail !== '' && <p className="mt-1 text-xs text-text">{detail}</p>}
             {/* The rule someone configured, when the payload names one — "why did this fire"
                 answered in a glance. Skipped when it merely repeats the kind: the offline sweeper
                 writes the literal string 'device_offline' there, which is not a rule anyone wrote. */}

@@ -1,8 +1,8 @@
 import type { EventView } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { EVENT_KINDS, eventSummary, eventSummaryT, eventTone, eventsQuery, localizedEventSummary } from '../src/lib/events.js'
-import { eventSeverity } from '../src/lib/dashboard.js'
+import { EVENT_KINDS, eventSeverity, eventSummary, eventSummaryT, eventTone, eventsQuery, localizedEventSummary } from '../src/lib/events.js'
+
 
 const ev = (kind: string, payload: Record<string, unknown>): EventView => ({
   id: '1',
@@ -42,8 +42,10 @@ describe('E05-6 eventSummary', () => {
     expect(eventSummary(ev('device_offline', { offlineH: 27, thresholdH: 26 }))).toBe('offline 27 h (≥ 26 h)')
   })
 
-  it('handles missing payload fields without throwing', () => {
-    expect(eventSummary(ev('overspeed', {}))).toBe('— km/h > —')
+  it('handles missing payload fields without throwing, and invents no unit', () => {
+    // was '— km/h > —': a unit label attached to a value the device never sent, pinned here as if
+    // it were the contract. A missing speed is '—', full stop.
+    expect(eventSummary(ev('overspeed', {}))).toBe('— > —')
     expect(eventSummary(ev('panic', {}))).toBe('SOS triggered') // fixed one-liner, no payload needed
     expect(eventSummary(ev('power_cut', {}))).toBe('external power lost')
   })

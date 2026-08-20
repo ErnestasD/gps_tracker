@@ -5,7 +5,7 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { eventSeverity } from '@/lib/dashboard'
+import { eventSeverity } from '@/lib/events'
 import { useFmt } from '@/lib/datetime'
 import { listEvents, localizedEventSummary } from '@/lib/events'
 import { markAllRead, markRead, readIds, unreadCount } from '@/lib/notifications'

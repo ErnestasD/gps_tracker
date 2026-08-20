@@ -13,7 +13,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { listDrivers } from '@/lib/drivers'
-import { eventTone, listEvents, localizedEventSummary } from '@/lib/events'
+import { eventDetail, eventTone, listEvents } from '@/lib/events'
 import { fleetPanelCounts, type FleetFilter } from '@/lib/fleetFilter'
 import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
@@ -453,19 +453,19 @@ export function MapPage() {
                       <span className="min-w-0 flex-1 truncate font-medium text-text">{nameOf(e.deviceId)}</span>
                       <span className="shrink-0 tabular-nums text-muted">{dt(e.at)}</span>
                     </div>
-                    {/* The KIND stays as text beside the summary. Dropping it left the severity
-                        carried by colour alone (WCAG 1.4.1) and a screen reader reading
-                        "10.52 V < 11" with no word for what happened. */}
+                    {/* One line: the KIND, because severity carried by colour alone fails WCAG
+                        1.4.1 and a screen reader would hear "10.52 V < 11" with no word for what
+                        happened — then the payload, which is what the founder was missing. Three
+                        of the nine kinds (panic, power cut, ignition) have a summary that only
+                        restates the label, so they get the label alone rather than a second line
+                        saying the same thing. */}
                     <div className="truncate pl-3 text-muted">
                       <span className="text-text">{t(`events.k.${e.kind}`, { defaultValue: e.kind })}</span>
+                      {(() => {
+                        const detail = eventDetail(t, e, { fmtSpeed: units.speed, fmtVolume: units.volumeL })
+                        return detail === '' ? null : ` · ${detail}`
+                      })()}
                     </div>
-                    {/* The payload, not the bare kind: "overspeed" told the operator nothing the
-                        record did not already answer — 91 km/h against a 90 limit, or which zone
-                        was left. Same formatter as the events page and the inspector. */}
-                    {(() => {
-                      const summary = localizedEventSummary(t, e, { fmtSpeed: units.speed, fmtVolume: units.volumeL })
-                      return summary === '' ? null : <div className="truncate pl-3 text-muted">{summary}</div>
-                    })()}
                   </li>
                 ))}
               </ul>

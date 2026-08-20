@@ -1,7 +1,6 @@
 import type { EventView } from '@orbetra/shared'
 
 import { getJson } from './client'
-import { eventSeverity } from './dashboard'
 
 /**
  * Events read client (E05-6). Read-only, account-scoped on the server. Rows are the
@@ -40,13 +39,27 @@ export function eventsQuery(f: EventFilters): string {
 
 export const listEvents = (f: EventFilters = {}) => getJson<EventRow[]>(`/v1/events${eventsQuery(f)}`)
 
+export type EventSeverity = 'critical' | 'warning' | 'info'
+
+/**
+ * The ONE severity mapping.
+ *
+ * It lived in `dashboard.ts` while five modules read it and two others quietly kept their own —
+ * the map ticker's (mine, last commit) and the events page's, which drove that page's badge, its
+ * severity filter AND its Critical count. One fuel-theft record could be red on the map and grey
+ * in the count meant to catch it. Here, beside the rest of the event semantics, so a kind whose
+ * severity is wrong is wrong once.
+ */
+export function eventSeverity(kind: string): EventSeverity {
+  if (kind === 'panic' || kind === 'power_cut') return 'critical'
+  if (kind === 'overspeed' || kind === 'low_battery' || kind === 'device_offline') return 'warning'
+  return 'info'
+}
+
 /**
  * Severity as a Badge/dot tone.
  *
- * Deliberately a THIN mapping over `eventSeverity`, not a table of its own. Writing a second one
- * put fuel theft in red on the map and grey on the events page, out of the same record — the exact
- * divergence this module exists to prevent, introduced by the commit that claimed to prevent it.
- * If a kind's severity is wrong, it is wrong in `eventSeverity` and wrong everywhere at once.
+ * A THIN view over `eventSeverity`, never a table of its own.
  */
 export const eventTone = (kind: string): 'danger' | 'warn' | 'default' => {
   const s = eventSeverity(kind)
@@ -58,7 +71,8 @@ export function eventSummary(e: EventRow): string {
   const p = e.payload ?? {}
   switch (e.kind) {
     case 'overspeed':
-      return `${num(p['speedKmh'])} km/h > ${num(p['limitKmh'])}`
+      // a unit belongs to a value the device sent — the same rule `eventSummaryT` follows
+      return `${typeof p['speedKmh'] === 'number' ? `${p['speedKmh']} km/h` : '—'} > ${num(p['limitKmh'])}`
     case 'low_battery':
       return `${num(p['volts'])} V < ${num(p['thresholdV'])}`
     case 'ignition':
@@ -138,6 +152,21 @@ export type TFn = (key: string, options?: Record<string, unknown>) => string
 /** Localized one-line event summary: eventSummaryT rendered through t(), with the pure
  * English eventSummary as the defaultValue fallback. Pass opts.fmtSpeed (useUnits().speed)
  * so overspeed summaries follow the display speed unit. */
+/**
+ * The summary, but only when it says something the KIND label does not.
+ *
+ * `panic` → "SOS triggered", `power_cut` → "external power lost", `ignition` → "ignition on": those
+ * strings take no payload parameters, which is precisely the sign that they carry no fact beyond
+ * the label. Rendering both cost a line and repeated the row. The six kinds that DO interpolate —
+ * speed against a limit, a zone's name and direction, volts, hours, litres — are the ones the
+ * founder was missing, and they are exactly the ones this returns.
+ */
+export function eventDetail(t: TFn, e: EventRow, opts: SummaryOpts = {}): string {
+  const d = eventSummaryT(e, opts)
+  if (d === null || Object.keys(d.params).length === 0) return ''
+  return localizedEventSummary(t, e, opts)
+}
+
 export function localizedEventSummary(t: TFn, e: EventRow, opts: SummaryOpts = {}): string {
   const d = eventSummaryT(e, opts)
   if (d === null) return eventSummary(e)

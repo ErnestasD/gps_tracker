@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+import { EVENT_KINDS } from '../src/lib/events.js'
 import de from '../src/i18n/de.json'
 import en from '../src/i18n/en.json'
 import lt from '../src/i18n/lt.json'
@@ -133,6 +134,43 @@ describe('i18n keys', () => {
       for (const b of plural) {
         const missing = REQUIRED[name].filter((form) => !keys.has(`${b}_${form}`))
         expect(missing, `${name}.json: ${b} is missing ${missing.join(', ')}`).toEqual([])
+      }
+    }
+  })
+})
+
+/**
+ * Template-literal keys, which the scanner above deliberately cannot see.
+ *
+ * `t(`events.k.${kind}`)` is invisible to a regex over literal `t('…')` calls, and that blind spot
+ * shipped a real defect: the code asked for `events.kind.<kind>`, which is a leaf STRING in every
+ * locale (the events page's column header), so i18next fell through to the default and showed a
+ * Lithuanian operator "overspeed" and "power_cut" in raw English. Nothing failed. The set of kinds
+ * is known at build time, so the cross-product can simply be asserted.
+ */
+const CATALOGS = { en, lt, pl, de }
+/** The keys `eventSummaryT` can return, i.e. the ones a template literal builds at runtime. */
+const SUMMARY_KEYS = [
+  'overspeed', 'low_battery', 'ignition_on', 'ignition_off', 'din_on', 'din_off',
+  'geofence', 'geofence_enter', 'geofence_exit', 'device_offline', 'panic', 'power_cut',
+  'fuel_theft', 'fuel_theft_vol',
+]
+
+describe('dynamic event keys', () => {
+  it('every event kind has a label in every locale', () => {
+    for (const [lang, cat] of Object.entries(CATALOGS)) {
+      const labels = (cat as { events?: { k?: Record<string, string> } }).events?.k ?? {}
+      for (const kind of EVENT_KINDS) {
+        expect(labels[kind], `${lang}: events.k.${kind}`).toBeTruthy()
+      }
+    }
+  })
+
+  it('every event summary has a string in every locale', () => {
+    for (const [lang, cat] of Object.entries(CATALOGS)) {
+      const s = (cat as { events?: { s?: Record<string, string> } }).events?.s ?? {}
+      for (const key of SUMMARY_KEYS) {
+        expect(s[key], `${lang}: events.s.${key}`).toBeTruthy()
       }
     }
   })

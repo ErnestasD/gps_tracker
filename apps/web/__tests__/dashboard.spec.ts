@@ -1,7 +1,8 @@
 import type { LiveEvent } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { areaPath, countDelta, dailyActiveDevices, dailyCounts, dailyKmSeries, dayStrInTz, donutSegments, eventSeverity, fleetCounts, hourInTz, hourlyBuckets, kindBreakdown, localDayStr, pctDelta } from '../src/lib/dashboard.js'
+import { areaPath, countDelta, dailyActiveDevices, dailyCounts, dailyKmSeries, dayStrInTz, donutSegments, fleetCounts, hourInTz, hourlyBuckets, kindBreakdown, localDayStr, pctDelta } from '../src/lib/dashboard.js'
+import { eventSeverity } from '../src/lib/events.js'
 
 const NOW = Date.UTC(2026, 6, 16, 12, 0, 0)
 const pos = (ageMs: number): LiveEvent => ({ deviceId: '1', accountId: 'a', fixTimeMs: NOW - ageMs, lat: 54, lon: 25, speed: 10, course: 0, satellites: 8, fixValid: true, ignition: true, priority: 0 })

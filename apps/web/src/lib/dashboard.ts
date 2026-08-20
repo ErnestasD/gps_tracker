@@ -25,14 +25,6 @@ export function fleetCounts(events: LiveEvent[], nowMs: number): FleetCounts {
   return out
 }
 
-export type EventSeverity = 'critical' | 'warning' | 'info'
-
-/** Severity mapping shared with the events page StatCards (panic/power_cut are life/asset-critical). */
-export function eventSeverity(kind: string): EventSeverity {
-  if (kind === 'panic' || kind === 'power_cut') return 'critical'
-  if (kind === 'overspeed' || kind === 'low_battery' || kind === 'device_offline') return 'warning'
-  return 'info'
-}
 
 /** Aggregate the mileage report's rows (day/deviceId/trips/distanceM) into per-day fleet km,
  *  ordered by day ascending. Garbage values coerce to 0 (jsonb rows are untyped). */
