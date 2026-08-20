@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Bell, Layers, Maximize2, Minimize2, PanelLeft, Pause, Play, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DeviceList } from '@/components/DeviceList'
@@ -19,7 +19,7 @@ import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
 import { getTrack, placeableFix, trackTimes } from '@/lib/telemetry'
-import { WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
+import { joinTail, lastKnownMs, WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 import { LiveSocket } from '@/lib/ws'
@@ -37,6 +37,9 @@ const socket = new LiveSocket({
 })
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+
+/** The tail is minutes of driving, not a day of it — a page this size is already generous. */
+const TAIL_LIMIT = 500
 
 export function MapPage() {
   const { t } = useTranslation()
@@ -223,36 +226,42 @@ export function MapPage() {
    * The 24-hour window is bucketed to five minutes so its key stays cacheable — otherwise every
    * tick re-downloads up to 10 000 rows. The cost was visible on a moving vehicle: the orange
    * history line stopped up to five minutes behind the marker and only caught up when the bucket
-   * turned over (founder-reported). This asks for the few rows that arrived AFTER the window and
-   * nothing else, so the line stays joined to the vehicle for the price of a handful of positions.
+   * turned over (founder-reported). This asks for the rows that arrived AFTER the newest one we
+   * hold, and nothing else.
    *
-   * `to` is read inside the query function rather than put in the key: the key must stay stable for
-   * the interval to be a refetch instead of a fresh, uncached query every twenty seconds.
+   * Four guards, each bought by a way this went wrong:
    *
-   * `from` is the END OF THE DATA WE HOLD, not the window's edge. Anchoring it to `trackWindow.to`
-   * opened a gap of up to five minutes every time the bucket turned over: the key changed to the
-   * new edge while the head query was still fetching, so the tail began after a stretch the head
-   * did not yet cover. Anchored to the last row we actually have, the two always meet.
+   *  - `TAIL_LIMIT`, because it inherited the head's 10 000-row page and only needed a handful.
+   *  - not while the head is TRUNCATED: the newest row we hold is then the 10 000th OLDEST, so the
+   *    "tail" would span most of the day, on its own full page, every twenty seconds. A truncated
+   *    head does not reach the window's end and the scrubber already says so.
+   *  - `refetchOnWindowFocus: false`, because query-core's focus listener fires BEFORE the page's
+   *    own catch-up: a laptop closed at 18:00 and opened at 08:00 refetched with the pre-sleep
+   *    anchor and pulled fourteen hours, while the head — its gap far past the placeholder's one
+   *    bucket — was momentarily undefined, so the map drew a tail-only track as if it were whole.
+   *  - a device-guarded placeholder, so the bucket turnover does not blank the tail for a round
+   *    trip and snap the line back to where the old head ended — the reported symptom, returning on
+   *    a five-minute cadence. Never bare `keepPreviousData`: that paints vehicle A's tail under B.
    */
-  const headEnd = useRef<number | null>(null)
+  const headPoints = track.data?.points ?? []
+  const headEnd = lastKnownMs(headPoints)
+  const headTruncated = track.data?.truncated === true
   const tail = useQuery({
     queryKey: ['track-tail', snap.selectedId, trackWindow.to],
-    queryFn: () => getTrack(snap.selectedId as string, { from: headEnd.current ?? trackWindow.to, to: Date.now() }),
-    enabled: snap.selectedId !== null && windowFor === snap.selectedId && !scrubbing,
+    queryFn: () => getTrack(snap.selectedId as string, { from: headEnd ?? trackWindow.to, to: Date.now() }, TAIL_LIMIT),
+    enabled: snap.selectedId !== null && windowFor === snap.selectedId && !scrubbing && !headTruncated,
     refetchInterval: 20_000,
+    refetchOnWindowFocus: false,
     staleTime: 0,
+    placeholderData: (prev, prevQuery) =>
+      (prevQuery?.queryKey as [string, string | null, number] | undefined)?.[1] === snap.selectedId ? prev : undefined,
   })
 
-  const trackPoints = useMemo(() => {
-    const head = track.data?.points ?? []
-    const last = head.length > 0 ? Date.parse(head[head.length - 1]!.fixTime) : -Infinity
-    headEnd.current = Number.isFinite(last) ? last : null
-    // strictly newer, so a row sitting exactly on the boundary is not drawn twice
-    const rest = (tail.data?.points ?? []).filter((p) => Date.parse(p.fixTime) > last)
-    return rest.length === 0 ? head : [...head, ...rest]
-  }, [track.data, tail.data])
-  // Parsed once for the whole page: the line and the scrubber both need the timestamps, and this
-  // window holds up to 10 000 rows.
+  const trackPoints = useMemo(
+    () => joinTail(track.data?.points ?? [], tail.data?.points ?? []),
+    [track.data, tail.data],
+  )
+  // Parsed once for the whole page: the line and the scrubber both need the timestamps.
   const trackTimestamps = useMemo(() => trackTimes(trackPoints), [trackPoints])
   const history = useMemo<GeoJSON.FeatureCollection>(
     () =>

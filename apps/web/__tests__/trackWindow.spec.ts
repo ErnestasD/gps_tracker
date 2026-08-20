@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { TrackPoint } from '../src/lib/telemetry'
-import { canScrub, firstPlaceBack, quickJumps, spanMinutes, windowAt, WINDOW_BUCKET_MS } from '../src/lib/trackWindow'
+import { canScrub, firstPlaceBack, joinTail, lastKnownMs, quickJumps, spanMinutes, windowAt, WINDOW_BUCKET_MS } from '../src/lib/trackWindow'
 
 const pt = (iso: string, fixValid = true): TrackPoint =>
   ({ fixTime: iso, lat: 54.7, lon: 25.3, speed: 0, course: 0, ignition: null, movement: null, fixValid })
@@ -135,5 +135,60 @@ describe('pairing points with pre-parsed timestamps', () => {
     const points = [pt('2026-08-18T13:00:00Z'), pt('2026-08-18T14:00:00Z')]
     const times = points.map((p) => Date.parse(p.fixTime))
     expect(firstPlaceBack(points, w, times)).toBe(firstPlaceBack(points, w))
+  })
+})
+
+/**
+ * Joining the tail — the rows that arrived after the 24-hour window closed.
+ *
+ * The window is bucketed to five minutes so its query key stays cacheable, which leaves the line's
+ * end up to five minutes behind a moving vehicle (founder-reported). The tail closes that gap; the
+ * join is where it can go wrong.
+ */
+describe('joinTail', () => {
+  const at = (iso: string) => pt(iso)
+
+  it('appends only rows strictly newer than the newest we hold', () => {
+    const head = [at('2026-08-20T10:00:00Z'), at('2026-08-20T10:05:00Z')]
+    const tail = [at('2026-08-20T10:05:00Z'), at('2026-08-20T10:06:00Z')] // boundary row repeats
+    expect(joinTail(head, tail).map((p) => p.fixTime)).toEqual([
+      '2026-08-20T10:00:00Z', '2026-08-20T10:05:00Z', '2026-08-20T10:06:00Z',
+    ])
+  })
+
+  it('returns the head itself when the tail adds nothing — same array, no needless redraw', () => {
+    const head = [at('2026-08-20T10:00:00Z')]
+    expect(joinTail(head, [])).toBe(head)
+    expect(joinTail(head, [at('2026-08-20T09:00:00Z')])).toBe(head)
+  })
+
+  it('an empty head takes the whole tail', () => {
+    const tail = [at('2026-08-20T10:00:00Z')]
+    expect(joinTail([], tail)).toEqual(tail)
+  })
+
+  it('one unparseable row at the end does not discard the tail forever', () => {
+    // `points[length-1]` blindly gave NaN, and every `t > NaN` is false — so the tail was dropped
+    // for as long as that row stayed last, and the line silently stopped growing.
+    const head = [at('2026-08-20T10:00:00Z'), at('not-a-date')]
+    const tail = [at('2026-08-20T10:06:00Z')]
+    expect(joinTail(head, tail)).toHaveLength(3)
+  })
+
+  it('a tail row with an unparseable timestamp is skipped, not appended blind', () => {
+    const head = [at('2026-08-20T10:00:00Z')]
+    expect(joinTail(head, [at('not-a-date'), at('2026-08-20T10:06:00Z')])).toHaveLength(2)
+  })
+})
+
+describe('lastKnownMs', () => {
+  it('scans backwards past unparseable rows', () => {
+    expect(lastKnownMs([pt('2026-08-20T10:00:00Z'), pt('nope'), pt('also-nope')]))
+      .toBe(Date.parse('2026-08-20T10:00:00Z'))
+  })
+
+  it('is null when there is nothing parseable at all', () => {
+    expect(lastKnownMs([])).toBeNull()
+    expect(lastKnownMs([pt('nope')])).toBeNull()
   })
 })

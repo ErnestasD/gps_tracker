@@ -54,6 +54,8 @@ export function emphasizeAdminBoundaries(map: mapboxgl.Map, theme: Theme): void 
   set('admin-1-boundary', 'line-opacity', 0.75)
 }
 
+const SHIELD_SCALE = 0.45
+
 /**
  * Scale a symbol size that may be a plain number OR a zoom expression.
  *
@@ -106,26 +108,29 @@ export function shrinkRoadShields(map: mapboxgl.Map): void {
   }
 }
 
-const SHIELD_SCALE = 0.45
-
 /**
  * Drop the traffic and incident data the fleet map deliberately does not show.
  *
- * Hiding the layers was not enough on two counts. The incident layers are named `incident-*`, not
- * `traffic-*`, so they were never hidden at all — they were merely empty, because this token has no
- * entitlement to `mapbox-incidents-v1`, which is where the founder's console 403s came from. And a
- * hidden layer still makes its source fetch tiles: bandwidth spent, and an error logged per tile,
- * on every pan.
+ * Hiding the layers left tiles being fetched: `SourceCache.update()` never consults whether a layer
+ * is visible, so an invisible layer downloads its source all the same — bandwidth spent on data we
+ * paint nowhere, and, from an origin the token does not allow-list, a 403 logged per tile.
  *
- * Removing the SOURCE stops the requests. Layers must go first — mapbox-gl refuses to remove a
- * source still in use — and every removal is guarded, so a style carrying neither is a no-op.
+ * Removing the SOURCE stops the requests. Layers go first (mapbox-gl refuses to remove a source
+ * still in use) and every step is guarded, so a style carrying neither is a no-op.
+ *
+ * The id sweep afterwards is not redundant. In `navigation-night-v1`, 22 layers carry `traffic` in
+ * their id but only 15 sit on `mapbox-traffic`: the one-way arrows and level-crossing symbols are
+ * drawn from `composite`, the basemap's own source, which must never be removed. Dropping sources
+ * alone therefore put those arrows BACK on a map they had been taken off — a silent partial revert
+ * of the declutter, in the commit that claimed to complete it.
  */
 export function dropTrafficSources(map: mapboxgl.Map): void {
   const style = map.getStyle()
   if (style === undefined) return
+  const layers = style.layers ?? []
   for (const sourceId of ['mapbox-traffic', 'mapbox-incidents']) {
     if (map.getSource(sourceId) === undefined) continue
-    for (const layer of style.layers ?? []) {
+    for (const layer of layers) {
       if ((layer as { source?: string }).source !== sourceId) continue
       try {
         map.removeLayer(layer.id)
@@ -137,6 +142,15 @@ export function dropTrafficSources(map: mapboxgl.Map): void {
       map.removeSource(sourceId)
     } catch {
       /* a layer we could not remove still holds it — leaving it costs only the old behaviour */
+    }
+  }
+  // …and hide what shares the basemap's source: visible clutter we cannot remove without it.
+  for (const layer of layers) {
+    if (!layer.id.includes('traffic') || map.getLayer(layer.id) === undefined) continue
+    try {
+      map.setLayoutProperty(layer.id, 'visibility', 'none')
+    } catch {
+      /* not a layer that takes visibility — ignore */
     }
   }
 }

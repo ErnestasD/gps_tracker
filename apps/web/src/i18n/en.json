@@ -564,7 +564,8 @@
       "off": "Off",
       "denied": "Permission denied — allow notifications in your browser settings.",
       "error": "Could not update notifications.",
-      "tenantWide": "Browser notifications are delivered per account, and your user is tenant-wide — it belongs to no single account, so there is nothing to subscribe. Use an account-scoped user, or e-mail and Telegram, which do reach tenant-wide users."
+      "tenantWide": "Browser notifications are delivered per account, and your user is tenant-wide — it belongs to no single account, so there is nothing to subscribe. Use an account-scoped user, or e-mail and Telegram, which do reach tenant-wide users.",
+      "needsWriter": "Browser notifications need an account manager role or above; your user may only read."
     },
     "display": {
       "title": "Display preferences",

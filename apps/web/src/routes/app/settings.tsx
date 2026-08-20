@@ -468,6 +468,9 @@ function DisplayPrefsSection() {
 
 /** Browser push opt-in (ADR-026): subscribe THIS browser to Web Push. Rules with a `webpush` channel
  * then fan out to every browser the account has enrolled. Per-device, not per-account. */
+/** device writes require account_manager+ (WRITE_POLICY.device) — the same list the API gates on. */
+const PUSH_ROLES = ['platform_admin', 'tsp_admin', 'account_manager']
+
 function PushSection() {
   const { t } = useTranslation()
   const [supported] = useState(pushSupported())
@@ -479,7 +482,15 @@ function PushSection() {
    * does a red line appear that says nothing about why. Asking for a permission we cannot use is
    * worse than not offering the control.
    */
-  const tenantWide = getCurrentUser()?.accountId === null
+  const user = getCurrentUser()
+  const tenantWide = user?.accountId === null
+  /**
+   * …and the API also requires a WRITER role. A viewer with a perfectly good account id still got
+   * the toggle, still got the browser's permission dialog, and still landed on a generic error —
+   * the same defect through the second of two doors, and the 403 carries no `detail` to explain
+   * itself. `/settings` has no role guard, so this is the only place that can say so.
+   */
+  const canPush = user !== null && user.accountId !== null && PUSH_ROLES.includes(user.role)
   const [enabled, setEnabled] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -512,8 +523,10 @@ function PushSection() {
       </div>
       <div className="space-y-3 p-4">
         <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.push.hint')}</p>
-        {tenantWide ? (
-          <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="push-tenant-wide">{t('settings.push.tenantWide')}</p>
+        {user !== null && !canPush ? (
+          <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="push-tenant-wide">
+            {tenantWide ? t('settings.push.tenantWide') : t('settings.push.needsWriter')}
+          </p>
         ) : !supported ? (
           <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="push-unsupported">{t('settings.push.unsupported')}</p>
         ) : (
