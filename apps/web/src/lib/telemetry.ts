@@ -182,19 +182,32 @@ const TRACK_LIMIT = 10_000
  * minute off "now" jumped the map half an hour into the past. Axis and payload must be the same
  * window, and the only way to guarantee that is to make it one value.
  */
-export async function getTrack(deviceId: string, window: { from: number; to: number }): Promise<{ points: TrackPoint[]; truncated: boolean }> {
+export async function getTrack(
+  deviceId: string,
+  window: { from: number; to: number },
+  limit = TRACK_LIMIT,
+): Promise<{ points: TrackPoint[]; truncated: boolean }> {
   const from = new Date(window.from)
   const to = new Date(window.to)
   const points = await getJson<TrackPoint[]>(
-    `/v1/devices/${encodeURIComponent(deviceId)}/positions?from=${from.toISOString()}&to=${to.toISOString()}&limit=${TRACK_LIMIT}`,
+    `/v1/devices/${encodeURIComponent(deviceId)}/positions?from=${from.toISOString()}&to=${to.toISOString()}&limit=${limit}`,
   )
   // A full page means there is more history than we asked for, and what we hold is the OLDER part.
   // Saying so beats silently pinning the scrubber, which is indistinguishable from a parked vehicle.
-  return { points, truncated: points.length >= TRACK_LIMIT }
+  return { points, truncated: points.length >= limit }
 }
 
-/** Only the points the map may draw — invariant I6: an invalid fix never places anything. */
-export const drawable = (points: readonly TrackPoint[]): TrackPoint[] => points.filter((p) => p.fixValid)
+/**
+ * Only the points the map may draw — invariant I6: an invalid fix never places anything.
+ *
+ * `fixValid` plus a null-island check, because the pipeline once said `true` for 0/0 with 37
+ * satellites and the vehicle appeared in the Gulf of Guinea. Fixed at the source, kept here because
+ * the stored rows outlive the fix.
+ */
+export const placeableFix = (p: { lat: number; lon: number; fixValid: boolean }): boolean =>
+  p.fixValid && !(p.lat === 0 && p.lon === 0)
+
+export const drawable = (points: readonly TrackPoint[]): TrackPoint[] => points.filter(placeableFix)
 
 /**
  * The point the scrubber is pointing at: the newest one at or before `atMs`.
@@ -219,7 +232,7 @@ export function placeAt(points: readonly TrackPoint[], atMs: number, times?: rea
     const t = ts?.[i] ?? Date.parse(p.fixTime)
     if (!Number.isFinite(t)) continue // one bad row must not truncate the scan
     if (t > atMs) break
-    if (p.fixValid) place = p
+    if (placeableFix(p)) place = p
   }
   return place
 }

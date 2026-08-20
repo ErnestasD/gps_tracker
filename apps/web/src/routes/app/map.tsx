@@ -18,8 +18,8 @@ import { fleetPanelCounts, type FleetFilter } from '@/lib/fleetFilter'
 import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
-import { getTrack, trackTimes } from '@/lib/telemetry'
-import { WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
+import { getTrack, placeableFix, trackTimes } from '@/lib/telemetry'
+import { joinTail, lastKnownMs, WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 import { LiveSocket } from '@/lib/ws'
@@ -37,6 +37,9 @@ const socket = new LiveSocket({
 })
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+
+/** The tail is minutes of driving, not a day of it — a page this size is already generous. */
+const TAIL_LIMIT = 500
 
 export function MapPage() {
   const { t } = useTranslation()
@@ -217,9 +220,48 @@ export function MapPage() {
     staleTime: WINDOW_BUCKET_MS,
     refetchOnWindowFocus: false,
   })
-  const trackPoints = useMemo(() => track.data?.points ?? [], [track.data])
-  // Parsed once for the whole page: the line and the scrubber both need the timestamps, and this
-  // window holds up to 10 000 rows.
+  /**
+   * The tail: everything since the window closed.
+   *
+   * The 24-hour window is bucketed to five minutes so its key stays cacheable — otherwise every
+   * tick re-downloads up to 10 000 rows. The cost was visible on a moving vehicle: the orange
+   * history line stopped up to five minutes behind the marker and only caught up when the bucket
+   * turned over (founder-reported). This asks for the rows that arrived AFTER the newest one we
+   * hold, and nothing else.
+   *
+   * Four guards, each bought by a way this went wrong:
+   *
+   *  - `TAIL_LIMIT`, because it inherited the head's 10 000-row page and only needed a handful.
+   *  - not while the head is TRUNCATED: the newest row we hold is then the 10 000th OLDEST, so the
+   *    "tail" would span most of the day, on its own full page, every twenty seconds. A truncated
+   *    head does not reach the window's end and the scrubber already says so.
+   *  - `refetchOnWindowFocus: false`, because query-core's focus listener fires BEFORE the page's
+   *    own catch-up: a laptop closed at 18:00 and opened at 08:00 refetched with the pre-sleep
+   *    anchor and pulled fourteen hours, while the head — its gap far past the placeholder's one
+   *    bucket — was momentarily undefined, so the map drew a tail-only track as if it were whole.
+   *  - a device-guarded placeholder, so the bucket turnover does not blank the tail for a round
+   *    trip and snap the line back to where the old head ended — the reported symptom, returning on
+   *    a five-minute cadence. Never bare `keepPreviousData`: that paints vehicle A's tail under B.
+   */
+  const headPoints = track.data?.points ?? []
+  const headEnd = lastKnownMs(headPoints)
+  const headTruncated = track.data?.truncated === true
+  const tail = useQuery({
+    queryKey: ['track-tail', snap.selectedId, trackWindow.to],
+    queryFn: () => getTrack(snap.selectedId as string, { from: headEnd ?? trackWindow.to, to: Date.now() }, TAIL_LIMIT),
+    enabled: snap.selectedId !== null && windowFor === snap.selectedId && !scrubbing && !headTruncated,
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: false,
+    staleTime: 0,
+    placeholderData: (prev, prevQuery) =>
+      (prevQuery?.queryKey as [string, string | null, number] | undefined)?.[1] === snap.selectedId ? prev : undefined,
+  })
+
+  const trackPoints = useMemo(
+    () => joinTail(track.data?.points ?? [], tail.data?.points ?? []),
+    [track.data, tail.data],
+  )
+  // Parsed once for the whole page: the line and the scrubber both need the timestamps.
   const trackTimestamps = useMemo(() => trackTimes(trackPoints), [trackPoints])
   const history = useMemo<GeoJSON.FeatureCollection>(
     () =>
@@ -234,7 +276,9 @@ export function MapPage() {
               // a field someone later trusts (`NaN ?? 0` is NaN — nullish, not falsy)
               trackPoints.map((p, i) => {
                 const t = trackTimestamps[i]
-                return { lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Number.isFinite(t) ? (t as number) : 0, speed: p.speed, movement: p.movement }
+                // placeableFix, not p.fixValid: a stored 0/0 marked valid would draw a line to the
+                // Gulf of Guinea and back (see liveStore.placeable)
+                return { lon: p.lon, lat: p.lat, fixValid: placeableFix(p), fixTimeMs: Number.isFinite(t) ? (t as number) : 0, speed: p.speed, movement: p.movement }
               }),
             ),
           },
