@@ -39,12 +39,40 @@ export function eventsQuery(f: EventFilters): string {
 
 export const listEvents = (f: EventFilters = {}) => getJson<EventRow[]>(`/v1/events${eventsQuery(f)}`)
 
+export type EventSeverity = 'critical' | 'warning' | 'info'
+
+/**
+ * The ONE severity mapping.
+ *
+ * It lived in `dashboard.ts` while five modules read it and two others quietly kept their own —
+ * the map ticker's (mine, last commit) and the events page's, which drove that page's badge, its
+ * severity filter AND its Critical count. One fuel-theft record could be red on the map and grey
+ * in the count meant to catch it. Here, beside the rest of the event semantics, so a kind whose
+ * severity is wrong is wrong once.
+ */
+export function eventSeverity(kind: string): EventSeverity {
+  if (kind === 'panic' || kind === 'power_cut') return 'critical'
+  if (kind === 'overspeed' || kind === 'low_battery' || kind === 'device_offline') return 'warning'
+  return 'info'
+}
+
+/**
+ * Severity as a Badge/dot tone.
+ *
+ * A THIN view over `eventSeverity`, never a table of its own.
+ */
+export const eventTone = (kind: string): 'danger' | 'warn' | 'default' => {
+  const s = eventSeverity(kind)
+  return s === 'critical' ? 'danger' : s === 'warning' ? 'warn' : 'default'
+}
+
 /** A short, human-readable one-line summary of an event's payload, per kind. Pure. */
 export function eventSummary(e: EventRow): string {
   const p = e.payload ?? {}
   switch (e.kind) {
     case 'overspeed':
-      return `${num(p['speedKmh'])} km/h > ${num(p['limitKmh'])}`
+      // a unit belongs to a value the device sent — the same rule `eventSummaryT` follows
+      return `${typeof p['speedKmh'] === 'number' ? `${num(p['speedKmh'])} km/h` : '—'} > ${num(p['limitKmh'])}`
     case 'low_battery':
       return `${num(p['volts'])} V < ${num(p['thresholdV'])}`
     case 'ignition':
@@ -80,7 +108,10 @@ export interface SummaryOpts {
  * unknown kinds / missing catalog entries so nothing regresses to an empty cell). */
 export function eventSummaryT(e: EventRow, opts: SummaryOpts = {}): { key: string; params: Record<string, string> } | null {
   const p = e.payload ?? {}
-  const speed = (v: unknown): string => (typeof v === 'number' && opts.fmtSpeed !== undefined ? opts.fmtSpeed(v) : `${num(v)} km/h`)
+  // A unit belongs to a value the device sent. Bolting "km/h" onto a missing one printed
+  // "— km/h > 56 mph" on an mph account: two unit systems in one line, one of them invented.
+  const speed = (v: unknown): string =>
+    typeof v !== 'number' ? num(v) : opts.fmtSpeed !== undefined ? opts.fmtSpeed(v) : `${v} km/h`
   switch (e.kind) {
     case 'overspeed':
       return { key: 'events.s.overspeed', params: { speed: speed(p['speedKmh']), limit: speed(p['limitKmh']) } }
@@ -121,6 +152,37 @@ export type TFn = (key: string, options?: Record<string, unknown>) => string
 /** Localized one-line event summary: eventSummaryT rendered through t(), with the pure
  * English eventSummary as the defaultValue fallback. Pass opts.fmtSpeed (useUnits().speed)
  * so overspeed summaries follow the display speed unit. */
+/**
+ * Keys whose string only restates the KIND label, in every language.
+ *
+ * A list, not a shape test. The first attempt asked "does the descriptor interpolate anything" —
+ * and `ignition` and `din_change` carry their fact in the KEY (`ignition_on` vs `ignition_off`,
+ * `din_on` vs `din_off`), so it hid the one thing the operator needs: whether the vehicle STARTED
+ * or STOPPED. Two of nine kinds, silently, in the branch whose whole point was that a row must say
+ * more than its own name.
+ *
+ * `panic` → "SOS triggered" under a badge reading "Panic", and `power_cut` → "external power lost"
+ * under "Power cut", genuinely add nothing. Nothing else belongs here.
+ */
+const REDUNDANT_SUMMARY = new Set(['events.s.panic', 'events.s.power_cut'])
+
+/** Does this rendered summary consist of nothing but placeholders? A row of "— · —" is the absence
+ *  of information wearing the shape of information. */
+const allPlaceholder = (params: Record<string, string>): boolean =>
+  Object.keys(params).length > 0 && Object.values(params).every((v) => v === '—')
+
+/**
+ * The summary, but only when it says something the KIND label does not.
+ *
+ * Used wherever the label is already on screen — the map ticker and the inspector — so a row is
+ * never two restatements of one word.
+ */
+export function eventDetail(t: TFn, e: EventRow, opts: SummaryOpts = {}): string {
+  const d = eventSummaryT(e, opts)
+  if (d === null || REDUNDANT_SUMMARY.has(d.key) || allPlaceholder(d.params)) return ''
+  return localizedEventSummary(t, e, opts)
+}
+
 export function localizedEventSummary(t: TFn, e: EventRow, opts: SummaryOpts = {}): string {
   const d = eventSummaryT(e, opts)
   if (d === null) return eventSummary(e)

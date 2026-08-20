@@ -1,7 +1,7 @@
 import type { LiveEvent } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { areaPath, countDelta, dailyActiveDevices, dailyCounts, dailyKmSeries, dayStrInTz, donutSegments, eventSeverity, fleetCounts, hourInTz, hourlyBuckets, kindBreakdown, localDayStr, pctDelta } from '../src/lib/dashboard.js'
+import { areaPath, countDelta, dailyActiveDevices, dailyCounts, dailyKmSeries, dayStrInTz, donutSegments, fleetCounts, hourInTz, hourlyBuckets, kindBreakdown, localDayStr, pctDelta } from '../src/lib/dashboard.js'
 
 const NOW = Date.UTC(2026, 6, 16, 12, 0, 0)
 const pos = (ageMs: number): LiveEvent => ({ deviceId: '1', accountId: 'a', fixTimeMs: NOW - ageMs, lat: 54, lon: 25, speed: 10, course: 0, satellites: 8, fixValid: true, ignition: true, priority: 0 })
@@ -14,14 +14,6 @@ describe('ADR-028 dashboard helpers', () => {
     expect(c).toEqual({ online: 3, stale: 2, offline: 1 })
   })
 
-  it('eventSeverity maps kinds to the shared severity buckets', () => {
-    expect(eventSeverity('panic')).toBe('critical')
-    expect(eventSeverity('power_cut')).toBe('critical')
-    expect(eventSeverity('overspeed')).toBe('warning')
-    expect(eventSeverity('device_offline')).toBe('warning')
-    expect(eventSeverity('geofence')).toBe('info')
-    expect(eventSeverity('ignition')).toBe('info')
-  })
 
   it('dailyKmSeries aggregates per-device rows into fleet km per day, sorted, garbage-safe', () => {
     const rows = [

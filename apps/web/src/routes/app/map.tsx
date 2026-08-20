@@ -13,13 +13,14 @@ import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { listDrivers } from '@/lib/drivers'
-import { listEvents } from '@/lib/events'
+import { eventDetail, eventTone, listEvents } from '@/lib/events'
 import { fleetPanelCounts, type FleetFilter } from '@/lib/fleetFilter'
 import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
 import { getTrack, trackTimes } from '@/lib/telemetry'
 import { WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
+import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 import { LiveSocket } from '@/lib/ws'
 import { router } from '@/router'
@@ -40,6 +41,7 @@ const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', feature
 export function MapPage() {
   const { t } = useTranslation()
   const { dt } = useFmt()
+  const units = useUnits()
   const snap = useSyncExternalStore(liveStore.subscribe, liveStore.getSnapshot)
   // the device registry is the authoritative bound (E03-3): reconcile the live set to it so a
   // device retired/removed here or in another tab drops off the map instead of decaying to
@@ -437,14 +439,33 @@ export function MapPage() {
                 <Bell className="h-3.5 w-3.5 text-muted" aria-hidden />
                 <span className="text-[11px] font-medium text-text">{t('map.eventFeed')}</span>
               </div>
-              <ul className="max-h-40 overflow-y-auto">
+              <ul className="max-h-48 overflow-y-auto">
                 {(eventsQ.data ?? []).map((e) => (
                   <li key={e.id} className="border-b border-line/60 px-3 py-1.5 text-[11px] last:border-b-0">
                     <div className="flex items-center gap-1.5">
+                      <span
+                        className={cn(
+                          'h-1.5 w-1.5 shrink-0 rounded-full',
+                          eventTone(e.kind) === 'danger' ? 'bg-danger' : eventTone(e.kind) === 'warn' ? 'bg-warn' : 'bg-muted/60',
+                        )}
+                        aria-hidden
+                      />
                       <span className="min-w-0 flex-1 truncate font-medium text-text">{nameOf(e.deviceId)}</span>
-                      <span className="shrink-0 text-muted">{t(`events.kind.${e.kind}`, { defaultValue: e.kind })}</span>
+                      <span className="shrink-0 tabular-nums text-muted">{dt(e.at)}</span>
                     </div>
-                    <div className="truncate text-muted">{dt(e.at)}</div>
+                    {/* The KIND — severity carried by colour alone fails WCAG 1.4.1, and a screen
+                        reader would otherwise hear "10.52 V < 11" with no word for what happened —
+                        then the payload, which is what the founder was missing. Clamped rather than
+                        truncated: the detail comes last, so `truncate` ellipsized exactly the half
+                        being added. Only `panic` and `power_cut` have a summary that restates their
+                        label; the other seven all say something it does not. */}
+                    <div className="line-clamp-2 pl-3 text-muted">
+                      <span className="text-text">{t(`events.k.${e.kind}`, { defaultValue: e.kind })}</span>
+                      {(() => {
+                        const detail = eventDetail(t, e, { fmtSpeed: units.speed, fmtVolume: units.volumeL })
+                        return detail === '' ? null : ` · ${detail}`
+                      })()}
+                    </div>
                   </li>
                 ))}
               </ul>

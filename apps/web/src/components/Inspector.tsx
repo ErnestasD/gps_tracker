@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { Device } from '@/lib/devices'
-import { listEvents } from '@/lib/events'
+import { eventDetail, eventTone, listEvents } from '@/lib/events'
 import type { GeofenceView } from '@orbetra/shared'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
@@ -529,6 +529,7 @@ function ParamsTab({
 function EventsTab({ deviceId }: { deviceId: string }) {
   const { t } = useTranslation()
   const { dt } = useFmt()
+  const u = useUnits()
   const q = useQuery({
     queryKey: ['events', 'device', deviceId],
     queryFn: () => listEvents({ deviceId, limit: 15 }),
@@ -542,19 +543,39 @@ function EventsTab({ deviceId }: { deviceId: string }) {
 
   return (
     <ul className="space-y-2" data-testid="events-tab">
-      {rows.map((e) => (
-        <li key={e.id} className="rounded-card border border-line p-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <Badge variant={e.kind === 'panic' || e.kind === 'power_cut' ? 'danger' : 'default'}>
-              {t(`events.kind.${e.kind}`, { defaultValue: e.kind })}
-            </Badge>
-            <span className="shrink-0 text-[10px] tabular-nums text-muted">{dt(e.at)}</span>
-          </div>
-          {e.acknowledgedAt !== null && (
-            <p className="mt-1 text-[11px] text-muted">{t('map.inspector.acknowledged')}</p>
-          )}
-        </li>
-      ))}
+      {rows.map((e) => {
+        /**
+         * The payload, not just the kind.
+         *
+         * "overspeed · 12:58" was everything this panel said, while the record itself carried
+         * `speedKmh: 91, limitKmh: 90` and the rule that fired — and a geofence event carried the
+         * zone's NAME and whether the vehicle entered or left it. The formatter that renders all of
+         * that already existed for the events page, localized and unit-aware; this panel simply was
+         * not calling it.
+         *
+         * `eventDetail` rather than the raw summary because the KIND is already on the badge beside
+         * it: the same rule the map ticker uses, so the two cannot describe one event differently.
+         */
+        const detail = eventDetail(t, e, { fmtSpeed: u.speed, fmtVolume: u.volumeL })
+        return (
+          <li key={e.id} className="rounded-card border border-line p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <Badge variant={eventTone(e.kind)}>{t(`events.k.${e.kind}`, { defaultValue: e.kind })}</Badge>
+              <span className="shrink-0 text-[10px] tabular-nums text-muted">{dt(e.at)}</span>
+            </div>
+            {detail !== '' && <p className="mt-1 text-xs text-text">{detail}</p>}
+            {/* The rule someone configured, when the payload names one — "why did this fire"
+                answered in a glance. Skipped when it merely repeats the kind: the offline sweeper
+                writes the literal string 'device_offline' there, which is not a rule anyone wrote. */}
+            {typeof e.payload?.['rule'] === 'string' && e.payload['rule'] !== e.kind && (
+              <p className="text-[11px] text-muted">{String(e.payload['rule'])}</p>
+            )}
+            {e.acknowledgedAt !== null && (
+              <p className="mt-1 text-[11px] text-muted">{t('map.inspector.acknowledged')}</p>
+            )}
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -586,7 +607,7 @@ function FencesTab({
           />
           <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: g.color }} aria-hidden />
           <span className="min-w-0 flex-1 truncate text-text">{g.name}</span>
-          <span className="shrink-0 text-[11px] text-muted">{t(`geofences.kind.${g.kind}`, { defaultValue: g.kind })}</span>
+          <span className="shrink-0 text-[11px] text-muted">{t(`geofences.${g.kind}`, { defaultValue: g.kind })}</span>
         </label>
       ))}
     </div>

@@ -8,7 +8,7 @@ import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
-import { EVENT_KINDS, listEvents, localizedEventSummary, type EventRow } from '@/lib/events'
+import { EVENT_KINDS, eventSeverity, listEvents, localizedEventSummary, type EventRow, type EventSeverity } from '@/lib/events'
 import { dayEndIso, dayStartIso } from '@/lib/playback'
 import { getDisplayPrefs, onPrefsChange } from '@/lib/prefs'
 import { useUnits } from '@/lib/units'
@@ -22,15 +22,11 @@ const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
 
 /** Severity per kind — safety-critical events read as danger; degraded ones warn; the rest inform.
  * Drives both the badge tone and the StatCard counts over the currently loaded rows. */
-type Severity = 'critical' | 'warning' | 'info'
-const SEVERITY: Record<string, Severity> = {
-  panic: 'critical',
-  power_cut: 'critical',
-  overspeed: 'warning',
-  low_battery: 'warning',
-  device_offline: 'warning',
-}
-const severityOf = (kind: string): Severity => SEVERITY[kind] ?? 'info'
+/** Severity comes from `lib/events`, not from a table here. This page had its own, driving the
+ *  badge, the filter AND the Critical count — so one record could be an alarm on the map and
+ *  absent from the very count meant to catch it. */
+type Severity = EventSeverity
+const severityOf = eventSeverity
 const TONE: Record<Severity, 'danger' | 'warning' | 'info'> = { critical: 'danger', warning: 'warning', info: 'info' }
 const SEV_ICON: Record<Severity, typeof Activity> = { critical: AlertOctagon, warning: TrendingUp, info: Activity }
 const SEV_COLOR: Record<Severity, string> = { critical: 'var(--admin-danger)', warning: 'var(--admin-warning)', info: 'var(--admin-info)' }
