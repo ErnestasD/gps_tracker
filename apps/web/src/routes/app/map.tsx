@@ -225,7 +225,40 @@ export function MapPage() {
     staleTime: WINDOW_BUCKET_MS,
     refetchOnWindowFocus: false,
   })
-  const trackPoints = useMemo(() => track.data?.points ?? [], [track.data])
+  /**
+   * The tail: everything since the window closed.
+   *
+   * The 24-hour window is bucketed to five minutes so its key stays cacheable — otherwise every
+   * tick re-downloads up to 10 000 rows. The cost was visible on a moving vehicle: the orange
+   * history line stopped up to five minutes behind the marker and only caught up when the bucket
+   * turned over (founder-reported). This asks for the few rows that arrived AFTER the window and
+   * nothing else, so the line stays joined to the vehicle for the price of a handful of positions.
+   *
+   * `to` is read inside the query function rather than put in the key: the key must stay stable for
+   * the interval to be a refetch instead of a fresh, uncached query every twenty seconds.
+   *
+   * `from` is the END OF THE DATA WE HOLD, not the window's edge. Anchoring it to `trackWindow.to`
+   * opened a gap of up to five minutes every time the bucket turned over: the key changed to the
+   * new edge while the head query was still fetching, so the tail began after a stretch the head
+   * did not yet cover. Anchored to the last row we actually have, the two always meet.
+   */
+  const headEnd = useRef<number | null>(null)
+  const tail = useQuery({
+    queryKey: ['track-tail', snap.selectedId, trackWindow.to],
+    queryFn: () => getTrack(snap.selectedId as string, { from: headEnd.current ?? trackWindow.to, to: Date.now() }),
+    enabled: snap.selectedId !== null && windowFor === snap.selectedId && !scrubbing,
+    refetchInterval: 20_000,
+    staleTime: 0,
+  })
+
+  const trackPoints = useMemo(() => {
+    const head = track.data?.points ?? []
+    const last = head.length > 0 ? Date.parse(head[head.length - 1]!.fixTime) : -Infinity
+    headEnd.current = Number.isFinite(last) ? last : null
+    // strictly newer, so a row sitting exactly on the boundary is not drawn twice
+    const rest = (tail.data?.points ?? []).filter((p) => Date.parse(p.fixTime) > last)
+    return rest.length === 0 ? head : [...head, ...rest]
+  }, [track.data, tail.data])
   // Parsed once for the whole page: the line and the scrubber both need the timestamps, and this
   // window holds up to 10 000 rows.
   const trackTimestamps = useMemo(() => trackTimes(trackPoints), [trackPoints])
