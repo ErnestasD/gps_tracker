@@ -110,7 +110,7 @@ export function ShareCard({ device }: { device: Device }) {
           <div className="rounded-card border border-line bg-surface2 p-3" data-testid="share-fresh">
             <p className="mb-1 text-xs text-muted">{t('devices.share.freshHint')}</p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 overflow-x-auto whitespace-nowrap text-xs">{freshUrl}</code>
+              <code className="scroll-strip flex-1 overflow-x-auto whitespace-nowrap text-xs">{freshUrl}</code>
               <Button size="sm" variant="ghost" onClick={copy} data-testid="share-copy">
                 {copied ? t('devices.share.copied') : t('devices.share.copy')}
               </Button>

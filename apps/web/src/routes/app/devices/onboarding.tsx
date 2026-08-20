@@ -188,7 +188,7 @@ function SmsRow({ label, text, copied, onCopy, testid, copyLabel, copiedLabel }:
     <div className="space-y-1">
       <div className="text-xs font-medium text-muted">{label}</div>
       <div className="flex items-center gap-2">
-        <code className="flex-1 overflow-x-auto rounded-card border border-line bg-surface px-2 py-1.5 font-mono text-xs text-text" data-testid={testid}>{text}</code>
+        <code className="scroll-strip flex-1 overflow-x-auto rounded-card border border-line bg-surface px-2 py-1.5 font-mono text-xs text-text" data-testid={testid}>{text}</code>
         <Button variant="secondary" size="sm" onClick={onCopy}>{copied ? copiedLabel : copyLabel}</Button>
       </div>
     </div>

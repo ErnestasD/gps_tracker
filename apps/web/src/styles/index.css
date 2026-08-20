@@ -243,3 +243,23 @@ summary {
 .auth-scope .auth-trial:hover {
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 80%, #fff) 0%, var(--accent) 100%);
 }
+
+/**
+ * A strip that scrolls without a scrollbar sitting on top of what it scrolls.
+ *
+ * The inspector's tab row is ~30 px tall, and a native horizontal scrollbar takes a third of that
+ * and paints straight over the labels — founder-reported from the live map, where "Komandos" and
+ * "Nustatymai" were half-covered by it. Hiding it is the whole fix: the affordance is the tab that
+ * is visibly cut off at the edge, which is the same signal a scrollbar was giving and does not cost
+ * any of the row.
+ *
+ * Deliberately NOT applied to the wide tables elsewhere in the app: their scrollbar sits below the
+ * content rather than on it, and there it is the only thing saying the table continues sideways.
+ */
+.scroll-strip {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+.scroll-strip::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
+}

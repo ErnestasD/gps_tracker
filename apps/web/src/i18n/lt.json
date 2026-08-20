@@ -461,7 +461,8 @@
       "eventsError": "Nepavyko įkelti įvykių.",
       "noEvents": "Šis įrenginys įvykių neturi.",
       "acknowledged": "Patvirtinta",
-      "fencesHint": "Pasirinkite, kurias geozonas piešti žemėlapyje."
+      "fencesHint": "Pasirinkite, kurias geozonas piešti žemėlapyje.",
+      "tabs": "Įrenginio skydeliai"
     },
     "title": "Gyvas žemėlapis",
     "toggleList": "Rodyti arba slėpti įrenginių sąrašą",

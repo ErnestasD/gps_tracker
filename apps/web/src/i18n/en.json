@@ -461,7 +461,8 @@
       "eventsError": "Could not load the events.",
       "noEvents": "No events for this device.",
       "acknowledged": "Acknowledged",
-      "fencesHint": "Choose which zones the map draws."
+      "fencesHint": "Choose which zones the map draws.",
+      "tabs": "Device panels"
     },
     "title": "Live map",
     "toggleList": "Show or hide the fleet list",
