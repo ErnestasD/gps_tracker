@@ -462,7 +462,8 @@
       "noEvents": "No events for this device.",
       "acknowledged": "Acknowledged",
       "fencesHint": "Choose which zones the map draws.",
-      "tabs": "Device panels"
+      "tabs": "Device panels",
+      "historyAt": "History: showing the state at {{when}}"
     },
     "title": "Live map",
     "toggleList": "Show or hide the fleet list",

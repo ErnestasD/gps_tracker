@@ -1,4 +1,4 @@
-import { Activity, Bell, Crosshair, Gauge, Radio, Route as RouteIcon, Satellite, Shield, SlidersHorizontal, Terminal, X } from 'lucide-react'
+import { Activity, Bell, Crosshair, Gauge, History, Radio, Route as RouteIcon, Satellite, Shield, SlidersHorizontal, Terminal, X } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -56,6 +56,7 @@ export function Inspector({
   onFollow,
   onTrail,
   onClose,
+  scrubAt = null,
 }: {
   live: DeviceLive
   /** The registry row, when we have it. Absent ⇒ only the overview is meaningful. */
@@ -72,8 +73,12 @@ export function Inspector({
   onFollow: (v: boolean) => void
   onTrail: (v: boolean) => void
   onClose: () => void
+  /** ISO instant the timeline scrubber points at, or null when live. Non-null switches the
+   *  telemetry query to "the newest report at-or-before this moment" — the panel becomes history. */
+  scrubAt?: string | null
 }) {
   const { t } = useTranslation()
+  const { dt: dtFmt } = useFmt()
   const [tab, setTab] = useState<InspectorTab>('overview')
   // selecting another vehicle returns to its position, rather than dropping the operator into a
   // terminal for a device they have not looked at yet
@@ -84,9 +89,13 @@ export function Inspector({
   }
 
   const telemetry = useQuery({
-    queryKey: ['telemetry', live.ev.deviceId],
-    queryFn: () => getTelemetry(live.ev.deviceId),
-    refetchInterval: 30_000,
+    // scrubAt rides in the KEY: reading the past and reading the present are different queries,
+    // and keepPreviousData keeps the panel steady while the operator drags the scrubber
+    queryKey: ['telemetry', live.ev.deviceId, scrubAt ?? 'live'],
+    queryFn: () => getTelemetry(live.ev.deviceId, scrubAt),
+    placeholderData: (prev) => prev,
+    // a historical moment never changes — poll only while live
+    refetchInterval: scrubAt != null ? false : 30_000,
   })
   const latest = hasTelemetry(telemetry.data) ? telemetry.data : undefined
 
@@ -127,6 +136,17 @@ export function Inspector({
         onClose={onClose}
       />
       <TabStrip tabs={tabs} active={effective} onSelect={setTab} />
+      {/* the panel is showing the PAST — without this line a scrubbed overview reads as a live
+          vehicle that has quietly stopped updating */}
+      {scrubAt != null && (
+        <div
+          className="flex items-center gap-1.5 border-b border-line bg-warn/10 px-3 py-1 text-[11px] text-warn"
+          data-testid="inspector-history"
+        >
+          <History className="h-3 w-3 shrink-0" aria-hidden />
+          {t('map.inspector.historyAt', { when: dtFmt(scrubAt) })}
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {effective === 'overview' && (
           <OverviewTab

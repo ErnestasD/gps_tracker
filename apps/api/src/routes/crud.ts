@@ -860,7 +860,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const device = await db.devices.get(scopeOf(auth(c)), id(c)) // scope gate FIRST (404 else)
         if (device === null) return problem(c, 404, 'Not Found')
         if (deps.pool === undefined) return problem(c, 503, 'Unavailable', 'positions store not configured')
-        const latest = await readLatestTelemetry(deps.pool, device.id)
+        // ?at=ISO → the newest row at-or-before that instant (scrubber follow); absent → latest
+        const latest = await readLatestTelemetry(deps.pool, device.id, c.req.query('at'))
         // a device that has never reported is a real answer, not a 404: the UI says "nothing yet"
         return json(c, latest ?? { empty: true })
       } },

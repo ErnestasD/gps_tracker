@@ -462,7 +462,8 @@
       "noEvents": "Šis įrenginys įvykių neturi.",
       "acknowledged": "Patvirtinta",
       "fencesHint": "Pasirinkite, kurias geozonas piešti žemėlapyje.",
-      "tabs": "Įrenginio skydeliai"
+      "tabs": "Įrenginio skydeliai",
+      "historyAt": "Istorija: rodoma {{when}} būsena"
     },
     "title": "Gyvas žemėlapis",
     "toggleList": "Rodyti arba slėpti įrenginių sąrašą",

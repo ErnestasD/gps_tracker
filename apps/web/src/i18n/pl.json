@@ -462,7 +462,8 @@
       "noEvents": "Brak zdarzeń dla tego urządzenia.",
       "acknowledged": "Potwierdzone",
       "fencesHint": "Wybierz, które strefy rysuje mapa.",
-      "tabs": "Panele urządzenia"
+      "tabs": "Panele urządzenia",
+      "historyAt": "Historia: stan z {{when}}"
     },
     "title": "Mapa na żywo",
     "toggleList": "Pokaż lub ukryj listę pojazdów",

@@ -26,8 +26,10 @@ export interface LatestTelemetry {
   attrs: Record<string, unknown>
 }
 
-export const getTelemetry = (deviceId: string) =>
-  getJson<LatestTelemetry | { empty: true }>(`/v1/devices/${encodeURIComponent(deviceId)}/telemetry`)
+export const getTelemetry = (deviceId: string, at?: string | null) =>
+  getJson<LatestTelemetry | { empty: true }>(
+    `/v1/devices/${encodeURIComponent(deviceId)}/telemetry${at != null ? `?at=${encodeURIComponent(at)}` : ''}`,
+  )
 
 export const hasTelemetry = (t: LatestTelemetry | { empty: true } | undefined): t is LatestTelemetry =>
   t !== undefined && !('empty' in t)

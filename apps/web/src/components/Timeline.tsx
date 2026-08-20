@@ -32,6 +32,35 @@ import { cn } from '@/lib/utils'
 const REPLAY_STEP_MIN = 6
 const REPLAY_TICK_MS = 90
 
+/** An event pin on the track (SoundCloud-style): the page maps its events query to this. */
+export interface TimelineEvent {
+  id: string
+  kind: string
+  atMs: number
+}
+
+/**
+ * Kind → pin colour. Literal hexes, not theme tokens: two kinds must never collapse into one
+ * colour because a palette happens to reuse a token, and these must read on both themes.
+ * Severity still rhymes with eventSeverity(): reds are critical, ambers warning, cool hues info.
+ */
+const KIND_COLOR: Record<string, string> = {
+  overspeed: '#ef4444',
+  panic: '#b91c1c',
+  power_cut: '#f97316',
+  fuel_theft: '#f43f5e',
+  low_battery: '#eab308',
+  geofence: '#8b5cf6',
+  ignition: '#22c55e',
+  din_change: '#06b6d4',
+  device_offline: '#64748b',
+}
+const FALLBACK_PIN = '#94a3b8'
+
+/** Axis density: minor tick / label cadence by span. A 24 h span gets an hourly grid with a
+ * label every 3 h — the four-labels-per-day axis read as decoration, not as an instrument. */
+const tickStepMin = (spanMin: number) => (spanMin >= 1440 ? 60 : spanMin >= 360 ? 30 : 15)
+const labelStepMin = (spanMin: number) => (spanMin >= 1440 ? 180 : spanMin >= 360 ? 60 : 30)
 
 export function Timeline({
   deviceId,
@@ -43,6 +72,8 @@ export function Timeline({
   stale = false,
   truncated,
   onScrub,
+  events = [],
+  onScrubTime,
 }: {
   /** null ⇒ nothing selected: the bar stays, disabled, rather than vanishing. */
   deviceId: string | null
@@ -64,6 +95,12 @@ export function Timeline({
   truncated: boolean
   /** null ⇒ back to live, 'unknown' ⇒ a moment we hold no position for: hold, never fall back. */
   onScrub: (point: ScrubState) => void
+  /** The window's events, drawn as coloured pins on the track; clicking one scrubs to it. */
+  events?: readonly TimelineEvent[]
+  /** The scrubbed instant as ISO, null when live — for the page to replay OTHER data (the
+   *  inspector's parameters) at the same moment. Separate from onScrub because a no-fix moment
+   *  has no place but very much has a time. */
+  onScrubTime?: (iso: string | null) => void
 }) {
   const { t } = useTranslation()
   const { dt } = useFmt()
@@ -90,6 +127,7 @@ export function Timeline({
     // clamped, so no caller can name a moment outside the window the points were fetched for
     const minutes = Math.min(spanMin, Math.max(0, rawMinutes))
     setBack(minutes)
+    onScrubTime?.(minutes === 0 ? null : new Date(window.to - minutes * 60_000).toISOString())
     if (minutes === 0) {
       onScrub(null)
       return
@@ -155,6 +193,26 @@ export function Timeline({
   const stamp = dt(new Date(atMs).toISOString())
   // O(n) over up to 10 000 points, and this component re-renders at the store's 1 Hz cadence
   const valid = useMemo(() => points.filter((p) => p.fixValid).length, [points])
+
+  // hour grid + label positions, both anchored to the SAME window as the payload (see `window`)
+  const ticks = useMemo(() => {
+    const step = tickStepMin(spanMin)
+    const label = labelStepMin(spanMin)
+    const out: { m: number; pct: number; labeled: boolean }[] = []
+    for (let m = step; m < spanMin; m += step) out.push({ m, pct: ((spanMin - m) / spanMin) * 100, labeled: m % label === 0 })
+    return out
+  }, [spanMin])
+
+  // event pins, clamped to the window: the feed can hand back a row a bucket newer than `to`
+  const pins = useMemo(() => {
+    const span = window.to - window.from
+    if (span <= 0) return []
+    return events
+      .filter((e) => e.atMs >= window.from && e.atMs <= window.to)
+      .map((e) => ({ ...e, pct: ((e.atMs - window.from) / span) * 100, color: KIND_COLOR[e.kind] ?? FALLBACK_PIN }))
+  }, [events, window])
+  // the legend names only the kinds actually on the track — a nine-entry key for two pins is noise
+  const legend = useMemo(() => [...new Set(pins.map((p) => p.kind))], [pins])
 
   return (
     <div
@@ -242,6 +300,16 @@ export function Timeline({
               className={cn('pointer-events-none absolute inset-y-0 left-0 h-1.5 rounded-full', back === 0 ? 'bg-accent' : 'bg-warn')}
               style={{ width: `${pct}%` }}
             />
+            {/* hour grid — under the input so it never eats a drag */}
+            <div className="pointer-events-none absolute inset-y-0 left-0 right-0" aria-hidden>
+              {ticks.map((tk) => (
+                <span
+                  key={tk.m}
+                  className={cn('absolute top-1/2 w-px -translate-y-1/2 bg-line', tk.labeled ? 'h-2.5' : 'h-1.5 opacity-60')}
+                  style={{ left: `${tk.pct}%` }}
+                />
+              ))}
+            </div>
             <input
               type="range"
               min={0}
@@ -260,14 +328,50 @@ export function Timeline({
               disabled={disabled}
               className="absolute inset-0 h-1.5 w-full cursor-pointer appearance-none bg-transparent accent-[var(--admin-brand)] disabled:cursor-not-allowed"
             />
+            {/* event pins ride ABOVE the input: a pin is a destination, so clicking it scrubs
+                there. They are 4 px wide — narrow enough that a drag still lands on the track. */}
+            {pins.map((ev) => (
+              <button
+                key={ev.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  setReplaying(false)
+                  scrub(Math.round((window.to - ev.atMs) / 60_000))
+                }}
+                title={`${t(`events.k.${ev.kind}`)} · ${dt(new Date(ev.atMs).toISOString())}`}
+                aria-label={`${t(`events.k.${ev.kind}`)} · ${dt(new Date(ev.atMs).toISOString())}`}
+                data-testid="timeline-pin"
+                data-kind={ev.kind}
+                className="absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-surface transition-transform hover:scale-125 disabled:cursor-not-allowed"
+                style={{ left: `${ev.pct}%`, backgroundColor: ev.color }}
+              />
+            ))}
           </div>
 
-          <div className="mt-1 hidden justify-between text-[10px] text-muted sm:flex">
-            {[1, 0.75, 0.5, 0.25].map((f) => (
-              <span key={f}>{t('map.timeline.hoursAgo', { hours: Math.round((spanMin / 60) * f) })}</span>
+          {/* axis labels sit at their true positions, not justified into even gaps */}
+          <div className="relative mt-1 hidden h-3.5 text-[10px] text-muted sm:block" aria-hidden>
+            {ticks.filter((tk) => tk.labeled).map((tk) => (
+              <span key={tk.m} className="absolute -translate-x-1/2 tabular-nums" style={{ left: `${tk.pct}%` }}>
+                {tk.m % 60 === 0 ? t('map.timeline.quick.hours', { hours: tk.m / 60 }) : t('map.timeline.quick.minutes', { minutes: tk.m })}
+              </span>
             ))}
-            <span>{t('map.timeline.now')}</span>
+            <span className="absolute left-0 tabular-nums">
+              {spanMin % 60 === 0 ? t('map.timeline.quick.hours', { hours: spanMin / 60 }) : t('map.timeline.quick.minutes', { minutes: spanMin })}
+            </span>
+            <span className="absolute right-0">{t('map.timeline.now')}</span>
           </div>
+
+          {legend.length > 0 && (
+            <div className="mt-0.5 hidden flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted md:flex" data-testid="timeline-legend">
+              {legend.map((k) => (
+                <span key={k} className="inline-flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: KIND_COLOR[k] ?? FALLBACK_PIN }} aria-hidden />
+                  {t(`events.k.${k}`)}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="hidden shrink-0 items-center gap-1 md:flex">

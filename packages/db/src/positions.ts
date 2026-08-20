@@ -169,7 +169,9 @@ export interface LatestTelemetry {
   attrs: Record<string, unknown>
 }
 
-export async function readLatestTelemetry(pool: Pool, deviceId: bigint): Promise<LatestTelemetry | null> {
+/** `at` (ISO, optional): the newest row AT OR BEFORE that instant — the timeline's own rule
+ * ("at 14:32 the vehicle was where it last reported"), so the inspector can follow the scrubber. */
+export async function readLatestTelemetry(pool: Pool, deviceId: bigint, at?: string): Promise<LatestTelemetry | null> {
   const res = await pool.query<{
     fix_time: Date
     server_time: Date
@@ -187,9 +189,9 @@ export async function readLatestTelemetry(pool: Pool, deviceId: bigint): Promise
   }>(
     `SELECT fix_time, server_time, lat, lon, speed, course, altitude, satellites, fix_valid,
             ignition, movement, odometer_m::text, attrs
-       FROM positions WHERE device_id = $1
+       FROM positions WHERE device_id = $1${isPgSafeDate(at) ? ' AND fix_time <= $2' : ''}
       ORDER BY fix_time DESC, rec_hash DESC LIMIT 1`,
-    [deviceId.toString()],
+    isPgSafeDate(at) ? [deviceId.toString(), new Date(at!)] : [deviceId.toString()],
   )
   const row = res.rows[0]
   if (row === undefined) return null

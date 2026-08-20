@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { Bell, Layers, Maximize2, Minimize2, PanelLeft, Pause, Play, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DeviceList } from '@/components/DeviceList'
 import { Inspector } from '@/components/Inspector'
-import { Timeline } from '@/components/Timeline'
+import { Timeline, type TimelineEvent } from '@/components/Timeline'
 import { LiveMap } from '@/components/LiveMap'
 import { Badge } from '@/components/admin/AdminKit'
 import { getLastPositions, getWsTicket, wsUrl, ApiError } from '@/lib/api'
@@ -221,6 +221,48 @@ export function MapPage() {
   // Parsed once for the whole page: the line and the scrubber both need the timestamps, and this
   // window holds up to 10 000 rows.
   const trackTimestamps = useMemo(() => trackTimes(trackPoints), [trackPoints])
+
+  // the selected vehicle's events over the SAME window as the track — the timeline's pins.
+  // Keyed by window start so pins and axis can never mean different 24 hours.
+  const trackEventsQ = useQuery({
+    queryKey: ['events', 'track', snap.selectedId, trackWindow.from],
+    enabled: snap.selectedId !== null,
+    staleTime: 60_000,
+    queryFn: () => listEvents({
+      deviceId: snap.selectedId as string,
+      from: new Date(trackWindow.from).toISOString(),
+      to: new Date(trackWindow.to).toISOString(),
+      limit: 200,
+    }),
+  })
+  const timelineEvents: TimelineEvent[] = useMemo(
+    () => (trackEventsQ.data ?? [])
+      .map((e) => ({ id: e.id, kind: e.kind, atMs: Date.parse(e.at) }))
+      .filter((e) => Number.isFinite(e.atMs)),
+    [trackEventsQ.data],
+  )
+
+  /**
+   * The scrubbed instant, debounced, for the inspector's parameters query. Debounced HERE and not
+   * in the Timeline because the timeline's own readouts must track the thumb instantly — only the
+   * network read behind the inspector wants calming. 250 ms ≈ one drag pause; replay ticks at
+   * 90 ms, so a running replay coalesces into ~4 reads/s at most, and usually none until it stops.
+   */
+  const [scrubAtIso, setScrubAtIso] = useState<string | null>(null)
+  const scrubAtTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onScrubTime = useCallback((iso: string | null) => {
+    if (scrubAtTimer.current !== null) clearTimeout(scrubAtTimer.current)
+    if (iso === null) {
+      setScrubAtIso(null)
+      return
+    }
+    scrubAtTimer.current = setTimeout(() => setScrubAtIso(iso), 250)
+  }, [])
+  // a newly selected vehicle starts LIVE (the Timeline resets its own thumb the same way)
+  useEffect(() => {
+    if (scrubAtTimer.current !== null) clearTimeout(scrubAtTimer.current)
+    setScrubAtIso(null)
+  }, [snap.selectedId])
   const history = useMemo<GeoJSON.FeatureCollection>(
     () =>
       snap.selectedId === null
@@ -498,6 +540,7 @@ export function MapPage() {
               onFollow={(v) => liveStore.setFollow(v)}
               onTrail={(v) => liveStore.setTrail(v)}
               onClose={() => liveStore.select(null)}
+              scrubAt={scrubAtIso}
             />
           </aside>
         )}
@@ -524,6 +567,8 @@ export function MapPage() {
         stale={track.isPlaceholderData}
         truncated={track.data?.truncated ?? false}
         onScrub={onScrub}
+        events={timelineEvents}
+        onScrubTime={onScrubTime}
       />
     </div>
   )
