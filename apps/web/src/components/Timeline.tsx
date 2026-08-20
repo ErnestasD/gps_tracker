@@ -62,6 +62,14 @@ const FALLBACK_PIN = '#94a3b8'
 const tickStepMin = (spanMin: number) => (spanMin >= 1440 ? 60 : spanMin >= 360 ? 30 : 15)
 const labelStepMin = (spanMin: number) => (spanMin >= 1440 ? 180 : spanMin >= 360 ? 60 : 30)
 
+/** Waveform resolution: one bar ≈ 6 min of a 24 h span. Chosen against the founder's SoundCloud
+ * reference — enough bars to read as a waveform, few enough that a bar is still a visible column
+ * at the widths this footer actually gets. */
+const N_BARS = 240
+/** viewBox geometry: bars grow up from the BASELINE, a faded reflection hangs below it. */
+const WAVE_H = 100
+const BASELINE = 68
+
 export function Timeline({
   deviceId,
   name,
@@ -203,6 +211,46 @@ export function Timeline({
     return out
   }, [spanMin])
 
+  /**
+   * The waveform: max VALID-fix speed per bucket, drawn as SoundCloud-style bars. Max, not mean,
+   * because the question an operator asks of a shape is "was it moving there" — a bucket that is
+   * 90 % parked and 10 % at 80 km/h must not average down into idle. A bucket with no rows stays
+   * null and renders NOTHING: a gap in reporting has to look like a gap, not like standing still.
+   */
+  const bars = useMemo(() => {
+    const span = window.to - window.from
+    if (span <= 0) return []
+    const out: (number | null)[] = Array.from({ length: N_BARS }, () => null)
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i]!
+      const at = times[i]!
+      if (!p.fixValid || at < window.from || at > window.to) continue
+      const b = Math.min(N_BARS - 1, Math.floor(((at - window.from) / span) * N_BARS))
+      const s = p.speed ?? 0
+      const prev = out[b] ?? null
+      if (prev === null || s > prev) out[b] = s
+    }
+    return out
+  }, [points, times, window])
+  const maxSpeed = useMemo(() => bars.reduce<number>((m, b) => (b !== null && b > m ? b : m), 10), [bars])
+  /** One set of <rect>s in currentColor, rendered twice — a dim base and a clip-path'ed played
+   *  overlay — so the 1 Hz re-render recolours via CSS instead of restyling 240 nodes. */
+  const waveform = useMemo(() => (
+    <svg className="h-full w-full" viewBox={`0 0 ${N_BARS} ${WAVE_H}`} preserveAspectRatio="none" aria-hidden>
+      {bars.map((b, i) => {
+        if (b === null) return null
+        // even a parked bucket gets a visible stub — it REPORTED, unlike a null gap
+        const h = 6 + (b / maxSpeed) * (BASELINE - 10)
+        return (
+          <g key={i} fill="currentColor">
+            <rect x={i + 0.18} width={0.64} y={BASELINE - h} height={h} />
+            <rect x={i + 0.18} width={0.64} y={BASELINE + 2} height={h * 0.35} opacity={0.3} />
+          </g>
+        )
+      })}
+    </svg>
+  ), [bars, maxSpeed])
+
   // event pins, clamped to the window: the feed can hand back a row a bucket newer than `to`
   const pins = useMemo(() => {
     const span = window.to - window.from
@@ -294,22 +342,28 @@ export function Timeline({
             </span>
           </div>
 
-          <div className="relative">
-            <div className="h-1.5 w-full rounded-full bg-surface-2" />
-            <div
-              className={cn('pointer-events-none absolute inset-y-0 left-0 h-1.5 rounded-full', back === 0 ? 'bg-accent' : 'bg-warn')}
-              style={{ width: `${pct}%` }}
-            />
-            {/* hour grid — under the input so it never eats a drag */}
-            <div className="pointer-events-none absolute inset-y-0 left-0 right-0" aria-hidden>
+          <div className="relative h-12" data-testid="timeline-wave">
+            {/* hour grid — full-height hairlines behind the waveform */}
+            <div className="pointer-events-none absolute inset-0" aria-hidden>
               {ticks.map((tk) => (
                 <span
                   key={tk.m}
-                  className={cn('absolute top-1/2 w-px -translate-y-1/2 bg-line', tk.labeled ? 'h-2.5' : 'h-1.5 opacity-60')}
+                  className={cn('absolute inset-y-0 w-px bg-line', tk.labeled ? 'opacity-70' : 'opacity-35')}
                   style={{ left: `${tk.pct}%` }}
                 />
               ))}
             </div>
+            {/* the waveform, twice: a dim base, and a colour overlay clipped at the thumb — the
+                played/unplayed split is a clip-path, exactly the trick the reference site uses */}
+            <div className="pointer-events-none absolute inset-0 text-surface-2">{waveform}</div>
+            <div
+              className={cn('pointer-events-none absolute inset-0', back === 0 ? 'text-accent' : 'text-warn')}
+              style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}
+            >
+              {waveform}
+            </div>
+            {/* baseline so an empty stretch still reads as a track, not a blank */}
+            <div className="pointer-events-none absolute left-0 right-0 h-px bg-line" style={{ top: `${(BASELINE / WAVE_H) * 100}%` }} aria-hidden />
             <input
               type="range"
               min={0}
@@ -326,10 +380,11 @@ export function Timeline({
               aria-label={t('map.timeline.scrub', { hours: Math.round(spanMin / 60) })}
               data-testid="timeline-scrub"
               disabled={disabled}
-              className="absolute inset-0 h-1.5 w-full cursor-pointer appearance-none bg-transparent accent-[var(--admin-brand)] disabled:cursor-not-allowed"
+              className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent accent-[var(--admin-brand)] disabled:cursor-not-allowed"
             />
             {/* event pins ride ABOVE the input: a pin is a destination, so clicking it scrubs
-                there. They are 4 px wide — narrow enough that a drag still lands on the track. */}
+                there. A full-height hairline with a head dot, SoundCloud-marker style — 2 px wide,
+                narrow enough that a drag still lands on the track. */}
             {pins.map((ev) => (
               <button
                 key={ev.id}
@@ -343,9 +398,12 @@ export function Timeline({
                 aria-label={`${t(`events.k.${ev.kind}`)} · ${dt(new Date(ev.atMs).toISOString())}`}
                 data-testid="timeline-pin"
                 data-kind={ev.kind}
-                className="absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-surface transition-transform hover:scale-125 disabled:cursor-not-allowed"
-                style={{ left: `${ev.pct}%`, backgroundColor: ev.color }}
-              />
+                className="group absolute inset-y-0 w-1 -translate-x-1/2 disabled:cursor-not-allowed"
+                style={{ left: `${ev.pct}%` }}
+              >
+                <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 opacity-80 transition-opacity group-hover:opacity-100" style={{ backgroundColor: ev.color }} aria-hidden />
+                <span className="absolute left-1/2 top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full ring-1 ring-surface transition-transform group-hover:scale-150" style={{ backgroundColor: ev.color }} aria-hidden />
+              </button>
             ))}
           </div>
 
