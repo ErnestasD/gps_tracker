@@ -71,12 +71,14 @@ const labelStepMin = (spanMin: number) =>
  * A bucket's value is the newest valid-fix speed AT OR BEFORE its end — the scrubber's own rule —
  * carried for at most CARRY_MS. Carrying is what makes the shape CONTINUOUS: a tracker reporting
  * once a minute filled every fourth 15-second bucket, and the comb of gaps read as a broken
- * device. A report is a state that persists until the next one; only silence longer than any sane
- * reporting interval is a real gap, and a real gap still renders as one.
+ * device. A report is a state that persists until the next one; only silence longer than the
+ * slowest sane reporting cadence is a real gap, and a real gap still renders as one. 6 min,
+ * because a parked Teltonika's periodic report is typically 300 s — 3 min turned every parked
+ * stretch into dashes.
  */
 const WAVE_H = 100
 const BASELINE = 70
-const CARRY_MS = 3 * 60_000
+const CARRY_MS = 6 * 60_000
 const barsFor = (spanSec: number) => (spanSec >= 7_200 ? 240 : 120)
 
 export function Timeline({
