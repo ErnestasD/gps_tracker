@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useFmt } from '@/lib/datetime'
 import type { ScrubState } from '@/lib/liveStore'
-import { placeAt, pointAt, type TrackPoint } from '@/lib/telemetry'
+import { placeAt, placeableFix, pointAt, type TrackPoint } from '@/lib/telemetry'
 import { canScrub, firstPlaceBack, quickJumps, SPAN_OPTIONS_H, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
@@ -216,7 +216,9 @@ export function Timeline({
   const pct = ((spanMin - back) / spanMin) * 100
   const stamp = dt(new Date(atMs).toISOString())
   // O(n) over up to 10 000 points, and this component re-renders at the store's 1 Hz cadence
-  const valid = useMemo(() => points.filter((p) => p.fixValid).length, [points])
+  // placeableFix, not fixValid: the camera already refuses a stored 0/0, and a caption that counts
+  // it as a good fix disagrees with the map about the same instant
+  const valid = useMemo(() => points.filter(placeableFix).length, [points])
 
   // hour grid + label positions, both anchored to the SAME window as the payload (see `window`)
   const ticks = useMemo(() => {
@@ -334,7 +336,7 @@ export function Timeline({
                   ·{' '}
                   {current === undefined
                     ? t('map.timeline.noData', { when: stamp })
-                    : !current.fixValid
+                    : !placeableFix(current)
                       ? t('map.timeline.noFix')
                       : // null speed is "this model does not report it", not "stopped"
                         current.speed === null
