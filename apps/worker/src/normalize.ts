@@ -164,6 +164,26 @@ export type FieldNulled = (field: string) => void
  */
 export const FALLBACK_AVL_TABLE: AvlTable = 'fmb120'
 
+/**
+ * Latitude and longitude of exactly zero — "null island", in the Atlantic ~600 km south of Ghana.
+ *
+ * PROJECT_PLAN §3.4 says a device with no fix sends its LAST VALID coordinates with `satellites=0`,
+ * so `fix_valid := satellites > 0` was the whole rule. Real hardware disagrees. On 2026-08-20 the
+ * founder's FTC887 sent 0/0 with **34–37 satellites** and `speed 0`, for fifty records across two
+ * days, and every one was stored as a VALID fix: the map drew the vehicle in the Gulf of Guinea, a
+ * trip opened there, and a geofence exit was one zone away from firing. §3.4's rule is necessary
+ * and, on this hardware, not sufficient.
+ *
+ * Zero is not a coordinate a tracked vehicle reports. The odds of a real fix landing on both axes
+ * at exactly 0.0000000 are nil, and the cost of being wrong is asymmetric: refusing one improbable
+ * mid-Atlantic fix loses a point nobody needed, while accepting a fabricated one moves a customer's
+ * vehicle 6000 km, opens a phantom trip and can fire a geofence alarm.
+ *
+ * Deliberately EXACT equality, not a radius: a tolerance would start discarding real fixes off the
+ * African coast, and this is a sentinel value, not a region.
+ */
+const isNullIsland = (lat: number, lon: number): boolean => lat === 0 && lon === 0
+
 export function normalize(
   payload: unknown,
   hash: HashFn,
@@ -241,7 +261,7 @@ export function normalize(
     // satellites is smallint and NOT NULL (rule 6 / I5 reads it). An out-of-range count is garbage,
     // so fall to 0 — which marks the fix INVALID, the fail-safe side of I5.
     satellites: sats,
-    fixValid: sats > 0, // rule 6 / I5 — reads the SAME value the row stores
+    fixValid: sats > 0 && !isNullIsland(p.lat, p.lon), // rule 6 / I5 — reads the SAME values the row stores
     ignition,
     movement,
     odometerM,

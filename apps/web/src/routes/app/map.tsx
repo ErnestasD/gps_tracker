@@ -18,7 +18,7 @@ import { fleetPanelCounts, type FleetFilter } from '@/lib/fleetFilter'
 import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
-import { getTrack, trackTimes } from '@/lib/telemetry'
+import { getTrack, placeableFix, trackTimes } from '@/lib/telemetry'
 import { WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
@@ -267,7 +267,9 @@ export function MapPage() {
               // a field someone later trusts (`NaN ?? 0` is NaN — nullish, not falsy)
               trackPoints.map((p, i) => {
                 const t = trackTimestamps[i]
-                return { lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Number.isFinite(t) ? (t as number) : 0, speed: p.speed, movement: p.movement }
+                // placeableFix, not p.fixValid: a stored 0/0 marked valid would draw a line to the
+                // Gulf of Guinea and back (see liveStore.placeable)
+                return { lon: p.lon, lat: p.lat, fixValid: placeableFix(p), fixTimeMs: Number.isFinite(t) ? (t as number) : 0, speed: p.speed, movement: p.movement }
               }),
             ),
           },
