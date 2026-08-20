@@ -90,6 +90,40 @@ export const pairedTimes = (
 ): readonly number[] | undefined => (times !== undefined && times.length === points.length ? times : undefined)
 
 /**
+ * The newest timestamp we actually hold, scanning BACKWARDS past unparseable rows.
+ *
+ * Taking `points[points.length - 1]` blindly meant one bad `fixTime` produced NaN, and every
+ * `t > NaN` comparison downstream is false — so the tail was silently discarded for as long as that
+ * row stayed last. Every other scan in this codebase skips a bad row rather than stopping at it.
+ */
+export function lastKnownMs(points: readonly TrackPoint[]): number | null {
+  for (let i = points.length - 1; i >= 0; i--) {
+    const t = Date.parse(points[i]!.fixTime)
+    if (Number.isFinite(t)) return t
+  }
+  return null
+}
+
+/**
+ * Join the tail — the rows that arrived after the window closed — onto the head.
+ *
+ * Strictly newer than the newest row we hold, so a row sitting on the boundary is not drawn twice.
+ * `(device_id, fix_time, rec_hash)` is the positions primary key, so `fix_time` alone is NOT unique
+ * and a page cut mid-timestamp could still drop a sibling row; that is a page-boundary edge, not a
+ * duplicate-vertex one, and losing a vertex is the safer half of that trade.
+ */
+export function joinTail(head: readonly TrackPoint[], tail: readonly TrackPoint[]): TrackPoint[] {
+  if (tail.length === 0) return head as TrackPoint[]
+  const last = lastKnownMs(head)
+  if (last === null) return [...head, ...tail]
+  const rest = tail.filter((p) => {
+    const t = Date.parse(p.fixTime)
+    return Number.isFinite(t) && t > last
+  })
+  return rest.length === 0 ? (head as TrackPoint[]) : [...head, ...rest]
+}
+
+/**
  * The quick-jump buttons, derived from the window rather than hardcoded.
  *
  * They used to be literal 1440/720/360/60 while the span was computed, which agrees only as long as

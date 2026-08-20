@@ -568,7 +568,8 @@
       "off": "Aus",
       "denied": "Berechtigung verweigert — Benachrichtigungen in den Browsereinstellungen erlauben.",
       "error": "Benachrichtigungen konnten nicht aktualisiert werden.",
-      "tenantWide": "Browser-Benachrichtigungen werden pro Konto zugestellt, und Ihr Benutzer gilt mandantenweit — er gehört zu keinem einzelnen Konto, es gibt also nichts zu abonnieren. Verwenden Sie einen kontobezogenen Benutzer oder E-Mail und Telegram, die mandantenweite Benutzer erreichen."
+      "tenantWide": "Browser-Benachrichtigungen werden pro Konto zugestellt, und Ihr Benutzer gilt mandantenweit — er gehört zu keinem einzelnen Konto, es gibt also nichts zu abonnieren. Verwenden Sie einen kontobezogenen Benutzer oder E-Mail und Telegram, die mandantenweite Benutzer erreichen.",
+      "needsWriter": "Browser-Benachrichtigungen erfordern mindestens die Rolle „Kontomanager\"; Ihr Benutzer darf nur lesen."
     },
     "display": {
       "title": "Anzeigeeinstellungen",

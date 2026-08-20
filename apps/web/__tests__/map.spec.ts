@@ -102,43 +102,70 @@ describe('shrinkRoadShields (road-number badge size)', () => {
 })
 
 describe('dropTrafficSources (fleet-map declutter)', () => {
-  /** The real navigation-night-v1 shape: two data sources we show nothing from, and the basemap. */
+  /**
+   * The REAL navigation-night-v1 shape, ids included. The previous fixture invented them and put
+   * the one-way arrows on `mapbox-traffic`; in the real style they are on `composite` — which is
+   * exactly why a source-only removal let them back onto the map with the test still green.
+   */
   const style = () => ({
     layers: [
-      { id: 'traffic', source: 'mapbox-traffic' },
-      { id: 'traffic-road-oneway-arrow', source: 'mapbox-traffic' },
+      { id: 'traffic-bridge-road-motorway-trunk-navigation', source: 'mapbox-traffic' },
+      { id: 'traffic-road-motorway-trunk-navigation', source: 'mapbox-traffic' },
       { id: 'incident-closure-lines-navigation', source: 'mapbox-incidents' },
       { id: 'incident-endpoints-navigation', source: 'mapbox-incidents' },
-      { id: 'road-label', source: 'composite' },
+      { id: 'traffic-road-oneway-arrow-blue-navigation', source: 'composite' },
+      { id: 'traffic-level-crossing-navigation', source: 'composite' },
+      { id: 'road-label-navigation', source: 'composite' },
     ],
   })
 
-  it('removes the LAYERS and then the SOURCES, leaving the basemap', () => {
-    // Hiding was not enough: a hidden layer still fetches its tiles, and this token has no
-    // entitlement to mapbox-incidents-v1 — that is where the founder's console 403s came from,
-    // one per tile, on every pan.
+  const run = () => {
     const removedLayers: string[] = []
     const removedSources: string[] = []
+    const hidden: string[] = []
     const map = {
       getStyle: style,
       getSource: (id: string) => (removedSources.includes(id) ? undefined : { id }),
+      getLayer: (id: string) => (removedLayers.includes(id) ? undefined : { id }),
       removeLayer: (id: string) => removedLayers.push(id),
       removeSource: (id: string) => removedSources.push(id),
+      setLayoutProperty: (id: string, prop: string, value: unknown) => {
+        if (prop === 'visibility' && value === 'none') hidden.push(id)
+      },
     } as unknown as Parameters<typeof dropTrafficSources>[0]
     dropTrafficSources(map)
+    return { removedLayers, removedSources, hidden }
+  }
+
+  it('removes the traffic and incident LAYERS, then their SOURCES', () => {
+    // Hiding was not enough: SourceCache.update() ignores visibility, so a hidden layer keeps
+    // downloading its source — bandwidth for data painted nowhere, and a 403 per tile from an
+    // origin the token does not allow-list.
+    const { removedLayers, removedSources } = run()
     expect(removedLayers).toEqual([
-      'traffic', 'traffic-road-oneway-arrow',
+      'traffic-bridge-road-motorway-trunk-navigation', 'traffic-road-motorway-trunk-navigation',
       'incident-closure-lines-navigation', 'incident-endpoints-navigation',
     ])
     expect(removedSources).toEqual(['mapbox-traffic', 'mapbox-incidents'])
+  })
+
+  it('HIDES the traffic layers drawn from the basemap source, which cannot be removed', () => {
+    // 22 layers carry `traffic` in the real style; only 15 are on mapbox-traffic. The one-way
+    // arrows and level crossings are on `composite`, and a source-only sweep put them back.
+    const { hidden, removedLayers } = run()
+    expect(hidden).toEqual(['traffic-road-oneway-arrow-blue-navigation', 'traffic-level-crossing-navigation'])
+    expect(removedLayers).not.toContain('road-label-navigation')
+    expect(hidden).not.toContain('road-label-navigation') // the basemap is untouched
   })
 
   it('a style carrying neither is a no-op', () => {
     const map = {
       getStyle: () => ({ layers: [{ id: 'road-label', source: 'composite' }] }),
       getSource: () => undefined,
+      getLayer: () => ({ id: 'x' }),
       removeLayer: () => { throw new Error('must not be called') },
       removeSource: () => { throw new Error('must not be called') },
+      setLayoutProperty: () => { throw new Error('must not be called') },
     } as unknown as Parameters<typeof dropTrafficSources>[0]
     expect(() => dropTrafficSources(map)).not.toThrow()
   })

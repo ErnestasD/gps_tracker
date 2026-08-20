@@ -218,15 +218,19 @@ const TRACK_LIMIT = 10_000
  * minute off "now" jumped the map half an hour into the past. Axis and payload must be the same
  * window, and the only way to guarantee that is to make it one value.
  */
-export async function getTrack(deviceId: string, window: { from: number; to: number }): Promise<{ points: TrackPoint[]; truncated: boolean }> {
+export async function getTrack(
+  deviceId: string,
+  window: { from: number; to: number },
+  limit = TRACK_LIMIT,
+): Promise<{ points: TrackPoint[]; truncated: boolean }> {
   const from = new Date(window.from)
   const to = new Date(window.to)
   const points = await getJson<TrackPoint[]>(
-    `/v1/devices/${encodeURIComponent(deviceId)}/positions?from=${from.toISOString()}&to=${to.toISOString()}&limit=${TRACK_LIMIT}`,
+    `/v1/devices/${encodeURIComponent(deviceId)}/positions?from=${from.toISOString()}&to=${to.toISOString()}&limit=${limit}`,
   )
   // A full page means there is more history than we asked for, and what we hold is the OLDER part.
   // Saying so beats silently pinning the scrubber, which is indistinguishable from a parked vehicle.
-  return { points, truncated: points.length >= TRACK_LIMIT }
+  return { points, truncated: points.length >= limit }
 }
 
 /**
