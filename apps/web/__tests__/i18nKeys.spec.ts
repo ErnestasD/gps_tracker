@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { EVENT_KINDS } from '../src/lib/events.js'
+import { EVENT_KINDS, eventSummaryT } from '../src/lib/events.js'
 import de from '../src/i18n/de.json'
 import en from '../src/i18n/en.json'
 import lt from '../src/i18n/lt.json'
@@ -39,10 +39,11 @@ function sourceFiles(dir: string): string[] {
 /**
  * `t('a.b')` / `t("a.b")` only.
  *
- * Template literals (`t(\`affiliates.status.${s}\`)`) are DELIBERATELY not matched: their key is not
- * knowable statically, and guessing at the interpolation would produce false failures that teach
- * people to disable the test. The dynamic ones are the minority and are covered by the parity check
- * below plus their own unit tests.
+ * Template literals (`t(\`affiliates.status.${s}\`)`) are DELIBERATELY not matched HERE: their key is
+ * not knowable statically, and guessing at the interpolation would produce false failures that
+ * teach people to disable the test. Their PREFIX is knowable, though, and the
+ * 'template-literal keys' suite below checks that it resolves to an object in every catalog — which
+ * is what would have caught `t(\`events.kind.${kind}\`)` against a leaf string.
  */
 const T_CALL = /\bt\(\s*(['"])([A-Za-z][\w.]*)\1/g
 
@@ -149,29 +150,73 @@ describe('i18n keys', () => {
  * is known at build time, so the cross-product can simply be asserted.
  */
 const CATALOGS = { en, lt, pl, de }
-/** The keys `eventSummaryT` can return, i.e. the ones a template literal builds at runtime. */
-const SUMMARY_KEYS = [
-  'overspeed', 'low_battery', 'ignition_on', 'ignition_off', 'din_on', 'din_off',
-  'geofence', 'geofence_enter', 'geofence_exit', 'device_offline', 'panic', 'power_cut',
-  'fuel_theft', 'fuel_theft_vol',
-]
 
-describe('dynamic event keys', () => {
-  it('every event kind has a label in every locale', () => {
-    for (const [lang, cat] of Object.entries(CATALOGS)) {
-      const labels = (cat as { events?: { k?: Record<string, string> } }).events?.k ?? {}
-      for (const kind of EVENT_KINDS) {
-        expect(labels[kind], `${lang}: events.k.${kind}`).toBeTruthy()
+const lookup = (cat: unknown, path: string): unknown =>
+  path.split('.').reduce<unknown>((o, k) => (o !== null && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), cat)
+
+/**
+ * Keys built from a template literal, which the scanner above deliberately cannot resolve.
+ *
+ * The scanner only sees `t('a.b.c')`. `t(`events.k.${kind}`)` is invisible to it, and that blind
+ * spot shipped a real defect: the code asked for `events.kind.<kind>` while `events.kind` is a leaf
+ * STRING in every locale (the events page's column header, "Tipas"). i18next then fell through to
+ * the default and showed a Lithuanian operator "overspeed" and "power_cut" in raw English, with
+ * nothing failing anywhere.
+ *
+ * The fix is to check the half the scanner CAN reach: whatever prefix a template key is built from
+ * must resolve to an OBJECT in every catalog. A prefix that resolves to a string is the defect
+ * itself; a prefix that resolves to nothing is a typo.
+ */
+describe('template-literal keys', () => {
+  const files = sourceFiles(SRC)
+  const prefixes = new Set<string>()
+  for (const file of files) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/\bt\(\s*`([\w.]+)\.\$\{/g)) prefixes.add(m[1]!)
+  }
+
+  it('finds the prefixes to check (guards against the regex silently matching nothing)', () => {
+    expect(prefixes.size).toBeGreaterThan(0)
+  })
+
+  it('every template prefix resolves to an OBJECT in every locale, never a string', () => {
+    for (const prefix of prefixes) {
+      for (const [lang, cat] of Object.entries(CATALOGS)) {
+        const node = lookup(cat, prefix)
+        expect(typeof node, `${lang}: t(\`${prefix}.\${...}\`) — ${JSON.stringify(node)?.slice(0, 40)}`).toBe('object')
       }
     }
   })
+})
 
-  it('every event summary has a string in every locale', () => {
+/**
+ * And the catalog half: every kind the pipeline can emit has a label and, where it has one, a
+ * summary — in all four languages. Derived from `eventSummaryT` itself rather than a hand-kept
+ * list, so a new kind cannot be added to the switch and forgotten here.
+ */
+describe('event catalogs', () => {
+  const PAYLOADS: Record<string, Record<string, unknown>> = {
+    ignition: { ignition: true }, din_change: { din1: true },
+    geofence: { name: 'x', transition: 'enter' }, fuel_theft: { drop: 1, unit: 'liters' },
+  }
+  /** Both branches of every key that switches on its payload. */
+  const summaryKeys = new Set<string>()
+  for (const kind of EVENT_KINDS) {
+    for (const extra of [{}, PAYLOADS[kind] ?? {}, { ignition: false, din1: false, transition: 'exit', unit: 'percent', drop: 1 }]) {
+      const d = eventSummaryT({ kind, payload: extra } as never)
+      if (d !== null) summaryKeys.add(d.key)
+    }
+  }
+
+  it('every event kind has a label in every locale', () => {
     for (const [lang, cat] of Object.entries(CATALOGS)) {
-      const s = (cat as { events?: { s?: Record<string, string> } }).events?.s ?? {}
-      for (const key of SUMMARY_KEYS) {
-        expect(s[key], `${lang}: events.s.${key}`).toBeTruthy()
-      }
+      for (const kind of EVENT_KINDS) expect(lookup(cat, `events.k.${kind}`), `${lang}: events.k.${kind}`).toBeTruthy()
+    }
+  })
+
+  it('every summary key eventSummaryT can return exists in every locale', () => {
+    expect(summaryKeys.size).toBeGreaterThan(EVENT_KINDS.length) // the on/off pairs are in there
+    for (const [lang, cat] of Object.entries(CATALOGS)) {
+      for (const key of summaryKeys) expect(lookup(cat, key), `${lang}: ${key}`).toBeTruthy()
     }
   })
 })

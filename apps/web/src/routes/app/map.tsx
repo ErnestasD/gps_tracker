@@ -453,13 +453,13 @@ export function MapPage() {
                       <span className="min-w-0 flex-1 truncate font-medium text-text">{nameOf(e.deviceId)}</span>
                       <span className="shrink-0 tabular-nums text-muted">{dt(e.at)}</span>
                     </div>
-                    {/* One line: the KIND, because severity carried by colour alone fails WCAG
-                        1.4.1 and a screen reader would hear "10.52 V < 11" with no word for what
-                        happened — then the payload, which is what the founder was missing. Three
-                        of the nine kinds (panic, power cut, ignition) have a summary that only
-                        restates the label, so they get the label alone rather than a second line
-                        saying the same thing. */}
-                    <div className="truncate pl-3 text-muted">
+                    {/* The KIND — severity carried by colour alone fails WCAG 1.4.1, and a screen
+                        reader would otherwise hear "10.52 V < 11" with no word for what happened —
+                        then the payload, which is what the founder was missing. Clamped rather than
+                        truncated: the detail comes last, so `truncate` ellipsized exactly the half
+                        being added. Only `panic` and `power_cut` have a summary that restates their
+                        label; the other seven all say something it does not. */}
+                    <div className="line-clamp-2 pl-3 text-muted">
                       <span className="text-text">{t(`events.k.${e.kind}`, { defaultValue: e.kind })}</span>
                       {(() => {
                         const detail = eventDetail(t, e, { fmtSpeed: units.speed, fmtVolume: units.volumeL })

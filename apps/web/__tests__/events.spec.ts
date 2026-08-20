@@ -1,7 +1,7 @@
 import type { EventView } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { EVENT_KINDS, eventSeverity, eventSummary, eventSummaryT, eventTone, eventsQuery, localizedEventSummary } from '../src/lib/events.js'
+import { EVENT_KINDS, eventDetail, eventSeverity, eventSummary, eventSummaryT, eventTone, eventsQuery, localizedEventSummary } from '../src/lib/events.js'
 
 
 const ev = (kind: string, payload: Record<string, unknown>): EventView => ({
@@ -118,6 +118,15 @@ describe('i18n eventSummaryT / localizedEventSummary', () => {
  * A second table put fuel theft in red on the map and grey on the events page, out of the same
  * record — so this pins that the tone is a view of `eventSeverity` and never a table of its own.
  */
+  it('maps kinds to the shared severity buckets', () => {
+    expect(eventSeverity('panic')).toBe('critical')
+    expect(eventSeverity('power_cut')).toBe('critical')
+    expect(eventSeverity('overspeed')).toBe('warning')
+    expect(eventSeverity('device_offline')).toBe('warning')
+    expect(eventSeverity('geofence')).toBe('info')
+    expect(eventSeverity('ignition')).toBe('info')
+  })
+
 describe('eventTone', () => {
   it('is a thin view over eventSeverity, for every kind the pipeline emits', () => {
     for (const kind of EVENT_KINDS) {
@@ -138,5 +147,51 @@ describe('a summary never invents a unit', () => {
     const d = eventSummaryT(ev('overspeed', { limitKmh: 90 }), { fmtSpeed: (k) => `${k} mph` })
     expect(d?.params['speed']).toBe('—')
     expect(d?.params['limit']).toBe('90 mph')
+  })
+})
+
+/**
+ * What a row says BEYOND its own label.
+ *
+ * The rule this pins was wrong once already: keyed on whether the descriptor interpolated anything,
+ * it hid `ignition` and `din_change` — the two kinds that carry their fact in the KEY rather than
+ * in the params — so the map could not say whether the vehicle had started or stopped.
+ */
+describe('eventDetail', () => {
+  const T = ((k: string, p?: Record<string, string>) => `${k}:${JSON.stringify(p ?? {})}`) as never
+
+  const PAYLOADS: Record<string, Record<string, unknown>> = {
+    overspeed: { speedKmh: 91, limitKmh: 90 },
+    geofence: { name: 'STL bazė', transition: 'exit' },
+    ignition: { ignition: true },
+    din_change: { din1: true },
+    power_cut: {},
+    low_battery: { volts: 10.5, thresholdV: 11 },
+    panic: {},
+    device_offline: { offlineH: 27, thresholdH: 26 },
+    fuel_theft: { drop: 20, unit: 'percent' },
+  }
+
+  it('says nothing extra only for the two kinds whose summary IS their label', () => {
+    const silent = EVENT_KINDS.filter((k) => eventDetail(T, ev(k, PAYLOADS[k] ?? {})) === '')
+    expect([...silent].sort()).toEqual(['panic', 'power_cut'])
+  })
+
+  it('ignition and din_change say WHICH way they went — the fact lives in the key', () => {
+    expect(eventDetail(T, ev('ignition', { ignition: true }))).toContain('ignition_on')
+    expect(eventDetail(T, ev('ignition', { ignition: false }))).toContain('ignition_off')
+    expect(eventDetail(T, ev('din_change', { din1: true }))).toContain('din_on')
+  })
+
+  it('a summary of nothing but placeholders is not information', () => {
+    // "Overspeed · — > —" is the absence of a payload wearing the shape of one
+    expect(eventDetail(T, ev('overspeed', {}))).toBe('')
+    expect(eventDetail(T, ev('geofence', {}))).toBe('')
+  })
+
+  it('every other kind carries its payload through', () => {
+    expect(eventDetail(T, ev('overspeed', PAYLOADS['overspeed']!))).toContain('91')
+    expect(eventDetail(T, ev('geofence', PAYLOADS['geofence']!))).toContain('STL bazė')
+    expect(eventDetail(T, ev('device_offline', PAYLOADS['device_offline']!))).toContain('27')
   })
 })

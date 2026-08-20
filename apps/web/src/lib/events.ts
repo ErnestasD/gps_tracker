@@ -72,7 +72,7 @@ export function eventSummary(e: EventRow): string {
   switch (e.kind) {
     case 'overspeed':
       // a unit belongs to a value the device sent — the same rule `eventSummaryT` follows
-      return `${typeof p['speedKmh'] === 'number' ? `${p['speedKmh']} km/h` : '—'} > ${num(p['limitKmh'])}`
+      return `${typeof p['speedKmh'] === 'number' ? `${num(p['speedKmh'])} km/h` : '—'} > ${num(p['limitKmh'])}`
     case 'low_battery':
       return `${num(p['volts'])} V < ${num(p['thresholdV'])}`
     case 'ignition':
@@ -153,17 +153,33 @@ export type TFn = (key: string, options?: Record<string, unknown>) => string
  * English eventSummary as the defaultValue fallback. Pass opts.fmtSpeed (useUnits().speed)
  * so overspeed summaries follow the display speed unit. */
 /**
+ * Keys whose string only restates the KIND label, in every language.
+ *
+ * A list, not a shape test. The first attempt asked "does the descriptor interpolate anything" —
+ * and `ignition` and `din_change` carry their fact in the KEY (`ignition_on` vs `ignition_off`,
+ * `din_on` vs `din_off`), so it hid the one thing the operator needs: whether the vehicle STARTED
+ * or STOPPED. Two of nine kinds, silently, in the branch whose whole point was that a row must say
+ * more than its own name.
+ *
+ * `panic` → "SOS triggered" under a badge reading "Panic", and `power_cut` → "external power lost"
+ * under "Power cut", genuinely add nothing. Nothing else belongs here.
+ */
+const REDUNDANT_SUMMARY = new Set(['events.s.panic', 'events.s.power_cut'])
+
+/** Does this rendered summary consist of nothing but placeholders? A row of "— · —" is the absence
+ *  of information wearing the shape of information. */
+const allPlaceholder = (params: Record<string, string>): boolean =>
+  Object.keys(params).length > 0 && Object.values(params).every((v) => v === '—')
+
+/**
  * The summary, but only when it says something the KIND label does not.
  *
- * `panic` → "SOS triggered", `power_cut` → "external power lost", `ignition` → "ignition on": those
- * strings take no payload parameters, which is precisely the sign that they carry no fact beyond
- * the label. Rendering both cost a line and repeated the row. The six kinds that DO interpolate —
- * speed against a limit, a zone's name and direction, volts, hours, litres — are the ones the
- * founder was missing, and they are exactly the ones this returns.
+ * Used wherever the label is already on screen — the map ticker and the inspector — so a row is
+ * never two restatements of one word.
  */
 export function eventDetail(t: TFn, e: EventRow, opts: SummaryOpts = {}): string {
   const d = eventSummaryT(e, opts)
-  if (d === null || Object.keys(d.params).length === 0) return ''
+  if (d === null || REDUNDANT_SUMMARY.has(d.key) || allPlaceholder(d.params)) return ''
   return localizedEventSummary(t, e, opts)
 }
 

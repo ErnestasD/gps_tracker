@@ -551,7 +551,10 @@ function EventsTab({ deviceId }: { deviceId: string }) {
          * `speedKmh: 91, limitKmh: 90` and the rule that fired — and a geofence event carried the
          * zone's NAME and whether the vehicle entered or left it. The formatter that renders all of
          * that already existed for the events page, localized and unit-aware; this panel simply was
-         * not calling it. One implementation, so the two pages cannot describe one event differently.
+         * not calling it.
+         *
+         * `eventDetail` rather than the raw summary because the KIND is already on the badge beside
+         * it: the same rule the map ticker uses, so the two cannot describe one event differently.
          */
         const detail = eventDetail(t, e, { fmtSpeed: u.speed, fmtVolume: u.volumeL })
         return (
@@ -604,7 +607,7 @@ function FencesTab({
           />
           <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: g.color }} aria-hidden />
           <span className="min-w-0 flex-1 truncate text-text">{g.name}</span>
-          <span className="shrink-0 text-[11px] text-muted">{t(`geofences.kind.${g.kind}`, { defaultValue: g.kind })}</span>
+          <span className="shrink-0 text-[11px] text-muted">{t(`geofences.${g.kind}`, { defaultValue: g.kind })}</span>
         </label>
       ))}
     </div>
