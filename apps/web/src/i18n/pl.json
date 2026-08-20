@@ -567,7 +567,8 @@
       "on": "Wł.",
       "off": "Wył.",
       "denied": "Odmowa uprawnień — zezwól na powiadomienia w ustawieniach przeglądarki.",
-      "error": "Nie udało się zaktualizować powiadomień."
+      "error": "Nie udało się zaktualizować powiadomień.",
+      "tenantWide": "Powiadomienia przeglądarki są dostarczane na poziomie konta, a Twój użytkownik jest przypisany do całego najemcy — nie należy do żadnego konta, więc nie ma czego subskrybować. Użyj użytkownika przypisanego do konta albo e-maila i Telegrama, które docierają do użytkowników na poziomie najemcy."
     },
     "display": {
       "title": "Ustawienia wyświetlania",

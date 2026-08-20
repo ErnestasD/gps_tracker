@@ -471,6 +471,15 @@ function DisplayPrefsSection() {
 function PushSection() {
   const { t } = useTranslation()
   const [supported] = useState(pushSupported())
+  /**
+   * A subscription is stored WITH an account id (`push_subscriptions.accountId` is non-null, with a
+   * foreign key), so a tenant-wide user has nothing to attach one to and the server answers
+   * `400 account_required`. Checked here, before anything happens, because the alternative is what
+   * the founder hit: the browser's permission dialog opens, the operator grants it, and only then
+   * does a red line appear that says nothing about why. Asking for a permission we cannot use is
+   * worse than not offering the control.
+   */
+  const tenantWide = getCurrentUser()?.accountId === null
   const [enabled, setEnabled] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -488,7 +497,11 @@ function PushSection() {
         setEnabled(ok)
         if (!ok && !enabled) setError(t('settings.push.denied'))
       })
-      .catch(() => setError(t('settings.push.error')))
+      .catch((err: unknown) => {
+        // the API explains itself; throwing that away is how "push is per account" became
+        // "could not refresh notifications"
+        setError(err instanceof ApiError && err.detail === 'account_required' ? t('settings.push.tenantWide') : t('settings.push.error'))
+      })
       .finally(() => setBusy(false))
   }
 
@@ -499,7 +512,9 @@ function PushSection() {
       </div>
       <div className="space-y-3 p-4">
         <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.push.hint')}</p>
-        {!supported ? (
+        {tenantWide ? (
+          <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="push-tenant-wide">{t('settings.push.tenantWide')}</p>
+        ) : !supported ? (
           <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="push-unsupported">{t('settings.push.unsupported')}</p>
         ) : (
           <div className="flex items-center gap-3">

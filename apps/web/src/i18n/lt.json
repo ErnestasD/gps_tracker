@@ -567,7 +567,8 @@
       "on": "Įjungta",
       "off": "Išjungta",
       "denied": "Leidimas atmestas — leiskite pranešimus naršyklės nustatymuose.",
-      "error": "Nepavyko atnaujinti pranešimų."
+      "error": "Nepavyko atnaujinti pranešimų.",
+      "tenantWide": "Naršyklės pranešimai siunčiami paskyros lygmeniu, o jūsų vartotojas yra viso tenant’o — jis nepriklauso jokiai vienai paskyrai, tad prenumeruoti nėra ko. Naudokite paskyrai priskirtą vartotoją arba el. paštą ir Telegram, kurie tenant’o lygmens vartotojus pasiekia."
     },
     "display": {
       "title": "Rodymo nustatymai",
