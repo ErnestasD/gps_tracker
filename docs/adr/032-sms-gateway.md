@@ -90,6 +90,12 @@ webpush) do not need.
   `ACCOUNT_WRITERS` + `entitlement: 'smsGateway'`; the API enqueues but never sends (WP-C).
 - New `smsGateway` entitlement in the plan matrix (`packages/shared/src/plans.ts`), true for `tsp_*` only.
 - Device gains a `simMsisdn` (+ `simIccid`) field; the send route 400s when it is unset (WP-A/WP-C/WP-D).
+  **Amended 2026-08-20:** `simIccid` is removed. It was stored, asked for during onboarding and
+  accepted from the CSV import, and read by nothing — no query, no job, no export. Measured before
+  removing: 0 of 494 active devices carried one. The SIM identity this ADR actually needs is
+  `simMsisdn`, which is unchanged. An ICCID answers "prove to the operator you hold this card", a
+  support task the platform does not perform; if fleets later bring data-only M2M SIMs, which often
+  have no usable MSISDN, it comes back with the feature that needs it rather than sitting empty.
 - Requires `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` in the server `.env` for the channel to
   be live; all three absent ⇒ send route 503s and the web button is hidden (documented in the README env
   table and wired into `docker-compose.apps.yml`).

@@ -29,7 +29,6 @@ export interface ImportRow {
   plate?: string
   groupName?: string
   simMsisdn?: string
-  simIccid?: string
 }
 /** Consecutive unexpected row failures that mean the environment is broken, not the file. */
 const MAX_CONSECUTIVE_FAILURES = 5
@@ -37,7 +36,6 @@ const MAX_CONSECUTIVE_FAILURES = 5
 // SIM columns are optional; validated only when present. Same rules as the single-device schema
 // (entities.ts) so a bulk import and a manual add accept exactly the same values.
 const SIM_MSISDN_RE = /^\+[1-9]\d{6,14}$/
-const SIM_ICCID_RE = /^\d{18,22}$/
 export interface RowError {
   row: number
   imei: string
@@ -115,7 +113,6 @@ export function rowsToImport(records: Record<string, string>[]): ImportRow[] {
     ...(r['plate'] ? { plate: r['plate'] } : {}),
     ...(r['groupName'] ? { groupName: r['groupName'] } : {}),
     ...(r['simMsisdn'] ? { simMsisdn: r['simMsisdn'] } : {}),
-    ...(r['simIccid'] ? { simIccid: r['simIccid'] } : {}),
   }))
 }
 
@@ -149,7 +146,6 @@ export async function dryRun(
     seenInFile.add(row.imei)
     // optional SIM columns — validated only when supplied (same rules as the manual add)
     if (row.simMsisdn !== undefined && !SIM_MSISDN_RE.test(row.simMsisdn)) return fail('invalid simMsisdn (E.164, e.g. +37060000000)')
-    if (row.simIccid !== undefined && !SIM_ICCID_RE.test(row.simIccid)) return fail('invalid simIccid (18–22 digits)')
     // account: account-scoped caller is pinned to their own; tenant-wide must name a valid one
     const accountId = callerAccountId ?? row.accountId
     if (accountId === undefined || accountId === '') return fail('accountId is required')
@@ -166,7 +162,6 @@ export async function dryRun(
       ...(row.plate !== undefined ? { plate: row.plate } : {}),
       ...(row.groupName !== undefined ? { groupName: row.groupName } : {}),
       ...(row.simMsisdn !== undefined ? { simMsisdn: row.simMsisdn } : {}),
-      ...(row.simIccid !== undefined ? { simIccid: row.simIccid } : {}),
     })
     if (!parsed.success) {
       const issue = parsed.error.issues[0]
@@ -225,7 +220,6 @@ export async function applyImport(
         plate: row.plate ?? null,
         groupName: row.groupName ?? null,
         simMsisdn: row.simMsisdn ?? null,
-        simIccid: row.simIccid ?? null,
       })
       created++ // the row is real from here on — count it before the registry sync
       // OUTSIDE the create's failure accounting: a Redis blip here leaves a device that exists in

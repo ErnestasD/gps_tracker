@@ -14,8 +14,6 @@ export interface Device {
   odometerSource: string
   /** device SIM number (E.164) — the destination for config/command SMS. Null until set. */
   simMsisdn: string | null
-  /** device SIM ICCID (audit/support only) — never used to send. Null until set. */
-  simIccid: string | null
   retiredAt: string | null
   // vehicle profile (FLEET-1 F1)
   make: string | null
@@ -55,13 +53,11 @@ export interface DeviceCreateInput {
   plate?: string | null
   odometerSource?: OdometerSource
   simMsisdn?: string | null
-  simIccid?: string | null
 }
 /** Fields the device PATCH accepts. All optional — send only what changed. */
 export interface DeviceUpdateInput {
   odometerSource?: OdometerSource
   simMsisdn?: string | null
-  simIccid?: string | null
   /** the device MODEL. Changing it changes how FUTURE positions are decoded; already-stored
    *  positions keep the attribute names they were decoded with. */
   profileId?: string
