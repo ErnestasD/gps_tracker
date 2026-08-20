@@ -445,7 +445,7 @@
       "paramsError": "Nepavyko įkelti parametrų.",
       "paramsUndocumented": "Eilutės „AVL <id>“ — elementai, kurių šio modelio Teltonikos puslapis neaprašo.",
       "movement": "Judėjimas",
-      "odometer": "Rida (m)",
+      "odometer": "Rida",
       "altitude": "Aukštis (m)",
       "paramsAt": "Kaip įrenginys pranešė {{when}}",
       "events": "Įvykiai",

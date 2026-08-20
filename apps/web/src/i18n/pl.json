@@ -445,7 +445,7 @@
       "paramsError": "Nie udało się wczytać parametrów.",
       "paramsUndocumented": "Wiersze „AVL <id>” to elementy, których strona Teltoniki dla tego modelu nie dokumentuje.",
       "movement": "Ruch",
-      "odometer": "Przebieg (m)",
+      "odometer": "Przebieg",
       "altitude": "Wysokość (m)",
       "paramsAt": "Zgodnie ze zgłoszeniem urządzenia {{when}}",
       "events": "Zdarzenia",

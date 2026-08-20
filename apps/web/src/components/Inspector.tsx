@@ -472,7 +472,9 @@ function ParamsTab({
     { key: 'satellites', label: t('info.satellites'), value: d.satellites },
     { key: 'ignition', label: t('info.ignition'), value: d.ignition },
     { key: 'movement', label: t('map.inspector.movement'), value: d.movement },
-    { key: 'odometer', label: t('map.inspector.odometer'), value: d.odometerM },
+    // metres → km: the odometer is the one promoted value with a unit to convert (founder:
+    // "47339" where an operator reads kilometres is noise — same rule as fmtAttrValue)
+    { key: 'odometer', label: t('map.inspector.odometer'), value: d.odometerM != null && d.odometerM !== '' && Number.isFinite(Number(d.odometerM)) ? `${(Number(d.odometerM) / 1000).toFixed(2)} km` : null },
     { key: 'altitude', label: t('map.inspector.altitude'), value: d.altitude },
   ].filter((r) => r.value !== null && r.value !== undefined)
 

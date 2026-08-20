@@ -445,7 +445,7 @@
       "paramsError": "Parameter konnten nicht geladen werden.",
       "paramsUndocumented": "Zeilen mit „AVL <id>“ sind Elemente, die die Teltonika-Seite dieses Modells nicht dokumentiert.",
       "movement": "Bewegung",
-      "odometer": "Kilometerstand (m)",
+      "odometer": "Kilometerstand",
       "altitude": "Höhe (m)",
       "paramsAt": "Wie das Gerät es {{when}} gemeldet hat",
       "events": "Ereignisse",

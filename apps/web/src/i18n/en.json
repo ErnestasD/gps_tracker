@@ -445,7 +445,7 @@
       "paramsError": "Could not load the parameters.",
       "paramsUndocumented": "Rows shown as “AVL <id>” are elements this model’s own Teltonika page does not document.",
       "movement": "Movement",
-      "odometer": "Odometer (m)",
+      "odometer": "Odometer",
       "altitude": "Altitude (m)",
       "paramsAt": "As the device reported it {{when}}",
       "events": "Events",
