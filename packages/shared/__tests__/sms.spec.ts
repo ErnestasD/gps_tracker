@@ -60,24 +60,20 @@ describe('device SIM field regexes (SMS gateway)', () => {
     imei: '356307042460001',
     name: 'Van',
   }
-  it('accepts a valid E.164 msisdn and 18–22 digit iccid', () => {
-    const r = deviceCreateSchema.parse({ ...base, simMsisdn: '+37060000000', simIccid: '8937060000000000001' })
-    expect(r.simMsisdn).toBe('+37060000000')
-    expect(r.simIccid).toBe('8937060000000000001')
+  it('accepts a valid E.164 msisdn', () => {
+    expect(deviceCreateSchema.parse({ ...base, simMsisdn: '+37060000000' }).simMsisdn).toBe('+37060000000')
   })
-  it('accepts null for both (unset)', () => {
-    const r = deviceCreateSchema.parse({ ...base, simMsisdn: null, simIccid: null })
-    expect(r.simMsisdn).toBeNull()
-    expect(r.simIccid).toBeNull()
+  it('accepts null (unset)', () => {
+    expect(deviceCreateSchema.parse({ ...base, simMsisdn: null }).simMsisdn).toBeNull()
+  })
+  it('an ICCID is no longer part of a device — the field was carried by nothing', () => {
+    // Removed 2026-08-20: zero of 494 devices had one, and no code path read it. The SIM's identity
+    // for everything we actually do — config SMS — is the msisdn.
+    expect('simIccid' in deviceCreateSchema.parse({ ...base, simIccid: '8937060000000000001' })).toBe(false)
   })
   it('rejects a msisdn without + / with a leading zero / non-digits', () => {
     expect(deviceCreateSchema.safeParse({ ...base, simMsisdn: '37060000000' }).success).toBe(false)
     expect(deviceCreateSchema.safeParse({ ...base, simMsisdn: '+0060000000' }).success).toBe(false)
     expect(deviceCreateSchema.safeParse({ ...base, simMsisdn: '+3706abc0000' }).success).toBe(false)
-  })
-  it('rejects an iccid shorter than 18 / longer than 22 / non-digit', () => {
-    expect(deviceCreateSchema.safeParse({ ...base, simIccid: '89370600000' }).success).toBe(false)
-    expect(deviceCreateSchema.safeParse({ ...base, simIccid: '8'.repeat(23) }).success).toBe(false)
-    expect(deviceCreateSchema.safeParse({ ...base, simIccid: '89370600000000000A' }).success).toBe(false)
   })
 })

@@ -653,7 +653,7 @@ function ImportSheetBody({ onImported }: { onImported: () => void }) {
         onChange={(e) => setCsv(e.target.value)}
         rows={6}
         aria-label={t('devices.import.title')}
-        placeholder="imei,name,profileKey,accountId,simMsisdn,simIccid"
+        placeholder="imei,name,profileKey,accountId,simMsisdn"
         data-testid="import-csv"
         className="mono w-full rounded-md border p-2 text-xs outline-none focus:ring-2 focus:ring-[var(--admin-brand)]/30"
         style={selectStyle}
