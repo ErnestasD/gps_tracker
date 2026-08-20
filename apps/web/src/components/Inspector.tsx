@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { Device } from '@/lib/devices'
-import { EVENT_TONE, listEvents, localizedEventSummary } from '@/lib/events'
+import { eventTone, listEvents, localizedEventSummary } from '@/lib/events'
 import type { GeofenceView } from '@orbetra/shared'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
@@ -557,15 +557,14 @@ function EventsTab({ deviceId }: { deviceId: string }) {
         return (
           <li key={e.id} className="rounded-card border border-line p-2.5" data-testid={`event-${e.id}`}>
             <div className="flex items-center justify-between gap-2">
-              <Badge variant={EVENT_TONE[e.kind] ?? 'default'}>
-                {t(`events.kind.${e.kind}`, { defaultValue: e.kind })}
-              </Badge>
+              <Badge variant={eventTone(e.kind)}>{t(`events.k.${e.kind}`, { defaultValue: e.kind })}</Badge>
               <span className="shrink-0 text-[10px] tabular-nums text-muted">{dt(e.at)}</span>
             </div>
             {summary !== '' && <p className="mt-1 text-xs text-text">{summary}</p>}
-            {/* A rule fired because someone configured it; naming it turns "why did this alarm" into
-                one glance. Only geofence and rule-engine events carry one. */}
-            {typeof e.payload?.['rule'] === 'string' && (
+            {/* The rule someone configured, when the payload names one — "why did this fire"
+                answered in a glance. Skipped when it merely repeats the kind: the offline sweeper
+                writes the literal string 'device_offline' there, which is not a rule anyone wrote. */}
+            {typeof e.payload?.['rule'] === 'string' && e.payload['rule'] !== e.kind && (
               <p className="text-[11px] text-muted">{String(e.payload['rule'])}</p>
             )}
             {e.acknowledgedAt !== null && (

@@ -1,6 +1,7 @@
 import type { EventView } from '@orbetra/shared'
 
 import { getJson } from './client'
+import { eventSeverity } from './dashboard'
 
 /**
  * Events read client (E05-6). Read-only, account-scoped on the server. Rows are the
@@ -40,19 +41,16 @@ export function eventsQuery(f: EventFilters): string {
 export const listEvents = (f: EventFilters = {}) => getJson<EventRow[]>(`/v1/events${eventsQuery(f)}`)
 
 /**
- * Severity, so an alarm does not read like a door opening.
+ * Severity as a Badge/dot tone.
  *
- * The kinds that mean "something is wrong with the vehicle or its driver" are red; the ones that
- * mean "a threshold was crossed" are amber; the rest are ordinary state changes. Anything unknown
- * stays neutral rather than guessing at alarm.
+ * Deliberately a THIN mapping over `eventSeverity`, not a table of its own. Writing a second one
+ * put fuel theft in red on the map and grey on the events page, out of the same record — the exact
+ * divergence this module exists to prevent, introduced by the commit that claimed to prevent it.
+ * If a kind's severity is wrong, it is wrong in `eventSeverity` and wrong everywhere at once.
  */
-export const EVENT_TONE: Record<string, 'danger' | 'warn'> = {
-  panic: 'danger',
-  power_cut: 'danger',
-  fuel_theft: 'danger',
-  overspeed: 'warn',
-  low_battery: 'warn',
-  device_offline: 'warn',
+export const eventTone = (kind: string): 'danger' | 'warn' | 'default' => {
+  const s = eventSeverity(kind)
+  return s === 'critical' ? 'danger' : s === 'warning' ? 'warn' : 'default'
 }
 
 /** A short, human-readable one-line summary of an event's payload, per kind. Pure. */
@@ -96,7 +94,10 @@ export interface SummaryOpts {
  * unknown kinds / missing catalog entries so nothing regresses to an empty cell). */
 export function eventSummaryT(e: EventRow, opts: SummaryOpts = {}): { key: string; params: Record<string, string> } | null {
   const p = e.payload ?? {}
-  const speed = (v: unknown): string => (typeof v === 'number' && opts.fmtSpeed !== undefined ? opts.fmtSpeed(v) : `${num(v)} km/h`)
+  // A unit belongs to a value the device sent. Bolting "km/h" onto a missing one printed
+  // "— km/h > 56 mph" on an mph account: two unit systems in one line, one of them invented.
+  const speed = (v: unknown): string =>
+    typeof v !== 'number' ? num(v) : opts.fmtSpeed !== undefined ? opts.fmtSpeed(v) : `${v} km/h`
   switch (e.kind) {
     case 'overspeed':
       return { key: 'events.s.overspeed', params: { speed: speed(p['speedKmh']), limit: speed(p['limitKmh']) } }

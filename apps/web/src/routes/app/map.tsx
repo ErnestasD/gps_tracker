@@ -13,7 +13,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
 import { listDrivers } from '@/lib/drivers'
-import { EVENT_TONE, listEvents, localizedEventSummary } from '@/lib/events'
+import { eventTone, listEvents, localizedEventSummary } from '@/lib/events'
 import { fleetPanelCounts, type FleetFilter } from '@/lib/fleetFilter'
 import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
@@ -446,20 +446,26 @@ export function MapPage() {
                       <span
                         className={cn(
                           'h-1.5 w-1.5 shrink-0 rounded-full',
-                          EVENT_TONE[e.kind] === 'danger' ? 'bg-danger' : EVENT_TONE[e.kind] === 'warn' ? 'bg-warn' : 'bg-muted/60',
+                          eventTone(e.kind) === 'danger' ? 'bg-danger' : eventTone(e.kind) === 'warn' ? 'bg-warn' : 'bg-muted/60',
                         )}
                         aria-hidden
                       />
                       <span className="min-w-0 flex-1 truncate font-medium text-text">{nameOf(e.deviceId)}</span>
                       <span className="shrink-0 tabular-nums text-muted">{dt(e.at)}</span>
                     </div>
+                    {/* The KIND stays as text beside the summary. Dropping it left the severity
+                        carried by colour alone (WCAG 1.4.1) and a screen reader reading
+                        "10.52 V < 11" with no word for what happened. */}
+                    <div className="truncate pl-3 text-muted">
+                      <span className="text-text">{t(`events.k.${e.kind}`, { defaultValue: e.kind })}</span>
+                    </div>
                     {/* The payload, not the bare kind: "overspeed" told the operator nothing the
                         record did not already answer — 91 km/h against a 90 limit, or which zone
                         was left. Same formatter as the events page and the inspector. */}
-                    <div className="truncate pl-3 text-muted">
-                      {localizedEventSummary(t, e, { fmtSpeed: units.speed, fmtVolume: units.volumeL }) ||
-                        t(`events.kind.${e.kind}`, { defaultValue: e.kind })}
-                    </div>
+                    {(() => {
+                      const summary = localizedEventSummary(t, e, { fmtSpeed: units.speed, fmtVolume: units.volumeL })
+                      return summary === '' ? null : <div className="truncate pl-3 text-muted">{summary}</div>
+                    })()}
                   </li>
                 ))}
               </ul>

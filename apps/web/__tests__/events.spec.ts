@@ -1,7 +1,8 @@
 import type { EventView } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { EVENT_KINDS, eventSummary, eventSummaryT, eventsQuery, localizedEventSummary } from '../src/lib/events.js'
+import { EVENT_KINDS, eventSummary, eventSummaryT, eventTone, eventsQuery, localizedEventSummary } from '../src/lib/events.js'
+import { eventSeverity } from '../src/lib/dashboard.js'
 
 const ev = (kind: string, payload: Record<string, unknown>): EventView => ({
   id: '1',
@@ -106,5 +107,34 @@ describe('i18n eventSummaryT / localizedEventSummary', () => {
     expect(calls[0]![1]!['defaultValue']).toBe('SOS triggered')
     // unknown kinds skip t entirely and return the pure summary ('' today)
     expect(localizedEventSummary(t, ev('mystery_kind', {}))).toBe(eventSummary(ev('mystery_kind', {})))
+  })
+})
+
+/**
+ * Severity has exactly one source.
+ *
+ * A second table put fuel theft in red on the map and grey on the events page, out of the same
+ * record — so this pins that the tone is a view of `eventSeverity` and never a table of its own.
+ */
+describe('eventTone', () => {
+  it('is a thin view over eventSeverity, for every kind the pipeline emits', () => {
+    for (const kind of EVENT_KINDS) {
+      const expected = eventSeverity(kind) === 'critical' ? 'danger' : eventSeverity(kind) === 'warning' ? 'warn' : 'default'
+      expect(eventTone(kind), kind).toBe(expected)
+    }
+  })
+
+  it('a kind nobody has classified is neutral, never a guessed alarm', () => {
+    expect(eventTone('something_new_from_the_pipeline')).toBe('default')
+  })
+})
+
+describe('a summary never invents a unit', () => {
+  it('an absent value carries no unit label', () => {
+    // "— km/h > 56 mph" put two unit systems in one line, one of them attached to a value the
+    // device never sent.
+    const d = eventSummaryT(ev('overspeed', { limitKmh: 90 }), { fmtSpeed: (k) => `${k} mph` })
+    expect(d?.params['speed']).toBe('—')
+    expect(d?.params['limit']).toBe('90 mph')
   })
 })
