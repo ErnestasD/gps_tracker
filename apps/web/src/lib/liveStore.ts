@@ -116,7 +116,10 @@ const isStationary = (p: TrailPoint): boolean => p.speed === 0 || (p.speed === n
  * anyway (I6) and they are what separates the solid runs from the dashed no-fix connectors, so
  * dropping one would silently merge two runs the vehicle did not join.
  *
- * A parked stretch collapses to its FIRST record and nothing else, across no-fix stretches too. An earlier version held the last
+ * A parked stretch collapses to its FIRST record and nothing else.
+ *
+ * The anchor is carried across no-fix stretches, which is what makes that true of a car park with a
+ * patchy sky rather than only of a clean one. An earlier version held the last
  * one back too, to stop a one-point run "losing its dashed connector" — but that never happened:
  * `buildTrailFeatures` builds the connector from `prev[prev.length - 1]` to `current[0]` whatever
  * the run length, so a single-point run supplies its endpoint perfectly well. Only the solid LINE
@@ -256,9 +259,15 @@ const lineFeature = (coordinates: [number, number][], gap: boolean): GeoJSON.Fea
  *
  * A THIRD rule runs above those two since 2026-08-19: the vertices a stationary record would
  * contribute are dropped first (`dropStationaryJitter`), because a parked vehicle's GPS jitter is
- * not a path. It never touches an invalid point and never empties a run, so the segmentation this
- * comment describes is unchanged — a parked stretch simply arrives as its first record instead of
- * as two hundred, and a run it empties keeps its connector, which spans the stretch correctly.
+ * not a path. It never touches an invalid point, so the run boundaries below are exactly the ones
+ * the device's own fix losses drew.
+ *
+ * It CAN empty a run, and the trade is worth stating. A valid run whose every record is stationary
+ * and inside the gate disappears, and the two runs around it then share ONE connector spanning both
+ * no-fix stretches and the parked stretch between them — so that dashed line is spatially right to
+ * within the gate, but it no longer marks only the window in which the device had no fix. The
+ * alternative, keeping one record per run, is what shipped in an earlier round of this fix: on a
+ * parked car under a patchy sky it drew 233 m of dashes for a vehicle that never moved.
  */
 export function buildTrailFeatures(rawPoints: readonly TrailPoint[]): GeoJSON.Feature[] {
   // A parked vehicle's jitter is not a path. Dropped HERE, at the one place a track becomes

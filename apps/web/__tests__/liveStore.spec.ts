@@ -587,9 +587,10 @@ describe('stationary jitter', () => {
   })
 
   it('a reported zero decides alone — movement true does not override it', () => {
-    // The founder's device: 383 records reporting speed 0 AND movement true shared 54 m between
-    // them, the most static bucket of the whole day. On a wired install AVL 240 follows the
-    // IGNITION, so it says "the engine is running", not "the vehicle moved".
+    // Measured on one FTC887 over 24 h: 383 records reporting speed 0 AND movement true shared 54 m
+    // between them — the most static bucket of the whole day. AVL 240's SOURCE is a device setting,
+    // so "movement true" is not a promise of displacement; that observation is the whole argument,
+    // and it is enough to say a reported zero must not be overridden.
     const idling = [at(54.68, 25.27, 0), { ...at(54.68 + JITTER, 25.27, 0), movement: true }]
     expect(dropStationaryJitter(idling)).toHaveLength(1)
   })
@@ -651,17 +652,21 @@ describe('stationary jitter', () => {
   it('…but a vehicle towed during the outage still draws both seams and the connector', () => {
     // the dashed connector marks WHERE the fix was lost; gating either end would move it by up to
     // the gate width, and the operator reads that line as evidence
-    // the record right AFTER a no-fix stretch is never gated away: the anchor resets, so the
-    // connector's far end sits on the record that actually resumed
+    // The parked stretch before the outage genuinely collapses, so the connector's NEAR end is the
+    // anchor the gate chose rather than the last record that happened to arrive — this is what the
+    // gate costs, stated. The far end is the tow, which clears the gate on its own merits.
     const points = [
-      at(54.68, 25.27, 40), at(54.68 + JITTER, 25.27, 40),
+      at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0),
       at(54.68, 25.27, 0, false),
       at(54.6845, 25.27, 0), at(54.6845 + JITTER, 25.27, 0),
     ]
     expect(dropStationaryJitter(points).filter((p) => !p.fixValid)).toHaveLength(1)
     const gaps = buildTrailFeatures(points).filter((f) => f.properties!['gap'] === true)
     expect(gaps).toHaveLength(1)
-    expect((gaps[0]!.geometry as GeoJSON.LineString).coordinates[1]).toEqual([25.27, 54.6845])
+    expect((gaps[0]!.geometry as GeoJSON.LineString).coordinates).toEqual([
+      [25.27, 54.68],   // the anchor, not the last pre-gap record
+      [25.27, 54.6845], // the tow
+    ])
   })
 
   it('never touches a record the device says is moving', () => {
