@@ -969,8 +969,18 @@ test('scrubbing the 24 h timeline draws the vehicle where it WAS (founder report
   // live: no ghost, because there is no past moment selected
   expect(await ghostCount()).toBe(0)
 
-  // 60 minutes back — inside the flood, so a real record answers for that moment
-  await scrub.fill(String(24 * 60 - 60))
+  /**
+   * 60 minutes back — inside the flood, so a real record answers for that moment.
+   *
+   * Read off the axis instead of computing it: the range counts UP toward now, and its unit and
+   * span are both the timeline's to decide — it moved from minutes-of-24-h to SECONDS, and the span
+   * itself is now zoomable (1/3/6/12/24 h). A literal here silently became "23.6 hours back", which
+   * is outside the two hours bufferedFlood replays, so the ghost was correctly absent and the test
+   * blamed the map for it.
+   */
+  const axisMax = Number(await scrub.getAttribute('max'))
+  expect(axisMax).toBeGreaterThanOrEqual(3600) // a span shorter than the jump would make this vacuous
+  await scrub.fill(String(axisMax - 3600))
   await expect.poll(ghostCount, { timeout: 15_000 }).toBeGreaterThan(0)
 
   await page.screenshot({ path: 'test-results/scrub-ghost.png' }) // PR visual artifact
