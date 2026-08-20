@@ -265,7 +265,11 @@ function TabStrip({
   onSelect: (t: InspectorTab) => void
 }) {
   return (
-    <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-line" role="tablist" data-testid="inspector-tabs">
+    <div
+      className="scroll-strip flex shrink-0 gap-1 overflow-x-auto border-b border-line"
+      role="tablist"
+      data-testid="inspector-tabs"
+    >
       {tabs.map((tb) => (
         <button
           key={tb.id}
