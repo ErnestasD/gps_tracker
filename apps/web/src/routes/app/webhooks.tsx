@@ -67,7 +67,7 @@ export function WebhooksPage() {
           <div className="mb-2 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('webhooks.created')}</div>
           <p className="mb-2 text-sm" style={{ color: 'var(--admin-warning)' }}>{t('webhooks.secretOnce')}</p>
           <code
-            className="mono block overflow-x-auto rounded-md border p-2 text-xs"
+            className="scroll-strip mono block overflow-x-auto rounded-md border p-2 text-xs"
             style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }}
             data-testid="webhook-secret"
           >

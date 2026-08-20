@@ -461,7 +461,8 @@
       "eventsError": "Ereignisse konnten nicht geladen werden.",
       "noEvents": "Keine Ereignisse für dieses Gerät.",
       "acknowledged": "Bestätigt",
-      "fencesHint": "Wählen Sie, welche Zonen die Karte zeichnet."
+      "fencesHint": "Wählen Sie, welche Zonen die Karte zeichnet.",
+      "tabs": "Geräte-Panels"
     },
     "title": "Live-Karte",
     "toggleList": "Fahrzeugliste ein- oder ausblenden",

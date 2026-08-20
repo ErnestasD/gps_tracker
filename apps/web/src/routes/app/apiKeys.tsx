@@ -72,7 +72,7 @@ export function ApiKeysPage() {
           <p className="mb-2 text-sm" style={{ color: 'var(--admin-warning)' }}>{t('apiKeys.copyNow')}</p>
           <div className="flex items-center gap-2">
             <code
-              className="mono flex-1 overflow-x-auto rounded-md border p-2 text-xs"
+              className="scroll-strip mono flex-1 overflow-x-auto rounded-md border p-2 text-xs"
               style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }}
               data-testid="apikey-value"
             >

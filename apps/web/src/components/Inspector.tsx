@@ -264,10 +264,12 @@ function TabStrip({
   active: InspectorTab
   onSelect: (t: InspectorTab) => void
 }) {
+  const { t } = useTranslation()
   return (
     <div
       className="scroll-strip flex shrink-0 gap-1 overflow-x-auto border-b border-line"
       role="tablist"
+      aria-label={t('map.inspector.tabs')}
       data-testid="inspector-tabs"
     >
       {tabs.map((tb) => (

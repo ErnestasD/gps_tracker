@@ -461,7 +461,8 @@
       "eventsError": "Nie udało się wczytać zdarzeń.",
       "noEvents": "Brak zdarzeń dla tego urządzenia.",
       "acknowledged": "Potwierdzone",
-      "fencesHint": "Wybierz, które strefy rysuje mapa."
+      "fencesHint": "Wybierz, które strefy rysuje mapa.",
+      "tabs": "Panele urządzenia"
     },
     "title": "Mapa na żywo",
     "toggleList": "Pokaż lub ukryj listę pojazdów",
