@@ -19,7 +19,7 @@ import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
 import { getTrack, trackTimes } from '@/lib/telemetry'
-import { WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
+import { TRACK_HOURS, WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 import { LiveSocket } from '@/lib/ws'
@@ -159,18 +159,26 @@ export function MapPage() {
    * store's own flush loop has skipped hidden tabs since E02-6 for the same reason.
    */
   const [scrubbing, setScrubbing] = useState(false)
+  /** The axis span in hours — the timeline's zoom. Narrower ⇒ the same 240 waveform bars and the
+   *  same slider travel cover less time, which is exactly what "review in more detail" means. */
+  const [spanH, setSpanH] = useState<number>(TRACK_HOURS)
   const [trackWindow, setTrackWindow] = useState(() => windowAt(Date.now()))
   const [windowFor, setWindowFor] = useState(snap.selectedId)
   if (windowFor !== snap.selectedId) {
     setWindowFor(snap.selectedId)
-    setTrackWindow(windowAt(Date.now()))
+    setTrackWindow(windowAt(Date.now(), spanH))
     setScrubbing(false)
   }
   const catchUp = useCallback(() => {
     setTrackWindow((w) => {
-      const next = windowAt(Date.now())
-      return next.to === w.to ? w : next
+      const next = windowAt(Date.now(), spanH)
+      return next.to === w.to && next.from === w.from ? w : next
     })
+  }, [spanH])
+  // a zoom takes effect immediately, scrubbed or not — it is the one deliberate window change
+  const onSpan = useCallback((hours: number) => {
+    setSpanH(hours)
+    setTrackWindow(windowAt(Date.now(), hours))
   }, [])
   useEffect(() => {
     if (scrubbing || typeof document === 'undefined') return
@@ -569,6 +577,7 @@ export function MapPage() {
         onScrub={onScrub}
         events={timelineEvents}
         onScrubTime={onScrubTime}
+        onSpan={onSpan}
       />
     </div>
   )

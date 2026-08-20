@@ -486,7 +486,10 @@
         "minutes": "-{{minutes}} min"
       },
       "nothingToReplay": "No history to replay for this vehicle",
-      "refreshing": "Refreshing…"
+      "refreshing": "Refreshing…",
+      "zoomIn": "Shorter span — more detail",
+      "zoomOut": "Longer span",
+      "span": "{{hours}} h"
     },
     "eventFeed": "Event feed",
     "ctl": {

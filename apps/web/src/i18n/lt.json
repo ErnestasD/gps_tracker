@@ -486,7 +486,10 @@
         "minutes": "-{{minutes}} min."
       },
       "nothingToReplay": "Šio automobilio istorijos peržaisti nėra",
-      "refreshing": "Atnaujinama…"
+      "refreshing": "Atnaujinama…",
+      "zoomIn": "Trumpesnis intervalas — detaliau",
+      "zoomOut": "Ilgesnis intervalas",
+      "span": "{{hours}} val."
     },
     "eventFeed": "Įvykių srautas",
     "ctl": {

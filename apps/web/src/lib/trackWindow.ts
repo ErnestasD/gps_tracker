@@ -15,6 +15,10 @@ export interface TrackWindow {
 
 export const TRACK_HOURS = 24
 
+/** The spans the zoom control cycles through, in hours. Bounded on both ends: below an hour a
+ * 5-minute window bucket is a visible fraction of the axis, above a day the endpoint pages. */
+export const SPAN_OPTIONS_H = [1, 3, 6, 12, 24] as const
+
 /**
  * The window is bucketed, not continuous.
  *
@@ -26,9 +30,9 @@ export const TRACK_HOURS = 24
  */
 export const WINDOW_BUCKET_MS = 5 * 60_000
 
-export function windowAt(nowMs: number): TrackWindow {
+export function windowAt(nowMs: number, hours: number = TRACK_HOURS): TrackWindow {
   const to = Math.floor(nowMs / WINDOW_BUCKET_MS) * WINDOW_BUCKET_MS
-  return { from: to - TRACK_HOURS * 3_600_000, to }
+  return { from: to - hours * 3_600_000, to }
 }
 
 /** Whole minutes spanned by the window — the scrubber's axis. */

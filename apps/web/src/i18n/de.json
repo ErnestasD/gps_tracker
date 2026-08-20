@@ -486,7 +486,10 @@
         "minutes": "-{{minutes}} Min."
       },
       "nothingToReplay": "Keine Historie zum Abspielen für dieses Fahrzeug",
-      "refreshing": "Wird aktualisiert…"
+      "refreshing": "Wird aktualisiert…",
+      "zoomIn": "Kürzerer Zeitraum — mehr Detail",
+      "zoomOut": "Längerer Zeitraum",
+      "span": "{{hours}} Std."
     },
     "eventFeed": "Ereignis-Feed",
     "ctl": {

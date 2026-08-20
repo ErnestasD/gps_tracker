@@ -1,11 +1,11 @@
-import { Pause, Play, Route as RouteIcon } from 'lucide-react'
+import { Pause, Play, Route as RouteIcon, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useFmt } from '@/lib/datetime'
 import type { ScrubState } from '@/lib/liveStore'
 import { placeAt, pointAt, type TrackPoint } from '@/lib/telemetry'
-import { canScrub, firstPlaceBack, quickJumps, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
+import { canScrub, firstPlaceBack, quickJumps, SPAN_OPTIONS_H, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
@@ -59,8 +59,9 @@ const FALLBACK_PIN = '#94a3b8'
 
 /** Axis density: minor tick / label cadence by span. A 24 h span gets an hourly grid with a
  * label every 3 h — the four-labels-per-day axis read as decoration, not as an instrument. */
-const tickStepMin = (spanMin: number) => (spanMin >= 1440 ? 60 : spanMin >= 360 ? 30 : 15)
-const labelStepMin = (spanMin: number) => (spanMin >= 1440 ? 180 : spanMin >= 360 ? 60 : 30)
+const tickStepMin = (spanMin: number) => (spanMin >= 1440 ? 60 : spanMin >= 360 ? 30 : spanMin >= 180 ? 15 : 5)
+const labelStepMin = (spanMin: number) =>
+  spanMin >= 1440 ? 180 : spanMin >= 720 ? 120 : spanMin >= 360 ? 60 : spanMin >= 180 ? 30 : 15
 
 /** Waveform resolution: one bar ≈ 6 min of a 24 h span. Chosen against the founder's SoundCloud
  * reference — enough bars to read as a waveform, few enough that a bar is still a visible column
@@ -82,6 +83,7 @@ export function Timeline({
   onScrub,
   events = [],
   onScrubTime,
+  onSpan,
 }: {
   /** null ⇒ nothing selected: the bar stays, disabled, rather than vanishing. */
   deviceId: string | null
@@ -109,6 +111,8 @@ export function Timeline({
    *  inspector's parameters) at the same moment. Separate from onScrub because a no-fix moment
    *  has no place but very much has a time. */
   onScrubTime?: (iso: string | null) => void
+  /** Zoom: the page swaps the whole window for an `hours`-long one ending at the same "now". */
+  onSpan?: (hours: number) => void
 }) {
   const { t } = useTranslation()
   const { dt } = useFmt()
@@ -181,6 +185,18 @@ export function Timeline({
     }, REPLAY_TICK_MS)
     return () => clearInterval(iv)
   }, [replaying])
+
+  /**
+   * A zoom under a scrubbed operator keeps the MOMENT, clamped into the new window — losing the
+   * position they were inspecting is exactly what "zoom in to look closer" must not do. The
+   * re-scrub also re-resolves the place against the newly fetched points.
+   */
+  const spanRef = useRef(spanMin)
+  useEffect(() => {
+    if (spanRef.current === spanMin) return
+    spanRef.current = spanMin
+    if (backRef.current > 0) scrubRef.current(Math.min(backRef.current, spanMin))
+  }, [spanMin])
 
   /**
    * A track that becomes unscrubbable under a scrubbed operator must return them to LIVE.
@@ -431,6 +447,44 @@ export function Timeline({
             </div>
           )}
         </div>
+
+        {/* zoom: swap the whole axis for a shorter/longer one ending at the same "now" —
+            always visible, because on a phone it is the only way to reach fine detail */}
+        {onSpan !== undefined && (
+          <div className="flex shrink-0 items-center gap-0.5" data-testid="timeline-zoom">
+            <button
+              type="button"
+              disabled={spanMin <= SPAN_OPTIONS_H[0] * 60}
+              onClick={() => {
+                const shorter = [...SPAN_OPTIONS_H].reverse().find((h) => h * 60 < spanMin)
+                if (shorter !== undefined) onSpan(shorter)
+              }}
+              aria-label={t('map.timeline.zoomIn')}
+              title={t('map.timeline.zoomIn')}
+              data-testid="timeline-zoom-in"
+              className="grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:text-text disabled:opacity-40"
+            >
+              <ZoomIn className="h-3.5 w-3.5" aria-hidden />
+            </button>
+            <span className="w-12 text-center text-[11px] tabular-nums text-muted" data-testid="timeline-span">
+              {t('map.timeline.span', { hours: Math.round(spanMin / 60) })}
+            </span>
+            <button
+              type="button"
+              disabled={spanMin >= SPAN_OPTIONS_H[SPAN_OPTIONS_H.length - 1]! * 60}
+              onClick={() => {
+                const longer = SPAN_OPTIONS_H.find((h) => h * 60 > spanMin)
+                if (longer !== undefined) onSpan(longer)
+              }}
+              aria-label={t('map.timeline.zoomOut')}
+              title={t('map.timeline.zoomOut')}
+              data-testid="timeline-zoom-out"
+              className="grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:text-text disabled:opacity-40"
+            >
+              <ZoomOut className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </div>
+        )}
 
         <div className="hidden shrink-0 items-center gap-1 md:flex">
           {quick.map((q) => (
