@@ -323,6 +323,38 @@ describe('an exact 0/0 is never a valid fix, whatever the satellite count', () =
     expect(normalize({ ...basePayload, lat: 0, lon: 25.27, satellites: 11 }, hash).fixValid).toBe(true)
   })
 
+  it('keeps the raw frame ONLY for the fix we ourselves refused', () => {
+    /**
+     * The evidence question, made answerable. Asked "was the 0/0 the device or our parser?", the
+     * honest answer was "we cannot know" — the decoded fields are all we store and the frame is
+     * gone once parsed.
+     *
+     * Only for the surprising half, though. A device reporting satellites = 0 is SAYING it has no
+     * fix (§3.4): ordinary, frequent — 40 in a week from one device — and there is nothing to
+     * investigate. A 0/0 under a sky full of satellites is us overruling the device: 34 in that
+     * same week, and the only kind anyone will want the bytes for.
+     */
+    const refused = normalize({ ...basePayload, lat: 0, lon: 0, satellites: 37 }, hash)
+    expect(refused.rejectReason).toBe('null_island')
+    expect(refused.raw).toEqual(basePayload.raw)
+
+    const deviceSaidSo = normalize({ ...basePayload, satellites: 0 }, hash)
+    expect(deviceSaidSo.fixValid).toBe(false)
+    expect(deviceSaidSo.rejectReason).toBeNull()
+    expect(deviceSaidSo.raw).toBeNull() // nothing surprising happened; keeping bytes would be noise
+
+    const ordinary = normalize(basePayload, hash)
+    expect(ordinary.rejectReason).toBeNull()
+    expect(ordinary.raw).toBeNull()
+  })
+
+  it('a 0/0 with NO satellites is the §3.4 case, not ours — no reason, no bytes', () => {
+    // both conditions are true at once; the reason must name the one that actually decided
+    const rec = normalize({ ...basePayload, lat: 0, lon: 0, satellites: 0 }, hash)
+    expect(rec.fixValid).toBe(false)
+    expect(rec.rejectReason).toBeNull()
+  })
+
   it('§3.4 still holds: no satellites is still an invalid fix', () => {
     expect(normalize({ ...basePayload, lat: 54.68, lon: 25.27, satellites: 0 }, hash).fixValid).toBe(false)
   })

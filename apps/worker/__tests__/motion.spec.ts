@@ -27,7 +27,7 @@ const rec = (
   odometerM: null,
   priority: 0,
   recHash: BigInt(fixTimeMs),
-  attrs: {},
+  attrs: {}, rejectReason: null, raw: null,
 })
 
 describe('E02-7 I5 seam (invalid fixes never reach motion consumers)', () => {

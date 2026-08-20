@@ -40,6 +40,8 @@ export interface ConsumerDeps {
   /** Fired per field normalization had to null (out of column range). Non-zero ⇒ firmware quirk or
    *  spoofed frames; without it a nulled speed is indistinguishable from a device that reports none. */
   onFieldNulled?: (field: string) => void
+  /** A fix the device called good and normalize refused — see NormalizedRecord.rejectReason. */
+  onFixRejected?: (reason: string) => void
   /** pending entries Redis deleted because the stream had already trimmed past them — the only
    *  post-hoc proof that a stalled consumer's backlog was destroyed rather than merely delayed */
   onPendingEvicted?: (shard: number, count: number) => void
@@ -330,6 +332,7 @@ export class ShardConsumer {
       try {
         const table = deviceId === undefined ? undefined : tables.get(deviceId.toString())
         const rec = normalize(p, this.deps.hash, table, this.deps.onFieldNulled)
+        if (rec.rejectReason !== null) this.deps.onFixRejected?.(rec.rejectReason)
         records.push(rec)
         entryOf.set(rec, [id, payload])
         ids.push(id)

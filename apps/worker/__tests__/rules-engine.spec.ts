@@ -29,7 +29,7 @@ const rec = (tSec: number, o: RecOpts = {}): NormalizedRecord => ({
   odometerM: null,
   priority: 0,
   recHash: BigInt(tSec),
-  attrs: o.attrs ?? {},
+  attrs: o.attrs ?? {}, rejectReason: null, raw: null,
 })
 
 const rule = (kind: RuleDef['kind'], config: Record<string, unknown> = {}, cooldownS = 300): RuleDef => ({

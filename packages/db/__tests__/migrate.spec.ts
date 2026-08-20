@@ -58,6 +58,9 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
       // satellites, so §3.4's `fix_valid := satellites > 0` called it a valid fix, and the public
       // share link would have parked a customer's marker in the Gulf of Guinea.
       '004_null_island_fix_valid.sql',
+      // 005 keeps the raw frame for a fix WE rejected — the evidence that was missing when the
+      // question was "device or parser?" and the only honest answer was "we cannot know".
+      '005_rejected_fix_forensics.sql',
     ])
 
     const tables = await q<{ table_name: string }>(
@@ -117,6 +120,9 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
     expect(result.skipped).toEqual([
       '001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql',
       '004_null_island_fix_valid.sql',
+      // 005 keeps the raw frame for a fix WE rejected — the evidence that was missing when the
+      // question was "device or parser?" and the only honest answer was "we cannot know".
+      '005_rejected_fix_forensics.sql',
     ])
   }, 60_000)
 

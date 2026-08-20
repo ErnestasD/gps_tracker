@@ -19,6 +19,9 @@ const COLUMNS = [
   'priority',
   'rec_hash',
   'attrs',
+  // forensics for the fixes WE reject; NULL on every ordinary row (see 005_rejected_fix_forensics)
+  'reject_reason',
+  'raw',
 ] as const
 
 export const MAX_BATCH_ROWS = 500 // §6.1: 500-row batches
@@ -52,6 +55,9 @@ export async function writePositions(pool: Pool, records: NormalizedRecord[]): P
         r.priority,
         r.recHash.toString(),
         JSON.stringify(r.attrs),
+        r.rejectReason,
+        // pg maps Buffer → bytea; a plain Uint8Array would be serialised as a JSON array of ints
+        r.raw === null ? null : Buffer.from(r.raw),
       )
       const base = i * COLUMNS.length
       return `(${COLUMNS.map((_, j) => `$${base + j + 1}`).join(',')})`

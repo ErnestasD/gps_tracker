@@ -471,6 +471,7 @@ async function main(): Promise<void> {
       onDeadLetter: (reason, n) => prom.deadLettered.inc({ reason }, n),
       onPendingEvicted: (shard, n) => prom.pendingEvicted.inc({ shard: String(shard) }, n),
       onFieldNulled: (field) => prom.fieldNulled.inc({ field }),
+      onFixRejected: (reason) => prom.fixRejected.inc({ reason }),
       onAvlFallback: (reason) => prom.avlFallback.inc({ reason }),
       redis: conn,
       pool,

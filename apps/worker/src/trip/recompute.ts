@@ -97,6 +97,9 @@ function toRecord(deviceId: bigint, row: Record<string, unknown>): NormalizedRec
     priority: 0,
     recHash: 0n,
     attrs: {},
+    // rebuilt from stored rows: nothing was rejected here and the frame is long gone
+    rejectReason: null,
+    raw: null,
   }
 }
 

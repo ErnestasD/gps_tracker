@@ -53,6 +53,16 @@ export interface WorkerProm {
   /** Fields normalization had to null because the value did not fit its column. Non-zero ⇒ a
    *  firmware quirk or spoofed frames; the position is kept, the field is not. */
   fieldNulled: Counter
+  /**
+   * Fixes the pipeline REFUSED although the device presented them as good — currently the exact
+   * 0/0 a device sent while reporting 37 satellites.
+   *
+   * Separate from `fieldNulled`, which is about a value not fitting its column. This is about a
+   * value that fits perfectly and is not true. It went unnoticed for two days and was found by the
+   * founder looking at a map; a counter with an alert on any sustained non-zero rate is the
+   * difference between knowing and being told.
+   */
+  fixRejected: Counter
   /** Records excluded from LIVE state / the motion engines because the device clock runs ahead of
    *  the server's. The row is still written; it just does not move state. Non-zero ⇒ a fleet with a
    *  drifting RTC, whose live map and offline alerts would otherwise be silently wrong. */
@@ -227,6 +237,7 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
   // a stalled metering pipeline is silent under-billing — alert on any non-zero rate
   const deadLettered = new Counter({ name: 'pipeline_dead_lettered_total', help: 'stream entries quarantined to raw:dead by reason (malformed payload | rejected by postgres)', labelNames: ['reason'], registers: [registry] })
   const fieldNulled = new Counter({ name: 'positions_field_nulled_total', help: 'position fields nulled because the value did not fit its column (firmware quirk / spoof)', labelNames: ['field'], registers: [registry] })
+  const fixRejected = new Counter({ name: 'positions_fix_rejected_total', help: 'fixes refused although the device reported them as valid (implausible coordinate)', labelNames: ['reason'], registers: [registry] })
   /**
    * Records decoded with the FMB120 FALLBACK instead of the device's own AVL dictionary.
    *
@@ -304,5 +315,5 @@ export function startWorkerProm(redis: Redis, port: number, poolStats?: () => { 
     console.error('metrics listener failed', err)
   })
   server.listen(port)
-  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripCloseMissed, tripOdometerRejected, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, avlFallback, clockSkewed, jobFailed, authEmailSent, pendingEvicted, billingLapseUnreachable, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
+  return { registry, batchRows, setLagMs: (ms) => lag.set(ms), setDataAgeMs: (ms) => dataAge.set(ms), tripsOpened, tripsClosed, tripCloseMissed, tripOdometerRejected, tripPersistErrors, tripRecomputes, tripRecomputeDeleted, tripRecomputeTruncated, geofenceEvents, ruleEvents, enginePersistErrors, notificationSent, notificationFailed, notificationSkipped, smsSent, smsFailed, webhookDelivered, webhookFailed, usageDeviceDays, usageSweepFailed, deadLettered, fieldNulled, fixRejected, avlFallback, clockSkewed, jobFailed, authEmailSent, pendingEvicted, billingLapseUnreachable, stripeOverageReported, stripeOverageBackfilled, stripeUnmappedPrice, stripeAllowanceSkips, billingLapsedTenants, billingLapsedDevices, billingLapsedActionable, billingLapseAction, scheduledReportsSent, retentionPruned, rejectsDrained, rejectsDropped, gdprOrphanTmp, commandsResolved, gdprErased, gdprExported, gdprFailed, server }
 }

@@ -263,6 +263,16 @@ export function normalize(
     // so fall to 0 — which marks the fix INVALID, the fail-safe side of I5.
     satellites: sats,
     fixValid: sats > 0 && !isNullIsland(p.lat, p.lon), // rule 6 / I5 — reads the SAME values the row stores
+    /**
+     * Evidence, but only for the surprising half.
+     *
+     * `satellites === 0` is the device saying it has no fix (§3.4): ordinary, frequent, nothing to
+     * investigate — 40 in a week from one device. A coordinate of 0/0 while the device claims a sky
+     * full of satellites is us overruling it: 34 in that same week, and the only case anyone will
+     * later want the bytes for.
+     */
+    rejectReason: sats > 0 && isNullIsland(p.lat, p.lon) ? 'null_island' : null,
+    raw: sats > 0 && isNullIsland(p.lat, p.lon) ? p.raw : null,
     ignition,
     movement,
     odometerM,

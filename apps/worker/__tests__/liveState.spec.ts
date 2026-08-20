@@ -49,7 +49,7 @@ const rec = (fixTimeMs: number, lat = 54.7, serverTimeMs = Date.now()): Normaliz
   odometerM: null,
   priority: 0,
   recHash: 1n,
-  attrs: {},
+  attrs: {}, rejectReason: null, raw: null,
 })
 
 describe('LiveState (E02-4)', () => {

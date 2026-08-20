@@ -41,7 +41,7 @@ const rec = (tSec: number, o: Opt = {}): NormalizedRecord => ({
   odometerM: o.odo ?? null,
   priority: 0,
   recHash: BigInt(T0 + tSec),
-  attrs: o.ib !== undefined ? { [o.ibKey ?? 'iButton']: o.ib } : {},
+  attrs: o.ib !== undefined ? { [o.ibKey ?? 'iButton']: o.ib } : {}, rejectReason: null, raw: null,
 })
 
 const closes = (ev: TripEvent[]): CloseEvent[] => ev.filter((e): e is CloseEvent => e.type === 'close')

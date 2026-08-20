@@ -13,7 +13,7 @@ const T0 = 1_751_600_000_000
 const rec = (tSec: number, lon: number, lat: number, fixValid = true): NormalizedRecord => ({
   deviceId: 42n, fixTime: new Date(T0 + tSec * 1000), serverTime: new Date(T0 + tSec * 1000), lat, lon,
   altitude: null, speed: 30, course: null, satellites: fixValid ? 9 : 0, fixValid,
-  ignition: true, movement: true, odometerM: null, priority: 0, recHash: BigInt(tSec), attrs: {},
+  ignition: true, movement: true, odometerM: null, priority: 0, recHash: BigInt(tSec), attrs: {}, rejectReason: null, raw: null,
 })
 
 describe('E05-2 pointInPolygon', () => {

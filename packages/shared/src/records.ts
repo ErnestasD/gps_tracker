@@ -41,4 +41,17 @@ export interface NormalizedRecord {
   priority: 0 | 1 | 2
   recHash: bigint
   attrs: Record<string, unknown>
+  /**
+   * Why WE refused a fix the device presented as good — never set for the ordinary §3.4 no-fix
+   * record, where the device itself said it had none. Null for everything unsurprising.
+   */
+  rejectReason: string | null
+  /**
+   * The AVL record exactly as it arrived, kept ONLY alongside a `rejectReason`.
+   *
+   * Asked "was the 0/0 the device or our parser?", the answer was "we cannot know" — the decoded
+   * fields are all we store and the frame is gone once parsed. Keeping it for the handful of
+   * records we ourselves reject makes that answerable without keeping it for the millions we do not.
+   */
+  raw: Uint8Array | null
 }
