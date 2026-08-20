@@ -17,7 +17,7 @@ vi.mock('mapbox-gl', () => ({
   },
 }))
 
-import { createThemedMap, emphasizeAdminBoundaries, hideTrafficLayers, shrinkRoadShields, styleForTheme, watchMapLoad } from '../src/lib/map.js'
+import { createThemedMap, dropTrafficSources, emphasizeAdminBoundaries, scaleSizeExpression, shrinkRoadShields, styleForTheme, watchMapLoad } from '../src/lib/map.js'
 
 type StyleLoadHandler = () => void
 /** Minimal stand-in for the two Map members watchMapLoad touches. */
@@ -67,7 +67,7 @@ describe('emphasizeAdminBoundaries (border legibility)', () => {
 })
 
 describe('shrinkRoadShields (road-number badge size)', () => {
-  it('scales down (×0.62) icon + text only on *-shield symbol layers', () => {
+  it('scales icon + text only on *-shield symbol layers, keeping the expression valid', () => {
     const touched: { layer: string; prop: string; value: unknown }[] = []
     const map = {
       getStyle: () => ({ layers: [{ id: 'road-number-shield' }, { id: 'road-label' }, { id: 'admin-0-boundary' }] }),
@@ -78,8 +78,15 @@ describe('shrinkRoadShields (road-number badge size)', () => {
     expect(touched.every((tch) => tch.layer === 'road-number-shield')).toBe(true) // never a non-shield layer
     expect(touched.some((tch) => tch.prop === 'icon-size')).toBe(true)
     expect(touched.some((tch) => tch.prop === 'text-size')).toBe(true)
-    // scales the existing value rather than overwriting with an absolute size
-    expect(touched.every((tch) => Array.isArray(tch.value) && (tch.value as unknown[])[0] === '*')).toBe(true)
+    /**
+     * Scales the existing value rather than overwriting with an absolute size — but IN PLACE.
+     * This assertion used to require `['*', 0.45, <existing>]`, pinning the defect as the contract:
+     * that form makes `["zoom"]` non-top-level, which mapbox-gl rejects outright, so the shields
+     * never shrank and every style load logged two errors per shield layer.
+     */
+    expect(touched.every((tch) => Array.isArray(tch.value) && (tch.value as unknown[])[0] === 'interpolate')).toBe(true)
+    expect((touched[0]!.value as unknown[])[4]).toBeCloseTo(0.45) // the OUTPUT scaled
+    expect((touched[0]!.value as unknown[])[3]).toBe(6) // …and the zoom stop untouched
   })
 
   it('is a silent no-op when the style has no shield layers (offline dev/e2e style)', () => {
@@ -94,17 +101,46 @@ describe('shrinkRoadShields (road-number badge size)', () => {
   })
 })
 
-describe('hideTrafficLayers (fleet-map declutter)', () => {
-  it('hides every traffic-* layer, leaves the rest', () => {
-    const hidden: string[] = []
+describe('dropTrafficSources (fleet-map declutter)', () => {
+  /** The real navigation-night-v1 shape: two data sources we show nothing from, and the basemap. */
+  const style = () => ({
+    layers: [
+      { id: 'traffic', source: 'mapbox-traffic' },
+      { id: 'traffic-road-oneway-arrow', source: 'mapbox-traffic' },
+      { id: 'incident-closure-lines-navigation', source: 'mapbox-incidents' },
+      { id: 'incident-endpoints-navigation', source: 'mapbox-incidents' },
+      { id: 'road-label', source: 'composite' },
+    ],
+  })
+
+  it('removes the LAYERS and then the SOURCES, leaving the basemap', () => {
+    // Hiding was not enough: a hidden layer still fetches its tiles, and this token has no
+    // entitlement to mapbox-incidents-v1 — that is where the founder's console 403s came from,
+    // one per tile, on every pan.
+    const removedLayers: string[] = []
+    const removedSources: string[] = []
     const map = {
-      getStyle: () => ({ layers: [{ id: 'traffic' }, { id: 'traffic-road-oneway-arrow' }, { id: 'road-label' }] }),
-      setLayoutProperty: (layer: string, prop: string, value: unknown) => {
-        if (prop === 'visibility' && value === 'none') hidden.push(layer)
-      },
-    } as unknown as Parameters<typeof hideTrafficLayers>[0]
-    hideTrafficLayers(map)
-    expect(hidden).toEqual(['traffic', 'traffic-road-oneway-arrow'])
+      getStyle: style,
+      getSource: (id: string) => (removedSources.includes(id) ? undefined : { id }),
+      removeLayer: (id: string) => removedLayers.push(id),
+      removeSource: (id: string) => removedSources.push(id),
+    } as unknown as Parameters<typeof dropTrafficSources>[0]
+    dropTrafficSources(map)
+    expect(removedLayers).toEqual([
+      'traffic', 'traffic-road-oneway-arrow',
+      'incident-closure-lines-navigation', 'incident-endpoints-navigation',
+    ])
+    expect(removedSources).toEqual(['mapbox-traffic', 'mapbox-incidents'])
+  })
+
+  it('a style carrying neither is a no-op', () => {
+    const map = {
+      getStyle: () => ({ layers: [{ id: 'road-label', source: 'composite' }] }),
+      getSource: () => undefined,
+      removeLayer: () => { throw new Error('must not be called') },
+      removeSource: () => { throw new Error('must not be called') },
+    } as unknown as Parameters<typeof dropTrafficSources>[0]
+    expect(() => dropTrafficSources(map)).not.toThrow()
   })
 })
 
@@ -160,5 +196,48 @@ describe('watchMapLoad (silent-blank-map watchdog)', () => {
     expect(onError).toHaveBeenCalledExactlyOnceWith(false)
     stop()
     expect(map.handlers).toHaveLength(0)
+  })
+})
+
+/**
+ * Scaling a size that may be a zoom expression.
+ *
+ * `["*", 0.45, <existing>]` was the obvious move and the wrong one: Mapbox requires `["zoom"]` to be
+ * the direct input of a top-level `step`/`interpolate`, so wrapping a zoom-dependent size made the
+ * property invalid. mapbox-gl then REJECTS it rather than throwing, so the shields never shrank
+ * while the console filled with errors on every style load — a fix that failed silently and
+ * loudly at the same time.
+ */
+describe('scaleSizeExpression', () => {
+  it('scales a plain number', () => {
+    expect(scaleSizeExpression(2, 0.45)).toBe(0.9)
+  })
+
+  it('scales the OUTPUTS of an interpolate, leaving the zoom input top-level', () => {
+    // the real navigation-night-v1 shield size
+    const real = ['interpolate', ['exponential', 1.5], ['zoom'], 6, 0.5, 13, 0.5, 22, 1]
+    expect(scaleSizeExpression(real, 0.5)).toEqual(
+      ['interpolate', ['exponential', 1.5], ['zoom'], 6, 0.25, 13, 0.25, 22, 0.5],
+    )
+  })
+
+  it('scales the outputs of a step, including the one before the first stop', () => {
+    expect(scaleSizeExpression(['step', ['zoom'], 1, 10, 2, 15, 4], 0.5)).toEqual(
+      ['step', ['zoom'], 0.5, 10, 1, 15, 2],
+    )
+  })
+
+  it('leaves the stops alone — scaling those would move the zoom levels, not the size', () => {
+    const out = scaleSizeExpression(['interpolate', ['linear'], ['zoom'], 6, 1, 22, 2], 0.5) as unknown[]
+    expect(out[3]).toBe(6)
+    expect(out[5]).toBe(22)
+  })
+
+  it('refuses a shape it does not understand rather than emitting something invalid', () => {
+    // an unscaled shield is a cosmetic disappointment; an invalid expression is an error per load
+    expect(scaleSizeExpression(['*', 2, ['zoom']], 0.5)).toBeNull()
+    expect(scaleSizeExpression(['interpolate', ['linear'], ['zoom'], 6, ['get', 'size']], 0.5)).toBeNull()
+    expect(scaleSizeExpression(undefined, 0.5)).toBeNull()
+    expect(scaleSizeExpression('big', 0.5)).toBeNull()
   })
 })

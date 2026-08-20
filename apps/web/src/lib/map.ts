@@ -55,12 +55,41 @@ export function emphasizeAdminBoundaries(map: mapboxgl.Map, theme: Theme): void 
 }
 
 /**
+ * Scale a symbol size that may be a plain number OR a zoom expression.
+ *
+ * `["*", 0.45, <existing>]` looked obvious and was wrong: Mapbox requires `["zoom"]` to be the
+ * direct input of a TOP-LEVEL `step`/`interpolate`, so wrapping a zoom-dependent size produced
+ * "\"zoom\" expression may only be used as input to a top-level..." on every style load — and
+ * mapbox-gl rejects the property rather than throwing, so the shields never actually shrank while
+ * the console filled up. The navigation styles' shields are exactly that shape:
+ * `["interpolate", ["exponential", 1.5], ["zoom"], 6, 0.5, 13, 0.5, 22, 1]`.
+ *
+ * So scale the OUTPUTS in place and leave the expression's structure alone. Anything whose shape we
+ * do not recognise returns null and is left untouched — an unscaled shield is a cosmetic
+ * disappointment; an invalid expression is an error on every load.
+ */
+export function scaleSizeExpression(value: unknown, factor: number): number | unknown[] | null {
+  if (typeof value === 'number') return value * factor
+  if (!Array.isArray(value) || value.length < 3) return null
+  // ["interpolate", interpolation, input, stop, out, stop, out, …] → outputs at 4, 6, 8, …
+  // ["step", input, out0, stop, out, stop, out, …]                → outputs at 2, 4, 6, …
+  const expr = value as unknown[]
+  const start = expr[0] === 'interpolate' ? 4 : expr[0] === 'step' ? 2 : -1
+  if (start === -1) return null
+  const out: unknown[] = [...expr]
+  for (let i = start; i < out.length; i += 2) {
+    const v = out[i]
+    if (typeof v !== 'number') return null // a nested expression — do not guess
+    out[i] = v * factor
+  }
+  return out
+}
+
+/**
  * Shrink the road-number shields (the red/yellow A2/M7/P45… route badges), which the navigation
- * styles render large enough to crowd a fleet map (founder feedback). Rather than guess absolute
- * sizes (an earlier attempt overshot and INFLATED them), SCALE whatever the style set by 0.45 —
- * `["*", 0.45, <existing icon/text-size>]` — so it is always smaller regardless of the base zoom
- * expression. Idempotent: setStyle resets to defaults before each style.load, so we scale the
- * original once, never compounding. Guarded per layer/property → shield-less styles are a no-op.
+ * styles render large enough to crowd a fleet map (founder feedback). Idempotent: `setStyle` resets
+ * to the style's own values before each `style.load`, so this scales the original once and never
+ * compounds. A shield-less style is a no-op.
  */
 export function shrinkRoadShields(map: mapboxgl.Map): void {
   const layers = map.getStyle()?.layers ?? []
@@ -68,8 +97,8 @@ export function shrinkRoadShields(map: mapboxgl.Map): void {
     if (!layer.id.includes('shield')) continue
     for (const prop of ['icon-size', 'text-size'] as const) {
       try {
-        const cur = map.getLayoutProperty(layer.id, prop) as unknown
-        if (cur != null) map.setLayoutProperty(layer.id, prop, ['*', 0.45, cur] as never)
+        const scaled = scaleSizeExpression(map.getLayoutProperty(layer.id, prop) as unknown, SHIELD_SCALE)
+        if (scaled !== null) map.setLayoutProperty(layer.id, prop, scaled as never)
       } catch {
         /* not a symbol layer / property absent — ignore */
       }
@@ -77,20 +106,37 @@ export function shrinkRoadShields(map: mapboxgl.Map): void {
   }
 }
 
+const SHIELD_SCALE = 0.45
+
 /**
- * Hide the live-traffic congestion overlay (the red/amber/green road tint the navigation styles
- * paint on by default). On a fleet map it is visual noise that competes with the vehicles and their
- * trails — the founder read the coloured roads as clutter. Every `traffic-*` layer (congestion tint +
- * one-way direction arrows) is set invisible. Guarded; a style without traffic layers is a no-op.
+ * Drop the traffic and incident data the fleet map deliberately does not show.
+ *
+ * Hiding the layers was not enough on two counts. The incident layers are named `incident-*`, not
+ * `traffic-*`, so they were never hidden at all — they were merely empty, because this token has no
+ * entitlement to `mapbox-incidents-v1`, which is where the founder's console 403s came from. And a
+ * hidden layer still makes its source fetch tiles: bandwidth spent, and an error logged per tile,
+ * on every pan.
+ *
+ * Removing the SOURCE stops the requests. Layers must go first — mapbox-gl refuses to remove a
+ * source still in use — and every removal is guarded, so a style carrying neither is a no-op.
  */
-export function hideTrafficLayers(map: mapboxgl.Map): void {
-  const layers = map.getStyle()?.layers ?? []
-  for (const layer of layers) {
-    if (!layer.id.includes('traffic')) continue
+export function dropTrafficSources(map: mapboxgl.Map): void {
+  const style = map.getStyle()
+  if (style === undefined) return
+  for (const sourceId of ['mapbox-traffic', 'mapbox-incidents']) {
+    if (map.getSource(sourceId) === undefined) continue
+    for (const layer of style.layers ?? []) {
+      if ((layer as { source?: string }).source !== sourceId) continue
+      try {
+        map.removeLayer(layer.id)
+      } catch {
+        /* already gone */
+      }
+    }
     try {
-      map.setLayoutProperty(layer.id, 'visibility', 'none')
+      map.removeSource(sourceId)
     } catch {
-      /* ignore */
+      /* a layer we could not remove still holds it — leaving it costs only the old behaviour */
     }
   }
 }
@@ -145,7 +191,7 @@ export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions =
   map.on('style.load', () => {
     emphasizeAdminBoundaries(map, getTheme())
     shrinkRoadShields(map)
-    hideTrafficLayers(map)
+    dropTrafficSources(map)
   })
   let current: Theme = getTheme()
   const unsubscribe = onThemeChange(() => {
