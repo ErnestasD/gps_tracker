@@ -52,7 +52,13 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
   it('applies from empty DB: 17 relational tables + hypertable + policies + cagg', async () => {
     prismaDeploy()
     const result = await migrate(url)
-    expect(result.applied).toEqual(['001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql'])
+    expect(result.applied).toEqual([
+      '001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql',
+      // 004 repairs rows written before the null-island guard: a device reported 0/0 with 37
+      // satellites, so §3.4's `fix_valid := satellites > 0` called it a valid fix, and the public
+      // share link would have parked a customer's marker in the Gulf of Guinea.
+      '004_null_island_fix_valid.sql',
+    ])
 
     const tables = await q<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`,
@@ -108,7 +114,10 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
     expect(out).toMatch(/No pending migrations|already in sync/i)
     const result = await migrate(url)
     expect(result.applied).toEqual([])
-    expect(result.skipped).toEqual(['001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql'])
+    expect(result.skipped).toEqual([
+      '001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql',
+      '004_null_island_fix_valid.sql',
+    ])
   }, 60_000)
 
   it('refuses to run when an applied file was edited (append-only, rule 11)', async () => {
