@@ -1,7 +1,7 @@
 import type { LiveEvent } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { LiveStore, buildTrailFeatures, scrubFeatures, type MapFrame, type TrailPoint } from '../src/lib/liveStore.js'
+import { LiveStore, buildTrailFeatures, dropStationaryJitter, scrubFeatures, type MapFrame, type TrailPoint } from '../src/lib/liveStore.js'
 
 const T0 = 1_751_600_000_000
 
@@ -538,5 +538,60 @@ describe('the timeline scrub point', () => {
     store.setScrub({ lat: 55.5, lon: 21.1, course: null })
     store.setScrub(null)
     expect(frame!.scrub).toBeNull()
+  })
+})
+
+/**
+ * A parked vehicle's GPS jitter is not a path.
+ *
+ * Founder-reported from the live map: an FTC887 stood in a car park all evening and the 24-hour
+ * track drew a tangle across it. Measured on that device — 35 records over six hours, every one
+ * reporting speed 0, 91 m of accumulated point-to-point distance, largest single step 11.9 m. Every
+ * record carried the fact that it had not moved; the map drew the movement anyway.
+ */
+describe('stationary jitter', () => {
+  const at = (lat: number, lon: number, speed: number | null, fixValid = true): TrailPoint =>
+    ({ lat, lon, speed, fixValid, fixTimeMs: 0 })
+  /** ≈11 m north — the largest jitter step measured on the real device. */
+  const JITTER = 0.0001
+
+  it('collapses a parked run to the place it was parked', () => {
+    const points = [at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0)]
+    expect(dropStationaryJitter(points)).toHaveLength(1)
+  })
+
+  it('never touches a record the device says is moving', () => {
+    // the gate acts only on the device's OWN claim of standing still; a moving record at the same
+    // coordinate is a fact about a vehicle crawling, and crawling is not jitter
+    const points = [at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 3), at(54.68, 25.27 + JITTER, 12)]
+    expect(dropStationaryJitter(points)).toHaveLength(3)
+  })
+
+  it('a null speed is unreported, not zero — nothing is dropped', () => {
+    const points = [at(54.68, 25.27, null), at(54.68 + JITTER, 25.27, null)]
+    expect(dropStationaryJitter(points)).toHaveLength(2)
+  })
+
+  it('a vehicle moved while stationary — towed, or pushed — still draws the move', () => {
+    // 500 m away with the engine off is not jitter, and refusing to draw it would hide a theft
+    const points = [at(54.68, 25.27, 0), at(54.6845, 25.27, 0)]
+    expect(dropStationaryJitter(points)).toHaveLength(2)
+  })
+
+  it('keeps invalid fixes, because they are what separates the runs', () => {
+    // I5: a no-fix stretch becomes a dashed connector. Dropping one would silently merge two runs
+    // into a solid line the vehicle never drove.
+    const points = [at(54.68, 25.27, 0), at(0, 0, 0, false), at(54.7, 25.3, 30)]
+    expect(dropStationaryJitter(points).filter((p) => !p.fixValid)).toHaveLength(1)
+  })
+
+  it('the drawn line loses the scribble but keeps the drive', () => {
+    // end to end through the thing that actually paints: three parked records then a real drive
+    const points = [
+      at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0),
+      at(54.69, 25.28, 40), at(54.70, 25.29, 45),
+    ]
+    const coords = (buildTrailFeatures(points)[0]!.geometry as GeoJSON.LineString).coordinates
+    expect(coords).toHaveLength(3) // the car park, then the two driven points
   })
 })

@@ -37,6 +37,65 @@ export interface TrailPoint {
   lat: number
   fixValid: boolean
   fixTimeMs: number
+  /**
+   * Speed as the device reported it. `null`/absent ⇒ this model does not report it, and the
+   * stationary gate below then leaves the point alone rather than guessing.
+   */
+  speed?: number | null
+}
+
+/**
+ * Metres a STATIONARY record must sit from the last drawn point before it earns a vertex.
+ *
+ * Not smoothing, and not a guess about where the vehicle "really" was: a record whose own speed is
+ * 0 is the device stating it did not move, and a line drawn between two such records claims a
+ * journey the device says never happened. Measured on the founder's parked FTC887 with 30
+ * satellites: 35 records over six hours, every one reporting speed 0 and movement false, and 91
+ * metres of accumulated point-to-point distance with a largest single step of 11.9 m. The map drew
+ * all 91 metres as a scribble across a car park.
+ *
+ * 25 m keeps a wide margin over that (a GPS fix is not accurate to the metre, and a worse sky view
+ * jitters further) while staying well under any real movement: even a device whose movement sensor
+ * wrongly reported "stopped" while driving would put successive fixes far past this gate.
+ */
+const JITTER_GATE_M = 25
+
+/** Metres between two coordinates — equirectangular, which at these distances is exact enough and
+ *  far cheaper than haversine for a 3600-point trail redrawn on every flush. */
+function metresBetween(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const latM = (bLat - aLat) * 111_320
+  const lonM = (bLon - aLon) * 111_320 * Math.cos((aLat * Math.PI) / 180)
+  return Math.hypot(latM, lonM)
+}
+
+/** The device says it is not moving. `null` speed is not zero — it is "unreported", and a gate must
+ *  not act on a fact it does not have. */
+const isStationary = (p: TrailPoint): boolean => p.speed === 0
+
+/**
+ * Drop the vertices a parked vehicle's GPS jitter would otherwise draw.
+ *
+ * Only records the device itself calls stationary are ever dropped, and only while they stay within
+ * the gate of the last point we kept — so a vehicle towed away with the engine off still draws the
+ * move, and a real drive is untouched. Invalid fixes pass through unchanged: they carry no vertex
+ * anyway (I6) and they are what separates the solid runs from the dashed no-fix connectors, so
+ * dropping one would silently merge two runs the vehicle did not join.
+ */
+export function dropStationaryJitter(points: readonly TrailPoint[]): TrailPoint[] {
+  const out: TrailPoint[] = []
+  let anchor: TrailPoint | null = null
+  for (const p of points) {
+    if (!p.fixValid || !isStationary(p)) {
+      out.push(p)
+      if (p.fixValid) anchor = p
+      continue
+    }
+    if (anchor === null || metresBetween(anchor.lat, anchor.lon, p.lat, p.lon) > JITTER_GATE_M) {
+      out.push(p)
+      anchor = p
+    }
+  }
+  return out
 }
 
 /**
@@ -134,7 +193,10 @@ const lineFeature = (coordinates: [number, number][], gap: boolean): GeoJSON.Fea
  * Invalid points' own coordinates are never rendered — per §3.4 they merely
  * repeat the last valid position while the device has no fix.
  */
-export function buildTrailFeatures(points: readonly TrailPoint[]): GeoJSON.Feature[] {
+export function buildTrailFeatures(rawPoints: readonly TrailPoint[]): GeoJSON.Feature[] {
+  // A parked vehicle's jitter is not a path. Dropped HERE, at the one place a track becomes
+  // geometry, so the live trail and the 24-hour history cannot disagree about it.
+  const points = dropStationaryJitter(rawPoints)
   // split into runs of consecutive valid points — runs are separated by ≥1
   // invalid point by construction
   const runs: TrailPoint[][] = []
@@ -216,7 +278,7 @@ export class LiveStore {
     const fix = ev.fixValid ? { lon: ev.lon, lat: ev.lat, course: ev.course ?? 0 } : (current?.fix ?? null)
     this.byId.set(ev.deviceId, { ev, status: statusOf(this.now() - ev.fixTimeMs), fix })
     if (this.snapshot.trail && ev.deviceId === this.snapshot.selectedId) {
-      this.trailPoints.push({ lon: ev.lon, lat: ev.lat, fixValid: ev.fixValid, fixTimeMs: ev.fixTimeMs })
+      this.trailPoints.push({ lon: ev.lon, lat: ev.lat, fixValid: ev.fixValid, fixTimeMs: ev.fixTimeMs, speed: ev.speed })
       if (this.trailPoints.length > TRAIL_CAP) this.trailPoints.shift()
     }
     this.dirty = true

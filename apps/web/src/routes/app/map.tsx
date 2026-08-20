@@ -232,7 +232,7 @@ export function MapPage() {
               // a field someone later trusts (`NaN ?? 0` is NaN — nullish, not falsy)
               trackPoints.map((p, i) => {
                 const t = trackTimestamps[i]
-                return { lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Number.isFinite(t) ? (t as number) : 0 }
+                return { lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Number.isFinite(t) ? (t as number) : 0, speed: p.speed }
               }),
             ),
           },
