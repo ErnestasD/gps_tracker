@@ -341,7 +341,9 @@ describe('LiveStore', () => {
   })
 
   it('trail segments: invalid points split the line into solid runs + a dashed gap (I5, E02-7)', () => {
-    const pt = (lon: number, lat: number, fixValid: boolean): TrailPoint => ({ lon, lat, fixValid, fixTimeMs: T0 })
+    // speed 40: these fixtures model a DRIVE, and every production caller sets the field. While it
+    // was omitted the gate below could never fire here, so the suite guarding I5 was blind to it.
+    const pt = (lon: number, lat: number, fixValid: boolean): TrailPoint => ({ lon, lat, fixValid, fixTimeMs: T0, speed: 40 })
     const features = buildTrailFeatures([
       pt(25.27, 54.68, true),
       pt(25.272, 54.681, true),
@@ -362,7 +364,7 @@ describe('LiveStore', () => {
   })
 
   it('trail matches the invalidFix scenario shape: every 3rd point invalid → 2-point solid runs joined by dashes', () => {
-    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0 })
+    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0, speed: 40 })
     // v,v,i,v,v,i,v,v — tools/simulator invalidFix emits exactly this cadence
     const features = buildTrailFeatures([
       pt(25.27, true), pt(25.271, true), pt(25.271, false),
@@ -374,7 +376,7 @@ describe('LiveStore', () => {
   })
 
   it('trail edge cases: all-valid → one solid line, no gap; leading/trailing invalid → no dangling connectors', () => {
-    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0 })
+    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0, speed: 40 })
     const allValid = buildTrailFeatures([pt(25.27, true), pt(25.272, true), pt(25.274, true)])
     expect(allValid).toHaveLength(1)
     expect(allValid[0]!.properties!['gap']).toBe(false)
@@ -555,9 +557,44 @@ describe('stationary jitter', () => {
   /** ≈11 m north — the largest jitter step measured on the real device. */
   const JITTER = 0.0001
 
-  it('collapses a parked run to the place it was parked', () => {
+  it('collapses a parked run to its two ENDS, never to a single point', () => {
+    // Both ends, because a run of one point draws nothing: a vehicle that parked after a no-fix
+    // stretch lost its whole run AND the dashed connector that led to it, and "the track simply
+    // ends" is not a truer picture than a scribble — it is a different lie.
     const points = [at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0)]
-    expect(dropStationaryJitter(points)).toHaveLength(1)
+    expect(dropStationaryJitter(points)).toHaveLength(2)
+  })
+
+  it('a device parked for the WHOLE window still draws a mark', () => {
+    const parked = Array.from({ length: 200 }, (_, i) => at(54.68 + (i % 3) * JITTER, 25.27, 0))
+    expect(buildTrailFeatures(parked)).not.toHaveLength(0)
+  })
+
+  it('the movement element overrides a zero speed', () => {
+    // an asset tracker whose entire working area is smaller than the gate: when the device says it
+    // moved, we draw it, whatever the GNSS speed says
+    const points = [at(54.68, 25.27, 0), { ...at(54.68 + JITTER, 25.27, 0), movement: true }]
+    expect(dropStationaryJitter(points)).toHaveLength(2)
+  })
+
+  it('the seam records around a no-fix stretch are never gated away (I5)', () => {
+    // the dashed connector marks WHERE the fix was lost; gating either end would move it by up to
+    // the gate width, and the operator reads that line as evidence
+    // parked at A, loses the fix, comes back parked 500 m away — a tow, and the connector is the
+    // only thing on the map that says where it happened
+    const points = [
+      at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0),
+      at(54.68, 25.27, 0, false),
+      at(54.6845, 25.27, 0), at(54.6845 + JITTER, 25.27, 0),
+    ]
+    expect(dropStationaryJitter(points).filter((p) => !p.fixValid)).toHaveLength(1)
+    const gaps = buildTrailFeatures(points).filter((f) => f.properties!['gap'] === true)
+    expect(gaps).toHaveLength(1)
+    // the seam coordinates are the records that actually straddled the loss, not gated neighbours
+    expect((gaps[0]!.geometry as GeoJSON.LineString).coordinates).toEqual([
+      [25.27, 54.68 + JITTER],
+      [25.27, 54.6845],
+    ])
   })
 
   it('never touches a record the device says is moving', () => {
@@ -592,6 +629,6 @@ describe('stationary jitter', () => {
       at(54.69, 25.28, 40), at(54.70, 25.29, 45),
     ]
     const coords = (buildTrailFeatures(points)[0]!.geometry as GeoJSON.LineString).coordinates
-    expect(coords).toHaveLength(3) // the car park, then the two driven points
+    expect(coords).toHaveLength(4) // both ends of the car park, then the two driven points
   })
 })

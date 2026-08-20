@@ -48,7 +48,7 @@ describe('hasTelemetry', () => {
 })
 
 const pt = (iso: string, fixValid = true): TrackPoint =>
-  ({ fixTime: iso, lat: 54.7, lon: 25.3, speed: 0, course: 0, ignition: null, fixValid })
+  ({ fixTime: iso, lat: 54.7, lon: 25.3, speed: 0, course: 0, ignition: null, movement: null, fixValid })
 
 describe('the 24-hour track', () => {
   it('an invalid fix is never drawable — invariant I6, on the read side', () => {

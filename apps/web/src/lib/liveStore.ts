@@ -38,10 +38,15 @@ export interface TrailPoint {
   fixValid: boolean
   fixTimeMs: number
   /**
-   * Speed as the device reported it. `null`/absent ⇒ this model does not report it, and the
-   * stationary gate below then leaves the point alone rather than guessing.
+   * Speed as the device reported it. REQUIRED, not optional: while it was optional, one of the
+   * three callers quietly omitted it and drew a different track for the same device on a different
+   * page, and the I5 test fixtures omitted it too — which made them structurally blind to the very
+   * behaviour they guard. `null` still means "this model does not report it".
    */
-  speed?: number | null
+  speed: number | null
+  /** AVL 240, where the read path has it — the device's own statement about whether it is moving.
+   *  Absent on the live WS trail, which does not carry the element. */
+  movement?: boolean | null
 }
 
 /**
@@ -54,23 +59,37 @@ export interface TrailPoint {
  * metres of accumulated point-to-point distance with a largest single step of 11.9 m. The map drew
  * all 91 metres as a scribble across a car park.
  *
- * 25 m keeps a wide margin over that (a GPS fix is not accurate to the metre, and a worse sky view
- * jitters further) while staying well under any real movement: even a device whose movement sensor
- * wrongly reported "stopped" while driving would put successive fixes far past this gate.
+ * 25 m keeps a wide margin over that while staying well under any real movement: even a device whose
+ * movement sensor wrongly reported "stopped" while driving would put successive fixes far past this
+ * gate. It is deliberately NOT tuned for the 40–100 m jitter of an urban canyon — there, successive
+ * fixes clear the gate and every point is drawn, exactly as today. This filter fails OPEN: where it
+ * cannot be confident, it draws.
  */
 const JITTER_GATE_M = 25
 
 /** Metres between two coordinates — equirectangular, which at these distances is exact enough and
- *  far cheaper than haversine for a 3600-point trail redrawn on every flush. */
+ *  far cheaper than haversine for a 3600-point trail redrawn on every flush. The longitude delta is
+ *  wrapped: without it a step across the antimeridian measures 23 000 km, and a function whose only
+ *  job is a 25 m comparison must not be wrong anywhere on Earth. */
 function metresBetween(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const dLon = ((bLon - aLon + 540) % 360) - 180
   const latM = (bLat - aLat) * 111_320
-  const lonM = (bLon - aLon) * 111_320 * Math.cos((aLat * Math.PI) / 180)
+  const lonM = dLon * 111_320 * Math.cos((aLat * Math.PI) / 180)
   return Math.hypot(latM, lonM)
 }
 
-/** The device says it is not moving. `null` speed is not zero — it is "unreported", and a gate must
- *  not act on a fact it does not have. */
-const isStationary = (p: TrailPoint): boolean => p.speed === 0
+/**
+ * The device says it is not moving.
+ *
+ * BOTH axes, where we have both: GNSS speed is 0 *and* the movement element does not contradict it.
+ * A `null` speed is not zero — it is "unreported", and a gate must not act on a fact it does not
+ * have. `movement` is absent on the live trail (the WS event does not carry AVL 240) and null on a
+ * model that does not report it; neither is treated as agreement, only `true` is treated as
+ * disagreement. That way the gate still works for a model with one axis and defers to the device
+ * the moment the other says otherwise — which is what protects an asset tracker whose whole working
+ * area is smaller than the gate.
+ */
+const isStationary = (p: TrailPoint): boolean => p.speed === 0 && p.movement !== true
 
 /**
  * Drop the vertices a parked vehicle's GPS jitter would otherwise draw.
@@ -84,17 +103,47 @@ const isStationary = (p: TrailPoint): boolean => p.speed === 0
 export function dropStationaryJitter(points: readonly TrailPoint[]): TrailPoint[] {
   const out: TrailPoint[] = []
   let anchor: TrailPoint | null = null
+  /** The most recent record we dropped, held back so a stationary stretch keeps BOTH its ends. */
+  let pending: TrailPoint | null = null
+
+  /**
+   * A dropped stretch still has to end somewhere.
+   *
+   * Keeping only its first record deleted whole runs: a vehicle that parked after a no-fix stretch
+   * collapsed to a single point, `buildTrailFeatures` needs two to draw a line, and the run — with
+   * the dashed I5 connector that led to it — disappeared entirely. "The track simply ends" is not a
+   * truer picture than a scribble; it is a different lie. First and last also keep the connector's
+   * endpoints on the records that actually straddled the fix loss.
+   */
+  const flush = (): void => {
+    if (pending !== null) out.push(pending)
+    pending = null
+  }
+
   for (const p of points) {
-    if (!p.fixValid || !isStationary(p)) {
+    if (!p.fixValid) {
+      flush()
       out.push(p)
-      if (p.fixValid) anchor = p
+      // A no-fix stretch ends the stationary stretch: the first valid record after it is a seam I5
+      // marks, so it is never gated away.
+      anchor = null
+      continue
+    }
+    if (!isStationary(p)) {
+      flush()
+      out.push(p)
+      anchor = p
       continue
     }
     if (anchor === null || metresBetween(anchor.lat, anchor.lon, p.lat, p.lon) > JITTER_GATE_M) {
+      flush()
       out.push(p)
       anchor = p
+      continue
     }
+    pending = p
   }
+  flush()
   return out
 }
 
@@ -192,6 +241,12 @@ const lineFeature = (coordinates: [number, number][], gap: boolean): GeoJSON.Fea
  * separated by ≥1 invalid point are joined by a dashed connector (gap=true).
  * Invalid points' own coordinates are never rendered — per §3.4 they merely
  * repeat the last valid position while the device has no fix.
+ *
+ * A THIRD rule runs above those two since 2026-08-19: the vertices a stationary record would
+ * contribute are dropped first (`dropStationaryJitter`), because a parked vehicle's GPS jitter is
+ * not a path. It never touches an invalid point and never empties a run, so the segmentation this
+ * comment describes is unchanged — a parked stretch simply arrives as its two ends instead of as
+ * two hundred.
  */
 export function buildTrailFeatures(rawPoints: readonly TrailPoint[]): GeoJSON.Feature[] {
   // A parked vehicle's jitter is not a path. Dropped HERE, at the one place a track becomes

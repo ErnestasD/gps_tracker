@@ -145,6 +145,8 @@ export interface TrackPoint {
   speed: number | null
   course: number | null
   ignition: boolean | null
+  /** AVL 240 — the device's own "am I moving", independent of GNSS speed. Null when unreported. */
+  movement: boolean | null
   fixValid: boolean
 }
 

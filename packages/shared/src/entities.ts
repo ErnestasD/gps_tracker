@@ -164,6 +164,9 @@ export interface PositionView {
   speed: number | null
   course: number | null
   ignition: boolean | null
+  /** AVL 240 as the device reported it — the tracker's OWN statement about whether it is moving,
+   *  independent of the GNSS speed. `null` on a model that does not report it. */
+  movement: boolean | null
   fixValid: boolean
   odometerM: string | null // bigint as string
   recHash: string // bigint as string — the second half of the keyset cursor
