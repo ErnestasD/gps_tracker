@@ -39,6 +39,22 @@ export function eventsQuery(f: EventFilters): string {
 
 export const listEvents = (f: EventFilters = {}) => getJson<EventRow[]>(`/v1/events${eventsQuery(f)}`)
 
+/**
+ * Severity, so an alarm does not read like a door opening.
+ *
+ * The kinds that mean "something is wrong with the vehicle or its driver" are red; the ones that
+ * mean "a threshold was crossed" are amber; the rest are ordinary state changes. Anything unknown
+ * stays neutral rather than guessing at alarm.
+ */
+export const EVENT_TONE: Record<string, 'danger' | 'warn'> = {
+  panic: 'danger',
+  power_cut: 'danger',
+  fuel_theft: 'danger',
+  overspeed: 'warn',
+  low_battery: 'warn',
+  device_offline: 'warn',
+}
+
 /** A short, human-readable one-line summary of an event's payload, per kind. Pure. */
 export function eventSummary(e: EventRow): string {
   const p = e.payload ?? {}

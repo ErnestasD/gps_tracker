@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StatusDot } from '@/components/ui-x/StatusDot'
 import type { Device } from '@/lib/devices'
-import { listEvents } from '@/lib/events'
+import { EVENT_TONE, listEvents, localizedEventSummary } from '@/lib/events'
 import type { GeofenceView } from '@orbetra/shared'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
@@ -529,6 +529,7 @@ function ParamsTab({
 function EventsTab({ deviceId }: { deviceId: string }) {
   const { t } = useTranslation()
   const { dt } = useFmt()
+  const u = useUnits()
   const q = useQuery({
     queryKey: ['events', 'device', deviceId],
     queryFn: () => listEvents({ deviceId, limit: 15 }),
@@ -542,19 +543,37 @@ function EventsTab({ deviceId }: { deviceId: string }) {
 
   return (
     <ul className="space-y-2" data-testid="events-tab">
-      {rows.map((e) => (
-        <li key={e.id} className="rounded-card border border-line p-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <Badge variant={e.kind === 'panic' || e.kind === 'power_cut' ? 'danger' : 'default'}>
-              {t(`events.kind.${e.kind}`, { defaultValue: e.kind })}
-            </Badge>
-            <span className="shrink-0 text-[10px] tabular-nums text-muted">{dt(e.at)}</span>
-          </div>
-          {e.acknowledgedAt !== null && (
-            <p className="mt-1 text-[11px] text-muted">{t('map.inspector.acknowledged')}</p>
-          )}
-        </li>
-      ))}
+      {rows.map((e) => {
+        /**
+         * The payload, not just the kind.
+         *
+         * "overspeed · 12:58" was everything this panel said, while the record itself carried
+         * `speedKmh: 91, limitKmh: 90` and the rule that fired — and a geofence event carried the
+         * zone's NAME and whether the vehicle entered or left it. The formatter that renders all of
+         * that already existed for the events page, localized and unit-aware; this panel simply was
+         * not calling it. One implementation, so the two pages cannot describe one event differently.
+         */
+        const summary = localizedEventSummary(t, e, { fmtSpeed: u.speed, fmtVolume: u.volumeL })
+        return (
+          <li key={e.id} className="rounded-card border border-line p-2.5" data-testid={`event-${e.id}`}>
+            <div className="flex items-center justify-between gap-2">
+              <Badge variant={EVENT_TONE[e.kind] ?? 'default'}>
+                {t(`events.kind.${e.kind}`, { defaultValue: e.kind })}
+              </Badge>
+              <span className="shrink-0 text-[10px] tabular-nums text-muted">{dt(e.at)}</span>
+            </div>
+            {summary !== '' && <p className="mt-1 text-xs text-text">{summary}</p>}
+            {/* A rule fired because someone configured it; naming it turns "why did this alarm" into
+                one glance. Only geofence and rule-engine events carry one. */}
+            {typeof e.payload?.['rule'] === 'string' && (
+              <p className="text-[11px] text-muted">{String(e.payload['rule'])}</p>
+            )}
+            {e.acknowledgedAt !== null && (
+              <p className="mt-1 text-[11px] text-muted">{t('map.inspector.acknowledged')}</p>
+            )}
+          </li>
+        )
+      })}
     </ul>
   )
 }
