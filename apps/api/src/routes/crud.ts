@@ -783,7 +783,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
             device = await db.devices.create(scopeOf(a), { userId: a.userId }, {
               accountId, profileId: data.profileId, imei: data.imei, name: data.name,
               plate: data.plate ?? null, groupName: data.groupName ?? null,
-              simMsisdn: data.simMsisdn ?? null, simIccid: data.simIccid ?? null,
+              simMsisdn: data.simMsisdn ?? null,
               ...(data.odometerSource !== undefined ? { odometerSource: data.odometerSource } : {}),
               ...vehiclePatch(data),
             })
@@ -814,7 +814,6 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           ...('plate' in data ? { plate: data.plate ?? null } : {}),
           ...('groupName' in data ? { groupName: data.groupName ?? null } : {}),
           ...('simMsisdn' in data ? { simMsisdn: data.simMsisdn ?? null } : {}),
-          ...('simIccid' in data ? { simIccid: data.simIccid ?? null } : {}),
           ...(data.profileId !== undefined ? { profileId: data.profileId } : {}),
           ...(data.odometerSource !== undefined ? { odometerSource: data.odometerSource } : {}),
           ...vehiclePatch(data),

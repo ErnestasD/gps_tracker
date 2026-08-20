@@ -404,9 +404,9 @@ describe('E03-3 CSV import', () => {
     expect(await redis.hget('registry:imei', imei)).not.toBeNull()
   })
 
-  it('imports the optional SIM columns (simMsisdn/simIccid) — persisted on the device', async () => {
+  it('imports the optional SIM column (simMsisdn) — persisted on the device', async () => {
     const imei = validImei(35630704251000n)
-    const csv = 'imei,name,profileKey,accountId,simMsisdn,simIccid\n' + `${imei},With SIM,fmb1xx,${accountId},+37060000000,8937060000000000001`
+    const csv = 'imei,name,profileKey,accountId,simMsisdn\n' + `${imei},With SIM,fmb1xx,${accountId},+37060000000`
     const res = await authed('/v1/devices/import', 'POST', { csv })
     expect(res.status).toBe(201)
     expect(((await res.json()) as { created: number }).created).toBe(1)
@@ -414,16 +414,20 @@ describe('E03-3 CSV import', () => {
     expect(list.find((d) => d.imei === imei)?.simMsisdn).toBe('+37060000000')
   })
 
-  it('dry-run rejects a bad simMsisdn / simIccid (same rules as the manual add)', async () => {
+  it('dry-run rejects a bad simMsisdn (same rules as the manual add)', async () => {
     const badMsisdn = validImei(35630704252000n)
-    const badIccid = validImei(35630704253000n)
-    const csv =
-      'imei,name,profileKey,accountId,simMsisdn,simIccid\n' +
-      `${badMsisdn},Bad Msisdn,fmb1xx,${accountId},0037060000000,\n` + // no leading + → invalid E.164
-      `${badIccid},Bad Iccid,fmb1xx,${accountId},,12345` // too short → invalid ICCID
+    const csv = 'imei,name,profileKey,accountId,simMsisdn\n' + `${badMsisdn},Bad Msisdn,fmb1xx,${accountId},0037060000000` // no leading + → invalid E.164
     const dr = (await (await authed('/v1/devices/import/preview', 'POST', { csv })).json()) as { errors: { reason: string }[] }
     expect(dr.errors.some((e) => /simMsisdn/.test(e.reason))).toBe(true)
-    expect(dr.errors.some((e) => /simIccid/.test(e.reason))).toBe(true)
+  })
+
+  it('a simIccid column is ignored rather than rejected — old CSVs still import', async () => {
+    // The field was removed 2026-08-20; a fleet's saved spreadsheet should not start failing for
+    // carrying a column the platform stopped caring about.
+    const imei = validImei(35630704254000n)
+    const csv = 'imei,name,profileKey,accountId,simMsisdn,simIccid\n' + `${imei},Old CSV,fmb1xx,${accountId},+37060000001,8937060000000000001`
+    const dr = (await (await authed('/v1/devices/import/preview', 'POST', { csv })).json()) as { errors: { reason: string }[] }
+    expect(dr.errors).toHaveLength(0)
   })
 })
 

@@ -631,7 +631,7 @@
     "dupImei": "Diese IMEI ist bereits registriert.",
     "import": {
       "title": "Massenimport (CSV)",
-      "hint": "Spalten: imei, name, profileKey, accountId (erforderlich) + simMsisdn, simIccid (optional). Die Vorschau prüft jede Zeile vor dem Anwenden.",
+      "hint": "Spalten: imei, name, profileKey, accountId (erforderlich) + simMsisdn (optional). Die Vorschau prüft jede Zeile vor dem Anwenden.",
       "preview": "Vorschau",
       "apply": "Anwenden ({{n}})",
       "done": "{{n}} Gerät(e) importiert.",
@@ -756,7 +756,6 @@
       "sim": {
         "title": "SIM-Karte",
         "msisdn": "SIM-Telefonnummer",
-        "iccid": "ICCID (optional)",
         "save": "SIM speichern",
         "saved": "Gespeichert",
         "error": "SIM-Daten konnten nicht gespeichert werden — bitte erneut versuchen."
