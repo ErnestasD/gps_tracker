@@ -95,9 +95,6 @@ export function EventsPage() {
       {/* labeled filters with the shared gap — the bare glued controls read as off-standard
           next to trips/reports (founder feedback); FilterLabel mirrors trips.tsx */}
       <PageHeader title={t('events.title')} description={t('events.desc')} className="mb-0">
-        {/* ONE group with the trips-row spacing: as PageHeader's direct children the five filters
-            fell into its tight gap-2 flex and, once wrapped under the title, read as glued */}
-        <div className="flex flex-wrap items-end gap-3">
         <FilterLabel label={t('events.kind')}>
           <div className="w-40">
             <Combobox aria-label={t('events.kind')} value={kind} onChange={setKind} data-testid="events-kind"
@@ -122,7 +119,6 @@ export function EventsPage() {
         <FilterLabel label={t('events.to')}>
           <div className="w-36"><DatePicker aria-label={t('events.to')} value={to} onChange={setTo} data-testid="events-to" /></div>
         </FilterLabel>
-        </div>
       </PageHeader>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

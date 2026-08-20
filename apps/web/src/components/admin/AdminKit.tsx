@@ -21,7 +21,7 @@ export function PageHeader({
   className?: string
 }) {
   return (
-    <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-4', className)}>
+    <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-4 pb-2', className)}>
       <div className="min-w-0">
         <h1 className="display text-2xl font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {title}
