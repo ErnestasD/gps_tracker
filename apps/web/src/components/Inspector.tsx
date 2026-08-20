@@ -133,6 +133,7 @@ export function Inspector({
         name={name}
         driver={driver}
         latest={latest}
+        scrubbed={scrubAt != null}
         onClose={onClose}
       />
       <TabStrip tabs={tabs} active={effective} onSelect={setTab} />
@@ -152,6 +153,7 @@ export function Inspector({
           <OverviewTab
             live={live}
             latest={latest}
+            scrubbed={scrubAt != null}
             follow={follow}
             trail={trail}
             onFollow={onFollow}
@@ -192,6 +194,7 @@ function Header({
   name,
   driver,
   latest,
+  scrubbed = false,
   onClose,
 }: {
   live: DeviceLive
@@ -199,6 +202,8 @@ function Header({
   name?: string
   driver?: string | null
   latest: LatestTelemetry | undefined
+  /** Scrubbed ⇒ the glance tiles quote the historical row, not the live event. */
+  scrubbed?: boolean
   onClose: () => void
 }) {
   const { t } = useTranslation()
@@ -220,8 +225,20 @@ function Header({
   const tiles: { key: string; icon: typeof Gauge; value: string; unit: string }[] = [
     // a null speed means this model does not report it — "0" would read as "stopped", which is a
     // different fact and the one an operator would act on
-    { key: 'speed', icon: Gauge, value: ev.speed === null ? '—' : speed(ev.speed), unit: t('info.speed') },
-    { key: 'sats', icon: Satellite, value: String(ev.satellites), unit: t('info.satellites') },
+    {
+      key: 'speed',
+      icon: Gauge,
+      value: scrubbed
+        ? latest?.speed == null ? '—' : speed(latest.speed)
+        : ev.speed === null ? '—' : speed(ev.speed),
+      unit: t('info.speed'),
+    },
+    {
+      key: 'sats',
+      icon: Satellite,
+      value: scrubbed ? (latest === undefined ? '—' : String(latest.satellites)) : String(ev.satellites),
+      unit: t('info.satellites'),
+    },
   ]
   if (latest?.odometerM != null && latest.odometerM !== '') {
     const m = Number(latest.odometerM)
@@ -329,6 +346,7 @@ function Section({ title, icon: Icon, children }: { title: string; icon?: typeof
 function OverviewTab({
   live,
   latest,
+  scrubbed = false,
   follow,
   trail,
   onFollow,
@@ -336,6 +354,9 @@ function OverviewTab({
 }: {
   live: DeviceLive
   latest: LatestTelemetry | undefined
+  /** The panel is showing a scrubbed moment: the position card must read from `latest` (the
+   *  historical row) — quoting the LIVE fix under the history banner is two answers at once. */
+  scrubbed?: boolean
   follow: boolean
   trail: boolean
   onFollow: (v: boolean) => void
@@ -358,20 +379,55 @@ function OverviewTab({
               and printing that as a position is how a vehicle ends up in the Gulf of Guinea. */}
           <KV
             k={t('map.inspector.coords')}
-            v={live.fix === null ? '—' : `${live.fix.lat.toFixed(5)}, ${live.fix.lon.toFixed(5)}`}
+            v={
+              scrubbed
+                ? latest !== undefined && latest.fixValid
+                  ? `${latest.lat.toFixed(5)}, ${latest.lon.toFixed(5)}`
+                  : '—'
+                : live.fix === null
+                  ? '—'
+                  : `${live.fix.lat.toFixed(5)}, ${live.fix.lon.toFixed(5)}`
+            }
           />
-          <KV k={t('map.inspector.lastPacket')} v={dt(new Date(ev.fixTimeMs).toISOString())} />
+          <KV
+            k={t('map.inspector.lastPacket')}
+            v={dt(scrubbed && latest !== undefined ? latest.fixTime : new Date(ev.fixTimeMs).toISOString())}
+          />
           {/* The heading comes from the same last-valid fix the marker is rotated by. Reading
               `ev.course` printed "0°" — due north — for a device parked indoors, because a no-fix
               record carries angle 0 (spec §3.4): a heading manufactured by the absence of a fix,
               contradicting the arrow beside it. */}
-          <KV k={t('map.inspector.heading')} v={live.fix === null ? '—' : `${Math.round(live.fix.course)}°`} />
+          <KV
+            k={t('map.inspector.heading')}
+            v={
+              scrubbed
+                ? latest !== undefined && latest.fixValid && latest.course !== null
+                  ? `${Math.round(latest.course)}°`
+                  : '—'
+                : live.fix === null
+                  ? '—'
+                  : `${Math.round(live.fix.course)}°`
+            }
+          />
           <KV
             k={t('info.ignition')}
-            v={ev.ignition === null ? '—' : ev.ignition ? t('info.on') : t('info.off')}
+            v={
+              scrubbed
+                ? latest?.ignition == null
+                  ? '—'
+                  : latest.ignition
+                    ? t('info.on')
+                    : t('info.off')
+                : ev.ignition === null
+                  ? '—'
+                  : ev.ignition
+                    ? t('info.on')
+                    : t('info.off')
+            }
           />
         </dl>
-        <p className="mt-2 text-[11px] text-muted">{relTime(ev.fixTimeMs, i18n.language)}</p>
+        {/* "3 minutes ago" is a claim about NOW — suppressed for a historical row */}
+        {!scrubbed && <p className="mt-2 text-[11px] text-muted">{relTime(ev.fixTimeMs, i18n.language)}</p>}
       </Section>
 
       {highlights.length > 0 && (
