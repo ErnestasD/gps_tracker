@@ -10,10 +10,21 @@ import { drawable, hasTelemetry, highlightRows, placeAt, pointAt, telemetryRows,
  * hundreds, and which ones arrive is a fact about that vehicle.
  */
 describe('telemetryRows', () => {
-  it('shows exactly what the device sent, and nothing else', () => {
+  it('shows what the device sent — in human units where the NAME pins the unit down', () => {
+    // External Voltage is millivolts on every Teltonika table, so "12.0 V" adds no claim the
+    // raw number didn't already make (founder 2026-08-20: 12787 where an operator reads volts
+    // is noise). Unnamed values stay exactly as sent.
     const rows = telemetryRows({ 'GNSS Status': 2, 'External Voltage': 12004, 'Sleep Mode': 0 })
     expect(rows.map((r) => r.label)).toEqual(['External Voltage', 'GNSS Status', 'Sleep Mode'])
-    expect(rows.map((r) => r.value)).toEqual(['12004', '2', '0'])
+    expect(rows.map((r) => r.value)).toEqual(['12.0 V', '2', '0'])
+  })
+
+  it('the mileage family renders as kilometres', () => {
+    expect(telemetryRows({ 'Total Mileage': 15850 })[0]?.value).toBe('15.85 km')
+  })
+
+  it('an io_<id> row stays raw — its unit is unknown by definition', () => {
+    expect(telemetryRows({ io_66: 12004 })[0]?.value).toBe('12004')
   })
 
   it('an undocumented id is labelled as one rather than hidden', () => {

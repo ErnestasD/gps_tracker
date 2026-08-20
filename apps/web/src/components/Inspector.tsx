@@ -12,7 +12,7 @@ import type { GeofenceView } from '@orbetra/shared'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
 import { useFmt } from '@/lib/datetime'
-import { getTelemetry, hasTelemetry, highlightRows, telemetryRows, type LatestTelemetry } from '@/lib/telemetry'
+import { getTelemetry, hasTelemetry, highlightRows, telemetryRows, type LatestTelemetry, fmtAttrValue } from '@/lib/telemetry'
 import { fmtKm, listTrips } from '@/lib/trips'
 import { useUnits } from '@/lib/units'
 import { CommandsCard } from '@/routes/app/devices/commands'
@@ -211,7 +211,8 @@ function Header({
     if (tiles.length >= 4) break
     const found = attr(wanted)
     if (found !== undefined && typeof found.value === 'number') {
-      tiles.push({ key: wanted, icon, value: String(found.value), unit: found.key })
+      // human units (12.8 V, not 12787) — same name-keyed formatter as the parameters tab
+      tiles.push({ key: wanted, icon, value: fmtAttrValue(found.key, found.value), unit: found.key })
     }
   }
 

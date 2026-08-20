@@ -51,6 +51,40 @@ const fmt = (v: unknown): string => {
 }
 
 /**
+ * Known element names (dictionary spelling, lower-cased) → human units. The raw values are
+ * device units per Teltonika's data-sending tables — External/Battery Voltage in mV, Battery
+ * Current in mA, the mileage/odometer family in metres
+ * (https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID) — and
+ * showing "12787" where an operator reads volts is noise (founder, 2026-08-20). Matched on
+ * the dictionary NAME, never a raw AVL id: the same id means different things across tables,
+ * so an `io_<id>` row stays raw on purpose — we don't know its unit.
+ */
+const toKm = (m: number): string => `${(m / 1000).toFixed(2)} km`
+const NAMED_UNITS: Record<string, (v: number) => string> = {
+  'external voltage': (v) => `${(v / 1000).toFixed(1)} V`,
+  'battery voltage': (v) => `${(v / 1000).toFixed(2)} V`,
+  'battery current': (v) => `${v} mA`,
+  'total mileage': toKm,
+  'total mileage (counted)': toKm,
+  'total odometer': toKm,
+  'trip odometer': toKm,
+  'coolant temperature': (v) => `${v} °C`,
+  'engine rpm': (v) => `${v} rpm`,
+  'battery level': (v) => `${v} %`, // AVL 113 is a percentage on every table
+  // 'fuel level' is deliberately ABSENT: AVL 84 reports litres on some CAN adapters, so a
+  // "%" suffix would be a claim about the vehicle (see telemetry.spec's out-of-range case)
+}
+
+/** Value formatter that knows the element's unit when the NAME is a documented one. */
+export const fmtAttrValue = (key: string, v: unknown): string => {
+  if (typeof v === 'number') {
+    const unit = NAMED_UNITS[key.toLowerCase()]
+    if (unit !== undefined) return unit(v)
+  }
+  return fmt(v)
+}
+
+/**
  * The device's own parameters, sorted so the named ones lead.
  *
  * An `io_<id>` key means the pipeline could not name the element from this model's dictionary —
@@ -63,7 +97,7 @@ export function telemetryRows(attrs: Record<string, unknown>): TelemetryRow[] {
     return {
       key,
       label: raw !== null ? `AVL ${raw[1]}` : key,
-      value: fmt(value),
+      value: fmtAttrValue(key, value),
       documented: raw === null,
     }
   })
@@ -132,7 +166,7 @@ export function highlightRows(attrs: Record<string, unknown>): HighlightRow[] {
       // needing a second row of text
       if (scale.lowIsBad) tone = pct <= 0.15 ? 'danger' : pct <= 0.35 ? 'warn' : 'accent'
     }
-    out.push({ key, label: key, value: fmt(raw), pct, tone })
+    out.push({ key, label: key, value: fmtAttrValue(key, raw), pct, tone })
   }
   return out
 }
