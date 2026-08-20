@@ -704,3 +704,43 @@ describe('stationary jitter', () => {
     expect(coords).toHaveLength(3) // where it was parked, then the two driven points
   })
 })
+
+/**
+ * Null island — 0/0, in the Atlantic south of Ghana.
+ *
+ * Founder-reported from the live map, 2026-08-20: a device driving normally appeared in the Gulf of
+ * Guinea. The pipeline had marked the record VALID, because PROJECT_PLAN §3.4's rule is
+ * `fix_valid := satellites > 0` and the device reported 34–37 satellites while sending 0/0. The
+ * pipeline is fixed; this is the client refusing to draw a coordinate it can see is impossible,
+ * because fifty such rows are already stored.
+ */
+describe('a coordinate of exactly 0/0 never places a marker', () => {
+  const frameOf = (store: LiveStore): MapFrame => {
+    let out: MapFrame | null = null
+    store.onMapFrame((f) => { out = f })
+    store.flush(true)
+    return out!
+  }
+
+  it('is refused even when the server calls the fix VALID', () => {
+    const store = new LiveStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 0, lon: 0, fixValid: true, satellites: 37 }))
+    expect(frameOf(store).devices.features).toHaveLength(0)
+    // …and the device is still in the list: it is reporting, it just cannot be placed
+    expect(store.getSnapshot().devices.map((d) => d.ev.deviceId)).toEqual(['1'])
+  })
+
+  it('holds the last real position rather than jumping to the Atlantic', () => {
+    const store = new LiveStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27, fixValid: true, satellites: 12 }))
+    store.ingest(ev('1', T0 + 1_000, { lat: 0, lon: 0, fixValid: true, satellites: 37 }))
+    const f = frameOf(store).devices.features
+    expect((f[0]!.geometry as GeoJSON.Point).coordinates).toEqual([25.27, 54.68])
+  })
+
+  it('a real fix at zero LONGITUDE only is still a place (Greenwich is not null island)', () => {
+    const store = new LiveStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 51.48, lon: 0, fixValid: true, satellites: 11 }))
+    expect(frameOf(store).devices.features).toHaveLength(1)
+  })
+})
