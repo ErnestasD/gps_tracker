@@ -1,7 +1,7 @@
 import type { LiveEvent } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { LiveStore, buildTrailFeatures, scrubFeatures, type MapFrame, type TrailPoint } from '../src/lib/liveStore.js'
+import { LiveStore, buildTrailFeatures, dropStationaryJitter, scrubFeatures, type MapFrame, type TrailPoint } from '../src/lib/liveStore.js'
 
 const T0 = 1_751_600_000_000
 
@@ -341,7 +341,9 @@ describe('LiveStore', () => {
   })
 
   it('trail segments: invalid points split the line into solid runs + a dashed gap (I5, E02-7)', () => {
-    const pt = (lon: number, lat: number, fixValid: boolean): TrailPoint => ({ lon, lat, fixValid, fixTimeMs: T0 })
+    // speed 40: these fixtures model a DRIVE, and every production caller sets the field. While it
+    // was omitted the gate below could never fire here, so the suite guarding I5 was blind to it.
+    const pt = (lon: number, lat: number, fixValid: boolean): TrailPoint => ({ lon, lat, fixValid, fixTimeMs: T0, speed: 40, movement: true })
     const features = buildTrailFeatures([
       pt(25.27, 54.68, true),
       pt(25.272, 54.681, true),
@@ -362,7 +364,7 @@ describe('LiveStore', () => {
   })
 
   it('trail matches the invalidFix scenario shape: every 3rd point invalid → 2-point solid runs joined by dashes', () => {
-    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0 })
+    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0, speed: 40, movement: true })
     // v,v,i,v,v,i,v,v — tools/simulator invalidFix emits exactly this cadence
     const features = buildTrailFeatures([
       pt(25.27, true), pt(25.271, true), pt(25.271, false),
@@ -374,7 +376,7 @@ describe('LiveStore', () => {
   })
 
   it('trail edge cases: all-valid → one solid line, no gap; leading/trailing invalid → no dangling connectors', () => {
-    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0 })
+    const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0, speed: 40, movement: true })
     const allValid = buildTrailFeatures([pt(25.27, true), pt(25.272, true), pt(25.274, true)])
     expect(allValid).toHaveLength(1)
     expect(allValid[0]!.properties!['gap']).toBe(false)
@@ -538,5 +540,167 @@ describe('the timeline scrub point', () => {
     store.setScrub({ lat: 55.5, lon: 21.1, course: null })
     store.setScrub(null)
     expect(frame!.scrub).toBeNull()
+  })
+})
+
+/**
+ * A parked vehicle's GPS jitter is not a path.
+ *
+ * Founder-reported from the live map: an FTC887 stood in a car park all evening and the 24-hour
+ * track drew a tangle across it. Measured on that device — 35 records over six hours, every one
+ * reporting speed 0, 91 m of accumulated point-to-point distance, largest single step 11.9 m. Every
+ * record carried the fact that it had not moved; the map drew the movement anyway.
+ */
+describe('stationary jitter', () => {
+  const at = (lat: number, lon: number, speed: number | null, fixValid = true): TrailPoint =>
+    ({ lat, lon, speed, fixValid, fixTimeMs: 0, movement: null })
+  /** ≈11 m north — the largest jitter step measured on the real device. */
+  const JITTER = 0.0001
+
+  it('collapses a parked run to the place it was parked', () => {
+    const points = [at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0)]
+    expect(dropStationaryJitter(points)).toHaveLength(1)
+  })
+
+  it('a device that never moved draws no line at all, which is the truth', () => {
+    // Not a defect: a run of one point has no line to draw, because no journey happened. The
+    // vehicle is still on the map — the live marker never came from the trail — and the scrubber
+    // still reports how many points arrived.
+    const parked = Array.from({ length: 200 }, (_, i) => at(54.68 + (i % 3) * JITTER, 25.27, 0))
+    expect(dropStationaryJitter(parked)).toHaveLength(1)
+    expect(buildTrailFeatures(parked)).toHaveLength(0)
+  })
+
+  it('a COLLAPSED run still supplies the dashed connector (why first-only is enough)', () => {
+    // The premise that once justified holding the last point back, checked rather than assumed:
+    // buildTrailFeatures joins prev[last] → current[0] whatever the run lengths. Run A has three
+    // records here so the filter genuinely collapses it — with one record the test would pass even
+    // if the filter did nothing.
+    const points = [
+      at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0), // run A → 1
+      at(54.68, 25.27, 0, false),             // no fix
+      at(54.6845, 25.27, 0),                  // parked run B, 500 m away — a tow
+    ]
+    const gaps = buildTrailFeatures(points).filter((f) => f.properties!['gap'] === true)
+    expect(gaps).toHaveLength(1)
+    expect((gaps[0]!.geometry as GeoJSON.LineString).coordinates).toEqual([[25.27, 54.68], [25.27, 54.6845]])
+  })
+
+  it('a reported zero decides alone — movement true does not override it', () => {
+    // Measured on one FTC887 over 24 h: 383 records reporting speed 0 AND movement true shared 54 m
+    // between them — the most static bucket of the whole day. AVL 240's SOURCE is a device setting,
+    // so "movement true" is not a promise of displacement; that observation is the whole argument,
+    // and it is enough to say a reported zero must not be overridden.
+    const idling = [at(54.68, 25.27, 0), { ...at(54.68 + JITTER, 25.27, 0), movement: true }]
+    expect(dropStationaryJitter(idling)).toHaveLength(1)
+  })
+
+  it('where speed is unreported, movement is the only statement we have', () => {
+    const silent = (mv: boolean | null) => [
+      { ...at(54.68, 25.27, null), movement: mv },
+      { ...at(54.68 + JITTER, 25.27, null), movement: mv },
+      { ...at(54.68, 25.27 + JITTER, null), movement: mv },
+    ]
+    expect(dropStationaryJitter(silent(false))).toHaveLength(1) // "I am not moving" — gated
+    expect(dropStationaryJitter(silent(null))).toHaveLength(3)  // no statement — nothing is dropped
+    expect(dropStationaryJitter(silent(true))).toHaveLength(3)
+  })
+
+  it('a stop INSIDE a drive costs the run no vertex, and never splits it', () => {
+    // the one place the gate and I5 segmentation interact: a stationary record in the middle of a
+    // valid run. It must not become a run boundary — only an invalid fix does that.
+    const points = [
+      at(54.68, 25.27, 40), at(54.681, 25.27, 40),
+      at(54.681 + JITTER, 25.27, 0), at(54.681, 25.27 + JITTER, 0), // waiting at a light
+      at(54.683, 25.27, 40),
+    ]
+    const features = buildTrailFeatures(points)
+    expect(features).toHaveLength(1) // still ONE solid run, no gap
+    expect((features[0]!.geometry as GeoJSON.LineString).coordinates).toHaveLength(3)
+  })
+
+  it('measures metres across the antimeridian, not 23 000 km', () => {
+    // without wrapping the longitude delta the gate silently never fires anywhere near ±180.
+    // Both sides of the gate, so a future change to its width cannot quietly invert this.
+    const inside = [at(0, 179.99995, 0), at(0, -179.99995, 0)] // ≈11 m apart
+    expect(dropStationaryJitter(inside)).toHaveLength(1)
+    const outside = [at(0, 179.9995, 0), at(0, -179.9995, 0)] // ≈111 m apart — a real move
+    expect(dropStationaryJitter(outside)).toHaveLength(2)
+  })
+
+  it('an asset that works inside the gate collapses — the cost, recorded not rediscovered', () => {
+    // A yard tracker shuttling 15 m at reported speed 0 loses its shift to one point. GNSS cannot
+    // honestly separate that from jitter; the previous rule tried to, by exempting movement=true,
+    // and that re-admitted the purest jitter of the day instead.
+    const yard = [at(54.68, 25.27, 0), at(54.6801, 25.27, 0), at(54.68, 25.27, 0)] // ~11 m hops
+    expect(dropStationaryJitter(yard)).toHaveLength(1)
+  })
+
+  it('the anchor SURVIVES a no-fix stretch — otherwise the scribble comes back in dashes', () => {
+    // The case that separates reset from no-reset: the record after the outage is a JITTER distance
+    // from the one before it. A parked car under a patchy sky reports valid, valid, no-fix in a
+    // loop, so resetting the anchor kept every third record and drew 233 m of dashes for a vehicle
+    // that never moved — an invalid record deciding which VALID vertices reach the map (rule 6).
+    const parked: TrailPoint[] = []
+    for (let i = 0; i < 30; i++) {
+      parked.push(at(54.68 + (i % 3) * JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0), at(54.68, 25.27, 0, false))
+    }
+    expect(dropStationaryJitter(parked).filter((p) => p.fixValid)).toHaveLength(1)
+    expect(buildTrailFeatures(parked)).toHaveLength(0)
+  })
+
+  it('…but a vehicle towed during the outage still draws both seams and the connector', () => {
+    // the dashed connector marks WHERE the fix was lost; gating either end would move it by up to
+    // the gate width, and the operator reads that line as evidence
+    // The parked stretch before the outage genuinely collapses, so the connector's NEAR end is the
+    // anchor the gate chose rather than the last record that happened to arrive — this is what the
+    // gate costs, stated. The far end is the tow, which clears the gate on its own merits.
+    const points = [
+      at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0),
+      at(54.68, 25.27, 0, false),
+      at(54.6845, 25.27, 0), at(54.6845 + JITTER, 25.27, 0),
+    ]
+    expect(dropStationaryJitter(points).filter((p) => !p.fixValid)).toHaveLength(1)
+    const gaps = buildTrailFeatures(points).filter((f) => f.properties!['gap'] === true)
+    expect(gaps).toHaveLength(1)
+    expect((gaps[0]!.geometry as GeoJSON.LineString).coordinates).toEqual([
+      [25.27, 54.68],   // the anchor, not the last pre-gap record
+      [25.27, 54.6845], // the tow
+    ])
+  })
+
+  it('never touches a record the device says is moving', () => {
+    // the gate acts only on the device's OWN claim of standing still; a moving record at the same
+    // coordinate is a fact about a vehicle crawling, and crawling is not jitter
+    const points = [at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 3), at(54.68, 25.27 + JITTER, 12)]
+    expect(dropStationaryJitter(points)).toHaveLength(3)
+  })
+
+  it('a null speed is unreported, not zero — nothing is dropped', () => {
+    const points = [at(54.68, 25.27, null), at(54.68 + JITTER, 25.27, null)]
+    expect(dropStationaryJitter(points)).toHaveLength(2)
+  })
+
+  it('a vehicle moved while stationary — towed, or pushed — still draws the move', () => {
+    // 500 m away with the engine off is not jitter, and refusing to draw it would hide a theft
+    const points = [at(54.68, 25.27, 0), at(54.6845, 25.27, 0)]
+    expect(dropStationaryJitter(points)).toHaveLength(2)
+  })
+
+  it('keeps invalid fixes, because they are what separates the runs', () => {
+    // I5: a no-fix stretch becomes a dashed connector. Dropping one would silently merge two runs
+    // into a solid line the vehicle never drove.
+    const points = [at(54.68, 25.27, 0), at(0, 0, 0, false), at(54.7, 25.3, 30)]
+    expect(dropStationaryJitter(points).filter((p) => !p.fixValid)).toHaveLength(1)
+  })
+
+  it('the drawn line loses the scribble but keeps the drive', () => {
+    // end to end through the thing that actually paints: three parked records then a real drive
+    const points = [
+      at(54.68, 25.27, 0), at(54.68 + JITTER, 25.27, 0), at(54.68, 25.27 + JITTER, 0),
+      at(54.69, 25.28, 40), at(54.70, 25.29, 45),
+    ]
+    const coords = (buildTrailFeatures(points)[0]!.geometry as GeoJSON.LineString).coordinates
+    expect(coords).toHaveLength(3) // where it was parked, then the two driven points
   })
 })

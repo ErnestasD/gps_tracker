@@ -81,7 +81,7 @@ export function PlaybackMap({ positions, trips, index }: { positions: PositionVi
     const map = mapRef.current
     if (map === null || styleEpoch === 0) return
     map.getSource<GeoJSONSource>('trail')?.setData(
-      pointFC(buildTrailFeatures(positions.map((p) => ({ lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Date.parse(p.fixTime) })))),
+      pointFC(buildTrailFeatures(positions.map((p) => ({ lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Date.parse(p.fixTime), speed: p.speed, movement: p.movement })))),
     )
     map.getSource<GeoJSONSource>('stops')?.setData(pointFC(stopFeatures(trips)))
     if (positions === lastFitRef.current) return // theme swap: keep the user's camera

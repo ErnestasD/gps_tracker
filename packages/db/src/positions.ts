@@ -42,6 +42,7 @@ interface PgPositionRow {
   speed: number | null
   course: number | null
   ignition: boolean | null
+  movement: boolean | null
   fix_valid: boolean
   odometer_m: string | null // bigint → string
   rec_hash: string // bigint → string
@@ -60,7 +61,7 @@ export async function readPositions(pool: Pool, deviceId: bigint, opts: Position
     where.push(`(fix_time, rec_hash) > ($${t}, $${h})`)
   }
   const res = await pool.query<PgPositionRow>(
-    `SELECT fix_time, lat, lon, speed, course, ignition, fix_valid, odometer_m, rec_hash
+    `SELECT fix_time, lat, lon, speed, course, ignition, movement, fix_valid, odometer_m, rec_hash
      FROM positions WHERE ${where.join(' AND ')}
      ORDER BY fix_time ASC, rec_hash ASC LIMIT ${limit}`,
     params,
@@ -73,6 +74,7 @@ export async function readPositions(pool: Pool, deviceId: bigint, opts: Position
     speed: row.speed,
     course: row.course,
     ignition: row.ignition,
+    movement: row.movement,
     fixValid: row.fix_valid,
     odometerM: row.odometer_m,
     recHash: row.rec_hash,
@@ -117,7 +119,7 @@ export async function readOdometersKm(pool: Pool, deviceIds: bigint[]): Promise<
  */
 export async function readLatestValidPosition(pool: Pool, deviceId: bigint): Promise<PositionView | null> {
   const res = await pool.query<PgPositionRow>(
-    `SELECT fix_time, lat, lon, speed, course, ignition, fix_valid, odometer_m, rec_hash
+    `SELECT fix_time, lat, lon, speed, course, ignition, movement, fix_valid, odometer_m, rec_hash
      FROM positions WHERE device_id = $1 AND fix_valid = true
      ORDER BY fix_time DESC, rec_hash DESC LIMIT 1`,
     [deviceId.toString()],
@@ -131,6 +133,7 @@ export async function readLatestValidPosition(pool: Pool, deviceId: bigint): Pro
     speed: row.speed,
     course: row.course,
     ignition: row.ignition,
+    movement: row.movement,
     fixValid: row.fix_valid,
     odometerM: row.odometer_m,
     recHash: row.rec_hash,

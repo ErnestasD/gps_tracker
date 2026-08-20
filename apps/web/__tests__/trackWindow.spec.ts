@@ -4,7 +4,7 @@ import type { TrackPoint } from '../src/lib/telemetry'
 import { canScrub, firstPlaceBack, quickJumps, spanMinutes, windowAt, WINDOW_BUCKET_MS } from '../src/lib/trackWindow'
 
 const pt = (iso: string, fixValid = true): TrackPoint =>
-  ({ fixTime: iso, lat: 54.7, lon: 25.3, speed: 0, course: 0, ignition: null, fixValid })
+  ({ fixTime: iso, lat: 54.7, lon: 25.3, speed: 0, course: 0, ignition: null, movement: null, fixValid })
 
 describe('the scrubber window', () => {
   it('buckets, so repeatedly asking for "the last 24 h" asks for the SAME window', () => {

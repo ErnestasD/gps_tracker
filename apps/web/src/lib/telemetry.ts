@@ -145,6 +145,14 @@ export interface TrackPoint {
   speed: number | null
   course: number | null
   ignition: boolean | null
+  /**
+   * AVL 240 — the device's own "am I moving", independent of GNSS speed. Null when unreported, and
+   * `undefined` in practice against an API older than this deploy (this response is an unchecked
+   * cast, and a rolling deploy or a pinned white-label image can serve the older shape). Every
+   * reader treats anything that is not an explicit `false` as "no statement".
+   * https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+   */
+  movement: boolean | null
   fixValid: boolean
 }
 
