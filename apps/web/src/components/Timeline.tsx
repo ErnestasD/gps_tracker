@@ -10,27 +10,30 @@ import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
 /**
- * The selected device's last 24 hours, scrubbable, docked under the map (founder design).
+ * The selected device's history as a waveform, scrubbable to the SECOND, docked under the map.
  *
  * Built entirely from data the platform already stores: the positions endpoint the playback page
- * uses, over a 24-hour window. Nothing here is simulated — the design's version wandered devices
+ * uses, over the page's window. Nothing here is simulated — the design's version wandered devices
  * around with a sine function, which is fine for a mockup and unusable in a product where an
  * operator will take what they see as evidence.
  *
- * Two rules it inherits:
+ * Rules it inherits:
  *  - an invalid fix never places anything on the map (invariant I6), but it is still SHOWN on the
  *    timeline as a no-fix stretch, because "reporting without a fix" and "not reporting" are
  *    different answers to "where was the truck at 14:30".
  *  - the scrubber reports the newest point at or before the moment, never the nearest: a track is a
- *    sequence of states, and at 14:32 the vehicle was where it last reported.
+ *    sequence of states, and at 14:32:07 the vehicle was where it last reported.
+ *  - the internal unit is the SECOND, not the minute (founder: "reik tikslumo"). A tracker reports
+ *    every few seconds when driving; a minute grid could not even land on individual reports.
  *
  * It is a fixture of the workspace rather than a popup, because a bar that appears only after two
  * clicks is a bar nobody finds. With no vehicle selected it says so and does nothing — the history
  * we hold is per device, and pretending otherwise would mean replaying a fleet we never queried.
  */
-/** Replay speed: 6 minutes of history per 90 ms tick ⇒ a full day in ~3.6 s. */
-const REPLAY_STEP_MIN = 6
+
+/** Replay: one tick per 90 ms, the whole span in ~3.6 s regardless of zoom (240 ticks). */
 const REPLAY_TICK_MS = 90
+const REPLAY_TICKS_PER_SPAN = 240
 
 /** An event pin on the track (SoundCloud-style): the page maps its events query to this. */
 export interface TimelineEvent {
@@ -57,19 +60,24 @@ const KIND_COLOR: Record<string, string> = {
 }
 const FALLBACK_PIN = '#94a3b8'
 
-/** Axis density: minor tick / label cadence by span. A 24 h span gets an hourly grid with a
- * label every 3 h — the four-labels-per-day axis read as decoration, not as an instrument. */
+/** Axis cadence by span: minor tick marks in the axis strip, clock labels at the round times. */
 const tickStepMin = (spanMin: number) => (spanMin >= 1440 ? 60 : spanMin >= 360 ? 30 : spanMin >= 180 ? 15 : 5)
 const labelStepMin = (spanMin: number) =>
   spanMin >= 1440 ? 180 : spanMin >= 720 ? 120 : spanMin >= 360 ? 60 : spanMin >= 180 ? 30 : 15
 
-/** Waveform resolution: one bar ≈ 6 min of a 24 h span. Chosen against the founder's SoundCloud
- * reference — enough bars to read as a waveform, few enough that a bar is still a visible column
- * at the widths this footer actually gets. */
-const N_BARS = 240
-/** viewBox geometry: bars grow up from the BASELINE, a faded reflection hangs below it. */
+/**
+ * Waveform geometry. Bars grow up from BASELINE; a faded reflection hangs below it.
+ *
+ * A bucket's value is the newest valid-fix speed AT OR BEFORE its end — the scrubber's own rule —
+ * carried for at most CARRY_MS. Carrying is what makes the shape CONTINUOUS: a tracker reporting
+ * once a minute filled every fourth 15-second bucket, and the comb of gaps read as a broken
+ * device. A report is a state that persists until the next one; only silence longer than any sane
+ * reporting interval is a real gap, and a real gap still renders as one.
+ */
 const WAVE_H = 100
-const BASELINE = 68
+const BASELINE = 70
+const CARRY_MS = 3 * 60_000
+const barsFor = (spanSec: number) => (spanSec >= 7_200 ? 240 : 120)
 
 export function Timeline({
   deviceId,
@@ -95,8 +103,8 @@ export function Timeline({
    * The window the points were FETCHED for — the axis and the payload must be the same window.
    *
    * Computing `to` here while the query recomputed its own on every refetch let the two drift: the
-   * "-24 h" tick meant a different moment than the earliest row we held, and nudging the slider one
-   * minute off "now" jumped the map by however long the tab had been in the background.
+   * left-edge tick meant a different moment than the earliest row we held, and nudging the slider
+   * off "now" jumped the map by however long the tab had been in the background.
    */
   window: TrackWindow
   loading: boolean
@@ -115,11 +123,13 @@ export function Timeline({
   onSpan?: (hours: number) => void
 }) {
   const { t } = useTranslation()
-  const { dt } = useFmt()
+  const { d: dateOnly, dt, tm, tms } = useFmt()
   const { speed } = useUnits()
-  /** Minutes back from now: 0 is live. */
+  /** SECONDS back from now: 0 is live. */
   const [back, setBack] = useState(0)
   const [replaying, setReplaying] = useState(false)
+  /** Pointer position over the wave as a 0..1 fraction — the hover time readout. */
+  const [hover, setHover] = useState<number | null>(null)
 
   // A new vehicle starts at "now", never at whatever moment the previous one was parked on.
   const [lastId, setLastId] = useState(deviceId)
@@ -130,17 +140,18 @@ export function Timeline({
   }
 
   const spanMin = spanMinutes(window)
+  const spanSec = spanMin * 60
   const firstBack = useMemo(() => firstPlaceBack(points, window, times), [points, window, times])
-  const atMs = window.to - back * 60_000
+  const atMs = window.to - back * 1_000
   const current = useMemo(() => (back === 0 ? undefined : pointAt(points, atMs, times)), [points, times, atMs, back])
   const disabled = deviceId === null || points.length === 0 || !canScrub(firstBack)
 
-  const scrub = (rawMinutes: number) => {
+  const scrub = (rawSeconds: number) => {
     // clamped, so no caller can name a moment outside the window the points were fetched for
-    const minutes = Math.min(spanMin, Math.max(0, rawMinutes))
-    setBack(minutes)
-    onScrubTime?.(minutes === 0 ? null : new Date(window.to - minutes * 60_000).toISOString())
-    if (minutes === 0) {
+    const seconds = Math.min(spanSec, Math.max(0, Math.round(rawSeconds)))
+    setBack(seconds)
+    onScrubTime?.(seconds === 0 ? null : new Date(window.to - seconds * 1_000).toISOString())
+    if (seconds === 0) {
       onScrub(null)
       return
     }
@@ -148,12 +159,11 @@ export function Timeline({
      * An invalid fix is a real state but not a place, so the map must not move to it — and it must
      * not fall back to LIVE either. Passing null there put the camera on the vehicle's present
      * position while the readout named a past moment with no fix, which is a worse lie than showing
-     * nothing — and it fired on EVERY press of "-24 h", because the earliest row we hold is always
-     * later than the window's own start. Per spec §3.4 a no-fix record repeats the last valid
-     * position, so the camera holds at the last place the vehicle was actually seen; before the
-     * first one there is nowhere to hold, and 'unknown' says exactly that.
+     * nothing. Per spec §3.4 a no-fix record repeats the last valid position, so the camera holds
+     * at the last place the vehicle was actually seen; before the first one there is nowhere to
+     * hold, and 'unknown' says exactly that.
      */
-    const place = placeAt(points, window.to - minutes * 60_000, times)
+    const place = placeAt(points, window.to - seconds * 1_000, times)
     onScrub(place !== undefined ? { lat: place.lat, lon: place.lon, course: place.course } : 'unknown')
   }
 
@@ -168,14 +178,17 @@ export function Timeline({
    */
   const backRef = useRef(back)
   const scrubRef = useRef(scrub)
+  const spanSecRef = useRef(spanSec)
   useLayoutEffect(() => {
     backRef.current = back
     scrubRef.current = scrub
+    spanSecRef.current = spanSec
   })
   useEffect(() => {
     if (!replaying) return
     const iv = setInterval(() => {
-      const next = backRef.current - REPLAY_STEP_MIN
+      const step = Math.max(1, Math.round(spanSecRef.current / REPLAY_TICKS_PER_SPAN))
+      const next = backRef.current - step
       if (next <= 0) {
         setReplaying(false)
         scrubRef.current(0)
@@ -191,12 +204,12 @@ export function Timeline({
    * position they were inspecting is exactly what "zoom in to look closer" must not do. The
    * re-scrub also re-resolves the place against the newly fetched points.
    */
-  const spanRef = useRef(spanMin)
+  const spanRef = useRef(spanSec)
   useEffect(() => {
-    if (spanRef.current === spanMin) return
-    spanRef.current = spanMin
-    if (backRef.current > 0) scrubRef.current(Math.min(backRef.current, spanMin))
-  }, [spanMin])
+    if (spanRef.current === spanSec) return
+    spanRef.current = spanSec
+    if (backRef.current > 0) scrubRef.current(Math.min(backRef.current, spanSec))
+  }, [spanSec])
 
   /**
    * A track that becomes unscrubbable under a scrubbed operator must return them to LIVE.
@@ -213,59 +226,71 @@ export function Timeline({
   }, [disabled])
 
   const quick = useMemo(() => quickJumps(spanMin), [spanMin])
-  const pct = ((spanMin - back) / spanMin) * 100
-  const stamp = dt(new Date(atMs).toISOString())
+  const pct = ((spanSec - back) / spanSec) * 100
+  const atIso = new Date(atMs).toISOString()
   // O(n) over up to 10 000 points, and this component re-renders at the store's 1 Hz cadence
   const valid = useMemo(() => points.filter((p) => p.fixValid).length, [points])
 
-  // hour grid + label positions, both anchored to the SAME window as the payload (see `window`)
-  const ticks = useMemo(() => {
-    const step = tickStepMin(spanMin)
-    const label = labelStepMin(spanMin)
-    const out: { m: number; pct: number; labeled: boolean }[] = []
-    for (let m = step; m < spanMin; m += step) out.push({ m, pct: ((spanMin - m) / spanMin) * 100, labeled: m % label === 0 })
-    return out
-  }, [spanMin])
-
   /**
-   * The waveform: max VALID-fix speed per bucket, drawn as SoundCloud-style bars. Max, not mean,
-   * because the question an operator asks of a shape is "was it moving there" — a bucket that is
-   * 90 % parked and 10 % at 80 km/h must not average down into idle. A bucket with no rows stays
-   * null and renders NOTHING: a gap in reporting has to look like a gap, not like standing still.
+   * The axis: ROUND wall-clock times (14:00, 15:00 …), not offsets from a bucketed "now". The
+   * previous "-150 min." labels were relative to a `to` that itself moves in 5-minute buckets, so
+   * no label ever named a moment an operator could repeat out loud. Alignment is epoch-based;
+   * hour-fraction zones shift the printed minutes uniformly, which keeps the grid honest.
    */
-  const bars = useMemo(() => {
+  const axis = useMemo(() => {
     const span = window.to - window.from
     if (span <= 0) return []
-    const out: (number | null)[] = Array.from({ length: N_BARS }, () => null)
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i]!
-      const at = times[i]!
-      if (!p.fixValid || at < window.from || at > window.to) continue
-      const b = Math.min(N_BARS - 1, Math.floor(((at - window.from) / span) * N_BARS))
-      const s = p.speed ?? 0
-      const prev = out[b] ?? null
-      if (prev === null || s > prev) out[b] = s
+    const tickMs = tickStepMin(spanMin) * 60_000
+    const labelMs = labelStepMin(spanMin) * 60_000
+    const out: { ms: number; pct: number; labeled: boolean }[] = []
+    for (let at = Math.ceil(window.from / tickMs) * tickMs; at < window.to; at += tickMs) {
+      out.push({ ms: at, pct: ((at - window.from) / span) * 100, labeled: at % labelMs === 0 })
+    }
+    return out
+  }, [window, spanMin])
+
+  /** Max valid-fix speed per bucket, at-or-before with carry (see the geometry note above). Max,
+   *  not mean — a bucket 90 % parked and 10 % at 80 km/h must not average down into idle. */
+  const bars = useMemo(() => {
+    const span = window.to - window.from
+    if (span <= 0 || points.length === 0) return []
+    const n = barsFor(Math.round(span / 1_000))
+    const out: (number | null)[] = Array.from({ length: n }, () => null)
+    let j = 0
+    let lastValid = -1
+    for (let b = 0; b < n; b++) {
+      const bucketEnd = window.from + ((b + 1) * span) / n
+      while (j < points.length && (times[j] ?? Number.POSITIVE_INFINITY) <= bucketEnd) {
+        if (points[j]!.fixValid) lastValid = j
+        j++
+      }
+      if (lastValid === -1) continue
+      const seenAt = times[lastValid] ?? 0
+      if (bucketEnd - seenAt > CARRY_MS) continue
+      const p = points[lastValid]!
+      out[b] = Math.max(0, p.speed ?? 0)
     }
     return out
   }, [points, times, window])
   const maxSpeed = useMemo(() => bars.reduce<number>((m, b) => (b !== null && b > m ? b : m), 10), [bars])
+  const nBars = bars.length
   /** One set of <rect>s in currentColor, rendered twice — a dim base and a clip-path'ed played
    *  overlay — so the 1 Hz re-render recolours via CSS instead of restyling 240 nodes. */
   const waveform = useMemo(() => (
-    <svg className="h-full w-full" viewBox={`0 0 ${N_BARS} ${WAVE_H}`} preserveAspectRatio="none" aria-hidden>
+    <svg className="h-full w-full" viewBox={`0 0 ${Math.max(1, nBars)} ${WAVE_H}`} preserveAspectRatio="none" aria-hidden>
       {bars.map((b, i) => {
         if (b === null) return null
         // even a parked bucket gets a visible stub — it REPORTED, unlike a null gap
-        const h = 6 + (b / maxSpeed) * (BASELINE - 10)
+        const h = 5 + (b / maxSpeed) * (BASELINE - 9)
         return (
           <g key={i} fill="currentColor">
-            <rect x={i + 0.18} width={0.64} y={BASELINE - h} height={h} />
-            <rect x={i + 0.18} width={0.64} y={BASELINE + 2} height={h * 0.35} opacity={0.3} />
+            <rect x={i + 0.14} width={0.72} y={BASELINE - h} height={h} rx={0.3} />
+            <rect x={i + 0.14} width={0.72} y={BASELINE + 2} height={h * 0.32} rx={0.3} opacity={0.28} />
           </g>
         )
       })}
     </svg>
-  ), [bars, maxSpeed])
+  ), [bars, maxSpeed, nBars])
 
   // event pins, clamped to the window: the feed can hand back a row a bucket newer than `to`
   const pins = useMemo(() => {
@@ -277,6 +302,8 @@ export function Timeline({
   }, [events, window])
   // the legend names only the kinds actually on the track — a nine-entry key for two pins is noise
   const legend = useMemo(() => [...new Set(pins.map((p) => p.kind))], [pins])
+
+  const hoverMs = hover === null ? null : window.from + hover * (window.to - window.from)
 
   return (
     <div
@@ -298,7 +325,7 @@ export function Timeline({
             // Start at the first row we hold, not at the window's edge: the window opens earlier
             // than the earliest position by construction, so starting there spent the first ticks
             // on 'unknown' — a frozen camera and "no report at …", which reads as broken.
-            if (back === 0 && canScrub(firstBack)) scrub(firstBack)
+            if (back === 0 && canScrub(firstBack)) scrub(firstBack * 60)
             setReplaying(true)
           }}
           aria-pressed={replaying}
@@ -327,13 +354,13 @@ export function Timeline({
                 className={cn('shrink-0 tabular-nums', back === 0 ? 'text-text' : 'text-warn')}
                 data-testid="timeline-at"
               >
-                {back === 0 ? t('map.timeline.now') : stamp}
+                {back === 0 ? t('map.timeline.now') : `${dateOnly(atIso)} ${tms(atIso)}`}
               </span>
               {back > 0 && (
                 <span className="truncate">
                   ·{' '}
                   {current === undefined
-                    ? t('map.timeline.noData', { when: stamp })
+                    ? t('map.timeline.noData', { when: tms(atIso) })
                     : !current.fixValid
                       ? t('map.timeline.noFix')
                       : // null speed is "this model does not report it", not "stopped"
@@ -358,20 +385,25 @@ export function Timeline({
             </span>
           </div>
 
-          <div className="relative h-12" data-testid="timeline-wave">
-            {/* hour grid — full-height hairlines behind the waveform */}
+          <div
+            className="relative h-14"
+            data-testid="timeline-wave"
+            onPointerMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              if (r.width > 0) setHover(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)))
+            }}
+            onPointerLeave={() => setHover(null)}
+          >
+            {/* labeled clock times only as faint full-height gridlines; minor marks live in the
+                axis strip — a full grid behind the bars read as noise, not as an instrument */}
             <div className="pointer-events-none absolute inset-0" aria-hidden>
-              {ticks.map((tk) => (
-                <span
-                  key={tk.m}
-                  className={cn('absolute inset-y-0 w-px bg-line', tk.labeled ? 'opacity-70' : 'opacity-35')}
-                  style={{ left: `${tk.pct}%` }}
-                />
+              {axis.filter((tk) => tk.labeled).map((tk) => (
+                <span key={tk.ms} className="absolute inset-y-0 w-px bg-line opacity-60" style={{ left: `${tk.pct}%` }} />
               ))}
             </div>
-            {/* the waveform, twice: a dim base, and a colour overlay clipped at the thumb — the
-                played/unplayed split is a clip-path, exactly the trick the reference site uses */}
-            <div className="pointer-events-none absolute inset-0 text-surface-2">{waveform}</div>
+            {/* the waveform, twice: a dim base, and a colour overlay clipped at the playhead —
+                the played/unplayed split is a clip-path, exactly the reference site's trick */}
+            <div className="pointer-events-none absolute inset-0 text-muted opacity-40">{waveform}</div>
             <div
               className={cn('pointer-events-none absolute inset-0', back === 0 ? 'text-accent' : 'text-warn')}
               style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}
@@ -379,28 +411,64 @@ export function Timeline({
               {waveform}
             </div>
             {/* baseline so an empty stretch still reads as a track, not a blank */}
-            <div className="pointer-events-none absolute left-0 right-0 h-px bg-line" style={{ top: `${(BASELINE / WAVE_H) * 100}%` }} aria-hidden />
+            <div
+              className="pointer-events-none absolute left-0 right-0 h-px bg-line"
+              style={{ top: `${(BASELINE / WAVE_H) * 100}%` }}
+              aria-hidden
+            />
+            {/* hover: the moment under the cursor, to the second — read before you commit a drag */}
+            {hoverMs !== null && !disabled && (
+              <div className="pointer-events-none absolute inset-y-0" style={{ left: `${(hover ?? 0) * 100}%` }} aria-hidden>
+                <span className="absolute inset-y-0 left-0 w-px bg-text opacity-30" />
+                <span
+                  className={cn(
+                    'absolute top-0 whitespace-nowrap rounded border border-line bg-surface px-1 py-px font-mono text-[10px] text-text shadow-sm',
+                    (hover ?? 0) > 0.9 ? 'right-1' : 'left-1',
+                  )}
+                >
+                  {tms(new Date(hoverMs).toISOString())}
+                </span>
+              </div>
+            )}
+            {/* the playhead: a hairline with a grab dot on the baseline — the native round thumb
+                is hidden (transparent, full-height, so the finger target stays) */}
+            {!disabled && (
+              <div
+                className="pointer-events-none absolute inset-y-0 -translate-x-1/2"
+                style={{ left: `${pct}%` }}
+                aria-hidden
+              >
+                <span className={cn('absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 rounded-full', back === 0 ? 'bg-accent' : 'bg-warn')} />
+                <span
+                  className={cn(
+                    'absolute left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface',
+                    back === 0 ? 'bg-accent' : 'bg-warn',
+                  )}
+                  style={{ top: `${(BASELINE / WAVE_H) * 100}%` }}
+                />
+              </div>
+            )}
             <input
               type="range"
               min={0}
-              max={spanMin}
+              max={spanSec}
               step={1}
-              // reversed: the range's own value counts UP toward now, while `back` counts minutes
-              // backwards from it — so value 0 (left) is the start of the window and `spanMin`
+              // reversed: the range's own value counts UP toward now, while `back` counts SECONDS
+              // backwards from it — so value 0 (left) is the start of the window and `spanSec`
               // (right) is now
-              value={spanMin - back}
+              value={spanSec - back}
               onChange={(e) => {
                 setReplaying(false)
-                scrub(spanMin - Number(e.currentTarget.value))
+                scrub(spanSec - Number(e.currentTarget.value))
               }}
               aria-label={t('map.timeline.scrub', { hours: Math.round(spanMin / 60) })}
               data-testid="timeline-scrub"
               disabled={disabled}
-              className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent accent-[var(--admin-brand)] disabled:cursor-not-allowed"
+              className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent disabled:cursor-not-allowed [&::-moz-range-thumb]:h-full [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:h-full [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-transparent"
             />
             {/* event pins ride ABOVE the input: a pin is a destination, so clicking it scrubs
-                there. A full-height hairline with a head dot, SoundCloud-marker style — 2 px wide,
-                narrow enough that a drag still lands on the track. */}
+                there. A hairline with a head dot, SoundCloud-marker style — 2 px wide, narrow
+                enough that a drag still lands on the track. */}
             {pins.map((ev) => (
               <button
                 key={ev.id}
@@ -408,7 +476,7 @@ export function Timeline({
                 disabled={disabled}
                 onClick={() => {
                   setReplaying(false)
-                  scrub(Math.round((window.to - ev.atMs) / 60_000))
+                  scrub(Math.round((window.to - ev.atMs) / 1_000))
                 }}
                 title={`${t(`events.k.${ev.kind}`)} · ${dt(new Date(ev.atMs).toISOString())}`}
                 aria-label={`${t(`events.k.${ev.kind}`)} · ${dt(new Date(ev.atMs).toISOString())}`}
@@ -417,23 +485,35 @@ export function Timeline({
                 className="group absolute inset-y-0 w-1 -translate-x-1/2 disabled:cursor-not-allowed"
                 style={{ left: `${ev.pct}%` }}
               >
-                <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 opacity-80 transition-opacity group-hover:opacity-100" style={{ backgroundColor: ev.color }} aria-hidden />
-                <span className="absolute left-1/2 top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full ring-1 ring-surface transition-transform group-hover:scale-150" style={{ backgroundColor: ev.color }} aria-hidden />
+                <span
+                  className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 opacity-70 transition-opacity group-hover:opacity-100"
+                  style={{ backgroundColor: ev.color }}
+                  aria-hidden
+                />
+                <span
+                  className="absolute left-1/2 top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full ring-1 ring-surface transition-transform group-hover:scale-150"
+                  style={{ backgroundColor: ev.color }}
+                  aria-hidden
+                />
               </button>
             ))}
           </div>
 
-          {/* axis labels sit at their true positions, not justified into even gaps */}
-          <div className="relative mt-1 hidden h-3.5 text-[10px] text-muted sm:block" aria-hidden>
-            {ticks.filter((tk) => tk.labeled).map((tk) => (
-              <span key={tk.m} className="absolute -translate-x-1/2 tabular-nums" style={{ left: `${tk.pct}%` }}>
-                {tk.m % 60 === 0 ? t('map.timeline.quick.hours', { hours: tk.m / 60 }) : t('map.timeline.quick.minutes', { minutes: tk.m })}
+          {/* the axis strip: minor tick marks, clock labels at the round times, "now" at the edge */}
+          <div className="relative mt-0.5 hidden h-4 text-[10px] text-muted sm:block" aria-hidden>
+            {axis.map((tk) => (
+              <span
+                key={`m${tk.ms}`}
+                className={cn('absolute top-0 w-px bg-line', tk.labeled ? 'h-1.5 opacity-90' : 'h-1 opacity-50')}
+                style={{ left: `${tk.pct}%` }}
+              />
+            ))}
+            {axis.filter((tk) => tk.labeled && tk.pct > 1.5 && tk.pct < 95).map((tk) => (
+              <span key={tk.ms} className="absolute top-1 -translate-x-1/2 tabular-nums" style={{ left: `${tk.pct}%` }}>
+                {tm(new Date(tk.ms).toISOString())}
               </span>
             ))}
-            <span className="absolute left-0 tabular-nums">
-              {spanMin % 60 === 0 ? t('map.timeline.quick.hours', { hours: spanMin / 60 }) : t('map.timeline.quick.minutes', { minutes: spanMin })}
-            </span>
-            <span className="absolute right-0">{t('map.timeline.now')}</span>
+            <span className="absolute right-0 top-1 font-medium text-text">{t('map.timeline.now')}</span>
           </div>
 
           {legend.length > 0 && (
@@ -494,13 +574,13 @@ export function Timeline({
               disabled={disabled}
               onClick={() => {
                 setReplaying(false)
-                scrub(q.m)
+                scrub(q.m * 60)
               }}
-              aria-pressed={back === q.m}
+              aria-pressed={back === q.m * 60}
               data-testid={`timeline-quick-${q.m}`}
               className={cn(
                 'rounded-md px-2 py-1 text-[11px] font-medium transition-colors disabled:opacity-40',
-                back === q.m ? 'bg-surface-2 text-accent' : 'text-muted hover:text-text',
+                back === q.m * 60 ? 'bg-surface-2 text-accent' : 'text-muted hover:text-text',
               )}
             >
               {q.m === 0

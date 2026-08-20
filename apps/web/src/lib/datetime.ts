@@ -96,9 +96,40 @@ export function fmtDate(iso: string, locale: string, opts: FmtOpts = {}): string
   return formatter(locale, true, opts)(d)
 }
 
+/** Time-only (HH:mm or HH:mm:ss) under the same prefs — the timeline's clock axis and its
+ * second-precision readout. Cached like the date formatters; construction is the expensive part. */
+function timeFormatterFor(locale: string, opts: FmtOpts, withSeconds: boolean): (d: Date) => string {
+  const key = `${locale}|${withSeconds ? 'ts' : 't'}|${opts.timeFormat ?? ''}|${opts.timeZone ?? ''}`
+  let f = formatters.get(key)
+  if (f !== undefined) return f
+  const hourCycle = opts.timeFormat === undefined ? undefined : opts.timeFormat === '12h' ? ('h12' as const) : ('h23' as const)
+  const intl = safeIntl(locale, {
+    hour: opts.timeFormat === '12h' ? 'numeric' : '2-digit',
+    minute: '2-digit',
+    ...(withSeconds ? { second: '2-digit' as const } : {}),
+    hourCycle: hourCycle ?? 'h23',
+    ...(opts.timeZone !== undefined ? { timeZone: opts.timeZone } : {}),
+  })
+  f = (d) => intl.format(d)
+  formatters.set(key, f)
+  return f
+}
+
+export function fmtTime(iso: string, locale = 'en', opts: FmtOpts = {}, withSeconds = false): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return EMPTY
+  return timeFormatterFor(locale, opts, withSeconds)(d)
+}
+
 /** Formatters bound to the current i18n language AND the live display prefs:
- * `dt` = date+time, `d` = date only. Re-renders on language or pref changes. */
-export function useFmt(): { dt: (iso: string) => string; d: (iso: string) => string } {
+ * `dt` = date+time, `d` = date only, `tm`/`tms` = time (± seconds). Re-renders on language or
+ * pref changes. */
+export function useFmt(): {
+  dt: (iso: string) => string
+  d: (iso: string) => string
+  tm: (iso: string) => string
+  tms: (iso: string) => string
+} {
   const { i18n } = useTranslation()
   const lang = i18n.language
   const prefs = useSyncExternalStore(onPrefsChange, getDisplayPrefs)
@@ -108,6 +139,11 @@ export function useFmt(): { dt: (iso: string) => string; d: (iso: string) => str
       dateFormat: prefs.dateFormat,
       ...(prefs.timeZone !== 'auto' ? { timeZone: prefs.timeZone } : {}),
     }
-    return { dt: (iso: string) => fmtDateTime(iso, lang, opts), d: (iso: string) => fmtDate(iso, lang, opts) }
+    return {
+      dt: (iso: string) => fmtDateTime(iso, lang, opts),
+      d: (iso: string) => fmtDate(iso, lang, opts),
+      tm: (iso: string) => fmtTime(iso, lang, opts, false),
+      tms: (iso: string) => fmtTime(iso, lang, opts, true),
+    }
   }, [lang, prefs])
 }
