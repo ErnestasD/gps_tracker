@@ -136,7 +136,12 @@ export function SettingsCard({ device, canWrite }: { device: Device; canWrite: b
                 step={1}
                 value={value}
                 disabled={!canWrite || saving}
-                onChange={(e) => setDraft((d) => ({ ...d, [s.key]: Number(e.currentTarget.value) }))}
+                onChange={(e) => {
+                  // read SYNCHRONOUSLY: React nulls e.currentTarget after dispatch, and the
+                  // setState updater runs later — inside it this was "reading 'value' of null"
+                  const next = Number(e.currentTarget.value)
+                  setDraft((d) => ({ ...d, [s.key]: next }))
+                }}
                 className="w-full accent-[var(--admin-brand)]"
                 data-testid={`setting-input-${s.key}`}
               />

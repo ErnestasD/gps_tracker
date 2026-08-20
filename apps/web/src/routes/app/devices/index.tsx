@@ -216,7 +216,7 @@ export function DevicesPage() {
   ]
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 px-4 py-6 md:px-8 md:py-8">
+    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader className="mb-2" title={t('devices.title')} description={t('devices.desc')}>
         {canWrite && (<>
         <Sheet open={importOpen} onOpenChange={setImportOpen}>
@@ -400,6 +400,7 @@ export function DevicesPage() {
             .then(() => {
               liveStore.evict(d.id) // erased device leaves the live map at once
               setEraseQueued(true)
+              refresh() // ...and the table — the retire path refreshes, this one silently didn't
             })
             .catch(() => setEraseError(true))
         }}

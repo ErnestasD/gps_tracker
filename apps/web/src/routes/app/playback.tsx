@@ -86,7 +86,7 @@ export function PlaybackPage() {
   const tripList = trips.data ?? []
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8">
+    <div className="mx-auto w-full max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader title={t('playback.title')} description={t('playback.desc')}>
         <div className="w-56">
           <Combobox

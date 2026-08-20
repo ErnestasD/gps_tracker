@@ -92,21 +92,33 @@ export function EventsPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+      {/* labeled filters with the shared gap — the bare glued controls read as off-standard
+          next to trips/reports (founder feedback); FilterLabel mirrors trips.tsx */}
       <PageHeader title={t('events.title')} description={t('events.desc')} className="mb-0">
-        <div className="w-40">
-          <Combobox aria-label={t('events.kind')} value={kind} onChange={setKind} data-testid="events-kind"
-            options={[{ value: '', label: t('events.allKinds') }, ...EVENT_KINDS.map((k) => ({ value: k, label: t(`events.k.${k}`) }))]} />
-        </div>
-        <div className="w-40">
-          <Combobox aria-label={t('events.severity')} value={severity} onChange={(v) => setSeverity(v as '' | Severity)} data-testid="events-severity"
-            options={[{ value: '', label: t('events.allSeverities') }, ...SEVERITIES.map((sv) => ({ value: sv, label: t(`events.sev.${sv}`) }))]} />
-        </div>
-        <div className="w-40">
-          <Combobox aria-label={t('events.device')} value={deviceId} onChange={setDeviceId} data-testid="events-device"
-            options={[{ value: '', label: t('events.allDevices') }, ...(devices.data ?? []).map((d) => ({ value: d.id, label: d.name }))]} />
-        </div>
-        <div className="w-36"><DatePicker aria-label={t('events.from')} value={from} onChange={setFrom} data-testid="events-from" /></div>
-        <div className="w-36"><DatePicker aria-label={t('events.to')} value={to} onChange={setTo} data-testid="events-to" /></div>
+        <FilterLabel label={t('events.kind')}>
+          <div className="w-40">
+            <Combobox aria-label={t('events.kind')} value={kind} onChange={setKind} data-testid="events-kind"
+              options={[{ value: '', label: t('events.allKinds') }, ...EVENT_KINDS.map((k) => ({ value: k, label: t(`events.k.${k}`) }))]} />
+          </div>
+        </FilterLabel>
+        <FilterLabel label={t('events.severity')}>
+          <div className="w-40">
+            <Combobox aria-label={t('events.severity')} value={severity} onChange={(v) => setSeverity(v as '' | Severity)} data-testid="events-severity"
+              options={[{ value: '', label: t('events.allSeverities') }, ...SEVERITIES.map((sv) => ({ value: sv, label: t(`events.sev.${sv}`) }))]} />
+          </div>
+        </FilterLabel>
+        <FilterLabel label={t('events.device')}>
+          <div className="w-40">
+            <Combobox aria-label={t('events.device')} value={deviceId} onChange={setDeviceId} data-testid="events-device"
+              options={[{ value: '', label: t('events.allDevices') }, ...(devices.data ?? []).map((d) => ({ value: d.id, label: d.name }))]} />
+          </div>
+        </FilterLabel>
+        <FilterLabel label={t('events.from')}>
+          <div className="w-36"><DatePicker aria-label={t('events.from')} value={from} onChange={setFrom} data-testid="events-from" /></div>
+        </FilterLabel>
+        <FilterLabel label={t('events.to')}>
+          <div className="w-36"><DatePicker aria-label={t('events.to')} value={to} onChange={setTo} data-testid="events-to" /></div>
+        </FilterLabel>
       </PageHeader>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -194,5 +206,14 @@ export function EventsPage() {
         )}
       </div>
     </div>
+  )
+}
+
+function FilterLabel({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
+      {label}
+      {children}
+    </label>
   )
 }
