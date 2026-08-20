@@ -243,23 +243,54 @@ export function MapPage() {
    *    trip and snap the line back to where the old head ended — the reported symptom, returning on
    *    a five-minute cadence. Never bare `keepPreviousData`: that paints vehicle A's tail under B.
    */
-  const headPoints = track.data?.points ?? []
-  const headEnd = lastKnownMs(headPoints)
+  const headEnd = lastKnownMs(track.data?.points ?? [])
   const headTruncated = track.data?.truncated === true
   const tail = useQuery({
     queryKey: ['track-tail', snap.selectedId, trackWindow.to],
+    /**
+     * Anchored to the head's newest row, and left there deliberately.
+     *
+     * A buffered flood — a device offline for hours reconnecting with thousands of stored records —
+     * overflows this page, and `readPositions` orders ASC, so the tail returns the OLDEST 500 and
+     * every refetch returns the same ones until the head's window advances. That is a partial line
+     * for at most one bucket, after which the head has the whole flood (the records carry their
+     * original timestamps and land inside the 24-hour window). Paging the tail forward would need
+     * an anchor that survives renders, for a case that heals itself in five minutes — so instead
+     * the scrubber SAYS the track is truncated rather than pretending it is complete.
+     */
     queryFn: () => getTrack(snap.selectedId as string, { from: headEnd ?? trackWindow.to, to: Date.now() }, TAIL_LIMIT),
     enabled: snap.selectedId !== null && windowFor === snap.selectedId && !scrubbing && !headTruncated,
     refetchInterval: 20_000,
     refetchOnWindowFocus: false,
     staleTime: 0,
-    placeholderData: (prev, prevQuery) =>
-      (prevQuery?.queryKey as [string, string | null, number] | undefined)?.[1] === snap.selectedId ? prev : undefined,
+    placeholderData: (prev, prevQuery) => {
+      // …and bounded by AGE as well as by device, exactly like the head's. Without the bound a
+      // stale tail outlived every window change: query-core keeps its last defined data for the
+      // observer's whole life, so one tail fetched at a bad moment was re-served forever.
+      const key = prevQuery?.queryKey as [string, string | null, number] | undefined
+      if (key === undefined || key[1] !== snap.selectedId) return undefined
+      return trackWindow.to - key[2] <= WINDOW_BUCKET_MS ? prev : undefined
+    },
   })
 
+  /**
+   * The tail is JOINED only when the head it must attach to is real.
+   *
+   * Gating the fetch was not enough, because both guards read `track.data` — which during a head
+   * refetch is the PREVIOUS window's placeholder. Two ways that painted a lie:
+   *
+   *  - at a bucket turnover the placeholder reports `truncated: false`, so the tail fired; the head
+   *    then resolved TRUNCATED, meaning its newest row is the 10 000th oldest and hours in the past.
+   *    `buildTrailFeatures` segments on `fixValid` and never on a time gap, so the join drew hours
+   *    of road the vehicle never travelled as one solid line.
+   *  - returning to live after a long scrub, or revealing a tab hidden for hours, leaves the head's
+   *    own placeholder correctly declining (the gap exceeds a bucket) and `track.data` undefined —
+   *    and a tail joined onto nothing is a tail-only track presented as the whole day.
+   */
+  const tailPoints = headTruncated || track.data === undefined ? [] : (tail.data?.points ?? [])
   const trackPoints = useMemo(
-    () => joinTail(track.data?.points ?? [], tail.data?.points ?? []),
-    [track.data, tail.data],
+    () => joinTail(track.data?.points ?? [], tailPoints),
+    [track.data, tailPoints],
   )
   // Parsed once for the whole page: the line and the scrubber both need the timestamps.
   const trackTimestamps = useMemo(() => trackTimes(trackPoints), [trackPoints])
@@ -566,7 +597,8 @@ export function MapPage() {
            reading: the rows ARE this vehicle's, at most one bucket old, so the summary stays and
            dims rather than trading one blink for another. */
         stale={track.isPlaceholderData}
-        truncated={track.data?.truncated ?? false}
+        /* either half being cut means what is drawn is not the whole story */
+        truncated={(track.data?.truncated ?? false) || (tail.data?.truncated ?? false)}
         onScrub={onScrub}
       />
     </div>

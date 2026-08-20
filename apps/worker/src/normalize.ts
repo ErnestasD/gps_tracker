@@ -89,7 +89,8 @@ export type HashFn = (data: Uint8Array) => bigint
 /**
  * Stream payload → NormalizedRecord (PROJECT_PLAN §6.1 "normalize"):
  * dictionary decode (per-family; profile-driven lookup arrives with E03-3 —
- * default fmb1xx until devices carry profiles), fix_valid = satellites > 0
+ * default fmb1xx until devices carry profiles), fix_valid = satellites > 0 AND not an exact
+ * 0/0 (rule 6 plus the null-island note on `isNullIsland` — §3.4's rule alone proved insufficient)
  * (CLAUDE.md rule 6), core IO promoted to columns, everything else → attrs
  * (named via dictionary, unknown ids kept as io_<id> — never dropped, §3.7).
  * rec_hash = xxhash64(raw) reinterpreted as SIGNED 64-bit (§6.3 R10 trap).
