@@ -327,13 +327,17 @@ export function DevicesPage() {
           switch (a confirm armed for device A must not send with one click on device B).
           panelRef anchors the scroll-into-view so an opened panel is never off-screen. */}
       <div ref={panelRef} className="scroll-mt-4">
+        {/* keys are PREFIXED per panel type: several panels can be open at once, and two
+            siblings sharing the bare device id (health "1" + share "1") is duplicate-key
+            territory — React's reconciler then duplicates/retains cards at random (founder
+            saw stacked copies of Būklė after opening Bendrinti) */}
         {vehicleFor !== null && <VehicleCardPanel key={`veh-${vehicleFor.id}`} device={vehicleFor} drivers={driversQ.data ?? []} canWrite={canWrite} />}
-        {healthFor !== null && <HealthCard key={healthFor.id} device={healthFor} />}
+        {healthFor !== null && <HealthCard key={`health-${healthFor.id}`} device={healthFor} />}
         {healthFor !== null && <CanCard key={`can-${healthFor.id}`} device={healthFor} />}
-        {onboardFor !== null && <OnboardingCard key={onboardFor.id} device={onboardFor} initialApn={pendingApn} />}
-        {commandsFor !== null && <CommandsCard key={commandsFor.id} device={commandsFor} />}
+        {onboardFor !== null && <OnboardingCard key={`onboard-${onboardFor.id}`} device={onboardFor} initialApn={pendingApn} />}
+        {commandsFor !== null && <CommandsCard key={`cmd-${commandsFor.id}`} device={commandsFor} />}
         {settingsFor !== null && <SettingsCard key={`set-${settingsFor.id}`} device={settingsFor} canWrite={canWrite} />}
-        {shareFor !== null && <ShareCard key={shareFor.id} device={shareFor} />}
+        {shareFor !== null && <ShareCard key={`share-${shareFor.id}`} device={shareFor} />}
       </div>
 
       {getCurrentUser()?.role === 'platform_admin' && <QuarantineSection />}
