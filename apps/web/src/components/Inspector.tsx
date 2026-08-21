@@ -89,12 +89,22 @@ export function Inspector({
   }
 
   const telemetry = useQuery({
-    // scrubAt rides in the KEY: reading the past and reading the present are different queries,
-    // and keepPreviousData keeps the panel steady while the operator drags the scrubber
-    queryKey: ['telemetry', live.ev.deviceId, scrubAt ?? 'live'],
+    /**
+     * scrubAt rides in the KEY: reading the past and reading the present are different queries,
+     * and keepPreviousData keeps the panel steady while the operator drags the scrubber.
+     *
+     * Live, the key carries the newest report's OWN timestamp: the WS event says "a new record
+     * exists" but carries only a handful of fields, so the full attrs are re-fetched the moment
+     * it lands — the founder ask is that a MOVING vehicle's parameters move with it, and a 30 s
+     * poll alone left them frozen between polls. One key per report for one selected device is
+     * cheap; gcTime keeps the per-report cache entries from piling up over a long drive.
+     */
+    queryKey: ['telemetry', live.ev.deviceId, scrubAt ?? `live-${live.ev.fixTimeMs}`],
     queryFn: () => getTelemetry(live.ev.deviceId, scrubAt),
     placeholderData: (prev) => prev,
-    // a historical moment never changes — poll only while live
+    gcTime: 60_000,
+    // a historical moment never changes — poll only while live (the fallback for a parked
+    // vehicle whose reports are sparse)
     refetchInterval: scrubAt != null ? false : 30_000,
   })
   const latest = hasTelemetry(telemetry.data) ? telemetry.data : undefined
