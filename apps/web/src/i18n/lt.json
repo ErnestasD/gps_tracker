@@ -489,7 +489,8 @@
       "refreshing": "Atnaujinama…",
       "zoomIn": "Trumpesnis intervalas — detaliau",
       "zoomOut": "Ilgesnis intervalas",
-      "span": "{{hours}} val."
+      "span": "{{hours}} val.",
+      "replaySpeed": "Peržaidimo greitis"
     },
     "eventFeed": "Įvykių srautas",
     "ctl": {

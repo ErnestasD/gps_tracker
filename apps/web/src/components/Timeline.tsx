@@ -31,9 +31,20 @@ import { cn } from '@/lib/utils'
  * we hold is per device, and pretending otherwise would mean replaying a fleet we never queried.
  */
 
-/** Replay: one tick per 90 ms, the whole span in ~3.6 s regardless of zoom (240 ticks). */
+/**
+ * Replay pacing. One tick per 90 ms; the STEP per tick is derived from how long the whole span
+ * should take at the chosen speed. The old fixed 240-ticks-per-span replayed a day in ~22 s and
+ * an hour in the same ~22 s — "labai greit prasisuka" (founder): nothing was watchable. 1× now
+ * means the whole span in 60 s, and the control cycles the presets.
+ */
 const REPLAY_TICK_MS = 90
-const REPLAY_TICKS_PER_SPAN = 240
+const REPLAY_SPEEDS = [
+  { label: '½×', fullSpanS: 120 },
+  { label: '1×', fullSpanS: 60 },
+  { label: '2×', fullSpanS: 30 },
+  { label: '4×', fullSpanS: 15 },
+] as const
+const DEFAULT_SPEED = 1 // 1× — index into REPLAY_SPEEDS
 
 /** An event pin on the track (SoundCloud-style): the page maps its events query to this. */
 export interface TimelineEvent {
@@ -130,6 +141,7 @@ export function Timeline({
   /** SECONDS back from now: 0 is live. */
   const [back, setBack] = useState(0)
   const [replaying, setReplaying] = useState(false)
+  const [speedIdx, setSpeedIdx] = useState(DEFAULT_SPEED)
   /** Pointer position over the wave as a 0..1 fraction — the hover time readout. */
   const [hover, setHover] = useState<number | null>(null)
 
@@ -181,15 +193,18 @@ export function Timeline({
   const backRef = useRef(back)
   const scrubRef = useRef(scrub)
   const spanSecRef = useRef(spanSec)
+  const speedRef = useRef(speedIdx)
   useLayoutEffect(() => {
     backRef.current = back
     scrubRef.current = scrub
     spanSecRef.current = spanSec
+    speedRef.current = speedIdx
   })
   useEffect(() => {
     if (!replaying) return
     const iv = setInterval(() => {
-      const step = Math.max(1, Math.round(spanSecRef.current / REPLAY_TICKS_PER_SPAN))
+      const speed = REPLAY_SPEEDS[speedRef.current] ?? REPLAY_SPEEDS[DEFAULT_SPEED]
+      const step = Math.max(1, Math.round((spanSecRef.current * REPLAY_TICK_MS) / 1_000 / speed.fullSpanS))
       const next = backRef.current - step
       if (next <= 0) {
         setReplaying(false)
@@ -346,6 +361,19 @@ export function Timeline({
           )}
         >
           {replaying ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
+        </button>
+        {/* replay pace, cycling the presets — a running replay picks the new pace up on its next
+            tick, so slowing down mid-replay works exactly when it is wanted */}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setSpeedIdx((i) => (i + 1) % REPLAY_SPEEDS.length)}
+          title={t('map.timeline.replaySpeed')}
+          aria-label={`${t('map.timeline.replaySpeed')}: ${(REPLAY_SPEEDS[speedIdx] ?? REPLAY_SPEEDS[DEFAULT_SPEED]).label}`}
+          data-testid="timeline-speed"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-line font-mono text-[11px] tabular-nums text-muted transition-colors hover:text-text disabled:opacity-40"
+        >
+          {(REPLAY_SPEEDS[speedIdx] ?? REPLAY_SPEEDS[DEFAULT_SPEED]).label}
         </button>
 
         <div className="min-w-0 flex-1">

@@ -489,7 +489,8 @@
       "refreshing": "Odświeżanie…",
       "zoomIn": "Krótszy zakres — więcej szczegółów",
       "zoomOut": "Dłuższy zakres",
-      "span": "{{hours}} godz."
+      "span": "{{hours}} godz.",
+      "replaySpeed": "Prędkość odtwarzania"
     },
     "eventFeed": "Strumień zdarzeń",
     "ctl": {
