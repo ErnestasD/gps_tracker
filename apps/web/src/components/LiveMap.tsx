@@ -145,6 +145,9 @@ export function LiveMap({
      *  `ScrubState` can never grow into — it has already gone from two states to three. */
     const NO_FRAME = Symbol('no-frame')
     let lastScrubData: ScrubState | typeof NO_FRAME = NO_FRAME
+    /** NO_FRAME so a remount with a selection already made does not fly away from wherever the
+     *  operator left the camera — only a CHANGE of selection moves it. */
+    let lastSelectedId: string | null | typeof NO_FRAME = NO_FRAME
 
     // IDEMPOTENT setup (ADR-030): `style.load` fires for the initial style AND after
     // every theme `setStyle`, which drops ALL runtime images/sources/layers — re-add
@@ -452,6 +455,22 @@ export function LiveMap({
       if (map.getLayer('selected-halo')) {
         map.setFilter('selected-halo', ['==', ['get', 'deviceId'], frame.selected?.deviceId ?? ''])
       }
+      /**
+       * A NEW selection centres the camera, whatever selected it — marker tap, fleet-list row,
+       * search. The store is where those paths converge, so the camera reacts to the frame rather
+       * than to each widget. Zoom steps IN to street level but never OUT of a view the operator
+       * already framed (the centre-selected control's rule); a device with no valid fix has no
+       * place to centre on, and deselecting moves nothing.
+       */
+      const selId = frame.selected?.deviceId ?? null
+      if (lastSelectedId !== NO_FRAME && selId !== null && selId !== lastSelectedId && frame.selectedFix) {
+        map.easeTo({
+          center: [frame.selectedFix.lon, frame.selectedFix.lat],
+          zoom: Math.max(map.getZoom(), 14),
+          duration: 600,
+        })
+      }
+      lastSelectedId = selId
       /**
        * ONE detector for "the value changed", nested inside it one for "the place changed".
        *
