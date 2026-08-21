@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { Menu, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Menu, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
@@ -70,7 +70,7 @@ export function NavBar() {
               </Link>
             );
           })}
-          <a href={DOCS_URL} className="text-sm text-muted-foreground hover:text-ink">{t("nav.docs")}</a>
+          <DocsDropdown active={location.pathname === "/compatibility"} />
         </nav>
 
         <div className="flex items-center gap-3">
@@ -126,7 +126,8 @@ export function NavBar() {
               {t(item.key)}
             </Link>
           ))}
-          <a href={DOCS_URL} className="text-base text-ink/90 hover:text-ink">{t("nav.docs")}</a>
+          <a href={DOCS_URL} className="text-base text-ink/90 hover:text-ink">{t("nav.apiDocs")}</a>
+          <Link to="/compatibility" className="text-base text-ink/90 hover:text-ink">{t("nav.compat")}</Link>
           <Link to="/demo" className="text-base text-ink/90 hover:text-ink">{t("nav.demo")}</Link>
           <div className="pt-2 grid gap-3">
             <Link to="/signup" className="pill-primary hover:pill-primary-hover justify-center">
@@ -140,5 +141,79 @@ export function NavBar() {
         </nav>
       </div>
     </header>
+  );
+}
+
+/**
+ * "Dokumentacija" is a MENU now, not a link: it fans out to the API reference (external, on the
+ * dashboard host) and the CAN compatibility checker (founder ask). Same dismiss contract as the
+ * language dropdown — outside click and Escape close it, and a route change closes it too.
+ */
+function DocsDropdown({ active }: { active: boolean }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const { location } = useRouterState();
+
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "inline-flex items-center gap-1 text-sm transition-colors relative cursor-pointer",
+          active || open ? "text-ink font-medium" : "text-muted-foreground hover:text-ink"
+        )}
+      >
+        {t("nav.docs")}
+        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden />
+        {active && (
+          <span className="absolute -bottom-2 left-0 right-0 h-[2px] bg-[#B45309] rounded-full" />
+        )}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute left-0 top-full mt-3 w-56 rounded border border-[var(--hairline)] bg-[rgba(4,7,15,0.97)] backdrop-blur-md py-1.5 shadow-[0_20px_40px_-20px_rgba(0,0,0,0.8)]"
+        >
+          <a
+            role="menuitem"
+            href={DOCS_URL}
+            className="block px-4 py-2 text-sm text-ink/90 hover:text-ink hover:bg-white/[0.04]"
+          >
+            {t("nav.apiDocs")}
+          </a>
+          <Link
+            role="menuitem"
+            to="/compatibility"
+            className="block px-4 py-2 text-sm text-ink/90 hover:text-ink hover:bg-white/[0.04]"
+          >
+            {t("nav.compat")}
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }

@@ -23,6 +23,7 @@ import { Route as DpaRouteImport } from './routes/dpa'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as DemoRouteImport } from './routes/demo'
 import { Route as CookiesRouteImport } from './routes/cookies'
+import { Route as CompatibilityRouteImport } from './routes/compatibility'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
@@ -116,6 +117,11 @@ const DemoRoute = DemoRouteImport.update({
 const CookiesRoute = CookiesRouteImport.update({
   id: '/cookies',
   path: '/cookies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompatibilityRoute = CompatibilityRouteImport.update({
+  id: '/compatibility',
+  path: '/compatibility',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
@@ -242,6 +248,7 @@ const AppApiKeysRoute = AppApiKeysRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/compatibility': typeof CompatibilityRoute
   '/cookies': typeof CookiesRoute
   '/demo': typeof DemoRoute
   '/docs': typeof DocsRoute
@@ -281,6 +288,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/compatibility': typeof CompatibilityRoute
   '/cookies': typeof CookiesRoute
   '/demo': typeof DemoRoute
   '/docs': typeof DocsRoute
@@ -322,6 +330,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/compatibility': typeof CompatibilityRoute
   '/cookies': typeof CookiesRoute
   '/demo': typeof DemoRoute
   '/docs': typeof DocsRoute
@@ -364,6 +373,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/compatibility'
     | '/cookies'
     | '/demo'
     | '/docs'
@@ -403,6 +413,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/compatibility'
     | '/cookies'
     | '/demo'
     | '/docs'
@@ -443,6 +454,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/app'
+    | '/compatibility'
     | '/cookies'
     | '/demo'
     | '/docs'
@@ -484,6 +496,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  CompatibilityRoute: typeof CompatibilityRoute
   CookiesRoute: typeof CookiesRoute
   DemoRoute: typeof DemoRoute
   DocsRoute: typeof DocsRoute
@@ -601,6 +614,13 @@ declare module '@tanstack/react-router' {
       path: '/cookies'
       fullPath: '/cookies'
       preLoaderRoute: typeof CookiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compatibility': {
+      id: '/compatibility'
+      path: '/compatibility'
+      fullPath: '/compatibility'
+      preLoaderRoute: typeof CompatibilityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -823,6 +843,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  CompatibilityRoute: CompatibilityRoute,
   CookiesRoute: CookiesRoute,
   DemoRoute: DemoRoute,
   DocsRoute: DocsRoute,
