@@ -620,7 +620,10 @@ export function Timeline({
           </div>
         )}
 
-        <div className="hidden shrink-0 items-center gap-1 md:flex">
+        {/* FIXED-width slots, right-aligned: the jump set changes with the span (labels and even
+            the count), and letting the block reflow resized the flex-1 waveform beside it — the
+            founder's "grafikas šokinėja per plotį". The graph must not move when time is re-scaled. */}
+        <div className="hidden shrink-0 items-center justify-end gap-1 md:flex md:min-w-[21rem]">
           {quick.map((q) => (
             <button
               key={q.m}
@@ -633,7 +636,7 @@ export function Timeline({
               aria-pressed={back === q.m * 60}
               data-testid={`timeline-quick-${q.m}`}
               className={cn(
-                'rounded-md px-2 py-1 text-[11px] font-medium transition-colors disabled:opacity-40',
+                'w-16 rounded-md py-1 text-center text-[11px] font-medium tabular-nums transition-colors disabled:opacity-40',
                 back === q.m * 60 ? 'bg-surface-2 text-accent' : 'text-muted hover:text-text',
               )}
             >
