@@ -32,19 +32,22 @@ import { cn } from '@/lib/utils'
  */
 
 /**
- * Replay pacing. One tick per 90 ms; the STEP per tick is derived from how long the whole span
- * should take at the chosen speed. The old fixed 240-ticks-per-span replayed a day in ~22 s and
- * an hour in the same ~22 s — "labai greit prasisuka" (founder): nothing was watchable. 1× now
- * means the whole span in 60 s, and the control cycles the presets.
+ * Replay pacing: a TIME-LAPSE FACTOR against real time, not "span per N seconds".
+ *
+ * Span-relative pacing meant the step scaled with the zoom — a 24 h span at its gentlest still
+ * jumped over two minutes of history per tick, and the founder's ask was the opposite: to WATCH,
+ * down to the second. 1× is real time (one second of history per second), and each preset is a
+ * plain multiplier of it, the same at every zoom. The tick accumulates fractionally (posRef):
+ * at 1× a 90 ms tick advances 0.09 s, which rounding alone would swallow forever.
  */
 const REPLAY_TICK_MS = 90
 const REPLAY_SPEEDS = [
-  { label: '½×', fullSpanS: 120 },
-  { label: '1×', fullSpanS: 60 },
-  { label: '2×', fullSpanS: 30 },
-  { label: '4×', fullSpanS: 15 },
+  { label: '1×', factor: 1 },
+  { label: '10×', factor: 10 },
+  { label: '60×', factor: 60 },
+  { label: '600×', factor: 600 },
 ] as const
-const DEFAULT_SPEED = 1 // 1× — index into REPLAY_SPEEDS
+const DEFAULT_SPEED = 2 // 60× — a day in 24 min, an hour in a minute
 
 /** An event pin on the track (SoundCloud-style): the page maps its events query to this. */
 export interface TimelineEvent {
@@ -200,12 +203,17 @@ export function Timeline({
     spanSecRef.current = spanSec
     speedRef.current = speedIdx
   })
+  /** The replay's own FRACTIONAL position. `back` is integer seconds, and at 1× a tick advances
+   *  0.09 s — rounding through the state every tick would never move. Every user interaction
+   *  stops the replay, so the accumulator cannot drift from a position the operator chose. */
+  const posRef = useRef(0)
   useEffect(() => {
     if (!replaying) return
+    posRef.current = backRef.current
     const iv = setInterval(() => {
       const speed = REPLAY_SPEEDS[speedRef.current] ?? REPLAY_SPEEDS[DEFAULT_SPEED]
-      const step = Math.max(1, Math.round((spanSecRef.current * REPLAY_TICK_MS) / 1_000 / speed.fullSpanS))
-      const next = backRef.current - step
+      const next = posRef.current - (speed.factor * REPLAY_TICK_MS) / 1_000
+      posRef.current = next
       if (next <= 0) {
         setReplaying(false)
         scrubRef.current(0)
