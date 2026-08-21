@@ -128,15 +128,17 @@ function CompatibilityPage() {
   }, [data, category]);
   const models = useMemo(() => {
     if (!data) return [];
-    const q = query.trim().toLowerCase();
+    // token match, not a contiguous substring: "Passat B6" must find "Passat mk6 B6 (Typ3C)"
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return data.vehicles
       .map((v, i) => ({ v, i }))
-      .filter(
-        ({ v }) =>
-          (!category || v.c === category) &&
-          (!brand || v.b === brand) &&
-          (q === "" || `${v.b} ${v.m} ${v.y}`.toLowerCase().includes(q)),
-      );
+      .filter(({ v }) => {
+        if (category && v.c !== category) return false;
+        if (brand && v.b !== brand) return false;
+        if (tokens.length === 0) return true;
+        const hay = `${v.b} ${v.m} ${v.y}`.toLowerCase();
+        return tokens.every((tok) => hay.includes(tok));
+      });
   }, [data, category, brand, query]);
 
   const selected = useMemo(() => {
