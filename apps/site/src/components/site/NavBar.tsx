@@ -127,7 +127,7 @@ export function NavBar() {
             </Link>
           ))}
           <a href={DOCS_URL} className="text-base text-ink/90 hover:text-ink">{t("nav.apiDocs")}</a>
-          <Link to="/compatibility" className="text-base text-ink/90 hover:text-ink">{t("nav.compat")}</Link>
+          <a href="/compatibility" className="text-base text-ink/90 hover:text-ink">{t("nav.compat")}</a>
           <Link to="/demo" className="text-base text-ink/90 hover:text-ink">{t("nav.demo")}</Link>
           <div className="pt-2 grid gap-3">
             <Link to="/signup" className="pill-primary hover:pill-primary-hover justify-center">
@@ -205,13 +205,16 @@ function DocsDropdown({ active }: { active: boolean }) {
           >
             {t("nav.apiDocs")}
           </a>
-          <Link
+          {/* a PLAIN anchor, deliberately: a router Link in a long-lived tab whose bundle
+              predates this route no-ops silently (founder report — "spaudziu ir nieko
+              nevyksta"). A full navigation always lands, whatever the bundle's age. */}
+          <a
             role="menuitem"
-            to="/compatibility"
+            href="/compatibility"
             className="block px-4 py-2 text-sm text-ink/90 hover:text-ink hover:bg-white/[0.04]"
           >
             {t("nav.compat")}
-          </Link>
+          </a>
         </div>
       )}
     </div>

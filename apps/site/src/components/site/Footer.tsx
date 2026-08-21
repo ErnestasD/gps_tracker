@@ -26,7 +26,7 @@ export function Footer() {
             <li><Link to="/partners" className="hover:text-ink text-muted-foreground">{t("nav.partners")}</Link></li>
             <li><Link to="/demo" className="hover:text-ink text-muted-foreground">{t("nav.demo")}</Link></li>
             <li><a href={DOCS_URL} className="hover:text-ink text-muted-foreground">{t("nav.apiDocs")}</a></li>
-            <li><Link to="/compatibility" className="hover:text-ink text-muted-foreground">{t("nav.compat")}</Link></li>
+            <li><a href="/compatibility" className="hover:text-ink text-muted-foreground">{t("nav.compat")}</a></li>
             <li><Link to="/pilot" className="hover:text-ink text-muted-foreground">{t("nav.contact")}</Link></li>
           </ul>
         </div>
