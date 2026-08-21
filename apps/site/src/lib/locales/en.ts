@@ -18,7 +18,7 @@ export const en = {
     contact: "Contact",
     docs: "Docs",
     apiDocs: "API documentation",
-    compat: "Compatibility",
+    compat: "CAN compatibility",
     demo: "Live demo",
     menu: "Menu",
   },

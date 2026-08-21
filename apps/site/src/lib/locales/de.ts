@@ -10,7 +10,7 @@ export const de: Translation = {
     contact: "Kontakt",
     docs: "Dokumentation",
     apiDocs: "API-Dokumentation",
-    compat: "Kompatibilität",
+    compat: "CAN-Kompatibilität",
     demo: "Live-Demo",
     menu: "Menü",
   },

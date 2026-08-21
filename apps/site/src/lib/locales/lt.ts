@@ -15,7 +15,7 @@ export const lt: Translation = {
     contact: "Kontaktai",
     docs: "Dokumentacija",
     apiDocs: "API dokumentacija",
-    compat: "Suderinamumas",
+    compat: "CAN suderinamumas",
     demo: "Demonstracija",
     menu: "Meniu",
   },
