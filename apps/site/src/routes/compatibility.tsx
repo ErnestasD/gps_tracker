@@ -58,10 +58,12 @@ interface CanDataset {
   vehicles: CanVehicle[];
 }
 
+const ADAPTER_MODELS = "FMX1YX · FMB140 · FMX640";
 const DEVICES = [
-  { id: "fmx150", label: "FMX150", models: "FMB150 · FMC150 · FMM150", integrated: true },
-  { id: "lvcan200", label: "LV-CAN200", models: "FMB1YX · FMC1YX · FMM1YX · FMB140", integrated: false },
-  { id: "allcan300", label: "ALL-CAN300", models: "FMB1YX · FMC1YX · FMM1YX · FMB140", integrated: false },
+  { id: "fmx150", label: "FMX150", models: "FMB150 · FMC150 · FMM150 · FMC250 · FMM250", integrated: true },
+  { id: "lvcan200", label: "LV-CAN200", models: ADAPTER_MODELS, integrated: false },
+  { id: "allcan300", label: "ALL-CAN300", models: ADAPTER_MODELS, integrated: false },
+  { id: "cancontrol", label: "CAN-CONTROL", models: ADAPTER_MODELS, integrated: false },
 ] as const;
 
 type DeviceId = (typeof DEVICES)[number]["id"];
@@ -166,7 +168,7 @@ function CompatibilityPage() {
       {/* ── step 1: device ───────────────────────────────────────────────── */}
       <section className="mx-auto max-w-7xl px-6 pb-10">
         <StepHeading n="01" label={t("compat.deviceStep")} />
-        <div className="grid gap-4 sm:grid-cols-3 mt-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-5">
           {DEVICES.map((d) => {
             const active = d.id === deviceId;
             const Icon = d.integrated ? Cpu : Plug;
@@ -192,13 +194,14 @@ function CompatibilityPage() {
                 </div>
                 <div className="mt-2 font-mono text-[11px] tracking-wide text-muted-foreground">{d.models}</div>
                 <div className={cn("mt-3 text-xs", active ? "text-ink/80" : "text-muted-foreground")}>
-                  {d.integrated ? t("compat.integrated") : `${t("compat.adapterFor")} FMB1YX`}
+                  {d.integrated ? t("compat.integrated") : t("compat.adapterCard")}
                 </div>
               </button>
             );
           })}
         </div>
-        <p className="mt-4 text-xs text-muted-foreground max-w-2xl">{t("compat.seriesNote")}</p>
+        <p className="mt-4 text-xs text-muted-foreground max-w-3xl">{t("compat.seriesNote")}</p>
+        <p className="mt-1.5 text-xs text-muted-foreground max-w-3xl">{t("compat.yxNote")}</p>
       </section>
 
       {/* ── step 2: vehicle ──────────────────────────────────────────────── */}

@@ -199,24 +199,33 @@ def main():
     data_dir = os.path.join(HERE, 'data')
     jobs = [
         ('fmx150.json', extract_fmx150, os.path.join(data_dir, 'fmx150.xlsx'), {
+            # the official page names all five: "FMB150, FMC150, FMM150, FMC250 and FMM250
+            # supported vehicle list" (wiki FMX150_supported_vehicles)
             'device': 'FMX150',
-            'models': ['FMB150', 'FMC150', 'FMM150'],
-            'updated': '2026-02-06',
-            'source': 'Teltonika FMX150 Supported Vehicles 06/02/2026',
+            'models': ['FMB150', 'FMC150', 'FMM150', 'FMC250', 'FMM250'],
+            'updated': '2026-07-27',
+            'source': 'Teltonika FMX150 Supported Vehicles 07/27/2026',
         }),
         ('lvcan200.json', extract_4p, os.path.join(data_dir, 'lvcan200.xlsx'), {
             'device': 'LV-CAN200',
-            'models': ['FMB110', 'FMB120', 'FMB122', 'FMB125', 'FMC125', 'FMM125', 'FMB130', 'FMC130', 'FMM130', 'FMB140'],
+            'models': ['FMB110', 'FMB120', 'FMB122', 'FMB125', 'FMB130', 'FMB140', 'FMC125', 'FMC130', 'FMM125', 'FMM130', 'FMU125', 'FMU126', 'FMU130', 'FMB640', 'FMC640', 'FMM640'],
             'adapter': True,
             'updated': '2026-07-03',
             'source': 'Teltonika LV-CAN200 (4P) List 2026/07/03',
         }),
         ('allcan300.json', extract_4p, os.path.join(data_dir, 'allcan300.xlsx'), {
             'device': 'ALL-CAN300',
-            'models': ['FMB110', 'FMB120', 'FMB122', 'FMB125', 'FMC125', 'FMM125', 'FMB130', 'FMC130', 'FMM130', 'FMB140'],
+            'models': ['FMB110', 'FMB120', 'FMB122', 'FMB125', 'FMB130', 'FMB140', 'FMC125', 'FMC130', 'FMM125', 'FMM130', 'FMU125', 'FMU126', 'FMU130', 'FMB640', 'FMC640', 'FMM640'],
             'adapter': True,
             'updated': '2026-07-03',
             'source': 'Teltonika ALL-CAN300 (4P) List 2026/07/03',
+        }),
+        ('cancontrol.json', extract_4p, os.path.join(data_dir, 'cancontrol.xlsx'), {
+            'device': 'CAN-CONTROL',
+            'models': ['FMB110', 'FMB120', 'FMB122', 'FMB125', 'FMB130', 'FMB140', 'FMC125', 'FMC130', 'FMM125', 'FMM130', 'FMU125', 'FMU126', 'FMU130', 'FMB640', 'FMC640', 'FMM640'],
+            'adapter': True,
+            'updated': '2026-07-03',
+            'source': 'Teltonika CAN-CONTROL List 2026/07/03',
         }),
     ]
     for out_name, fn, src, meta in jobs:
