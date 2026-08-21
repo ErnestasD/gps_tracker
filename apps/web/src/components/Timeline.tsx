@@ -203,22 +203,38 @@ export function Timeline({
     spanSecRef.current = spanSec
     speedRef.current = speedIdx
   })
-  /** The replay's own FRACTIONAL position. `back` is integer seconds, and at 1× a tick advances
-   *  0.09 s — rounding through the state every tick would never move. Every user interaction
-   *  stops the replay, so the accumulator cannot drift from a position the operator chose. */
-  const posRef = useRef(0)
   useEffect(() => {
     if (!replaying) return
-    posRef.current = backRef.current
+    /**
+     * The replay is a CLOCK, not a tick counter. Counting ticks assumed the interval actually
+     * fires every 90 ms; under the workspace's per-scrub re-renders it fires late, and at 1× the
+     * "second per second" quietly became a second per six. Position is derived from wall time
+     * (performance.now), so jank changes smoothness, never the rate; a mid-replay speed change
+     * rebases the anchor so the transition is seamless. And only a change of the ROUNDED second
+     * reaches scrub() — at 1× that is one store emit per second instead of eleven, which is also
+     * what removes most of the jank.
+     */
+    let startWall = performance.now()
+    let startPos = backRef.current
+    let lastFactor = (REPLAY_SPEEDS[speedRef.current] ?? REPLAY_SPEEDS[DEFAULT_SPEED]).factor
+    let lastSent = Number.NaN
     const iv = setInterval(() => {
-      const speed = REPLAY_SPEEDS[speedRef.current] ?? REPLAY_SPEEDS[DEFAULT_SPEED]
-      const next = posRef.current - (speed.factor * REPLAY_TICK_MS) / 1_000
-      posRef.current = next
+      const factor = (REPLAY_SPEEDS[speedRef.current] ?? REPLAY_SPEEDS[DEFAULT_SPEED]).factor
+      const now = performance.now()
+      if (factor !== lastFactor) {
+        startPos = startPos - (lastFactor * (now - startWall)) / 1_000
+        startWall = now
+        lastFactor = factor
+      }
+      const next = startPos - (factor * (now - startWall)) / 1_000
       if (next <= 0) {
         setReplaying(false)
         scrubRef.current(0)
         return
       }
+      const rounded = Math.round(next)
+      if (rounded === lastSent) return
+      lastSent = rounded
       scrubRef.current(next)
     }, REPLAY_TICK_MS)
     return () => clearInterval(iv)
