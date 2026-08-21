@@ -380,8 +380,19 @@ export function LiveMap({
     // delegated layer handlers are keyed by layer id and evaluated at event time —
     // registered ONCE, they survive theme setStyle swaps (the ids never change)
     map.on('click', 'device-arrows', (e: MapMouseEvent) => {
-      const id = e.features?.[0]?.properties?.['deviceId'] as string | undefined
-      if (id !== undefined) liveStore.select(id)
+      const feature = e.features?.[0]
+      const id = feature?.properties?.['deviceId'] as string | undefined
+      if (id === undefined) return
+      liveStore.select(id)
+      // a tapped vehicle comes to the operator: centre it and step in — but never zoom OUT
+      // from a view the operator already framed (same rule as the centre-selected control)
+      if (feature?.geometry.type === 'Point') {
+        map.easeTo({
+          center: feature.geometry.coordinates as [number, number],
+          zoom: Math.max(map.getZoom(), 14),
+          duration: 600,
+        })
+      }
     })
     map.on('click', 'clusters', (e: MapMouseEvent) => {
       const feature = e.features?.[0]
