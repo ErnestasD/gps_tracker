@@ -385,9 +385,9 @@
       "corridor": "route line + buffer"
     },
     "hint": {
-      "polygon": "Click the map to drop each corner. Click the first point (or double-click) to close the shape.",
+      "polygon": "Click each corner. Close by clicking the first point or double-clicking. Esc restarts the sketch.",
       "circle": "Click the centre, drag to the size you want (the radius follows the cursor) and click again. You can then fine-tune the radius as a number.",
-      "corridor": "Click each point along the route. Double-click to finish the line."
+      "corridor": "Click the route points, finish with a double-click. The buffer field sets the corridor width. Esc restarts."
     },
     "drawing": "Drawing…",
     "drawnTitle": "Shape drawn",

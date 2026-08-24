@@ -4,8 +4,6 @@ import { Check, Circle as CircleIcon, Hexagon, MousePointerClick, Pencil, Route 
 import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TerraDraw, TerraDrawCircleMode, TerraDrawLineStringMode, TerraDrawPolygonMode, TerraDrawSelectMode, type GeoJSONStoreFeatures } from 'terra-draw'
-import { TerraDrawMapboxGLAdapter } from 'terra-draw-mapbox-gl-adapter'
 
 import { AdminButton, AdminInput, AdminLabel, AdminRadio, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
@@ -19,11 +17,10 @@ import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 
 type Drawn = { geometry: GeoJSON.Geometry; kind: 'polygon' | 'circle' | 'corridor' } | null
-type DrawMode = 'polygon' | 'circle' | 'linestring' | 'select'
 type DraftKind = 'polygon' | 'circle' | 'corridor'
 
-/** draft kind → terra-draw mode (a corridor is drawn as its route LineString) */
-const TERRA_MODE: Record<DraftKind, DrawMode> = { polygon: 'polygon', circle: 'circle', corridor: 'linestring' }
+/** Close the polygon by clicking back on the FIRST vertex — within this many screen px. */
+const CLOSE_PX = 12
 
 /** kind → list-row icon (Lovable app.geofences idiom: tinted chip per shape kind). */
 const KIND_ICON = { polygon: Hexagon, circle: CircleIcon, corridor: RouteIcon } as const
@@ -32,10 +29,10 @@ const KIND_ICON = { polygon: Hexagon, circle: CircleIcon, corridor: RouteIcon } 
  * swatches, not a native color input (round-2 control sweep). */
 const COLORS = ['#4F46E5', '#059669', '#B45309', '#E11D48', '#0284C7', '#7C3AED']
 
-// ── custom circle tool (founder: the terra-draw circle "buginasi") ───────────
+// ── the drawing toolkit (founder: the previous library editor "buginasi") ─────
 // Two clicks, live preview: click the CENTRE, move to see the circle grow with a radius
 // label under the cursor, click again to fix the edge. The radius stays editable as a
-// number afterwards. No terra-draw involved — its circle mode is the part that felt broken.
+// number afterwards. Hand-rolled on plain map events — no drawing library at all.
 
 const EARTH_R = 6_371_000
 const CIRCLE_STEPS = 64
@@ -67,7 +64,7 @@ function circlePolygon(center: [number, number], radiusM: number): GeoJSON.Polyg
 
 const fmtRadius = (m: number): string => (m >= 1_000 ? `${(m / 1_000).toFixed(2)} km` : `${Math.round(m)} m`)
 
-/** Geofences (E05-1): draw polygon/circle with terra-draw, save, list, delete.
+/** Geofences (E05-1): draw circle/polygon/corridor with the in-house tool, save, list, delete.
  *  Corridor (V2): draw a route LineString + a buffer half-width; the server buffers it to a polygon.
  *  Round 2 (ADR-028, verify sweep): the add form follows the reference draft-panel idiom — the
  *  header mode buttons enter DRAFT mode (a Sheet would cover the map the user must draw on);
@@ -84,19 +81,21 @@ export function GeofencesPage() {
   const geofences = useQuery({ queryKey: ['geofences'], queryFn: listGeofences })
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MbMap | null>(null)
-  const drawRef = useRef<TerraDraw | null>(null)
   // bumps on EVERY style.load (initial + theme swaps, ADR-030) so the geofence
   // features get re-applied to the freshly rebuilt (empty) source
   const [styleEpoch, setStyleEpoch] = useState(0)
   const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
   const [drawn, setDrawn] = useState<Drawn>(null)
   const [draftKind, setDraftKind] = useState<DraftKind | null>(null) // non-null = draft mode
-  /** custom circle tool state: centre chosen, radius editable after the second click */
+  /** circle metadata: centre chosen, radius editable after the second click */
   const [circleMeta, setCircleMeta] = useState<{ center: [number, number]; radiusM: number } | null>(null)
   const [radiusLabel, setRadiusLabel] = useState<{ x: number; y: number; text: string } | null>(null)
-  const circleRef = useRef<{ armed: boolean; center: [number, number] | null }>({ armed: false, center: null })
+  /** THE drawing tool. One state machine for all three kinds (founder: the shapes must feel
+   *  identical): `tool` = armed kind, `center` = circle centre, `pts` = polygon/corridor vertices. */
+  const toolRef = useRef<{ tool: DraftKind | null; center: [number, number] | null; pts: [number, number][] }>({ tool: null, center: null, pts: [] })
   const draftColorRef = useRef(COLORS[0]!)
-  const setDraftRef = useRef<(g: GeoJSON.Geometry | null) => void>(() => {})
+  const bufferMRef = useRef(100)
+  const setDraftRef = useRef<(features: GeoJSON.Feature[]) => void>(() => {})
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLORS[0]!)
   const [bufferM, setBufferM] = useState(100) // corridor half-width in metres (10 … 5000)
@@ -114,42 +113,30 @@ export function GeofencesPage() {
   const deleteFor = (geofences.data ?? []).find((g) => g.id === deleteForId) ?? null
   const selected = (geofences.data ?? []).find((g) => g.id === selectedId) ?? null
 
-  // tracked so the map-lifecycle closures can restore the CURRENT mode on a theme swap
-  const [, setActiveMode] = useState<DrawMode>('select')
-  const activeModeRef = useRef<DrawMode>('select')
   const drawnRef = useRef<Drawn>(null)
   const updateDrawn = (d: Drawn) => { drawnRef.current = d; setDrawn(d) }
-  // features carried across a theme swap (detached in onBeforeStyleSwap, re-added in style.load)
-  const pendingFeaturesRef = useRef<GeoJSONStoreFeatures[]>([])
+  useEffect(() => { bufferMRef.current = bufferM }, [bufferM])
+  // Escape wipes the in-progress sketch (vertices placed so far) but stays in draft mode —
+  // the standard drawing-tool contract
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const st = toolRef.current
+      if (st.tool === null || (st.center === null && st.pts.length === 0)) return
+      toolRef.current = { tool: st.tool, center: null, pts: [] }
+      setCircleMeta(null)
+      setRadiusLabel(null)
+      setDraftRef.current([])
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
-  // map + terra-draw lifecycle
+  // map + drawing-tool lifecycle
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const { map, unsubscribe } = createThemedMap(container, {
-      center: VILNIUS,
-      zoom: 10,
-      // MED-3: a theme setStyle drops terra-draw's td-* sources while the instance is
-      // still live — a Clear/mode click in that window would throw inside the adapter.
-      // Detach BEFORE the swap (its layers still exist here); style.load re-attaches.
-      onBeforeStyleSwap: () => {
-        const draw = drawRef.current
-        if (draw === null) return
-        try {
-          // LOW-6: carry only the FINISHED shape across the swap. A mid-draw sketch
-          // would come back as a dead static feature the user can never finish — drop
-          // it (the finished one is identified by the geometry saved on 'finish').
-          const finished = drawnRef.current
-          pendingFeaturesRef.current = finished === null
-            ? []
-            : draw.getSnapshot().filter((f) => JSON.stringify(f.geometry) === JSON.stringify(finished.geometry))
-          draw.stop()
-        } catch (err) {
-          pendingFeaturesRef.current = []
-          console.error('terra-draw detach before theme swap failed', err)
-        }
-      },
-    })
+    const { map, unsubscribe } = createThemedMap(container, { center: VILNIUS, zoom: 10 })
     // 8s watchdog: blocked tile CDN / offline / WebGL failure / bad token — surface it
     // instead of leaving the polygon/circle buttons silently dead (clears on style.load)
     const stopWatch = watchMapLoad(map, setMapError)
@@ -165,50 +152,122 @@ export function GeofencesPage() {
     map.on('error', (e) => console.error('mapbox', e.error))
     let disposed = false
 
-    // ── custom circle tool events (armed only while the circle draft is active) ──
-    const setDraft = (geometry: GeoJSON.Geometry | null) => {
-      const src = map.getSource<GeoJSONSource>('gf-draft')
-      src?.setData(geometry === null
-        ? { type: 'FeatureCollection', features: [] }
-        : { type: 'FeatureCollection', features: [{ type: 'Feature', geometry, properties: { color: draftColorRef.current } }] })
+    // ── the drawing engine: ONE set of handlers for circle / polygon / corridor ──
+    const featureFor = (geometry: GeoJSON.Geometry): GeoJSON.Feature => ({ type: 'Feature', geometry, properties: { color: draftColorRef.current } })
+    const vertexFeatures = (pts: readonly [number, number][]): GeoJSON.Feature[] =>
+      pts.map((pt) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: pt }, properties: { color: draftColorRef.current } }))
+    const setDraft = (features: GeoJSON.Feature[]) => {
+      map.getSource<GeoJSONSource>('gf-draft')?.setData({ type: 'FeatureCollection', features })
     }
     ;(setDraftRef as { current: typeof setDraft }).current = setDraft
-    map.on('click', (e) => {
-      const st = circleRef.current
-      if (!st.armed) return
-      const at: [number, number] = [e.lngLat.lng, e.lngLat.lat]
-      if (st.center === null) {
-        st.center = at // first click: the centre; the circle now grows under the cursor
-        setCircleMeta({ center: at, radiusM: 0 })
+
+    /** live preview for the CURRENT sketch, with the cursor as the tentative next vertex */
+    const preview = (cursor: [number, number] | null) => {
+      const st = toolRef.current
+      if (st.tool === 'circle') {
+        if (st.center === null) return
+        const r = cursor === null ? MIN_RADIUS_M : Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, haversineM(st.center, cursor)))
+        setDraft([featureFor(circlePolygon(st.center, r)), ...vertexFeatures([st.center])])
         return
       }
-      // second click: fix the edge
-      const radiusM = Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, haversineM(st.center, at)))
-      const geometry = circlePolygon(st.center, radiusM)
-      setCircleMeta({ center: st.center, radiusM: Math.round(radiusM) })
-      updateDrawn({ geometry, kind: 'circle' })
-      setDraft(geometry)
-      st.armed = false
-      st.center = null
+      if (st.pts.length === 0) return
+      const pts = cursor === null ? st.pts : [...st.pts, cursor]
+      if (st.tool === 'polygon') {
+        const geometry: GeoJSON.Geometry = pts.length >= 3
+          ? { type: 'Polygon', coordinates: [[...pts, pts[0]!]] }
+          : { type: 'LineString', coordinates: pts }
+        setDraft([featureFor(geometry), ...vertexFeatures(st.pts)])
+      } else {
+        setDraft([featureFor({ type: 'LineString', coordinates: pts }), ...vertexFeatures(st.pts)])
+      }
+    }
+
+    const finishSketch = () => {
+      const st = toolRef.current
+      if (st.tool === 'polygon' && st.pts.length >= 3) {
+        const geometry: GeoJSON.Geometry = { type: 'Polygon', coordinates: [[...st.pts, st.pts[0]!]] }
+        updateDrawn({ geometry, kind: 'polygon' })
+        setDraft([featureFor(geometry)])
+      } else if (st.tool === 'corridor' && st.pts.length >= 2) {
+        const geometry: GeoJSON.Geometry = { type: 'LineString', coordinates: st.pts }
+        updateDrawn({ geometry, kind: 'corridor' })
+        setDraft([featureFor(geometry)])
+      } else return
+      // lock: a finished shape never sprouts copies from further clicks — redrawing is explicit
+      toolRef.current = { tool: null, center: null, pts: [] }
       setRadiusLabel(null)
       map.getCanvas().style.cursor = ''
+      map.doubleClickZoom.enable()
+    }
+
+    map.on('click', (e) => {
+      const st = toolRef.current
+      if (st.tool === null) return
+      const at: [number, number] = [e.lngLat.lng, e.lngLat.lat]
+      if (st.tool === 'circle') {
+        if (st.center === null) {
+          st.center = at // first click: the centre; the circle grows under the cursor
+          setCircleMeta({ center: at, radiusM: 0 })
+          return
+        }
+        const radiusM = Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, haversineM(st.center, at)))
+        const geometry = circlePolygon(st.center, radiusM)
+        setCircleMeta({ center: st.center, radiusM: Math.round(radiusM) })
+        updateDrawn({ geometry, kind: 'circle' })
+        setDraft([featureFor(geometry)])
+        toolRef.current = { tool: null, center: null, pts: [] }
+        setRadiusLabel(null)
+        map.getCanvas().style.cursor = ''
+        map.doubleClickZoom.enable()
+        return
+      }
+      // polygon: clicking back on the FIRST vertex closes the ring
+      if (st.tool === 'polygon' && st.pts.length >= 3) {
+        const first = map.project({ lng: st.pts[0]![0], lat: st.pts[0]![1] })
+        if (Math.hypot(first.x - e.point.x, first.y - e.point.y) <= CLOSE_PX) {
+          finishSketch()
+          return
+        }
+      }
+      st.pts.push(at)
+      preview(null)
+    })
+    map.on('dblclick', (e) => {
+      const st = toolRef.current
+      if (st.tool === null) return
+      e.preventDefault()
+      // the double-click already fired two 'click's — drop the duplicate trailing vertices
+      // (screen distance, not degrees: CLOSE_PX means "the same spot" at any zoom)
+      while (st.pts.length >= 2) {
+        const last = map.project({ lng: st.pts[st.pts.length - 1]![0], lat: st.pts[st.pts.length - 1]![1] })
+        const prev = map.project({ lng: st.pts[st.pts.length - 2]![0], lat: st.pts[st.pts.length - 2]![1] })
+        if (Math.hypot(last.x - prev.x, last.y - prev.y) > CLOSE_PX) break
+        st.pts.pop()
+      }
+      finishSketch()
     })
     map.on('mousemove', (e) => {
-      const st = circleRef.current
-      if (!st.armed || st.center === null) return
-      const radiusM = Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, haversineM(st.center, [e.lngLat.lng, e.lngLat.lat])))
-      setDraft(circlePolygon(st.center, radiusM))
-      setRadiusLabel({ x: e.point.x, y: e.point.y, text: fmtRadius(radiusM) })
+      const st = toolRef.current
+      if (st.tool === null) return
+      const at: [number, number] = [e.lngLat.lng, e.lngLat.lat]
+      if (st.tool === 'circle') {
+        if (st.center === null) return
+        const radiusM = Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, haversineM(st.center, at)))
+        preview(at)
+        setRadiusLabel({ x: e.point.x, y: e.point.y, text: fmtRadius(radiusM) })
+        return
+      }
+      preview(at)
     })
-    // idempotent: style.load re-fires after every theme setStyle, which drops all
-    // runtime sources/layers INCLUDING terra-draw's — everything is re-attached here
+
     map.on('style.load', () => {
       if (disposed) return
       if (!map.getSource('gf-draft')) {
-        // the custom circle tool's live preview (survives theme swaps by re-adding here)
+        // the drawing tool's live preview (survives theme swaps by re-adding here)
         map.addSource('gf-draft', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-        map.addLayer({ id: 'gf-draft-fill', type: 'fill', source: 'gf-draft', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.18 } })
-        map.addLayer({ id: 'gf-draft-line', type: 'line', source: 'gf-draft', paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1.5] } })
+        map.addLayer({ id: 'gf-draft-fill', type: 'fill', source: 'gf-draft', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.18 } })
+        map.addLayer({ id: 'gf-draft-line', type: 'line', source: 'gf-draft', filter: ['!=', ['geometry-type'], 'Point'], paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1.5] } })
+        map.addLayer({ id: 'gf-draft-pts', type: 'circle', source: 'gf-draft', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 4.5, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } })
       }
       if (!map.getSource('geofences')) {
         map.addSource('geofences', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -217,59 +276,11 @@ export function GeofencesPage() {
         // selection highlight: thicker line for the selected zone only (filter set below)
         map.addLayer({ id: 'gf-selected', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 4 }, filter: ['==', ['get', 'id'], ''] })
       }
-      if (drawRef.current === null) {
-        const draw = new TerraDraw({
-          adapter: new TerraDrawMapboxGLAdapter({ map, coordinatePrecision: 9 }),
-          modes: [new TerraDrawPolygonMode(), new TerraDrawCircleMode(), new TerraDrawLineStringMode(), new TerraDrawSelectMode()],
-        })
-        draw.start()
-        draw.on('finish', (id) => {
-          const snap = draw.getSnapshot()
-          const feat = snap.find((f) => f.id === id)
-          if (!feat) return
-          if (feat.geometry.type === 'Polygon') {
-            updateDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: 'polygon' })
-          } else if (feat.geometry.type === 'LineString') {
-            updateDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: 'corridor' })
-          } else return
-          /**
-           * Lock the finished shape (founder: "vien bugai"). Left in draw mode, every further
-           * click sprouted ANOTHER shape on top of the finished one — stale outlines nobody
-           * could remove, and Save silently took the last one. One finished shape is the whole
-           * contract: older leftovers are removed and the mode drops to select; redrawing is an
-           * explicit act (the "draw again" button / type switch), not an accidental click.
-           */
-          try {
-            const stale = snap.filter((f) => f.id !== id).map((f) => f.id!)
-            if (stale.length > 0) draw.removeFeatures(stale)
-            draw.setMode('select')
-            activeModeRef.current = 'select'
-            setActiveMode('select')
-          } catch (err) {
-            console.error('terra-draw finish cleanup', err)
-          }
-        })
-        drawRef.current = draw
-      } else {
-        // theme swap (instance was stopped in onBeforeStyleSwap): restart on the new
-        // style, restoring the finished shape and the active mode
-        const draw = drawRef.current
-        try {
-          draw.start()
-          if (pendingFeaturesRef.current.length > 0) draw.addFeatures(pendingFeaturesRef.current)
-          pendingFeaturesRef.current = []
-          draw.setMode(activeModeRef.current)
-        } catch (err) {
-          console.error('terra-draw restart after theme swap failed', err)
-        }
-      }
       setStyleEpoch((e) => e + 1)
     })
     return () => {
       disposed = true
       stopWatch()
-      try { drawRef.current?.stop() } catch { /* map already gone */ }
-      drawRef.current = null
       unsubscribe()
       map.remove()
       mapRef.current = null
@@ -277,11 +288,11 @@ export function GeofencesPage() {
     }
   }, [])
 
-  // re-apply the circle draft preview after a theme swap rebuilt the (empty) draft source
+  // re-apply the draft preview after a theme swap rebuilt the (empty) draft source
   useEffect(() => {
     if (styleEpoch === 0) return
     const d = drawnRef.current
-    if (d !== null && d.kind === 'circle') setDraftRef.current(d.geometry)
+    if (d !== null) setDraftRef.current([{ type: 'Feature', geometry: d.geometry, properties: { color: draftColorRef.current } }])
   }, [styleEpoch])
 
   // render existing geofences on the map (re-applied after every theme swap)
@@ -304,55 +315,31 @@ export function GeofencesPage() {
     if (b !== null) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, maxZoom: 15, duration: 500 })
   }, [selected])
 
-  // try/catch: a click can land in the brief window where terra-draw is detached for a
-  // theme swap (stopped instance throws) — dropping the input beats crashing the page
-  const setMode = (mode: DrawMode): boolean => {
-    try {
-      drawRef.current?.setMode(mode)
-      if (mode !== 'select') { drawRef.current?.clear(); updateDrawn(null) }
-    } catch (err) {
-      console.error('terra-draw mode change ignored (style swap in progress)', err)
-      return false
-    }
-    setActiveMode(mode)
-    activeModeRef.current = mode
-    return true
-  }
-  const clearDraw = () => {
-    try { drawRef.current?.clear() } catch (err) { console.error('terra-draw clear ignored (style swap in progress)', err); return }
-    updateDrawn(null)
-    setActiveMode('select')
-    activeModeRef.current = 'select'
-  }
-
-  /** arm/disarm the custom circle tool (terra-draw is parked in select while it is armed) */
-  const armCircle = (on: boolean) => {
-    circleRef.current = { armed: on, center: null }
+  /** arm the drawing tool for a kind (or disarm with null) — always a clean, single-shape state */
+  const armTool = (kind: DraftKind | null) => {
+    const map = mapRef.current
+    toolRef.current = { tool: kind, center: null, pts: [] }
     setCircleMeta(null)
     setRadiusLabel(null)
-    setDraftRef.current(null)
-    const canvas = mapRef.current?.getCanvas()
-    if (canvas) canvas.style.cursor = on ? 'crosshair' : ''
+    setDraftRef.current([])
+    updateDrawn(null)
+    if (map !== null) {
+      map.getCanvas().style.cursor = kind === null ? '' : 'crosshair'
+      // a finishing double-click must not zoom the map out from under the sketch
+      if (kind === null) map.doubleClickZoom.enable()
+      else map.doubleClickZoom.disable()
+    }
   }
 
-  /** enter draft mode with the given kind (also used by the panel's type switch and the
-   *  "draw again" button — always resets to a clean, single-shape drawing state) */
+  /** enter draft mode with the given kind (also the panel's type switch and "draw again") */
   const startDraft = (kind: DraftKind) => {
-    if (kind === 'circle') {
-      if (!setMode('select')) return // park terra-draw; the custom tool owns the map now
-      updateDrawn(null)
-      armCircle(true)
-    } else {
-      armCircle(false)
-      if (!setMode(TERRA_MODE[kind])) return
-    }
+    armTool(kind)
     setDraftKind(kind)
     setSelectedId(null)
     setError(null)
   }
   const cancelDraft = () => {
-    clearDraw()
-    armCircle(false)
+    armTool(null)
     setDraftKind(null)
     setName('')
     setEditingId(null)
@@ -362,19 +349,12 @@ export function GeofencesPage() {
   /** enter draft mode PREFILLED from an existing zone (founder: geofences had no edit at all).
    *  Drawing is optional — save without a new shape patches only name/colour. */
   const startEdit = (g: GeofenceView) => {
-    // the circle kind uses the CUSTOM tool (terra-draw parked in select), same as startDraft
-    if (g.kind === 'circle') {
-      if (!setMode('select')) return
-      updateDrawn(null)
-      armCircle(true)
-    } else {
-      armCircle(false)
-      if (!setMode(TERRA_MODE[g.kind] ?? 'polygon')) return
-    }
+    armTool(g.kind)
     setDraftKind(g.kind)
     setEditingId(g.id)
     setName(g.name)
     setColor(g.color ?? COLORS[0]!)
+    draftColorRef.current = g.color ?? COLORS[0]!
     setBufferM(100)
     setSelectedId(null)
     setError(null)
@@ -401,7 +381,7 @@ export function GeofencesPage() {
         : createGeofence({ name: name.trim(), kind: drawn!.kind, color, geometry: drawn!.geometry })
     req
       .then(() => {
-        setName(''); clearDraw(); armCircle(false); setDraftKind(null); setEditingId(null)
+        setName(''); armTool(null); setDraftKind(null); setEditingId(null)
         void qc.invalidateQueries({ queryKey: ['geofences'] })
       })
       .catch((err: unknown) => setError(err instanceof ApiError && err.status === 400 ? t('geofences.invalid') : t('geofences.error')))
@@ -429,7 +409,7 @@ export function GeofencesPage() {
           </>
         ) : (
           <div className="flex gap-1">
-            {/* mode buttons double as draft entry points (terra-draw needs the shape kind up
+            {/* mode buttons double as draft entry points (the tool needs the shape kind up
                 front, so a single "New geofence" button cannot start the drawing tools) */}
             <AdminButton variant="secondary" size="sm" data-testid="gf-mode-polygon" onClick={() => startDraft('polygon')}>{t('geofences.polygon')}</AdminButton>
             <AdminButton variant="secondary" size="sm" data-testid="gf-mode-circle" onClick={() => startDraft('circle')}>{t('geofences.circle')}</AdminButton>
@@ -483,8 +463,8 @@ export function GeofencesPage() {
                       onClick={() => {
                         setColor(c)
                         draftColorRef.current = c
-                        // recolor the live circle preview immediately
-                        if (drawnRef.current !== null && drawnRef.current.kind === 'circle') setDraftRef.current(drawnRef.current.geometry)
+                        // recolor the live preview immediately
+                        if (drawnRef.current !== null) setDraftRef.current([{ type: 'Feature', geometry: drawnRef.current.geometry, properties: { color: c } }])
                       }}
                       aria-label={c}
                       aria-pressed={color === c}
@@ -515,7 +495,7 @@ export function GeofencesPage() {
                         setCircleMeta({ center: circleMeta.center, radiusM: r })
                         const geometry = circlePolygon(circleMeta.center, r)
                         updateDrawn({ geometry, kind: 'circle' })
-                        setDraftRef.current(geometry)
+                        setDraftRef.current([{ type: 'Feature', geometry, properties: { color: draftColorRef.current } }])
                       }}
                     />
                     <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>m</span>
@@ -640,9 +620,9 @@ export function GeofencesPage() {
           )}
           <MapErrorOverlay show={mapError} testId="geofence-map-error" />
           {/* Contextual draw hint while drafting. Two states so "how do I finish?" is never a
-              mystery: (1) drawing → the per-shape gesture to CLOSE the shape; (2) once terra-draw
+              mystery: (1) drawing → the per-shape gesture to CLOSE the shape; (2) once the tool
               fires 'finish' (drawn !== null) → an explicit "done, now name it and Save" so the
-              user gets unambiguous closure and the next step. terra-draw supplies the crosshair. */}
+              user gets unambiguous closure and the next step. */}
           {drafting && (
             <div className="pointer-events-none absolute left-4 top-4 z-10 max-w-[min(20rem,calc(100%-2rem))]" data-testid="gf-draw-hint" role="status" aria-live="polite">
               {drawn === null ? (

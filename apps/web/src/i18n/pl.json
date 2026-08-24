@@ -385,9 +385,9 @@
       "corridor": "linia trasy + bufor"
     },
     "hint": {
-      "polygon": "Klikaj każdy narożnik na mapie. Zamknij kształt, klikając pierwszy punkt (lub podwójne kliknięcie).",
+      "polygon": "Klikaj kolejne wierzchołki. Zamknij klikając pierwszy punkt lub podwójnym kliknięciem. Esc zaczyna szkic od nowa.",
       "circle": "Kliknij środek, przeciągnij do żądanego rozmiaru (promień podąża za kursorem) i kliknij ponownie. Potem promień można doprecyzować liczbą.",
-      "corridor": "Klikaj każdy punkt trasy. Podwójne kliknięcie kończy linię."
+      "corridor": "Klikaj punkty trasy, zakończ podwójnym kliknięciem. Pole bufora ustala szerokość korytarza. Esc od nowa."
     },
     "drawing": "Rysowanie…",
     "drawnTitle": "Kształt narysowany",

@@ -714,6 +714,7 @@ export const en = {
     brand: "Manufacturer",
     model: "Model",
     search: "Filter by model\u2026",
+    filter: "Filter…",
     pickVehicle: "Choose a manufacturer and model to see the data.",
     years: "Years",
     fuel: "Fuel",

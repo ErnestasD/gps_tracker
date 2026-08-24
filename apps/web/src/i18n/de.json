@@ -385,9 +385,9 @@
       "corridor": "Routenlinie + Puffer"
     },
     "hint": {
-      "polygon": "Auf die Karte klicken, um jede Ecke zu setzen. Zum Schließen den ersten Punkt anklicken (oder Doppelklick).",
+      "polygon": "Jede Ecke anklicken. Schließen per Klick auf den ersten Punkt oder Doppelklick. Esc startet die Skizze neu.",
       "circle": "Klicken Sie auf den Mittelpunkt, ziehen Sie zur gewünschten Größe (der Radius folgt dem Cursor) und klicken Sie erneut. Danach lässt sich der Radius als Zahl feinjustieren.",
-      "corridor": "Jeden Punkt entlang der Route anklicken. Doppelklick beendet die Linie."
+      "corridor": "Routenpunkte anklicken, mit Doppelklick abschließen. Das Pufferfeld bestimmt die Korridorbreite. Esc startet neu."
     },
     "drawing": "Zeichnen…",
     "drawnTitle": "Form gezeichnet",

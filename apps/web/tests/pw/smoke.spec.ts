@@ -490,7 +490,7 @@ test('trips: the trips page lists trips (or empty) and a row opens its route det
   }
 })
 
-test('geofences: the terra-draw editor mounts on the map and the list renders (E05-1)', async ({ page }) => {
+test('geofences: the drawing editor mounts on the map and the list renders (E05-1)', async ({ page }) => {
   await page.goto('/login')
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
@@ -498,7 +498,7 @@ test('geofences: the terra-draw editor mounts on the map and the list renders (E
   await page.waitForURL(/\/app\/?$/)
 
   await page.goto('/app/geofences')
-  // the map + terra-draw editor initialise without crashing (real Mapbox GL + terra-draw)
+  // the map + in-house drawing editor initialise without crashing (real Mapbox GL)
   await expect(page.getByTestId('geofence-map')).toBeVisible()
   await expect(page.getByTestId('gf-mode-polygon')).toBeVisible()
   await expect(page.getByTestId('gf-mode-circle')).toBeVisible()

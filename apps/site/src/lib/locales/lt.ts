@@ -711,6 +711,7 @@ export const lt: Translation = {
     brand: "Gamintojas",
     model: "Modelis",
     search: "Filtruoti pagal modelį…",
+    filter: "Filtruoti…",
     pickVehicle: "Pasirinkite gamintoją ir modelį, kad pamatytumėte duomenis.",
     years: "Metai",
     fuel: "Kuras",

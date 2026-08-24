@@ -4,6 +4,7 @@ import { ArrowRight, Car, Cpu, Plug, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { SelectField } from "@/components/site/SelectField";
 import { cn } from "@/lib/utils";
 
 /**
@@ -215,39 +216,29 @@ function CompatibilityPage() {
           <>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <Field label={t("compat.category")}>
-                <select
+                <SelectField
                   value={category}
-                  onChange={(e) => {
-                    setCategory(e.target.value);
+                  onChange={(c) => {
+                    setCategory(c);
                     setBrand("");
                     setVehicleKey("");
                   }}
-                  className={selectCls}
-                >
-                  <option value="">—</option>
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                  options={categories}
+                  placeholder="—"
+                  aria-label={t("compat.category")}
+                />
               </Field>
               <Field label={t("compat.brand")}>
-                <select
+                <SelectField
                   value={brand}
-                  onChange={(e) => {
-                    setBrand(e.target.value);
+                  onChange={(b) => {
+                    setBrand(b);
                     setVehicleKey("");
                   }}
-                  className={selectCls}
-                >
-                  <option value="">—</option>
-                  {brands.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
+                  options={brands}
+                  placeholder="—"
+                  aria-label={t("compat.brand")}
+                />
               </Field>
               <Field label={t("compat.model")}>
                 <div className="relative">
@@ -260,7 +251,7 @@ function CompatibilityPage() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder={t("compat.search")}
-                    className={cn(selectCls, "pl-9")}
+                    className={cn(inputCls, "pl-9")}
                   />
                 </div>
               </Field>
@@ -316,8 +307,8 @@ function CompatibilityPage() {
   );
 }
 
-const selectCls =
-  "w-full h-10 rounded border border-[var(--hairline)] bg-[rgba(10,20,40,0.6)] px-3 text-sm text-ink outline-none transition-colors focus:border-[var(--brand-blue)] cursor-pointer";
+const inputCls =
+  "w-full h-10 rounded border border-[var(--hairline)] bg-[rgba(10,20,40,0.6)] px-3 text-sm text-ink outline-none transition-colors focus:border-[var(--brand-blue)]";
 
 function StepHeading({ n, label }: { n: string; label: string }) {
   return (
@@ -331,10 +322,10 @@ function StepHeading({ n, label }: { n: string; label: string }) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block">
+    <div>
       <span className="mb-1.5 block font-mono text-[11px] uppercase tracking-wide text-muted-foreground">{label}</span>
       {children}
-    </label>
+    </div>
   );
 }
 

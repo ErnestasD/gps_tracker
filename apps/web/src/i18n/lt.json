@@ -385,9 +385,9 @@
       "corridor": "maršruto linija + buferis"
     },
     "hint": {
-      "polygon": "Spauskite žemėlapyje kiekvieną kampą. Kontūrą uždarykite spustelėję pirmą tašką (arba dvigubu spustelėjimu).",
+      "polygon": "Spustelėkite kiekvieną kampą. Uždarykite spustelėję pirmą tašką arba dvigubu spustelėjimu. Esc — pradėti eskizą iš naujo.",
       "circle": "Spustelėkite geozonos centrą, tempkite iki norimo dydžio (spindulys rodomas prie kursoriaus) ir spustelėkite dar kartą. Po to spindulį galite pakoreguoti skaičiumi.",
-      "corridor": "Spauskite kiekvieną maršruto tašką. Liniją baikite dvigubu spustelėjimu."
+      "corridor": "Spustelėkite maršruto taškus, baikite dvigubu spustelėjimu. Koridoriaus plotį nustato buferio laukas. Esc — iš naujo."
     },
     "drawing": "Braižoma…",
     "drawnTitle": "Figūra nubraižyta",

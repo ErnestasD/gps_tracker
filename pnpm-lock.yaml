@@ -305,12 +305,6 @@ importers:
       tailwind-merge:
         specifier: ^3.3.1
         version: 3.6.0
-      terra-draw:
-        specifier: ^1.31.2
-        version: 1.31.2
-      terra-draw-mapbox-gl-adapter:
-        specifier: ^1.4.0
-        version: 1.4.0(mapbox-gl@3.26.0)(terra-draw@1.31.2)
     devDependencies:
       '@playwright/test':
         specifier: ^1.56.1
@@ -5016,15 +5010,6 @@ packages:
   tempy@0.6.0:
     resolution: {integrity: sha512-G13vtMYPT/J8A4X2SjdtBTphZlrp1gKv6hZiOjw14RCWg6GbHuQBGtjlx75xLbYV/wEc0D7G5K4rxKP/cXk8Bw==}
     engines: {node: '>=10'}
-
-  terra-draw-mapbox-gl-adapter@1.4.0:
-    resolution: {integrity: sha512-wsAkLX1asSI1XnVu39GCnEJNID1XqlHrTuPjxcBdwOCBisvhtXLsdOdeNxmBo6jtY/UWczTsQBqa2UaWIYydjA==}
-    peerDependencies:
-      mapbox-gl: ^3.9.2
-      terra-draw: ^1.0.0
-
-  terra-draw@1.31.2:
-    resolution: {integrity: sha512-jyHodIOZVsyqUeZpkZCrsrLrEgcnWxZNlwZH64RUwKWP0o77qhub+iSCpV1XTESXOi2c1LQ87cHe1slk30L1ig==}
 
   terser@5.48.0:
     resolution: {integrity: sha512-J/9An6vs9Us6wKRriSFXBWdRZapREHqFzdNUKk0pmu804EMR6dr6winwo7e5JDxN4xahxQsuysyYFwlwj4XN/Q==}
@@ -10046,13 +10031,6 @@ snapshots:
       temp-dir: 2.0.0
       type-fest: 0.16.0
       unique-string: 2.0.0
-
-  terra-draw-mapbox-gl-adapter@1.4.0(mapbox-gl@3.26.0)(terra-draw@1.31.2):
-    dependencies:
-      mapbox-gl: 3.26.0
-      terra-draw: 1.31.2
-
-  terra-draw@1.31.2: {}
 
   terser@5.48.0:
     dependencies:

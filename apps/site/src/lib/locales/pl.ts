@@ -706,6 +706,7 @@ export const pl: Translation = {
     brand: "Producent",
     model: "Model",
     search: "Filtruj według modelu…",
+    filter: "Filtruj…",
     pickVehicle: "Wybierz producenta i model, aby zobaczyć dane.",
     years: "Lata",
     fuel: "Paliwo",
