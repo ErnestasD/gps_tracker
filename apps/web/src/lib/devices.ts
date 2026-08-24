@@ -126,3 +126,23 @@ export const updateDevice = (id: string, data: DeviceUpdateInput) => mutate<Devi
 export const retireDevice = (id: string) => mutate<Device>('DELETE', `/v1/devices/${id}`)
 export const importPreview = (csv: string) => mutate<DryRunResult>('POST', '/v1/devices/import/preview', { csv })
 export const importApply = (csv: string) => mutate<{ created: number; errors: ImportError[] }>('POST', '/v1/devices/import', { csv })
+
+// ── virtual devices (vsim) ──────────────────────────────────────────────────
+export interface VsimStatus {
+  status: 'none' | 'running' | 'stopped' | 'finished'
+  label: string
+  speedKmh: number
+  loop: boolean
+  progressPct: number
+}
+export const getVsim = (id: string) => getJson<VsimStatus>(`/v1/devices/${encodeURIComponent(id)}/vsim`)
+export const startVsim = (id: string, data: { from: [number, number]; to: [number, number]; speedKmh: number; loop: boolean; label?: string }) =>
+  mutate<{ status: string }>('POST', `/v1/devices/${encodeURIComponent(id)}/vsim`, data)
+export const stopVsim = (id: string) => mutate<{ status: string }>('POST', `/v1/devices/${encodeURIComponent(id)}/vsim/stop`)
+export const restartVsim = (id: string) => mutate<{ status: string }>('POST', `/v1/devices/${encodeURIComponent(id)}/vsim/restart`)
+
+/** Reserved IMEI range for virtual devices (server enforces it on the vsim endpoints):
+ *  '9990' + 11 random digits — no real TAC starts with 9990, so hardware can never collide. */
+export const generateVirtualImei = (): string =>
+  '9990' + Array.from({ length: 11 }, () => Math.floor(Math.random() * 10)).join('')
+export const isVirtualImei = (imei: string): boolean => imei.startsWith('9990')

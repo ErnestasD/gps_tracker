@@ -821,7 +821,29 @@
       "reread": "Vom Gerät neu einlesen",
       "readQueued": "Lesevorgang eingereiht — warten auf die Verbindung des Geräts."
     },
-    "updateError": "Änderung konnte nicht gespeichert werden — bitte erneut versuchen."
+    "updateError": "Änderung konnte nicht gespeichert werden — bitte erneut versuchen.",
+    "vsim": {
+      "title": "Simulation",
+      "menu": "Simulation",
+      "addButton": "Virtuelles Gerät",
+      "deviceName": "Virtuell",
+      "from": "Von",
+      "to": "Nach",
+      "speed": "Tempo (km/h)",
+      "loop": "Schleife",
+      "start": "Start",
+      "stop": "Stopp",
+      "restart": "Neu starten",
+      "hint": "Ein virtuelles Gerät fährt eine echte Straßenroute (OSRM) und sendet über denselben Kanal wie echte Hardware — sichtbar auf der Karte, in Fahrten, Geozonen und Regeln.",
+      "samePlace": "Zwei verschiedene Städte wählen.",
+      "error": "Fehlgeschlagen — bitte erneut versuchen.",
+      "st": {
+        "running": "Fährt",
+        "stopped": "Gestoppt",
+        "finished": "Beendet",
+        "none": "Nicht gestartet"
+      }
+    }
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",

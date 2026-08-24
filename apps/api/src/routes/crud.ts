@@ -64,6 +64,7 @@ import {
   PLAN_MONTHLY_EUR,
   platformUserUpdateSchema,
   type TenantPlan,
+  vsimStartSchema,
 } from '@orbetra/shared'
 
 import { hasEntitlement } from '../auth/entitlements.js'
@@ -155,6 +156,9 @@ export const DEFAULT_DEVICE_CREATE_LIMIT = { max: 10_000, windowS: 3600 }
 
 export interface CrudDeps {
   db: Db
+  /** self-hosted OSRM base URL (ADR-029) — powers virtual-device route generation (vsim);
+   *  absent ⇒ the vsim start endpoint answers 503. */
+  osrmUrl?: string
   /** SMS ceilings; defaults to DEFAULT_SMS_QUOTA. */
   smsQuota?: { perDevicePerDay: number; perTenantPerDay: number; globalPerDay: number }
   /** Fired when a send is refused by a quota — a rejection nobody can see is not a guard. */
@@ -528,6 +532,15 @@ export async function settleDeviceBudget(deps: CrudDeps, tenantId: string, reser
   await deps.redis
     .eval(RL_REFUND_SCRIPT, 1, `devcreate:rl:${tenantId}`, String(-unused))
     .catch(() => deps.onDeviceCreateThrottled?.('refund_failed'))
+}
+
+/** Great-circle metres (vsim route length) — same haversine the pipeline trusts. */
+function haversineM(aLon: number, aLat: number, bLon: number, bLat: number): number {
+  const R = 6_371_000
+  const dLat = ((bLat - aLat) * Math.PI) / 180
+  const dLon = ((bLon - aLon) * Math.PI) / 180
+  const s2 = Math.sin(dLat / 2) ** 2 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s2)))
 }
 
 export function buildRoutes(deps: CrudDeps): RouteDef[] {
@@ -960,6 +973,84 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         })
         return json(c, cmd, 201)
       } },
+    // ── virtual devices (vsim) — mock trackers driven along an OSRM route ───────
+    // Founder ask: create a digital device, run it Vilnius→Kaunas (or any route) at a chosen
+    // speed, watch it like a real one, restart at will. Guarded to the reserved 9990* IMEI
+    // range so a REAL tracker can never be co-driven by the simulator (its genuine stream
+    // would interleave with synthetic fixes — corrupted trips, false geofence events).
+    // State lives in Redis; the WORKER's vsim runner advances it and transmits through the
+    // ingest front door (real Codec-8 session), so the whole pipeline sees hardware.
+    { method: 'get', path: '/v1/devices/:id/vsim', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const device = await db.devices.get(scopeOf(auth(c)), id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        const st = await deps.redis.hgetall(`vsim:${device.id.toString()}`)
+        if (st['status'] === undefined) return json(c, { status: 'none' })
+        return json(c, {
+          status: st['status'],
+          label: st['label'] ?? '',
+          speedKmh: Number(st['speedKmh'] ?? 0),
+          loop: st['loop'] === '1',
+          progressPct: Number(st['totalM']) > 0 ? Math.min(100, Math.round((Number(st['distanceM'] ?? 0) / Number(st['totalM'])) * 100)) : 0,
+        })
+      } },
+    { method: 'post', path: '/v1/devices/:id/vsim', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const device = await db.devices.get(scopeOf(auth(c)), id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (!device.imei.startsWith('9990')) return problem(c, 400, 'Bad Request', 'not a virtual device (9990* IMEI range)')
+        if (deps.osrmUrl === undefined || deps.osrmUrl === '') return problem(c, 503, 'Service Unavailable', 'routing engine not configured')
+        const data = await body(c, vsimStartSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        // OSRM /route: full road geometry between the two points (ADR-029 self-hosted engine)
+        const url = `${deps.osrmUrl}/route/v1/driving/${data.from[0]},${data.from[1]};${data.to[0]},${data.to[1]}?overview=full&geometries=geojson`
+        let coords: [number, number][]
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+          if (!res.ok) return problem(c, 502, 'Bad Gateway', `routing engine ${res.status}`)
+          const j = (await res.json()) as { routes?: { geometry?: { coordinates?: [number, number][] } }[] }
+          coords = j.routes?.[0]?.geometry?.coordinates ?? []
+        } catch {
+          return problem(c, 502, 'Bad Gateway', 'routing engine unreachable')
+        }
+        if (coords.length < 2) return problem(c, 422, 'Unprocessable Entity', 'no route between the points')
+        let totalM = 0
+        for (let i = 1; i < coords.length; i++) totalM += haversineM(coords[i - 1]![0], coords[i - 1]![1], coords[i]![0], coords[i]![1])
+        const key = `vsim:${device.id.toString()}`
+        await deps.redis.hset(key, {
+          imei: device.imei,
+          coords: JSON.stringify(coords),
+          totalM: String(Math.round(totalM)),
+          speedKmh: String(data.speedKmh),
+          loop: data.loop ? '1' : '0',
+          status: 'running',
+          distanceM: '0',
+          lastMs: String(Date.now()),
+          label: data.label ?? '',
+        })
+        await deps.redis.sadd('vsim:active', device.id.toString())
+        return json(c, { status: 'running', totalKm: Math.round(totalM / 100) / 10 }, 201)
+      } },
+    { method: 'post', path: '/v1/devices/:id/vsim/stop', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const device = await db.devices.get(scopeOf(auth(c)), id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        await deps.redis.hset(`vsim:${device.id.toString()}`, { status: 'stopped' })
+        await deps.redis.srem('vsim:active', device.id.toString())
+        return json(c, { status: 'stopped' })
+      } },
+    { method: 'post', path: '/v1/devices/:id/vsim/restart', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const device = await db.devices.get(scopeOf(auth(c)), id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        const key = `vsim:${device.id.toString()}`
+        const st = await deps.redis.hgetall(key)
+        if (st['coords'] === undefined) return problem(c, 404, 'Not Found', 'no simulation configured')
+        await deps.redis.hset(key, { status: 'running', distanceM: '0', lastMs: String(Date.now()) })
+        await deps.redis.sadd('vsim:active', device.id.toString())
+        return json(c, { status: 'running' })
+      } },
+
     // ── tracking settings (device settings) — named, bounded, verified ──────────
     // The customer-facing face of Codec 12 setparam. Reads are answered from what the DEVICE last
     // told us (its own getparam replies, already stored on the command rows) rather than from a

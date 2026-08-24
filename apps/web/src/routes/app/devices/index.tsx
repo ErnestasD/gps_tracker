@@ -17,6 +17,7 @@ import { eraseDevice } from '@/lib/gdpr'
 import { liveStore } from '@/lib/liveStore'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { VehicleCardPanel } from '@/routes/app/devices/vehicleCard'
+import { VsimCard } from '@/routes/app/devices/vsim'
 import { listDrivers } from '@/lib/drivers'
 import { HealthCard } from '@/routes/app/devices/health'
 import { CanCard } from '@/routes/app/devices/can'
@@ -26,6 +27,8 @@ import { SettingsCard } from '@/routes/app/devices/settings'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
   createDevice,
+  generateVirtualImei,
+  isVirtualImei,
   importApply,
   importPreview,
   listAccounts,
@@ -86,6 +89,8 @@ export function DevicesPage() {
   const [vehicleForId, setVehicleForId] = useState<string | null>(null)
   const [shareForId, setShareForId] = useState<string | null>(null)
   const [onboardForId, setOnboardForId] = useState<string | null>(null)
+  const [vsimForId, setVsimForId] = useState<string | null>(null)
+  const [creatingVirtual, setCreatingVirtual] = useState(false)
   // APN carried from the create form into an auto-opened onboarding card (unified add flow); '' for
   // a manually-opened card. One-shot: reset when a card is opened from the row menu.
   const [pendingApn, setPendingApn] = useState('')
@@ -109,6 +114,7 @@ export function DevicesPage() {
   const vehicleFor: Device | null = (devices.data ?? []).find((d) => d.id === vehicleForId && d.retiredAt === null) ?? null
   const shareFor: Device | null = (devices.data ?? []).find((d) => d.id === shareForId && d.retiredAt === null) ?? null
   const onboardFor: Device | null = (devices.data ?? []).find((d) => d.id === onboardForId && d.retiredAt === null) ?? null
+  const vsimFor: Device | null = (devices.data ?? []).find((d) => d.id === vsimForId && d.retiredAt === null) ?? null
   const retireFor: Device | null = (devices.data ?? []).find((d) => d.id === retireForId && d.retiredAt === null) ?? null
   const eraseFor: Device | null = (devices.data ?? []).find((d) => d.id === eraseForId && d.retiredAt !== null) ?? null
 
@@ -116,7 +122,7 @@ export function DevicesPage() {
   // click could land the panel off-screen — to the user the menu item looked dead. Scroll the
   // freshly-opened panel into view (and focus it for a11y) whenever which panel is open changes.
   const panelRef = useRef<HTMLDivElement>(null)
-  const openPanelId = healthFor?.id ?? onboardFor?.id ?? commandsFor?.id ?? settingsFor?.id ?? shareFor?.id ?? vehicleFor?.id ?? null
+  const openPanelId = healthFor?.id ?? onboardFor?.id ?? commandsFor?.id ?? settingsFor?.id ?? shareFor?.id ?? vehicleFor?.id ?? vsimFor?.id ?? null
   useEffect(() => {
     if (openPanelId !== null) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [openPanelId])
@@ -217,6 +223,30 @@ export function DevicesPage() {
             <ImportSheetBody onImported={refresh} />
           </SheetContent>
         </Sheet>
+        <AdminButton
+          variant="secondary"
+          disabled={creatingVirtual}
+          data-testid="device-add-virtual"
+          onClick={() => {
+            // one click, no form: a mock tracker exists to be driven, not configured. IMEI from
+            // the reserved 9990* range (server gates the vsim endpoints on it), FMB120 profile —
+            // the table 45 real models share, so decode is unambiguous.
+            setCreatingVirtual(true)
+            const acc = accounts.data?.[0]?.id ?? ''
+            const prof = (profiles.data ?? []).find((pr) => pr.key === 'fmb120')?.id ?? profiles.data?.[0]?.id ?? ''
+            const n = (devices.data ?? []).filter((d) => isVirtualImei(d.imei)).length + 1
+            createDevice({ accountId: acc, profileId: prof, imei: generateVirtualImei(), name: `${t('devices.vsim.deviceName')} ${n}`, plate: null })
+              .then((dev) => {
+                refresh()
+                setVsimForId(dev.id)
+              })
+              .catch(() => setActionError(true))
+              .finally(() => setCreatingVirtual(false))
+          }}
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+          {t('devices.vsim.addButton')}
+        </AdminButton>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton data-testid="device-add-open">
@@ -293,6 +323,7 @@ export function DevicesPage() {
               isAdmin={isAdmin}
               canWrite={canWrite}
               onHealth={() => setHealthForId((cur) => (cur === d.id ? null : d.id))}
+              onVsim={() => setVsimForId((cur) => (cur === d.id ? null : d.id))}
               onVehicle={() => setVehicleForId((cur) => (cur === d.id ? null : d.id))}
               onOnboard={() => {
                 setPendingApn('') // manual open → no pre-filled APN (only the create flow carries one)
@@ -323,6 +354,7 @@ export function DevicesPage() {
         {commandsFor !== null && <CommandsCard key={`cmd-${commandsFor.id}`} device={commandsFor} />}
         {settingsFor !== null && <SettingsCard key={`set-${settingsFor.id}`} device={settingsFor} canWrite={canWrite} />}
         {shareFor !== null && <ShareCard key={`share-${shareFor.id}`} device={shareFor} />}
+        {vsimFor !== null && <VsimCard key={`vsim-${vsimFor.id}`} device={vsimFor} />}
       </div>
 
       {getCurrentUser()?.role === 'platform_admin' && <QuarantineSection />}
@@ -404,6 +436,7 @@ export function DevicesPage() {
 function RowMenu({
   device,
   onVehicle,
+  onVsim,
   isAdmin,
   canWrite,
   onHealth,
@@ -420,6 +453,7 @@ function RowMenu({
   canWrite: boolean
   onHealth: () => void
   onVehicle: () => void
+  onVsim: () => void
   onOnboard: () => void
   onCommands: () => void
   onSettings: () => void
@@ -464,6 +498,7 @@ function RowMenu({
           <>
             {/* read-only items stay for viewers; the write items (commands/share/retire) 403 for
                 them, so gate them on canWrite — mirrors the page's add/import/odometer gating */}
+            {isVirtualImei(device.imei) && item(`vsim-${device.imei}`, t('devices.vsim.menu'), onVsim)}
             {item(`vehicle-${device.imei}`, t('fleet.cardBtn'), onVehicle)}
             {item(`health-${device.imei}`, t('devices.healthBtn'), onHealth)}
             {item(`onboarding-${device.imei}`, t('devices.onboard'), onOnboard)}

@@ -22,6 +22,7 @@ import { SHARD_COUNT, ShardLeaser, ownsShardLease } from './shards.js'
 import { createRecomputeQueue, enqueueRecompute, redisConnection } from './jobs/queue.js'
 import { createOfflineQueue, scheduleOfflineSweep } from './jobs/offlineQueue.js'
 import { startOfflineWorker } from './jobs/offlineWorker.js'
+import { startVsimRunner } from './vsim/runner.js'
 import { createNotifyQueue, enqueueNotify } from './jobs/notifyQueue.js'
 import { startNotifyWorker } from './jobs/notifyWorker.js'
 import { createCommandDispatchQueue, scheduleCommandDispatch, startCommandDispatcher } from './commands/dispatcher.js'
@@ -261,6 +262,14 @@ async function main(): Promise<void> {
       prom.webhookFailed.inc()
       console.error('enqueueWebhook', err)
     })
+  // Virtual devices (founder): mock trackers driven along an OSRM route, entering through the
+  // ingest FRONT DOOR so the whole pipeline treats them as hardware. State written by the API's
+  // /v1/devices/:id/vsim endpoints; the runner just advances and transmits.
+  const vsim = startVsimRunner({
+    redis,
+    host: process.env['VSIM_INGEST_HOST'] ?? 'ingest',
+    port: Number(process.env['VSIM_INGEST_PORT'] ?? 5027),
+  })
   const offlineWorker = startOfflineWorker({
     connection: recomputeConn,
     pool,
@@ -852,6 +861,7 @@ async function main(): Promise<void> {
       await rejectDrainQueue.close()
       await retentionWorker.close() // finish the in-flight retention prune, stop taking new
       await retentionQueue.close()
+      vsim.stop()
       await commandWorker.close() // finish the in-flight command dispatch, stop taking new
       await commandQueue.close()
       await gdprEraseWorker.close() // finish the in-flight erase step, stop taking new

@@ -297,6 +297,16 @@ export const ruleCreateSchema = z.object({
 })
 export const ruleUpdateSchema = ruleCreateSchema.omit({ accountId: true, kind: true }).partial()
 
+// ── virtual devices (vsim) ──────────────────────────────────────────────────
+const lonLat = z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)])
+export const vsimStartSchema = z.object({
+  from: lonLat,
+  to: lonLat,
+  speedKmh: z.number().int().min(10).max(150),
+  loop: z.boolean().optional().default(false),
+  label: z.string().max(120).optional(),
+})
+
 // ── api keys (E06-3) ─────────────────────────────────────────────────────────
 // Integration keys. `accountId` (nullable) scopes the key to one account; a tenant admin
 // may leave it null for tenant-wide read. scopes default ['read'] (write is not v1).

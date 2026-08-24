@@ -821,7 +821,29 @@
       "reread": "Odczytaj z urządzenia",
       "readQueued": "Odczyt w kolejce — oczekiwanie na połączenie urządzenia."
     },
-    "updateError": "Nie udało się zapisać zmiany — spróbuj ponownie."
+    "updateError": "Nie udało się zapisać zmiany — spróbuj ponownie.",
+    "vsim": {
+      "title": "Symulacja",
+      "menu": "Symulacja",
+      "addButton": "Urządzenie wirtualne",
+      "deviceName": "Wirtualny",
+      "from": "Z",
+      "to": "Do",
+      "speed": "Prędkość (km/h)",
+      "loop": "W pętli",
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Od nowa",
+      "hint": "Urządzenie wirtualne jedzie prawdziwą trasą (OSRM) i nadaje tym samym kanałem co sprzęt — zobaczysz je na mapie, w podróżach, geostrefach i regułach.",
+      "samePlace": "Wybierz dwa różne miasta.",
+      "error": "Nie udało się — spróbuj ponownie.",
+      "st": {
+        "running": "Jedzie",
+        "stopped": "Zatrzymano",
+        "finished": "Zakończono",
+        "none": "Nieuruchomione"
+      }
+    }
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",

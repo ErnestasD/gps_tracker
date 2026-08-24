@@ -821,7 +821,29 @@
       "reread": "Re-read from device",
       "readQueued": "Read queued — waiting for the device to connect."
     },
-    "updateError": "Couldn't save the change — try again."
+    "updateError": "Couldn't save the change — try again.",
+    "vsim": {
+      "title": "Simulation",
+      "menu": "Simulation",
+      "addButton": "Virtual device",
+      "deviceName": "Virtual",
+      "from": "From",
+      "to": "To",
+      "speed": "Speed (km/h)",
+      "loop": "Loop",
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "hint": "A virtual device drives a real road route (OSRM) and transmits through the same channel as real hardware — you will see it on the map, in trips, geofences and rules.",
+      "samePlace": "Pick two different cities.",
+      "error": "Failed — try again.",
+      "st": {
+        "running": "Driving",
+        "stopped": "Stopped",
+        "finished": "Finished",
+        "none": "Not started"
+      }
+    }
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",

@@ -821,7 +821,29 @@
       "reread": "Perskaityti iš įrenginio",
       "readQueued": "Skaitymas eilėje — laukiama, kol įrenginys prisijungs."
     },
-    "updateError": "Nepavyko išsaugoti pakeitimo — bandykite dar kartą."
+    "updateError": "Nepavyko išsaugoti pakeitimo — bandykite dar kartą.",
+    "vsim": {
+      "title": "Simuliacija",
+      "menu": "Simuliacija",
+      "addButton": "Virtualus įrenginys",
+      "deviceName": "Virtualus",
+      "from": "Iš",
+      "to": "Į",
+      "speed": "Greitis (km/val)",
+      "loop": "Kartoti ratu",
+      "start": "Pradėti",
+      "stop": "Stabdyti",
+      "restart": "Iš naujo",
+      "hint": "Virtualus įrenginys važiuoja realiu keliu (OSRM maršrutas) ir siunčia duomenis per tą patį kanalą kaip tikras sekiklis — matysite jį žemėlapyje, kelionėse, geozonose ir taisyklėse.",
+      "samePlace": "Pasirinkite skirtingus miestus.",
+      "error": "Nepavyko — bandykite dar kartą.",
+      "st": {
+        "running": "Važiuoja",
+        "stopped": "Sustabdyta",
+        "finished": "Baigta",
+        "none": "Nepaleista"
+      }
+    }
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",
