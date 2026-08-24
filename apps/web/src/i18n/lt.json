@@ -589,7 +589,7 @@
       "tzNote": "Tik rodymui — keičia, kaip laikas rodomas jums, o ne kaip grupuojamos ataskaitos.",
       "browserNote": "Šie nustatymai galioja tik šiai naršyklei. Pranešimų el. laiškai ir suplanuotos ataskaitos naudoja paskyros nustatymus viršuje.",
       "mapProvider": "Žemėlapio teikėjas",
-      "mapProviderNoKey": "Google Maps parinkčiai reikia VITE_GOOGLE_MAPS_KEY rakto serverio konfigūracijoje.",
+      "mapProviderNoKey": "Google Maps veiks, kai serverio konfigūracijoje bus įrašytas VITE_GOOGLE_MAPS_KEY raktas — iki tol žemėlapiai rodomi per Mapbox.",
       "mapScheme": "Žemėlapio spalvos",
       "mapSchemeAuto": "Pagal temą",
       "mapSchemeLight": "Šviesios",

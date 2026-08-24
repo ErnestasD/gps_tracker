@@ -589,7 +589,7 @@
       "tzNote": "Nur Anzeige — ändert, wie Zeiten Ihnen gezeigt werden, nicht wie Berichte gruppiert werden.",
       "browserNote": "Diese gelten nur für diesen Browser. Meldungs-E-Mails und geplante Berichte verwenden die Kontoeinstellungen oben.",
       "mapProvider": "Kartenanbieter",
-      "mapProviderNoKey": "Die Google-Maps-Option benötigt einen VITE_GOOGLE_MAPS_KEY in der Serverkonfiguration.",
+      "mapProviderNoKey": "Google Maps wird aktiv, sobald ein VITE_GOOGLE_MAPS_KEY in der Serverkonfiguration hinterlegt ist — bis dahin laufen die Karten über Mapbox.",
       "mapScheme": "Kartenfarben",
       "mapSchemeAuto": "Wie das Design",
       "mapSchemeLight": "Hell",

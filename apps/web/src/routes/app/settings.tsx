@@ -462,18 +462,13 @@ function DisplayPrefsSection() {
         { value: 'l', label: t('settings.display.l') },
         { value: 'gal', label: t('settings.display.gal') },
       ])}
-      {/* basemap provider (ADR-038): the Google option only exists when a key is configured —
-          a choice that silently falls back is worse than one that is not offered */}
-      {row(
-        t('settings.display.mapProvider'),
-        'pref-map-provider',
-        prefs.mapProvider,
-        set('mapProvider'),
-        [
-          { value: 'mapbox', label: 'Mapbox' },
-          ...((import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined) ? [{ value: 'google', label: 'Google Maps' }] : []),
-        ],
-      )}
+      {/* basemap provider (ADR-038). The Google option is ALWAYS offered (founder: the key comes
+          later) — but a keyless pick must say what it is doing, so the note below states that the
+          maps stay on Mapbox until VITE_GOOGLE_MAPS_KEY lands. mapPrefs() enforces that fallback. */}
+      {row(t('settings.display.mapProvider'), 'pref-map-provider', prefs.mapProvider, set('mapProvider'), [
+        { value: 'mapbox', label: 'Mapbox' },
+        { value: 'google', label: 'Google Maps' },
+      ])}
       {!(import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined) && (
         <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.display.mapProviderNoKey')}</p>
       )}
