@@ -522,14 +522,30 @@ describe('partner self-service auth (F5)', () => {
     // verify on the shared semaphore. Mirror of the tenant-login finding (audit MED). The soft
     // ceiling is 60 failures/h per IP and every test in this file shares 127.0.0.1, so the counters
     // are cleared first to make the assertion about the RULE and not about what ran before it.
-    await redis.del('partner:fail:ip:127.0.0.1', 'partner:attempt:ip:127.0.0.1')
+    //
+    // `partner:ok:ip` too, and that one is not housekeeping: a successful login anywhere earlier in
+    // this file MARKS the address, and a marked bucket skips the soft ceiling entirely (see the
+    // `count(pre[3]) === 0` guard). Leaving it made this test's result depend on execution order.
+    //
+    // The counter is then SEEDED to just below the ceiling rather than walked up to it. The claim
+    // under test is that failures accumulate on the per-IP key even when the email is never
+    // repeated — three distinct-email attempts prove that as well as sixty do, and sixty-one
+    // argon2id verifies is what made this the slowest test in the suite at 30 s, timing out and
+    // failing `main` on a loaded runner. A gate that cries wolf is worse than a slow one: a stale
+    // push spec sat red on main for ten hours behind exactly this kind of noise.
+    await redis.del('partner:fail:ip:127.0.0.1', 'partner:attempt:ip:127.0.0.1', 'partner:ok:ip:127.0.0.1')
+    const SOFT_IP_CEILING = 60 // LOGIN_RL_MAX_IP in routes/partner.ts
+    await redis.set('partner:fail:ip:127.0.0.1', String(SOFT_IP_CEILING - 2), 'EX', 3600)
+
     let blocked = 0
-    for (let i = 0; i < 62 && blocked === 0; i++) {
+    // past the ceiling the gate THROTTLES one-in-N rather than refusing outright, so a couple of
+    // attempts may still be admitted by design — loop a few, do not assume the first is refused
+    for (let i = 0; i < 8 && blocked === 0; i++) {
       const res = await login(`ghost-${i}@partner.co`, 'partnerpass1') // never the same email twice
-      if (res.status === 429) blocked = i
+      if (res.status === 429) blocked = i + 1
     }
     expect(blocked).toBeGreaterThan(0)
-    await redis.del('partner:fail:ip:127.0.0.1', 'partner:attempt:ip:127.0.0.1')
+    await redis.del('partner:fail:ip:127.0.0.1', 'partner:attempt:ip:127.0.0.1', 'partner:ok:ip:127.0.0.1')
   })
 
   it('a partner is never locked out of the portal by someone guessing at their email from one host', async () => {
