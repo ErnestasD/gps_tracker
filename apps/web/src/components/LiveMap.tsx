@@ -145,9 +145,16 @@ export function LiveMap({
      *  `ScrubState` can never grow into — it has already gone from two states to three. */
     const NO_FRAME = Symbol('no-frame')
     let lastScrubData: ScrubState | typeof NO_FRAME = NO_FRAME
-    /** NO_FRAME so a remount with a selection already made does not fly away from wherever the
-     *  operator left the camera — only a CHANGE of selection moves it. */
+    /** NO_FRAME so a remount with a selection already made is recognised as the INITIAL frame:
+     *  a fresh map always opens on the default city view, and if the store still holds a
+     *  selection (it outlives this page), showing the inspector for one place while the camera
+     *  sits on another reads as "the map is wrong". The initial frame therefore centres on the
+     *  selection too — with a jump, not a fly, because there is no prior view to fly from. */
     let lastSelectedId: string | null | typeof NO_FRAME = NO_FRAME
+    /** The selection's fix can lag the first frame (the position snapshot seeds async): keep the
+     *  initial centring pending until the fix exists, and drop it the moment the operator pans. */
+    let initialCenterPending = false
+    map.on('dragstart', () => { initialCenterPending = false })
 
     // IDEMPOTENT setup (ADR-030): `style.load` fires for the initial style AND after
     // every theme `setStyle`, which drops ALL runtime images/sources/layers — re-add
@@ -463,7 +470,12 @@ export function LiveMap({
        * place to centre on, and deselecting moves nothing.
        */
       const selId = frame.selected?.deviceId ?? null
-      if (lastSelectedId !== NO_FRAME && selId !== null && selId !== lastSelectedId && frame.selectedFix) {
+      if (lastSelectedId === NO_FRAME) initialCenterPending = selId !== null
+      if (selId === null) initialCenterPending = false
+      if (initialCenterPending && frame.selectedFix) {
+        initialCenterPending = false
+        map.jumpTo({ center: [frame.selectedFix.lon, frame.selectedFix.lat], zoom: Math.max(map.getZoom(), 14) })
+      } else if (lastSelectedId !== NO_FRAME && selId !== null && selId !== lastSelectedId && frame.selectedFix) {
         map.easeTo({
           center: [frame.selectedFix.lon, frame.selectedFix.lat],
           zoom: Math.max(map.getZoom(), 14),
