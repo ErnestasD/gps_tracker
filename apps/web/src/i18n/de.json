@@ -850,7 +850,8 @@
         "integrated": "Dieses Modell hat einen integrierten CAN-Prozessor — CAN-Daten werden automatisch gesendet.",
         "adapter": "Dieses Modell unterstützt einen CAN-Adapter (LV-CAN200 / ALL-CAN300) — CAN-Daten können in der Simulation aktiviert werden.",
         "none": "Dieses Modell liefert keine CAN-Daten."
-      }
+      },
+      "limitReached": "Das Gerätelimit Ihres Plans ist erreicht — ein virtuelles Gerät belegt einen Platz wie echte Hardware. Entfernen Sie ein ungenutztes Gerät oder erweitern Sie den Plan."
     }
   },
   "quarantine": {

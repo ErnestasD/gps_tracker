@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, AdminLabel, Badge } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
+import { ApiError } from '@/lib/http'
 import { createDevice, generateVirtualImei, getVsim, restartVsim, startVsim, stopVsim, type Device, type Profile } from '@/lib/devices'
 
 /**
@@ -61,7 +62,7 @@ export function VirtualDeviceForm({
   const [accountId, setAccountId] = useState('')
   const [profileId, setProfileId] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const acc = accountId || accounts[0]?.id || ''
   const fallback = profiles.find((p) => p.key === 'fmb120')?.id ?? profiles[0]?.id ?? ''
@@ -71,10 +72,18 @@ export function VirtualDeviceForm({
   const submit = (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
-    setError(false)
+    setError(null)
     createDevice({ accountId: acc, profileId: prof, imei: generateVirtualImei(), name: name.trim(), plate: null })
       .then(onCreated)
-      .catch(() => setError(true))
+      .catch((err: unknown) => {
+        // the API explains itself (RFC 7807 detail) — a virtual device counts against the plan's
+        // device limit exactly like hardware, and "couldn't create" hides the one fact that matters
+        setError(
+          err instanceof ApiError && err.detail === 'device_limit_reached'
+            ? t('devices.vsim.limitReached')
+            : t('devices.createError'),
+        )
+      })
       .finally(() => setBusy(false))
   }
 
@@ -98,9 +107,9 @@ export function VirtualDeviceForm({
         </p>
       </div>
       <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('devices.vsim.imeiNote')}</p>
-      {error && (
+      {error !== null && (
         <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="vdev-error">
-          {t('devices.createError')}
+          {error}
         </p>
       )}
       <AdminButton type="submit" disabled={busy || name.trim() === '' || acc === '' || prof === ''} data-testid="vdev-create">
