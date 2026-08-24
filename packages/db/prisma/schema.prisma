@@ -977,7 +977,7 @@ model ScheduledReport {
   // recipients — data about an account that no longer exists, with no API surface to stop it
   // (every read is scoped by tenant, so the row was invisible to the product).
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([enabled])
   @@index([tenantId])
@@ -991,7 +991,9 @@ model PushSubscription {
   // DB-side default (matches migration 20260716120000) — see ScheduledReport.id (schema/migration drift fix).
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId  String   @db.Uuid
-  accountId String   @db.Uuid
+  /// NULL = a TENANT-LEVEL subscription (a tenant-wide admin's browser): receives every
+  /// account's webpush fan-out in the tenant (migration 20260824110000).
+  accountId String?  @db.Uuid
   userId    String   @db.Uuid
   endpoint  String   @unique
   p256dh    String
@@ -1004,7 +1006,7 @@ model PushSubscription {
   // subscription alive. Cascading on the USER is the important one: deleting the person is the
   // action an operator takes, and it must take their devices' notifications with it.
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, accountId])

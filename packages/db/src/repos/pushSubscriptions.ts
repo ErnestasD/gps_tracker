@@ -36,8 +36,10 @@ export interface PushSubscriptionRepo {
 export function createPushSubscriptionRepo(prisma: PrismaClient): PushSubscriptionRepo {
   return {
     subscribe: async (scope, userId, sub) => {
+      // NULL accountId = a TENANT-LEVEL subscription (tenant-wide admin): it receives every
+      // account's webpush fan-out in this tenant. Requiring an account here 400'd exactly the
+      // people who run the fleet (audit fix, "pranešimai neveikia").
       const accountId = scope.accountId ?? null
-      if (accountId === null) throw new Error('push subscribe requires an account scope')
       // ONE statement. Prisma's `upsert` compiled to a native INSERT … ON CONFLICT DO UPDATE, which
       // is race-free — but it had no tenant predicate, so its update branch rewrote
       // tenantId/accountId/userId to the caller's and any tenant that learned an endpoint URL could
@@ -72,7 +74,12 @@ export function createPushSubscriptionRepo(prisma: PrismaClient): PushSubscripti
       return res.count > 0
     },
     listByAccount: async (tenantId, accountId) => {
-      const rows = await prisma.pushSubscription.findMany({ where: { tenantId, accountId }, select: { endpoint: true, p256dh: true, auth: true } })
+      // the account's own rows PLUS the tenant-level (accountId NULL) rows — a tenant admin's
+      // browser receives every account's alerts in their tenant
+      const rows = await prisma.pushSubscription.findMany({
+        where: { tenantId, OR: [{ accountId }, { accountId: null }] },
+        select: { endpoint: true, p256dh: true, auth: true },
+      })
       return rows
     },
     deleteByEndpoint: async (endpoint) => {

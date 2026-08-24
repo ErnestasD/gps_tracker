@@ -31,7 +31,9 @@ export function mountPush(app: Hono<AuthEnv>, deps: PushDeps): void {
 
   app.post('/v1/push/subscribe', requireRole(...WRITERS), async (c) => {
     const auth = c.get('auth')
-    if (auth.accountId === undefined) return problem(c, 400, 'Bad Request', 'account_required') // push targets an account
+    // no accountId ⇒ a TENANT-LEVEL subscription (tenant-wide admin): stored with NULL account,
+    // included in every account's fan-out for this tenant (audit fix — the old 400 here locked
+    // out exactly the people who run the fleet)
     const data = pushSubscribeSchema.safeParse(await c.req.json().catch(() => null))
     if (!data.success) return problem(c, 400, 'Bad Request')
     try {
