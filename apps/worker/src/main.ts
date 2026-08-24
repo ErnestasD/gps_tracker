@@ -604,8 +604,33 @@ async function main(): Promise<void> {
             }
             if (persisted !== null) {
               prom.geofenceEvents.inc(persisted.length)
+              /**
+               * E05-5 gap fix (founder: "pranešimai neveikia"): geofence transitions emitted
+               * webhooks but NEVER reached the notification dispatcher — enqueueNotify only ran
+               * for IO-rule and offline events, so a geofence rule's channels were dead letters
+               * from the day the kind existed. Matched here against the tenant's geofence rules
+               * (geofenceId + direction), with the cooldown enforced by a redis NX key per
+               * rule×device — the IO path gets its cooldown inside the engine; this path has no
+               * engine, so the claim lives where the enqueue does.
+               */
+              const gfRules = await ruleCache.resolveGeofenceBatch(persisted.map((tr) => BigInt(tr.deviceId)), Date.now())
               for (const tr of persisted) {
-                await emitWebhook({ deviceId: tr.deviceId, kind: 'geofence', at: tr.at, payload: { geofenceId: tr.geofenceId, name: tr.geofenceName, transition: tr.type }, dedupe: `${tr.geofenceId}:${tr.type}` })
+                const payload = { geofenceId: tr.geofenceId, name: tr.geofenceName, transition: tr.type }
+                for (const rule of gfRules.get(tr.deviceId.toString()) ?? []) {
+                  if (rule.geofenceId !== tr.geofenceId) continue
+                  if (rule.on !== 'both' && rule.on !== tr.type) continue
+                  try {
+                    if (rule.cooldownS > 0) {
+                      const claimed = await redis.set(`ntfcd:${rule.id}:${tr.deviceId.toString()}:${tr.type}`, '1', 'EX', rule.cooldownS, 'NX')
+                      if (claimed === null) continue // inside the cooldown window — suppressed, not failed
+                    }
+                    await enqueueNotify(notifyQueue, { ruleId: rule.id, deviceId: tr.deviceId, kind: 'geofence', at: tr.at, payload })
+                  } catch (err) {
+                    prom.notificationFailed.inc({ channel: 'enqueue' })
+                    console.error('enqueueNotify(geofence)', err)
+                  }
+                }
+                await emitWebhook({ deviceId: tr.deviceId, kind: 'geofence', at: tr.at, payload, dedupe: `${tr.geofenceId}:${tr.type}` })
               }
             }
           }

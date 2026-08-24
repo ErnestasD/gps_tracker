@@ -28,10 +28,24 @@ interface TenantRule extends RuleDef {
   scopeIds: Set<string> | null
 }
 
+/** A geofence-kind rule (E05-5 gap fix): matched against geofence-engine transitions in the
+ * pipeline, NOT fed to the IO rule engine. `on` mirrors the UI's stored values. */
+export interface GeofenceRuleDef {
+  id: string
+  accountId: string
+  name: string
+  cooldownS: number
+  geofenceId: string
+  on: 'enter' | 'exit' | 'both'
+}
+interface TenantGeofenceRule extends GeofenceRuleDef {
+  scopeIds: Set<string> | null
+}
+
 const ENGINE_KINDS = new Set<string>(ENGINE_RULE_KINDS)
 
 export class RuleCache {
-  private readonly byTenant = new Map<string, { defs: TenantRule[]; at: number }>()
+  private readonly byTenant = new Map<string, { defs: TenantRule[]; gf: TenantGeofenceRule[]; at: number }>()
 
   constructor(
     private readonly redis: Redis,
@@ -62,6 +76,34 @@ export class RuleCache {
     return out
   }
 
+  /**
+   * device → applicable GEOFENCE rules (E05-5 gap fix). Same tenant/account/scope resolution as
+   * resolveBatch; a separate method because these rules are matched against geofence-engine
+   * transitions in the pipeline, never fed to the IO rule engine.
+   */
+  async resolveGeofenceBatch(deviceIds: readonly bigint[], now: number): Promise<Map<string, GeofenceRuleDef[]>> {
+    const ids = [...new Set(deviceIds.map((d) => d.toString()))]
+    if (ids.length === 0) return new Map()
+    const [tenants, accounts] = await Promise.all([this.redis.hmget('device:tenant', ...ids), this.redis.hmget('device:account', ...ids)])
+    const tenantOf = new Map<string, string | null>()
+    const accountOf = new Map<string, string | null>()
+    ids.forEach((id, i) => {
+      tenantOf.set(id, tenants[i] ?? null)
+      accountOf.set(id, accounts[i] ?? null)
+    })
+    const uniqTenants = [...new Set([...tenantOf.values()].filter((t): t is string => t !== null))]
+    await Promise.all(uniqTenants.filter((t) => this.stale(t, now)).map((t) => this.load(t, now)))
+    const out = new Map<string, GeofenceRuleDef[]>()
+    for (const id of ids) {
+      const tenant = tenantOf.get(id)
+      if (tenant === null || tenant === undefined) continue
+      const account = accountOf.get(id) ?? null
+      const defs = (this.byTenant.get(tenant)?.gf ?? []).filter((r) => r.accountId === account && inScope(r.scopeIds, id))
+      if (defs.length > 0) out.set(id, defs.map((d) => ({ id: d.id, accountId: d.accountId, name: d.name, cooldownS: d.cooldownS, geofenceId: d.geofenceId, on: d.on })))
+    }
+    return out
+  }
+
   private stale(tenant: string, now: number): boolean {
     const e = this.byTenant.get(tenant)
     return e === undefined || now - e.at >= this.ttlMs
@@ -70,11 +112,30 @@ export class RuleCache {
   private async load(tenant: string, now: number): Promise<void> {
     const raw = await this.redis.hgetall(`rule:tenant:${tenant}`)
     const defs: TenantRule[] = []
+    const gf: TenantGeofenceRule[] = []
     for (const [id, val] of Object.entries(raw)) {
       try {
         const j = JSON.parse(val) as StoredRule
         if (j.enabled === false) continue
-        if (!ENGINE_KINDS.has(j.kind)) continue // geofence + device_offline handled elsewhere
+        if (j.kind === 'geofence') {
+          // matched against geofence-engine transitions (E05-5 gap fix); a rule without a
+          // geofenceId can match nothing and is skipped outright
+          const rawGeofenceId = j.config?.['geofenceId']
+          const geofenceId = typeof rawGeofenceId === 'string' ? rawGeofenceId : ''
+          if (geofenceId === '') continue
+          const onRaw = j.config?.['on']
+          gf.push({
+            id,
+            accountId: j.accountId,
+            name: j.name,
+            cooldownS: typeof j.cooldownS === 'number' ? j.cooldownS : 300,
+            geofenceId,
+            on: onRaw === 'enter' || onRaw === 'exit' ? onRaw : 'both',
+            scopeIds: toScopeIds(j.scope),
+          })
+          continue
+        }
+        if (!ENGINE_KINDS.has(j.kind)) continue // device_offline handled by the sweeper
         defs.push({
           id,
           accountId: j.accountId,
@@ -94,7 +155,7 @@ export class RuleCache {
         // malformed entry → skip, never crash the pipeline
       }
     }
-    this.byTenant.set(tenant, { defs, at: now })
+    this.byTenant.set(tenant, { defs, gf, at: now })
   }
 }
 
