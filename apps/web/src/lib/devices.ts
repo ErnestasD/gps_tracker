@@ -136,7 +136,7 @@ export interface VsimStatus {
   progressPct: number
 }
 export const getVsim = (id: string) => getJson<VsimStatus>(`/v1/devices/${encodeURIComponent(id)}/vsim`)
-export const startVsim = (id: string, data: { from: [number, number]; to: [number, number]; speedKmh: number; loop: boolean; label?: string }) =>
+export const startVsim = (id: string, data: { from: [number, number]; to: [number, number]; speedKmh: number; loop: boolean; can?: boolean; label?: string }) =>
   mutate<{ status: string }>('POST', `/v1/devices/${encodeURIComponent(id)}/vsim`, data)
 export const stopVsim = (id: string) => mutate<{ status: string }>('POST', `/v1/devices/${encodeURIComponent(id)}/vsim/stop`)
 export const restartVsim = (id: string) => mutate<{ status: string }>('POST', `/v1/devices/${encodeURIComponent(id)}/vsim/restart`)

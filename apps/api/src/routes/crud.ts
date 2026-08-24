@@ -991,6 +991,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           label: st['label'] ?? '',
           speedKmh: Number(st['speedKmh'] ?? 0),
           loop: st['loop'] === '1',
+          can: st['can'] === '1',
           progressPct: Number(st['totalM']) > 0 ? Math.min(100, Math.round((Number(st['distanceM'] ?? 0) / Number(st['totalM'])) * 100)) : 0,
         })
       } },
@@ -1023,6 +1024,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           totalM: String(Math.round(totalM)),
           speedKmh: String(data.speedKmh),
           loop: data.loop ? '1' : '0',
+          can: data.can ? '1' : '0',
           status: 'running',
           distanceM: '0',
           lastMs: String(Date.now()),

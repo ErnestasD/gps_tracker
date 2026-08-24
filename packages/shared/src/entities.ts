@@ -304,6 +304,8 @@ export const vsimStartSchema = z.object({
   to: lonLat,
   speedKmh: z.number().int().min(10).max(150),
   loop: z.boolean().optional().default(false),
+  /** emit CAN engine params (RPM/coolant/load/throttle/CAN speed/mileage) with each fix */
+  can: z.boolean().optional().default(false),
   label: z.string().max(120).optional(),
 })
 

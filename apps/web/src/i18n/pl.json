@@ -842,6 +842,14 @@
         "stopped": "Zatrzymano",
         "finished": "Zakończono",
         "none": "Nieuruchomione"
+      },
+      "addTitle": "Nowe urządzenie wirtualne",
+      "can": "Dane CAN (RPM, przebieg, paliwo)",
+      "imeiNote": "IMEI jest nadawany automatycznie z zarezerwowanego zakresu 9990* — wirtualna tożsamość, która nigdy nie koliduje ze sprzętem.",
+      "cap": {
+        "integrated": "Ten model ma zintegrowany procesor CAN — dane CAN będą wysyłane automatycznie.",
+        "adapter": "Ten model obsługuje adapter CAN (LV-CAN200 / ALL-CAN300) — dane CAN można włączyć w symulacji.",
+        "none": "Ten model nie dostarcza danych CAN."
       }
     }
   },

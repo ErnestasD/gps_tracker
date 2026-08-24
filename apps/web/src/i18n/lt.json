@@ -842,6 +842,14 @@
         "stopped": "Sustabdyta",
         "finished": "Baigta",
         "none": "Nepaleista"
+      },
+      "addTitle": "Naujas virtualus įrenginys",
+      "can": "CAN duomenys (RPM, rida, kuras)",
+      "imeiNote": "IMEI suteikiamas automatiškai iš rezervuoto 9990* diapazono — virtuali tapatybė, su technika nesikertanti.",
+      "cap": {
+        "integrated": "Modelis turi integruotą CAN procesorių — CAN duomenys bus siunčiami automatiškai.",
+        "adapter": "Modelis palaiko CAN adapterį (LV-CAN200 / ALL-CAN300) — CAN duomenis galėsite įjungti simuliacijoje.",
+        "none": "Šis modelis CAN duomenų neteikia."
       }
     }
   },

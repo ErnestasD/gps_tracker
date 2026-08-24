@@ -17,7 +17,7 @@ import { eraseDevice } from '@/lib/gdpr'
 import { liveStore } from '@/lib/liveStore'
 import { CommandsCard } from '@/routes/app/devices/commands'
 import { VehicleCardPanel } from '@/routes/app/devices/vehicleCard'
-import { VsimCard } from '@/routes/app/devices/vsim'
+import { canCapability, VirtualDeviceForm, VsimCard } from '@/routes/app/devices/vsim'
 import { listDrivers } from '@/lib/drivers'
 import { HealthCard } from '@/routes/app/devices/health'
 import { CanCard } from '@/routes/app/devices/can'
@@ -27,7 +27,6 @@ import { SettingsCard } from '@/routes/app/devices/settings'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
   createDevice,
-  generateVirtualImei,
   isVirtualImei,
   importApply,
   importPreview,
@@ -90,7 +89,7 @@ export function DevicesPage() {
   const [shareForId, setShareForId] = useState<string | null>(null)
   const [onboardForId, setOnboardForId] = useState<string | null>(null)
   const [vsimForId, setVsimForId] = useState<string | null>(null)
-  const [creatingVirtual, setCreatingVirtual] = useState(false)
+  const [virtualOpen, setVirtualOpen] = useState(false)
   // APN carried from the create form into an auto-opened onboarding card (unified add flow); '' for
   // a manually-opened card. One-shot: reset when a card is opened from the row menu.
   const [pendingApn, setPendingApn] = useState('')
@@ -223,30 +222,31 @@ export function DevicesPage() {
             <ImportSheetBody onImported={refresh} />
           </SheetContent>
         </Sheet>
-        <AdminButton
-          variant="secondary"
-          disabled={creatingVirtual}
-          data-testid="device-add-virtual"
-          onClick={() => {
-            // one click, no form: a mock tracker exists to be driven, not configured. IMEI from
-            // the reserved 9990* range (server gates the vsim endpoints on it), FMB120 profile —
-            // the table 45 real models share, so decode is unambiguous.
-            setCreatingVirtual(true)
-            const acc = accounts.data?.[0]?.id ?? ''
-            const prof = (profiles.data ?? []).find((pr) => pr.key === 'fmb120')?.id ?? profiles.data?.[0]?.id ?? ''
-            const n = (devices.data ?? []).filter((d) => isVirtualImei(d.imei)).length + 1
-            createDevice({ accountId: acc, profileId: prof, imei: generateVirtualImei(), name: `${t('devices.vsim.deviceName')} ${n}`, plate: null })
-              .then((dev) => {
+        <Sheet open={virtualOpen} onOpenChange={setVirtualOpen}>
+          <SheetTrigger asChild>
+            <AdminButton variant="secondary" data-testid="device-add-virtual">
+              <Plus className="h-4 w-4" aria-hidden />
+              {t('devices.vsim.addButton')}
+            </AdminButton>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>{t('devices.vsim.addTitle')}</SheetTitle>
+            </SheetHeader>
+            {/* the REAL add flow (founder): name/account/model chosen like hardware; the IMEI is
+                assigned from the reserved 9990* range, and the model decides the CAN default */}
+            <VirtualDeviceForm
+              accounts={accounts.data ?? []}
+              profiles={profiles.data ?? []}
+              suggestedName={`${t('devices.vsim.deviceName')} ${(devices.data ?? []).filter((d) => isVirtualImei(d.imei)).length + 1}`}
+              onCreated={(dev) => {
+                setVirtualOpen(false)
                 refresh()
                 setVsimForId(dev.id)
-              })
-              .catch(() => setActionError(true))
-              .finally(() => setCreatingVirtual(false))
-          }}
-        >
-          <Plus className="h-4 w-4" aria-hidden />
-          {t('devices.vsim.addButton')}
-        </AdminButton>
+              }}
+            />
+          </SheetContent>
+        </Sheet>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton data-testid="device-add-open">
@@ -354,7 +354,13 @@ export function DevicesPage() {
         {commandsFor !== null && <CommandsCard key={`cmd-${commandsFor.id}`} device={commandsFor} />}
         {settingsFor !== null && <SettingsCard key={`set-${settingsFor.id}`} device={settingsFor} canWrite={canWrite} />}
         {shareFor !== null && <ShareCard key={`share-${shareFor.id}`} device={shareFor} />}
-        {vsimFor !== null && <VsimCard key={`vsim-${vsimFor.id}`} device={vsimFor} />}
+        {vsimFor !== null && (
+          <VsimCard
+            key={`vsim-${vsimFor.id}`}
+            device={vsimFor}
+            canCap={canCapability((profiles.data ?? []).find((p) => p.id === vsimFor.profileId)?.key)}
+          />
+        )}
       </div>
 
       {getCurrentUser()?.role === 'platform_admin' && <QuarantineSection />}

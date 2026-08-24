@@ -842,6 +842,14 @@
         "stopped": "Stopped",
         "finished": "Finished",
         "none": "Not started"
+      },
+      "addTitle": "New virtual device",
+      "can": "CAN data (RPM, mileage, fuel)",
+      "imeiNote": "The IMEI is assigned automatically from the reserved 9990* range — a virtual identity that can never collide with hardware.",
+      "cap": {
+        "integrated": "This model has an integrated CAN processor — CAN data will be sent automatically.",
+        "adapter": "This model supports a CAN adapter (LV-CAN200 / ALL-CAN300) — you can enable CAN data in the simulation.",
+        "none": "This model provides no CAN data."
       }
     }
   },

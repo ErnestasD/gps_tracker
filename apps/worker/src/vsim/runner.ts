@@ -29,6 +29,7 @@ interface VsimState {
   coords: string // JSON [ [lon,lat], ... ] (OSRM geometry)
   speedKmh: string
   loop: '1' | '0'
+  can: '1' | '0'
   status: 'running' | 'stopped' | 'finished'
   distanceM: string
   lastMs: string
@@ -104,6 +105,18 @@ export function startVsimRunner(opts: { redis: Redis; host: string; port: number
       [66, 12_800n], // External Voltage (mV)
       [89, BigInt(Math.max(5, 90 - Math.floor(dist / 1_000)))], // Fuel level %
     ])
+    if (st.can === '1' && !finished) {
+      // CAN/OBD engine params, same ids and citation as the simulator's drive.ts
+      // (wiki FMB120 table): https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
+      // RPM tracks speed plausibly (~idle at 0, ~2400 at 90 km/h) instead of random noise —
+      // the CAN panel is watched next to the speed readout, and the two must not contradict.
+      io.set(85, BigInt(800 + Math.round(speedKmh * 18))) // Engine RPM
+      io.set(32, 88n) // Coolant Temperature °C (warmed engine)
+      io.set(114, BigInt(Math.min(95, 20 + Math.round(speedKmh / 2)))) // Engine Load %
+      io.set(41, BigInt(Math.min(90, 10 + Math.round(speedKmh / 2)))) // Throttle Position %
+      io.set(81, BigInt(Math.round(speedKmh))) // Vehicle Speed (CAN) km/h
+      io.set(87, BigInt(Math.round(dist))) // Total Mileage m
+    }
     const rec: EncodableRecord = {
       tsMs: now,
       priority: 0,

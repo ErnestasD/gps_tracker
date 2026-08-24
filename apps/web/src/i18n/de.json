@@ -842,6 +842,14 @@
         "stopped": "Gestoppt",
         "finished": "Beendet",
         "none": "Nicht gestartet"
+      },
+      "addTitle": "Neues virtuelles Gerät",
+      "can": "CAN-Daten (Drehzahl, Kilometerstand, Kraftstoff)",
+      "imeiNote": "Die IMEI wird automatisch aus dem reservierten 9990*-Bereich vergeben — eine virtuelle Identität, die nie mit Hardware kollidiert.",
+      "cap": {
+        "integrated": "Dieses Modell hat einen integrierten CAN-Prozessor — CAN-Daten werden automatisch gesendet.",
+        "adapter": "Dieses Modell unterstützt einen CAN-Adapter (LV-CAN200 / ALL-CAN300) — CAN-Daten können in der Simulation aktiviert werden.",
+        "none": "Dieses Modell liefert keine CAN-Daten."
       }
     }
   },
