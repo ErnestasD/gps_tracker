@@ -473,7 +473,12 @@ only (rule 12). Env: `DATABASE_URL` (required), `REDIS_URL`, `INGEST_HOST`/`INGE
   and a minimal `Permissions-Policy`. **HSTS** (180 d) is sent only in TLS deployments
   (`ApiDeps.hsts`, defaults to `secureCookies`) — dev/e2e over plain http never advertises it.
   The Caddy edge sets the same set for the SPA (defense in depth) and drops the `Server`
-  banner. No global CSP yet (the self-contained `/v1/docs` inline script needs a nonce first)
+  banner, with ONE deliberate difference: the SPA hosts send `Referrer-Policy:
+  strict-origin-when-cross-origin`, not `no-referrer`. Mapbox enforces its token's URL
+  allow-list on the `Referer` header, so suppressing it entirely 403s every basemap tile and
+  the map renders blank. The relaxed value still leaks no path — cross-origin it sends the
+  bare origin, and nothing when the destination is less secure — so the ids our URLs carry
+  stay private. API responses and the marketing site (no maps) keep `no-referrer`. No global CSP yet (the self-contained `/v1/docs` inline script needs a nonce first)
   — see `docs/audit/security-pass-2026-07.md` for the full W7 S5 audit (rate limits, deps,
   secrets, argon2, WS auth).
 
