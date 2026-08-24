@@ -38,8 +38,24 @@ services:
       timeout: 3s
       retries: 12
 
+  # Reverse geocoding (CLAUDE.md rule 13, self-hosted — komoot's public instance is dev-only
+  # fair-use and NEVER production). Behind a profile, like osrm, and for the same reason: the
+  # service is useless without a prepared index, and starting it without one is not harmless.
+  #
+  # It was NOT behind a profile, and the cost was invisible: every `up -d` started it, it tried to
+  # build an index needing 152 GB of temp space on a 97 GB disk, logged "Insufficient disk space"
+  # and exited — on every deploy, for weeks. `photon_data` is still 4 KB: the index has never once
+  # downloaded. Nothing noticed because no api code reads GEOCODER_URL yet (see docker-compose.apps).
+  #
+  # Pinned by DIGEST, not `:latest`. COUNTRY_CODE asks for the PL extract (a few GB) — a planet-sized
+  # download is not what this config requests, so the image's behaviour changed underneath us. An
+  # unpinned tag in a stack we deploy is a change we did not make and cannot review.
+  #
+  # To enable, once the address-lookup consumer lands: prepare the index, then
+  # COMPOSE_PROFILES=photon (see infra/photon/README.md).
   photon:
-    image: rtuszik/photon-docker:latest
+    image: rtuszik/photon-docker@sha256:827cedf9fa3337e657611d62ada669def75dff61c56b51ae55056155d1a9b236
+    profiles: [photon]
     environment:
       # GraphHopper prebuilt country extracts (PROJECT_PLAN §2/§5: PL+LT at launch;
       # DE/LV/EE added when tenants demand — bigger disk)
