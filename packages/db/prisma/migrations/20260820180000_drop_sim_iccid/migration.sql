@@ -1,0 +1,16 @@
+-- Drop the device SIM ICCID.
+--
+-- It was stored, shown in the onboarding form and accepted from the CSV import, and read by
+-- nothing: no query, no job, no export. Measured before removing — 0 of 494 active devices had one
+-- while 2 had a phone number, so this drops no customer data.
+--
+-- The SIM identity the platform actually uses is `simMsisdn`: config SMS are sent to it, and the
+-- SMS-gateway onboarding path does not work without it. An ICCID answers a different question —
+-- proving to an operator that you hold the card — which is a support task, not something the
+-- platform does, and asking a customer to type it during onboarding was asking for work nobody
+-- consumed.
+--
+-- Reversible at the cost of one nullable column if fleets ever bring data-only M2M SIMs, which
+-- often carry no usable MSISDN. That is the one case where the ICCID is the only identifier — and
+-- it is a decision to take with the feature that needs it, not a field to keep empty in advance.
+ALTER TABLE "devices" DROP COLUMN IF EXISTS "simIccid";

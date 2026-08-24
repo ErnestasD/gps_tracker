@@ -29,7 +29,6 @@ export function OnboardingCard({ device, initialApn }: { device: Device; initial
   // SIM fields — saved via the device PATCH. `savedMsisdn` gates the send button so we never send
   // to an unsaved number (the server reads the persisted simMsisdn, not the input value).
   const [msisdn, setMsisdn] = useState(device.simMsisdn ?? '')
-  const [iccid, setIccid] = useState(device.simIccid ?? '')
   const [savedMsisdn, setSavedMsisdn] = useState(device.simMsisdn ?? '')
   const [simSaving, setSimSaving] = useState(false)
   const [simSaved, setSimSaved] = useState(false)
@@ -50,7 +49,7 @@ export function OnboardingCard({ device, initialApn }: { device: Device; initial
     setSimError(false)
     setSimSaved(false)
     const trimmed = msisdn.trim()
-    updateDevice(device.id, { simMsisdn: trimmed === '' ? null : trimmed, simIccid: iccid.trim() === '' ? null : iccid.trim() })
+    updateDevice(device.id, { simMsisdn: trimmed === '' ? null : trimmed })
       .then(() => {
         setSavedMsisdn(trimmed)
         setSimSaved(true)
@@ -98,17 +97,14 @@ export function OnboardingCard({ device, initialApn }: { device: Device; initial
           {t('devices.onb.intro', { host: s?.host ?? '—', port: s?.port ?? 5027 })}</p>
         )}
 
-        {/* SIM fields — saved on the device, used as the SMS destination + support audit */}
+        {/* The SIM's phone number — the destination for config SMS, and the only SIM field we keep:
+            an ICCID was carried by nothing and read by no one (removed 2026-08-20). */}
         <div className="space-y-2 rounded-card border border-line p-3">
           <div className="text-xs font-medium text-muted">{t('devices.onb.sim.title')}</div>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-xs text-muted">
               {t('devices.onb.sim.msisdn')}
               <Input value={msisdn} onChange={(e) => setMsisdn(e.target.value)} placeholder="+37060000000" data-testid="onb-sim-msisdn" className="w-48" maxLength={20} inputMode="tel" />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted">
-              {t('devices.onb.sim.iccid')}
-              <Input value={iccid} onChange={(e) => setIccid(e.target.value)} data-testid="onb-sim-iccid" className="w-56" maxLength={22} />
             </label>
             <Button variant="secondary" size="sm" onClick={saveSim} disabled={simSaving} data-testid="onb-sim-save">
               {t('devices.onb.sim.save')}

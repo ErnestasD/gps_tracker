@@ -589,7 +589,6 @@ model Device {
   /// SIM MSISDN (E.164, e.g. +37060000000) — the phone number config SMS are sent TO (SMS gateway)
   simMsisdn      String?
   /// SIM ICCID (18–22 digits) — operator-entered SIM serial, informational
-  simIccid       String?
   odometerSource OdometerSource @default(auto)
   retiredAt      DateTime?      @db.Timestamptz()
   createdAt      DateTime       @default(now()) @db.Timestamptz()

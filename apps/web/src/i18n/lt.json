@@ -631,7 +631,7 @@
     "dupImei": "Toks IMEI jau užregistruotas.",
     "import": {
       "title": "Masinis importas (CSV)",
-      "hint": "Stulpeliai: imei, name, profileKey, accountId (privalomi) + simMsisdn, simIccid (neprivalomi). Peržiūra patikrina kiekvieną eilutę prieš taikant.",
+      "hint": "Stulpeliai: imei, name, profileKey, accountId (privalomi) + simMsisdn (neprivalomas). Peržiūra patikrina kiekvieną eilutę prieš taikant.",
       "preview": "Peržiūrėti",
       "apply": "Taikyti ({{n}})",
       "done": "Importuota {{n}} įrenginių.",
@@ -756,7 +756,6 @@
       "sim": {
         "title": "SIM kortelė",
         "msisdn": "SIM telefono numeris",
-        "iccid": "ICCID (nebūtina)",
         "save": "Išsaugoti SIM",
         "saved": "Išsaugota",
         "error": "Nepavyko išsaugoti SIM duomenų — bandykite dar kartą."
