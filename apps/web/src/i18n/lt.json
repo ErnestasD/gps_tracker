@@ -386,7 +386,7 @@
     },
     "hint": {
       "polygon": "Spauskite žemėlapyje kiekvieną kampą. Kontūrą uždarykite spustelėję pirmą tašką (arba dvigubu spustelėjimu).",
-      "circle": "Spustelėkite centrą, tada spustelėkite dar kartą dydžiui nustatyti.",
+      "circle": "Spustelėkite geozonos centrą, tempkite iki norimo dydžio (spindulys rodomas prie kursoriaus) ir spustelėkite dar kartą. Po to spindulį galite pakoreguoti skaičiumi.",
       "corridor": "Spauskite kiekvieną maršruto tašką. Liniją baikite dvigubu spustelėjimu."
     },
     "drawing": "Braižoma…",
@@ -396,7 +396,9 @@
     "deleteError": "Nepavyko ištrinti geofence — bandykite dar kartą.",
     "edit": "Redaguoti",
     "editTitle": "Redaguoti geozoną",
-    "editHint": "Pakeiskite pavadinimą ar spalvą. Norėdami perbraižyti formą — nubrėžkite naują žemėlapyje; nesant naujos formos, esama lieka."
+    "editHint": "Pakeiskite pavadinimą ar spalvą. Norėdami perbraižyti formą — nubrėžkite naują žemėlapyje; nesant naujos formos, esama lieka.",
+    "radius": "Spindulys",
+    "redraw": "Braižyti iš naujo"
   },
   "deviceList": {
     "title": "Įrenginiai",

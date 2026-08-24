@@ -386,7 +386,7 @@
     },
     "hint": {
       "polygon": "Auf die Karte klicken, um jede Ecke zu setzen. Zum Schließen den ersten Punkt anklicken (oder Doppelklick).",
-      "circle": "Einmal für das Zentrum klicken, dann erneut für die Größe.",
+      "circle": "Klicken Sie auf den Mittelpunkt, ziehen Sie zur gewünschten Größe (der Radius folgt dem Cursor) und klicken Sie erneut. Danach lässt sich der Radius als Zahl feinjustieren.",
       "corridor": "Jeden Punkt entlang der Route anklicken. Doppelklick beendet die Linie."
     },
     "drawing": "Zeichnen…",
@@ -396,7 +396,9 @@
     "deleteError": "Geofence konnte nicht gelöscht werden — bitte erneut versuchen.",
     "edit": "Bearbeiten",
     "editTitle": "Geozone bearbeiten",
-    "editHint": "Name oder Farbe ändern. Zum Umformen eine neue Form auf der Karte zeichnen; ohne neue Form bleibt die bestehende."
+    "editHint": "Name oder Farbe ändern. Zum Umformen eine neue Form auf der Karte zeichnen; ohne neue Form bleibt die bestehende.",
+    "radius": "Radius",
+    "redraw": "Neu zeichnen"
   },
   "deviceList": {
     "title": "Geräte",

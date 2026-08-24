@@ -32,6 +32,41 @@ const KIND_ICON = { polygon: Hexagon, circle: CircleIcon, corridor: RouteIcon } 
  * swatches, not a native color input (round-2 control sweep). */
 const COLORS = ['#4F46E5', '#059669', '#B45309', '#E11D48', '#0284C7', '#7C3AED']
 
+// ── custom circle tool (founder: the terra-draw circle "buginasi") ───────────
+// Two clicks, live preview: click the CENTRE, move to see the circle grow with a radius
+// label under the cursor, click again to fix the edge. The radius stays editable as a
+// number afterwards. No terra-draw involved — its circle mode is the part that felt broken.
+
+const EARTH_R = 6_371_000
+const CIRCLE_STEPS = 64
+const MIN_RADIUS_M = 10
+const MAX_RADIUS_M = 50_000
+
+function haversineM(a: [number, number], b: [number, number]): number {
+  const dLat = ((b[1] - a[1]) * Math.PI) / 180
+  const dLon = ((b[0] - a[0]) * Math.PI) / 180
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos((a[1] * Math.PI) / 180) * Math.cos((b[1] * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
+  return 2 * EARTH_R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/** Geodesic circle as a closed polygon ring (destination-point formula per bearing step). */
+function circlePolygon(center: [number, number], radiusM: number): GeoJSON.Polygon {
+  const [lon, lat] = center
+  const φ1 = (lat * Math.PI) / 180
+  const λ1 = (lon * Math.PI) / 180
+  const δ = radiusM / EARTH_R
+  const ring: [number, number][] = []
+  for (let i = 0; i <= CIRCLE_STEPS; i++) {
+    const θ = (i / CIRCLE_STEPS) * 2 * Math.PI
+    const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ))
+    const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2))
+    ring.push([(λ2 * 180) / Math.PI, (φ2 * 180) / Math.PI])
+  }
+  return { type: 'Polygon', coordinates: [ring] }
+}
+
+const fmtRadius = (m: number): string => (m >= 1_000 ? `${(m / 1_000).toFixed(2)} km` : `${Math.round(m)} m`)
+
 /** Geofences (E05-1): draw polygon/circle with terra-draw, save, list, delete.
  *  Corridor (V2): draw a route LineString + a buffer half-width; the server buffers it to a polygon.
  *  Round 2 (ADR-028, verify sweep): the add form follows the reference draft-panel idiom — the
@@ -56,6 +91,12 @@ export function GeofencesPage() {
   const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
   const [drawn, setDrawn] = useState<Drawn>(null)
   const [draftKind, setDraftKind] = useState<DraftKind | null>(null) // non-null = draft mode
+  /** custom circle tool state: centre chosen, radius editable after the second click */
+  const [circleMeta, setCircleMeta] = useState<{ center: [number, number]; radiusM: number } | null>(null)
+  const [radiusLabel, setRadiusLabel] = useState<{ x: number; y: number; text: string } | null>(null)
+  const circleRef = useRef<{ armed: boolean; center: [number, number] | null }>({ armed: false, center: null })
+  const draftColorRef = useRef(COLORS[0]!)
+  const setDraftRef = useRef<(g: GeoJSON.Geometry | null) => void>(() => {})
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLORS[0]!)
   const [bufferM, setBufferM] = useState(100) // corridor half-width in metres (10 … 5000)
@@ -123,10 +164,52 @@ export function GeofencesPage() {
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
     map.on('error', (e) => console.error('mapbox', e.error))
     let disposed = false
+
+    // ── custom circle tool events (armed only while the circle draft is active) ──
+    const setDraft = (geometry: GeoJSON.Geometry | null) => {
+      const src = map.getSource<GeoJSONSource>('gf-draft')
+      src?.setData(geometry === null
+        ? { type: 'FeatureCollection', features: [] }
+        : { type: 'FeatureCollection', features: [{ type: 'Feature', geometry, properties: { color: draftColorRef.current } }] })
+    }
+    ;(setDraftRef as { current: typeof setDraft }).current = setDraft
+    map.on('click', (e) => {
+      const st = circleRef.current
+      if (!st.armed) return
+      const at: [number, number] = [e.lngLat.lng, e.lngLat.lat]
+      if (st.center === null) {
+        st.center = at // first click: the centre; the circle now grows under the cursor
+        setCircleMeta({ center: at, radiusM: 0 })
+        return
+      }
+      // second click: fix the edge
+      const radiusM = Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, haversineM(st.center, at)))
+      const geometry = circlePolygon(st.center, radiusM)
+      setCircleMeta({ center: st.center, radiusM: Math.round(radiusM) })
+      updateDrawn({ geometry, kind: 'circle' })
+      setDraft(geometry)
+      st.armed = false
+      st.center = null
+      setRadiusLabel(null)
+      map.getCanvas().style.cursor = ''
+    })
+    map.on('mousemove', (e) => {
+      const st = circleRef.current
+      if (!st.armed || st.center === null) return
+      const radiusM = Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, haversineM(st.center, [e.lngLat.lng, e.lngLat.lat])))
+      setDraft(circlePolygon(st.center, radiusM))
+      setRadiusLabel({ x: e.point.x, y: e.point.y, text: fmtRadius(radiusM) })
+    })
     // idempotent: style.load re-fires after every theme setStyle, which drops all
     // runtime sources/layers INCLUDING terra-draw's — everything is re-attached here
     map.on('style.load', () => {
       if (disposed) return
+      if (!map.getSource('gf-draft')) {
+        // the custom circle tool's live preview (survives theme swaps by re-adding here)
+        map.addSource('gf-draft', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+        map.addLayer({ id: 'gf-draft-fill', type: 'fill', source: 'gf-draft', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.18 } })
+        map.addLayer({ id: 'gf-draft-line', type: 'line', source: 'gf-draft', paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1.5] } })
+      }
       if (!map.getSource('geofences')) {
         map.addSource('geofences', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addLayer({ id: 'gf-fill', type: 'fill', source: 'geofences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 } })
@@ -141,13 +224,29 @@ export function GeofencesPage() {
         })
         draw.start()
         draw.on('finish', (id) => {
-          const feat = draw.getSnapshot().find((f) => f.id === id)
+          const snap = draw.getSnapshot()
+          const feat = snap.find((f) => f.id === id)
           if (!feat) return
           if (feat.geometry.type === 'Polygon') {
-            const mode = feat.properties['mode']
-            updateDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: mode === 'circle' ? 'circle' : 'polygon' })
+            updateDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: 'polygon' })
           } else if (feat.geometry.type === 'LineString') {
             updateDrawn({ geometry: feat.geometry as GeoJSON.Geometry, kind: 'corridor' })
+          } else return
+          /**
+           * Lock the finished shape (founder: "vien bugai"). Left in draw mode, every further
+           * click sprouted ANOTHER shape on top of the finished one — stale outlines nobody
+           * could remove, and Save silently took the last one. One finished shape is the whole
+           * contract: older leftovers are removed and the mode drops to select; redrawing is an
+           * explicit act (the "draw again" button / type switch), not an accidental click.
+           */
+          try {
+            const stale = snap.filter((f) => f.id !== id).map((f) => f.id!)
+            if (stale.length > 0) draw.removeFeatures(stale)
+            draw.setMode('select')
+            activeModeRef.current = 'select'
+            setActiveMode('select')
+          } catch (err) {
+            console.error('terra-draw finish cleanup', err)
           }
         })
         drawRef.current = draw
@@ -177,6 +276,13 @@ export function GeofencesPage() {
       setStyleEpoch(0)
     }
   }, [])
+
+  // re-apply the circle draft preview after a theme swap rebuilt the (empty) draft source
+  useEffect(() => {
+    if (styleEpoch === 0) return
+    const d = drawnRef.current
+    if (d !== null && d.kind === 'circle') setDraftRef.current(d.geometry)
+  }, [styleEpoch])
 
   // render existing geofences on the map (re-applied after every theme swap)
   useEffect(() => {
@@ -219,15 +325,34 @@ export function GeofencesPage() {
     activeModeRef.current = 'select'
   }
 
-  /** enter draft mode with the given kind (also used by the panel's type switch) */
+  /** arm/disarm the custom circle tool (terra-draw is parked in select while it is armed) */
+  const armCircle = (on: boolean) => {
+    circleRef.current = { armed: on, center: null }
+    setCircleMeta(null)
+    setRadiusLabel(null)
+    setDraftRef.current(null)
+    const canvas = mapRef.current?.getCanvas()
+    if (canvas) canvas.style.cursor = on ? 'crosshair' : ''
+  }
+
+  /** enter draft mode with the given kind (also used by the panel's type switch and the
+   *  "draw again" button — always resets to a clean, single-shape drawing state) */
   const startDraft = (kind: DraftKind) => {
-    if (!setMode(TERRA_MODE[kind])) return
+    if (kind === 'circle') {
+      if (!setMode('select')) return // park terra-draw; the custom tool owns the map now
+      updateDrawn(null)
+      armCircle(true)
+    } else {
+      armCircle(false)
+      if (!setMode(TERRA_MODE[kind])) return
+    }
     setDraftKind(kind)
     setSelectedId(null)
     setError(null)
   }
   const cancelDraft = () => {
     clearDraw()
+    armCircle(false)
     setDraftKind(null)
     setName('')
     setEditingId(null)
@@ -237,7 +362,15 @@ export function GeofencesPage() {
   /** enter draft mode PREFILLED from an existing zone (founder: geofences had no edit at all).
    *  Drawing is optional — save without a new shape patches only name/colour. */
   const startEdit = (g: GeofenceView) => {
-    if (!setMode(TERRA_MODE[g.kind] ?? 'polygon')) return
+    // the circle kind uses the CUSTOM tool (terra-draw parked in select), same as startDraft
+    if (g.kind === 'circle') {
+      if (!setMode('select')) return
+      updateDrawn(null)
+      armCircle(true)
+    } else {
+      armCircle(false)
+      if (!setMode(TERRA_MODE[g.kind] ?? 'polygon')) return
+    }
     setDraftKind(g.kind)
     setEditingId(g.id)
     setName(g.name)
@@ -268,7 +401,7 @@ export function GeofencesPage() {
         : createGeofence({ name: name.trim(), kind: drawn!.kind, color, geometry: drawn!.geometry })
     req
       .then(() => {
-        setName(''); clearDraw(); setDraftKind(null); setEditingId(null)
+        setName(''); clearDraw(); armCircle(false); setDraftKind(null); setEditingId(null)
         void qc.invalidateQueries({ queryKey: ['geofences'] })
       })
       .catch((err: unknown) => setError(err instanceof ApiError && err.status === 400 ? t('geofences.invalid') : t('geofences.error')))
@@ -347,7 +480,12 @@ export function GeofencesPage() {
                     <button
                       key={c}
                       type="button"
-                      onClick={() => setColor(c)}
+                      onClick={() => {
+                        setColor(c)
+                        draftColorRef.current = c
+                        // recolor the live circle preview immediately
+                        if (drawnRef.current !== null && drawnRef.current.kind === 'circle') setDraftRef.current(drawnRef.current.geometry)
+                      }}
                       aria-label={c}
                       aria-pressed={color === c}
                       className="h-7 w-7 rounded-full transition-transform"
@@ -361,6 +499,33 @@ export function GeofencesPage() {
                   <AdminLabel>{t('geofences.buffer')}</AdminLabel>
                   <AdminInput type="number" min={10} max={5000} step={10} value={bufferM} onChange={(e) => setBufferM(Math.max(10, Math.min(5000, Number(e.target.value) || 10)))} data-testid="gf-buffer" className="w-24" />
                 </div>
+              )}
+              {draftKind === 'circle' && circleMeta !== null && circleMeta.radiusM > 0 && (
+                <div>
+                  <AdminLabel>{t('geofences.radius')}</AdminLabel>
+                  <div className="flex items-center gap-2">
+                    <AdminInput
+                      type="number" min={MIN_RADIUS_M} max={MAX_RADIUS_M} step={10}
+                      value={circleMeta.radiusM}
+                      data-testid="gf-radius"
+                      className="w-28"
+                      onChange={(e) => {
+                        // the number IS the shape: typing 500 re-generates the circle live
+                        const r = Math.max(MIN_RADIUS_M, Math.min(MAX_RADIUS_M, Number(e.target.value) || MIN_RADIUS_M))
+                        setCircleMeta({ center: circleMeta.center, radiusM: r })
+                        const geometry = circlePolygon(circleMeta.center, r)
+                        updateDrawn({ geometry, kind: 'circle' })
+                        setDraftRef.current(geometry)
+                      }}
+                    />
+                    <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>m</span>
+                  </div>
+                </div>
+              )}
+              {drawn !== null && (
+                <AdminButton variant="ghost" size="sm" data-testid="gf-redraw" onClick={() => startDraft(draftKind)}>
+                  {t('geofences.redraw')}
+                </AdminButton>
               )}
               <div className="rounded-md p-2 text-xs" style={{ background: 'var(--admin-surface-sunken)', color: 'var(--admin-ink-soft)' }}>
                 {t(`geofences.hint.${draftKind}`)}
@@ -464,6 +629,15 @@ export function GeofencesPage() {
         {/* map panel */}
         <div className="admin-card relative min-h-[320px] overflow-hidden lg:min-h-0">
           <div ref={containerRef} className="h-full w-full" data-testid="geofence-map" data-drawing={drafting ? 'true' : undefined} />
+          {radiusLabel !== null && (
+            <span
+              className="pointer-events-none absolute z-10 rounded border px-1.5 py-0.5 font-mono text-[11px] shadow"
+              style={{ left: radiusLabel.x + 14, top: radiusLabel.y + 14, background: 'var(--admin-surface)', borderColor: 'var(--admin-hairline)', color: 'var(--admin-ink)' }}
+              data-testid="gf-radius-label"
+            >
+              {radiusLabel.text}
+            </span>
+          )}
           <MapErrorOverlay show={mapError} testId="geofence-map-error" />
           {/* Contextual draw hint while drafting. Two states so "how do I finish?" is never a
               mystery: (1) drawing → the per-shape gesture to CLOSE the shape; (2) once terra-draw

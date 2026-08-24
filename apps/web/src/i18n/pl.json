@@ -386,7 +386,7 @@
     },
     "hint": {
       "polygon": "Klikaj każdy narożnik na mapie. Zamknij kształt, klikając pierwszy punkt (lub podwójne kliknięcie).",
-      "circle": "Kliknij środek, potem ponownie, aby ustawić rozmiar.",
+      "circle": "Kliknij środek, przeciągnij do żądanego rozmiaru (promień podąża za kursorem) i kliknij ponownie. Potem promień można doprecyzować liczbą.",
       "corridor": "Klikaj każdy punkt trasy. Podwójne kliknięcie kończy linię."
     },
     "drawing": "Rysowanie…",
@@ -396,7 +396,9 @@
     "deleteError": "Nie udało się usunąć geofence — spróbuj ponownie.",
     "edit": "Edytuj",
     "editTitle": "Edytuj geostrefę",
-    "editHint": "Zmień nazwę lub kolor. Aby zmienić kształt, narysuj nowy na mapie; bez niego obecny kształt pozostaje."
+    "editHint": "Zmień nazwę lub kolor. Aby zmienić kształt, narysuj nowy na mapie; bez niego obecny kształt pozostaje.",
+    "radius": "Promień",
+    "redraw": "Rysuj od nowa"
   },
   "deviceList": {
     "title": "Urządzenia",

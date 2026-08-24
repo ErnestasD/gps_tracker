@@ -386,7 +386,7 @@
     },
     "hint": {
       "polygon": "Click the map to drop each corner. Click the first point (or double-click) to close the shape.",
-      "circle": "Click once for the centre, then click again to set the size.",
+      "circle": "Click the centre, drag to the size you want (the radius follows the cursor) and click again. You can then fine-tune the radius as a number.",
       "corridor": "Click each point along the route. Double-click to finish the line."
     },
     "drawing": "Drawing…",
@@ -396,7 +396,9 @@
     "deleteError": "Couldn't delete the geofence — try again.",
     "edit": "Edit",
     "editTitle": "Edit geofence",
-    "editHint": "Change the name or colour. To reshape it, draw a new shape on the map; without one the current shape stays."
+    "editHint": "Change the name or colour. To reshape it, draw a new shape on the map; without one the current shape stays.",
+    "radius": "Radius",
+    "redraw": "Draw again"
   },
   "deviceList": {
     "title": "Devices",
