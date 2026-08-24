@@ -1,6 +1,6 @@
 import type { GeofenceView } from '@orbetra/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Circle as CircleIcon, Hexagon, MousePointerClick, Route as RouteIcon, Search, Trash2, X } from 'lucide-react'
+import { Check, Circle as CircleIcon, Hexagon, MousePointerClick, Pencil, Route as RouteIcon, Search, Trash2, X } from 'lucide-react'
 import type { GeoJSONSource, Map as MbMap } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -13,7 +13,7 @@ import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { ApiError } from '@/lib/http'
-import { createGeofence, deleteGeofence, geofenceBounds, geofenceFeatures, listGeofences } from '@/lib/geofences'
+import { createGeofence, deleteGeofence, geofenceBounds, geofenceFeatures, listGeofences, updateGeofence } from '@/lib/geofences'
 import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
@@ -67,6 +67,9 @@ export function GeofencesPage() {
   // delete target resolves against the LIVE list (devices precedent) — a refetch never
   // leaves the confirm pointed at a stale snapshot
   const [deleteForId, setDeleteForId] = useState<string | null>(null)
+  /** non-null = DRAFT mode is EDITING this zone (rename/recolor, optional redraw) rather than
+   *  creating a new one — the same panel, so the drawing tools stay one flow */
+  const [editingId, setEditingId] = useState<string | null>(null)
   const deleteFor = (geofences.data ?? []).find((g) => g.id === deleteForId) ?? null
   const selected = (geofences.data ?? []).find((g) => g.id === selectedId) ?? null
 
@@ -227,20 +230,45 @@ export function GeofencesPage() {
     clearDraw()
     setDraftKind(null)
     setName('')
+    setEditingId(null)
+    setError(null)
+  }
+
+  /** enter draft mode PREFILLED from an existing zone (founder: geofences had no edit at all).
+   *  Drawing is optional — save without a new shape patches only name/colour. */
+  const startEdit = (g: GeofenceView) => {
+    if (!setMode(TERRA_MODE[g.kind] ?? 'polygon')) return
+    setDraftKind(g.kind)
+    setEditingId(g.id)
+    setName(g.name)
+    setColor(g.color ?? COLORS[0]!)
+    setBufferM(100)
+    setSelectedId(null)
     setError(null)
   }
 
   const save = () => {
-    if (drawn === null || name.trim() === '' || saving) return // in-flight guard: no duplicate geofences on double-click
+    // creating requires a drawn shape; EDITING does not — name/colour alone is a valid save
+    if ((editingId === null && drawn === null) || name.trim() === '' || saving) return
     setError(null)
     setSaving(true)
     // a corridor sends its route line + buffer half-width; polygon/circle send the drawn polygon
-    const created = drawn.kind === 'corridor'
-      ? createGeofence({ name: name.trim(), kind: 'corridor', color, line: drawn.geometry, bufferM })
-      : createGeofence({ name: name.trim(), kind: drawn.kind, color, geometry: drawn.geometry })
-    created
+    const req = editingId !== null
+      ? updateGeofence(editingId, {
+          name: name.trim(),
+          color,
+          ...(drawn !== null
+            ? drawn.kind === 'corridor'
+              ? { line: drawn.geometry, bufferM }
+              : { geometry: drawn.geometry }
+            : {}),
+        })
+      : drawn!.kind === 'corridor'
+        ? createGeofence({ name: name.trim(), kind: 'corridor', color, line: drawn!.geometry, bufferM })
+        : createGeofence({ name: name.trim(), kind: drawn!.kind, color, geometry: drawn!.geometry })
+    req
       .then(() => {
-        setName(''); clearDraw(); setDraftKind(null)
+        setName(''); clearDraw(); setDraftKind(null); setEditingId(null)
         void qc.invalidateQueries({ queryKey: ['geofences'] })
       })
       .catch((err: unknown) => setError(err instanceof ApiError && err.status === 400 ? t('geofences.invalid') : t('geofences.error')))
@@ -261,7 +289,7 @@ export function GeofencesPage() {
               <X className="h-4 w-4" aria-hidden />
               {t('admin.cancel')}
             </AdminButton>
-            <AdminButton disabled={drawn === null || name.trim() === '' || saving} data-testid="gf-save" onClick={save}>
+            <AdminButton disabled={(editingId === null && drawn === null) || name.trim() === '' || saving} data-testid="gf-save" onClick={save}>
               <Check className="h-4 w-4" aria-hidden />
               {t('geofences.save')}
             </AdminButton>
@@ -283,8 +311,12 @@ export function GeofencesPage() {
           {drafting ? (
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4" data-testid="gf-draft-panel">
               <div>
-                <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('geofences.new')}</div>
-                <div className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('geofences.draftHint')}</div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+                  {editingId !== null ? t('geofences.editTitle') : t('geofences.new')}
+                </div>
+                <div className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+                  {editingId !== null ? t('geofences.editHint') : t('geofences.draftHint')}
+                </div>
               </div>
               <div>
                 <AdminLabel>{t('geofences.name')}</AdminLabel>
@@ -292,6 +324,9 @@ export function GeofencesPage() {
               </div>
               <div>
                 <AdminLabel>{t('geofences.type')}</AdminLabel>
+                {editingId !== null ? (
+                  <Badge tone="neutral" data-testid="gf-edit-kind">{t(`geofences.${draftKind}`)}</Badge>
+                ) : (
                 <AdminRadio
                   name="gf-type"
                   value={draftKind}
@@ -302,6 +337,7 @@ export function GeofencesPage() {
                     { value: 'corridor', label: t('geofences.corridor'), hint: t('geofences.typeHint.corridor') },
                   ]}
                 />
+                )}
               </div>
               <div>
                 <AdminLabel>{t('geofences.color')}</AdminLabel>
@@ -385,6 +421,21 @@ export function GeofencesPage() {
                           </span>
                           <span className="truncate font-medium">{g.name}</span>
                           <Badge tone="neutral" className="ml-auto">{t(`geofences.${g.kind}`)}</Badge>
+                          {canWrite && (
+                            <button
+                              type="button"
+                              aria-label={t('geofences.edit')}
+                              data-testid={`gf-edit-${g.id}`}
+                              className="grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--admin-brand-soft)]"
+                              style={{ color: 'var(--admin-ink-soft)' }}
+                              onClick={(e) => {
+                                e.stopPropagation() // edit must not toggle row selection
+                                startEdit(g)
+                              }}
+                            >
+                              <Pencil className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+                          )}
                           {canWrite && (
                             <button
                               type="button"

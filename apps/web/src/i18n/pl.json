@@ -393,7 +393,10 @@
     "drawnTitle": "Kształt narysowany",
     "drawnNeedName": "Teraz wpisz nazwę i kliknij Zapisz.",
     "drawnReady": "Gotowe — kliknij Zapisz, aby utworzyć.",
-    "deleteError": "Nie udało się usunąć geofence — spróbuj ponownie."
+    "deleteError": "Nie udało się usunąć geofence — spróbuj ponownie.",
+    "edit": "Edytuj",
+    "editTitle": "Edytuj geostrefę",
+    "editHint": "Zmień nazwę lub kolor. Aby zmienić kształt, narysuj nowy na mapie; bez niego obecny kształt pozostaje."
   },
   "deviceList": {
     "title": "Urządzenia",

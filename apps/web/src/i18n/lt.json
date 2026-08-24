@@ -393,7 +393,10 @@
     "drawnTitle": "Figūra nubraižyta",
     "drawnNeedName": "Dabar įveskite pavadinimą ir spauskite Išsaugoti.",
     "drawnReady": "Paruošta — spauskite Išsaugoti, kad sukurtumėte.",
-    "deleteError": "Nepavyko ištrinti geofence — bandykite dar kartą."
+    "deleteError": "Nepavyko ištrinti geofence — bandykite dar kartą.",
+    "edit": "Redaguoti",
+    "editTitle": "Redaguoti geozoną",
+    "editHint": "Pakeiskite pavadinimą ar spalvą. Norėdami perbraižyti formą — nubrėžkite naują žemėlapyje; nesant naujos formos, esama lieka."
   },
   "deviceList": {
     "title": "Įrenginiai",

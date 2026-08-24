@@ -77,7 +77,10 @@ export interface GeofenceCreate {
 export interface GeofenceUpdate {
   name?: string
   color?: string
-  geometry?: unknown // kind is immutable post-create (a corridor is physically a buffered polygon)
+  geometry?: unknown // polygon/circle redraw (kind is immutable post-create)
+  /** corridor redraw: new centre-line + buffer half-width — re-buffered server-side like create */
+  line?: unknown
+  bufferM?: number
 }
 
 export interface GeofenceRepo {
@@ -225,12 +228,24 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
     update: async (scope, actor, id, data) => {
       const before = await one(scope, id)
       if (before === null) return null
-      // update only changes a POLYGON geometry (corridor re-editing = redraw, like circles)
-      if (data.geometry !== undefined) await guardGeog(Prisma.sql`ST_GeomFromGeoJSON(${JSON.stringify(data.geometry)})::geography`)
+      // a geometry redraw must match the stored kind: a corridor re-buffers a new line (same
+      // ST_Buffer path as create), polygon/circle take the drawn polygon — never cross-kind
+      if (data.geometry !== undefined && before.kind === 'corridor') throw new GeofenceInvalidError()
+      if (data.line !== undefined && before.kind !== 'corridor') throw new GeofenceInvalidError()
+      const geomExpr =
+        data.geometry !== undefined
+          ? Prisma.sql`ST_GeomFromGeoJSON(${JSON.stringify(data.geometry)})::geography`
+          : data.line !== undefined
+            ? (() => {
+                if (typeof data.bufferM !== 'number' || data.bufferM < 10 || data.bufferM > 5_000) throw new GeofenceInvalidError()
+                return Prisma.sql`ST_Buffer(ST_GeomFromGeoJSON(${JSON.stringify(data.line)})::geography, ${data.bufferM})`
+              })()
+            : null
+      if (geomExpr !== null) await guardGeog(geomExpr)
       const sets: Prisma.Sql[] = []
       if (data.name !== undefined) sets.push(Prisma.sql`name = ${data.name}`)
       if (data.color !== undefined) sets.push(Prisma.sql`color = ${data.color}`)
-      if (data.geometry !== undefined) sets.push(Prisma.sql`geom = ST_GeomFromGeoJSON(${JSON.stringify(data.geometry)})::geography`)
+      if (geomExpr !== null) sets.push(Prisma.sql`geom = ${geomExpr}`)
       if (sets.length === 0) return before
       // mutateScopeSql (NOT scopeSql): an account-scoped caller must not mutate a tenant-shared fence.
       // `before` may be a shared fence they can READ, but the UPDATE then matches zero rows → 404.

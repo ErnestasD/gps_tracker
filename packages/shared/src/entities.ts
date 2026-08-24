@@ -740,8 +740,15 @@ export const geofenceUpdateSchema = z
     name: z.string().min(1).max(120),
     color: hexColor,
     geometry: geoJsonPolygonSchema,
+    /** corridor redraw: a new centre-line + buffer half-width (server re-buffers, like create) */
+    line: geoJsonLineStringSchema,
+    bufferM: corridorBufferSchema,
   })
   .partial()
+  // a redraw is EITHER a polygon geometry OR a corridor line+buffer — never both, and a line
+  // without its buffer (or vice versa) is half a corridor
+  .refine((d) => !(d.geometry !== undefined && (d.line !== undefined || d.bufferM !== undefined)), { message: 'geometry and line/bufferM are exclusive' })
+  .refine((d) => (d.line !== undefined) === (d.bufferM !== undefined), { message: 'line and bufferM come together' })
 
 export interface GeofenceView {
   id: string

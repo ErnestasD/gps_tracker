@@ -12,6 +12,16 @@ export const listGeofences = () => getJson<GeofenceView[]>('/v1/geofences')
 export const createGeofence = (data: GeofenceInput) => mutate<GeofenceView>('POST', '/v1/geofences', data)
 export const deleteGeofence = (id: string) => mutate<{ ok: boolean }>('DELETE', `/v1/geofences/${encodeURIComponent(id)}`)
 
+export interface GeofenceUpdateInput {
+  name?: string
+  color?: string
+  geometry?: GeoJSON.Geometry
+  line?: GeoJSON.Geometry
+  bufferM?: number
+}
+export const updateGeofence = (id: string, data: GeofenceUpdateInput) =>
+  mutate<GeofenceView>('PATCH', `/v1/geofences/${encodeURIComponent(id)}`, data)
+
 /** GeoJSON FeatureCollection of geofence polygons for a Mapbox GL fill/line source. */
 export function geofenceFeatures(geofences: GeofenceView[]): GeoJSON.FeatureCollection {
   return {

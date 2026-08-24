@@ -393,7 +393,10 @@
     "drawnTitle": "Shape drawn",
     "drawnNeedName": "Now enter a name, then click Save.",
     "drawnReady": "Ready — click Save to create it.",
-    "deleteError": "Couldn't delete the geofence — try again."
+    "deleteError": "Couldn't delete the geofence — try again.",
+    "edit": "Edit",
+    "editTitle": "Edit geofence",
+    "editHint": "Change the name or colour. To reshape it, draw a new shape on the map; without one the current shape stays."
   },
   "deviceList": {
     "title": "Devices",

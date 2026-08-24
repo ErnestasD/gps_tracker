@@ -393,7 +393,10 @@
     "drawnTitle": "Form gezeichnet",
     "drawnNeedName": "Jetzt einen Namen eingeben und Speichern klicken.",
     "drawnReady": "Bereit — zum Erstellen Speichern klicken.",
-    "deleteError": "Geofence konnte nicht gelöscht werden — bitte erneut versuchen."
+    "deleteError": "Geofence konnte nicht gelöscht werden — bitte erneut versuchen.",
+    "edit": "Bearbeiten",
+    "editTitle": "Geozone bearbeiten",
+    "editHint": "Name oder Farbe ändern. Zum Umformen eine neue Form auf der Karte zeichnen; ohne neue Form bleibt die bestehende."
   },
   "deviceList": {
     "title": "Geräte",
