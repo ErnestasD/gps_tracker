@@ -24,7 +24,7 @@ const basePayload = {
 }
 
 describe('normalize (E02-3)', () => {
-  it('fix_valid = satellites > 0 (CLAUDE.md rule 6 / I5)', () => {
+  it('fix_valid = satellites > 0, and not an exact 0/0 (CLAUDE.md rule 6 / I5, ADR-039)', () => {
     expect(normalize({ ...basePayload, satellites: 9 }, hash).fixValid).toBe(true)
     expect(normalize({ ...basePayload, satellites: 0 }, hash).fixValid).toBe(false)
   })
@@ -298,3 +298,32 @@ describe('the device odometer is whichever id THIS model calls Total Odometer', 
   })
 })
 
+
+/**
+ * Null island: 0/0 with a full sky.
+ *
+ * PROJECT_PLAN §3.4 is wiki-verified and models one no-fix shape — last valid coordinates with
+ * `satellites = 0` — so `fix_valid := satellites > 0` was the whole rule. Real hardware produced
+ * another: on 2026-08-20 the founder's FTC887 sent 0/0 with 34–37 satellites, fifty records over
+ * two days, every one stored as a VALID fix. The map drew the vehicle in the Gulf of Guinea, a trip
+ * opened there, and a geofence exit was one zone away from firing.
+ */
+describe('an exact 0/0 is never a valid fix, whatever the satellite count', () => {
+  it('marks the record invalid, without rewriting what the device said', () => {
+    const rec = normalize({ ...basePayload, lat: 0, lon: 0, satellites: 37 }, hash)
+    expect(rec.fixValid).toBe(false)
+    expect(rec.satellites).toBe(37) // the count is the device's claim; we judge it, we do not edit it
+    // §3.4: the row is still STORED — "reporting from nowhere" is evidence, and fixValid=false is
+    // what excludes it from distance, geofences, overspeed and the trail.
+    expect(rec.lat).toBe(0)
+  })
+
+  it('a zero on ONE axis is a real place — Greenwich and the equator are not null island', () => {
+    expect(normalize({ ...basePayload, lat: 51.48, lon: 0, satellites: 11 }, hash).fixValid).toBe(true)
+    expect(normalize({ ...basePayload, lat: 0, lon: 25.27, satellites: 11 }, hash).fixValid).toBe(true)
+  })
+
+  it('§3.4 still holds: no satellites is still an invalid fix', () => {
+    expect(normalize({ ...basePayload, lat: 54.68, lon: 25.27, satellites: 0 }, hash).fixValid).toBe(false)
+  })
+})

@@ -1,5 +1,5 @@
 import { applySign, loadDictionary, type AvlTable } from '@orbetra/codec'
-import { rawStreamPayloadSchema, type NormalizedRecord, type RawStreamPayload } from '@orbetra/shared'
+import { isNullIsland, rawStreamPayloadSchema, type NormalizedRecord, type RawStreamPayload } from '@orbetra/shared'
 
 // Core AVL ids (wiki FMB120 table, PROJECT_PLAN §3.7): promoted to columns.
 // https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
@@ -89,7 +89,8 @@ export type HashFn = (data: Uint8Array) => bigint
 /**
  * Stream payload → NormalizedRecord (PROJECT_PLAN §6.1 "normalize"):
  * dictionary decode (per-family; profile-driven lookup arrives with E03-3 —
- * default fmb1xx until devices carry profiles), fix_valid = satellites > 0
+ * default fmb1xx until devices carry profiles), fix_valid = satellites > 0 AND not an exact
+ * 0/0 (rule 6 plus the null-island note on `isNullIsland` — §3.4's rule alone proved insufficient)
  * (CLAUDE.md rule 6), core IO promoted to columns, everything else → attrs
  * (named via dictionary, unknown ids kept as io_<id> — never dropped, §3.7).
  * rec_hash = xxhash64(raw) reinterpreted as SIGNED 64-bit (§6.3 R10 trap).
@@ -163,6 +164,29 @@ export type FieldNulled = (field: string) => void
  * worth incomparably more to a customer than no position. It is NOT a default to design against.
  */
 export const FALLBACK_AVL_TABLE: AvlTable = 'fmb120'
+
+/**
+ * Latitude and longitude of exactly zero — "null island", in the Atlantic ~600 km south of Ghana.
+ *
+ * PROJECT_PLAN §3.4 says a device with no fix sends its LAST VALID coordinates with `satellites=0`,
+ * so `fix_valid := satellites > 0` was the whole rule. Real hardware disagrees. On 2026-08-20 the
+ * founder's FTC887 sent 0/0 with **34–37 satellites** and `speed 0`, for fifty records across two
+ * days, and every one was stored as a VALID fix: the map drew the vehicle in the Gulf of Guinea, a
+ * trip opened there, and a geofence exit was one zone away from firing. §3.4's rule is necessary
+ * and, on this hardware, not sufficient.
+ *
+ * Zero is not a coordinate a tracked vehicle reports. The odds of a real fix landing on both axes
+ * at exactly 0.0000000 are nil, and the cost of being wrong is asymmetric: refusing one improbable
+ * mid-Atlantic fix loses a point nobody needed, while accepting a fabricated one moves a customer's
+ * vehicle 6000 km, opens a phantom trip and can fire a geofence alarm.
+ *
+ * Deliberately EXACT equality, not a radius: a tolerance would start discarding real fixes off the
+ * African coast, and this is a sentinel value, not a region.
+ *
+ * The predicate itself lives in @orbetra/shared. The web client must refuse the SAME rows this
+ * refuses — a rule with two definitions is a rule with two answers, and the stored rows written
+ * before this fix outlive it (ADR-039).
+ */
 
 export function normalize(
   payload: unknown,
@@ -241,7 +265,7 @@ export function normalize(
     // satellites is smallint and NOT NULL (rule 6 / I5 reads it). An out-of-range count is garbage,
     // so fall to 0 — which marks the fix INVALID, the fail-safe side of I5.
     satellites: sats,
-    fixValid: sats > 0, // rule 6 / I5 — reads the SAME value the row stores
+    fixValid: sats > 0 && !isNullIsland(p.lat, p.lon), // rule 6 / I5 — reads the SAME values the row stores
     ignition,
     movement,
     odometerM,

@@ -704,3 +704,71 @@ describe('stationary jitter', () => {
     expect(coords).toHaveLength(3) // where it was parked, then the two driven points
   })
 })
+
+/**
+ * Null island — 0/0, in the Atlantic south of Ghana.
+ *
+ * Founder-reported from the live map, 2026-08-20: a device driving normally appeared in the Gulf of
+ * Guinea. The pipeline had marked the record VALID, because PROJECT_PLAN §3.4's rule is
+ * `fix_valid := satellites > 0` and the device reported 34–37 satellites while sending 0/0. The
+ * pipeline is fixed; this is the client refusing to draw a coordinate it can see is impossible,
+ * because fifty such rows are already stored.
+ */
+describe('a coordinate of exactly 0/0 never places a marker', () => {
+  const frameOf = (store: LiveStore): MapFrame => {
+    let out: MapFrame | null = null
+    store.onMapFrame((f) => { out = f })
+    store.flush(true)
+    return out!
+  }
+
+  it('is refused even when the server calls the fix VALID', () => {
+    const store = new LiveStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 0, lon: 0, fixValid: true, satellites: 37 }))
+    expect(frameOf(store).devices.features).toHaveLength(0)
+    // …and the device is still in the list: it is reporting, it just cannot be placed
+    expect(store.getSnapshot().devices.map((d) => d.ev.deviceId)).toEqual(['1'])
+  })
+
+  it('holds the last real position rather than jumping to the Atlantic', () => {
+    const store = new LiveStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27, fixValid: true, satellites: 12 }))
+    store.ingest(ev('1', T0 + 1_000, { lat: 0, lon: 0, fixValid: true, satellites: 37 }))
+    const f = frameOf(store).devices.features
+    expect((f[0]!.geometry as GeoJSON.Point).coordinates).toEqual([25.27, 54.68])
+  })
+
+  it('a real fix at zero LONGITUDE only is still a place (Greenwich is not null island)', () => {
+    const store = new LiveStore(() => T0)
+    store.ingest(ev('1', T0, { lat: 51.48, lon: 0, fixValid: true, satellites: 11 }))
+    expect(frameOf(store).devices.features).toHaveLength(1)
+  })
+
+  /**
+   * The MARKER was guarded and the TRAIL was not.
+   *
+   * Hostile review, 2026-08-24: `ingest` held the marker on `placeable(ev)` but pushed the ring
+   * buffer with `fixValid: ev.fixValid` — the device's own verdict — three lines below. So the
+   * vehicle stayed in Vilnius while a line was drawn to the Gulf of Guinea and back.
+   *
+   * `dropStationaryJitter` cannot rescue this: the founder's record carried speed 0, so it reaches
+   * the stationary branch, but 0/0 is ~6000 km from the anchor — far past the jitter gate — so it
+   * is kept AND becomes the new anchor. CLAUDE.md rule 6: such a record never affects a map trail.
+   */
+  it('never becomes a trail vertex — the marker was guarded and the line was not', () => {
+    const store = new LiveStore(() => T0)
+    store.setTrail(true)
+    store.select('1')
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27, fixValid: true, satellites: 12, speed: 0 }))
+    store.ingest(ev('1', T0 + 1_000, { lat: 54.681, lon: 25.271, fixValid: true, satellites: 12, speed: 0 }))
+    store.ingest(ev('1', T0 + 2_000, { lat: 0, lon: 0, fixValid: true, satellites: 37, speed: 0 }))
+    store.ingest(ev('1', T0 + 3_000, { lat: 54.682, lon: 25.272, fixValid: true, satellites: 12, speed: 0 }))
+
+    const coords = frameOf(store)
+      .trail.features.flatMap((f) =>
+        f.geometry.type === 'LineString' ? (f.geometry.coordinates as [number, number][]) : [],
+      )
+    expect(coords.length).toBeGreaterThan(0) // the trail is actually being drawn, or this proves nothing
+    expect(coords).not.toContainEqual([0, 0])
+  })
+})

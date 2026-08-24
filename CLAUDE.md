@@ -38,7 +38,7 @@ tools/replay    real-log replayer for load tests.
 3. **No business logic in apps/ingest.** It frames, verifies, parses, persists to stream, ACKs. Nothing else.
 4. **ACK contract:** reply the 4-byte record count ONLY after XADD returns. On partial parse failure, ACK the count actually persisted.
 5. **Ordering:** all per-device processing happens on the device's shard (`imei % 16`). Never process positions for one device concurrently.
-6. **Invalid fix:** `satellites == 0` ⇒ `fix_valid=false`. Such records NEVER affect trip distance, geofence state, overspeed, or map trails. They may affect presence and IO events.
+6. **Invalid fix:** `satellites == 0` **or an exact 0/0** ⇒ `fix_valid=false` (ADR-039 — one zero axis is a real place; use `isNullIsland` from `@orbetra/shared`, never a re-implementation). Such records NEVER affect trip distance, geofence state, overspeed, or map trails. They may affect presence and IO events.
 7. **Time:** DB stores UTC `timestamptz` only. Formatting with account timezone happens at render, via date-fns-tz. `new Date()` arithmetic without explicit zone handling is banned in report code.
 8. **Protocol claims need citations.** Any byte offset, codec detail, or AVL ID in code/comments must reference a wiki URL. If you cannot cite it: stop, insert `// TODO(VERIFY-WIKI): <question>`, and surface it. CI blocks merge on that marker — that is intentional.
 9. **Golden fixtures are immutable.** If a fixture seems wrong, you do not edit it; you cite the wiki section proving it wrong and ask the human.

@@ -10,7 +10,7 @@ I5 (PROJECT_PLAN §6.1): invalid-fix įrašai (satellites==0 ⇒ fixValid=false)
 
 ## Būsena (žvalgyba)
 
-- `apps/worker/src/normalize.ts:63` — `fixValid: p.satellites > 0` JAU yra, padengtas `normalize.spec.ts` („satellites 0 ⇒ false"). **Nekeičiama.**
+- `apps/worker/src/normalize.ts:63` — `fixValid: p.satellites > 0` JAU yra, padengtas `normalize.spec.ts` („satellites 0 ⇒ false"). ~~**Nekeičiama.**~~ **Pakeista 2026-08-24:** reali geležis atsiuntė 0/0 su 37 palydovais, todėl pridėta ir `!isNullIsland(lat, lon)` sąlyga — žr. ADR-039.
 - Worker'yje NĖRA trip/rules/geofence kodo — tik komentaras `consumer.ts:18`. `main.ts` onBatch šiandien: prom + `liveState.apply` (LiveState fixValid nefiltruoja — teisinga, presence kelias).
 - `tools/simulator/scenarios/invalidFix.ts` — kas 3-čias įrašas invalid (paskutinės valid koordinatės, sat=0, speed=0, angle=0).
 - `apps/web/src/lib/liveStore.ts` `pushMapFrame` — trail = vienas LineString per VISUS taškus (gap logikos nėra); `LiveMap.tsx` — vienas `trail-line` sluoksnis.

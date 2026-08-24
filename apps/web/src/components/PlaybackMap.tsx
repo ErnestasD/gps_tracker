@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { buildTrailFeatures } from '@/lib/liveStore'
 import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
+import { placeableFix } from '@/lib/telemetry'
 
 const VILNIUS: [number, number] = [25.2797, 54.6872]
 // ADR-028 palette: trail = --accent (dark), gap = --muted
@@ -81,12 +82,14 @@ export function PlaybackMap({ positions, trips, index }: { positions: PositionVi
     const map = mapRef.current
     if (map === null || styleEpoch === 0) return
     map.getSource<GeoJSONSource>('trail')?.setData(
-      pointFC(buildTrailFeatures(positions.map((p) => ({ lon: p.lon, lat: p.lat, fixValid: p.fixValid, fixTimeMs: Date.parse(p.fixTime), speed: p.speed, movement: p.movement })))),
+      pointFC(buildTrailFeatures(positions.map((p) => ({ lon: p.lon, lat: p.lat, fixValid: placeableFix(p), fixTimeMs: Date.parse(p.fixTime), speed: p.speed, movement: p.movement })))),
     )
     map.getSource<GeoJSONSource>('stops')?.setData(pointFC(stopFeatures(trips)))
     if (positions === lastFitRef.current) return // theme swap: keep the user's camera
     lastFitRef.current = positions
-    const valid = positions.filter((p) => p.fixValid)
+    // placeableFix, not p.fixValid: one stored 0/0 row made fitBounds span Vilnius to the
+    // Gulf of Guinea, and the whole replay became a dot
+    const valid = positions.filter(placeableFix)
     if (valid.length > 0) {
       const b = new mapboxgl.LngLatBounds([valid[0]!.lon, valid[0]!.lat], [valid[0]!.lon, valid[0]!.lat])
       for (const p of valid) b.extend([p.lon, p.lat])
@@ -100,7 +103,9 @@ export function PlaybackMap({ positions, trips, index }: { positions: PositionVi
     if (map === null || styleEpoch === 0) return
     const p = positions[index]
     const src = map.getSource<GeoJSONSource>('cursor')
-    if (p === undefined || !p.fixValid) src?.setData(pointFC([]))
+    // placeableFix: lines above already fit the camera to placeable bounds, so a raw fixValid here
+    // planted the cursor at a 0/0 the camera would never follow — a marker off-screen in the Gulf
+    if (p === undefined || !placeableFix(p)) src?.setData(pointFC([]))
     else src?.setData(pointFC([{ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: {} }]))
   }, [index, positions, styleEpoch])
 

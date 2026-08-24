@@ -1,4 +1,4 @@
-import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
+import { isNullIsland, liveEventSchema, type LiveEvent } from '@orbetra/shared'
 
 export type DeviceStatus = 'online' | 'stale' | 'offline'
 export type ConnState = 'connecting' | 'open' | 'closed'
@@ -241,6 +241,21 @@ const TRAIL_CAP = 3_600 // ≈1 h at 1 Hz; ring buffer, oldest dropped
 const sameScrub = (a: ScrubState, b: ScrubState): boolean =>
   a === b || (a !== null && b !== null && a !== 'unknown' && b !== 'unknown' && a.lon === b.lon && a.lat === b.lat && a.course === b.course)
 
+/**
+ * Can this record be drawn as a place?
+ *
+ * `fixValid` is the pipeline's answer and is normally the whole story. The second clause is because
+ * it was not: on 2026-08-20 the founder's FTC887 reported 0/0 with 34–37 satellites, the pipeline
+ * marked it valid (§3.4's rule only covers `satellites == 0`), and the map drew the vehicle in the
+ * Gulf of Guinea — the exact failure `DeviceLive.fix` exists to prevent, arriving through the one
+ * door it did not watch.
+ *
+ * The pipeline is fixed too, and that is the real fix. This stays because fifty such rows are
+ * already stored, replays and exports will carry them for months, and a client that trusts a
+ * coordinate it can see is impossible has no defence when the server is wrong again.
+ */
+const placeable = (ev: LiveEvent): boolean => ev.fixValid && !isNullIsland(ev.lat, ev.lon)
+
 const statusOf = (ageMs: number): DeviceStatus =>
   ageMs <= ONLINE_MS ? 'online' : ageMs <= STALE_MS ? 'stale' : 'offline'
 
@@ -351,10 +366,14 @@ export class LiveStore {
     const current = this.byId.get(ev.deviceId)
     if (current && current.ev.fixTimeMs >= ev.fixTimeMs) return // max-wins
     // only a VALID fix moves the marker; an invalid one keeps whatever we last knew (see `fix`)
-    const fix = ev.fixValid ? { lon: ev.lon, lat: ev.lat, course: ev.course ?? 0 } : (current?.fix ?? null)
+    const fix = placeable(ev) ? { lon: ev.lon, lat: ev.lat, course: ev.course ?? 0 } : (current?.fix ?? null)
     this.byId.set(ev.deviceId, { ev, status: statusOf(this.now() - ev.fixTimeMs), fix })
     if (this.snapshot.trail && ev.deviceId === this.snapshot.selectedId) {
-      this.trailPoints.push({ lon: ev.lon, lat: ev.lat, fixValid: ev.fixValid, fixTimeMs: ev.fixTimeMs, speed: ev.speed, movement: null })
+      // `placeable`, NOT ev.fixValid: the marker above already refuses a stored 0/0, but the trail
+      // stored the device's own verdict and drew it anyway. dropStationaryJitter cannot save it
+      // either — a 0/0 sits ~6000 km from the anchor, so it clears the jitter gate and BECOMES the
+      // anchor. Rule 6 says such a record never affects a map trail; this is where it did.
+      this.trailPoints.push({ lon: ev.lon, lat: ev.lat, fixValid: placeable(ev), fixTimeMs: ev.fixTimeMs, speed: ev.speed, movement: null })
       if (this.trailPoints.length > TRAIL_CAP) this.trailPoints.shift()
     }
     this.dirty = true

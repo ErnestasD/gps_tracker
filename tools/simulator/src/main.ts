@@ -3,6 +3,7 @@ import { runFleet } from './fleet.js'
 import { bufferedFlood } from './scenarios/bufferedFlood.js'
 import { corruptCrc } from './scenarios/corruptCrc.js'
 import { invalidFix } from './scenarios/invalidFix.js'
+import { nullIsland } from './scenarios/nullIsland.js'
 import { panic } from './scenarios/panic.js'
 import { fuelTheft } from './scenarios/fuelTheft.js'
 import { slowLoris } from './scenarios/slowLoris.js'
@@ -16,6 +17,7 @@ const SCENARIOS: Record<string, Scenario> = {
   oversize,
   bufferedFlood,
   invalidFix,
+  nullIsland,
   panic,
   fuelTheft,
   slowLoris,

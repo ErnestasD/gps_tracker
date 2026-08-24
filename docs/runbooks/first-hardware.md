@@ -124,7 +124,9 @@ Read the output in this order:
    page is incomplete for that model — worth reporting to them, and worth a dictionary note.
 3. **ignition / movement / odometer.** If ignition never arrives, trips will not open on a vehicle
    profile. FTC887 and FMC150 both document all three.
-4. **`fix_valid` vs `satellites == 0`.** Rule 6 says these must be the same set; a mismatch is ours.
+4. **`fix_valid` vs `satellites == 0`.** Rule 6 says these must be the same set — **except for an
+   exact 0/0, which is invalid at ANY satellite count** (ADR-039; the FTC887 below is the reason).
+   Any OTHER mismatch is ours.
 
 ## What we already know about these two
 

@@ -21,6 +21,15 @@ export interface MigrateResult {
 
 export async function migrate(databaseUrl: string, dir: string = SQL_DIR): Promise<MigrateResult> {
   const client = new pg.Client({ connectionString: databaseUrl })
+  /**
+   * Surface RAISE NOTICE. Without this a migration can report what it did — or that it did
+   * NOTHING — into a void: node-postgres swallows notices unless something listens. A data repair
+   * that silently matches zero rows and a data repair that fixes five million look identical in the
+   * deploy log, which is not a difference an operator should have to go and query for.
+   */
+  client.on('notice', (n) => {
+    if (n.message !== undefined) console.log(`  ${n.message}`)
+  })
   await client.connect()
   const result: MigrateResult = { applied: [], skipped: [] }
   try {

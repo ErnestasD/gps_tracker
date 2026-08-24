@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useFmt } from '@/lib/datetime'
 import type { ScrubState } from '@/lib/liveStore'
-import { placeAt, pointAt, type TrackPoint } from '@/lib/telemetry'
+import { placeAt, placeableFix, pointAt, type TrackPoint } from '@/lib/telemetry'
 import { canScrub, firstPlaceBack, quickJumps, SPAN_OPTIONS_H, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
@@ -270,7 +270,9 @@ export function Timeline({
   const pct = ((spanSec - back) / spanSec) * 100
   const atIso = new Date(atMs).toISOString()
   // O(n) over up to 10 000 points, and this component re-renders at the store's 1 Hz cadence
-  const valid = useMemo(() => points.filter((p) => p.fixValid).length, [points])
+  // placeableFix, not fixValid: the camera already refuses a stored 0/0, and a caption that counts
+  // it as a good fix disagrees with the map about the same instant
+  const valid = useMemo(() => points.filter(placeableFix).length, [points])
 
   /**
    * The axis: ROUND wall-clock times (14:00, 15:00 …), not offsets from a bucketed "now". The
@@ -302,7 +304,9 @@ export function Timeline({
     for (let b = 0; b < n; b++) {
       const bucketEnd = window.from + ((b + 1) * span) / n
       while (j < points.length && (times[j] ?? Number.POSITIVE_INFINITY) <= bucketEnd) {
-        if (points[j]!.fixValid) lastValid = j
+        // placeableFix, not fixValid: a 0/0 row's speed is unknowable, and carrying it made the
+        // waveform disagree with the caption two elements away about the same instant
+        if (placeableFix(points[j]!)) lastValid = j
         j++
       }
       if (lastValid === -1) continue
@@ -415,7 +419,7 @@ export function Timeline({
                   ·{' '}
                   {current === undefined
                     ? t('map.timeline.noData', { when: tms(atIso) })
-                    : !current.fixValid
+                    : !placeableFix(current)
                       ? t('map.timeline.noFix')
                       : // null speed is "this model does not report it", not "stopped"
                         current.speed === null
