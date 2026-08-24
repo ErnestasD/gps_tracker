@@ -25,7 +25,7 @@ let databaseUrl: string
 let port: number
 let httpServer: ReturnType<typeof createServer>
 let acct1: string
-let t1Admin: string // tenant-wide (no account) — push must reject (account_required)
+let t1Admin: string // tenant-wide (no account) — subscribes at TENANT level (accountId NULL)
 let amA1: string // account_manager pinned to acct1 — the valid push caller
 let amB1: string // account_manager in a SECOND tenant — the cross-tenant steal case
 let s1TenantId: string
@@ -95,9 +95,17 @@ describe('ADR-026 push routes', () => {
     expect((await keyReq('/v1/push/subscribe', readonlyKey, 'POST', sub('https://push.example.com/key'))).status).toBe(403)
   })
 
-  it('a tenant-wide admin (no account in token) cannot subscribe — push targets an account (400)', async () => {
-    const res = await jwtReq('/v1/push/subscribe', t1Admin, 'POST', sub('https://push.example.com/tenantwide'))
-    expect(res.status).toBe(400)
+  it('a tenant-wide admin subscribes at TENANT level and is fanned out to every account in it', async () => {
+    // This used to 400 — "push targets an account" — which locked out exactly the people who run
+    // the fleet. The row is now stored with accountId NULL, and the point is not the status code:
+    // it is that the fan-out for an ACCOUNT must include it, or the tenant admin subscribes to
+    // silence.
+    const endpoint = 'https://push.example.com/tenantwide'
+    const res = await jwtReq('/v1/push/subscribe', t1Admin, 'POST', sub(endpoint))
+    expect(res.status).toBe(201)
+
+    const targets = await db.pushSubscriptions.listByAccount(s1TenantId, acct1)
+    expect(targets.map((t) => t.endpoint)).toContain(endpoint)
   })
 
   it('an account-scoped caller subscribes its browser (201) and can unsubscribe (200)', async () => {
