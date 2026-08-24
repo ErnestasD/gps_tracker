@@ -54,13 +54,49 @@ export function emphasizeAdminBoundaries(map: mapboxgl.Map, theme: Theme): void 
   set('admin-1-boundary', 'line-opacity', 0.75)
 }
 
+/** How much smaller the road-number shields are drawn than the style asks for. */
+const SHIELD_SCALE = 0.45
+
+/**
+ * Scale a symbol size that may be a plain number OR a zoom expression.
+ *
+ * `["*", 0.45, <existing>]` looks obvious and is wrong: Mapbox requires `["zoom"]` to be the direct
+ * input of a TOP-LEVEL `step`/`interpolate`, so wrapping a zoom-dependent size emits `"zoom"
+ * expression may only be used as input to a top-level "step" or "interpolate" expression` on every
+ * style load. Worse, mapbox-gl REJECTS the property instead of throwing — so the shields never
+ * actually shrank while the console filled up, and the try/catch below could not see it. The
+ * navigation styles' shields are exactly that shape:
+ * `["interpolate", ["exponential", 1.5], ["zoom"], 6, 0.5, 13, 0.5, 22, 1]`.
+ *
+ * So scale the OUTPUTS in place and leave the expression's structure alone. The stops are zoom
+ * levels, not sizes — scaling those would move WHERE the size changes, not the size. Anything whose
+ * shape we do not recognise returns null and is left untouched: an unscaled shield is a cosmetic
+ * disappointment, an invalid expression is an error on every single load.
+ */
+export function scaleSizeExpression(value: unknown, factor: number): number | unknown[] | null {
+  if (typeof value === 'number') return value * factor
+  if (!Array.isArray(value) || value.length < 3) return null
+  // ["interpolate", interpolation, input, stop, out, stop, out, …] → outputs at 4, 6, 8, …
+  // ["step", input, out0, stop, out, stop, out, …]                → outputs at 2, 4, 6, …
+  const expr = value as unknown[]
+  const start = expr[0] === 'interpolate' ? 4 : expr[0] === 'step' ? 2 : -1
+  if (start === -1) return null
+  const out: unknown[] = [...expr]
+  for (let i = start; i < out.length; i += 2) {
+    const v = out[i]
+    if (typeof v !== 'number') return null // a nested expression — do not guess
+    out[i] = v * factor
+  }
+  return out
+}
+
 /**
  * Shrink the road-number shields (the red/yellow A2/M7/P45… route badges), which the navigation
  * styles render large enough to crowd a fleet map (founder feedback). Rather than guess absolute
- * sizes (an earlier attempt overshot and INFLATED them), SCALE whatever the style set by 0.45 —
- * `["*", 0.45, <existing icon/text-size>]` — so it is always smaller regardless of the base zoom
- * expression. Idempotent: setStyle resets to defaults before each style.load, so we scale the
- * original once, never compounding. Guarded per layer/property → shield-less styles are a no-op.
+ * sizes (an earlier attempt overshot and INFLATED them), scale whatever the style set — see
+ * `scaleSizeExpression` for why that is not a multiply. Idempotent: setStyle resets to defaults
+ * before each style.load, so we scale the original once, never compounding. Guarded per
+ * layer/property → shield-less styles are a no-op.
  */
 export function shrinkRoadShields(map: mapboxgl.Map): void {
   const layers = map.getStyle()?.layers ?? []
@@ -68,8 +104,8 @@ export function shrinkRoadShields(map: mapboxgl.Map): void {
     if (!layer.id.includes('shield')) continue
     for (const prop of ['icon-size', 'text-size'] as const) {
       try {
-        const cur = map.getLayoutProperty(layer.id, prop) as unknown
-        if (cur != null) map.setLayoutProperty(layer.id, prop, ['*', 0.45, cur] as never)
+        const scaled = scaleSizeExpression(map.getLayoutProperty(layer.id, prop) as unknown, SHIELD_SCALE)
+        if (scaled !== null) map.setLayoutProperty(layer.id, prop, scaled as never)
       } catch {
         /* not a symbol layer / property absent — ignore */
       }
