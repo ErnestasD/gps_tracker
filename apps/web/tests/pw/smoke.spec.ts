@@ -195,12 +195,8 @@ test('devices: create in UI → appears → retire → ingest rejects that IMEI 
   await page.getByTestId('device-create').click()
   await expect(page.getByTestId(`device-${IMEI}`)).toBeVisible({ timeout: 15_000 })
 
-  // E04-5: change the per-device odometer source (PATCH → re-syncs the worker trip config).
-  // The cell is a Combobox (round-2 control sweep): open, pick the option, then assert the
-  // trigger's data-value — it reflects SERVER state, flipping only after the refetch lands.
-  await page.getByTestId(`odometer-${IMEI}`).click()
-  await page.getByRole('option', { name: 'GPS', exact: true }).click()
-  await expect(page.getByTestId(`odometer-${IMEI}`)).toHaveAttribute('data-value', 'gps')
+  // The odometer-source selector is GONE from the table (founder): the server default 'auto'
+  // already prefers a sane device odometer and falls back to GPS — no per-row choice to test.
 
   // the created device is registered → a simulator on that IMEI is ACCEPTED
   const accepted = await runToExit(

@@ -25,7 +25,6 @@ import { OnboardingCard } from '@/routes/app/devices/onboarding'
 import { SettingsCard } from '@/routes/app/devices/settings'
 import { QuarantineSection } from '@/routes/app/devices/quarantine'
 import {
-  ODOMETER_SOURCES,
   createDevice,
   importApply,
   importPreview,
@@ -37,7 +36,6 @@ import {
   type Device,
   type DryRunResult,
   type ImportError,
-  type OdometerSource,
 } from '@/lib/devices'
 
 const selectStyle: React.CSSProperties = {
@@ -82,7 +80,6 @@ export function DevicesPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [retireError, setRetireError] = useState<string | null>(null)
-  const [odoError, setOdoError] = useState(false) // inline odometer-source change failed (was swallowed)
   const [commandsForId, setCommandsForId] = useState<string | null>(null)
   const [settingsForId, setSettingsForId] = useState<string | null>(null)
   const [healthForId, setHealthForId] = useState<string | null>(null)
@@ -100,9 +97,10 @@ export function DevicesPage() {
   const [eraseError, setEraseError] = useState(false)
   const refresh = () => void qc.invalidateQueries({ queryKey: ['devices'] })
   const isAdmin = ['platform_admin', 'tsp_admin'].includes(getCurrentUser()?.role ?? '')
-  // device writes require account_manager+ (WRITE_POLICY.device) — hide add/import and disable the
-  // inline odometer-source edit for viewers (they 403); reads stay open to all roles
+  // device writes require account_manager+ (WRITE_POLICY.device) — hide add/import for viewers
+  // (they 403); reads stay open to all roles
   const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
+  const [actionError, setActionError] = useState(false) // an inline row update failed (was swallowed)
   // derive the panel's device from the LIVE list (never a snapshot): a retire or refetch
   // closes/updates the panel instead of leaving a stale device you can still command
   const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
@@ -195,24 +193,10 @@ export function DevicesPage() {
         )
       },
     },
-    {
-      key: 'odometer',
-      header: t('devices.odometer'),
-      // round-2 control sweep: the inline cell select is a Combobox too; the e2e spec asserts
-      // the picked source via the trigger's data-value instead of selectOption/toHaveValue
-      cell: (r) => (
-        <div className="w-32">
-          <Combobox
-            value={r.odometerSource}
-            disabled={r.retiredAt !== null || !canWrite}
-            aria-label={t('devices.odometer')}
-            data-testid={`odometer-${r.imei}`}
-            onChange={(v) => { setOdoError(false); void updateDevice(r.id, { odometerSource: v as OdometerSource }).then(refresh).catch(() => setOdoError(true)) }}
-            options={ODOMETER_SOURCES.map((src) => ({ value: src, label: t(`devices.odo.${src}`) }))}
-          />
-        </div>
-      ),
-    },
+    // The odometer-source column is GONE (founder): every row offered a GPS/device choice even
+    // for models with no CAN at all, and the choice never needed making — the server default
+    // 'auto' already prefers the device odometer when it exists and is sane, and falls back to
+    // GPS otherwise (trip engine E04-5). The API field remains for the rare manual override.
   ]
 
   return (
@@ -269,11 +253,6 @@ export function DevicesPage() {
           {t('devices.retireError', { imei: retireError })}
         </p>
       )}
-      {odoError && (
-        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="odometer-error">
-          {t('devices.odoError')}
-        </p>
-      )}
       {eraseQueued && (
         <p role="status" className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="erase-queued">
           {t('devices.eraseQueued')}
@@ -282,6 +261,12 @@ export function DevicesPage() {
       {eraseError && (
         <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="erase-error">
           {t('devices.eraseError')}
+        </p>
+      )}
+
+      {actionError && (
+        <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="device-update-error">
+          {t('devices.updateError')}
         </p>
       )}
 
@@ -362,7 +347,8 @@ export function DevicesPage() {
           const c = modelChange
           if (c === null) return
           setModelChange(null)
-          void updateDevice(c.device.id, { profileId: c.profileId }).then(refresh).catch(() => setOdoError(true))
+          setActionError(false)
+          void updateDevice(c.device.id, { profileId: c.profileId }).then(refresh).catch(() => setActionError(true))
         }}
       />
       <ConfirmDialog
@@ -529,7 +515,6 @@ function CreateDeviceForm({
   const [apn, setApn] = useState('')
   const [accountId, setAccountId] = useState('')
   const [profileId, setProfileId] = useState('')
-  const [odometerSource, setOdometerSource] = useState<OdometerSource>('auto')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -552,7 +537,6 @@ function CreateDeviceForm({
       imei,
       name,
       plate: plate.trim() === '' ? null : plate.trim(),
-      odometerSource,
       ...(sim !== '' ? { simMsisdn: sim } : {}), // SIM saved at creation — no separate save step
     })
       .then((dev) => onCreated(dev.id, apn.trim(), sim !== '')) // parent closes the sheet + auto-opens onboarding when a SIM was set
@@ -590,10 +574,6 @@ function CreateDeviceForm({
       <Field label={t('devices.model')}>
         <Combobox value={prof} onChange={setProfileId} data-testid="device-profile" aria-label={t('devices.model')}
           options={profiles.map((pr) => ({ value: pr.id, label: pr.name }))} />
-      </Field>
-      <Field label={t('devices.odometer')}>
-        <Combobox value={odometerSource} onChange={(v) => setOdometerSource(v as OdometerSource)} data-testid="device-odometer" aria-label={t('devices.odometer')}
-          options={ODOMETER_SOURCES.map((src) => ({ value: src, label: t(`devices.odo.${src}`) }))} />
       </Field>
       {error !== null && (
         <p role="alert" data-testid="device-error" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>

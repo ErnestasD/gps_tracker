@@ -810,7 +810,8 @@
       "outOfRange": "Gerät hält {{value}}, außerhalb des angebotenen Bereichs",
       "reread": "Vom Gerät neu einlesen",
       "readQueued": "Lesevorgang eingereiht — warten auf die Verbindung des Geräts."
-    }
+    },
+    "updateError": "Änderung konnte nicht gespeichert werden — bitte erneut versuchen."
   },
   "quarantine": {
     "title": "Quarantäne (unbekannte Geräte)",

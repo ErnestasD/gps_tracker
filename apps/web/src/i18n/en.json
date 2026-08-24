@@ -810,7 +810,8 @@
       "outOfRange": "device holds {{value}}, outside the range we offer",
       "reread": "Re-read from device",
       "readQueued": "Read queued — waiting for the device to connect."
-    }
+    },
+    "updateError": "Couldn't save the change — try again."
   },
   "quarantine": {
     "title": "Quarantine (unknown devices)",

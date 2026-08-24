@@ -810,7 +810,8 @@
       "outOfRange": "įrenginyje {{value}} — už siūlomo intervalo ribų",
       "reread": "Perskaityti iš įrenginio",
       "readQueued": "Skaitymas eilėje — laukiama, kol įrenginys prisijungs."
-    }
+    },
+    "updateError": "Nepavyko išsaugoti pakeitimo — bandykite dar kartą."
   },
   "quarantine": {
     "title": "Karantinas (nežinomi įrenginiai)",

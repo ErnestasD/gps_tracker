@@ -810,7 +810,8 @@
       "outOfRange": "urządzenie ma {{value}}, poza oferowanym zakresem",
       "reread": "Odczytaj z urządzenia",
       "readQueued": "Odczyt w kolejce — oczekiwanie na połączenie urządzenia."
-    }
+    },
+    "updateError": "Nie udało się zapisać zmiany — spróbuj ponownie."
   },
   "quarantine": {
     "title": "Kwarantanna (nieznane urządzenia)",
