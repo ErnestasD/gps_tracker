@@ -462,6 +462,27 @@ function DisplayPrefsSection() {
         { value: 'l', label: t('settings.display.l') },
         { value: 'gal', label: t('settings.display.gal') },
       ])}
+      {/* basemap provider (ADR-038): the Google option only exists when a key is configured —
+          a choice that silently falls back is worse than one that is not offered */}
+      {row(
+        t('settings.display.mapProvider'),
+        'pref-map-provider',
+        prefs.mapProvider,
+        set('mapProvider'),
+        [
+          { value: 'mapbox', label: 'Mapbox' },
+          ...((import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined) ? [{ value: 'google', label: 'Google Maps' }] : []),
+        ],
+      )}
+      {!(import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined) && (
+        <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.display.mapProviderNoKey')}</p>
+      )}
+      {row(t('settings.display.mapScheme'), 'pref-map-scheme', prefs.mapScheme, set('mapScheme'), [
+        { value: 'auto', label: t('settings.display.mapSchemeAuto') },
+        { value: 'light', label: t('settings.display.mapSchemeLight') },
+        { value: 'dark', label: t('settings.display.mapSchemeDark') },
+      ])}
+      <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.display.mapNote')}</p>
     </div>
   )
 }

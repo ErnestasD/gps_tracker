@@ -139,6 +139,7 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `MAPBOX_TOKEN` | apps/api | Mapbox token for the **Optimization API** (route planner, ADR-034). Absent AND `OSRM_URL` absent ⇒ `/v1/routing/optimize` 503s. SECRET — server `.env` only, never git (GitHub push protection blocks Mapbox tokens). Travels as a query parameter, so the request URL must never be logged |
 | `OSRM_URL` | apps/api | Self-hosted OSRM base URL — the ALTERNATIVE routing driver, for the >12-stop case Mapbox cannot serve (ADR-034). Ignored when `MAPBOX_TOKEN` is set |
 | `VITE_MAPBOX_TOKEN` | apps/web (build-time) | Mapbox public `pk.` token (ADR-030). NOT in git (GitHub secret-scanning blocks Mapbox tokens): create untracked `apps/web/.env` locally; staging receives it via rsync. |
+| `VITE_GOOGLE_MAPS_KEY` | apps/web (build-time) | Optional Google Maps API key (Map Tiles API, ADR-038) — enables the "Google Maps" basemap option in display settings. Referrer-restricted in the Google console; lives in the same untracked `apps/web/.env`. Absent ⇒ option not offered. |
 | `VITE_MAPBOX_STYLE_DARK` | apps/web (build-time) | Map style for the dark theme, default `mapbox://styles/mapbox/dark-v11` (e2e points it at the offline `dev-style.json`) |
 | `VITE_MAPBOX_STYLE_LIGHT` | apps/web (build-time) | Map style for the light theme, default `mapbox://styles/mapbox/light-v11` |
 | `VITE_API_URL` | apps/web (build-time) | API origin override; unset = same-origin (dev proxy / prod Caddy) |

@@ -3,10 +3,10 @@
  * The ONLY place the map style/token are read — every surface builds its map here so a
  * provider/style change stays an env change, zero code.
  */
-import mapboxgl, { type MapOptions } from 'mapbox-gl'
+import mapboxgl, { type MapOptions, type StyleSpecification } from 'mapbox-gl'
 
 // relative (not '@/') so the vitest suite can import this module without alias config
-import { getTheme, onThemeChange, type Theme } from './prefs'
+import { getDisplayPrefs, getTheme, onPrefsChange, onThemeChange, type Theme } from './prefs'
 
 // pk. tokens are public by design — they ship in the client bundle (config, not a
 // secret; rule 12 unaffected). URL-restricted in the Mapbox dashboard (ADR-030).
@@ -95,6 +95,98 @@ export function hideTrafficLayers(map: mapboxgl.Map): void {
   }
 }
 
+// ── Google basemap (ADR-038) ────────────────────────────────────────────────
+// The customer-facing "Google žemėlapis" option keeps Mapbox GL as the RENDERER and swaps only
+// the BASEMAP: official Google Map Tiles API raster tiles as a GL raster source. Every runtime
+// source/layer (clusters, trails, geofences, the scrub ghost) rides on top unchanged, which is
+// what makes "visas funkcionalumas turi veikti" true by construction instead of by re-porting
+// four map surfaces to a second SDK. Key lives in the untracked apps/web/.env like the Mapbox
+// token; with no key the settings option is disabled (see settings.tsx).
+
+export const GOOGLE_MAPS_KEY = (import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined) ?? ''
+
+/** The classic Google "night mode" styling array — the documented dark-map recipe, passed to
+ * createSession so the DARK preference applies to Google tiles server-side. */
+const GOOGLE_DARK_STYLES = [
+  { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#263c3f' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1f2835' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
+  { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
+  { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#17263c' }] },
+]
+
+/** Session tokens are Google's own currency for the Tiles API (valid ~2 weeks) — cached per
+ * scheme in localStorage so a reload does not re-create one. */
+async function googleSession(scheme: Theme): Promise<string> {
+  const cacheKey = `orbetra.gmaptiles.${scheme}`
+  try {
+    const c = JSON.parse(localStorage.getItem(cacheKey) ?? 'null') as { token?: string; exp?: number } | null
+    if (c?.token != null && typeof c.exp === 'number' && c.exp > Date.now()) return c.token
+  } catch {
+    /* corrupt cache — re-create */
+  }
+  const res = await fetch(`https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mapType: 'roadmap',
+      language: navigator.language || 'en-US',
+      region: 'LT',
+      ...(scheme === 'dark' ? { styles: GOOGLE_DARK_STYLES } : {}),
+    }),
+  })
+  if (!res.ok) throw new Error(`createSession ${res.status}`)
+  const j = (await res.json()) as { session: string; expiry: string | number }
+  // expiry is epoch SECONDS; renew an hour early so a tab that stays open never hits a dead session
+  const exp = Number(j.expiry) * 1000 - 3_600_000
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify({ token: j.session, exp }))
+  } catch {
+    /* storage disabled — the session still serves this page's lifetime */
+  }
+  return j.session
+}
+
+/** A GL style whose base is the Google raster source. Glyphs stay on Mapbox — our symbol layers
+ * (device name labels) need a font server, and the Mapbox one is already tokened. */
+function googleStyleSpec(session: string): StyleSpecification {
+  return {
+    version: 8,
+    glyphs: 'mapbox://fonts/mapbox/{fontstack}/{range}.pbf',
+    sources: {
+      'google-tiles': {
+        type: 'raster',
+        tiles: [`https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${session}&key=${encodeURIComponent(GOOGLE_MAPS_KEY)}`],
+        tileSize: 256,
+        maxzoom: 22,
+        attribution: '© Google',
+      },
+    },
+    layers: [{ id: 'google-base', type: 'raster', source: 'google-tiles' }],
+  }
+}
+
+/** Provider + scheme, resolved from the display prefs ('auto' scheme follows the app theme). */
+export function mapPrefs(): { provider: 'mapbox' | 'google'; scheme: Theme } {
+  const p = getDisplayPrefs()
+  const provider = p.mapProvider === 'google' && GOOGLE_MAPS_KEY !== '' ? 'google' : 'mapbox'
+  const scheme: Theme = p.mapScheme === 'auto' ? getTheme() : p.mapScheme
+  return { provider, scheme }
+}
+
 export interface ThemedMap {
   /** null when the map could not even be constructed (e.g. a missing/empty token with a
    *  mapbox:// style throws SYNCHRONOUSLY from the constructor via normalizeStyleURL) —
@@ -124,11 +216,15 @@ export interface ThemedMapOptions extends Omit<MapOptions, 'container' | 'style'
  */
 export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions = {}): ThemedMap {
   const { onBeforeStyleSwap, ...mapOpts } = opts
+  const initial = mapPrefs()
   let map: mapboxgl.Map
   try {
     map = new mapboxgl.Map({
       container,
-      style: styleForTheme(getTheme()),
+      // Google starts on the SAME-scheme Mapbox style and swaps once the tile session lands —
+      // a base under the vehicles from the first frame beats a black void while a network
+      // round-trip completes, and the swap reuses the ordinary style.load re-setup path.
+      style: styleForTheme(initial.scheme),
       // Mapbox attribution + logo stay visible on every map view (TOS, ADR-030)
       attributionControl: true,
       antialias: true,
@@ -140,21 +236,53 @@ export function createThemedMap(container: HTMLElement, opts: ThemedMapOptions =
     console.error('mapbox init failed', err)
     return { map: null, unsubscribe: () => {} }
   }
-  // lift country/region borders on the initial style AND after every theme swap (style.load
+  let disposed = false
+  // lift country/region borders on the initial style AND after every swap (style.load
   // fires for both). Registered here so EVERY map surface gets it with zero per-surface code.
+  // On the Google raster base the admin/shield/traffic tweaks are no-ops by their own guards.
   map.on('style.load', () => {
-    emphasizeAdminBoundaries(map, getTheme())
+    emphasizeAdminBoundaries(map, mapPrefs().scheme)
     shrinkRoadShields(map)
     hideTrafficLayers(map)
   })
-  let current: Theme = getTheme()
-  const unsubscribe = onThemeChange(() => {
-    const next = getTheme()
-    if (next === current) return
-    current = next
-    onBeforeStyleSwap?.()
-    map.setStyle(styleForTheme(next))
-  })
+
+  /** Apply the CURRENT provider+scheme. Async because the Google session is a network fetch;
+   *  a stale application (prefs changed again mid-fetch) is dropped by the key check. */
+  let appliedKey = `mapbox:${initial.scheme}` // what the constructor already put on screen
+  const apply = () => {
+    const { provider, scheme } = mapPrefs()
+    const key = `${provider}:${scheme}`
+    if (key === appliedKey) return
+    appliedKey = key
+    if (provider === 'mapbox') {
+      onBeforeStyleSwap?.()
+      map.setStyle(styleForTheme(scheme))
+      return
+    }
+    void googleSession(scheme)
+      .then((session) => {
+        if (disposed || appliedKey !== key) return
+        onBeforeStyleSwap?.()
+        map.setStyle(googleStyleSpec(session))
+      })
+      .catch((err: unknown) => {
+        // an unreachable Tiles API must not strand the operator on a dead map — fall back
+        // to the Mapbox style of the same scheme and keep the preference for next time
+        console.error('google tiles session failed', err)
+        if (disposed || appliedKey !== key) return
+        onBeforeStyleSwap?.()
+        map.setStyle(styleForTheme(scheme))
+      })
+  }
+  if (initial.provider === 'google') apply() // constructor drew Mapbox; catch up to the pref
+
+  const offTheme = onThemeChange(apply)
+  const offPrefs = onPrefsChange(apply)
+  const unsubscribe = () => {
+    disposed = true
+    offTheme()
+    offPrefs()
+  }
   return { map, unsubscribe }
 }
 

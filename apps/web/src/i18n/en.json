@@ -587,7 +587,14 @@
       "l": "Liters (l)",
       "gal": "US gallons (gal)",
       "tzNote": "Display only — changes how times are shown to you, not how reports are grouped.",
-      "browserNote": "These apply to this browser only. Alert e-mails and scheduled reports use the account settings above."
+      "browserNote": "These apply to this browser only. Alert e-mails and scheduled reports use the account settings above.",
+      "mapProvider": "Map provider",
+      "mapProviderNoKey": "The Google Maps option needs a VITE_GOOGLE_MAPS_KEY in the server configuration.",
+      "mapScheme": "Map colours",
+      "mapSchemeAuto": "Follow theme",
+      "mapSchemeLight": "Light",
+      "mapSchemeDark": "Dark",
+      "mapNote": "Applies to every map: live, history, geofences and routing. All functionality works with both providers."
     },
     "accountTz": {
       "title": "Reports and e-mails",

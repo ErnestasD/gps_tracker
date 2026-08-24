@@ -53,6 +53,10 @@ export type DateFormatPref = 'auto' | 'ymd' | 'dmy' | 'mdy'
 // fail to round-trip. Re-exported because half the app imports them from this module.
 export type { DistanceUnit, SpeedUnit, VolumeUnit }
 
+export type MapProviderPref = 'mapbox' | 'google'
+/** 'auto' follows the app theme; 'light'/'dark' pin the BASEMAP colours independently of it. */
+export type MapSchemePref = 'auto' | 'light' | 'dark'
+
 export interface DisplayPrefs {
   timeFormat: TimeFormatPref
   /** 'auto' = browser zone; otherwise an IANA zone id (rendered via Intl timeZone). */
@@ -61,6 +65,9 @@ export interface DisplayPrefs {
   unitSpeed: SpeedUnit
   unitDistance: DistanceUnit
   unitVolume: VolumeUnit
+  /** Basemap provider (ADR-038): Mapbox styles, or Google 2D tiles rendered in the same GL engine. */
+  mapProvider: MapProviderPref
+  mapScheme: MapSchemePref
 }
 
 const PREFS_KEY = 'orbetra.prefs'
@@ -73,6 +80,8 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   unitSpeed: 'kmh',
   unitDistance: 'km',
   unitVolume: 'l',
+  mapProvider: 'mapbox',
+  mapScheme: 'auto',
 }
 
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
@@ -88,6 +97,8 @@ function sanitizePrefs(v: unknown): DisplayPrefs {
     unitSpeed: oneOf(o['unitSpeed'], ['kmh', 'mph'], DEFAULT_DISPLAY_PREFS.unitSpeed),
     unitDistance: oneOf(o['unitDistance'], ['km', 'mi'], DEFAULT_DISPLAY_PREFS.unitDistance),
     unitVolume: oneOf(o['unitVolume'], ['l', 'gal'], DEFAULT_DISPLAY_PREFS.unitVolume),
+    mapProvider: oneOf(o['mapProvider'], ['mapbox', 'google'], DEFAULT_DISPLAY_PREFS.mapProvider),
+    mapScheme: oneOf(o['mapScheme'], ['auto', 'light', 'dark'], DEFAULT_DISPLAY_PREFS.mapScheme),
   }
 }
 

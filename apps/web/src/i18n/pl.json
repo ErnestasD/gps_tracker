@@ -587,7 +587,14 @@
       "l": "Litry (l)",
       "gal": "Galony amerykańskie (gal)",
       "tzNote": "Tylko wyświetlanie — zmienia sposób pokazywania czasu Tobie, a nie grupowanie raportów.",
-      "browserNote": "Dotyczą tylko tej przeglądarki. E-maile z powiadomieniami i raporty cykliczne korzystają z ustawień konta powyżej."
+      "browserNote": "Dotyczą tylko tej przeglądarki. E-maile z powiadomieniami i raporty cykliczne korzystają z ustawień konta powyżej.",
+      "mapProvider": "Dostawca mapy",
+      "mapProviderNoKey": "Opcja Google Maps wymaga klucza VITE_GOOGLE_MAPS_KEY w konfiguracji serwera.",
+      "mapScheme": "Kolory mapy",
+      "mapSchemeAuto": "Według motywu",
+      "mapSchemeLight": "Jasne",
+      "mapSchemeDark": "Ciemne",
+      "mapNote": "Dotyczy wszystkich map: na żywo, historii, geostref i tras. Pełna funkcjonalność działa z oboma dostawcami."
     },
     "accountTz": {
       "title": "Raporty i e-maile",

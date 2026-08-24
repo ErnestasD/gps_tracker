@@ -587,7 +587,14 @@
       "l": "Liter (l)",
       "gal": "US-Gallonen (gal)",
       "tzNote": "Nur Anzeige — ändert, wie Zeiten Ihnen gezeigt werden, nicht wie Berichte gruppiert werden.",
-      "browserNote": "Diese gelten nur für diesen Browser. Meldungs-E-Mails und geplante Berichte verwenden die Kontoeinstellungen oben."
+      "browserNote": "Diese gelten nur für diesen Browser. Meldungs-E-Mails und geplante Berichte verwenden die Kontoeinstellungen oben.",
+      "mapProvider": "Kartenanbieter",
+      "mapProviderNoKey": "Die Google-Maps-Option benötigt einen VITE_GOOGLE_MAPS_KEY in der Serverkonfiguration.",
+      "mapScheme": "Kartenfarben",
+      "mapSchemeAuto": "Wie das Design",
+      "mapSchemeLight": "Hell",
+      "mapSchemeDark": "Dunkel",
+      "mapNote": "Gilt für alle Karten: Live, Verlauf, Geozonen und Routing. Der volle Funktionsumfang arbeitet mit beiden Anbietern."
     },
     "accountTz": {
       "title": "Berichte und E-Mails",
