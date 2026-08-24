@@ -6,6 +6,8 @@
  * stays open all day, and a replay start rounded to the nearest minute landed BEFORE the first row
  * about half the time, opening on a frozen camera.
  */
+import { isNullIsland } from '@orbetra/shared'
+
 import type { TrackPoint } from './telemetry'
 
 export interface TrackWindow {
@@ -60,7 +62,10 @@ export function firstPlaceBack(points: readonly TrackPoint[], w: TrackWindow, ti
   const ts = pairedTimes(points, times)
   for (let i = 0; i < points.length; i++) {
     const p = points[i]!
-    if (!p.fixValid) continue
+    // placeable, not merely valid: this function's whole purpose is to refuse to open a replay on
+    // a moment that resolves to nowhere, and `placeAt` refuses a stored 0/0. Disagreeing here
+    // re-enables the scrubber with nothing to place — the frozen camera this was written against.
+    if (!p.fixValid || isNullIsland(p.lat, p.lon)) continue
     const ms = ts?.[i] ?? Date.parse(p.fixTime)
     if (!Number.isFinite(ms)) continue
     return Math.min(span, Math.max(0, Math.floor((w.to - ms) / 60_000)))

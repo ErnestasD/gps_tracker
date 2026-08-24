@@ -1,5 +1,5 @@
 import { applySign, loadDictionary, type AvlTable } from '@orbetra/codec'
-import { rawStreamPayloadSchema, type NormalizedRecord, type RawStreamPayload } from '@orbetra/shared'
+import { isNullIsland, rawStreamPayloadSchema, type NormalizedRecord, type RawStreamPayload } from '@orbetra/shared'
 
 // Core AVL ids (wiki FMB120 table, PROJECT_PLAN §3.7): promoted to columns.
 // https://wiki.teltonika-gps.com/view/FMB120_Teltonika_Data_Sending_Parameters_ID
@@ -182,8 +182,11 @@ export const FALLBACK_AVL_TABLE: AvlTable = 'fmb120'
  *
  * Deliberately EXACT equality, not a radius: a tolerance would start discarding real fixes off the
  * African coast, and this is a sentinel value, not a region.
+ *
+ * The predicate itself lives in @orbetra/shared. The web client must refuse the SAME rows this
+ * refuses — a rule with two definitions is a rule with two answers, and the stored rows written
+ * before this fix outlive it (ADR-039).
  */
-const isNullIsland = (lat: number, lon: number): boolean => lat === 0 && lon === 0
 
 export function normalize(
   payload: unknown,

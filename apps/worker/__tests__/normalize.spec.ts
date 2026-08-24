@@ -24,7 +24,7 @@ const basePayload = {
 }
 
 describe('normalize (E02-3)', () => {
-  it('fix_valid = satellites > 0 (CLAUDE.md rule 6 / I5)', () => {
+  it('fix_valid = satellites > 0, and not an exact 0/0 (CLAUDE.md rule 6 / I5, ADR-039)', () => {
     expect(normalize({ ...basePayload, satellites: 9 }, hash).fixValid).toBe(true)
     expect(normalize({ ...basePayload, satellites: 0 }, hash).fixValid).toBe(false)
   })

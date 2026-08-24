@@ -1,3 +1,5 @@
+import { isNullIsland } from '@orbetra/shared'
+
 import { getJson } from './client'
 import { pairedTimes } from './trackWindow'
 
@@ -237,7 +239,7 @@ export async function getTrack(deviceId: string, window: { from: number; to: num
  * the stored rows outlive the fix.
  */
 export const placeableFix = (p: { lat: number; lon: number; fixValid: boolean }): boolean =>
-  p.fixValid && !(p.lat === 0 && p.lon === 0)
+  p.fixValid && !isNullIsland(p.lat, p.lon)
 
 export const drawable = (points: readonly TrackPoint[]): TrackPoint[] => points.filter(placeableFix)
 

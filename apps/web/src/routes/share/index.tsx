@@ -2,6 +2,8 @@ import type { Map as MbMap, Marker } from 'mapbox-gl'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { isNullIsland } from '@orbetra/shared'
+
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { applyBranding, type Branding } from '@/lib/branding'
 import { useFmt } from '@/lib/datetime'
@@ -99,16 +101,31 @@ export function SharePage({ token }: { token: string }) {
     return () => { stopWatch(); live.remove(); mapRef.current = null }
   }, [])
 
+  /**
+   * The one position a CUSTOMER sees, and the one that had no guard.
+   *
+   * `readLatestValidPosition` filters on fix_valid, which is exactly the column a stored 0/0 lies
+   * in — and the repair migration deliberately stops at 14 days, so older rows keep lying forever.
+   * An unplaceable position must remove the marker, not leave the last one standing somewhere it no
+   * longer means.
+   */
+  const sharePos = share?.position
+  const placeable = sharePos !== undefined && sharePos !== null && !isNullIsland(sharePos.lat, sharePos.lon)
+
   // move the marker on new positions
   useEffect(() => {
     const map = mapRef.current
     const pos = share?.position
-    if (!map || !pos) return
+    if (!map || !pos || !placeable) {
+      markerRef.current?.remove()
+      markerRef.current = null
+      return
+    }
     const lngLat: [number, number] = [pos.lon, pos.lat]
     if (!markerRef.current) markerRef.current = new mapboxgl.Marker({ color: '#7C5CFC' }).setLngLat(lngLat).addTo(map)
     else markerRef.current.setLngLat(lngLat)
     map.easeTo({ center: lngLat, duration: 600 })
-  }, [share])
+  }, [share, placeable])
 
   const now = Date.now()
   const exp = share ? expiryLabel(share.expiresAt, now) : null
@@ -156,7 +173,7 @@ export function SharePage({ token }: { token: string }) {
             </div>
           </div>
         )}
-        {state === 'ok' && share && !share.position && (
+        {state === 'ok' && share && !placeable && (
           <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-card border border-line bg-surface px-3 py-2 text-sm text-muted" data-testid="share-nofix">
             {t('share.noFix')}
           </div>

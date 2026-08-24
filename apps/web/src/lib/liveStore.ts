@@ -1,4 +1,4 @@
-import { liveEventSchema, type LiveEvent } from '@orbetra/shared'
+import { isNullIsland, liveEventSchema, type LiveEvent } from '@orbetra/shared'
 
 export type DeviceStatus = 'online' | 'stale' | 'offline'
 export type ConnState = 'connecting' | 'open' | 'closed'
@@ -254,7 +254,7 @@ const sameScrub = (a: ScrubState, b: ScrubState): boolean =>
  * already stored, replays and exports will carry them for months, and a client that trusts a
  * coordinate it can see is impossible has no defence when the server is wrong again.
  */
-const placeable = (ev: LiveEvent): boolean => ev.fixValid && !(ev.lat === 0 && ev.lon === 0)
+const placeable = (ev: LiveEvent): boolean => ev.fixValid && !isNullIsland(ev.lat, ev.lon)
 
 const statusOf = (ageMs: number): DeviceStatus =>
   ageMs <= ONLINE_MS ? 'online' : ageMs <= STALE_MS ? 'stale' : 'offline'
@@ -369,7 +369,11 @@ export class LiveStore {
     const fix = placeable(ev) ? { lon: ev.lon, lat: ev.lat, course: ev.course ?? 0 } : (current?.fix ?? null)
     this.byId.set(ev.deviceId, { ev, status: statusOf(this.now() - ev.fixTimeMs), fix })
     if (this.snapshot.trail && ev.deviceId === this.snapshot.selectedId) {
-      this.trailPoints.push({ lon: ev.lon, lat: ev.lat, fixValid: ev.fixValid, fixTimeMs: ev.fixTimeMs, speed: ev.speed, movement: null })
+      // `placeable`, NOT ev.fixValid: the marker above already refuses a stored 0/0, but the trail
+      // stored the device's own verdict and drew it anyway. dropStationaryJitter cannot save it
+      // either — a 0/0 sits ~6000 km from the anchor, so it clears the jitter gate and BECOMES the
+      // anchor. Rule 6 says such a record never affects a map trail; this is where it did.
+      this.trailPoints.push({ lon: ev.lon, lat: ev.lat, fixValid: placeable(ev), fixTimeMs: ev.fixTimeMs, speed: ev.speed, movement: null })
       if (this.trailPoints.length > TRAIL_CAP) this.trailPoints.shift()
     }
     this.dirty = true

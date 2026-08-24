@@ -42,3 +42,20 @@ export interface NormalizedRecord {
   recHash: bigint
   attrs: Record<string, unknown>
 }
+
+/**
+ * The null island — lat 0, lon 0 — is not a place a tracked vehicle reports from.
+ *
+ * A device once sent exactly 0/0 while reporting 37 satellites, so `satellites > 0` (PROJECT_PLAN
+ * §3.4, CLAUDE.md rule 6) called the fix valid and the vehicle appeared in the Gulf of Guinea. The
+ * odds of a real fix landing on both axes at exactly 0.0000000 are nil, and the cost is asymmetric:
+ * refusing one improbable mid-Atlantic fix loses a point nobody needed, while accepting a fabricated
+ * one moves a customer's vehicle 6000 km, opens a phantom trip and can fire a geofence alarm.
+ *
+ * Deliberately EXACT equality, not a radius: a tolerance would start discarding real fixes off the
+ * African coast, and this is a sentinel value, not a region.
+ *
+ * It lives HERE, not in the worker and not in the web client, because both must agree about the same
+ * row — a rule with two definitions is a rule with two answers. See ADR-039.
+ */
+export const isNullIsland = (lat: number, lon: number): boolean => lat === 0 && lon === 0

@@ -743,4 +743,32 @@ describe('a coordinate of exactly 0/0 never places a marker', () => {
     store.ingest(ev('1', T0, { lat: 51.48, lon: 0, fixValid: true, satellites: 11 }))
     expect(frameOf(store).devices.features).toHaveLength(1)
   })
+
+  /**
+   * The MARKER was guarded and the TRAIL was not.
+   *
+   * Hostile review, 2026-08-24: `ingest` held the marker on `placeable(ev)` but pushed the ring
+   * buffer with `fixValid: ev.fixValid` — the device's own verdict — three lines below. So the
+   * vehicle stayed in Vilnius while a line was drawn to the Gulf of Guinea and back.
+   *
+   * `dropStationaryJitter` cannot rescue this: the founder's record carried speed 0, so it reaches
+   * the stationary branch, but 0/0 is ~6000 km from the anchor — far past the jitter gate — so it
+   * is kept AND becomes the new anchor. CLAUDE.md rule 6: such a record never affects a map trail.
+   */
+  it('never becomes a trail vertex — the marker was guarded and the line was not', () => {
+    const store = new LiveStore(() => T0)
+    store.setTrail(true)
+    store.select('1')
+    store.ingest(ev('1', T0, { lat: 54.68, lon: 25.27, fixValid: true, satellites: 12, speed: 0 }))
+    store.ingest(ev('1', T0 + 1_000, { lat: 54.681, lon: 25.271, fixValid: true, satellites: 12, speed: 0 }))
+    store.ingest(ev('1', T0 + 2_000, { lat: 0, lon: 0, fixValid: true, satellites: 37, speed: 0 }))
+    store.ingest(ev('1', T0 + 3_000, { lat: 54.682, lon: 25.272, fixValid: true, satellites: 12, speed: 0 }))
+
+    const coords = frameOf(store)
+      .trail.features.flatMap((f) =>
+        f.geometry.type === 'LineString' ? (f.geometry.coordinates as [number, number][]) : [],
+      )
+    expect(coords.length).toBeGreaterThan(0) // the trail is actually being drawn, or this proves nothing
+    expect(coords).not.toContainEqual([0, 0])
+  })
 })

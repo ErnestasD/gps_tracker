@@ -103,7 +103,9 @@ export function PlaybackMap({ positions, trips, index }: { positions: PositionVi
     if (map === null || styleEpoch === 0) return
     const p = positions[index]
     const src = map.getSource<GeoJSONSource>('cursor')
-    if (p === undefined || !p.fixValid) src?.setData(pointFC([]))
+    // placeableFix: lines above already fit the camera to placeable bounds, so a raw fixValid here
+    // planted the cursor at a 0/0 the camera would never follow — a marker off-screen in the Gulf
+    if (p === undefined || !placeableFix(p)) src?.setData(pointFC([]))
     else src?.setData(pointFC([{ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: {} }]))
   }, [index, positions, styleEpoch])
 

@@ -12,7 +12,7 @@ import type { GeofenceView } from '@orbetra/shared'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
 import { useFmt } from '@/lib/datetime'
-import { getTelemetry, hasTelemetry, highlightRows, telemetryRows, type LatestTelemetry, fmtAttrValue } from '@/lib/telemetry'
+import { getTelemetry, hasTelemetry, highlightRows, placeableFix, telemetryRows, type LatestTelemetry, fmtAttrValue } from '@/lib/telemetry'
 import { fmtKm, listTrips } from '@/lib/trips'
 import { useUnits } from '@/lib/units'
 import { CommandsCard } from '@/routes/app/devices/commands'
@@ -278,7 +278,10 @@ function Header({
             <Badge variant={status === 'online' ? 'success' : status === 'stale' ? 'warn' : 'default'}>
               {t(`status.${status}`)}
             </Badge>
-            {!ev.fixValid && <Badge variant="warn">{t('info.invalidFix')}</Badge>}
+            {/* the CLIENT's verdict, not the row's: for a stored 0/0 the row still says valid, and
+                the badge stayed hidden beside a marker the map was refusing to move — "online, valid
+                fix", frozen, no reason given */}
+            {!placeableFix(ev) && <Badge variant="warn">{t('info.invalidFix')}</Badge>}
           </div>
           {sub.length > 0 && (
             <div className="mt-0.5 truncate font-mono text-[11px] text-muted" data-testid="inspector-sub">
@@ -391,7 +394,7 @@ function OverviewTab({
             k={t('map.inspector.coords')}
             v={
               scrubbed
-                ? latest !== undefined && latest.fixValid
+                ? latest !== undefined && placeableFix(latest)
                   ? `${latest.lat.toFixed(5)}, ${latest.lon.toFixed(5)}`
                   : '—'
                 : live.fix === null
@@ -411,7 +414,7 @@ function OverviewTab({
             k={t('map.inspector.heading')}
             v={
               scrubbed
-                ? latest !== undefined && latest.fixValid && latest.course !== null
+                ? latest !== undefined && placeableFix(latest) && latest.course !== null
                   ? `${Math.round(latest.course)}°`
                   : '—'
                 : live.fix === null

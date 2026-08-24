@@ -304,7 +304,9 @@ export function Timeline({
     for (let b = 0; b < n; b++) {
       const bucketEnd = window.from + ((b + 1) * span) / n
       while (j < points.length && (times[j] ?? Number.POSITIVE_INFINITY) <= bucketEnd) {
-        if (points[j]!.fixValid) lastValid = j
+        // placeableFix, not fixValid: a 0/0 row's speed is unknowable, and carrying it made the
+        // waveform disagree with the caption two elements away about the same instant
+        if (placeableFix(points[j]!)) lastValid = j
         j++
       }
       if (lastValid === -1) continue

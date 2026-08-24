@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -130,6 +130,51 @@ describe('E01-3 migrations (prisma deploy + raw SQL runner)', () => {
     writeFileSync(file, 'CREATE TABLE thing (id int, extra text);\n')
     await expect(migrate(url2, dir)).rejects.toThrow(/immutable/)
   }, 60_000)
+
+  /**
+   * 004 is a DATA repair, and the only assertions on it were that its filename appears in
+   * `applied` and later in `skipped`. That is shape, not behaviour: `lat = 0 OR lon = 0` — a
+   * one-character slip that would invalidate every fix on the Greenwich meridian and the equator —
+   * keeps those assertions green, and so does `14 hours`, and so does dropping the whole UPDATE.
+   *
+   * Run 001-003 on a clean database, plant the four shapes that matter, then let 004 land.
+   */
+  it('004 flips ONLY an exact 0/0 inside the window — meridian, equator and old rows survive', async () => {
+    await q(`CREATE DATABASE nullisland_test`)
+    const url2 = url.replace(/\/orbetra$/, '/nullisland_test')
+    const q2 = async <T extends pg.QueryResultRow>(sql: string): Promise<T[]> => {
+      const c = new pg.Client({ connectionString: url2 })
+      await c.connect()
+      try { return (await c.query<T>(sql)).rows } finally { await c.end() }
+    }
+
+    // 001-003 only: copied verbatim so their checksums still match when the real dir runs after
+    const partial = mkdtempSync(path.join(tmpdir(), 'orbetra-sql-partial-'))
+    for (const f of ['001_positions.sql', '002_daily_device_stats.sql', '003_positions_server_time_brin.sql']) {
+      copyFileSync(path.join(PKG_DIR, 'sql', f), path.join(partial, f))
+    }
+    await migrate(url2, partial)
+
+    await q2(`INSERT INTO positions (device_id, fix_time, lat, lon, satellites, fix_valid, rec_hash) VALUES
+      (1, now() - interval '1 hour',  0,        0,        37, true,  1),   -- the incident: must flip
+      (2, now() - interval '1 hour',  0,        0,        0,   false, 2),  -- already false: untouched
+      (3, now() - interval '1 hour', 51.4778,   0,        12,  true,  3),  -- Greenwich meridian: REAL
+      (4, now() - interval '1 hour',  0,       25.2797,   12,  true,  4),  -- equator: REAL
+      (5, now() - interval '30 days', 0,        0,        37, true,  5)`)  // outside the window
+
+    const applied = await migrate(url2)
+    expect(applied.applied).toContain('004_null_island_fix_valid.sql')
+
+    const rows = await q2<{ device_id: string; fix_valid: boolean }>(
+      `SELECT device_id, fix_valid FROM positions ORDER BY device_id`,
+    )
+    const byId = Object.fromEntries(rows.map((r) => [String(r.device_id), r.fix_valid]))
+    expect(byId['1']).toBe(false) // repaired
+    expect(byId['2']).toBe(false) // was already false
+    expect(byId['3']).toBe(true)  // lon = 0 alone is a place — Greenwich
+    expect(byId['4']).toBe(true)  // lat = 0 alone is a place — the equator
+    expect(byId['5']).toBe(true)  // outside 14 days: deliberately NOT repaired, and counted instead
+  }, 240_000)
 
   it('geofences.geom is a PostGIS geography column (raw accessors ready)', async () => {
     const cols = await q<{ udt_name: string }>(
