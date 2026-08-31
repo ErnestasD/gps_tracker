@@ -62,7 +62,75 @@ function circlePolygon(center: [number, number], radiusM: number): GeoJSON.Polyg
   return { type: 'Polygon', coordinates: [ring] }
 }
 
+/** A point `radiusM` due EAST of `center` — the grip you drag to resize a circle. */
+function dueEast(center: [number, number], radiusM: number): [number, number] {
+  const ring = circlePolygon(center, radiusM).coordinates[0]!
+  return ring[Math.round(CIRCLE_STEPS / 4)] as [number, number]
+}
+
+/**
+ * Recover a circle's centre and radius from the ring we stored for it.
+ *
+ * `geofences.geom` is `geography(Polygon,4326)` — a circle is persisted as its polygon and nothing
+ * else, so re-opening one for editing means reading the shape back out. `circlePolygon` walks
+ * evenly-spaced bearings, so the vertex centroid IS the centre and every vertex is one radius away;
+ * averaging both is exact to floating point rather than an approximation.
+ *
+ * A corridor cannot be recovered this way and deliberately is not tried: its centre-line is never
+ * stored, only the buffered polygon, so there is nothing to read back. See ADR-040.
+ */
+function circleFromRing(pts: readonly [number, number][]): { center: [number, number]; radiusM: number } {
+  const n = Math.max(1, pts.length)
+  const center: [number, number] = [
+    pts.reduce((a, p) => a + (p[0] ?? 0), 0) / n,
+    pts.reduce((a, p) => a + (p[1] ?? 0), 0) / n,
+  ]
+  const radiusM = pts.reduce((a, p) => a + haversineM(center, p), 0) / n
+  return { center, radiusM }
+}
+
+/** The ring of an existing zone, closing duplicate dropped, or null if it is not a polygon. */
+function ringOf(geometry: unknown): [number, number][] | null {
+  const g = geometry as { type?: string; coordinates?: unknown }
+  if (g?.type !== 'Polygon' || !Array.isArray(g.coordinates)) return null
+  const ring = g.coordinates[0] as unknown
+  if (!Array.isArray(ring) || ring.length < 4) return null
+  return (ring.slice(0, -1) as number[][]).map((p) => [p[0]!, p[1]!])
+}
+
 const fmtRadius = (m: number): string => (m >= 1_000 ? `${(m / 1_000).toFixed(2)} km` : `${Math.round(m)} m`)
+
+/**
+ * Does the ring cross itself?
+ *
+ * Dragging a corner past its neighbours makes a bow-tie, and PostGIS refuses it — but only at SAVE,
+ * behind the shared "invalid or too large" message, which tells an operator nothing about the shape
+ * they are looking at. O(n²) over a hand-drawn ring is nothing, and it lets the outline say so while
+ * the corner is still under the cursor.
+ */
+function selfIntersects(pts: readonly [number, number][]): boolean {
+  const n = pts.length
+  if (n < 4) return false
+  const side = (a: readonly number[], b: readonly number[], c: readonly number[]): number =>
+    Math.sign((b[0]! - a[0]!) * (c[1]! - a[1]!) - (b[1]! - a[1]!) * (c[0]! - a[0]!))
+  const crosses = (a: [number, number], b: [number, number], c: [number, number], d: [number, number]): boolean =>
+    side(a, b, c) !== side(a, b, d) && side(c, d, a) !== side(c, d, b)
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      // edges sharing a vertex always "touch" — only non-adjacent pairs can be a crossing
+      if ((j + 1) % n === i || (i + 1) % n === j) continue
+      if (crosses(pts[i]!, pts[(i + 1) % n]!, pts[j]!, pts[(j + 1) % n]!)) return true
+    }
+  }
+  return false
+}
+
+/** An existing zone opened for VERTEX editing. Parallel to the drawing tool — never both at once. */
+type EditShape =
+  | { kind: 'polygon'; pts: [number, number][] }
+  | { kind: 'circle'; center: [number, number]; radiusM: number }
+/** Grab tolerance for a handle, in screen px — generous, because these are dragged not clicked. */
+const GRAB_PX = 11
 
 /** Geofences (E05-1): draw circle/polygon/corridor with the in-house tool, save, list, delete.
  *  Corridor (V2): draw a route LineString + a buffer half-width; the server buffers it to a polygon.
@@ -93,6 +161,12 @@ export function GeofencesPage() {
   /** THE drawing tool. One state machine for all three kinds (founder: the shapes must feel
    *  identical): `tool` = armed kind, `center` = circle centre, `pts` = polygon/corridor vertices. */
   const toolRef = useRef<{ tool: DraftKind | null; center: [number, number] | null; pts: [number, number][] }>({ tool: null, center: null, pts: [] })
+  /** The zone being vertex-edited. `toolRef.tool` is null whenever this is set, and vice versa —
+   *  arming a drawing tool REPLACES the shape, editing MUTATES it. */
+  const editRef = useRef<EditShape | null>(null)
+  const dragRef = useRef<{ kind: 'vertex'; i: number } | { kind: 'center' } | { kind: 'radius' } | null>(null)
+  /** set inside the map effect so `startEdit`, which lives outside it, can repaint the handles */
+  const renderEditRef = useRef<() => void>(() => {})
   const draftColorRef = useRef(COLORS[0]!)
   const bufferMRef = useRef(100)
   const setDraftRef = useRef<(features: GeoJSON.Feature[]) => void>(() => {})
@@ -110,6 +184,10 @@ export function GeofencesPage() {
   /** non-null = DRAFT mode is EDITING this zone (rename/recolor, optional redraw) rather than
    *  creating a new one — the same panel, so the drawing tools stay one flow */
   const [editingId, setEditingId] = useState<string | null>(null)
+  /** handles are on the map and draggable — false while EDITING a corridor, which redraws */
+  const [reshaping, setReshaping] = useState(false)
+  /** the drafted ring crosses itself — PostGIS would refuse it, so say so before Save does */
+  const [shapeInvalid, setShapeInvalid] = useState(false)
   const deleteFor = (geofences.data ?? []).find((g) => g.id === deleteForId) ?? null
   const selected = (geofences.data ?? []).find((g) => g.id === selectedId) ?? null
 
@@ -153,7 +231,8 @@ export function GeofencesPage() {
     let disposed = false
 
     // ── the drawing engine: ONE set of handlers for circle / polygon / corridor ──
-    const featureFor = (geometry: GeoJSON.Geometry): GeoJSON.Feature => ({ type: 'Feature', geometry, properties: { color: draftColorRef.current } })
+    const featureFor = (geometry: GeoJSON.Geometry, invalid = false): GeoJSON.Feature =>
+      ({ type: 'Feature', geometry, properties: { color: draftColorRef.current, invalid } })
     /**
      * `anchor` marks the vertex that ENDS the shape, `armed` whether clicking it would work yet.
      *
@@ -218,6 +297,98 @@ export function GeofencesPage() {
       map.getCanvas().style.cursor = ''
       map.doubleClickZoom.enable()
     }
+
+    // ── editing an EXISTING zone: the same shapes, dragged instead of drawn ──
+    const editGeometry = (ed: EditShape): GeoJSON.Geometry =>
+      ed.kind === 'circle'
+        ? circlePolygon(ed.center, ed.radiusM)
+        : { type: 'Polygon', coordinates: [[...ed.pts, ed.pts[0]!]] }
+
+    /** What you can grab. A circle is not edited by its 64 ring points — those are an artefact of
+     *  how we store it — but by its centre (move) and one grip due east (resize). */
+    const handlesOf = (ed: EditShape): [number, number][] =>
+      ed.kind === 'circle' ? [ed.center, dueEast(ed.center, ed.radiusM)] : ed.pts
+
+    const renderEdit = () => {
+      const ed = editRef.current
+      if (ed === null) return
+      const geometry = editGeometry(ed)
+      const bad = ed.kind === 'polygon' && selfIntersects(ed.pts)
+      setShapeInvalid(bad)
+      // every drag writes the shape straight through, so Save never depends on a final gesture
+      updateDrawn({ geometry, kind: ed.kind })
+      setDraft([
+        featureFor(geometry, bad),
+        ...handlesOf(ed).map((pt, i) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: pt },
+          properties: {
+            color: draftColorRef.current,
+            // the circle's resize grip is the inverted one: among two handles the odd one out is
+            // the one that does the unusual thing
+            anchor: ed.kind === 'circle' && i === 1,
+            armed: false,
+          },
+        })),
+      ])
+    }
+    ;(renderEditRef as { current: typeof renderEdit }).current = renderEdit
+
+    const grabAt = (pt: { x: number; y: number }): typeof dragRef.current => {
+      const ed = editRef.current
+      if (ed === null) return null
+      const hs = handlesOf(ed)
+      for (const [i, h] of hs.entries()) {
+        const p = map.project({ lng: h[0], lat: h[1] })
+        if (Math.hypot(p.x - pt.x, p.y - pt.y) > GRAB_PX) continue
+        if (ed.kind === 'circle') return i === 0 ? { kind: 'center' } : { kind: 'radius' }
+        return { kind: 'vertex', i }
+      }
+      return null
+    }
+
+    map.on('mousedown', (e) => {
+      if (editRef.current === null) return
+      const grab = grabAt(e.point)
+      if (grab === null) return
+      e.preventDefault() // the map must not pan out from under the handle
+      dragRef.current = grab
+      map.dragPan.disable()
+    })
+
+    map.on('mousemove', (e) => {
+      const ed = editRef.current
+      if (ed === null) return
+      const drag = dragRef.current
+      if (drag === null) {
+        // hovering: name the gesture before it is made
+        const over = grabAt(e.point)
+        map.getCanvas().style.cursor =
+          over === null ? '' : over.kind === 'radius' ? 'ew-resize' : over.kind === 'center' ? 'move' : 'grab'
+        return
+      }
+      const at: [number, number] = [e.lngLat.lng, e.lngLat.lat]
+      if (ed.kind === 'circle') {
+        if (drag.kind === 'center') ed.center = at
+        else ed.radiusM = Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, haversineM(ed.center, at)))
+        setRadiusLabel({ x: e.point.x, y: e.point.y, text: fmtRadius(ed.radiusM) })
+      } else if (drag.kind === 'vertex') {
+        ed.pts[drag.i] = at
+      }
+      renderEdit()
+    })
+
+    const endDrag = () => {
+      if (dragRef.current === null) return
+      dragRef.current = null
+      map.dragPan.enable()
+      setRadiusLabel(null)
+    }
+    map.on('mouseup', endDrag)
+    // a pointer released outside the canvas still ends the drag — otherwise the handle sticks to
+    // the cursor and the next click on the map moves it somewhere the operator never aimed
+    window.addEventListener('mouseup', endDrag)
+
 
     map.on('click', (e) => {
       const st = toolRef.current
@@ -292,7 +463,9 @@ export function GeofencesPage() {
         // the drawing tool's live preview (survives theme swaps by re-adding here)
         map.addSource('gf-draft', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addLayer({ id: 'gf-draft-fill', type: 'fill', source: 'gf-draft', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.18 } })
-        map.addLayer({ id: 'gf-draft-line', type: 'line', source: 'gf-draft', filter: ['!=', ['geometry-type'], 'Point'], paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1.5] } })
+        // a ring that crosses itself turns red HERE rather than at save time, where PostGIS's
+        // rejection arrives as the same message an oversized zone gets
+        map.addLayer({ id: 'gf-draft-line', type: 'line', source: 'gf-draft', filter: ['!=', ['geometry-type'], 'Point'], paint: { 'line-color': ['case', ['boolean', ['get', 'invalid'], false], '#ef4444', ['get', 'color']] as never, 'line-width': 2, 'line-dasharray': [2, 1.5] } })
         // The closing vertex is INVERTED (white fill, coloured ring), not merely bigger: among a
         // dozen dots a size difference is easy to miss, filled-vs-hollow is not. It grows again
         // once the ring can actually be closed, so the dot answers "can I finish here yet"
@@ -323,6 +496,7 @@ export function GeofencesPage() {
     })
     return () => {
       disposed = true
+      window.removeEventListener('mouseup', endDrag)
       stopWatch()
       unsubscribe()
       map.remove()
@@ -342,8 +516,13 @@ export function GeofencesPage() {
   useEffect(() => {
     const map = mapRef.current
     if (map === null || styleEpoch === 0) return
-    map.getSource<GeoJSONSource>('geofences')?.setData(geofenceFeatures(geofences.data ?? []))
-  }, [geofences.data, styleEpoch])
+    // the edited zone is hidden here: the draft layer is already drawing it, and leaving the saved
+    // outline underneath makes a dragged vertex look like it snapped back
+    const all = geofences.data ?? []
+    map.getSource<GeoJSONSource>('geofences')?.setData(
+      geofenceFeatures(editingId === null ? all : all.filter((g) => g.id !== editingId)),
+    )
+  }, [geofences.data, styleEpoch, editingId])
 
   // selection → highlight layer filter + fit the map to the zone (re-applied per style swap)
   useEffect(() => {
@@ -362,6 +541,10 @@ export function GeofencesPage() {
   const armTool = (kind: DraftKind | null) => {
     const map = mapRef.current
     toolRef.current = { tool: kind, center: null, pts: [] }
+    editRef.current = null // drawing REPLACES a shape; the two modes never overlap
+    dragRef.current = null
+    setReshaping(false)
+    setShapeInvalid(false)
     setCircleMeta(null)
     setRadiusLabel(null)
     setDraftRef.current([])
@@ -382,17 +565,26 @@ export function GeofencesPage() {
     setError(null)
   }
   const cancelDraft = () => {
-    armTool(null)
+    armTool(null) // also clears editRef + any in-flight drag
     setDraftKind(null)
     setName('')
     setEditingId(null)
     setError(null)
   }
 
-  /** enter draft mode PREFILLED from an existing zone (founder: geofences had no edit at all).
-   *  Drawing is optional — save without a new shape patches only name/colour. */
+  /**
+   * Open an existing zone for editing — with its own shape under the cursor, not a blank canvas.
+   *
+   * It used to arm the drawing tool on an EMPTY sketch, so "edit" meant "redraw from scratch and
+   * hope you land near the old outline" (founder report). Now the zone's vertices come back as
+   * draggable handles: a polygon by its corners, a circle by its centre and one resize grip.
+   *
+   * A corridor still redraws, and that is a storage limit rather than a decision: `geofences.geom`
+   * holds only the buffered polygon, so its centre-line was never persisted and there is nothing to
+   * hand back (ADR-040). Offering handles there would let an operator drag the buffer's OUTLINE and
+   * save it as the shape — a silent change of meaning, which is worse than asking them to redraw.
+   */
   const startEdit = (g: GeofenceView) => {
-    armTool(g.kind)
     setDraftKind(g.kind)
     setEditingId(g.id)
     setName(g.name)
@@ -401,11 +593,21 @@ export function GeofencesPage() {
     setBufferM(100)
     setSelectedId(null)
     setError(null)
+
+    const pts = ringOf(g.geometry)
+    if (g.kind === 'corridor' || pts === null) {
+      armTool(g.kind) // redraw path — armTool clears any edit state
+      return
+    }
+    armTool(null) // clears the drawing tool (and editRef) before we set our own
+    editRef.current = g.kind === 'circle' ? { kind: 'circle', ...circleFromRing(pts) } : { kind: 'polygon', pts }
+    setReshaping(true)
+    renderEditRef.current()
   }
 
   const save = () => {
     // creating requires a drawn shape; EDITING does not — name/colour alone is a valid save
-    if ((editingId === null && drawn === null) || name.trim() === '' || saving) return
+    if ((editingId === null && drawn === null) || name.trim() === '' || saving || shapeInvalid) return
     setError(null)
     setSaving(true)
     // a corridor sends its route line + buffer half-width; polygon/circle send the drawn polygon
@@ -445,7 +647,7 @@ export function GeofencesPage() {
               <X className="h-4 w-4" aria-hidden />
               {t('admin.cancel')}
             </AdminButton>
-            <AdminButton disabled={(editingId === null && drawn === null) || name.trim() === '' || saving} data-testid="gf-save" onClick={save}>
+            <AdminButton disabled={(editingId === null && drawn === null) || name.trim() === '' || saving || shapeInvalid} data-testid="gf-save" onClick={save}>
               <Check className="h-4 w-4" aria-hidden />
               {t('geofences.save')}
             </AdminButton>
@@ -471,7 +673,7 @@ export function GeofencesPage() {
                   {editingId !== null ? t('geofences.editTitle') : t('geofences.new')}
                 </div>
                 <div className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
-                  {editingId !== null ? t('geofences.editHint') : t('geofences.draftHint')}
+                  {reshaping ? t('geofences.editHintDrag') : editingId !== null ? t('geofences.editHint') : t('geofences.draftHint')}
                 </div>
               </div>
               <div>
@@ -551,7 +753,7 @@ export function GeofencesPage() {
                 </AdminButton>
               )}
               <div className="rounded-md p-2 text-xs" style={{ background: 'var(--admin-surface-sunken)', color: 'var(--admin-ink-soft)' }}>
-                {t(`geofences.hint.${draftKind}`)}
+                {reshaping ? t('geofences.hintEdit') : t(`geofences.hint.${draftKind}`)}
               </div>
               {error !== null && <span role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</span>}
             </div>
@@ -673,7 +875,7 @@ export function GeofencesPage() {
                   <MousePointerClick className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--admin-brand)' }} aria-hidden />
                   <div>
                     <div className="font-semibold" style={{ color: 'var(--admin-brand)' }}>{t('geofences.drawing')}</div>
-                    <div style={{ color: 'var(--admin-ink-soft)' }}>{t(`geofences.hint.${draftKind}`)}</div>
+                    <div style={{ color: 'var(--admin-ink-soft)' }}>{reshaping ? t('geofences.hintEdit') : t(`geofences.hint.${draftKind}`)}</div>
                   </div>
                 </div>
               ) : (
@@ -681,7 +883,7 @@ export function GeofencesPage() {
                   <Check className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--admin-success)' }} aria-hidden />
                   <div>
                     <div className="font-semibold" style={{ color: 'var(--admin-success)' }}>{t('geofences.drawnTitle')}</div>
-                    <div style={{ color: 'var(--admin-ink-soft)' }}>{name.trim() === '' ? t('geofences.drawnNeedName') : t('geofences.drawnReady')}</div>
+                    <div style={{ color: 'var(--admin-ink-soft)' }}>{shapeInvalid ? t('geofences.selfCross') : name.trim() === '' ? t('geofences.drawnNeedName') : editingId !== null ? t('geofences.drawnReadyEdit') : t('geofences.drawnReady')}</div>
                   </div>
                 </div>
               )}

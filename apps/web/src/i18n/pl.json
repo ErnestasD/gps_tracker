@@ -396,9 +396,13 @@
     "deleteError": "Nie udało się usunąć geofence — spróbuj ponownie.",
     "edit": "Edytuj",
     "editTitle": "Edytuj geostrefę",
-    "editHint": "Zmień nazwę lub kolor. Aby zmienić kształt, narysuj nowy na mapie; bez niego obecny kształt pozostaje.",
+    "editHint": "Zmień nazwę lub kolor. Kształt korytarza można zmienić tylko rysując nowy — jego oś nie jest zapisywana.",
     "radius": "Promień",
-    "redraw": "Rysuj od nowa"
+    "redraw": "Rysuj od nowa",
+    "editHintDrag": "Przeciągnij punkty, aby zmienić kształt. Albo narysuj nowy.",
+    "hintEdit": "Przeciągnij białe punkty. Okrąg przesuwaj za środek, rozmiar zmieniaj punktem na krawędzi.",
+    "drawnReadyEdit": "Gotowe — kliknij Zapisz, aby zastosować zmiany.",
+    "selfCross": "Kształt przecina sam siebie — przeciągnij róg z powrotem."
   },
   "deviceList": {
     "title": "Urządzenia",

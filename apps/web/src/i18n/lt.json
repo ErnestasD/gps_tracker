@@ -396,9 +396,13 @@
     "deleteError": "Nepavyko ištrinti geofence — bandykite dar kartą.",
     "edit": "Redaguoti",
     "editTitle": "Redaguoti geozoną",
-    "editHint": "Pakeiskite pavadinimą ar spalvą. Norėdami perbraižyti formą — nubrėžkite naują žemėlapyje; nesant naujos formos, esama lieka.",
+    "editHint": "Pakeiskite pavadinimą ar spalvą. Koridoriaus formą galima keisti tik nubraižant naują — ašinė linija nesaugoma.",
     "radius": "Spindulys",
-    "redraw": "Braižyti iš naujo"
+    "redraw": "Braižyti iš naujo",
+    "editHintDrag": "Tempkite taškus, kad pakeistumėte formą. Arba braižykite naują.",
+    "hintEdit": "Tempkite baltus taškus. Apskritimą judinkite už centro, dydį keiskite už krašto taško.",
+    "drawnReadyEdit": "Paruošta — spauskite Išsaugoti, kad pritaikytumėte pakeitimus.",
+    "selfCross": "Forma kertasi pati su savimi — patempkite kampą atgal."
   },
   "deviceList": {
     "title": "Įrenginiai",

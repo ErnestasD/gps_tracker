@@ -885,6 +885,187 @@ test('geofences: the vertex that closes the polygon is marked, and only that one
   await page.screenshot({ path: 'test-results/gf-anchor.png' }) // PR visual artifact
 })
 
+/**
+ * "Edit" used to arm the drawing tool on an EMPTY sketch, so editing a zone meant redrawing it
+ * from scratch and hoping you landed near the old outline (founder report, 2026-08-31). The zone's
+ * own vertices must come back as draggable handles.
+ */
+test('geofences: editing a zone brings back its vertices, and dragging one changes the shape', async ({ page }) => {
+  let bearer = ''
+  page.on('request', (req) => {
+    const a = req.headers()['authorization']
+    if (a?.startsWith('Bearer ') === true) bearer = a
+  })
+  await login(page)
+  await page.goto('/app/geofences')
+  await expect(page.getByTestId('geofence-map')).toBeVisible()
+  await expect.poll(() => bearer).not.toBe('')
+
+  const square = { type: 'Polygon', coordinates: [[[25.26, 54.67], [25.30, 54.67], [25.30, 54.70], [25.26, 54.70], [25.26, 54.67]]] }
+  const created = await page.request.post('/v1/geofences', {
+    headers: { authorization: bearer, 'content-type': 'application/json' },
+    data: { name: 'E2E Editable', kind: 'polygon', color: '#4F46E5', accountId: null, geometry: square },
+  })
+  expect(created.ok()).toBe(true)
+  const gfId = ((await created.json()) as { id: string }).id
+
+  await page.reload()
+  await expect(page.getByTestId(`gf-${gfId}`)).toBeVisible({ timeout: 15_000 })
+
+  /** draft-source handles, deduped (querySourceFeatures repeats per tile) with screen positions */
+  const handles = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('[data-testid="geofence-map"]') as
+        | (HTMLDivElement & { __map?: { querySourceFeatures: (s: string) => { geometry: { type: string; coordinates: number[] } }[]; project: (c: { lng: number; lat: number }) => { x: number; y: number } } })
+        | null
+      const m = el?.__map
+      if (m === undefined) return []
+      const uniq = new Map<string, { lng: number; lat: number; x: number; y: number }>()
+      for (const f of m.querySourceFeatures('gf-draft')) {
+        if (f.geometry.type !== 'Point') continue
+        const [lng, lat] = f.geometry.coordinates as [number, number]
+        const p = m.project({ lng, lat })
+        uniq.set(`${lng},${lat}`, { lng, lat, x: p.x, y: p.y })
+      }
+      return [...uniq.values()]
+    })
+
+  await page.getByTestId(`gf-edit-${gfId}`).click()
+  // the four corners come back as handles — WITHOUT a single click on the map
+  await expect.poll(async () => (await handles()).length, { timeout: 15_000 }).toBe(4)
+
+  const before = await handles()
+  const box = (await page.getByTestId('geofence-map').boundingBox())!
+
+  const corner = (hs: { x: number; y: number }[], far: boolean) =>
+    hs.reduce((a, b) => ((a.x + a.y <= b.x + b.y) !== far ? a : b)) // topmost-left, or bottom-right
+  /** grab the handle AT `from` and drop it at `to` — both in map-container coordinates */
+  const dragHandle = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    await page.mouse.move(box.x + from.x, box.y + from.y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 10 })
+    await page.mouse.up()
+  }
+
+  // Onto the OPPOSITE corner first: swapping two diagonal vertices of a quad makes a bow-tie, which
+  // PostGIS refuses. That used to surface only on Save, behind the same message an oversized zone
+  // gets — Save is now blocked and the outline says why while the corner is under the cursor.
+  // Computed from the live handles rather than a pixel offset, so it does not depend on the zoom.
+  // BELOW the opposite edge, horizontally between the far corners: the edge arriving at this
+  // vertex then has to cross the edge leaving it. Dragging exactly ONTO a corner instead makes a
+  // degenerate zero-area sliver, which is a different complaint and not the one under test.
+  const br = corner(before, true)
+  const tl0 = corner(before, false)
+  const crossed = { x: (tl0.x + br.x) / 2, y: br.y + 35 }
+  await dragHandle(tl0, crossed)
+  await expect(page.getByTestId('gf-save')).toBeDisabled()
+
+  // …and back out to a simple ring, which re-enables Save. Dragged from where we DROPPED it — after
+  // the bow-tie that vertex is no longer the top-left one, so re-picking by position grabs a
+  // neighbour and the ring stays crossed.
+  const settled = { x: tl0.x - 45, y: tl0.y - 30 }
+  await dragHandle(crossed, settled)
+  await expect(page.getByTestId('gf-save')).toBeEnabled()
+
+  // still four handles — a drag MOVES a vertex, it never adds one
+  await expect.poll(async () => (await handles()).length, { timeout: 10_000 }).toBe(4)
+  const after = await handles()
+  const moved = after.filter((h) => !before.some((b) => b.lng === h.lng && b.lat === h.lat))
+  expect(moved).toHaveLength(1)
+
+  await page.screenshot({ path: 'test-results/gf-edit-handles.png' }) // PR visual artifact
+
+  await page.getByTestId('gf-save').click()
+  // the draft panel closing IS the success signal; surface the inline error if it does not
+  await expect
+    .poll(async () => {
+      if (await page.getByTestId('gf-draft-panel').isVisible()) {
+        return (await page.locator('[data-testid="gf-draft-panel"]').innerText()).includes('rror') ? 'ERROR' : 'open'
+      }
+      return 'closed'
+    }, { timeout: 20_000 })
+    .toBe('closed')
+
+  // the SAVED geometry changed — the drag reached the server, not just the canvas
+  const reread = await page.request.get('/v1/geofences', { headers: { authorization: bearer } })
+  const zone = ((await reread.json()) as { items?: { id: string; geometry: unknown }[] } | { id: string; geometry: unknown }[])
+  const items = Array.isArray(zone) ? zone : (zone.items ?? [])
+  const saved = items.find((g) => g.id === gfId)!
+  expect(JSON.stringify(saved.geometry)).not.toBe(JSON.stringify(square))
+})
+
+/**
+ * A circle is stored as its polygon, so "its vertices" are 64 ring points — an artefact of storage,
+ * not something anyone wants to drag. Editing one must therefore give exactly TWO handles: the
+ * centre (move) and one grip (resize). Its own code path, so its own test.
+ */
+test('geofences: editing a circle gives a centre and a radius grip, not 64 ring points', async ({ page }) => {
+  let bearer = ''
+  page.on('request', (req) => {
+    const a = req.headers()['authorization']
+    if (a?.startsWith('Bearer ') === true) bearer = a
+  })
+  await login(page)
+  await page.goto('/app/geofences')
+  await expect(page.getByTestId('geofence-map')).toBeVisible()
+  await expect.poll(() => bearer).not.toBe('')
+
+  // a plain regular polygon standing in for a stored circle — the vertex centroid is its centre
+  const [clng, clat] = [25.28, 54.685]
+  const ring: [number, number][] = []
+  for (let i = 0; i <= 24; i++) {
+    const t = (i / 24) * 2 * Math.PI
+    ring.push([clng + 0.02 * Math.cos(t), clat + 0.012 * Math.sin(t)])
+  }
+  const created = await page.request.post('/v1/geofences', {
+    headers: { authorization: bearer, 'content-type': 'application/json' },
+    data: { name: 'E2E Circle', kind: 'circle', color: '#4F46E5', accountId: null, geometry: { type: 'Polygon', coordinates: [ring] } },
+  })
+  expect(created.ok()).toBe(true)
+  const gfId = ((await created.json()) as { id: string }).id
+
+  await page.reload()
+  await expect(page.getByTestId(`gf-${gfId}`)).toBeVisible({ timeout: 15_000 })
+
+  const handles = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('[data-testid="geofence-map"]') as
+        | (HTMLDivElement & { __map?: { querySourceFeatures: (s: string) => { geometry: { type: string; coordinates: number[] } }[]; project: (c: { lng: number; lat: number }) => { x: number; y: number } } })
+        | null
+      const m = el?.__map
+      if (m === undefined) return []
+      const uniq = new Map<string, { lng: number; lat: number; x: number; y: number }>()
+      for (const f of m.querySourceFeatures('gf-draft')) {
+        if (f.geometry.type !== 'Point') continue
+        const [lng, lat] = f.geometry.coordinates as [number, number]
+        uniq.set(`${lng},${lat}`, { lng, lat, ...m.project({ lng, lat }) })
+      }
+      return [...uniq.values()]
+    })
+
+  await page.getByTestId(`gf-edit-${gfId}`).click()
+  await expect.poll(async () => (await handles()).length, { timeout: 15_000 }).toBe(2)
+
+  const [a, b] = await handles()
+  const grip = a!.x >= b!.x ? a! : b! // the resize grip sits due EAST of the centre
+  const centre = grip === a ? b! : a!
+  const r0 = Math.hypot(grip.x - centre.x, grip.y - centre.y)
+
+  const box = (await page.getByTestId('geofence-map').boundingBox())!
+  await page.mouse.move(box.x + grip.x, box.y + grip.y)
+  await page.mouse.down()
+  await page.mouse.move(box.x + grip.x + 60, box.y + grip.y, { steps: 8 })
+  await page.mouse.up()
+
+  await expect
+    .poll(async () => {
+      const hs = await handles()
+      if (hs.length !== 2) return 0
+      return Math.round(Math.hypot(hs[0]!.x - hs[1]!.x, hs[0]!.y - hs[1]!.y))
+    }, { timeout: 10_000 })
+    .toBeGreaterThan(Math.round(r0) + 20) // dragging the grip outward GREW the circle
+})
+
 test('geofences: create → list → delete+confirm round-trip', async ({ page }) => {
   await login(page)
 

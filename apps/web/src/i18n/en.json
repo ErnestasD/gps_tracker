@@ -396,9 +396,13 @@
     "deleteError": "Couldn't delete the geofence — try again.",
     "edit": "Edit",
     "editTitle": "Edit geofence",
-    "editHint": "Change the name or colour. To reshape it, draw a new shape on the map; without one the current shape stays.",
+    "editHint": "Change the name or colour. A corridor can only be reshaped by drawing a new one — its centre-line is not stored.",
     "radius": "Radius",
-    "redraw": "Draw again"
+    "redraw": "Draw again",
+    "editHintDrag": "Drag the points to reshape it. Or draw a new shape.",
+    "hintEdit": "Drag the white points. Move a circle by its centre; resize it by the edge point.",
+    "drawnReadyEdit": "Ready — click Save to apply the changes.",
+    "selfCross": "The shape crosses itself — drag the corner back."
   },
   "deviceList": {
     "title": "Devices",

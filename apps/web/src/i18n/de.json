@@ -396,9 +396,13 @@
     "deleteError": "Geofence konnte nicht gelöscht werden — bitte erneut versuchen.",
     "edit": "Bearbeiten",
     "editTitle": "Geozone bearbeiten",
-    "editHint": "Name oder Farbe ändern. Zum Umformen eine neue Form auf der Karte zeichnen; ohne neue Form bleibt die bestehende.",
+    "editHint": "Name oder Farbe ändern. Ein Korridor lässt sich nur durch Neuzeichnen umformen — seine Mittellinie wird nicht gespeichert.",
     "radius": "Radius",
-    "redraw": "Neu zeichnen"
+    "redraw": "Neu zeichnen",
+    "editHintDrag": "Ziehen Sie die Punkte, um die Form zu ändern. Oder zeichnen Sie eine neue.",
+    "hintEdit": "Ziehen Sie die weißen Punkte. Kreis am Mittelpunkt verschieben, am Randpunkt skalieren.",
+    "drawnReadyEdit": "Bereit — zum Übernehmen Speichern klicken.",
+    "selfCross": "Die Form überschneidet sich — ziehen Sie die Ecke zurück."
   },
   "deviceList": {
     "title": "Geräte",
