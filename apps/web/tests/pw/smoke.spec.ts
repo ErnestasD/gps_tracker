@@ -888,12 +888,12 @@ test('geofences: the vertex that closes the polygon is marked, and only that one
 test('geofences: create → list → delete+confirm round-trip', async ({ page }) => {
   await login(page)
 
-  // Drawing a polygon on the terra-draw + Mapbox canvas is too flaky under headless
-  // swiftshader to assert deterministically (documented gap: the draw→finish→save path is
-  // covered only up to editor-mount in the E05-1 test above, and by geofences.spec.ts on the
-  // API side with hand-built GeoJSON). Here we exercise the create→list→delete round-trip via
-  // a deterministic API create (using the app's own bearer token), then the UI list + the
-  // ConfirmDialog-gated delete — the parts that had no e2e at all.
+  // The DRAWING half is covered by the anchor test above, which drives four real clicks on the
+  // canvas — that turned out to be deterministic once every wait is a condition rather than a
+  // duration (the older note here blamed headless swiftshader, and blamed terra-draw, which has
+  // not been a dependency since ee8ff3c). What is still not covered end-to-end is finish→SAVE, so
+  // this exercises create→list→delete via a deterministic API create (using the app's own bearer
+  // token), then the UI list + the ConfirmDialog-gated delete.
   let bearer = ''
   page.on('request', (req) => {
     const a = req.headers()['authorization']

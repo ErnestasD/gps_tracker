@@ -111,8 +111,8 @@ summary {
 }
 
 /* while drawing a geofence the map is a drawing surface — a crosshair makes that
- * unmistakable (terra-draw sets it on the canvas; this guarantees it over the whole
- * container, incl. the brief style-swap window where the canvas is rebuilt). */
+ * unmistakable. The tool sets it on the canvas itself; this guarantees it over the whole
+ * container, incl. the brief style-swap window where the canvas is rebuilt. */
 [data-drawing='true'] .mapboxgl-canvas,
 [data-drawing='true'] .mapboxgl-canvas-container {
   cursor: crosshair;
