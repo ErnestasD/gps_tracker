@@ -1,9 +1,10 @@
-import { ChevronRight, Gauge, Power, Satellite, Search } from 'lucide-react'
+import { ChevronRight, Clock, Gauge, Power, Satellite, Search } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Input } from '@/components/ui/input'
 import { StatusDot } from '@/components/ui-x/StatusDot'
+import { useFmt } from '@/lib/datetime'
 import { filterFleet, fleetPanelCounts, sortFleet, type FleetFilter, type FleetSort } from '@/lib/fleetFilter'
 import type { DeviceLive } from '@/lib/liveStore'
 import { useUnits } from '@/lib/units'
@@ -30,7 +31,6 @@ export function DeviceList({
   nameOf,
   detailOf,
   filter,
-  onFilter,
   follow,
   onFollow,
   loading = false,
@@ -64,7 +64,6 @@ export function DeviceList({
    * next to a list that is not filtered.
    */
   filter: FleetFilter
-  onFilter: (f: FleetFilter) => void
   /** Camera-follows-selection, the same store flag the inspector's button drives. */
   follow: boolean
   onFollow: (v: boolean) => void
@@ -97,33 +96,11 @@ export function DeviceList({
             aria-label={t('deviceList.search')}
           />
         </div>
-        {/* Status chips double as the filter and as the fleet's headline numbers. `silent` is its
-            own chip because "has never reported" is not a status the device claimed — it is the
-            absence of any claim, and folding it into "offline" is how this counter once showed
-            "3 of 3" for a fleet of eight. */}
-        <div className="flex flex-wrap gap-1 pt-2">
-          {([
-            ['all', total, 'deviceList.filter.all'],
-            ['online', counts.online, 'deviceList.filter.online'],
-            ['stale', counts.stale, 'deviceList.filter.stale'],
-            ['offline', counts.offline, 'deviceList.filter.offline'],
-            ['silent', counts.silent, 'deviceList.filter.silent'],
-          ] as const).map(([id, n, key]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => onFilter(filter === id ? 'all' : id)}
-              aria-pressed={filter === id}
-              data-testid={`fleet-filter-${id}`}
-              className={cn(
-                'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
-                filter === id ? 'border-accent text-accent' : 'border-line text-muted hover:text-text',
-              )}
-            >
-              {t(key)} {n}
-            </button>
-          ))}
-        </div>
+        {/* The status filter used to live HERE TOO, identical to the toolbar's copy — two controls
+            for one piece of state, both visible at once on a wide screen. It moved to the toolbar
+            alone because the filter now governs the MAP as well as this list, and a control that
+            hides with a collapsible panel would leave the map filtered by something the operator
+            can no longer see or clear. The counts it carried went with it. */}
         <div className="flex items-center justify-between pt-1.5">
           <span className="text-[11px] text-muted">
             {t('deviceList.count', { shown: shown.length + shownSilent.length, total })}
@@ -195,6 +172,7 @@ const DeviceRow = memo(function DeviceRow({
   onSelect: (id: string) => void
 }) {
   const { speed } = useUnits()
+  const { ago } = useFmt()
   const { ev, status } = device
   /**
    * Two lines, because one was not enough to recognise a vehicle by.
@@ -216,7 +194,7 @@ const DeviceRow = memo(function DeviceRow({
         selected && 'bg-surface-2 shadow-[inset_2px_0_0_0_var(--accent-2)]',
       )}
     >
-      <StatusDot status={status} className="mt-1" />
+      <StatusDot status={status} lastSeenMs={ev.fixTimeMs} className="mt-1" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium text-text">{label}</span>
         {sub.length > 0 && <span className="block truncate text-[11px] text-muted">{sub.join(' · ')}</span>}
@@ -225,6 +203,13 @@ const DeviceRow = memo(function DeviceRow({
             <Gauge className="h-3 w-3" aria-hidden />
             {/* null ⇒ the model does not report speed; "0" would read as "parked" */}
             {ev.speed === null ? '—' : speed(ev.speed)}
+          </span>
+          {/* LAST CONTACT. The colour says "should I care", this says "how bad" — and without it
+              four minutes of silence and four hours looked identical, which is the difference
+              between ignoring a vehicle and going to look for it. */}
+          <span className="inline-flex shrink-0 items-center gap-1 tabular-nums" data-testid={`device-age-${ev.deviceId}`}>
+            <Clock className="h-3 w-3" aria-hidden />
+            {ago(ev.fixTimeMs)}
           </span>
           {ev.satellites > 0 && (
             <span className="inline-flex shrink-0 items-center gap-1 tabular-nums">

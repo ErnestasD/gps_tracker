@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fmtDate, fmtDateTime } from '../src/lib/datetime.js'
+import { fmtAgo, fmtDate, fmtDateTime } from '../src/lib/datetime.js'
 
 const ISO = '2026-07-14T17:03:00Z'
 
@@ -77,5 +77,30 @@ describe('display-pref options (timeFormat / timeZone / dateFormat)', () => {
 
   it('garbage input renders — with opts too', () => {
     expect(fmtDateTime('nope', 'en', { timeZone: 'UTC', dateFormat: 'ymd', timeFormat: '12h' })).toBe('—')
+  })
+})
+
+describe('fmtAgo — how long since a device last reported', () => {
+  it('scales the unit to the gap, so four minutes and four hours never look alike', () => {
+    expect(fmtAgo(30_000, 'en')).toMatch(/30 seconds ago/)
+    expect(fmtAgo(6 * 60_000, 'en')).toMatch(/6 minutes ago/)
+    expect(fmtAgo(4 * 3_600_000, 'en')).toMatch(/4 hours ago/)
+    expect(fmtAgo(3 * 86_400_000, 'en')).toMatch(/3 days ago/)
+  })
+
+  it('declines correctly in Lithuanian — the reason this is Intl and not a lookup table', () => {
+    // "prieš 2 minutes" and "prieš 21 minutę" are different words; a hand-rolled formatter
+    // gets one of them wrong and nobody notices until a customer does
+    expect(fmtAgo(2 * 60_000, 'lt')).toContain('2')
+    expect(fmtAgo(21 * 60_000, 'lt')).toContain('21')
+    expect(fmtAgo(2 * 60_000, 'lt')).not.toEqual(fmtAgo(21 * 60_000, 'lt').replace('21', '2'))
+  })
+
+  it('clamps a device reporting from the FUTURE to "now" rather than "in 3 minutes"', () => {
+    // tracker RTCs drift and some run ahead — the pipeline counts it as positions_clock_skewed_total.
+    // That is a fact about the hardware clock, not something to show a dispatcher.
+    const future = fmtAgo(-180_000, 'en')
+    expect(future).not.toMatch(/in /)
+    expect(fmtAgo(0, 'en')).toEqual(future)
   })
 })

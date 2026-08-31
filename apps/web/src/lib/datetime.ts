@@ -129,6 +129,8 @@ export function useFmt(): {
   d: (iso: string) => string
   tm: (iso: string) => string
   tms: (iso: string) => string
+  /** "6 min ago" from an epoch-ms instant — the fleet's last-contact age. */
+  ago: (ms: number) => string
 } {
   const { i18n } = useTranslation()
   const lang = i18n.language
@@ -144,6 +146,33 @@ export function useFmt(): {
       d: (iso: string) => fmtDate(iso, lang, opts),
       tm: (iso: string) => fmtTime(iso, lang, opts, false),
       tms: (iso: string) => fmtTime(iso, lang, opts, true),
+      // deliberately NOT timezone-formatted: an elapsed duration is the same everywhere
+      ago: (ms: number) => fmtAgo(Date.now() - ms, lang),
     }
   }, [lang, prefs])
+}
+
+/**
+ * "6 min ago" — how long since a device last reported.
+ *
+ * Added because the fleet showed a colour and a word and nothing else, so an operator could not
+ * tell four minutes of silence from four hours. The colour answers "should I care", this answers
+ * "how bad", and the second question is the one that decides what they do next.
+ *
+ * `Intl.RelativeTimeFormat` rather than a hand-rolled table: it declines correctly in Lithuanian
+ * and Polish, where "prieš 2 minutes" and "prieš 21 minutę" are not the same word.
+ *
+ * A NEGATIVE age is clamped to zero rather than rendered as "in 3 minutes". Device clocks drift and
+ * some run ahead — the pipeline counts it (`positions_clock_skewed_total`) — and a vehicle that
+ * reports from the future is a fact about the tracker's RTC, not something to show a dispatcher.
+ */
+export function fmtAgo(ms: number, locale = 'en'): string {
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return rtf.format(-s, 'second')
+  const m = Math.round(s / 60)
+  if (m < 60) return rtf.format(-m, 'minute')
+  const h = Math.round(m / 60)
+  if (h < 24) return rtf.format(-h, 'hour')
+  return rtf.format(-Math.round(h / 24), 'day')
 }

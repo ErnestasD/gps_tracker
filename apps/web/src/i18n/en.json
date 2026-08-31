@@ -413,9 +413,9 @@
     "noFix": "no fix yet",
     "filter": {
       "all": "All",
-      "online": "Driving",
-      "stale": "Idle",
-      "offline": "Offline",
+      "online": "Online",
+      "stale": "Offline",
+      "offline": "No contact",
       "silent": "Never reported"
     },
     "sort": {
@@ -438,8 +438,8 @@
   },
   "status": {
     "online": "Online",
-    "stale": "Stale",
-    "offline": "Offline"
+    "stale": "Offline",
+    "offline": "No contact"
   },
   "map": {
     "connecting": "Connecting…",
@@ -787,7 +787,7 @@
     "modelChange": "Change device model",
     "modelChangeConfirm": "Change model",
     "modelChangeSure": "Change {{name}} from {{from}} to {{to}}?\n\nThis decides how FUTURE positions are decoded. Positions already stored keep the parameter names they were decoded with, and are not rewritten.",
-    "waiting": "Waiting",
+    "waiting": "Never reported",
     "waitingHint": "Registered, but this device has never reported a position. Check the IMEI, the SIM's APN, and that the tracker has been sent the server SMS.",
     "settings": {
       "title": "Tracking settings — {{name}}",
@@ -1256,7 +1256,7 @@
     "today": "Driven today",
     "vsYesterday": "vs. yesterday",
     "vsPrev24": "vs. prior 24 h",
-    "staleHint": "{{n}} stale",
+    "staleHint": "{{n}} offline",
     "events24": "Events (24 h)",
     "critical24": "Critical (24 h)",
     "fleetActivity": "Fleet activity",

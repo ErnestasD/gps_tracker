@@ -413,9 +413,9 @@
     "noFix": "noch keine Position",
     "filter": {
       "all": "Alle",
-      "online": "Aktiv",
-      "stale": "Veraltet",
-      "offline": "Offline",
+      "online": "Online",
+      "stale": "Offline",
+      "offline": "Kein Kontakt",
       "silent": "Nie gemeldet"
     },
     "sort": {
@@ -438,8 +438,8 @@
   },
   "status": {
     "online": "Online",
-    "stale": "Veraltet",
-    "offline": "Offline"
+    "stale": "Offline",
+    "offline": "Kein Kontakt"
   },
   "map": {
     "connecting": "Verbinden…",
@@ -787,7 +787,7 @@
     "modelChange": "Gerätemodell ändern",
     "modelChangeConfirm": "Modell ändern",
     "modelChangeSure": "{{name}} von {{from}} auf {{to}} ändern?\n\nDas bestimmt, wie KÜNFTIGE Positionen dekodiert werden. Bereits gespeicherte Positionen behalten die Parameternamen, mit denen sie dekodiert wurden, und werden nicht neu geschrieben.",
-    "waiting": "Wartet",
+    "waiting": "Nie gemeldet",
     "waitingHint": "Registriert, aber dieses Gerät hat noch nie eine Position gesendet. Prüfe IMEI, den APN der SIM und ob dem Tracker die Server-SMS geschickt wurde.",
     "settings": {
       "title": "Tracking-Einstellungen — {{name}}",
@@ -1256,7 +1256,7 @@
     "today": "Heute gefahren",
     "vsYesterday": "vs. gestern",
     "vsPrev24": "vs. vorherige 24 h",
-    "staleHint": "{{n}} veraltet",
+    "staleHint": "{{n}} offline",
     "events24": "Ereignisse (24 h)",
     "critical24": "Kritisch (24 h)",
     "fleetActivity": "Flottenaktivität",

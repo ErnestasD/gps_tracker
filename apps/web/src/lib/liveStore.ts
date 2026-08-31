@@ -560,6 +560,19 @@ export class LiveStore {
     if (sink) this.pushMapFrame()
   }
 
+  /**
+   * Re-push the current frame without waiting for the next position.
+   *
+   * The map's view of the fleet can change for reasons the STORE knows nothing about — the status
+   * filter is one, and it is applied where the markers are joined. Without this, switching the
+   * filter over a parked fleet left the old markers on screen until some vehicle happened to
+   * report, which reads as the filter being broken. The cached collections are reused, so this is
+   * a re-send, not a rebuild.
+   */
+  repaintMap(): void {
+    this.pushMapFrame()
+  }
+
   private scrubPoint: ScrubState = null
   /**
    * The last built collections, reused when only the scrub moved.

@@ -363,9 +363,14 @@ export function MapPage() {
           {snap.connection === 'open' ? t('map.live') : snap.connection === 'connecting' ? t('map.connecting') : t('map.reconnecting')}
         </Badge>
 
-        {/* The fleet's headline numbers, doubling as the filter. Only where there is room for them:
-            the same chips are inside the panel at every width. */}
-        <div className="hidden items-center gap-1.5 xl:flex">
+        {/* The fleet's headline numbers, doubling as the filter — and now the ONLY copy of it.
+            It used to be `hidden xl:flex`, with an identical set inside the fleet panel, so a wide
+            screen showed the same control twice and a narrow one showed the panel's. One control
+            now, at every width: the filter governs the MAP as well as the list, so it has to stay
+            visible when the panel is collapsed, and it scrolls sideways rather than wrapping the
+            toolbar on a phone. `all` is not a chip — pressing an active chip clears the filter,
+            which is the same gesture with one less thing on screen. */}
+        <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1">
           {([
             ['online', counts.online],
             ['stale', counts.stale],
@@ -379,7 +384,7 @@ export function MapPage() {
               aria-pressed={filter === id}
               data-testid={`toolbar-filter-${id}`}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
                 filter === id ? 'border-accent text-accent' : 'border-line text-muted hover:text-text',
               )}
             >
@@ -462,7 +467,6 @@ export function MapPage() {
               nameOf={nameOf}
               detailOf={detailOf}
               filter={filter}
-              onFilter={setFilter}
               follow={snap.follow}
               onFollow={(v) => liveStore.setFollow(v)}
               // still connecting/seeding: show a loader rather than flash "No devices yet"
@@ -478,6 +482,7 @@ export function MapPage() {
             history={history}
             labelOf={nameOf}
             hasSelection={snap.selectedId !== null}
+            statusFilter={filter}
           />
 
             {/* What just happened, without leaving the map. Wide screens only — it is the first

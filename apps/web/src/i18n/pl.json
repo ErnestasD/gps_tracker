@@ -413,9 +413,9 @@
     "noFix": "brak sygnału",
     "filter": {
       "all": "Wszystkie",
-      "online": "Aktywne",
-      "stale": "Nieaktualne",
-      "offline": "Offline",
+      "online": "Online",
+      "stale": "Offline",
+      "offline": "Brak kontaktu",
       "silent": "Nigdy nie zgłosiły"
     },
     "sort": {
@@ -438,8 +438,8 @@
   },
   "status": {
     "online": "Online",
-    "stale": "Nieaktualny",
-    "offline": "Offline"
+    "stale": "Offline",
+    "offline": "Brak kontaktu"
   },
   "map": {
     "connecting": "Łączenie…",
@@ -787,7 +787,7 @@
     "modelChange": "Zmień model urządzenia",
     "modelChangeConfirm": "Zmień model",
     "modelChangeSure": "Zmienić {{name}} z {{from}} na {{to}}?\n\nTo decyduje, jak będą dekodowane PRZYSZŁE pozycje. Już zapisane pozycje zachowują nazwy parametrów, z którymi zostały zdekodowane, i nie są przepisywane.",
-    "waiting": "Oczekuje",
+    "waiting": "Nigdy nie zgłosił",
     "waitingHint": "Zarejestrowane, ale to urządzenie nigdy nie wysłało pozycji. Sprawdź IMEI, APN karty SIM oraz czy do lokalizatora wysłano SMS z adresem serwera.",
     "settings": {
       "title": "Ustawienia śledzenia — {{name}}",
@@ -1256,7 +1256,7 @@
     "today": "Przejechano dziś",
     "vsYesterday": "vs. wczoraj",
     "vsPrev24": "vs. poprzednie 24 h",
-    "staleHint": "{{n}} nieaktualne",
+    "staleHint": "{{n}} offline",
     "events24": "Zdarzenia (24 h)",
     "critical24": "Krytyczne (24 h)",
     "fleetActivity": "Aktywność floty",

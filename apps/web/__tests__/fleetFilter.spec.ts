@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { filterFleet, fleetPanelCounts, sortFleet, type FleetFilter } from '../src/lib/fleetFilter'
+import { filterFleet, fleetPanelCounts, sortFleet, type FleetFilter, filterMarkers } from '../src/lib/fleetFilter'
 import type { DeviceLive, DeviceStatus } from '../src/lib/liveStore'
 
 /**
@@ -98,5 +98,41 @@ describe('sortFleet', () => {
     const before = input.map((d) => d.ev.deviceId)
     sortFleet(input, 'name', label)
     expect(input.map((d) => d.ev.deviceId)).toEqual(before)
+  })
+})
+
+describe('filterMarkers — the map obeys the same filter as the list', () => {
+  const f = (deviceId: string, status: string): GeoJSON.Feature => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [25, 54] },
+    properties: { deviceId, status },
+  })
+  const features = [f('a', 'online'), f('b', 'stale'), f('c', 'offline'), f('d', 'online')]
+
+  it('keeps every marker when nothing is filtered', () => {
+    expect(filterMarkers(features, 'all').map((x) => String(x.properties?.['deviceId']))).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('keeps only the chosen status — the defect was the map ignoring the filter entirely', () => {
+    expect(filterMarkers(features, 'online').map((x) => String(x.properties?.['deviceId']))).toEqual(['a', 'd'])
+    expect(filterMarkers(features, 'stale').map((x) => String(x.properties?.['deviceId']))).toEqual(['b'])
+    expect(filterMarkers(features, 'offline').map((x) => String(x.properties?.['deviceId']))).toEqual(['c'])
+  })
+
+  it('shows nothing for `silent`, because a device that never reported has no coordinate', () => {
+    expect(filterMarkers(features, 'silent')).toEqual([])
+  })
+
+  it('agrees with the list: the same filter keeps the same devices on both surfaces', () => {
+    // the guarantee that matters — one filter, one meaning. A device drawn on the map must be a
+    // device present in the panel, or the operator is reading two different fleets.
+    for (const status of ['online', 'stale', 'offline'] as const) {
+      const onMap = filterMarkers(features, status).map((x) => String(x.properties?.['deviceId'])).sort()
+      const inList = features
+        .filter((x) => x.properties?.['status'] === status)
+        .map((x) => String(x.properties?.['deviceId']))
+        .sort()
+      expect(onMap).toEqual(inList)
+    }
   })
 })
