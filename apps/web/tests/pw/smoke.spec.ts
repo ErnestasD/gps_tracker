@@ -821,6 +821,70 @@ test('routing planner: page renders, parse errors surface, optimize degrades gra
   await expect(page.getByTestId('routing-result-table').or(page.getByTestId('routing-error'))).toBeVisible({ timeout: 20_000 })
 })
 
+/**
+ * The vertex that CLOSES the ring must be findable among the others.
+ *
+ * A polygon finishes by clicking back on its first point, and every point was drawn identically —
+ * on a shape with a dozen corners there was nothing to aim at (founder report, 2026-08-31).
+ *
+ * This also fills a documented gap: the round-trip test below notes that the draw path is
+ * "covered only up to editor-mount". It is not flaky when every wait is a CONDITION rather than a
+ * duration — no `waitForTimeout` here, deliberately.
+ */
+test('geofences: the vertex that closes the polygon is marked, and only that one', async ({ page }) => {
+  await login(page)
+  await page.goto('/app/geofences')
+  const canvas = page.getByTestId('geofence-map')
+  await expect(canvas).toBeVisible()
+
+  // the draft layers are added on style.load — wait for the layer, not for a guess at how long
+  const layerReady = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('[data-testid="geofence-map"]') as
+        | (HTMLDivElement & { __map?: { getLayer: (id: string) => unknown } })
+        | null
+      return el?.__map?.getLayer('gf-draft-pts') !== undefined
+    })
+  await expect.poll(layerReady, { timeout: 30_000 }).toBe(true)
+
+  /** vertices currently in the draft source, deduped — querySourceFeatures repeats per TILE */
+  const vertices = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('[data-testid="geofence-map"]') as
+        | (HTMLDivElement & { __map?: { querySourceFeatures: (s: string) => { geometry: { type: string; coordinates: number[] }; properties: Record<string, unknown> }[] } })
+        | null
+      const uniq = new Map<string, { anchor: boolean; armed: boolean }>()
+      for (const f of el?.__map?.querySourceFeatures('gf-draft') ?? []) {
+        if (f.geometry.type !== 'Point') continue
+        uniq.set(JSON.stringify(f.geometry.coordinates), {
+          anchor: f.properties['anchor'] === true,
+          armed: f.properties['armed'] === true,
+        })
+      }
+      return [...uniq.values()]
+    })
+
+  await page.getByTestId('gf-mode-polygon').click()
+  const box = (await canvas.boundingBox())!
+  const corners: [number, number][] = [
+    [box.x + 220, box.y + 150],
+    [box.x + 380, box.y + 160],
+    [box.x + 400, box.y + 300],
+    [box.x + 210, box.y + 290],
+  ]
+  for (const [i, [x, y]] of corners.entries()) {
+    await page.mouse.click(x, y)
+    await expect.poll(async () => (await vertices()).length, { timeout: 15_000 }).toBe(i + 1)
+  }
+
+  const v = await vertices()
+  // exactly one anchor, and at four points the ring can be closed, so it is armed
+  expect(v.filter((p) => p.anchor)).toHaveLength(1)
+  expect(v.filter((p) => p.armed)).toHaveLength(1)
+  expect(v.filter((p) => p.anchor)[0]!.armed).toBe(true)
+  await page.screenshot({ path: 'test-results/gf-anchor.png' }) // PR visual artifact
+})
+
 test('geofences: create → list → delete+confirm round-trip', async ({ page }) => {
   await login(page)
 
