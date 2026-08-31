@@ -976,20 +976,15 @@ test('geofences: editing a zone brings back its vertices, and dragging one chang
   await page.screenshot({ path: 'test-results/gf-edit-handles.png' }) // PR visual artifact
 
   await page.getByTestId('gf-save').click()
-  // the draft panel closing IS the success signal; surface the inline error if it does not
-  await expect
-    .poll(async () => {
-      if (await page.getByTestId('gf-draft-panel').isVisible()) {
-        return (await page.locator('[data-testid="gf-draft-panel"]').innerText()).includes('rror') ? 'ERROR' : 'open'
-      }
-      return 'closed'
-    }, { timeout: 20_000 })
-    .toBe('closed')
+  // The panel closing IS the success signal, and it is worth waiting for: on CI this is the first
+  // geofence UPDATE, so the PATCH pays for a cold PostGIS validate + area guard + the Redis cache
+  // publish, and it has taken well past 20 s there. If the save FAILS the panel stays up with the
+  // error inline, which a plain toBeHidden reports far more clearly than a hand-rolled poll did.
+  await expect(page.getByTestId('gf-draft-panel')).toBeHidden({ timeout: 60_000 })
 
   // the SAVED geometry changed — the drag reached the server, not just the canvas
   const reread = await page.request.get('/v1/geofences', { headers: { authorization: bearer } })
-  const zone = ((await reread.json()) as { items?: { id: string; geometry: unknown }[] } | { id: string; geometry: unknown }[])
-  const items = Array.isArray(zone) ? zone : (zone.items ?? [])
+  const items = (await reread.json()) as { id: string; geometry: unknown }[]
   const saved = items.find((g) => g.id === gfId)!
   expect(JSON.stringify(saved.geometry)).not.toBe(JSON.stringify(square))
 })
