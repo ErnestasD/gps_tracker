@@ -154,8 +154,27 @@ export function GeofencesPage() {
 
     // ── the drawing engine: ONE set of handlers for circle / polygon / corridor ──
     const featureFor = (geometry: GeoJSON.Geometry): GeoJSON.Feature => ({ type: 'Feature', geometry, properties: { color: draftColorRef.current } })
-    const vertexFeatures = (pts: readonly [number, number][]): GeoJSON.Feature[] =>
-      pts.map((pt) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: pt }, properties: { color: draftColorRef.current } }))
+    /**
+     * `anchor` marks the vertex that ENDS the shape, `armed` whether clicking it would work yet.
+     *
+     * A polygon closes by clicking back on its first vertex, and every vertex was drawn
+     * identically — on a shape with a dozen points there was nothing to aim at (founder report).
+     * Only the polygon gets an anchor: the corridor ends on a double-click and the circle's single
+     * point is its centre, so marking either would advertise a click that does nothing.
+     */
+    const vertexFeatures = (
+      pts: readonly [number, number][],
+      opts?: { closesRing?: boolean; armed?: boolean },
+    ): GeoJSON.Feature[] =>
+      pts.map((pt, i) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: pt },
+        properties: {
+          color: draftColorRef.current,
+          anchor: opts?.closesRing === true && i === 0,
+          armed: opts?.armed === true && i === 0,
+        },
+      }))
     const setDraft = (features: GeoJSON.Feature[]) => {
       map.getSource<GeoJSONSource>('gf-draft')?.setData({ type: 'FeatureCollection', features })
     }
@@ -176,7 +195,7 @@ export function GeofencesPage() {
         const geometry: GeoJSON.Geometry = pts.length >= 3
           ? { type: 'Polygon', coordinates: [[...pts, pts[0]!]] }
           : { type: 'LineString', coordinates: pts }
-        setDraft([featureFor(geometry), ...vertexFeatures(st.pts)])
+        setDraft([featureFor(geometry), ...vertexFeatures(st.pts, { closesRing: true, armed: st.pts.length >= 3 })])
       } else {
         setDraft([featureFor({ type: 'LineString', coordinates: pts }), ...vertexFeatures(st.pts)])
       }
@@ -258,6 +277,13 @@ export function GeofencesPage() {
         return
       }
       preview(at)
+      // over the closing vertex, and close enough that a click WOULD land: say so. Same CLOSE_PX
+      // the click handler uses, so the cursor never promises a hit that then misses.
+      if (st.tool === 'polygon' && st.pts.length >= 3) {
+        const first = map.project({ lng: st.pts[0]![0], lat: st.pts[0]![1] })
+        const over = Math.hypot(first.x - e.point.x, first.y - e.point.y) <= CLOSE_PX
+        map.getCanvas().style.cursor = over ? 'pointer' : 'crosshair'
+      }
     })
 
     map.on('style.load', () => {
@@ -267,7 +293,24 @@ export function GeofencesPage() {
         map.addSource('gf-draft', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         map.addLayer({ id: 'gf-draft-fill', type: 'fill', source: 'gf-draft', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.18 } })
         map.addLayer({ id: 'gf-draft-line', type: 'line', source: 'gf-draft', filter: ['!=', ['geometry-type'], 'Point'], paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1.5] } })
-        map.addLayer({ id: 'gf-draft-pts', type: 'circle', source: 'gf-draft', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 4.5, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } })
+        // The closing vertex is INVERTED (white fill, coloured ring), not merely bigger: among a
+        // dozen dots a size difference is easy to miss, filled-vs-hollow is not. It grows again
+        // once the ring can actually be closed, so the dot answers "can I finish here yet"
+        // without a legend.
+        const isAnchor = ['boolean', ['get', 'anchor'], false]
+        const isArmed = ['boolean', ['get', 'armed'], false]
+        map.addLayer({
+          id: 'gf-draft-pts',
+          type: 'circle',
+          source: 'gf-draft',
+          filter: ['==', ['geometry-type'], 'Point'],
+          paint: {
+            'circle-radius': ['case', isArmed, 8, isAnchor, 6.5, 4.5] as never,
+            'circle-color': ['case', isAnchor, '#ffffff', ['get', 'color']] as never,
+            'circle-stroke-color': ['case', isAnchor, ['get', 'color'], '#ffffff'] as never,
+            'circle-stroke-width': ['case', isAnchor, 3, 1.5] as never,
+          },
+        })
       }
       if (!map.getSource('geofences')) {
         map.addSource('geofences', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
