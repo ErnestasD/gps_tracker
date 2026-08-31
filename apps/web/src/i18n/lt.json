@@ -410,8 +410,8 @@
     "filter": {
       "all": "Visi",
       "online": "Prisijungę",
-      "stale": "Vėluoja",
-      "offline": "Atsijungę",
+      "stale": "Atsijungę",
+      "offline": "Nepasiekiami",
       "silent": "Niekada nepranešė"
     },
     "sort": {
@@ -434,8 +434,8 @@
   },
   "status": {
     "online": "Prisijungęs",
-    "stale": "Vėluoja",
-    "offline": "Atsijungęs"
+    "stale": "Atsijungęs",
+    "offline": "Nepasiekiamas"
   },
   "map": {
     "connecting": "Jungiamasi…",
@@ -1252,7 +1252,7 @@
     "today": "Šiandien nuvažiuota",
     "vsYesterday": "vs. vakar",
     "vsPrev24": "vs. ankstesnės 24 val.",
-    "staleHint": "{{n}} vėluoja",
+    "staleHint": "{{n}} atsijungę",
     "events24": "Įvykiai (24 val.)",
     "critical24": "Kritiniai (24 val.)",
     "fleetActivity": "Parko aktyvumas",

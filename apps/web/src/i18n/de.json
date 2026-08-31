@@ -410,8 +410,8 @@
     "filter": {
       "all": "Alle",
       "online": "Online",
-      "stale": "Verzögert",
-      "offline": "Offline",
+      "stale": "Offline",
+      "offline": "Kein Kontakt",
       "silent": "Nie gemeldet"
     },
     "sort": {
@@ -434,8 +434,8 @@
   },
   "status": {
     "online": "Online",
-    "stale": "Verzögert",
-    "offline": "Offline"
+    "stale": "Offline",
+    "offline": "Kein Kontakt"
   },
   "map": {
     "connecting": "Verbinden…",
@@ -1252,7 +1252,7 @@
     "today": "Heute gefahren",
     "vsYesterday": "vs. gestern",
     "vsPrev24": "vs. vorherige 24 h",
-    "staleHint": "{{n}} verzögert",
+    "staleHint": "{{n}} offline",
     "events24": "Ereignisse (24 h)",
     "critical24": "Kritisch (24 h)",
     "fleetActivity": "Flottenaktivität",

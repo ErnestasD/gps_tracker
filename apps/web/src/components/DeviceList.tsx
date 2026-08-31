@@ -1,9 +1,10 @@
-import { ChevronRight, Gauge, Power, Satellite, Search } from 'lucide-react'
+import { ChevronRight, Clock, Gauge, Power, Satellite, Search } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Input } from '@/components/ui/input'
 import { StatusDot } from '@/components/ui-x/StatusDot'
+import { useFmt } from '@/lib/datetime'
 import { filterFleet, fleetPanelCounts, sortFleet, type FleetFilter, type FleetSort } from '@/lib/fleetFilter'
 import type { DeviceLive } from '@/lib/liveStore'
 import { useUnits } from '@/lib/units'
@@ -171,6 +172,7 @@ const DeviceRow = memo(function DeviceRow({
   onSelect: (id: string) => void
 }) {
   const { speed } = useUnits()
+  const { ago } = useFmt()
   const { ev, status } = device
   /**
    * Two lines, because one was not enough to recognise a vehicle by.
@@ -192,7 +194,7 @@ const DeviceRow = memo(function DeviceRow({
         selected && 'bg-surface-2 shadow-[inset_2px_0_0_0_var(--accent-2)]',
       )}
     >
-      <StatusDot status={status} className="mt-1" />
+      <StatusDot status={status} lastSeenMs={ev.fixTimeMs} className="mt-1" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium text-text">{label}</span>
         {sub.length > 0 && <span className="block truncate text-[11px] text-muted">{sub.join(' · ')}</span>}
@@ -201,6 +203,13 @@ const DeviceRow = memo(function DeviceRow({
             <Gauge className="h-3 w-3" aria-hidden />
             {/* null ⇒ the model does not report speed; "0" would read as "parked" */}
             {ev.speed === null ? '—' : speed(ev.speed)}
+          </span>
+          {/* LAST CONTACT. The colour says "should I care", this says "how bad" — and without it
+              four minutes of silence and four hours looked identical, which is the difference
+              between ignoring a vehicle and going to look for it. */}
+          <span className="inline-flex shrink-0 items-center gap-1 tabular-nums" data-testid={`device-age-${ev.deviceId}`}>
+            <Clock className="h-3 w-3" aria-hidden />
+            {ago(ev.fixTimeMs)}
           </span>
           {ev.satellites > 0 && (
             <span className="inline-flex shrink-0 items-center gap-1 tabular-nums">
