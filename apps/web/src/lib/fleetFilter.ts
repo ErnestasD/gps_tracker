@@ -83,3 +83,21 @@ export function sortFleet(
       return out.sort(byName)
   }
 }
+
+/**
+ * The SAME filter, applied to map markers.
+ *
+ * It lives beside `filterFleet` on purpose. The list and the map answer one question — "which
+ * vehicles is the operator looking at" — and when the two answers were computed in two places the
+ * map simply did not answer it at all: filtering to "Offline" narrowed the list to four and left
+ * all ten arrows on the map.
+ *
+ * `silent` keeps nothing: a device that has never reported has no coordinate, so there is no marker
+ * to keep. That filter empties the map by construction, which is the honest result rather than a
+ * bug — the fleet panel is where those devices are listed.
+ */
+export function filterMarkers(features: readonly GeoJSON.Feature[], filter: FleetFilter): GeoJSON.Feature[] {
+  if (filter === 'all') return [...features]
+  if (filter === 'silent') return []
+  return features.filter((f) => f.properties?.['status'] === filter)
+}

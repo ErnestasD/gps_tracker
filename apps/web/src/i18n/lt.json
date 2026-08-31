@@ -409,9 +409,9 @@
     "noFix": "dar nesusisiekė",
     "filter": {
       "all": "Visi",
-      "online": "Aktyvūs",
-      "stale": "Pasenę",
-      "offline": "Neprisijungę",
+      "online": "Prisijungę",
+      "stale": "Vėluoja",
+      "offline": "Atsijungę",
       "silent": "Niekada nepranešė"
     },
     "sort": {
@@ -434,7 +434,7 @@
   },
   "status": {
     "online": "Prisijungęs",
-    "stale": "Pasenęs",
+    "stale": "Vėluoja",
     "offline": "Atsijungęs"
   },
   "map": {
@@ -783,7 +783,7 @@
     "modelChange": "Keisti įrenginio modelį",
     "modelChangeConfirm": "Keisti modelį",
     "modelChangeSure": "Keisti {{name}} iš {{from}} į {{to}}?\n\nTai nulemia, kaip bus dekoduojamos BŪSIMOS pozicijos. Jau įrašytos pozicijos išlaiko parametrų pavadinimus, su kuriais buvo dekoduotos, ir nėra perrašomos.",
-    "waiting": "Laukiama",
+    "waiting": "Niekada nepranešė",
     "waitingHint": "Užregistruotas, bet šis įrenginys dar niekada neatsiuntė pozicijos. Patikrink IMEI, SIM kortelės APN ir ar sekikliui išsiųsta serverio SMS.",
     "settings": {
       "title": "Sekimo nustatymai — {{name}}",
@@ -1252,7 +1252,7 @@
     "today": "Šiandien nuvažiuota",
     "vsYesterday": "vs. vakar",
     "vsPrev24": "vs. ankstesnės 24 val.",
-    "staleHint": "{{n}} pasenę",
+    "staleHint": "{{n}} vėluoja",
     "events24": "Įvykiai (24 val.)",
     "critical24": "Kritiniai (24 val.)",
     "fleetActivity": "Parko aktyvumas",

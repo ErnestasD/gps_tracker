@@ -30,7 +30,6 @@ export function DeviceList({
   nameOf,
   detailOf,
   filter,
-  onFilter,
   follow,
   onFollow,
   loading = false,
@@ -64,7 +63,6 @@ export function DeviceList({
    * next to a list that is not filtered.
    */
   filter: FleetFilter
-  onFilter: (f: FleetFilter) => void
   /** Camera-follows-selection, the same store flag the inspector's button drives. */
   follow: boolean
   onFollow: (v: boolean) => void
@@ -97,33 +95,11 @@ export function DeviceList({
             aria-label={t('deviceList.search')}
           />
         </div>
-        {/* Status chips double as the filter and as the fleet's headline numbers. `silent` is its
-            own chip because "has never reported" is not a status the device claimed — it is the
-            absence of any claim, and folding it into "offline" is how this counter once showed
-            "3 of 3" for a fleet of eight. */}
-        <div className="flex flex-wrap gap-1 pt-2">
-          {([
-            ['all', total, 'deviceList.filter.all'],
-            ['online', counts.online, 'deviceList.filter.online'],
-            ['stale', counts.stale, 'deviceList.filter.stale'],
-            ['offline', counts.offline, 'deviceList.filter.offline'],
-            ['silent', counts.silent, 'deviceList.filter.silent'],
-          ] as const).map(([id, n, key]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => onFilter(filter === id ? 'all' : id)}
-              aria-pressed={filter === id}
-              data-testid={`fleet-filter-${id}`}
-              className={cn(
-                'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
-                filter === id ? 'border-accent text-accent' : 'border-line text-muted hover:text-text',
-              )}
-            >
-              {t(key)} {n}
-            </button>
-          ))}
-        </div>
+        {/* The status filter used to live HERE TOO, identical to the toolbar's copy — two controls
+            for one piece of state, both visible at once on a wide screen. It moved to the toolbar
+            alone because the filter now governs the MAP as well as this list, and a control that
+            hides with a collapsible panel would leave the map filtered by something the operator
+            can no longer see or clear. The counts it carried went with it. */}
         <div className="flex items-center justify-between pt-1.5">
           <span className="text-[11px] text-muted">
             {t('deviceList.count', { shown: shown.length + shownSilent.length, total })}

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
 import { liveStore, scrubFeatures, type MapFrame, type ScrubState } from '@/lib/liveStore'
+import { filterMarkers, type FleetFilter } from '@/lib/fleetFilter'
 import { createThemedMap, mapboxgl, watchMapLoad } from '@/lib/map'
 import type { MapLayers } from '@/lib/mapLayers'
 
@@ -71,6 +72,7 @@ export function LiveMap({
   history = EMPTY_FC,
   labelOf,
   hasSelection = false,
+  statusFilter = 'all',
 }: {
   layers: MapLayers
   /** Geofence polygons the operator has left visible (already filtered by the workspace). */
@@ -82,8 +84,30 @@ export function LiveMap({
   /** Whether a vehicle is selected — "centre on selected" is a no-op without one, and a control
    *  that silently does nothing teaches the operator to distrust the others. */
   hasSelection?: boolean
+  /**
+   * The workspace's status filter, applied to the MARKERS too.
+   *
+   * It used to narrow only the fleet list, so filtering to "Offline" left every vehicle on the map
+   * and the operator reading a list of four against a map of ten. The filter is applied to the
+   * SOURCE DATA rather than as a layer filter, because this source clusters: a layer filter hides
+   * the arrows but the cluster bubbles keep counting what it hid, so "2" would sit over a map
+   * showing nothing.
+   *
+   * `silent` devices have never reported a position and therefore have no marker at all — that
+   * filter empties the map, correctly and by construction.
+   */
+  statusFilter?: FleetFilter
 }) {
   const { t } = useTranslation()
+  // The map sink is registered once; like `labelOf` the filter has to reach it through a ref, or
+  // the closure would keep filtering by whatever was selected on first render.
+  const statusFilterRef = useRef<FleetFilter>(statusFilter)
+  statusFilterRef.current = statusFilter
+  // …and the store must re-send the frame, or a filter change over a parked fleet would not repaint
+  // until some vehicle reported.
+  useEffect(() => {
+    liveStore.repaintMap()
+  }, [statusFilter])
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MbMap | null>(null)
   const [mapError, setMapError] = useState(false) // constructor threw / style never loaded
@@ -135,6 +159,7 @@ export function LiveMap({
     let lastDevicesRaw: GeoJSON.FeatureCollection | null = null
     let lastTrail: GeoJSON.FeatureCollection | null = null
     let lastLabelFn: ((id: string) => string) | undefined
+    let lastStatusFilter: FleetFilter | null = null
     /** The last scrub PLACE SEEN — not necessarily where the camera is: the first frame after
      *  registration records the place without moving, so a remount does not fly into a scrub the
      *  operator left behind. '' when live, and when we hold no position for the moment. */
@@ -437,17 +462,20 @@ export function LiveMap({
        * function is part of it, because renaming a device must still redraw its label.
        */
       const label = labelRef.current
-      if (frame.devices !== lastDevicesRaw || label !== lastLabelFn) {
+      const statusF = statusFilterRef.current
+      if (frame.devices !== lastDevicesRaw || label !== lastLabelFn || statusF !== lastStatusFilter) {
         lastDevicesRaw = frame.devices
         lastLabelFn = label
+        lastStatusFilter = statusF
+        const kept = filterMarkers(frame.devices.features, statusF)
         // The name label lives in the FEATURE, because a symbol layer can only read what the source
         // carries. Joining it here rather than in the store keeps the store free of view concerns.
         lastDevicesJoined =
           label === undefined
-            ? frame.devices
+            ? { type: 'FeatureCollection', features: kept }
             : {
                 type: 'FeatureCollection',
-                features: frame.devices.features.map((f) => ({
+                features: kept.map((f) => ({
                   ...f,
                   properties: { ...f.properties, label: label(String(f.properties?.['deviceId'] ?? '')) },
                 })),
