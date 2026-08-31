@@ -39,7 +39,7 @@ Timeline: **8 weeks → pilot-ready v1** (2 devs + Claude Code), weeks 9–16 sh
 - **Go codec lib with ENCODE support (Codec 8/8E/16/12/13/14 TCP+UDP)** — ideal engine for our simulator's packet generation + reference oracle #3 (verify repo license in W1): https://github.com/alim-zanibekov/teltonika
 - Telemify (hosted Teltonika emulator: routes, event injection, CAN frames) — complementary for demos/manual QA, NOT for CI (CI stays on our deterministic tools/simulator): https://telemify.io
 - MapLibre GL JS: https://maplibre.org · **Tiles: OpenFreeMap — free public instance, no API keys, no view limits, OpenMapTiles schema, self-host scripts published (Hetzner+nginx+Btrfs, ~300 GB SSD / 4 GB RAM using prebuilt images):** https://openfreemap.org + https://github.com/hyperknot/openfreemap · commercial fallback if ever needed: MapTiler
-- Geofence drawing: terra-draw (MIT, MapLibre-native): https://github.com/JamesLMilner/terra-draw
+- Geofence drawing: **in-house** (ADR-040) — Mapbox GL handlers for polygon/circle/corridor. terra-draw was the original choice (ADR-021) and was removed in `ee8ff3c` once ADR-030 moved the renderer off MapLibre and its adapter stopped earning its place.
 - **Reverse geocoding: Photon (Apache 2.0, komoot)** self-hosted via docker with GraphHopper **prebuilt country extracts** (PL/DE/LT/LV/EE — small, weekly-updated dumps; no Nominatim import needed): https://github.com/komoot/photon + https://github.com/rtuszik/photon-docker + dumps at https://download1.graphhopper.com/public
 - TimescaleDB: https://github.com/timescale/timescaledb · License terms: https://www.tigerdata.com/legal/licenses · Editions: https://www.tigerdata.com/docs/about/latest/timescaledb-editions
 - PostGIS: https://postgis.net · BullMQ: https://docs.bullmq.io · Hono: https://hono.dev · zod-openapi: https://github.com/honojs/middleware/tree/main/packages/zod-openapi
@@ -120,7 +120,7 @@ TypeScript everywhere, Node 22 LTS, pnpm workspaces + Turborepo.
 **Realtime:** Redis pub/sub `live:{tenant}` → WS in `apps/api` (auth via **single-use ws-ticket, TTL 30 s**; never raw JWT in query strings).
 **Maps (free stack, deliberate):** MapLibre GL + **OpenFreeMap public instance** (style URL, no key, no limits) as default; resilience path documented = self-host OpenFreeMap prebuilt image on a dedicated box (~300 GB SSD/4 GB RAM) or PMTiles behind Caddy; MapTiler only as paid emergency fallback (style URL is an env var — switching = config change, zero code).
 **Reverse geocoding (free stack):** **self-hosted Photon** container with GraphHopper country extracts (PL+DE+LT+LV+EE at launch; add countries as tenants demand) + geohash7 cache table (§6.3) — komoot's public instance is dev-only fair-use, never production. Marginal cost €0; disk ≈ tens of GB for our countries.
-**Web:** MapLibre GL, terra-draw (geofence editor), TanStack Query+Router, Tailwind + shadcn/ui, i18next, Recharts for speed/fuel charts.
+**Web:** Mapbox GL (ADR-030; optional Google basemap ADR-038), in-house geofence editor (ADR-040), TanStack Query+Router, Tailwind + shadcn/ui, i18next, Recharts for speed/fuel charts.
 **Infra:** Hetzner Falkenstein — v1: 1× AX42 (app+redis+workers) + 1× dedicated volume-backed Postgres box (or same host container, ADR-006 decides on load test). Docker Compose, GitHub Actions CD, Caddy (auto-TLS incl. tenant custom domains via on-demand TLS). Backups: pgBackRest → Hetzner Storage Box, nightly full + WAL; **restore drill W7 exit criterion**. Observability: Prometheus + Grafana + Loki, node/postgres/redis exporters, custom metrics (`ingest_msgs_total`, `ingest_parse_fail_total`, `ack_latency_ms`, `stream_depth`, `pipeline_lag_ms`, `ws_clients`); Uptime Kuma public status page; GlitchTip (Sentry-compatible SDKs) both back and front.
 **Error tracking:** GlitchTip self-hosted (Sentry-SDK compatible; swap to Sentry SaaS only if ops burden proves real).
 **Monthly cost model (free-first mandate — every paid line needs a free alternative named):**
@@ -131,7 +131,7 @@ TypeScript everywhere, Node 22 LTS, pnpm workspaces + Turborepo.
 | Backups | Hetzner Storage Box 1 TB | ~4 |
 | Map tiles | OpenFreeMap public (fallback: self-host/MapTiler) | 0 |
 | Geocoding | Photon self-host (country extracts) | 0 |
-| Maps/geo licenses | MapLibre/terra-draw/PostGIS/OSM (attribution required: "© OpenStreetMap contributors") | 0 |
+| Maps/geo licenses | Mapbox GL (ADR-030, free tier 50k loads/mo — **monitor**), optional Google Map Tiles (ADR-038, **billed per session/tile**), PostGIS/OSM, in-house editor (ADR-040) | was 0 on the MapLibre stack; **no longer** — see the two ADRs |
 | Error tracking / status / monitoring | GlitchTip + Uptime Kuma + Prometheus/Grafana/Loki self-host | 0 |
 | Email | AWS SES eu-central-1 (~€0.10/1k) or Postmark if deliverability pain | ~1–15 |
 | Telegram | Bot API | 0 |
@@ -263,7 +263,7 @@ S1 tenants/accounts/users CRUD + RBAC middleware (roles: platform_admin, tsp_adm
 S1 trip state machine + unit tests from recorded real fixtures. S2 recompute job (late batches) idempotency property test. S3 history API + playback UI (timeline scrub, speed chart, stop markers). S4 trips list + detail (route, stats). S5 odometer preference logic + per-device config. **Exit: W1–W4 real driving vs manual log ±5% distance; playback UX approved by both founders.**
 
 **W5 — Geofences + rules + notifications.**
-S1 geofence CRUD + map editor (polygon/circle, **terra-draw**). S2 geom cache (Redis) + transition detection w/ hysteresis (enter requires 2 consecutive fix_valid inside). S3 rules CRUD UI. S4 engine: overspeed/ignition/din/power_cut/low_battery/panic + cooldowns + offline sweeper. S5 email (**SES eu-central-1**) + Telegram channel (**pairing: one platform bot; account admin generates deep-link `t.me/<bot>?start=<token>`; /start binds chat_id to the account channel**), per-account channel config. S6 events timeline UI + filters. **Exit: real car crosses real geofence → Telegram <15 s; panic DIN test fires instantly.**
+S1 geofence CRUD + map editor (polygon/circle, ~~**terra-draw**~~ → in-house since 2026-08-24, ADR-040). S2 geom cache (Redis) + transition detection w/ hysteresis (enter requires 2 consecutive fix_valid inside). S3 rules CRUD UI. S4 engine: overspeed/ignition/din/power_cut/low_battery/panic + cooldowns + offline sweeper. S5 email (**SES eu-central-1**) + Telegram channel (**pairing: one platform bot; account admin generates deep-link `t.me/<bot>?start=<token>`; /start binds chat_id to the account channel**), per-account channel config. S6 events timeline UI + filters. **Exit: real car crosses real geofence → Telegram <15 s; panic DIN test fires instantly.**
 
 **W6 — Reports + public API.**
 S1 report engine on positions+trips+events (+ caggs where possible): trips, mileage, stops, overspeed, geofence, engine-hours; account TZ correctness tests. S2 CSV/XLSX export via BullMQ job + signed URL. S3 public REST per §6.6 + API keys + rate limit (per-key token bucket, 600 req/min default). S4 webhooks + HMAC + retries + delivery log UI. S5 OpenAPI docs page (Scalar/Stoplight embed). *(nice: PDF export, scheduled reports)*. **Exit: external script pulls yesterday's trips via API key; webhook received & verified.**
@@ -331,7 +331,7 @@ Simulated CC failure modes per epic against guardrails: (a) W1 S4 — CC hand-ro
 - **Simulator engine found:** Go teltonika lib implements encode+decode for Codecs 8/8E/16/12/13/14 incl. CRC — removes the hardest simulator work; license verification is a W1 AC with TS-encoder fallback.
 - **Golden corpus source #2:** Traccar decoder test file contains real hex packets (Apache 2.0, harvest with attribution).
 - Telemify (hosted Teltonika emulator) catalogued for demos/manual QA; excluded from CI by rule.
-- terra-draw (MIT) selected for geofence editor; exceljs (streaming) for XLSX; GlitchTip default over Sentry SaaS; SES over Postmark.
+- terra-draw (MIT) selected for geofence editor *(superseded 2026-08-31 by ADR-040 — in-house)*; exceljs (streaming) for XLSX; GlitchTip default over Sentry SaaS; SES over Postmark.
 - Cost model table added (§5): total infra ≈ €75–90/mo with tiles/geocoding/monitoring at €0. Free-first mandate codified: every paid line must name its free alternative.
 - Flespi engineering article independently corroborated two plan decisions: per-model AVL ID divergence (our dictionary rule) and device TLS support (our V2 hardening path).
 

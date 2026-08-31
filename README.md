@@ -350,9 +350,12 @@ Every new variable must be added to the table here AND match the `.env` contract
   Every geometry is server-validated (`ST_IsValid` → 400 on self-intersection) and
   area-capped (`ST_Area ≤ 10,000 km²`, §6.3 → 400); GeoJSON is a bound string param, never
   concatenated. Circles are stored as their polygon approximation (`kind` is UI metadata).
-- **Editor** (`/app/geofences`, nav Automation → Geofences) — draw polygon/circle with
-  **terra-draw** (ADR-021, MIT, MapLibre-native) on the OpenFreeMap map; existing geofences
-  render as coloured fills; name/colour + save; list with delete. i18n ×4.
+- **Editor** (`/app/geofences`, nav Automation → Geofences) — draw polygon / circle / corridor
+  with the **in-house tool** (ADR-040; terra-draw was removed in `ee8ff3c`) on the Mapbox GL map
+  (ADR-030). Polygon closes on its first vertex — drawn inverted so it can be found among the
+  others — or on a double-click; circle is centre-then-radius; corridor is a route line plus a
+  buffer half-width. Existing geofences render as coloured fills; name/colour + save; list with
+  delete. i18n ×4.
 - **Transition detection** (E05-2, worker) — geofence CRUD publishes geometries to Redis
   (`geofence:tenant:{id}`); the worker resolves each device's applicable fences (own account
   + tenant-shared) through a short-TTL geom cache and runs a pure point-in-polygon engine

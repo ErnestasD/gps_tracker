@@ -4,6 +4,9 @@
 
 **AC (§8 W5 S1):** geofence CRUD + map editor (polygon/circle, terra-draw).
 
+> **Istorinis įrašas.** terra-draw pašalintas 2026-08-24 (`ee8ff3c`); redaktorius dabar savas,
+> žr. **ADR-040**. Žemiau — kaip buvo planuota tuo metu, nekeista.
+
 ## Context
 
 `Geofence` modelis egzistuoja: id, tenantId, accountId(nullable=tenant-shared), name, color(#hex), kind(polygon|circle), geom `geography(Polygon,4326)` (Unsupported Prisma → raw SQL), createdAt. NĖRA geofence repo. `terra-draw` NĖRA dep (MIT, MapLibre-native) → ADR-021. Circle irgi saugomas kaip Polygon (editor buferuoja apskritimą į poligoną). Area guard ≤10,000 km² (§6.3). scopedWhere jau turi nullableAccount (geofences tenant-shared).

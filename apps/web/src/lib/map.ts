@@ -236,8 +236,9 @@ export interface ThemedMapOptions extends Omit<MapOptions, 'container' | 'style'
   /**
    * Invoked synchronously RIGHT BEFORE a theme swap calls `map.setStyle` — the last
    * moment the outgoing style's runtime sources/layers still exist. Style-coupled
-   * plugins (terra-draw) must detach here and re-attach in `style.load`; otherwise a
-   * user interaction during the swap window hits their already-dropped sources.
+   * consumers must detach here and re-attach in `style.load`; otherwise a user interaction
+   * during the swap window hits already-dropped sources. The geofence editor is the one that
+   * cares: its draft sources are re-added on `style.load` (ADR-040).
    */
   onBeforeStyleSwap?: () => void
 }

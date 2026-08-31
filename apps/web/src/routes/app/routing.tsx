@@ -47,7 +47,7 @@ export function RoutePlannerPage() {
 
   const parsed = parseStopsText(text)
 
-  // map lifecycle (copied from geofences.tsx, minus terra-draw)
+  // map lifecycle (copied from geofences.tsx, minus the drawing engine)
   useEffect(() => {
     const container = containerRef.current
     if (!container) return

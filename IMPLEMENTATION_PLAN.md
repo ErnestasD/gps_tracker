@@ -255,7 +255,7 @@
 ## E05 — Geofences, rules, notifications (W5) — *Epic exit: real geofence cross → Telegram <15 s; panic instant.*
 
 ### E05-1 · Geofence CRUD + editor (M)
-**Files:** repos/geofences (PostGIS raw accessors: `ST_GeomFromGeoJSON`, area guard ≤ 10,000 km²), routes, `apps/web/.../geofences/*` with terra-draw (polygon, circle→buffered point stored as polygon).
+**Files:** repos/geofences (PostGIS raw accessors: `ST_GeomFromGeoJSON`, area guard ≤ 10,000 km²), routes, `apps/web/.../geofences/*` with the in-house drawing tool (ADR-040; terra-draw removed in `ee8ff3c`) (polygon, circle→buffered point stored as polygon).
 **AC:** [ ] address search box (forward geocode via Photon `/api?q=`) recenters map for drawing · [ ] draw/edit/delete round-trips GeoJSON exactly · [ ] self-intersecting polygon rejected with useful error · [ ] per-account limit 500 geofences enforced.
 **Depends:** E03-2, E02-6.
 
