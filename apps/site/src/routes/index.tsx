@@ -353,7 +353,7 @@ function FinalCTA() {
         <circle cx="600" cy="120" r="3" fill="#4c4dcf" />
         <circle cx="180" cy="480" r="2.5" fill="#7C5CFC" />
       </svg>
-      <div className="relative mx-auto max-w-4xl glass-panel px-8 py-16 md:px-20 md:py-20 text-center overflow-hidden">
+      <div className="relative mx-auto max-w-6xl glass-panel px-8 py-16 md:px-20 md:py-20 text-center overflow-hidden">
         <div
           aria-hidden
           className="absolute inset-0 opacity-50 pointer-events-none"
