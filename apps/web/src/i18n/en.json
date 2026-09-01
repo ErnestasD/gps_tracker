@@ -962,7 +962,9 @@
       "showOnMap": "Show on map",
       "noLocation": "No position recorded",
       "title": "Event details",
-      "direction": "Direction"
+      "direction": "Direction",
+      "duration": "Duration",
+      "peak": "Peak"
     }
   },
   "reports": {

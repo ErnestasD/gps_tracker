@@ -225,7 +225,7 @@ export interface EventFact {
 
 /** Payload keys already spoken for by a kind's own facts — never repeated in the "other" tail. */
 const CLAIMED: Record<string, readonly string[]> = {
-  overspeed: ['rule', 'speedKmh', 'limitKmh'],
+  overspeed: ['rule', 'speedKmh', 'limitKmh', 'maxSpeedKmh'],
   low_battery: ['rule', 'volts', 'thresholdV'],
   ignition: ['rule', 'ignition'],
   din_change: ['rule', 'din1'],
@@ -243,9 +243,20 @@ export function eventFacts(e: EventRow, opts: SummaryOpts & { onOff?: (on: boole
     typeof v !== 'number' ? num(v) : opts.fmtSpeed !== undefined ? opts.fmtSpeed(v) : `${v} km/h`
   const onOff = (on: boolean): string => (opts.onOff !== undefined ? opts.onOff(on) : on ? 'on' : 'off')
 
+  // An interval, not an instant — printed FIRST, because "for how long" is the question the
+  // cooldown's five identical rows could never answer.
+  if (typeof e.endedAt === 'string' && e.endedAt !== '') {
+    const ms = Date.parse(e.endedAt) - Date.parse(e.at)
+    if (Number.isFinite(ms) && ms > 0) out.push({ key: 'events.f.duration', value: humanDuration(ms) })
+  }
+
   switch (e.kind) {
     case 'overspeed': {
       out.push({ key: 'events.f.speed', value: speed(p['speedKmh']) })
+      // the worst moment of the breach, which the cooldown used to throw away
+      if (typeof p['maxSpeedKmh'] === 'number' && p['maxSpeedKmh'] > (typeof p['speedKmh'] === 'number' ? p['speedKmh'] : 0)) {
+        out.push({ key: 'events.f.peak', value: speed(p['maxSpeedKmh']) })
+      }
       out.push({ key: 'events.f.limit', value: speed(p['limitKmh']) })
       // the number the operator actually acts on, and the only one the payload never carried
       if (typeof p['speedKmh'] === 'number' && typeof p['limitKmh'] === 'number') {
@@ -300,4 +311,15 @@ export function eventFacts(e: EventRow, opts: SummaryOpts & { onOff?: (on: boole
     out.push({ key: null, rawLabel: k, value: shown })
   }
   return out
+}
+
+/** "22 min", "9 h 5 min", "46 s" — a duration a dispatcher reads at a glance. */
+export function humanDuration(ms: number): string {
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s} s`
+  const m = Math.round(s / 60)
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60)
+  const rem = m % 60
+  return rem === 0 ? `${h} h` : `${h} h ${rem} min`
 }

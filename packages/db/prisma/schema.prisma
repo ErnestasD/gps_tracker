@@ -856,6 +856,10 @@ model Event {
   ruleId         String?   @db.Uuid
   kind           String
   at             DateTime  @db.Timestamptz()
+  /// The LAST moment this same condition was observed — an overspeed that lasted 22 minutes is one
+  /// event, not five spaced by the cooldown. NULL means a single instant (panic, ignition), which
+  /// genuinely has no duration, so nothing has to sweep the table to close anything.
+  endedAt        DateTime? @db.Timestamptz()
   lat            Float?
   lon            Float?
   payload        Json      @default("{}")
