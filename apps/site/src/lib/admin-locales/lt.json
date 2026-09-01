@@ -499,7 +499,12 @@
       "zoomIn": "Trumpesnis intervalas — detaliau",
       "zoomOut": "Ilgesnis intervalas",
       "span": "{{hours}} val.",
-      "replaySpeed": "Peržaidimo greitis"
+      "replaySpeed": "Peržaidimo greitis",
+      "day": {
+        "label": "Diena",
+        "today": "Šiandien",
+        "custom": "Pasirinktas ruožas"
+      }
     },
     "eventFeed": "Įvykių srautas",
     "ctl": {

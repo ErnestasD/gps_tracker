@@ -81,6 +81,8 @@ function satsOf(d: Device): number {
 
 function MapPage() {
   const { t, i18n } = useTranslation("admin");
+  // the dock is a static mock; the picker is real enough to open, which is what a demo needs
+  const [demoDay, setDemoDay] = React.useState(0);
   const lang = (i18n.resolvedLanguage ?? "lt").slice(0, 2) as Lang;
   const l = L[LANGUAGES.includes(lang) ? lang : "lt"];
   const [q, setQ] = React.useState("");
@@ -332,6 +334,19 @@ function MapPage() {
           ))}
           <span className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded" style={{ left: "96%", background: "var(--admin-brand)" }} />
         </div>
+        {/* Day picker — the demo's answer to the first question anyone asks of a tracking product:
+            "can I go back and see where it was on Tuesday". The dock mirrored the real page's zoom
+            and quick-jumps but not this, so the demo showed a product that could only look at now. */}
+        <Combobox
+          value={String(demoDay)}
+          onChange={(v) => setDemoDay(Number(v))}
+          width={150}
+          aria-label={t("map.timeline.day.label")}
+          options={Array.from({ length: 8 }, (_, back) => ({
+            value: String(back),
+            label: back === 0 ? t("map.timeline.day.today") : new Date(Date.now() - back * 86_400_000).toLocaleDateString(i18n.language, { month: "short", day: "numeric" }),
+          }))}
+        />
         <span className="mono text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{t("map.timeline.span", { hours: 24 })}</span>
         {[24, 12, 6, 1].map((h) => (
           <button key={h} className="mono cursor-pointer text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{t("map.timeline.quick.hours", { hours: h })}</button>

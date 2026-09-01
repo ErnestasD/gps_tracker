@@ -499,7 +499,12 @@
       "zoomIn": "Kürzerer Zeitraum — mehr Detail",
       "zoomOut": "Längerer Zeitraum",
       "span": "{{hours}} Std.",
-      "replaySpeed": "Wiedergabetempo"
+      "replaySpeed": "Wiedergabetempo",
+      "day": {
+        "label": "Tag",
+        "today": "Heute",
+        "custom": "Eigener Bereich"
+      }
     },
     "eventFeed": "Ereignis-Feed",
     "ctl": {

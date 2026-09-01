@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Input } from '@/components/ui/input'
 import { StatusDot } from '@/components/ui-x/StatusDot'
+import { Combobox } from '@/components/admin/Combobox'
 import { useFmt } from '@/lib/datetime'
 import { filterFleet, fleetPanelCounts, sortFleet, type FleetFilter, type FleetSort } from '@/lib/fleetFilter'
 import type { DeviceLive } from '@/lib/liveStore'
@@ -115,17 +116,21 @@ export function DeviceList({
             />
             {t('info.follow')}
           </label>
-          <select
+          {/* Same reason as the timeline's day picker: a native <select> is drawn by the operating
+              system and reads as a piece of another application beside the admin shell's controls.
+              These two were the only browser-default selects left in the workspace. */}
+          <Combobox
             value={sort}
-            onChange={(e) => setSort(e.currentTarget.value as FleetSort)}
+            onChange={(v) => setSort(v as FleetSort)}
+            width={110}
             aria-label={t('deviceList.sort.label')}
             data-testid="fleet-sort"
-            className="rounded border border-line bg-transparent px-1 py-0.5 text-[11px] text-muted"
-          >
-            <option value="status">{t('deviceList.sort.status')}</option>
-            <option value="name">{t('deviceList.sort.name')}</option>
-            <option value="speed">{t('deviceList.sort.speed')}</option>
-          </select>
+            options={[
+              { value: 'status', label: t('deviceList.sort.status') },
+              { value: 'name', label: t('deviceList.sort.name') },
+              { value: 'speed', label: t('deviceList.sort.speed') },
+            ]}
+          />
         </div>
       </div>
       <div className="flex-1 overflow-y-auto" role="listbox" aria-label={t('deviceList.title')}>

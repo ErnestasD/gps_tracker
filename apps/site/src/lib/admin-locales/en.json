@@ -499,7 +499,12 @@
       "zoomIn": "Shorter span — more detail",
       "zoomOut": "Longer span",
       "span": "{{hours}} h",
-      "replaySpeed": "Replay speed"
+      "replaySpeed": "Replay speed",
+      "day": {
+        "label": "Day",
+        "today": "Today",
+        "custom": "Custom range"
+      }
     },
     "eventFeed": "Event feed",
     "ctl": {
