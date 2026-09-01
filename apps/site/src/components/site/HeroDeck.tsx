@@ -266,7 +266,7 @@ function HeroConsoleDeck() {
           </div>
 
           {/* Screenshot */}
-          <div className="relative aspect-[1440/900] w-full overflow-hidden bg-[#0b0f1c]">
+          <div className="relative aspect-[1558/784] w-full overflow-hidden bg-[#0b0f1c]">
             <AnimatePresence mode="wait">
               <motion.img
                 key={current.key}
