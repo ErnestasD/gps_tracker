@@ -937,6 +937,32 @@
       "power_cut": "dingo išorinis maitinimas",
       "fuel_theft": "kuras krito {{drop}} {{unit}}",
       "fuel_theft_vol": "kuras krito {{drop}}"
+    },
+    "f": {
+      "speed": "Greitis",
+      "limit": "Riba",
+      "over": "Viršyta",
+      "volts": "Įtampa",
+      "threshold": "Slenkstis",
+      "state": "Būsena",
+      "on": "Įjungta",
+      "off": "Išjungta",
+      "zone": "Geozona",
+      "transition_enter": "Įvažiavo",
+      "transition_exit": "Išvažiavo",
+      "offlineFor": "Nepasiekiamas",
+      "lastFix": "Paskutinė pozicija",
+      "from": "Nuo",
+      "to": "Iki",
+      "drop": "Kritimas",
+      "rule": "Taisyklė",
+      "when": "Kada",
+      "device": "Įrenginys",
+      "where": "Kur",
+      "showOnMap": "Rodyti žemėlapyje",
+      "noLocation": "Pozicija neužfiksuota",
+      "title": "Įvykio detalės",
+      "direction": "Kryptis"
     }
   },
   "reports": {

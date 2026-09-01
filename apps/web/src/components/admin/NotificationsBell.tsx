@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { eventSeverity } from '@/lib/events'
 import { useFmt } from '@/lib/datetime'
 import { listEvents, localizedEventSummary } from '@/lib/events'
+import { listDevices } from '@/lib/devices'
 import { markAllRead, markRead, readIds, unreadCount } from '@/lib/notifications'
 import { useUnits } from '@/lib/units'
 
@@ -31,6 +32,9 @@ export function NotificationsBell() {
   const [read, setRead] = React.useState<Set<string>>(() => readIds())
 
   const events = useQuery({ queryKey: ['bell-events'], queryFn: () => listEvents({ limit: 20 }), refetchInterval: 60_000 })
+  // shared cache key with the rest of the app, so opening the bell costs no extra request
+  const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices, staleTime: 60_000 })
+  const deviceName = (id: string): string => devices.data?.find((d) => d.id === id)?.name ?? id
   const rows = events.data ?? []
   const unread = unreadCount(rows.map((e) => e.id), read)
   const recent = rows.slice(0, 8)
@@ -95,7 +99,16 @@ export function NotificationsBell() {
               <li key={e.id}>
                 <button
                   type="button"
-                  onClick={() => setRead(markRead(read, e.id))}
+                  /*
+                   * Marking it read was ALL this did. The founder's complaint was that a
+                   * notification says neither what nor where nor when — and the "where" a dropdown
+                   * can honestly offer is not a map pin, it is a way to reach the event itself.
+                   */
+                  onClick={() => {
+                    setRead(markRead(read, e.id))
+                    setOpen(false)
+                    void navigate({ to: '/app/events', search: { focus: String(e.id) } })
+                  }}
                   className="admin-hairline-b flex w-full items-start gap-2.5 px-3 py-2.5 text-left"
                   style={{ background: isRead ? 'transparent' : 'var(--admin-brand-soft)' }}
                   data-testid="bell-item"
@@ -105,8 +118,10 @@ export function NotificationsBell() {
                     <div className="truncate text-sm" style={{ color: 'var(--admin-ink)', fontWeight: isRead ? 400 : 600 }}>
                       {localizedEventSummary(t, e, { fmtSpeed: u.speed, fmtVolume: u.volumeL })}
                     </div>
-                    <div className="text-[11px]" style={{ color: 'var(--admin-ink-soft)' }}>
-                      {t(`events.k.${e.kind}`, e.kind)} · {dt(e.at)}
+                    <div className="truncate text-[11px]" style={{ color: 'var(--admin-ink-soft)' }}>
+                      {/* the vehicle FIRST: "105 km/h > 90 km/h" is meaningless until you know
+                          which van, and the kind is already implied by the summary above */}
+                      {deviceName(e.deviceId)} · {t(`events.k.${e.kind}`, e.kind)} · {dt(e.at)}
                     </div>
                   </div>
                 </button>

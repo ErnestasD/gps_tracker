@@ -937,6 +937,32 @@
       "power_cut": "external power lost",
       "fuel_theft": "fuel dropped {{drop}} {{unit}}",
       "fuel_theft_vol": "fuel dropped {{drop}}"
+    },
+    "f": {
+      "speed": "Speed",
+      "limit": "Limit",
+      "over": "Over by",
+      "volts": "Voltage",
+      "threshold": "Threshold",
+      "state": "State",
+      "on": "On",
+      "off": "Off",
+      "zone": "Zone",
+      "transition_enter": "Entered",
+      "transition_exit": "Left",
+      "offlineFor": "No contact for",
+      "lastFix": "Last position",
+      "from": "From",
+      "to": "To",
+      "drop": "Drop",
+      "rule": "Rule",
+      "when": "When",
+      "device": "Device",
+      "where": "Where",
+      "showOnMap": "Show on map",
+      "noLocation": "No position recorded",
+      "title": "Event details",
+      "direction": "Direction"
     }
   },
   "reports": {

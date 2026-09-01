@@ -1,7 +1,7 @@
 import type { EventView } from '@orbetra/shared'
 import { describe, expect, it } from 'vitest'
 
-import { EVENT_KINDS, eventDetail, eventSeverity, eventSummary, eventSummaryT, eventTone, eventsQuery, localizedEventSummary } from '../src/lib/events.js'
+import { EVENT_KINDS, eventDetail, eventSeverity, eventSummary, eventSummaryT, eventTone, eventsQuery, localizedEventSummary, eventFacts, type EventRow } from '../src/lib/events.js'
 
 
 const ev = (kind: string, payload: Record<string, unknown>): EventView => ({
@@ -193,5 +193,48 @@ describe('eventDetail', () => {
     expect(eventDetail(T, ev('overspeed', PAYLOADS['overspeed']!))).toContain('91')
     expect(eventDetail(T, ev('geofence', PAYLOADS['geofence']!))).toContain('STL bazė')
     expect(eventDetail(T, ev('device_offline', PAYLOADS['device_offline']!))).toContain('27')
+  })
+})
+
+describe('eventFacts — the details panel, in parts', () => {
+  const row = (kind: string, payload: Record<string, unknown>): EventRow =>
+    ({ id: '1', deviceId: 'd1', kind, at: '2026-09-01T14:20:00Z', lat: 54.5, lon: 25.2, payload }) as unknown as EventRow
+
+  it('breaks an overspeed into speed, limit and the number nobody stored: how far over', () => {
+    const f = eventFacts(row('overspeed', { rule: 'Greičio viršijimas 90', speedKmh: 105, limitKmh: 90 }))
+    expect(f.map((x) => x.key)).toEqual(['events.f.speed', 'events.f.limit', 'events.f.over', 'events.f.rule'])
+    expect(f[2]!.value).toContain('15')
+    // the rule name was ONLY ever visible inside the raw JSON
+    expect(f[3]!.value).toBe('Greičio viršijimas 90')
+  })
+
+  it('never leaves a label without a value — a lone heading reads as data that failed to load', () => {
+    for (const [kind, payload] of [
+      ['geofence', { name: 'Depot', transition: 'enter' }],
+      ['ignition', { rule: 'r', ignition: true }],
+      ['fuel_theft', { rule: 'r', unit: 'pct', baseline: 60, to: 48, drop: 12 }],
+      ['device_offline', { rule: 'device_offline', offlineH: 7, thresholdH: 6, lastFixMs: 1_756_000_000_000 }],
+    ] as const) {
+      for (const f of eventFacts(row(kind, payload))) {
+        expect(f.value !== '' || f.valueKey !== undefined, `${kind}/${f.key ?? f.rawLabel ?? ''}`).toBe(true)
+      }
+    }
+  })
+
+  it('lists a payload key it has never seen instead of hiding it', () => {
+    // a new event kind must render as an untidy-but-complete list, never as a silently short one
+    const f = eventFacts(row('overspeed', { rule: 'r', speedKmh: 100, limitKmh: 90, heading: 231, road: 'A1' }))
+    const raw = f.filter((x) => x.key === null).map((x) => x.rawLabel)
+    expect(raw).toEqual(['heading', 'road'])
+  })
+
+  it('does not repeat a fact it already spelled out', () => {
+    const f = eventFacts(row('geofence', { geofenceId: 'g1', name: 'Depot', transition: 'exit' }))
+    expect(f.some((x) => x.rawLabel === 'name' || x.rawLabel === 'geofenceId')).toBe(false)
+  })
+
+  it('renders an object payload value as JSON, never as [object Object]', () => {
+    const f = eventFacts(row('panic', { rule: 'r', alarm: true, extra: { a: 1 } }))
+    expect(f.find((x) => x.rawLabel === 'extra')?.value).toBe('{"a":1}')
   })
 })
