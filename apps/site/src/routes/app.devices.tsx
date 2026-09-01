@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { MoreHorizontal, Plus, Upload } from "lucide-react";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { AdminButton, AdminInput, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
+import { LANGUAGES, type Lang } from "@/lib/i18n";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { toast } from "sonner";
@@ -25,14 +27,50 @@ type DemoDevice = {
   status: DemoStatus;
 };
 
-const STATUS_LABEL: Record<DemoStatus, string> = {
-  active: "Aktyvus",
-  waiting: "Niekada nepranešė",
-  retired: "Išregistruotas",
+/** Status → real-product translation key (admin namespace). */
+const STATUS_KEY: Record<DemoStatus, string> = {
+  active: "devices.active",
+  waiting: "devices.waiting",
+  retired: "devices.retired",
 };
 
-const WAITING_HINT =
-  "Užregistruotas, bet šis įrenginys dar niekada neatsiuntė pozicijos. Patikrink IMEI, SIM kortelės APN ir ar sekikliui išsiųsta serverio SMS.";
+/** Demo-only copy that has no counterpart in the real product's locale files. */
+const L: Record<Lang, { demoImport: string; demoAction: string; rowNoop: string; created: string; namePh: string }> = {
+  lt: {
+    demoImport: "Demo režimas — importas neatliekamas.",
+    demoAction: "Demo režimas — veiksmas neatliekamas.",
+    rowNoop: "demo režimas, veiksmas neatliekamas.",
+    created: "Įrenginys sukurtas (demo)",
+    namePh: "pvz. Krovininis 12",
+  },
+  en: {
+    demoImport: "Demo mode — no import is performed.",
+    demoAction: "Demo mode — no action is performed.",
+    rowNoop: "demo mode, no action is performed.",
+    created: "Device created (demo)",
+    namePh: "e.g. Truck 12",
+  },
+  pl: {
+    demoImport: "Tryb demo — import nie jest wykonywany.",
+    demoAction: "Tryb demo — akcja nie jest wykonywana.",
+    rowNoop: "tryb demo, akcja nie jest wykonywana.",
+    created: "Urządzenie utworzone (demo)",
+    namePh: "np. Ciężarówka 12",
+  },
+  de: {
+    demoImport: "Demo-Modus — es wird kein Import durchgeführt.",
+    demoAction: "Demo-Modus — es wird keine Aktion ausgeführt.",
+    rowNoop: "Demo-Modus, keine Aktion wird ausgeführt.",
+    created: "Gerät erstellt (Demo)",
+    namePh: "z. B. LKW 12",
+  },
+};
+
+function useL() {
+  const { i18n } = useTranslation("admin");
+  const lang = (i18n.resolvedLanguage ?? "lt").slice(0, 2) as Lang;
+  return L[LANGUAGES.includes(lang) ? lang : "lt"];
+}
 
 const PROFILES = [
   { value: "fmb120", label: "Teltonika FMB120" },
@@ -61,13 +99,15 @@ const INITIAL_DEVICES: DemoDevice[] = [
 ];
 
 function DevicesPage() {
+  const { t } = useTranslation("admin");
+  const l = useL();
   const [devices, setDevices] = React.useState(INITIAL_DEVICES);
   const [addOpen, setAddOpen] = React.useState(false);
 
   const columns: Column<DemoDevice>[] = [
     {
       key: "name",
-      header: "Pavadinimas",
+      header: t("devices.name"),
       sortable: true,
       sortValue: (r) => r.name.toLowerCase(),
       cell: (r) => (
@@ -83,13 +123,13 @@ function DevicesPage() {
     },
     {
       key: "imei",
-      header: "IMEI",
+      header: t("devices.imei"),
       hideOnMobile: true,
       cell: (r) => <span className="mono text-xs">{r.imei}</span>,
     },
     {
       key: "model",
-      header: "Modelis",
+      header: t("devices.model"),
       hideOnMobile: true,
       sortable: true,
       sortValue: (r) => (PROFILES.find((p) => p.value === r.profileId)?.label ?? "—").toLowerCase(),
@@ -108,20 +148,20 @@ function DevicesPage() {
     },
     {
       key: "status",
-      header: "Būsena",
+      header: t("devices.status"),
       sortable: true,
       sortValue: (r) => r.status,
       filterValue: (r) => r.status,
       filterOptions: [
-        { value: "active", label: "Aktyvus" },
-        { value: "waiting", label: "Niekada nepranešė" },
-        { value: "retired", label: "Išregistruotas" },
+        { value: "active", label: t("devices.active") },
+        { value: "waiting", label: t("devices.waiting") },
+        { value: "retired", label: t("devices.retired") },
       ],
       cell: (r) => (
-        <span title={r.status === "waiting" ? WAITING_HINT : undefined}>
+        <span title={r.status === "waiting" ? t("devices.waitingHint") : undefined}>
           <Badge tone={r.status === "active" ? "success" : r.status === "waiting" ? "warning" : "neutral"}>
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} aria-hidden />
-            {STATUS_LABEL[r.status]}
+            {t(STATUS_KEY[r.status])}
           </Badge>
         </span>
       ),
@@ -130,31 +170,31 @@ function DevicesPage() {
 
   return (
     <div className="space-y-4 p-4 md:p-8">
-      <PageHeader className="mb-2" title="Įrenginiai" description="Visi parko GPS įrenginiai vienoje vietoje.">
-        <AdminButton variant="secondary" onClick={() => toast("Masinis importas (CSV)", { description: "Demo režimas — importas neatliekamas." })}>
+      <PageHeader className="mb-2" title={t("devices.title")} description={t("devices.desc")}>
+        <AdminButton variant="secondary" onClick={() => toast(t("devices.import.title"), { description: l.demoImport })}>
           <Upload className="h-4 w-4" aria-hidden />
-          Importuoti CSV
+          {t("devices.import.open")}
         </AdminButton>
-        <AdminButton variant="secondary" onClick={() => toast("Naujas virtualus įrenginys", { description: "Demo režimas — veiksmas neatliekamas." })}>
+        <AdminButton variant="secondary" onClick={() => toast(t("devices.vsim.addTitle"), { description: l.demoAction })}>
           <Plus className="h-4 w-4" aria-hidden />
-          Virtualus įrenginys
+          {t("devices.vsim.addButton")}
         </AdminButton>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton>
               <Plus className="h-4 w-4" aria-hidden />
-              Pridėti įrenginį
+              {t("devices.add")}
             </AdminButton>
           </SheetTrigger>
           <SheetContent side="right" className="w-full sm:max-w-md">
             <SheetHeader>
-              <SheetTitle>Naujas įrenginys</SheetTitle>
+              <SheetTitle>{t("devices.addTitle")}</SheetTitle>
             </SheetHeader>
             <CreateDeviceForm
               onCancel={() => setAddOpen(false)}
               onCreated={() => {
                 setAddOpen(false);
-                toast.success("Įrenginys sukurtas (demo)");
+                toast.success(l.created);
               }}
             />
           </SheetContent>
@@ -166,7 +206,7 @@ function DevicesPage() {
         columns={columns}
         searchKeys={["name", "plate", "imei"]}
         pageSize={12}
-        emptyLabel="Įrenginių dar nėra."
+        emptyLabel={t("devices.empty")}
         rowAction={(d) => <RowMenu device={d} />}
       />
     </div>
@@ -175,6 +215,8 @@ function DevicesPage() {
 
 /** Per-row "..." actions menu — the real page's items, demo no-ops behind a toast. */
 function RowMenu({ device }: { device: DemoDevice }) {
+  const { t } = useTranslation("admin");
+  const l = useL();
   const [open, setOpen] = React.useState(false);
   const active = device.status !== "retired";
 
@@ -184,7 +226,7 @@ function RowMenu({ device }: { device: DemoDevice }) {
       type="button"
       onClick={() => {
         setOpen(false);
-        toast(label, { description: `${device.name} — demo režimas, veiksmas neatliekamas.` });
+        toast(label, { description: `${device.name} — ${l.rowNoop}` });
       }}
       className="block w-full rounded px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-[var(--admin-surface-sunken)]"
       style={{ color: danger ? "var(--admin-danger)" : "var(--admin-ink)" }}
@@ -198,7 +240,7 @@ function RowMenu({ device }: { device: DemoDevice }) {
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label="Veiksmai"
+          aria-label={t("devices.actions")}
           className="grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-[var(--admin-surface-sunken)]"
         >
           <MoreHorizontal className="h-4 w-4" style={{ color: "var(--admin-ink-soft)" }} aria-hidden />
@@ -207,18 +249,18 @@ function RowMenu({ device }: { device: DemoDevice }) {
       <PopoverContent align="end" className="w-48 p-1">
         {active ? (
           <>
-            {device.imei.startsWith(VIRTUAL_IMEI_PREFIX) && item("Simuliacija")}
-            {item("Kortelė")}
-            {item("Būklė")}
-            {item("Prijungti")}
-            {item("Komandos")}
-            {item("Sekimo nustatymai")}
-            {item("Bendrinti")}
+            {device.imei.startsWith(VIRTUAL_IMEI_PREFIX) && item(t("devices.vsim.menu"))}
+            {item(t("fleet.cardBtn"))}
+            {item(t("devices.healthBtn"))}
+            {item(t("devices.onboard"))}
+            {item(t("devices.commands"))}
+            {item(t("devices.settings.menu"))}
+            {item(t("devices.share.button"))}
             <div className="admin-hairline-t my-1" aria-hidden />
-            {item("Išregistruoti", true)}
+            {item(t("devices.retire"), true)}
           </>
         ) : (
-          item("Ištrinti duomenis", true)
+          item(t("devices.erase"), true)
         )}
       </PopoverContent>
     </Popover>
@@ -236,6 +278,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /** The real create form's fields (IMEI / name / plate / SIM / APN / account / model), demo-static. */
 function CreateDeviceForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const { t } = useTranslation("admin");
+  const l = useL();
   const [accountId, setAccountId] = React.useState("kaunas");
   const [profileId, setProfileId] = React.useState("fmb120");
 
@@ -247,22 +291,22 @@ function CreateDeviceForm({ onCreated, onCancel }: { onCreated: () => void; onCa
       }}
       className="mt-2 flex flex-col gap-3"
     >
-      <Field label="IMEI">
-        <AdminInput required pattern="\d{15}" maxLength={15} placeholder="15 skaitmenų" />
+      <Field label={t("devices.imei")}>
+        <AdminInput required pattern="\d{15}" maxLength={15} placeholder={t("devices.imeiPh")} />
       </Field>
-      <Field label="Pavadinimas">
-        <AdminInput required placeholder="pvz. Krovininis 12" />
+      <Field label={t("devices.name")}>
+        <AdminInput required placeholder={l.namePh} />
       </Field>
-      <Field label="Valst. numeris (nebūtina)">
+      <Field label={t("devices.plate")}>
         <AdminInput maxLength={32} placeholder="ABC 123" />
       </Field>
-      <Field label="SIM telefono numeris">
+      <Field label={t("devices.onb.sim.msisdn")}>
         <AdminInput pattern="\+[1-9]\d{6,14}" placeholder="+37060000000" maxLength={20} inputMode="tel" />
       </Field>
-      <Field label="SIM APN">
-        <AdminInput maxLength={63} placeholder="pvz. internet" />
+      <Field label={t("devices.onb.apn")}>
+        <AdminInput maxLength={63} placeholder={t("devices.onb.apnPlaceholder")} />
       </Field>
-      <Field label="Paskyra">
+      <Field label={t("devices.account")}>
         <Combobox
           value={accountId}
           onChange={setAccountId}
@@ -272,14 +316,14 @@ function CreateDeviceForm({ onCreated, onCancel }: { onCreated: () => void; onCa
           ]}
         />
       </Field>
-      <Field label="Modelis">
+      <Field label={t("devices.model")}>
         <Combobox value={profileId} onChange={setProfileId} options={PROFILES} />
       </Field>
       <SheetFooter className="mt-2">
         <AdminButton variant="secondary" type="button" onClick={onCancel}>
-          Atšaukti
+          {t("admin.cancel")}
         </AdminButton>
-        <AdminButton type="submit">Sukurti</AdminButton>
+        <AdminButton type="submit">{t("devices.create")}</AdminButton>
       </SheetFooter>
     </form>
   );

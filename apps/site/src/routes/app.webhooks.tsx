@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus, Trash2, Webhook as WebhookIcon } from "lucide-react";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { AdminButton, AdminCheckbox, AdminInput, AdminLabel, AdminSwitch, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { fmtDateTime } from "@/lib/admin-format";
@@ -9,24 +10,23 @@ export const Route = createFileRoute("/app/webhooks")({
   component: WebhooksPage,
 });
 
-// Mirrors apps/web/src/routes/app/webhooks.tsx (E06-4 UI, ADR-028 round 2) with the hardcoded
-// LT strings from apps/web/src/i18n/lt.json: create form in a right Sheet (URL + event-kind
-// checkbox chips), show-once signing-secret banner, tile rows (icon chip, mono URL, kind
-// badges, AdminSwitch, danger delete) and the recent-deliveries table. Local demo state.
+// Mirrors apps/web/src/routes/app/webhooks.tsx (E06-4 UI, ADR-028 round 2) using the product's
+// own translations (admin namespace, webhooks.* + events.k.* kind labels): create form in a
+// right Sheet (URL + event-kind checkbox chips), show-once signing-secret banner, tile rows
+// (icon chip, mono URL, kind badges, AdminSwitch, danger delete) and the recent-deliveries
+// table. Local demo state.
 
-const KIND_LABELS: Record<string, string> = {
-  geofence: "Geozona",
-  overspeed: "Greičio viršijimas",
-  ignition: "Uždegimas",
-  din_change: "Įvesties pokytis",
-  power_cut: "Maitinimo nutrūkimas",
-  low_battery: "Žema baterija",
-  panic: "Pavojaus mygtukas",
-  device_offline: "Įrenginys neprisijungęs",
-  fuel_theft: "Kuro vagystė",
-};
-
-const EVENT_KINDS = Object.keys(KIND_LABELS);
+const EVENT_KINDS = [
+  "geofence",
+  "overspeed",
+  "ignition",
+  "din_change",
+  "power_cut",
+  "low_battery",
+  "panic",
+  "device_offline",
+  "fuel_theft",
+];
 
 type DemoHook = { id: string; url: string; events: string[]; enabled: boolean };
 
@@ -53,6 +53,9 @@ const th = "px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-w
 const thStyle: React.CSSProperties = { color: "var(--admin-ink-soft)" };
 
 function WebhooksPage() {
+  const { t } = useTranslation("admin");
+  const kindLabel = (k: string) => (EVENT_KINDS.includes(k) ? t(`events.k.${k}`) : k);
+
   const [hooks, setHooks] = React.useState<DemoHook[]>(INITIAL_HOOKS);
   const [addOpen, setAddOpen] = React.useState(false);
   const [freshSecret, setFreshSecret] = React.useState<string | null>(null);
@@ -74,26 +77,26 @@ function WebhooksPage() {
 
   return (
     <div className="space-y-4 p-4 md:p-8">
-      <PageHeader className="mb-0" title="Webhooks" description="HTTP kanalai pasirašytiems įvykiams siųsti į išorines sistemas.">
+      <PageHeader className="mb-0" title={t("webhooks.title")} description={t("webhooks.desc")}>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton>
               <Plus className="h-4 w-4" aria-hidden />
-              Pridėti webhook
+              {t("webhooks.add")}
             </AdminButton>
           </SheetTrigger>
           <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
             <SheetHeader>
-              <SheetTitle>Naujas webhook</SheetTitle>
+              <SheetTitle>{t("webhooks.addTitle")}</SheetTitle>
             </SheetHeader>
             <form onSubmit={submit} className="mt-2 flex flex-col gap-3">
               <div>
-                <AdminLabel htmlFor="webhook-url">Endpoint URL</AdminLabel>
+                <AdminLabel htmlFor="webhook-url">{t("webhooks.url")}</AdminLabel>
                 <AdminInput id="webhook-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" className="w-full" />
               </div>
               <div>
                 <div className="mb-1 text-xs font-medium" style={{ color: "var(--admin-ink-soft)" }}>
-                  Įvykiai <span className="opacity-70">(nieko = visi tipai)</span>
+                  {t("webhooks.events")} <span className="opacity-70">({t("webhooks.emptyAll")})</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {EVENT_KINDS.map((k) => {
@@ -108,15 +111,15 @@ function WebhooksPage() {
                           color: "var(--admin-ink)",
                         }}
                       >
-                        <AdminCheckbox checked={on} onCheckedChange={() => toggleKind(k)} label={KIND_LABELS[k]} />
+                        <AdminCheckbox checked={on} onCheckedChange={() => toggleKind(k)} label={kindLabel(k)} />
                       </div>
                     );
                   })}
                 </div>
               </div>
               <SheetFooter className="mt-2">
-                <AdminButton type="button" variant="secondary" onClick={() => setAddOpen(false)}>Atšaukti</AdminButton>
-                <AdminButton type="submit" disabled={!validUrl}>Sukurti</AdminButton>
+                <AdminButton type="button" variant="secondary" onClick={() => setAddOpen(false)}>{t("admin.cancel")}</AdminButton>
+                <AdminButton type="submit" disabled={!validUrl}>{t("webhooks.create")}</AdminButton>
               </SheetFooter>
             </form>
           </SheetContent>
@@ -125,9 +128,9 @@ function WebhooksPage() {
 
       {freshSecret !== null && (
         <div className="admin-card p-4" style={{ background: "var(--admin-brand-soft)", borderColor: "var(--admin-brand)" }}>
-          <div className="mb-2 text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Webhook sukurtas</div>
+          <div className="mb-2 text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("webhooks.created")}</div>
           <p className="mb-2 text-sm" style={{ color: "var(--admin-warning)" }}>
-            Nukopijuokite pasirašymo raktą dabar — jis tikrina X-Signature ir rodomas tik vieną kartą.
+            {t("webhooks.secretOnce")}
           </p>
           <code
             className="mono block overflow-x-auto rounded-md border p-2 text-xs"
@@ -135,16 +138,16 @@ function WebhooksPage() {
           >
             {freshSecret}
           </code>
-          <AdminButton size="sm" variant="ghost" className="mt-2" onClick={() => setFreshSecret(null)}>Gerai</AdminButton>
+          <AdminButton size="sm" variant="ghost" className="mt-2" onClick={() => setFreshSecret(null)}>{t("webhooks.dismiss")}</AdminButton>
         </div>
       )}
 
       <div className="admin-card overflow-hidden">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>
-          Webhooks
+          {t("webhooks.list")}
         </div>
         {hooks.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>Webhook’ų dar nėra.</p>
+          <p className="px-4 py-8 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>{t("webhooks.empty")}</p>
         ) : (
           <ul>
             {hooks.map((w) => (
@@ -164,20 +167,20 @@ function WebhooksPage() {
                   <div className="mono truncate text-sm" style={{ color: "var(--admin-ink)" }}>{w.url}</div>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {w.events.length === 0 ? (
-                      <Badge tone="neutral">visi tipai</Badge>
+                      <Badge tone="neutral">{t("webhooks.allKinds")}</Badge>
                     ) : (
-                      w.events.map((k) => <Badge key={k} tone="neutral">{KIND_LABELS[k] ?? k}</Badge>)
+                      w.events.map((k) => <Badge key={k} tone="neutral">{kindLabel(k)}</Badge>)
                     )}
                   </div>
                 </div>
                 <AdminSwitch
                   checked={w.enabled}
                   onCheckedChange={(v) => setHooks((all) => all.map((x) => (x.id === w.id ? { ...x, enabled: v } : x)))}
-                  label="Įjungta"
+                  label={t("webhooks.enabled")}
                 />
                 <button
                   type="button"
-                  aria-label="Ištrinti"
+                  aria-label={t("webhooks.delete")}
                   className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)]"
                   style={{ color: "var(--admin-danger)" }}
                   onClick={() => setHooks((all) => all.filter((x) => x.id !== w.id))}
@@ -192,25 +195,25 @@ function WebhooksPage() {
 
       <div className="admin-card overflow-hidden">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>
-          Paskutiniai pristatymai
+          {t("webhooks.deliveries")}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: "var(--admin-surface-sunken)" }}>
-                <th className={th} style={thStyle}>Kada</th>
-                <th className={th} style={thStyle}>Įvykis</th>
-                <th className={th} style={thStyle}>Būsena</th>
+                <th className={th} style={thStyle}>{t("webhooks.when")}</th>
+                <th className={th} style={thStyle}>{t("webhooks.event")}</th>
+                <th className={th} style={thStyle}>{t("webhooks.status")}</th>
               </tr>
             </thead>
             <tbody>
               {DELIVERIES.map((d) => (
                 <tr key={d.id} className="admin-hairline-b transition-colors last:border-b-0 hover:bg-[var(--admin-surface-sunken)]">
                   <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--admin-ink-soft)" }}>{fmtDateTime(d.at)}</td>
-                  <td className="px-4 py-2.5" style={{ color: "var(--admin-ink)" }}>{KIND_LABELS[d.kind] ?? d.kind}</td>
+                  <td className="px-4 py-2.5" style={{ color: "var(--admin-ink)" }}>{kindLabel(d.kind)}</td>
                   <td className="px-4 py-2.5">
                     <Badge tone={d.success ? "success" : "danger"}>
-                      {d.success ? "✓" : "✗"} {d.statusCode ?? "nėra atsakymo"}
+                      {d.success ? "✓" : "✗"} {d.statusCode ?? t("webhooks.noResponse")}
                     </Badge>
                   </td>
                 </tr>

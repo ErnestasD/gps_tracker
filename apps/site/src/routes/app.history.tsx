@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Fuel, Gauge, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { AdminButton, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
@@ -7,6 +8,7 @@ import { DatePicker } from "@/components/admin/DatePicker";
 import { DemoMap } from "@/components/admin/DemoMap";
 import { fmtDateTime } from "@/lib/admin-format";
 import { routeSlice, VILNIUS_LOOP, type LngLat } from "@/lib/demo-geo";
+import { LANGUAGES, type Lang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/app/history")({
   component: HistoryPage,
@@ -45,7 +47,16 @@ const FUEL: number[] = Array.from({ length: N }, (_, i) => {
 });
 
 const TRIP_COUNT = 4;
-const TOTAL_DISTANCE = "56.3 km";
+const TOTAL_DISTANCE_KM = 56.3;
+
+// Demo-only strings that the real dashboard's translation files do not cover
+// (chart aria-labels) — translated here, keyed by the site language.
+const L: Record<Lang, { speedChart: string; fuelChart: string }> = {
+  lt: { speedChart: "Atkūrimo greičio laiko juosta", fuelChart: "Kuro lygio laiko juosta" },
+  en: { speedChart: "Playback speed timeline", fuelChart: "Fuel level timeline" },
+  pl: { speedChart: "Oś czasu prędkości odtwarzania", fuelChart: "Oś czasu poziomu paliwa" },
+  de: { speedChart: "Zeitachse der Wiedergabegeschwindigkeit", fuelChart: "Zeitachse des Kraftstoffstands" },
+};
 
 // ---------------------------------------------------------------------------
 // Playback route — a deterministic slice of REAL Vilnius street geometry per
@@ -88,6 +99,9 @@ function playbackPose(route: LngLat[], index: number): { at: LngLat; headingDeg:
 // ---------------------------------------------------------------------------
 
 function HistoryPage() {
+  const { t, i18n } = useTranslation("admin");
+  const lang: Lang = LANGUAGES.includes(i18n.resolvedLanguage as Lang) ? (i18n.resolvedLanguage as Lang) : "lt";
+  const l = L[lang];
   const [deviceId, setDeviceId] = React.useState(DEVICES[0].id);
   const [from, setFrom] = React.useState<Date | undefined>(new Date(2026, 7, 31));
   const [to, setTo] = React.useState<Date | undefined>(new Date(2026, 7, 31));
@@ -114,7 +128,7 @@ function HistoryPage() {
 
   return (
     <div className="space-y-4 p-4 md:p-8">
-      <PageHeader title="Istorijos peržiūra" description="Kelionių atkūrimas su greičio ir kuro grafikais.">
+      <PageHeader title={t("playback.title")} description={t("playback.desc")}>
         <div className="w-56">
           <Combobox
             value={deviceId}
@@ -122,8 +136,8 @@ function HistoryPage() {
             options={DEVICES.map((d) => ({ value: d.id, label: d.name, hint: d.plate }))}
           />
         </div>
-        <div className="w-40"><DatePicker value={from} onChange={setFrom} placeholder="Nuo" /></div>
-        <div className="w-40"><DatePicker value={to} onChange={setTo} placeholder="Iki" /></div>
+        <div className="w-40"><DatePicker value={from} onChange={setFrom} placeholder={t("playback.from")} /></div>
+        <div className="w-40"><DatePicker value={to} onChange={setTo} placeholder={t("playback.to")} /></div>
       </PageHeader>
 
       <div className="admin-card overflow-hidden">
@@ -142,7 +156,7 @@ function HistoryPage() {
             <div className="mt-1 flex items-center gap-3 text-sm" style={{ color: "var(--admin-ink)" }}>
               <span className="inline-flex items-center gap-1 tabular-nums">
                 <Gauge className="h-3.5 w-3.5" style={{ color: "var(--admin-brand)" }} aria-hidden />
-                {speed} km/val
+                {speed} {t("units.kmh")}
               </span>
               <span className="inline-flex items-center gap-1 tabular-nums">
                 <Fuel className="h-3.5 w-3.5" style={{ color: "var(--admin-brand)" }} aria-hidden />
@@ -159,7 +173,7 @@ function HistoryPage() {
               <AdminButton
                 variant="ghost"
                 size="sm"
-                aria-label="Į pradžią"
+                aria-label={t("playback.skipStart")}
                 onClick={() => {
                   setPlaying(false);
                   setIndex(0);
@@ -176,12 +190,12 @@ function HistoryPage() {
                 }}
               >
                 {playing ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
-                {playing ? "Pauzė" : "Groti"}
+                {playing ? t("playback.pause") : t("playback.play")}
               </AdminButton>
               <AdminButton
                 variant="ghost"
                 size="sm"
-                aria-label="Į pabaigą"
+                aria-label={t("playback.skipEnd")}
                 onClick={() => {
                   setPlaying(false);
                   setIndex(N - 1);
@@ -191,9 +205,9 @@ function HistoryPage() {
               </AdminButton>
             </div>
             <div className="flex flex-wrap items-center gap-3 text-xs tabular-nums" style={{ color: "var(--admin-ink-soft)" }}>
-              <span>taškas {index + 1} / {N}</span>
-              <span>{TRIP_COUNT} kelionės</span>
-              <span>{TOTAL_DISTANCE}</span>
+              <span>{t("playback.point", { i: index + 1, n: N })}</span>
+              <span>{t("playback.trips", { n: TRIP_COUNT })}</span>
+              <span>{t("playback.distance", { km: TOTAL_DISTANCE_KM })}</span>
             </div>
           </div>
           <input
@@ -202,7 +216,7 @@ function HistoryPage() {
             max={N - 1}
             value={index}
             onChange={(e) => setIndex(Number(e.target.value))}
-            aria-label="Atkūrimo pozicija"
+            aria-label={t("playback.scrub")}
             className="w-full accent-[var(--admin-brand)]"
           />
         </div>
@@ -212,17 +226,17 @@ function HistoryPage() {
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
         <div className="admin-card p-3 md:p-4">
           <div className="mb-1 flex items-center justify-between text-xs">
-            <span style={{ color: "var(--admin-ink-soft)" }}>Greitis</span>
-            <Badge tone="brand"><span className="tabular-nums">{speed} km/val</span></Badge>
+            <span style={{ color: "var(--admin-ink-soft)" }}>{t("playback.speed")}</span>
+            <Badge tone="brand"><span className="tabular-nums">{speed} {t("units.kmh")}</span></Badge>
           </div>
-          <SpeedChart speeds={SPEEDS} index={index} onScrub={setIndex} />
+          <SpeedChart speeds={SPEEDS} index={index} onScrub={setIndex} ariaLabel={l.speedChart} />
         </div>
         <div className="admin-card p-3 md:p-4">
           <div className="mb-1 flex items-center justify-between text-xs">
-            <span style={{ color: "var(--admin-ink-soft)" }}>Kuro lygis</span>
+            <span style={{ color: "var(--admin-ink-soft)" }}>{t("playback.fuel")}</span>
             <Badge tone="brand"><span className="tabular-nums">{fuel}%</span></Badge>
           </div>
-          <FuelChart levels={FUEL} index={index} />
+          <FuelChart levels={FUEL} index={index} ariaLabel={l.fuelChart} />
         </div>
       </div>
     </div>
@@ -250,7 +264,7 @@ const cursorX = (i: number, n: number) => CPAD + (CW - CPAD * 2) * (n > 1 ? i / 
 
 const chartFrame: React.CSSProperties = { borderColor: "var(--admin-hairline)", background: "var(--admin-surface)" };
 
-function SpeedChart({ speeds, index, onScrub }: { speeds: number[]; index: number; onScrub: (i: number) => void }) {
+function SpeedChart({ speeds, index, onScrub, ariaLabel }: { speeds: number[]; index: number; onScrub: (i: number) => void; ariaLabel: string }) {
   const H = 120;
   const ref = React.useRef<SVGSVGElement>(null);
   const path = React.useMemo(() => chartPath(speeds, H), [speeds]);
@@ -270,7 +284,7 @@ function SpeedChart({ speeds, index, onScrub }: { speeds: number[]; index: numbe
       className="h-28 w-full cursor-crosshair select-none rounded-md border"
       style={chartFrame}
       role="slider"
-      aria-label="Atkūrimo greičio laiko juosta"
+      aria-label={ariaLabel}
       aria-valuenow={index}
       aria-valuemin={0}
       aria-valuemax={Math.max(0, speeds.length - 1)}
@@ -288,7 +302,7 @@ function SpeedChart({ speeds, index, onScrub }: { speeds: number[]; index: numbe
   );
 }
 
-function FuelChart({ levels, index }: { levels: number[]; index: number }) {
+function FuelChart({ levels, index, ariaLabel }: { levels: number[]; index: number; ariaLabel: string }) {
   const H = 80;
   const path = React.useMemo(() => chartPath(levels, H, false), [levels]);
   return (
@@ -297,7 +311,7 @@ function FuelChart({ levels, index }: { levels: number[]; index: number }) {
       className="h-20 w-full select-none rounded-md border"
       style={chartFrame}
       role="img"
-      aria-label="Kuro lygio laiko juosta"
+      aria-label={ariaLabel}
     >
       {path !== "" && <path d={path} fill="none" stroke="var(--admin-info)" strokeWidth={1.5} />}
       <line x1={cursorX(index, levels.length)} y1={CPAD} x2={cursorX(index, levels.length)} y2={H - CPAD} stroke="var(--admin-brand)" strokeWidth={1} />

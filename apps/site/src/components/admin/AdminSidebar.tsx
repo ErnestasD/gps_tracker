@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard, Map, Car, Users, Wrench, Route, History,
   Hexagon, ListChecks, Bell, BarChart3, Terminal, Waypoints,
@@ -8,56 +9,58 @@ import {
 
 type NavItem = { to: string; label: string; icon: (props: { className?: string; strokeWidth?: number }) => React.ReactNode };
 type NavGroup = { label: string; items: NavItem[] };
+// labels are keys into the PRODUCT translations (admin namespace = apps/web i18n copies)
 
 const groups: NavGroup[] = [
   {
-    label: "Gyvai",
+    label: "shell.live",
     items: [
-      { to: "/app/map", label: "Žemėlapis", icon: Map },
-      { to: "/app", label: "Apžvalga", icon: LayoutDashboard },
+      { to: "/app/map", label: "shell.map", icon: Map },
+      { to: "/app", label: "shell.overview", icon: LayoutDashboard },
     ],
   },
   {
-    label: "Parkas",
+    label: "shell.fleet",
     items: [
-      { to: "/app/devices", label: "Įrenginiai", icon: Car },
-      { to: "/app/drivers", label: "Vairuotojai", icon: Users },
-      { to: "/app/maintenance", label: "Priežiūra", icon: Wrench },
-      { to: "/app/trips", label: "Kelionės", icon: Route },
-      { to: "/app/routing", label: "Maršrutai", icon: Waypoints },
-      { to: "/app/history", label: "Istorija", icon: History },
+      { to: "/app/devices", label: "shell.devices", icon: Car },
+      { to: "/app/drivers", label: "shell.drivers", icon: Users },
+      { to: "/app/maintenance", label: "shell.maintenance", icon: Wrench },
+      { to: "/app/trips", label: "shell.trips", icon: Route },
+      { to: "/app/routing", label: "shell.routing", icon: Waypoints },
+      { to: "/app/history", label: "shell.history", icon: History },
     ],
   },
   {
-    label: "Automatika",
+    label: "shell.automation",
     items: [
-      { to: "/app/geofences", label: "Geozonos", icon: Hexagon },
-      { to: "/app/rules", label: "Taisyklės", icon: ListChecks },
-      { to: "/app/events", label: "Įvykiai", icon: Bell },
+      { to: "/app/geofences", label: "shell.geofences", icon: Hexagon },
+      { to: "/app/rules", label: "shell.rules", icon: ListChecks },
+      { to: "/app/events", label: "shell.events", icon: Bell },
     ],
   },
   {
-    label: "Įžvalgos",
-    items: [{ to: "/app/reports", label: "Ataskaitos", icon: BarChart3 }],
+    label: "shell.insights",
+    items: [{ to: "/app/reports", label: "shell.reports", icon: BarChart3 }],
   },
   {
-    label: "Operacijos",
-    items: [{ to: "/app/commands", label: "Komandos", icon: Terminal }],
+    label: "shell.ops",
+    items: [{ to: "/app/commands", label: "shell.commands", icon: Terminal }],
   },
   {
-    label: "Administravimas",
+    label: "shell.admin",
     items: [
-      { to: "/app/branding", label: "Prekės ženklas", icon: Palette },
-      { to: "/app/billing", label: "Atsiskaitymai", icon: CreditCard },
-      { to: "/app/api-keys", label: "API raktai", icon: KeyRound },
-      { to: "/app/webhooks", label: "Webhooks", icon: Webhook },
-      { to: "/app/audit", label: "Audito žurnalas", icon: ScrollText },
-      { to: "/app/settings", label: "Nustatymai", icon: Settings },
+      { to: "/app/branding", label: "shell.branding", icon: Palette },
+      { to: "/app/billing", label: "shell.billing", icon: CreditCard },
+      { to: "/app/api-keys", label: "shell.apiKeys", icon: KeyRound },
+      { to: "/app/webhooks", label: "shell.webhooks", icon: Webhook },
+      { to: "/app/audit", label: "shell.audit", icon: ScrollText },
+      { to: "/app/settings", label: "shell.settings", icon: Settings },
     ],
   },
 ];
 
 export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useTranslation("admin");
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
@@ -75,7 +78,7 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
         <div className="flex flex-col leading-none">
           <span className="text-sm font-semibold">Demo Logistika</span>
           <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--admin-ink-soft)" }}>
-            Administravimas
+            {t("shell.admin")}
           </span>
         </div>
       </div>
@@ -87,7 +90,7 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
               className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-widest"
               style={{ color: "var(--admin-ink-soft)" }}
             >
-              {g.label}
+              {t(g.label)}
             </div>
             <ul className="flex flex-col gap-0.5">
               {g.items.map((item) => {
@@ -106,7 +109,7 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
                       }}
                     >
                       <Icon className="h-4 w-4 shrink-0" strokeWidth={active ? 2.2 : 1.8} />
-                      <span className="truncate">{item.label}</span>
+                      <span className="truncate">{t(item.label)}</span>
                     </Link>
                   </li>
                 );
@@ -126,7 +129,7 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
           </div>
           <div className="min-w-0 flex-1 text-xs">
             <div className="truncate font-medium">demo@orbetra.test</div>
-            <div className="truncate" style={{ color: "var(--admin-ink-soft)" }}>Organizacijos administratorius</div>
+            <div className="truncate" style={{ color: "var(--admin-ink-soft)" }}>{t("roles.tsp_admin")}</div>
           </div>
         </div>
       </div>

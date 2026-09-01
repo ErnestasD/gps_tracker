@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { AdminButton, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 
@@ -9,7 +10,8 @@ export const Route = createFileRoute("/app/audit")({
 
 /** DEMO mirror of the real product's Audit log page (apps/web app/audit.tsx):
  * tenant mutation trail — filter by entity/action, expand a row to see the
- * before/after snapshot, "Rodyti daugiau" pagination. Static data, no backend. */
+ * before/after snapshot, "load more" pagination. Static data, no backend.
+ * All UI strings come from the admin namespace (audit.*). */
 
 type AuditAction = "create" | "update" | "delete";
 
@@ -24,24 +26,21 @@ type DemoAuditRow = {
   after: unknown;
 };
 
-const ACTION_LABELS: Record<AuditAction, string> = {
-  create: "Sukurta",
-  update: "Atnaujinta",
-  delete: "Ištrinta",
-};
+const ACTIONS: AuditAction[] = ["create", "update", "delete"];
 
-const ENTITY_LABELS: Record<string, string> = {
-  device: "Įrenginys",
-  rule: "Taisyklė",
-  geofence: "Geozona",
-  user: "Naudotojas",
-  branding: "Prekės ženklas",
-  domain: "Domenas",
-  driver: "Vairuotojas",
-  accountPrefs: "Kalba ir vienetai",
-  apiKey: "API raktas",
-  scheduledReport: "Suplanuota ataskaita",
-};
+// Entity type values present in the demo data — labels come from audit.e.*
+const ENTITY_KEYS = [
+  "device",
+  "rule",
+  "geofence",
+  "user",
+  "branding",
+  "domain",
+  "driver",
+  "accountPrefs",
+  "apiKey",
+  "scheduledReport",
+];
 
 const ROWS: DemoAuditRow[] = [
   {
@@ -142,6 +141,7 @@ const th = "px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-w
 const thStyle: React.CSSProperties = { color: "var(--admin-ink-soft)" };
 
 function AuditPage() {
+  const { t } = useTranslation("admin");
   const [entity, setEntity] = React.useState("");
   const [action, setAction] = React.useState("");
   const [open, setOpen] = React.useState<string | null>(null);
@@ -153,14 +153,14 @@ function AuditPage() {
 
   return (
     <div className="space-y-4 p-4 md:p-8">
-      <PageHeader className="mb-0" title="Audito žurnalas" description="Kas, ką ir kada pakeitė — nuomininko pakeitimų istorija.">
+      <PageHeader className="mb-0" title={t("audit.title")} description={t("audit.desc")}>
         <div className="w-44">
           <Combobox
             value={entity}
             onChange={setEntity}
             options={[
-              { value: "", label: "Visi objektai" },
-              ...Object.entries(ENTITY_LABELS).map(([value, label]) => ({ value, label })),
+              { value: "", label: t("audit.allEntities") },
+              ...ENTITY_KEYS.map((value) => ({ value, label: t(`audit.e.${value}`) })),
             ]}
           />
         </div>
@@ -169,8 +169,8 @@ function AuditPage() {
             value={action}
             onChange={setAction}
             options={[
-              { value: "", label: "Visi veiksmai" },
-              ...(Object.keys(ACTION_LABELS) as AuditAction[]).map((a) => ({ value: a, label: ACTION_LABELS[a] })),
+              { value: "", label: t("audit.allActions") },
+              ...ACTIONS.map((a) => ({ value: a, label: t(`audit.a.${a}`) })),
             ]}
           />
         </div>
@@ -178,23 +178,23 @@ function AuditPage() {
 
       <div className="admin-card overflow-hidden">
         <div className="admin-hairline-b px-4 py-3 text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>
-          Pakeitimų istorija
+          {t("audit.trail")}
         </div>
         {rows.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>
-            Nėra įrašų pagal šiuos filtrus.
+            {t("audit.empty")}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: "var(--admin-surface-sunken)" }}>
-                  <th className={th} style={thStyle}>Kada</th>
-                  <th className={th} style={thStyle}>Veiksmas</th>
-                  <th className={th} style={thStyle}>Objektas</th>
-                  <th className={th} style={thStyle}>ID</th>
-                  <th className={th} style={thStyle}>Naudotojas</th>
-                  <th className="px-4 py-2.5"><span className="sr-only">Detalės</span></th>
+                  <th className={th} style={thStyle}>{t("audit.when")}</th>
+                  <th className={th} style={thStyle}>{t("audit.action")}</th>
+                  <th className={th} style={thStyle}>{t("audit.entity")}</th>
+                  <th className={th} style={thStyle}>{t("audit.entityId")}</th>
+                  <th className={th} style={thStyle}>{t("audit.who")}</th>
+                  <th className="px-4 py-2.5"><span className="sr-only">{t("audit.details")}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -203,9 +203,9 @@ function AuditPage() {
                     <tr className="admin-hairline-b transition-colors hover:bg-[var(--admin-surface-sunken)]">
                       <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--admin-ink-soft)" }}>{r.at}</td>
                       <td className="px-4 py-2.5">
-                        <Badge tone={r.action === "delete" ? "warning" : "brand"}>{ACTION_LABELS[r.action]}</Badge>
+                        <Badge tone={r.action === "delete" ? "warning" : "brand"}>{t(`audit.a.${r.action}`)}</Badge>
                       </td>
-                      <td className="px-4 py-2.5" style={{ color: "var(--admin-ink)" }}>{ENTITY_LABELS[r.entity] ?? r.entity}</td>
+                      <td className="px-4 py-2.5" style={{ color: "var(--admin-ink)" }}>{t(`audit.e.${r.entity}`, { defaultValue: r.entity })}</td>
                       <td className="mono px-4 py-2.5 text-xs" style={{ color: "var(--admin-ink-soft)" }}>{r.entityId}</td>
                       <td className="mono px-4 py-2.5 text-xs" style={{ color: "var(--admin-ink-soft)" }}>{r.userId ?? "—"}</td>
                       <td className="px-4 py-2.5 text-right">
@@ -215,7 +215,7 @@ function AuditPage() {
                           aria-expanded={open === r.id}
                           onClick={() => setOpen((o) => (o === r.id ? null : r.id))}
                         >
-                          {open === r.id ? "Slėpti" : "Detalės"}
+                          {open === r.id ? t("audit.hide") : t("audit.details")}
                         </AdminButton>
                       </td>
                     </tr>
@@ -223,8 +223,8 @@ function AuditPage() {
                       <tr>
                         <td colSpan={6} className="admin-hairline-b p-3" style={{ background: "var(--admin-surface-sunken)" }}>
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <Snapshot label="Prieš" value={r.before} />
-                            <Snapshot label="Po" value={r.after} />
+                            <Snapshot label={t("audit.before")} value={r.before} />
+                            <Snapshot label={t("audit.after")} value={r.after} />
                           </div>
                         </td>
                       </tr>
@@ -239,7 +239,7 @@ function AuditPage() {
         {hasMore && (
           <div className="admin-hairline-t p-3 text-center">
             <AdminButton variant="secondary" size="sm" onClick={() => setShowAll(true)}>
-              Rodyti daugiau
+              {t("audit.loadMore")}
             </AdminButton>
           </div>
         )}

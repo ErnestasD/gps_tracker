@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Circle as CircleIcon, Hexagon, Pencil, Route as RouteIcon, Search, Trash2 } from "lucide-react";
 import { PageHeader, AdminButton, Badge, AdminInput } from "@/components/admin/AdminKit";
 import { fmtDate } from "@/lib/admin-format";
@@ -26,11 +27,6 @@ type Zone = {
   corridorWidthPx?: number;
 };
 
-const KIND_LABEL: Record<ZoneKind, string> = {
-  polygon: "Poligonas",
-  circle: "Apskritimas",
-  corridor: "Koridorius",
-};
 const KIND_ICON: Record<ZoneKind, typeof Hexagon> = {
   polygon: Hexagon,
   circle: CircleIcon,
@@ -70,6 +66,8 @@ const ZONES: Zone[] = [
 const zoneCoords = (z: Zone): LngLat[] => z.ring ?? z.line ?? [];
 
 function GeofencesPage() {
+  const { t } = useTranslation("admin");
+  const kindLabel = (k: ZoneKind): string => t(`geofences.${k}`);
   const [zones, setZones] = React.useState<Zone[]>(ZONES);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
@@ -97,12 +95,12 @@ function GeofencesPage() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col gap-3 p-4 md:p-6">
-      <PageHeader title="Geozonos" description="Braižomos zonos, kurios aktyvuoja taisykles ir įvykius." className="mb-0">
+      <PageHeader title={t("geofences.title")} description={t("geofences.desc")} className="mb-0">
         <div className="flex gap-1">
           {/* mode buttons double as draft entry points in the real app (demo: static) */}
-          <AdminButton variant="secondary" size="sm">Poligonas</AdminButton>
-          <AdminButton variant="secondary" size="sm">Apskritimas</AdminButton>
-          <AdminButton variant="secondary" size="sm">Koridorius</AdminButton>
+          <AdminButton variant="secondary" size="sm">{t("geofences.polygon")}</AdminButton>
+          <AdminButton variant="secondary" size="sm">{t("geofences.circle")}</AdminButton>
+          <AdminButton variant="secondary" size="sm">{t("geofences.corridor")}</AdminButton>
         </div>
       </PageHeader>
 
@@ -113,22 +111,22 @@ function GeofencesPage() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 opacity-60" aria-hidden />
               <AdminInput
-                placeholder="Ieškoti geozonos…"
+                placeholder={t("geofences.search")}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 className="pl-8"
-                aria-label="Ieškoti geozonos…"
+                aria-label={t("geofences.search")}
               />
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-2">
             {zones.length === 0 ? (
               <p className="py-8 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>
-                Geozonų dar nėra — nubraižykite žemėlapyje.
+                {t("geofences.empty")}
               </p>
             ) : filtered.length === 0 ? (
               <p className="py-8 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>
-                Nieko nerasta
+                {t("admin.nothingFound")}
               </p>
             ) : (
               <ul className="space-y-1">
@@ -159,10 +157,10 @@ function GeofencesPage() {
                         <KindIcon className="h-3.5 w-3.5" />
                       </span>
                       <span className="truncate font-medium">{z.name}</span>
-                      <Badge tone="neutral" className="ml-auto">{KIND_LABEL[z.kind]}</Badge>
+                      <Badge tone="neutral" className="ml-auto">{kindLabel(z.kind)}</Badge>
                       <button
                         type="button"
-                        aria-label="Redaguoti"
+                        aria-label={t("geofences.edit")}
                         className="grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--admin-brand-soft)]"
                         style={{ color: "var(--admin-ink-soft)" }}
                         onClick={(e) => {
@@ -174,7 +172,7 @@ function GeofencesPage() {
                       </button>
                       <button
                         type="button"
-                        aria-label="Šalinti"
+                        aria-label={t("geofences.delete")}
                         className="grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--admin-danger-soft)]"
                         style={{ color: "var(--admin-danger)" }}
                         onClick={(e) => {
@@ -204,7 +202,7 @@ function GeofencesPage() {
                   <div className="min-w-0">
                     <div className="truncate font-semibold" style={{ color: "var(--admin-ink)" }}>{selected.name}</div>
                     <div className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>
-                      Sukurta {fmtDate(selected.created)} · {KIND_LABEL[selected.kind]}
+                      {t("geofences.createdAt", { date: fmtDate(selected.created) })} · {kindLabel(selected.kind)}
                     </div>
                   </div>
                   <button
@@ -214,7 +212,7 @@ function GeofencesPage() {
                     style={{ color: "var(--admin-danger)" }}
                   >
                     <Trash2 className="h-3 w-3" aria-hidden />
-                    Šalinti
+                    {t("geofences.delete")}
                   </button>
                 </div>
               </div>

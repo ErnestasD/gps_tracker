@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { generateDevices, type Device } from "@/lib/admin-mock";
+import { LANGUAGES, type Lang } from "@/lib/i18n";
 import { Badge, AdminInput, AdminButton } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { DemoMap, type DemoRoute, type DemoVehicle, type DemoZone } from "@/components/admin/DemoMap";
@@ -50,18 +52,27 @@ const ZONES: DemoZone[] = [
 
 const TRACK_PTS = 60;
 
-const STATUS_LT: Record<Device["status"], string> = {
-  active: "Prisijungęs",
-  idle: "Prisijungęs",
-  offline: "Atsijungęs",
-  maintenance: "Nepasiekiamas",
+/** Demo status → product status key (product only knows online/stale/offline). */
+const STATUS_KEY: Record<Device["status"], string> = {
+  active: "status.online",
+  idle: "status.online",
+  offline: "status.stale",
+  maintenance: "status.offline",
 };
 
-function relAgo(d: Device): string {
-  if (d.status === "active") return "prieš 5 sekundes";
-  if (d.status === "idle") return "prieš 4 minutes";
-  if (d.status === "maintenance") return "prieš 2 valandas";
-  return "prieš 3 dienas";
+/** Demo-invented relative-time snapshots — not in the product's admin namespace. */
+const L: Record<Lang, { ago5s: string; ago4m: string; ago2h: string; ago3d: string }> = {
+  lt: { ago5s: "prieš 5 sekundes", ago4m: "prieš 4 minutes", ago2h: "prieš 2 valandas", ago3d: "prieš 3 dienas" },
+  en: { ago5s: "5 seconds ago", ago4m: "4 minutes ago", ago2h: "2 hours ago", ago3d: "3 days ago" },
+  pl: { ago5s: "5 sekund temu", ago4m: "4 minuty temu", ago2h: "2 godziny temu", ago3d: "3 dni temu" },
+  de: { ago5s: "vor 5 Sekunden", ago4m: "vor 4 Minuten", ago2h: "vor 2 Stunden", ago3d: "vor 3 Tagen" },
+};
+
+function relAgo(d: Device, l: (typeof L)[Lang]): string {
+  if (d.status === "active") return l.ago5s;
+  if (d.status === "idle") return l.ago4m;
+  if (d.status === "maintenance") return l.ago2h;
+  return l.ago3d;
 }
 
 function satsOf(d: Device): number {
@@ -69,6 +80,9 @@ function satsOf(d: Device): number {
 }
 
 function MapPage() {
+  const { t, i18n } = useTranslation("admin");
+  const lang = (i18n.resolvedLanguage ?? "lt").slice(0, 2) as Lang;
+  const l = L[LANGUAGES.includes(lang) ? lang : "lt"];
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<string>("");
   const [selected, setSelected] = React.useState<string | null>(ALL[0]?.id ?? null);
@@ -110,39 +124,39 @@ function MapPage() {
       {/* header strip — live status chips, exactly the real page's furniture */}
       <div className="admin-hairline-b flex flex-wrap items-center gap-2 px-4 py-2.5 md:px-6">
         <PanelLeft className="h-4 w-4" style={{ color: "var(--admin-ink-soft)" }} />
-        <span className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Gyvas žemėlapis</span>
-        <Badge tone="success">Gyvai</Badge>
-        <StatusChip color="var(--admin-success)" label={`${online} Prisijungę`} />
-        <StatusChip color="var(--admin-warning)" label={`${offline} Atsijungę`} />
-        <StatusChip color="var(--admin-ink-soft)" label={`${unreachable} Nepasiekiami`} />
-        <StatusChip color="var(--admin-ink-soft)" label="0 Niekada nepranešė" />
+        <span className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("map.title")}</span>
+        <Badge tone="success">{t("map.live")}</Badge>
+        <StatusChip color="var(--admin-success)" label={`${online} ${t("deviceList.filter.online")}`} />
+        <StatusChip color="var(--admin-warning)" label={`${offline} ${t("deviceList.filter.stale")}`} />
+        <StatusChip color="var(--admin-ink-soft)" label={`${unreachable} ${t("deviceList.filter.offline")}`} />
+        <StatusChip color="var(--admin-ink-soft)" label={`0 ${t("deviceList.filter.silent")}`} />
         <div className="flex-1" />
-        <AdminButton variant="secondary" size="sm"><Pause className="h-3.5 w-3.5" /> Stabdyti</AdminButton>
-        <AdminButton variant="secondary" size="sm"><Layers className="h-3.5 w-3.5" /> Sluoksniai</AdminButton>
-        <AdminButton variant="secondary" size="sm" aria-label="Per visą ekraną"><Maximize2 className="h-3.5 w-3.5" /></AdminButton>
+        <AdminButton variant="secondary" size="sm"><Pause className="h-3.5 w-3.5" /> {t("map.pause")}</AdminButton>
+        <AdminButton variant="secondary" size="sm"><Layers className="h-3.5 w-3.5" /> {t("map.layers.title")}</AdminButton>
+        <AdminButton variant="secondary" size="sm" aria-label={t("map.fullscreen")}><Maximize2 className="h-3.5 w-3.5" /></AdminButton>
       </div>
 
       <div className="flex min-h-0 flex-1">
         {/* fleet list */}
         <aside className="admin-hairline-r flex w-[21rem] shrink-0 flex-col" style={{ background: "var(--admin-surface)" }}>
           <div className="space-y-2 p-3">
-            <AdminInput placeholder="Ieškoti įrenginių..." value={q} onChange={(e) => setQ(e.target.value)} />
+            <AdminInput placeholder={t("deviceList.search")} value={q} onChange={(e) => setQ(e.target.value)} />
             <div className="flex items-center gap-3 text-xs" style={{ color: "var(--admin-ink-soft)" }}>
-              <span>{filtered.length} iš {ALL.length}</span>
+              <span>{t("deviceList.count", { shown: filtered.length, total: ALL.length })}</span>
               <label className="flex items-center gap-1.5">
-                <input type="checkbox" className="h-3.5 w-3.5" /> Sekti
+                <input type="checkbox" className="h-3.5 w-3.5" /> {t("info.follow")}
               </label>
               <div className="ml-auto w-36">
                 <Combobox
                   value={status}
                   onChange={setStatus}
                   options={[
-                    { value: "", label: "Pagal būseną" },
-                    { value: "active", label: "Prisijungę" },
-                    { value: "offline", label: "Atsijungę" },
-                    { value: "maintenance", label: "Nepasiekiami" },
+                    { value: "", label: t("deviceList.sort.status") },
+                    { value: "active", label: t("deviceList.filter.online") },
+                    { value: "offline", label: t("deviceList.filter.stale") },
+                    { value: "maintenance", label: t("deviceList.filter.offline") },
                   ]}
-                  placeholder="Pagal būseną"
+                  placeholder={t("deviceList.sort.status")}
                 />
               </div>
             </div>
@@ -172,8 +186,8 @@ function MapPage() {
                     </div>
                     <div className="mt-0.5 pl-4 text-xs" style={{ color: "var(--admin-ink-soft)" }}>{d.plate}</div>
                     <div className="mt-1 flex items-center gap-3 pl-4 text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>
-                      <span className="inline-flex items-center gap-1"><Activity className="h-3 w-3" /> {on ? d.speed : 0} km/val</span>
-                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {relAgo(d)}</span>
+                      <span className="inline-flex items-center gap-1"><Activity className="h-3 w-3" /> {on ? d.speed : 0} {t("units.kmh")}</span>
+                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {relAgo(d, l)}</span>
                       <span className="inline-flex items-center gap-1"><Satellite className="h-3 w-3" /> {satsOf(d)}</span>
                       <Power className="h-3 w-3" style={{ color: on ? "var(--admin-success)" : "var(--admin-ink-soft)" }} />
                     </div>
@@ -210,9 +224,9 @@ function MapPage() {
             className="absolute bottom-3 left-3 flex items-center gap-3 rounded-md border px-3 py-1.5 text-[11px] backdrop-blur"
             style={{ borderColor: "var(--admin-hairline)", background: "color-mix(in oklab, var(--admin-surface) 88%, transparent)", color: "var(--admin-ink-soft)" }}
           >
-            <span className="inline-flex items-center gap-1.5"><Dot c="#7C7DF5" /> Prisijungęs</span>
-            <span className="inline-flex items-center gap-1.5"><Dot c="#8A93A6" /> Atsijungęs</span>
-            <span className="inline-flex items-center gap-1.5"><Dot c="#B9C0D0" /> Nepasiekiamas</span>
+            <span className="inline-flex items-center gap-1.5"><Dot c="#7C7DF5" /> {t("status.online")}</span>
+            <span className="inline-flex items-center gap-1.5"><Dot c="#8A93A6" /> {t("status.stale")}</span>
+            <span className="inline-flex items-center gap-1.5"><Dot c="#B9C0D0" /> {t("status.offline")}</span>
           </div>
         </div>
 
@@ -225,21 +239,21 @@ function MapPage() {
                   <StatusDot status={active.status} />
                   <span className="truncate font-semibold" style={{ color: "var(--admin-ink)" }}>{active.name} ({active.plate})</span>
                 </div>
-                <Badge tone={active.status === "offline" ? "neutral" : "success"}>{STATUS_LT[active.status]}</Badge>
+                <Badge tone={active.status === "offline" ? "neutral" : "success"}>{t(STATUS_KEY[active.status])}</Badge>
               </div>
               <div className="mono mt-1 text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>
                 {active.plate} · IMEI {active.imei}
               </div>
 
               <div className="mt-3 grid grid-cols-4 gap-1.5">
-                <MetricTile icon={Activity} value={`${active.status === "active" ? active.speed : 0} km…`} label="GREITIS" />
-                <MetricTile icon={Satellite} value={String(satsOf(active))} label="PALYDOVAI" />
-                <MetricTile icon={Signal} value={String(3 + (satsOf(active) % 3))} label="GSM SIGNAL" />
-                <MetricTile icon={Zap} value="12.7 V" label="EXTERNAL V…" />
+                <MetricTile icon={Activity} value={`${active.status === "active" ? active.speed : 0} km…`} label={t("info.speed").toUpperCase()} />
+                <MetricTile icon={Satellite} value={String(satsOf(active))} label={t("info.satellites").toUpperCase()} />
+                <MetricTile icon={Signal} value={String(3 + (satsOf(active) % 3))} label={t("devices.health.gsm").toUpperCase()} />
+                <MetricTile icon={Zap} value="12.7 V" label={t("devices.health.extV").toUpperCase()} />
               </div>
 
               <div className="admin-hairline-b mt-3 flex gap-4 text-sm">
-                {([["overview", "Apžvalga", Activity], ["params", "Parametrai", Radio], ["events", "Įvykiai", Signal], ["commands", "Komandos", ChevronRight]] as const).map(([id, label]) => (
+                {([["overview", t("map.inspector.overview"), Activity], ["params", t("map.inspector.params"), Radio], ["events", t("map.inspector.events"), Signal], ["commands", t("map.inspector.commands"), ChevronRight]] as const).map(([id, label]) => (
                   <button
                     key={id}
                     onClick={() => setTab(id)}
@@ -256,34 +270,34 @@ function MapPage() {
               </div>
 
               <div className="admin-card mt-3 p-3">
-                <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--admin-ink)" }}>Pozicija</div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--admin-ink)" }}>{t("map.inspector.position")}</div>
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                  <KV k="KOORDINATĖS" v={`${active.lat.toFixed(5)}, ${active.lng.toFixed(5)}`} mono />
-                  <KV k="PASKUTINIS PAKETAS" v="2026-09-01 13:51" mono />
-                  <KV k="KRYPTIS" v="295°" />
-                  <KV k="DEGIMAS" v={active.status === "active" ? "Įjungtas" : "Išjungtas"} />
+                  <KV k={t("map.inspector.coords").toUpperCase()} v={`${active.lat.toFixed(5)}, ${active.lng.toFixed(5)}`} mono />
+                  <KV k={t("map.inspector.lastPacket").toUpperCase()} v="2026-09-01 13:51" mono />
+                  <KV k={t("map.inspector.heading").toUpperCase()} v="295°" />
+                  <KV k={t("info.ignition").toUpperCase()} v={active.status === "active" ? t("info.on") : t("info.off")} />
                 </div>
-                <div className="mt-2 text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{relAgo(active)}</div>
+                <div className="mt-2 text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{relAgo(active, l)}</div>
               </div>
 
               <div className="admin-card mt-3 p-3">
                 <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--admin-ink)" }}>
-                  <Radio className="mr-1 inline h-3.5 w-3.5" /> Pagrindinė telemetrija
+                  <Radio className="mr-1 inline h-3.5 w-3.5" /> {t("map.inspector.telemetry")}
                 </div>
-                <TelemetryBar label="GSM Signal" value={`${3 + (satsOf(active) % 3)}`} pct={((3 + (satsOf(active) % 3)) / 5) * 100} />
+                <TelemetryBar label={t("devices.health.gsm")} value={`${3 + (satsOf(active) % 3)}`} pct={((3 + (satsOf(active) % 3)) / 5) * 100} />
                 <div className="mt-2 flex items-center justify-between text-xs">
-                  <span style={{ color: "var(--admin-ink-soft)" }}>External Voltage</span>
+                  <span style={{ color: "var(--admin-ink-soft)" }}>{t("devices.health.extV")}</span>
                   <span className="mono font-medium" style={{ color: "var(--admin-ink)" }}>12.7 V</span>
                 </div>
                 <div className="mt-1.5 flex items-center justify-between text-xs">
-                  <span style={{ color: "var(--admin-ink-soft)" }}>Kuras</span>
+                  <span style={{ color: "var(--admin-ink-soft)" }}>{t("fleet.fuel")}</span>
                   <span className="mono font-medium" style={{ color: "var(--admin-ink)" }}>{active.fuel}%</span>
                 </div>
               </div>
 
               <div className="admin-card mt-3 p-3">
                 <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--admin-ink)" }}>
-                  <RouteIcon className="mr-1 inline h-3.5 w-3.5" /> Paskutinės kelionės
+                  <RouteIcon className="mr-1 inline h-3.5 w-3.5" /> {t("map.inspector.recentTrips")}
                 </div>
                 <ul className="mt-2 space-y-1.5 text-xs">
                   {[["2026-09-01 12:50", "8.4 km"], ["2026-09-01 08:02", "1.7 km"], ["2026-08-31 20:50", "1.6 km"], ["2026-08-31 08:00", "1.7 km"]].map(([ts, km]) => (
@@ -296,8 +310,8 @@ function MapPage() {
               </div>
 
               <div className="mt-3 flex gap-2">
-                <AdminButton variant="secondary" size="sm"><LocateFixed className="h-3.5 w-3.5" /> Sekti</AdminButton>
-                <AdminButton variant="secondary" size="sm"><RouteIcon className="h-3.5 w-3.5" /> Pėdsakas</AdminButton>
+                <AdminButton variant="secondary" size="sm"><LocateFixed className="h-3.5 w-3.5" /> {t("info.follow")}</AdminButton>
+                <AdminButton variant="secondary" size="sm"><RouteIcon className="h-3.5 w-3.5" /> {t("info.trail")}</AdminButton>
               </div>
             </div>
           </aside>
@@ -306,7 +320,7 @@ function MapPage() {
 
       {/* playback timeline — the real page's bottom dock */}
       <div className="admin-hairline-t flex items-center gap-3 px-4 py-2 md:px-6" style={{ background: "var(--admin-surface)" }}>
-        <AdminButton variant="secondary" size="sm" aria-label="Groti"><Play className="h-3.5 w-3.5" /></AdminButton>
+        <AdminButton variant="secondary" size="sm" aria-label={t("playback.play")}><Play className="h-3.5 w-3.5" /></AdminButton>
         <span className="mono rounded border px-1.5 py-0.5 text-[11px]" style={{ borderColor: "var(--admin-hairline)", color: "var(--admin-ink-soft)" }}>60×</span>
         <div className="relative h-8 min-w-0 flex-1">
           <div className="absolute inset-x-0 top-1/2 h-px" style={{ background: "var(--admin-hairline)" }} />
@@ -318,11 +332,11 @@ function MapPage() {
           ))}
           <span className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded" style={{ left: "96%", background: "var(--admin-brand)" }} />
         </div>
-        <span className="mono text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>24 val.</span>
-        {["-24 val.", "-12 val.", "-6 val.", "-1 val."].map((l) => (
-          <button key={l} className="mono cursor-pointer text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{l}</button>
+        <span className="mono text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{t("map.timeline.span", { hours: 24 })}</span>
+        {[24, 12, 6, 1].map((h) => (
+          <button key={h} className="mono cursor-pointer text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{t("map.timeline.quick.hours", { hours: h })}</button>
         ))}
-        <span className="mono rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--admin-brand)", color: "#fff" }}>dabar</span>
+        <span className="mono rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--admin-brand)", color: "#fff" }}>{t("map.timeline.now")}</span>
       </div>
     </div>
   );

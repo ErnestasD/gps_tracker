@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Activity, AlertTriangle, Bell } from "lucide-react";
 
 import { PageHeader, StatCard, Badge, AdminButton } from "@/components/admin/AdminKit";
@@ -22,7 +23,7 @@ export const Route = createFileRoute("/app/")({
 
 const RANGES = [7, 30, 90] as const;
 type RangeDays = (typeof RANGES)[number];
-const RANGE_LABEL: Record<RangeDays, string> = { 7: "7 d.", 30: "30 d.", 90: "90 d." };
+const RANGE_KEY: Record<RangeDays, string> = { 7: "dash.range7", 30: "dash.range30", 90: "dash.range90" };
 
 const BASE_UTC = Date.UTC(2026, 8, 1); // 2026-09-01 — "today" for the demo
 const MS_DAY = 86_400_000;
@@ -48,14 +49,14 @@ const SERIES: Record<RangeDays, { day: string; km: number }[]> = {
   90: makeKmSeries(90),
 };
 
-/** Events by kind over 7 d — LT labels from events.k, sorted desc like the real breakdown. */
+/** Events by kind over 7 d — i18n keys from events.k, sorted desc like the real breakdown. */
 const BREAKDOWN = [
-  { kind: "Geozona", count: 41 },
-  { kind: "Greičio viršijimas", count: 29 },
-  { kind: "Uždegimas", count: 22 },
-  { kind: "Maitinimo nutrūkimas", count: 14 },
-  { kind: "Žema baterija", count: 8 },
-  { kind: "Kuro vagystė", count: 4 },
+  { kind: "events.k.geofence", count: 41 },
+  { kind: "events.k.overspeed", count: 29 },
+  { kind: "events.k.ignition", count: 22 },
+  { kind: "events.k.power_cut", count: 14 },
+  { kind: "events.k.low_battery", count: 8 },
+  { kind: "events.k.fuel_theft", count: 4 },
 ];
 const EVENTS_7D_TOTAL = BREAKDOWN.reduce((s, b) => s + b.count, 0);
 
@@ -63,10 +64,10 @@ const EVENTS_7D_TOTAL = BREAKDOWN.reduce((s, b) => s + b.count, 0);
 const HOURLY = [1, 0, 0, 1, 2, 5, 9, 14, 12, 8, 6, 5, 6, 7, 8, 10, 13, 15, 11, 7, 4, 3, 2, 1];
 
 type DeviceStatus = "online" | "stale" | "offline";
-const STATUS_LABEL: Record<DeviceStatus, string> = {
-  online: "Prisijungęs",
-  stale: "Atsijungęs",
-  offline: "Nepasiekiamas",
+const STATUS_KEY: Record<DeviceStatus, string> = {
+  online: "status.online",
+  stale: "status.stale",
+  offline: "status.offline",
 };
 const STATUS_TONE: Record<DeviceStatus, "success" | "warning" | "neutral"> = {
   online: "success",
@@ -84,13 +85,13 @@ const LATEST: { name: string; sub: string; status: DeviceStatus }[] = [
 
 type Severity = "critical" | "warning" | "info";
 
-const RECENT: { id: string; severity: Severity; summary: string; device: string; at: string; kind: string }[] = [
-  { id: "e1", severity: "critical", summary: "SOS pavojaus signalas", device: "Krovininis 01", at: "2026-09-01T07:42:00Z", kind: "Pavojaus mygtukas" },
-  { id: "e2", severity: "warning", summary: "97 km/h > 90 km/h", device: "Vilkikas 07", at: "2026-09-01T07:18:00Z", kind: "Greičio viršijimas" },
-  { id: "e3", severity: "info", summary: "Terminalas Kaunas · įvažiavimas", device: "Pikapas 02", at: "2026-09-01T06:55:00Z", kind: "Geozona" },
-  { id: "e4", severity: "info", summary: "degimas įjungtas", device: "Busiukas 03", at: "2026-09-01T06:31:00Z", kind: "Uždegimas" },
-  { id: "e5", severity: "critical", summary: "dingo išorinis maitinimas", device: "Priekaba 11", at: "2026-08-31T22:14:00Z", kind: "Maitinimo nutrūkimas" },
-  { id: "e6", severity: "warning", summary: "3.6 V < 3.8 V", device: "Vilkikas 04", at: "2026-08-31T21:02:00Z", kind: "Žema baterija" },
+const RECENT: { id: string; severity: Severity; summary: string; summaryOpts?: Record<string, string>; device: string; at: string; kind: string }[] = [
+  { id: "e1", severity: "critical", summary: "events.s.panic", device: "Krovininis 01", at: "2026-09-01T07:42:00Z", kind: "events.k.panic" },
+  { id: "e2", severity: "warning", summary: "events.s.overspeed", summaryOpts: { speed: "97 km/h", limit: "90 km/h" }, device: "Vilkikas 07", at: "2026-09-01T07:18:00Z", kind: "events.k.overspeed" },
+  { id: "e3", severity: "info", summary: "events.s.geofence_enter", summaryOpts: { name: "Terminalas Kaunas" }, device: "Pikapas 02", at: "2026-09-01T06:55:00Z", kind: "events.k.geofence" },
+  { id: "e4", severity: "info", summary: "events.s.ignition_on", device: "Busiukas 03", at: "2026-09-01T06:31:00Z", kind: "events.k.ignition" },
+  { id: "e5", severity: "critical", summary: "events.s.power_cut", device: "Priekaba 11", at: "2026-08-31T22:14:00Z", kind: "events.k.power_cut" },
+  { id: "e6", severity: "warning", summary: "events.s.low_battery", summaryOpts: { volts: "3.6", threshold: "3.8 V" }, device: "Vilkikas 04", at: "2026-08-31T21:02:00Z", kind: "events.k.low_battery" },
 ];
 
 const SEVERITY_ICON: Record<Severity, typeof Bell> = { critical: Bell, warning: AlertTriangle, info: Activity };
@@ -142,7 +143,7 @@ const MB = 22;
 const PW = W - ML - MR;
 const PH = H - MT - MB;
 
-function AreaChartSvg({ series, unit }: { series: { day: string; km: number }[]; unit: string }) {
+function AreaChartSvg({ series, unit, label }: { series: { day: string; km: number }[]; unit: string; label: string }) {
   const values = series.map((s) => s.km);
   const max = Math.max(...values, 1);
   const { line, area } = areaPath(values, PW, PH);
@@ -151,7 +152,7 @@ function AreaChartSvg({ series, unit }: { series: { day: string; km: number }[];
   const x = (i: number): number => (n === 1 ? PW / 2 : (i / (n - 1)) * PW);
   const lastY = PH - (values[n - 1] / max) * PH;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Parko aktyvumas">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={label}>
       <defs>
         <linearGradient id="dashAreaFill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="var(--admin-brand)" stopOpacity={0.35} />
@@ -194,10 +195,12 @@ function DonutSvg({
   breakdown,
   centerValue,
   centerLabel,
+  label,
 }: {
   breakdown: { kind: string; count: number }[];
   centerValue: string;
   centerLabel: string;
+  label: string;
 }) {
   const R = 62;
   const total = breakdown.reduce((s, b) => s + b.count, 0);
@@ -212,7 +215,7 @@ function DonutSvg({
     return seg;
   });
   return (
-    <svg viewBox="0 0 168 168" className="mx-auto h-44 w-44" role="img" aria-label="Įvykiai (7 d.)">
+    <svg viewBox="0 0 168 168" className="mx-auto h-44 w-44" role="img" aria-label={label}>
       <g transform="rotate(-90 84 84)">
         {segments.map((s, i) => (
           <circle key={s.kind} cx={84} cy={84} r={R} fill="none" stroke={kindColor(i)} strokeWidth={20} strokeDasharray={s.dash} strokeDashoffset={s.offset}>
@@ -235,11 +238,11 @@ const BH = 150;
 const BPH = 118;
 const BT = 6;
 
-function HourlyBarsSvg({ buckets, unit }: { buckets: number[]; unit: string }) {
+function HourlyBarsSvg({ buckets, unit, label }: { buckets: number[]; unit: string; label: string }) {
   const max = Math.max(...buckets, 1);
   const base = BT + BPH;
   return (
-    <svg viewBox={`0 0 ${BW} ${BH}`} className="w-full" role="img" aria-label="Įvykiai pagal paros valandą">
+    <svg viewBox={`0 0 ${BW} ${BH}`} className="w-full" role="img" aria-label={label}>
       {[0.5, 1].map((f) => (
         <line key={f} x1={0} y1={base - f * BPH} x2={BW} y2={base - f * BPH} stroke="var(--admin-hairline-soft)" strokeWidth={1} />
       ))}
@@ -267,45 +270,47 @@ function HourlyBarsSvg({ buckets, unit }: { buckets: number[]; unit: string }) {
 /* ── page ─────────────────────────────────────────────────────────────────── */
 
 function OverviewPage() {
+  const { t } = useTranslation("admin");
   const navigate = useNavigate();
   const [rangeDays, setRangeDays] = useState<RangeDays>(7);
   const series = SERIES[rangeDays];
   const rangeKm = Math.round(series.reduce((s, d) => s + d.km, 0));
+  const breakdown = BREAKDOWN.map((b) => ({ ...b, kind: t(b.kind) }));
 
   return (
     <div className="space-y-4 p-4 md:p-8">
-      <PageHeader title="Apžvalga" description="Parkas iš pirmo žvilgsnio — būsena, įvykiai ir rida.">
-        <AdminButton variant="secondary" onClick={() => void navigate({ to: "/app/reports" })}>Ataskaitos</AdminButton>
-        <AdminButton onClick={() => void navigate({ to: "/app/map" })}>Žemėlapis</AdminButton>
+      <PageHeader title={t("dash.title")} description={t("dash.desc")}>
+        <AdminButton variant="secondary" onClick={() => void navigate({ to: "/app/reports" })}>{t("dash.toReports")}</AdminButton>
+        <AdminButton onClick={() => void navigate({ to: "/app/map" })}>{t("dash.toMap")}</AdminButton>
       </PageHeader>
 
       {/* ── stat row ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
-          label="Aktyvūs įrenginiai"
+          label={t("dash.active")}
           value={<><span>14</span><span className="text-base font-normal opacity-50"> / 16</span></>}
-          hint="2 atsijungę"
+          hint={t("dash.staleHint", { n: 2 })}
           spark={[12, 13, 14, 13, 15, 14, 14]}
         />
         <StatCard
-          label="Šiandien nuvažiuota"
+          label={t("dash.today")}
           value={<>{fmtNumber(1246)} <span className="text-base font-normal opacity-50">km</span></>}
           delta={{ value: "+18%", tone: "up" }}
-          hint="vs. vakar"
+          hint={t("dash.vsYesterday")}
           spark={[988, 1102, 946, 1180, 1214, 1056, 1246]}
         />
         <StatCard
-          label="Įvykiai (24 val.)"
+          label={t("dash.events24")}
           value="42"
           delta={{ value: "+9", tone: "flat" }}
-          hint="vs. ankstesnės 24 val."
+          hint={t("dash.vsPrev24")}
           spark={[31, 28, 36, 33, 40, 38, 42]}
         />
         <StatCard
-          label="Kritiniai (24 val.)"
+          label={t("dash.critical24")}
           value="3"
           delta={{ value: "−2", tone: "down" }}
-          hint="vs. ankstesnės 24 val."
+          hint={t("dash.vsPrev24")}
           spark={[5, 4, 6, 3, 5, 4, 3]}
         />
       </div>
@@ -315,8 +320,8 @@ function OverviewPage() {
         <section className="admin-card lg:col-span-2">
           <div className="admin-hairline-b flex flex-wrap items-center justify-between gap-2 px-4 py-3">
             <div>
-              <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Parko aktyvumas</h2>
-              <p className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>Nuvažiuoti kilometrai per dieną</p>
+              <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("dash.fleetActivity")}</h2>
+              <p className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>{t("dash.fleetActivityDesc")}</p>
             </div>
             <div className="flex items-center gap-2">
               <Badge tone="brand">{fmtNumber(rangeKm)} km</Badge>
@@ -334,26 +339,26 @@ function OverviewPage() {
                       fontWeight: rangeDays === r ? 600 : 500,
                     }}
                   >
-                    {RANGE_LABEL[r]}
+                    {t(RANGE_KEY[r])}
                   </button>
                 ))}
               </div>
             </div>
           </div>
           <div className="p-4">
-            <AreaChartSvg series={series} unit="km" />
+            <AreaChartSvg series={series} unit="km" label={t("dash.fleetActivity")} />
           </div>
         </section>
 
         <section className="admin-card">
           <div className="admin-hairline-b px-4 py-3">
-            <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Įvykiai (7 d.)</h2>
-            <p className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>Pagal tipą</p>
+            <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("dash.events7")}</h2>
+            <p className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>{t("dash.byType")}</p>
           </div>
           <div className="p-4">
-            <DonutSvg breakdown={BREAKDOWN} centerValue={String(EVENTS_7D_TOTAL)} centerLabel="iš viso" />
+            <DonutSvg breakdown={breakdown} centerValue={String(EVENTS_7D_TOTAL)} centerLabel={t("dash.totalShort")} label={t("dash.events7")} />
             <ul className="mt-3 space-y-1.5">
-              {BREAKDOWN.map((b, i) => (
+              {breakdown.map((b, i) => (
                 <li key={b.kind} className="flex items-center justify-between gap-2 text-xs">
                   <span className="flex min-w-0 items-center gap-2" style={{ color: "var(--admin-ink)" }}>
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: kindColor(i) }} />
@@ -371,18 +376,18 @@ function OverviewPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="admin-card lg:col-span-2">
           <div className="admin-hairline-b px-4 py-3">
-            <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Aktyvumas per parą</h2>
-            <p className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>Įvykiai pagal paros valandą</p>
+            <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("dash.hourly")}</h2>
+            <p className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>{t("dash.byHour")}</p>
           </div>
           <div className="p-4">
-            <HourlyBarsSvg buckets={HOURLY} unit="įvyk." />
+            <HourlyBarsSvg buckets={HOURLY} unit={t("dash.eventsUnit")} label={t("dash.byHour")} />
           </div>
         </section>
 
         <section className="admin-card overflow-hidden">
           <div className="admin-hairline-b flex items-center justify-between px-4 py-3">
-            <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Paskutiniai pranešę</h2>
-            <AdminButton variant="ghost" size="sm" onClick={() => void navigate({ to: "/app/devices" })}>Rodyti visus</AdminButton>
+            <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("dash.latestDevices")}</h2>
+            <AdminButton variant="ghost" size="sm" onClick={() => void navigate({ to: "/app/devices" })}>{t("dash.viewAll")}</AdminButton>
           </div>
           <ul>
             {LATEST.map((d) => (
@@ -393,7 +398,7 @@ function OverviewPage() {
                 </div>
                 <Badge tone={STATUS_TONE[d.status]}>
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} aria-hidden />
-                  {STATUS_LABEL[d.status]}
+                  {t(STATUS_KEY[d.status])}
                 </Badge>
               </li>
             ))}
@@ -404,8 +409,8 @@ function OverviewPage() {
       {/* ── recent events (severity icon + summary + kind badge + time) ───── */}
       <section className="admin-card overflow-hidden">
         <div className="admin-hairline-b flex items-center justify-between px-4 py-3">
-          <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Paskutiniai įvykiai</h2>
-          <AdminButton variant="ghost" size="sm" onClick={() => void navigate({ to: "/app/events" })}>Rodyti visus</AdminButton>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("dash.recent")}</h2>
+          <AdminButton variant="ghost" size="sm" onClick={() => void navigate({ to: "/app/events" })}>{t("dash.viewAll")}</AdminButton>
         </div>
         <ul>
           {RECENT.map((e) => {
@@ -423,12 +428,12 @@ function OverviewPage() {
                   <Icon className="h-3.5 w-3.5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate" style={{ color: "var(--admin-ink)" }}>{e.summary}</div>
+                  <div className="truncate" style={{ color: "var(--admin-ink)" }}>{t(e.summary, e.summaryOpts)}</div>
                   <div className="truncate text-xs" style={{ color: "var(--admin-ink-soft)" }}>
                     {e.device} · {fmtDateTime(e.at)}
                   </div>
                 </div>
-                <Badge tone={e.severity === "critical" ? "danger" : e.severity === "warning" ? "warning" : "info"}>{e.kind}</Badge>
+                <Badge tone={e.severity === "critical" ? "danger" : e.severity === "warning" ? "warning" : "info"}>{t(e.kind)}</Badge>
               </li>
             );
           })}

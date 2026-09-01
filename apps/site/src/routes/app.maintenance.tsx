@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, CheckCircle2, MoreHorizontal, Plus, Trash2, Wrench } from "lucide-react";
 import { fmtDate } from "@/lib/admin-format";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { PageHeader, AdminButton, Badge, AdminInput, StatCard } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
+import { LANGUAGES, type Lang } from "@/lib/i18n";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +42,40 @@ type DemoMaint = {
   predictedDueAt: string | null;
   status: MaintStatus;
 };
+
+/** Demo-only copy that has no counterpart in the real product's locale files. */
+const L: Record<Lang, { reminderSaved: string; serviced: string; planCreated: string; servicePh: string }> = {
+  lt: {
+    reminderSaved: "Priminimas išsaugotas (demo)",
+    serviced: "Aptarnavimas užregistruotas (demo)",
+    planCreated: "Planas sukurtas (demo)",
+    servicePh: "pvz. Alyvos keitimas",
+  },
+  en: {
+    reminderSaved: "Reminder saved (demo)",
+    serviced: "Service recorded (demo)",
+    planCreated: "Plan created (demo)",
+    servicePh: "e.g. Oil change",
+  },
+  pl: {
+    reminderSaved: "Przypomnienie zapisane (demo)",
+    serviced: "Serwis zarejestrowany (demo)",
+    planCreated: "Plan utworzony (demo)",
+    servicePh: "np. Wymiana oleju",
+  },
+  de: {
+    reminderSaved: "Erinnerung gespeichert (Demo)",
+    serviced: "Wartung erfasst (Demo)",
+    planCreated: "Plan erstellt (Demo)",
+    servicePh: "z. B. Ölwechsel",
+  },
+};
+
+function useL() {
+  const { i18n } = useTranslation("admin");
+  const lang = (i18n.resolvedLanguage ?? "lt").slice(0, 2) as Lang;
+  return L[LANGUAGES.includes(lang) ? lang : "lt"];
+}
 
 const DEVICES = [
   { id: "dev_0001", name: "Van 01", plate: "KTU 421" },
@@ -87,10 +123,11 @@ const PLANS: DemoPlan[] = [
   },
 ];
 
+/** doc kind → real-product fleet.docKind.* key suffix; titles stay data. */
 const EXPIRING_DOCS = [
-  { id: "doc_01", deviceName: "Truck 03", kind: "Techninė apžiūra", title: "Metinė TA", validTo: "2026-08-27", overdueDays: 5, daysLeft: null as number | null },
-  { id: "doc_02", deviceName: "Van 02", kind: "Draudimas", title: "Kasko draudimas", validTo: "2026-09-12", overdueDays: null as number | null, daysLeft: 11 },
-  { id: "doc_03", deviceName: "Van 06", kind: "Tachografo patikra", title: "Patikros sertifikatas", validTo: "2026-09-24", overdueDays: null as number | null, daysLeft: 23 },
+  { id: "doc_01", deviceName: "Truck 03", kind: "inspection", title: "Metinė TA", validTo: "2026-08-27", overdueDays: 5, daysLeft: null as number | null },
+  { id: "doc_02", deviceName: "Van 02", kind: "insurance", title: "Kasko draudimas", validTo: "2026-09-12", overdueDays: null as number | null, daysLeft: 11 },
+  { id: "doc_03", deviceName: "Van 06", kind: "tachograph", title: "Patikros sertifikatas", validTo: "2026-09-24", overdueDays: null as number | null, daysLeft: 23 },
 ];
 
 /** due status → badge tone, mirroring the product's unit-tested dueVariant mapping. */
@@ -100,36 +137,44 @@ const STATUS_TONE: Record<MaintStatus, "success" | "warning" | "danger" | "neutr
   overdue: "danger",
   unknown: "neutral",
 };
-const STATUS_LABEL: Record<MaintStatus, string> = {
-  ok: "Gerai",
-  due_soon: "Netrukus",
-  overdue: "Pradelsta",
-  unknown: "Nėra duomenų",
+/** due status → real-product translation key (admin namespace). */
+const STATUS_KEY: Record<MaintStatus, string> = {
+  ok: "maint.status.ok",
+  due_soon: "maint.status.due_soon",
+  overdue: "maint.status.overdue",
+  unknown: "maint.status.unknown",
 };
 /** due status → sort rank (most urgent first when ascending). */
 const STATUS_RANK: Record<MaintStatus, number> = { overdue: 0, due_soon: 1, ok: 2, unknown: 3 };
 
+type TFn = (key: string, opts?: Record<string, unknown>) => string;
+
 /** The interval label, e.g. "kas 15000 km · kas 365 d." */
-const intervalLabel = (r: { intervalKm: number | null; intervalDays: number | null; intervalEngineH: number | null }): string =>
+const intervalLabel = (
+  t: TFn,
+  r: { intervalKm: number | null; intervalDays: number | null; intervalEngineH: number | null },
+): string =>
   [
-    r.intervalKm !== null ? `kas ${r.intervalKm} km` : null,
-    r.intervalDays !== null ? `kas ${r.intervalDays} d.` : null,
-    r.intervalEngineH !== null ? `kas ${r.intervalEngineH} variklio val.` : null,
+    r.intervalKm !== null ? t("maint.everyKm", { n: r.intervalKm }) : null,
+    r.intervalDays !== null ? t("maint.everyDays", { n: r.intervalDays }) : null,
+    r.intervalEngineH !== null ? t("maint.everyEngineH", { n: r.intervalEngineH }) : null,
   ]
     .filter((p) => p !== null)
     .join(" · ");
 
 /** The remaining-until-due label (km and/or days), e.g. "liko 1240 km · liko 96 d." */
-const remaining = (r: DemoMaint): string =>
+const remaining = (t: TFn, r: DemoMaint): string =>
   [
-    r.kmRemaining !== null ? `liko ${r.kmRemaining} km` : null,
-    r.daysRemaining !== null ? `liko ${r.daysRemaining} d.` : null,
-    r.engineHRemaining !== null ? `liko ${r.engineHRemaining} val.` : null,
+    r.kmRemaining !== null ? t("maint.kmLeft", { n: r.kmRemaining }) : null,
+    r.daysRemaining !== null ? t("maint.daysLeft", { n: r.daysRemaining }) : null,
+    r.engineHRemaining !== null ? t("maint.hLeft", { n: r.engineHRemaining }) : null,
   ]
     .filter((p) => p !== null)
     .join(" · ");
 
 function MaintenancePage() {
+  const { t } = useTranslation("admin");
+  const l = useL();
   const [items, setItems] = React.useState<DemoMaint[]>(MAINT);
   const [addOpen, setAddOpen] = React.useState(false);
   const [servicedForId, setServicedForId] = React.useState<string | null>(null);
@@ -145,36 +190,36 @@ function MaintenancePage() {
   const columns: Column<DemoMaint>[] = [
     {
       key: "device",
-      header: "Įrenginys",
+      header: t("maint.device"),
       sortable: true,
       sortValue: (r) => r.deviceName.toLowerCase(),
       cell: (r) => <span className="font-medium">{r.deviceName}</span>,
     },
-    { key: "service", header: "Aptarnavimas", sortable: true, sortValue: (r) => r.title.toLowerCase(), cell: (r) => r.title },
+    { key: "service", header: t("maint.itemTitle"), sortable: true, sortValue: (r) => r.title.toLowerCase(), cell: (r) => r.title },
     {
       key: "interval",
-      header: "Intervalas",
+      header: t("maint.interval"),
       hideOnMobile: true,
       align: "right",
       cell: (r) => (
         <span className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>
-          {intervalLabel(r)}
+          {intervalLabel(t, r)}
         </span>
       ),
     },
     {
       key: "remaining",
-      header: "Liko",
+      header: t("maint.remaining"),
       align: "right",
       cell: (r) => (
         <span className="text-xs tabular-nums" style={{ color: "var(--admin-ink-soft)" }}>
-          {remaining(r) || "—"}
+          {remaining(t, r) || "—"}
         </span>
       ),
     },
     {
       key: "forecast",
-      header: "Prognozė",
+      header: t("maint.forecast"),
       hideOnMobile: true,
       align: "right",
       sortable: true,
@@ -187,38 +232,38 @@ function MaintenancePage() {
     },
     {
       key: "status",
-      header: "Būsena",
+      header: t("maint.statusHeader"),
       sortable: true,
       sortValue: (r) => STATUS_RANK[r.status],
       filterValue: (r) => r.status,
       filterOptions: [
-        { value: "ok", label: "Gerai" },
-        { value: "due_soon", label: "Netrukus" },
-        { value: "overdue", label: "Pradelsta" },
-        { value: "unknown", label: "Nėra duomenų" },
+        { value: "ok", label: t("maint.status.ok") },
+        { value: "due_soon", label: t("maint.status.due_soon") },
+        { value: "overdue", label: t("maint.status.overdue") },
+        { value: "unknown", label: t("maint.status.unknown") },
       ],
-      cell: (r) => <Badge tone={STATUS_TONE[r.status]}>{STATUS_LABEL[r.status]}</Badge>,
+      cell: (r) => <Badge tone={STATUS_TONE[r.status]}>{t(STATUS_KEY[r.status])}</Badge>,
     },
   ];
 
   return (
     <div className="space-y-4 p-4 md:p-8">
-      <PageHeader className="mb-0" title="Techninė priežiūra" description="Techninių priežiūrų priminimai ir grafikas.">
+      <PageHeader className="mb-0" title={t("maint.title")} description={t("maint.desc")}>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton>
               <Plus className="h-4 w-4" aria-hidden />
-              Pridėti priminimą
+              {t("maint.add")}
             </AdminButton>
           </SheetTrigger>
           <SheetContent side="right" className="w-full sm:max-w-md">
             <SheetHeader>
-              <SheetTitle>Naujas priežiūros priminimas</SheetTitle>
+              <SheetTitle>{t("maint.addTitle")}</SheetTitle>
             </SheetHeader>
             <MaintForm
               onCreated={() => {
                 setAddOpen(false);
-                toast.success("Priminimas išsaugotas (demo)");
+                toast.success(l.reminderSaved);
               }}
               onCancel={() => setAddOpen(false)}
             />
@@ -228,18 +273,18 @@ function MaintenancePage() {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <StatCard
-          label="Tvarka"
-          hint="pagal grafiką"
+          label={t("maint.stat.ok")}
+          hint={t("maint.stat.okHint")}
           value={<><CheckCircle2 className="mr-2 inline h-5 w-5" style={{ color: "var(--admin-success)" }} />{okCount}</>}
         />
         <StatCard
-          label="Artėja"
-          hint="artimiausiu metu"
+          label={t("maint.stat.due")}
+          hint={t("maint.stat.dueHint")}
           value={<><Wrench className="mr-2 inline h-5 w-5" style={{ color: "var(--admin-warning)" }} />{dueCount}</>}
         />
         <StatCard
-          label="Vėluoja"
-          hint="reikalauja veiksmų"
+          label={t("maint.stat.overdue")}
+          hint={t("maint.stat.overdueHint")}
           value={<><AlertTriangle className="mr-2 inline h-5 w-5" style={{ color: "var(--admin-danger)" }} />{overdueCount}</>}
         />
       </div>
@@ -249,7 +294,7 @@ function MaintenancePage() {
         columns={columns}
         searchKeys={["title", "deviceName"]}
         pageSize={10}
-        emptyLabel="Priežiūros priminimų dar nėra."
+        emptyLabel={t("maint.empty")}
         rowAction={(m) => (
           <MaintRowMenu onServiced={() => setServicedForId(m.id)} onDelete={() => setDeleteForId(m.id)} />
         )}
@@ -263,7 +308,7 @@ function MaintenancePage() {
       <Sheet open={servicedFor !== null} onOpenChange={(o) => { if (!o) setServicedForId(null); }}>
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
-            <SheetTitle>Pažymėti atlikta</SheetTitle>
+            <SheetTitle>{t("maint.markServiced")}</SheetTitle>
           </SheetHeader>
           {servicedFor !== null && (
             <ServicedForm
@@ -271,7 +316,7 @@ function MaintenancePage() {
               item={servicedFor}
               onDone={() => {
                 setServicedForId(null);
-                toast.success("Aptarnavimas užregistruotas (demo)");
+                toast.success(l.serviced);
               }}
               onCancel={() => setServicedForId(null)}
             />
@@ -284,9 +329,9 @@ function MaintenancePage() {
         onOpenChange={(o) => {
           if (!o) setDeleteForId(null);
         }}
-        title="Ištrinti"
-        description={deleteFor !== null ? `Ištrinti priminimą ${deleteFor.title}? To atšaukti negalima.` : undefined}
-        confirmLabel="Ištrinti"
+        title={t("maint.delete")}
+        description={deleteFor !== null ? t("maint.deleteSure", { title: deleteFor.title }) : undefined}
+        confirmLabel={t("maint.delete")}
         onConfirm={() => {
           const m = deleteFor;
           if (m !== null) setItems((list) => list.filter((x) => x.id !== m.id));
@@ -305,6 +350,7 @@ function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, o
   confirmLabel: string;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation("admin");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -319,7 +365,7 @@ function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, o
         </DialogHeader>
         <DialogFooter className="gap-2">
           <AdminButton variant="secondary" onClick={() => onOpenChange(false)}>
-            Atšaukti
+            {t("admin.cancel")}
           </AdminButton>
           <AdminButton
             variant="danger"
@@ -338,6 +384,7 @@ function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, o
 
 /** Per-row "..." actions menu: mark serviced opens the sheet; delete arms the confirm. */
 function MaintRowMenu({ onServiced, onDelete }: { onServiced: () => void; onDelete: () => void }) {
+  const { t } = useTranslation("admin");
   const [open, setOpen] = React.useState(false);
 
   const entry = (label: string, onClick: () => void, danger = false) => (
@@ -359,7 +406,7 @@ function MaintRowMenu({ onServiced, onDelete }: { onServiced: () => void; onDele
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label="Veiksmai"
+          aria-label={t("maint.actions")}
           className="grid h-7 w-7 cursor-pointer place-items-center rounded-md transition-colors hover:bg-[var(--admin-surface-sunken)]"
         >
           <MoreHorizontal className="h-4 w-4" style={{ color: "var(--admin-ink-soft)" }} aria-hidden />
@@ -370,8 +417,8 @@ function MaintRowMenu({ onServiced, onDelete }: { onServiced: () => void; onDele
         className="w-48 p-1"
         style={{ background: "var(--admin-surface)", borderColor: "var(--admin-hairline)" }}
       >
-        {entry("Pažymėti atlikta", onServiced)}
-        {entry("Ištrinti", onDelete, true)}
+        {entry(t("maint.markServiced"), onServiced)}
+        {entry(t("maint.delete"), onDelete, true)}
       </PopoverContent>
     </Popover>
   );
@@ -387,6 +434,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function MaintForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const { t } = useTranslation("admin");
+  const l = useL();
   const [deviceId, setDeviceId] = React.useState(DEVICES[0].id);
 
   return (
@@ -397,36 +446,36 @@ function MaintForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
       }}
       className="mt-2 flex flex-col gap-3"
     >
-      <Field label="Įrenginys">
+      <Field label={t("maint.device")}>
         <Combobox
           value={deviceId}
           onChange={setDeviceId}
           options={DEVICES.map((d) => ({ value: d.id, label: d.name, hint: d.plate }))}
         />
       </Field>
-      <Field label="Aptarnavimas">
-        <AdminInput maxLength={120} placeholder="pvz. Alyvos keitimas" required />
+      <Field label={t("maint.itemTitle")}>
+        <AdminInput maxLength={120} placeholder={l.servicePh} required />
       </Field>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Kas (km)">
+        <Field label={t("maint.intervalKm")}>
           <AdminInput type="number" min={1} placeholder="15000" />
         </Field>
-        <Field label="Kas (d.)">
+        <Field label={t("maint.intervalDays")}>
           <AdminInput type="number" min={1} placeholder="180" />
         </Field>
       </div>
-      <Field label="Intervalas (variklio val.)">
+      <Field label={t("maint.intervalEngineH")}>
         <AdminInput type="number" min={1} />
       </Field>
       {/* no placeholder: a blank field baselines to the device's current odometer */}
-      <Field label="Dabartinė rida (km)">
+      <Field label={t("maint.currentOdo")}>
         <AdminInput type="number" min={0} />
       </Field>
       <SheetFooter className="mt-2">
         <AdminButton type="button" variant="secondary" onClick={onCancel}>
-          Atšaukti
+          {t("admin.cancel")}
         </AdminButton>
-        <AdminButton type="submit">Pridėti</AdminButton>
+        <AdminButton type="submit">{t("maint.create")}</AdminButton>
       </SheetFooter>
     </form>
   );
@@ -435,6 +484,7 @@ function MaintForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
 /** The serviced form — one confirm that re-baselines the reminder and records the
  * completed service (cost/vendor/notes optional) into the vehicle's history. */
 function ServicedForm({ item, onDone, onCancel }: { item: DemoMaint; onDone: () => void; onCancel: () => void }) {
+  const { t } = useTranslation("admin");
   return (
     <form
       onSubmit={(e) => {
@@ -444,22 +494,22 @@ function ServicedForm({ item, onDone, onCancel }: { item: DemoMaint; onDone: () 
       className="mt-2 flex flex-col gap-3"
     >
       <p className="text-sm" style={{ color: "var(--admin-ink-soft)" }}>
-        Pažymėti {item.title} kaip atliktą? Atskaita prasidės iš naujo nuo dabartinės ridos/datos.
+        {t("maint.servicedSure", { title: item.title })}
       </p>
-      <Field label="Kaina (€)">
+      <Field label={t("maint.servicedCost")}>
         <AdminInput type="number" min={0} step="0.01" />
       </Field>
-      <Field label="Servisas / tiekėjas">
+      <Field label={t("maint.servicedVendor")}>
         <AdminInput maxLength={160} />
       </Field>
-      <Field label="Pastabos">
+      <Field label={t("maint.servicedNotes")}>
         <AdminInput maxLength={2000} />
       </Field>
       <SheetFooter className="mt-2">
         <AdminButton type="button" variant="secondary" onClick={onCancel}>
-          Atšaukti
+          {t("admin.cancel")}
         </AdminButton>
-        <AdminButton type="submit">Pažymėti atlikta</AdminButton>
+        <AdminButton type="submit">{t("maint.markServiced")}</AdminButton>
       </SheetFooter>
     </form>
   );
@@ -467,6 +517,8 @@ function ServicedForm({ item, onDone, onCancel }: { item: DemoMaint; onDone: () 
 
 /** Maintenance plan templates — define interval sets once, apply to many vehicles. */
 function PlansSection() {
+  const { t } = useTranslation("admin");
+  const l = useL();
   const [plans, setPlans] = React.useState<DemoPlan[]>(PLANS);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [applyFor, setApplyFor] = React.useState<DemoPlan | null>(null);
@@ -477,26 +529,26 @@ function PlansSection() {
     <div className="admin-card space-y-3 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Priežiūros planai</div>
+          <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("maint.plans")}</div>
           <p className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>
-            Apibrėžkite intervalų rinkinį kartą ir pritaikykite visam parkui vienu veiksmu.
+            {t("maint.plansDesc")}
           </p>
         </div>
         <Sheet open={createOpen} onOpenChange={setCreateOpen}>
           <SheetTrigger asChild>
             <AdminButton variant="secondary">
               <Plus className="h-4 w-4" aria-hidden />
-              Naujas planas
+              {t("maint.planAdd")}
             </AdminButton>
           </SheetTrigger>
           <SheetContent side="right" className="w-full sm:max-w-md">
             <SheetHeader>
-              <SheetTitle>Naujas planas</SheetTitle>
+              <SheetTitle>{t("maint.planAdd")}</SheetTitle>
             </SheetHeader>
             <PlanForm
               onCreated={() => {
                 setCreateOpen(false);
-                toast.success("Planas sukurtas (demo)");
+                toast.success(l.planCreated);
               }}
               onCancel={() => setCreateOpen(false)}
             />
@@ -504,7 +556,7 @@ function PlansSection() {
         </Sheet>
       </div>
       {plans.length === 0 && (
-        <p className="text-sm" style={{ color: "var(--admin-ink-soft)" }}>Planų dar nėra.</p>
+        <p className="text-sm" style={{ color: "var(--admin-ink-soft)" }}>{t("maint.plansEmpty")}</p>
       )}
       <div className="space-y-1">
         {plans.map((p) => (
@@ -515,13 +567,13 @@ function PlansSection() {
           >
             <span className="font-medium">{p.name}</span>
             <span className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>
-              {p.items.map((i) => `${i.title} (${intervalLabel(i)})`).join(" · ")}
+              {p.items.map((i) => `${i.title} (${intervalLabel(t, i)})`).join(" · ")}
             </span>
             <div className="ml-auto flex items-center gap-2">
-              <AdminButton variant="secondary" onClick={() => setApplyFor(p)}>Taikyti</AdminButton>
+              <AdminButton variant="secondary" onClick={() => setApplyFor(p)}>{t("maint.planApply")}</AdminButton>
               <button
                 type="button"
-                aria-label="Ištrinti"
+                aria-label={t("maint.delete")}
                 onClick={() => setDeleteFor(p)}
                 className="grid h-7 w-7 cursor-pointer place-items-center rounded transition-colors hover:bg-[var(--admin-surface-sunken)]"
               >
@@ -536,13 +588,13 @@ function PlansSection() {
       <Sheet open={applyFor !== null} onOpenChange={(o) => { if (!o) setApplyFor(null); }}>
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
-            <SheetTitle>{applyFor !== null ? `Taikyti planą „${applyFor.name}“` : ""}</SheetTitle>
+            <SheetTitle>{applyFor !== null ? t("maint.planApplyTitle", { name: applyFor.name }) : ""}</SheetTitle>
           </SheetHeader>
           {applyFor !== null && (
             <PlanApplyForm
               key={applyFor.id}
               onApply={(n) => {
-                setApplied(`Sukurta ${n * applyFor.items.length}, praleista ${applyFor.items.length} (jau buvo).`);
+                setApplied(t("maint.planApplied", { created: n * applyFor.items.length, skipped: applyFor.items.length }));
                 setApplyFor(null);
               }}
               onCancel={() => setApplyFor(null)}
@@ -556,9 +608,9 @@ function PlansSection() {
         onOpenChange={(o) => {
           if (!o) setDeleteFor(null);
         }}
-        title="Šalinti planą"
-        description={deleteFor !== null ? `Šalinti planą „${deleteFor.name}“? Jau pritaikyti priminimai lieka.` : undefined}
-        confirmLabel="Ištrinti"
+        title={t("maint.planDelete")}
+        description={deleteFor !== null ? t("maint.planDeleteSure", { name: deleteFor.name }) : undefined}
+        confirmLabel={t("maint.delete")}
         onConfirm={() => {
           const p = deleteFor;
           if (p !== null) setPlans((list) => list.filter((x) => x.id !== p.id));
@@ -570,6 +622,7 @@ function PlansSection() {
 
 /** Plan create form: up to five interval rows. */
 function PlanForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const { t } = useTranslation("admin");
   const [rowCount, setRowCount] = React.useState(1);
 
   return (
@@ -580,22 +633,22 @@ function PlanForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: ()
       }}
       className="mt-2 flex flex-col gap-3"
     >
-      <Field label="Plano pavadinimas">
+      <Field label={t("maint.planName")}>
         <AdminInput maxLength={120} required />
       </Field>
       {Array.from({ length: rowCount }, (_, i) => (
         <div key={i} className="space-y-2 rounded-md border p-2" style={{ borderColor: "var(--admin-hairline)" }}>
-          <Field label="Aptarnavimas">
+          <Field label={t("maint.itemTitle")}>
             <AdminInput maxLength={120} />
           </Field>
           <div className="grid grid-cols-3 gap-2">
-            <Field label="Kas (km)">
+            <Field label={t("maint.intervalKm")}>
               <AdminInput type="number" min={1} />
             </Field>
-            <Field label="Kas (d.)">
+            <Field label={t("maint.intervalDays")}>
               <AdminInput type="number" min={1} />
             </Field>
-            <Field label="Intervalas (variklio val.)">
+            <Field label={t("maint.intervalEngineH")}>
               <AdminInput type="number" min={1} />
             </Field>
           </div>
@@ -604,14 +657,14 @@ function PlanForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: ()
       {rowCount < 5 && (
         <AdminButton type="button" variant="secondary" onClick={() => setRowCount((n) => n + 1)}>
           <Plus className="h-4 w-4" aria-hidden />
-          Pridėti darbą
+          {t("maint.planAddItem")}
         </AdminButton>
       )}
       <SheetFooter className="mt-2">
         <AdminButton type="button" variant="secondary" onClick={onCancel}>
-          Atšaukti
+          {t("admin.cancel")}
         </AdminButton>
-        <AdminButton type="submit">Pridėti</AdminButton>
+        <AdminButton type="submit">{t("maint.create")}</AdminButton>
       </SheetFooter>
     </form>
   );
@@ -619,6 +672,7 @@ function PlanForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: ()
 
 /** Device multi-select for plan apply: check the vehicles (or all) the plan lands on. */
 function PlanApplyForm({ onApply, onCancel }: { onApply: (n: number) => void; onCancel: () => void }) {
+  const { t } = useTranslation("admin");
   const [checked, setChecked] = React.useState<Set<string>>(new Set());
   const toggle = (id: string) =>
     setChecked((s) => {
@@ -637,7 +691,7 @@ function PlanApplyForm({ onApply, onCancel }: { onApply: (n: number) => void; on
           checked={allChecked}
           onChange={() => setChecked(allChecked ? new Set() : new Set(DEVICES.map((d) => d.id)))}
         />
-        Visos transporto priemonės ({DEVICES.length})
+        {t("maint.planApplyAll", { n: DEVICES.length })}
       </label>
       <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2" style={{ borderColor: "var(--admin-hairline)" }}>
         {DEVICES.map((d) => (
@@ -649,10 +703,10 @@ function PlanApplyForm({ onApply, onCancel }: { onApply: (n: number) => void; on
       </div>
       <SheetFooter className="mt-2">
         <AdminButton type="button" variant="secondary" onClick={onCancel}>
-          Atšaukti
+          {t("admin.cancel")}
         </AdminButton>
         <AdminButton type="button" disabled={checked.size === 0} onClick={() => onApply(checked.size)}>
-          Taikyti ({checked.size})
+          {t("maint.planApplyN", { n: checked.size })}
         </AdminButton>
       </SheetFooter>
     </div>
@@ -661,9 +715,10 @@ function PlanApplyForm({ onApply, onCancel }: { onApply: (n: number) => void; on
 
 /** Fleet-wide expiring documents — the "act this month" list (due soon + overdue). */
 function ExpiringDocsSection() {
+  const { t } = useTranslation("admin");
   return (
     <div className="admin-card space-y-2 p-4">
-      <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Besibaigiantys dokumentai</div>
+      <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("maint.expiringDocs")}</div>
       <div className="space-y-1">
         {EXPIRING_DOCS.map((doc) => (
           <div
@@ -672,12 +727,14 @@ function ExpiringDocsSection() {
             style={{ borderColor: "var(--admin-hairline)" }}
           >
             <span className="font-medium">{doc.deviceName}</span>
-            <span style={{ color: "var(--admin-ink-soft)" }}>{doc.kind} · {doc.title}</span>
+            <span style={{ color: "var(--admin-ink-soft)" }}>{t(`fleet.docKind.${doc.kind}`)} · {doc.title}</span>
             <span className="ml-auto text-xs tabular-nums" style={{ color: "var(--admin-ink-soft)" }}>
               {fmtDate(doc.validTo)}
             </span>
             <Badge tone={doc.overdueDays !== null ? "danger" : "warning"}>
-              {doc.overdueDays !== null ? `pradelsta ${doc.overdueDays} d.` : `liko ${doc.daysLeft ?? 0} d.`}
+              {doc.overdueDays !== null
+                ? t("fleet.docOverdue", { n: doc.overdueDays })
+                : t("fleet.docDays", { n: doc.daysLeft ?? 0 })}
             </Badge>
           </div>
         ))}

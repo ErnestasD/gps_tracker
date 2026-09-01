@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Search } from "lucide-react";
 import { Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
@@ -66,8 +67,6 @@ const TRIPS: DemoTrip[] = [
 // Formatting — mirrors the real app's metric formatters (km, km/val, 1h 5m)
 // ---------------------------------------------------------------------------
 
-const fmtKm = (km: number) => `${Math.round(km * 10) / 10} km`;
-const fmtSpeed = (kmh: number) => `${Math.round(kmh)} km/val`;
 function fmtDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600);
@@ -120,6 +119,9 @@ const thStyle: React.CSSProperties = { color: "var(--admin-ink-soft)", backgroun
 type SortKey = "start" | "device" | "distance" | "avg" | "max";
 
 function TripsPage() {
+  const { t } = useTranslation("admin");
+  const fmtKm = (km: number) => t("units.km", { n: Math.round(km * 10) / 10 });
+  const fmtSpeed = (kmh: number) => `${Math.round(kmh)} ${t("units.kmh")}`;
   const [deviceId, setDeviceId] = React.useState("");
   const [driverQ, setDriverQ] = React.useState("");
   const [from, setFrom] = React.useState<Date | undefined>(new Date(2026, 7, 31));
@@ -187,36 +189,36 @@ function TripsPage() {
 
   return (
     <div className="flex w-full flex-col gap-4 p-4 md:p-8">
-      <PageHeader className="mb-0" title="Kelionės" description="Visos parko kelionės su laiko filtru.">
-        <FilterLabel label="Įrenginys">
+      <PageHeader className="mb-0" title={t("trips.title")} description={t("trips.desc")}>
+        <FilterLabel label={t("trips.device")}>
           <div className="w-44">
             <Combobox
               value={deviceId}
               onChange={setDeviceId}
               options={[
-                { value: "", label: "Visi įrenginiai" },
+                { value: "", label: t("trips.allDevices") },
                 ...DEVICES.map((d) => ({ value: d.id, label: d.name, hint: d.plate })),
               ]}
             />
           </div>
         </FilterLabel>
-        <FilterLabel label="Vairuotojas">
+        <FilterLabel label={t("trips.driver")}>
           <div className="flex h-9 w-44 items-center gap-2 rounded-md border px-3 text-sm" style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface-sunken)" }}>
             <Search className="h-3.5 w-3.5 opacity-60" aria-hidden />
             <input
               value={driverQ}
               onChange={(e) => setDriverQ(e.target.value)}
-              placeholder="Filtruoti pagal vairuotoją…"
-              aria-label="Vairuotojas"
+              placeholder={t("trips.searchDriver")}
+              aria-label={t("trips.driver")}
               className="w-full bg-transparent outline-none placeholder:opacity-60"
               style={{ color: "var(--admin-ink)" }}
             />
           </div>
         </FilterLabel>
-        <FilterLabel label="Nuo">
+        <FilterLabel label={t("trips.from")}>
           <div className="w-40"><DatePicker value={from} onChange={setFrom} /></div>
         </FilterLabel>
-        <FilterLabel label="Iki">
+        <FilterLabel label={t("trips.to")}>
           <div className="w-40"><DatePicker value={to} onChange={setTo} /></div>
         </FilterLabel>
       </PageHeader>
@@ -228,50 +230,50 @@ function TripsPage() {
           <div className="max-h-[600px] overflow-auto">
             {rows.length === 0 ? (
               <p className="py-10 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>
-                Šiame intervale kelionių nėra.
+                {t("trips.empty")}
               </p>
             ) : (
               <table className="w-full text-sm">
                 <thead className="sticky top-0">
                   <tr>
-                    {sortTh("start", "Pradžia")}
-                    {sortTh("device", "Įrenginys", { hide: true })}
-                    <th className={th} style={thStyle}>Vairuotojas</th>
-                    {sortTh("distance", "Atstumas", { align: "right" })}
-                    {sortTh("avg", "Vid. greitis", { align: "right", hide: true })}
-                    {sortTh("max", "Maks. greitis", { align: "right", hide: true })}
-                    <th className={`${th} hidden text-right md:table-cell`} style={thStyle}>Trukmė</th>
+                    {sortTh("start", t("trips.start"))}
+                    {sortTh("device", t("trips.device"), { hide: true })}
+                    <th className={th} style={thStyle}>{t("trips.driver")}</th>
+                    {sortTh("distance", t("trips.distance"), { align: "right" })}
+                    {sortTh("avg", t("trips.avgSpeed"), { align: "right", hide: true })}
+                    {sortTh("max", t("trips.maxSpeed"), { align: "right", hide: true })}
+                    <th className={`${th} hidden text-right md:table-cell`} style={thStyle}>{t("trips.duration")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((t) => (
+                  {rows.map((trip) => (
                     <tr
-                      key={t.id}
-                      onClick={() => setSelected(t)}
+                      key={trip.id}
+                      onClick={() => setSelected(trip)}
                       tabIndex={0}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          setSelected(t);
+                          setSelected(trip);
                         }
                       }}
-                      aria-selected={selected?.id === t.id}
+                      aria-selected={selected?.id === trip.id}
                       className="admin-hairline-b cursor-pointer transition-colors hover:bg-[var(--admin-surface-sunken)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--admin-brand)]"
-                      style={selected?.id === t.id ? { background: "var(--admin-surface-sunken)" } : undefined}
+                      style={selected?.id === trip.id ? { background: "var(--admin-surface-sunken)" } : undefined}
                     >
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: "var(--admin-ink)" }}>
-                        {fmtDateTime(t.start)}
-                        {t.ongoing === true && <Badge tone="warning" className="ml-2">Vyksta</Badge>}
+                        {fmtDateTime(trip.start)}
+                        {trip.ongoing === true && <Badge tone="warning" className="ml-2">{t("trips.ongoing")}</Badge>}
                       </td>
-                      <td className="hidden px-3 py-2.5 font-medium md:table-cell" style={{ color: "var(--admin-ink)" }}>{deviceLabel(t.deviceId)}</td>
-                      <td className="px-3 py-2.5" style={{ color: "var(--admin-ink-soft)" }}>{driverName(tripDriverId(t)) ?? "—"}</td>
+                      <td className="hidden px-3 py-2.5 font-medium md:table-cell" style={{ color: "var(--admin-ink)" }}>{deviceLabel(trip.deviceId)}</td>
+                      <td className="px-3 py-2.5" style={{ color: "var(--admin-ink-soft)" }}>{driverName(tripDriverId(trip)) ?? "—"}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "var(--admin-ink)" }}>
-                        {fmtKm(t.distanceKm)}
-                        <span className="ml-1 text-[10px] uppercase" style={{ color: "var(--admin-ink-soft)" }}>{t.source === "odo" ? "odo" : "gps"}</span>
+                        {fmtKm(trip.distanceKm)}
+                        <span className="ml-1 text-[10px] uppercase" style={{ color: "var(--admin-ink-soft)" }}>{trip.source === "odo" ? t("trips.odo") : t("trips.gps")}</span>
                       </td>
-                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: "var(--admin-ink-soft)" }}>{fmtSpeed(t.avgKmh)}</td>
-                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: "var(--admin-ink-soft)" }}>{fmtSpeed(t.maxKmh)}</td>
-                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: "var(--admin-ink-soft)" }}>{fmtDuration(t.durationS * 1000)}</td>
+                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: "var(--admin-ink-soft)" }}>{fmtSpeed(trip.avgKmh)}</td>
+                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: "var(--admin-ink-soft)" }}>{fmtSpeed(trip.maxKmh)}</td>
+                      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell" style={{ color: "var(--admin-ink-soft)" }}>{fmtDuration(trip.durationS * 1000)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -284,25 +286,25 @@ function TripsPage() {
         <div className="admin-card overflow-hidden lg:col-span-2">
           <div className="flex h-full min-h-[420px] flex-col gap-2 p-2">
             {selected === null ? (
-              <p className="m-auto text-sm" style={{ color: "var(--admin-ink-soft)" }}>Pasirinkite kelionę, kad matytumėte maršrutą.</p>
+              <p className="m-auto text-sm" style={{ color: "var(--admin-ink-soft)" }}>{t("trips.pick")}</p>
             ) : (
               <>
                 <div className="overflow-hidden rounded-md border" style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface-sunken)" }}>
                   <TripMap trip={selected} />
                 </div>
                 <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                  <Stat label="Trukmė" value={fmtDuration(selected.durationS * 1000)} />
-                  <Stat label="Atstumas" value={fmtKm(selected.distanceKm)} />
-                  <Stat label="Maks. greitis" value={fmtSpeed(selected.maxKmh)} />
-                  <Stat label="Rida stovint" value={fmtDuration(selected.idleS * 1000)} />
+                  <Stat label={t("trips.duration")} value={fmtDuration(selected.durationS * 1000)} />
+                  <Stat label={t("trips.distance")} value={fmtKm(selected.distanceKm)} />
+                  <Stat label={t("trips.maxSpeed")} value={fmtSpeed(selected.maxKmh)} />
+                  <Stat label={t("trips.idle")} value={fmtDuration(selected.idleS * 1000)} />
                 </div>
                 <label className="flex items-center gap-2 text-xs font-medium" style={{ color: "var(--admin-ink-soft)" }}>
-                  Vairuotojas:
+                  {t("trips.driver")}:
                   <div className="flex-1">
                     <Combobox
                       value={tripDriverId(selected) ?? ""}
                       onChange={(v) => setDriverOverride((o) => ({ ...o, [selected.id]: v === "" ? null : v }))}
-                      options={[{ value: "", label: "Nėra vairuotojo" }, ...DRIVERS.map((d) => ({ value: d.id, label: d.name }))]}
+                      options={[{ value: "", label: t("trips.noDriver") }, ...DRIVERS.map((d) => ({ value: d.id, label: d.name }))]}
                     />
                   </div>
                 </label>

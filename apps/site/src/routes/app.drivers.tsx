@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { fmtNumber } from "@/lib/admin-format";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { PageHeader, AdminButton, Badge, AdminInput } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
+import { LANGUAGES, type Lang } from "@/lib/i18n";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +45,20 @@ type DemoScore = {
   overspeedEvents: number;
   score: number | null;
 };
+
+/** Demo-only copy that has no counterpart in the real product's locale files. */
+const L: Record<Lang, { savedDemo: string; createdDemo: string }> = {
+  lt: { savedDemo: "Vairuotojas išsaugotas (demo)", createdDemo: "Vairuotojas sukurtas (demo)" },
+  en: { savedDemo: "Driver saved (demo)", createdDemo: "Driver created (demo)" },
+  pl: { savedDemo: "Kierowca zapisany (demo)", createdDemo: "Kierowca utworzony (demo)" },
+  de: { savedDemo: "Fahrer gespeichert (Demo)", createdDemo: "Fahrer erstellt (Demo)" },
+};
+
+function useL() {
+  const { i18n } = useTranslation("admin");
+  const lang = (i18n.resolvedLanguage ?? "lt").slice(0, 2) as Lang;
+  return L[LANGUAGES.includes(lang) ? lang : "lt"];
+}
 
 const ACCOUNTS = [
   { id: "acc_kaunas", name: "Kaunas Fleet" },
@@ -97,6 +113,8 @@ const initials = (name: string): string =>
 const accountName = (id: string) => ACCOUNTS.find((a) => a.id === id)?.name ?? "—";
 
 function DriversPage() {
+  const { t } = useTranslation("admin");
+  const l = useL();
   const [drivers, setDrivers] = React.useState<DemoDriver[]>(DRIVERS);
   const [addOpen, setAddOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -113,7 +131,7 @@ function DriversPage() {
   const columns: Column<DemoDriver>[] = [
     {
       key: "name",
-      header: "Vardas",
+      header: t("drivers.name"),
       sortable: true,
       sortValue: (r) => r.name.toLowerCase(),
       cell: (r) => (
@@ -138,39 +156,40 @@ function DriversPage() {
     },
     {
       key: "license",
-      header: "Pažymėjimo nr.",
+      header: t("drivers.license"),
       hideOnMobile: true,
       cell: (r) => <span className="mono text-xs">{r.licenseNo ?? "—"}</span>,
     },
     {
       key: "ibutton",
-      header: "iButton / RFID",
+      header: t("drivers.ibutton"),
       hideOnMobile: true,
       cell: (r) => <span className="mono text-xs">{r.ibutton ?? "—"}</span>,
     },
     {
       key: "account",
-      header: "Paskyra",
+      header: t("drivers.account"),
       hideOnMobile: true,
       cell: (r) => accountName(r.accountId),
     },
     {
       key: "status",
-      header: "Būsena",
+      header: t("drivers.status"),
       sortable: true,
       sortValue: (r) => (r.active ? "active" : "inactive"),
       filterValue: (r) => (r.active ? "active" : "inactive"),
       filterOptions: [
-        { value: "active", label: "Aktyvus" },
-        { value: "inactive", label: "Neaktyvus" },
+        { value: "active", label: t("drivers.active") },
+        { value: "inactive", label: t("drivers.inactive") },
       ],
-      cell: (r) => (r.active ? <Badge tone="success">Aktyvus</Badge> : <Badge tone="neutral">Neaktyvus</Badge>),
+      cell: (r) =>
+        r.active ? <Badge tone="success">{t("drivers.active")}</Badge> : <Badge tone="neutral">{t("drivers.inactive")}</Badge>,
     },
   ];
 
   return (
     <div className="space-y-4 p-4 md:p-8">
-      <PageHeader className="mb-0" title="Vairuotojai" description="Vairuotojai, jų saugos balai ir priskyrimai.">
+      <PageHeader className="mb-0" title={t("drivers.title")} description={t("drivers.desc")}>
         <Sheet
           open={formOpen}
           onOpenChange={(o) => {
@@ -181,12 +200,12 @@ function DriversPage() {
           <SheetTrigger asChild>
             <AdminButton>
               <Plus className="h-4 w-4" aria-hidden />
-              Pridėti vairuotoją
+              {t("drivers.add")}
             </AdminButton>
           </SheetTrigger>
           <SheetContent side="right" className="w-full sm:max-w-md">
             <SheetHeader>
-              <SheetTitle>{editing !== null ? "Redaguoti vairuotoją" : "Pridėti vairuotoją"}</SheetTitle>
+              <SheetTitle>{editing !== null ? t("drivers.editTitle") : t("drivers.addTitle")}</SheetTitle>
             </SheetHeader>
             {/* key remounts the form per target — edit state never leaks across drivers */}
             <DriverForm
@@ -194,7 +213,7 @@ function DriversPage() {
               editing={editing}
               onDone={() => {
                 closeForm();
-                toast.success(editing !== null ? "Vairuotojas išsaugotas (demo)" : "Vairuotojas sukurtas (demo)");
+                toast.success(editing !== null ? l.savedDemo : l.createdDemo);
               }}
               onCancel={closeForm}
             />
@@ -207,7 +226,7 @@ function DriversPage() {
         columns={columns}
         searchKeys={["name", "licenseNo", "ibutton", "phone"]}
         pageSize={10}
-        emptyLabel="Vairuotojų dar nėra."
+        emptyLabel={t("drivers.empty")}
         rowAction={(d) => <DriverRowMenu onEdit={() => setEditingId(d.id)} onDelete={() => setDeleteForId(d.id)} />}
       />
 
@@ -224,16 +243,16 @@ function DriversPage() {
           style={{ background: "var(--admin-surface)", borderColor: "var(--admin-hairline)", color: "var(--admin-ink)" }}
         >
           <DialogHeader>
-            <DialogTitle>Ištrinti</DialogTitle>
+            <DialogTitle>{t("drivers.delete")}</DialogTitle>
             {deleteFor !== null && (
               <DialogDescription style={{ color: "var(--admin-ink-soft)" }}>
-                Ištrinti vairuotoją {deleteFor.name}? To atšaukti negalima.
+                {t("drivers.deleteSure", { name: deleteFor.name })}
               </DialogDescription>
             )}
           </DialogHeader>
           <DialogFooter className="gap-2">
             <AdminButton variant="secondary" onClick={() => setDeleteForId(null)}>
-              Atšaukti
+              {t("drivers.cancel")}
             </AdminButton>
             <AdminButton
               variant="danger"
@@ -243,7 +262,7 @@ function DriversPage() {
                 if (d !== null) setDrivers((list) => list.filter((x) => x.id !== d.id));
               }}
             >
-              Ištrinti
+              {t("drivers.delete")}
             </AdminButton>
           </DialogFooter>
         </DialogContent>
@@ -254,6 +273,7 @@ function DriversPage() {
 
 /** Per-row "..." actions menu: edit opens the header Sheet prefilled; delete arms the confirm. */
 function DriverRowMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  const { t } = useTranslation("admin");
   const [open, setOpen] = React.useState(false);
 
   const item = (label: string, onClick: () => void, danger = false) => (
@@ -275,7 +295,7 @@ function DriverRowMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () 
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label="Veiksmai"
+          aria-label={t("drivers.actions")}
           className="grid h-7 w-7 cursor-pointer place-items-center rounded-md transition-colors hover:bg-[var(--admin-surface-sunken)]"
         >
           <MoreHorizontal className="h-4 w-4" style={{ color: "var(--admin-ink-soft)" }} aria-hidden />
@@ -286,8 +306,8 @@ function DriverRowMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () 
         className="w-44 p-1"
         style={{ background: "var(--admin-surface)", borderColor: "var(--admin-hairline)" }}
       >
-        {item("Redaguoti", onEdit)}
-        {item("Ištrinti", onDelete, true)}
+        {item(t("drivers.edit"), onEdit)}
+        {item(t("drivers.delete"), onDelete, true)}
       </PopoverContent>
     </Popover>
   );
@@ -296,17 +316,18 @@ function DriverRowMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () 
 /** Safety scores over the last 30 days — trips/distance/score sortable and right-aligned,
  * with the thin score bar next to the badge (scoreVariant drives both colors). */
 function DriverScores() {
+  const { t } = useTranslation("admin");
   const columns: Column<DemoScore>[] = [
     {
       key: "name",
-      header: "Vardas",
+      header: t("drivers.name"),
       sortable: true,
       sortValue: (r) => r.driverName.toLowerCase(),
       cell: (r) => <span className="font-medium">{r.driverName}</span>,
     },
     {
       key: "trips",
-      header: "Kelionės",
+      header: t("drivers.scores.trips"),
       sortable: true,
       sortValue: (r) => r.trips,
       align: "right",
@@ -318,7 +339,7 @@ function DriverScores() {
     },
     {
       key: "distance",
-      header: "Atstumas",
+      header: t("drivers.scores.distance"),
       sortable: true,
       sortValue: (r) => r.distanceKm,
       align: "right",
@@ -330,7 +351,7 @@ function DriverScores() {
     },
     {
       key: "overspeed",
-      header: "Greičio viršij.",
+      header: t("drivers.scores.overspeed"),
       align: "right",
       hideOnMobile: true,
       cell: (r) => (
@@ -341,7 +362,7 @@ function DriverScores() {
     },
     {
       key: "score",
-      header: "Balas",
+      header: t("drivers.scores.score"),
       sortable: true,
       sortValue: (r) => r.score ?? -1,
       align: "right",
@@ -364,9 +385,9 @@ function DriverScores() {
   return (
     <div className="space-y-2">
       <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>
-        Saugumo balai (30 d.)
+        {t("drivers.scores.title")}
       </h2>
-      <DataTable data={SCORES} columns={columns} searchable={false} pageSize={10} emptyLabel="Per 30 d. nevažiuota." />
+      <DataTable data={SCORES} columns={columns} searchable={false} pageSize={10} emptyLabel={t("drivers.scores.empty")} />
     </div>
   );
 }
@@ -385,6 +406,7 @@ function DriverForm({ editing, onDone, onCancel }: {
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation("admin");
   const [accountId, setAccountId] = React.useState(editing?.accountId ?? ACCOUNTS[0].id);
 
   return (
@@ -395,20 +417,20 @@ function DriverForm({ editing, onDone, onCancel }: {
       }}
       className="mt-2 flex flex-col gap-3"
     >
-      <FieldLabel label="Vardas">
+      <FieldLabel label={t("drivers.name")}>
         <AdminInput defaultValue={editing?.name ?? ""} maxLength={120} required />
       </FieldLabel>
-      <FieldLabel label="Pažymėjimo nr.">
+      <FieldLabel label={t("drivers.license")}>
         <AdminInput defaultValue={editing?.licenseNo ?? ""} maxLength={60} />
       </FieldLabel>
-      <FieldLabel label="iButton / RFID">
+      <FieldLabel label={t("drivers.ibutton")}>
         <AdminInput defaultValue={editing?.ibutton ?? ""} maxLength={32} placeholder="A1B2C3D4" />
       </FieldLabel>
-      <FieldLabel label="Telefonas">
+      <FieldLabel label={t("drivers.phone")}>
         <AdminInput defaultValue={editing?.phone ?? ""} maxLength={40} />
       </FieldLabel>
       {editing === null && (
-        <FieldLabel label="Paskyra">
+        <FieldLabel label={t("drivers.account")}>
           <Combobox
             value={accountId}
             onChange={setAccountId}
@@ -418,9 +440,9 @@ function DriverForm({ editing, onDone, onCancel }: {
       )}
       <SheetFooter className="mt-2">
         <AdminButton type="button" variant="secondary" onClick={onCancel}>
-          Atšaukti
+          {t("drivers.cancel")}
         </AdminButton>
-        <AdminButton type="submit">{editing !== null ? "Išsaugoti" : "Pridėti"}</AdminButton>
+        <AdminButton type="submit">{editing !== null ? t("drivers.save") : t("drivers.create")}</AdminButton>
       </SheetFooter>
     </form>
   );

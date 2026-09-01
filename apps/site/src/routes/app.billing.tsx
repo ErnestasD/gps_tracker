@@ -1,23 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { AdminButton, Badge, PageHeader } from "@/components/admin/AdminKit";
 
 export const Route = createFileRoute("/app/billing")({
   component: BillingPage,
 });
 
-// Mirrors apps/web/src/routes/app/billing.tsx (Stripe billing, ADR-024/ADR-028) with the
-// hardcoded LT strings from apps/web/src/i18n/lt.json. Demo tenant: `direct_100` on a
+// Mirrors apps/web/src/routes/app/billing.tsx (Stripe billing, ADR-024/ADR-028) using the
+// product's own translations (admin namespace, billing.*). Demo tenant: `direct_100` on a
 // self-serve trial — the state where the real page shows BOTH the Direct→TSP upgrade card
 // and the plan picker (trialing is subscribable), plus the subscription card with the
 // Stripe portal hand-off button. All buttons are visual no-ops in the demo.
 
-const UPGRADE_FEATURES = [
-  "Baltos etiketės prekės ženklas — jūsų logotipas, spalvos ir produkto pavadinimas",
-  "Individualūs domenai jūsų klientų portalui",
-  "Antrinės paskyros klientų parkams tvarkyti",
-  "REST API prieiga integracijoms",
-  "Webhook'ai realaus laiko įvykiams pristatyti",
-];
+const UPGRADE_FEATURE_KEYS = ["whiteLabel", "customDomains", "subAccounts", "api", "webhooks"] as const;
 
 const PLANS = [
   { id: "direct_25", name: "Orbetra Direct 25", price: "€35" },
@@ -26,38 +21,38 @@ const PLANS = [
 ];
 
 function BillingPage() {
+  const { t } = useTranslation("admin");
   return (
     <div className="space-y-4 p-4 md:p-8">
-      <PageHeader className="mb-0" title="Atsiskaitymai" description="Prenumeratos planas ir mokėjimai per Stripe." />
+      <PageHeader className="mb-0" title={t("billing.title")} description={t("billing.desc")} />
 
       <div className="admin-card overflow-hidden">
         <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Badge tone="brand">White-label / TSP</Badge>
+              <Badge tone="brand">{t("billing.upgrade.badge")}</Badge>
               <span className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>
-                Atrakinkite baltos etiketės ir perpardavimo funkcijas
+                {t("billing.upgrade.title")}
               </span>
             </div>
             <p className="max-w-xl text-sm" style={{ color: "var(--admin-ink-soft)" }}>
-              Jūsų planas priklauso Direct krypčiai. Pereikite prie White-label / TSP plano, kad valdytumėte Orbetra su
-              savo prekės ženklu ir perparduotumėte jį savo klientams.
+              {t("billing.upgrade.desc")}
             </p>
             <ul className="grid grid-cols-1 gap-x-6 gap-y-1 pt-1 sm:grid-cols-2">
-              {UPGRADE_FEATURES.map((f) => (
+              {UPGRADE_FEATURE_KEYS.map((f) => (
                 <li key={f} className="flex items-start gap-2 text-sm" style={{ color: "var(--admin-ink)" }}>
                   <span aria-hidden style={{ color: "var(--admin-brand)" }}>✓</span>
-                  <span>{f}</span>
+                  <span>{t(`billing.upgrade.features.${f}`)}</span>
                 </li>
               ))}
             </ul>
           </div>
           <div className="shrink-0">
             <a href="mailto:sales@orbetra.com?subject=Orbetra%20White-label%2FTSP%20upgrade">
-              <AdminButton variant="primary">Susisiekite dėl atnaujinimo</AdminButton>
+              <AdminButton variant="primary">{t("billing.upgrade.cta")}</AdminButton>
             </a>
             <p className="mt-2 max-w-[16rem] text-xs" style={{ color: "var(--admin-ink-soft)" }}>
-              Padėsime migruoti — jokie duomenys neprarandami.
+              {t("billing.upgrade.note")}
             </p>
           </div>
         </div>
@@ -65,16 +60,16 @@ function BillingPage() {
 
       <div className="admin-card">
         <div className="admin-hairline-b flex items-center justify-between px-4 py-3">
-          <span className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Prenumerata</span>
-          <Badge tone="success">Bandomasis laikotarpis</Badge>
+          <span className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("billing.subscription")}</span>
+          <Badge tone="success">{t("billing.st.trialing")}</Badge>
         </div>
         <div className="flex flex-col gap-4 p-4">
           <p className="text-sm" style={{ color: "var(--admin-ink-soft)" }}>
-            Skaidri kaina — žr. savo planą. Prenumeratą, mokėjimo būdą ir sąskaitas valdykite Stripe portale.
+            {t("billing.pricingNote")}
           </p>
-          <p className="text-sm" style={{ color: "var(--admin-ink)" }}>Atsinaujina: 2026-09-15</p>
+          <p className="text-sm" style={{ color: "var(--admin-ink)" }}>{t("billing.renews")}: 2026-09-15</p>
           <div>
-            <AdminButton variant="primary">Valdyti atsiskaitymus</AdminButton>
+            <AdminButton variant="primary">{t("billing.manage")}</AdminButton>
           </div>
         </div>
       </div>
@@ -85,10 +80,10 @@ function BillingPage() {
             <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{p.name}</div>
             <p className="display text-2xl font-semibold tracking-tight" style={{ color: "var(--admin-ink)" }}>
               {p.price}
-              <span className="text-sm font-normal" style={{ color: "var(--admin-ink-soft)" }}> / mėn.</span>
+              <span className="text-sm font-normal" style={{ color: "var(--admin-ink-soft)" }}> / {t("billing.interval.month")}</span>
             </p>
             <div>
-              <AdminButton size="sm">Prenumeruoti</AdminButton>
+              <AdminButton size="sm">{t("billing.subscribe")}</AdminButton>
             </div>
           </div>
         ))}

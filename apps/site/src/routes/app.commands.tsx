@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { AdminButton, AdminLabel, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
+import { LANGUAGES, type Lang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/app/commands")({
   component: CommandsPage,
@@ -30,26 +32,18 @@ const STATUS_GLYPH: Record<CmdStatus, { glyph: string; color: string }> = {
   expired: { glyph: "✗", color: CONSOLE.danger },
 };
 
-const STATUS_LABEL: Record<CmdStatus, string> = {
-  queued: "Eilėje",
-  sent: "Išsiųsta",
-  acked: "Patvirtinta",
-  failed: "Nepavyko",
-  expired: "Pasibaigusi",
-};
-
-// Presets as in the real product (COMMAND_PRESETS + devices.cmd.preset.* in lt.json)
+// Presets as in the real product (COMMAND_PRESETS) — labels come from devices.cmd.preset.*
 const PRESETS = [
-  { key: "getinfo", label: "Informacija", text: "getinfo" },
-  { key: "getver", label: "Versija", text: "getver" },
-  { key: "getgps", label: "GPS padėtis", text: "getgps" },
-  { key: "getio", label: "IO būsena", text: "getio" },
-  { key: "cpureset", label: "Perkrauti", text: "cpureset" },
-  { key: "dout_on", label: "Išvestis įjungta", text: "setdigout 1" },
-  { key: "dout_off", label: "Išvestis išjungta", text: "setdigout 0" },
-  { key: "reporting_interval", label: "Siuntimo intervalas", text: "setparam 10050:30" },
-  { key: "server_address", label: "Serverio adresas", text: "setparam 2004:0.0.0.0,2005:5027" },
-  { key: "deleterecords", label: "Trinti įrašus", text: "deleterecords" },
+  { key: "getinfo", text: "getinfo" },
+  { key: "getver", text: "getver" },
+  { key: "getgps", text: "getgps" },
+  { key: "getio", text: "getio" },
+  { key: "cpureset", text: "cpureset" },
+  { key: "dout_on", text: "setdigout 1" },
+  { key: "dout_off", text: "setdigout 0" },
+  { key: "reporting_interval", text: "setparam 10050:30" },
+  { key: "server_address", text: "setparam 2004:0.0.0.0,2005:5027" },
+  { key: "deleterecords", text: "deleterecords" },
 ];
 
 const isDestructive = (cmd: string) => /^(cpureset|deleterecords)\b/.test(cmd.trim());
@@ -116,13 +110,25 @@ function nowStamp(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Demo-only strings (the picker + page intro exist only in this demo; the real console lives in the map inspector)
+const L: Record<Lang, { desc: string; device: string }> = {
+  en: { desc: "Send Codec 12 commands to a device and watch the replies in the console.", device: "Device" },
+  lt: { desc: "Siųskite Codec 12 komandas įrenginiui ir stebėkite atsakymus konsolėje.", device: "Įrenginys" },
+  pl: { desc: "Wysyłaj komendy Codec 12 do urządzenia i obserwuj odpowiedzi w konsoli.", device: "Urządzenie" },
+  de: { desc: "Senden Sie Codec-12-Befehle an ein Gerät und verfolgen Sie die Antworten in der Konsole.", device: "Gerät" },
+};
+
 function CommandsPage() {
+  const { t, i18n } = useTranslation("admin");
+  const lang = (i18n.resolvedLanguage ?? "lt").slice(0, 2) as Lang;
+  const l = L[LANGUAGES.includes(lang) ? lang : "lt"];
   const [deviceId, setDeviceId] = React.useState<string>(DEVICES[0]?.id ?? "");
   const device = DEVICES.find((d) => d.id === deviceId) ?? DEVICES[0];
   const [histories, setHistories] = React.useState<Record<string, Entry[]>>(SEED);
   const [text, setText] = React.useState("");
   const [armed, setArmed] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  // error state holds a locale KEY (devices.cmd.*) so the message re-renders on language switch
+  const [errorKey, setErrorKey] = React.useState<string | null>(null);
   const history = histories[device.id] ?? [];
 
   // pending reply timers — cleared on unmount so a navigated-away demo doesn't set state
@@ -158,7 +164,7 @@ function CommandsPage() {
   const setCommand = (next: string) => {
     setText(next);
     setArmed(false); // any edit or preset switch disarms a pending destructive confirm
-    setError(null);
+    setErrorKey(null);
   };
 
   const switchDevice = (id: string) => {
@@ -172,7 +178,7 @@ function CommandsPage() {
     const cmd = text.trim();
     if (cmd === "") return;
     if (!/^[\x20-\x7e]+$/.test(cmd)) {
-      setError("Komandoje leidžiami tik spausdinami ASCII simboliai.");
+      setErrorKey("devices.cmd.asciiError");
       return;
     }
     if (isDestructive(cmd) && !armed) {
@@ -184,7 +190,7 @@ function CommandsPage() {
     setHistories((h) => ({ ...h, [targetId]: [...(h[targetId] ?? []), { id, text: cmd, status: "sent", response: null, at: nowStamp() }] }));
     setText("");
     setArmed(false);
-    setError(null);
+    setErrorKey(null);
     setRecallIdx(-1);
     // the "device" answers after a moment — flips → to ✓ and prints the reply
     timers.current.push(
@@ -202,14 +208,14 @@ function CommandsPage() {
   return (
     <div className="space-y-4 p-4 md:p-8">
       <PageHeader
-        title="Komandos"
-        description="Siųskite Codec 12 komandas įrenginiui ir stebėkite atsakymus konsolėje."
+        title={t("shell.commands")}
+        description={l.desc}
         className="mb-0"
       />
 
       {/* demo-only device picker above the console (in the product the console lives in the map inspector) */}
       <div className="max-w-xs">
-        <AdminLabel>Įrenginys</AdminLabel>
+        <AdminLabel>{l.device}</AdminLabel>
         <Combobox
           value={deviceId}
           onChange={switchDevice}
@@ -219,7 +225,7 @@ function CommandsPage() {
 
       {/* console card — mirrors the real CommandsCard */}
       <div className="admin-card p-4 md:p-5">
-        <h2 className="mb-4 font-semibold" style={{ color: "var(--admin-ink)" }}>Komandos — {device.name}</h2>
+        <h2 className="mb-4 font-semibold" style={{ color: "var(--admin-ink)" }}>{t("devices.cmd.title", { name: device.name })}</h2>
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {PRESETS.map((p) => (
@@ -230,18 +236,18 @@ function CommandsPage() {
                 style={isDestructive(p.text) ? { background: "transparent", color: "var(--admin-danger)" } : undefined}
                 onClick={() => setCommand(p.text)}
               >
-                {p.label}
+                {t(`devices.cmd.preset.${p.key}`)}
               </AdminButton>
             ))}
           </div>
 
           {armed && (
             <p role="alert" className="text-sm" style={{ color: "var(--admin-danger)" }}>
-              Ši komanda yra destruktyvi ir negrįžtama. Spustelėkite dar kartą, kad išsiųstumėte į įrenginį.
+              {t("devices.cmd.destructiveWarn")}
             </p>
           )}
-          {error !== null && (
-            <p role="alert" className="text-sm" style={{ color: "var(--admin-danger)" }}>{error}</p>
+          {errorKey !== null && (
+            <p role="alert" className="text-sm" style={{ color: "var(--admin-danger)" }}>{t(errorKey)}</p>
           )}
 
           {/* the console: history as a session transcript + the prompt as the input */}
@@ -252,7 +258,7 @@ function CommandsPage() {
             <div ref={scrollRef} className="max-h-80 space-y-2 overflow-y-auto p-3">
               {history.length === 0 ? (
                 <p style={{ color: CONSOLE.muted }}>
-                  {device.name} konsolė paruošta. Pasirinkite komandą viršuje arba įveskite savo — Enter išsiunčia, ↑ pakartoja ankstesnę.
+                  {t("devices.cmd.termEmpty", { name: device.name })}
                 </p>
               ) : (
                 history.map((c) => {
@@ -263,15 +269,15 @@ function CommandsPage() {
                       <div className="flex items-baseline gap-2">
                         <span aria-hidden style={{ color: CONSOLE.prompt }}>›</span>
                         <span className="break-all" style={{ color: CONSOLE.ink }}>{c.text}</span>
-                        <span title={STATUS_LABEL[c.status]} style={{ color: st.color }}>{st.glyph}</span>
+                        <span title={t(`devices.cmd.st.${c.status}`)} style={{ color: st.color }}>{st.glyph}</span>
                         <span className="ml-auto shrink-0" style={{ color: CONSOLE.muted }}>{c.at}</span>
                       </div>
                       {c.response !== null && c.response !== "" ? (
                         <pre className="whitespace-pre-wrap break-all pl-5" style={{ color: CONSOLE.reply }}>{c.response}</pre>
                       ) : pending ? (
-                        <div className="animate-pulse pl-5" style={{ color: CONSOLE.muted }}>laukiama įrenginio atsakymo…</div>
+                        <div className="animate-pulse pl-5" style={{ color: CONSOLE.muted }}>{t("devices.cmd.waiting")}</div>
                       ) : (
-                        <div className="pl-5" style={{ color: CONSOLE.danger }}>{STATUS_LABEL[c.status]}</div>
+                        <div className="pl-5" style={{ color: CONSOLE.danger }}>{t(`devices.cmd.st.${c.status}`)}</div>
                       )}
                     </div>
                   );
@@ -289,8 +295,8 @@ function CommandsPage() {
                 onChange={(e) => { setCommand(e.target.value); setRecallIdx(-1); }}
                 onKeyDown={onPromptKey}
                 maxLength={512}
-                placeholder="Komandos tekstas (pvz., getinfo)"
-                aria-label="Siųsti"
+                placeholder={t("devices.cmd.placeholder")}
+                aria-label={t("devices.cmd.send")}
                 autoComplete="off"
                 spellCheck={false}
                 className="min-w-0 flex-1 bg-transparent font-mono text-xs outline-none"
@@ -302,7 +308,7 @@ function CommandsPage() {
                 variant={armed ? "danger" : "primary"}
                 disabled={text.trim() === ""}
               >
-                {armed ? `Patvirtinti: ${text.trim()}` : "Siųsti"}
+                {armed ? t("devices.cmd.confirm", { cmd: text.trim() }) : t("devices.cmd.send")}
               </AdminButton>
             </form>
           </div>

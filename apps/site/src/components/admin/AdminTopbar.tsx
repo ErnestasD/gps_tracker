@@ -1,5 +1,7 @@
 import * as React from "react";
-import { Sun, Moon, Search, Bell, Menu, ChevronRight, CheckCheck, Languages, LogOut } from "lucide-react";
+import { Sun, Moon, Search, Bell, Menu, ChevronRight, CheckCheck, Languages, LogOut, Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { LANGUAGES, LANGUAGE_NAMES, setLanguage, type Lang } from "@/lib/i18n";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useAdminTheme } from "@/lib/admin-theme";
 import { useNotifications } from "@/lib/admin-notifications";
@@ -7,35 +9,57 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { fmtDateTime } from "@/lib/admin-format";
 import { CommandPalette } from "@/components/admin/CommandPalette";
 
+/** route → key in the PRODUCT translations (admin namespace) */
 const CRUMBS: Record<string, string> = {
-  "/app": "Apžvalga",
-  "/app/map": "Žemėlapis",
-  "/app/devices": "Įrenginiai",
-  "/app/drivers": "Vairuotojai",
-  "/app/maintenance": "Priežiūra",
-  "/app/trips": "Kelionės",
-  "/app/routing": "Maršrutai",
-  "/app/history": "Istorija",
-  "/app/geofences": "Geozonos",
-  "/app/rules": "Taisyklės",
-  "/app/events": "Įvykiai",
-  "/app/reports": "Ataskaitos",
-  "/app/commands": "Komandos",
-  "/app/branding": "Prekės ženklas",
-  "/app/billing": "Atsiskaitymai",
-  "/app/api-keys": "API raktai",
-  "/app/webhooks": "Webhooks",
-  "/app/audit": "Audito žurnalas",
-  "/app/settings": "Nustatymai",
-  "/app/notifications": "Pranešimai",
+  "/app": "shell.overview",
+  "/app/map": "shell.map",
+  "/app/devices": "shell.devices",
+  "/app/drivers": "shell.drivers",
+  "/app/maintenance": "shell.maintenance",
+  "/app/trips": "shell.trips",
+  "/app/routing": "shell.routing",
+  "/app/history": "shell.history",
+  "/app/geofences": "shell.geofences",
+  "/app/rules": "shell.rules",
+  "/app/events": "shell.events",
+  "/app/reports": "shell.reports",
+  "/app/commands": "shell.commands",
+  "/app/branding": "shell.branding",
+  "/app/billing": "shell.billing",
+  "/app/api-keys": "shell.apiKeys",
+  "/app/webhooks": "shell.webhooks",
+  "/app/audit": "shell.audit",
+  "/app/settings": "shell.settings",
+  "/app/notifications": "bell.title",
+};
+
+/** demo-only strings (not part of the product) in the four demo languages */
+const DEMO_BADGE: Record<Lang, { label: string; hint: string }> = {
+  lt: { label: "Demo režimas", hint: "Tai demonstracinė aplinka su pavyzdiniais duomenimis" },
+  en: { label: "Demo mode", hint: "This is a demo environment with sample data" },
+  pl: { label: "Tryb demo", hint: "To środowisko demo z przykładowymi danymi" },
+  de: { label: "Demo-Modus", hint: "Dies ist eine Demo-Umgebung mit Beispieldaten" },
 };
 
 export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const { theme, toggle } = useAdminTheme();
+  const { t, i18n } = useTranslation("admin");
+  const lang = ((i18n.resolvedLanguage ?? "lt").slice(0, 2) as Lang);
+  const activeLang: Lang = LANGUAGES.includes(lang) ? lang : "lt";
+  const [langOpen, setLangOpen] = React.useState(false);
+  const langRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!langOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (langRef.current && !langRef.current.contains(e.target as Node)) setLangOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [langOpen]);
   const rawPathname = useRouterState({ select: (s) => s.location.pathname });
   // "/app/" and "/app" are the same page — normalise so the crumb lookup never falls through
   const pathname = rawPathname !== "/app" && rawPathname.endsWith("/") ? rawPathname.slice(0, -1) : rawPathname;
-  const title = CRUMBS[pathname] ?? "Administravimas";
+  const title = t(CRUMBS[pathname] ?? "shell.admin");
   const [paletteOpen, setPaletteOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -65,7 +89,7 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       </button>
 
       <nav className="hidden items-center gap-1.5 text-sm md:flex" style={{ color: "var(--admin-ink-soft)" }}>
-        <Link to="/app" className="hover:text-[var(--admin-ink)]">Administravimas</Link>
+        <Link to="/app" className="hover:text-[var(--admin-ink)]">{t("shell.admin")}</Link>
         {pathname !== "/app" && (
           <>
             <ChevronRight className="h-3.5 w-3.5" />
@@ -81,10 +105,10 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
           background: "color-mix(in oklab, var(--admin-warning) 12%, transparent)",
           color: "var(--admin-warning)",
         }}
-        title="Tai demonstracinė aplinka su pavyzdiniais duomenimis"
+        title={DEMO_BADGE[activeLang].hint}
       >
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--admin-warning)", animation: "pulseDot 2.2s ease-in-out infinite" }} />
-        Demo režimas
+        {DEMO_BADGE[activeLang].label}
       </span>
 
       <div className="flex-1" />
@@ -97,7 +121,7 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         aria-label="Atverti paiešką"
       >
         <Search className="h-3.5 w-3.5 opacity-70" />
-        <span>Ieškoti</span>
+        <span>{t("shell.search").replace("…", "")}</span>
         <span className="mx-1 h-3 w-px" style={{ background: "var(--admin-hairline)" }} />
         <kbd
           className="mono inline-flex h-4 items-center rounded px-1 text-[10px] font-medium leading-none tracking-tight"
@@ -128,29 +152,61 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         onClick={toggle}
         className="grid h-9 w-9 cursor-pointer place-items-center rounded-md border transition-colors"
         style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
-        aria-label="Perjungti temą"
-        title={theme === "light" ? "Tamsi tema" : "Šviesi tema"}
+        aria-label={t("shell.theme")}
+        title={t("shell.theme")}
       >
         {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
       </button>
 
-      <button
-        className="hidden h-9 w-9 cursor-pointer place-items-center rounded-md border md:grid"
-        style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
-        aria-label="Kalba"
-        title="Kalba"
-      >
-        <Languages className="h-4 w-4" />
-      </button>
+      <div ref={langRef} className="relative hidden md:block">
+        <button
+          onClick={() => setLangOpen((v) => !v)}
+          className="grid h-9 w-9 cursor-pointer place-items-center rounded-md border"
+          style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
+          aria-label={t("settings.locale")}
+          aria-expanded={langOpen}
+          title={t("settings.locale")}
+        >
+          <Languages className="h-4 w-4" />
+        </button>
+        {langOpen && (
+          <div
+            className="absolute right-0 z-50 mt-2 w-40 overflow-hidden rounded-md border p-1"
+            style={{ background: "var(--admin-surface)", borderColor: "var(--admin-hairline)", boxShadow: "var(--admin-shadow-lg)" }}
+            role="listbox"
+          >
+            {LANGUAGES.map((l) => (
+              <button
+                key={l}
+                role="option"
+                aria-selected={l === activeLang}
+                onClick={() => {
+                  setLanguage(l);
+                  setLangOpen(false);
+                }}
+                className="flex w-full cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm"
+                style={{
+                  color: l === activeLang ? "var(--admin-brand)" : "var(--admin-ink)",
+                  background: l === activeLang ? "var(--admin-brand-soft)" : "transparent",
+                  fontWeight: l === activeLang ? 600 : 400,
+                }}
+              >
+                <span className="mono w-6 text-[10px] uppercase tracking-widest">{l}</span>
+                <span className="flex-1">{LANGUAGE_NAMES[l]}</span>
+                {l === activeLang && <Check className="h-3.5 w-3.5" />}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <Link
         to="/"
         className="hidden items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm md:inline-flex"
         style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
-        title="Baigti demonstraciją"
       >
         <LogOut className="h-3.5 w-3.5 opacity-70" />
-        Atsijungti
+        {t("shell.logout")}
       </Link>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
