@@ -194,15 +194,12 @@ function NavDropdown({ group }: { group: NavGroup }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout>>();
   const { location } = useRouterState();
   const active = group.paths.some((p) => (p === "/" ? location.pathname === "/" : location.pathname.startsWith(p)));
 
   useEffect(() => {
     setOpen(false);
   }, [location.pathname]);
-
-  useEffect(() => () => clearTimeout(closeTimer.current), []);
 
   useEffect(() => {
     if (!open) return;
@@ -220,18 +217,8 @@ function NavDropdown({ group }: { group: NavGroup }) {
     };
   }, [open]);
 
-  // hover-open with a forgiving close delay (desktop); click still toggles (touch/keyboard)
-  const enter = () => {
-    clearTimeout(closeTimer.current);
-    setOpen(true);
-  };
-  const leave = () => {
-    clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setOpen(false), 140);
-  };
-
   return (
-    <div ref={ref} className="relative" onMouseEnter={enter} onMouseLeave={leave}>
+    <div ref={ref} className="relative">
       <button
         type="button"
         aria-haspopup="menu"
@@ -256,7 +243,7 @@ function NavDropdown({ group }: { group: NavGroup }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute left-1/2 top-full w-[19rem] -translate-x-1/2 pt-3"
+            className="absolute left-0 top-full w-[19rem] pt-2"
           >
             <div
               className="relative overflow-hidden rounded-xl border p-1.5 backdrop-blur-xl"

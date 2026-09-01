@@ -305,7 +305,7 @@ function HeroConsoleDeck() {
                 key={s.key}
                 onClick={() => pick(i)}
                 aria-label={t("hero.deck.show", { label: t(s.labelKey) })}
-                className="rounded-full transition-all"
+                className="rounded-full transition-all cursor-pointer"
                 style={{
                   height: 10,
                   width: active ? 34 : 10,
