@@ -127,7 +127,7 @@ export function TripsPage() {
   )
 
   return (
-    <div className="flex h-full w-full max-w-7xl flex-col gap-4 p-4 md:p-6">
+    <div className="flex h-full w-full flex-col gap-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('trips.title')} description={t('trips.desc')}>
         <FilterLabel label={t('trips.device')}>
           <div className="w-44">

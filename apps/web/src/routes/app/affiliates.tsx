@@ -60,7 +60,7 @@ export function AffiliatesPage() {
   }
 
   return (
-    <div className="max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('affiliates.title')} description={t('affiliates.desc')}>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
