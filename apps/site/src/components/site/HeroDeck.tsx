@@ -274,9 +274,9 @@ function HeroConsoleDeck() {
                 alt={t("hero.deck.alt", { label: t(current.labelKey) })}
                 loading="eager"
                 decoding="async"
-                initial={{ opacity: 0, scale: 1.02, filter: "blur(6px)" }}
-                animate={{ opacity: 1, scale: 1,   filter: "blur(0px)" }}
-                exit={{    opacity: 0, scale: 0.99, filter: "blur(6px)" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
                 transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                 className="absolute inset-0 h-full w-full object-cover object-left-top"
                 draggable={false}

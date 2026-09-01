@@ -68,9 +68,14 @@ export function planDemoFleet(nowMs: number): { devices: DemoDeviceSpec[]; drive
 
   const driverKey = (spec: DemoDeviceSpec): string | undefined => (spec.driver === undefined ? undefined : DEMO_DRIVERS[spec.driver]!.ibutton)
 
+  /** ~metres one record advances at the drives' 30–70 km/h average — good enough to keep
+   *  CONSECUTIVE drives continuing along the route instead of teleporting back to the same
+   *  start (the jump drew a straight "drove through the fields" connector on the 24 h track). */
+  const M_PER_RECORD = 14
   const drives: DemoDrive[] = []
   for (const [i, d] of devices.entries()) {
     const ibutton = driverKey(d)
+    let routeOffsetM = i * 400 // distinct start per device, then cumulative
     // 2 drives/day over the last 3 days: morning ~08:10, afternoon ~15:40 (device-local
     // spread by index so playback ranges don't perfectly overlap)
     for (let day = 3; day >= 1; day--) {
@@ -81,22 +86,23 @@ export function planDemoFleet(nowMs: number): { devices: DemoDeviceSpec[]; drive
           startMs: nowMs - day * DAY_MS + hour * 3_600_000 + i * 60_000 + j * 10 * 60_000,
           count: DRIVE_RECORDS,
           seed: i * 10 + j + day, // distinct speeds per drive
-          startDistanceM: i * 400, // distinct route positions per device
+          startDistanceM: routeOffsetM,
           ...(d.account === 1 ? { routeName: 'kaunas-loop' as const } : {}),
           ...(ibutton !== undefined ? { ibutton } : {}),
           ...(d.can === true ? { can: true } : {}),
         })
+        routeOffsetM += DRIVE_RECORDS * M_PER_RECORD
       }
     }
     if (d.kind === 'panic') {
-      drives.push({ imei: d.imei, scenario: 'panic', startMs: nowMs - 2 * 3_600_000, count: 5, seed: i, startDistanceM: i * 400 })
+      drives.push({ imei: d.imei, scenario: 'panic', startMs: nowMs - 2 * 3_600_000, count: 5, seed: i, startDistanceM: routeOffsetM })
     }
     if (d.kind === 'invalidFix') {
-      drives.push({ imei: d.imei, scenario: 'invalidFix', startMs: nowMs - 3 * 3_600_000, count: 24, seed: i, startDistanceM: i * 400 })
+      drives.push({ imei: d.imei, scenario: 'invalidFix', startMs: nowMs - 3 * 3_600_000, count: 24, seed: i, startDistanceM: routeOffsetM })
     }
     if (d.kind === 'fuelTheft') {
       // a short drive then a parked fuel drop → the fuel_theft rule fires
-      drives.push({ imei: d.imei, scenario: 'fuelTheft', startMs: nowMs - 4 * 3_600_000, count: 30, seed: i, startDistanceM: i * 400 })
+      drives.push({ imei: d.imei, scenario: 'fuelTheft', startMs: nowMs - 4 * 3_600_000, count: 30, seed: i, startDistanceM: routeOffsetM })
     }
   }
   // chronological send order — the pipeline sees history in a realistic sequence

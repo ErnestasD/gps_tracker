@@ -375,6 +375,24 @@ describe('LiveStore', () => {
     expect(features.filter((f) => f.properties!['gap'] === true)).toHaveLength(2)
   })
 
+  it('a reporting gap over 10 min splits the run and joins it with a dashed connector (parked between trips)', () => {
+    const pt = (lon: number, tMs: number): TrailPoint => ({ lon, lat: 54.68, fixValid: true, fixTimeMs: tMs, speed: 40, movement: true })
+    // two 2-point drives 8 hours apart — drawn as one run this was a solid straight line
+    // across terrain the vehicle never crossed
+    const features = buildTrailFeatures([
+      pt(25.27, T0), pt(25.272, T0 + 1_000),
+      pt(25.35, T0 + 8 * 3_600_000), pt(25.352, T0 + 8 * 3_600_000 + 1_000),
+    ])
+    const solid = features.filter((f) => f.properties!['gap'] === false)
+    const gaps = features.filter((f) => f.properties!['gap'] === true)
+    expect(solid).toHaveLength(2)
+    expect(gaps).toHaveLength(1)
+    expect((gaps[0]!.geometry as GeoJSON.LineString).coordinates).toEqual([[25.272, 54.68], [25.35, 54.68]])
+    // …while a normal 1 Hz drive (and even a 2-minute sending interval) never splits
+    const steady = buildTrailFeatures([pt(25.27, T0), pt(25.272, T0 + 120_000), pt(25.274, T0 + 240_000)])
+    expect(steady.filter((f) => f.properties!['gap'] === true)).toHaveLength(0)
+  })
+
   it('trail edge cases: all-valid → one solid line, no gap; leading/trailing invalid → no dangling connectors', () => {
     const pt = (lon: number, fixValid: boolean): TrailPoint => ({ lon, lat: 54.68, fixValid, fixTimeMs: T0, speed: 40, movement: true })
     const allValid = buildTrailFeatures([pt(25.27, true), pt(25.272, true), pt(25.274, true)])
