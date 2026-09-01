@@ -1,11 +1,11 @@
-import { Pause, Play, Route as RouteIcon, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pause, Play, Radio, Route as RouteIcon, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useFmt } from '@/lib/datetime'
 import type { ScrubState } from '@/lib/liveStore'
 import { placeAt, placeableFix, pointAt, type TrackPoint } from '@/lib/telemetry'
-import { canScrub, firstPlaceBack, quickJumps, SPAN_OPTIONS_H, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
+import { canScrub, firstPlaceBack, HISTORY_DAYS, quickJumps, SPAN_OPTIONS_H, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 
@@ -108,6 +108,10 @@ export function Timeline({
   events = [],
   onScrubTime,
   onSpan,
+  onPan,
+  onDay,
+  onLive,
+  live = true,
 }: {
   /** null ⇒ nothing selected: the bar stays, disabled, rather than vanishing. */
   deviceId: string | null
@@ -135,8 +139,16 @@ export function Timeline({
    *  inspector's parameters) at the same moment. Separate from onScrub because a no-fix moment
    *  has no place but very much has a time. */
   onScrubTime?: (iso: string | null) => void
-  /** Zoom: the page swaps the whole window for an `hours`-long one ending at the same "now". */
+  /** Zoom: the page swaps the whole window for an `hours`-long one, keeping what is on screen. */
   onSpan?: (hours: number) => void
+  /** Move the window through history by `deltaMs` (negative = back). Clamped by the page. */
+  onPan?: (deltaMs: number) => void
+  /** Jump to a calendar day, `0` = today (the live window), up to HISTORY_DAYS back. */
+  onDay?: (daysBack: number) => void
+  /** Return the window to the live edge. */
+  onLive?: () => void
+  /** Whether the window is following the present. False ⇒ the axis is pinned in history. */
+  live?: boolean
 }) {
   const { t } = useTranslation()
   const { d: dateOnly, dt, tm, tms } = useFmt()
@@ -267,6 +279,25 @@ export function Timeline({
   }, [disabled])
 
   const quick = useMemo(() => quickJumps(spanMin), [spanMin])
+  /** Which day chip is selected — 0 is today (live). Kept locally so the select shows the choice. */
+  const [dayBack, setDayBack] = useState(0)
+  /**
+   * One press moves HALF a screen, not a whole one.
+   *
+   * A full-span step leaves nothing shared between the before and after, so the operator has to
+   * re-find where they were; half keeps the stretch they were reading on screen and extends it.
+   */
+  const panStepMs = Math.max(60_000, Math.round((window.to - window.from) / 2))
+  const dayOptions = useMemo(
+    () =>
+      Array.from({ length: HISTORY_DAYS + 1 }, (_, back) => ({
+        back,
+        // "today" is the live window and says so; the rest are dated, because "-3 d" makes the
+        // operator do the arithmetic that the label could have done for them
+        label: back === 0 ? t('map.timeline.day.today') : dateOnly(new Date(Date.now() - back * 86_400_000).toISOString()),
+      })),
+    [t, dateOnly],
+  )
   const pct = ((spanSec - back) / spanSec) * 100
   const atIso = new Date(atMs).toISOString()
   // O(n) over up to 10 000 points, and this component re-renders at the store's 1 Hz cadence
@@ -441,11 +472,38 @@ export function Timeline({
                     ? t('map.timeline.truncated', { points: points.length })
                     : `${name ?? ''} · ${t('map.timeline.summary', { points: points.length, valid })}`}
             </span>
+            {/* WHICH STRETCH OF TIME IS THIS. While the axis always ended at "now" the answer was
+                implicit; once it can be pinned anywhere in the last week, a window with no date on
+                it is a graph the operator cannot place. Shown only off the live edge, so the live
+                view keeps its uncluttered header. */}
+            {!live && (
+              <span className="ml-auto shrink-0 text-[11px] tabular-nums text-warn" data-testid="timeline-range">
+                {dt(new Date(window.from).toISOString())} — {tm(new Date(window.to).toISOString())}
+              </span>
+            )}
           </div>
 
           <div
             className="relative h-14"
             data-testid="timeline-wave"
+            /**
+             * SWIPE TO TRAVEL. A trackpad's horizontal gesture (and shift+wheel, which is how a
+             * mouse produces one) pans the window instead of scrolling the page.
+             *
+             * Deliberately NOT plain vertical wheel: this bar sits inside a scrollable workspace,
+             * and stealing the page's scroll to move time is the kind of hijack that makes a page
+             * feel broken. Horizontal intent is unambiguous, and it is the gesture the founder
+             * asked for.
+             */
+            onWheel={(e) => {
+              if (onPan === undefined) return
+              const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0
+              if (dx === 0) return
+              e.preventDefault()
+              // a full bar width per ~40 px of gesture: fast enough to cross a day, slow enough to
+              // land on an hour
+              onPan(Math.round((dx / 40) * (spanSec * 1000) / 24))
+            }}
             onPointerMove={(e) => {
               const r = e.currentTarget.getBoundingClientRect()
               if (r.width > 0) setHover(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)))
@@ -586,7 +644,74 @@ export function Timeline({
           )}
         </div>
 
-        {/* zoom: swap the whole axis for a shorter/longer one ending at the same "now" —
+        {/* DAY PICKER + PAN. Zoom alone could only ever narrow onto the present, so "what happened
+            around noon" was unreachable: the axis is now something you travel along. The day list
+            is a select rather than a row of chips because eight more buttons in this bar is how the
+            waveform loses the width it needs. */}
+        {onDay !== undefined && (
+          <select
+            value={dayBack}
+            onChange={(e) => {
+              const n = Number(e.currentTarget.value)
+              setDayBack(n)
+              onDay(n)
+            }}
+            aria-label={t('map.timeline.day.label')}
+            data-testid="timeline-day"
+            className="h-7 shrink-0 rounded-md border border-line bg-transparent px-1.5 text-[11px] text-muted"
+          >
+            {dayOptions.map((o) => (
+              <option key={o.back} value={o.back}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {onPan !== undefined && (
+          <div className="flex shrink-0 items-center gap-0.5" data-testid="timeline-pan">
+            <button
+              type="button"
+              onClick={() => onPan(-panStepMs)}
+              aria-label={t('map.timeline.panBack')}
+              title={t('map.timeline.panBack')}
+              data-testid="timeline-pan-back"
+              className="grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:text-text"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              disabled={live}
+              onClick={() => onPan(panStepMs)}
+              aria-label={t('map.timeline.panForward')}
+              title={t('map.timeline.panForward')}
+              data-testid="timeline-pan-forward"
+              className="grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:text-text disabled:opacity-40"
+            >
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+        )}
+
+        {/* Only when the view has LEFT the present. A permanent "live" button gives no information;
+            one that appears exactly when you are no longer live is the signal itself. */}
+        {onLive !== undefined && !live && (
+          <button
+            type="button"
+            onClick={() => {
+              setDayBack(0)
+              onLive()
+            }}
+            data-testid="timeline-live"
+            className="flex shrink-0 items-center gap-1 rounded-md border border-accent px-2 py-1 text-[11px] font-medium text-accent"
+          >
+            <Radio className="h-3 w-3" aria-hidden />
+            {t('map.timeline.backToLive')}
+          </button>
+        )}
+
+        {/* zoom: swap the whole axis for a shorter/longer one, keeping what is on screen —
             always visible, because on a phone it is the only way to reach fine detail */}
         {onSpan !== undefined && (
           <div className="flex shrink-0 items-center gap-0.5" data-testid="timeline-zoom">

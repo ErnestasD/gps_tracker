@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { TrackPoint } from '../src/lib/telemetry'
-import { canScrub, firstPlaceBack, quickJumps, spanMinutes, windowAt, WINDOW_BUCKET_MS } from '../src/lib/trackWindow'
+import { canScrub, firstPlaceBack, quickJumps, spanMinutes, windowAt, WINDOW_BUCKET_MS, viewWindow, panView, zoomView, dayView, zonedDayStart, isLive, panFloor } from '../src/lib/trackWindow'
 
 const pt = (iso: string, fixValid = true): TrackPoint =>
   ({ fixTime: iso, lat: 54.7, lon: 25.3, speed: 0, course: 0, ignition: null, movement: null, fixValid })
@@ -135,5 +135,74 @@ describe('pairing points with pre-parsed timestamps', () => {
     const points = [pt('2026-08-18T13:00:00Z'), pt('2026-08-18T14:00:00Z')]
     const times = points.map((p) => Date.parse(p.fixTime))
     expect(firstPlaceBack(points, w, times)).toBe(firstPlaceBack(points, w))
+  })
+})
+
+describe('panning and days — travelling through history, not just watching its edge', () => {
+  const NOW = Date.parse('2026-08-31T14:00:00Z')
+  const H = 3_600_000
+
+  it('a live view follows the present; an anchored one does not', () => {
+    const live = viewWindow({ spanH: 24, anchorTo: null }, NOW)
+    const later = viewWindow({ spanH: 24, anchorTo: null }, NOW + 2 * H)
+    expect(later.to).toBeGreaterThan(live.to)
+
+    const pinned = { spanH: 24, anchorTo: NOW - 12 * H }
+    expect(viewWindow(pinned, NOW)).toEqual(viewWindow(pinned, NOW + 2 * H))
+  })
+
+  it('panning back moves the window; panning forward past now RETURNS to live', () => {
+    // the defect this exists for: zoom narrowed onto the present and there was no way to travel
+    const back = panView({ spanH: 6, anchorTo: null }, -12 * H, NOW)
+    expect(back.anchorTo).toBe(NOW - 12 * H)
+    expect(isLive(back)).toBe(false)
+
+    // pinning the edge AT "now" would look live and silently stop advancing — so it snaps to live
+    expect(isLive(panView(back, 999 * H, NOW))).toBe(true)
+    expect(isLive(panView({ spanH: 6, anchorTo: NOW - H }, 2 * H, NOW))).toBe(true)
+  })
+
+  it('refuses to pan past the day floor — an unfetched window renders as a broken device', () => {
+    const far = panView({ spanH: 24, anchorTo: null }, -60 * 24 * H, NOW)
+    expect(far.anchorTo).not.toBeNull()
+    expect(viewWindow(far, NOW).from).toBeGreaterThanOrEqual(panFloor(NOW) - 1)
+  })
+
+  it('zoom keeps the live edge live, and holds the CENTRE once panned', () => {
+    // at the live edge, narrowing means "just now" — pressing + must not drag you off live
+    expect(isLive(zoomView({ spanH: 24, anchorTo: null }, 1, NOW))).toBe(true)
+
+    // panned: the stretch on screen stays on screen instead of teleporting
+    const panned = { spanH: 24, anchorTo: NOW - 24 * H } // covers -48 h … -24 h, centre -36 h
+    const zoomed = zoomView(panned, 6, NOW)
+    const w = viewWindow(zoomed, NOW)
+    const centre = (w.from + w.to) / 2
+    expect(Math.abs(centre - (NOW - 36 * H))).toBeLessThanOrEqual(WINDOW_BUCKET_MS)
+  })
+
+  it('day boundaries are LOCAL midnights, and survive the clocks going back', () => {
+    // Europe/Vilnius left DST on 2026-10-25: that local day is 25 hours long. Millisecond
+    // arithmetic (`now - 86_400_000`) lands an hour off, which is the shortcut rule 7 bans.
+    const afterDst = Date.parse('2026-10-26T12:00:00Z')
+    const d0 = zonedDayStart(0, 'Europe/Vilnius', afterDst)
+    const d1 = zonedDayStart(1, 'Europe/Vilnius', afterDst)
+    expect(d0 - d1).toBe(25 * H)
+
+    // and each boundary really is midnight in that zone, not 23:00 or 01:00
+    for (const back of [0, 1, 2, 5]) {
+      const ms = zonedDayStart(back, 'Europe/Vilnius', afterDst)
+      const local = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Vilnius', hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).format(new Date(ms))
+      expect(local).toBe('00:00')
+    }
+  })
+
+  it('"today" is the live window, not an empty calendar day', () => {
+    // at 09:00 a midnight-to-midnight "today" would be three quarters unlived
+    expect(isLive(dayView(0, 'Europe/Vilnius', NOW))).toBe(true)
+    const yesterday = dayView(1, 'Europe/Vilnius', NOW)
+    expect(isLive(yesterday)).toBe(false)
+    const w = viewWindow(yesterday, NOW)
+    expect(w.to - w.from).toBe(24 * H)
+    expect(w.to).toBeLessThanOrEqual(NOW)
   })
 })

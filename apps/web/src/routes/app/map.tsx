@@ -19,7 +19,8 @@ import { geofenceFeatures, listGeofences } from '@/lib/geofences'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
 import { getTrack, placeableFix, trackTimes } from '@/lib/telemetry'
-import { TRACK_HOURS, WINDOW_BUCKET_MS, windowAt } from '@/lib/trackWindow'
+import { getDisplayPrefs } from '@/lib/prefs'
+import { dayView, isLive, LIVE_VIEW, panView, viewWindow, WINDOW_BUCKET_MS, zoomView, type TrackView } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
 import { LiveSocket } from '@/lib/ws'
@@ -161,25 +162,57 @@ export function MapPage() {
   const [scrubbing, setScrubbing] = useState(false)
   /** The axis span in hours — the timeline's zoom. Narrower ⇒ the same 240 waveform bars and the
    *  same slider travel cover less time, which is exactly what "review in more detail" means. */
-  const [spanH, setSpanH] = useState<number>(TRACK_HOURS)
-  const [trackWindow, setTrackWindow] = useState(() => windowAt(Date.now()))
+  /**
+   * The timeline's VIEW: how wide the axis is, and where its right edge is pinned.
+   *
+   * It used to be a span plus a window that always ended at `now`, which meant zoom could only ever
+   * narrow onto the present — an operator who wanted 12:00 zoomed in and got the last hour with no
+   * way to travel. `anchorTo: null` is the standing instruction to follow the present; a number
+   * pins the edge and stops the 30-second catch-up from dragging the view out from under them.
+   */
+  const [view, setView] = useState<TrackView>(LIVE_VIEW)
+  // the callbacks below must not change identity on every pan (they are props of a memo-heavy
+  // subtree), so they read the view through a ref rather than closing over it
+  const viewRef = useRef(view)
+  viewRef.current = view
+  const [trackWindow, setTrackWindow] = useState(() => viewWindow(LIVE_VIEW, Date.now()))
   const [windowFor, setWindowFor] = useState(snap.selectedId)
   if (windowFor !== snap.selectedId) {
     setWindowFor(snap.selectedId)
-    setTrackWindow(windowAt(Date.now(), spanH))
+    // a new vehicle starts at the live edge: carrying yesterday's window into a device the operator
+    // just clicked shows them an empty graph and reads as "this one has no history"
+    setView(LIVE_VIEW)
+    setTrackWindow(viewWindow(LIVE_VIEW, Date.now()))
     setScrubbing(false)
   }
+  const applyView = useCallback((next: TrackView) => {
+    setView(next)
+    setTrackWindow(viewWindow(next, Date.now()))
+  }, [])
   const catchUp = useCallback(() => {
+    // ONLY while live. Advancing a pinned window would slide history sideways every 30 seconds
+    // while the operator is reading it.
+    if (!isLive(view)) return
     setTrackWindow((w) => {
-      const next = windowAt(Date.now(), spanH)
+      const next = viewWindow(view, Date.now())
       return next.to === w.to && next.from === w.from ? w : next
     })
-  }, [spanH])
+  }, [view])
   // a zoom takes effect immediately, scrubbed or not — it is the one deliberate window change
   const onSpan = useCallback((hours: number) => {
-    setSpanH(hours)
-    setTrackWindow(windowAt(Date.now(), hours))
-  }, [])
+    applyView(zoomView(viewRef.current, hours, Date.now()))
+  }, [applyView])
+  const onPan = useCallback((deltaMs: number) => {
+    applyView(panView(viewRef.current, deltaMs, Date.now()))
+  }, [applyView])
+  const onDay = useCallback((daysBack: number) => {
+    const tz = getDisplayPrefs().timeZone
+    const zone = tz === 'auto' ? Intl.DateTimeFormat().resolvedOptions().timeZone : tz
+    applyView(dayView(daysBack, zone, Date.now()))
+  }, [applyView])
+  const onLive = useCallback(() => {
+    applyView({ spanH: viewRef.current.spanH, anchorTo: null })
+  }, [applyView])
   useEffect(() => {
     if (scrubbing || typeof document === 'undefined') return
     const iv = setInterval(() => {
@@ -585,6 +618,10 @@ export function MapPage() {
         events={timelineEvents}
         onScrubTime={onScrubTime}
         onSpan={onSpan}
+        onPan={onPan}
+        onDay={onDay}
+        onLive={onLive}
+        live={isLive(view)}
       />
     </div>
   )
