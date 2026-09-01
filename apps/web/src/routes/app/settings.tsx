@@ -123,7 +123,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6" data-testid="settings-page">
+    <div className="max-w-7xl space-y-4 p-4 md:p-6" data-testid="settings-page">
       <PageHeader className="mb-0" title={t('settings.title')} />
 
       {/* hand-rolled tab bar (no Radix): anchor-jumps, active gets the brand underline.

@@ -87,7 +87,7 @@ export function EventsPage() {
   const info = rows.length - critical - warning
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="max-w-7xl space-y-4 p-4 md:p-6">
       {/* labeled filters with the shared gap — the bare glued controls read as off-standard
           next to trips/reports (founder feedback); FilterLabel mirrors trips.tsx */}
       <PageHeader title={t('events.title')} description={t('events.desc')} className="mb-0">

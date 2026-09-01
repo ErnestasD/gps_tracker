@@ -3,6 +3,16 @@ import type { Translation } from "./en";
 /** PL — formal B2B register (impersonal / "Państwo" in prose, imperative on buttons). */
 export const pl: Translation = {
   nav: {
+    g: { solutions: "Rozwiązania", resources: "Zasoby", company: "Firma" },
+    d: {
+      platform: "Mapa na żywo, trasy i alerty dla Twojej floty",
+      resellers: "Cała platforma pod Twoją marką — white-label",
+      demo: "Wypróbuj panel bez rejestracji",
+      apiDocs: "Dokumentacja REST API dla integracji",
+      compat: "Jakie dane CAN obsługuje Twój pojazd",
+      partners: "Polecaj i zarabiaj prowizję",
+      contact: "Skontaktuj się — odpowiadamy w dzień roboczy",
+    },
     platform: "Platforma",
     pricing: "Cennik",
     resellers: "Resellerzy",

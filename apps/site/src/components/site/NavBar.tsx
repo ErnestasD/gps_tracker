@@ -9,13 +9,51 @@ import { DOCS_URL } from "@/lib/api";
 import { LanguageDropdown } from "./LanguageDropdown";
 import { usePartnerToken } from "@/lib/partner-auth";
 
-const NAV = [
-  { to: "/", key: "nav.platform" },
-  { to: "/pricing", key: "nav.pricing" },
-  { to: "/tsp", key: "nav.resellers" },
-  { to: "/partners", key: "nav.partners" },
-  { to: "/pilot", key: "nav.contact" },
-] as const;
+/**
+ * Grouped header navigation (founder ask, GPS Gate idiom): everything lives under three
+ * dropdowns — Sprendimai / Ištekliai / Įmonė — with a divider and the one conversion-critical
+ * standalone link (Kainos) after it. Items carry a one-line description, the modern-SaaS
+ * panel style. External/legacy-bundle destinations are PLAIN anchors on purpose: a router
+ * Link in a long-lived tab whose bundle predates the route no-ops silently (founder report).
+ */
+type NavItem = {
+  labelKey: string;
+  descKey: string;
+  /** router path (Link) … */
+  to?: "/" | "/tsp" | "/partners" | "/pilot" | "/pricing";
+  /** …or a hard href (external docs, cross-bundle-safe pages, the demo) */
+  href?: string;
+};
+
+type NavGroup = { labelKey: string; items: NavItem[]; paths: string[] };
+
+const GROUPS: NavGroup[] = [
+  {
+    labelKey: "nav.g.solutions",
+    paths: ["/", "/tsp"],
+    items: [
+      { labelKey: "nav.platform", descKey: "nav.d.platform", to: "/" },
+      { labelKey: "nav.resellers", descKey: "nav.d.resellers", to: "/tsp" },
+    ],
+  },
+  {
+    labelKey: "nav.g.resources",
+    paths: ["/compatibility", "/app"],
+    items: [
+      { labelKey: "nav.demo", descKey: "nav.d.demo", href: "/app/map" },
+      { labelKey: "nav.apiDocs", descKey: "nav.d.apiDocs", href: DOCS_URL },
+      { labelKey: "nav.compat", descKey: "nav.d.compat", href: "/compatibility" },
+    ],
+  },
+  {
+    labelKey: "nav.g.company",
+    paths: ["/partners", "/pilot"],
+    items: [
+      { labelKey: "nav.partners", descKey: "nav.d.partners", to: "/partners" },
+      { labelKey: "nav.contact", descKey: "nav.d.contact", to: "/pilot" },
+    ],
+  },
+];
 
 export function NavBar() {
   const [scrolled, setScrolled] = useState(false);
@@ -35,6 +73,7 @@ export function NavBar() {
     setOpen(false);
   }, [location.pathname]);
 
+  const pricingActive = location.pathname === "/pricing";
 
   return (
     <header
@@ -51,38 +90,29 @@ export function NavBar() {
           <OrbetraWordmark className="h-8 w-auto" />
         </Link>
 
-        <nav className="hidden md:flex items-center gap-8">
-          {NAV.map((item) => {
-            const active = location.pathname === item.to;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "text-sm transition-colors relative",
-                  active ? "text-ink font-medium" : "text-muted-foreground hover:text-ink"
-                )}
-              >
-                {t(item.key)}
-                {active && (
-                  <span className="absolute -bottom-2 left-0 right-0 h-[2px] bg-[#B45309] rounded-full" />
-                )}
-              </Link>
-            );
-          })}
-          <DocsDropdown active={location.pathname === "/compatibility"} />
+        <nav className="hidden md:flex items-center gap-7">
+          {GROUPS.map((g) => (
+            <NavDropdown key={g.labelKey} group={g} />
+          ))}
+          <span aria-hidden className="h-5 w-px bg-[var(--hairline)]" />
+          <Link
+            to="/pricing"
+            className={cn(
+              "text-sm transition-colors relative",
+              pricingActive ? "text-ink font-medium" : "text-muted-foreground hover:text-ink"
+            )}
+          >
+            {t("nav.pricing")}
+            {pricingActive && (
+              <span className="absolute -bottom-2 left-0 right-0 h-[2px] bg-[#B45309] rounded-full" />
+            )}
+          </Link>
         </nav>
 
         <div className="flex items-center gap-3">
           <LanguageDropdown className="hidden sm:block" />
-          {/* A SIGNED-IN PARTNER gets the way back, not an invitation to sign in again. Leaving
-              "Sign in" there meant that visiting any other page — pricing, docs, the front page —
-              stranded them: the only route to their own dashboard was to authenticate a second
-              time. The token lives in this browser, so the header knows. */}
+          {/* A SIGNED-IN PARTNER gets the way back, not an invitation to sign in again. */}
           {(() => {
-            // same active treatment as the NAV items: while ON the dashboard the entry is lit
-            // and underlined — the router no-ops a same-route click, and an unmarked entry that
-            // "does nothing" read as broken (founder report)
             const active = partnerToken !== null && location.pathname === "/partner/dashboard";
             return (
               <Link
@@ -113,23 +143,34 @@ export function NavBar() {
         </div>
       </div>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — same groups, flattened with section headers */}
       <div
         className={cn(
           "md:hidden overflow-hidden transition-[max-height] duration-300 border-t border-[var(--hairline)]",
-          open ? "max-h-[520px]" : "max-h-0 border-t-0"
+          open ? "max-h-[640px]" : "max-h-0 border-t-0"
         )}
       >
-        <nav className="px-6 py-5 grid gap-4 bg-[rgba(4,7,15,0.96)]">
-          {NAV.map((item) => (
-            <Link key={item.to} to={item.to} className="text-base text-ink/90 hover:text-ink">
-              {t(item.key)}
-            </Link>
+        <nav className="px-6 py-5 grid gap-1.5 bg-[rgba(4,7,15,0.96)]">
+          {GROUPS.map((g) => (
+            <div key={g.labelKey} className="py-1.5">
+              <div className="mono text-[10px] tracking-[0.24em] uppercase text-[#7A8CAA] mb-1.5">{t(g.labelKey)}</div>
+              <div className="grid gap-1">
+                {g.items.map((it) =>
+                  it.to !== undefined ? (
+                    <Link key={it.labelKey} to={it.to} className="py-1 text-base text-ink/90 hover:text-ink">
+                      {t(it.labelKey)}
+                    </Link>
+                  ) : (
+                    <a key={it.labelKey} href={it.href} className="py-1 text-base text-ink/90 hover:text-ink">
+                      {t(it.labelKey)}
+                    </a>
+                  ),
+                )}
+              </div>
+            </div>
           ))}
-          <a href={DOCS_URL} className="text-base text-ink/90 hover:text-ink">{t("nav.apiDocs")}</a>
-          <a href="/compatibility" className="text-base text-ink/90 hover:text-ink">{t("nav.compat")}</a>
-          <Link to="/demo" className="text-base text-ink/90 hover:text-ink">{t("nav.demo")}</Link>
-          <div className="pt-2 grid gap-3">
+          <Link to="/pricing" className="py-1 text-base text-ink/90 hover:text-ink">{t("nav.pricing")}</Link>
+          <div className="pt-3 grid gap-3">
             <Link to="/signup" className="pill-primary hover:pill-primary-hover justify-center">
               {t("cta.trial")}
             </Link>
@@ -144,16 +185,12 @@ export function NavBar() {
   );
 }
 
-/**
- * "Dokumentacija" is a MENU now, not a link: it fans out to the API reference (external, on the
- * dashboard host) and the CAN compatibility checker (founder ask). Same dismiss contract as the
- * language dropdown — outside click and Escape close it, and a route change closes it too.
- */
-function DocsDropdown({ active }: { active: boolean }) {
+function NavDropdown({ group }: { group: NavGroup }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { location } = useRouterState();
+  const active = group.paths.some((p) => (p === "/" ? location.pathname === "/" : location.pathname.startsWith(p)));
 
   useEffect(() => {
     setOpen(false);
@@ -175,6 +212,9 @@ function DocsDropdown({ active }: { active: boolean }) {
     };
   }, [open]);
 
+  const itemCls =
+    "flex flex-col gap-0.5 rounded-md px-3 py-2.5 transition-colors hover:bg-[rgba(76,77,207,0.08)]";
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -187,7 +227,7 @@ function DocsDropdown({ active }: { active: boolean }) {
           active || open ? "text-ink font-medium" : "text-muted-foreground hover:text-ink"
         )}
       >
-        {t("nav.docs")}
+        {t(group.labelKey)}
         <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden />
         {active && (
           <span className="absolute -bottom-2 left-0 right-0 h-[2px] bg-[#B45309] rounded-full" />
@@ -196,25 +236,25 @@ function DocsDropdown({ active }: { active: boolean }) {
       {open && (
         <div
           role="menu"
-          className="absolute left-0 top-full mt-3 w-56 rounded border border-[var(--hairline)] bg-[rgba(4,7,15,0.97)] backdrop-blur-md py-1.5 shadow-[0_20px_40px_-20px_rgba(0,0,0,0.8)]"
+          className="absolute left-1/2 top-full mt-3 w-72 -translate-x-1/2 rounded-lg border border-[var(--hairline)] bg-[rgba(6,10,22,0.98)] backdrop-blur-md p-1.5 shadow-[0_24px_48px_-20px_rgba(0,0,0,0.85),0_0_0_1px_rgba(76,77,207,0.06)]"
         >
-          <a
-            role="menuitem"
-            href={DOCS_URL}
-            className="block px-4 py-2 text-sm text-ink/90 hover:text-ink hover:bg-white/[0.04]"
-          >
-            {t("nav.apiDocs")}
-          </a>
-          {/* a PLAIN anchor, deliberately: a router Link in a long-lived tab whose bundle
-              predates this route no-ops silently (founder report — "spaudziu ir nieko
-              nevyksta"). A full navigation always lands, whatever the bundle's age. */}
-          <a
-            role="menuitem"
-            href="/compatibility"
-            className="block px-4 py-2 text-sm text-ink/90 hover:text-ink hover:bg-white/[0.04]"
-          >
-            {t("nav.compat")}
-          </a>
+          {group.items.map((it) => {
+            const inner = (
+              <>
+                <span className="text-sm font-medium text-ink leading-tight">{t(it.labelKey)}</span>
+                <span className="text-xs text-muted-foreground leading-snug">{t(it.descKey)}</span>
+              </>
+            );
+            return it.to !== undefined ? (
+              <Link key={it.labelKey} role="menuitem" to={it.to} className={itemCls}>
+                {inner}
+              </Link>
+            ) : (
+              <a key={it.labelKey} role="menuitem" href={it.href} className={itemCls}>
+                {inner}
+              </a>
+            );
+          })}
         </div>
       )}
     </div>
