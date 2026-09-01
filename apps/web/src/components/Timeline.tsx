@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Pause, Play, Radio, Route as RouteIcon, Zoom
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Combobox } from '@/components/admin/Combobox'
 import { useFmt } from '@/lib/datetime'
 import type { ScrubState } from '@/lib/liveStore'
 import { placeAt, placeableFix, pointAt, type TrackPoint } from '@/lib/telemetry'
@@ -673,22 +674,25 @@ export function Timeline({
             is a select rather than a row of chips because eight more buttons in this bar is how the
             waveform loses the width it needs. */}
         {onDay !== undefined && (
-          <select
-            value={dayBack}
-            onChange={(e) => onDay(Number(e.currentTarget.value))}
-            aria-label={t('map.timeline.day.label')}
-            data-testid="timeline-day"
-            className="h-7 shrink-0 rounded-md border border-line bg-transparent px-1.5 text-[11px] text-muted"
-          >
-            {/* A panned window can straddle two days or fall outside the picker's reach; it gets a
-                neutral entry rather than being snapped to a day it is not showing. */}
-            {dayBack === -1 && <option value={-1}>{t('map.timeline.day.custom')}</option>}
-            {dayOptions.map((o) => (
-              <option key={o.back} value={o.back}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <div className="shrink-0" data-testid="timeline-day-wrap">
+            {/* The system's picker, not the browser's. A native <select> renders as the operating
+                system draws it, which beside the admin shell's own controls reads as a piece of a
+                different application — and this bar is dense enough that one foreign control is the
+                one the eye lands on. `Combobox` is what DataTable's own filters use. */}
+            <Combobox
+              value={String(dayBack)}
+              onChange={(v) => onDay(Number(v))}
+              width={168} /* a full date needs the room; 140 clipped "Aug 30, 2026" to "Aug 30, 20…" */
+              aria-label={t('map.timeline.day.label')}
+              data-testid="timeline-day"
+              options={[
+                // A panned window can straddle two days or fall outside the picker's reach; it gets
+                // a neutral entry rather than being snapped to a day it is not showing.
+                ...(dayBack === -1 ? [{ value: '-1', label: t('map.timeline.day.custom') }] : []),
+                ...dayOptions.map((o) => ({ value: String(o.back), label: o.label })),
+              ]}
+            />
+          </div>
         )}
 
         {onPan !== undefined && (

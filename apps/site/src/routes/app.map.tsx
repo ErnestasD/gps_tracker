@@ -43,11 +43,14 @@ function MapPage() {
             <Combobox
               value={status}
               onChange={setStatus}
+              /* The demo shows the PRODUCT, so it must use the product's words. These were
+                 "Aktyvūs / Sustoję / Neprisijungę", a vocabulary the app itself no longer uses —
+                 a prospect comparing the demo with a trial would be reading two different systems. */
               options={[
                 { value: "", label: "Visos būsenos" },
-                { value: "active", label: "Aktyvūs" },
-                { value: "idle", label: "Sustoję" },
-                { value: "offline", label: "Neprisijungę" },
+                { value: "active", label: "Prisijungę" },
+                { value: "idle", label: "Atsijungę" },
+                { value: "offline", label: "Nepasiekiami" },
                 { value: "maintenance", label: "Priežiūroje" },
               ]}
               placeholder="Būsena"
@@ -98,7 +101,9 @@ function MapPage() {
                     <div className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>{active.plate} · IMEI {active.imei}</div>
                   </div>
                   <Badge tone={active.status === "active" ? "success" : active.status === "offline" ? "danger" : "warning"}>
-                    {active.status}
+                    {/* was `{active.status}` — the raw enum, so the demo's headline card read
+                        "active" in a Lithuanian interface */}
+                    {STATUS_LABEL[active.status]}
                   </Badge>
                 </div>
                 <div className="mt-3 grid grid-cols-4 gap-2 text-center">
@@ -112,8 +117,79 @@ function MapPage() {
           )}
         </div>
       </div>
+
+      <DemoTimeline />
     </div>
   );
+}
+
+/**
+ * The history bar, as the product has it.
+ *
+ * The demo showed a live map and stopped there, so the one thing a prospect asks about a tracking
+ * product — "can I go back and see where it was on Tuesday" — had no answer on the page that exists
+ * to answer questions. It mirrors the real bar's controls (day picker, pan, zoom, replay) over
+ * generated data; it does not pretend to scrub a real track.
+ */
+function DemoTimeline() {
+  const [dayBack, setDayBack] = React.useState(0);
+  const days = React.useMemo(
+    () =>
+      Array.from({ length: 8 }, (_, back) => ({
+        value: String(back),
+        label:
+          back === 0
+            ? "Šiandien"
+            : new Date(Date.now() - back * 86_400_000).toLocaleDateString("lt-LT", { year: "numeric", month: "short", day: "numeric" }),
+      })),
+    [],
+  );
+  // a stable pseudo-random shape per day, so switching days visibly changes the graph rather than
+  // redrawing the same one — the point of the control is that the day matters
+  const bars = React.useMemo(() => {
+    let seed = dayBack * 7919 + 13;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    return Array.from({ length: 96 }, (_, i) => {
+      const hour = i / 4;
+      const driving = (hour > 7 && hour < 11) || (hour > 13 && hour < 18.5);
+      return driving ? 0.25 + rnd() * 0.75 : rnd() * 0.12;
+    });
+  }, [dayBack]);
+
+  return (
+    <div className="admin-hairline-t px-4 py-3 md:px-8" style={{ background: "var(--admin-surface)" }}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>
+          {dayBack === 0 ? "Paskutinės 24 val." : days[dayBack]?.label}
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <Combobox value={String(dayBack)} onChange={(v) => setDayBack(Number(v))} options={days} width={168} aria-label="Diena" />
+        </div>
+      </div>
+      <div className="flex h-14 items-end gap-[2px]">
+        {bars.map((h, i) => (
+          <span
+            key={i}
+            className="flex-1 rounded-sm"
+            style={{ height: `${Math.max(4, h * 100)}%`, background: h > 0.2 ? "var(--admin-brand)" : "var(--admin-ink-soft)", opacity: h > 0.2 ? 0.85 : 0.25 }}
+          />
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] tabular-nums" style={{ color: "var(--admin-ink-soft)" }}>
+        {["00:00", "06:00", "12:00", "18:00", "24:00"].map((x) => (
+          <span key={x}>{x}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** One vocabulary, shared with the product (apps/web i18n `deviceList.filter.*`). */
+const STATUS_LABEL: Record<Device["status"], string> = {
+  active: "Prisijungęs",
+  idle: "Atsijungęs",
+  offline: "Nepasiekiamas",
+  maintenance: "Priežiūroje",
 }
 
 function StatusDot({ status }: { status: Device["status"] }) {
