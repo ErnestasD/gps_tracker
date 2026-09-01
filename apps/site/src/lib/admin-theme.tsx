@@ -8,8 +8,8 @@ const AdminThemeContext = React.createContext<Ctx | null>(null);
 const STORAGE_KEY = "orbetra.admin.theme";
 
 export function AdminThemeProvider({ children }: { children: React.ReactNode }) {
-  // Default to "light" on SSR to avoid hydration mismatch.
-  const [theme, setThemeState] = React.useState<Theme>("light");
+  // Default to "dark" — the real dashboard ships dark-first (demo mirrors the product).
+  const [theme, setThemeState] = React.useState<Theme>("dark");
   const [hydrated, setHydrated] = React.useState(false);
 
   React.useEffect(() => {
@@ -18,8 +18,7 @@ export function AdminThemeProvider({ children }: { children: React.ReactNode }) 
       if (stored === "light" || stored === "dark") {
         setThemeState(stored);
       } else {
-        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        setThemeState(prefersDark ? "dark" : "light");
+        setThemeState("dark"); // product default; the toggle still offers light
       }
     } catch {
       /* ignore */
@@ -65,7 +64,7 @@ export function AdminThemeProvider({ children }: { children: React.ReactNode }) 
   return (
     <AdminThemeContext.Provider value={value}>
       <div
-        data-admin-theme={hydrated ? theme : "light"}
+        data-admin-theme={hydrated ? theme : "dark"}
         style={{ minHeight: "100vh", background: "var(--admin-surface-2)" }}
       >
         {children}

@@ -34,6 +34,7 @@ import { Route as AppWebhooksRouteImport } from './routes/app.webhooks'
 import { Route as AppTripsRouteImport } from './routes/app.trips'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppRulesRouteImport } from './routes/app.rules'
+import { Route as AppRoutingRouteImport } from './routes/app.routing'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
 import { Route as AppNotificationsRouteImport } from './routes/app.notifications'
 import { Route as AppMapRouteImport } from './routes/app.map'
@@ -174,6 +175,11 @@ const AppRulesRoute = AppRulesRouteImport.update({
   path: '/rules',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRoutingRoute = AppRoutingRouteImport.update({
+  id: '/routing',
+  path: '/routing',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppReportsRoute = AppReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -277,6 +283,7 @@ export interface FileRoutesByFullPath {
   '/app/map': typeof AppMapRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/reports': typeof AppReportsRoute
+  '/app/routing': typeof AppRoutingRoute
   '/app/rules': typeof AppRulesRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/trips': typeof AppTripsRoute
@@ -317,6 +324,7 @@ export interface FileRoutesByTo {
   '/app/map': typeof AppMapRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/reports': typeof AppReportsRoute
+  '/app/routing': typeof AppRoutingRoute
   '/app/rules': typeof AppRulesRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/trips': typeof AppTripsRoute
@@ -359,6 +367,7 @@ export interface FileRoutesById {
   '/app/map': typeof AppMapRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/reports': typeof AppReportsRoute
+  '/app/routing': typeof AppRoutingRoute
   '/app/rules': typeof AppRulesRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/trips': typeof AppTripsRoute
@@ -402,6 +411,7 @@ export interface FileRouteTypes {
     | '/app/map'
     | '/app/notifications'
     | '/app/reports'
+    | '/app/routing'
     | '/app/rules'
     | '/app/settings'
     | '/app/trips'
@@ -442,6 +452,7 @@ export interface FileRouteTypes {
     | '/app/map'
     | '/app/notifications'
     | '/app/reports'
+    | '/app/routing'
     | '/app/rules'
     | '/app/settings'
     | '/app/trips'
@@ -483,6 +494,7 @@ export interface FileRouteTypes {
     | '/app/map'
     | '/app/notifications'
     | '/app/reports'
+    | '/app/routing'
     | '/app/rules'
     | '/app/settings'
     | '/app/trips'
@@ -693,6 +705,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRulesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/routing': {
+      id: '/app/routing'
+      path: '/routing'
+      fullPath: '/app/routing'
+      preLoaderRoute: typeof AppRoutingRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/reports': {
       id: '/app/reports'
       path: '/reports'
@@ -809,6 +828,7 @@ interface AppRouteChildren {
   AppMapRoute: typeof AppMapRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppReportsRoute: typeof AppReportsRoute
+  AppRoutingRoute: typeof AppRoutingRoute
   AppRulesRoute: typeof AppRulesRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTripsRoute: typeof AppTripsRoute
@@ -831,6 +851,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppMapRoute: AppMapRoute,
   AppNotificationsRoute: AppNotificationsRoute,
   AppReportsRoute: AppReportsRoute,
+  AppRoutingRoute: AppRoutingRoute,
   AppRulesRoute: AppRulesRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTripsRoute: AppTripsRoute,

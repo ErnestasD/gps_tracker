@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Sun, Moon, Search, Bell, Menu, ChevronRight, CheckCheck } from "lucide-react";
+import { Sun, Moon, Search, Bell, Menu, ChevronRight, CheckCheck, Languages, LogOut } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useAdminTheme } from "@/lib/admin-theme";
 import { useNotifications } from "@/lib/admin-notifications";
@@ -14,6 +14,7 @@ const CRUMBS: Record<string, string> = {
   "/app/drivers": "Vairuotojai",
   "/app/maintenance": "Priežiūra",
   "/app/trips": "Kelionės",
+  "/app/routing": "Maršrutai",
   "/app/history": "Istorija",
   "/app/geofences": "Geozonos",
   "/app/rules": "Taisyklės",
@@ -32,7 +33,7 @@ const CRUMBS: Record<string, string> = {
 export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const { theme, toggle } = useAdminTheme();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const title = CRUMBS[pathname] ?? "Admin";
+  const title = CRUMBS[pathname] ?? "Administravimas";
   const [paletteOpen, setPaletteOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -62,7 +63,7 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       </button>
 
       <nav className="hidden items-center gap-1.5 text-sm md:flex" style={{ color: "var(--admin-ink-soft)" }}>
-        <Link to="/app" className="hover:text-[var(--admin-ink)]">Admin</Link>
+        <Link to="/app" className="hover:text-[var(--admin-ink)]">Administravimas</Link>
         {pathname !== "/app" && (
           <>
             <ChevronRight className="h-3.5 w-3.5" />
@@ -91,7 +92,7 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
           }}
         >
-          Ctrl K
+          ⌘K
         </kbd>
       </button>
 
@@ -117,6 +118,25 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       >
         {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
       </button>
+
+      <button
+        className="hidden h-9 w-9 cursor-pointer place-items-center rounded-md border md:grid"
+        style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
+        aria-label="Kalba"
+        title="Kalba"
+      >
+        <Languages className="h-4 w-4" />
+      </button>
+
+      <Link
+        to="/"
+        className="hidden items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm md:inline-flex"
+        style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
+        title="Baigti demonstraciją"
+      >
+        <LogOut className="h-3.5 w-3.5 opacity-70" />
+        Atsijungti
+      </Link>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </header>

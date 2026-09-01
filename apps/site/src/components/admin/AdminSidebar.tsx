@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Map, Car, Users, Wrench, Route, History,
-  Hexagon, ListChecks, Bell, BarChart3, Terminal, AlertTriangle,
+  Hexagon, ListChecks, Bell, BarChart3, Terminal, Waypoints,
   Palette, CreditCard, KeyRound, Webhook, ScrollText, Settings,
   Circle,
 } from "lucide-react";
@@ -13,8 +13,8 @@ const groups: NavGroup[] = [
   {
     label: "Gyvai",
     items: [
-      { to: "/app", label: "Apžvalga", icon: LayoutDashboard },
       { to: "/app/map", label: "Žemėlapis", icon: Map },
+      { to: "/app", label: "Apžvalga", icon: LayoutDashboard },
     ],
   },
   {
@@ -24,6 +24,7 @@ const groups: NavGroup[] = [
       { to: "/app/drivers", label: "Vairuotojai", icon: Users },
       { to: "/app/maintenance", label: "Priežiūra", icon: Wrench },
       { to: "/app/trips", label: "Kelionės", icon: Route },
+      { to: "/app/routing", label: "Maršrutai", icon: Waypoints },
       { to: "/app/history", label: "Istorija", icon: History },
     ],
   },
@@ -32,8 +33,7 @@ const groups: NavGroup[] = [
     items: [
       { to: "/app/geofences", label: "Geozonos", icon: Hexagon },
       { to: "/app/rules", label: "Taisyklės", icon: ListChecks },
-      { to: "/app/events", label: "Įvykiai", icon: AlertTriangle },
-      { to: "/app/notifications", label: "Pranešimai", icon: Bell },
+      { to: "/app/events", label: "Įvykiai", icon: Bell },
     ],
   },
   {
@@ -73,9 +73,9 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
           <Circle className="h-4 w-4" strokeWidth={2.5} />
         </div>
         <div className="flex flex-col leading-none">
-          <span className="text-sm font-semibold">Orbetra</span>
+          <span className="text-sm font-semibold">Demo Logistika</span>
           <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--admin-ink-soft)" }}>
-            Admin
+            Administravimas
           </span>
         </div>
       </div>
@@ -122,11 +122,11 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
             className="grid h-8 w-8 place-items-center rounded-full text-xs font-semibold"
             style={{ background: "var(--admin-brand)", color: "#fff" }}
           >
-            EK
+            DE
           </div>
           <div className="min-w-0 flex-1 text-xs">
-            <div className="truncate font-medium">Edvinas K.</div>
-            <div className="truncate" style={{ color: "var(--admin-ink-soft)" }}>Kaunas Fleet · Admin</div>
+            <div className="truncate font-medium">demo@orbetra.test</div>
+            <div className="truncate" style={{ color: "var(--admin-ink-soft)" }}>Organizacijos administratorius</div>
           </div>
         </div>
       </div>
