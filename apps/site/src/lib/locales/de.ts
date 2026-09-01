@@ -40,6 +40,7 @@ export const de: Translation = {
       title: "LIVE-KARTE",
       eventLabel: "GEOZONE",
       eventValue: "Einfahrt · Depot STL",
+      speedValue: "87 km/h",
       speedLabel: "TEMPO",
       fuelValue: "Kraftstoff 68%",
       routeLabel: "AKTIVE ROUTE",

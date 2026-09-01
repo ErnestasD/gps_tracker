@@ -246,7 +246,7 @@ function HeroLiveVisual() {
             <VizChip color="#059669" label={t("hero.viz.eventLabel")} value={t("hero.viz.eventValue")} />
           </div>
           <div className="absolute right-4 top-[38%] animate-float-y" style={{ animationDelay: "1.8s" }}>
-            <VizChip color="#4c4dcf" label={t("hero.viz.speedLabel")} value="87 km/val" big />
+            <VizChip color="#4c4dcf" label={t("hero.viz.speedLabel")} value={t("hero.viz.speedValue")} big />
           </div>
           <div className="absolute left-4 bottom-14 animate-float-y" style={{ animationDelay: "3s" }}>
             <VizChip color="#B45309" label="CAN" value={t("hero.viz.fuelValue")} />

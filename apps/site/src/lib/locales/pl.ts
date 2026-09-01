@@ -40,6 +40,7 @@ export const pl: Translation = {
       title: "MAPA NA ŻYWO",
       eventLabel: "GEOSTREFA",
       eventValue: "Wjazd · Baza STL",
+      speedValue: "87 km/h",
       speedLabel: "PRĘDKOŚĆ",
       fuelValue: "Paliwo 68%",
       routeLabel: "AKTYWNA TRASA",

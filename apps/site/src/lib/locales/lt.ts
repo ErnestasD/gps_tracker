@@ -45,6 +45,7 @@ export const lt: Translation = {
       title: "GYVAS ŽEMĖLAPIS",
       eventLabel: "GEOZONA",
       eventValue: "Įvažiavimas · STL bazė",
+      speedValue: "87 km/val",
       speedLabel: "GREITIS",
       fuelValue: "Kuras 68%",
       routeLabel: "AKTYVUS MARŠRUTAS",

@@ -48,6 +48,7 @@ export const en = {
       title: "LIVE MAP",
       eventLabel: "GEOFENCE",
       eventValue: "Entry · STL depot",
+      speedValue: "87 km/h",
       speedLabel: "SPEED",
       fuelValue: "Fuel 68%",
       routeLabel: "ACTIVE ROUTE",
