@@ -3,6 +3,8 @@ import * as React from "react";
 import { Circle as CircleIcon, Hexagon, Pencil, Route as RouteIcon, Search, Trash2 } from "lucide-react";
 import { PageHeader, AdminButton, Badge, AdminInput } from "@/components/admin/AdminKit";
 import { fmtDate } from "@/lib/admin-format";
+import { DemoMap, type DemoZone } from "@/components/admin/DemoMap";
+import { A1_CORRIDOR, DEPOT_POLYGON, SALDENE_CENTER, SALDENE_RADIUS_M, circleRing, type LngLat } from "@/lib/demo-geo";
 
 export const Route = createFileRoute("/app/geofences")({
   component: GeofencesPage,
@@ -17,10 +19,11 @@ type Zone = {
   kind: ZoneKind;
   color: string;
   created: string;
-  /** polygon ring or corridor centre-line */
-  points?: { lat: number; lng: number }[];
-  center?: { lat: number; lng: number };
-  radiusKm?: number;
+  /** closed ring for polygons/circles */
+  ring?: LngLat[];
+  /** centre-line for corridors, drawn as a wide band */
+  line?: LngLat[];
+  corridorWidthPx?: number;
 };
 
 const KIND_LABEL: Record<ZoneKind, string> = {
@@ -34,6 +37,8 @@ const KIND_ICON: Record<ZoneKind, typeof Hexagon> = {
   corridor: RouteIcon,
 };
 
+const SALDENE_RING = circleRing(SALDENE_CENTER, SALDENE_RADIUS_M);
+
 const ZONES: Zone[] = [
   {
     id: "gf_stl",
@@ -41,13 +46,7 @@ const ZONES: Zone[] = [
     kind: "polygon",
     color: "#4F46E5",
     created: "2026-06-11T09:24:00Z",
-    points: [
-      { lat: 54.712, lng: 25.09 },
-      { lat: 54.728, lng: 25.185 },
-      { lat: 54.688, lng: 25.235 },
-      { lat: 54.648, lng: 25.175 },
-      { lat: 54.662, lng: 25.08 },
-    ],
+    ring: DEPOT_POLYGON,
   },
   {
     id: "gf_saldene",
@@ -55,8 +54,7 @@ const ZONES: Zone[] = [
     kind: "circle",
     color: "#059669",
     created: "2026-07-02T14:05:00Z",
-    center: { lat: 54.925, lng: 23.955 },
-    radiusKm: 7,
+    ring: SALDENE_RING,
   },
   {
     id: "gf_a1",
@@ -64,17 +62,12 @@ const ZONES: Zone[] = [
     kind: "corridor",
     color: "#B45309",
     created: "2026-07-19T07:48:00Z",
-    points: [
-      { lat: 54.687, lng: 25.279 },
-      { lat: 54.732, lng: 25.05 },
-      { lat: 54.771, lng: 24.808 },
-      { lat: 54.787, lng: 24.655 },
-      { lat: 54.808, lng: 24.442 },
-      { lat: 54.856, lng: 24.2 },
-      { lat: 54.898, lng: 23.96 },
-    ],
+    line: A1_CORRIDOR,
+    corridorWidthPx: 12,
   },
 ];
+
+const zoneCoords = (z: Zone): LngLat[] => z.ring ?? z.line ?? [];
 
 function GeofencesPage() {
   const [zones, setZones] = React.useState<Zone[]>(ZONES);
@@ -88,6 +81,19 @@ function GeofencesPage() {
     setZones((zs) => zs.filter((z) => z.id !== id));
     setSelectedId((cur) => (cur === id ? null : cur));
   };
+
+  // solid editor-style zones (the live map draws them dashed; here they're the subject)
+  const demoZones: DemoZone[] = zones.map((z) => ({
+    id: z.id,
+    color: z.color,
+    ring: z.ring,
+    line: z.line,
+    corridorWidthPx: z.corridorWidthPx,
+    selected: z.id === selectedId,
+  }));
+
+  // frame the selected zone, or everything at once
+  const fit: LngLat[] = selected !== null ? zoneCoords(selected) : zones.flatMap(zoneCoords);
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col gap-3 p-4 md:p-6">
@@ -188,7 +194,7 @@ function GeofencesPage() {
 
         {/* map panel */}
         <div className="admin-card relative min-h-[320px] overflow-hidden lg:min-h-0">
-          <GeoMap zones={zones} selectedId={selectedId} onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))} />
+          <DemoMap className="h-full w-full min-h-[480px]" zones={demoZones} fit={fit} fitPadding={60} />
 
           {/* floating detail card for the selected zone */}
           {selected !== null && (
@@ -217,92 +223,5 @@ function GeofencesPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-// ── Procedural map sketch (approx. Lithuania), shared projection idiom with app.map.tsx ──
-
-const W = 1000;
-const H = 700;
-const minLng = 21.5, maxLng = 27.0, minLat = 53.9, maxLat = 55.6;
-const proj = (lat: number, lng: number) => ({
-  x: ((lng - minLng) / (maxLng - minLng)) * W,
-  y: H - ((lat - minLat) / (maxLat - minLat)) * H,
-});
-const kmToUnits = (H / (maxLat - minLat)) / 111;
-
-function GeoMap({ zones, selectedId, onSelect }: { zones: Zone[]; selectedId: string | null; onSelect: (id: string) => void }) {
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="xMidYMid slice"
-      className="h-full w-full"
-      style={{ background: "var(--admin-surface-sunken)" }}
-      role="img"
-      aria-label="Geozonų žemėlapis"
-    >
-      <defs>
-        <pattern id="geo-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--admin-hairline)" strokeWidth="0.5" />
-        </pattern>
-      </defs>
-      <rect width={W} height={H} fill="url(#geo-grid)" />
-      {/* faint roads */}
-      <path d="M 0 380 C 200 340 340 420 500 360 S 800 340 1000 380" fill="none" stroke="var(--admin-hairline)" strokeWidth="6" />
-      <path d="M 400 0 C 380 200 460 340 420 500 S 460 660 480 700" fill="none" stroke="var(--admin-hairline)" strokeWidth="5" />
-      {/* city labels */}
-      {[
-        { name: "Vilnius", lat: 54.687, lng: 25.283 },
-        { name: "Kaunas", lat: 54.898, lng: 23.9 },
-        { name: "Klaipėda", lat: 55.71, lng: 21.13 },
-        { name: "Šiauliai", lat: 55.93, lng: 23.31 },
-        { name: "Panevėžys", lat: 55.73, lng: 24.36 },
-      ].map((c) => {
-        const p = proj(c.lat, c.lng);
-        return (
-          <g key={c.name}>
-            <circle cx={p.x} cy={p.y} r={2} fill="var(--admin-ink-soft)" />
-            <text x={p.x + 8} y={p.y + 3} fontSize="11" fill="var(--admin-ink-soft)" fontFamily="Inter">{c.name}</text>
-          </g>
-        );
-      })}
-
-      {/* zones — SOLID fill + outline, thicker outline when selected (the editor idiom) */}
-      {zones.map((z) => (
-        <ZoneShape key={z.id} zone={z} isSelected={z.id === selectedId} onClick={() => onSelect(z.id)} />
-      ))}
-    </svg>
-  );
-}
-
-function ZoneShape({ zone, isSelected, onClick }: { zone: Zone; isSelected: boolean; onClick: () => void }) {
-  const strokeWidth = isSelected ? 4 : 2;
-  if (zone.kind === "circle" && zone.center && zone.radiusKm) {
-    const c = proj(zone.center.lat, zone.center.lng);
-    const r = zone.radiusKm * kmToUnits;
-    return (
-      <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); onClick(); }}>
-        <circle cx={c.x} cy={c.y} r={r} fill={zone.color} opacity={0.15} />
-        <circle cx={c.x} cy={c.y} r={r} fill="none" stroke={zone.color} strokeWidth={strokeWidth} />
-      </g>
-    );
-  }
-  if (!zone.points || zone.points.length === 0) return null;
-  const pts = zone.points.map((p) => proj(p.lat, p.lng));
-  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
-  if (zone.kind === "corridor") {
-    // the server stores a corridor as its buffered polygon — sketch that as a solid band
-    return (
-      <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); onClick(); }}>
-        <path d={d} fill="none" stroke={zone.color} strokeWidth={16} opacity={0.15} strokeLinecap="round" strokeLinejoin="round" />
-        <path d={d} fill="none" stroke={zone.color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
-      </g>
-    );
-  }
-  return (
-    <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); onClick(); }}>
-      <path d={`${d} Z`} fill={zone.color} opacity={0.15} />
-      <path d={`${d} Z`} fill="none" stroke={zone.color} strokeWidth={strokeWidth} strokeLinejoin="round" />
-    </g>
   );
 }

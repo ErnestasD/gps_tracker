@@ -202,7 +202,7 @@ function MaintenancePage() {
   ];
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader className="mb-0" title="Techninė priežiūra" description="Techninių priežiūrų priminimai ir grafikas.">
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>

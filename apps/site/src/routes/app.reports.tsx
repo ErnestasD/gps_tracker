@@ -73,7 +73,7 @@ function ReportsPage() {
     : RESULT_ROWS.filter((r) => r[1] === DEVICES.find((d) => d.value === deviceId)?.label);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader title="Ataskaitos" description="Vykdykite ataskaitas pagal laikotarpį ir planuokite reguliarias." className="mb-0" />
 
       {/* generator card — run/export actions live in the card header (mirrors the real ReportsPage) */}

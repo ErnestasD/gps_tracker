@@ -152,7 +152,7 @@ function AuditPage() {
   const hasMore = !showAll && filtered.length > VISIBLE;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader className="mb-0" title="Audito žurnalas" description="Kas, ką ir kada pakeitė — nuomininko pakeitimų istorija.">
         <div className="w-44">
           <Combobox

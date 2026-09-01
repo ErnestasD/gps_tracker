@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import * as React from "react";
 import { PageHeader, AdminButton, Badge } from "@/components/admin/AdminKit";
 import { GripVertical, Plus, RotateCcw } from "lucide-react";
+import { DemoMap, type DemoPin } from "@/components/admin/DemoMap";
+import { A1_CORRIDOR } from "@/lib/demo-geo";
 
 export const Route = createFileRoute("/app/routing")({
   component: RoutingPage,
@@ -13,6 +14,17 @@ const STOPS = [
   { n: 2, name: "Klientas · Lentvaris", coord: "54.6440, 25.0540" },
   { n: 3, name: "Klientas · Vievis", coord: "54.7710, 24.8090" },
   { n: 4, name: "Terminalas · Kaunas", coord: "54.8985, 23.9036" },
+];
+
+// Planned route along the REAL A1 motorway centre-line (Kaunas → Vilnius direction).
+const PLAN_ROUTE = [...A1_CORRIDOR].reverse();
+
+// Stop markers snapped to actual A1_CORRIDOR vertices near each stop's described place.
+const STOP_PINS: DemoPin[] = [
+  { id: "stop-1", at: A1_CORRIDOR[0], label: "1", color: "#7C7DF5" }, // Vilnius end
+  { id: "stop-2", at: A1_CORRIDOR[21], label: "2", color: "#7C7DF5" }, // by Lentvaris
+  { id: "stop-3", at: A1_CORRIDOR[34], label: "3", color: "#7C7DF5" }, // by Vievis
+  { id: "stop-4", at: A1_CORRIDOR[A1_CORRIDOR.length - 1], label: "4", color: "#7C7DF5" }, // Kaunas
 ];
 
 function RoutingPage() {
@@ -63,38 +75,15 @@ function RoutingPage() {
           </div>
         </div>
         <div className="admin-card relative min-h-[480px] overflow-hidden">
-          <RouteSketch />
-          <Badge tone="brand" className="absolute right-4 top-4">OSRM · realūs keliai</Badge>
+          <DemoMap
+            className="h-full w-full min-h-[480px]"
+            fit={PLAN_ROUTE}
+            routes={[{ id: "plan", coords: PLAN_ROUTE, color: "#7C7DF5", widthPx: 3.5 }]}
+            pins={STOP_PINS}
+          />
+          <Badge tone="brand" className="absolute right-4 top-4 z-10">OSRM · realūs keliai</Badge>
         </div>
       </div>
     </div>
-  );
-}
-
-function RouteSketch() {
-  const PATH = "M 720 120 C 620 150, 520 210, 430 260 S 300 330, 240 370 S 140 420, 90 450";
-  const pts = [
-    { x: 720, y: 120, n: 4 },
-    { x: 430, y: 260, n: 3 },
-    { x: 240, y: 370, n: 2 },
-    { x: 90, y: 450, n: 1 },
-  ];
-  return (
-    <svg viewBox="0 0 800 560" preserveAspectRatio="xMidYMid slice" className="h-full w-full" style={{ background: "var(--admin-surface-sunken)" }}>
-      <defs>
-        <pattern id="rgrid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--admin-hairline)" strokeWidth="0.5" />
-        </pattern>
-      </defs>
-      <rect width="800" height="560" fill="url(#rgrid)" />
-      <path d="M 0 200 L 800 260 M 300 0 L 380 560 M 0 480 L 800 380" fill="none" stroke="var(--admin-hairline)" strokeWidth="4" opacity="0.6" />
-      <path d={PATH} fill="none" stroke="var(--admin-brand)" strokeWidth="3" strokeLinecap="round" opacity="0.9" />
-      {pts.map((p) => (
-        <g key={p.n}>
-          <circle cx={p.x} cy={p.y} r="11" fill="var(--admin-brand)" stroke="#fff" strokeWidth="2" />
-          <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize="11" fontWeight="700" fill="#fff">{p.n}</text>
-        </g>
-      ))}
-    </svg>
   );
 }

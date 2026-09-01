@@ -94,7 +94,7 @@ function SettingsPage() {
   const [locale, setLocale] = React.useState("lt");
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader className="mb-0" title="Nustatymai" />
 
       {/* tab bar: active tab gets the brand underline, like the real dashboard */}

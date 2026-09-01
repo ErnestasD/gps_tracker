@@ -4,7 +4,9 @@ import { Fuel, Gauge, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { AdminButton, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { DatePicker } from "@/components/admin/DatePicker";
+import { DemoMap } from "@/components/admin/DemoMap";
 import { fmtDateTime } from "@/lib/admin-format";
+import { routeSlice, VILNIUS_LOOP, type LngLat } from "@/lib/demo-geo";
 
 export const Route = createFileRoute("/app/history")({
   component: HistoryPage,
@@ -46,35 +48,40 @@ const TRIP_COUNT = 4;
 const TOTAL_DISTANCE = "56.3 km";
 
 // ---------------------------------------------------------------------------
-// Procedural route sketch (no map libs) — deterministic wandering polyline
+// Playback route — a deterministic slice of REAL Vilnius street geometry per
+// device, so the replayed vehicle always drives on actual roads.
 // ---------------------------------------------------------------------------
 
-function mulberry32(seed: number) {
-  return function () {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = seed;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+const ROUTE_LEN = 121; // 240 samples map onto 120 segments (2 samples per segment)
+
+function deviceRoute(deviceId: string): LngLat[] {
+  const seed = parseInt(deviceId.slice(-4), 10);
+  return routeSlice(VILNIUS_LOOP, (seed * 53) % VILNIUS_LOOP.length, ROUTE_LEN);
 }
 
-const MAP_W = 1000;
-const MAP_H = 400;
-const ROUTE_PTS: [number, number][] = (() => {
-  const r = mulberry32(29);
-  const n = 12;
-  const pts: [number, number][] = [];
-  let y = MAP_H * 0.72;
-  for (let i = 0; i < n; i++) {
-    const x = MAP_W * 0.06 + (MAP_W * 0.88 * i) / (n - 1) + (r() - 0.5) * MAP_W * 0.03;
-    y = Math.min(MAP_H * 0.88, Math.max(MAP_H * 0.12, y + (r() - 0.55) * MAP_H * 0.38));
-    pts.push([x, y]);
-  }
-  return pts;
-})();
-const ROUTE_D = "M" + ROUTE_PTS.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(" L");
+/** Initial bearing from a to b, degrees clockwise from north. */
+function bearingDeg(a: LngLat, b: LngLat): number {
+  const rad = Math.PI / 180;
+  const f1 = a[1] * rad;
+  const f2 = b[1] * rad;
+  const dl = (b[0] - a[0]) * rad;
+  const y = Math.sin(dl) * Math.cos(f2);
+  const x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+  return (Math.atan2(y, x) / rad + 360) % 360;
+}
+
+/** Position + heading along the route for playback sample `index` of `N`. */
+function playbackPose(route: LngLat[], index: number): { at: LngLat; headingDeg: number } {
+  const pos = (index / (N - 1)) * (route.length - 1);
+  const seg = Math.min(route.length - 2, Math.floor(pos));
+  const frac = pos - seg;
+  const a = route[seg];
+  const b = route[seg + 1];
+  return {
+    at: [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac],
+    headingDeg: bearingDeg(a, b),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -86,8 +93,6 @@ function HistoryPage() {
   const [to, setTo] = React.useState<Date | undefined>(new Date(2026, 7, 31));
   const [index, setIndex] = React.useState(0);
   const [playing, setPlaying] = React.useState(false);
-  const pathRef = React.useRef<SVGPathElement | null>(null);
-  const [marker, setMarker] = React.useState<{ x: number; y: number }>({ x: ROUTE_PTS[0][0], y: ROUTE_PTS[0][1] });
 
   // "Groti": advance the scrub index ~5 positions/s; reaching the last point stops
   React.useEffect(() => {
@@ -99,23 +104,16 @@ function HistoryPage() {
     if (playing && index >= N - 1) setPlaying(false);
   }, [playing, index]);
 
-  // the current-position marker follows the sketched route
-  React.useEffect(() => {
-    const path = pathRef.current;
-    if (!path) return;
-    const len = path.getTotalLength();
-    const p = path.getPointAtLength((index / (N - 1)) * len);
-    setMarker({ x: p.x, y: p.y });
-  }, [index]);
-
   const device = DEVICES.find((d) => d.id === deviceId) ?? DEVICES[0];
   const speed = SPEEDS[Math.min(index, N - 1)];
   const fuel = FUEL[Math.min(index, N - 1)];
-  const [sx, sy] = ROUTE_PTS[0];
-  const [ex, ey] = ROUTE_PTS[ROUTE_PTS.length - 1];
+
+  // the current-position marker follows the REAL street route of the device
+  const route = React.useMemo(() => deviceRoute(deviceId), [deviceId]);
+  const pose = React.useMemo(() => playbackPose(route, index), [route, index]);
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader title="Istorijos peržiūra" description="Kelionių atkūrimas su greičio ir kuro grafikais.">
         <div className="w-56">
           <Combobox
@@ -130,19 +128,13 @@ function HistoryPage() {
 
       <div className="admin-card overflow-hidden">
         {/* map + floating current-position overlay */}
-        <div className="relative h-[360px] md:h-[420px]" style={{ background: "var(--admin-surface-sunken)" }}>
-          <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="h-full w-full">
-            <defs>
-              <pattern id="hgrid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--admin-hairline)" strokeWidth="0.5" />
-              </pattern>
-            </defs>
-            <rect width={MAP_W} height={MAP_H} fill="url(#hgrid)" />
-            <path ref={pathRef} d={ROUTE_D} fill="none" stroke="var(--admin-brand)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx={sx} cy={sy} r="6" fill="var(--admin-success)" stroke="#fff" strokeWidth="2" />
-            <circle cx={ex} cy={ey} r="6" fill="var(--admin-danger)" stroke="#fff" strokeWidth="2" />
-            <circle cx={marker.x} cy={marker.y} r="8" fill="var(--admin-brand)" stroke="#fff" strokeWidth="3" />
-          </svg>
+        <div className="relative" style={{ background: "var(--admin-surface-sunken)" }}>
+          <DemoMap
+            className="h-[420px] w-full"
+            fit={route}
+            routes={[{ id: "playback", coords: route, color: "#7C7DF5", widthPx: 3.5 }]}
+            vehicles={[{ id: device.id, at: pose.at, headingDeg: pose.headingDeg, color: "#7C7DF5" }]}
+          />
           <div className="admin-card absolute left-3 top-3 z-10 px-3 py-2">
             <div className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>
               {device.name} · {fmtDateTime(timeAt(index))}

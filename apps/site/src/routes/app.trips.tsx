@@ -4,7 +4,9 @@ import { ArrowDown, ArrowUp, ChevronsUpDown, Search } from "lucide-react";
 import { Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { DatePicker } from "@/components/admin/DatePicker";
+import { DemoMap } from "@/components/admin/DemoMap";
 import { fmtDateTime } from "@/lib/admin-format";
+import { KAUNAS_LOOP, routeSlice, VILNIUS_LOOP, type LngLat } from "@/lib/demo-geo";
 
 export const Route = createFileRoute("/app/trips")({
   component: TripsPage,
@@ -80,52 +82,31 @@ const deviceLabel = (id: string) => DEVICES.find((d) => d.id === id)?.name ?? id
 const driverName = (id: string | null) => (id === null ? null : DRIVERS.find((d) => d.id === id)?.name ?? null);
 
 // ---------------------------------------------------------------------------
-// Procedural route sketch — deterministic polyline per trip (no map libs)
+// Trip route — a deterministic slice of REAL street geometry per trip, so the
+// detail map always shows a path along actual roads (never through fields).
 // ---------------------------------------------------------------------------
 
-function mulberry32(seed: number) {
-  return function () {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = seed;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+function tripPath(trip: DemoTrip): LngLat[] {
+  const seed = parseInt(trip.id.slice(-3), 10);
+  const loop = seed % 2 === 0 ? VILNIUS_LOOP : KAUNAS_LOOP;
+  return routeSlice(loop, (seed * 37) % loop.length, 45);
 }
 
-function routePoints(seed: number, w: number, h: number): [number, number][] {
-  const r = mulberry32(seed);
-  const n = 9;
-  const pts: [number, number][] = [];
-  let y = h * (0.25 + r() * 0.5);
-  for (let i = 0; i < n; i++) {
-    const x = w * 0.08 + (w * 0.84 * i) / (n - 1) + (r() - 0.5) * w * 0.04;
-    y = Math.min(h * 0.88, Math.max(h * 0.12, y + (r() - 0.5) * h * 0.42));
-    pts.push([x, y]);
-  }
-  return pts;
-}
-
-function RouteSketch({ trip }: { trip: DemoTrip }) {
-  const W = 400;
-  const H = 260;
-  const pts = React.useMemo(() => routePoints(parseInt(trip.id.slice(-3), 10) * 7 + 3, W, H), [trip.id]);
-  const d = "M" + pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(" L");
-  const [sx, sy] = pts[0];
-  const [ex, ey] = pts[pts.length - 1];
+function TripMap({ trip }: { trip: DemoTrip }) {
+  const coords = React.useMemo(() => tripPath(trip), [trip]);
+  const start = coords[0];
+  const end = coords[coords.length - 1];
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
-      <defs>
-        <pattern id="tgrid" width="32" height="32" patternUnits="userSpaceOnUse">
-          <path d="M 32 0 L 0 0 0 32" fill="none" stroke="var(--admin-hairline)" strokeWidth="0.5" />
-        </pattern>
-      </defs>
-      <rect width={W} height={H} fill="url(#tgrid)" />
-      <path d={d} fill="none" stroke="var(--admin-brand)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={sx} cy={sy} r="6" fill="var(--admin-success)" stroke="#fff" strokeWidth="2" />
-      <circle cx={ex} cy={ey} r="6" fill="var(--admin-danger)" stroke="#fff" strokeWidth="2" />
-    </svg>
+    <DemoMap
+      className="h-[420px] w-full"
+      interactive={false}
+      fit={coords}
+      routes={[{ id: trip.id, coords, color: "#7C7DF5", widthPx: 3.5 }]}
+      pins={[
+        { id: "start", at: start, label: "A", color: "#22C55E" },
+        { id: "end", at: end, label: "B", color: "#EF4444" },
+      ]}
+    />
   );
 }
 
@@ -205,7 +186,7 @@ function TripsPage() {
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 md:p-6">
+    <div className="flex w-full flex-col gap-4 p-4 md:p-8">
       <PageHeader className="mb-0" title="Kelionės" description="Visos parko kelionės su laiko filtru.">
         <FilterLabel label="Įrenginys">
           <div className="w-44">
@@ -306,8 +287,8 @@ function TripsPage() {
               <p className="m-auto text-sm" style={{ color: "var(--admin-ink-soft)" }}>Pasirinkite kelionę, kad matytumėte maršrutą.</p>
             ) : (
               <>
-                <div className="relative min-h-0 flex-1 overflow-hidden rounded-md border" style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface-sunken)" }}>
-                  <RouteSketch trip={selected} />
+                <div className="overflow-hidden rounded-md border" style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface-sunken)" }}>
+                  <TripMap trip={selected} />
                 </div>
                 <div className="grid grid-cols-4 gap-2 text-center text-xs">
                   <Stat label="Trukmė" value={fmtDuration(selected.durationS * 1000)} />

@@ -27,7 +27,7 @@ const PLANS = [
 
 function BillingPage() {
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader className="mb-0" title="Atsiskaitymai" description="Prenumeratos planas ir mokėjimai per Stripe." />
 
       <div className="admin-card overflow-hidden">

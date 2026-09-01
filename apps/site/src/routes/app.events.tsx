@@ -134,7 +134,7 @@ function EventsPage() {
   const info = rows.length - critical - warning;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader title="Įvykiai" description="Signalų srautas: geozonos, greičio viršijimai, pavojaus mygtukas, ryšio dingimas." className="mb-0">
         <FilterLabel label="Tipas">
           <div className="w-40">

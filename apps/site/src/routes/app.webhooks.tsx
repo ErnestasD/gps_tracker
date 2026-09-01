@@ -73,7 +73,7 @@ function WebhooksPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader className="mb-0" title="Webhooks" description="HTTP kanalai pasirašytiems įvykiams siųsti į išorines sistemas.">
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>

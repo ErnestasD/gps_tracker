@@ -51,7 +51,7 @@ function RulesPage() {
   const [rules, setRules] = React.useState<DemoRule[]>(RULES);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader title="Taisyklės" description="Automatika: signalai, pranešimai ir kanalai." className="mb-0">
         <AdminButton>
           <Plus className="h-4 w-4" aria-hidden />

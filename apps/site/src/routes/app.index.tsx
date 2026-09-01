@@ -273,7 +273,7 @@ function OverviewPage() {
   const rangeKm = Math.round(series.reduce((s, d) => s + d.km, 0));
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader title="Apžvalga" description="Parkas iš pirmo žvilgsnio — būsena, įvykiai ir rida.">
         <AdminButton variant="secondary" onClick={() => void navigate({ to: "/app/reports" })}>Ataskaitos</AdminButton>
         <AdminButton onClick={() => void navigate({ to: "/app/map" })}>Žemėlapis</AdminButton>

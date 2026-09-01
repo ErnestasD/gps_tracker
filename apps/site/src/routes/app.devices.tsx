@@ -129,7 +129,7 @@ function DevicesPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-8">
       <PageHeader className="mb-2" title="Įrenginiai" description="Visi parko GPS įrenginiai vienoje vietoje.">
         <AdminButton variant="secondary" onClick={() => toast("Masinis importas (CSV)", { description: "Demo režimas — importas neatliekamas." })}>
           <Upload className="h-4 w-4" aria-hidden />

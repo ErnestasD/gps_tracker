@@ -3,6 +3,11 @@ import * as React from "react";
 import { generateDevices, type Device } from "@/lib/admin-mock";
 import { Badge, AdminInput, AdminButton } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
+import { DemoMap, type DemoRoute, type DemoVehicle, type DemoZone } from "@/components/admin/DemoMap";
+import {
+  VILNIUS_LOOP, KAUNAS_LOOP, DEPOT_POLYGON, SALDENE_CENTER, SALDENE_RADIUS_M,
+  circleRing, routeSlice, type LngLat,
+} from "@/lib/demo-geo";
 import {
   PanelLeft, Pause, Layers, Maximize2, Satellite, Power, Clock, ChevronRight,
   Activity, Radio, Signal, Zap, Play, ZoomIn, ZoomOut, Crosshair, MapPin, LocateFixed, Route as RouteIcon,
@@ -16,6 +21,34 @@ export const Route = createFileRoute("/app/map")({
  * per-row telemetry, dark map with heading arrows, right inspector rail with metric tiles +
  * tabs + POZICIJA/telemetry/trip blocks, and the playback timeline docked at the bottom. */
 const ALL = generateDevices();
+
+/** Bearing (deg from north) from a to b — flat-earth atan2 is fine at city scale. */
+function bearingDeg(a: LngLat, b: LngLat): number {
+  const deg = (Math.atan2((b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180), b[1] - a[1]) * 180) / Math.PI;
+  return (deg + 360) % 360;
+}
+
+/** Deterministic on-road placement: mock lat/lng is ignored — every device sits on a real
+ * street of VILNIUS_LOOP (first 16) or KAUNAS_LOOP, heading toward the next route point. */
+type Placement = { at: LngLat; headingDeg: number; loop: LngLat[]; idx: number };
+const PLACEMENTS = new Map<string, Placement>(
+  ALL.map((d, i) => {
+    const loop = i < 16 ? VILNIUS_LOOP : KAUNAS_LOOP;
+    const idx = (i * 17) % loop.length;
+    const at = loop[idx];
+    return [d.id, { at, headingDeg: bearingDeg(at, loop[(idx + 1) % loop.length]), loop, idx }];
+  }),
+);
+
+const FIT_ALL: LngLat[] = ALL.map((d) => PLACEMENTS.get(d.id)!.at);
+
+/** Live-map overlay zones — drawn dashed, as on the real dashboard. */
+const ZONES: DemoZone[] = [
+  { id: "depot", color: "#4c4dcf", ring: DEPOT_POLYGON, dashed: true },
+  { id: "saldene", color: "#7C5CFC", ring: circleRing(SALDENE_CENTER, SALDENE_RADIUS_M), dashed: true },
+];
+
+const TRACK_PTS = 60;
 
 const STATUS_LT: Record<Device["status"], string> = {
   active: "Prisijungęs",
@@ -47,6 +80,27 @@ function MapPage() {
       (!status || d.status === status),
   );
   const active = filtered.find((d) => d.id === selected) ?? null;
+
+  const vehicles: DemoVehicle[] = filtered.map((d) => {
+    const p = PLACEMENTS.get(d.id)!;
+    const on = d.status === "active" || d.status === "idle";
+    return {
+      id: d.id,
+      at: p.at,
+      headingDeg: p.headingDeg,
+      color: on ? "#7C7DF5" : d.status === "offline" ? "#8A93A6" : "#B9C0D0",
+      selected: d.id === active?.id,
+    };
+  });
+
+  // the selected vehicle's 24h track — the orange history line, ending at its position
+  const trackRoutes: DemoRoute[] = React.useMemo(() => {
+    if (!active) return [];
+    const p = PLACEMENTS.get(active.id)!;
+    const start = (((p.idx - (TRACK_PTS - 1)) % p.loop.length) + p.loop.length) % p.loop.length;
+    return [{ id: `track:${active.id}`, coords: routeSlice(p.loop, start, TRACK_PTS), color: "#F2A93B", widthPx: 2.5 }];
+  }, [active]);
+
   const online = ALL.filter((d) => d.status === "active" || d.status === "idle").length;
   const offline = ALL.filter((d) => d.status === "offline").length;
   const unreachable = ALL.filter((d) => d.status === "maintenance").length;
@@ -132,7 +186,15 @@ function MapPage() {
 
         {/* map */}
         <div className="relative min-w-0 flex-1 overflow-hidden">
-          <DarkMap devices={filtered} activeId={active?.id} onSelect={setSelected} />
+          <DemoMap
+            className="h-full w-full"
+            zones={ZONES}
+            routes={trackRoutes}
+            vehicles={vehicles}
+            fit={FIT_ALL}
+            fitPadding={80}
+            onVehicleClick={setSelected}
+          />
           <div className="absolute right-3 top-3 flex flex-col gap-1.5">
             {[ZoomIn, ZoomOut, Crosshair, MapPin].map((Icon, i) => (
               <button
@@ -319,62 +381,5 @@ function TelemetryBar({ label, value, pct }: { label: string; value: string; pct
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--admin-brand)" }} />
       </div>
     </div>
-  );
-}
-
-function DarkMap({ devices, activeId, onSelect }: { devices: Device[]; activeId?: string; onSelect: (id: string) => void }) {
-  const W = 1000, H = 700;
-  const minLng = 21.5, maxLng = 27.0, minLat = 53.9, maxLat = 55.6;
-  const proj = (lat: number, lng: number) => ({
-    x: ((lng - minLng) / (maxLng - minLng)) * W,
-    y: H - ((lat - minLat) / (maxLat - minLat)) * H,
-  });
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice" className="h-full w-full" style={{ background: "var(--admin-surface-sunken)" }}>
-      <defs>
-        <pattern id="mgrid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--admin-hairline)" strokeWidth="0.5" />
-        </pattern>
-      </defs>
-      <rect width={W} height={H} fill="url(#mgrid)" />
-      {/* the A1 + A2 corridors, like the real basemap's highway lattice */}
-      <path d="M 0 380 C 200 340 340 420 500 360 S 800 340 1000 380" fill="none" stroke="var(--admin-hairline)" strokeWidth="6" />
-      <path d="M 400 0 C 380 200 460 340 420 500 S 460 660 480 700" fill="none" stroke="var(--admin-hairline)" strokeWidth="5" />
-      {/* the selected vehicle's 24h track — the orange history line every screenshot shows */}
-      <path d="M 690 470 C 640 440 560 430 500 400 S 430 370 400 340" fill="none" stroke="#F2A93B" strokeWidth="2.5" strokeLinecap="round" opacity="0.9" />
-      {/* a dashed geofence, as on the real map's overlay layer */}
-      <path d="M 560 300 L 660 280 L 700 340 L 640 400 L 560 380 Z" fill="rgba(76,77,207,0.08)" stroke="#4c4dcf" strokeOpacity="0.6" strokeWidth="1.5" strokeDasharray="5 5" />
-      {[
-        { name: "Vilnius", lat: 54.687, lng: 25.283 },
-        { name: "Kaunas", lat: 54.898, lng: 23.9 },
-        { name: "Klaipėda", lat: 55.71, lng: 21.13 },
-        { name: "Šiauliai", lat: 55.93, lng: 23.31 },
-        { name: "Panevėžys", lat: 55.73, lng: 24.36 },
-      ].map((c) => {
-        const p = proj(c.lat, c.lng);
-        return (
-          <g key={c.name}>
-            <circle cx={p.x} cy={p.y} r={2} fill="var(--admin-ink-soft)" />
-            <text x={p.x + 8} y={p.y + 3} fontSize="11" fill="var(--admin-ink-soft)">{c.name}</text>
-          </g>
-        );
-      })}
-      {devices.map((d, i) => {
-        const p = proj(d.lat, d.lng);
-        const on = d.status === "active" || d.status === "idle";
-        const color = on ? "#7C7DF5" : d.status === "offline" ? "#8A93A6" : "#B9C0D0";
-        const isActive = d.id === activeId;
-        const angle = (i * 47) % 360;
-        return (
-          <g key={d.id} style={{ cursor: "pointer" }} onClick={() => onSelect(d.id)} transform={`translate(${p.x}, ${p.y})`}>
-            {isActive && <circle r={16} fill="#7C5CFC" opacity={0.22} />}
-            {/* heading arrow, like the real device marker */}
-            <g transform={`rotate(${angle})`}>
-              <path d="M 0 -9 L 6 7 L 0 4 L -6 7 Z" fill={color} stroke="#fff" strokeWidth={1.4} strokeLinejoin="round" />
-            </g>
-          </g>
-        );
-      })}
-    </svg>
   );
 }
