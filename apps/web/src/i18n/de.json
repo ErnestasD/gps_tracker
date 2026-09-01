@@ -502,7 +502,8 @@
       "replaySpeed": "Wiedergabetempo",
       "day": {
         "label": "Tag",
-        "today": "Heute"
+        "today": "Heute",
+        "custom": "Eigener Bereich"
       },
       "panBack": "Früher",
       "panForward": "Später",

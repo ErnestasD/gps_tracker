@@ -502,7 +502,8 @@
       "replaySpeed": "Prędkość odtwarzania",
       "day": {
         "label": "Dzień",
-        "today": "Dziś"
+        "today": "Dziś",
+        "custom": "Własny zakres"
       },
       "panBack": "Wcześniej",
       "panForward": "Później",

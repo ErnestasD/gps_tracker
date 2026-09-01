@@ -502,7 +502,8 @@
       "replaySpeed": "Replay speed",
       "day": {
         "label": "Day",
-        "today": "Today"
+        "today": "Today",
+        "custom": "Custom range"
       },
       "panBack": "Earlier",
       "panForward": "Later",

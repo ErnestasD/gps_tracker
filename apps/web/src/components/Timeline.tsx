@@ -279,8 +279,22 @@ export function Timeline({
   }, [disabled])
 
   const quick = useMemo(() => quickJumps(spanMin), [spanMin])
-  /** Which day chip is selected — 0 is today (live). Kept locally so the select shows the choice. */
-  const [dayBack, setDayBack] = useState(0)
+  /**
+   * Which day the picker shows — DERIVED from the window, never remembered.
+   *
+   * Held as local state it went stale the moment the operator panned: the select still read
+   * "Aug 30" over a window showing Aug 29, so the one control that names the day disagreed with the
+   * axis beside it. Comparing formatted dates uses the display timezone the rest of the bar renders
+   * in, so the picker and the ticks can never disagree about where a day starts.
+   */
+  const dayBack = useMemo(() => {
+    if (live) return 0
+    const mid = dateOnly(new Date((window.from + window.to) / 2).toISOString())
+    for (let back = 0; back <= HISTORY_DAYS; back++) {
+      if (dateOnly(new Date(Date.now() - back * 86_400_000).toISOString()) === mid) return back
+    }
+    return -1
+  }, [live, window.from, window.to, dateOnly])
   /**
    * One press moves HALF a screen, not a whole one.
    *
@@ -478,7 +492,12 @@ export function Timeline({
                 view keeps its uncluttered header. */}
             {!live && (
               <span className="ml-auto shrink-0 text-[11px] tabular-nums text-warn" data-testid="timeline-range">
-                {dt(new Date(window.from).toISOString())} — {tm(new Date(window.to).toISOString())}
+                {/* A window that starts and ends on different DAYS must say so. Rendering the end
+                    as a bare clock read "Aug 30, 00:00 — 00:00", which looks like a window of zero
+                    length rather than a whole day. */}
+                {dateOnly(new Date(window.from).toISOString()) === dateOnly(new Date(window.to).toISOString())
+                  ? `${dt(new Date(window.from).toISOString())} — ${tm(new Date(window.to).toISOString())}`
+                  : `${dt(new Date(window.from).toISOString())} — ${dt(new Date(window.to).toISOString())}`}
               </span>
             )}
           </div>
@@ -629,7 +648,12 @@ export function Timeline({
                 {tm(new Date(tk.ms).toISOString())}
               </span>
             ))}
-            <span className="absolute right-0 top-1 font-medium text-text">{t('map.timeline.now')}</span>
+            {/* The right edge is only "now" while the window follows the present. Pinned in
+                history it is a past instant, and labelling it "now" told the operator they were
+                looking at the live edge when they were a day behind. */}
+            <span className="absolute right-0 top-1 font-medium text-text">
+              {live ? t('map.timeline.now') : tm(new Date(window.to).toISOString())}
+            </span>
           </div>
 
           {legend.length > 0 && (
@@ -651,15 +675,14 @@ export function Timeline({
         {onDay !== undefined && (
           <select
             value={dayBack}
-            onChange={(e) => {
-              const n = Number(e.currentTarget.value)
-              setDayBack(n)
-              onDay(n)
-            }}
+            onChange={(e) => onDay(Number(e.currentTarget.value))}
             aria-label={t('map.timeline.day.label')}
             data-testid="timeline-day"
             className="h-7 shrink-0 rounded-md border border-line bg-transparent px-1.5 text-[11px] text-muted"
           >
+            {/* A panned window can straddle two days or fall outside the picker's reach; it gets a
+                neutral entry rather than being snapped to a day it is not showing. */}
+            {dayBack === -1 && <option value={-1}>{t('map.timeline.day.custom')}</option>}
             {dayOptions.map((o) => (
               <option key={o.back} value={o.back}>
                 {o.label}
@@ -699,10 +722,7 @@ export function Timeline({
         {onLive !== undefined && !live && (
           <button
             type="button"
-            onClick={() => {
-              setDayBack(0)
-              onLive()
-            }}
+            onClick={onLive}
             data-testid="timeline-live"
             className="flex shrink-0 items-center gap-1 rounded-md border border-accent px-2 py-1 text-[11px] font-medium text-accent"
           >
