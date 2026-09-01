@@ -195,3 +195,109 @@ function num(v: unknown): string {
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '—'
 }
+
+/**
+ * The event, broken into LABELLED FACTS.
+ *
+ * The details panel used to print `JSON.stringify(payload)`. That is the database's answer to
+ * "what happened", not the operator's: it exposes our field names, our units and our nulls, and it
+ * asks a dispatcher to parse braces to learn that a van was doing 105 in a 90 zone.
+ *
+ * The one-line summary above already says WHAT happened. This says it in parts — each number with
+ * its own label and unit — which is what a detail view is for, and what makes the difference
+ * between "105 km/h > 90 km/h" and being able to see that the limit came from a rule called
+ * "Greičio viršijimas 90".
+ *
+ * Unknown keys are NOT dropped. A payload field this function has never heard of is still listed,
+ * labelled by its own name — a new event kind then renders as an ugly-but-complete list instead of
+ * silently hiding data, which is the failure mode that would make an operator distrust the screen.
+ */
+export interface EventFact {
+  /** i18n key for the label, or null when `rawLabel` carries an unknown payload key verbatim */
+  key: string | null
+  rawLabel?: string
+  value: string
+  /** i18n key for the VALUE, when the value is a word rather than a measurement. A label with an
+   *  empty value renders as a heading with nothing beside it — "ENTERED" floating alone in a grid
+   *  of label/value pairs, which reads as data that failed to load. */
+  valueKey?: string
+}
+
+/** Payload keys already spoken for by a kind's own facts — never repeated in the "other" tail. */
+const CLAIMED: Record<string, readonly string[]> = {
+  overspeed: ['rule', 'speedKmh', 'limitKmh'],
+  low_battery: ['rule', 'volts', 'thresholdV'],
+  ignition: ['rule', 'ignition'],
+  din_change: ['rule', 'din1'],
+  power_cut: ['rule', 'unplug'],
+  panic: ['rule', 'alarm'],
+  fuel_theft: ['rule', 'unit', 'baseline', 'to', 'drop'],
+  device_offline: ['rule', 'lastFixMs', 'thresholdH', 'offlineH'],
+  geofence: ['geofenceId', 'name', 'transition'],
+}
+
+export function eventFacts(e: EventRow, opts: SummaryOpts & { onOff?: (on: boolean) => string } = {}): EventFact[] {
+  const p = e.payload ?? {}
+  const out: EventFact[] = []
+  const speed = (v: unknown): string =>
+    typeof v !== 'number' ? num(v) : opts.fmtSpeed !== undefined ? opts.fmtSpeed(v) : `${v} km/h`
+  const onOff = (on: boolean): string => (opts.onOff !== undefined ? opts.onOff(on) : on ? 'on' : 'off')
+
+  switch (e.kind) {
+    case 'overspeed': {
+      out.push({ key: 'events.f.speed', value: speed(p['speedKmh']) })
+      out.push({ key: 'events.f.limit', value: speed(p['limitKmh']) })
+      // the number the operator actually acts on, and the only one the payload never carried
+      if (typeof p['speedKmh'] === 'number' && typeof p['limitKmh'] === 'number') {
+        out.push({ key: 'events.f.over', value: speed(p['speedKmh'] - p['limitKmh']) })
+      }
+      break
+    }
+    case 'low_battery':
+      out.push({ key: 'events.f.volts', value: `${num(p['volts'])} V` })
+      out.push({ key: 'events.f.threshold', value: `${num(p['thresholdV'])} V` })
+      break
+    case 'ignition':
+      out.push({ key: 'events.f.state', value: onOff(p['ignition'] === true) })
+      break
+    case 'din_change':
+      out.push({ key: 'events.f.state', value: onOff(p['din1'] === true) })
+      break
+    case 'geofence':
+      out.push({ key: 'events.f.zone', value: str(p['name']) })
+      out.push({ key: 'events.f.direction', value: '', valueKey: `events.f.transition_${str(p['transition'])}` })
+      break
+    case 'device_offline':
+      out.push({ key: 'events.f.offlineFor', value: `${num(p['offlineH'])} h` })
+      out.push({ key: 'events.f.threshold', value: `${num(p['thresholdH'])} h` })
+      if (typeof p['lastFixMs'] === 'number') out.push({ key: 'events.f.lastFix', value: new Date(p['lastFixMs']).toISOString() })
+      break
+    case 'fuel_theft': {
+      const liters = p['unit'] === 'liters'
+      const fmt = (v: unknown): string =>
+        liters && typeof v === 'number' && opts.fmtVolume !== undefined ? opts.fmtVolume(v) : `${num(v)}${liters ? ' L' : ' %'}`
+      out.push({ key: 'events.f.from', value: fmt(p['baseline']) })
+      out.push({ key: 'events.f.to', value: fmt(p['to']) })
+      out.push({ key: 'events.f.drop', value: fmt(p['drop']) })
+      break
+    }
+    default:
+      break
+  }
+
+  // the rule that fired, when the payload names one — "which of my rules did this" is the first
+  // question after "what happened", and the JSON was the only place it was ever visible
+  if (typeof p['rule'] === 'string' && p['rule'] !== '' && p['rule'] !== e.kind) {
+    out.push({ key: 'events.f.rule', value: p['rule'] })
+  }
+
+  const claimed = new Set([...(CLAIMED[e.kind] ?? []), 'rule'])
+  for (const [k, v] of Object.entries(p)) {
+    if (claimed.has(k) || v === null || v === undefined) continue
+    // String(v) on an object yields "[object Object]" — the one rendering that is worse than the
+    // JSON this panel replaced, because it looks like a value while carrying none
+    const shown = typeof v === 'object' ? JSON.stringify(v) : typeof v === 'boolean' || typeof v === 'number' ? String(v) : str(v)
+    out.push({ key: null, rawLabel: k, value: shown })
+  }
+  return out
+}

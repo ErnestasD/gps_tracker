@@ -249,6 +249,11 @@ const eventsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/events',
   component: EventsPage,
+  /** `?focus=<id>` — the notification bell hands the page the event it was clicked for, and the
+   *  page opens that row's details. Without it the bell could only drop the operator at the top of
+   *  a list and leave them to find the alert they just pressed. */
+  validateSearch: (search: Record<string, unknown>): { focus?: string } =>
+    typeof search['focus'] === 'string' && search['focus'] !== '' ? { focus: search['focus'] } : {},
 })
 
 const reportsRoute = createRoute({

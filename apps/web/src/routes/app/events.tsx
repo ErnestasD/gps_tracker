@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useSearch } from '@tanstack/react-router'
 import { Activity, AlertOctagon, TrendingUp } from 'lucide-react'
 import { Fragment, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -8,7 +9,7 @@ import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
-import { EVENT_KINDS, eventSeverity, listEvents, localizedEventSummary, type EventRow, type EventSeverity } from '@/lib/events'
+import { EVENT_KINDS, eventFacts, eventSeverity, listEvents, localizedEventSummary, type EventRow, type EventSeverity } from '@/lib/events'
 import { dayEndIso, dayStartIso } from '@/lib/playback'
 import { getDisplayPrefs, onPrefsChange } from '@/lib/prefs'
 import { useUnits } from '@/lib/units'
@@ -35,6 +36,9 @@ const SEVERITIES: Severity[] = ['critical', 'warning', 'info']
 /** Events timeline (E05-6): the pipeline's rule/geofence output. Filter by kind, device,
  * and time range; expand a row for the raw payload. Cursor-paginated (newest first). */
 export function EventsPage() {
+  // the bell hands us an event id; open it, once, without fighting the operator afterwards
+  const { focus } = useSearch({ from: '/app/events' })
+  const [open, setOpen] = useState<string | null>(focus ?? null)
   const { t } = useTranslation()
   const { dt } = useFmt()
   const u = useUnits()
@@ -45,7 +49,6 @@ export function EventsPage() {
   // bound open; a picked day queries its full local day
   const [from, setFrom] = useState<Date | undefined>(undefined)
   const [to, setTo] = useState<Date | undefined>(undefined)
-  const [open, setOpen] = useState<string | null>(null)
 
   // day bounds follow the display-prefs time zone so the picked day matches the rendered `at` labels
   const prefs = useSyncExternalStore(onPrefsChange, getDisplayPrefs)
@@ -182,7 +185,7 @@ export function EventsPage() {
                     {open === r.id && (
                       <tr data-testid={`event-detail-${r.id}`}>
                         <td colSpan={6} className="p-3" style={{ background: 'var(--admin-surface-sunken)' }}>
-                          <pre className="max-h-64 overflow-auto rounded-md border p-2 text-xs" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)', color: 'var(--admin-ink)' }}>{JSON.stringify(r.payload, null, 2)}</pre>
+                          <EventDetails row={r} deviceName={deviceName(r.deviceId)} />
                         </td>
                       </tr>
                     )}
@@ -211,5 +214,77 @@ function FilterLabel({ label, children }: { label: string; children: React.React
       {label}
       {children}
     </label>
+  )
+}
+
+/**
+ * What happened, in parts — replacing `JSON.stringify(payload)`.
+ *
+ * The old panel showed the database's answer: our field names, our units, our nulls, and a
+ * dispatcher asked to parse braces to learn a van was doing 105 in a 90 zone. Every fact here is
+ * labelled and carries its own unit, and the three questions the founder said the feed could not
+ * answer — what, where, when — are answered first and always, before anything kind-specific.
+ *
+ * A payload key this build has never seen is still listed, labelled by its own name. An unknown
+ * field rendered plainly is untidy; an unknown field hidden is a screen an operator cannot trust.
+ */
+function EventDetails({ row, deviceName }: { row: EventRow; deviceName: string }) {
+  const { t } = useTranslation()
+  const { dt } = useFmt()
+  const u = useUnits()
+  const facts = eventFacts(row, {
+    fmtSpeed: u.speed,
+    fmtVolume: u.volumeL,
+    onOff: (on) => (on ? t('events.f.on') : t('events.f.off')),
+  })
+  const place = typeof row.lat === 'number' && typeof row.lon === 'number' ? { lat: row.lat, lon: row.lon } : null
+
+  return (
+    <div className="admin-card p-3" data-testid={`event-facts-${row.id}`}>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--admin-ink-soft)' }}>
+        {t('events.f.title')}
+      </div>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        <Fact label={t('events.f.when')} value={dt(row.at)} />
+        <Fact label={t('events.f.device')} value={deviceName} />
+        <Fact
+          label={t('events.f.where')}
+          value={
+            place !== null ? (
+              /*
+               * Coordinates, and deliberately NO "show on map" link yet.
+               *
+               * The map has no way to be told "this device, at this instant": it reads no search
+               * params, so a link would land on the vehicle's CURRENT position. For a speeding
+               * event that is a different road, possibly a different city, presented as the place
+               * it happened. A link that shows the wrong place is worse than a coordinate pair.
+               * Wiring the map to accept a device + moment is the follow-up this is waiting on.
+               */
+              <span className="tabular-nums">{place.lat.toFixed(5)}, {place.lon.toFixed(5)}</span>
+            ) : (
+              t('events.f.noLocation')
+            )
+          }
+        />
+        {facts.map((f, i) => (
+          <Fact
+            key={`${f.key ?? f.rawLabel ?? ''}-${i}`}
+            label={f.key === null ? (f.rawLabel ?? '') : t(f.key)}
+            value={f.valueKey !== undefined ? t(f.valueKey) : f.value}
+          />
+        ))}
+      </dl>
+    </div>
+  )
+}
+
+function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+  // a fact with an empty value is a LABEL that is itself the fact ("Entered", "Left") — printing a
+  // dash beside it would read as missing data
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-dashed py-1 last:border-b-0" style={{ borderColor: 'var(--admin-hairline)' }}>
+      <dt className="shrink-0 text-[11px] uppercase tracking-wider" style={{ color: 'var(--admin-ink-soft)' }}>{label}</dt>
+      <dd className="min-w-0 truncate text-right text-sm" style={{ color: 'var(--admin-ink)' }}>{value}</dd>
+    </div>
   )
 }
