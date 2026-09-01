@@ -205,7 +205,7 @@ export function DevicesPage() {
   ]
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader className="mb-2" title={t('devices.title')} description={t('devices.desc')}>
         {canWrite && (<>
         <Sheet open={importOpen} onOpenChange={setImportOpen}>

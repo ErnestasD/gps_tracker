@@ -115,7 +115,7 @@ export function DashboardPage() {
   const floor = (n: number, truncated: boolean): string => `${n}${truncated ? '+' : ''}`
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader title={t('dash.title')} description={t('dash.desc')}>
         <AdminButton variant="secondary" onClick={() => void navigate({ to: '/app/reports' })}>{t('dash.toReports')}</AdminButton>
         <AdminButton onClick={() => void navigate({ to: '/app/map' })}>{t('dash.toMap')}</AdminButton>

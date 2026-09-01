@@ -98,7 +98,7 @@ export function ReportsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="max-w-7xl space-y-4 p-4 md:p-6">
       <PageHeader title={t('reports.title')} description={t('reports.desc')} className="mb-0" />
 
       {/* generator card — run/export actions live in the card header */}

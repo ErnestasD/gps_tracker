@@ -11,6 +11,16 @@
  */
 export const en = {
   nav: {
+    g: { solutions: "Solutions", resources: "Resources", company: "Company" },
+    d: {
+      platform: "Live map, trips and alerts for your fleet",
+      resellers: "The whole platform under your brand — white-label",
+      demo: "Try the dashboard, no sign-up needed",
+      apiDocs: "REST API reference for integrations",
+      compat: "Which CAN data your vehicle supports",
+      partners: "Refer and earn commission",
+      contact: "Get in touch — we reply within a business day",
+    },
     platform: "Platform",
     pricing: "Pricing",
     resellers: "Resellers",

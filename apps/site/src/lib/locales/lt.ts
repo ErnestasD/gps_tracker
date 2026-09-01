@@ -8,6 +8,16 @@ import type { Translation } from "./en";
  */
 export const lt: Translation = {
   nav: {
+    g: { solutions: "Sprendimai", resources: "Ištekliai", company: "Įmonė" },
+    d: {
+      platform: "Gyvas žemėlapis, kelionės ir įspėjimai jūsų parkui",
+      resellers: "Visa platforma jūsų prekės ženklu — white-label",
+      demo: "Išbandykite valdymo skydelį be registracijos",
+      apiDocs: "REST API žinynas integracijoms",
+      compat: "Kokius CAN duomenis palaiko jūsų automobilis",
+      partners: "Rekomenduokite ir uždirbkite komisinius",
+      contact: "Susisiekite — atsakome per darbo dieną",
+    },
     platform: "Platforma",
     pricing: "Kainos",
     resellers: "Perpardavėjai",

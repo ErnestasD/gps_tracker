@@ -3,6 +3,16 @@ import type { Translation } from "./en";
 /** DE — formal business register ("Sie") throughout. */
 export const de: Translation = {
   nav: {
+    g: { solutions: "Lösungen", resources: "Ressourcen", company: "Unternehmen" },
+    d: {
+      platform: "Live-Karte, Fahrten und Alarme für Ihre Flotte",
+      resellers: "Die ganze Plattform unter Ihrer Marke — White-Label",
+      demo: "Dashboard testen, ohne Registrierung",
+      apiDocs: "REST-API-Referenz für Integrationen",
+      compat: "Welche CAN-Daten Ihr Fahrzeug unterstützt",
+      partners: "Empfehlen und Provision verdienen",
+      contact: "Kontakt — Antwort binnen eines Werktags",
+    },
     platform: "Plattform",
     pricing: "Preise",
     resellers: "Reseller",
