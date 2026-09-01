@@ -76,7 +76,7 @@ export function BillingPage() {
         : t('billing.renews')
 
   return (
-    <div className="max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('billing.title')} description={t('billing.desc')} />
 
       {showUpgrade && (

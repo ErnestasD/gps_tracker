@@ -54,7 +54,7 @@ export function PlatformPage() {
   }
 
   return (
-    <div className="max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('platform.title')} description={t('platform.desc')} />
 
       <div className="admin-hairline-b flex gap-1" role="tablist" aria-label={t('platform.title')}>

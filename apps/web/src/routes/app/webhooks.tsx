@@ -35,7 +35,7 @@ export function WebhooksPage() {
   const toggle = useMutation({ mutationFn: (v: { id: string; enabled: boolean }) => setWebhookEnabled(v.id, v.enabled), onSuccess: refresh })
 
   return (
-    <div className="max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('webhooks.title')} description={t('webhooks.desc')}>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>

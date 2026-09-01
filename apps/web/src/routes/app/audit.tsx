@@ -34,7 +34,7 @@ export function AuditPage() {
   const rows = (query.data?.pages ?? []).flat()
 
   return (
-    <div className="max-w-7xl space-y-4 p-4 md:p-6">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t('audit.title')} description={t('audit.desc')}>
         <div className="w-44">
           <Combobox aria-label={t('audit.entity')} value={entity} onChange={setEntity} data-testid="audit-entity"

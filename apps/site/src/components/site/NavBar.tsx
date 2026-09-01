@@ -1,6 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Menu, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ChevronDown, Menu, X, ArrowRight, Map as MapIcon, Store, PlayCircle, Code2, Cpu, Handshake, Mail,
+  type LucideIcon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
@@ -19,6 +23,7 @@ import { usePartnerToken } from "@/lib/partner-auth";
 type NavItem = {
   labelKey: string;
   descKey: string;
+  icon: LucideIcon;
   /** router path (Link) … */
   to?: "/" | "/tsp" | "/partners" | "/pilot" | "/pricing";
   /** …or a hard href (external docs, cross-bundle-safe pages, the demo) */
@@ -32,25 +37,25 @@ const GROUPS: NavGroup[] = [
     labelKey: "nav.g.solutions",
     paths: ["/", "/tsp"],
     items: [
-      { labelKey: "nav.platform", descKey: "nav.d.platform", to: "/" },
-      { labelKey: "nav.resellers", descKey: "nav.d.resellers", to: "/tsp" },
+      { labelKey: "nav.platform", descKey: "nav.d.platform", icon: MapIcon, to: "/" },
+      { labelKey: "nav.resellers", descKey: "nav.d.resellers", icon: Store, to: "/tsp" },
     ],
   },
   {
     labelKey: "nav.g.resources",
     paths: ["/compatibility", "/app"],
     items: [
-      { labelKey: "nav.demo", descKey: "nav.d.demo", href: "/app/map" },
-      { labelKey: "nav.apiDocs", descKey: "nav.d.apiDocs", href: DOCS_URL },
-      { labelKey: "nav.compat", descKey: "nav.d.compat", href: "/compatibility" },
+      { labelKey: "nav.demo", descKey: "nav.d.demo", icon: PlayCircle, href: "/app/map" },
+      { labelKey: "nav.apiDocs", descKey: "nav.d.apiDocs", icon: Code2, href: DOCS_URL },
+      { labelKey: "nav.compat", descKey: "nav.d.compat", icon: Cpu, href: "/compatibility" },
     ],
   },
   {
     labelKey: "nav.g.company",
     paths: ["/partners", "/pilot"],
     items: [
-      { labelKey: "nav.partners", descKey: "nav.d.partners", to: "/partners" },
-      { labelKey: "nav.contact", descKey: "nav.d.contact", to: "/pilot" },
+      { labelKey: "nav.partners", descKey: "nav.d.partners", icon: Handshake, to: "/partners" },
+      { labelKey: "nav.contact", descKey: "nav.d.contact", icon: Mail, to: "/pilot" },
     ],
   },
 ];
@@ -189,12 +194,15 @@ function NavDropdown({ group }: { group: NavGroup }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>();
   const { location } = useRouterState();
   const active = group.paths.some((p) => (p === "/" ? location.pathname === "/" : location.pathname.startsWith(p)));
 
   useEffect(() => {
     setOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
 
   useEffect(() => {
     if (!open) return;
@@ -212,51 +220,104 @@ function NavDropdown({ group }: { group: NavGroup }) {
     };
   }, [open]);
 
-  const itemCls =
-    "flex flex-col gap-0.5 rounded-md px-3 py-2.5 transition-colors hover:bg-[rgba(76,77,207,0.08)]";
+  // hover-open with a forgiving close delay (desktop); click still toggles (touch/keyboard)
+  const enter = () => {
+    clearTimeout(closeTimer.current);
+    setOpen(true);
+  };
+  const leave = () => {
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setOpen(false), 140);
+  };
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative" onMouseEnter={enter} onMouseLeave={leave}>
       <button
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "inline-flex items-center gap-1 text-sm transition-colors relative cursor-pointer",
+          "inline-flex items-center gap-1 text-sm transition-colors relative cursor-pointer py-2",
           active || open ? "text-ink font-medium" : "text-muted-foreground hover:text-ink"
         )}
       >
         {t(group.labelKey)}
-        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden />
+        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", open && "rotate-180")} aria-hidden />
         {active && (
-          <span className="absolute -bottom-2 left-0 right-0 h-[2px] bg-[#B45309] rounded-full" />
+          <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#B45309] rounded-full" />
         )}
       </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute left-1/2 top-full mt-3 w-72 -translate-x-1/2 rounded-lg border border-[var(--hairline)] bg-[rgba(6,10,22,0.98)] backdrop-blur-md p-1.5 shadow-[0_24px_48px_-20px_rgba(0,0,0,0.85),0_0_0_1px_rgba(76,77,207,0.06)]"
-        >
-          {group.items.map((it) => {
-            const inner = (
-              <>
-                <span className="text-sm font-medium text-ink leading-tight">{t(it.labelKey)}</span>
-                <span className="text-xs text-muted-foreground leading-snug">{t(it.descKey)}</span>
-              </>
-            );
-            return it.to !== undefined ? (
-              <Link key={it.labelKey} role="menuitem" to={it.to} className={itemCls}>
-                {inner}
-              </Link>
-            ) : (
-              <a key={it.labelKey} role="menuitem" href={it.href} className={itemCls}>
-                {inner}
-              </a>
-            );
-          })}
-        </div>
-      )}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="menu"
+            initial={{ opacity: 0, y: 10, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute left-1/2 top-full w-[19rem] -translate-x-1/2 pt-3"
+          >
+            <div
+              className="relative overflow-hidden rounded-xl border p-1.5 backdrop-blur-xl"
+              style={{
+                borderColor: "rgba(76,77,207,0.28)",
+                background: "linear-gradient(180deg, rgba(14,22,46,0.97) 0%, rgba(5,8,18,0.98) 100%)",
+                boxShadow:
+                  "0 1px 0 rgba(76,77,207,0.18) inset, 0 24px 60px -20px rgba(0,0,0,0.85), 0 0 40px -16px rgba(76,77,207,0.45)",
+              }}
+            >
+              {/* brand gradient hairline across the top — the panel's signature */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-4 top-0 h-[1.5px] rounded-full"
+                style={{ background: "linear-gradient(90deg, transparent, #4c4dcf 30%, #7C5CFC 70%, transparent)" }}
+              />
+              {group.items.map((it, i) => {
+                const Icon = it.icon;
+                const inner = (
+                  <>
+                    <span
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition-colors duration-150 group-hover/item:border-[rgba(76,77,207,0.55)]"
+                      style={{ background: "rgba(76,77,207,0.10)", borderColor: "rgba(76,77,207,0.25)" }}
+                    >
+                      <Icon className="h-4 w-4 text-[#8f90f7]" strokeWidth={1.75} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-ink leading-tight">{t(it.labelKey)}</span>
+                      <span className="block text-xs text-muted-foreground leading-snug mt-0.5">{t(it.descKey)}</span>
+                    </span>
+                    <ArrowRight
+                      className="h-3.5 w-3.5 shrink-0 -translate-x-1 text-[#4c4dcf] opacity-0 transition-all duration-150 group-hover/item:translate-x-0 group-hover/item:opacity-100"
+                      aria-hidden
+                    />
+                  </>
+                );
+                const cls =
+                  "group/item flex items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors duration-150 hover:bg-[rgba(76,77,207,0.10)]";
+                return (
+                  <motion.div
+                    key={it.labelKey}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.04 * i + 0.05, duration: 0.16 }}
+                  >
+                    {it.to !== undefined ? (
+                      <Link role="menuitem" to={it.to} className={cls}>
+                        {inner}
+                      </Link>
+                    ) : (
+                      <a role="menuitem" href={it.href} className={cls}>
+                        {inner}
+                      </a>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
