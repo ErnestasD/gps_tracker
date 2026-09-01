@@ -74,6 +74,19 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         )}
       </nav>
 
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider"
+        style={{
+          borderColor: "color-mix(in oklab, var(--admin-warning) 45%, transparent)",
+          background: "color-mix(in oklab, var(--admin-warning) 12%, transparent)",
+          color: "var(--admin-warning)",
+        }}
+        title="Tai demonstracinė aplinka su pavyzdiniais duomenimis"
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--admin-warning)", animation: "pulseDot 2.2s ease-in-out infinite" }} />
+        Demo režimas
+      </span>
+
       <div className="flex-1" />
 
       <button
