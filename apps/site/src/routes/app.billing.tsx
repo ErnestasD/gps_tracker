@@ -1,56 +1,98 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { fmtDate } from "@/lib/admin-format";
-import { CreditCard, Download } from "lucide-react";
-import { generateInvoices } from "@/lib/admin-mock";
-import { DataTable, type Column } from "@/components/admin/DataTable";
-import { PageHeader, AdminButton, Badge, StatCard } from "@/components/admin/AdminKit";
-import { toast } from "sonner";
+import { AdminButton, Badge, PageHeader } from "@/components/admin/AdminKit";
 
 export const Route = createFileRoute("/app/billing")({
   component: BillingPage,
 });
 
-const DATA = generateInvoices();
+// Mirrors apps/web/src/routes/app/billing.tsx (Stripe billing, ADR-024/ADR-028) with the
+// hardcoded LT strings from apps/web/src/i18n/lt.json. Demo tenant: `direct_100` on a
+// self-serve trial — the state where the real page shows BOTH the Direct→TSP upgrade card
+// and the plan picker (trialing is subscribable), plus the subscription card with the
+// Stripe portal hand-off button. All buttons are visual no-ops in the demo.
+
+const UPGRADE_FEATURES = [
+  "Baltos etiketės prekės ženklas — jūsų logotipas, spalvos ir produkto pavadinimas",
+  "Individualūs domenai jūsų klientų portalui",
+  "Antrinės paskyros klientų parkams tvarkyti",
+  "REST API prieiga integracijoms",
+  "Webhook'ai realaus laiko įvykiams pristatyti",
+];
+
+const PLANS = [
+  { id: "direct_25", name: "Orbetra Direct 25", price: "€35" },
+  { id: "direct_50", name: "Orbetra Direct 50", price: "€65" },
+  { id: "direct_100", name: "Orbetra Direct 100", price: "€119" },
+];
 
 function BillingPage() {
-  type Inv = (typeof DATA)[number];
-  const columns: Column<Inv>[] = [
-    { key: "number", header: "Nr.", cell: (r) => <span className="mono text-xs">{r.number}</span> },
-    { key: "period", header: "Periodas", cell: (r) => r.period },
-    { key: "amount", header: "Suma", align: "right", sortable: true, sortValue: (r) => r.amount, cell: (r) => `€${r.amount}` },
-    { key: "issued", header: "Išrašyta", cell: (r) => fmtDate(r.issued), hideOnMobile: true },
-    { key: "due", header: "Terminas", cell: (r) => fmtDate(r.due), hideOnMobile: true },
-    {
-      key: "status", header: "Būsena", sortable: true, sortValue: (r) => r.status,
-      filterValue: (r) => r.status,
-      filterOptions: [{ label: "Apmokėta", value: "paid" }, { label: "Atvira", value: "open" }, { label: "Vėluoja", value: "overdue" }],
-      cell: (r) => <Badge tone={r.status === "paid" ? "success" : r.status === "overdue" ? "danger" : "warning"}>{r.status === "paid" ? "apmokėta" : r.status === "overdue" ? "vėluoja" : "atvira"}</Badge>,
-    },
-  ];
-
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
-      <PageHeader title="Atsiskaitymai" description="Planas, mokėjimo būdas ir sąskaitos.">
-        <AdminButton variant="secondary">Pakeisti planą</AdminButton>
-      </PageHeader>
+    <div className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+      <PageHeader className="mb-0" title="Atsiskaitymai" description="Prenumeratos planas ir mokėjimai per Stripe." />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-        <StatCard label="Dabartinis planas" value="Small fleet" hint="24 įrenginiai · €168/mėn" />
-        <StatCard label="Kitas mokėjimas" value="€168" hint="2026-08-01" />
-        <StatCard label="Mokėjimo būdas" value={<><CreditCard className="mr-2 inline h-5 w-5" style={{ color: "var(--admin-brand)" }} />•••• 4242</>} hint="Visa · galioja 08/28" />
+      <div className="admin-card overflow-hidden">
+        <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Badge tone="brand">White-label / TSP</Badge>
+              <span className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>
+                Atrakinkite baltos etiketės ir perpardavimo funkcijas
+              </span>
+            </div>
+            <p className="max-w-xl text-sm" style={{ color: "var(--admin-ink-soft)" }}>
+              Jūsų planas priklauso Direct krypčiai. Pereikite prie White-label / TSP plano, kad valdytumėte Orbetra su
+              savo prekės ženklu ir perparduotumėte jį savo klientams.
+            </p>
+            <ul className="grid grid-cols-1 gap-x-6 gap-y-1 pt-1 sm:grid-cols-2">
+              {UPGRADE_FEATURES.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm" style={{ color: "var(--admin-ink)" }}>
+                  <span aria-hidden style={{ color: "var(--admin-brand)" }}>✓</span>
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="shrink-0">
+            <a href="mailto:sales@orbetra.com?subject=Orbetra%20White-label%2FTSP%20upgrade">
+              <AdminButton variant="primary">Susisiekite dėl atnaujinimo</AdminButton>
+            </a>
+            <p className="mt-2 max-w-[16rem] text-xs" style={{ color: "var(--admin-ink-soft)" }}>
+              Padėsime migruoti — jokie duomenys neprarandami.
+            </p>
+          </div>
+        </div>
       </div>
 
-      <DataTable
-        data={DATA}
-        columns={columns}
-        searchKeys={["number", "period"]}
-        pageSize={10}
-        rowAction={(r) => (
-          <button className="inline-flex items-center gap-1 text-xs" style={{ color: "var(--admin-brand)" }} onClick={() => toast.success(`Parsisiunčiama ${r.number}`)}>
-            <Download className="h-3 w-3" /> PDF
-          </button>
-        )}
-      />
+      <div className="admin-card">
+        <div className="admin-hairline-b flex items-center justify-between px-4 py-3">
+          <span className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Prenumerata</span>
+          <Badge tone="success">Bandomasis laikotarpis</Badge>
+        </div>
+        <div className="flex flex-col gap-4 p-4">
+          <p className="text-sm" style={{ color: "var(--admin-ink-soft)" }}>
+            Skaidri kaina — žr. savo planą. Prenumeratą, mokėjimo būdą ir sąskaitas valdykite Stripe portale.
+          </p>
+          <p className="text-sm" style={{ color: "var(--admin-ink)" }}>Atsinaujina: 2026-09-15</p>
+          <div>
+            <AdminButton variant="primary">Valdyti atsiskaitymus</AdminButton>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {PLANS.map((p) => (
+          <div key={p.id} className="admin-card flex flex-col gap-3 p-5" style={{ borderColor: "var(--admin-brand)" }}>
+            <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{p.name}</div>
+            <p className="display text-2xl font-semibold tracking-tight" style={{ color: "var(--admin-ink)" }}>
+              {p.price}
+              <span className="text-sm font-normal" style={{ color: "var(--admin-ink-soft)" }}> / mėn.</span>
+            </p>
+            <div>
+              <AdminButton size="sm">Prenumeruoti</AdminButton>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
