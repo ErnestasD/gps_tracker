@@ -36,6 +36,15 @@ export const pl: Translation = {
     b3: "Działa na telefonie, tablecie i laptopie · hosting w UE",
     tspAsk: "Sprzedają Państwo GPS swoim klientom?",
     tspCta: "Platforma pod Państwa marką",
+    viz: {
+      title: "MAPA NA ŻYWO",
+      eventLabel: "GEOSTREFA",
+      eventValue: "Wjazd · Baza STL",
+      speedValue: "87 km/h",
+      speedLabel: "PRĘDKOŚĆ",
+      fuelValue: "Paliwo 68%",
+      routeLabel: "AKTYWNA TRASA",
+    },
     deck: {
       map: "Mapa na żywo",
       overview: "Przegląd",

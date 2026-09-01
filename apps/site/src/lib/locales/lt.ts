@@ -41,6 +41,15 @@ export const lt: Translation = {
     b3: "Veikia telefone, planšetėje ir kompiuteryje · ES serveriai",
     tspAsk: "Perparduodate GPS sekimą savo klientams?",
     tspCta: "Platforma su jūsų prekės ženklu",
+    viz: {
+      title: "GYVAS ŽEMĖLAPIS",
+      eventLabel: "GEOZONA",
+      eventValue: "Įvažiavimas · STL bazė",
+      speedValue: "87 km/val",
+      speedLabel: "GREITIS",
+      fuelValue: "Kuras 68%",
+      routeLabel: "AKTYVUS MARŠRUTAS",
+    },
     deck: {
       map: "Realaus laiko žemėlapis",
       overview: "Apžvalga",

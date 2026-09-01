@@ -284,16 +284,28 @@ const lineFeature = (coordinates: [number, number][], gap: boolean): GeoJSON.Fea
  * alternative, keeping one record per run, is what shipped in an earlier round of this fix: on a
  * parked car under a patchy sky it drew 233 m of dashes for a vehicle that never moved.
  */
+/** A reporting silence longer than this splits the trail — 10 min is far beyond any sane
+ *  sending interval, so real driving never trips it, while between-trips parking always does. */
+const TRAIL_GAP_MS = 10 * 60_000
+
 export function buildTrailFeatures(rawPoints: readonly TrailPoint[]): GeoJSON.Feature[] {
   // A parked vehicle's jitter is not a path. Dropped HERE, at the one place a track becomes
   // geometry, so the live trail and the 24-hour history cannot disagree about it.
   const points = dropStationaryJitter(rawPoints)
   // split into runs of consecutive valid points — runs are separated by ≥1
-  // invalid point by construction
+  // invalid point, OR by a reporting gap long enough that the straight segment between the
+  // two fixes is a path never driven (device off between trips, towed, ferry): drawn solid
+  // it reads as the vehicle cutting through fields; as a run break it becomes the same
+  // dashed connector a no-fix stretch gets (founder report: "per laukus vaziavo masina")
   const runs: TrailPoint[][] = []
   let run: TrailPoint[] = []
   for (const p of points) {
     if (p.fixValid) {
+      const last = run[run.length - 1]
+      if (last !== undefined && last.fixTimeMs > 0 && p.fixTimeMs > 0 && p.fixTimeMs - last.fixTimeMs > TRAIL_GAP_MS) {
+        runs.push(run)
+        run = []
+      }
       run.push(p)
     } else if (run.length > 0) {
       runs.push(run)

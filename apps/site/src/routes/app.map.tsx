@@ -1,86 +1,197 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { generateDevices, type Device } from "@/lib/admin-mock";
-import { PageHeader, Badge, AdminInput } from "@/components/admin/AdminKit";
+import { LANGUAGES, type Lang } from "@/lib/i18n";
+import { Badge, AdminInput, AdminButton } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
+import { DemoMap, type DemoRoute, type DemoVehicle, type DemoZone } from "@/components/admin/DemoMap";
+import {
+  VILNIUS_LOOP, KAUNAS_LOOP, DEPOT_POLYGON, SALDENE_CENTER, SALDENE_RADIUS_M,
+  circleRing, routeSlice, type LngLat,
+} from "@/lib/demo-geo";
+import {
+  PanelLeft, Pause, Layers, Maximize2, Satellite, Power, Clock, ChevronRight,
+  Activity, Radio, Signal, Zap, Play, ZoomIn, ZoomOut, Crosshair, MapPin, LocateFixed, Route as RouteIcon,
+} from "lucide-react";
 
 export const Route = createFileRoute("/app/map")({
   component: MapPage,
 });
 
+/** Mirrors the REAL live map (apps/web app/map): status-chip header strip, fleet list with
+ * per-row telemetry, dark map with heading arrows, right inspector rail with metric tiles +
+ * tabs + POZICIJA/telemetry/trip blocks, and the playback timeline docked at the bottom. */
 const ALL = generateDevices();
 
+/** Bearing (deg from north) from a to b — flat-earth atan2 is fine at city scale. */
+function bearingDeg(a: LngLat, b: LngLat): number {
+  const deg = (Math.atan2((b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180), b[1] - a[1]) * 180) / Math.PI;
+  return (deg + 360) % 360;
+}
+
+/** Deterministic on-road placement: mock lat/lng is ignored — every device sits on a real
+ * street of VILNIUS_LOOP (first 16) or KAUNAS_LOOP, heading toward the next route point. */
+type Placement = { at: LngLat; headingDeg: number; loop: LngLat[]; idx: number };
+const PLACEMENTS = new Map<string, Placement>(
+  ALL.map((d, i) => {
+    const loop = i < 16 ? VILNIUS_LOOP : KAUNAS_LOOP;
+    const idx = (i * 17) % loop.length;
+    const at = loop[idx];
+    return [d.id, { at, headingDeg: bearingDeg(at, loop[(idx + 1) % loop.length]), loop, idx }];
+  }),
+);
+
+const FIT_ALL: LngLat[] = ALL.map((d) => PLACEMENTS.get(d.id)!.at);
+
+/** Live-map overlay zones — drawn dashed, as on the real dashboard. */
+const ZONES: DemoZone[] = [
+  { id: "depot", color: "#4c4dcf", ring: DEPOT_POLYGON, dashed: true },
+  { id: "saldene", color: "#7C5CFC", ring: circleRing(SALDENE_CENTER, SALDENE_RADIUS_M), dashed: true },
+];
+
+const TRACK_PTS = 60;
+
+/** Demo status → product status key (product only knows online/stale/offline). */
+const STATUS_KEY: Record<Device["status"], string> = {
+  active: "status.online",
+  idle: "status.online",
+  offline: "status.stale",
+  maintenance: "status.offline",
+};
+
+/** Demo-invented relative-time snapshots — not in the product's admin namespace. */
+const L: Record<Lang, { ago5s: string; ago4m: string; ago2h: string; ago3d: string }> = {
+  lt: { ago5s: "prieš 5 sekundes", ago4m: "prieš 4 minutes", ago2h: "prieš 2 valandas", ago3d: "prieš 3 dienas" },
+  en: { ago5s: "5 seconds ago", ago4m: "4 minutes ago", ago2h: "2 hours ago", ago3d: "3 days ago" },
+  pl: { ago5s: "5 sekund temu", ago4m: "4 minuty temu", ago2h: "2 godziny temu", ago3d: "3 dni temu" },
+  de: { ago5s: "vor 5 Sekunden", ago4m: "vor 4 Minuten", ago2h: "vor 2 Stunden", ago3d: "vor 3 Tagen" },
+};
+
+function relAgo(d: Device, l: (typeof L)[Lang]): string {
+  if (d.status === "active") return l.ago5s;
+  if (d.status === "idle") return l.ago4m;
+  if (d.status === "maintenance") return l.ago2h;
+  return l.ago3d;
+}
+
+function satsOf(d: Device): number {
+  return 8 + (d.imei.charCodeAt(d.imei.length - 1) % 7);
+}
+
 function MapPage() {
+  const { t, i18n } = useTranslation("admin");
+  // the dock is a static mock; the picker is real enough to open, which is what a demo needs
+  const [demoDay, setDemoDay] = React.useState(0);
+  const lang = (i18n.resolvedLanguage ?? "lt").slice(0, 2) as Lang;
+  const l = L[LANGUAGES.includes(lang) ? lang : "lt"];
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<string>("");
   const [selected, setSelected] = React.useState<string | null>(ALL[0]?.id ?? null);
+  const [tab, setTab] = React.useState<"overview" | "params" | "events" | "commands">("overview");
 
   const filtered = ALL.filter(
     (d) =>
       (!q || `${d.name} ${d.plate} ${d.driver}`.toLowerCase().includes(q.toLowerCase())) &&
       (!status || d.status === status),
   );
-  const active = filtered.find((d) => d.id === selected) ?? filtered[0];
+  const active = filtered.find((d) => d.id === selected) ?? null;
+
+  const vehicles: DemoVehicle[] = filtered.map((d) => {
+    const p = PLACEMENTS.get(d.id)!;
+    const on = d.status === "active" || d.status === "idle";
+    return {
+      id: d.id,
+      at: p.at,
+      headingDeg: p.headingDeg,
+      color: on ? "#7C7DF5" : d.status === "offline" ? "#8A93A6" : "#B9C0D0",
+      selected: d.id === active?.id,
+    };
+  });
+
+  // the selected vehicle's 24h track — the orange history line, ending at its position
+  const trackRoutes: DemoRoute[] = React.useMemo(() => {
+    if (!active) return [];
+    const p = PLACEMENTS.get(active.id)!;
+    const start = (((p.idx - (TRACK_PTS - 1)) % p.loop.length) + p.loop.length) % p.loop.length;
+    return [{ id: `track:${active.id}`, coords: routeSlice(p.loop, start, TRACK_PTS), color: "#F2A93B", widthPx: 2.5 }];
+  }, [active]);
+
+  const online = ALL.filter((d) => d.status === "active" || d.status === "idle").length;
+  const offline = ALL.filter((d) => d.status === "offline").length;
+  const unreachable = ALL.filter((d) => d.status === "maintenance").length;
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
-      <div className="px-4 pt-4 pb-3 md:px-8">
-        <PageHeader
-          title="Žemėlapis"
-          description={`${ALL.length} įrenginių · ${ALL.filter((d) => d.status === "active").length} aktyvūs realiu laiku`}
-          className="mb-0"
-        />
+      {/* header strip — live status chips, exactly the real page's furniture */}
+      <div className="admin-hairline-b flex flex-wrap items-center gap-2 px-4 py-2.5 md:px-6">
+        <PanelLeft className="h-4 w-4" style={{ color: "var(--admin-ink-soft)" }} />
+        <span className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("map.title")}</span>
+        <Badge tone="success">{t("map.live")}</Badge>
+        <StatusChip color="var(--admin-success)" label={`${online} ${t("deviceList.filter.online")}`} />
+        <StatusChip color="var(--admin-warning)" label={`${offline} ${t("deviceList.filter.stale")}`} />
+        <StatusChip color="var(--admin-ink-soft)" label={`${unreachable} ${t("deviceList.filter.offline")}`} />
+        <StatusChip color="var(--admin-ink-soft)" label={`0 ${t("deviceList.filter.silent")}`} />
+        <div className="flex-1" />
+        <AdminButton variant="secondary" size="sm"><Pause className="h-3.5 w-3.5" /> {t("map.pause")}</AdminButton>
+        <AdminButton variant="secondary" size="sm"><Layers className="h-3.5 w-3.5" /> {t("map.layers.title")}</AdminButton>
+        <AdminButton variant="secondary" size="sm" aria-label={t("map.fullscreen")}><Maximize2 className="h-3.5 w-3.5" /></AdminButton>
       </div>
-      <div className="flex flex-1 min-h-0 flex-col md:flex-row md:gap-4 md:px-8 md:pb-8">
-        {/* Left list */}
-        <aside className="admin-card flex flex-col md:w-96 md:shrink-0 mx-4 md:mx-0 mb-3 md:mb-0">
-          <div className="admin-hairline-b space-y-2 p-3">
-            <AdminInput
-              placeholder="Ieškoti įrenginio, vairuotojo…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <Combobox
-              value={status}
-              onChange={setStatus}
-              /* The demo shows the PRODUCT, so it must use the product's words. These were
-                 "Aktyvūs / Sustoję / Neprisijungę", a vocabulary the app itself no longer uses —
-                 a prospect comparing the demo with a trial would be reading two different systems. */
-              options={[
-                { value: "", label: "Visos būsenos" },
-                { value: "active", label: "Prisijungę" },
-                { value: "idle", label: "Atsijungę" },
-                { value: "offline", label: "Nepasiekiami" },
-                { value: "maintenance", label: "Priežiūroje" },
-              ]}
-              placeholder="Būsena"
-            />
+
+      <div className="flex min-h-0 flex-1">
+        {/* fleet list */}
+        <aside className="admin-hairline-r flex w-[21rem] shrink-0 flex-col" style={{ background: "var(--admin-surface)" }}>
+          <div className="space-y-2 p-3">
+            <AdminInput placeholder={t("deviceList.search")} value={q} onChange={(e) => setQ(e.target.value)} />
+            <div className="flex items-center gap-3 text-xs" style={{ color: "var(--admin-ink-soft)" }}>
+              <span>{t("deviceList.count", { shown: filtered.length, total: ALL.length })}</span>
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" className="h-3.5 w-3.5" /> {t("info.follow")}
+              </label>
+              <div className="ml-auto w-36">
+                <Combobox
+                  value={status}
+                  onChange={setStatus}
+                  options={[
+                    { value: "", label: t("deviceList.sort.status") },
+                    { value: "active", label: t("deviceList.filter.online") },
+                    { value: "offline", label: t("deviceList.filter.stale") },
+                    { value: "maintenance", label: t("deviceList.filter.offline") },
+                  ]}
+                  placeholder={t("deviceList.sort.status")}
+                />
+              </div>
+            </div>
           </div>
-          <ul className="flex-1 overflow-y-auto">
+          <ul className="min-h-0 flex-1 overflow-y-auto">
             {filtered.map((d) => {
               const isSel = d.id === active?.id;
+              const on = d.status === "active" || d.status === "idle";
               return (
                 <li key={d.id}>
                   <button
                     onClick={() => setSelected(d.id)}
-                    className="w-full px-3 py-2.5 text-left transition-colors admin-hairline-b"
-                    style={{ background: isSel ? "var(--admin-brand-soft)" : "transparent" }}
+                    className="w-full cursor-pointer px-3 py-2.5 text-left transition-colors admin-hairline-b"
+                    style={{
+                      background: isSel ? "var(--admin-brand-soft)" : "transparent",
+                      boxShadow: isSel ? "inset 2px 0 0 var(--admin-brand)" : undefined,
+                    }}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium" style={{ color: isSel ? "var(--admin-brand)" : "var(--admin-ink)" }}>
-                          {d.name}
-                        </div>
-                        <div className="truncate text-xs" style={{ color: "var(--admin-ink-soft)" }}>
-                          {d.plate} · {d.driver}
-                        </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <StatusDot status={d.status} />
+                        <span className="truncate text-sm font-medium" style={{ color: "var(--admin-ink)" }}>
+                          {d.name} ({d.plate})
+                        </span>
                       </div>
-                      <StatusDot status={d.status} />
+                      <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "var(--admin-ink-soft)" }} />
                     </div>
-                    <div className="mt-1 flex items-center gap-3 text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>
-                      <span>{d.speed} km/h</span>
-                      <span>·</span>
-                      <span>{d.location}</span>
+                    <div className="mt-0.5 pl-4 text-xs" style={{ color: "var(--admin-ink-soft)" }}>{d.plate}</div>
+                    <div className="mt-1 flex items-center gap-3 pl-4 text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>
+                      <span className="inline-flex items-center gap-1"><Activity className="h-3 w-3" /> {on ? d.speed : 0} {t("units.kmh")}</span>
+                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {relAgo(d, l)}</span>
+                      <span className="inline-flex items-center gap-1"><Satellite className="h-3 w-3" /> {satsOf(d)}</span>
+                      <Power className="h-3 w-3" style={{ color: on ? "var(--admin-success)" : "var(--admin-ink-soft)" }} />
                     </div>
                   </button>
                 </li>
@@ -89,180 +200,215 @@ function MapPage() {
           </ul>
         </aside>
 
-        {/* Map canvas */}
-        <div className="admin-card relative flex-1 overflow-hidden mx-4 md:mx-0 min-h-[400px]">
-          <StylizedMap devices={filtered} activeId={active?.id} onSelect={setSelected} />
-          {active && (
-            <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-96">
-              <div className="admin-card p-4" style={{ boxShadow: "var(--admin-shadow-lg)" }}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-semibold" style={{ color: "var(--admin-ink)" }}>{active.name}</div>
-                    <div className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>{active.plate} · IMEI {active.imei}</div>
-                  </div>
-                  <Badge tone={active.status === "active" ? "success" : active.status === "offline" ? "danger" : "warning"}>
-                    {/* was `{active.status}` — the raw enum, so the demo's headline card read
-                        "active" in a Lithuanian interface */}
-                    {STATUS_LABEL[active.status]}
-                  </Badge>
+        {/* map */}
+        <div className="relative min-w-0 flex-1 overflow-hidden">
+          <DemoMap
+            className="h-full w-full"
+            zones={ZONES}
+            routes={trackRoutes}
+            vehicles={vehicles}
+            fit={FIT_ALL}
+            fitPadding={80}
+            onVehicleClick={setSelected}
+          />
+          <div className="absolute right-3 top-3 flex flex-col gap-1.5">
+            {[ZoomIn, ZoomOut, Crosshair, MapPin].map((Icon, i) => (
+              <button
+                key={i}
+                className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border backdrop-blur"
+                style={{ borderColor: "var(--admin-hairline)", background: "color-mix(in oklab, var(--admin-surface) 90%, transparent)", color: "var(--admin-ink)" }}
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            ))}
+          </div>
+          <div
+            className="absolute bottom-3 left-3 flex items-center gap-3 rounded-md border px-3 py-1.5 text-[11px] backdrop-blur"
+            style={{ borderColor: "var(--admin-hairline)", background: "color-mix(in oklab, var(--admin-surface) 88%, transparent)", color: "var(--admin-ink-soft)" }}
+          >
+            <span className="inline-flex items-center gap-1.5"><Dot c="#7C7DF5" /> {t("status.online")}</span>
+            <span className="inline-flex items-center gap-1.5"><Dot c="#8A93A6" /> {t("status.stale")}</span>
+            <span className="inline-flex items-center gap-1.5"><Dot c="#B9C0D0" /> {t("status.offline")}</span>
+          </div>
+        </div>
+
+        {/* inspector rail */}
+        {active && (
+          <aside className="admin-hairline-l hidden w-[23rem] shrink-0 flex-col overflow-y-auto xl:flex" style={{ background: "var(--admin-surface)" }}>
+            <div className="p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <StatusDot status={active.status} />
+                  <span className="truncate font-semibold" style={{ color: "var(--admin-ink)" }}>{active.name} ({active.plate})</span>
                 </div>
-                <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-                  <Metric label="Greitis" value={`${active.speed}`} unit="km/h" />
-                  <Metric label="Kuras" value={`${active.fuel}`} unit="%" />
-                  <Metric label="Baterija" value={`${active.battery}`} unit="%" />
-                  <Metric label="Rida" value={`${Math.round(active.odometer / 1000)}`} unit="k km" />
+                <Badge tone={active.status === "offline" ? "neutral" : "success"}>{t(STATUS_KEY[active.status])}</Badge>
+              </div>
+              <div className="mono mt-1 text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>
+                {active.plate} · IMEI {active.imei}
+              </div>
+
+              <div className="mt-3 grid grid-cols-4 gap-1.5">
+                <MetricTile icon={Activity} value={`${active.status === "active" ? active.speed : 0} km…`} label={t("info.speed").toUpperCase()} />
+                <MetricTile icon={Satellite} value={String(satsOf(active))} label={t("info.satellites").toUpperCase()} />
+                <MetricTile icon={Signal} value={String(3 + (satsOf(active) % 3))} label={t("devices.health.gsm").toUpperCase()} />
+                <MetricTile icon={Zap} value="12.7 V" label={t("devices.health.extV").toUpperCase()} />
+              </div>
+
+              <div className="admin-hairline-b mt-3 flex gap-4 text-sm">
+                {([["overview", t("map.inspector.overview"), Activity], ["params", t("map.inspector.params"), Radio], ["events", t("map.inspector.events"), Signal], ["commands", t("map.inspector.commands"), ChevronRight]] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setTab(id)}
+                    className="cursor-pointer pb-2"
+                    style={{
+                      color: tab === id ? "var(--admin-brand)" : "var(--admin-ink-soft)",
+                      boxShadow: tab === id ? "inset 0 -2px 0 var(--admin-brand)" : undefined,
+                      fontWeight: tab === id ? 600 : 400,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="admin-card mt-3 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--admin-ink)" }}>{t("map.inspector.position")}</div>
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <KV k={t("map.inspector.coords").toUpperCase()} v={`${active.lat.toFixed(5)}, ${active.lng.toFixed(5)}`} mono />
+                  <KV k={t("map.inspector.lastPacket").toUpperCase()} v="2026-09-01 13:51" mono />
+                  <KV k={t("map.inspector.heading").toUpperCase()} v="295°" />
+                  <KV k={t("info.ignition").toUpperCase()} v={active.status === "active" ? t("info.on") : t("info.off")} />
+                </div>
+                <div className="mt-2 text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{relAgo(active, l)}</div>
+              </div>
+
+              <div className="admin-card mt-3 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--admin-ink)" }}>
+                  <Radio className="mr-1 inline h-3.5 w-3.5" /> {t("map.inspector.telemetry")}
+                </div>
+                <TelemetryBar label={t("devices.health.gsm")} value={`${3 + (satsOf(active) % 3)}`} pct={((3 + (satsOf(active) % 3)) / 5) * 100} />
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span style={{ color: "var(--admin-ink-soft)" }}>{t("devices.health.extV")}</span>
+                  <span className="mono font-medium" style={{ color: "var(--admin-ink)" }}>12.7 V</span>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between text-xs">
+                  <span style={{ color: "var(--admin-ink-soft)" }}>{t("fleet.fuel")}</span>
+                  <span className="mono font-medium" style={{ color: "var(--admin-ink)" }}>{active.fuel}%</span>
                 </div>
               </div>
+
+              <div className="admin-card mt-3 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--admin-ink)" }}>
+                  <RouteIcon className="mr-1 inline h-3.5 w-3.5" /> {t("map.inspector.recentTrips")}
+                </div>
+                <ul className="mt-2 space-y-1.5 text-xs">
+                  {[["2026-09-01 12:50", "8.4 km"], ["2026-09-01 08:02", "1.7 km"], ["2026-08-31 20:50", "1.6 km"], ["2026-08-31 08:00", "1.7 km"]].map(([ts, km]) => (
+                    <li key={ts} className="flex items-center justify-between">
+                      <span className="mono" style={{ color: "var(--admin-ink-soft)" }}>{ts}</span>
+                      <span className="mono font-medium" style={{ color: "var(--admin-ink)" }}>{km}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <AdminButton variant="secondary" size="sm"><LocateFixed className="h-3.5 w-3.5" /> {t("info.follow")}</AdminButton>
+                <AdminButton variant="secondary" size="sm"><RouteIcon className="h-3.5 w-3.5" /> {t("info.trail")}</AdminButton>
+              </div>
             </div>
-          )}
+          </aside>
+        )}
+      </div>
+
+      {/* playback timeline — the real page's bottom dock */}
+      <div className="admin-hairline-t flex items-center gap-3 px-4 py-2 md:px-6" style={{ background: "var(--admin-surface)" }}>
+        <AdminButton variant="secondary" size="sm" aria-label={t("playback.play")}><Play className="h-3.5 w-3.5" /></AdminButton>
+        <span className="mono rounded border px-1.5 py-0.5 text-[11px]" style={{ borderColor: "var(--admin-hairline)", color: "var(--admin-ink-soft)" }}>60×</span>
+        <div className="relative h-8 min-w-0 flex-1">
+          <div className="absolute inset-x-0 top-1/2 h-px" style={{ background: "var(--admin-hairline)" }} />
+          {["15:00", "18:00", "21:00", "00:00", "03:00", "06:00", "09:00", "12:00"].map((h, i) => (
+            <span key={h} className="mono absolute top-1/2 mt-1.5 -translate-x-1/2 text-[10px]" style={{ left: `${6 + i * 12.5}%`, color: "var(--admin-ink-soft)" }}>{h}</span>
+          ))}
+          {[34, 58, 91].map((x) => (
+            <span key={x} className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2" style={{ left: `${x}%`, background: "var(--admin-danger)" }} />
+          ))}
+          <span className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded" style={{ left: "96%", background: "var(--admin-brand)" }} />
         </div>
-      </div>
-
-      <DemoTimeline />
-    </div>
-  );
-}
-
-/**
- * The history bar, as the product has it.
- *
- * The demo showed a live map and stopped there, so the one thing a prospect asks about a tracking
- * product — "can I go back and see where it was on Tuesday" — had no answer on the page that exists
- * to answer questions. It mirrors the real bar's controls (day picker, pan, zoom, replay) over
- * generated data; it does not pretend to scrub a real track.
- */
-function DemoTimeline() {
-  const [dayBack, setDayBack] = React.useState(0);
-  const days = React.useMemo(
-    () =>
-      Array.from({ length: 8 }, (_, back) => ({
-        value: String(back),
-        label:
-          back === 0
-            ? "Šiandien"
-            : new Date(Date.now() - back * 86_400_000).toLocaleDateString("lt-LT", { year: "numeric", month: "short", day: "numeric" }),
-      })),
-    [],
-  );
-  // a stable pseudo-random shape per day, so switching days visibly changes the graph rather than
-  // redrawing the same one — the point of the control is that the day matters
-  const bars = React.useMemo(() => {
-    let seed = dayBack * 7919 + 13;
-    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
-    return Array.from({ length: 96 }, (_, i) => {
-      const hour = i / 4;
-      const driving = (hour > 7 && hour < 11) || (hour > 13 && hour < 18.5);
-      return driving ? 0.25 + rnd() * 0.75 : rnd() * 0.12;
-    });
-  }, [dayBack]);
-
-  return (
-    <div className="admin-hairline-t px-4 py-3 md:px-8" style={{ background: "var(--admin-surface)" }}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>
-          {dayBack === 0 ? "Paskutinės 24 val." : days[dayBack]?.label}
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          <Combobox value={String(dayBack)} onChange={(v) => setDayBack(Number(v))} options={days} width={168} aria-label="Diena" />
-        </div>
-      </div>
-      <div className="flex h-14 items-end gap-[2px]">
-        {bars.map((h, i) => (
-          <span
-            key={i}
-            className="flex-1 rounded-sm"
-            style={{ height: `${Math.max(4, h * 100)}%`, background: h > 0.2 ? "var(--admin-brand)" : "var(--admin-ink-soft)", opacity: h > 0.2 ? 0.85 : 0.25 }}
-          />
+        {/* Day picker — the demo's answer to the first question anyone asks of a tracking product:
+            "can I go back and see where it was on Tuesday". The dock mirrored the real page's zoom
+            and quick-jumps but not this, so the demo showed a product that could only look at now. */}
+        <Combobox
+          value={String(demoDay)}
+          onChange={(v) => setDemoDay(Number(v))}
+          width={150}
+          aria-label={t("map.timeline.day.label")}
+          options={Array.from({ length: 8 }, (_, back) => ({
+            value: String(back),
+            label: back === 0 ? t("map.timeline.day.today") : new Date(Date.now() - back * 86_400_000).toLocaleDateString(i18n.language, { month: "short", day: "numeric" }),
+          }))}
+        />
+        <span className="mono text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{t("map.timeline.span", { hours: 24 })}</span>
+        {[24, 12, 6, 1].map((h) => (
+          <button key={h} className="mono cursor-pointer text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>{t("map.timeline.quick.hours", { hours: h })}</button>
         ))}
-      </div>
-      <div className="mt-1 flex justify-between text-[10px] tabular-nums" style={{ color: "var(--admin-ink-soft)" }}>
-        {["00:00", "06:00", "12:00", "18:00", "24:00"].map((x) => (
-          <span key={x}>{x}</span>
-        ))}
+        <span className="mono rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--admin-brand)", color: "#fff" }}>{t("map.timeline.now")}</span>
       </div>
     </div>
   );
 }
 
-/** One vocabulary, shared with the product (apps/web i18n `deviceList.filter.*`). */
-const STATUS_LABEL: Record<Device["status"], string> = {
-  active: "Prisijungęs",
-  idle: "Atsijungęs",
-  offline: "Nepasiekiamas",
-  maintenance: "Priežiūroje",
-}
-
-function StatusDot({ status }: { status: Device["status"] }) {
-  const color =
-    status === "active" ? "var(--admin-success)" :
-    status === "offline" ? "var(--admin-danger)" :
-    status === "maintenance" ? "var(--admin-warning)" : "var(--admin-ink-soft)";
+function StatusChip({ color, label }: { color: string; label: string }) {
   return (
-    <span className="mt-1 grid h-2.5 w-2.5 place-items-center">
-      <span className="absolute h-2.5 w-2.5 rounded-full opacity-30" style={{ background: color, animation: status === "active" ? "pulseDot 2.2s ease-in-out infinite" : undefined }} />
-      <span className="relative h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs"
+      style={{ borderColor: "var(--admin-hairline)", color: "var(--admin-ink-soft)" }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      {label}
     </span>
   );
 }
 
-function Metric({ label, value, unit }: { label: string; value: string; unit: string }) {
+function Dot({ c }: { c: string }) {
+  return <span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />;
+}
+
+function StatusDot({ status }: { status: Device["status"] }) {
+  const color =
+    status === "active" || status === "idle" ? "var(--admin-success)" :
+    status === "offline" ? "var(--admin-warning)" : "var(--admin-ink-soft)";
+  return <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />;
+}
+
+function MetricTile({ icon: Icon, value, label }: { icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; value: string; label: string }) {
   return (
-    <div className="rounded-md py-1.5" style={{ background: "var(--admin-surface-sunken)" }}>
-      <div className="text-[10px] uppercase tracking-wider" style={{ color: "var(--admin-ink-soft)" }}>{label}</div>
-      <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{value}<span className="ml-0.5 text-[10px] font-normal opacity-60">{unit}</span></div>
+    <div className="rounded-md border px-1.5 py-2 text-center" style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface-sunken)" }}>
+      <Icon className="mx-auto h-3.5 w-3.5" style={{ color: "var(--admin-ink-soft)" }} />
+      <div className="mt-1 truncate text-sm font-bold" style={{ color: "var(--admin-ink)" }}>{value}</div>
+      <div className="mono mt-0.5 truncate text-[8.5px] tracking-wider" style={{ color: "var(--admin-ink-soft)" }}>{label}</div>
     </div>
   );
 }
 
-function StylizedMap({ devices, activeId, onSelect }: { devices: Device[]; activeId?: string; onSelect: (id: string) => void }) {
-  // Simple procedural map background (grid + fake roads) with device pins.
-  // Positions derived from lat/lng normalized into the SVG viewbox.
-  const W = 1000, H = 700;
-  const minLng = 21.5, maxLng = 27.0, minLat = 53.9, maxLat = 55.6;
-  const proj = (lat: number, lng: number) => ({
-    x: ((lng - minLng) / (maxLng - minLng)) * W,
-    y: H - ((lat - minLat) / (maxLat - minLat)) * H,
-  });
+function KV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice" className="h-full w-full" style={{ background: "var(--admin-surface-sunken)" }}>
-      <defs>
-        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--admin-hairline)" strokeWidth="0.5" />
-        </pattern>
-      </defs>
-      <rect width={W} height={H} fill="url(#grid)" />
-      {/* fake highways */}
-      <path d="M 0 380 C 200 340 340 420 500 360 S 800 340 1000 380" fill="none" stroke="var(--admin-hairline)" strokeWidth="6" />
-      <path d="M 0 380 C 200 340 340 420 500 360 S 800 340 1000 380" fill="none" stroke="var(--admin-brand)" strokeWidth="1.2" strokeDasharray="6 6" opacity="0.35" />
-      <path d="M 400 0 C 380 200 460 340 420 500 S 460 660 480 700" fill="none" stroke="var(--admin-hairline)" strokeWidth="5" />
-      <path d="M 400 0 C 380 200 460 340 420 500 S 460 660 480 700" fill="none" stroke="var(--admin-brand)" strokeWidth="1" strokeDasharray="4 6" opacity="0.3" />
-      {/* city labels */}
-      {[
-        { name: "Vilnius", lat: 54.687, lng: 25.283 },
-        { name: "Kaunas", lat: 54.898, lng: 23.9 },
-        { name: "Klaipėda", lat: 55.71, lng: 21.13 },
-        { name: "Šiauliai", lat: 55.93, lng: 23.31 },
-        { name: "Panevėžys", lat: 55.73, lng: 24.36 },
-      ].map((c) => {
-        const p = proj(c.lat, c.lng);
-        return (
-          <g key={c.name}>
-            <circle cx={p.x} cy={p.y} r={2} fill="var(--admin-ink-soft)" />
-            <text x={p.x + 8} y={p.y + 3} fontSize="11" fill="var(--admin-ink-soft)" fontFamily="Inter">{c.name}</text>
-          </g>
-        );
-      })}
-      {devices.map((d) => {
-        const p = proj(d.lat, d.lng);
-        const color = d.status === "active" ? "#059669" : d.status === "offline" ? "#E11D48" : d.status === "maintenance" ? "#B45309" : "#6B7280";
-        const isActive = d.id === activeId;
-        return (
-          <g key={d.id} style={{ cursor: "pointer" }} onClick={() => onSelect(d.id)}>
-            {isActive && <circle cx={p.x} cy={p.y} r={14} fill={color} opacity={0.18} />}
-            <circle cx={p.x} cy={p.y} r={isActive ? 7 : 5} fill={color} stroke="#fff" strokeWidth={2} />
-          </g>
-        );
-      })}
-    </svg>
+    <div>
+      <div className="mono text-[9.5px] tracking-wider" style={{ color: "var(--admin-ink-soft)" }}>{k}</div>
+      <div className={`${mono ? "mono " : ""}mt-0.5 text-xs font-medium`} style={{ color: "var(--admin-ink)" }}>{v}</div>
+    </div>
+  );
+}
+
+function TelemetryBar({ label, value, pct }: { label: string; value: string; pct: number }) {
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between text-xs">
+        <span style={{ color: "var(--admin-ink-soft)" }}>{label}</span>
+        <span className="mono font-medium" style={{ color: "var(--admin-ink)" }}>{value}</span>
+      </div>
+      <div className="mt-1 h-1 overflow-hidden rounded-full" style={{ background: "var(--admin-surface-sunken)" }}>
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--admin-brand)" }} />
+      </div>
+    </div>
   );
 }

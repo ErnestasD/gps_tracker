@@ -6,6 +6,12 @@ import { en } from "./locales/en";
 import { pl } from "./locales/pl";
 import { de } from "./locales/de";
 import { lt } from "./locales/lt";
+// the REAL dashboard's translations (copied from apps/web/src/i18n) — the demo admin speaks
+// the product's own strings in every language the product supports
+import adminEn from "./admin-locales/en.json";
+import adminPl from "./admin-locales/pl.json";
+import adminDe from "./admin-locales/de.json";
+import adminLt from "./admin-locales/lt.json";
 
 /**
  * i18n for the marketing surfaces. EN is the source of truth (`locales/en.ts`);
@@ -37,10 +43,10 @@ function detectLang(): Lang {
 if (!i18n.isInitialized) {
   void i18n.use(initReactI18next).init({
     resources: {
-      en: { translation: en },
-      pl: { translation: pl },
-      de: { translation: de },
-      lt: { translation: lt },
+      en: { translation: en, admin: adminEn },
+      pl: { translation: pl, admin: adminPl },
+      de: { translation: de, admin: adminDe },
+      lt: { translation: lt, admin: adminLt },
     },
     // Always start in EN so SSR markup and the first client render match.
     // The stored / browser language is applied after hydration.

@@ -3,9 +3,6 @@ import { ArrowRight, Shield, Globe as GlobeIcon, Server } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { VerticalsGrid } from "@/components/site/VerticalsGrid";
-import { TabShowcase } from "@/components/site/TabShowcase";
-import { JourneyTrajectory } from "@/components/site/JourneyTrajectory";
-import { StatTile } from "@/components/site/StatTile";
 import { CodeCard } from "@/components/site/CodeCard";
 import { HeroDeck } from "@/components/site/HeroDeck";
 
@@ -14,11 +11,6 @@ const DIRECT_FROM_PRICE = 9;
 const DIRECT_FROM_DEVICES = 5;
 const TSP_FROM_PRICE = 149;
 const TSP_FROM_DEVICES = 200;
-
-/** Direct device cap (plans.ts `direct_100`) and the default telemetry retention
- * window (packages/db/sql/001_positions.sql) — both stated as facts on the page. */
-const DIRECT_MAX_VEHICLES = 100;
-const RETENTION_MONTHS = 13;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -40,21 +32,6 @@ function HomePage() {
 
       <Section id="verticals" label={t("home.verticals.label")} heading={<>{t("home.verticals.h1")}<br /><span className="text-gradient">{t("home.verticals.h2")}</span></>}>
         <VerticalsGrid />
-      </Section>
-
-      <Section id="platform" label={t("home.platform.label")} heading={<>{t("home.platform.h1")}<br /><span className="text-gradient">{t("home.platform.h2")}</span></>}>
-        <div className="grid gap-14">
-          <TabShowcase />
-          <div className="grid gap-5 md:grid-cols-3">
-            <StatTile label={t("home.platform.setupLabel")} value={90} prefix="" suffix=" min" unit={t("home.platform.setupUnit")} />
-            <StatTile label={t("home.platform.rateLabel")} value={DIRECT_MAX_VEHICLES} prefix="" suffix="" unit={t("home.platform.rateUnit")} />
-            <StatTile label={t("home.platform.uptimeLabel")} value={RETENTION_MONTHS} prefix="" suffix=" mo" unit={t("home.platform.uptimeUnit")} />
-          </div>
-        </div>
-      </Section>
-
-      <Section id="how" label={t("home.how.label")} heading={<>{t("home.how.h1")}<br /><span className="text-gradient">{t("home.how.h2")}</span></>}>
-        <JourneyTrajectory />
       </Section>
 
       <Section id="api" label={t("home.api.label")} heading={<>{t("home.api.h1")}<br /><span className="text-gradient">{t("home.api.h2")}</span></>}>
@@ -288,8 +265,14 @@ function TrustBand() {
 
 function WhiteLabelBand() {
   const { t } = useTranslation();
+  const features = [
+    { n: "01", k: t("home.wl.f1k"), v: t("home.wl.f1v") },
+    { n: "02", k: t("home.wl.f2k"), v: t("home.wl.f2v") },
+    { n: "03", k: t("home.wl.f3k"), v: t("home.wl.f3v") },
+    { n: "04", k: t("home.wl.f4k"), v: t("home.wl.f4v") },
+  ];
   return (
-    <section className="px-6 py-20 relative">
+    <section className="px-6 py-24 relative">
       <div
         aria-hidden
         className="absolute inset-0 pointer-events-none opacity-60"
@@ -298,52 +281,62 @@ function WhiteLabelBand() {
             "radial-gradient(50% 60% at 20% 50%, rgba(124,92,252,0.10), transparent 70%), radial-gradient(50% 60% at 80% 50%, rgba(37,99,235,0.08), transparent 70%)",
         }}
       />
-      <div className="relative mx-auto max-w-6xl surface-card p-8 md:p-12 grid gap-8 md:grid-cols-[1.2fr_1fr] items-center">
-        <div>
-          <div className="mono text-[11px] tracking-[0.2em] uppercase text-[color:var(--brand-purple,#7C5CFC)] flex items-center gap-2">
-            <span className="h-[1px] w-6 bg-[color:var(--brand-purple,#7C5CFC)]" />
-            {t("home.wl.label")}
+      <div className="relative mx-auto max-w-6xl glass-panel overflow-hidden">
+        {/* corner orbit accent */}
+        <svg aria-hidden viewBox="0 0 400 400" className="pointer-events-none absolute -right-24 -top-24 h-[420px] w-[420px] opacity-40">
+          <ellipse cx="200" cy="200" rx="190" ry="120" fill="none" stroke="rgba(124,92,252,0.35)" strokeWidth="1" strokeDasharray="3 6" className="animate-orbit-halo" />
+          <ellipse cx="200" cy="200" rx="130" ry="180" fill="none" stroke="rgba(76,77,207,0.3)" strokeWidth="1" strokeDasharray="2 7" className="animate-orbit-counter" />
+        </svg>
+        <div className="relative grid gap-10 lg:grid-cols-[1.15fr_1fr] items-center p-8 md:p-14">
+          <div>
+            <div className="mono text-[10px] tracking-[0.24em] uppercase text-[color:var(--brand-purple,#7C5CFC)] flex items-center gap-2.5">
+              <span className="h-[1px] w-8 bg-[color:var(--brand-purple,#7C5CFC)]" />
+              {t("home.wl.label")}
+              <span
+                className="mono text-[9px] tracking-[0.22em] px-1.5 py-0.5 rounded"
+                style={{ color: "var(--brand-cyan)", background: "rgba(76,77,207,0.1)", border: "1px solid rgba(76,77,207,0.3)" }}
+              >
+                TSP
+              </span>
+            </div>
+            <h2 className="mt-5 display text-3xl md:text-[2.6rem] font-bold text-ink leading-[1.08]">
+              {t("home.wl.h1")}{" "}
+              <span className="text-gradient">{t("home.wl.h2")}</span>
+            </h2>
+            <p className="mt-5 text-muted-foreground max-w-xl leading-relaxed">
+              <Trans
+                i18nKey="home.wl.body"
+                values={{ price: TSP_FROM_PRICE, devices: TSP_FROM_DEVICES }}
+                components={{ b: <span className="text-ink font-medium" /> }}
+              />
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link to="/tsp" className="pill-primary hover:pill-primary-hover">
+                {t("home.wl.cta1")} <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                to="/pricing"
+                hash="tsp"
+                className="pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]"
+              >
+                {t("home.wl.cta2")}
+              </Link>
+            </div>
           </div>
-          <h2 className="mt-4 display text-3xl md:text-4xl font-bold text-ink leading-[1.1]">
-            {t("home.wl.h1")}{" "}
-            <span className="text-gradient">{t("home.wl.h2")}</span>
-          </h2>
-          <p className="mt-4 text-muted-foreground max-w-xl">
-            <Trans
-              i18nKey="home.wl.body"
-              values={{ price: TSP_FROM_PRICE, devices: TSP_FROM_DEVICES }}
-              components={{ b: <span className="text-ink font-medium" /> }}
-            />
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link to="/tsp" className="pill-primary hover:pill-primary-hover">
-              {t("home.wl.cta1")} <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              to="/pricing"
-              hash="tsp"
-              className="pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]"
-            >
-              {t("home.wl.cta2")}
-            </Link>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {features.map((f) => (
+              <div
+                key={f.n}
+                className="group relative rounded border p-4 transition-colors"
+                style={{ background: "rgba(10,20,40,0.5)", borderColor: "rgba(76,77,207,0.18)" }}
+              >
+                <div className="mono text-[9px] tracking-[0.24em] text-[color:var(--brand-purple,#7C5CFC)]">— {f.n}</div>
+                <div className="mt-2 text-ink font-medium text-sm leading-snug">{f.k}</div>
+                <div className="mt-1 text-[13px] text-muted-foreground leading-snug">{f.v}</div>
+              </div>
+            ))}
           </div>
         </div>
-        <ul className="grid gap-3 text-sm">
-          {[
-            { k: t("home.wl.f1k"), v: t("home.wl.f1v") },
-            { k: t("home.wl.f2k"), v: t("home.wl.f2v") },
-            { k: t("home.wl.f3k"), v: t("home.wl.f3v") },
-            { k: t("home.wl.f4k"), v: t("home.wl.f4v") },
-          ].map((f) => (
-            <li key={f.k} className="flex gap-3 items-start">
-              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[color:var(--brand-purple,#7C5CFC)] shrink-0" />
-              <div>
-                <div className="text-ink font-medium">{f.k}</div>
-                <div className="text-muted-foreground">{f.v}</div>
-              </div>
-            </li>
-          ))}
-        </ul>
       </div>
     </section>
   );
@@ -352,31 +345,46 @@ function WhiteLabelBand() {
 function FinalCTA() {
   const { t } = useTranslation();
   return (
-    <section className="px-6 py-24">
-      <div className="mx-auto max-w-6xl surface-card p-12 md:p-20 relative overflow-hidden text-center">
+    <section className="px-6 py-28 relative overflow-hidden">
+      {/* orbital rings behind the card */}
+      <svg aria-hidden viewBox="0 0 1200 700" className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[1400px] max-w-none opacity-50">
+        <ellipse cx="600" cy="350" rx="560" ry="230" fill="none" stroke="rgba(76,77,207,0.22)" strokeWidth="1" strokeDasharray="2 8" className="animate-orbit-halo" />
+        <ellipse cx="600" cy="350" rx="420" ry="300" fill="none" stroke="rgba(124,92,252,0.18)" strokeWidth="1" strokeDasharray="3 9" className="animate-orbit-counter" />
+        <circle cx="600" cy="120" r="3" fill="#4c4dcf" />
+        <circle cx="180" cy="480" r="2.5" fill="#7C5CFC" />
+      </svg>
+      <div className="relative mx-auto max-w-6xl glass-panel px-8 py-16 md:px-20 md:py-20 text-center overflow-hidden">
         <div
-          className="absolute inset-0 opacity-40"
-          style={{ background: "radial-gradient(600px circle at 30% 20%, rgba(37,99,235,0.15), transparent 60%), radial-gradient(500px circle at 70% 80%, rgba(124,92,252,0.12), transparent 60%)" }}
+          aria-hidden
+          className="absolute inset-0 opacity-50 pointer-events-none"
+          style={{ background: "radial-gradient(600px circle at 30% 0%, rgba(67,56,202,0.18), transparent 60%), radial-gradient(500px circle at 70% 100%, rgba(124,92,252,0.14), transparent 60%)" }}
         />
         <div className="relative">
           <span className="section-label justify-center">
             <span className="h-[1px] w-6 bg-[var(--brand-blue)]" />
             {t("home.final.label")}
           </span>
-          <h2 className="display text-4xl md:text-5xl font-bold leading-[1.05] mt-4 text-ink">
+          <h2 className="display text-4xl md:text-5xl font-bold leading-[1.05] mt-5 text-ink">
             {t("home.final.h1")}<br />
             <span className="text-gradient">{t("home.final.h2")}</span>
           </h2>
-          <p className="mt-6 text-muted-foreground max-w-xl mx-auto">
+          <p className="mt-6 text-muted-foreground max-w-xl mx-auto leading-relaxed">
             {t("home.final.body")}
           </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Link to="/signup" className="pill-primary hover:pill-primary-hover">
               {t("cta.trial")} <ArrowRight className="h-4 w-4" />
             </Link>
             <Link to="/tsp" className="pill-ghost hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]">
               {t("cta.whitelabel")}
             </Link>
+          </div>
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mono text-[10px] tracking-[0.2em] uppercase text-[#7A8CAA]">
+            <span>{t("hero.trial")}</span>
+            <span className="h-1 w-1 rounded-full bg-[#7A8CAA]/50" />
+            <span>{t("hero.nocard")}</span>
+            <span className="h-1 w-1 rounded-full bg-[#7A8CAA]/50" />
+            <span>{t("hero.cancel")}</span>
           </div>
         </div>
       </div>

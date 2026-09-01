@@ -44,6 +44,15 @@ export const en = {
     b3: "Works on phone, tablet, laptop · EU-hosted",
     tspAsk: "Reselling GPS to your customers?",
     tspCta: "White-label the platform",
+    viz: {
+      title: "LIVE MAP",
+      eventLabel: "GEOFENCE",
+      eventValue: "Entry · STL depot",
+      speedValue: "87 km/h",
+      speedLabel: "SPEED",
+      fuelValue: "Fuel 68%",
+      routeLabel: "ACTIVE ROUTE",
+    },
     deck: {
       map: "Live map",
       overview: "Overview",

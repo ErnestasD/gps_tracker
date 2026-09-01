@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, Check } from "lucide-react";
@@ -170,12 +170,25 @@ function HeroConsoleDeck() {
   const { t } = useTranslation();
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [held, setHeld] = useState(false); // manual pick → hold autoplay so the choice STAYS
+  const holdRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    if (paused) return;
+    if (paused || held) return;
     const t = setInterval(() => setIdx((i) => (i + 1) % DECK_SLIDES.length), 4600);
     return () => clearInterval(t);
-  }, [paused]);
+    // idx in deps restarts the interval after a manual pick — without it the running timer
+    // could fire a moment later and yank the slide away (founder: "nepersijungia paspaudus")
+  }, [paused, held, idx]);
+
+  useEffect(() => () => clearTimeout(holdRef.current), []);
+
+  const pick = (i: number) => {
+    setIdx(i);
+    setHeld(true);
+    clearTimeout(holdRef.current);
+    holdRef.current = setTimeout(() => setHeld(false), 14_000);
+  };
 
   const current = DECK_SLIDES[idx];
 
@@ -261,9 +274,9 @@ function HeroConsoleDeck() {
                 alt={t("hero.deck.alt", { label: t(current.labelKey) })}
                 loading="eager"
                 decoding="async"
-                initial={{ opacity: 0, scale: 1.02, filter: "blur(6px)" }}
-                animate={{ opacity: 1, scale: 1,   filter: "blur(0px)" }}
-                exit={{    opacity: 0, scale: 0.99, filter: "blur(6px)" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
                 transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                 className="absolute inset-0 h-full w-full object-cover object-left-top"
                 draggable={false}
@@ -290,7 +303,7 @@ function HeroConsoleDeck() {
             return (
               <button
                 key={s.key}
-                onClick={() => setIdx(i)}
+                onClick={() => pick(i)}
                 aria-label={t("hero.deck.show", { label: t(s.labelKey) })}
                 className="rounded-full transition-all"
                 style={{

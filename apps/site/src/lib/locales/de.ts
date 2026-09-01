@@ -36,6 +36,15 @@ export const de: Translation = {
     b3: "Läuft auf Handy, Tablet und Laptop · EU-gehostet",
     tspAsk: "Sie verkaufen GPS-Ortung an Ihre Kunden?",
     tspCta: "Plattform unter Ihrer Marke",
+    viz: {
+      title: "LIVE-KARTE",
+      eventLabel: "GEOZONE",
+      eventValue: "Einfahrt · Depot STL",
+      speedValue: "87 km/h",
+      speedLabel: "TEMPO",
+      fuelValue: "Kraftstoff 68%",
+      routeLabel: "AKTIVE ROUTE",
+    },
     deck: {
       map: "Live-Karte",
       overview: "Übersicht",
