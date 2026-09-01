@@ -5,7 +5,7 @@ import type { EncodableRecord } from '@orbetra/codec'
 import { lcg } from './lcg.js'
 import { Route } from './route.js'
 
-const ROUTE_PATH = fileURLToPath(new URL('./routes/vilnius-loop.geojson', import.meta.url))
+const routePath = (name: string): string => fileURLToPath(new URL(`./routes/${name}.geojson`, import.meta.url))
 
 export interface DriveOpts {
   seed: number
@@ -27,6 +27,9 @@ export interface DriveOpts {
   /** Emit CAN/OBD engine params (RPM/coolant/load/throttle/speed/mileage) so the CAN panel populates
    *  (wiki FMB120 table: RPM 85, Coolant 32, Load 114, Throttle 41, Speed 81, Total Mileage 87). */
   can?: boolean
+  /** Which routes/<name>.geojson to drive (default vilnius-loop) — Kaunas devices get their own
+   *  road-following loop instead of teleporting into Vilnius. */
+  routeName?: string
 }
 
 /**
@@ -36,7 +39,7 @@ export interface DriveOpts {
  */
 export function driveRecords(opts: DriveOpts): EncodableRecord[] {
   const rnd = lcg(opts.seed)
-  const route = new Route(ROUTE_PATH)
+  const route = new Route(routePath(opts.routeName ?? 'vilnius-loop'))
   const stepS = opts.stepS ?? 1
   const out: EncodableRecord[] = []
   let distanceM = opts.startDistanceM ?? 0

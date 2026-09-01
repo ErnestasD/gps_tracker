@@ -16,6 +16,8 @@ export interface ScenarioOpts {
   ibutton?: string
   /** emit CAN/OBD engine params on driving records (see DriveOpts.can). */
   can?: boolean
+  /** routes/<name>.geojson to drive (see DriveOpts.routeName; liveDrive only). */
+  routeName?: string
 }
 
 export interface Scenario {

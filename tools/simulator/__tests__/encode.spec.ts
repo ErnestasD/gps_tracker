@@ -37,11 +37,12 @@ describe('simulator scenarios (E02-1)', () => {
       const rec = parsed.records[0]!
       expect(rec.tsMs).toBeGreaterThan(prevTs)
       prevTs = rec.tsMs
-      // on-route: inside the Vilnius loop bounding box
-      expect(rec.lat).toBeGreaterThan(54.67)
-      expect(rec.lat).toBeLessThan(54.7)
-      expect(rec.lon).toBeGreaterThan(25.27)
-      expect(rec.lon).toBeLessThan(25.31)
+      // on-route: inside the Vilnius loop bounding box (the loop follows real streets
+      // through Zirmunai, Antakalnis and Kirtimai since the road-realism sweep)
+      expect(rec.lat).toBeGreaterThan(54.62)
+      expect(rec.lat).toBeLessThan(54.72)
+      expect(rec.lon).toBeGreaterThan(25.23)
+      expect(rec.lon).toBeLessThan(25.33)
       expect(rec.speed).toBeGreaterThanOrEqual(30)
       expect(rec.speed).toBeLessThanOrEqual(70)
       expect(rec.io.get(239)).toBe(1n) // ignition on

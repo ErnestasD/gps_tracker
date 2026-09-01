@@ -193,7 +193,10 @@ export async function seedDemo(opts: {
         name: 'Vilnius Depot',
         kind: 'polygon',
         accountId: accountIds[0]!,
-        geometry: { type: 'Polygon', coordinates: [[[25.26, 54.67], [25.30, 54.67], [25.30, 54.70], [25.26, 54.70], [25.26, 54.67]]] },
+        // Kirtimai industrial zone (south Vilnius, dry land) — the old square sat over the
+        // Neris and half of Old Town, which read as fake on every screenshot. The city loop
+        // route passes through here, so enter/exit events still fire every lap.
+        geometry: { type: 'Polygon', coordinates: [[[25.2975, 54.6312], [25.3185, 54.6295], [25.322, 54.6382], [25.308, 54.6428], [25.296, 54.639], [25.2975, 54.6312]]] },
       })
     }
     await syncGeofence(redis, fence)
@@ -204,7 +207,10 @@ export async function seedDemo(opts: {
         name: 'Vilnius–Kaunas corridor',
         kind: 'corridor',
         accountId: accountIds[0]!,
-        line: { type: 'LineString', coordinates: [[25.28, 54.69], [24.6, 54.95], [23.9, 54.9]] },
+        // The A1 motorway centre-line (OSRM driving route over OSM Lithuania, downsampled to
+        // 60 pts) — the old 3-point line cut cross-country north of the highway, which looked
+        // obviously fake buffered on the geofences map.
+        line: { type: 'LineString', coordinates: [[25.2598, 54.7029], [25.263, 54.7018], [25.2624, 54.6987], [25.2536, 54.6995], [25.242, 54.6993], [25.2341, 54.7005], [25.222, 54.6997], [25.2125, 54.6998], [25.2074, 54.7009], [25.2078, 54.6998], [25.1953, 54.6847], [25.1956, 54.6769], [25.1931, 54.6717], [25.1785, 54.6694], [25.1719, 54.6639], [25.1601, 54.6592], [25.1508, 54.6566], [25.1432, 54.6577], [25.1094, 54.6686], [25.0868, 54.6753], [25.0714, 54.6785], [25.0538, 54.6857], [25.0431, 54.6903], [25.0267, 54.694], [24.9981, 54.7072], [24.9777, 54.7156], [24.9549, 54.7334], [24.939, 54.7453], [24.9288, 54.7491], [24.909, 54.7537], [24.8834, 54.7565], [24.8705, 54.7584], [24.8505, 54.7653], [24.8326, 54.769], [24.8062, 54.7757], [24.7919, 54.7788], [24.7172, 54.7872], [24.6576, 54.791], [24.581, 54.7958], [24.5463, 54.7979], [24.5025, 54.8035], [24.4568, 54.8113], [24.3966, 54.8265], [24.3343, 54.8442], [24.2761, 54.8591], [24.2333, 54.8717], [24.1867, 54.8847], [24.1444, 54.8977], [24.1123, 54.9086], [24.0821, 54.9211], [24.0686, 54.9261], [24.0464, 54.9277], [24.0048, 54.9305], [23.9813, 54.9334], [23.981, 54.9345], [23.9842, 54.9342], [23.9756, 54.9298], [23.97, 54.9273], [23.9654, 54.9281], [23.9596, 54.9281]] },
         bufferM: 500,
       }))
     await syncGeofence(redis, corridor)
@@ -263,6 +269,7 @@ export async function seedDemo(opts: {
           count: drive.count,
           startMs: drive.startMs,
           startDistanceM: drive.startDistanceM,
+          ...(drive.routeName !== undefined ? { routeName: drive.routeName } : {}),
           parkTailS: 240, // ignition-off tail > parkedIgnitionOffS(180) → the trip CLOSES
           hz: 0, // as fast as the socket allows — record timestamps carry the history spacing
           host: opts.ingestHost,

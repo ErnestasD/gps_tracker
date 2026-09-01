@@ -31,6 +31,8 @@ export interface DemoDrive {
   count: number
   seed: number
   startDistanceM: number
+  /** routes/<name>.geojson the drive follows — Kaunas devices loop Kaunas, not Vilnius. */
+  routeName?: string
   /** iButton hex reported on this drive (present ⇒ trips auto-assign to a driver). */
   ibutton?: string
   /** emit CAN/OBD params on this drive. */
@@ -80,6 +82,7 @@ export function planDemoFleet(nowMs: number): { devices: DemoDeviceSpec[]; drive
           count: DRIVE_RECORDS,
           seed: i * 10 + j + day, // distinct speeds per drive
           startDistanceM: i * 400, // distinct route positions per device
+          ...(d.account === 1 ? { routeName: 'kaunas-loop' as const } : {}),
           ...(ibutton !== undefined ? { ibutton } : {}),
           ...(d.can === true ? { can: true } : {}),
         })

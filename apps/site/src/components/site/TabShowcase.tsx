@@ -30,7 +30,7 @@ const TABS: Tab[] = [
   { id: "trips", label: "Trips & playback", path: "app/trips", icon: Route, shot: shotTrips, alt: "Trip list with distances and speeds, selected trip drawn on the map" },
   { id: "geo", label: "Geofences & alerts", path: "app/geofences", icon: Radar, shot: shotGeofences, alt: "Geofence editor with a polygon zone drawn over the city" },
   { id: "reports", label: "Reports", path: "app/reports", icon: FileBarChart2, shot: shotReports, alt: "Mileage report by vehicle and day, with CSV and PDF export" },
-  { id: "commands", label: "Commands", path: "app/devices", icon: Terminal, shot: shotCommands, alt: "Device command panel with one-click presets and command history" },
+  { id: "commands", label: "Commands", path: "app/map", icon: Terminal, shot: shotCommands, alt: "Device command panel with one-click presets and command history" },
 ];
 
 export function TabShowcase() {

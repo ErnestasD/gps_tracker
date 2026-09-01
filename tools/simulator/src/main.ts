@@ -56,6 +56,8 @@ async function main(): Promise<void> {
     seed: numArg('seed', '1'),
     count: numArg('count', '60'),
     startMs: numArg('start-ms', String(Date.now())),
+    routeName: arg('route', 'vilnius-loop'),
+    startDistanceM: numArg('start-distance', '0'),
   }
   const devices = numArg('devices', '1')
   if (!Number.isInteger(devices) || devices < 1) {

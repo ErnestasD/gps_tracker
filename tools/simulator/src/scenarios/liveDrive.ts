@@ -22,6 +22,7 @@ export const liveDrive: Scenario = {
       parkTailS: opts.parkTailS,
       ibutton: opts.ibutton,
       can: opts.can,
+      routeName: opts.routeName,
     })) {
       yield encodeAvlPacket(8, [rec])
     }
