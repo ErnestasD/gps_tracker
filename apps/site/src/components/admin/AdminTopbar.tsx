@@ -32,7 +32,9 @@ const CRUMBS: Record<string, string> = {
 
 export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const { theme, toggle } = useAdminTheme();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const rawPathname = useRouterState({ select: (s) => s.location.pathname });
+  // "/app/" and "/app" are the same page — normalise so the crumb lookup never falls through
+  const pathname = rawPathname !== "/app" && rawPathname.endsWith("/") ? rawPathname.slice(0, -1) : rawPathname;
   const title = CRUMBS[pathname] ?? "Administravimas";
   const [paletteOpen, setPaletteOpen] = React.useState(false);
 
