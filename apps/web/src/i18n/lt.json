@@ -962,7 +962,9 @@
       "showOnMap": "Rodyti žemėlapyje",
       "noLocation": "Pozicija neužfiksuota",
       "title": "Įvykio detalės",
-      "direction": "Kryptis"
+      "direction": "Kryptis",
+      "duration": "Trukmė",
+      "peak": "Didžiausias"
     }
   },
   "reports": {

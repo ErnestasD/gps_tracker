@@ -657,16 +657,23 @@ export function Timeline({
             </span>
           </div>
 
-          {legend.length > 0 && (
-            <div className="mt-0.5 hidden flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted md:flex" data-testid="timeline-legend">
-              {legend.map((k) => (
-                <span key={k} className="inline-flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: KIND_COLOR[k] ?? FALLBACK_PIN }} aria-hidden />
-                  {t(`events.k.${k}`)}
-                </span>
-              ))}
-            </div>
-          )}
+          {/*
+            * The legend's ROW IS ALWAYS THERE, even with nothing in it.
+            *
+            * It lists the event kinds present in the CURRENT window, so panning across a stretch
+            * where events start or stop made it appear and vanish — and with it, the whole bar's
+            * height. The map sits directly above and is sized by what is left, so every such flip
+            * resized the map: the founder's "scrollinant vaizdas dreba". The content still comes
+            * and goes; the space it occupies must not, or panning is a fight with the layout.
+            */}
+          <div className="mt-0.5 hidden h-3.5 flex-wrap items-center gap-x-3 gap-y-0.5 overflow-hidden text-[10px] text-muted md:flex" data-testid="timeline-legend">
+            {legend.map((k) => (
+              <span key={k} className="inline-flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: KIND_COLOR[k] ?? FALLBACK_PIN }} aria-hidden />
+                {t(`events.k.${k}`)}
+              </span>
+            ))}
+          </div>
         </div>
 
         {/* DAY PICKER + PAN. Zoom alone could only ever narrow onto the present, so "what happened

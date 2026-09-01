@@ -228,6 +228,9 @@ export interface EventView {
   ruleId: string | null
   kind: string
   at: string // ISO
+  /** The last moment the same condition was observed; null ⇒ an instant, not an interval. An
+   *  overspeed that lasted 22 minutes is ONE event, not five spaced by the cooldown. */
+  endedAt: string | null
   lat: number | null
   lon: number | null
   payload: Record<string, unknown>

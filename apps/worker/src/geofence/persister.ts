@@ -2,7 +2,7 @@ import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 
 import type { GeofenceTransition } from './engine.js'
-import { writeGeofenceEvents, type GeofenceEventRow } from './writer.js'
+import { closeGeofenceStates, writeGeofenceEvents, type GeofenceEventRow } from './writer.js'
 
 /**
  * Persists geofence transitions as `events` rows (E05-2). Resolves each device's
@@ -93,6 +93,16 @@ export class GeofenceEventPersister {
 
     try {
       await writeGeofenceEvents(this.pool, rows)
+      /**
+       * Then close what these transitions ENDED — best effort, and deliberately after the insert.
+       *
+       * A failure here costs a duration on one earlier row. A failure that propagated would cost
+       * the crossing itself, which is the thing alerts and the audit trail depend on. "Doubled
+       * beats missed" applies to the event; a missing duration is a cosmetic loss beside it.
+       */
+      await closeGeofenceStates(this.pool, rows).catch((err: unknown) => {
+        console.error('geofence state close failed', err)
+      })
     } catch (err) {
       // insert failed AFTER the claim: leaving the keys set would suppress the ACK-replay/retry
       // re-emission and the crossing would be lost. Release the just-claimed keys so it re-fires.

@@ -13,7 +13,7 @@ const ev = (kind: string, payload: Record<string, unknown>): EventView => ({
   lat: null,
   lon: null,
   payload,
-  acknowledgedAt: null,
+  endedAt: null, acknowledgedAt: null,
   createdAt: '2026-07-09T00:00:00.000Z',
 })
 
@@ -198,7 +198,7 @@ describe('eventDetail', () => {
 
 describe('eventFacts — the details panel, in parts', () => {
   const row = (kind: string, payload: Record<string, unknown>): EventRow =>
-    ({ id: '1', deviceId: 'd1', kind, at: '2026-09-01T14:20:00Z', lat: 54.5, lon: 25.2, payload }) as unknown as EventRow
+    ({ id: '1', deviceId: 'd1', kind, at: '2026-09-01T14:20:00Z', endedAt: null, lat: 54.5, lon: 25.2, payload }) as unknown as EventRow
 
   it('breaks an overspeed into speed, limit and the number nobody stored: how far over', () => {
     const f = eventFacts(row('overspeed', { rule: 'Greičio viršijimas 90', speedKmh: 105, limitKmh: 90 }))
@@ -219,6 +219,23 @@ describe('eventFacts — the details panel, in parts', () => {
         expect(f.value !== '' || f.valueKey !== undefined, `${kind}/${f.key ?? f.rawLabel ?? ''}`).toBe(true)
       }
     }
+  })
+
+  it('leads with the DURATION, and keeps the peak the cooldown used to discard', () => {
+    const e = { ...row('overspeed', { rule: 'r90', speedKmh: 95, limitKmh: 90, maxSpeedKmh: 155 }), endedAt: '2026-09-01T14:42:00Z' }
+    const f = eventFacts(e)
+    // "for how long" is the question five identical rows could never answer, so it comes first
+    expect(f[0]!.key).toBe('events.f.duration')
+    expect(f[0]!.value).toBe('22 min')
+    expect(f.find((x) => x.key === 'events.f.peak')?.value).toContain('155')
+    // …and the peak is not repeated as an unknown key
+    expect(f.some((x) => x.rawLabel === 'maxSpeedKmh')).toBe(false)
+  })
+
+  it('shows no peak when the breach never got worse than its first moment', () => {
+    const e = { ...row('overspeed', { rule: 'r', speedKmh: 100, limitKmh: 90, maxSpeedKmh: 100 }), endedAt: null }
+    // a "peak" equal to the opening speed is noise: it tells the operator nothing they cannot see
+    expect(eventFacts(e).some((x) => x.key === 'events.f.peak')).toBe(false)
   })
 
   it('lists a payload key it has never seen instead of hiding it', () => {

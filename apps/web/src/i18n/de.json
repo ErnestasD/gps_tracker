@@ -962,7 +962,9 @@
       "showOnMap": "Auf der Karte zeigen",
       "noLocation": "Keine Position erfasst",
       "title": "Ereignisdetails",
-      "direction": "Richtung"
+      "direction": "Richtung",
+      "duration": "Dauer",
+      "peak": "Spitze"
     }
   },
   "reports": {

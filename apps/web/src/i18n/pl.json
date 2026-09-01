@@ -962,7 +962,9 @@
       "showOnMap": "Pokaż na mapie",
       "noLocation": "Brak zapisanej pozycji",
       "title": "Szczegóły zdarzenia",
-      "direction": "Kierunek"
+      "direction": "Kierunek",
+      "duration": "Czas trwania",
+      "peak": "Maksimum"
     }
   },
   "reports": {

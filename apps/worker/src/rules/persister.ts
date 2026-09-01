@@ -3,7 +3,7 @@ import type { Pool } from 'pg'
 
 import type { DeviceIo } from './engine.js'
 import type { RuleEvent } from './types.js'
-import { writeRuleEvents, type RuleEventRow } from './writer.js'
+import { writeRuleEvents, type RuleEventRow, extendRuleEvents } from './writer.js'
 
 /**
  * How long a replay-dedup key lives. It only has to outlast the stream's redelivery window
@@ -157,7 +157,7 @@ export class RulePersister {
 
     // scope-resolvable events only; then replay-dedup ALL of them and cooldown-gate the rest
     const scoped = events.filter((e) => scope.has(e.deviceId.toString()))
-    const { survivors: gated, claimedKeys } = await this.gate(scoped)
+    const { survivors: gated, continuations, claimedKeys } = await this.gate(scoped)
     const rows: RuleEventRow[] = gated.map((e) => {
       const s = scope.get(e.deviceId.toString())!
       return { tenantId: s.tenantId, accountId: s.accountId, deviceId: e.deviceId, ruleId: e.ruleId, kind: e.kind, at: e.at, lat: e.lat, lon: e.lon, payload: e.payload }
@@ -173,6 +173,21 @@ export class RulePersister {
       if (claimedKeys.length > 0) await this.redis.del(...claimedKeys).catch(() => undefined)
       throw err
     }
+    /**
+     * Extending is BEST EFFORT and deliberately after the insert.
+     *
+     * A failure here costs a duration and a peak on one row; a failure that propagated would cost
+     * the whole batch — including alerts that already went out. The counters and logs above exist
+     * for the events themselves, which are the thing that must never be lost.
+     */
+    if (continuations.length > 0) {
+      const rows = continuations
+        .filter((e) => scope.has(e.deviceId.toString()))
+        .map((e) => ({ deviceId: e.deviceId, kind: e.kind, ruleId: e.ruleId, at: e.at, payload: e.payload }))
+      await extendRuleEvents(this.pool, rows).catch((err: unknown) => {
+        console.error('rule event extend failed', err)
+      })
+    }
     return gated
   }
 
@@ -180,8 +195,8 @@ export class RulePersister {
    * Replay-dedup every event, then cooldown-gate the ones that ask for it. Returns the survivors
    * AND every key claimed on THIS call, so a failed insert can release exactly those.
    */
-  private async gate(events: RuleEvent[]): Promise<{ survivors: RuleEvent[]; claimedKeys: string[] }> {
-    if (events.length === 0) return { survivors: events, claimedKeys: [] }
+  private async gate(events: RuleEvent[]): Promise<{ survivors: RuleEvent[]; continuations: RuleEvent[]; claimedKeys: string[] }> {
+    if (events.length === 0) return { survivors: events, continuations: [], claimedKeys: [] }
     const claimedKeys: string[] = []
 
     // ── 1. replay dedup, on the event's own identity ──────────────────────────────────────────
@@ -209,7 +224,7 @@ export class RulePersister {
 
     // ── 2. cooldown, measured in FIX time ─────────────────────────────────────────────────────
     const needsGate = fresh.filter((e) => !e.bypassCooldown && e.cooldownS > 0)
-    if (needsGate.length === 0) return { survivors: fresh, claimedKeys }
+    if (needsGate.length === 0) return { survivors: fresh, continuations: [], claimedKeys }
     const cdKeys = needsGate.map((e) => `rule:cd:${e.ruleId}:${e.deviceId.toString()}`)
     const cdPipe = this.redis.pipeline()
     needsGate.forEach((e, i) =>
@@ -227,11 +242,28 @@ export class RulePersister {
         passed.add(i)
         claimedKeys.push(cdKeys[i]!)
       }
-      // else 0 → within the cooldown window of an already-emitted event → drop
+      // else 0 → within the cooldown window of an already-emitted event
     })
     let gi = 0
-    const survivors = fresh.filter((e) => (e.bypassCooldown || e.cooldownS <= 0 ? true : passed.has(gi++)))
-    return { survivors, claimedKeys }
+    const survivors: RuleEvent[] = []
+    /**
+     * The suppressed ones are not noise — they are the SAME breach, still happening.
+     *
+     * The cooldown already knows this, and used to throw the knowledge away: a vehicle that crossed
+     * 90 and climbed to 155 produced a row saying 95, then silence, then another row with whatever
+     * the speed was five minutes later. The peak and the duration were computed by the engine, seen
+     * by this gate, and dropped on the floor.
+     *
+     * They now extend the row they are a continuation OF, instead of being discarded.
+     */
+    const continuations: RuleEvent[] = []
+    for (const e of fresh) {
+      const gated = !e.bypassCooldown && e.cooldownS > 0
+      if (!gated || passed.has(gi)) survivors.push(e)
+      else continuations.push(e)
+      if (gated) gi++
+    }
+    return { survivors, continuations, claimedKeys }
   }
 }
 
