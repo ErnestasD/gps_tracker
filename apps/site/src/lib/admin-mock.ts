@@ -46,16 +46,6 @@ export type Trip = {
   to: string;
 };
 
-export type EventRow = {
-  id: string;
-  type: "speeding" | "geofence" | "sos" | "offline" | "harsh-brake" | "harsh-accel" | "ignition";
-  device: string;
-  driver: string;
-  ts: string;
-  severity: "info" | "warning" | "critical";
-  detail: string;
-};
-
 export type Geofence = {
   id: string;
   name: string;
@@ -163,7 +153,6 @@ function isoAgo(minutes: number) {
   return new Date(NOW - minutes * 60_000).toISOString();
 }
 
-
 export function generateDevices(count = 24): Device[] {
   const r = rng(42);
   const out: Device[] = [];
@@ -229,37 +218,6 @@ export function generateTrips(count = 60): Trip[] {
       fuelUsed: Math.round(dist * 0.09 * 10) / 10,
       from: pick(r, CITIES),
       to: pick(r, CITIES),
-    });
-  }
-  return out;
-}
-
-export function generateEvents(count = 80): EventRow[] {
-  const r = rng(9);
-  const types: EventRow["type"][] = ["speeding", "geofence", "sos", "offline", "harsh-brake", "harsh-accel", "ignition"];
-  const details: Record<EventRow["type"], string[]> = {
-    speeding: ["Greičio viršijimas: 112 km/h (leista 90)", "Greičio viršijimas: 71 km/h (leista 50)", "Greičio viršijimas: 94 km/h (leista 70)"],
-    geofence: ["Įvažiavo į geozoną Vilnius Depot", "Išvažiavo iš geozonos Kaunas Hub", "Įvažiavo į draudžiamą zoną"],
-    sos: ["Paspaustas SOS mygtukas", "Vairuotojo pavojaus signalas"],
-    offline: ["Nėra ryšio su įrenginiu ilgiau nei 2 val.", "Nėra ryšio su įrenginiu ilgiau nei 24 val."],
-    "harsh-brake": ["Staigus stabdymas −0.6g", "Staigus stabdymas −0.8g"],
-    "harsh-accel": ["Staigus greitėjimas +0.5g", "Staigus greitėjimas +0.7g"],
-    ignition: ["Degimas įjungtas", "Degimas išjungtas"],
-  };
-
-  const out: EventRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const type = pick(r, types);
-    const sev: EventRow["severity"] =
-      type === "sos" ? "critical" : type === "speeding" || type === "offline" ? "warning" : "info";
-    out.push({
-      id: `evt_${(i + 1).toString().padStart(6, "0")}`,
-      type,
-      device: `Van ${Math.floor(1 + r() * 24).toString().padStart(2, "0")}`,
-      driver: `${pick(r, FIRST)} ${pick(r, LAST)}`,
-      ts: isoAgo(i * 15 + Math.floor(r() * 15)),
-      severity: sev,
-      detail: pick(r, details[type] ?? ["—"]),
     });
   }
   return out;

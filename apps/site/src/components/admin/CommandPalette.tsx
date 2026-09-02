@@ -6,12 +6,15 @@ import {
   Palette, CreditCard, KeyRound, Webhook, ScrollText, Settings, Search, CornerDownLeft,
   FileText,
 } from "lucide-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
-  generateDevices, generateDrivers, generateTrips, generateEvents,
+  generateDevices, generateDrivers, generateTrips,
   generateGeofences, generateRules, generateMaintenance, generateCommands,
   generateApiKeys, generateWebhooks, generateAudit, generateInvoices,
 } from "@/lib/admin-mock";
+import { DEMO_EVENTS, demoDetail, deviceName } from "@/lib/demo-events";
 
 type Item = {
   to: string;
@@ -45,7 +48,7 @@ const NAV_ITEMS: Item[] = [
 ];
 
 // Build data items lazily (memoized once per palette open)
-function buildDataItems(): Item[] {
+function buildDataItems(t: TFunction): Item[] {
   const out: Item[] = [];
   generateDevices().forEach((d) => out.push({
     to: "/app/devices", label: d.name, hint: `${d.plate} · ${d.driver} · ${d.location}`,
@@ -59,10 +62,13 @@ function buildDataItems(): Item[] {
     to: "/app/trips", label: `${t.from} → ${t.to}`, hint: `${t.device} · ${t.distance} km · ${t.driver}`,
     group: "Kelionės", icon: RouteIcon, keywords: `${t.id} ${t.device} ${t.driver}`,
   }));
-  generateEvents().slice(0, 40).forEach((e) => out.push({
-    to: "/app/events", label: e.detail, hint: `${e.device} · ${e.severity}`,
-    group: "Įvykiai", icon: AlertTriangle, keywords: `${e.type} ${e.device} ${e.driver} ${e.severity}`,
-  }));
+  DEMO_EVENTS.forEach((e) => {
+    const device = deviceName(e.deviceId);
+    out.push({
+      to: "/app/events", label: demoDetail(t, e), hint: `${device} · ${t(`events.k.${e.kind}`)}`,
+      group: t("shell.events"), icon: AlertTriangle, keywords: `${e.kind} ${device}`,
+    });
+  });
   generateGeofences().forEach((g) => out.push({
     to: "/app/geofences", label: g.name, hint: `${g.type} · ${g.devices} įreng.`,
     group: "Geozonos", icon: Hexagon, keywords: `${g.type}`,
@@ -99,13 +105,14 @@ function buildDataItems(): Item[] {
 }
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { t } = useTranslation("admin");
   const navigate = useNavigate();
   const [q, setQ] = React.useState("");
   const [active, setActive] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
 
-  const dataItems = React.useMemo(() => (open ? buildDataItems() : []), [open]);
+  const dataItems = React.useMemo(() => (open ? buildDataItems(t) : []), [open, t]);
   const allItems = React.useMemo(() => [...NAV_ITEMS, ...dataItems], [dataItems]);
 
   React.useEffect(() => {
