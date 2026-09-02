@@ -79,11 +79,13 @@ export const lt: Translation = {
     ownP1: "Nuo {{price}} €/mėn. už {{devices}} automobilius",
     ownP2: "Paruošimas per vieną popietę",
     ownP3: "30 d. bandymas, kortelės nereikia",
+    ownP4: "Atsisakyti galima bet kada — duomenis prieš tai eksportuosite",
     resellTitle: "Perparduokite kaip savo produktą",
     resellBody: "Neribotas įrenginių skaičius su jūsų prekės ženklu ir domenu, po atskirą paskyrą kiekvienam klientui, migracija šešėliniu režimu iš dabartinės platformos.",
     resellP1: "Nuo {{price}} €/mėn. už {{devices}} įrenginių",
     resellP2: "Savas domenas + automatinis TLS, laiškai su jūsų ženklu",
     resellP3: "REST API, webhook'ai, subpaskyros",
+    resellP4: "60 dienų bandomasis — nemokamai, iki 500 įrenginių",
     resellCta: "White-label platforma",
   },
   footer: {

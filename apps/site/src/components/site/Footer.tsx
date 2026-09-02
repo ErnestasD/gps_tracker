@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Shield, Globe as GlobeIcon, Server } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { OrbetraWordmark } from "./OrbetraLogo";
 import { DOCS_URL } from "@/lib/api";
@@ -9,6 +10,7 @@ export function Footer() {
 
   return (
     <footer className="border-t border-[var(--hairline)] mt-32 bg-[var(--blueprint)]/40">
+      <TrustBand />
       <div className="mx-auto max-w-7xl px-6 py-16 grid gap-12 md:grid-cols-4">
         <div>
           <OrbetraWordmark className="h-7 w-auto" />
@@ -51,5 +53,36 @@ export function Footer() {
         </div>
       </div>
     </footer>
+  );
+}
+
+/** EU residency / GDPR / data-ownership strip — the last thing a visitor reads, so it sits
+ *  flush against the footer proper rather than floating as its own page section. */
+function TrustBand() {
+  const { t } = useTranslation();
+  const items = [
+    { icon: Server, title: t("home.trust.t1"), body: t("home.trust.b1") },
+    { icon: Shield, title: t("home.trust.t2"), body: t("home.trust.b2") },
+    { icon: GlobeIcon, title: t("home.trust.t3"), body: t("home.trust.b3") },
+  ];
+  return (
+    <div className="border-b border-[var(--hairline)]">
+      <div className="mx-auto max-w-7xl px-6 py-10 grid gap-8 md:grid-cols-3">
+        {items.map((it) => {
+          const Icon = it.icon;
+          return (
+            <div key={it.title} className="flex items-start gap-4">
+              <span className="h-10 w-10 rounded-md bg-[rgba(37,99,235,0.08)] border border-[var(--hairline)] grid place-items-center shrink-0">
+                <Icon className="h-5 w-5 text-[var(--brand-blue)]" strokeWidth={1.5} />
+              </span>
+              <div>
+                <div className="font-display font-semibold text-ink">{it.title}</div>
+                <div className="text-sm text-muted-foreground">{it.body}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
