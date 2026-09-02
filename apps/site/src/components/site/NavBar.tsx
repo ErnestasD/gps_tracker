@@ -43,9 +43,8 @@ const GROUPS: NavGroup[] = [
   },
   {
     labelKey: "nav.g.resources",
-    paths: ["/compatibility", "/app"],
+    paths: ["/compatibility"],
     items: [
-      { labelKey: "nav.demo", descKey: "nav.d.demo", icon: PlayCircle, href: "/app/map" },
       { labelKey: "nav.apiDocs", descKey: "nav.d.apiDocs", icon: Code2, href: DOCS_URL },
       { labelKey: "nav.compat", descKey: "nav.d.compat", icon: Cpu, href: "/compatibility" },
     ],
@@ -112,6 +111,13 @@ export function NavBar() {
               <span className="absolute -bottom-2 left-0 right-0 h-[2px] bg-[#B45309] rounded-full" />
             )}
           </Link>
+          <a
+            href="/app/map"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-ink"
+          >
+            <PlayCircle className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
+            {t("nav.demo")}
+          </a>
         </nav>
 
         <div className="flex items-center gap-3">
@@ -175,6 +181,10 @@ export function NavBar() {
             </div>
           ))}
           <Link to="/pricing" className="py-1 text-base text-ink/90 hover:text-ink">{t("nav.pricing")}</Link>
+          <a href="/app/map" className="inline-flex items-center gap-2 py-1 text-base text-ink/90 hover:text-ink">
+            <PlayCircle className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+            {t("nav.demo")}
+          </a>
           <div className="pt-3 grid gap-3">
             <Link to="/signup" className="pill-primary hover:pill-primary-hover justify-center">
               {t("cta.trial")}
