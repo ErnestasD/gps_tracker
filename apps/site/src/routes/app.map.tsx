@@ -6,7 +6,8 @@ import { LANGUAGES, type Lang } from "@/lib/i18n";
 import { Badge, AdminInput, AdminButton } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { DemoMap, type DemoRoute, type DemoVehicle, type DemoZone } from "@/components/admin/DemoMap";
-import { cityFor, circleRing, routeSlice, type DemoCity, type LngLat } from "@/lib/demo-geo";
+import { cityFor, routeSlice, type DemoCity, type LngLat } from "@/lib/demo-geo";
+import { demoZones } from "@/lib/demo-zones";
 import {
   PanelLeft, Pause, Layers, Maximize2, Satellite, Power, Clock, ChevronRight,
   Activity, Radio, Signal, Zap, Play, ZoomIn, ZoomOut, Crosshair, MapPin, LocateFixed, Route as RouteIcon,
@@ -58,14 +59,22 @@ function placementsFor(city: DemoCity): Map<string, Placement> {
  * product rather than a localised one. Anchoring them to points ON the active loop keeps a depot
  * where the fleet actually drives, in every city.
  */
-function zonesFor(city: DemoCity): DemoZone[] {
-  const loop = city.loops[0];
-  const depot = loop[Math.floor(loop.length * 0.12)];
-  const second = loop[Math.floor(loop.length * 0.55)];
-  return [
-    { id: "depot", color: "#4c4dcf", ring: circleRing(depot, 900), dashed: true },
-    { id: "second", color: "#7C5CFC", ring: circleRing(second, 1500), dashed: true },
-  ];
+/**
+ * The live map draws the SAME zones the geofences page lists, dashed as the product draws them.
+ *
+ * It used to draw two anonymous circles of its own while the geofences page listed three
+ * differently-named zones somewhere else entirely — so an alert naming a zone pointed at a map
+ * where no such zone existed. See demo-zones.
+ */
+function zonesFor(lang: string): DemoZone[] {
+  return demoZones(lang).map((z) => ({
+    id: z.id,
+    color: z.color,
+    ring: z.ring,
+    line: z.line,
+    corridorWidthPx: z.corridorWidthPx,
+    dashed: true,
+  }));
 }
 
 const TRACK_PTS = 60;
@@ -107,7 +116,7 @@ function MapPage() {
   const city = cityFor(lang);
   const PLACEMENTS = React.useMemo(() => placementsFor(city), [city]);
   const FIT_ALL = React.useMemo<LngLat[]>(() => ALL.map((d) => PLACEMENTS.get(d.id)!.at), [PLACEMENTS]);
-  const ZONES = React.useMemo(() => zonesFor(city), [city]);
+  const ZONES = React.useMemo(() => zonesFor(lang), [lang]);
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<string>("");
   const [selected, setSelected] = React.useState<string | null>(ALL[0]?.id ?? null);
