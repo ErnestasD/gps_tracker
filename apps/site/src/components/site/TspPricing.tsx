@@ -23,8 +23,8 @@ export const TSP_PLANS: TspPlan[] = [
     name: "TSP Start",
     base: 149,
     baseYearly: 1490,
-    included: 200,
-    perDevice: 0.75,
+    included: 300,
+    perDevice: 0.5,
     overage: 0.6,
     features: [
       "tspPlans.start.f1",
@@ -37,9 +37,12 @@ export const TSP_PLANS: TspPlan[] = [
     name: "TSP Grow",
     base: 399,
     baseYearly: 3990,
-    included: 750,
-    perDevice: 0.53,
-    overage: 0.4,
+    included: 1000,
+    perDevice: 0.4,
+    // 2026-09-02: raised from €0.40 with the allowance change. €399 ÷ 1,000 makes the effective base
+    // €0.40, so a €0.40 overage would have been neutral — the one thing an overage rate must not be.
+    // See PRICING_STRATEGY.md §3: overage stays ABOVE the effective base on every tier.
+    overage: 0.5,
     features: [
       "tspPlans.grow.f2",
       "tspPlans.grow.f3",
@@ -51,8 +54,8 @@ export const TSP_PLANS: TspPlan[] = [
     name: "TSP Scale",
     base: 899,
     baseYearly: 8990,
-    included: 2500,
-    perDevice: 0.36,
+    included: 3500,
+    perDevice: 0.26,
     overage: 0.35,
     features: [
       "tspPlans.scale.f2",

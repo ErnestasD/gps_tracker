@@ -18,7 +18,7 @@ stable `lookup_key`s, so re-running is idempotent.
 | Plan | base monthly | base yearly | overage (metered, €/device) |
 |---|---|---|---|
 | TSP Start | price_1TtAmhDn0hX6WL8dNH1SVNyT | price_1TtAmiDn0hX6WL8dTT0Ki7Hv | price_1TtAnEDn0hX6WL8duCLPcryR (€0.60) |
-| TSP Grow | price_1TtAmkDn0hX6WL8dq9DzMnGj | price_1TtAmkDn0hX6WL8dFDPl7wdZ | price_1TtAnFDn0hX6WL8difV7NZwx (€0.40) |
+| TSP Grow | price_1TtAmkDn0hX6WL8dq9DzMnGj | price_1TtAmkDn0hX6WL8dFDPl7wdZ | price_1TtAnFDn0hX6WL8difV7NZwx (€0.40, deactivated) |
 | TSP Scale | price_1TtAmmDn0hX6WL8dTgThzpEU | price_1TtAmmDn0hX6WL8dnmyBGbFy | price_1TtAnFDn0hX6WL8d9j8AL1fV (€0.35) |
 
 ## Metered overage meter + PER-DEVICE-DAY prices (PR B2)
@@ -30,16 +30,52 @@ stable `lookup_key`s, so re-running is idempotent.
   | Plan | overage price id (per-device-day) | €/device-day | (= €/device-month) |
   |---|---|---|---|
   | TSP Start | price_1TtBZCDn0hX6WL8dvUMBElCR | €0.0200 | €0.60 |
-  | TSP Grow | price_1TtBZDDn0hX6WL8dMdqdzzP7 | €0.01333 | €0.40 |
+  | TSP Grow | **price_1UBFXsDn0hX6WL8dzwXWH1Lt** | €0.0166667 | **€0.50** |
   | TSP Scale | price_1TtBZDDn0hX6WL8d4U4rlRyN | €0.011667 | €0.35 |
+
+### Grow overage raised €0.40 → €0.50 (2026-09-02)
+
+A Stripe Price's amount is **immutable**, so this is a new price, not an edit:
+`price_1TtBZDDn0hX6WL8dMdqdzzP7` (€0.01333/device-day) is **deactivated** and
+`price_1UBFXsDn0hX6WL8dzwXWH1Lt` (€0.0166667/device-day) takes its `tsp_grow_overage_daily`
+lookup key via `transfer_lookup_key`. No subscription referenced the old price when it was
+archived (checked), so nothing is mid-flight on the old rate.
+
+**The rate is per device-DAY.** €0.50/device-month ÷ 30 = €0.0166667 = `unit_amount_decimal`
+`1.6667`. Creating this as a flat `0.50` would over-bill ~30×, which is the mistake this section
+already records having shipped once.
+
+Why: the allowance change below drops Grow's effective base to €399 ÷ 1,000 = €0.40 — exactly the
+old overage rate. See PRICING_STRATEGY.md §3 for the rule (overage must stay above the effective
+base on every tier).
 - The worker reports via the SDK `stripe.billing.meterEvents.create({ event_name, payload: { value, stripe_customer_id }, timestamp })`.
 
 ## PR B2 env maps (base → overage / included)
 ```
-STRIPE_OVERAGE_MAP=price_1TtAmhDn0hX6WL8dNH1SVNyT:price_1TtBZCDn0hX6WL8dvUMBElCR,price_1TtAmiDn0hX6WL8dTT0Ki7Hv:price_1TtBZCDn0hX6WL8dvUMBElCR,price_1TtAmkDn0hX6WL8dq9DzMnGj:price_1TtBZDDn0hX6WL8dMdqdzzP7,price_1TtAmkDn0hX6WL8dFDPl7wdZ:price_1TtBZDDn0hX6WL8dMdqdzzP7,price_1TtAmmDn0hX6WL8dTgThzpEU:price_1TtBZDDn0hX6WL8d4U4rlRyN,price_1TtAmmDn0hX6WL8dnmyBGbFy:price_1TtBZDDn0hX6WL8d4U4rlRyN
-STRIPE_INCLUDED=price_1TtAmhDn0hX6WL8dNH1SVNyT:200,price_1TtAmiDn0hX6WL8dTT0Ki7Hv:200,price_1TtAmkDn0hX6WL8dq9DzMnGj:750,price_1TtAmkDn0hX6WL8dFDPl7wdZ:750,price_1TtAmmDn0hX6WL8dTgThzpEU:2500,price_1TtAmmDn0hX6WL8dnmyBGbFy:2500
+STRIPE_OVERAGE_MAP=price_1TtAmhDn0hX6WL8dNH1SVNyT:price_1TtBZCDn0hX6WL8dvUMBElCR,price_1TtAmiDn0hX6WL8dTT0Ki7Hv:price_1TtBZCDn0hX6WL8dvUMBElCR,price_1TtAmkDn0hX6WL8dq9DzMnGj:price_1UBFXsDn0hX6WL8dzwXWH1Lt,price_1TtAmkDn0hX6WL8dFDPl7wdZ:price_1UBFXsDn0hX6WL8dzwXWH1Lt,price_1TtAmmDn0hX6WL8dTgThzpEU:price_1TtBZDDn0hX6WL8d4U4rlRyN,price_1TtAmmDn0hX6WL8dnmyBGbFy:price_1TtBZDDn0hX6WL8d4U4rlRyN
+STRIPE_INCLUDED=price_1TtAmhDn0hX6WL8dNH1SVNyT:300,price_1TtAmiDn0hX6WL8dTT0Ki7Hv:300,price_1TtAmkDn0hX6WL8dq9DzMnGj:1000,price_1TtAmkDn0hX6WL8dFDPl7wdZ:1000,price_1TtAmmDn0hX6WL8dTgThzpEU:3500,price_1TtAmmDn0hX6WL8dnmyBGbFy:3500
 ```
 (TSP base monthly+yearly both map to the same overage price + included count.)
+
+**Allowances raised 2026-09-02: 200 → 300 · 750 → 1,000 · 2,500 → 3,500.** These live ONLY in this
+env var — there is no plan catalogue in code to change, and `overageDevices(active, included) =
+max(0, active − included)` already implements the rule. A day at or under the allowance records
+`reported: 0` locally and sends nothing to Stripe, which on a summing meter is the same as sending
+zero. **Updating this variable is the whole of the metering change**, so a deploy that forgets it
+keeps billing against the old, smaller allowances.
+
+## ⚠️ Stripe Tax is NOT active in this account (found 2026-09-02)
+
+`tax.settings` reports `status: pending` (`missing_fields: ["head_office"]`), `defaults.tax_behavior`
+is unset, and **every price in this catalogue — Track A and Track B, base and overage — carries
+`tax_behavior: unspecified`.** PRICING_STRATEGY.md §7 states `tax_behavior = exclusive`; that is the
+intent, not the current state.
+
+As it stands a checkout would charge the listed amount with **no VAT added**, while the pricing page
+promises "all prices exclude VAT". Deliberately NOT changed here: `tax_behavior` is a one-way
+transition per price (`unspecified` → `exclusive` is allowed, back is not), it affects Track A which
+this pricing revision does not touch, and activating Stripe Tax needs a head-office address — an
+account and legal decision, not a code one. **Pre-launch checklist item.**
 
 ## `STRIPE_PLAN_MAP` (base → tenant plan) — the one that was missing
 

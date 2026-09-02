@@ -87,6 +87,9 @@ function PricingPage() {
             </div>
           </div>
           <PricingCards />
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            {t("pricing.exclVat")}
+          </p>
         </div>
       </section>
 
@@ -118,6 +121,9 @@ function PricingPage() {
           </div>
 
           <TspPricing />
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            {t("pricing.exclVat")}
+          </p>
 
 
           <p className="mt-8 text-center text-sm text-muted-foreground max-w-2xl mx-auto">
