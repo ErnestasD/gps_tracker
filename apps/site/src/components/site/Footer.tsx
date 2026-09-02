@@ -67,11 +67,11 @@ function TrustBand() {
   ];
   return (
     <div className="border-b border-[var(--hairline)]">
-      <div className="mx-auto max-w-7xl px-6 py-10 grid gap-8 md:grid-cols-3">
+      <div className="mx-auto max-w-7xl px-6 py-10 grid gap-8 md:grid-cols-3 items-center">
         {items.map((it) => {
           const Icon = it.icon;
           return (
-            <div key={it.title} className="flex items-start gap-4">
+            <div key={it.title} className="flex items-center gap-4">
               <span className="h-10 w-10 rounded-md bg-[rgba(37,99,235,0.08)] border border-[var(--hairline)] grid place-items-center shrink-0">
                 <Icon className="h-5 w-5 text-[var(--brand-blue)]" strokeWidth={1.5} />
               </span>
