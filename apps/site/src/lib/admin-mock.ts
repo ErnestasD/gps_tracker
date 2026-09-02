@@ -238,13 +238,13 @@ export function generateEvents(count = 80): EventRow[] {
   const r = rng(9);
   const types: EventRow["type"][] = ["speeding", "geofence", "sos", "offline", "harsh-brake", "harsh-accel", "ignition"];
   const details: Record<EventRow["type"], string[]> = {
-    speeding: ["Viršytas 90 km/h limitas → 112 km/h", "Viršytas 50 km/h → 71 km/h", "Viršytas 70 km/h → 94 km/h"],
-    geofence: ["Įvažiavo į Vilnius Depot", "Išvažiavo iš Kaunas Hub", "Įvažiavo į No-go zoną"],
-    sos: ["SOS mygtukas paspaustas", "Vairuotojo pavojaus signalas"],
-    offline: ["Įrenginys neprisijungęs 2h+", "Įrenginys neprisijungęs 24h+"],
-    "harsh-brake": ["Aštrus stabdymas −0.6g", "Aštrus stabdymas −0.8g"],
-    "harsh-accel": ["Aštrus greitėjimas +0.5g", "Aštrus greitėjimas +0.7g"],
-    ignition: ["Užvedimas įjungtas", "Užvedimas išjungtas"],
+    speeding: ["Greičio viršijimas: 112 km/h (leista 90)", "Greičio viršijimas: 71 km/h (leista 50)", "Greičio viršijimas: 94 km/h (leista 70)"],
+    geofence: ["Įvažiavo į geozoną Vilnius Depot", "Išvažiavo iš geozonos Kaunas Hub", "Įvažiavo į draudžiamą zoną"],
+    sos: ["Paspaustas SOS mygtukas", "Vairuotojo pavojaus signalas"],
+    offline: ["Nėra ryšio su įrenginiu ilgiau nei 2 val.", "Nėra ryšio su įrenginiu ilgiau nei 24 val."],
+    "harsh-brake": ["Staigus stabdymas −0.6g", "Staigus stabdymas −0.8g"],
+    "harsh-accel": ["Staigus greitėjimas +0.5g", "Staigus greitėjimas +0.7g"],
+    ignition: ["Degimas įjungtas", "Degimas išjungtas"],
   };
 
   const out: EventRow[] = [];
@@ -267,7 +267,7 @@ export function generateEvents(count = 80): EventRow[] {
 
 export function generateGeofences(): Geofence[] {
   const r = rng(3);
-  const names = ["Vilnius Depot", "Kaunas Hub", "Klaipėdos uostas", "Servisas #1", "No-go — Senamiestis", "Klientas ABC", "Klientas XYZ"];
+  const names = ["Vilnius Depot", "Kaunas Hub", "Klaipėdos uostas", "Servisas #1", "Draudžiama zona — Senamiestis", "Klientas ABC", "Klientas XYZ"];
   const types: Geofence["type"][] = ["polygon", "circle", "corridor"];
   const colors = ["#4F46E5", "#059669", "#B45309", "#E11D48", "#0284C7", "#7C3AED", "#0F766E"];
   // Anchor points per zone (roughly Lithuania: Vilnius, Kaunas, Klaipėda, Šiauliai, Panevėžys, Alytus, Utena).
@@ -320,17 +320,17 @@ export function generateGeofences(): Geofence[] {
 export function generateRules(): Rule[] {
   const r = rng(5);
   return [
-    { id: "rul_1", name: "Greitis > 90 km/h", type: "speeding", enabled: true, channels: ["email", "webhook"], cooldown: 300, triggered: 42, scope: "Visi įrenginiai" },
-    { id: "rul_2", name: "Įrenginys offline > 2h", type: "offline", enabled: true, channels: ["email"], cooldown: 600, triggered: 12, scope: "Visi įrenginiai" },
+    { id: "rul_1", name: "Greičio viršijimas > 90 km/h", type: "speeding", enabled: true, channels: ["email", "webhook"], cooldown: 300, triggered: 42, scope: "Visi įrenginiai" },
+    { id: "rul_2", name: "Įrenginys be ryšio > 2 val.", type: "offline", enabled: true, channels: ["email"], cooldown: 600, triggered: 12, scope: "Visi įrenginiai" },
     { id: "rul_3", name: "SOS mygtukas", type: "panic", enabled: true, channels: ["email", "sms", "webhook"], cooldown: 60, triggered: 2, scope: "Vairuotojai" },
-    { id: "rul_4", name: "Įvažiavimas į No-go", type: "geofence", enabled: false, channels: ["email"], cooldown: 0, triggered: 0, scope: "Vilnius Depot" },
-    { id: "rul_5", name: "Idle > 15 min", type: "idle", enabled: true, channels: ["email"], cooldown: 900, triggered: Math.round(r() * 40), scope: "Van klasė" },
+    { id: "rul_4", name: "Įvažiavimas į draudžiamą zoną", type: "geofence", enabled: false, channels: ["email"], cooldown: 0, triggered: 0, scope: "Vilnius Depot" },
+    { id: "rul_5", name: "Prastova > 15 min.", type: "idle", enabled: true, channels: ["email"], cooldown: 900, triggered: Math.round(r() * 40), scope: "Van klasės įrenginiai" },
   ];
 }
 
 export function generateMaintenance(): MaintenanceTask[] {
   const r = rng(11);
-  const services = ["Alyvos keitimas", "Padangų sukeitimas", "Techninė apžiūra", "Stabdžių kaladėlės", "Filtrų keitimas"];
+  const services = ["Alyvos keitimas", "Padangų keitimas", "Techninė apžiūra", "Stabdžių kaladėlių keitimas", "Filtrų keitimas"];
   const out: MaintenanceTask[] = [];
   for (let i = 0; i < 14; i++) {
     const dueKm = Math.round(80000 + r() * 200000);
@@ -417,8 +417,8 @@ export const fleetActivitySeries = Array.from({ length: 30 }, (_, i) => {
 export const eventsBreakdown = [
   { name: "Greičio viršijimai", value: 42, color: "#F59E0B" },
   { name: "Geozonos", value: 68, color: "#4F46E5" },
-  { name: "Aštrus vairavimas", value: 21, color: "#0284C7" },
-  { name: "Offline", value: 12, color: "#94A3B8" },
+  { name: "Staigūs manevrai", value: 21, color: "#0284C7" },
+  { name: "Be ryšio", value: 12, color: "#94A3B8" },
   { name: "SOS", value: 2, color: "#E11D48" },
 ];
 

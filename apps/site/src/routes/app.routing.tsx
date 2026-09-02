@@ -37,11 +37,11 @@ const L: Record<
 > = {
   lt: {
     stops: "Sustojimai",
-    reset: "Iš naujo",
+    reset: "Atstatyti",
     addStop: "Pridėti sustojimą",
     distance: "Atstumas",
     duration: "Trukmė",
-    durationValue: "1 val 52 min",
+    durationValue: "1 val. 52 min.",
     badge: "OSRM · realūs keliai",
   },
   en: {

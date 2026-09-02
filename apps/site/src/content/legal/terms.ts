@@ -213,11 +213,11 @@ export const terms: LocalizedDoc = {
           "**Sutartis** — šios sąlygos kartu su 2 skyriuje išvardytais dokumentais.",
           "**Klientas**, **jūs** — organizacija, užsiprenumeravusi paslaugą.",
           "**Paslauga**, **platforma** — Orbetra žiniatinklio programa, API, webhook'ai, priėmimo (ingest) galiniai taškai ir dokumentacija.",
-          "**Darbo erdvė** — izoliuota nuomininko aplinka, kurioje saugomi jūsų įrenginiai, naudotojai ir duomenys. Perpardavėjo darbo erdvė gali turėti subpaskyrų.",
+          "**Darbo erdvė** — atskirta jūsų aplinka (tenant), kurioje saugomi jūsų įrenginiai, naudotojai ir duomenys. Perpardavėjo darbo erdvė gali turėti subpaskyrų.",
           "**Naudotojas** — asmuo, kuriam suteikiate teisę prisijungti prie jūsų darbo erdvės.",
           "**Kliento duomenys** — viskas, ką jūs ar jūsų įrenginiai siunčiate į paslaugą arba sukuriate joje: telemetrija, kelionės, įvykiai, vairuotojų ir transporto priemonių įrašai, konfigūracija ir audito žurnalai.",
-          "**Įrenginys** — GPS sekimo įtaisas, identifikuojamas pagal IMEI, kurį prijungiate prie paslaugos.",
-          "**Perpardavėjas**, **TSP** — klientas, licencijuojantis baltos etiketės platformą savo galutiniams klientams aptarnauti.",
+          "**Įrenginys** — GPS sekimo įrenginys, identifikuojamas pagal IMEI, kurį prijungiate prie paslaugos.",
+          "**Perpardavėjas**, **TSP** — klientas, licencijuojantis white-label platformą savo galutiniams klientams aptarnauti.",
           "**Užsakymo forma** — bet koks rašytinis ar elektroninis užsakymas, bandomasis (pilot) ar perpardavimo susitarimas, pasirašytas abiejų šalių.",
           "**DPA** — [Duomenų tvarkymo priedas](/dpa)."
         ]
@@ -226,13 +226,13 @@ export const terms: LocalizedDoc = {
         "h2": "2. Sutarties dokumentai ir jų viršenybės tvarka"
       },
       {
-        "p": "Sutartį sudaro (mažėjančia viršenybės tvarka): (a) pasirašyta užsakymo forma, bandomasis (pilot) ar perpardavimo susitarimas — dėl klausimų, kuriuos jis aiškiai apima; (b) DPA, kuris turi viršenybę visais su asmens duomenų tvarkymu susijusiais klausimais; (c) šios sąlygos; (d) paskelbta dokumentacija ir planų aprašymai adresu [orbetra.com/pricing](/pricing). Jūsų išleisti pirkimo užsakymo, tiekėjų portalo ar panašūs dokumentai netaikomi, net jei mes patvirtiname užsakymą."
+        "p": "Sutartį sudaro (mažėjančia viršenybės tvarka): (a) pasirašyta užsakymo forma, bandomasis (pilot) ar perpardavimo susitarimas — dėl klausimų, kuriuos jis aiškiai apima; (b) DPA, kuris turi viršenybę visais su asmens duomenų tvarkymu susijusiais klausimais; (c) šios sąlygos; (d) paskelbta dokumentacija ir planų aprašymai adresu [orbetra.com/pricing](/pricing). Jūsų pateikti pirkimo užsakymo, tiekėjų portalo ar panašūs dokumentai netaikomi, net jei užsakymą patvirtiname."
       },
       {
         "h2": "3. Paslauga"
       },
       {
-        "p": "Orbetra yra GPS parko sekimo platforma: sekimas realiu laiku, kelionės ir jų atkūrimas, geozonos, taisyklės ir įspėjimai, ataskaitos, kuro lygio stebėsena, vairuotojų įrašai, techninės priežiūros priminimai, įrenginių komandos, webhook'ai ir REST API. Perpardavėjai papildomai gali licencijuoti baltos etiketės platformą su savo prekės ženklu, domenais ir subpaskyromis. Mes galime tobulinti ir keisti paslaugą; apmokėto laikotarpio metu be įspėjimo pagal 25 skyrių iš esmės nesumažinsime jūsų plano pagrindinio funkcionalumo."
+        "p": "Orbetra yra GPS autoparko sekimo platforma: sekimas realiuoju laiku, kelionės ir jų atkūrimas, geozonos, taisyklės ir įspėjimai, ataskaitos, kuro lygio stebėsena, vairuotojų įrašai, techninės priežiūros priminimai, įrenginių komandos, webhook'ai ir REST API. Perpardavėjai papildomai gali licencijuoti white-label platformą su savo prekės ženklu, domenais ir subpaskyromis. Mes galime tobulinti ir keisti paslaugą; apmokėto laikotarpio metu be įspėjimo pagal 25 skyrių iš esmės nesumažinsime jūsų plano pagrindinio funkcionalumo."
       },
       {
         "h2": "4. Paskyros ir naudotojai"
@@ -244,13 +244,13 @@ export const terms: LocalizedDoc = {
         "h2": "5. Bandomieji laikotarpiai ir pilotai"
       },
       {
-        "p": "Nemokami bandomieji laikotarpiai trunka 30 dienų be kortelės. Pasibaigus bandomajam laikotarpiui darbo erdvė tampa tik skaitoma, nebent pradedama mokama prenumerata. Bandomieji duomenys ištrinami praėjus 30 dienų po bandomojo laikotarpio pabaigos, nebent užsiprenumeruojate. Perpardavėjų pilotai vykdomi pardavimų komandos ir trunka pilotiniame susitarime nurodytą laikotarpį. Bandomieji laikotarpiai ir pilotai teikiami tokie, kokie yra (as-is), be 12 skyriuje numatyto veikimo laiko įsipareigojimo."
+        "p": "Nemokami bandomieji laikotarpiai trunka 30 dienų be kortelės. Pasibaigus bandomajam laikotarpiui darbo erdvė perjungiama į tik skaitymo režimą, nebent pradedama mokama prenumerata. Bandomieji duomenys ištrinami praėjus 30 dienų po bandomojo laikotarpio pabaigos, nebent užsiprenumeruojate. Perpardavėjų pilotus organizuoja pardavimų komanda; jie trunka pilotiniame susitarime nurodytą laikotarpį. Bandomieji laikotarpiai ir pilotai teikiami tokie, kokie yra (as-is), be 12 skyriuje numatyto veikimo laiko įsipareigojimo."
       },
       {
         "h2": "6. Įmokos, sąskaitų išrašymas ir mokesčiai"
       },
       {
-        "p": "Prenumeratos apmokestinamos kas mėnesį arba kasmet iš anksto eurais (EUR). Kainos yra tos, kurios pirkimo metu paskelbtos adresu [orbetra.com/pricing](/pricing), arba nurodytos jūsų užsakymo formoje. Metiniai planai apmokestinami už visą laikotarpį. Į įmokas neįskaičiuotas PVM ir kiti mokesčiai; ES verslo klientams, pateikusiems galiojantį PVM mokėtojo kodą, sąskaitos išrašomos taikant atvirkštinio apmokestinimo mechanizmą, kai jis taikytinas. Į planus įskaičiuotas įrenginių limitas; naudojimas virš šio limito apmokestinamas kaip perviršis pagal jūsų planui paskelbtą įkainį, arba bet kada galite pereiti prie didesnio plano. Pavėluotas mokėjimas gali lemti sustabdymą po įspėjimo pagal 17 skyrių. Jau sumokėtos įmokos negrąžinamos, išskyrus atvejus, kai šios sąlygos ar imperatyvūs teisės aktai nustato kitaip. Mes galime keisti kainoraščio kainas įspėję ne vėliau kaip prieš 30 dienų; jos įsigalioja jūsų kito atnaujinimo metu."
+        "p": "Sąskaitos už prenumeratas išrašomos iš anksto kas mėnesį arba kasmet eurais (EUR). Kainos yra tos, kurios pirkimo metu paskelbtos adresu [orbetra.com/pricing](/pricing), arba nurodytos jūsų užsakymo formoje. Už metinius planus sąskaita išrašoma už visą laikotarpį. Į įmokas neįskaičiuotas PVM ir kiti mokesčiai; ES verslo klientams, pateikusiems galiojantį PVM mokėtojo kodą, sąskaitos išrašomos taikant atvirkštinio apmokestinimo mechanizmą, kai jis taikytinas. Į planus įskaičiuotas įrenginių limitas; naudojimas virš šio limito apmokestinamas kaip perviršis pagal jūsų planui paskelbtą įkainį, arba bet kada galite pereiti prie didesnio plano. Vėluojant sumokėti, paslauga gali būti sustabdyta, apie tai įspėjus pagal 17 skyrių. Jau sumokėtos įmokos negrąžinamos, išskyrus atvejus, kai šios sąlygos ar imperatyvūs teisės aktai nustato kitaip. Mes galime keisti kainoraščio kainas įspėję ne vėliau kaip prieš 30 dienų; jos įsigalioja jūsų kito atnaujinimo metu."
       },
       {
         "h2": "7. Priimtinas naudojimas"
@@ -258,11 +258,11 @@ export const terms: LocalizedDoc = {
       {
         "ul": [
           "Jokio neteisėto sekimo. Turite turėti teisėtą pagrindą sekti transporto priemones ir privalote informuoti vairuotojus, kaip reikalauja vietos teisės aktai.",
-          "Jokio asmenų sekimo už teisėto parko valdymo tikslo ribų ir jokio paslaugos naudojimo asmeniui persekioti, sekti ar slapta stebėti.",
-          "Jokio tiesioginio produkto atvirkštinės inžinerijos, perpardavimo ar sublicencijavimo už pasirašyto perpardavimo susitarimo ribų.",
-          "Jokių bandymų sutrikdyti paslaugą, apeiti dažnio (rate) limitus, tirti ar skenuoti infrastruktūrą arba pasiekti kitų nuomininkų duomenis.",
-          "Jokio kenkėjiškų programų įkėlimo ir jokio platformos naudojimo su parko operacijomis nesusijusiems duomenims saugoti.",
-          "API raktai turi būti laikomi paslaptyje ir pakeisti, jei atskleisti."
+          "Jokio asmenų sekimo už teisėto autoparko valdymo tikslo ribų ir jokio paslaugos naudojimo asmeniui persekioti, sekti ar slapta stebėti.",
+          "Jokios tiesioginio produkto atvirkštinės inžinerijos, perpardavimo ar sublicencijavimo už pasirašyto perpardavimo susitarimo ribų.",
+          "Jokių bandymų sutrikdyti paslaugą, apeiti užklausų dažnio ribojimus, tirti ar skenuoti infrastruktūrą arba pasiekti kitų klientų duomenis.",
+          "Jokio kenkėjiškų programų įkėlimo ir jokio platformos naudojimo su autoparko veikla nesusijusiems duomenims saugoti.",
+          "API raktus privaloma laikyti paslaptyje, o juos atskleidus — nedelsiant pakeisti."
         ]
       },
       {
@@ -287,31 +287,31 @@ export const terms: LocalizedDoc = {
         "h2": "11. Konfidencialumas"
       },
       {
-        "p": "Kiekviena šalis gali gauti neviešos informacijos iš kitos — kainodaros ir užsakymo sąlygas, produkto planus, saugumo detales, kliento duomenis. Kiekviena šalis naudos kitos šalies konfidencialią informaciją tik Sutarčiai vykdyti, saugos ją bent protingu rūpestingumu ir atskleis tik darbuotojams bei subrangovams, kuriems ji reikalinga ir kuriuos saisto lygiavertės pareigos. Ši pareiga netaikoma informacijai, kuri yra vieša be pažeidimo, sukurta savarankiškai arba teisėtai gauta iš trečiosios šalies, ir ji netrukdo atskleisti informacijos, kai to reikalauja įstatymas ar reguliuotojas, apie tai pranešant kitai šaliai, jei tai teisiškai leidžiama. Šie įsipareigojimai galioja trejus metus po nutraukimo, o komercinių paslapčių atveju — tol, kol įstatymas saugo informaciją."
+        "p": "Kiekviena šalis gali gauti neviešos informacijos iš kitos — kainodaros ir užsakymo sąlygas, produkto planus, saugumo detales, kliento duomenis. Kiekviena šalis naudos kitos šalies konfidencialią informaciją tik Sutarčiai vykdyti, saugos ją bent pakankamai rūpestingai ir atskleis tik darbuotojams bei subrangovams, kuriems ji reikalinga ir kuriuos saisto lygiavertės pareigos. Ši pareiga netaikoma informacijai, kuri yra vieša be pažeidimo, sukurta savarankiškai arba teisėtai gauta iš trečiosios šalies, ir ji netrukdo atskleisti informacijos, kai to reikalauja įstatymas ar priežiūros institucija, apie tai pranešant kitai šaliai, jei tai teisiškai leidžiama. Šie įsipareigojimai galioja trejus metus po nutraukimo, o komercinių paslapčių atveju — tol, kol įstatymas saugo informaciją."
       },
       {
         "h2": "12. Palaikymas ir paslaugų lygiai"
       },
       {
-        "p": "Palaikymas teikiamas el. paštu [hello@orbetra.com](mailto:hello@orbetra.com) Lietuvos darbo dienomis. Palaikymo lygis ir bet koks paskirtas kontaktinis asmuo priklauso nuo jūsų plano, kaip aprašyta adresu [orbetra.com/pricing](/pricing); konkretūs atsako terminai, kai juos įsipareigojame, nurodomi jūsų užsakymo formoje. Sutartinis **99,9 % mėnesinio veikimo laiko įsipareigojimas su paslaugų kreditais taikomas tik Scale ir Enterprise planams**; kreditų tvarkaraštis ir matavimo metodas nustatyti užsakymo formoje. Kreditai turi būti paprašyti raštu per 30 dienų nuo paveikto mėnesio pabaigos ir yra vienintelė bei išimtinė teisių gynimo priemonė dėl neįvykdyto veikimo laiko. Visi kiti planai palaikomi dedant geriausias pastangas (best-effort), be sutartinio SLA."
+        "p": "Palaikymas teikiamas el. paštu [hello@orbetra.com](mailto:hello@orbetra.com) Lietuvos darbo dienomis. Palaikymo lygis ir bet koks paskirtas kontaktinis asmuo priklauso nuo jūsų plano, kaip aprašyta adresu [orbetra.com/pricing](/pricing); konkretūs atsako terminai, kai juos įsipareigojame, nurodomi jūsų užsakymo formoje. Sutartinis **99,9 % mėnesinio veikimo laiko įsipareigojimas su paslaugų kreditais taikomas tik Scale ir Enterprise planams**; kreditų lentelė ir matavimo metodas nustatyti užsakymo formoje. Kreditų būtina paprašyti raštu per 30 dienų nuo atitinkamo mėnesio pabaigos; tai vienintelė ir išimtinė teisių gynimo priemonė dėl neįvykdyto veikimo laiko įsipareigojimo. Visi kiti planai palaikomi dedant geriausias pastangas (best-effort), be sutartinio SLA."
       },
       {
         "h2": "13. Prieinamumas ir techninė priežiūra"
       },
       {
-        "p": "Siekiame aukšto prieinamumo ir informuojame jus apie incidentus, paveikiančius jūsų darbo erdvę. Planinė techninė priežiūra, kai įmanoma, skelbiama iš anksto ir, jei įmanoma, planuojama ne Europos darbo valandomis. Skubi techninė priežiūra gali būti atliekama bet kuriuo metu; pranešime jums, kai tik pagrįstai galėsime. Prastova, sukelta jūsų sistemų, jūsų įrenginių, mobiliojo ryšio tinklų, GNSS sąlygų arba 21 skyriuje nurodytų įvykių, neįskaitoma į jokį veikimo laiko įsipareigojimą."
+        "p": "Siekiame aukšto prieinamumo ir informuojame jus apie incidentus, turinčius įtakos jūsų darbo erdvei. Planinė techninė priežiūra, kai tai praktiška, skelbiama iš anksto ir, kai įmanoma, planuojama ne Europos darbo laiku. Skubi techninė priežiūra gali būti atliekama bet kuriuo metu; pranešime jums, kai tik pagrįstai galėsime. Prastova, kurią sukėlė jūsų sistemos, jūsų įrenginiai, mobiliojo ryšio tinklai, GNSS sąlygos arba 21 skyriuje nurodyti įvykiai, neįskaitoma į jokį veikimo laiko įsipareigojimą."
       },
       {
         "h2": "14. Beta ir peržiūros funkcijos"
       },
       {
-        "p": "Funkcijos, pažymėtos kaip beta, peržiūros (preview) ar ankstyvosios prieigos (early access), yra pasirenkamos ir teikiamos tokios, kokios yra (as-is), be garantijos, palaikymo įsipareigojimo ar SLA. Jos gali keistis, sugesti ar būti pašalintos bet kuriuo metu ir yra išbrauktos iš 12 bei 13 skyrių. Nesiremkite jomis priimdami operaciniu požiūriu kritinius sprendimus ir informaciją apie jas laikykite konfidencialia."
+        "p": "Funkcijos, pažymėtos kaip beta, peržiūros (preview) ar ankstyvosios prieigos (early access), yra pasirenkamos ir teikiamos tokios, kokios yra (as-is), be garantijos, palaikymo įsipareigojimo ar SLA. Jos gali keistis, sugesti ar būti pašalintos bet kuriuo metu, o 12 ir 13 skyriai joms netaikomi. Nesiremkite jomis priimdami operaciniu požiūriu kritinius sprendimus ir informaciją apie jas laikykite konfidencialia."
       },
       {
         "h2": "15. Sąžiningas naudojimas ir API limitai"
       },
       {
-        "p": "API ir webhook'ams taikomi dokumentacijoje nurodyti dažnio (rate) limitai ir sąžiningo naudojimo principas. Galime riboti arba laikinai apriboti užklausas, keliančias grėsmę platformos stabilumui, ir prieš tai su jumis susisieksime, nebent rizika yra neatidėliotina. Ilgalaikis naudojimas gerokai viršijant jūsų planą — įrenginių skaičius virš jūsų limito, masinis apklausinėjimas (polling) vietoj webhook'ų arba automatinis viso duomenų rinkinio pakartotinis eksportas — gali reikalauti plano išplėtimo. Nenaudokite API konkuruojančiai sekimo paslaugai kurti."
+        "p": "API ir webhook'ams taikomi dokumentacijoje nurodyti užklausų dažnio ribojimai ir sąžiningo naudojimo principas. Galime pristabdyti arba laikinai apriboti užklausas, keliančias grėsmę platformos stabilumui, ir prieš tai su jumis susisieksime, nebent rizika neatidėliotina. Ilgą laiką gerokai viršijant jūsų planą — įrenginių skaičius virš jūsų limito, masinės periodinės užklausos (polling) vietoj webhook'ų arba automatinis viso duomenų rinkinio pakartotinis eksportas — gali tekti pereiti prie didesnio plano. Nenaudokite API konkuruojančiai sekimo paslaugai kurti."
       },
       {
         "h2": "16. Įrenginiai ir trečiosios šalys"
@@ -323,10 +323,10 @@ export const terms: LocalizedDoc = {
         "h2": "17. Sustabdymas"
       },
       {
-        "p": "Galime sustabdyti darbo erdvę, naudotoją ar API raktą, jei įmokos lieka nesumokėtos po rašytinio priminimo, jei pažeidžiamos 7 skyriaus priimtino naudojimo taisyklės, jei kyla patikima saugumo grėsmė platformai ar kitiems klientams arba jei sustabdymo reikalauja įstatymas. Išskyrus atvejus, kai rizika neatidėliotina arba įstatymas reikalauja kitaip, įspėjame ne vėliau kaip prieš 7 dienas ir suteikiame galimybę problemą ištaisyti. Sustabdymas apribojamas iki būtino — atkuriame prieigą, kai tik pašalinama priežastis. Sustabdymas nesustabdo jūsų pareigos mokėti ir savaime neištrina duomenų: 19 skyriaus saugojimo ir ištrynimo taisyklės taikomos tik nutraukus."
+        "p": "Galime sustabdyti darbo erdvę, naudotoją ar API raktą, jei įmokos lieka nesumokėtos po rašytinio priminimo, jei pažeidžiamos 7 skyriaus priimtino naudojimo taisyklės, jei kyla patikima saugumo grėsmė platformai ar kitiems klientams arba jei sustabdymo reikalauja įstatymas. Išskyrus atvejus, kai rizika neatidėliotina arba įstatymas reikalauja kitaip, įspėjame ne vėliau kaip prieš 7 dienas ir suteikiame galimybę problemą ištaisyti. Sustabdymas taikomas tik tiek, kiek būtina — prieigą atkuriame, kai tik pašalinama priežastis. Sustabdymas nepanaikina jūsų pareigos mokėti ir savaime neištrina duomenų: 19 skyriaus saugojimo ir ištrynimo taisyklės taikomos tik nutraukus sutartį."
       },
       {
-        "h2": "18. Terminas ir nutraukimas"
+        "h2": "18. Galiojimo terminas ir nutraukimas"
       },
       {
         "p": "Mėnesinės prenumeratos gali būti nutrauktos bet kuriuo metu ir baigiasi pasibaigus apmokėtam laikotarpiui. Metinės prenumeratos atnaujinamos dar vieneriems metams, nebent kuri nors šalis įspėja ne vėliau kaip prieš 30 dienų iki atnaujinimo datos. Kiekviena šalis gali nutraukti dėl esminio pažeidimo, neištaisyto per 30 dienų nuo rašytinio įspėjimo, arba nedelsiant, jei kita šalis tampa nemoki."
@@ -335,19 +335,19 @@ export const terms: LocalizedDoc = {
         "h2": "19. Eksportas ir ištrynimas po nutraukimo"
       },
       {
-        "p": "Po nutraukimo ar pasibaigimo jūsų darbo erdvė lieka prieinama tik skaitymo režimu 30 dienų, kad galėtumėte eksportuoti duomenis per programą ir API. Po šio laikotarpio kliento duomenis iš veikiančių sistemų ištriname per 30 dienų; likutinės kopijos šifruotose atsarginėse kopijose perrašomos įprasto atsarginių kopijų ciklo metu, per 30 dienų nuo ištrynimo. Saugome tik tai, ką įstatymas reikalauja saugoti — daugiausia sąskaitas faktūras ir apskaitos įrašus. Gavę rašytinį prašymą patvirtinsime ištrynimą. Perpardavėjai atsako už lygiaverčio eksporto lango suteikimą savo galutiniams klientams."
+        "p": "Nutraukus sutartį arba jai pasibaigus, jūsų darbo erdvė dar 30 dienų lieka prieinama tik skaitymo režimu, kad galėtumėte eksportuoti duomenis per programą ir API. Po šio laikotarpio kliento duomenis iš veikiančių sistemų ištriname per 30 dienų; šifruotose atsarginėse kopijose likę duomenys perrašomi įprasto atsarginių kopijų ciklo metu, per 30 dienų nuo ištrynimo. Saugome tik tai, ką saugoti įpareigoja įstatymas — daugiausia sąskaitas faktūras ir apskaitos įrašus. Gavę rašytinį prašymą patvirtinsime ištrynimą. Perpardavėjai atsako už tokio paties eksporto laikotarpio suteikimą savo galutiniams klientams."
       },
       {
         "h2": "20. Atsakomybė"
       },
       {
-        "p": "Kiek leidžia įstatymas, nė viena šalis neatsako už netiesioginius ar išvestinius nuostolius, negautą pelną ar duomenų praradimą. Mūsų bendra atsakomybė per bet kurį 12 mėnesių laikotarpį apribojama įmokomis, kurias sumokėjote per tą laikotarpį. Niekas neriboja atsakomybės už sukčiavimą, tyčinį netinkamą elgesį arba mirtį ir kūno sužalojimą. Šios ribos taikomos visai Sutarčiai, įskaitant DPA."
+        "p": "Kiek leidžia įstatymas, nė viena šalis neatsako už netiesioginius ar išvestinius nuostolius, negautą pelną ar duomenų praradimą. Mūsų bendra atsakomybė per bet kurį 12 mėnesių laikotarpį apribojama įmokomis, kurias sumokėjote per tą laikotarpį. Niekas neriboja atsakomybės už sukčiavimą, tyčinį pažeidimą arba mirtį ir kūno sužalojimą. Šios ribos taikomos visai Sutarčiai, įskaitant DPA."
       },
       {
         "h2": "21. Nenugalima jėga (force majeure)"
       },
       {
-        "p": "Nė viena šalis neatsako už vėlavimą ar neįvykdymą, sukeltą įvykių, nepriklausančių nuo jos pagrįstos kontrolės, įskaitant stichines nelaimes, karą, terorizmą, pilietinius neramumus, epidemijas, streikus, elektros, mobiliojo ryšio tinklų, GNSS ar interneto tiekėjų sutrikimus, didelio masto kibernetines atakas ir valdžios institucijų veiksmus. Mokėjimo pareigos nuo to neatleidžiamos. Jei įvykis trunka ilgiau nei 30 dienų, kiekviena šalis gali nutraukti paveiktą prenumeratą, o mes grąžiname iš anksto sumokėtas įmokas už nepanaudotą laikotarpį."
+        "p": "Nė viena šalis neatsako už vėlavimą ar neįvykdymą dėl įvykių, kurių ji negali pagrįstai kontroliuoti, įskaitant stichines nelaimes, karą, terorizmą, pilietinius neramumus, epidemijas, streikus, elektros, mobiliojo ryšio tinklų, GNSS ar interneto tiekėjų sutrikimus, didelio masto kibernetines atakas ir valdžios institucijų veiksmus. Tai neatleidžia nuo pareigos mokėti. Jei įvykis trunka ilgiau nei 30 dienų, kiekviena šalis gali nutraukti atitinkamą prenumeratą, o mes grąžiname iš anksto sumokėtas įmokas už nepanaudotą laikotarpį."
       },
       {
         "h2": "22. Subrangovai"
@@ -359,19 +359,19 @@ export const terms: LocalizedDoc = {
         "h2": "23. Perleidimas"
       },
       {
-        "p": "Nė viena šalis negali perleisti Sutarties be kitos šalies rašytinio sutikimo, kuris nebus nepagrįstai sulaikomas. Kiekviena šalis gali ją visą perleisti susijusiai įmonei arba teisių perėmėjui susijungimo, reorganizavimo ar iš esmės viso verslo pardavimo atveju, apie tai raštu pranešusi. Bet koks kitas bandymas perleisti yra negaliojantis."
+        "p": "Nė viena šalis negali perleisti Sutarties be kitos šalies rašytinio sutikimo, kurio nepagrįstai neatsisakoma duoti. Kiekviena šalis gali ją visą perleisti susijusiai įmonei arba teisių perėmėjui susijungimo, reorganizavimo ar iš esmės viso verslo pardavimo atveju, apie tai raštu pranešusi. Bet koks kitas bandymas perleisti yra negaliojantis."
       },
       {
         "h2": "24. Pranešimai"
       },
       {
-        "p": "Pranešimus teikiame el. paštu jūsų paskyroje registruotais adresais, o dėl pakeitimų, paveikiančių visus klientus, — juos skelbdami orbetra.com; paslaugų pranešimai, tokie kaip incidentai ir techninė priežiūra, taip pat gali būti rodomi programoje. Jūs teikiate pranešimus adresu [hello@orbetra.com](mailto:hello@orbetra.com); pranešimai apie nutraukimą ar teisinį reikalavimą taip pat turi būti siunčiami paštu adresu MB Dokigo, Krivių g. 5, LT-01204 Vilnius, Lietuva. El. paštu siųsti pranešimai laikomi gautais kitą darbo dieną. Nuolat atnaujinkite savo atsiskaitymo ir administracinius kontaktus — būtent ten siunčiami pranešimai."
+        "p": "Pranešimus teikiame el. paštu jūsų paskyroje registruotais adresais, o apie pakeitimus, turinčius įtakos visiems klientams, skelbiame orbetra.com; paslaugų pranešimai, tokie kaip incidentai ir techninė priežiūra, taip pat gali būti rodomi programoje. Jūs teikiate pranešimus adresu [hello@orbetra.com](mailto:hello@orbetra.com); pranešimai apie nutraukimą ar teisinį reikalavimą taip pat turi būti siunčiami paštu adresu MB Dokigo, Krivių g. 5, LT-01204 Vilnius, Lietuva. El. paštu siųsti pranešimai laikomi gautais kitą darbo dieną. Nuolat atnaujinkite savo atsiskaitymo ir administracinius kontaktus — būtent ten siunčiami pranešimai."
       },
       {
         "h2": "25. Šių sąlygų pakeitimai"
       },
       {
-        "p": "Esminius šių sąlygų pakeitimus galime atlikti įspėję ne vėliau kaip prieš 30 dienų el. paštu ir šiame puslapyje. Naudojimasis po įsigaliojimo datos reiškia sutikimą. Jei esminis pakeitimas jums nepriimtinas, galite nutraukti prieš jam įsigaliojant, o mes grąžiname iš anksto sumokėtas įmokas už nepanaudotą laikotarpį."
+        "p": "Esminius šių sąlygų pakeitimus galime atlikti įspėję ne vėliau kaip prieš 30 dienų el. paštu ir šiame puslapyje. Tolesnis naudojimasis po įsigaliojimo datos reiškia sutikimą. Jei esminis pakeitimas jums nepriimtinas, galite nutraukti prieš jam įsigaliojant, o mes grąžiname iš anksto sumokėtas įmokas už nepanaudotą laikotarpį."
       },
       {
         "h2": "26. Taikoma teisė ir jurisdikcija"
@@ -383,7 +383,7 @@ export const terms: LocalizedDoc = {
         "h2": "27. Bendrosios nuostatos"
       },
       {
-        "p": "Jei kuri nors nuostata pripažįstama negaliojančia, likusi dalis lieka galioti, o negaliojanti dalis pakeičiama galiojančia, artimiausia jos tikslui. Teisės neįgyvendinimas nėra jos atsisakymas. Sutartis yra visas šalių susitarimas jos dalyku ir pakeičia ankstesnius pasiūlymus bei pareiškimus. Niekas joje nesukuria partnerystės, atstovavimo ar darbo santykių ir nesukuria jokių teisių trečiosioms šalims. Skyriai, kurie dėl savo pobūdžio turėtų likti galioti po nutraukimo — įskaitant 9, 10, 11, 19, 20, 26 ir 27 — lieka galioti."
+        "p": "Jei kuri nors nuostata pripažįstama negaliojančia, likusi dalis lieka galioti, o negaliojanti dalis pakeičiama galiojančia, artimiausia jos tikslui. Teisės neįgyvendinimas nėra jos atsisakymas. Sutartis sudaro visą šalių susitarimą dėl jos dalyko ir pakeičia ankstesnius pasiūlymus bei pareiškimus. Niekas joje nesukuria partnerystės, atstovavimo ar darbo santykių ir nesukuria jokių teisių trečiosioms šalims. Skyriai, kurie dėl savo pobūdžio turėtų likti galioti po nutraukimo — įskaitant 9, 10, 11, 19, 20, 26 ir 27 — lieka galioti."
       }
     ]
   },

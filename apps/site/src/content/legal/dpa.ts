@@ -161,13 +161,13 @@ export const dpa: LocalizedDoc = {
     "notice": "Tai yra vertimas patogumui. Esant neatitikimų, pirmenybė teikiama versijai anglų kalba.",
     "blocks": [
       {
-        "p": "Šis duomenų tvarkymo priedas („DPA“) sudaromas tarp kliento, nurodyto paskyros registracijoje arba užsakymo formoje („Valdytojas“), ir **MB Dokigo**, Lietuvos mažosios bendrijos, įmonės kodas 307575857, Krivių g. 5, LT-01204 Vilnius, Lietuva, veikiančios Orbetra vardu („Tvarkytojas“). Baltos etiketės (white-label) perpardavėjų atveju perpardavėjas yra Valdytojas savo galutinių klientų atžvilgiu, o Orbetra lieka Tvarkytoju. Pasirašytiną kopiją galima gauti paprašius adresu [hello@orbetra.com](mailto:hello@orbetra.com)."
+        "p": "Šis duomenų tvarkymo priedas („DPA“) sudaromas tarp kliento, nurodyto paskyros registracijoje arba užsakymo formoje („Valdytojas“), ir **MB Dokigo**, Lietuvos mažosios bendrijos, įmonės kodas 307575857, Krivių g. 5, LT-01204 Vilnius, Lietuva, vykdančios veiklą Orbetra prekės ženklu („Tvarkytojas“). White-label perpardavėjų atveju perpardavėjas yra Valdytojas savo galutinių klientų atžvilgiu, o Orbetra lieka Tvarkytoju. Pasirašytiną kopiją galima gauti paprašius adresu [hello@orbetra.com](mailto:hello@orbetra.com)."
       },
       {
         "h2": "1. Įsigaliojimas ir viršenybė"
       },
       {
-        "p": "Šis DPA įsigalioja tą dieną, kai Valdytojas pirmą kartą sutinka su [Paslaugų teikimo sąlygomis](/terms) arba pasirašo užsakymo formą, ir galioja tol, kol Orbetra tvarko asmens duomenis Valdytojo vardu. Jis yra šalių susitarimo dalis. Jei jis prieštarauja Sąlygoms ar užsakymo formai dėl asmens duomenų tvarkymo, pirmenybė teikiama šiam DPA; visais kitais klausimais pirmenybė teikiama Sąlygoms. Paslaugų teikimo sąlygose apibrėžti terminai čia turi tą pačią reikšmę. Kai taikomos ES standartinės sutarčių sąlygos, kilus prieštaravimui jos turi viršenybę prieš šį DPA."
+        "p": "Šis DPA įsigalioja tą dieną, kai Valdytojas pirmą kartą sutinka su [Paslaugų teikimo sąlygomis](/terms) arba pasirašo užsakymo formą, ir galioja tol, kol Orbetra tvarko asmens duomenis Valdytojo vardu. Jis sudaro šalių susitarimo dalį. Jei jis prieštarauja Sąlygoms ar užsakymo formai dėl asmens duomenų tvarkymo, pirmenybė teikiama šiam DPA; visais kitais klausimais pirmenybė teikiama Sąlygoms. Paslaugų teikimo sąlygose apibrėžti terminai čia turi tą pačią reikšmę. Kai taikomos ES standartinės sutarčių sąlygos, kilus prieštaravimui jos turi viršenybę prieš šį DPA."
       },
       {
         "h2": "2. Šalių vaidmenys"
@@ -179,13 +179,13 @@ export const dpa: LocalizedDoc = {
         "h2": "3. Dalykas, trukmė ir apimtis"
       },
       {
-        "p": "Orbetra atliekamas asmens duomenų tvarkymas siekiant teikti transporto parko sekimo paslaugą, prenumeratos laikotarpiu ir 11 skirsnyje nurodytais ištrynimo laikotarpiais. Informacija, kurios reikalauja BDAR Art. 28(3), pateikiama I priede."
+        "p": "Orbetra tvarko asmens duomenis tam, kad teiktų autoparko sekimo paslaugą; tvarkymas trunka prenumeratos laikotarpį ir 11 skirsnyje nurodytus ištrynimo laikotarpius. Informacija, kurios reikalaujama BDAR 28 straipsnio 3 dalyje, pateikiama I priede."
       },
       {
         "h2": "4. Pobūdis ir tikslas"
       },
       {
-        "p": "Transporto priemonių telemetrijos ir susijusių įrašų rinkimas, saugojimas, struktūrizavimas, analizė, rodymas ir eksportavimas Valdytojo transporto parko valdymo tikslu."
+        "p": "Transporto priemonių telemetrijos ir susijusių įrašų rinkimas, saugojimas, struktūrizavimas, analizė, rodymas ir eksportavimas Valdytojo autoparko valdymo tikslu."
       },
       {
         "h2": "5. Valdytojo nurodymai"
@@ -203,31 +203,31 @@ export const dpa: LocalizedDoc = {
         "h2": "7. Saugumo priemonės"
       },
       {
-        "p": "Orbetra įgyvendina technines ir organizacines priemones, nurodytas **II priede**, atsižvelgdama į techninių galimybių išsivystymo lygį, įgyvendinimo sąnaudas ir riziką duomenų subjektams (BDAR Art. 32). Priemonės gali būti atnaujinamos platformai tobulėjant, su sąlyga, kad apsaugos lygis nebūtų sumažintas."
+        "p": "Orbetra įgyvendina technines ir organizacines priemones, nurodytas **II priede**, atsižvelgdama į techninių galimybių išsivystymo lygį, įgyvendinimo sąnaudas ir riziką duomenų subjektams (BDAR 32 str.). Priemonės gali būti atnaujinamos platformai tobulėjant, su sąlyga, kad apsaugos lygis nebūtų sumažintas."
       },
       {
         "h2": "8. Subtvarkytojai"
       },
       {
-        "p": "Valdytojas suteikia bendrą leidimą [orbetra.com/subprocessors](/subprocessors) išvardytiems subtvarkytojams. Orbetra kiekvienam subtvarkytojui nustato duomenų apsaugos įpareigojimus, kurie yra ne mažiau apsaugantys nei šis DPA, ir lieka visiškai atsakinga Valdytojui už jų veiklą."
+        "p": "Valdytojas suteikia bendrą leidimą [orbetra.com/subprocessors](/subprocessors) išvardytiems subtvarkytojams. Orbetra kiekvienam subtvarkytojui nustato duomenų apsaugos įpareigojimus, kurie užtikrina ne mažesnę apsaugą nei šis DPA, ir lieka visiškai atsakinga Valdytojui už jų veiklą."
       },
       {
         "p": "**Pranešimas apie pakeitimus.** Prieš pridėdama ar pakeisdama subtvarkytoją, Orbetra atnaujina tą puslapį ir el. paštu praneša Valdytojams ne vėliau kaip prieš **30 dienų**. Norėdami būti įtraukti į pranešimų sąrašą, rašykite [hello@orbetra.com](mailto:hello@orbetra.com)."
       },
       {
-        "p": "**Prieštaravimas.** Valdytojas gali per 30 dienų pranešimo laikotarpį raštu pareikšti prieštaravimą dėl pagrįstų duomenų apsaugos priežasčių. Šalys sąžiningai aptars prieštaravimą, o Orbetra dės pagrįstas pastangas pasiūlyti alternatyvą arba konfigūracijos pakeitimą. Nepavykus rasti sprendimo, Valdytojas gali be baudos nutraukti paveiktą paslaugos dalį, o Orbetra grąžina iš anksto sumokėtus mokesčius už nepanaudotą laikotarpį."
+        "p": "**Prieštaravimas.** Valdytojas gali per 30 dienų pranešimo laikotarpį raštu pareikšti prieštaravimą dėl pagrįstų duomenų apsaugos priežasčių. Šalys sąžiningai aptars prieštaravimą, o Orbetra dės pagrįstas pastangas pasiūlyti alternatyvą arba konfigūracijos pakeitimą. Nepavykus rasti sprendimo, Valdytojas gali be baudos nutraukti atitinkamą paslaugos dalį, o Orbetra grąžina iš anksto sumokėtus mokesčius už nepanaudotą laikotarpį."
       },
       {
         "h2": "9. Tarptautiniai perdavimai"
       },
       {
-        "p": "Prieglobos ir saugojimo paslaugos teikiamos Europos Sąjungoje. Kai subtvarkytojas tvarko ribotus užklausų metaduomenis už EEE ribų — šiuo metu Mapbox produkto žemėlapio kaladėlėms ir CARTO rinkodaros svetainės baziniam žemėlapiui — perdavimai grindžiami ES standartinėmis sutarčių sąlygomis (Komisijos įgyvendinimo sprendimas (ES) 2021/914), trečiuoju moduliu (tvarkytojas tvarkytojui), kartu su perdavimo poveikio vertinimu ir papildomomis priemonėmis, tokiomis kaip šifravimas perdavimo metu ir duomenų kiekio mažinimas. Jokia transporto parko telemetrija ar paskyros duomenys nėra perduodami saugoti už EEE ribų."
+        "p": "Prieglobos ir saugojimo paslaugos teikiamos Europos Sąjungoje. Kai subtvarkytojas tvarko ribotus užklausų metaduomenis už EEE ribų — šiuo metu Mapbox produkto žemėlapio išklotinėms ir CARTO rinkodaros svetainės baziniam žemėlapiui — perdavimai grindžiami ES standartinėmis sutarčių sąlygomis (Komisijos įgyvendinimo sprendimas (ES) 2021/914), trečiuoju moduliu (tvarkytojas tvarkytojui), kartu su perdavimo poveikio vertinimu ir papildomomis priemonėmis, tokiomis kaip šifravimas perdavimo metu ir duomenų kiekio mažinimas. Jokia autoparko telemetrija ir jokie paskyros duomenys nėra perduodami saugoti už EEE ribų."
       },
       {
         "h2": "10. Pagalba"
       },
       {
-        "p": "Orbetra padeda Valdytojui vykdyti jo pareigas pagal BDAR Art. 32–36 ir atsakyti į duomenų subjektų prašymus, atsižvelgdama į tvarkymo pobūdį ir jai prieinamą informaciją:"
+        "p": "Orbetra padeda Valdytojui vykdyti jo pareigas pagal BDAR 32–36 str. ir atsakyti į duomenų subjektų prašymus, atsižvelgdama į tvarkymo pobūdį ir jai prieinamą informaciją:"
       },
       {
         "ul": [
@@ -242,19 +242,19 @@ export const dpa: LocalizedDoc = {
         "h2": "11. Ištrynimas ir grąžinimas"
       },
       {
-        "p": "Telemetrija ištrinama po 13 mėnesių saugojimo laikotarpio, o kelionių įrašų pradžios / pabaigos koordinatės ištrinamos tuo pačiu metu (kelionės atstumas, laikai ir vairuotojas išsaugomi Valdytojo istorinėms ataskaitoms ir negali būti susieti su vieta). Nutraukus ar pasibaigus sutarčiai, Valdytojas turi 30 dienų eksportuoti duomenis per programėlę ir API. Tada Orbetra per 30 dienų ištrina asmens duomenis iš veikiančių sistemų; likutinės kopijos šifruotose atsarginėse kopijose perrašomos įprastos atsarginių kopijų rotacijos metu, per 30 dienų nuo to ištrynimo. Orbetra saugo tik tai, ką ES ar valstybės narės teisė reikalauja saugoti, ir tai saugo pagal šį DPA tol, kol tai saugoma. Orbetra paprašius raštu patvirtina ištrynimą."
+        "p": "Telemetrija ištrinama po 13 mėnesių saugojimo laikotarpio, o kelionių įrašų pradžios / pabaigos koordinatės ištrinamos tuo pačiu metu (kelionės atstumas, laikai ir vairuotojas išsaugomi Valdytojo istorinėms ataskaitoms ir negali būti susieti su vieta). Nutraukus ar pasibaigus sutarčiai, Valdytojas turi 30 dienų eksportuoti duomenis per programėlę ir API. Tada Orbetra per 30 dienų ištrina asmens duomenis iš veikiančių sistemų; šifruotose atsarginėse kopijose likę duomenys perrašomi įprastos atsarginių kopijų rotacijos metu, per 30 dienų nuo to ištrynimo. Orbetra saugo tik tai, ką saugoti įpareigoja ES ar valstybės narės teisė, ir visą saugojimo laiką tiems duomenims taiko šio DPA apsaugą. Orbetra paprašius raštu patvirtina ištrynimą."
       },
       {
         "h2": "12. Auditas"
       },
       {
-        "p": "Orbetra pateikia informaciją, reikalingą įrodyti atitiktį Art. 28, ir leidžia Valdytojui ar nepriklausomam auditoriui atlikti auditus kartą per metus, įspėjus ne vėliau kaip prieš 30 dienų, darbo valandomis, be nepagrįsto trikdymo ir laikantis konfidencialumo. Papildomi auditai gali būti atliekami įvykus asmens duomenų saugumo pažeidimui arba to pareikalavus priežiūros institucijai. Valdytojas padengia savo audito išlaidas."
+        "p": "Orbetra pateikia informaciją, reikalingą įrodyti atitiktį BDAR 28 str., ir leidžia Valdytojui ar nepriklausomam auditoriui atlikti auditus kartą per metus, įspėjus ne vėliau kaip prieš 30 dienų, darbo valandomis, nepagrįstai netrikdant veiklos ir laikantis konfidencialumo. Papildomi auditai gali būti atliekami įvykus asmens duomenų saugumo pažeidimui arba to pareikalavus priežiūros institucijai. Valdytojas padengia savo audito išlaidas."
       },
       {
         "h2": "13. Atsakomybė"
       },
       {
-        "p": "[Paslaugų teikimo sąlygose](/terms) nustatyti atsakomybės apribojimai ir išimtys taikomi pretenzijoms pagal šį DPA, kiek tai leidžia teisė. Niekas šiame DPA neriboja duomenų subjektų teisių ar kurios nors šalies atsakomybės pagal BDAR Art. 82."
+        "p": "[Paslaugų teikimo sąlygose](/terms) nustatyti atsakomybės apribojimai ir išimtys taikomi pretenzijoms pagal šį DPA, kiek tai leidžia teisė. Niekas šiame DPA neriboja duomenų subjektų teisių ar kurios nors šalies atsakomybės pagal BDAR 82 str."
       },
       {
         "h2": "I priedas — Tvarkymo aprašymas"
@@ -264,7 +264,7 @@ export const dpa: LocalizedDoc = {
       },
       {
         "ul": [
-          "**Duomenų eksportuotojas / Valdytojas:** klientas, nurodytas paskyros registracijoje arba užsakymo formoje, veikiantis kaip savo darbo aplinkos asmens duomenų valdytojas. Baltos etiketės (white-label) diegimų atveju — perpardavėjas.",
+          "**Duomenų eksportuotojas / Valdytojas:** klientas, nurodytas paskyros registracijoje arba užsakymo formoje, veikiantis kaip savo darbo aplinkos asmens duomenų valdytojas. White-label diegimų atveju — perpardavėjas.",
           "**Duomenų importuotojas / Tvarkytojas:** MB Dokigo (Orbetra), Krivių g. 5, LT-01204 Vilnius, Lietuva, įmonės kodas 307575857. Kontaktai: [hello@orbetra.com](mailto:hello@orbetra.com)."
         ]
       },
@@ -274,32 +274,32 @@ export const dpa: LocalizedDoc = {
       {
         "ul": [
           "**Duomenų subjektų kategorijos:** Valdytojo vairuotojai ir kiti transporto priemonių keleiviai, darbuotojai ir darbo aplinkos naudotojai; perpardavėjų atveju — jų galutinių klientų naudotojai ir vairuotojai.",
-          "**Asmens duomenų kategorijos:** vardai, darbo el. paštai, vaidmenys ir teisės, vairuotojų identifikatoriai ir Valdytojo įvesti vairuotojo pažymėjimo duomenys, transporto priemonių priskyrimai, pozicijos ir maršrutai, greitis ir vairavimo įvykiai, degimas ir darbo valandos, kuro ir techninės priežiūros įrašai, įrenginių komandos bei audito žurnalai. Įrenginio tapatybė grindžiama IMEI.",
-          "**Specialios kategorijos:** nėra. Jokie specialių kategorijų duomenys nėra tvarkomi tyčia; Valdytojas neturi jų įvesti į laisvo teksto laukus.",
+          "**Asmens duomenų kategorijos:** vardai, darbo el. paštai, vaidmenys ir teisės, vairuotojų identifikatoriai ir Valdytojo įvesti vairuotojo pažymėjimo duomenys, transporto priemonių priskyrimai, pozicijos ir maršrutai, greitis ir vairavimo įvykiai, degimas ir darbo valandos, kuro ir techninės priežiūros įrašai, įrenginiams siųstos komandos bei audito žurnalai. Įrenginio tapatybė grindžiama IMEI.",
+          "**Specialios kategorijos:** nėra. Specialių kategorijų duomenys sąmoningai netvarkomi; Valdytojas neturi jų įvesti į laisvo teksto laukus.",
           "**Dažnumas:** nuolatinis — telemetrija iš įrenginių ateina beveik realiuoju laiku; paskyros ir konfigūracijos duomenys — naudojimo metu.",
-          "**Pobūdis ir tikslas:** pirmiau nurodytų duomenų priegloba, saugojimas, struktūrizavimas, analizė, rodymas ir eksportavimas, kad Valdytojas galėtų valdyti savo transporto parką, kaip aprašyta 3 ir 4 skirsniuose.",
-          "**Trukmė:** prenumeratos laikotarpis ir 11 skirsnyje nurodyti saugojimo bei ištrynimo laikotarpiai (telemetrija pagal nutylėjimą 13 mėnesių; ištrynimas po 30 dienų eksportavimo laikotarpio nutraukus sutartį).",
+          "**Pobūdis ir tikslas:** pirmiau nurodytų duomenų priegloba, saugojimas, struktūrizavimas, analizė, rodymas ir eksportavimas, kad Valdytojas galėtų valdyti savo autoparką, kaip aprašyta 3 ir 4 skirsniuose.",
+          "**Trukmė:** prenumeratos laikotarpis ir 11 skirsnyje nurodyti saugojimo bei ištrynimo laikotarpiai (telemetrija pagal numatytuosius nustatymus 13 mėnesių; ištrynimas po 30 dienų eksportavimo laikotarpio nutraukus sutartį).",
           "**Subtvarkytojai:** kaip išvardyta [orbetra.com/subprocessors](/subprocessors), ten nurodytais tikslais ir laikotarpiais."
         ]
       },
       {
-        "p": "**C. Kompetentinga priežiūros institucija.** Orbetra įsteigta Lietuvoje, todėl kompetentinga institucija yra Valstybinė duomenų apsaugos inspekcija (Valstybinė duomenų apsaugos inspekcija, VDAI), Vilnius. Kai Valdytojas įsteigtas kitoje ES valstybėje narėje, jo paties priežiūros institucija yra kompetentinga jo tvarkymo atžvilgiu."
+        "p": "**C. Kompetentinga priežiūros institucija.** Orbetra įsteigta Lietuvoje, todėl kompetentinga institucija yra Valstybinė duomenų apsaugos inspekcija (VDAI), Vilnius. Kai Valdytojas įsteigtas kitoje ES valstybėje narėje, jo paties priežiūros institucija yra kompetentinga jo tvarkymo atžvilgiu."
       },
       {
         "h2": "II priedas — Techninės ir organizacinės priemonės"
       },
       {
         "ul": [
-          "TLS 1.2+ perduodamiems duomenims; šifravimas ramybės būsenoje duomenų bazėms ir atsarginėms kopijoms.",
-          "Nuomininkų izoliacija, įgyvendinta duomenų sluoksnyje, ir vaidmenimis grindžiama prieigos kontrolė; SSO galimas Scale ir Enterprise planuose.",
+          "TLS 1.2+ perduodamiems duomenims; duomenų bazių ir atsarginių kopijų šifravimas saugojimo metu.",
+          "Klientų aplinkų atskyrimas, įgyvendintas duomenų sluoksnyje, ir vaidmenimis grindžiama prieigos kontrolė; SSO galimas Scale ir Enterprise planuose.",
           "Administracinių ir duomenų prieigos veiksmų audito registravimas.",
           "Automatinės atsarginės kopijos su išbandytomis atkūrimo procedūromis.",
           "Atskirtos aplinkos, kodo peržiūra, priklausomybių skenavimas ir mažiausių privilegijų prieiga prie infrastruktūros.",
-          "Prieiga prie gamybos duomenų suteikiama tik ją poreikį turintiems darbuotojams, įpareigotiems laikytis konfidencialumo, per autentifikuotus ir registruojamus kanalus.",
+          "Prieiga prie gamybinės aplinkos duomenų suteikiama tik tiems darbuotojams, kuriems ji būtina ir kuriuos saisto konfidencialumo pareiga, per autentifikuotus ir registruojamus kanalus.",
           "Pseudonimizavimas, kai tai praktiška: įrenginiai identifikuojami pagal IMEI, o vairuotojo tapatybė yra tik tai, ką įveda Valdytojas.",
-          "Duomenų kiekio mažinimas ir saugojimo ribos, įgyvendinamos platformos (13 mėnesių telemetrijos numatytoji reikšmė).",
+          "Platformoje įdiegtas duomenų kiekio mažinimas ir saugojimo terminų ribojimas (telemetrijai numatytieji 13 mėnesių).",
           "Reagavimas į incidentus su pranešimu Valdytojui be nepagrįsto delsimo ir per 72 valandas nuo sužinojimo apie asmens duomenų saugumo pažeidimą.",
-          "Veiklos tęstinumas: ES priglobta infrastruktūra su stebimu duomenų priėmimo srautu ir atkūrimo procedūromis, tikrinamomis su atsarginėmis kopijomis."
+          "Veiklos tęstinumas: ES teritorijoje talpinama infrastruktūra su stebimu duomenų priėmimo srautu ir atkūrimo procedūromis, tikrinamomis su atsarginėmis kopijomis."
         ]
       }
     ]

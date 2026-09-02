@@ -57,7 +57,7 @@ const SCHEDULED_SEED: Scheduled[] = [
 // Demo-only strings (toasts for the pretend exports) — not part of the product locale files
 const L: Record<Lang, { csvToast: string; pdfToast: string }> = {
   en: { csvToast: "CSV exported (demo)", pdfToast: "PDF exported (demo)" },
-  lt: { csvToast: "CSV eksportuota (demo)", pdfToast: "PDF eksportuota (demo)" },
+  lt: { csvToast: "CSV failas eksportuotas (demo)", pdfToast: "PDF failas eksportuotas (demo)" },
   pl: { csvToast: "CSV wyeksportowano (demo)", pdfToast: "PDF wyeksportowano (demo)" },
   de: { csvToast: "CSV exportiert (demo)", pdfToast: "PDF exportiert (demo)" },
 };

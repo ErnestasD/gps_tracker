@@ -47,7 +47,7 @@ type DemoMaint = {
 const L: Record<Lang, { reminderSaved: string; serviced: string; planCreated: string; servicePh: string }> = {
   lt: {
     reminderSaved: "Priminimas išsaugotas (demo)",
-    serviced: "Aptarnavimas užregistruotas (demo)",
+    serviced: "Techninė priežiūra užregistruota (demo)",
     planCreated: "Planas sukurtas (demo)",
     servicePh: "pvz. Alyvos keitimas",
   },
@@ -88,9 +88,9 @@ const DEVICES = [
 
 const MAINT: DemoMaint[] = [
   { id: "mnt_01", deviceName: "Van 01", title: "Alyvos keitimas", intervalKm: 15000, intervalDays: 365, intervalEngineH: null, kmRemaining: 1240, daysRemaining: 96, engineHRemaining: null, predictedDueAt: "2026-09-18", status: "due_soon" },
-  { id: "mnt_02", deviceName: "Truck 03", title: "Padangų sukeitimas", intervalKm: 40000, intervalDays: null, intervalEngineH: null, kmRemaining: -860, daysRemaining: null, engineHRemaining: null, predictedDueAt: "2026-08-21", status: "overdue" },
+  { id: "mnt_02", deviceName: "Truck 03", title: "Padangų keitimas", intervalKm: 40000, intervalDays: null, intervalEngineH: null, kmRemaining: -860, daysRemaining: null, engineHRemaining: null, predictedDueAt: "2026-08-21", status: "overdue" },
   { id: "mnt_03", deviceName: "Van 02", title: "Techninė apžiūra", intervalKm: null, intervalDays: 365, intervalEngineH: null, kmRemaining: null, daysRemaining: 3, engineHRemaining: null, predictedDueAt: "2026-09-04", status: "due_soon" },
-  { id: "mnt_04", deviceName: "Sprinter 04", title: "Stabdžių kaladėlės", intervalKm: 30000, intervalDays: null, intervalEngineH: null, kmRemaining: 12480, daysRemaining: null, engineHRemaining: null, predictedDueAt: "2026-11-02", status: "ok" },
+  { id: "mnt_04", deviceName: "Sprinter 04", title: "Stabdžių kaladėlių keitimas", intervalKm: 30000, intervalDays: null, intervalEngineH: null, kmRemaining: 12480, daysRemaining: null, engineHRemaining: null, predictedDueAt: "2026-11-02", status: "ok" },
   { id: "mnt_05", deviceName: "Truck 05", title: "Filtrų keitimas", intervalKm: 20000, intervalDays: 180, intervalEngineH: null, kmRemaining: 6910, daysRemaining: 74, engineHRemaining: null, predictedDueAt: "2026-10-06", status: "ok" },
   { id: "mnt_06", deviceName: "Van 06", title: "Tachografo patikra", intervalKm: null, intervalDays: 730, intervalEngineH: null, kmRemaining: null, daysRemaining: -12, engineHRemaining: null, predictedDueAt: "2026-08-20", status: "overdue" },
   { id: "mnt_07", deviceName: "Truck 03", title: "Variklio diagnostika", intervalKm: null, intervalDays: null, intervalEngineH: 500, kmRemaining: null, daysRemaining: null, engineHRemaining: 210, predictedDueAt: null, status: "ok" },
@@ -109,7 +109,7 @@ const PLANS: DemoPlan[] = [
     name: "Standartinis servisas",
     items: [
       { title: "Alyvos keitimas", intervalKm: 15000, intervalDays: 365, intervalEngineH: null },
-      { title: "Padangų sukeitimas", intervalKm: 10000, intervalDays: null, intervalEngineH: null },
+      { title: "Padangų keitimas", intervalKm: 10000, intervalDays: null, intervalEngineH: null },
       { title: "Techninė apžiūra", intervalKm: null, intervalDays: 365, intervalEngineH: null },
     ],
   },

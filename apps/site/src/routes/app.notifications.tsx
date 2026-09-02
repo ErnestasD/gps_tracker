@@ -45,12 +45,12 @@ const L: Record<Lang, {
   zoneExit: (zone: string) => string;
 }> = {
   lt: {
-    desc: "Pranešimų archyvas: viskas, kas buvo pristatyta per varpelį.",
+    desc: "Pranešimų archyvas: visi pranešimai, rodyti varpelio lange.",
     message: "Pranešimas",
     empty: "Pagal šiuos filtrus pranešimų nėra.",
-    overspeed: (s, l, kmh) => `Viršytas greitis: ${s} ${kmh} > ${l} ${kmh}`,
-    zoneEnter: (z) => `Įvažiavimas į zoną „${z}“`,
-    zoneExit: (z) => `Išvažiavimas iš zonos „${z}“`,
+    overspeed: (s, l, kmh) => `Greičio viršijimas: ${s} ${kmh} > ${l} ${kmh}`,
+    zoneEnter: (z) => `Įvažiavo į geozoną „${z}“`,
+    zoneExit: (z) => `Išvažiavo iš geozonos „${z}“`,
   },
   en: {
     desc: "Notification archive: everything delivered through the bell.",

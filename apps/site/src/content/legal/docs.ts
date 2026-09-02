@@ -198,12 +198,12 @@ export const docs: LocalizedDoc = {
             [
               "GET",
               "/v1/events",
-              "Įspėjimai: uždegimas, greičio viršijimas, geografinė zona, maitinimo nutrūkimas."
+              "Įspėjimai: degimas, greičio viršijimas, geozona, maitinimo nutrūkimas."
             ],
             [
               "POST",
               "/v1/webhooks",
-              "Užregistruoti HTTPS galinį tašką įvykių gavimui. **Tik su skydelio sesija.**"
+              "Užregistruoti HTTPS galinį tašką įvykiams gauti. **Tik su skydelio sesija.**"
             ]
           ]
         }
@@ -212,19 +212,19 @@ export const docs: LocalizedDoc = {
         "h2": "Webhooks"
       },
       {
-        "p": "Užregistruokite HTTPS galinį tašką ir Orbetra siųs įvykius jiems įvykus. Kiekvienas pristatymas pasirašomas HMAC-SHA256 antraštėje `X-Signature` (`sha256=<hex>` iš tikslių turinio baitų) ir turi `X-Webhook-Id` idempotentiškumui — patikrinkite parašą prieš pasitikėdami turiniu. Nepavykę pristatymai kartojami taikant eksponentinį atidėjimą."
+        "p": "Užregistruokite HTTPS galinį tašką ir Orbetra siųs įvykius iškart jiems įvykus. Kiekvienas pristatymas pasirašomas HMAC-SHA256 antraštėje `X-Signature` (`sha256=<hex>` iš tikslių turinio baitų) ir turi `X-Webhook-Id` idempotentiškumui — patikrinkite parašą prieš pasitikėdami turiniu. Nepavykę pristatymai kartojami eksponentiškai ilginant pertrauką."
       },
       {
         "code": "{\n  \"kind\": \"geofence\",\n  \"deviceId\": \"<device-id>\",\n  \"at\": \"2026-08-03T09:41:12Z\",\n  \"payload\": { \"geofenceId\": \"<geofence-id>\", \"name\": \"Depot\", \"transition\": \"exit\" }\n}"
       },
       {
-        "p": "Įvykių tipai: `geofence`, `overspeed`, `ignition`, `din_change`, `power_cut`, `low_battery`, `panic`, `device_offline`, `fuel_theft`. Neužsiprenumeravus nė vieno, gausite visus."
+        "p": "Įvykių tipai: `geofence`, `overspeed`, `ignition`, `din_change`, `power_cut`, `low_battery`, `panic`, `device_offline`, `fuel_theft`. Jei neužsiprenumeruosite nė vieno, gausite visus."
       },
       {
         "h2": "Įrenginių prijungimas"
       },
       {
-        "p": "Teltonika sekikliai palaikomi jau šiandien — Orbetra natūraliai supranta jų protokolą. Nukreipkite sekiklį į priėmimo serverį naudodami savo paskyros prievadą, įjunkite maitinimą, ir jis programoje pasirodys per minutę."
+        "p": "Teltonika sekikliai palaikomi jau šiandien — Orbetra supranta jų protokolą tiesiogiai. Nukreipkite sekiklį į priėmimo serverį per savo paskyros prievadą, įjunkite maitinimą — programoje jis pasirodys per minutę."
       },
       {
         "code": "# Teltonika configurator\nServer:   ingest.orbetra.com\nProtocol: TCP\nPort:     <provided in app → Devices → Add device>"

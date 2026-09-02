@@ -11,8 +11,8 @@ import { X } from "lucide-react";
 export const Route = createFileRoute("/app")({
   head: () => ({
     meta: [
-      { title: "Orbetra Admin — GPS parkas" },
-      { name: "description", content: "Orbetra parkas ir įrenginių valdymas." },
+      { title: "Orbetra Admin — autoparko valdymas" },
+      { name: "description", content: "Orbetra autoparko ir įrenginių valdymas." },
       { name: "robots", content: "noindex" },
     ],
   }),

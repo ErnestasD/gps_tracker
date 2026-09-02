@@ -37,9 +37,9 @@ const STATUS_KEY: Record<DemoStatus, string> = {
 /** Demo-only copy that has no counterpart in the real product's locale files. */
 const L: Record<Lang, { demoImport: string; demoAction: string; rowNoop: string; created: string; namePh: string }> = {
   lt: {
-    demoImport: "Demo režimas — importas neatliekamas.",
-    demoAction: "Demo režimas — veiksmas neatliekamas.",
-    rowNoop: "demo režimas, veiksmas neatliekamas.",
+    demoImport: "Demo režimas — importas nevykdomas.",
+    demoAction: "Demo režimas — veiksmas nevykdomas.",
+    rowNoop: "demo režimas, veiksmas nevykdomas.",
     created: "Įrenginys sukurtas (demo)",
     namePh: "pvz. Krovininis 12",
   },

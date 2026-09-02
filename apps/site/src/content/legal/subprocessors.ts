@@ -85,7 +85,7 @@ export const subprocessors: LocalizedDoc = {
     "updated": "2026 m. rugpjūtis",
     "blocks": [
       {
-        "p": "Tai tretieji asmenys, kuriuos Orbetra pasitelkia paslaugai teikti ir kurie mūsų vardu gali tvarkyti asmens duomenis. Sąrašas yra išsamus: jokia kita šalis negauna klientų duomenų. Jis tvarkomas pagal [DPA](/dpa) 8 skirsnį ir paskutinį kartą peržiūrėtas **2026 m. rugpjūtį**."
+        "p": "Tai tretieji asmenys, kuriuos Orbetra pasitelkia paslaugai teikti ir kurie mūsų vardu gali tvarkyti asmens duomenis. Sąrašas išsamus: jokia kita šalis negauna klientų duomenų. Jis tvarkomas pagal [DPA](/dpa) 8 skirsnį ir paskutinį kartą peržiūrėtas **2026 m. rugpjūtį**."
       },
       {
         "table": {
@@ -97,7 +97,7 @@ export const subprocessors: LocalizedDoc = {
           "rows": [
             [
               "Hetzner Online GmbH",
-              "Pagrindinis programos, duomenų bazės ir telemetrijos prieglobstis",
+              "Pagrindinė programos, duomenų bazės ir telemetrijos priegloba",
               "Vokietija (ES)"
             ],
             [
@@ -117,18 +117,18 @@ export const subprocessors: LocalizedDoc = {
             ],
             [
               "Stripe Payments Europe, Ltd.",
-              "Prenumeratos sąskaitos ir mokėjimų tvarkymas",
+              "Prenumeratos sąskaitų išrašymas ir mokėjimų tvarkymas",
               "Airija (ES)"
             ],
             [
               "Postmark (ActiveCampaign, LLC)",
-              "Operaciniai el. laiškai (įspėjimai, ataskaitos, paskyros laiškai)",
+              "Sisteminiai el. laiškai (įspėjimai, ataskaitos, paskyros laiškai)",
               "ES regiono galinis taškas"
             ],
             [
               "Cloudflare, Inc.",
               "DNS, TLS nutraukimas ir apsauga nuo DDoS",
-              "Pasaulinis kraštinis tinklas — pirmenybė ES maršrutizavimui, taikomos standartinės sutarčių sąlygos"
+              "Pasaulinis paribio (edge) tinklas — pirmenybė teikiama ES maršrutams, taikomos standartinės sutarčių sąlygos"
             ]
           ]
         }
@@ -143,7 +143,7 @@ export const subprocessors: LocalizedDoc = {
         "p": "Klientas per 30 dienų pranešimo laikotarpį gali raštu pareikšti prieštaravimą dėl pagrįstų duomenų apsaugos priežasčių. Prieštaravimą aptarsime sąžiningai ir stengsimės pasiūlyti alternatyvą arba konfigūracijos pakeitimą; jei problemos išspręsti nepavyks, klientas gali be baudos nutraukti atitinkamą paslaugos dalį, o už nepanaudotą laikotarpį iš anksto sumokėtus mokesčius grąžiname. Visa procedūra aprašyta [DPA](/dpa) 8 skirsnyje."
       },
       {
-        "p": "Jei pakeitimas yra skubus — pavyzdžiui, keičiant tiekėją, tapusį saugumo rizika — galime imtis veiksmų anksčiau ir nedelsdami pranešti, paaiškindami priežastis."
+        "p": "Kai pakeitimas skubus — pavyzdžiui, kai keičiame tiekėją, tapusį saugumo rizika, — galime imtis veiksmų anksčiau ir nedelsdami apie tai pranešti, paaiškindami priežastis."
       },
       {
         "h2": "2. Kur tvarkomi duomenys"

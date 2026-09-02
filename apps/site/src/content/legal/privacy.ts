@@ -173,7 +173,7 @@ export const privacy: LocalizedDoc = {
       },
       {
         "ul": [
-          "**MB Dokigo**, Lietuvos mažoji bendrija, veikianti kaip Orbetra",
+          "**MB Dokigo**, Lietuvos mažoji bendrija, vykdanti veiklą Orbetra prekės ženklu",
           "Krivių g. 5, LT-01204 Vilnius, Lietuva",
           "Įmonės kodas **307575857**",
           "Direktorius: Ernestas Dubovskich",
@@ -187,7 +187,7 @@ export const privacy: LocalizedDoc = {
         "h2": "2. Du mūsų vaidmenys"
       },
       {
-        "p": "Savo svetainės, rinkodaros, pardavimų ir atsiskaitymų atžvilgiu esame **valdytojas** — mes sprendžiame, kodėl ir kaip duomenys tvarkomi. Viskam, kas yra kliento Orbetra darbo aplinkoje — telemetrijai, kelionėms, vairuotojų įrašams, darbo aplinkos naudotojams — veikiame kaip **tvarkytojas** pagal dokumentuotus to kliento nurodymus. Baltos etiketės (white-label) perpardavėjų atveju perpardavėjas yra valdytojas savo galutinių klientų atžvilgiu, o mes liekame tvarkytoju. Šie vaidmenys, mūsų pareigos ir saugumo priemonės išdėstyti [Duomenų tvarkymo priede](/dpa), kuris yra kiekvienos kliento sutarties dalis. Jei esate vieno iš mūsų klientų vairuotojas ar darbuotojas, tas klientas sprendžia, kaip naudojami jūsų duomenys — pirmiausia kreipkitės į jį (žr. 14 skirsnį)."
+        "p": "Savo svetainės, rinkodaros, pardavimų ir atsiskaitymų atžvilgiu esame **valdytojas** — mes sprendžiame, kodėl ir kaip duomenys tvarkomi. Dėl visko, kas yra kliento Orbetra darbo aplinkoje — telemetrijos, kelionių, vairuotojų įrašų, darbo aplinkos naudotojų, — veikiame kaip **tvarkytojas** pagal dokumentuotus to kliento nurodymus. White-label perpardavėjų atveju perpardavėjas yra valdytojas savo galutinių klientų atžvilgiu, o mes liekame tvarkytoju. Šie vaidmenys, mūsų pareigos ir saugumo priemonės išdėstyti [Duomenų tvarkymo priede](/dpa), kuris yra kiekvienos kliento sutarties dalis. Jei esate vieno iš mūsų klientų vairuotojas ar darbuotojas, tas klientas sprendžia, kaip naudojami jūsų duomenys — pirmiausia kreipkitės į jį (žr. 14 skirsnį)."
       },
       {
         "h2": "3. Duomenys, kuriuos renkame kaip valdytojas"
@@ -198,7 +198,7 @@ export const privacy: LocalizedDoc = {
           "**Atsiskaitymo duomenys** — planas, sąskaitos, PVM duomenys; mokėjimo kortelių duomenis tvarko mūsų mokėjimų teikėjas, mes jų niekada nesaugome.",
           "**Pagalbos ir užklausų duomenys** — žinutės, kurias mums siunčiate formomis ar el. paštu, įskaitant bandomojo naudojimo (pilot) užklausas.",
           "**Techniniai žurnalai** — IP adresas, naršyklės identifikatorius (user agent) ir užklausų metaduomenys, saugomi saugumo ir piktnaudžiavimo prevencijos tikslais.",
-          "**Rekomendacijų priskyrimas** — neprivalomas slapukas, priskiriantis partnerį, jei atvykstate per `?ref=` nuorodą; nustatomas tik su jūsų sutikimu."
+          "**Rekomendacijų priskyrimas** — neprivalomas slapukas, priskiriantis partnerį, jei apsilankote paspaudę `?ref=` nuorodą; įrašomas tik su jūsų sutikimu."
         ]
       },
       {
@@ -208,7 +208,7 @@ export const privacy: LocalizedDoc = {
         "h2": "4. Duomenys, tvarkomi kaip tvarkytojas"
       },
       {
-        "p": "Darbo aplinkoje tvarkome įrenginių telemetriją (padėtis, greitis, uždegimas, skaitmeniniai įėjimai, maitinimo ir baterijos būsena, CAN duomenys, kai jie prieinami), keliones, geozonų ir taisyklių įvykius, vairuotojų įrašus, techninės priežiūros įrašus, įrenginiams siunčiamas komandas ir paskyros naudotojus. Transporto priemonės ir įrenginio tapatybė grindžiama įrenginio IMEI. Mes nesprendžiame, kas yra sekama, kurios transporto priemonės prijungtos ar kiek ilgai įrašai saugomi be platformos numatytųjų nuostatų — tai konfigūruoja klientas, ir klientas yra atsakingas už vairuotojų informavimą."
+        "p": "Darbo aplinkoje tvarkome įrenginių telemetriją (padėtis, greitis, degimas, skaitmeniniai įėjimai, maitinimo ir baterijos būsena, CAN duomenys, kai jie prieinami), keliones, geozonų ir taisyklių įvykius, vairuotojų įrašus, techninės priežiūros įrašus, įrenginiams siunčiamas komandas ir paskyros naudotojus. Transporto priemonės ir įrenginio tapatybė grindžiama įrenginio IMEI. Mes nesprendžiame, kas sekama, kurios transporto priemonės prijungtos ir kiek laiko įrašai saugomi ilgiau, nei numato platformos numatytieji nustatymai, — tai konfigūruoja klientas, ir klientas yra atsakingas už vairuotojų informavimą."
       },
       {
         "h2": "5. Teisiniai pagrindai"
@@ -228,7 +228,7 @@ export const privacy: LocalizedDoc = {
         "h2": "6. Slapukai ir analitika"
       },
       {
-        "p": "Naudojame būtinuosius slapukus ir vietinę saugyklą svetainei veikti ir jūsų prisijungimui išlaikyti, taip pat vieną neprivalomą partnerio rekomendacijų slapuką, kuris nustatomas tik jums jį priėmus. Analitika yra apibendrinta ir be slapukų. Visą sąrašą, saugojimo trukmes ir kaip pakeisti savo pasirinkimą rasite [Slapukų politikoje](/cookies)."
+        "p": "Naudojame būtinuosius slapukus ir vietinę saugyklą svetainei veikti ir jūsų prisijungimui išlaikyti, taip pat vieną neprivalomą partnerio rekomendacijų slapuką, kuris įrašomas tik jums jį priėmus. Analitika yra apibendrinta ir be slapukų. Visą sąrašą, saugojimo trukmes ir kaip pakeisti savo pasirinkimą rasite [Slapukų politikoje](/cookies)."
       },
       {
         "h2": "7. Saugojimas"
@@ -236,41 +236,41 @@ export const privacy: LocalizedDoc = {
       {
         "ul": [
           "Telemetrijos ir įvykių duomenys: pagal numatytuosius nustatymus **13 mėnesių**, po to ištrinami.",
-          "Kelionių įrašai saugomi ilgiau jūsų pačių istorinei ataskaitų teikimo funkcijai, tačiau jų **koordinatės pašalinamos tuo pačiu 13 mėnesių momentu** — lieka atstumas, laikai ir vairuotojas, be galimybės atsekti, kur transporto priemonė buvo.",
+          "Kelionių įrašai saugomi ilgiau, kad galėtumėte rengti istorines ataskaitas, tačiau jų **koordinatės pašalinamos pasibaigus tam pačiam 13 mėnesių laikotarpiui** — lieka atstumas, laikai ir vairuotojas, be galimybės atsekti, kur transporto priemonė buvo.",
           "Paskyros duomenys: visą paskyros galiojimo laiką, po to ištrinami arba anonimizuojami per 90 dienų.",
           "Sąskaitos ir apskaitos įrašai: kaip reikalauja Lietuvos teisė (šiuo metu 10 metų).",
           "Saugumo žurnalai: iki 12 mėnesių."
         ]
       },
       {
-        "h2": "8. Prieglobstis ir tarptautiniai duomenų perdavimai"
+        "h2": "8. Priegloba ir tarptautiniai duomenų perdavimai"
       },
       {
-        "p": "Orbetra veikia infrastruktūroje, fiziškai esančioje Europos Sąjungoje (Hetzner, Vokietija). Geokodavimą (Photon) ir maršrutų sudarymą (OSRM) mes patys prieglobstime ES. Atsiskaitymai vykdomi per Stripe Payments Europe Airijoje, operaciniai el. laiškai — per Postmark ES galinį tašką, o DNS, TLS ir DDoS apsauga — per Cloudflare su ES pirmenybės maršrutizavimu."
+        "p": "Orbetra veikia infrastruktūroje, fiziškai esančioje Europos Sąjungoje (Hetzner, Vokietija). Geokodavimo (Photon) ir maršrutų sudarymo (OSRM) paslaugas ES teritorijoje talpiname patys. Atsiskaitymai vykdomi per Stripe Payments Europe Airijoje, sisteminiai el. laiškai — per Postmark ES galinį tašką, o DNS, TLS ir DDoS apsauga — per Cloudflare, pirmenybę teikiant ES maršrutams."
       },
       {
-        "p": "Du komponentai apima teikėjus už EEE ribų. Produkte esančius žemėlapio fragmentus (tiles) teikia Mapbox (Jungtinės Valstijos), gaunantis užklausų metaduomenis, tokius kaip IP adresas ir prašomas žemėlapio plotas. Šios rinkodaros svetainės pagrindinį žemėlapį teikia CARTO — vėlgi tik užklausų metaduomenys ir jokių klientų duomenų. Šie perdavimai grindžiami ES standartinėmis sutarčių sąlygomis (Komisijos įgyvendinimo sprendimas (ES) 2021/914) kartu su perdavimo vertinimu ir papildomomis priemonėmis. Autoparko telemetrija ir paskyros duomenys lieka ES."
+        "p": "Du komponentai apima teikėjus už EEE ribų. Produkte naudojamas žemėlapio išklotines (tiles) teikia Mapbox (Jungtinės Valstijos), gaunantis užklausų metaduomenis — IP adresą ir prašomą žemėlapio sritį. Šios rinkodaros svetainės pagrindinį žemėlapį teikia CARTO — vėlgi tik užklausų metaduomenys ir jokių klientų duomenų. Šie perdavimai grindžiami ES standartinėmis sutarčių sąlygomis (Komisijos įgyvendinimo sprendimas (ES) 2021/914) kartu su perdavimo vertinimu ir papildomomis priemonėmis. Autoparko telemetrija ir paskyros duomenys lieka ES."
       },
       {
-        "p": "Regioninės duomenų buvimo vietos (data-residency) **teisės** (konkretaus regiono pasirinkimas) prieinamos Scale ir Enterprise planuose; ES prieglobstis taikomas visiems."
+        "p": "Regioninės duomenų buvimo vietos (data-residency) **teisės** (konkretaus regiono pasirinkimas) prieinamos Scale ir Enterprise planuose; ES priegloba taikoma visiems."
       },
       {
         "h2": "9. Subtvarkytojai"
       },
       {
-        "p": "Dabartinis sąrašas skelbiamas adresu [orbetra.com/subprocessors](/subprocessors). Prieš pridėdami ar pakeisdami subtvarkytoją įspėjame prieš 30 dienų, o klientai gali prieštarauti, kaip aprašyta [DPA](/dpa). Asmens duomenų neparduodame ir nenaudojame klientų duomenų modeliams mokyti ar reklamai."
+        "p": "Dabartinis sąrašas skelbiamas adresu [orbetra.com/subprocessors](/subprocessors). Apie subtvarkytojo pridėjimą ar pakeitimą įspėjame prieš 30 dienų, o klientai gali prieštarauti, kaip aprašyta [DPA](/dpa). Asmens duomenų neparduodame ir nenaudojame klientų duomenų modeliams mokyti ar reklamai."
       },
       {
         "h2": "10. Saugumas"
       },
       {
-        "p": "TLS perdavimo metu, šifravimas ramybės būsenoje, vaidmenimis pagrįsta prieiga su mažiausiomis privilegijomis, audito registravimas, izoliuoti nuomininkai (tenants) ir reguliarios atsarginės kopijos su testuotu atkūrimu. Bendroji prisijungimo sistema (SSO) prieinama Scale ir Enterprise planuose. Prieiga prie gamybinių duomenų suteikiama tik ją reikalingiems žmonėms ir yra registruojama. Visas techninių ir organizacinių priemonių sąrašas pateiktas [DPA](/dpa) II priede."
+        "p": "TLS perdavimo metu, šifravimas saugojimo metu, vaidmenimis pagrįsta prieiga su mažiausiomis privilegijomis, audito registravimas, atskirtos klientų aplinkos (tenants) ir reguliarios atsarginės kopijos su patikrintu atkūrimu. Vieningas prisijungimas (SSO) prieinamas Scale ir Enterprise planuose. Prieiga prie gamybinės aplinkos duomenų suteikiama tik tiems žmonėms, kuriems ji būtina, ir yra registruojama. Visas techninių ir organizacinių priemonių sąrašas pateiktas [DPA](/dpa) II priede."
       },
       {
         "h2": "11. Asmens duomenų saugumo pažeidimai"
       },
       {
-        "p": "Jei asmens duomenų saugumo pažeidimas paveikia duomenis, kurių atžvilgiu esame valdytojas, nedelsdami ir, kai įmanoma, per 72 valandas nuo sužinojimo apie jį pranešame Valstybinei duomenų apsaugos inspekcijai (VDAI) (BDAR 33 str.) ir informuojame paveiktus asmenis, kai pažeidimas gali kelti didelį pavojų jų teisėms (34 str.). Kai esame tvarkytojas, nedelsdami ir per 72 valandas nuo sužinojimo pranešame paveiktam klientui, pateikdami informaciją, kurios klientui reikia savo pranešimui."
+        "p": "Jei asmens duomenų saugumo pažeidimas paveikia duomenis, kurių atžvilgiu esame valdytojas, nedelsdami ir, kai įmanoma, per 72 valandas nuo sužinojimo apie jį pranešame Valstybinei duomenų apsaugos inspekcijai (VDAI) (BDAR 33 str.) ir informuojame asmenis, kuriems pažeidimas turi įtakos, kai jis gali kelti didelį pavojų jų teisėms (34 str.). Kai esame tvarkytojas, nedelsdami ir per 72 valandas nuo sužinojimo pranešame atitinkamam klientui, pateikdami informaciją, kurios klientui reikia savo pranešimui."
       },
       {
         "h2": "12. Automatizuotas sprendimų priėmimas"
@@ -297,7 +297,7 @@ export const privacy: LocalizedDoc = {
         "h2": "15. Skundai"
       },
       {
-        "p": "Jei manote, kad netinkamai tvarkėme jūsų duomenis, pirmiausia praneškite mums — verčiau tai ištaisysime. Taip pat turite teisę pateikti skundą priežiūros institucijai. Mūsų pagrindinė institucija yra Valstybinė duomenų apsaugos inspekcija (Valstybinė duomenų apsaugos inspekcija, VDAI), Vilnius, Lietuva — [vdai.lrv.lt](https://vdai.lrv.lt). Taip pat galite skųstis ES šalies, kurioje gyvenate ar dirbate, arba kurioje įvyko tariamas pažeidimas, priežiūros institucijai."
+        "p": "Jei manote, kad netinkamai tvarkėme jūsų duomenis, pirmiausia praneškite mums — mieliau tai ištaisysime. Taip pat turite teisę pateikti skundą priežiūros institucijai. Mūsų pagrindinė institucija yra Valstybinė duomenų apsaugos inspekcija (VDAI), Vilnius, Lietuva — [vdai.lrv.lt](https://vdai.lrv.lt). Taip pat galite skųstis ES šalies, kurioje gyvenate ar dirbate, arba kurioje įvyko tariamas pažeidimas, priežiūros institucijai."
       },
       {
         "h2": "16. Pakeitimai"

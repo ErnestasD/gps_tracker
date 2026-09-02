@@ -52,7 +52,7 @@ const TOTAL_DISTANCE_KM = 56.3;
 // Demo-only strings that the real dashboard's translation files do not cover
 // (chart aria-labels) — translated here, keyed by the site language.
 const L: Record<Lang, { speedChart: string; fuelChart: string }> = {
-  lt: { speedChart: "Atkūrimo greičio laiko juosta", fuelChart: "Kuro lygio laiko juosta" },
+  lt: { speedChart: "Greičio grafikas", fuelChart: "Kuro lygio grafikas" },
   en: { speedChart: "Playback speed timeline", fuelChart: "Fuel level timeline" },
   pl: { speedChart: "Oś czasu prędkości odtwarzania", fuelChart: "Oś czasu poziomu paliwa" },
   de: { speedChart: "Zeitachse der Wiedergabegeschwindigkeit", fuelChart: "Zeitachse des Kraftstoffstands" },

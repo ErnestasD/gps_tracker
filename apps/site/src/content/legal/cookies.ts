@@ -101,10 +101,10 @@ export const cookies: LocalizedDoc = {
     "title": "Slapukų politika",
     "label": "TEISINĖ INFORMACIJA",
     "updated": "2026 m. rugpjūtis",
-    "notice": "Tai neoficialus vertimas patogumui. Esant bet kokiems neatitikimams, pirmenybė teikiama angliškai versijai.",
+    "notice": "Tai neoficialus vertimas patogumui. Esant bet kokiems neatitikimams, pirmenybė teikiama angliškajai versijai.",
     "blocks": [
       {
-        "p": "Orbetra naudoja minimalų slapukų kiekį: būtinuosius, reikalingus svetainei ir programėlei veikti, ir vieną neprivalomą slapuką, kuris įskaito partnerio rekomendaciją. Mūsų produkto analitika veikia be slapukų ir yra apibendrinta — mes nenaudojame reklaminių ar tarpsvetaininio sekimo slapukų."
+        "p": "Orbetra naudoja minimalų slapukų kiekį: būtinuosius, reikalingus svetainei ir programėlei veikti, ir vieną neprivalomą slapuką, kuris įskaito partnerio rekomendaciją. Mūsų produkto analitika veikia be slapukų ir yra apibendrinta — reklaminių ar sekimo tarp svetainių slapukų nenaudojame."
       },
       {
         "h2": "1. Kas yra slapukai"
@@ -139,19 +139,19 @@ export const cookies: LocalizedDoc = {
             [
               "`orb_refresh`",
               "Būtinasis",
-              "Palaiko jus prisijungusius prie Orbetra programėlės. HttpOnly ir SameSite=Strict, siunčiamas tik į autentifikavimo galinį tašką — niekada su žemėlapio ar duomenų užklausomis.",
-              "14 dienų, atnaujinamas kol išliekate prisijungę"
+              "Leidžia jums likti prisijungusiems prie Orbetra programėlės. HttpOnly ir SameSite=Strict, siunčiamas tik į autentifikavimo galinį tašką — niekada su žemėlapio ar duomenų užklausomis.",
+              "14 dienų, atnaujinamas, kol esate prisijungę"
             ],
             [
               "`tc_ref`",
               "Neprivalomasis",
-              "Įskaito partnerio rekomendaciją, kai atvykstate per `?ref=` nuorodą. Įrašomas tik jei sutinkate, ir ištrinamas, jei pasirenkate tik būtinuosius.",
+              "Įskaito partnerio rekomendaciją, kai apsilankote paspaudę `?ref=` nuorodą. Įrašomas tik jei sutinkate, ir ištrinamas, jei pasirenkate tik būtinuosius.",
               "60 dienų"
             ],
             [
               "`tc_ref_pending`",
               "Neprivalomasis",
-              "Laiko rekomendacijos kodą iš `?ref=` nuorodos, kol atsakysite į juostą, kad rekomendacija nebūtų prarasta, kol svarstote. Atmetamas, jei pasirenkate tik būtinuosius.",
+              "Saugo rekomendacijos kodą iš `?ref=` nuorodos tol, kol atsakysite juostoje, kad rekomendacija nebūtų prarasta, kol svarstote. Atmetamas, jei pasirenkate tik būtinuosius.",
               "Seanso saugykla — išvaloma uždarius kortelę"
             ]
           ]
@@ -164,13 +164,13 @@ export const cookies: LocalizedDoc = {
         "h2": "3. Analitika"
       },
       {
-        "p": "Mūsų svetainės analitika yra apibendrinta ir be slapukų: ji skaičiuoja puslapių peržiūras ir nukreipiančius šaltinius, nieko nesaugodama jūsų naršyklėje ir nekurdama jūsų profilio. Mes nenaudojame nei Google Analytics, nei reklaminių pikselių, nei tarpsvetaininio sekimo priemonių, taip pat neparduodame ir nesidaliname lankytojų duomenimis."
+        "p": "Mūsų svetainės analitika yra apibendrinta ir be slapukų: ji skaičiuoja puslapių peržiūras ir nukreipiančius šaltinius, nieko nesaugodama jūsų naršyklėje ir nekurdama jūsų profilio. Mes nenaudojame nei Google Analytics, nei reklaminių pikselių, nei sekimo tarp svetainių priemonių, taip pat neparduodame ir nesidalijame lankytojų duomenimis."
       },
       {
         "h2": "4. Trečiųjų šalių užklausos iš žemėlapių"
       },
       {
-        "p": "Žemėlapių išklotinės (tiles) produkte įkeliamos iš Mapbox, o šioje rinkodaros svetainėje — iš CARTO. Išklotinės įkėlimas yra įprasta žiniatinklio užklausa, todėl šie tiekėjai gauna techninius metaduomenis — jūsų IP adresą, naršyklės user agent ir prašomą žemėlapio sritį. Mes nesiunčiame jiems jūsų paskyros duomenų ar jūsų parko duomenų, ir nė vienas tiekėjas nenaudojamas jums sekti įvairiose svetainėse. Perdavimo apsaugos priemones, kurios taikomos, rasite [Privatumo politikoje](/privacy)."
+        "p": "Žemėlapių išklotinės (tiles) produkte įkeliamos iš Mapbox, o šioje rinkodaros svetainėje — iš CARTO. Išklotinės įkėlimas yra įprasta žiniatinklio užklausa, todėl šie tiekėjai gauna techninius metaduomenis — jūsų IP adresą, naršyklės user agent ir prašomą žemėlapio sritį. Mes nesiunčiame jiems nei jūsų paskyros, nei jūsų autoparko duomenų, ir nė vienas tiekėjas nenaudojamas jums sekti įvairiose svetainėse. Taikomas perdavimo apsaugos priemones rasite [Privatumo politikoje](/privacy)."
       },
       {
         "h2": "5. Jūsų pasirinkimas"
@@ -179,7 +179,7 @@ export const cookies: LocalizedDoc = {
         "p": "Savo sprendimą galite pakeisti bet kada — čia arba juostoje. Atšaukti sutikimą taip pat paprasta, kaip jį duoti: pasirinkus „Tik būtinieji“, rekomendacijos slapukas nedelsiant ištrinamas."
       },
       {
-        "p": "Jūsų naršyklė taip pat gali blokuoti arba ištrinti slapukus ir išvalyti svetainės vietinę saugyklą — šie nustatymai yra skiltyje Privatumas arba Svetainės duomenys naršyklėse Chrome, Firefox, Safari ir Edge. Būtinųjų elementų blokavimas atjungs jus nuo programėlės ir atstatys jūsų kalbos pasirinkimą."
+        "p": "Jūsų naršyklė taip pat gali blokuoti arba ištrinti slapukus ir išvalyti svetainės vietinę saugyklą — šie nustatymai yra skiltyje Privatumas arba Svetainės duomenys naršyklėse Chrome, Firefox, Safari ir Edge. Užblokavus būtinuosius elementus, būsite atjungti nuo programėlės, o kalbos pasirinkimas bus prarastas."
       },
       {
         "h2": "6. Pakeitimai ir kontaktai"
