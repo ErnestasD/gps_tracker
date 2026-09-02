@@ -13,6 +13,23 @@ const BASE_ENV = {
   STRIPE_PRICES: 'price_direct10,price_tspstart',
 } as const
 
+describe('STRIPE_TAX_ENABLED (the VAT switch)', () => {
+  it('is OFF unless explicitly turned on — the failure direction that matters', () => {
+    // Charging VAT we are not registered to collect is worse than not charging it, so anything
+    // other than an explicit yes reads as no.
+    for (const v of [undefined, '', '0', 'false', 'no', 'off', ' ']) {
+      expect(stripeConfigFromEnv({ ...BASE_ENV, ...(v === undefined ? {} : { STRIPE_TAX_ENABLED: v }) })?.taxEnabled)
+        .toBe(false)
+    }
+  })
+
+  it('accepts the truthy spellings an operator actually types', () => {
+    for (const v of ['1', 'true', 'TRUE', 'yes', ' true ']) {
+      expect(stripeConfigFromEnv({ ...BASE_ENV, STRIPE_TAX_ENABLED: v })?.taxEnabled).toBe(true)
+    }
+  })
+})
+
 describe('stripeConfigFromEnv + planFor (STRIPE_PLAN_MAP)', () => {
   it('parses base:plan pairs and drops entries whose value is not a real TenantPlan', () => {
     const cfg = stripeConfigFromEnv({

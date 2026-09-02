@@ -64,18 +64,51 @@ max(0, active − included)` already implements the rule. A day at or under the 
 zero. **Updating this variable is the whole of the metering change**, so a deploy that forgets it
 keeps billing against the old, smaller allowances.
 
-## ⚠️ Stripe Tax is NOT active in this account (found 2026-09-02)
+## VAT — off today, and the switch is prepared
 
-`tax.settings` reports `status: pending` (`missing_fields: ["head_office"]`), `defaults.tax_behavior`
-is unset, and **every price in this catalogue — Track A and Track B, base and overage — carries
-`tax_behavior: unspecified`.** PRICING_STRATEGY.md §7 states `tax_behavior = exclusive`; that is the
-intent, not the current state.
+**MB Dokigo is not VAT-registered yet.** It will be, on crossing the revenue threshold (the company
+trades outside Orbetra too, so this is a matter of months, not of Orbetra's own growth). Charging no
+VAT today is therefore correct, not an oversight — and the point of what follows is that becoming
+registered must not mean rewriting a live catalogue.
 
-As it stands a checkout would charge the listed amount with **no VAT added**, while the pricing page
-promises "all prices exclude VAT". Deliberately NOT changed here: `tax_behavior` is a one-way
-transition per price (`unspecified` → `exclusive` is allowed, back is not), it affects Track A which
-this pricing revision does not touch, and activating Stripe Tax needs a head-office address — an
-account and legal decision, not a code one. **Pre-launch checklist item.**
+### What is already done (2026-09-02)
+
+- **Every price carries `tax_behavior: exclusive`** — all 19, Track A and B, base and overage.
+  `tax_behavior` is a **ONE-WAY** transition (`unspecified` → `exclusive`, never back), so it was set
+  while the catalogue had zero subscribers. Verified against Stripe first: with tax off, `exclusive`
+  and `unspecified` both charge exactly the listed amount, so this changed nothing for a customer.
+- **`STRIPE_TAX_ENABLED`** exists in the api config (default OFF) and is wired through
+  `docker-compose.apps.yml`. When on, the Checkout Session gains `automatic_tax`,
+  `tax_id_collection` (EU B2B needs a VAT ID for reverse charge) and
+  `customer_update: { address, name }` — without that last one, an EXISTING customer with no address
+  makes the session fail outright once tax is on.
+- **The site says what is true today:** "prices are final — no VAT is charged". It previously
+  advertised *"EU B2B reverse-charge via Stripe Tax"*, which for a non-registered seller is not a
+  rounding error but a false statement a B2B buyer would plan their accounting around.
+
+### The switch, when registration lands
+
+1. **Stripe dashboard → Settings → Tax:** add the **head office** address (LT) and a **tax
+   registration** for Lithuania. `tax.settings.status` must read `active`; today it is `pending`
+   with `missing_fields: ["head_office"]`.
+2. **`STRIPE_TAX_ENABLED=1`** in `/opt/orbetra/.env`, then recreate `api`. No code deploy.
+3. **Site copy back to the VAT wording**, 4 locales — `pricing.exclVat`, `pricing.footnote`,
+   `pricing.label`, `partners.pricingLabel`:
+   - lt: `Visos kainos be PVM · ES B2B atvirkštinis apmokestinimas per Stripe Tax · …`
+   - en: `All prices exclude VAT · EU B2B reverse-charge via Stripe Tax · …`
+   - pl / de: the equivalents removed in the same commit (see git history of `locales/*.ts`).
+4. **Tell existing customers first.** `exclusive` means VAT is added ON TOP: a Lithuanian customer's
+   €149 becomes €180.29 at the next renewal. An EU B2B customer who enters a valid VAT ID pays €149
+   under reverse charge; non-EU pays €149. This is the intended model — the pricing page has always
+   said prices exclude VAT — but it is a real increase for domestic customers and should not arrive
+   unannounced.
+
+### What was deliberately NOT chosen
+
+`tax_behavior: inclusive` would keep €149 as the gross price and cut net revenue ~17% at
+registration. Leaving prices `unspecified` and relying on the account-level default tax behaviour
+would work, but it hides the decision in a dashboard setting that a later change silently applies to
+every price at once.
 
 ## `STRIPE_PLAN_MAP` (base → tenant plan) — the one that was missing
 

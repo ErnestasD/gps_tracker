@@ -308,7 +308,7 @@ export const lt: Translation = {
     legendClients: "Galutiniai klientai",
   },
   pricing: {
-    label: "— KAINOS · BE PVM",
+    label: "— KAINOS",
     h1: "Du variantai.",
     h2: "Viena platforma.",
     sub: "<b>Direct</b> — mažiems autoparkams, valdantiems savo automobilius. <b>White-label / TSP</b> — perpardavėjams, kurie parduoda savo klientams.",
@@ -376,8 +376,8 @@ export const lt: Translation = {
       r9a: "Pagal galimybes",
       r9b: "99,9 % Scale ir Enterprise planuose",
     },
-    exclVat: "Visos kainos be PVM. PVM pridedamas atsiskaitant.",
-    footnote: "Visos kainos be PVM · ES B2B atvirkštinis apmokestinimas per Stripe Tax · be diegimo mokesčio · atsisakyti galima bet kada",
+    exclVat: "Kainos galutinės — PVM neskaičiuojamas.",
+    footnote: "Kainos galutinės — PVM neskaičiuojamas · be diegimo mokesčio · atsisakyti galima bet kada",
   },
   tspPlans: {
     badge: "Populiariausias",
@@ -439,7 +439,7 @@ export const lt: Translation = {
     s3b: "Klientus perkeliate savo tempu. Pirmoje versijoje senos istorijos neperkeliame — iki persijungimo įrenginiai siunčia duomenis į abi sistemas.",
     s4t: "Plėtra",
     s4b: "Pridedate klientų, pridedate įrenginių. Viena sutartis, kaina už įrenginį, atsiskaitymas kas mėnesį.",
-    pricingLabel: "— PARTNERIŲ KAINOS · BE PVM",
+    pricingLabel: "— PARTNERIŲ KAINOS",
     pricingH1: "Kaina už įrenginį.",
     pricingH2: "Jokių mokesčių už naudotojus. Jokio prisirišimo.",
     pricingBody: "Nuo {{price}} €/mėn., įskaitant 300 įrenginių. Be licencijų už naudotojus, be diegimo mokesčio už klientą, be minimalaus įsipareigojimo bandomuoju laikotarpiu.",

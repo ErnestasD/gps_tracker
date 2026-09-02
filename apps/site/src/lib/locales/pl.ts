@@ -303,7 +303,7 @@ export const pl: Translation = {
     legendClients: "Klienci końcowi",
   },
   pricing: {
-    label: "— CENNIK · BEZ VAT",
+    label: "— CENNIK",
     h1: "Dwie ścieżki.",
     h2: "Jedna platforma.",
     sub: "<b>Direct</b> — dla małych flot jeżdżących własnymi pojazdami. <b>White-label / TSP</b> — dla resellerów sprzedających własnym klientom.",
@@ -371,8 +371,8 @@ export const pl: Translation = {
       r9a: "W miarę możliwości",
       r9b: "99,9% w planach Scale i Enterprise",
     },
-    exclVat: "Wszystkie ceny bez VAT. VAT doliczany przy płatności.",
-    footnote: "Wszystkie ceny bez VAT · odwrotne obciążenie B2B w UE przez Stripe Tax · bez opłaty wdrożeniowej · rezygnacja w każdej chwili",
+    exclVat: "Ceny są ostateczne — VAT nie jest naliczany.",
+    footnote: "Ceny ostateczne — VAT nie jest naliczany · bez opłaty wdrożeniowej · rezygnacja w każdej chwili",
   },
   tspPlans: {
     badge: "Najpopularniejszy",
@@ -434,7 +434,7 @@ export const pl: Translation = {
     s3b: "Migracja klientów we własnym tempie. W wersji 1 bez importu historii — urządzenia pracują w trybie shadow aż do przełączenia.",
     s4t: "Skalowanie",
     s4b: "Kolejni klienci, kolejne urządzenia. Jedna umowa, rozliczenie za urządzenie, płatność miesięczna.",
-    pricingLabel: "— CENNIK PARTNERSKI · BEZ VAT",
+    pricingLabel: "— CENNIK PARTNERSKI",
     pricingH1: "Rozliczenie za urządzenie.",
     pricingH2: "Bez opłat za użytkowników. Bez uzależnienia od dostawcy.",
     pricingBody: "Od {{price}} €/mies., z 300 urządzeniami w cenie. Bez licencji na użytkownika, bez opłaty wdrożeniowej za klienta, bez minimalnego zobowiązania w trakcie pilotażu.",

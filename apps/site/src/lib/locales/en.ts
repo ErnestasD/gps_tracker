@@ -311,7 +311,7 @@ export const en = {
     legendClients: "End customers",
   },
   pricing: {
-    label: "— PRICING · EXCL. VAT",
+    label: "— PRICING",
     h1: "Two tracks.",
     h2: "One platform.",
     sub: "<b>Direct</b> for small fleets running their own vehicles. <b>White-label / TSP</b> for resellers reselling to their own customers.",
@@ -379,8 +379,8 @@ export const en = {
       r9a: "Best-effort",
       r9b: "99.9% on Scale & Enterprise",
     },
-    exclVat: "All prices exclude VAT. VAT is added at checkout.",
-    footnote: "All prices exclude VAT · EU B2B reverse-charge via Stripe Tax · No setup fee · Cancel any time",
+    exclVat: "Prices are final — no VAT is charged.",
+    footnote: "Prices are final — no VAT is charged · No setup fee · Cancel any time",
   },
   tspPlans: {
     badge: "Most popular",
@@ -442,7 +442,7 @@ export const en = {
     s3b: "Migrate customers at your own pace. No historical import in v1 — devices run in shadow mode until you cut over.",
     s4t: "Scale",
     s4b: "Add customers, add devices. One contract, per-device pricing, monthly billing.",
-    pricingLabel: "— PARTNER PRICING · EXCL. VAT",
+    pricingLabel: "— PARTNER PRICING",
     pricingH1: "Per-device pricing.",
     pricingH2: "No seat fees. No lock-in.",
     pricingBody: "From €{{price}}/mo with 300 devices included. No per-seat licences, no per-tenant setup fee, no minimum commitment during the pilot.",

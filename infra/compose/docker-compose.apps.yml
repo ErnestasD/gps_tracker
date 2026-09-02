@@ -152,6 +152,10 @@ services:
       # access, no SMS gateway, no white-label — while being billed in full. Silent in both
       # directions: Stripe is happy, the webhook succeeds, only the feature flags are wrong.
       STRIPE_PLAN_MAP: ${STRIPE_PLAN_MAP:-}
+      # VAT switch. Off until MB Dokigo is VAT-registered; see docs/runbooks/stripe-catalog.md.
+      # Listed here deliberately: an env var absent from THIS map never reaches the api process,
+      # which is how STRIPE_PLAN_MAP was silently unset for weeks (PR #202).
+      STRIPE_TAX_ENABLED: ${STRIPE_TAX_ENABLED:-}
       # The ONE SNS topic POST /v1/webhooks/ses accepts feedback from. A valid AWS signature only
       # proves AWS sent the message — the same regional certificate signs every customer's topics —
       # so the endpoint refuses anything from another topic, and FAILS CLOSED when this is unset.

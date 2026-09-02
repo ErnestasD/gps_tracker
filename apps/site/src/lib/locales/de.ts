@@ -303,7 +303,7 @@ export const de: Translation = {
     legendClients: "Endkunden",
   },
   pricing: {
-    label: "— PREISE · ZZGL. MWST.",
+    label: "— PREISE",
     h1: "Zwei Wege.",
     h2: "Eine Plattform.",
     sub: "<b>Direct</b> für kleine Flotten mit eigenen Fahrzeugen. <b>White-Label / TSP</b> für Reseller, die an eigene Kunden verkaufen.",
@@ -371,8 +371,8 @@ export const de: Translation = {
       r9a: "Best Effort",
       r9b: "99,9 % in Scale & Enterprise",
     },
-    exclVat: "Alle Preise zzgl. MwSt. Die MwSt. wird beim Checkout ergänzt.",
-    footnote: "Alle Preise zzgl. MwSt. · EU-B2B-Reverse-Charge über Stripe Tax · keine Einrichtungsgebühr · jederzeit kündbar",
+    exclVat: "Endpreise — es wird keine MwSt. berechnet.",
+    footnote: "Endpreise — keine MwSt. · keine Einrichtungsgebühr · jederzeit kündbar",
   },
   tspPlans: {
     badge: "Am beliebtesten",
@@ -434,7 +434,7 @@ export const de: Translation = {
     s3b: "Migrieren Sie Ihre Kunden in Ihrem Tempo. In v1 ohne Import der Historie — die Geräte laufen bis zur Umschaltung im Shadow-Mode.",
     s4t: "Skalierung",
     s4b: "Kunden und Geräte hinzufügen. Ein Vertrag, Abrechnung pro Gerät, monatliche Rechnung.",
-    pricingLabel: "— PARTNERPREISE · ZZGL. MWST.",
+    pricingLabel: "— PARTNERPREISE",
     pricingH1: "Abrechnung pro Gerät.",
     pricingH2: "Keine Nutzerlizenzen. Kein Lock-in.",
     pricingBody: "Ab {{price}} €/Monat, inklusive 300 Geräten. Keine Nutzerlizenzen, keine Einrichtungsgebühr je Kunde, keine Mindestabnahme während des Piloten.",
