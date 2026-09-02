@@ -9,6 +9,7 @@ import { placeAt, placeableFix, pointAt, type TrackPoint } from '@/lib/telemetry
 import { canScrub, firstPlaceBack, HISTORY_DAYS, quickJumps, SPAN_OPTIONS_H, spanMinutes, type TrackWindow } from '@/lib/trackWindow'
 import { useUnits } from '@/lib/units'
 import { cn } from '@/lib/utils'
+import { edgeGuardPct, fittedLabelMs, tickStepMin } from '@/lib/timelineAxis'
 
 /**
  * The selected device's history as a waveform, scrubbable to the SECOND, docked under the map.
@@ -75,10 +76,6 @@ const KIND_COLOR: Record<string, string> = {
 }
 const FALLBACK_PIN = '#94a3b8'
 
-/** Axis cadence by span: minor tick marks in the axis strip, clock labels at the round times. */
-const tickStepMin = (spanMin: number) => (spanMin >= 1440 ? 60 : spanMin >= 360 ? 30 : spanMin >= 180 ? 15 : 5)
-const labelStepMin = (spanMin: number) =>
-  spanMin >= 1440 ? 180 : spanMin >= 720 ? 120 : spanMin >= 360 ? 60 : spanMin >= 180 ? 30 : 15
 
 /**
  * Waveform geometry. Bars grow up from BASELINE; a faded reflection hangs below it.
@@ -262,6 +259,22 @@ export function Timeline({
    * re-scrub also re-resolves the place against the newly fetched points.
    */
   const spanRef = useRef(spanSec)
+
+  /**
+   * The axis strip's width in pixels, so label cadence can be chosen from the room there actually
+   * is. Measured rather than assumed: this bar sits under a map panel whose width depends on the
+   * window, the sidebar and whether the inspector is open.
+   */
+  const axisRef = useRef<HTMLDivElement | null>(null)
+  const [axisWidth, setAxisWidth] = useState(0)
+  useLayoutEffect(() => {
+    const el = axisRef.current
+    if (el === null || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([entry]) => setAxisWidth(entry?.contentRect.width ?? 0))
+    ro.observe(el)
+    setAxisWidth(el.getBoundingClientRect().width)
+    return () => ro.disconnect()
+  }, [])
   useEffect(() => {
     if (spanRef.current === spanSec) return
     spanRef.current = spanSec
@@ -333,13 +346,22 @@ export function Timeline({
     const span = window.to - window.from
     if (span <= 0) return []
     const tickMs = tickStepMin(spanMin) * 60_000
-    const labelMs = labelStepMin(spanMin) * 60_000
+    const labelMs = fittedLabelMs(span, tickMs, axisWidth)
     const out: { ms: number; pct: number; labeled: boolean }[] = []
     for (let at = Math.ceil(window.from / tickMs) * tickMs; at < window.to; at += tickMs) {
       out.push({ ms: at, pct: ((at - window.from) / span) * 100, labeled: at % labelMs === 0 })
     }
     return out
-  }, [window, spanMin])
+  }, [window, spanMin, axisWidth])
+
+  /**
+   * How close to the right edge a label may sit before it lands under "now".
+   *
+   * The old guard was a flat `pct < 95`, and a percentage is the wrong unit for a fixed-width word:
+   * 5 % of a wide strip clears "now" easily and 5 % of a narrow one is barely twenty pixels, so
+   * the last clock label printed straight through it.
+   */
+  const edgePct = edgeGuardPct(axisWidth)
 
   /** Max valid-fix speed per bucket, at-or-before with carry (see the geometry note above). Max,
    *  not mean — a bucket 90 % parked and 10 % at 80 km/h must not average down into idle. */
@@ -529,7 +551,10 @@ export function Timeline({
               )}
             </span>
             <span
-              className={cn('hidden shrink-0 text-[11px] text-muted sm:inline', stale && 'opacity-60')}
+              /* min-w-0 + truncate, NOT shrink-0: both halves of this row refused to shrink, so on
+                 a narrow map panel the fleet summary printed straight through the scrub time
+                 ("teraz" under "FTC887 (HUN719) · 1491 punktów"). Whichever is longer gives way. */
+              className={cn('hidden min-w-0 truncate text-[11px] text-muted sm:inline', stale && 'opacity-60')}
               title={stale ? t('map.timeline.refreshing') : undefined}
               data-testid="timeline-summary"
             >
@@ -702,7 +727,7 @@ export function Timeline({
           </div>
 
           {/* the axis strip: minor tick marks, clock labels at the round times, "now" at the edge */}
-          <div className="relative mt-0.5 hidden h-4 text-[10px] text-muted sm:block" aria-hidden>
+          <div ref={axisRef} className="relative mt-0.5 hidden h-4 text-[10px] text-muted sm:block" aria-hidden>
             {axis.map((tk) => (
               <span
                 key={`m${tk.ms}`}
@@ -710,7 +735,7 @@ export function Timeline({
                 style={{ left: `${tk.pct}%` }}
               />
             ))}
-            {axis.filter((tk) => tk.labeled && tk.pct > 1.5 && tk.pct < 95).map((tk) => (
+            {axis.filter((tk) => tk.labeled && tk.pct > edgePct / 2 && tk.pct < 100 - edgePct).map((tk) => (
               <span key={tk.ms} className="absolute top-1 -translate-x-1/2 tabular-nums" style={{ left: `${tk.pct}%` }}>
                 {tm(new Date(tk.ms).toISOString())}
               </span>
