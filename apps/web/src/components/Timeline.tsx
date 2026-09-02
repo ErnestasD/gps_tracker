@@ -91,6 +91,9 @@ const labelStepMin = (spanMin: number) =>
  * because a parked Teltonika's periodic report is typically 300 s — 3 min turned every parked
  * stretch into dashes.
  */
+/** How long a fetch must take before the graph admits it is waiting. Below this a pan reads as
+ *  instant; above it, a frozen-looking graph reads as broken. */
+const SKELETON_DELAY_MS = 180
 const WAVE_H = 100
 const BASELINE = 70
 const CARRY_MS = 6 * 60_000
@@ -364,6 +367,57 @@ export function Timeline({
     return out
   }, [points, times, window])
   const maxSpeed = useMemo(() => bars.reduce<number>((m, b) => (b !== null && b > m ? b : m), 10), [bars])
+
+  /**
+   * The waveform's SHAPE while its data is in flight — a pulsing placeholder, not a spinner.
+   *
+   * Panning refetches, and `keepPreviousData` meant the bar kept drawing the PREVIOUS window's
+   * speeds underneath the NEW window's axis. That is not merely a lag: for the moment it lasts, the
+   * graph and the clock beneath it describe different hours, and the operator has no way to know
+   * which. A placeholder says "not yet" — the old bars said something false.
+   *
+   * The pattern is computed ONCE and never varies. A skeleton that reshuffles on every render is a
+   * second animation fighting the pulse, and it draws the eye to the loading state instead of
+   * letting it fade into the background, which is the whole point of a skeleton.
+   */
+  const skeletonBars = useMemo(() => {
+    let seed = 7
+    const rnd = (): number => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
+    let level = 0.45
+    return Array.from({ length: 120 }, () => {
+      // a random WALK rather than random heights: independent bars look like static, and a speed
+      // trace does not jump from a crawl to a motorway between two samples
+      level = Math.min(0.95, Math.max(0.12, level + (rnd() - 0.5) * 0.35))
+      return level
+    })
+  }, [])
+  const skeleton = useMemo(() => (
+    <svg className="h-full w-full" viewBox={`0 0 ${skeletonBars.length} ${WAVE_H}`} preserveAspectRatio="none" aria-hidden>
+      {skeletonBars.map((v, i) => {
+        const h = 5 + v * (BASELINE - 9)
+        return <rect key={i} x={i + 0.15} width={0.7} y={BASELINE - h} height={h} rx={0.3} fill="currentColor" />
+      })}
+    </svg>
+  ), [skeletonBars])
+  /**
+   * Nothing to draw yet, or what we hold belongs to a window the operator has already left —
+   * but only once it has lasted long enough to be worth saying.
+   *
+   * A pan fires a fetch per wheel step, and on a warm cache those return in tens of milliseconds.
+   * Showing the placeholder immediately would strobe the graph grey-and-back several times a
+   * second, which is a worse artefact than the lag it replaces. Below the threshold the previous
+   * window's bars stay for an instant nobody perceives; past it, the graph admits it is waiting.
+   */
+  const pending = deviceId !== null && (loading || stale)
+  const [showSkeleton, setShowSkeleton] = useState(false)
+  useEffect(() => {
+    if (!pending) {
+      setShowSkeleton(false)
+      return
+    }
+    const id = setTimeout(() => setShowSkeleton(true), SKELETON_DELAY_MS)
+    return () => clearTimeout(id)
+  }, [pending])
   const nBars = bars.length
   /** One set of <rect>s in currentColor, rendered twice — a dim base and a clip-path'ed played
    *  overlay — so the 1 Hz re-render recolours via CSS instead of restyling 240 nodes. */
@@ -539,13 +593,21 @@ export function Timeline({
             </div>
             {/* the waveform, twice: a dim base, and a colour overlay clipped at the playhead —
                 the played/unplayed split is a clip-path, exactly the reference site's trick */}
-            <div className="pointer-events-none absolute inset-0 text-muted opacity-40">{waveform}</div>
-            <div
-              className={cn('pointer-events-none absolute inset-0', back === 0 ? 'text-accent' : 'text-warn')}
-              style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}
-            >
-              {waveform}
-            </div>
+            {showSkeleton ? (
+              <div className="pointer-events-none absolute inset-0 animate-pulse text-muted opacity-25" data-testid="timeline-skeleton">
+                {skeleton}
+              </div>
+            ) : (
+              <>
+                <div className="pointer-events-none absolute inset-0 text-muted opacity-40">{waveform}</div>
+                <div
+                  className={cn('pointer-events-none absolute inset-0', back === 0 ? 'text-accent' : 'text-warn')}
+                  style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}
+                >
+                  {waveform}
+                </div>
+              </>
+            )}
             {/* baseline so an empty stretch still reads as a track, not a blank */}
             <div
               className="pointer-events-none absolute left-0 right-0 h-px bg-line"
@@ -604,8 +666,12 @@ export function Timeline({
             />
             {/* event pins ride ABOVE the input: a pin is a destination, so clicking it scrubs
                 there. A hairline with a head dot, SoundCloud-marker style — 2 px wide, narrow
-                enough that a drag still lands on the track. */}
-            {pins.map((ev) => (
+                enough that a drag still lands on the track.
+
+                Hidden behind the skeleton for the same reason the bars are: these belong to the
+                window the operator has just left, and a pin is CLICKABLE — leaving them would
+                offer a destination inside an hour that is no longer on screen. */}
+            {!showSkeleton && pins.map((ev) => (
               <button
                 key={ev.id}
                 type="button"
