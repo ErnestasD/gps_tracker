@@ -1,7 +1,14 @@
 import * as React from "react";
-import { generateEvents, type EventRow } from "@/lib/admin-mock";
+import { DEMO_EVENTS, type DemoEvent } from "@/lib/demo-events";
 
-export type Notification = EventRow & { read: boolean };
+/**
+ * A demo notification is one of the SHARED demo events, plus read state.
+ *
+ * It used to be a row from a second mock whose `detail` was a finished Lithuanian sentence. Nothing
+ * can translate a sentence, so a visitor who chose Polish read a Polish interface listing
+ * Lithuanian alerts — and the bell and the events page described two different fleets.
+ */
+export type Notification = DemoEvent & { read: boolean };
 
 type Ctx = {
   items: Notification[];
@@ -12,7 +19,7 @@ type Ctx = {
 
 const NotificationsContext = React.createContext<Ctx | null>(null);
 const STORAGE_KEY = "orbetra.admin.notifications.read";
-const SEED = generateEvents(40);
+const SEED = DEMO_EVENTS;
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const [readIds, setReadIds] = React.useState<Set<string>>(new Set());
