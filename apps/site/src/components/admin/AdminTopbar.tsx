@@ -1,12 +1,13 @@
 import * as React from "react";
 import { Sun, Moon, Search, Bell, Menu, ChevronRight, CheckCheck, Languages, LogOut, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
+
+import { demoDetail, deviceName } from "@/lib/demo-events";
 import { LANGUAGES, LANGUAGE_NAMES, setLanguage, type Lang } from "@/lib/i18n";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { useAdminTheme } from "@/lib/admin-theme";
 import { useNotifications } from "@/lib/admin-notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { fmtDateTime } from "@/lib/admin-format";
 import { CommandPalette } from "@/components/admin/CommandPalette";
 
 /** route → key in the PRODUCT translations (admin namespace) */
@@ -216,6 +217,8 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
 function NotificationsBell() {
   const { items, unread, markAllRead, markRead } = useNotifications();
+  const { t, i18n } = useTranslation("admin");
+  const navigate = useNavigate();
   const [open, setOpen] = React.useState(false);
   const recent = items.slice(0, 6);
   return (
@@ -224,7 +227,7 @@ function NotificationsBell() {
         <button
           className="relative grid h-9 w-9 cursor-pointer place-items-center rounded-md border"
           style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
-          aria-label="Pranešimai"
+          aria-label={t("bell.title")}
         >
           <Bell className="h-4 w-4" />
           {unread > 0 && (
@@ -243,35 +246,41 @@ function NotificationsBell() {
         style={{ background: "var(--admin-surface)", borderColor: "var(--admin-hairline)" }}
       >
         <div className="admin-hairline-b flex items-center justify-between px-3 py-2">
-          <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>Pranešimai</div>
+          <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("bell.title")}</div>
           <button
             onClick={markAllRead}
             className="inline-flex cursor-pointer items-center gap-1 text-[11px]"
             style={{ color: "var(--admin-brand)" }}
           >
-            <CheckCheck className="h-3 w-3" />Pažymėti visus
+            <CheckCheck className="h-3 w-3" />{t("bell.markAll")}
           </button>
         </div>
         <ul className="max-h-80 overflow-y-auto">
           {recent.length === 0 && (
-            <li className="p-6 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>Nėra pranešimų</li>
+            <li className="p-6 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>{t("bell.empty")}</li>
           )}
           {recent.map((n) => {
-            const tone = n.severity === "critical" ? "var(--admin-danger)" : n.severity === "warning" ? "var(--admin-warning)" : "var(--admin-brand)";
+            const tone = n.kind === "panic" || n.kind === "power_cut" ? "var(--admin-danger)" : n.kind === "overspeed" ? "var(--admin-warning)" : "var(--admin-brand)";
             return (
               <li key={n.id}>
                 <button
-                  onClick={() => markRead(n.id)}
+                  /* mirrors the real admin: reading it is not the point — reaching the event is */
+                  onClick={() => {
+                    markRead(n.id);
+                    setOpen(false);
+                    void navigate({ to: "/app/events" });
+                  }}
                   className="flex w-full cursor-pointer items-start gap-2.5 px-3 py-2.5 text-left admin-hairline-b"
                   style={{ background: n.read ? "transparent" : "var(--admin-brand-soft)" }}
                 >
                   <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: tone }} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm" style={{ color: "var(--admin-ink)", fontWeight: n.read ? 400 : 600 }}>
-                      {n.detail}
+                      {demoDetail(t, n)}
                     </div>
                     <div className="text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>
-                      {n.device} · {fmtDateTime(n.ts)}
+                      {/* the vehicle FIRST: an alert without one names nothing */}
+                      {deviceName(n.deviceId)} · {t(`events.k.${n.kind}`)} · {new Date(n.at).toLocaleString(i18n.language)}
                     </div>
                   </div>
                 </button>
@@ -281,12 +290,12 @@ function NotificationsBell() {
         </ul>
         <div className="admin-hairline-t p-2">
           <Link
-            to="/app/notifications"
+            to="/app/events"
             onClick={() => setOpen(false)}
             className="block rounded-md px-3 py-2 text-center text-sm font-medium"
             style={{ background: "var(--admin-brand-soft)", color: "var(--admin-brand)" }}
           >
-            Visi pranešimai
+            {t("bell.viewAll")}
           </Link>
         </div>
       </PopoverContent>

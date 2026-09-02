@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { DEMO_EVENTS, DEVICES, demoDetail, deviceName, type DemoEvent, type Kind } from "@/lib/demo-events";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Activity, AlertOctagon, TrendingUp } from "lucide-react";
@@ -18,16 +19,6 @@ const th = "px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-w
 const thStyle: React.CSSProperties = { color: "var(--admin-ink-soft)" };
 
 type Severity = "critical" | "warning" | "info";
-type Kind =
-  | "geofence"
-  | "overspeed"
-  | "ignition"
-  | "din_change"
-  | "power_cut"
-  | "low_battery"
-  | "panic"
-  | "device_offline"
-  | "fuel_theft";
 
 // kind → admin-locale key suffix (labels come from events.k.* in the product's translations)
 const EVENT_KINDS: Kind[] = [
@@ -59,48 +50,11 @@ const SEV_COLOR: Record<Severity, string> = {
   info: "var(--admin-info)",
 };
 
-type DemoEvent = {
-  id: string;
-  at: string;
-  kind: Kind;
-  deviceId: string;
-  payload: Record<string, unknown>;
-};
 
-const DEVICES = [
-  { id: "dev_1", name: "Van 03" },
-  { id: "dev_2", name: "Sprinter 07" },
-  { id: "dev_3", name: "Van 08" },
-  { id: "dev_4", name: "Truck 12" },
-];
 
-const geo = (name: string, transition: "enter" | "exit", lat: number, lon: number) => ({
-  geofenceId: name === "Testas" ? "gf_01" : "gf_02",
-  name,
-  transition,
-  lat,
-  lon,
-});
-const speed = (speedKmh: number, limitKmh: number, lat: number, lon: number) => ({ speedKmh, limitKmh, lat, lon });
 
 // Static demo feed — newest first, like the product's cursor query.
 // The detail column is derived from the payload at render, so it follows the UI language.
-const DATA: DemoEvent[] = [
-  { id: "ev_14", at: "2026-09-01T07:42:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(105, 90, 54.7126, 25.2621) },
-  { id: "ev_13", at: "2026-09-01T07:15:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("Testas", "exit", 54.6721, 25.2797) },
-  { id: "ev_12", at: "2026-09-01T06:58:00Z", kind: "geofence", deviceId: "dev_2", payload: geo("STL bazė", "enter", 54.6384, 25.1912) },
-  { id: "ev_11", at: "2026-09-01T06:31:00Z", kind: "overspeed", deviceId: "dev_4", payload: speed(97, 90, 54.8942, 23.9036) },
-  { id: "ev_10", at: "2026-09-01T05:54:00Z", kind: "geofence", deviceId: "dev_2", payload: geo("STL bazė", "exit", 54.6381, 25.1908) },
-  { id: "ev_09", at: "2026-08-31T19:22:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("Testas", "enter", 54.6725, 25.2801) },
-  { id: "ev_08", at: "2026-08-31T18:47:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(112, 90, 55.0034, 24.9871) },
-  { id: "ev_07", at: "2026-08-31T17:36:00Z", kind: "geofence", deviceId: "dev_3", payload: geo("Testas", "exit", 54.6718, 25.2793) },
-  { id: "ev_06", at: "2026-08-31T16:05:00Z", kind: "geofence", deviceId: "dev_4", payload: geo("STL bazė", "enter", 54.6386, 25.1915) },
-  { id: "ev_05", at: "2026-08-31T14:58:00Z", kind: "overspeed", deviceId: "dev_2", payload: speed(94, 90, 54.9214, 23.9402) },
-  { id: "ev_04", at: "2026-08-31T13:21:00Z", kind: "geofence", deviceId: "dev_4", payload: geo("STL bazė", "exit", 54.6379, 25.1904) },
-  { id: "ev_03", at: "2026-08-31T11:49:00Z", kind: "geofence", deviceId: "dev_3", payload: geo("Testas", "enter", 54.6723, 25.2799) },
-  { id: "ev_02", at: "2026-08-31T09:34:00Z", kind: "overspeed", deviceId: "dev_3", payload: speed(101, 90, 54.7311, 25.3527) },
-  { id: "ev_01", at: "2026-08-31T08:02:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("Testas", "enter", 54.6726, 25.2802) },
-];
 
 function EventsPage() {
   const { t } = useTranslation("admin");
@@ -115,19 +69,11 @@ function EventsPage() {
   const kindLabel = (k: Kind): string => t(`events.k.${k}`);
   const sevLabel = (sv: Severity): string => t(`events.sev.${sv}`);
 
-  // detail text follows the payload, phrased with the product's own translation keys
-  const detailOf = (e: DemoEvent): string => {
-    const p = e.payload as { name?: string; transition?: "enter" | "exit"; speedKmh?: number; limitKmh?: number };
-    if (p.transition && p.name !== undefined) {
-      return t(p.transition === "enter" ? "events.s.geofence_enter" : "events.s.geofence_exit", { name: p.name });
-    }
-    return `${p.speedKmh} ${t("units.kmh")} > ${p.limitKmh} ${t("units.kmh")}`;
-  };
 
   // filter changes restart the "cursor" — mirrors the product resetting the query
   const resetPage = () => setVisible(PAGE);
 
-  const filtered = DATA.filter((e) => {
+  const filtered = DEMO_EVENTS.filter((e) => {
     if (kind && e.kind !== kind) return false;
     if (deviceId && e.deviceId !== deviceId) return false;
     const day = e.at.slice(0, 10);
@@ -140,7 +86,6 @@ function EventsPage() {
   const hasMore = filtered.length > rows.length;
   // severity is a client-side lens over the loaded rows only — same as the product
   const shown = severity === "" ? rows : rows.filter((r) => severityOf(r.kind) === severity);
-  const deviceName = (id: string): string => DEVICES.find((d) => d.id === id)?.name ?? id;
 
   const critical = rows.filter((r) => severityOf(r.kind) === "critical").length;
   const warning = rows.filter((r) => severityOf(r.kind) === "warning").length;
@@ -212,7 +157,7 @@ function EventsPage() {
                         <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--admin-ink-soft)" }}>{fmtDateTime(r.at)}</td>
                         <td className="px-4 py-2.5"><Badge tone={TONE[sev]}>{kindLabel(r.kind)}</Badge></td>
                         <td className="px-4 py-2.5">{deviceName(r.deviceId)}</td>
-                        <td className="px-4 py-2.5" style={{ color: "var(--admin-ink-soft)" }}>{detailOf(r)}</td>
+                        <td className="px-4 py-2.5" style={{ color: "var(--admin-ink-soft)" }}>{demoDetail(t, r)}</td>
                         <td className="hidden px-4 py-2.5 md:table-cell" style={{ color: "var(--admin-ink-soft)" }}>
                           <span className="inline-flex items-center gap-1.5 text-xs">
                             <Icon className="h-3.5 w-3.5" style={{ color: SEV_COLOR[sev] }} aria-hidden />
@@ -228,7 +173,7 @@ function EventsPage() {
                       {open === r.id && (
                         <tr>
                           <td colSpan={6} className="p-3" style={{ background: "var(--admin-surface-sunken)" }}>
-                            <pre className="max-h-64 overflow-auto rounded-md border p-2 text-xs" style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}>{JSON.stringify(r.payload, null, 2)}</pre>
+                            <DemoEventDetails row={r} />
                           </td>
                         </tr>
                       )}
@@ -263,5 +208,50 @@ function FilterLabel({ label, children }: { label: string; children: React.React
       {label}
       {children}
     </label>
+  );
+}
+
+/**
+ * The demo's detail panel — the same labelled facts the product shows, not `JSON.stringify`.
+ *
+ * A prospect opening "details" here was shown our field names and our braces. The demo exists to
+ * show the product; the product no longer looks like that, and a demo that lags the product is an
+ * advertisement for the wrong thing.
+ */
+function DemoEventDetails({ row }: { row: DemoEvent }) {
+  const { t, i18n } = useTranslation("admin");
+  const p = row.payload as { name?: string; transition?: "enter" | "exit"; speedKmh?: number; limitKmh?: number; lat?: number; lon?: number };
+  const facts: { label: string; value: string }[] = [
+    { label: t("events.f.when"), value: new Date(row.at).toLocaleString(i18n.language) },
+    { label: t("events.f.device"), value: deviceName(row.deviceId) },
+  ];
+  if (p.lat !== undefined && p.lon !== undefined) {
+    facts.push({ label: t("events.f.where"), value: `${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` });
+  }
+  if (p.name !== undefined) facts.push({ label: t("events.f.zone"), value: p.name });
+  if (p.transition !== undefined) {
+    facts.push({ label: t("events.f.direction"), value: t(`events.f.transition_${p.transition}`) });
+  }
+  if (p.speedKmh !== undefined) facts.push({ label: t("events.f.speed"), value: `${p.speedKmh} ${t("units.kmh")}` });
+  if (p.limitKmh !== undefined) facts.push({ label: t("events.f.limit"), value: `${p.limitKmh} ${t("units.kmh")}` });
+  if (p.speedKmh !== undefined && p.limitKmh !== undefined) {
+    // the number an operator acts on, and the one the payload never carried
+    facts.push({ label: t("events.f.over"), value: `${p.speedKmh - p.limitKmh} ${t("units.kmh")}` });
+  }
+
+  return (
+    <div className="admin-card p-3">
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--admin-ink-soft)" }}>
+        {t("events.f.title")}
+      </div>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {facts.map((f) => (
+          <div key={f.label} className="flex items-baseline justify-between gap-3 border-b border-dashed py-1" style={{ borderColor: "var(--admin-hairline)" }}>
+            <dt className="shrink-0 text-[11px] uppercase tracking-wider" style={{ color: "var(--admin-ink-soft)" }}>{f.label}</dt>
+            <dd className="min-w-0 truncate text-right text-sm" style={{ color: "var(--admin-ink)" }}>{f.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }

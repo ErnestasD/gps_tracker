@@ -1,6 +1,8 @@
 import * as React from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+import { useAdminTheme } from "@/lib/admin-theme";
 import type { LngLat } from "@/lib/demo-geo";
 
 /** Minimal GeoJSON shapes (the site has no @types/geojson; MapLibre accepts these). */
@@ -16,7 +18,64 @@ type FeatureCollection = { type: "FeatureCollection"; features: Feature[] };
  * style over MapLibre — the same dark basemap idiom as the real dashboard's Mapbox dark
  * style, no token required. Overlays (zones / routes / device arrows) come in as props.
  */
-const DARK_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+/**
+ * Basemaps chosen to sit as close to the PRODUCT's look as free tiles allow.
+ *
+ * The dashboard runs Mapbox `navigation-night-v1` / `navigation-day-v1` — navigation styles, not
+ * the muted monochrome bases — because a fleet map needs roads you can read. The demo cannot use
+ * them: it is a public marketing page, and every anonymous visitor would spend a load against the
+ * 50k/month tier. CARTO's dark-matter / positron are the nearest free equivalents, and
+ * `emphasizeRoads` below lifts their roads toward the navigation palette so the two products look
+ * like one product.
+ *
+ * It is also THEME-REACTIVE now. The style was pinned dark, so switching the demo to light mode
+ * left a black rectangle in a white interface — a mismatch the real dashboard does not have.
+ */
+const STYLES = {
+  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+} as const;
+
+/**
+ * Lift roads and borders toward the navigation styles the product uses.
+ *
+ * Every write is guarded and matched by layer SHAPE rather than by name: CARTO renames layers
+ * between style versions, and a hardcoded id list would silently stop applying — leaving the demo
+ * looking like the old free stack again with nothing to show it had regressed.
+ */
+function emphasizeRoads(map: maplibregl.Map, theme: "dark" | "light"): void {
+  const road = theme === "dark" ? "#5d6470" : "#c9ced6";
+  const major = theme === "dark" ? "#8a8f9c" : "#a9b0ba";
+  const border = theme === "dark" ? "#9fb0d6" : "#5b6a8c";
+  let layers: maplibregl.LayerSpecification[] = [];
+  try {
+    layers = map.getStyle().layers ?? [];
+  } catch {
+    return;
+  }
+  for (const l of layers) {
+    if (l.type !== "line") continue;
+    const id = l.id.toLowerCase();
+    const set = (prop: string, value: unknown): void => {
+      try {
+        map.setPaintProperty(l.id, prop, value);
+      } catch {
+        /* layer/prop absent in this style version — a no-op, never a throw */
+      }
+    };
+    if (id.includes("motorway") || id.includes("trunk") || id.includes("primary")) {
+      set("line-color", major);
+      set("line-opacity", 1);
+    } else if (id.includes("road") || id.includes("street") || id.includes("transportation")) {
+      set("line-color", road);
+      set("line-opacity", 0.9);
+    } else if (id.includes("boundary") || id.includes("admin")) {
+      // the product lifts these too — borders that vanish into the base read as a missing map
+      set("line-color", border);
+      set("line-opacity", 0.8);
+    }
+  }
+}
 
 export type DemoZone = {
   id: string;
@@ -69,6 +128,8 @@ export function DemoMap({
   onVehicleClick?: (id: string) => void;
   interactive?: boolean;
 }) {
+  // the basemap follows the interface theme, as the dashboard's does
+  const { theme } = useAdminTheme();
   const ref = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<maplibregl.Map | null>(null);
   const markersRef = React.useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -81,7 +142,7 @@ export function DemoMap({
     if (!ref.current) return;
     const map = new maplibregl.Map({
       container: ref.current,
-      style: DARK_STYLE,
+      style: STYLES[theme],
       center: center ?? [24.5, 55.0],
       zoom,
       attributionControl: { compact: true },
@@ -90,6 +151,7 @@ export function DemoMap({
     mapRef.current = map;
     map.on("load", () => {
       loadedRef.current = true;
+      emphasizeRoads(map, theme);
       applyOverlays();
     });
     return () => {
@@ -101,6 +163,26 @@ export function DemoMap({
     };
     // deps deliberately empty — imperative map, created once
   }, []);
+
+  /**
+   * Follow the interface theme, as the dashboard does.
+   *
+   * `setStyle` throws away every layer we added, so the overlays are re-applied on `styledata` —
+   * the same dance `LiveMap` does in the product. Without it a theme switch left a correctly
+   * coloured basemap with no vehicles on it.
+   */
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    map.setStyle(STYLES[theme]);
+    const onStyled = (): void => {
+      emphasizeRoads(map, theme);
+      applyOverlays();
+    };
+    // `once` is typed as returning a promise (it resolves when no handler is given); we pass a
+    // handler, so there is nothing to await — say so rather than leave a floating value.
+    void map.once("styledata", onStyled);
+  }, [theme]);
 
   const applyOverlays = React.useCallback(() => {
     const map = mapRef.current;

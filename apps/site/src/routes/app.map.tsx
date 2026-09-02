@@ -6,10 +6,7 @@ import { LANGUAGES, type Lang } from "@/lib/i18n";
 import { Badge, AdminInput, AdminButton } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { DemoMap, type DemoRoute, type DemoVehicle, type DemoZone } from "@/components/admin/DemoMap";
-import {
-  VILNIUS_LOOP, KAUNAS_LOOP, DEPOT_POLYGON, SALDENE_CENTER, SALDENE_RADIUS_M,
-  circleRing, routeSlice, type LngLat,
-} from "@/lib/demo-geo";
+import { cityFor, circleRing, routeSlice, type DemoCity, type LngLat } from "@/lib/demo-geo";
 import {
   PanelLeft, Pause, Layers, Maximize2, Satellite, Power, Clock, ChevronRight,
   Activity, Radio, Signal, Zap, Play, ZoomIn, ZoomOut, Crosshair, MapPin, LocateFixed, Route as RouteIcon,
@@ -33,22 +30,43 @@ function bearingDeg(a: LngLat, b: LngLat): number {
 /** Deterministic on-road placement: mock lat/lng is ignored — every device sits on a real
  * street of VILNIUS_LOOP (first 16) or KAUNAS_LOOP, heading toward the next route point. */
 type Placement = { at: LngLat; headingDeg: number; loop: LngLat[]; idx: number };
-const PLACEMENTS = new Map<string, Placement>(
-  ALL.map((d, i) => {
-    const loop = i < 16 ? VILNIUS_LOOP : KAUNAS_LOOP;
-    const idx = (i * 17) % loop.length;
-    const at = loop[idx];
-    return [d.id, { at, headingDeg: bearingDeg(at, loop[(idx + 1) % loop.length]), loop, idx }];
-  }),
-);
 
-const FIT_ALL: LngLat[] = ALL.map((d) => PLACEMENTS.get(d.id)!.at);
+/**
+ * Where the demo fleet is, decided by the interface language.
+ *
+ * It used to be Vilnius for everyone, so a Polish visitor reading a Polish interface watched vans
+ * circle a city they have no stake in — which quietly says the product is for somebody else. The
+ * loops are real routed road geometry per city, so a van is never in a field whichever one it is.
+ */
+function placementsFor(city: DemoCity): Map<string, Placement> {
+  return new Map<string, Placement>(
+    ALL.map((d, i) => {
+      const loop = city.loops[i < 16 ? 0 : 1];
+      const idx = (i * 17) % loop.length;
+      const at = loop[idx];
+      return [d.id, { at, headingDeg: bearingDeg(at, loop[(idx + 1) % loop.length]), loop, idx }];
+    }),
+  );
+}
 
 /** Live-map overlay zones — drawn dashed, as on the real dashboard. */
-const ZONES: DemoZone[] = [
-  { id: "depot", color: "#4c4dcf", ring: DEPOT_POLYGON, dashed: true },
-  { id: "saldene", color: "#7C5CFC", ring: circleRing(SALDENE_CENTER, SALDENE_RADIUS_M), dashed: true },
-];
+/**
+ * Zones follow the fleet.
+ *
+ * They were fixed Vilnius geometry, so moving the vans to Warsaw would have left the geofences
+ * behind in Lithuania — vehicles in one country, their zones in another, which reads as a broken
+ * product rather than a localised one. Anchoring them to points ON the active loop keeps a depot
+ * where the fleet actually drives, in every city.
+ */
+function zonesFor(city: DemoCity): DemoZone[] {
+  const loop = city.loops[0];
+  const depot = loop[Math.floor(loop.length * 0.12)];
+  const second = loop[Math.floor(loop.length * 0.55)];
+  return [
+    { id: "depot", color: "#4c4dcf", ring: circleRing(depot, 900), dashed: true },
+    { id: "second", color: "#7C5CFC", ring: circleRing(second, 1500), dashed: true },
+  ];
+}
 
 const TRACK_PTS = 60;
 
@@ -85,6 +103,11 @@ function MapPage() {
   const [demoDay, setDemoDay] = React.useState(0);
   const lang = (i18n.resolvedLanguage ?? "lt").slice(0, 2) as Lang;
   const l = L[LANGUAGES.includes(lang) ? lang : "lt"];
+  // the fleet drives where the reader is — see cityFor()
+  const city = cityFor(lang);
+  const PLACEMENTS = React.useMemo(() => placementsFor(city), [city]);
+  const FIT_ALL = React.useMemo<LngLat[]>(() => ALL.map((d) => PLACEMENTS.get(d.id)!.at), [PLACEMENTS]);
+  const ZONES = React.useMemo(() => zonesFor(city), [city]);
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<string>("");
   const [selected, setSelected] = React.useState<string | null>(ALL[0]?.id ?? null);
@@ -274,7 +297,17 @@ function MapPage() {
               <div className="admin-card mt-3 p-3">
                 <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--admin-ink)" }}>{t("map.inspector.position")}</div>
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                  <KV k={t("map.inspector.coords").toUpperCase()} v={`${active.lat.toFixed(5)}, ${active.lng.toFixed(5)}`} mono />
+                  {/* the PLACEMENT's coordinates, not the mock's own: the mock still carries the
+                      Lithuanian lat/lng it was generated with, so after the fleet moved to Warsaw
+                      the inspector read 54.36, 23.83 beside a map of Poland */}
+                  <KV
+                    k={t("map.inspector.coords").toUpperCase()}
+                    v={(() => {
+                      const at = PLACEMENTS.get(active.id)?.at;
+                      return at === undefined ? "—" : `${at[1].toFixed(5)}, ${at[0].toFixed(5)}`;
+                    })()}
+                    mono
+                  />
                   <KV k={t("map.inspector.lastPacket").toUpperCase()} v="2026-09-01 13:51" mono />
                   <KV k={t("map.inspector.heading").toUpperCase()} v="295°" />
                   <KV k={t("info.ignition").toUpperCase()} v={active.status === "active" ? t("info.on") : t("info.off")} />
