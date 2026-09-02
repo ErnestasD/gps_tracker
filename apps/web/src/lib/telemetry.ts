@@ -26,6 +26,22 @@ export interface LatestTelemetry {
   movement: boolean | null
   odometerM: string | null
   attrs: Record<string, unknown>
+  /**
+   * `io_<id>` key → what that element is on THIS device's AVL table.
+   *
+   * The pipeline keeps an id-key whenever the name is ambiguous within the table (48/84/89 are all
+   * "Fuel Level"), which is right for storage and unreadable on screen. The SERVER resolves them,
+   * because the same id is a fuel level on one table and an axle weight on another — a browser-side
+   * id map would be a guess about the vehicle. Absent against an API older than this deploy.
+   */
+  attrLabels?: Record<string, AttrLabel>
+}
+
+/** A dictionary entry as the telemetry endpoint sends it. */
+export interface AttrLabel {
+  name: string
+  units?: string
+  multiplier?: string
 }
 
 export const getTelemetry = (deviceId: string, at?: string | null) =>
@@ -80,8 +96,20 @@ const NAMED_UNITS: Record<string, (v: number) => string> = {
 }
 
 /** Value formatter that knows the element's unit when the NAME is a documented one. */
-export const fmtAttrValue = (key: string, v: unknown): string => {
+export const fmtAttrValue = (key: string, v: unknown, label?: AttrLabel): string => {
   if (typeof v === 'number') {
+    /**
+     * A labelled id-key is formatted from the DICTIONARY, not from this file's name table: the
+     * entry carries the wiki's own multiplier and units, so AVL 84 (×0.1, litres) reads "18.0 l"
+     * instead of "180" — the number the founder was shown for a tank that is 18 litres full.
+     */
+    if (label !== undefined) {
+      const mult = label.multiplier === undefined ? 1 : Number(label.multiplier)
+      const scaled = Number.isFinite(mult) && mult !== 1 ? v * mult : v
+      // a multiplied value is fractional by construction; an unmultiplied one is shown as sent
+      const shown = mult !== 1 ? scaled.toFixed(1) : String(scaled)
+      return label.units === undefined ? shown : `${shown} ${label.units}`
+    }
     const unit = NAMED_UNITS[key.toLowerCase()]
     if (unit !== undefined) return unit(v)
   }
@@ -95,14 +123,23 @@ export const fmtAttrValue = (key: string, v: unknown): string => {
  * either the wiki page is incomplete for that model, or the name was ambiguous within the table and
  * the id was kept deliberately. Both are worth seeing.
  */
-export function telemetryRows(attrs: Record<string, unknown>): TelemetryRow[] {
+export function telemetryRows(
+  attrs: Record<string, unknown>,
+  labels: Record<string, AttrLabel> = {},
+): TelemetryRow[] {
   const rows = Object.entries(attrs).map(([key, value]) => {
     const raw = /^io_(\d+)$/.exec(key)
+    const label = labels[key]
+    // "Fuel Level (l)" and "Fuel Level (%)" are two rows of the same name — the unit is the
+    // whole point of keeping them apart, so it belongs in the label, not only in the value
+    const named =
+      label === undefined ? undefined : label.units === undefined ? label.name : `${label.name} (${label.units})`
     return {
       key,
-      label: raw !== null ? `AVL ${raw[1]}` : key,
-      value: fmtAttrValue(key, value),
-      documented: raw === null,
+      label: named ?? (raw !== null ? `AVL ${raw[1]}` : key),
+      value: fmtAttrValue(key, value, label),
+      // an id-key we can name is not an undocumented element; only an unnamed one is
+      documented: raw === null || label !== undefined,
     }
   })
   return rows.sort((a, b) =>
@@ -154,23 +191,50 @@ const HIGHLIGHT_ORDER = [
   'sleep mode',
 ]
 
-export function highlightRows(attrs: Record<string, unknown>): HighlightRow[] {
-  const byName = new Map(Object.keys(attrs).map((k) => [k.toLowerCase(), k]))
+export function highlightRows(
+  attrs: Record<string, unknown>,
+  labels: Record<string, AttrLabel> = {},
+): HighlightRow[] {
+  /**
+   * Candidates are keyed by the element's NAME, which for an id-key comes from the server's
+   * dictionary lookup. That is what puts fuel back on this list at all: the pipeline stores it as
+   * `io_84` / `io_89`, so a name-matched highlight list never saw it and an operator with a working
+   * CAN bus read no fuel gauge.
+   */
+  const candidates = Object.keys(attrs).map((key) => {
+    const label = labels[key]
+    return { key, name: (label?.name ?? key).toLowerCase(), label }
+  })
   const out: HighlightRow[] = []
   for (const wanted of HIGHLIGHT_ORDER) {
-    const key = byName.get(wanted)
-    if (key === undefined) continue
-    const raw = attrs[key]
-    const scale = SCALES[wanted]
-    let pct: number | null = null
-    let tone: HighlightRow['tone'] = 'accent'
-    if (scale !== undefined && typeof raw === 'number' && raw >= 0 && raw <= scale.max) {
-      pct = raw / scale.max
-      // a low signal or an empty tank is the thing worth noticing; the tone says so without
-      // needing a second row of text
-      if (scale.lowIsBad) tone = pct <= 0.15 ? 'danger' : pct <= 0.35 ? 'warn' : 'accent'
+    // ALL matches, not the first: litres and percent are two readings of the same tank and the
+    // founder asked for both — they differ only by unit, which the label carries
+    for (const cand of candidates.filter((c) => c.name === wanted)) {
+      const raw = attrs[cand.key]
+      const scale = SCALES[wanted]
+      const units = cand.label?.units
+      let pct: number | null = null
+      let tone: HighlightRow['tone'] = 'accent'
+      /**
+       * A bar needs a maximum, and only a percentage has one we did not invent. Litres do not:
+       * this code cannot know the tank's size, and a bar drawn against 100 would say a full 18 l
+       * tank is 18 % — a claim about the vehicle. Those rows show the value alone.
+       */
+      const scalable = scale !== undefined && (units === undefined || units === '%')
+      if (scalable && typeof raw === 'number' && raw >= 0 && raw <= scale.max) {
+        pct = raw / scale.max
+        // a low signal or an empty tank is the thing worth noticing; the tone says so without
+        // needing a second row of text
+        if (scale.lowIsBad) tone = pct <= 0.15 ? 'danger' : pct <= 0.35 ? 'warn' : 'accent'
+      }
+      out.push({
+        key: cand.key,
+        label: cand.label === undefined ? cand.key : units === undefined ? cand.label.name : `${cand.label.name} (${units})`,
+        value: fmtAttrValue(cand.key, raw, cand.label),
+        pct,
+        tone,
+      })
     }
-    out.push({ key, label: key, value: fmtAttrValue(key, raw), pct, tone })
   }
   return out
 }

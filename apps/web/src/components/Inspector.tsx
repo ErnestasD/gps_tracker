@@ -382,7 +382,7 @@ function OverviewTab({
     queryKey: ['trips', 'device', ev.deviceId],
     queryFn: () => listTrips({ deviceId: ev.deviceId, limit: 5 }),
   })
-  const highlights = latest !== undefined ? highlightRows(latest.attrs) : []
+  const highlights = latest !== undefined ? highlightRows(latest.attrs, latest.attrLabels ?? {}) : []
 
   return (
     <div className="space-y-3" data-testid="overview-tab">
@@ -568,7 +568,7 @@ function ParamsTab({
   ].filter((r) => r.value !== null && r.value !== undefined)
 
   const term = q.trim().toLowerCase()
-  const rows = telemetryRows(d.attrs).filter((r) => term === '' || r.label.toLowerCase().includes(term) || r.key.toLowerCase().includes(term))
+  const rows = telemetryRows(d.attrs, d.attrLabels ?? {}).filter((r) => term === '' || r.label.toLowerCase().includes(term) || r.key.toLowerCase().includes(term))
   return (
     <div data-testid="params-tab">
       {/* Age, always. A device that died three days ago would otherwise render a full, confident,

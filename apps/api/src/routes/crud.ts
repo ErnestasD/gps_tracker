@@ -4,6 +4,7 @@ import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 import { z } from 'zod'
 
+import { loadDictionary } from '@orbetra/codec'
 import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readLatestTelemetry, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
@@ -875,7 +876,33 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // ?at=ISO → the newest row at-or-before that instant (scrubber follow); absent → latest
         const latest = await readLatestTelemetry(deps.pool, device.id, c.req.query('at'))
         // a device that has never reported is a real answer, not a 404: the UI says "nothing yet"
-        return json(c, latest ?? { empty: true })
+        if (latest === null) return json(c, { empty: true })
+        /**
+         * Name the `io_<id>` keys — here, where the device's TABLE is known.
+         *
+         * The pipeline keeps an id-key whenever the dictionary name is ambiguous within the table
+         * (37 and 81 are both "Vehicle Speed"; 48, 84 and 89 are all "Fuel Level"), so the stored
+         * key stays unit-unambiguous. That is right for storage and wrong for reading: an operator
+         * saw "AVL 84 — 180" for what is 18.0 litres of fuel. The browser cannot do this lookup,
+         * because the same id is a fuel level on one table and an axle weight on another; the
+         * server knows which table this device speaks, so it answers with the labels.
+         */
+        const profile = await db.profiles.get(device.profileId)
+        const dict = profile === null ? undefined : loadDictionary(profile.avlTable)
+        const attrLabels: Record<string, { name: string; units?: string; multiplier?: string }> = {}
+        if (dict !== undefined) {
+          for (const key of Object.keys(latest.attrs)) {
+            const m = /^io_(\d+)$/.exec(key)
+            const entry = m === null ? undefined : dict.get(Number(m[1]))
+            if (entry === undefined) continue
+            attrLabels[key] = {
+              name: entry.name,
+              ...(entry.units !== undefined ? { units: entry.units } : {}),
+              ...(entry.multiplier !== undefined ? { multiplier: entry.multiplier } : {}),
+            }
+          }
+        }
+        return json(c, { ...latest, attrLabels })
       } },
     // fuel series for the playback fuel graph (E08-3) — same gate + raw-SQL shape as positions
     { method: 'get', path: '/v1/devices/:id/fuel', scopeClass: 'account', entity: 'device', shape: 'item',

@@ -47,6 +47,9 @@ importers:
       '@node-rs/argon2':
         specifier: ^2.0.2
         version: 2.0.2
+      '@orbetra/codec':
+        specifier: workspace:*
+        version: link:../../packages/codec
       '@orbetra/db':
         specifier: workspace:*
         version: link:../../packages/db
