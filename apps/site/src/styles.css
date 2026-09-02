@@ -476,3 +476,12 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* A strip that scrolls sideways without a scrollbar — the inspector's tabs, as in the dashboard. */
+.scroll-strip {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+.scroll-strip::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
+}

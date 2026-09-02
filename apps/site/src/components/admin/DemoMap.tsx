@@ -93,6 +93,13 @@ export type DemoZone = {
 
 export type DemoPin = { id: string; at: LngLat; label: string; color: string };
 
+export type DemoMapControls = {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  fitAll: () => void;
+  flyTo: (at: LngLat, zoom?: number) => void;
+};
+
 export type DemoRoute = { id: string; coords: LngLat[]; color?: string; widthPx?: number; dashed?: boolean };
 
 export type DemoVehicle = {
@@ -101,6 +108,8 @@ export type DemoVehicle = {
   headingDeg: number;
   color: string;
   selected?: boolean;
+  /** drawn under the arrow when the "device labels" layer is on */
+  label?: string;
 };
 
 export function DemoMap({
@@ -114,11 +123,13 @@ export function DemoMap({
   vehicles = [],
   pins = [],
   handles = [],
+  heat = [],
   onVehicleClick,
   onMapClick,
   onMapMove,
   onMapDblClick,
   projectRef,
+  controlsRef,
   drawing = false,
   interactive = true,
 }: {
@@ -134,6 +145,8 @@ export function DemoMap({
   pins?: DemoPin[];
   /** draft vertices, drawn as small grab-handles (the drawing tool's placed points) */
   handles?: LngLat[];
+  /** points behind the density layer; empty turns the layer off */
+  heat?: LngLat[];
   onVehicleClick?: (id: string) => void;
   /** map clicks, for the drawing tool. Vehicle clicks do NOT reach here — they stop propagation. */
   onMapClick?: (at: LngLat, point: { x: number; y: number }) => void;
@@ -149,6 +162,14 @@ export function DemoMap({
    * on a 40 km corridor, because what the hand is aiming at is the dot, not the ground.
    */
   projectRef?: React.MutableRefObject<((at: LngLat) => { x: number; y: number }) | null>;
+  /**
+   * Zoom and recentre, for a page that draws its own map buttons.
+   *
+   * The demo's zoom/locate controls were `<button>`s with no handler — decoration on the one
+   * control every person tries first. MapLibre's own navigation control is not used because the
+   * product draws these itself, in its own chrome; this hands the page the same verbs.
+   */
+  controlsRef?: React.MutableRefObject<DemoMapControls | null>;
   /** crosshair cursor, and no zoom on double-click — a double-click FINISHES a shape */
   drawing?: boolean;
   interactive?: boolean;
@@ -159,6 +180,7 @@ export function DemoMap({
   const mapRef = React.useRef<maplibregl.Map | null>(null);
   const markersRef = React.useRef<Map<string, maplibregl.Marker>>(new Map());
   const loadedRef = React.useRef(false);
+  const fitRef = React.useRef<(() => void) | null>(null);
   const onClickRef = React.useRef(onVehicleClick);
   onClickRef.current = onVehicleClick;
   // the drawing callbacks change identity on every render (they close over draft state), so they
@@ -187,6 +209,14 @@ export function DemoMap({
       emphasizeRoads(map, theme);
       applyOverlays();
     });
+    if (controlsRef) {
+      controlsRef.current = {
+        zoomIn: () => map.zoomIn({ duration: 250 }),
+        zoomOut: () => map.zoomOut({ duration: 250 }),
+        fitAll: () => fitRef.current?.(),
+        flyTo: (at, z) => map.flyTo({ center: at, zoom: z ?? Math.max(map.getZoom(), 14), duration: 600 }),
+      };
+    }
     if (projectRef) {
       projectRef.current = (at) => {
         const pt = map.project(at);
@@ -208,6 +238,7 @@ export function DemoMap({
       mapRef.current = null;
       loadedRef.current = false;
       if (projectRef) projectRef.current = null;
+      if (controlsRef) controlsRef.current = null;
     };
     // deps deliberately empty — imperative map, created once
   }, []);
@@ -279,6 +310,10 @@ export function DemoMap({
     ensure("demo-zones", { type: "FeatureCollection", features: zoneFeatures });
     ensure("demo-corridors", { type: "FeatureCollection", features: corridorFeatures });
     ensure("demo-routes", { type: "FeatureCollection", features: routeFeatures });
+    ensure("demo-heat", {
+      type: "FeatureCollection",
+      features: heat.map((h) => ({ type: "Feature", geometry: { type: "Point", coordinates: h }, properties: {} })),
+    });
     ensure("demo-handles", {
       type: "FeatureCollection",
       features: handles.map((h, i) => ({
@@ -289,6 +324,21 @@ export function DemoMap({
     });
 
     if (!map.getLayer("demo-zone-fill")) {
+      // density first, so every other overlay draws over it
+      map.addLayer({
+        id: "demo-heat", type: "heatmap", source: "demo-heat",
+        paint: {
+          "heatmap-radius": 34,
+          "heatmap-opacity": 0.55,
+          "heatmap-color": [
+            "interpolate", ["linear"], ["heatmap-density"],
+            0, "rgba(0,0,0,0)",
+            0.3, "rgba(124,92,252,0.35)",
+            0.6, "rgba(242,169,59,0.55)",
+            1, "rgba(220,38,38,0.75)",
+          ],
+        },
+      });
       map.addLayer({ id: "demo-zone-fill", type: "fill", source: "demo-zones", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.16 } });
       map.addLayer({
         id: "demo-zone-line", type: "line", source: "demo-zones", filter: ["!=", ["get", "dashed"], true],
@@ -331,9 +381,10 @@ export function DemoMap({
       let marker = markersRef.current.get(v.id);
       if (!marker) {
         const el = document.createElement("div");
-        el.style.cssText = "width:26px;height:26px;cursor:pointer;display:grid;place-items:center;";
+        el.style.cssText = "width:26px;height:26px;cursor:pointer;display:grid;place-items:center;position:relative;";
         el.innerHTML =
-          '<svg width="26" height="26" viewBox="-13 -13 26 26" style="overflow:visible"><g class="demo-arrow"><path d="M 0 -9 L 6.5 8 L 0 4.5 L -6.5 8 Z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></g></svg>';
+          '<svg width="26" height="26" viewBox="-13 -13 26 26" style="overflow:visible"><g class="demo-arrow"><path d="M 0 -9 L 6.5 8 L 0 4.5 L -6.5 8 Z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></g></svg>' +
+          '<span class="demo-label" style="position:absolute;top:22px;left:50%;transform:translateX(-50%);white-space:nowrap;font:600 10px Inter,sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.9);pointer-events:none"></span>';
         el.addEventListener("click", (e) => {
           e.stopPropagation();
           onClickRef.current?.(v.id);
@@ -343,6 +394,11 @@ export function DemoMap({
         markersRef.current.set(v.id, marker);
       }
       marker.setLngLat(v.at);
+      const labelEl = marker.getElement().querySelector("span.demo-label");
+      if (labelEl instanceof HTMLElement) {
+        labelEl.textContent = v.label ?? "";
+        labelEl.style.display = v.label === undefined || v.label === "" ? "none" : "block";
+      }
       const g = marker.getElement().querySelector("g.demo-arrow");
       const path = marker.getElement().querySelector("path");
       if (g) g.setAttribute("transform", `rotate(${v.headingDeg})`);
@@ -372,7 +428,7 @@ export function DemoMap({
         markersRef.current.delete(id);
       }
     }
-  }, [zones, routes, vehicles, pins, handles]);
+  }, [zones, routes, vehicles, pins, handles, heat]);
 
   React.useEffect(() => {
     applyOverlays();
@@ -380,12 +436,19 @@ export function DemoMap({
 
   // fit once per fit-array identity
   const fitKey = fit ? fit.length + ":" + fit[0]?.join(",") + ":" + fit[fit.length - 1]?.join(",") : "";
+  const runFit = React.useCallback(
+    (duration: number) => {
+      const map = mapRef.current;
+      if (!map || !fit || fit.length === 0) return;
+      let b: [number, number, number, number] = [999, 999, -999, -999];
+      for (const c of fit) b = [Math.min(b[0], c[0]), Math.min(b[1], c[1]), Math.max(b[2], c[0]), Math.max(b[3], c[1])];
+      map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: fitPadding, duration, maxZoom: 15 });
+    },
+    [fit, fitPadding],
+  );
+  fitRef.current = () => runFit(500);
   React.useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !fit || fit.length === 0) return;
-    let b: [number, number, number, number] = [999, 999, -999, -999];
-    for (const c of fit) b = [Math.min(b[0], c[0]), Math.min(b[1], c[1]), Math.max(b[2], c[0]), Math.max(b[3], c[1])];
-    map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: fitPadding, duration: 0, maxZoom: 15 });
+    runFit(0);
     // keyed by content (fitKey), not array identity
   }, [fitKey]);
 

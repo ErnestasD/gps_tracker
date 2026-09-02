@@ -7,6 +7,7 @@ import { AdminButton, AdminInput, Badge, PageHeader } from "@/components/admin/A
 import { Combobox } from "@/components/admin/Combobox";
 import { LANGUAGES, type Lang } from "@/lib/i18n";
 import { contentFor } from "@/lib/demo-content";
+import { generateDevices } from "@/lib/admin-mock";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { toast } from "sonner";
@@ -85,24 +86,52 @@ const PROFILES = [
 
 const VIRTUAL_IMEI_PREFIX = "9990";
 
-const INITIAL_DEVICES: DemoDevice[] = [
-  { id: "d1", name: "Krovininis 01", plate: "KRV 401", imei: "869206051234017", profileId: "fmb120", status: "active" },
-  { id: "d2", name: "Krovininis 02", plate: "KRV 522", imei: "869206051234025", profileId: "fmb120", status: "active" },
-  { id: "d3", name: "Krovininis 03", plate: "JKD 218", imei: "869206058812349", profileId: "fmc150", status: "active" },
-  { id: "d4", name: "Vilkikas 04", plate: "LKM 730", imei: "869258046621184", profileId: "fmc150", status: "active" },
-  { id: "d5", name: "Mikroautobusas 05", plate: "HNE 664", imei: "869271033448756", profileId: "fmb120", status: "active" },
-  { id: "d6", name: "Autocisterna 06", plate: "KTC 095", imei: "869206059917204", profileId: "fmc150", status: "waiting" },
-  { id: "d7", name: "Furgonas 07", plate: "EGL 342", imei: "869258041102938", profileId: "fmb120", status: "active" },
-  { id: "d8", name: "Priekaba 08", plate: "PRK 118", imei: "869206053390561", profileId: "ftc887", status: "waiting" },
-  { id: "d9", name: "Servisas 09", plate: "SRV 909", imei: "869271039981265", profileId: "fmb120", status: "active" },
-  { id: "d10", name: "Vilkikas 10", plate: "DKO 458", imei: "869206050034471", profileId: "fmc150", status: "retired" },
-  { id: "d11", name: "Virtualus 1", plate: null, imei: "999000000000101", profileId: "fmb120", status: "active" },
-];
+/**
+ * The SAME eleven vehicles the live map shows, not a second fleet.
+ *
+ * These rows used to be their own invention — "Krovininis 01 (KRV 401)", "Mikroautobusas 05",
+ * "Priekaba 08" — Lithuanian body types on Lithuanian plates, printed under a Polish heading. And
+ * they contradicted the map, which listed Truck 01 (WW 6152Q): the demo's two most-visited pages
+ * disagreed about which vehicles the fleet even has.
+ *
+ * Names and plates now come from the shared generator, so the devices table and the map are one
+ * fleet. Everything the PAGE is demonstrating — which device is waiting for its first packet, which
+ * is retired, which model each runs, the virtual one — stays pinned per row.
+ */
+const DEVICE_ROWS = [
+  { id: "d1", imei: "869206051234017", profileId: "fmb120", status: "active" },
+  { id: "d2", imei: "869206051234025", profileId: "fmb120", status: "active" },
+  { id: "d3", imei: "869206058812349", profileId: "fmc150", status: "active" },
+  { id: "d4", imei: "869258046621184", profileId: "fmc150", status: "active" },
+  { id: "d5", imei: "869271033448756", profileId: "fmb120", status: "active" },
+  { id: "d6", imei: "869206059917204", profileId: "fmc150", status: "waiting" },
+  { id: "d7", imei: "869258041102938", profileId: "fmb120", status: "active" },
+  { id: "d8", imei: "869206053390561", profileId: "ftc887", status: "waiting" },
+  { id: "d9", imei: "869271039981265", profileId: "fmb120", status: "active" },
+  { id: "d10", imei: "869206050034471", profileId: "fmc150", status: "retired" },
+] as const;
+
+function devicesFor(lang: string, virtualName: string): DemoDevice[] {
+  const fleet = generateDevices(contentFor(lang), DEVICE_ROWS.length);
+  const rows: DemoDevice[] = DEVICE_ROWS.map((r, i) => ({
+    id: r.id,
+    name: fleet[i].name,
+    plate: fleet[i].plate,
+    imei: r.imei,
+    profileId: r.profileId,
+    status: r.status,
+  }));
+  // the virtual device has no plate by definition — it is an identity, not a vehicle
+  rows.push({ id: "d11", name: `${virtualName} 1`, plate: null, imei: "999000000000101", profileId: "fmb120", status: "active" });
+  return rows;
+}
 
 function DevicesPage() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const lang = i18n.language;
   const l = useL();
-  const [devices, setDevices] = React.useState(INITIAL_DEVICES);
+  const [devices, setDevices] = React.useState(() => devicesFor(lang, t("devices.vsim.deviceName")));
+  React.useEffect(() => setDevices(devicesFor(lang, t("devices.vsim.deviceName"))), [lang, t]);
   const [addOpen, setAddOpen] = React.useState(false);
 
   const columns: Column<DemoDevice>[] = [
