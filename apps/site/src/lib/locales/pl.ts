@@ -74,11 +74,13 @@ export const pl: Translation = {
     ownP1: "Od {{price}} €/mies. za {{devices}} pojazdów",
     ownP2: "Wdrożenie w jedno popołudnie",
     ownP3: "30 dni testów, bez karty",
+    ownP4: "Rezygnacja w każdej chwili — dane wyeksportujesz wcześniej",
     resellTitle: "Odsprzedaż pod własną marką",
     resellBody: "Nielimitowana liczba urządzeń pod Państwa marką i domeną, jedno subkonto na klienta, migracja w trybie shadow z obecnej platformy.",
     resellP1: "Od {{price}} €/mies. za {{devices}} urządzeń",
     resellP2: "Własna domena + automatyczny TLS, e-maile z Państwa marką",
     resellP3: "REST API, webhooki, subkonta",
+    resellP4: "60-dniowy pilotaż — bezpłatnie, do 500 urządzeń",
     resellCta: "Platforma white-label",
   },
   footer: {

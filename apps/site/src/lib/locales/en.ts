@@ -82,11 +82,13 @@ export const en = {
     ownP1: "From €{{price}}/mo for {{devices}} vehicles",
     ownP2: "Setup in an afternoon",
     ownP3: "30-day trial, no card",
+    ownP4: "Cancel any time — export your data first",
     resellTitle: "Resell it as your own",
     resellBody: "Uncapped devices under your brand and domain, one sub-account per customer, shadow-mode migration from your current platform.",
     resellP1: "From €{{price}}/mo for {{devices}} devices",
     resellP2: "Custom domain + auto TLS, branded emails",
     resellP3: "REST API, webhooks, sub-accounts",
+    resellP4: "60-day pilot — free, up to 500 devices",
     resellCta: "White-label platform",
   },
   footer: {
