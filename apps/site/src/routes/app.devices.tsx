@@ -6,6 +6,7 @@ import { DataTable, type Column } from "@/components/admin/DataTable";
 import { AdminButton, AdminInput, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { LANGUAGES, type Lang } from "@/lib/i18n";
+import { contentFor } from "@/lib/demo-content";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { toast } from "sonner";
@@ -278,9 +279,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /** The real create form's fields (IMEI / name / plate / SIM / APN / account / model), demo-static. */
 function CreateDeviceForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
   const l = useL();
-  const [accountId, setAccountId] = React.useState("kaunas");
+  const [accountId, setAccountId] = React.useState("acc_a");
   const [profileId, setProfileId] = React.useState("fmb120");
 
   return (
@@ -301,7 +302,7 @@ function CreateDeviceForm({ onCreated, onCancel }: { onCreated: () => void; onCa
         <AdminInput maxLength={32} placeholder="ABC 123" />
       </Field>
       <Field label={t("devices.onb.sim.msisdn")}>
-        <AdminInput pattern="\+[1-9]\d{6,14}" placeholder="+37060000000" maxLength={20} inputMode="tel" />
+        <AdminInput pattern="\+[1-9]\d{6,14}" placeholder={`${contentFor(i18n.language).phonePrefix}0000000`} maxLength={20} inputMode="tel" />
       </Field>
       <Field label={t("devices.onb.apn")}>
         <AdminInput maxLength={63} placeholder={t("devices.onb.apnPlaceholder")} />
@@ -311,8 +312,8 @@ function CreateDeviceForm({ onCreated, onCancel }: { onCreated: () => void; onCa
           value={accountId}
           onChange={setAccountId}
           options={[
-            { value: "kaunas", label: "Kauno parkas" },
-            { value: "vilnius", label: "Vilniaus parkas" },
+            { value: "acc_a", label: contentFor(i18n.language).accounts[0] },
+            { value: "acc_b", label: contentFor(i18n.language).accounts[1] },
           ]}
         />
       </Field>

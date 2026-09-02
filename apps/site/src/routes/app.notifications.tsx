@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { demoZones } from "@/lib/demo-zones";
 import { Activity, AlertOctagon, TrendingUp } from "lucide-react";
 import { Badge, PageHeader, StatCard } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
@@ -87,25 +88,38 @@ type DemoNotification = { id: string; at: string; kind: Kind; device: string; ms
 const over = (speedKmh: number, limitKmh: number): Msg => ({ type: "overspeed", speedKmh, limitKmh });
 const zone = (transition: "enter" | "exit", z: string): Msg => ({ type: "zone", transition, zone: z });
 
+// Zone names are resolved at RENDER from the shared set, so an alert never names a zone that is
+// not on the map — it used to say "STL bazė" and "Testas", neither of which existed anywhere else.
+const DEPOT = "@depot";
+const YARD = "@yard";
+
 // Static archive — newest first; each row is a bell notification that has already been delivered.
-// Message text is derived at render so it follows the UI language (zone names stay data).
+// Message text is derived at render so it follows the UI language.
 const DATA: DemoNotification[] = [
   { id: "nt_12", at: "2026-09-01T07:42:00Z", kind: "overspeed", device: "Van 03", msg: over(105, 90) },
-  { id: "nt_11", at: "2026-09-01T07:15:00Z", kind: "geofence", device: "Van 03", msg: zone("exit", "Testas") },
-  { id: "nt_10", at: "2026-09-01T06:58:00Z", kind: "geofence", device: "Sprinter 07", msg: zone("enter", "STL bazė") },
+  { id: "nt_11", at: "2026-09-01T07:15:00Z", kind: "geofence", device: "Van 03", msg: zone("exit", YARD) },
+  { id: "nt_10", at: "2026-09-01T06:58:00Z", kind: "geofence", device: "Sprinter 07", msg: zone("enter", DEPOT) },
   { id: "nt_09", at: "2026-09-01T06:31:00Z", kind: "overspeed", device: "Truck 12", msg: over(97, 90) },
-  { id: "nt_08", at: "2026-09-01T05:54:00Z", kind: "geofence", device: "Sprinter 07", msg: zone("exit", "STL bazė") },
-  { id: "nt_07", at: "2026-08-31T19:22:00Z", kind: "geofence", device: "Van 03", msg: zone("enter", "Testas") },
+  { id: "nt_08", at: "2026-09-01T05:54:00Z", kind: "geofence", device: "Sprinter 07", msg: zone("exit", DEPOT) },
+  { id: "nt_07", at: "2026-08-31T19:22:00Z", kind: "geofence", device: "Van 03", msg: zone("enter", YARD) },
   { id: "nt_06", at: "2026-08-31T18:47:00Z", kind: "overspeed", device: "Van 03", msg: over(112, 90) },
-  { id: "nt_05", at: "2026-08-31T17:36:00Z", kind: "geofence", device: "Van 08", msg: zone("exit", "Testas") },
-  { id: "nt_04", at: "2026-08-31T16:05:00Z", kind: "geofence", device: "Truck 12", msg: zone("enter", "STL bazė") },
+  { id: "nt_05", at: "2026-08-31T17:36:00Z", kind: "geofence", device: "Van 08", msg: zone("exit", YARD) },
+  { id: "nt_04", at: "2026-08-31T16:05:00Z", kind: "geofence", device: "Truck 12", msg: zone("enter", DEPOT) },
   { id: "nt_03", at: "2026-08-31T14:58:00Z", kind: "overspeed", device: "Sprinter 07", msg: over(94, 90) },
-  { id: "nt_02", at: "2026-08-31T11:49:00Z", kind: "geofence", device: "Van 08", msg: zone("enter", "Testas") },
+  { id: "nt_02", at: "2026-08-31T11:49:00Z", kind: "geofence", device: "Van 08", msg: zone("enter", YARD) },
   { id: "nt_01", at: "2026-08-31T09:34:00Z", kind: "overspeed", device: "Van 08", msg: over(101, 90) },
 ];
 
 function NotificationsPage() {
   const { t, i18n } = useTranslation("admin");
+  const zones = React.useMemo(() => {
+    const [depot, yard] = [demoZones(i18n.language)[0].name, demoZones(i18n.language)[1].name];
+    return DATA.map((n) =>
+      n.msg.type === "zone"
+        ? { ...n, msg: { ...n.msg, zone: n.msg.zone === DEPOT ? depot : n.msg.zone === YARD ? yard : n.msg.zone } }
+        : n,
+    );
+  }, [i18n.language]);
   const lang: Lang = LANGUAGES.includes(i18n.resolvedLanguage as Lang) ? (i18n.resolvedLanguage as Lang) : "lt";
   const ui = L[lang];
 
@@ -123,7 +137,7 @@ function NotificationsPage() {
         ? ui.zoneEnter(m.zone)
         : ui.zoneExit(m.zone);
 
-  const shown = DATA.filter((n) => {
+  const shown = zones.filter((n) => {
     if (kind && n.kind !== kind) return false;
     if (severity && severityOf(n.kind) !== severity) return false;
     const day = n.at.slice(0, 10);
@@ -132,7 +146,7 @@ function NotificationsPage() {
     return true;
   });
 
-  const critical = DATA.filter((n) => severityOf(n.kind) === "critical").length;
+  const critical = zones.filter((n) => severityOf(n.kind) === "critical").length;
   const warning = DATA.filter((n) => severityOf(n.kind) === "warning").length;
   const info = DATA.length - critical - warning;
 

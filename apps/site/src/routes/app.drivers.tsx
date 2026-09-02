@@ -7,6 +7,7 @@ import { DataTable, type Column } from "@/components/admin/DataTable";
 import { PageHeader, AdminButton, Badge, AdminInput } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { LANGUAGES, type Lang } from "@/lib/i18n";
+import { contentFor, roster, rosterNames } from "@/lib/demo-content";
 import {
   Dialog,
   DialogContent,
@@ -60,31 +61,60 @@ function useL() {
   return L[LANGUAGES.includes(lang) ? lang : "lt"];
 }
 
-const ACCOUNTS = [
-  { id: "acc_kaunas", name: "Kaunas Fleet" },
-  { id: "acc_vilnius", name: "Vilnius Ops" },
-];
+/** The two sub-accounts, named by the operator whose language this is — see demo-content. */
+function accountsFor(lang: string) {
+  const [a, b] = contentFor(lang).accounts;
+  return [
+    { id: "acc_a", name: a },
+    { id: "acc_b", name: b },
+  ];
+}
 
-const DRIVERS: DemoDriver[] = [
-  { id: "drv_0001", name: "Jonas Petrauskas", licenseNo: "LT8451234", ibutton: "0114362A5D0000F1", phone: "+37061234567", accountId: "acc_kaunas", active: true },
-  { id: "drv_0002", name: "Mantas Kazlauskas", licenseNo: "LT9124567", ibutton: "01A2B3C4D5E60002", phone: "+37062345678", accountId: "acc_kaunas", active: true },
-  { id: "drv_0003", name: "Darius Urbonas", licenseNo: "LT7345678", ibutton: null, phone: "+37063456789", accountId: "acc_vilnius", active: true },
-  { id: "drv_0004", name: "Karolis Butkus", licenseNo: "LT6234891", ibutton: "019F8E7D6C5B0003", phone: "+37064567890", accountId: "acc_vilnius", active: false },
-  { id: "drv_0005", name: "Vytautas Šimkus", licenseNo: "LT5678123", ibutton: "01AB12CD34EF0004", phone: null, accountId: "acc_kaunas", active: true },
-  { id: "drv_0006", name: "Andrius Balčiūnas", licenseNo: null, ibutton: null, phone: "+37066789012", accountId: "acc_vilnius", active: true },
-  { id: "drv_0007", name: "Rokas Žukauskas", licenseNo: "LT4567812", ibutton: "0177665544330005", phone: "+37067890123", accountId: "acc_kaunas", active: true },
-  { id: "drv_0008", name: "Simonas Ramanauskas", licenseNo: "LT3456789", ibutton: "01C0FFEE12340006", phone: "+37068901234", accountId: "acc_vilnius", active: false },
-];
+/** The per-row facts. Names, licence and phone formats come from the city — a Warsaw fleet does
+ *  not hold LT licences — but WHICH driver has no iButton or no phone stays fixed, because those
+ *  gaps are what the page is demonstrating. */
+const DRIVER_ROWS = [
+  { license: "8451234", ibutton: "0114362A5D0000F1", tail: "1234567", account: 0, active: true },
+  { license: "9124567", ibutton: "01A2B3C4D5E60002", tail: "2345678", account: 0, active: true },
+  { license: "7345678", ibutton: null, tail: "3456789", account: 1, active: true },
+  { license: "6234891", ibutton: "019F8E7D6C5B0003", tail: "4567890", account: 1, active: false },
+  { license: "5678123", ibutton: "01AB12CD34EF0004", tail: null, account: 0, active: true },
+  { license: null, ibutton: null, tail: "6789012", account: 1, active: true },
+  { license: "4567812", ibutton: "0177665544330005", tail: "7890123", account: 0, active: true },
+  { license: "3456789", ibutton: "01C0FFEE12340006", tail: "8901234", account: 1, active: false },
+] as const;
+
+function driversFor(lang: string): DemoDriver[] {
+  const c = contentFor(lang);
+  const accounts = accountsFor(lang);
+  return roster(lang, DRIVER_ROWS.length).map((d, i) => {
+    const row = DRIVER_ROWS[i];
+    return {
+      id: d.id,
+      name: d.name,
+      licenseNo: row.license === null ? null : `${c.licensePrefix}${row.license}`,
+      ibutton: row.ibutton,
+      phone: row.tail === null ? null : `${c.phonePrefix}${row.tail}`,
+      accountId: accounts[row.account].id,
+      active: row.active,
+    };
+  });
+}
 
 /** Safety scores over the last 30 days — only drivers with driving in the window. */
-const SCORES: DemoScore[] = [
-  { id: "drv_0005", driverName: "Vytautas Šimkus", trips: 12, distanceKm: 860, overspeedEvents: 0, score: 97 },
-  { id: "drv_0001", driverName: "Jonas Petrauskas", trips: 42, distanceKm: 3840, overspeedEvents: 2, score: 92 },
-  { id: "drv_0002", driverName: "Mantas Kazlauskas", trips: 38, distanceKm: 3120, overspeedEvents: 5, score: 84 },
-  { id: "drv_0006", driverName: "Andrius Balčiūnas", trips: 19, distanceKm: 1540, overspeedEvents: 6, score: 76 },
-  { id: "drv_0003", driverName: "Darius Urbonas", trips: 27, distanceKm: 2410, overspeedEvents: 9, score: 71 },
-  { id: "drv_0007", driverName: "Rokas Žukauskas", trips: 33, distanceKm: 2980, overspeedEvents: 14, score: 58 },
-];
+const SCORE_ROWS = [
+  { id: "drv_0005", trips: 12, distanceKm: 860, overspeedEvents: 0, score: 97 },
+  { id: "drv_0001", trips: 42, distanceKm: 3840, overspeedEvents: 2, score: 92 },
+  { id: "drv_0002", trips: 38, distanceKm: 3120, overspeedEvents: 5, score: 84 },
+  { id: "drv_0006", trips: 19, distanceKm: 1540, overspeedEvents: 6, score: 76 },
+  { id: "drv_0003", trips: 27, distanceKm: 2410, overspeedEvents: 9, score: 71 },
+  { id: "drv_0007", trips: 33, distanceKm: 2980, overspeedEvents: 14, score: 58 },
+] as const;
+
+function scoresFor(lang: string): DemoScore[] {
+  const names = rosterNames(lang);
+  return SCORE_ROWS.map((s) => ({ ...s, driverName: names[s.id] ?? s.id }));
+}
 
 /** Score → badge variant, mirroring the product's unit-tested mapping. */
 function scoreVariant(score: number | null): "success" | "warn" | "danger" | "outline" {
@@ -110,12 +140,15 @@ const initials = (name: string): string =>
     .map((p) => p[0].toUpperCase())
     .join("");
 
-const accountName = (id: string) => ACCOUNTS.find((a) => a.id === id)?.name ?? "—";
+const accountName = (lang: string, id: string) => accountsFor(lang).find((a) => a.id === id)?.name ?? "—";
 
 function DriversPage() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const lang = i18n.language;
   const l = useL();
-  const [drivers, setDrivers] = React.useState<DemoDriver[]>(DRIVERS);
+  const [drivers, setDrivers] = React.useState<DemoDriver[]>(() => driversFor(lang));
+  // the crew follows the fleet's city — re-seed on a language switch, as the geofence list does
+  React.useEffect(() => setDrivers(driversFor(lang)), [lang]);
   const [addOpen, setAddOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [deleteForId, setDeleteForId] = React.useState<string | null>(null);
@@ -170,7 +203,7 @@ function DriversPage() {
       key: "account",
       header: t("drivers.account"),
       hideOnMobile: true,
-      cell: (r) => accountName(r.accountId),
+      cell: (r) => accountName(lang, r.accountId),
     },
     {
       key: "status",
@@ -316,7 +349,8 @@ function DriverRowMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () 
 /** Safety scores over the last 30 days — trips/distance/score sortable and right-aligned,
  * with the thin score bar next to the badge (scoreVariant drives both colors). */
 function DriverScores() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const scores = React.useMemo(() => scoresFor(i18n.language), [i18n.language]);
   const columns: Column<DemoScore>[] = [
     {
       key: "name",
@@ -387,7 +421,7 @@ function DriverScores() {
       <h2 className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>
         {t("drivers.scores.title")}
       </h2>
-      <DataTable data={SCORES} columns={columns} searchable={false} pageSize={10} emptyLabel={t("drivers.scores.empty")} />
+      <DataTable data={scores} columns={columns} searchable={false} pageSize={10} emptyLabel={t("drivers.scores.empty")} />
     </div>
   );
 }
@@ -406,8 +440,9 @@ function DriverForm({ editing, onDone, onCancel }: {
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const { t } = useTranslation("admin");
-  const [accountId, setAccountId] = React.useState(editing?.accountId ?? ACCOUNTS[0].id);
+  const { t, i18n } = useTranslation("admin");
+  const accounts = accountsFor(i18n.language);
+  const [accountId, setAccountId] = React.useState(editing?.accountId ?? accounts[0].id);
 
   return (
     <form
@@ -434,7 +469,7 @@ function DriverForm({ editing, onDone, onCancel }: {
           <Combobox
             value={accountId}
             onChange={setAccountId}
-            options={ACCOUNTS.map((a) => ({ value: a.id, label: a.name }))}
+            options={accounts.map((a) => ({ value: a.id, label: a.name }))}
           />
         </FieldLabel>
       )}

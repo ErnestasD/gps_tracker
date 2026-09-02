@@ -62,6 +62,7 @@
     "geofences": "Geozonos",
     "rules": "Taisyklės",
     "events": "Įvykiai",
+    "notifications": "Pranešimai",
     "insights": "Įžvalgos",
     "reports": "Ataskaitos",
     "ops": "Operacijos",
@@ -90,6 +91,8 @@
     "palettePages": "Puslapiai",
     "paletteDevices": "Įrenginiai",
     "paletteEmpty": "Nieko nerasta",
+    "paletteSearch": "Ieškoti puslapio, įrenginio, vairuotojo, įvykio…",
+    "paletteNoMatch": "Nieko nerasta pagal „{{q}}“",
     "console": "Platformos pultas"
   },
   "routing": {

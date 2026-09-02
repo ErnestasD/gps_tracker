@@ -56,12 +56,13 @@
     "map": "Mapa",
     "fleet": "Flota",
     "devices": "Urządzenia",
-    "trips": "Trasy",
+    "trips": "Przejazdy",
     "history": "Historia",
     "automation": "Automatyzacja",
     "geofences": "Geostrefy",
     "rules": "Reguły",
     "events": "Zdarzenia",
+    "notifications": "Powiadomienia",
     "insights": "Analizy",
     "reports": "Raporty",
     "ops": "Operacje",
@@ -90,6 +91,8 @@
     "palettePages": "Strony",
     "paletteDevices": "Urządzenia",
     "paletteEmpty": "Brak wyników",
+    "paletteSearch": "Szukaj strony, urządzenia, kierowcy, zdarzenia…",
+    "paletteNoMatch": "Nic nie znaleziono dla „{{q}}”",
     "console": "Konsola platformy"
   },
   "routing": {

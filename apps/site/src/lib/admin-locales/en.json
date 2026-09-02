@@ -62,6 +62,7 @@
     "geofences": "Geofences",
     "rules": "Rules",
     "events": "Events",
+    "notifications": "Notifications",
     "insights": "Insights",
     "reports": "Reports",
     "ops": "Ops",
@@ -90,6 +91,8 @@
     "palettePages": "Pages",
     "paletteDevices": "Devices",
     "paletteEmpty": "No results",
+    "paletteSearch": "Search a page, device, driver, event…",
+    "paletteNoMatch": "Nothing found for “{{q}}”",
     "console": "Platform console"
   },
   "routing": {

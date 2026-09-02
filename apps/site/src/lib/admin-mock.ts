@@ -1,5 +1,12 @@
 // Deterministic mock data for the admin panel demo.
 // No network calls — everything is generated in-memory.
+//
+// Every generator takes the DemoContent for the interface language: the people, plates, towns and
+// job names belong to the city the fleet drives in, and the words the operator typed belong to the
+// language they read. The pools used to be Lithuanian constants, so a German visitor pressing ⌘K
+// searched a fleet crewed by Jonas Kazlauskas driving between Klaipėda and Marijampolė. See
+// demo-content.
+import type { DemoContent } from "@/lib/demo-content";
 
 export type DeviceStatus = "active" | "idle" | "offline" | "maintenance";
 export type Device = {
@@ -141,11 +148,12 @@ function rng(seed: number) {
   };
 }
 
-const FIRST = ["Jonas", "Mantas", "Rokas", "Tomas", "Lukas", "Andrius", "Darius", "Karolis", "Paulius", "Vytautas", "Gediminas", "Marius", "Rimas", "Aidas", "Simonas"];
-const LAST = ["Kazlauskas", "Petrauskas", "Jankauskas", "Stankevičius", "Butkus", "Urbonas", "Balčiūnas", "Žukauskas", "Vasiliauskas", "Šimkus", "Ramanauskas", "Bagdonas"];
-const CITIES = ["Vilnius", "Kaunas", "Klaipėda", "Šiauliai", "Panevėžys", "Alytus", "Utena", "Marijampolė"];
-
 function pick<T>(r: () => number, arr: T[]) { return arr[Math.floor(r() * arr.length)]; }
+
+/** A full name from the city's pools — the demo's people all come from here. */
+function person(c: DemoContent, r: () => number): string {
+  return `${pick(r, c.firstNames)} ${pick(r, c.lastNames)}`;
+}
 
 // Fixed "now" so SSR and client renders match deterministically.
 const NOW = new Date("2026-07-16T15:00:00.000Z").getTime();
@@ -153,7 +161,7 @@ function isoAgo(minutes: number) {
   return new Date(NOW - minutes * 60_000).toISOString();
 }
 
-export function generateDevices(count = 24): Device[] {
+export function generateDevices(c: DemoContent, count = 24): Device[] {
   const r = rng(42);
   const out: Device[] = [];
   for (let i = 0; i < count; i++) {
@@ -164,15 +172,15 @@ export function generateDevices(count = 24): Device[] {
       id: `dev_${(i + 1).toString().padStart(4, "0")}`,
       name: `${pick(r, ["Van", "Truck", "Sprinter", "Transit"])} ${(i + 1).toString().padStart(2, "0")}`,
       imei: `86700012${(1000 + i).toString().padStart(7, "0")}`.slice(0, 15),
-      plate: `${String.fromCharCode(65 + Math.floor(r() * 26))}${String.fromCharCode(65 + Math.floor(r() * 26))}${String.fromCharCode(65 + Math.floor(r() * 26))} ${Math.floor(100 + r() * 900)}`,
-      driver: `${pick(r, FIRST)} ${pick(r, LAST)}`,
+      plate: c.plate(r),
+      driver: person(c, r),
       status,
       speed,
       lastSeen: isoAgo(Math.floor(r() * (status === "offline" ? 4320 : 60))),
       battery: Math.round(20 + r() * 80),
       fuel: Math.round(15 + r() * 85),
       odometer: Math.round(30000 + r() * 200000),
-      location: pick(r, CITIES),
+      location: pick(r, c.towns),
       lat: 54.6 + (r() - 0.5) * 1.2,
       lng: 24.5 + (r() - 0.5) * 2.2,
     });
@@ -180,15 +188,15 @@ export function generateDevices(count = 24): Device[] {
   return out;
 }
 
-export function generateDrivers(count = 14): Driver[] {
+export function generateDrivers(c: DemoContent, count = 14): Driver[] {
   const r = rng(7);
   const out: Driver[] = [];
   for (let i = 0; i < count; i++) {
     out.push({
       id: `drv_${(i + 1).toString().padStart(4, "0")}`,
-      name: `${pick(r, FIRST)} ${pick(r, LAST)}`,
-      license: `LT${Math.floor(1000000 + r() * 9000000)}`,
-      phone: `+3706${Math.floor(1000000 + r() * 9000000)}`,
+      name: person(c, r),
+      license: `${c.licensePrefix}${Math.floor(1000000 + r() * 9000000)}`,
+      phone: `${c.phonePrefix}${Math.floor(1000000 + r() * 9000000)}`,
       status: pick(r, ["active", "active", "active", "on-leave", "inactive"] as const),
       score: Math.round(60 + r() * 40),
       trips: Math.round(20 + r() * 400),
@@ -199,7 +207,7 @@ export function generateDrivers(count = 14): Driver[] {
   return out;
 }
 
-export function generateTrips(count = 60): Trip[] {
+export function generateTrips(c: DemoContent, count = 60): Trip[] {
   const r = rng(101);
   const out: Trip[] = [];
   for (let i = 0; i < count; i++) {
@@ -208,7 +216,7 @@ export function generateTrips(count = 60): Trip[] {
     out.push({
       id: `trp_${(i + 1).toString().padStart(5, "0")}`,
       device: `Van ${Math.floor(1 + r() * 24).toString().padStart(2, "0")}`,
-      driver: `${pick(r, FIRST)} ${pick(r, LAST)}`,
+      driver: person(c, r),
       start: isoAgo(i * 240 + Math.floor(r() * 120)),
       end: isoAgo(i * 240),
       distance: dist,
@@ -216,79 +224,27 @@ export function generateTrips(count = 60): Trip[] {
       avgSpeed: Math.round(dist / (dur / 60)),
       maxSpeed: Math.round(70 + r() * 60),
       fuelUsed: Math.round(dist * 0.09 * 10) / 10,
-      from: pick(r, CITIES),
-      to: pick(r, CITIES),
+      from: pick(r, c.towns),
+      to: pick(r, c.towns),
     });
   }
   return out;
 }
 
-export function generateGeofences(): Geofence[] {
-  const r = rng(3);
-  const names = ["Vilnius Depot", "Kaunas Hub", "Klaipėdos uostas", "Servisas #1", "Draudžiama zona — Senamiestis", "Klientas ABC", "Klientas XYZ"];
-  const types: Geofence["type"][] = ["polygon", "circle", "corridor"];
-  const colors = ["#4F46E5", "#059669", "#B45309", "#E11D48", "#0284C7", "#7C3AED", "#0F766E"];
-  // Anchor points per zone (roughly Lithuania: Vilnius, Kaunas, Klaipėda, Šiauliai, Panevėžys, Alytus, Utena).
-  const anchors = [
-    { lat: 54.687, lng: 25.283 },
-    { lat: 54.898, lng: 23.9 },
-    { lat: 55.71, lng: 21.13 },
-    { lat: 55.93, lng: 23.31 },
-    { lat: 55.73, lng: 24.36 },
-    { lat: 54.4, lng: 24.05 },
-    { lat: 55.5, lng: 25.6 },
-  ];
-  return names.map((n, i) => {
-    const type = types[i % 3];
-    const a = anchors[i % anchors.length];
-    const jitter = (seed: number) => (r() - 0.5) * seed;
-    let extras: Partial<Geofence> = {};
-    if (type === "circle") {
-      extras = { center: a, radiusKm: 3 + Math.round(r() * 8) };
-    } else if (type === "polygon") {
-      const pts: { lat: number; lng: number }[] = [];
-      const sides = 5 + Math.floor(r() * 3);
-      const rad = 0.06 + r() * 0.05;
-      for (let k = 0; k < sides; k++) {
-        const ang = (k / sides) * Math.PI * 2;
-        pts.push({ lat: a.lat + Math.sin(ang) * rad + jitter(0.02), lng: a.lng + Math.cos(ang) * rad * 1.6 + jitter(0.03) });
-      }
-      extras = { points: pts };
-    } else {
-      // corridor — a curved path segment
-      const pts: { lat: number; lng: number }[] = [];
-      for (let k = 0; k < 6; k++) {
-        pts.push({ lat: a.lat + k * 0.04 + jitter(0.01), lng: a.lng - 0.3 + k * 0.11 + jitter(0.02) });
-      }
-      extras = { points: pts };
-    }
-    return {
-      id: `geo_${i + 1}`,
-      name: n,
-      type,
-      color: colors[i % colors.length],
-      devices: Math.round(1 + r() * 18),
-      triggers: Math.round(r() * 300),
-      created: isoAgo(Math.floor(r() * 60000)),
-      ...extras,
-    };
-  });
-}
-
-export function generateRules(): Rule[] {
+export function generateRules(c: DemoContent): Rule[] {
   const r = rng(5);
   return [
-    { id: "rul_1", name: "Greičio viršijimas > 90 km/h", type: "speeding", enabled: true, channels: ["email", "webhook"], cooldown: 300, triggered: 42, scope: "Visi įrenginiai" },
-    { id: "rul_2", name: "Įrenginys be ryšio > 2 val.", type: "offline", enabled: true, channels: ["email"], cooldown: 600, triggered: 12, scope: "Visi įrenginiai" },
-    { id: "rul_3", name: "SOS mygtukas", type: "panic", enabled: true, channels: ["email", "sms", "webhook"], cooldown: 60, triggered: 2, scope: "Vairuotojai" },
-    { id: "rul_4", name: "Įvažiavimas į draudžiamą zoną", type: "geofence", enabled: false, channels: ["email"], cooldown: 0, triggered: 0, scope: "Vilnius Depot" },
-    { id: "rul_5", name: "Prastova > 15 min.", type: "idle", enabled: true, channels: ["email"], cooldown: 900, triggered: Math.round(r() * 40), scope: "Van klasės įrenginiai" },
+    { id: "rul_1", name: c.rules.overspeed, type: "speeding", enabled: true, channels: ["email", "webhook"], cooldown: 300, triggered: 42, scope: c.scopes.all },
+    { id: "rul_2", name: c.rules.offline, type: "offline", enabled: true, channels: ["email"], cooldown: 600, triggered: 12, scope: c.scopes.all },
+    { id: "rul_3", name: "SOS", type: "panic", enabled: true, channels: ["email", "sms", "webhook"], cooldown: 60, triggered: 2, scope: c.scopes.drivers },
+    { id: "rul_4", name: c.rules.geofence, type: "geofence", enabled: false, channels: ["email"], cooldown: 0, triggered: 0, scope: c.zones.depot },
+    { id: "rul_5", name: c.rules.idle, type: "idle", enabled: true, channels: ["email"], cooldown: 900, triggered: Math.round(r() * 40), scope: c.scopes.vans },
   ];
 }
 
-export function generateMaintenance(): MaintenanceTask[] {
+export function generateMaintenance(c: DemoContent): MaintenanceTask[] {
   const r = rng(11);
-  const services = ["Alyvos keitimas", "Padangų keitimas", "Techninė apžiūra", "Stabdžių kaladėlių keitimas", "Filtrų keitimas"];
+  const services = c.services;
   const out: MaintenanceTask[] = [];
   for (let i = 0; i < 14; i++) {
     const dueKm = Math.round(80000 + r() * 200000);
@@ -308,7 +264,7 @@ export function generateMaintenance(): MaintenanceTask[] {
   return out;
 }
 
-export function generateCommands(): Command[] {
+export function generateCommands(c: DemoContent): Command[] {
   const r = rng(17);
   const cmds = ["Engine block", "Engine unblock", "Reboot", "Request location", "Update firmware"];
   const stat: Command["status"][] = ["queued", "sent", "ack", "failed"];
@@ -318,7 +274,7 @@ export function generateCommands(): Command[] {
     command: pick(r, cmds),
     status: stat[Math.min(3, Math.floor(r() * 4))],
     created: isoAgo(i * 30),
-    operator: `${pick(r, FIRST)} ${pick(r, LAST)}`,
+    operator: person(c, r),
   }));
 }
 
@@ -330,21 +286,21 @@ export function generateApiKeys(): ApiKey[] {
   ];
 }
 
-export function generateWebhooks(): Webhook[] {
+export function generateWebhooks(c: DemoContent): Webhook[] {
   return [
-    { id: "w1", url: "https://api.klientas.lt/orbetra/events", events: ["event.*", "trip.completed"], status: "active", successRate: 99.7, lastDelivery: isoAgo(2) },
+    { id: "w1", url: `https://${c.clientHost}/orbetra/events`, events: ["event.*", "trip.completed"], status: "active", successRate: 99.7, lastDelivery: isoAgo(2) },
     { id: "w2", url: "https://hooks.slack.com/services/T00/B00/xxx", events: ["event.sos", "event.speeding"], status: "active", successRate: 100, lastDelivery: isoAgo(35) },
-    { id: "w3", url: "https://staging.klientas.lt/hook", events: ["*"], status: "failing", successRate: 71.4, lastDelivery: isoAgo(600) },
+    { id: "w3", url: `https://staging.${c.clientHost}/hook`, events: ["*"], status: "failing", successRate: 71.4, lastDelivery: isoAgo(600) },
   ];
 }
 
-export function generateAudit(): AuditEntry[] {
+export function generateAudit(c: DemoContent): AuditEntry[] {
   const r = rng(23);
   const actions = ["user.login", "device.create", "device.update", "rule.enable", "rule.disable", "geofence.create", "apikey.create", "settings.update"];
   return Array.from({ length: 30 }, (_, i) => ({
     id: `aud_${(i + 1).toString().padStart(5, "0")}`,
     ts: isoAgo(i * 20 + Math.floor(r() * 20)),
-    actor: `${pick(r, FIRST)} ${pick(r, LAST)}`,
+    actor: person(c, r),
     action: pick(r, actions),
     target: pick(r, ["dev_0021", "rul_1", "geo_2", "user_admin", "settings.notifications"]),
     ip: `85.${Math.floor(r() * 255)}.${Math.floor(r() * 255)}.${Math.floor(r() * 255)}`,

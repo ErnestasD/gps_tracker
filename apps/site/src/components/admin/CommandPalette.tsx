@@ -11,10 +11,12 @@ import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   generateDevices, generateDrivers, generateTrips,
-  generateGeofences, generateRules, generateMaintenance, generateCommands,
+  generateRules, generateMaintenance, generateCommands,
   generateApiKeys, generateWebhooks, generateAudit, generateInvoices,
 } from "@/lib/admin-mock";
-import { DEMO_EVENTS, demoDetail, deviceName } from "@/lib/demo-events";
+import { demoDetail, deviceName, localizeEvents } from "@/lib/demo-events";
+import { contentFor } from "@/lib/demo-content";
+import { demoZones } from "@/lib/demo-zones";
 
 type Item = {
   to: string;
@@ -25,95 +27,110 @@ type Item = {
   keywords?: string;
 };
 
-const NAV_ITEMS: Item[] = [
-  { to: "/app", label: "Apžvalga", group: "Puslapiai", icon: LayoutDashboard, keywords: "dashboard overview kpi" },
-  { to: "/app/map", label: "Žemėlapis", group: "Puslapiai", icon: MapIcon, keywords: "map live realtime" },
-  { to: "/app/devices", label: "Įrenginiai", group: "Puslapiai", icon: Car, keywords: "devices gps trackers" },
-  { to: "/app/drivers", label: "Vairuotojai", group: "Puslapiai", icon: Users, keywords: "drivers users staff" },
-  { to: "/app/maintenance", label: "Priežiūra", group: "Puslapiai", icon: Wrench, keywords: "maintenance service" },
-  { to: "/app/trips", label: "Kelionės", group: "Puslapiai", icon: RouteIcon, keywords: "trips journeys" },
-  { to: "/app/history", label: "Istorija", group: "Puslapiai", icon: History, keywords: "history playback" },
-  { to: "/app/geofences", label: "Geozonos", group: "Puslapiai", icon: Hexagon, keywords: "geofences zones" },
-  { to: "/app/rules", label: "Taisyklės", group: "Puslapiai", icon: ListChecks, keywords: "rules automation" },
-  { to: "/app/events", label: "Įvykiai", group: "Puslapiai", icon: AlertTriangle, keywords: "events alerts" },
-  { to: "/app/notifications", label: "Pranešimai", group: "Puslapiai", icon: Bell, keywords: "notifications inbox" },
-  { to: "/app/reports", label: "Ataskaitos", group: "Puslapiai", icon: BarChart3, keywords: "reports analytics" },
-  { to: "/app/commands", label: "Komandos", group: "Puslapiai", icon: Terminal, keywords: "commands console" },
-  { to: "/app/branding", label: "Prekės ženklas", group: "Puslapiai", icon: Palette, keywords: "branding whitelabel" },
-  { to: "/app/billing", label: "Atsiskaitymai", group: "Puslapiai", icon: CreditCard, keywords: "billing invoices" },
-  { to: "/app/api-keys", label: "API raktai", group: "Puslapiai", icon: KeyRound, keywords: "api keys tokens" },
-  { to: "/app/webhooks", label: "Webhooks", group: "Puslapiai", icon: Webhook, keywords: "webhooks hooks" },
-  { to: "/app/audit", label: "Audito žurnalas", group: "Puslapiai", icon: ScrollText, keywords: "audit log" },
-  { to: "/app/settings", label: "Nustatymai", group: "Puslapiai", icon: Settings, keywords: "settings preferences" },
+/**
+ * Page targets. `label` is a KEY — the palette used to hold Lithuanian literals ("Apžvalga",
+ * "Žemėlapis") and its group headings too, so a German visitor pressing ⌘K got a wholly Lithuanian
+ * palette on top of a German interface. The `shell.*` keys it needed already existed, including
+ * `shell.palettePages` and `shell.paletteEmpty`, which nothing was reading.
+ */
+const NAV_ITEMS: { to: string; labelKey: string; keywords?: string; icon: Item["icon"] }[] = [
+  { to: "/app", labelKey: "shell.overview", icon: LayoutDashboard, keywords: "dashboard overview kpi" },
+  { to: "/app/map", labelKey: "shell.map", icon: MapIcon, keywords: "map live realtime" },
+  { to: "/app/devices", labelKey: "shell.devices", icon: Car, keywords: "devices gps trackers" },
+  { to: "/app/drivers", labelKey: "shell.drivers", icon: Users, keywords: "drivers users staff" },
+  { to: "/app/maintenance", labelKey: "shell.maintenance", icon: Wrench, keywords: "maintenance service" },
+  { to: "/app/trips", labelKey: "shell.trips", icon: RouteIcon, keywords: "trips journeys" },
+  { to: "/app/history", labelKey: "shell.history", icon: History, keywords: "history playback" },
+  { to: "/app/geofences", labelKey: "shell.geofences", icon: Hexagon, keywords: "geofences zones" },
+  { to: "/app/rules", labelKey: "shell.rules", icon: ListChecks, keywords: "rules automation" },
+  { to: "/app/events", labelKey: "shell.events", icon: AlertTriangle, keywords: "events alerts" },
+  { to: "/app/notifications", labelKey: "shell.notifications", icon: Bell, keywords: "notifications inbox" },
+  { to: "/app/reports", labelKey: "shell.reports", icon: BarChart3, keywords: "reports analytics" },
+  { to: "/app/commands", labelKey: "shell.commands", icon: Terminal, keywords: "commands console" },
+  { to: "/app/branding", labelKey: "shell.branding", icon: Palette, keywords: "branding whitelabel" },
+  { to: "/app/billing", labelKey: "shell.billing", icon: CreditCard, keywords: "billing invoices" },
+  { to: "/app/api-keys", labelKey: "shell.apiKeys", icon: KeyRound, keywords: "api keys tokens" },
+  { to: "/app/webhooks", labelKey: "shell.webhooks", icon: Webhook, keywords: "webhooks hooks" },
+  { to: "/app/audit", labelKey: "shell.audit", icon: ScrollText, keywords: "audit log" },
+  { to: "/app/settings", labelKey: "shell.settings", icon: Settings, keywords: "settings preferences" },
 ];
 
+function navItems(t: TFunction): Item[] {
+  const group = t("shell.palettePages");
+  return NAV_ITEMS.map((n) => ({ to: n.to, label: t(n.labelKey), group, icon: n.icon, keywords: n.keywords }));
+}
+
 // Build data items lazily (memoized once per palette open)
-function buildDataItems(t: TFunction): Item[] {
+function buildDataItems(t: TFunction, lang: string): Item[] {
+  const c = contentFor(lang);
   const out: Item[] = [];
-  generateDevices().forEach((d) => out.push({
+  generateDevices(c).forEach((d) => out.push({
     to: "/app/devices", label: d.name, hint: `${d.plate} · ${d.driver} · ${d.location}`,
-    group: "Įrenginiai", icon: Car, keywords: `${d.imei} ${d.plate} ${d.driver} ${d.location} ${d.status}`,
+    group: t("shell.devices"), icon: Car, keywords: `${d.imei} ${d.plate} ${d.driver} ${d.location} ${d.status}`,
   }));
-  generateDrivers().forEach((d) => out.push({
+  generateDrivers(c).forEach((d) => out.push({
     to: "/app/drivers", label: d.name, hint: `${d.license} · ${d.vehicle}`,
-    group: "Vairuotojai", icon: Users, keywords: `${d.phone} ${d.license} ${d.vehicle} ${d.status}`,
+    group: t("shell.drivers"), icon: Users, keywords: `${d.phone} ${d.license} ${d.vehicle} ${d.status}`,
   }));
-  generateTrips().slice(0, 30).forEach((t) => out.push({
-    to: "/app/trips", label: `${t.from} → ${t.to}`, hint: `${t.device} · ${t.distance} km · ${t.driver}`,
-    group: "Kelionės", icon: RouteIcon, keywords: `${t.id} ${t.device} ${t.driver}`,
+  generateTrips(c).slice(0, 30).forEach((trip) => out.push({
+    to: "/app/trips", label: `${trip.from} → ${trip.to}`, hint: `${trip.device} · ${trip.distance} km · ${trip.driver}`,
+    group: t("shell.trips"), icon: RouteIcon, keywords: `${trip.id} ${trip.device} ${trip.driver}`,
   }));
-  DEMO_EVENTS.forEach((e) => {
+  localizeEvents(lang).forEach((e) => {
     const device = deviceName(e.deviceId);
     out.push({
       to: "/app/events", label: demoDetail(t, e), hint: `${device} · ${t(`events.k.${e.kind}`)}`,
       group: t("shell.events"), icon: AlertTriangle, keywords: `${e.kind} ${device}`,
     });
   });
-  generateGeofences().forEach((g) => out.push({
-    to: "/app/geofences", label: g.name, hint: `${g.type} · ${g.devices} įreng.`,
-    group: "Geozonos", icon: Hexagon, keywords: `${g.type}`,
+  // the same three zones the geofences page lists and the live map draws — the palette used to
+  // search a fourth, invented set ("Vilnius Depot", "Kaunas Hub") that existed on no screen
+  demoZones(lang).forEach((g) => out.push({
+    to: "/app/geofences", label: g.name, hint: t(`geofences.${g.kind}`),
+    group: t("shell.geofences"), icon: Hexagon, keywords: g.kind,
   }));
-  generateRules().forEach((r) => out.push({
+  generateRules(c).forEach((r) => out.push({
     to: "/app/rules", label: r.name, hint: `${r.type} · ${r.scope}`,
-    group: "Taisyklės", icon: ListChecks, keywords: `${r.type} ${r.scope} ${r.channels.join(" ")}`,
+    group: t("shell.rules"), icon: ListChecks, keywords: `${r.type} ${r.scope} ${r.channels.join(" ")}`,
   }));
-  generateMaintenance().forEach((m) => out.push({
+  generateMaintenance(c).forEach((m) => out.push({
     to: "/app/maintenance", label: `${m.device} — ${m.service}`, hint: `${m.status} · ${m.dueKm.toLocaleString()} km`,
-    group: "Priežiūra", icon: Wrench, keywords: `${m.service} ${m.status}`,
+    group: t("shell.maintenance"), icon: Wrench, keywords: `${m.service} ${m.status}`,
   }));
-  generateCommands().forEach((c) => out.push({
+  generateCommands(c).forEach((c) => out.push({
     to: "/app/commands", label: `${c.command} → ${c.device}`, hint: `${c.status} · ${c.operator}`,
-    group: "Komandos", icon: Terminal, keywords: `${c.command} ${c.status} ${c.operator}`,
+    group: t("shell.commands"), icon: Terminal, keywords: `${c.command} ${c.status} ${c.operator}`,
   }));
   generateApiKeys().forEach((k) => out.push({
     to: "/app/api-keys", label: k.label, hint: `${k.prefix} · ${k.scopes.join(", ")}`,
-    group: "API raktai", icon: KeyRound, keywords: `${k.prefix} ${k.scopes.join(" ")}`,
+    group: t("shell.apiKeys"), icon: KeyRound, keywords: `${k.prefix} ${k.scopes.join(" ")}`,
   }));
-  generateWebhooks().forEach((w) => out.push({
+  generateWebhooks(c).forEach((w) => out.push({
     to: "/app/webhooks", label: w.url, hint: `${w.status} · ${w.successRate}%`,
-    group: "Webhooks", icon: Webhook, keywords: `${w.events.join(" ")} ${w.status}`,
+    group: t("shell.webhooks"), icon: Webhook, keywords: `${w.events.join(" ")} ${w.status}`,
   }));
-  generateAudit().slice(0, 30).forEach((a) => out.push({
+  generateAudit(c).slice(0, 30).forEach((a) => out.push({
     to: "/app/audit", label: `${a.action}`, hint: `${a.actor} · ${a.target}`,
-    group: "Audito žurnalas", icon: ScrollText, keywords: `${a.actor} ${a.target} ${a.ip}`,
+    group: t("shell.audit"), icon: ScrollText, keywords: `${a.actor} ${a.target} ${a.ip}`,
   }));
   generateInvoices().forEach((i) => out.push({
     to: "/app/billing", label: i.number, hint: `${i.period} · ${i.amount} € · ${i.status}`,
-    group: "Sąskaitos", icon: FileText, keywords: `${i.status} ${i.period}`,
+    group: t("shell.billing"), icon: FileText, keywords: `${i.status} ${i.period}`,
   }));
   return out;
 }
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
   const navigate = useNavigate();
   const [q, setQ] = React.useState("");
   const [active, setActive] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
 
-  const dataItems = React.useMemo(() => (open ? buildDataItems(t) : []), [open, t]);
-  const allItems = React.useMemo(() => [...NAV_ITEMS, ...dataItems], [dataItems]);
+  const nav = React.useMemo(() => navItems(t), [t]);
+  const dataItems = React.useMemo(() => (open ? buildDataItems(t, i18n.language) : []), [open, t, i18n.language]);
+  const allItems = React.useMemo(() => [...nav, ...dataItems], [nav, dataItems]);
 
   React.useEffect(() => {
     if (open) {
@@ -125,11 +142,11 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   const filtered = React.useMemo(() => {
     const ql = q.trim().toLowerCase();
-    if (!ql) return NAV_ITEMS; // empty query → show pages only
+    if (!ql) return nav; // empty query → show pages only
     return allItems.filter((i) =>
       (i.label + " " + (i.hint ?? "") + " " + i.group + " " + (i.keywords ?? "")).toLowerCase().includes(ql),
     ).slice(0, 80);
-  }, [q, allItems]);
+  }, [q, nav, allItems]);
 
   React.useEffect(() => {
     setActive(0);
@@ -185,7 +202,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Ieškoti puslapio, įrenginio, vairuotojo, įvykio…"
+            placeholder={t("shell.paletteSearch")}
             className="w-full bg-transparent text-sm outline-none placeholder:opacity-60"
             style={{ color: "var(--admin-ink)" }}
           />
@@ -200,7 +217,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         <div ref={listRef} className="max-h-[60vh] overflow-y-auto p-2">
           {filtered.length === 0 && (
             <div className="px-4 py-12 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>
-              Nieko nerasta pagal „{q}"
+              {t("shell.paletteNoMatch", { q })}
             </div>
           )}
           {grouped.map(([group, items]) => (

@@ -8,7 +8,8 @@ import type { LngLat } from "@/lib/demo-geo";
 /** Minimal GeoJSON shapes (the site has no @types/geojson; MapLibre accepts these). */
 type Geometry =
   | { type: "Polygon"; coordinates: LngLat[][] }
-  | { type: "LineString"; coordinates: LngLat[] };
+  | { type: "LineString"; coordinates: LngLat[] }
+  | { type: "Point"; coordinates: LngLat };
 type Feature = { type: "Feature"; geometry: Geometry; properties: Record<string, unknown> };
 type FeatureCollection = { type: "FeatureCollection"; features: Feature[] };
 
@@ -112,7 +113,13 @@ export function DemoMap({
   routes = [],
   vehicles = [],
   pins = [],
+  handles = [],
   onVehicleClick,
+  onMapClick,
+  onMapMove,
+  onMapDblClick,
+  projectRef,
+  drawing = false,
   interactive = true,
 }: {
   className?: string;
@@ -125,7 +132,25 @@ export function DemoMap({
   routes?: DemoRoute[];
   vehicles?: DemoVehicle[];
   pins?: DemoPin[];
+  /** draft vertices, drawn as small grab-handles (the drawing tool's placed points) */
+  handles?: LngLat[];
   onVehicleClick?: (id: string) => void;
+  /** map clicks, for the drawing tool. Vehicle clicks do NOT reach here — they stop propagation. */
+  onMapClick?: (at: LngLat, point: { x: number; y: number }) => void;
+  /** pointer position, for the rubber-band segment and the radius readout under the cursor */
+  onMapMove?: (at: LngLat, point: { x: number; y: number }) => void;
+  onMapDblClick?: (at: LngLat) => void;
+  /**
+   * Filled with the map's coordinate→screen projection while it is mounted.
+   *
+   * The drawing tool closes a polygon when you click the first vertex again, and "the same point"
+   * is a SCREEN distance — the product uses a pixel tolerance for exactly this. A metre threshold
+   * cannot stand in: the tolerance that feels right on a 300 m yard closes the shape prematurely
+   * on a 40 km corridor, because what the hand is aiming at is the dot, not the ground.
+   */
+  projectRef?: React.MutableRefObject<((at: LngLat) => { x: number; y: number }) | null>;
+  /** crosshair cursor, and no zoom on double-click — a double-click FINISHES a shape */
+  drawing?: boolean;
   interactive?: boolean;
 }) {
   // the basemap follows the interface theme, as the dashboard's does
@@ -136,6 +161,14 @@ export function DemoMap({
   const loadedRef = React.useRef(false);
   const onClickRef = React.useRef(onVehicleClick);
   onClickRef.current = onVehicleClick;
+  // the drawing callbacks change identity on every render (they close over draft state), so they
+  // are read through refs — re-registering map listeners each render would drop events mid-gesture
+  const mapClickRef = React.useRef(onMapClick);
+  mapClickRef.current = onMapClick;
+  const mapMoveRef = React.useRef(onMapMove);
+  mapMoveRef.current = onMapMove;
+  const mapDblRef = React.useRef(onMapDblClick);
+  mapDblRef.current = onMapDblClick;
 
   // create once
   React.useEffect(() => {
@@ -154,12 +187,27 @@ export function DemoMap({
       emphasizeRoads(map, theme);
       applyOverlays();
     });
+    if (projectRef) {
+      projectRef.current = (at) => {
+        const pt = map.project(at);
+        return { x: pt.x, y: pt.y };
+      };
+    }
+    map.on("click", (e) => mapClickRef.current?.([e.lngLat.lng, e.lngLat.lat], { x: e.point.x, y: e.point.y }));
+    map.on("mousemove", (e) => mapMoveRef.current?.([e.lngLat.lng, e.lngLat.lat], { x: e.point.x, y: e.point.y }));
+    map.on("dblclick", (e) => {
+      if (!mapDblRef.current) return;
+      // the shape closes here; letting the basemap also zoom would throw the view off the work
+      e.preventDefault();
+      mapDblRef.current([e.lngLat.lng, e.lngLat.lat]);
+    });
     return () => {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current.clear();
       map.remove();
       mapRef.current = null;
       loadedRef.current = false;
+      if (projectRef) projectRef.current = null;
     };
     // deps deliberately empty — imperative map, created once
   }, []);
@@ -183,6 +231,15 @@ export function DemoMap({
     // handler, so there is nothing to await — say so rather than leave a floating value.
     void map.once("styledata", onStyled);
   }, [theme]);
+
+  // crosshair while a shape is being drawn, and a double-click that finishes instead of zooming
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = drawing ? "crosshair" : "";
+    if (drawing) map.doubleClickZoom.disable();
+    else map.doubleClickZoom.enable();
+  }, [drawing]);
 
   const applyOverlays = React.useCallback(() => {
     const map = mapRef.current;
@@ -222,6 +279,14 @@ export function DemoMap({
     ensure("demo-zones", { type: "FeatureCollection", features: zoneFeatures });
     ensure("demo-corridors", { type: "FeatureCollection", features: corridorFeatures });
     ensure("demo-routes", { type: "FeatureCollection", features: routeFeatures });
+    ensure("demo-handles", {
+      type: "FeatureCollection",
+      features: handles.map((h, i) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: h },
+        properties: { first: i === 0 },
+      })),
+    });
 
     if (!map.getLayer("demo-zone-fill")) {
       map.addLayer({ id: "demo-zone-fill", type: "fill", source: "demo-zones", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.16 } });
@@ -245,6 +310,17 @@ export function DemoMap({
         id: "demo-route-line", type: "line", source: "demo-routes",
         layout: { "line-cap": "round", "line-join": "round" },
         paint: { "line-color": ["get", "color"], "line-width": ["get", "width"], "line-opacity": 0.9 },
+      });
+      map.addLayer({
+        id: "demo-handle", type: "circle", source: "demo-handles",
+        paint: {
+          // the FIRST vertex is the one you click again to close a polygon — it is a target, so
+          // it is drawn bigger and in the brand colour rather than as one more anonymous dot
+          "circle-radius": ["case", ["get", "first"], 7, 5],
+          "circle-color": ["case", ["get", "first"], "#7C5CFC", "#ffffff"],
+          "circle-stroke-width": 2,
+          "circle-stroke-color": ["case", ["get", "first"], "#ffffff", "#111827"],
+        },
       });
     }
 
@@ -296,7 +372,7 @@ export function DemoMap({
         markersRef.current.delete(id);
       }
     }
-  }, [zones, routes, vehicles, pins]);
+  }, [zones, routes, vehicles, pins, handles]);
 
   React.useEffect(() => {
     applyOverlays();
