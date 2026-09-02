@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Shield, Globe as GlobeIcon, Server } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { VerticalsGrid } from "@/components/site/VerticalsGrid";
@@ -48,7 +48,6 @@ function HomePage() {
         </div>
       </Section>
 
-      <TrustBand />
     </>
   );
 }
@@ -250,35 +249,6 @@ function TwoTracks() {
           <span className="h-1 w-1 rounded-full bg-[#7A8CAA]/50" />
           <span>{t("hero.cancel")}</span>
         </div>
-      </div>
-    </section>
-  );
-}
-
-function TrustBand() {
-  const { t } = useTranslation();
-  const items = [
-    { icon: Server, title: t("home.trust.t1"), body: t("home.trust.b1") },
-    { icon: Shield, title: t("home.trust.t2"), body: t("home.trust.b2") },
-    { icon: GlobeIcon, title: t("home.trust.t3"), body: t("home.trust.b3") },
-  ];
-  return (
-    <section className="py-16 px-6 border-y border-[var(--hairline)] bg-[var(--blueprint)]/50">
-      <div className="mx-auto max-w-7xl grid gap-8 md:grid-cols-3">
-        {items.map((it) => {
-          const Icon = it.icon;
-          return (
-            <div key={it.title} className="flex items-start gap-4">
-              <span className="h-10 w-10 rounded-md bg-[rgba(37,99,235,0.08)] border border-[var(--hairline)] grid place-items-center shrink-0">
-                <Icon className="h-5 w-5 text-[var(--brand-blue)]" strokeWidth={1.5} />
-              </span>
-              <div>
-                <div className="font-display font-semibold text-ink">{it.title}</div>
-                <div className="text-sm text-muted-foreground">{it.body}</div>
-              </div>
-            </div>
-          );
-        })}
       </div>
     </section>
   );
