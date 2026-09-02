@@ -3,37 +3,59 @@ import { useTranslation } from "react-i18next";
 import { PageHeader, AdminButton, Badge } from "@/components/admin/AdminKit";
 import { GripVertical, Plus, RotateCcw } from "lucide-react";
 import { DemoMap, type DemoPin } from "@/components/admin/DemoMap";
-import { A1_CORRIDOR } from "@/lib/demo-geo";
+import { cityFor, type LngLat } from "@/lib/demo-geo";
+import { contentFor } from "@/lib/demo-content";
 import { LANGUAGES, type Lang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/app/routing")({
   component: RoutingPage,
 });
 
-/** Mirrors the real Maršrutų planuoklė (apps/web app/routing): stop list left, route map right. */
-const STOPS = [
-  { n: 1, name: "Sandėlis · Kirtimai", coord: "54.6360, 25.3080" },
-  { n: 2, name: "Klientas · Lentvaris", coord: "54.6440, 25.0540" },
-  { n: 3, name: "Klientas · Vievis", coord: "54.7710, 24.8090" },
-  { n: 4, name: "Terminalas · Kaunas", coord: "54.8985, 23.9036" },
-];
+/**
+ * Mirrors the real route planner (apps/web app/routing): stop list left, route map right.
+ *
+ * The plan used to be the Vilnius–Kaunas A1 with stops called "Sandėlis · Kirtimai" and
+ * "Klientas · Vievis" — shown to a German reader as their fleet's next delivery run. The stops now
+ * sit on the city's own routed loop, so the plan is drivable where the vans actually are, and the
+ * distance is MEASURED off that geometry rather than asserted: the old page claimed a fixed 128 km
+ * beside whatever line it happened to draw.
+ */
+const STOP_FRACTIONS = [0.05, 0.32, 0.58, 0.86];
 
-// Planned route along the REAL A1 motorway centre-line (Kaunas → Vilnius direction).
-const PLAN_ROUTE = [...A1_CORRIDOR].reverse();
+function planFor(lang: string) {
+  const loop = cityFor(lang).loops[0];
+  const c = contentFor(lang);
+  const l = L[normalizeLang(lang)];
+  const idx = STOP_FRACTIONS.map((f) => Math.floor(loop.length * f));
+  const names = [c.zones.depot, `${l.customer} · ${c.towns[1]}`, `${l.customer} · ${c.towns[2]}`, c.terminal];
+  const stops = idx.map((i, n) => ({
+    n: n + 1,
+    name: names[n],
+    coord: `${loop[i][1].toFixed(4)}, ${loop[i][0].toFixed(4)}`,
+  }));
+  const route = loop.slice(idx[0], idx[idx.length - 1] + 1);
+  const pins: DemoPin[] = idx.map((i, n) => ({ id: `stop-${n + 1}`, at: loop[i], label: String(n + 1), color: "#7C7DF5" }));
+  return { stops, route, pins, km: Math.round(lengthKm(route)) };
+}
 
-// Stop markers snapped to actual A1_CORRIDOR vertices near each stop's described place.
-const STOP_PINS: DemoPin[] = [
-  { id: "stop-1", at: A1_CORRIDOR[0], label: "1", color: "#7C7DF5" }, // Vilnius end
-  { id: "stop-2", at: A1_CORRIDOR[21], label: "2", color: "#7C7DF5" }, // by Lentvaris
-  { id: "stop-3", at: A1_CORRIDOR[34], label: "3", color: "#7C7DF5" }, // by Vievis
-  { id: "stop-4", at: A1_CORRIDOR[A1_CORRIDOR.length - 1], label: "4", color: "#7C7DF5" }, // Kaunas
-];
+/** Length of a polyline in km — the planner states a distance, so it should be the drawn one. */
+function lengthKm(pts: LngLat[]): number {
+  let m = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [a, b] = [pts[i - 1], pts[i]];
+    const dLat = ((b[1] - a[1]) * Math.PI) / 180;
+    const dLng = ((b[0] - a[0]) * Math.PI) / 180;
+    const lat = ((a[1] + b[1]) / 2) * (Math.PI / 180);
+    m += 6_371_000 * Math.hypot(dLat, dLng * Math.cos(lat));
+  }
+  return m / 1000;
+}
 
 // Demo-only strings not present in the real dashboard's translation files —
 // translated here, keyed by the site language.
 const L: Record<
   Lang,
-  { stops: string; reset: string; addStop: string; distance: string; duration: string; durationValue: string; badge: string }
+  { stops: string; reset: string; addStop: string; distance: string; duration: string; minutes: string; customer: string; badge: string }
 > = {
   lt: {
     stops: "Sustojimai",
@@ -41,7 +63,8 @@ const L: Record<
     addStop: "Pridėti sustojimą",
     distance: "Atstumas",
     duration: "Trukmė",
-    durationValue: "1 val. 52 min.",
+    minutes: "min.",
+    customer: "Klientas",
     badge: "OSRM · realūs keliai",
   },
   en: {
@@ -50,7 +73,8 @@ const L: Record<
     addStop: "Add stop",
     distance: "Distance",
     duration: "Duration",
-    durationValue: "1 h 52 min",
+    minutes: "min",
+    customer: "Customer",
     badge: "OSRM · real roads",
   },
   pl: {
@@ -59,7 +83,8 @@ const L: Record<
     addStop: "Dodaj przystanek",
     distance: "Dystans",
     duration: "Czas",
-    durationValue: "1 godz. 52 min",
+    minutes: "min",
+    customer: "Klient",
     badge: "OSRM · prawdziwe drogi",
   },
   de: {
@@ -68,15 +93,25 @@ const L: Record<
     addStop: "Stopp hinzufügen",
     distance: "Distanz",
     duration: "Dauer",
-    durationValue: "1 Std. 52 Min.",
+    minutes: "Min.",
+    customer: "Kunde",
     badge: "OSRM · echte Straßen",
   },
 };
 
+function normalizeLang(lang: string): Lang {
+  const two = lang.slice(0, 2) as Lang;
+  return LANGUAGES.includes(two) ? two : "lt";
+}
+
 function RoutingPage() {
   const { t, i18n } = useTranslation("admin");
-  const lang: Lang = LANGUAGES.includes(i18n.resolvedLanguage as Lang) ? (i18n.resolvedLanguage as Lang) : "lt";
+  const lang = normalizeLang(i18n.resolvedLanguage ?? i18n.language);
   const l = L[lang];
+  const plan = planFor(lang);
+  // a city delivery run averages ~24 km/h with the stops — stated from the drawn distance rather
+  // than the fixed "1 h 52 min" the page used to print beside any geometry at all
+  const minutes = Math.max(15, Math.round((plan.km / 24) * 60));
   return (
     <div className="p-4 md:p-8">
       <PageHeader title={t("routing.title")} description={t("routing.desc")} />
@@ -90,7 +125,7 @@ function RoutingPage() {
             </div>
           </div>
           <ul>
-            {STOPS.map((s) => (
+            {plan.stops.map((s) => (
               <li key={s.n} className="admin-hairline-b flex items-center gap-3 px-4 py-3">
                 <GripVertical className="h-4 w-4 opacity-40" style={{ color: "var(--admin-ink-soft)" }} />
                 <span
@@ -112,7 +147,7 @@ function RoutingPage() {
             </li>
           </ul>
           <div className="admin-hairline-t mt-auto grid grid-cols-3 gap-2 p-4 text-center">
-            {[[l.distance, t("units.km", { n: 128 })], [l.duration, l.durationValue], [l.stops, "4"]].map(([k, v]) => (
+            {[[l.distance, t("units.km", { n: plan.km })], [l.duration, `${Math.floor(minutes / 60)} h ${minutes % 60} ${l.minutes}`], [l.stops, String(plan.stops.length)]].map(([k, v]) => (
               <div key={k} className="rounded-md py-2" style={{ background: "var(--admin-surface-sunken)" }}>
                 <div className="text-[10px] uppercase tracking-wider" style={{ color: "var(--admin-ink-soft)" }}>{k}</div>
                 <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{v}</div>
@@ -123,9 +158,9 @@ function RoutingPage() {
         <div className="admin-card relative min-h-[480px] overflow-hidden">
           <DemoMap
             className="h-full w-full min-h-[480px]"
-            fit={PLAN_ROUTE}
-            routes={[{ id: "plan", coords: PLAN_ROUTE, color: "#7C7DF5", widthPx: 3.5 }]}
-            pins={STOP_PINS}
+            fit={plan.route}
+            routes={[{ id: "plan", coords: plan.route, color: "#7C7DF5", widthPx: 3.5 }]}
+            pins={plan.pins}
           />
           <Badge tone="brand" className="absolute right-4 top-4 z-10">{l.badge}</Badge>
         </div>

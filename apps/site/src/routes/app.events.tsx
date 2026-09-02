@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DEMO_EVENTS, DEVICES, demoDetail, deviceName, type DemoEvent, type Kind } from "@/lib/demo-events";
+import { DEVICES, demoDetail, deviceName, localizeEvents, type DemoEvent, type Kind } from "@/lib/demo-events";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Activity, AlertOctagon, TrendingUp } from "lucide-react";
@@ -57,7 +57,8 @@ const SEV_COLOR: Record<Severity, string> = {
 // The detail column is derived from the payload at render, so it follows the UI language.
 
 function EventsPage() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const events = React.useMemo(() => localizeEvents(i18n.language), [i18n.language]);
   const [kind, setKind] = React.useState("");
   const [severity, setSeverity] = React.useState<"" | Severity>("");
   const [deviceId, setDeviceId] = React.useState("");
@@ -73,7 +74,7 @@ function EventsPage() {
   // filter changes restart the "cursor" — mirrors the product resetting the query
   const resetPage = () => setVisible(PAGE);
 
-  const filtered = DEMO_EVENTS.filter((e) => {
+  const filtered = events.filter((e) => {
     if (kind && e.kind !== kind) return false;
     if (deviceId && e.deviceId !== deviceId) return false;
     const day = e.at.slice(0, 10);

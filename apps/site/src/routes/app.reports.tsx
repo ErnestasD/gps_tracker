@@ -3,6 +3,7 @@ import * as React from "react";
 import { FileText, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { contentFor } from "@/lib/demo-content";
 import { AdminButton, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { DatePicker } from "@/components/admin/DatePicker";
@@ -15,10 +16,9 @@ export const Route = createFileRoute("/app/reports")({
 // Report types as in the real product — labels come from reports.t.* in the admin namespace
 const REPORT_TYPE_VALUES = ["mileage", "trips", "stops", "overspeed", "geofence", "engine_hours"] as const;
 
-const ACCOUNTS = [
-  { value: "acc_baltlog", label: "UAB Baltijos logistika" },
-  { value: "acc_kensa", label: "UAB Kensa transportas" },
-];
+/** Two haulier accounts, incorporated where the fleet is — a Warsaw operator does not bill a UAB. */
+const accountsFor = (lang: string) =>
+  contentFor(lang).reportAccounts.map((label, i) => ({ value: `acc_${i}`, label }));
 
 // Device names are demo DATA — only the "all devices" option is translated
 const DEVICES = [
@@ -106,7 +106,7 @@ function ReportsPage() {
             <div className="w-44"><Combobox value={type} onChange={(v) => { setType(v); setGenerated(false); }} options={reportTypeOptions} /></div>
           </Field>
           <Field label={t("reports.account")}>
-            <div className="w-44"><Combobox value={account} onChange={setAccount} options={ACCOUNTS} /></div>
+            <div className="w-44"><Combobox value={account} onChange={setAccount} options={accountsFor(i18n.language)} /></div>
           </Field>
           <Field label={t("reports.device")}>
             <div className="w-44"><Combobox value={deviceId} onChange={setDeviceId} options={deviceOptions} /></div>

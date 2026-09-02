@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { contentFor } from "@/lib/demo-content";
 import { AlertTriangle, CheckCircle2, MoreHorizontal, Plus, Trash2, Wrench } from "lucide-react";
 import { fmtDate } from "@/lib/admin-format";
 import { DataTable, type Column } from "@/components/admin/DataTable";
@@ -86,16 +87,25 @@ const DEVICES = [
   { id: "dev_0006", name: "Van 06", plate: "DKP 148" },
 ];
 
-const MAINT: DemoMaint[] = [
-  { id: "mnt_01", deviceName: "Van 01", title: "Alyvos keitimas", intervalKm: 15000, intervalDays: 365, intervalEngineH: null, kmRemaining: 1240, daysRemaining: 96, engineHRemaining: null, predictedDueAt: "2026-09-18", status: "due_soon" },
-  { id: "mnt_02", deviceName: "Truck 03", title: "Padangų keitimas", intervalKm: 40000, intervalDays: null, intervalEngineH: null, kmRemaining: -860, daysRemaining: null, engineHRemaining: null, predictedDueAt: "2026-08-21", status: "overdue" },
-  { id: "mnt_03", deviceName: "Van 02", title: "Techninė apžiūra", intervalKm: null, intervalDays: 365, intervalEngineH: null, kmRemaining: null, daysRemaining: 3, engineHRemaining: null, predictedDueAt: "2026-09-04", status: "due_soon" },
-  { id: "mnt_04", deviceName: "Sprinter 04", title: "Stabdžių kaladėlių keitimas", intervalKm: 30000, intervalDays: null, intervalEngineH: null, kmRemaining: 12480, daysRemaining: null, engineHRemaining: null, predictedDueAt: "2026-11-02", status: "ok" },
-  { id: "mnt_05", deviceName: "Truck 05", title: "Filtrų keitimas", intervalKm: 20000, intervalDays: 180, intervalEngineH: null, kmRemaining: 6910, daysRemaining: 74, engineHRemaining: null, predictedDueAt: "2026-10-06", status: "ok" },
-  { id: "mnt_06", deviceName: "Van 06", title: "Tachografo patikra", intervalKm: null, intervalDays: 730, intervalEngineH: null, kmRemaining: null, daysRemaining: -12, engineHRemaining: null, predictedDueAt: "2026-08-20", status: "overdue" },
-  { id: "mnt_07", deviceName: "Truck 03", title: "Variklio diagnostika", intervalKm: null, intervalDays: null, intervalEngineH: 500, kmRemaining: null, daysRemaining: null, engineHRemaining: 210, predictedDueAt: null, status: "ok" },
-  { id: "mnt_08", deviceName: "Van 02", title: "Kuro filtras", intervalKm: 25000, intervalDays: null, intervalEngineH: null, kmRemaining: null, daysRemaining: null, engineHRemaining: null, predictedDueAt: null, status: "unknown" },
-];
+/**
+ * The garage's own words. Job titles, plan names and document names are things this operator typed,
+ * so a Berlin fleet's list reads "Ölwechsel" and "Hauptuntersuchung" rather than Lithuanian —
+ * everything below is built from the language's vocabulary, keeping the numbers and statuses fixed
+ * because those are what the page demonstrates.
+ */
+function maintFor(lang: string): DemoMaint[] {
+  const S = contentFor(lang);
+  return [
+  { id: "mnt_01", deviceName: "Van 01", title: S.services[0], intervalKm: 15000, intervalDays: 365, intervalEngineH: null, kmRemaining: 1240, daysRemaining: 96, engineHRemaining: null, predictedDueAt: "2026-09-18", status: "due_soon" },
+  { id: "mnt_02", deviceName: "Truck 03", title: S.services[1], intervalKm: 40000, intervalDays: null, intervalEngineH: null, kmRemaining: -860, daysRemaining: null, engineHRemaining: null, predictedDueAt: "2026-08-21", status: "overdue" },
+  { id: "mnt_03", deviceName: "Van 02", title: S.services[2], intervalKm: null, intervalDays: 365, intervalEngineH: null, kmRemaining: null, daysRemaining: 3, engineHRemaining: null, predictedDueAt: "2026-09-04", status: "due_soon" },
+  { id: "mnt_04", deviceName: "Sprinter 04", title: S.services[3], intervalKm: 30000, intervalDays: null, intervalEngineH: null, kmRemaining: 12480, daysRemaining: null, engineHRemaining: null, predictedDueAt: "2026-11-02", status: "ok" },
+  { id: "mnt_05", deviceName: "Truck 05", title: S.services[4], intervalKm: 20000, intervalDays: 180, intervalEngineH: null, kmRemaining: 6910, daysRemaining: 74, engineHRemaining: null, predictedDueAt: "2026-10-06", status: "ok" },
+  { id: "mnt_06", deviceName: "Van 06", title: S.extraServices.tacho, intervalKm: null, intervalDays: 730, intervalEngineH: null, kmRemaining: null, daysRemaining: -12, engineHRemaining: null, predictedDueAt: "2026-08-20", status: "overdue" },
+  { id: "mnt_07", deviceName: "Truck 03", title: S.extraServices.engine, intervalKm: null, intervalDays: null, intervalEngineH: 500, kmRemaining: null, daysRemaining: null, engineHRemaining: 210, predictedDueAt: null, status: "ok" },
+  { id: "mnt_08", deviceName: "Van 02", title: S.extraServices.fuelFilter, intervalKm: 25000, intervalDays: null, intervalEngineH: null, kmRemaining: null, daysRemaining: null, engineHRemaining: null, predictedDueAt: null, status: "unknown" },
+  ];
+}
 
 type DemoPlan = {
   id: string;
@@ -103,32 +113,38 @@ type DemoPlan = {
   items: { title: string; intervalKm: number | null; intervalDays: number | null; intervalEngineH: number | null }[];
 };
 
-const PLANS: DemoPlan[] = [
+function plansFor(lang: string): DemoPlan[] {
+  const S = contentFor(lang);
+  return [
   {
     id: "pln_01",
-    name: "Standartinis servisas",
+    name: S.plans.standard,
     items: [
-      { title: "Alyvos keitimas", intervalKm: 15000, intervalDays: 365, intervalEngineH: null },
-      { title: "Padangų keitimas", intervalKm: 10000, intervalDays: null, intervalEngineH: null },
-      { title: "Techninė apžiūra", intervalKm: null, intervalDays: 365, intervalEngineH: null },
+      { title: S.services[0], intervalKm: 15000, intervalDays: 365, intervalEngineH: null },
+      { title: S.services[1], intervalKm: 10000, intervalDays: null, intervalEngineH: null },
+      { title: S.services[2], intervalKm: null, intervalDays: 365, intervalEngineH: null },
     ],
   },
   {
     id: "pln_02",
-    name: "Sunkvežimių planas",
+    name: S.plans.truck,
     items: [
-      { title: "Alyvos keitimas", intervalKm: 30000, intervalDays: null, intervalEngineH: null },
-      { title: "Tachografo patikra", intervalKm: null, intervalDays: 730, intervalEngineH: null },
-    ],
-  },
-];
+      { title: S.services[0], intervalKm: 30000, intervalDays: null, intervalEngineH: null },
+      { title: S.extraServices.tacho, intervalKm: null, intervalDays: 730, intervalEngineH: null },
+      ],
+    },
+  ];
+}
 
 /** doc kind → real-product fleet.docKind.* key suffix; titles stay data. */
-const EXPIRING_DOCS = [
-  { id: "doc_01", deviceName: "Truck 03", kind: "inspection", title: "Metinė TA", validTo: "2026-08-27", overdueDays: 5, daysLeft: null as number | null },
-  { id: "doc_02", deviceName: "Van 02", kind: "insurance", title: "Kasko draudimas", validTo: "2026-09-12", overdueDays: null as number | null, daysLeft: 11 },
-  { id: "doc_03", deviceName: "Van 06", kind: "tachograph", title: "Patikros sertifikatas", validTo: "2026-09-24", overdueDays: null as number | null, daysLeft: 23 },
-];
+function docsFor(lang: string) {
+  const S = contentFor(lang);
+  return [
+  { id: "doc_01", deviceName: "Truck 03", kind: "inspection", title: S.docs.inspection, validTo: "2026-08-27", overdueDays: 5, daysLeft: null as number | null },
+  { id: "doc_02", deviceName: "Van 02", kind: "insurance", title: S.docs.insurance, validTo: "2026-09-12", overdueDays: null as number | null, daysLeft: 11 },
+  { id: "doc_03", deviceName: "Van 06", kind: "tachograph", title: S.docs.tachograph, validTo: "2026-09-24", overdueDays: null as number | null, daysLeft: 23 },
+  ];
+}
 
 /** due status → badge tone, mirroring the product's unit-tested dueVariant mapping. */
 const STATUS_TONE: Record<MaintStatus, "success" | "warning" | "danger" | "neutral"> = {
@@ -173,9 +189,11 @@ const remaining = (t: TFn, r: DemoMaint): string =>
     .join(" · ");
 
 function MaintenancePage() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const lang = i18n.language;
   const l = useL();
-  const [items, setItems] = React.useState<DemoMaint[]>(MAINT);
+  const [items, setItems] = React.useState<DemoMaint[]>(() => maintFor(lang));
+  React.useEffect(() => setItems(maintFor(lang)), [lang]);
   const [addOpen, setAddOpen] = React.useState(false);
   const [servicedForId, setServicedForId] = React.useState<string | null>(null);
   const [deleteForId, setDeleteForId] = React.useState<string | null>(null);
@@ -517,9 +535,11 @@ function ServicedForm({ item, onDone, onCancel }: { item: DemoMaint; onDone: () 
 
 /** Maintenance plan templates — define interval sets once, apply to many vehicles. */
 function PlansSection() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const lang = i18n.language;
   const l = useL();
-  const [plans, setPlans] = React.useState<DemoPlan[]>(PLANS);
+  const [plans, setPlans] = React.useState<DemoPlan[]>(() => plansFor(lang));
+  React.useEffect(() => setPlans(plansFor(lang)), [lang]);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [applyFor, setApplyFor] = React.useState<DemoPlan | null>(null);
   const [deleteFor, setDeleteFor] = React.useState<DemoPlan | null>(null);
@@ -715,12 +735,13 @@ function PlanApplyForm({ onApply, onCancel }: { onApply: (n: number) => void; on
 
 /** Fleet-wide expiring documents — the "act this month" list (due soon + overdue). */
 function ExpiringDocsSection() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const docs = docsFor(i18n.language);
   return (
     <div className="admin-card space-y-2 p-4">
       <div className="text-sm font-semibold" style={{ color: "var(--admin-ink)" }}>{t("maint.expiringDocs")}</div>
       <div className="space-y-1">
-        {EXPIRING_DOCS.map((doc) => (
+        {docs.map((doc) => (
           <div
             key={doc.id}
             className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm"

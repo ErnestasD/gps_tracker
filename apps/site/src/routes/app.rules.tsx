@@ -3,6 +3,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { PageHeader, AdminButton, AdminSwitch, Badge } from "@/components/admin/AdminKit";
+import { contentFor } from "@/lib/demo-content";
 
 export const Route = createFileRoute("/app/rules")({
   component: RulesPage,
@@ -23,11 +24,28 @@ type DemoRule = {
   enabled: boolean;
 };
 
+// The rule names and the dispatch mailbox are things the OPERATOR typed, so they are in the
+// operator's language — a German fleet does not have a rule called "Saldėnės geozona".
+const RULE_OVERSPEED = "@overspeed";
+const RULE_GEOFENCE = "@geofence";
+const RULE_FUEL = "@fuel";
+const DISPATCH_EMAIL = "@dispatch";
+
+function localizeRule(r: DemoRule, lang: string): DemoRule {
+  const c = contentFor(lang);
+  const names: Record<string, string> = { [RULE_OVERSPEED]: c.rules.overspeed, [RULE_GEOFENCE]: c.rules.geofence, [RULE_FUEL]: c.rules.fuel };
+  return {
+    ...r,
+    name: names[r.name] ?? r.name,
+    channels: r.channels.map((ch) => (ch === DISPATCH_EMAIL ? c.dispatchEmail : ch)),
+  };
+}
+
 const RULES: DemoRule[] = [
   {
     id: "rule_overspeed",
     kind: "overspeed",
-    name: "Greičio viršijimas 90",
+    name: RULE_OVERSPEED,
     cooldownS: 300,
     channels: ["webpush"],
     enabled: true,
@@ -35,15 +53,15 @@ const RULES: DemoRule[] = [
   {
     id: "rule_geofence",
     kind: "geofence",
-    name: "Saldėnės geozona",
+    name: RULE_GEOFENCE,
     cooldownS: 300,
-    channels: ["webpush", "dispecerine@transportas.lt"],
+    channels: ["webpush", DISPATCH_EMAIL],
     enabled: true,
   },
   {
     id: "rule_fuel",
     kind: "fuel_theft",
-    name: "100l kuro vagystė",
+    name: RULE_FUEL,
     cooldownS: 600,
     channels: ["webpush"],
     enabled: true,
@@ -51,8 +69,10 @@ const RULES: DemoRule[] = [
 ];
 
 function RulesPage() {
-  const { t } = useTranslation("admin");
-  const [rules, setRules] = React.useState<DemoRule[]>(RULES);
+  const { t, i18n } = useTranslation("admin");
+  const lang = i18n.language;
+  const [rules, setRules] = React.useState<DemoRule[]>(() => RULES.map((r) => localizeRule(r, lang)));
+  React.useEffect(() => setRules(RULES.map((r) => localizeRule(r, lang))), [lang]);
 
   const channelLabel = (c: string): string => (c === "webpush" ? t("rules.channels.webpush") : c);
 

@@ -8,6 +8,7 @@ import { Combobox } from "@/components/admin/Combobox";
 import { DemoMap, type DemoRoute, type DemoVehicle, type DemoZone } from "@/components/admin/DemoMap";
 import { cityFor, routeSlice, type DemoCity, type LngLat } from "@/lib/demo-geo";
 import { demoZones } from "@/lib/demo-zones";
+import { contentFor } from "@/lib/demo-content";
 import {
   PanelLeft, Pause, Layers, Maximize2, Satellite, Power, Clock, ChevronRight,
   Activity, Radio, Signal, Zap, Play, ZoomIn, ZoomOut, Crosshair, MapPin, LocateFixed, Route as RouteIcon,
@@ -20,7 +21,6 @@ export const Route = createFileRoute("/app/map")({
 /** Mirrors the REAL live map (apps/web app/map): status-chip header strip, fleet list with
  * per-row telemetry, dark map with heading arrows, right inspector rail with metric tiles +
  * tabs + POZICIJA/telemetry/trip blocks, and the playback timeline docked at the bottom. */
-const ALL = generateDevices();
 
 /** Bearing (deg from north) from a to b — flat-earth atan2 is fine at city scale. */
 function bearingDeg(a: LngLat, b: LngLat): number {
@@ -39,9 +39,9 @@ type Placement = { at: LngLat; headingDeg: number; loop: LngLat[]; idx: number }
  * circle a city they have no stake in — which quietly says the product is for somebody else. The
  * loops are real routed road geometry per city, so a van is never in a field whichever one it is.
  */
-function placementsFor(city: DemoCity): Map<string, Placement> {
+function placementsFor(city: DemoCity, devices: Device[]): Map<string, Placement> {
   return new Map<string, Placement>(
-    ALL.map((d, i) => {
+    devices.map((d, i) => {
       const loop = city.loops[i < 16 ? 0 : 1];
       const idx = (i * 17) % loop.length;
       const at = loop[idx];
@@ -114,8 +114,11 @@ function MapPage() {
   const l = L[LANGUAGES.includes(lang) ? lang : "lt"];
   // the fleet drives where the reader is — see cityFor()
   const city = cityFor(lang);
-  const PLACEMENTS = React.useMemo(() => placementsFor(city), [city]);
-  const FIT_ALL = React.useMemo<LngLat[]>(() => ALL.map((d) => PLACEMENTS.get(d.id)!.at), [PLACEMENTS]);
+  // the crew travels with the fleet: drivers, plates and the towns they run between come from the
+  // city's own pools, so a Warsaw map is not staffed by Lithuanians holding LT licences
+  const ALL = React.useMemo(() => generateDevices(contentFor(lang)), [lang]);
+  const PLACEMENTS = React.useMemo(() => placementsFor(city, ALL), [city, ALL]);
+  const FIT_ALL = React.useMemo<LngLat[]>(() => ALL.map((d) => PLACEMENTS.get(d.id)!.at), [ALL, PLACEMENTS]);
   const ZONES = React.useMemo(() => zonesFor(lang), [lang]);
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<string>("");

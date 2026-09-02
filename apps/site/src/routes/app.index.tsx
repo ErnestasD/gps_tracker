@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { demoAlertZone } from "@/lib/demo-zones";
 import { Activity, AlertTriangle, Bell } from "lucide-react";
 
 import { PageHeader, StatCard, Badge, AdminButton } from "@/components/admin/AdminKit";
@@ -85,13 +86,16 @@ const LATEST: { name: string; sub: string; status: DeviceStatus }[] = [
 
 type Severity = "critical" | "warning" | "info";
 
+/** Stands in for the zone name until render, when the language decides which zone this is. */
+const ZONE_PLACEHOLDER = "@zone";
+
 const RECENT: { id: string; severity: Severity; summary: string; summaryOpts?: Record<string, string>; device: string; at: string; kind: string }[] = [
-  { id: "e1", severity: "critical", summary: "events.s.panic", device: "Krovininis 01", at: "2026-09-01T07:42:00Z", kind: "events.k.panic" },
-  { id: "e2", severity: "warning", summary: "events.s.overspeed", summaryOpts: { speed: "97 km/h", limit: "90 km/h" }, device: "Vilkikas 07", at: "2026-09-01T07:18:00Z", kind: "events.k.overspeed" },
-  { id: "e3", severity: "info", summary: "events.s.geofence_enter", summaryOpts: { name: "Terminalas Kaunas" }, device: "Pikapas 02", at: "2026-09-01T06:55:00Z", kind: "events.k.geofence" },
-  { id: "e4", severity: "info", summary: "events.s.ignition_on", device: "Busiukas 03", at: "2026-09-01T06:31:00Z", kind: "events.k.ignition" },
-  { id: "e5", severity: "critical", summary: "events.s.power_cut", device: "Priekaba 11", at: "2026-08-31T22:14:00Z", kind: "events.k.power_cut" },
-  { id: "e6", severity: "warning", summary: "events.s.low_battery", summaryOpts: { volts: "3.6", threshold: "3.8 V" }, device: "Vilkikas 04", at: "2026-08-31T21:02:00Z", kind: "events.k.low_battery" },
+  { id: "e1", severity: "critical", summary: "events.s.panic", device: "Truck 01", at: "2026-09-01T07:42:00Z", kind: "events.k.panic" },
+  { id: "e2", severity: "warning", summary: "events.s.overspeed", summaryOpts: { speed: "97 km/h", limit: "90 km/h" }, device: "Truck 07", at: "2026-09-01T07:18:00Z", kind: "events.k.overspeed" },
+  { id: "e3", severity: "info", summary: "events.s.geofence_enter", summaryOpts: { name: ZONE_PLACEHOLDER }, device: "Van 02", at: "2026-09-01T06:55:00Z", kind: "events.k.geofence" },
+  { id: "e4", severity: "info", summary: "events.s.ignition_on", device: "Sprinter 03", at: "2026-09-01T06:31:00Z", kind: "events.k.ignition" },
+  { id: "e5", severity: "critical", summary: "events.s.power_cut", device: "Trailer 11", at: "2026-08-31T22:14:00Z", kind: "events.k.power_cut" },
+  { id: "e6", severity: "warning", summary: "events.s.low_battery", summaryOpts: { volts: "3.6", threshold: "3.8 V" }, device: "Truck 04", at: "2026-08-31T21:02:00Z", kind: "events.k.low_battery" },
 ];
 
 const SEVERITY_ICON: Record<Severity, typeof Bell> = { critical: Bell, warning: AlertTriangle, info: Activity };
@@ -270,7 +274,14 @@ function HourlyBarsSvg({ buckets, unit, label }: { buckets: number[]; unit: stri
 /* ── page ─────────────────────────────────────────────────────────────────── */
 
 function OverviewPage() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  // the zone an alert names must be a zone that EXISTS on the map and in the geofence list
+  const recent = useMemo(
+    () => RECENT.map((e) => (e.summaryOpts?.name === ZONE_PLACEHOLDER
+      ? { ...e, summaryOpts: { ...e.summaryOpts, name: demoAlertZone(i18n.language) } }
+      : e)),
+    [i18n.language],
+  );
   const navigate = useNavigate();
   const [rangeDays, setRangeDays] = useState<RangeDays>(7);
   const series = SERIES[rangeDays];
@@ -413,7 +424,7 @@ function OverviewPage() {
           <AdminButton variant="ghost" size="sm" onClick={() => void navigate({ to: "/app/events" })}>{t("dash.viewAll")}</AdminButton>
         </div>
         <ul>
-          {RECENT.map((e) => {
+          {recent.map((e) => {
             const Icon = SEVERITY_ICON[e.severity];
             return (
               <li key={e.id} className="admin-hairline-b flex items-center gap-3 px-4 py-2.5 text-sm last:border-b-0">

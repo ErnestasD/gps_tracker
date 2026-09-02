@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Combobox } from "@/components/admin/Combobox";
@@ -22,7 +23,7 @@ export function DataTable<T extends { id: string }>({
   searchable = true,
   searchKeys,
   pageSize = 10,
-  emptyLabel = "Įrašų nėra",
+  emptyLabel,
   rowAction,
   toolbarLeft,
   toolbarRight,
@@ -32,11 +33,16 @@ export function DataTable<T extends { id: string }>({
   searchable?: boolean;
   searchKeys?: (keyof T)[];
   pageSize?: number;
+  /** overrides the generic "no rows" line; omit for the shared one */
   emptyLabel?: string;
   rowAction?: (row: T) => React.ReactNode;
   toolbarLeft?: React.ReactNode;
   toolbarRight?: React.ReactNode;
 }) {
+  // The table's own chrome — search box, filter placeholders, row count, pager — was hardcoded
+  // Lithuanian, so a German visitor read a German page whose table said "8 įrašų · psl. 1 / 1".
+  // Every key it needs (admin.search / empty / pageInfo / prev / next / allOf) already existed.
+  const { t } = useTranslation("admin");
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState<{ key: string; dir: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = React.useState<Record<string, string>>({});
@@ -102,12 +108,12 @@ export function DataTable<T extends { id: string }>({
                 setQ(e.target.value);
                 setPage(0);
               }}
-              placeholder="Ieškoti…"
+              placeholder={t("admin.search")}
               className="w-full bg-transparent outline-none placeholder:opacity-60"
               style={{ color: "var(--admin-ink)" }}
             />
             {q && (
-              <button onClick={() => setQ("")} aria-label="Išvalyti">
+              <button onClick={() => setQ("")} aria-label={t("admin.clear")}>
                 <X className="h-3.5 w-3.5 opacity-60" />
               </button>
             )}
@@ -124,10 +130,10 @@ export function DataTable<T extends { id: string }>({
                 setPage(0);
               }}
               options={[
-                { value: "", label: `${col.header}: visi` },
+                { value: "", label: t("admin.allOf", { header: col.header }) },
                 ...col.filterOptions!,
               ]}
-              placeholder={`${col.header}: visi`}
+              placeholder={t("admin.allOf", { header: col.header })}
             />
           </div>
         ))}
@@ -191,7 +197,7 @@ export function DataTable<T extends { id: string }>({
             {paged.length === 0 && (
               <tr>
                 <td colSpan={columns.length + (rowAction ? 1 : 0)} className="px-4 py-12 text-center" style={{ color: "var(--admin-ink-soft)" }}>
-                  {emptyLabel}
+                  {emptyLabel ?? t("admin.empty")}
                 </td>
               </tr>
             )}
@@ -221,7 +227,7 @@ export function DataTable<T extends { id: string }>({
       {/* Mobile cards */}
       <div className="md:hidden">
         {paged.length === 0 && (
-          <div className="px-4 py-12 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>{emptyLabel}</div>
+          <div className="px-4 py-12 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>{emptyLabel ?? t("admin.empty")}</div>
         )}
         {paged.map((row) => (
           <div key={row.id} className="admin-hairline-b p-4 last:border-b-0">
@@ -241,7 +247,7 @@ export function DataTable<T extends { id: string }>({
       {/* Footer / pagination */}
       <div className="admin-hairline-t flex items-center justify-between gap-2 px-4 py-2.5 text-xs" style={{ color: "var(--admin-ink-soft)" }}>
         <div>
-          {filtered.length} įrašų · psl. {page + 1} / {pageCount}
+          {t("admin.pageInfo", { n: filtered.length, page: page + 1, pages: pageCount })}
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -250,7 +256,7 @@ export function DataTable<T extends { id: string }>({
             className="cursor-pointer rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
             style={{ borderColor: "var(--admin-hairline)", color: "var(--admin-ink)" }}
           >
-            ← Ankstesnis
+            ← {t("admin.prev")}
           </button>
           <button
             onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
@@ -258,7 +264,7 @@ export function DataTable<T extends { id: string }>({
             className="cursor-pointer rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
             style={{ borderColor: "var(--admin-hairline)", color: "var(--admin-ink)" }}
           >
-            Kitas →
+            {t("admin.next")} →
           </button>
         </div>
       </div>

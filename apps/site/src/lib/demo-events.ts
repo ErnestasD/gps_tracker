@@ -1,5 +1,8 @@
 import type { TFunction } from "i18next";
 
+import { cityFor } from "@/lib/demo-geo";
+import { demoZones } from "@/lib/demo-zones";
+
 /**
  * The demo's event feed — ONE source, shared by the events page and the notification bell.
  *
@@ -38,30 +41,39 @@ export const DEVICES = [
   { id: "dev_4", name: "Truck 12" },
 ];
 
-const geo = (name: string, transition: "enter" | "exit", lat: number, lon: number) => ({
-  geofenceId: name === "Testas" ? "gf_01" : "gf_02",
-  name,
+/**
+ * A geofence crossing. The zone is a PLACEHOLDER and the coordinates come from the zone itself at
+ * render time — see `localizeEvents`. The feed used to hardcode "Testas" / "STL bazė" at fixed
+ * Vilnius coordinates, so the Warsaw demo reported crossings of zones that were not on its map, at
+ * a latitude 700 km away from the vehicle that supposedly crossed them.
+ */
+const geo = (zone: "depot" | "yard", transition: "enter" | "exit", jitter: number) => ({
+  geofenceId: zone === "yard" ? "gf_yard" : "gf_depot",
+  zoneKey: zone,
+  name: zone,
   transition,
-  lat,
-  lon,
+  jitter,
+  lat: 0,
+  lon: 0,
 });
-const speed = (speedKmh: number, limitKmh: number, lat: number, lon: number) => ({ speedKmh, limitKmh, lat, lon });
+/** An overspeed. `step` picks a point along the city's loop — see `localizeEvents`. */
+const speed = (speedKmh: number, limitKmh: number, step: number) => ({ speedKmh, limitKmh, step, lat: 0, lon: 0 });
 
 export const DEMO_EVENTS: DemoEvent[] = [
-  { id: "ev_14", at: "2026-09-01T07:42:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(105, 90, 54.7126, 25.2621) },
-  { id: "ev_13", at: "2026-09-01T07:15:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("Testas", "exit", 54.6721, 25.2797) },
-  { id: "ev_12", at: "2026-09-01T06:58:00Z", kind: "geofence", deviceId: "dev_2", payload: geo("STL bazė", "enter", 54.6384, 25.1912) },
-  { id: "ev_11", at: "2026-09-01T06:31:00Z", kind: "overspeed", deviceId: "dev_4", payload: speed(97, 90, 54.8942, 23.9036) },
-  { id: "ev_10", at: "2026-09-01T05:54:00Z", kind: "geofence", deviceId: "dev_2", payload: geo("STL bazė", "exit", 54.6381, 25.1908) },
-  { id: "ev_09", at: "2026-08-31T19:22:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("Testas", "enter", 54.6725, 25.2801) },
-  { id: "ev_08", at: "2026-08-31T18:47:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(112, 90, 55.0034, 24.9871) },
-  { id: "ev_07", at: "2026-08-31T17:36:00Z", kind: "geofence", deviceId: "dev_3", payload: geo("Testas", "exit", 54.6718, 25.2793) },
-  { id: "ev_06", at: "2026-08-31T16:05:00Z", kind: "geofence", deviceId: "dev_4", payload: geo("STL bazė", "enter", 54.6386, 25.1915) },
-  { id: "ev_05", at: "2026-08-31T14:58:00Z", kind: "overspeed", deviceId: "dev_2", payload: speed(94, 90, 54.9214, 23.9402) },
-  { id: "ev_04", at: "2026-08-31T13:21:00Z", kind: "geofence", deviceId: "dev_4", payload: geo("STL bazė", "exit", 54.6379, 25.1904) },
-  { id: "ev_03", at: "2026-08-31T11:49:00Z", kind: "geofence", deviceId: "dev_3", payload: geo("Testas", "enter", 54.6723, 25.2799) },
-  { id: "ev_02", at: "2026-08-31T09:34:00Z", kind: "overspeed", deviceId: "dev_3", payload: speed(101, 90, 54.7311, 25.3527) },
-  { id: "ev_01", at: "2026-08-31T08:02:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("Testas", "enter", 54.6726, 25.2802) },
+  { id: "ev_14", at: "2026-09-01T07:42:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(105, 90, 35) },
+  { id: "ev_13", at: "2026-09-01T07:15:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("yard", "exit", 0.002) },
+  { id: "ev_12", at: "2026-09-01T06:58:00Z", kind: "geofence", deviceId: "dev_2", payload: geo("depot", "enter", 0.003) },
+  { id: "ev_11", at: "2026-09-01T06:31:00Z", kind: "overspeed", deviceId: "dev_4", payload: speed(97, 90, 79) },
+  { id: "ev_10", at: "2026-09-01T05:54:00Z", kind: "geofence", deviceId: "dev_2", payload: geo("depot", "exit", 0.003) },
+  { id: "ev_09", at: "2026-08-31T19:22:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("yard", "enter", 0.002) },
+  { id: "ev_08", at: "2026-08-31T18:47:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(112, 90, 84) },
+  { id: "ev_07", at: "2026-08-31T17:36:00Z", kind: "geofence", deviceId: "dev_3", payload: geo("yard", "exit", 0.002) },
+  { id: "ev_06", at: "2026-08-31T16:05:00Z", kind: "geofence", deviceId: "dev_4", payload: geo("depot", "enter", 0.004) },
+  { id: "ev_05", at: "2026-08-31T14:58:00Z", kind: "overspeed", deviceId: "dev_2", payload: speed(94, 90, 58) },
+  { id: "ev_04", at: "2026-08-31T13:21:00Z", kind: "geofence", deviceId: "dev_4", payload: geo("depot", "exit", 0.003) },
+  { id: "ev_03", at: "2026-08-31T11:49:00Z", kind: "geofence", deviceId: "dev_3", payload: geo("yard", "enter", 0.002) },
+  { id: "ev_02", at: "2026-08-31T09:34:00Z", kind: "overspeed", deviceId: "dev_3", payload: speed(101, 90, 7) },
+  { id: "ev_01", at: "2026-08-31T08:02:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("yard", "enter", 0.003) },
 ];
 
 export const deviceName = (id: string): string => DEVICES.find((d) => d.id === id)?.name ?? id;
@@ -78,4 +90,32 @@ export function demoDetail(t: TFunction, e: DemoEvent): string {
     return t(p.transition === "enter" ? "events.s.geofence_enter" : "events.s.geofence_exit", { name: p.name });
   }
   return `${p.speedKmh} ${t("units.kmh")} > ${p.limitKmh} ${t("units.kmh")}`;
+}
+
+/**
+ * The feed as this language's fleet would have produced it: zone names from the shared geofence
+ * set, coordinates on the city's own roads.
+ *
+ * The static list carries placeholders rather than text and numbers because both depend on the
+ * reader: a Berlin visitor's alerts must name Berlin zones at Berlin coordinates. Resolving at
+ * render keeps ONE feed (the bell and the events table cannot drift apart) while letting it move.
+ */
+export function localizeEvents(lang: string): DemoEvent[] {
+  const zones = demoZones(lang);
+  const byKey: Record<string, (typeof zones)[number]> = { depot: zones[0], yard: zones[1] };
+  const loop = cityFor(lang).loops[0];
+  return DEMO_EVENTS.map((e) => {
+    const p = e.payload;
+    if (typeof p.zoneKey === "string") {
+      const z = byKey[p.zoneKey];
+      const anchor = (z.ring ?? z.line ?? [[0, 0]])[0];
+      const j = typeof p.jitter === "number" ? p.jitter : 0;
+      return { ...e, payload: { ...p, name: z.name, geofenceId: z.id, lat: anchor[1] + j, lon: anchor[0] + j } };
+    }
+    if (typeof p.step === "number") {
+      const at = loop[(p.step * 3) % loop.length];
+      return { ...e, payload: { ...p, lat: at[1], lon: at[0] } };
+    }
+    return e;
+  });
 }

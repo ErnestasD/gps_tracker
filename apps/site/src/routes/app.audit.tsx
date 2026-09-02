@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { contentFor, roster } from "@/lib/demo-content";
+import { demoZones } from "@/lib/demo-zones";
 import { AdminButton, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 
@@ -42,98 +44,116 @@ const ENTITY_KEYS = [
   "scheduledReport",
 ];
 
-const ROWS: DemoAuditRow[] = [
-  {
-    id: "a-01", at: "2026-08-31 09:41", action: "update", entity: "device",
-    entityId: "01J9V4Q2M8KZT3B7NDF5W6H2C4", userId: "9f2c4e71",
-    before: { label: "VLN-012", name: "Vilnius 12" },
-    after: { label: "VLN-012", name: "Vilnius 12 (rezervas)" },
-  },
-  {
-    id: "a-02", at: "2026-08-31 08:17", action: "create", entity: "geofence",
-    entityId: "01J9V3TCM1P8RQXW5KD2N7F9E6", userId: "9f2c4e71",
-    before: null,
-    after: { name: "Kauno sandėlis", type: "polygon", alertOnExit: true },
-  },
-  {
-    id: "a-03", at: "2026-08-30 17:52", action: "update", entity: "rule",
-    entityId: "01J9TZR8V4W2XKQ6MB3CD5H7N9", userId: "3b8d15ac",
-    before: { name: "Greičio viršijimas", threshold: 90, channels: ["email"] },
-    after: { name: "Greičio viršijimas", threshold: 95, channels: ["email", "webpush"] },
-  },
-  {
-    id: "a-04", at: "2026-08-30 14:05", action: "delete", entity: "apiKey",
-    entityId: "01J9TN2WQ7X4KZ8RB1MD6F3C5E", userId: "9f2c4e71",
-    before: { name: "Senoji integracija", scopes: ["read:positions"] },
-    after: null,
-  },
-  {
-    id: "a-05", at: "2026-08-29 11:23", action: "create", entity: "user",
-    entityId: "01J9RKX5T2M9WQ4NB7CD8F1E3H", userId: "9f2c4e71",
-    before: null,
-    after: { email: "dispeceris@demolog.lt", role: "viewer" },
-  },
-  {
-    id: "a-06", at: "2026-08-29 10:48", action: "update", entity: "branding",
-    entityId: "01J9RKJ3N6W8XT2QM4BD5C7F9E", userId: "9f2c4e71",
-    before: { productName: "Demo Logistics", primary: "#22d3ee" },
-    after: { productName: "Demo Logistics Track", primary: "#7c7df5" },
-  },
-  {
-    id: "a-07", at: "2026-08-28 16:34", action: "create", entity: "domain",
-    entityId: "01J9P8W2K5X7QT9RM3ND4C6F8E", userId: "3b8d15ac",
-    before: null,
-    after: { domain: "fleet.demolog.lt", verified: false },
-  },
-  {
-    id: "a-08", at: "2026-08-28 09:12", action: "update", entity: "driver",
-    entityId: "01J9NX4T8M2W6KQ5RB9CD1F7E3", userId: "3b8d15ac",
-    before: { name: "Tomas Petrauskas", phone: "+370 612 45678" },
-    after: { name: "Tomas Petrauskas", phone: "+370 655 90112" },
-  },
-  {
-    id: "a-09", at: "2026-08-27 15:58", action: "update", entity: "accountPrefs",
-    entityId: "01J9MHQ7V3X5WT8KM2ND6C4F9E", userId: "9f2c4e71",
-    before: { locale: "en", unitSpeed: "kmh" },
-    after: { locale: "lt", unitSpeed: "kmh" },
-  },
-  {
-    id: "a-10", at: "2026-08-27 08:40", action: "delete", entity: "rule",
-    entityId: "01J9M2K8T4W7XQ1RM5BD3C9F6E", userId: "9f2c4e71",
-    before: { name: "Testinė taisyklė", threshold: 60 },
-    after: null,
-  },
-  {
-    id: "a-11", at: "2026-08-26 13:26", action: "create", entity: "scheduledReport",
-    entityId: "01J9JW6Q2M8XKT4NB7RD5C1F3E", userId: "3b8d15ac",
-    before: null,
-    after: { type: "mileage", cadence: "weekly", recipients: ["vadyba@demolog.lt"] },
-  },
-  {
-    id: "a-12", at: "2026-08-26 09:03", action: "create", entity: "device",
-    entityId: "01J9JN8T5W2XQK7MB4RD9C6F1E", userId: "9f2c4e71",
-    before: null,
-    after: { imei: "8613270858*****", model: "FMC130", label: "KNS-034" },
-  },
-  {
-    id: "a-13", at: "2026-08-25 17:44", action: "update", entity: "geofence",
-    entityId: "01J9H7X2K9M4WT6QB1ND8C5F3E", userId: "3b8d15ac",
-    before: { name: "Klaipėdos uostas", alertOnExit: false },
-    after: { name: "Klaipėdos uostas", alertOnExit: true },
-  },
-  {
-    id: "a-14", at: "2026-08-25 11:19", action: "update", entity: "user",
-    entityId: "01J9GTQ4V8X2WK5RM7BD3C6F9E", userId: "9f2c4e71",
-    before: { email: "dispeceris@demolog.lt", role: "viewer" },
-    after: { email: "dispeceris@demolog.lt", role: "account_manager" },
-  },
-  {
-    id: "a-15", at: "2026-08-24 14:37", action: "delete", entity: "device",
-    entityId: "01J9F5W8T1M6XQ3KB9RD2C4F7E", userId: "3b8d15ac",
-    before: { imei: "8613270861*****", model: "FMB920", label: "VLN-007" },
-    after: null,
-  },
-];
+/**
+ * The log an operator in THIS city would have written.
+ *
+ * Every value here is text a person typed — device labels, zone names, the dispatcher's address,
+ * a colleague's phone number — so it belongs to the operator, not to the platform. It used to be
+ * Lithuanian for everyone: a German visitor read their own audit trail recording that somebody
+ * renamed "Vilnius 12" and created "Kauno sandėlis". The row STRUCTURE is untouched; only the
+ * words are the operator's.
+ */
+function rowsFor(lang: string): DemoAuditRow[] {
+  const c = contentFor(lang);
+  const zones = demoZones(lang);
+  const people = roster(lang, 8);
+  const dispatch = c.dispatchEmail;
+  const manager = `${c.dispatchEmail.split("@")[0]}.mgr@${c.domain}`;
+  const cityTag = c.towns[0].slice(0, 3).toUpperCase();
+  const secondTag = c.towns[1].slice(0, 3).toUpperCase();
+  return [
+    {
+      id: "a-01", at: "2026-08-31 09:41", action: "update", entity: "device",
+      entityId: "01J9V4Q2M8KZT3B7NDF5W6H2C4", userId: "9f2c4e71",
+      before: { label: `${cityTag}-012`, name: `${c.towns[0]} 12` },
+      after: { label: `${cityTag}-012`, name: `${c.towns[0]} 12 (reserve)` },
+    },
+    {
+      id: "a-02", at: "2026-08-31 08:17", action: "create", entity: "geofence",
+      entityId: "01J9V3TCM1P8RQXW5KD2N7F9E6", userId: "9f2c4e71",
+      before: null,
+      after: { name: zones[1].name, type: "polygon", alertOnExit: true },
+    },
+    {
+      id: "a-03", at: "2026-08-30 17:52", action: "update", entity: "rule",
+      entityId: "01J9TZR8V4W2XKQ6MB3CD5H7N9", userId: "3b8d15ac",
+      before: { name: c.rules.overspeed, threshold: 90, channels: ["email"] },
+      after: { name: c.rules.overspeed, threshold: 95, channels: ["email", "webpush"] },
+    },
+    {
+      id: "a-04", at: "2026-08-30 14:05", action: "delete", entity: "apiKey",
+      entityId: "01J9TN2WQ7X4KZ8RB1MD6F3C5E", userId: "9f2c4e71",
+      before: { name: "Legacy integration", scopes: ["read:positions"] },
+      after: null,
+    },
+    {
+      id: "a-05", at: "2026-08-29 11:23", action: "create", entity: "user",
+      entityId: "01J9RKX5T2M9WQ4NB7CD8F1E3H", userId: "9f2c4e71",
+      before: null,
+      after: { email: dispatch, role: "viewer" },
+    },
+    {
+      id: "a-06", at: "2026-08-29 10:48", action: "update", entity: "branding",
+      entityId: "01J9RKJ3N6W8XT2QM4BD5C7F9E", userId: "9f2c4e71",
+      before: { productName: c.company, primary: "#22d3ee" },
+      after: { productName: `${c.company} Track`, primary: "#7c7df5" },
+    },
+    {
+      id: "a-07", at: "2026-08-28 16:34", action: "create", entity: "domain",
+      entityId: "01J9P8W2K5X7QT9RM3ND4C6F8E", userId: "3b8d15ac",
+      before: null,
+      after: { domain: `fleet.${c.domain}`, verified: false },
+    },
+    {
+      id: "a-08", at: "2026-08-28 09:12", action: "update", entity: "driver",
+      entityId: "01J9NX4T8M2W6KQ5RB9CD1F7E3", userId: "3b8d15ac",
+      before: { name: people[7].name, phone: `${c.phonePrefix}1245678` },
+      after: { name: people[7].name, phone: `${c.phonePrefix}5590112` },
+    },
+    {
+      id: "a-09", at: "2026-08-27 15:58", action: "update", entity: "accountPrefs",
+      entityId: "01J9MHQ7V3X5WT8KM2ND6C4F9E", userId: "9f2c4e71",
+      before: { locale: "en", unitSpeed: "kmh" },
+      after: { locale: lang.slice(0, 2), unitSpeed: "kmh" },
+    },
+    {
+      id: "a-10", at: "2026-08-27 08:40", action: "delete", entity: "rule",
+      entityId: "01J9M2K8T4W7XQ1RM5BD3C9F6E", userId: "9f2c4e71",
+      before: { name: c.rules.idle, threshold: 60 },
+      after: null,
+    },
+    {
+      id: "a-11", at: "2026-08-26 13:26", action: "create", entity: "scheduledReport",
+      entityId: "01J9JW6Q2M8XKT4NB7RD5C1F3E", userId: "3b8d15ac",
+      before: null,
+      after: { type: "mileage", cadence: "weekly", recipients: [manager] },
+    },
+    {
+      id: "a-12", at: "2026-08-26 09:03", action: "create", entity: "device",
+      entityId: "01J9JN8T5W2XQK7MB4RD9C6F1E", userId: "9f2c4e71",
+      before: null,
+      after: { imei: "8613270858*****", model: "FMC130", label: `${secondTag}-034` },
+    },
+    {
+      id: "a-13", at: "2026-08-25 17:44", action: "update", entity: "geofence",
+      entityId: "01J9H7X2K9M4WT6QB1ND8C5F3E", userId: "3b8d15ac",
+      before: { name: zones[0].name, alertOnExit: false },
+      after: { name: zones[0].name, alertOnExit: true },
+    },
+    {
+      id: "a-14", at: "2026-08-25 11:19", action: "update", entity: "user",
+      entityId: "01J9GTQ4V8X2WK5RM7BD3C6F9E", userId: "9f2c4e71",
+      before: { email: dispatch, role: "viewer" },
+      after: { email: dispatch, role: "account_manager" },
+    },
+    {
+      id: "a-15", at: "2026-08-24 14:37", action: "delete", entity: "device",
+      entityId: "01J9F5W8T1M6XQ3KB9RD2C4F7E", userId: "3b8d15ac",
+      before: { imei: "8613270861*****", model: "FMB920", label: `${cityTag}-007` },
+      after: null,
+    },
+  ];
+}
 
 const VISIBLE = 10;
 
@@ -141,13 +161,14 @@ const th = "px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-w
 const thStyle: React.CSSProperties = { color: "var(--admin-ink-soft)" };
 
 function AuditPage() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const all = React.useMemo(() => rowsFor(i18n.language), [i18n.language]);
   const [entity, setEntity] = React.useState("");
   const [action, setAction] = React.useState("");
   const [open, setOpen] = React.useState<string | null>(null);
   const [showAll, setShowAll] = React.useState(false);
 
-  const filtered = ROWS.filter((r) => (entity === "" || r.entity === entity) && (action === "" || r.action === action));
+  const filtered = all.filter((r) => (entity === "" || r.entity === entity) && (action === "" || r.action === action));
   const rows = showAll ? filtered : filtered.slice(0, VISIBLE);
   const hasMore = !showAll && filtered.length > VISIBLE;
 

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { DayPicker } from "react-day-picker";
@@ -9,7 +10,7 @@ import { cn } from "@/lib/utils";
 export function DatePicker({
   value,
   onChange,
-  placeholder = "Pasirinkti datą",
+  placeholder,
   className,
   disabled,
 }: {
@@ -19,6 +20,7 @@ export function DatePicker({
   className?: string;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation("admin");
   const [open, setOpen] = React.useState(false);
   return (
     <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
@@ -38,7 +40,7 @@ export function DatePicker({
         >
           <CalendarIcon className="h-3.5 w-3.5 opacity-70" />
           <span className="flex-1 text-left">
-            {value ? format(value, "yyyy-MM-dd") : placeholder}
+            {value ? format(value, "yyyy-MM-dd") : placeholder ?? t("admin.pickDate")}
           </span>
         </button>
       </PopoverTrigger>

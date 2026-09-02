@@ -62,6 +62,7 @@
     "geofences": "Geozonen",
     "rules": "Regeln",
     "events": "Ereignisse",
+    "notifications": "Benachrichtigungen",
     "insights": "Auswertungen",
     "reports": "Berichte",
     "ops": "Betrieb",
@@ -90,6 +91,8 @@
     "palettePages": "Seiten",
     "paletteDevices": "Geräte",
     "paletteEmpty": "Keine Treffer",
+    "paletteSearch": "Seite, Gerät, Fahrer oder Ereignis suchen…",
+    "paletteNoMatch": "Nichts gefunden für „{{q}}“",
     "console": "Plattform-Konsole"
   },
   "routing": {

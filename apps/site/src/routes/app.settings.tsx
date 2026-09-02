@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { contentFor } from "@/lib/demo-content";
 import { AdminButton, AdminInput, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 
@@ -188,8 +189,10 @@ function SettingsPage() {
 
 /** The account's server-side defaults: what reports and alert e-mails are rendered with. */
 function AccountDefaultsSection() {
-  const { t } = useTranslation("admin");
-  const [tz, setTz] = React.useState("Europe/Vilnius");
+  const { t, i18n } = useTranslation("admin");
+  // reports and alert e-mails render in the ACCOUNT's zone — Europe/Vilnius was hardcoded, so the
+  // German demo told a Berlin operator their reports come out in Lithuanian time
+  const [tz, setTz] = React.useState(() => contentFor(i18n.language).tz);
   const [locale, setLocale] = React.useState("lt");
   const [speed, setSpeed] = React.useState("kmh");
   const [distance, setDistance] = React.useState("km");
@@ -363,7 +366,7 @@ function PushSection() {
 type ExportJob = { id: string; requestedAt: string; status: "pending" | "done" };
 
 function ExportSection() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
   const [account, setAccount] = React.useState("acc-demo");
   const [jobs, setJobs] = React.useState<ExportJob[]>([
     { id: "exp-1", requestedAt: "2026-08-12 09:14", status: "done" },
@@ -390,7 +393,7 @@ function ExportSection() {
               <Combobox
                 value={account}
                 onChange={setAccount}
-                options={[{ value: "acc-demo", label: "Demo Logistics UAB" }]}
+                options={[{ value: "acc-demo", label: contentFor(i18n.language).companyLegal }]}
               />
             </div>
           </label>

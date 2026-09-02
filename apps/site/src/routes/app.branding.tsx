@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { contentFor } from "@/lib/demo-content";
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from "@/components/admin/AdminKit";
 
 export const Route = createFileRoute("/app/branding")({
@@ -18,16 +19,17 @@ const PLATFORM_DOMAIN = "orbetra.com";
 const DNS_TARGET = "edge.orbetra.com";
 
 function BrandingPage() {
-  const { t } = useTranslation("admin");
-  const [productName, setProductName] = React.useState("Demo Logistics Track");
-  const [supportEmail, setSupportEmail] = React.useState("pagalba@demolog.lt");
+  const { t, i18n } = useTranslation("admin");
+  const c = contentFor(i18n.language);
+  const [productName, setProductName] = React.useState(`${c.company} Track`);
+  const [supportEmail, setSupportEmail] = React.useState(c.supportEmail);
   const [primary, setPrimary] = React.useState("#7c7df5");
   const [accent, setAccent] = React.useState("#7c5cfc");
   const [logoUrl, setLogoUrl] = React.useState("");
   const [saved, setSaved] = React.useState(false);
   const [domains, setDomains] = React.useState<DemoDomain[]>([
-    { id: "d-1", domain: "demolog.orbetra.com", verified: true, txtToken: null },
-    { id: "d-2", domain: "fleet.demolog.lt", verified: false, txtToken: "9f2c4e71a8d05b36" },
+    { id: "d-1", domain: `${c.domain.split(".")[0]}.orbetra.com`, verified: true, txtToken: null },
+    { id: "d-2", domain: `fleet.${c.domain}`, verified: false, txtToken: "9f2c4e71a8d05b36" },
   ]);
 
   const submit = (e: React.FormEvent) => {

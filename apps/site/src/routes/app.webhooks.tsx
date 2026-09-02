@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Plus, Trash2, Webhook as WebhookIcon } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { contentFor } from "@/lib/demo-content";
 import { AdminButton, AdminCheckbox, AdminInput, AdminLabel, AdminSwitch, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { fmtDateTime } from "@/lib/admin-format";
@@ -30,11 +31,15 @@ const EVENT_KINDS = [
 
 type DemoHook = { id: string; url: string; events: string[]; enabled: boolean };
 
-const INITIAL_HOOKS: DemoHook[] = [
-  { id: "w1", url: "https://erp.klientas.lt/orbetra/webhook", events: ["geofence", "panic"], enabled: true },
-  { id: "w2", url: "https://hooks.slack.com/services/T024F/B99/xxxx", events: ["overspeed", "power_cut", "device_offline"], enabled: true },
-  { id: "w3", url: "https://staging.klientas.lt/hook", events: [], enabled: false },
-];
+/** The customer's own hosts — a Warsaw fleet's ERP does not live on a `.lt` domain. */
+function initialHooks(lang: string): DemoHook[] {
+  const host = contentFor(lang).clientHost;
+  return [
+    { id: "w1", url: `https://${host}/orbetra/webhook`, events: ["geofence", "panic"], enabled: true },
+    { id: "w2", url: "https://hooks.slack.com/services/T024F/B99/xxxx", events: ["overspeed", "power_cut", "device_offline"], enabled: true },
+    { id: "w3", url: `https://staging.${host}/hook`, events: [], enabled: false },
+  ];
+}
 
 type DemoDelivery = { id: string; at: string; kind: string; success: boolean; statusCode: number | null };
 
@@ -53,10 +58,12 @@ const th = "px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-w
 const thStyle: React.CSSProperties = { color: "var(--admin-ink-soft)" };
 
 function WebhooksPage() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const lang = i18n.language;
   const kindLabel = (k: string) => (EVENT_KINDS.includes(k) ? t(`events.k.${k}`) : k);
 
-  const [hooks, setHooks] = React.useState<DemoHook[]>(INITIAL_HOOKS);
+  const [hooks, setHooks] = React.useState<DemoHook[]>(() => initialHooks(lang));
+  React.useEffect(() => setHooks(initialHooks(lang)), [lang]);
   const [addOpen, setAddOpen] = React.useState(false);
   const [freshSecret, setFreshSecret] = React.useState<string | null>(null);
   const [url, setUrl] = React.useState("");

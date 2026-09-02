@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -9,8 +10,8 @@ export function Combobox({
   value,
   onChange,
   options,
-  placeholder = "Pasirinkti…",
-  searchPlaceholder = "Ieškoti…",
+  placeholder,
+  searchPlaceholder,
   className,
   disabled,
   width,
@@ -24,6 +25,8 @@ export function Combobox({
   disabled?: boolean;
   width?: number | string;
 }) {
+  // the shared strings, not Lithuanian defaults baked into a primitive every page renders
+  const { t } = useTranslation("admin");
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -56,7 +59,7 @@ export function Combobox({
             width,
           }}
         >
-          <span className="truncate text-left">{active ? active.label : placeholder}</span>
+          <span className="truncate text-left">{active ? active.label : placeholder ?? t("admin.pick")}</span>
           <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
         </button>
       </PopoverTrigger>
@@ -71,7 +74,7 @@ export function Combobox({
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={searchPlaceholder}
+            placeholder={searchPlaceholder ?? t("admin.search")}
             className="w-full bg-transparent text-sm outline-none placeholder:opacity-60"
             style={{ color: "var(--admin-ink)" }}
           />
@@ -79,7 +82,7 @@ export function Combobox({
         <div className="max-h-64 overflow-y-auto p-1">
           {filtered.length === 0 && (
             <div className="px-3 py-8 text-center text-sm" style={{ color: "var(--admin-ink-soft)" }}>
-              Nieko nerasta
+              {t("admin.nothingFound")}
             </div>
           )}
           {filtered.map((o) => {

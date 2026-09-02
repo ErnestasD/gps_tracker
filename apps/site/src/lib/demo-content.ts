@@ -57,6 +57,20 @@ export interface DemoContent {
   clientHost: string;
   /** two haulier accounts the reports page filters by */
   reportAccounts: [string, string];
+  /** the dispatch desk's shared mailbox — a rule notification target */
+  dispatchEmail: string;
+  /** rule names, as this operator would have typed them */
+  rules: { overspeed: string; geofence: string; fuel: string; offline: string; idle: string };
+  /** the scopes a rule can apply to, in the operator's words */
+  scopes: { all: string; drivers: string; vans: string };
+  /** garage jobs, for the maintenance rows. Order is load-bearing: the maintenance page keys its
+   *  rows by index (oil / tyres / roadworthiness / brakes / filters), then adds `extraServices`. */
+  services: string[];
+  /** the jobs beyond the common five, and the service plans they group into */
+  extraServices: { tacho: string; engine: string; fuelFilter: string };
+  plans: { standard: string; truck: string };
+  /** vehicle papers that expire */
+  docs: { inspection: string; insurance: string; tachograph: string };
 }
 
 const LT: DemoContent = {
@@ -77,6 +91,19 @@ const LT: DemoContent = {
   supportEmail: "pagalba@demolog.lt",
   clientHost: "erp.klientas.lt",
   reportAccounts: ["UAB Baltijos logistika", "UAB Kensa transportas"],
+  dispatchEmail: "dispecerine@demolog.lt",
+  rules: {
+    overspeed: "Greičio viršijimas 90",
+    geofence: "Vilniaus bazės zona",
+    fuel: "100 l kuro vagystė",
+    offline: "Įrenginys be ryšio > 2 val.",
+    idle: "Prastova > 15 min.",
+  },
+  scopes: { all: "Visi įrenginiai", drivers: "Vairuotojai", vans: "Van klasės įrenginiai" },
+  services: ["Alyvos keitimas", "Padangų keitimas", "Techninė apžiūra", "Stabdžių kaladėlių keitimas", "Filtrų keitimas"],
+  extraServices: { tacho: "Tachografo patikra", engine: "Variklio diagnostika", fuelFilter: "Kuro filtras" },
+  plans: { standard: "Standartinis servisas", truck: "Sunkvežimių planas" },
+  docs: { inspection: "Metinė TA", insurance: "Kasko draudimas", tachograph: "Patikros sertifikatas" },
 };
 
 const PL: DemoContent = {
@@ -97,6 +124,19 @@ const PL: DemoContent = {
   supportEmail: "pomoc@demolog.pl",
   clientHost: "erp.klient.pl",
   reportAccounts: ["Wisła Logistyka sp. z o.o.", "Kensa Transport sp. z o.o."],
+  dispatchEmail: "dyspozytornia@demolog.pl",
+  rules: {
+    overspeed: "Przekroczenie 90 km/h",
+    geofence: "Strefa Baza Warszawa",
+    fuel: "Kradzież 100 l paliwa",
+    offline: "Brak łączności > 2 godz.",
+    idle: "Postój > 15 min.",
+  },
+  scopes: { all: "Wszystkie urządzenia", drivers: "Kierowcy", vans: "Pojazdy klasy Van" },
+  services: ["Wymiana oleju", "Wymiana opon", "Przegląd techniczny", "Wymiana klocków hamulcowych", "Wymiana filtrów"],
+  extraServices: { tacho: "Kalibracja tachografu", engine: "Diagnostyka silnika", fuelFilter: "Filtr paliwa" },
+  plans: { standard: "Serwis standardowy", truck: "Plan dla ciężarówek" },
+  docs: { inspection: "Przegląd roczny", insurance: "Ubezpieczenie AC", tachograph: "Świadectwo kalibracji" },
 };
 
 // Warsaw's fleet, named in English — see the header: the city decides the people, the language
@@ -118,6 +158,19 @@ const EN: DemoContent = {
   supportEmail: "support@demolog.com",
   clientHost: "erp.customer.com",
   reportAccounts: ["Wisła Logistics Ltd.", "Kensa Transport Ltd."],
+  dispatchEmail: "dispatch@demolog.com",
+  rules: {
+    overspeed: "Overspeed 90 km/h",
+    geofence: "Warsaw depot zone",
+    fuel: "100 l fuel theft",
+    offline: "No contact > 2 h",
+    idle: "Idling > 15 min",
+  },
+  scopes: { all: "All devices", drivers: "Drivers", vans: "Van-class devices" },
+  services: ["Oil change", "Tyre change", "Roadworthiness test", "Brake pad replacement", "Filter change"],
+  extraServices: { tacho: "Tachograph calibration", engine: "Engine diagnostics", fuelFilter: "Fuel filter" },
+  plans: { standard: "Standard service", truck: "Truck plan" },
+  docs: { inspection: "Annual inspection", insurance: "Comprehensive cover", tachograph: "Calibration certificate" },
 };
 
 const DE: DemoContent = {
@@ -138,6 +191,19 @@ const DE: DemoContent = {
   supportEmail: "support@demolog.de",
   clientHost: "erp.kunde.de",
   reportAccounts: ["Spree Logistik GmbH", "Kensa Transport GmbH"],
+  dispatchEmail: "disposition@demolog.de",
+  rules: {
+    overspeed: "Geschwindigkeit über 90 km/h",
+    geofence: "Zone Depot Berlin",
+    fuel: "Kraftstoffdiebstahl 100 l",
+    offline: "Kein Kontakt > 2 Std.",
+    idle: "Standzeit > 15 Min.",
+  },
+  scopes: { all: "Alle Geräte", drivers: "Fahrer", vans: "Fahrzeuge der Van-Klasse" },
+  services: ["Ölwechsel", "Reifenwechsel", "Hauptuntersuchung", "Bremsbelagwechsel", "Filterwechsel"],
+  extraServices: { tacho: "Tachograph-Kalibrierung", engine: "Motordiagnose", fuelFilter: "Kraftstofffilter" },
+  plans: { standard: "Standardservice", truck: "Lkw-Plan" },
+  docs: { inspection: "Hauptuntersuchung", insurance: "Vollkaskoversicherung", tachograph: "Kalibrierbescheinigung" },
 };
 
 function letters(r: () => number, n: number): string {
@@ -167,4 +233,28 @@ export function demoFor(lang: string): { city: DemoCity; content: DemoContent } 
 /** A full name drawn from the city's pools, for generated rosters. */
 export function personName(c: DemoContent, r: () => number): string {
   return `${c.firstNames[Math.floor(r() * c.firstNames.length)]} ${c.lastNames[Math.floor(r() * c.lastNames.length)]}`;
+}
+
+/**
+ * The demo's DRIVER ROSTER — one list, so every page names the same people.
+ *
+ * The drivers page listed "Jonas Petrauskas" and the trips page credited his journeys to "Jonas
+ * Kazlauskas": the surnames had been shuffled independently on each page, so the same fleet had a
+ * different crew depending on which screen you were looking at. A prospect comparing two tabs sees
+ * data that does not reconcile, which is the one thing a tracking product may not look like.
+ *
+ * Index-based rather than seeded — the pages key rows by `drv_0001`, so the name for an id has to
+ * be stable without threading an RNG through every caller.
+ */
+export function roster(lang: string, n = 8): { id: string; name: string }[] {
+  const c = contentFor(lang);
+  return Array.from({ length: n }, (_, i) => ({
+    id: `drv_${(i + 1).toString().padStart(4, "0")}`,
+    name: `${c.firstNames[i % c.firstNames.length]} ${c.lastNames[(i * 3) % c.lastNames.length]}`,
+  }));
+}
+
+/** The roster as an id→name lookup, for pages that carry their own rows. */
+export function rosterNames(lang: string, n = 8): Record<string, string> {
+  return Object.fromEntries(roster(lang, n).map((d) => [d.id, d.name]));
 }

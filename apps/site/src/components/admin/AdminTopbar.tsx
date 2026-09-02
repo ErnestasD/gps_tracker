@@ -141,7 +141,7 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         onClick={() => setPaletteOpen(true)}
         className="grid h-9 w-9 cursor-pointer place-items-center rounded-md border md:hidden"
         style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
-        aria-label="Ieškoti"
+        aria-label={t("admin.search")}
       >
         <Search className="h-4 w-4" />
       </button>

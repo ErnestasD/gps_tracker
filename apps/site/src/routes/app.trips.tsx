@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { roster, rosterNames } from "@/lib/demo-content";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Search } from "lucide-react";
 import { Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
@@ -28,14 +29,10 @@ const DEVICES: DemoDevice[] = [
   { id: "dev_0005", name: "Truck 05", plate: "HSN 152" },
 ];
 
-const DRIVERS: DemoDriver[] = [
-  { id: "drv_0001", name: "Jonas Kazlauskas" },
-  { id: "drv_0002", name: "Mantas Petrauskas" },
-  { id: "drv_0003", name: "Rokas Stankevičius" },
-  { id: "drv_0004", name: "Tomas Urbonas" },
-  { id: "drv_0005", name: "Lukas Balčiūnas" },
-  { id: "drv_0006", name: "Andrius Žukauskas" },
-];
+// The SAME six people the drivers page lists. They used to be a second, independently shuffled
+// roster — "Jonas Petrauskas" over there was "Jonas Kazlauskas" here, so the fleet had a different
+// crew depending on which tab you opened. See demo-content's roster().
+const driversFor = (lang: string): DemoDriver[] => roster(lang, 6);
 
 type DemoTrip = {
   id: string;
@@ -78,7 +75,7 @@ function fmtDuration(ms: number): string {
 }
 
 const deviceLabel = (id: string) => DEVICES.find((d) => d.id === id)?.name ?? id;
-const driverName = (id: string | null) => (id === null ? null : DRIVERS.find((d) => d.id === id)?.name ?? null);
+const driverName = (lang: string, id: string | null) => (id === null ? null : rosterNames(lang, 6)[id] ?? null);
 
 // ---------------------------------------------------------------------------
 // Trip route — a deterministic slice of REAL street geometry per trip, so the
@@ -119,7 +116,9 @@ const thStyle: React.CSSProperties = { color: "var(--admin-ink-soft)", backgroun
 type SortKey = "start" | "device" | "distance" | "avg" | "max";
 
 function TripsPage() {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const lang = i18n.language;
+  const DRIVERS = React.useMemo(() => driversFor(lang), [lang]);
   const fmtKm = (km: number) => t("units.km", { n: Math.round(km * 10) / 10 });
   const fmtSpeed = (kmh: number) => `${Math.round(kmh)} ${t("units.kmh")}`;
   const [deviceId, setDeviceId] = React.useState("");
@@ -143,7 +142,7 @@ function TripsPage() {
     const dayKey = (d: Date) => d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate();
     const list = TRIPS.filter((t) => {
       if (deviceId !== "" && t.deviceId !== deviceId) return false;
-      if (ql !== "" && !(driverName(tripDriverId(t)) ?? "").toLowerCase().includes(ql)) return false;
+      if (ql !== "" && !(driverName(lang, tripDriverId(t)) ?? "").toLowerCase().includes(ql)) return false;
       const day = dayKey(new Date(t.start));
       if (from && day < dayKey(from)) return false;
       if (to && day > dayKey(to)) return false;
@@ -266,7 +265,7 @@ function TripsPage() {
                         {trip.ongoing === true && <Badge tone="warning" className="ml-2">{t("trips.ongoing")}</Badge>}
                       </td>
                       <td className="hidden px-3 py-2.5 font-medium md:table-cell" style={{ color: "var(--admin-ink)" }}>{deviceLabel(trip.deviceId)}</td>
-                      <td className="px-3 py-2.5" style={{ color: "var(--admin-ink-soft)" }}>{driverName(tripDriverId(trip)) ?? "—"}</td>
+                      <td className="px-3 py-2.5" style={{ color: "var(--admin-ink-soft)" }}>{driverName(lang, tripDriverId(trip)) ?? "—"}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "var(--admin-ink)" }}>
                         {fmtKm(trip.distanceKm)}
                         <span className="ml-1 text-[10px] uppercase" style={{ color: "var(--admin-ink-soft)" }}>{trip.source === "odo" ? t("trips.odo") : t("trips.gps")}</span>

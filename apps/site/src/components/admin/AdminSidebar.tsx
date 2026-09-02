@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { contentFor } from "@/lib/demo-content";
 import {
   LayoutDashboard, Map, Car, Users, Wrench, Route, History,
   Hexagon, ListChecks, Bell, BarChart3, Terminal, Waypoints,
@@ -60,7 +61,7 @@ const groups: NavGroup[] = [
 ];
 
 export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
@@ -76,7 +77,7 @@ export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
           <Circle className="h-4 w-4" strokeWidth={2.5} />
         </div>
         <div className="flex flex-col leading-none">
-          <span className="text-sm font-semibold">Demo Logistika</span>
+          <span className="text-sm font-semibold">{contentFor(i18n.language).company}</span>
           <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--admin-ink-soft)" }}>
             {t("shell.admin")}
           </span>
