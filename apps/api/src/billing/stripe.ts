@@ -43,6 +43,16 @@ export interface StripeGateway {
   createCheckoutSession(opts: { customerId: string; tenantId: string; priceId: string; successUrl: string; cancelUrl: string; idempotencyKey?: string }): Promise<string>
   /** Create a Customer Portal session; returns the hosted URL. */
   createPortalSession(opts: { customerId: string; returnUrl: string }): Promise<string>
+  /**
+   * Move an existing subscription to a different TSP plan, swapping BOTH line items — the base
+   * (licensed) price AND its paired metered overage — with proration.
+   *
+   * Why not the Stripe Customer Portal's plan switcher: our subscriptions carry two items (base +
+   * a metered overage price on the same product), and the portal's generic switcher targets only
+   * the licensed item — it would leave a customer on the new base with the OLD plan's overage rate.
+   * So the swap is done here, atomically, over both items.
+   */
+  changePlan(opts: { subscriptionId: string; newBasePriceId: string; newOveragePriceId: string }): Promise<void>
   /** Verify the webhook signature and parse the event. THROWS on an invalid signature. */
   constructEvent(rawBody: string, signature: string): StripeEvent
   /** The metered overage price id for a base plan (TSP), added as a 2nd checkout line item;
@@ -186,6 +196,25 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
     createPortalSession: async ({ customerId, returnUrl }) => {
       const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl })
       return session.url
+    },
+    changePlan: async ({ subscriptionId, newBasePriceId, newOveragePriceId }) => {
+      // read the current items so we UPDATE them in place (by item id) rather than adding a third
+      // line — Stripe replaces an item's price when you pass its id + a new price
+      const sub = await stripe.subscriptions.retrieve(subscriptionId)
+      const baseItem = sub.items.data.find((i) => i.price.recurring?.usage_type === 'licensed')
+      const overageItem = sub.items.data.find((i) => i.price.recurring?.usage_type === 'metered')
+      if (baseItem === undefined) throw new Error('subscription has no licensed base item')
+      const items: Stripe.SubscriptionUpdateParams.Item[] = [{ id: baseItem.id, price: newBasePriceId }]
+      // a subscription created via our checkout always has the overage item; guard anyway so a
+      // hand-made subscription without one changes the base rather than throwing
+      if (overageItem !== undefined) items.push({ id: overageItem.id, price: newOveragePriceId })
+      await stripe.subscriptions.update(subscriptionId, {
+        items,
+        // upgrade charges the prorated difference now; downgrade credits it against the next invoice
+        proration_behavior: 'create_prorations',
+        // the webhook (customer.subscription.updated) carries the new base price → the tenant's plan
+        // and entitlements are persisted there, the same path a checkout uses
+      })
     },
     constructEvent: (rawBody, signature) =>
       stripe.webhooks.constructEvent(rawBody, signature, cfg.webhookSecret) as unknown as StripeEvent,

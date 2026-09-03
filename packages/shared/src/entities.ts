@@ -1145,6 +1145,9 @@ export interface BillingView {
   canSubscribe: boolean
   /** true while an F2 self-serve trial is running (local trial, not a Stripe-side trial). */
   localTrial: boolean
+  /** the current base (licensed) Stripe price id, so the plan-change UI can mark "you are here" and
+   *  omit it from the switch options; null when not subscribed. */
+  planPriceId: string | null
 }
 /** POST /v1/billing/checkout and /portal both return a Stripe-hosted URL to redirect to. */
 export interface BillingRedirectView {

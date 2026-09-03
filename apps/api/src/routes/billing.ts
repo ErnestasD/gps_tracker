@@ -3,6 +3,7 @@ import type { Redis } from 'ioredis'
 
 import type { Db, PaidInvoice, SubscriptionUpdate } from '@orbetra/db'
 import type { TenantDeviceRow } from '@orbetra/registry'
+import { isDirectPlan } from '@orbetra/shared'
 import type { BillingPlanView, BillingView, Role } from '@orbetra/shared'
 
 import type { StripeGateway } from '../billing/stripe.js'
@@ -107,7 +108,7 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     if (!isTenantWideAdmin(auth)) return problem(c, 403, 'Forbidden')
     c.header('Cache-Control', 'no-store')
     if (deps.stripe === undefined) {
-      const view: BillingView = { configured: false, hasCustomer: false, status: null, active: false, currentPeriodEnd: null, suspendedAt: null, canSubscribe: false, localTrial: false }
+      const view: BillingView = { configured: false, hasCustomer: false, status: null, active: false, currentPeriodEnd: null, suspendedAt: null, canSubscribe: false, localTrial: false, planPriceId: null }
       return c.json(view)
     }
     const b = await deps.db.tenants.getBilling(auth.tenantId)
@@ -121,6 +122,7 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
       // same predicate the checkout route enforces — the picker can never disagree with the API
       canSubscribe: canStartCheckout(b?.subscriptionStatus, b?.stripeSubscriptionId),
       localTrial: isLocalTrial(b?.subscriptionStatus, b?.stripeSubscriptionId),
+      planPriceId: b?.subscriptionPriceId ?? null,
     }
     return c.json(view)
   })
@@ -205,6 +207,42 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     if (b?.stripeCustomerId == null) return problem(c, 409, 'Conflict', 'no_customer')
     const url = await deps.stripe.createPortalSession({ customerId: b.stripeCustomerId, returnUrl: `${base}/app/billing` })
     return c.json({ url })
+  })
+
+  /**
+   * Change the plan of an existing subscription (TSP Start ⇄ Grow ⇄ Scale).
+   *
+   * The Stripe Customer Portal cannot do this for us: our subscriptions carry a paired metered
+   * overage item its generic switcher ignores (it would leave the new base on the old overage
+   * rate). So the swap is server-side, over both items, with proration. The webhook persists the
+   * new plan and entitlements — this route does not touch the DB, exactly like checkout.
+   */
+  app.post('/v1/billing/change-plan', async (c) => {
+    const auth = c.get('auth')
+    if (!isTenantWideAdmin(auth)) return problem(c, 403, 'Forbidden')
+    if (deps.stripe === undefined) return problem(c, 503, 'Service Unavailable', 'billing_not_configured')
+
+    const body = (await c.req.json().catch(() => ({}))) as { priceId?: unknown }
+    const priceId = typeof body.priceId === 'string' ? body.priceId : undefined
+    // allowlisted base price, and one we can map to a plan AND a paired overage — an off-list or
+    // Direct-only price never reaches Stripe (never trust the client)
+    if (priceId === undefined || !deps.stripe.prices.includes(priceId)) return problem(c, 400, 'Bad Request', 'invalid_price')
+    const targetPlan = deps.stripe.planFor(priceId)
+    const overagePrice = deps.stripe.overageFor(priceId)
+    if (targetPlan === undefined || isDirectPlan(targetPlan) || overagePrice === undefined) {
+      // Direct plans have no metered overage and are not a reseller upgrade path; refuse rather
+      // than build a malformed subscription
+      return problem(c, 400, 'Bad Request', 'not_a_tsp_plan')
+    }
+
+    const b = await deps.db.tenants.getBilling(auth.tenantId)
+    if (b?.stripeSubscriptionId == null) return problem(c, 409, 'Conflict', 'no_subscription')
+    // no-op if they picked the plan they are already on (the UI hides it, but never trust the client)
+    if (b.subscriptionPriceId === priceId) return problem(c, 409, 'Conflict', 'already_on_plan')
+
+    await deps.stripe.changePlan({ subscriptionId: b.stripeSubscriptionId, newBasePriceId: priceId, newOveragePriceId: overagePrice })
+    // the webhook writes the new plan; report success and let the client re-read GET /v1/billing
+    return c.json({ ok: true })
   })
 }
 

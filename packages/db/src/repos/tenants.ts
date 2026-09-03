@@ -74,6 +74,9 @@ export interface BillingState {
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
   subscriptionStatus: string | null
+  /** the current base (licensed) Stripe price id — the plan the tenant is on, for the change-plan
+   *  no-op guard and the UI's "you are here" marker */
+  subscriptionPriceId: string | null
   currentPeriodEnd: string | null
   /** when the fleet was cut off for non-payment; null = serving. The UI needs this to explain an
    *  empty live map — "no devices are reporting" and "we stopped accepting their data" look
@@ -408,13 +411,14 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
     getBilling: async (tenantId) => {
       const row = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { stripeCustomerId: true, stripeSubscriptionId: true, subscriptionStatus: true, currentPeriodEnd: true, suspendedAt: true },
+        select: { stripeCustomerId: true, stripeSubscriptionId: true, subscriptionStatus: true, subscriptionPriceId: true, currentPeriodEnd: true, suspendedAt: true },
       })
       if (row === null) return null
       return {
         stripeCustomerId: row.stripeCustomerId,
         stripeSubscriptionId: row.stripeSubscriptionId,
         subscriptionStatus: row.subscriptionStatus,
+        subscriptionPriceId: row.subscriptionPriceId,
         currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
         suspendedAt: row.suspendedAt?.toISOString() ?? null,
       }

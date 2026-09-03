@@ -166,7 +166,11 @@
         "api": "REST-API-Zugriff für Integrationen",
         "webhooks": "Webhooks für die Echtzeit-Ereignisübermittlung"
       }
-    }
+    },
+    "changePlanTitle": "Plan ändern",
+    "changePlanNote": "Der Wechsel wird anteilig berechnet: ein Upgrade sofort, ein Downgrade auf der nächsten Rechnung gutgeschrieben.",
+    "switchTo": "Wechseln",
+    "switching": "Wechsel…"
   },
   "branding": {
     "title": "Branding",

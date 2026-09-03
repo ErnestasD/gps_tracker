@@ -7,6 +7,8 @@ export const getBilling = () => getJson<BillingView>('/v1/billing')
 export const listPlans = () => getJson<BillingPlanView[]>('/v1/billing/plans')
 export const startCheckout = (priceId?: string) => mutate<{ url: string }>('POST', '/v1/billing/checkout', priceId ? { priceId } : undefined)
 export const openPortal = () => mutate<{ url: string }>('POST', '/v1/billing/portal')
+/** Move an active subscription to another TSP plan (swaps base + overage, prorated). */
+export const changePlan = (priceId: string) => mutate<{ ok: boolean }>('POST', '/v1/billing/change-plan', { priceId })
 
 /** Format a plan's minor-unit amount (cents) + currency for display, e.g. 1500,'eur' → "€15". */
 export function fmtPlanAmount(amount: number | null, currency: string): string {

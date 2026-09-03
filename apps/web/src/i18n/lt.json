@@ -166,7 +166,11 @@
         "api": "REST API prieiga integracijoms",
         "webhooks": "Webhook’ai — įvykiai siunčiami realiuoju laiku"
       }
-    }
+    },
+    "changePlanTitle": "Keisti planą",
+    "changePlanNote": "Persijungus skirtumas paskaičiuojamas proporcingai. Aukštesnis planas — apmokestinamas iškart, žemesnis — įskaitomas kitoje sąskaitoje.",
+    "switchTo": "Persijungti",
+    "switching": "Keičiama…"
   },
   "branding": {
     "title": "Prekės ženklas",

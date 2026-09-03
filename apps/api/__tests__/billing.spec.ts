@@ -39,11 +39,14 @@ let db: Db
 let databaseUrl: string
 let port: number
 let portOff: number
+let portMulti: number
 /** device counts handed to the registry rebuild, and a switch to make that rebuild fail. */
 const restored: number[] = []
 let restoreFails = false
 let httpServer: ReturnType<typeof createServer>
 let httpServerOff: ReturnType<typeof createServer>
+let httpServerMulti: ReturnType<typeof createServer>
+let appMulti: ReturnType<typeof createApp>
 
 let t1: string
 let t1Token: string
@@ -59,7 +62,7 @@ async function freshTenant(name: string) {
 }
 
 // a fake Stripe gateway: deterministic customer ids, records checkout/portal calls
-const calls: { checkout: number; portal: number } = { checkout: 0, portal: 0 }
+const calls: { checkout: number; portal: number; changePlan: { subscriptionId: string; newBasePriceId: string; newOveragePriceId: string }[] } = { checkout: 0, portal: 0, changePlan: [] }
 // 'price_test' behaves like a TSP plan (maps to an overage price) so checkout adds the 2nd line item
 const fakeStripe: StripeGateway = {
   prices: ['price_test'],
@@ -67,6 +70,7 @@ const fakeStripe: StripeGateway = {
   ensureCustomer: ({ tenantId, existingCustomerId }) => Promise.resolve(existingCustomerId ?? `cus_${tenantId.slice(0, 8)}`),
   createCheckoutSession: ({ customerId }) => { calls.checkout++; return Promise.resolve(`https://checkout.test/${customerId}`) },
   createPortalSession: ({ customerId }) => { calls.portal++; return Promise.resolve(`https://portal.test/${customerId}`) },
+  changePlan: (o) => { calls.changePlan.push(o); return Promise.resolve() },
   constructEvent: (raw, sig): StripeEvent => {
     if (sig !== 'valid') throw new Error('invalid signature')
     return JSON.parse(raw) as StripeEvent
@@ -154,6 +158,18 @@ beforeAll(async () => {
       return Promise.resolve()
     },
   })
+    // change-plan needs 2+ allowlisted prices, which would break the single-price checkout
+  // convenience above — so it lives on its own app/port with a two-price fake.
+  const fakeStripeMulti: StripeGateway = {
+    ...fakeStripe,
+    prices: ['price_ts', 'price_tg'],
+    overageFor: (b) => (b === 'price_ts' ? 'price_ts_over' : b === 'price_tg' ? 'price_tg_over' : undefined),
+    planFor: (b) => (b === 'price_ts' ? 'tsp_start' : b === 'price_tg' ? 'tsp_grow' : undefined),
+    changePlan: (o) => { calls.changePlan.push(o); return Promise.resolve() },
+  }
+  appMulti = createApp({ ...common, stripe: fakeStripeMulti })
+  httpServerMulti = serve({ fetch: appMulti.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
+  portMulti = await new Promise<number>((r) => httpServerMulti.on('listening', () => r((httpServerMulti.address() as { port: number }).port)))
   const appOff = createApp({ ...common }) // no stripe → not configured
   void restored
   httpServer = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
@@ -165,8 +181,10 @@ beforeAll(async () => {
 afterAll(async () => {
   httpServer?.closeAllConnections?.()
   httpServerOff?.closeAllConnections?.()
+  httpServerMulti?.closeAllConnections?.()
   await new Promise<void>((r) => httpServer.close(() => r()))
   await new Promise<void>((r) => httpServerOff.close(() => r()))
+  await new Promise<void>((r) => httpServerMulti.close(() => r()))
   await db.$disconnect()
   await redis.quit()
   await redisSub.quit()
@@ -649,6 +667,51 @@ describe('billing lifecycle (ADR-024)', () => {
     expect(plans).toHaveLength(1)
     expect(plans[0]).toMatchObject({ priceId: 'price_test', productName: 'Direct 10' })
     expect(await (await req(portOff, '/v1/billing/plans', t1Token)).json()).toEqual([]) // no keys → empty
+  })
+
+  it('change-plan swaps BOTH items on the live subscription, and the webhook persists the new plan', async () => {
+    const { token, cus } = await freshTenant('Upgrade')
+    // subscribe on price_ts (tsp_start) via the two-price app, so a real base item exists to swap
+    await req(portMulti, '/v1/billing/checkout', token, 'POST', { priceId: 'price_ts' })
+    const sub1: StripeEvent = {
+      id: 'evt_up1', type: 'customer.subscription.updated', created: 100,
+      data: { object: { id: `sub_${cus}`, customer: cus, status: 'active', current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_ts' } }] } } },
+    }
+    await req(portMulti, '/v1/webhooks/stripe', null, 'POST', sub1, { 'stripe-signature': 'valid' })
+    calls.changePlan.length = 0
+
+    const res = await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_tg' })
+    expect(res.status).toBe(200)
+    // the gateway was asked to move the RIGHT subscription to the target base + its paired overage
+    expect(calls.changePlan).toEqual([{ subscriptionId: `sub_${cus}`, newBasePriceId: 'price_tg', newOveragePriceId: 'price_tg_over' }])
+
+    // the plan is not written by the route — it lands when Stripe's updated-webhook arrives carrying
+    // the new base price. Simulate that and confirm the subscription is still active.
+    const sub2: StripeEvent = {
+      id: 'evt_up2', type: 'customer.subscription.updated', created: 200,
+      data: { object: { id: `sub_${cus}`, customer: cus, status: 'active', current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_tg' } }] } } },
+    }
+    await req(portMulti, '/v1/webhooks/stripe', null, 'POST', sub2, { 'stripe-signature': 'valid' })
+    const view = (await (await req(portMulti, '/v1/billing', token)).json()) as BillingView
+    expect(view.active).toBe(true)
+  })
+
+  it('change-plan refuses an off-allowlist price, a Direct/non-TSP price, and a missing subscription', async () => {
+    const { token, cus } = await freshTenant('BadChange')
+    // no subscription yet → 409
+    expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_tg' })).status).toBe(409)
+
+    await req(portMulti, '/v1/billing/checkout', token, 'POST', { priceId: 'price_ts' })
+    const sub1: StripeEvent = {
+      id: 'evt_bc', type: 'customer.subscription.updated', created: 100,
+      data: { object: { id: `sub_${cus}`, customer: cus, status: 'active', current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_ts' } }] } } },
+    }
+    await req(portMulti, '/v1/webhooks/stripe', null, 'POST', sub1, { 'stripe-signature': 'valid' })
+
+    // off the allowlist → 400, never reaches Stripe
+    expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_bogus' })).status).toBe(400)
+    // the plan they are already on → 409 (no wasted Stripe call, no proration surprise)
+    expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_ts' })).status).toBe(409)
   })
 
   it('portal 409s before a customer exists, then returns a url', async () => {

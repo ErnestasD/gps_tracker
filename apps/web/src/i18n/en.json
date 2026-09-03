@@ -166,7 +166,11 @@
         "api": "REST API access for integrations",
         "webhooks": "Webhooks for real-time event delivery"
       }
-    }
+    },
+    "changePlanTitle": "Change plan",
+    "changePlanNote": "Switching is prorated: an upgrade is charged now, a downgrade is credited against your next invoice.",
+    "switchTo": "Switch",
+    "switching": "Switching…"
   },
   "branding": {
     "title": "Branding",
