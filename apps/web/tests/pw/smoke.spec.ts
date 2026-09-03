@@ -402,8 +402,10 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   const dns = page.getByTestId('domain-dns-fleet.acme-e2e.test')
   await expect(dns).toBeVisible()
   await expect(dns.getByTestId('dns-row-TXT')).toContainText('_orbetra-verify.fleet.acme-e2e.test')
-  // the value is the bare token: 32 hex characters, and no `orbetra-verify=` prefix anywhere
-  await expect(dns.getByTestId('dns-row-TXT')).toContainText(/\b[0-9a-f]{32}\b/)
+  // The value is the bare token: 32 hex characters, and no `orbetra-verify=` prefix anywhere.
+  // No `\b` anchors — innerText concatenates the cells, so the token follows "…test" with no
+  // separator and a word boundary never appears before it.
+  await expect(dns.getByTestId('dns-row-TXT')).toContainText(/[0-9a-f]{32}/)
   await expect(dns).not.toContainText('orbetra-verify=')
   // and the CNAME beside it, on a DIFFERENT name — the two cannot share one (RFC 1034 §3.6.2)
   await expect(dns.getByTestId('dns-row-CNAME')).toContainText('fleet.acme-e2e.test')
