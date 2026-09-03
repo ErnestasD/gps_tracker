@@ -150,9 +150,17 @@ export function BillingPage() {
     setChangingTo(priceId)
     setActionError(false)
     changePlan(priceId)
-      // the webhook writes the new plan; re-read billing + the session (entitlements) shortly after
-      .then(() => qc.invalidateQueries())
-      .catch(() => setActionError(true))
+      .then(() => {
+        // The change is DONE the moment changePlan resolves (200). Refreshing billing afterwards is
+        // best-effort and MUST NOT feed the error branch: invalidateQueries() rejects if any active
+        // refetch fails, and chaining it into .then made a fully-successful switch report
+        // "couldn't reach Stripe". So fire-and-forget (void), never return its promise here.
+        // The webhook persists the new plan a beat after Stripe returns, so refetch once now and once
+        // shortly after, so the grid + status reflect the new tier without a manual reload.
+        void qc.invalidateQueries({ queryKey: ['billing'] })
+        window.setTimeout(() => { void qc.invalidateQueries({ queryKey: ['billing'] }) }, 2500)
+      })
+      .catch(() => setActionError(true)) // only a real change-plan failure (non-2xx) shows the error
       .finally(() => setChangingTo(null))
   }
 
