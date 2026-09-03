@@ -42,6 +42,10 @@ beforeAll(async () => {
   ])
   const databaseUrl = `postgresql://postgres:test@${pg.getHost()}:${pg.getMappedPort(5432)}/orbetra`
   execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], { cwd: DB_PKG, env: { ...process.env, DATABASE_URL: databaseUrl } })
+  // the raw-SQL side too (history.spec precedent): the CAN-priorities routes read `positions`,
+  // which Prisma does not own — without 001_positions.sql every request 500s with
+  // `relation "positions" does not exist`, which is what turned main red at b7fb479
+  execFileSync('pnpm', ['exec', 'tsx', 'sql/migrate.ts'], { cwd: DB_PKG, env: { ...process.env, DATABASE_URL: databaseUrl } })
   redis = new Redis(redisC.getMappedPort(6379), redisC.getHost(), { maxRetriesPerRequest: null })
   db = createDb(databaseUrl)
   pool = createPool(databaseUrl)
@@ -273,7 +277,7 @@ describe('device tracking settings', () => {
  */
 describe('device CAN element priorities', () => {
   it('GET lists the model\u2019s elements, all off, and says nothing has been read off the device', async () => {
-    const res = await req(`/v1/devices/${deviceId}/can`, t1Token)
+    const res = await req(`/v1/devices/${deviceId}/can-elements`, t1Token)
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       supported: boolean
@@ -289,7 +293,7 @@ describe('device CAN element priorities', () => {
   })
 
   it('a model with no CAN block answers supported:false \u2014 not an empty list that reads as "all off"', async () => {
-    const res = await req(`/v1/devices/${noCanDeviceId}/can`, t1Token)
+    const res = await req(`/v1/devices/${noCanDeviceId}/can-elements`, t1Token)
     expect(res.status).toBe(200)
     const body = (await res.json()) as { supported: boolean; elements: unknown[]; reason: string }
     expect(body.supported).toBe(false)
@@ -297,13 +301,13 @@ describe('device CAN element priorities', () => {
     // "buy a different tracker" and "click the toggles" are opposite actions; say which one it is
     expect(body.reason).toMatch(/no CAN parameter list/i)
     // …and a write is refused rather than sent to a device that has no such parameter
-    const write = await req(`/v1/devices/${noCanDeviceId}/can`, t1Token, 'POST', { changes: { '45100': 2 } })
+    const write = await req(`/v1/devices/${noCanDeviceId}/can-elements`, t1Token, 'POST', { changes: { '45100': 2 } })
     expect(write.status).toBe(400)
   })
 
   it('POST queues ONE setparam with every change, then the getparam that verifies it', async () => {
     await redis.del(`cmd:pending:${deviceId}`)
-    const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': 2, '45140': 1 } })
+    const res = await req(`/v1/devices/${deviceId}/can-elements`, t1Token, 'POST', { changes: { '45100': 2, '45140': 1 } })
     expect(res.status).toBe(202) // the tracker has not seen this yet
     const body = (await res.json()) as { queued: boolean; commandId: string; verifyCommandId: string; text: string }
     expect(body.queued).toBe(true)
@@ -319,7 +323,7 @@ describe('device CAN element priorities', () => {
   })
 
   it('the queued change is visible before the device answers, so a toggle does not snap back', async () => {
-    const body = (await (await req(`/v1/devices/${deviceId}/can`, t1Token)).json()) as {
+    const body = (await (await req(`/v1/devices/${deviceId}/can-elements`, t1Token)).json()) as {
       elements: { param: string; priority: number; requested: number | null; state: string | null }[]
     }
     const speed = body.elements.find((e) => e.param === '45100')!
@@ -330,9 +334,9 @@ describe('device CAN element priorities', () => {
 
   it('a NEW write drops a queued one for the same element \u2014 the last instruction wins', async () => {
     await redis.del(`cmd:pending:${deviceId}`)
-    const first = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': 1 } })
+    const first = await req(`/v1/devices/${deviceId}/can-elements`, t1Token, 'POST', { changes: { '45100': 1 } })
     const firstId = ((await first.json()) as { commandId: string }).commandId
-    expect((await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': 3 } })).status).toBe(202)
+    expect((await req(`/v1/devices/${deviceId}/can-elements`, t1Token, 'POST', { changes: { '45100': 3 } })).status).toBe(202)
 
     const texts = (await redis.lrange(`cmd:pending:${deviceId}`, 0, -1)).map((j) => (JSON.parse(j) as { text: string }).text)
     expect(texts.filter((t) => t.startsWith('setparam'))).toEqual(['setparam 45100:3'])
@@ -344,7 +348,7 @@ describe('device CAN element priorities', () => {
     const before = await redis.llen(`cmd:pending:${deviceId}`)
     for (const param of ['45101', '99999', '10055']) {
       // 45101 is the OPERAND id inside 45100's own six-id block — adjacent, and not ours to write
-      const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { [param]: 2 } })
+      const res = await req(`/v1/devices/${deviceId}/can-elements`, t1Token, 'POST', { changes: { [param]: 2 } })
       expect(res.status, param).toBe(400)
       expect((await res.json() as { detail?: string }).detail).toMatch(/unknown CAN element/)
     }
@@ -353,19 +357,19 @@ describe('device CAN element priorities', () => {
 
   it('refuses a priority outside 0..3, and names the bound', async () => {
     for (const value of [-1, 4, 255]) {
-      const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': value } })
+      const res = await req(`/v1/devices/${deviceId}/can-elements`, t1Token, 'POST', { changes: { '45100': value } })
       expect(res.status, String(value)).toBe(400)
       expect((await res.json() as { detail?: string }).detail).toMatch(/priority must be an integer between 0 and 3/)
     }
     // a non-integer and an empty change set never reach the model check
     for (const changes of [{ '45100': 1.5 }, {}, { notAnId: 2 }]) {
-      expect((await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes })).status, JSON.stringify(changes)).toBe(400)
+      expect((await req(`/v1/devices/${deviceId}/can-elements`, t1Token, 'POST', { changes })).status, JSON.stringify(changes)).toBe(400)
     }
   })
 
   it('rejects the whole request when ANY change is invalid \u2014 no partial application', async () => {
     const before = await redis.llen(`cmd:pending:${deviceId}`)
-    const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': 2, '45140': 9 } })
+    const res = await req(`/v1/devices/${deviceId}/can-elements`, t1Token, 'POST', { changes: { '45100': 2, '45140': 9 } })
     expect(res.status).toBe(400)
     expect(await redis.llen(`cmd:pending:${deviceId}`)).toBe(before)
   })
@@ -373,21 +377,21 @@ describe('device CAN element priorities', () => {
   it('refuses to build a command longer than we send anywhere else', async () => {
     // 83 elements in one setparam would overrun the 512 characters this repo caps a command at;
     // the caller splits the request rather than getting a truncated command the device half-applies
-    const all = (await (await req(`/v1/devices/${deviceId}/can`, t1Token)).json()) as { elements: { param: string }[] }
+    const all = (await (await req(`/v1/devices/${deviceId}/can-elements`, t1Token)).json()) as { elements: { param: string }[] }
     const changes = Object.fromEntries(all.elements.map((e) => [e.param, 1]))
-    const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes })
+    const res = await req(`/v1/devices/${deviceId}/can-elements`, t1Token, 'POST', { changes })
     expect(res.status).toBe(400)
     expect((await res.json() as { detail?: string }).detail).toMatch(/too many elements/)
     // …but a batch that fits is accepted
     const half = Object.fromEntries(all.elements.slice(0, 40).map((e) => [e.param, 1]))
-    expect((await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: half })).status).toBe(202)
+    expect((await req(`/v1/devices/${deviceId}/can-elements`, t1Token, 'POST', { changes: half })).status).toBe(202)
   })
 
   it('a retired device is refused, another tenant sees 404, and a viewer may look but not write', async () => {
-    expect((await req(`/v1/devices/${retiredId}/can`, t1Token, 'POST', { changes: { '45100': 2 } })).status).toBe(400)
-    expect((await req(`/v1/devices/${deviceId}/can`, t2Token)).status).toBe(404)
-    expect((await req(`/v1/devices/${deviceId}/can`, t2Token, 'POST', { changes: { '45100': 2 } })).status).toBe(404)
-    expect((await req(`/v1/devices/${deviceId}/can`, viewerToken)).status).toBe(200)
-    expect((await req(`/v1/devices/${deviceId}/can`, viewerToken, 'POST', { changes: { '45100': 2 } })).status).toBe(403)
+    expect((await req(`/v1/devices/${retiredId}/can-elements`, t1Token, 'POST', { changes: { '45100': 2 } })).status).toBe(400)
+    expect((await req(`/v1/devices/${deviceId}/can-elements`, t2Token)).status).toBe(404)
+    expect((await req(`/v1/devices/${deviceId}/can-elements`, t2Token, 'POST', { changes: { '45100': 2 } })).status).toBe(404)
+    expect((await req(`/v1/devices/${deviceId}/can-elements`, viewerToken)).status).toBe(200)
+    expect((await req(`/v1/devices/${deviceId}/can-elements`, viewerToken, 'POST', { changes: { '45100': 2 } })).status).toBe(403)
   })
 })
