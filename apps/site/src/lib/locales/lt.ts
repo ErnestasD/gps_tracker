@@ -386,7 +386,7 @@ export const lt: Translation = {
     perDevice: " · {{price}}/įrenginiui",
     overage: "Viršijus — {{price}} / įrenginiui",
     yearly: "{{total}} € per metus (2 mėnesiai nemokamai)",
-    cta: "Užsisakykite bandomąjį projektą",
+    cta: "IŠBANDYTI NEMOKAMAI",
     everythingIn: "Viskas iš {{plan}} plano",
     start: {
       f1: "Domenas ir logotipas su jūsų ženklu",
@@ -406,7 +406,7 @@ export const lt: Translation = {
     },
     enterprise: {
       label: "— TSP ENTERPRISE",
-      title: "2 500+ įrenginių · individualios sąlygos",
+      title: "3 500+ įrenginių · individualios sąlygos",
       body: "Atskira infrastruktūra, individualus SLA, derinamos sąlygos.",
       cta: "Susisiekite su pardavimų komanda",
     },

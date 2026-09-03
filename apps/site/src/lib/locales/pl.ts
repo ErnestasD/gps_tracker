@@ -381,7 +381,7 @@ export const pl: Translation = {
     perDevice: " · {{price}}/urządzenie",
     overage: "Powyżej limitu {{price}} / urządzenie",
     yearly: "{{total}} € rocznie (2 miesiące gratis)",
-    cta: "Zamów pilotaż",
+    cta: "ROZPOCZNIJ TEST",
     everythingIn: "Wszystko z planu {{plan}}",
     start: {
       f1: "Domena i logo white-label",
@@ -401,7 +401,7 @@ export const pl: Translation = {
     },
     enterprise: {
       label: "— TSP ENTERPRISE",
-      title: "2500+ urządzeń · warunki indywidualne",
+      title: "3500+ urządzeń · warunki indywidualne",
       body: "Dedykowana infrastruktura, indywidualne SLA, negocjowane warunki.",
       cta: "Kontakt z działem sprzedaży",
     },
