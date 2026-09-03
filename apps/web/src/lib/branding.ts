@@ -32,10 +32,49 @@ export const MAX_DOMAINS_PER_TENANT = 25
 
 // DNS TXT ownership record, mirrors apps/api tenantSelf.ts expectedTxt(): `orbetra-verify=<token>`.
 const TXT_PREFIX = 'orbetra-verify='
-/** The DNS TXT record a pending domain must publish — derivable from listDomains' txtToken so the
- * value is retrievable after a reload, not only in the transient add-response. Pure. */
+/** LEGACY form: a TXT on the domain itself. The server still accepts it; we no longer teach it. */
 export function expectedTxt(txtToken: string): string {
   return `${TXT_PREFIX}${txtToken}`
+}
+
+/** Mirrors apps/api tenantSelf.ts TXT_HOST_LABEL. */
+export const TXT_HOST_LABEL = '_orbetra-verify'
+
+/** The hostname the ownership TXT belongs on. */
+export function verifyHost(domain: string): string {
+  return `${TXT_HOST_LABEL}.${domain}`
+}
+
+export type DnsRecord = {
+  type: 'TXT' | 'CNAME'
+  /** fully-qualified owner name — see branding.dnsRelative for why it is not shown relative */
+  name: string
+  value: string
+  /** which of the two jobs this record does, for the row's one-line explanation */
+  purposeKey: 'branding.dnsPurposeTxt' | 'branding.dnsPurposeCname'
+}
+
+/**
+ * The records a pending domain needs, as a TABLE rather than a sentence.
+ *
+ * The page used to print "Add this TXT record to dokigo.lt" above the bare string
+ * `orbetra-verify=2a129…`, which reads as a record NAMED `orbetra-verify` with that value — the
+ * founder read it exactly that way, and following that reading never verifies, with nothing to say
+ * why. Type / Name / Value, each copyable, is the shape every DNS panel asks for and every other
+ * product hands over.
+ *
+ * Derived from `listDomains`' `txtToken` so the records survive a reload, not only the transient
+ * add-response. `dnsTarget` comes from GET /v1/tenant/branding; without it the CNAME row is
+ * omitted rather than invented.
+ */
+export function dnsRecordsFor(domain: string, txtToken: string, dnsTarget: string | null): DnsRecord[] {
+  const out: DnsRecord[] = [
+    { type: 'TXT', name: verifyHost(domain), value: txtToken, purposeKey: 'branding.dnsPurposeTxt' },
+  ]
+  if (dnsTarget !== null && dnsTarget !== '') {
+    out.push({ type: 'CNAME', name: domain, value: dnsTarget, purposeKey: 'branding.dnsPurposeCname' })
+  }
+  return out
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/

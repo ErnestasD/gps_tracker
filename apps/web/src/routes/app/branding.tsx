@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Check, Copy } from 'lucide-react'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
@@ -9,8 +10,8 @@ import {
   MAX_DOMAINS_PER_TENANT,
   addDomain,
   applyBranding,
+  dnsRecordsFor,
   emitBrandingChange,
-  expectedTxt,
   getBranding,
   listDomains,
   removeDomain,
@@ -217,14 +218,11 @@ export function BrandingPage() {
                       {t('branding.remove')}
                     </AdminButton>
                   </div>
-                  {/* pending domains keep their DNS TXT record visible (derived from txtToken) so a
-                      returning user who navigated away can still publish it and Verify (was reachable
-                      only in the transient add-response) */}
+                  {/* pending domains keep their DNS records visible (derived from txtToken) so a
+                      returning user who navigated away can still publish them and Verify (was
+                      reachable only in the transient add-response) */}
                   {!d.verified && (
-                    <div className="w-full rounded-md border p-2 text-xs" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }} data-testid={`domain-txt-${d.domain}`}>
-                      <p style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.txtInstruction', { domain: d.domain })}</p>
-                      <code className="mono mt-1 block break-all" style={{ color: 'var(--admin-ink)' }}>{expectedTxt(d.txtToken)}</code>
-                    </div>
+                    <DnsRecords domain={d.domain} txtToken={d.txtToken} dnsTarget={current.data?.dnsTarget ?? null} />
                   )}
                 </li>
               ))}
@@ -297,7 +295,7 @@ function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: numbe
   const [mode, setMode] = useState<'own' | 'sub'>(platformDomain !== null ? 'sub' : 'own')
   const [domain, setDomain] = useState('')
   const [slug, setSlug] = useState('')
-  const [txt, setTxt] = useState<{ domain: string; record: string } | null>(null)
+  const [txt, setTxt] = useState<{ domain: string; token: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   // the server 409s BOTH the cap and a duplicate — the client can't tell them apart from status
   // alone, so guard the cap here and show the correct message instead of a false "already registered"
@@ -315,7 +313,8 @@ function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: numbe
       .then((d) => {
         // a platform subdomain returns verified with no record to publish — showing an empty TXT
         // box would invent a step that does not exist
-        setTxt(d.txtRecord !== null ? { domain: d.domain, record: d.txtRecord } : null)
+        // a PLATFORM SUBDOMAIN comes back verified with nothing to publish — txtRecord null
+        setTxt(d.txtRecord !== null ? { domain: d.domain, token: d.txtToken } : null)
         setDomain('')
         setSlug('')
         onAdded()
@@ -362,13 +361,10 @@ function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: numbe
             <AdminInput aria-label={t('branding.domainLabel')} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="fleet.example.com" data-testid="domain-input" className="max-w-xs" />
             <AdminButton type="submit" disabled={domain.trim() === '' || atCap} data-testid="domain-add">{t('branding.addDomain')}</AdminButton>
           </form>
-          {/* the step that used to be missing: proving ownership is not the same as pointing the
-              domain at us, and a verified badge above a dead domain is a worse outcome than an error */}
-          {dnsTarget !== null && (
-            <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} data-testid="dns-target">
-              {t('branding.dnsInstruction')} <code className="mono" style={{ color: 'var(--admin-ink)' }}>{dnsTarget}</code>
-            </p>
-          )}
+          {/* Nothing about DNS is stated before a domain exists. It used to name the CNAME target
+              here, above an empty form — an instruction with no subject, and the reader's first
+              impression of a two-record setup was one record. The table appears WITH the domain,
+              once both records can be shown in full. */}
         </>
       )}
       {atCap && (
@@ -377,13 +373,105 @@ function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: numbe
       {error !== null && (
         <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>
       )}
-      {txt !== null && (
-        <div className="rounded-md border p-3 text-xs" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }} data-testid="txt-instructions">
-          <p style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.txtInstruction', { domain: txt.domain })}</p>
-          <code className="mono mt-1 block break-all" style={{ color: 'var(--admin-ink)' }}>{txt.record}</code>
-        </div>
-      )}
+      {txt !== null && <DnsRecords domain={txt.domain} txtToken={txt.token} dnsTarget={dnsTarget} />}
     </div>
+  )
+}
+
+/**
+ * The DNS records to publish, as a table — Type, Name, Value, each copyable.
+ *
+ * What was here read: "Add this TXT record to dokigo.lt" above the bare string
+ * `orbetra-verify=2a129…`. Every DNS panel asks for three separate fields, so a single string with
+ * an `=` in it reads as a NAME and a VALUE — the founder read it exactly that way, and a record
+ * named `orbetra-verify` never verifies, with nothing anywhere to say why. The record is a TXT on
+ * `_orbetra-verify.<domain>` whose value is the token alone; saying so in the shape the panel asks
+ * for is the whole fix.
+ *
+ * The CNAME is shown beside it rather than in a sentence above the form: proving ownership and
+ * pointing the domain at us are two records, and a page that mentions them a screen apart teaches
+ * a one-record setup.
+ */
+function DnsRecords({ domain, txtToken, dnsTarget }: { domain: string; txtToken: string; dnsTarget: string | null }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState<string | null>(null)
+  const records = dnsRecordsFor(domain, txtToken, dnsTarget)
+
+  const copy = (text: string, key: string) => {
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(key)
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500)
+    }).catch(() => undefined)
+  }
+
+  return (
+    <div
+      className="w-full rounded-md border p-3 text-xs"
+      style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }}
+      data-testid={`domain-dns-${domain}`}
+    >
+      <p className="font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('branding.dnsTitle')}</p>
+      <p className="mt-0.5" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsIntro')}</p>
+
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full min-w-[34rem] border-separate border-spacing-y-1">
+          <thead>
+            <tr className="text-left" style={{ color: 'var(--admin-ink-soft)' }}>
+              <th className="pr-3 font-medium">{t('branding.dnsType')}</th>
+              <th className="pr-3 font-medium">{t('branding.dnsName')}</th>
+              <th className="pr-3 font-medium">{t('branding.dnsValue')}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((r) => (
+              <tr key={r.type} data-testid={`dns-row-${r.type}`}>
+                <td className="pr-3 align-top">
+                  <span className="mono font-semibold" style={{ color: 'var(--admin-ink)' }}>{r.type}</span>
+                  <div style={{ color: 'var(--admin-ink-soft)' }}>{t(r.purposeKey)}</div>
+                </td>
+                <td className="pr-3 align-top">
+                  <Field text={r.name} copied={copied === `${r.type}-name`} onCopy={() => copy(r.name, `${r.type}-name`)} />
+                </td>
+                <td className="pr-3 align-top">
+                  <Field text={r.value} copied={copied === `${r.type}-value`} onCopy={() => copy(r.value, `${r.type}-value`)} />
+                </td>
+                <td className="align-top" />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <ul className="mt-2 flex flex-col gap-1" style={{ color: 'var(--admin-ink-soft)' }}>
+        <li>{t('branding.dnsRelative', { domain })}</li>
+        {/* Only where it can apply. A domain with a subdomain part takes a CNAME everywhere, so
+            the note is noise there — and it used to interpolate the domain into its own example,
+            producing "add a subdomain such as fleet.fleet.example.com". */}
+        {isApexLike(domain) && <li>{t('branding.dnsApex')}</li>}
+        <li>{t('branding.dnsKeepTxt')}</li>
+      </ul>
+    </div>
+  )
+}
+
+/** One monospaced value with a copy button — the only interaction this table needs. */
+function Field({ text, copied, onCopy }: { text: string; copied: boolean; onCopy: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <span className="flex items-start gap-1">
+      <code className="mono break-all" style={{ color: 'var(--admin-ink)' }}>{text}</code>
+      <button
+        type="button"
+        onClick={onCopy}
+        aria-label={`${t('branding.copy')}: ${text}`}
+        title={copied ? t('branding.copied') : t('branding.copy')}
+        className="shrink-0 rounded p-0.5 transition-colors"
+        style={{ color: copied ? 'var(--admin-success)' : 'var(--admin-ink-soft)' }}
+      >
+        {copied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+      </button>
+    </span>
   )
 }
 
@@ -396,4 +484,16 @@ function clean(b: Branding): Branding {
   if (b.accent) out.accent = b.accent
   if (b.logoUrl) out.logoUrl = b.logoUrl
   return out
+}
+
+/**
+ * Could this name be a zone root, where a CNAME is usually impossible?
+ *
+ * Two labels ('dokigo.lt') is a root; three or more ('fleet.example.com') takes a CNAME at every
+ * provider. A multi-label public suffix like 'example.co.uk' is a root we will not warn about —
+ * a missing note is a far smaller harm than a note shown against a name it cannot apply to, and
+ * getting this exactly right needs the public-suffix list, which is not worth a hint.
+ */
+function isApexLike(domain: string): boolean {
+  return domain.split('.').length <= 2
 }

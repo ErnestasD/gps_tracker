@@ -118,7 +118,11 @@ describe('E03-5 tenant branding (self, scoped)', () => {
 
 describe('E03-5 domains + DNS verify', () => {
   it('add domain returns a TXT record; verify succeeds only when the TXT matches', async () => {
-    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'fleet.t1.test' })).json()) as { id: string; txtToken: string; txtRecord: string }
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'fleet.t1.test' })).json()) as { id: string; txtToken: string; txtRecord: string; txtHost: string; txtValue: string }
+    // the record we ASK for, described in the shape a DNS panel wants: a name and a value
+    expect(created.txtHost).toBe('_orbetra-verify.fleet.t1.test')
+    expect(created.txtValue).toBe(created.txtToken)
+    // and the legacy apex string, still returned for existing consumers
     expect(created.txtRecord).toBe(expectedTxt(created.txtToken))
 
     // no TXT yet → 400 not verified
@@ -133,6 +137,44 @@ describe('E03-5 domains + DNS verify', () => {
     const ok = await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')
     expect(ok.status).toBe(200)
     expect(((await ok.json()) as { verified: boolean }).verified).toBe(true)
+  })
+
+  /**
+   * The record we now ASK for: a TXT on `_orbetra-verify.<domain>` carrying the bare token.
+   *
+   * The old location was a TXT on the domain itself, which cannot coexist with the CNAME the same
+   * domain needs to reach us — RFC 1034 §3.6.2, enforced by Cloudflare and Route 53. A tenant who
+   * added the CNAME first could not add the TXT at all.
+   */
+  it('verifies from the dedicated _orbetra-verify name, with the bare token as the value', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'sub.t1.test' })).json()) as { id: string; txtToken: string }
+
+    // the token on the WRONG name (the domain itself, bare) is not a match either way
+    txtRecords.set('sub.t1.test', [[created.txtToken]])
+    expect((await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')).status).toBe(400)
+
+    // the dedicated name with a wrong token → still refused
+    txtRecords.set('_orbetra-verify.sub.t1.test', [['deadbeef']])
+    expect((await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')).status).toBe(400)
+
+    txtRecords.set('_orbetra-verify.sub.t1.test', [[created.txtToken]])
+    const ok = await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')
+    expect(ok.status).toBe(200)
+    expect(((await ok.json()) as { verified: boolean }).verified).toBe(true)
+  })
+
+  it('still accepts the LEGACY apex form, so a setup already underway is not broken', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'legacy.t1.test' })).json()) as { id: string; txtToken: string }
+    // nothing on the new name; only the old one published
+    txtRecords.set('legacy.t1.test', [[expectedTxt(created.txtToken)]])
+    expect((await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')).status).toBe(200)
+  })
+
+  it('joins a chunked TXT value before comparing — a long record arrives split', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'chunk.t1.test' })).json()) as { id: string; txtToken: string }
+    const half = Math.ceil(created.txtToken.length / 2)
+    txtRecords.set('_orbetra-verify.chunk.t1.test', [[created.txtToken.slice(0, half), created.txtToken.slice(half)]])
+    expect((await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')).status).toBe(200)
   })
 
   it('a tenant cannot verify/delete ANOTHER tenant’s domain → 404', async () => {

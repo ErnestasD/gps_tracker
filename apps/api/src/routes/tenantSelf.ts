@@ -6,7 +6,30 @@ export type TxtResolver = (hostname: string) => Promise<string[][]>
 
 export const defaultTxtResolver: TxtResolver = dnsResolveTxt
 
+/**
+ * Where the ownership record goes: a DEDICATED name, `_orbetra-verify.<domain>`, carrying the bare
+ * token as its value.
+ *
+ * It used to be a TXT on the domain itself with the value `orbetra-verify=<token>`, and that could
+ * not work alongside the CNAME the same domain needs to reach us: RFC 1034 §3.6.2 forbids a CNAME
+ * coexisting with any other record on the same owner name, and Cloudflare and Route 53 enforce it.
+ * A tenant who added the CNAME first — which is what the instructions listed first — then could not
+ * add the TXT at all, with nothing anywhere to say why. An underscore-prefixed name is the
+ * convention precisely because it can never collide with a host (`_dmarc`, `_domainkey`, `_acme-challenge`).
+ *
+ * It also means the record can stay published forever, so a re-verification later has something to
+ * read. The apex form is still accepted — see verifyDomainTxt — because domains added under the old
+ * instructions must not stop verifying.
+ */
+export const TXT_HOST_LABEL = '_orbetra-verify'
+
+/** LEGACY location: a TXT on the domain itself, value `orbetra-verify=<token>`. Still accepted. */
 export const TXT_PREFIX = 'orbetra-verify='
+
+/** The hostname the ownership TXT belongs on. */
+export function verifyHost(domain: string): string {
+  return `${TXT_HOST_LABEL}.${domain}`
+}
 
 /** New CSPRNG verification token (hex). */
 export function newTxtToken(): string {
@@ -116,17 +139,33 @@ export function isUnderPlatformDomain(domain: string, platformDomain: string | u
 }
 
 /**
- * Verify a domain owns its txtToken via a DNS TXT lookup. resolveTxt returns
- * chunked records (string[][]) — each record's chunks are joined. Any lookup
- * error (NXDOMAIN, no TXT) → false, never throws.
+ * Does `hostname` publish a TXT record whose value is exactly `want`?
+ *
+ * resolveTxt returns CHUNKED records (string[][]) — a value over 255 bytes arrives split, and each
+ * record's chunks are joined before comparing. Any lookup error (NXDOMAIN, no TXT) is a false,
+ * never a throw: a domain nobody has configured yet is the normal case here, not a fault.
  */
-export async function verifyDomainTxt(resolver: TxtResolver, domain: string, txtToken: string): Promise<boolean> {
+async function txtHas(resolver: TxtResolver, hostname: string, want: string): Promise<boolean> {
   let records: string[][]
   try {
-    records = await resolver(domain)
+    records = await resolver(hostname)
   } catch {
     return false
   }
-  const want = expectedTxt(txtToken)
   return records.some((chunks) => chunks.join('') === want)
+}
+
+/**
+ * Verify a domain owns its txtToken.
+ *
+ * Two accepted locations, checked in the order the UI teaches them:
+ *  1. `_orbetra-verify.<domain>` TXT = the bare token — the one we ask for, because it can coexist
+ *     with the CNAME the domain also needs (see TXT_HOST_LABEL).
+ *  2. `<domain>` TXT = `orbetra-verify=<token>` — what the old instructions asked for. Kept because
+ *     a tenant midway through setup, or already verified under it, must not be broken by our
+ *     changing our minds.
+ */
+export async function verifyDomainTxt(resolver: TxtResolver, domain: string, txtToken: string): Promise<boolean> {
+  if (await txtHas(resolver, verifyHost(domain), txtToken)) return true
+  return txtHas(resolver, domain, expectedTxt(txtToken))
 }
