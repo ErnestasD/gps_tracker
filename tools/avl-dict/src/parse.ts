@@ -34,6 +34,12 @@ export interface AvlEntry {
   hwSupport?: string
   /** The wiki's own "Parameter Group" column, e.g. "Permanent I/O Elements". */
   group?: string
+  /**
+   * Set when the entry was ADOPTED from another Teltonika page whose HW Support column names a
+   * model of this table while the table's own page omits it — names the donor page, so a reader
+   * of the generated dictionary can trace where the row's units/multiplier actually came from.
+   */
+  adoptedFrom?: string
 }
 
 export interface ParseResult {
