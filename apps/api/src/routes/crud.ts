@@ -26,7 +26,13 @@ import {
   geofenceUpdateSchema,
   deviceUpdateSchema,
   buildOnboarding,
+  deviceCanWriteSchema,
   deviceSettingsWriteSchema,
+  canElementsForModel,
+  isCanElementOfModel,
+  isCanPriority,
+  CAN_PRIORITY_MIN,
+  CAN_PRIORITY_MAX,
   isSettingInRange,
   settingsForModel,
   smsSendRequestSchema,
@@ -70,6 +76,7 @@ import {
 
 import { hasEntitlement } from '../auth/entitlements.js'
 import { currentSettings } from './deviceSettingsView.js'
+import { exceedsCommandLimit, MAX_COMMAND_TEXT, queueParamWrite, type ParamWrite } from './paramWrite.js'
 import { hashPassword } from '../auth/passwords.js'
 import { problem, type AuthEnv } from '../auth/middleware.js'
 import { activateDevice, deactivateDevice, syncDeviceConfig } from './deviceRegistry.js'
@@ -1127,71 +1134,15 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           writes.push({ param: def.param, value })
         }
 
-        // ONE setparam carrying every change, so the device applies them together or not at all,
-        // then a getparam for the same ids. Ordering holds because the pending list is FIFO.
-        const setText = `setparam ${writes.map((w) => `${w.param}:${w.value}`).join(';')}`
-        const getText = `getparam ${writes.map((w) => w.param).join(';')}`
-        const set = await db.commands.create(scope, { userId: a.userId }, { deviceId: device.id, accountId: device.accountId, text: setText })
-        const verify = await db.commands.create(scope, { userId: a.userId }, { deviceId: device.id, accountId: device.accountId, text: getText })
-        /**
-         * Both or neither, and NOT best-effort.
-         *
-         * Two sequential rpush calls can leave the write queued with no verification behind it —
-         * the customer's change would then go out with nothing ever checking whether it took, which
-         * is the one guarantee this route sells. And a swallowed Redis error would answer
-         * `queued: true` for a command no device will ever receive, while the rows sit "waiting"
-         * for 24 h: success reported for something the hardware has not seen, which is precisely
-         * the failure mode this endpoint is shaped around avoiding.
-         */
-        const pendKey = `cmd:pending:${device.id.toString()}`
-        const payload = (cmd: typeof set) => JSON.stringify({ id: cmd.id, text: cmd.text, attempt: 0, expiresAtMs: Date.parse(cmd.expiresAt) })
-        /**
-         * A superseded settings write must NOT still execute.
-         *
-         * Commands sit in this list until the device connects, which on a parked vehicle is
-         * measured in hours — long enough for the customer to change their mind, or for someone to
-         * fix the same parameter another way. Live proof, 2026-08-18: a settings command queued at
-         * 14:17 was corrected at 14:53 by another route, and when the tracker finally connected at
-         * 14:54 the STALE command drained and re-applied the value that had just been undone. The
-         * vehicle went silent for five hours and the platform showed no fault at all.
-         *
-         * So a new write drops any queued setparam that touches the same parameters — last
-         * instruction wins, which is what a customer dragging a slider twice already believes.
-         * Verification getparams are left alone: an extra read costs nothing and never harms.
-         */
-        const touched = new Set(writes.map((w) => w.param))
-        const supersedes = (text: string): boolean =>
-          /^\s*setparam\s/i.test(text) && [...text.matchAll(/(\d{1,7}):-?\d+/g)].some((m) => touched.has(m[1]!))
-        try {
-          const queued = await deps.redis.lrange(pendKey, 0, -1)
-          const stale = queued.filter((raw) => {
-            try {
-              return supersedes((JSON.parse(raw) as { text?: string }).text ?? '')
-            } catch {
-              return false // not ours to judge; leave anything unparseable in place
-            }
-          })
-          const tx = deps.redis.multi()
-          for (const raw of stale) tx.lrem(pendKey, 0, raw)
-          await tx
-            .rpush(pendKey, payload(set), payload(verify))
-            .expire(pendKey, 24 * 3_600) // bound the list if the device never connects
-            .sadd('cmd:active', device.id.toString())
-            .exec()
-          // the DB rows for the dropped commands must not sit "waiting" forever either
-          for (const raw of stale) {
-            const id = (JSON.parse(raw) as { id?: string }).id
-            if (id !== undefined) await db.commands.markSuperseded(scope, id)
-          }
-        } catch (err) {
-          console.error('settings enqueue failed', err)
-          return problem(c, 503, 'Unavailable', 'could not queue the change — try again')
-        }
+        // ONE setparam carrying every change, then the getparam that verifies it, both queued
+        // atomically and superseding any still-queued write for the same ids — see paramWrite.ts.
+        const queued = await queueParamWrite(deps, scope, { userId: a.userId }, device, writes)
+        if (queued === null) return problem(c, 503, 'Unavailable', 'could not queue the change — try again')
         // 202, never 200: nothing has reached the tracker yet. A parked device connects on its own
         // schedule — a command sat queued for an hour on 2026-08-18 — and reporting "saved" for
         // something the hardware has not seen is the false success this whole feature exists to
         // avoid. The UI says "waiting for the device".
-        return json(c, { queued: true, commandId: set.id, verifyCommandId: verify.id, text: setText }, 202)
+        return json(c, { queued: true, ...queued }, 202)
       } },
     { method: 'post', path: '/v1/devices/:id/settings/refresh', scopeClass: 'account', entity: 'command', shape: 'item',
       handler: async (c) => {
@@ -1230,6 +1181,94 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           return problem(c, 503, 'Unavailable', 'could not queue the read — try again')
         }
         return json(c, { queued: true, commandId: cmd.id, text }, 202)
+      } },
+
+    // ── CAN (vehicle bus) elements ─────────────────────────────────────────────
+    /**
+     * Which vehicle-bus values the tracker sends, and at what priority.
+     *
+     * The bug this closes: every CAN element on a Teltonika device ships with its priority
+     * parameter at 0, which means "do not send". A customer wires a working CAN bus, adds the
+     * device, and the dashboard still shows the same ~6 GPS/IO elements it would show for a
+     * vehicle with no bus at all — because nothing in onboarding ever raised one of these, and
+     * nothing on the screen says so. Re-checking the wiring cannot find that.
+     *
+     * The parameter written is the FIRST id of the element's six-id block, which is its priority
+     * (0 not sent, 1 low, 2 high, 3 panic). The other five ids in the block configure event
+     * generation and are deliberately out of reach here.
+     * https://wiki.teltonika-gps.com/view/FMC150_Parameter_list (LVCAN section)
+     */
+    { method: 'get', path: '/v1/devices/:id/can-elements', scopeClass: 'account', entity: 'device', shape: 'item',
+      handler: async (c) => {
+        const scope = scopeOf(auth(c))
+        const device = await db.devices.get(scope, id(c))
+        if (device === null) return problem(c, 404, 'Not Found')
+        const profile = await db.profiles.get(device.profileId)
+        const elements = canElementsForModel(profile?.model)
+        /**
+         * "This model has no CAN block on its own wiki page" is a DIFFERENT answer from "every
+         * element is switched off", and the two call for opposite actions from whoever is reading:
+         * one means buy a different tracker, the other means click the toggles. An empty list with
+         * no flag reads as the second, so 66 of the 105 models we hold pages for would have shown
+         * a customer a CAN panel they can never turn on. 39 models carry the block.
+         */
+        if (elements.length === 0) {
+          return json(c, { supported: false, elements: [], reason: `no CAN parameter list for ${profile?.model ?? 'this device model'}` })
+        }
+        /**
+         * Current priorities come from the device's OWN replies — the same reconstruction the
+         * settings page uses, over the same command rows. No second source of truth: a write the
+         * tracker silently ignored looks identical to one it applied.
+         *
+         * `priority` falls back to 0 when the device has never been asked, because 0 is what every
+         * element ships as (that is the premise of this whole feature) — but `checkedAt` is null in
+         * exactly that case, so a client can tell "the device told us 0" from "we have never
+         * asked", and `requested`/`state` carry a change that is still in flight so a toggle the
+         * customer just clicked does not snap back to off while the vehicle is parked.
+         */
+        const history = await db.commands.listParamHistory(scope, device.id)
+        const { current } = currentSettings(elements.map((e) => ({ param: e.param, key: e.param })), history)
+        return json(c, {
+          supported: true,
+          elements: elements.map((e) => {
+            const seen = current[e.param]!
+            const priority = seen.value ?? 0
+            return { param: e.param, name: e.name, enabled: priority > 0, priority, checkedAt: seen.checkedAt, requested: seen.requested, state: seen.state }
+          }),
+        })
+      } },
+    { method: 'post', path: '/v1/devices/:id/can-elements', scopeClass: 'account', entity: 'command', shape: 'item',
+      handler: async (c) => {
+        const a = auth(c)
+        const scope = scopeOf(a)
+        const device = await db.devices.get(scope, id(c)) // scope gate FIRST (404 else)
+        if (device === null) return problem(c, 404, 'Not Found')
+        if (device.retiredAt !== null) return problem(c, 400, 'Bad Request', 'device is retired')
+        const data = await body(c, deviceCanWriteSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        const profile = await db.profiles.get(device.profileId)
+        if (canElementsForModel(profile?.model).length === 0) {
+          return problem(c, 400, 'Bad Request', 'this model has no CAN elements')
+        }
+        // Validate EVERY change before writing any of them — a partially-applied change leaves the
+        // customer unable to tell which toggles reached the device.
+        const writes: ParamWrite[] = []
+        for (const [param, value] of Object.entries(data.changes)) {
+          // membership is per MODEL: an id this model does not implement risks the device
+          // rejecting the whole setparam, so it is a 400 here and never silently dropped
+          if (!isCanElementOfModel(profile?.model, param)) return problem(c, 400, 'Bad Request', `unknown CAN element: ${param}`)
+          if (!isCanPriority(value)) return problem(c, 400, 'Bad Request', `${param} priority must be an integer between ${CAN_PRIORITY_MIN} and ${CAN_PRIORITY_MAX}`)
+          writes.push({ param, value })
+        }
+        // A CAN model offers up to 83 elements; all of them in one command would overrun the 512
+        // characters this repo sends anywhere else. Refuse and name the limit rather than truncate.
+        if (exceedsCommandLimit(writes)) {
+          return problem(c, 400, 'Bad Request', `too many elements in one request — a command may not exceed ${MAX_COMMAND_TEXT} characters`)
+        }
+        const queued = await queueParamWrite(deps, scope, { userId: a.userId }, device, writes)
+        if (queued === null) return problem(c, 503, 'Unavailable', 'could not queue the change — try again')
+        // 202, never 200 — nothing has reached the tracker yet; the UI says "waiting for the device"
+        return json(c, { queued: true, ...queued }, 202)
       } },
     { method: 'get', path: '/v1/commands/:id', scopeClass: 'account', entity: 'command', shape: 'item',
       handler: async (c) => {

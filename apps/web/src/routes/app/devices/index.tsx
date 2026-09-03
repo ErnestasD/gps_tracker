@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRouterState } from '@tanstack/react-router'
 import { MoreHorizontal, Plus, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -21,6 +22,7 @@ import { canCapability, VirtualDeviceForm, VsimCard } from '@/routes/app/devices
 import { listDrivers } from '@/lib/drivers'
 import { HealthCard } from '@/routes/app/devices/health'
 import { CanCard } from '@/routes/app/devices/can'
+import { CanSettingsCard } from '@/routes/app/devices/canSettings'
 import { ShareCard } from '@/routes/app/devices/share'
 import { OnboardingCard } from '@/routes/app/devices/onboarding'
 import { SettingsCard } from '@/routes/app/devices/settings'
@@ -84,6 +86,27 @@ export function DevicesPage() {
   const [retireError, setRetireError] = useState<string | null>(null)
   const [commandsForId, setCommandsForId] = useState<string | null>(null)
   const [settingsForId, setSettingsForId] = useState<string | null>(null)
+  const [canSettingsForId, setCanSettingsForId] = useState<string | null>(null)
+  /**
+   * `?can=<deviceId>` opens that device's CAN panel — the live map's parameters gear links here.
+   *
+   * Applied once per id rather than on every render: the panel is ordinary local state afterwards,
+   * so re-applying would fight the operator every time they closed it while the URL still carried
+   * the param. Reading the search directly (not via the route's generic) keeps this page usable
+   * from anywhere it is mounted.
+   */
+  const canFromUrl = useRouterState({
+    select: (st) => {
+      const v = (st.location.search as { can?: unknown }).can
+      return typeof v === 'string' && v !== '' ? v : null
+    },
+  })
+  const appliedCanUrl = useRef<string | null>(null)
+  useEffect(() => {
+    if (canFromUrl === null || appliedCanUrl.current === canFromUrl) return
+    appliedCanUrl.current = canFromUrl
+    setCanSettingsForId(canFromUrl)
+  }, [canFromUrl])
   const [healthForId, setHealthForId] = useState<string | null>(null)
   const [vehicleForId, setVehicleForId] = useState<string | null>(null)
   const [shareForId, setShareForId] = useState<string | null>(null)
@@ -109,6 +132,7 @@ export function DevicesPage() {
   // closes/updates the panel instead of leaving a stale device you can still command
   const commandsFor: Device | null = (devices.data ?? []).find((d) => d.id === commandsForId && d.retiredAt === null) ?? null
   const settingsFor: Device | null = (devices.data ?? []).find((d) => d.id === settingsForId && d.retiredAt === null) ?? null
+  const canSettingsFor: Device | null = (devices.data ?? []).find((d) => d.id === canSettingsForId && d.retiredAt === null) ?? null
   const healthFor: Device | null = (devices.data ?? []).find((d) => d.id === healthForId && d.retiredAt === null) ?? null
   const vehicleFor: Device | null = (devices.data ?? []).find((d) => d.id === vehicleForId && d.retiredAt === null) ?? null
   const shareFor: Device | null = (devices.data ?? []).find((d) => d.id === shareForId && d.retiredAt === null) ?? null
@@ -121,7 +145,7 @@ export function DevicesPage() {
   // click could land the panel off-screen — to the user the menu item looked dead. Scroll the
   // freshly-opened panel into view (and focus it for a11y) whenever which panel is open changes.
   const panelRef = useRef<HTMLDivElement>(null)
-  const openPanelId = healthFor?.id ?? onboardFor?.id ?? commandsFor?.id ?? settingsFor?.id ?? shareFor?.id ?? vehicleFor?.id ?? vsimFor?.id ?? null
+  const openPanelId = healthFor?.id ?? onboardFor?.id ?? commandsFor?.id ?? settingsFor?.id ?? canSettingsFor?.id ?? shareFor?.id ?? vehicleFor?.id ?? vsimFor?.id ?? null
   useEffect(() => {
     if (openPanelId !== null) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [openPanelId])
@@ -331,6 +355,7 @@ export function DevicesPage() {
               }}
               onCommands={() => setCommandsForId((cur) => (cur === d.id ? null : d.id))}
               onSettings={() => setSettingsForId((cur) => (cur === d.id ? null : d.id))}
+              onCanSettings={() => setCanSettingsForId((cur) => (cur === d.id ? null : d.id))}
               onShare={() => setShareForId((cur) => (cur === d.id ? null : d.id))}
               onRetire={() => setRetireForId(d.id)}
               onErase={() => setEraseForId(d.id)}
@@ -353,6 +378,7 @@ export function DevicesPage() {
         {onboardFor !== null && <OnboardingCard key={`onboard-${onboardFor.id}`} device={onboardFor} initialApn={pendingApn} />}
         {commandsFor !== null && <CommandsCard key={`cmd-${commandsFor.id}`} device={commandsFor} />}
         {settingsFor !== null && <SettingsCard key={`set-${settingsFor.id}`} device={settingsFor} canWrite={canWrite} />}
+        {canSettingsFor !== null && <CanSettingsCard key={`canset-${canSettingsFor.id}`} device={canSettingsFor} canWrite={canWrite} />}
         {shareFor !== null && <ShareCard key={`share-${shareFor.id}`} device={shareFor} />}
         {vsimFor !== null && (
           <VsimCard
@@ -449,6 +475,7 @@ function RowMenu({
   onOnboard,
   onCommands,
   onSettings,
+  onCanSettings,
   onShare,
   onRetire,
   onErase,
@@ -463,6 +490,7 @@ function RowMenu({
   onOnboard: () => void
   onCommands: () => void
   onSettings: () => void
+  onCanSettings: () => void
   onShare: () => void
   onRetire: () => void
   onErase: () => void
@@ -512,6 +540,7 @@ function RowMenu({
               <>
                 {item(`commands-${device.imei}`, t('devices.commands'), onCommands)}
                 {item(`settings-${device.imei}`, t('devices.settings.menu'), onSettings)}
+                {item(`can-settings-${device.imei}`, t('devices.canSettings.menu'), onCanSettings)}
                 {item(`share-${device.imei}`, t('devices.share.button'), onShare)}
                 <div className="admin-hairline-t my-1" aria-hidden />
                 {item(`retire-${device.imei}`, t('devices.retire'), onRetire, true)}

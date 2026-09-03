@@ -1,6 +1,7 @@
-import { Activity, Bell, Crosshair, Gauge, History, Radio, Route as RouteIcon, Satellite, Shield, SlidersHorizontal, Terminal, X } from 'lucide-react'
+import { Activity, Bell, Crosshair, Gauge, History, Radio, Route as RouteIcon, Satellite, Settings, Shield, SlidersHorizontal, Terminal, X } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -41,6 +42,17 @@ import { SettingsCard } from '@/routes/app/devices/settings'
  * cannot be commanded.
  */
 export type InspectorTab = 'overview' | 'params' | 'commands' | 'settings' | 'events' | 'fences'
+
+/**
+ * THE CAN SETTINGS SURFACE — the one place this file names its destination.
+ *
+ * The gear on the parameters tab exists so an operator staring at what a vehicle IS sending is one
+ * click from choosing what it SHOULD send. CAN settings are a PANEL on the devices page rather than
+ * a route of their own, so the link carries `?can=<id>`, which that page validates and opens on
+ * arrival. If the panel ever becomes its own route, this one line is what moves.
+ */
+const canSettingsLink = (deviceId: string) => ({ to: '/app/devices', search: { can: deviceId } }) as const
+
 
 export function Inspector({
   live,
@@ -181,7 +193,7 @@ export function Inspector({
             destructive confirm or a half-dragged slider must not follow the operator to another
             vehicle (the devices table keys these the same way, for the same reason) */}
         {effective === 'params' && (
-          <ParamsTab key={`par-${live.ev.deviceId}`} latest={latest} loading={telemetry.isLoading} error={telemetry.isError} />
+          <ParamsTab key={`par-${live.ev.deviceId}`} deviceId={live.ev.deviceId} latest={latest} loading={telemetry.isLoading} error={telemetry.isError} />
         )}
         {effective === 'events' && <EventsTab key={`ev-${live.ev.deviceId}`} deviceId={live.ev.deviceId} />}
         {device !== undefined && effective === 'commands' && <CommandsCard key={`cmd-${device.id}`} device={device} />}
@@ -588,16 +600,20 @@ function KV({ k, v }: { k: string; v: string }) {
  * outside the database.
  */
 function ParamsTab({
+  deviceId,
   latest,
   loading,
   error,
 }: {
+  /** Carried solely so the gear can hand the settings surface the vehicle being looked at. */
+  deviceId: string
   latest: LatestTelemetry | undefined
   loading: boolean
   error: boolean
 }) {
   const { t } = useTranslation()
   const { dt: dtFmt } = useFmt()
+  const navigate = useNavigate()
   const [q, setQ] = useState('')
 
   if (loading) return <p className="p-2 text-xs text-muted">{t('admin.loading')}</p>
@@ -632,15 +648,30 @@ function ParamsTab({
       <p className="pb-1 text-[11px] text-muted" data-testid="params-age">
         {t('map.inspector.paramsAt', { when: dtFmt(d.fixTime) })}
       </p>
-      <input
-        type="search"
-        value={q}
-        onChange={(e) => setQ(e.currentTarget.value)}
-        placeholder={t('map.inspector.paramsSearch')}
-        aria-label={t('map.inspector.paramsSearch')}
-        data-testid="params-search"
-        className="mb-2 h-7 w-full rounded border border-line bg-transparent px-2 text-xs text-text placeholder:text-muted"
-      />
+      {/* Search and the gear share one row. The gear is deliberately NOT on the tab strip: a tab is a
+          navigation control, and hanging an action off one makes the tab itself look broken. */}
+      <div className="mb-2 flex items-center gap-1.5">
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.currentTarget.value)}
+          placeholder={t('map.inspector.paramsSearch')}
+          aria-label={t('map.inspector.paramsSearch')}
+          data-testid="params-search"
+          className="h-7 min-w-0 flex-1 rounded border border-line bg-transparent px-2 text-xs text-text placeholder:text-muted"
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          onClick={() => void navigate(canSettingsLink(deviceId))}
+          aria-label={t('map.inspector.paramsSettings')}
+          title={t('map.inspector.paramsSettings')}
+          data-testid="params-settings"
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
+      </div>
       {promoted.length > 0 && (
         <dl className="divide-y divide-line border-b border-line text-xs">
           {promoted.map((r) => (
