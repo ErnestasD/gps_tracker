@@ -90,7 +90,7 @@ import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
 import { restoreTenantDevices } from '@orbetra/registry'
 
-import { checkPlatformSubdomain, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type TxtResolver } from './tenantSelf.js'
+import { checkDomainDns, checkPlatformSubdomain, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type NameResolver, type TxtResolver } from './tenantSelf.js'
 
 // Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
 // truth and is already committed, so a Redis blip must NOT 500 the request (a 500 → client
@@ -195,6 +195,8 @@ export interface CrudDeps {
   redis: Redis
   /** DNS TXT resolver for domain verification (E03-5); injectable for tests. */
   resolveTxt: TxtResolver
+  resolveCname: NameResolver
+  resolveAddress: NameResolver
   /**
    * Our own domain (`PLATFORM_DOMAIN`, e.g. `orbetra.com`). A tenant may claim `<slug>` under it and
    * be live in a minute with no DNS work at all — the zero-setup half of white-label. Unset ⇒ the
@@ -2379,6 +2381,26 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'domains are tenant-wide')
         const ok = await db.tenantDomains.remove(scopeOf(auth(c)), { userId: auth(c).userId }, id(c))
         return ok ? json(c, { ok: true }) : problem(c, 404, 'Not Found')
+      } },
+    /**
+     * What the domain's DNS looks like RIGHT NOW, record by record.
+     *
+     * Verification was one button with two outcomes, so a domain that proved ownership and routed
+     * nowhere looked exactly like a finished one. Reporting each record separately is what turns
+     * "it didn't work" into "the TXT is there, the CNAME is not" — the difference between a
+     * support thread and a fix.
+     */
+    { method: 'get', path: '/v1/tenant/domains/:id/dns', scopeClass: 'tenant', entity: 'domain', shape: 'item', entitlement: 'customDomains',
+      handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'domains are tenant-wide')
+        const row = await db.tenantDomains.get(scopeOf(auth(c)), id(c))
+        if (row === null) return problem(c, 404, 'Not Found')
+        return json(c, await checkDomainDns(
+          { txt: deps.resolveTxt, cname: deps.resolveCname, address: deps.resolveAddress },
+          row.domain,
+          row.txtToken,
+          deps.edgeHostname,
+        ))
       } },
     { method: 'post', path: '/v1/tenant/domains/:id/verify', scopeClass: 'tenant', entity: 'domain', shape: 'item', entitlement: 'customDomains',
       handler: async (c) => {

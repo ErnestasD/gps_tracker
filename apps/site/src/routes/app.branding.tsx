@@ -263,9 +263,16 @@ function AddDomain({ onAdded }: { onAdded: (d: DemoDomain) => void }) {
 function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) {
   const { t } = useTranslation("admin");
   const [copied, setCopied] = React.useState<string | null>(null);
+  /**
+   * The demo has no DNS to look at, so the statuses are FIXED: the TXT found, the routing not.
+   *
+   * That pair is the state worth showing — it is the one a real tenant most often lands in, and
+   * the one a single Verify button could not describe. Inventing a "both green" demo would make
+   * the column look decorative, which is the opposite of its point.
+   */
   const rows = [
-    { type: "TXT", name: `_orbetra-verify.${domain}`, value: txtToken, purpose: t("branding.dnsPurposeTxt") },
-    { type: "CNAME", name: domain, value: DNS_TARGET, purpose: t("branding.dnsPurposeCname") },
+    { type: "TXT", name: `_orbetra-verify.${domain}`, value: txtToken, purpose: t("branding.dnsPurposeTxt"), ok: true },
+    { type: "CNAME", name: domain, value: DNS_TARGET, purpose: t("branding.dnsPurposeCname"), ok: false },
   ];
   const copy = (text: string, key: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
@@ -302,6 +309,7 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
               <th className="pr-3 font-medium">{t("branding.dnsType")}</th>
               <th className="pr-3 font-medium">{t("branding.dnsName")}</th>
               <th className="pr-3 font-medium">{t("branding.dnsValue")}</th>
+              <th className="font-medium">{t("branding.dnsStatus")}</th>
             </tr>
           </thead>
           <tbody>
@@ -313,6 +321,9 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
                 </td>
                 <td className="pr-3 align-top"><Field text={r.name} k={`${r.type}-name`} /></td>
                 <td className="pr-3 align-top"><Field text={r.value} k={`${r.type}-value`} /></td>
+                <td className="align-top">
+                  <Badge tone={r.ok ? "success" : "warning"}>{r.ok ? t("branding.dnsFound") : t("branding.dnsMissing")}</Badge>
+                </td>
               </tr>
             ))}
           </tbody>

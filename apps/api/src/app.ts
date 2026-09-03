@@ -33,7 +33,7 @@ import { mountBilling, mountStripeWebhook } from './routes/billing.js'
 import { createSesWebhookRoutes } from './routes/sesWebhook.js'
 import { mountPush } from './routes/push.js'
 import type { StripeGateway } from './billing/stripe.js'
-import { defaultTxtResolver, type TxtResolver } from './routes/tenantSelf.js'
+import { defaultAddressResolver, defaultCnameResolver, defaultTxtResolver, type NameResolver, type TxtResolver } from './routes/tenantSelf.js'
 import { fixedWindowCount, securityHeaders } from './security.js'
 import { issueTicket, revokedAfter, type WsDeps } from './ws.js'
 
@@ -102,6 +102,8 @@ export interface ApiDeps extends WsDeps {
   getRemoteAddr?: (c: unknown) => string
   /** DNS TXT resolver for domain verification (E03-5); default node:dns. */
   resolveTxt?: TxtResolver
+  resolveCname?: NameResolver
+  resolveAddress?: NameResolver
   /** Our own domain (`PLATFORM_DOMAIN`). Enables the zero-setup `<slug>.<domain>` white-label
    *  option; unset ⇒ every tenant domain goes through DNS TXT, which is right anywhere the
    *  wildcard record does not exist. */
@@ -323,7 +325,7 @@ export function createApiProm(): ApiProm {
  * suite's meta-test fails.
  */
 export function apiManifest(): ManifestEntry[] {
-  return toManifest(buildRoutes({ db: undefined as never, redis: undefined as never, resolveTxt: undefined as never }))
+  return toManifest(buildRoutes({ db: undefined as never, redis: undefined as never, resolveTxt: undefined as never, resolveCname: undefined as never, resolveAddress: undefined as never }))
 }
 
 export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
@@ -632,7 +634,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // above so /v1/devices/:id does not shadow /v1/devices/last (Hono matches in
   // registration order). Routes come from buildRoutes so the exported manifest and
   // the live app cannot drift (isolation suite meta-test).
-  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, ...(deps.osrm !== undefined ? { osrmUrl: deps.osrm.url } : {}), resolveTxt: deps.resolveTxt ?? defaultTxtResolver, ...(deps.platformDomain !== undefined ? { platformDomain: deps.platformDomain } : {}), ...(deps.edgeHostname !== undefined ? { edgeHostname: deps.edgeHostname } : {}), pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding, sms: deps.sms, smsQuota: deps.smsQuota, onSmsQuotaRejected: deps.onSmsQuotaRejected, ...(deps.deviceCreateLimit !== undefined ? { deviceCreateLimit: deps.deviceCreateLimit } : {}), ...(deps.onDeviceCreateThrottled !== undefined ? { onDeviceCreateThrottled: deps.onDeviceCreateThrottled } : {}), ...(deps.alertmanagerUrl !== undefined ? { alertmanagerUrl: deps.alertmanagerUrl } : {}) }), deps.db)
+  mountRoutes(app, buildRoutes({ db: deps.db, redis: deps.redis, ...(deps.osrm !== undefined ? { osrmUrl: deps.osrm.url } : {}), resolveTxt: deps.resolveTxt ?? defaultTxtResolver, resolveCname: deps.resolveCname ?? defaultCnameResolver, resolveAddress: deps.resolveAddress ?? defaultAddressResolver, ...(deps.platformDomain !== undefined ? { platformDomain: deps.platformDomain } : {}), ...(deps.edgeHostname !== undefined ? { edgeHostname: deps.edgeHostname } : {}), pool: deps.pool, gdpr: deps.gdpr, onboarding: deps.onboarding, sms: deps.sms, smsQuota: deps.smsQuota, onSmsQuotaRejected: deps.onSmsQuotaRejected, ...(deps.deviceCreateLimit !== undefined ? { deviceCreateLimit: deps.deviceCreateLimit } : {}), ...(deps.onDeviceCreateThrottled !== undefined ? { onDeviceCreateThrottled: deps.onDeviceCreateThrottled } : {}), ...(deps.alertmanagerUrl !== undefined ? { alertmanagerUrl: deps.alertmanagerUrl } : {}) }), deps.db)
 
   // Reports (E06-1) — tenant/account-scoped read over trips+events; not a manifest CRUD
   // entity (see reports.ts), EXEMPT from the meta-test with dedicated isolation tests.

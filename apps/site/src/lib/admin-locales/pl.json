@@ -208,7 +208,13 @@
     "dnsApex": "Większość dostawców nie pozwala ustawić CNAME na korzeniu domeny. Użyj rekordu ALIAS lub ANAME albo skieruj do nas subdomenę (np. „fleet.”).",
     "dnsKeepTxt": "Po weryfikacji rekord TXT możesz zostawić.",
     "copy": "Kopiuj",
-    "copied": "Skopiowano"
+    "copied": "Skopiowano",
+    "dnsStatus": "Status",
+    "dnsFound": "Znaleziono",
+    "dnsMissing": "Nie znaleziono",
+    "dnsChecking": "Sprawdzanie…",
+    "dnsGoesTo": "Ta nazwa kieruje obecnie do {{where}}.",
+    "dnsRecheck": "Sprawdź DNS"
   },
   "audit": {
     "title": "Dziennik audytu",
