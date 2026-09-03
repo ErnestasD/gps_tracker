@@ -215,7 +215,7 @@
     "actionError": "Akcja nie powiodła się — spróbuj ponownie.",
     "limitDomain": "Osiągnięto maksymalną liczbę {{max}} domen niestandardowych.",
     "dnsTitle": "Rekordy DNS",
-    "dnsIntro": "Dodaj oba rekordy u swojego dostawcy DNS, w dowolnej kolejności, a potem kliknij Weryfikuj.",
+    "dnsIntro": "Dodaj rekord TXT oraz JEDEN z rekordów kierujących, a potem kliknij Weryfikuj. CNAME i A robią to samo — opublikuj ten, na który pozwala Twój DNS.",
     "dnsType": "Typ",
     "dnsName": "Nazwa",
     "dnsValue": "Wartość",
@@ -233,7 +233,11 @@
     "dnsGoesTo": "Ta nazwa kieruje obecnie do {{where}}.",
     "dnsRecheck": "Sprawdź DNS",
     "dnsOccupied": "Ta nazwa ma już rekord A lub MX, więc nie może jednocześnie mieć CNAME — dostawca go przyjmie, a strefa nigdy nie poda. Skieruj do nas subdomenę (np. „fleet.{{domain}}”) albo, jeśli cała domena ma stać się panelem, zmień jej rekord A na nasz adres zamiast dodawać CNAME.",
-    "dnsAbsent": "Dla tej nazwy nic jeszcze nie opublikowano."
+    "dnsAbsent": "Dla tej nazwy nic jeszcze nie opublikowano.",
+    "dnsPurposeA": "kieruje domenę do nas — użyj ZAMIAST rekordu CNAME, jeśli to korzeń domeny",
+    "dnsOr": "albo",
+    "dnsApexChoice": "KORZEŃ domeny (np. example.com) nigdy nie może mieć rekordu CNAME — korzeń zawsze ma własne rekordy SOA i NS, a CNAME nie może stać obok żadnych innych danych. Tam użyj rekordu A. Dla subdomeny (fleet.example.com) lepszy jest CNAME: podąża za nami, jeśli nasz adres się zmieni, a rekord A trzeba poprawiać ręcznie. Jeśli dostawca oferuje ALIAS lub ANAME, na korzeniu to najlepsze rozwiązanie.",
+    "dnsMailSafe": "Skierowanie domeny do nas nie wpływa na pocztę — rekordy MX są osobne i pozostają bez zmian."
   },
   "audit": {
     "title": "Dziennik audytu",

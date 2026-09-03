@@ -46,12 +46,14 @@ export function verifyHost(domain: string): string {
 }
 
 export type DnsRecord = {
-  type: 'TXT' | 'CNAME'
+  type: 'TXT' | 'CNAME' | 'A'
   /** fully-qualified owner name — see branding.dnsRelative for why it is not shown relative */
   name: string
   value: string
-  /** which of the two jobs this record does, for the row's one-line explanation */
-  purposeKey: 'branding.dnsPurposeTxt' | 'branding.dnsPurposeCname'
+  /** which of the jobs this record does, for the row's one-line explanation */
+  purposeKey: 'branding.dnsPurposeTxt' | 'branding.dnsPurposeCname' | 'branding.dnsPurposeA'
+  /** this row and the one before it are ALTERNATIVES — publish one, not both */
+  alternative?: boolean
 }
 
 /**
@@ -67,12 +69,32 @@ export type DnsRecord = {
  * add-response. `dnsTarget` comes from GET /v1/tenant/branding; without it the CNAME row is
  * omitted rather than invented.
  */
-export function dnsRecordsFor(domain: string, txtToken: string, dnsTarget: string | null): DnsRecord[] {
+export function dnsRecordsFor(
+  domain: string,
+  txtToken: string,
+  dnsTarget: string | null,
+  dnsAddresses: string[] = [],
+): DnsRecord[] {
   const out: DnsRecord[] = [
     { type: 'TXT', name: verifyHost(domain), value: txtToken, purposeKey: 'branding.dnsPurposeTxt' },
   ]
   if (dnsTarget !== null && dnsTarget !== '') {
     out.push({ type: 'CNAME', name: domain, value: dnsTarget, purposeKey: 'branding.dnsPurposeCname' })
+  }
+  /**
+   * The APEX alternative.
+   *
+   * A zone root can never hold a CNAME — not "when other records are in the way": the apex always
+   * carries SOA and NS, and RFC 1034 §3.6.2 forbids a CNAME beside any other data. So a white-label
+   * customer who wants THEIR OWN domain to be the dashboard — which is the whole thing they bought
+   * — cannot follow a CNAME instruction at all. Offering only one was the product refusing the
+   * case it exists to serve.
+   *
+   * Shown for every domain rather than only for apex-looking ones: telling a root from a subdomain
+   * needs the public-suffix list, and being wrong would hide the only record that can work.
+   */
+  for (const address of dnsAddresses) {
+    out.push({ type: 'A', name: domain, value: address, purposeKey: 'branding.dnsPurposeA', alternative: true })
   }
   return out
 }
@@ -250,7 +272,7 @@ export function onBrandingChange(cb: () => void): () => void {
  *  where a tenant points their own domain's CNAME, and whether `<slug>.<platformDomain>` is on
  *  offer at all (it needs a wildcard DNS record to exist). Either may be null. */
 export const getBranding = () =>
-  getJson<{ branding: Branding; name: string; dnsTarget: string | null; platformDomain: string | null }>('/v1/tenant/branding')
+  getJson<{ branding: Branding; name: string; dnsTarget: string | null; dnsAddresses: string[]; platformDomain: string | null }>('/v1/tenant/branding')
 export const saveBranding = (b: Branding) => mutate<{ branding: Branding; name: string }>('PATCH', '/v1/tenant/branding', b)
 export const listDomains = () => getJson<TenantDomain[]>('/v1/tenant/domains')
 /** `txtRecord`/`dnsTarget` are null for a PLATFORM SUBDOMAIN — it comes back already verified,

@@ -26,6 +26,9 @@ const PLATFORM_DOMAIN = "orbetra.com";
  */
 const DNS_TARGET = "dash.orbetra.com";
 
+/** The address behind DNS_TARGET — what a domain ROOT must be pointed at, since it cannot CNAME. */
+const DNS_ADDRESS = "185.80.129.33";
+
 function BrandingPage() {
   const { t, i18n } = useTranslation("admin");
   const c = contentFor(i18n.language);
@@ -271,8 +274,10 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
    * the column look decorative, which is the opposite of its point.
    */
   const rows = [
-    { type: "TXT", name: `_orbetra-verify.${domain}`, value: txtToken, purpose: t("branding.dnsPurposeTxt"), ok: true },
-    { type: "CNAME", name: domain, value: DNS_TARGET, purpose: t("branding.dnsPurposeCname"), ok: false },
+    { type: "TXT", name: `_orbetra-verify.${domain}`, value: txtToken, purpose: t("branding.dnsPurposeTxt"), ok: true, alt: false },
+    { type: "CNAME", name: domain, value: DNS_TARGET, purpose: t("branding.dnsPurposeCname"), ok: false, alt: false },
+    // the apex alternative: a zone root always carries SOA and NS, so it can never hold a CNAME
+    { type: "A", name: domain, value: DNS_ADDRESS, purpose: t("branding.dnsPurposeA"), ok: false, alt: true },
   ];
   const copy = (text: string, key: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
@@ -314,9 +319,12 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.type}>
+              <tr key={`${r.type}-${r.value}`}>
                 <td className="pr-3 align-top">
-                  <span className="mono font-semibold" style={{ color: "var(--admin-ink)" }}>{r.type}</span>
+                  <span className="mono font-semibold" style={{ color: "var(--admin-ink)" }}>
+                    {r.alt && <span className="mr-1 font-normal" style={{ color: "var(--admin-ink-soft)" }}>{t("branding.dnsOr")}</span>}
+                    {r.type}
+                  </span>
                   <div style={{ color: "var(--admin-ink-soft)" }}>{r.purpose}</div>
                 </td>
                 <td className="pr-3 align-top"><Field text={r.name} k={`${r.type}-name`} /></td>
@@ -331,24 +339,10 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
       </div>
       <ul className="mt-2 flex flex-col gap-1" style={{ color: "var(--admin-ink-soft)" }}>
         <li>{t("branding.dnsRelative", { domain })}</li>
-        {/* Only where it can apply. A domain with a subdomain part takes a CNAME everywhere, so
-            the note is noise there — and it used to interpolate the domain into its own example,
-            producing "add a subdomain such as fleet.fleet.example.com". */}
-        {isApexLike(domain) && <li>{t("branding.dnsApex")}</li>}
+        <li>{t("branding.dnsApexChoice")}</li>
+        <li>{t("branding.dnsMailSafe")}</li>
         <li>{t("branding.dnsKeepTxt")}</li>
       </ul>
     </div>
   );
-}
-
-/**
- * Could this name be a zone root, where a CNAME is usually impossible?
- *
- * Two labels ("dokigo.lt") is a root; three or more ("fleet.example.com") takes a CNAME at every
- * provider. A multi-label public suffix like "example.co.uk" is a root we will not warn about —
- * a missing note is a far smaller harm than a note shown against a name it cannot apply to, and
- * getting this exactly right needs the public-suffix list, which is not worth a hint.
- */
-function isApexLike(domain: string): boolean {
-  return domain.split(".").length <= 2
 }

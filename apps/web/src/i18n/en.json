@@ -215,7 +215,7 @@
     "actionError": "Action failed — try again.",
     "limitDomain": "You've reached the maximum of {{max}} custom domains.",
     "dnsTitle": "DNS records",
-    "dnsIntro": "Add both records at your DNS provider, in any order, then press Verify.",
+    "dnsIntro": "Add the TXT record and ONE of the routing records, then press Verify. The CNAME and the A do the same job — publish whichever your DNS allows.",
     "dnsType": "Type",
     "dnsName": "Name",
     "dnsValue": "Value",
@@ -233,7 +233,11 @@
     "dnsGoesTo": "This name currently resolves to {{where}}.",
     "dnsRecheck": "Check DNS",
     "dnsOccupied": "This name already answers with an A or MX record, so it cannot also hold a CNAME — the provider accepts one and the zone never serves it. Point a subdomain at us instead (for example “fleet.{{domain}}”), or, if this whole domain should become the dashboard, change its A record to our address rather than adding a CNAME.",
-    "dnsAbsent": "Nothing is published for this name yet."
+    "dnsAbsent": "Nothing is published for this name yet.",
+    "dnsPurposeA": "points the domain at us — use this INSTEAD of the CNAME on a domain root",
+    "dnsOr": "or",
+    "dnsApexChoice": "A domain ROOT (like example.com) can never hold a CNAME — the apex always carries its own SOA and NS records, and a CNAME may not sit beside any other data. Use the A record there. For a subdomain (fleet.example.com) prefer the CNAME: it follows us if our address ever changes, while an A record has to be updated by hand. If your provider offers ALIAS or ANAME, that is the best of both on a root.",
+    "dnsMailSafe": "Pointing the domain at us does not affect e-mail — MX records are separate and stay as they are."
   },
   "audit": {
     "title": "Audit log",

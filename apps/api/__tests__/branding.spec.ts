@@ -197,6 +197,20 @@ describe('E03-5 domains + DNS verify', () => {
    * dropped by the zone for colliding with an existing A/MX/TXT (RFC 1034 §3.6.2). It is the
    * founder's own domain, right now.
    */
+  it('hands the edge ADDRESSES to the panel — an apex can be pointed at nothing else', async () => {
+    // A zone root always carries SOA and NS, so a CNAME is invalid there by construction. Without
+    // an address the panel can only offer a record the customer's own domain cannot accept.
+    addressRecords.set('dash.orbetra.test', ['185.80.129.33'])
+    const b = (await (await req('/v1/tenant/branding', t1Token)).json()) as { dnsTarget: string | null; dnsAddresses: string[] }
+    expect(b.dnsTarget).toBe('dash.orbetra.test')
+    expect(b.dnsAddresses).toEqual(['185.80.129.33'])
+  })
+
+  it('gives an empty address list rather than failing when the edge host does not resolve', async () => {
+    const b = (await (await req('/v1/tenant/branding', t1Token)).json()) as { dnsAddresses: string[] }
+    expect(b.dnsAddresses).toEqual([])
+  })
+
   it('reports the TXT and the ROUTE separately, so a half-configured domain says which half', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'half.t1.test' })).json()) as { id: string; txtToken: string }
 

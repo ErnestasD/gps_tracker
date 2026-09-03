@@ -154,6 +154,34 @@ describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () 
     expect(txt!.name).not.toBe(cname!.name)
   })
 
+  /**
+   * The APEX alternative — the case the product previously refused to serve.
+   *
+   * A zone root can never hold a CNAME: the apex always carries SOA and NS, and RFC 1034 §3.6.2
+   * forbids a CNAME beside any other data. So a white-label customer who wants THEIR OWN domain to
+   * be the dashboard — the whole thing they are paying for — could not follow the only instruction
+   * we gave.
+   */
+  it('offers an A record beside the CNAME, as the alternative for a domain root', () => {
+    const rows = dnsRecordsFor('dokigo.lt', TOKEN, 'dash.orbetra.com', ['185.80.129.33'])
+    expect(rows.map((r) => r.type)).toEqual(['TXT', 'CNAME', 'A'])
+    const a = rows[2]!
+    expect(a.name).toBe('dokigo.lt')
+    expect(a.value).toBe('185.80.129.33')
+    // marked as an alternative: it replaces the CNAME, it is not a third record to publish
+    expect(a.alternative).toBe(true)
+    expect(rows[1]!.alternative).toBeUndefined()
+  })
+
+  it('lists every edge address, so a multi-homed edge does not silently hand over one of them', () => {
+    const rows = dnsRecordsFor('dokigo.lt', TOKEN, 'dash.orbetra.com', ['185.80.129.33', '185.80.129.34'])
+    expect(rows.filter((r) => r.type === 'A').map((r) => r.value)).toEqual(['185.80.129.33', '185.80.129.34'])
+  })
+
+  it('shows no A row when the deployment has no address to give', () => {
+    expect(dnsRecordsFor('dokigo.lt', TOKEN, 'dash.orbetra.com', []).map((r) => r.type)).toEqual(['TXT', 'CNAME'])
+  })
+
   it('omits the CNAME rather than inventing a target when the edge host is unknown', () => {
     const rows = dnsRecordsFor('dokigo.lt', TOKEN, null)
     expect(rows.map((r) => r.type)).toEqual(['TXT'])

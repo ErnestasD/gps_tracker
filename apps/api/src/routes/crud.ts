@@ -90,7 +90,7 @@ import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
 import { restoreTenantDevices } from '@orbetra/registry'
 
-import { checkDomainDns, checkPlatformSubdomain, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type NameResolver, type TxtResolver } from './tenantSelf.js'
+import { checkDomainDns, checkPlatformSubdomain, edgeAddresses, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type NameResolver, type TxtResolver } from './tenantSelf.js'
 
 // Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
 // truth and is already committed, so a Redis blip must NOT 500 the request (a 500 → client
@@ -2299,14 +2299,16 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'get', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
       handler: async (c) => {
         const tenant = await db.tenants.get(auth(c).tenantId)
-        // `dnsTarget` and `platformDomain` are deployment config, not tenant data, and they ride
-        // here because the Branding page loads this alongside the domain list and has to state both
-        // remaining setup steps: where to point a CNAME, and whether the zero-setup
+        // `dnsTarget`, `dnsAddresses` and `platformDomain` are deployment config, not tenant data,
+        // and they ride here because the Branding page loads this alongside the domain list and has
+        // to state every remaining setup step: where to point a CNAME, what to point an APEX at
+        // (which can never be a CNAME — see edgeAddresses), and whether the zero-setup
         // `<slug>.orbetra.com` option exists at all (it needs a wildcard record to).
         return json(c, {
           branding: tenant?.branding ?? {},
           name: tenant?.name,
           dnsTarget: deps.edgeHostname ?? null,
+          dnsAddresses: await edgeAddresses(deps.resolveAddress, deps.edgeHostname),
           platformDomain: deps.platformDomain ?? null,
         })
       } },
