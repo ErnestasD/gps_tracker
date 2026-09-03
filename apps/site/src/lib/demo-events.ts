@@ -56,23 +56,37 @@ const geo = (zone: "depot" | "yard", transition: "enter" | "exit", jitter: numbe
   lat: 0,
   lon: 0,
 });
-/** An overspeed. `step` picks a point along the city's loop — see `localizeEvents`. */
-const speed = (speedKmh: number, limitKmh: number, step: number) => ({ speedKmh, limitKmh, step, lat: 0, lon: 0 });
+/**
+ * An overspeed. `step` picks a point along the city's loop — see `localizeEvents`.
+ *
+ * `maxSpeedKmh` is the worst moment of the breach, which is what makes an overspeed an INTERVAL
+ * rather than an instant — the product's own behaviour, and the reason its detail panel shows a
+ * peak beside the tripping speed. The demo carried none, so it quietly showed a shorter panel than
+ * the product has.
+ */
+const speed = (speedKmh: number, limitKmh: number, step: number, maxSpeedKmh?: number) => ({
+  speedKmh,
+  limitKmh,
+  step,
+  ...(maxSpeedKmh === undefined ? {} : { maxSpeedKmh }),
+  lat: 0,
+  lon: 0,
+});
 
 export const DEMO_EVENTS: DemoEvent[] = [
-  { id: "ev_14", at: "2026-09-01T07:42:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(105, 90, 35) },
+  { id: "ev_14", at: "2026-09-01T07:42:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(105, 90, 35, 118) },
   { id: "ev_13", at: "2026-09-01T07:15:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("yard", "exit", 0.002) },
   { id: "ev_12", at: "2026-09-01T06:58:00Z", kind: "geofence", deviceId: "dev_2", payload: geo("depot", "enter", 0.003) },
-  { id: "ev_11", at: "2026-09-01T06:31:00Z", kind: "overspeed", deviceId: "dev_4", payload: speed(97, 90, 79) },
+  { id: "ev_11", at: "2026-09-01T06:31:00Z", kind: "overspeed", deviceId: "dev_4", payload: speed(97, 90, 79, 103) },
   { id: "ev_10", at: "2026-09-01T05:54:00Z", kind: "geofence", deviceId: "dev_2", payload: geo("depot", "exit", 0.003) },
   { id: "ev_09", at: "2026-08-31T19:22:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("yard", "enter", 0.002) },
-  { id: "ev_08", at: "2026-08-31T18:47:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(112, 90, 84) },
+  { id: "ev_08", at: "2026-08-31T18:47:00Z", kind: "overspeed", deviceId: "dev_1", payload: speed(112, 90, 84, 127) },
   { id: "ev_07", at: "2026-08-31T17:36:00Z", kind: "geofence", deviceId: "dev_3", payload: geo("yard", "exit", 0.002) },
   { id: "ev_06", at: "2026-08-31T16:05:00Z", kind: "geofence", deviceId: "dev_4", payload: geo("depot", "enter", 0.004) },
-  { id: "ev_05", at: "2026-08-31T14:58:00Z", kind: "overspeed", deviceId: "dev_2", payload: speed(94, 90, 58) },
+  { id: "ev_05", at: "2026-08-31T14:58:00Z", kind: "overspeed", deviceId: "dev_2", payload: speed(94, 90, 58, 96) },
   { id: "ev_04", at: "2026-08-31T13:21:00Z", kind: "geofence", deviceId: "dev_4", payload: geo("depot", "exit", 0.003) },
   { id: "ev_03", at: "2026-08-31T11:49:00Z", kind: "geofence", deviceId: "dev_3", payload: geo("yard", "enter", 0.002) },
-  { id: "ev_02", at: "2026-08-31T09:34:00Z", kind: "overspeed", deviceId: "dev_3", payload: speed(101, 90, 7) },
+  { id: "ev_02", at: "2026-08-31T09:34:00Z", kind: "overspeed", deviceId: "dev_3", payload: speed(101, 90, 7, 109) },
   { id: "ev_01", at: "2026-08-31T08:02:00Z", kind: "geofence", deviceId: "dev_1", payload: geo("yard", "enter", 0.003) },
 ];
 

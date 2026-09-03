@@ -252,15 +252,24 @@ export function eventFacts(e: EventRow, opts: SummaryOpts & { onOff?: (on: boole
 
   switch (e.kind) {
     case 'overspeed': {
-      out.push({ key: 'events.f.speed', value: speed(p['speedKmh']) })
+      const at = typeof p['speedKmh'] === 'number' ? p['speedKmh'] : null
       // the worst moment of the breach, which the cooldown used to throw away
-      if (typeof p['maxSpeedKmh'] === 'number' && p['maxSpeedKmh'] > (typeof p['speedKmh'] === 'number' ? p['speedKmh'] : 0)) {
-        out.push({ key: 'events.f.peak', value: speed(p['maxSpeedKmh']) })
-      }
+      const peak = typeof p['maxSpeedKmh'] === 'number' && (at === null || p['maxSpeedKmh'] > at) ? p['maxSpeedKmh'] : null
+      out.push({ key: 'events.f.speed', value: speed(p['speedKmh']) })
+      if (peak !== null) out.push({ key: 'events.f.peak', value: speed(peak) })
       out.push({ key: 'events.f.limit', value: speed(p['limitKmh']) })
-      // the number the operator actually acts on, and the only one the payload never carried
-      if (typeof p['speedKmh'] === 'number' && typeof p['limitKmh'] === 'number') {
-        out.push({ key: 'events.f.over', value: speed(p['speedKmh'] - p['limitKmh']) })
+      /**
+       * How far over, measured from the WORST moment — not from the speed that happened to trip
+       * the rule.
+       *
+       * This read `speedKmh - limitKmh`, which was right when an overspeed was a single instant.
+       * Once events became intervals carrying a peak, the panel started contradicting itself: peak
+       * 97, limit 90, "over by 3". The reader can subtract two rows above for themselves; the
+       * number worth stating is the one they act on, and nobody disciplines a driver for the speed
+       * at which the alarm happened to fire.
+       */
+      if (at !== null && typeof p['limitKmh'] === 'number') {
+        out.push({ key: 'events.f.over', value: speed((peak ?? at) - p['limitKmh']) })
       }
       break
     }
