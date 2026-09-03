@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { tenantPlanSchema } from './plans.js'
+import { tenantPlanSchema, type TenantPlan } from './plans.js'
 import { roleSchema } from './roles.js'
 import { distanceUnitSchema, speedUnitSchema, volumeUnitSchema } from './units.js'
 
@@ -1161,4 +1161,7 @@ export interface BillingPlanView {
   amount: number | null
   currency: string
   interval: string | null
+  /** the TenantPlan key this base price maps to (planFor), or null for an unmapped price. Lets the
+   *  billing UI group by TIER and interval reliably instead of parsing the product name. */
+  plan: TenantPlan | null
 }

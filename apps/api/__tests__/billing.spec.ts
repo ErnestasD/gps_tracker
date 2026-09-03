@@ -66,7 +66,7 @@ const calls: { checkout: number; portal: number; changePlan: { subscriptionId: s
 // 'price_test' behaves like a TSP plan (maps to an overage price) so checkout adds the 2nd line item
 const fakeStripe: StripeGateway = {
   prices: ['price_test'],
-  listPlans: () => Promise.resolve([{ priceId: 'price_test', productName: 'Direct 10', amount: 1500, currency: 'eur', interval: 'month' }]),
+  listPlans: () => Promise.resolve([{ priceId: 'price_test', productName: 'Direct 10', amount: 1500, currency: 'eur', interval: 'month', plan: 'direct_10' }]),
   ensureCustomer: ({ tenantId, existingCustomerId }) => Promise.resolve(existingCustomerId ?? `cus_${tenantId.slice(0, 8)}`),
   createCheckoutSession: ({ customerId }) => { calls.checkout++; return Promise.resolve(`https://checkout.test/${customerId}`) },
   createPortalSession: ({ customerId }) => { calls.portal++; return Promise.resolve(`https://portal.test/${customerId}`) },

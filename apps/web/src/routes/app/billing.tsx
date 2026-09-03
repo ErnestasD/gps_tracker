@@ -1,6 +1,6 @@
-import { isDirectPlan } from '@orbetra/shared'
+import { isDirectPlan, TSP_INCLUDED_DEVICES, type BillingPlanView, type TenantPlan } from '@orbetra/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
@@ -13,9 +13,74 @@ import { useFmt } from '@/lib/datetime'
  * Billing (Stripe, ADR-024). Shows the subscription status and hands off to Stripe-hosted
  * Checkout (subscribe) / Customer Portal (manage) — we host no payment UI. Subscription state
  * is authoritative from the webhook; on return from Stripe we just refetch. When not subscribed,
- * a plan picker (resolved from the server's configured Stripe prices) drives checkout.
+ * a plan picker (resolved from the server's configured Stripe prices) drives checkout; an active
+ * TSP subscriber gets an in-app plan CHANGE (the portal can't swap our paired metered overage).
  * Re-skinned onto the admin design (ADR-028): PageHeader + admin-card sections.
  */
+
+type Interval = 'month' | 'year'
+
+/** Number of included devices for a plan, formatted, or null when not a metered-allowance plan. */
+function includedDevices(plan: TenantPlan | null): number | null {
+  if (plan === null) return null
+  const n = TSP_INCLUDED_DEVICES[plan]
+  return n ?? null
+}
+
+/**
+ * One plan card — the same professional shape for the subscribe picker and the change-plan grid,
+ * so a Direct user and a TSP reseller see the identical (non-cheap) layout the founder asked for.
+ */
+function PlanCard(props: {
+  name: string
+  amount: number | null
+  currency: string
+  intervalLabel: string | null
+  includedLabel: string | null
+  badge?: { label: string; tone: 'brand' | 'success' | 'neutral' | 'info' }
+  highlight?: boolean
+  ctaLabel: string
+  ctaDisabled: boolean
+  onCta: () => void
+  testId: string
+  ctaTestId: string
+}) {
+  return (
+    <div
+      className="admin-card flex flex-col gap-4 p-5"
+      style={props.highlight ? { borderColor: 'var(--admin-brand)', boxShadow: 'var(--admin-shadow-sm)' } : undefined}
+      data-testid={props.testId}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-base font-semibold" style={{ color: 'var(--admin-ink)' }}>{props.name}</h3>
+        {props.badge && <Badge tone={props.badge.tone} className="shrink-0">{props.badge.label}</Badge>}
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="display text-3xl font-semibold tracking-tight" style={{ color: 'var(--admin-ink)' }}>
+          {fmtPlanAmount(props.amount, props.currency)}
+        </span>
+        {props.amount !== null && props.intervalLabel && (
+          <span className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>/ {props.intervalLabel}</span>
+        )}
+      </div>
+      {props.includedLabel && (
+        <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{props.includedLabel}</p>
+      )}
+      <div className="mt-auto">
+        <AdminButton
+          variant={props.highlight ? 'primary' : 'secondary'}
+          className="w-full"
+          disabled={props.ctaDisabled}
+          data-testid={props.ctaTestId}
+          onClick={props.onCta}
+        >
+          {props.ctaLabel}
+        </AdminButton>
+      </div>
+    </div>
+  )
+}
+
 export function BillingPage() {
   const { t } = useTranslation()
   const { d } = useFmt()
@@ -49,13 +114,6 @@ export function BillingPage() {
   // picker can never disagree with the API. This is what lets an F2 self-serve trial — which reports
   // active:true because status is `trialing` — still see plans and convert to paid.
   const showPicker = b?.configured === true && b.canSubscribe === true && !recoverable
-  // only fetch the catalog when the picker is shown (each plan is a live Stripe price lookup);
-  // catalog data is near-static, so cache it for the session
-  const plans = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker, staleTime: 5 * 60 * 1000 })
-  const qc = useQueryClient()
-  const [busy, setBusy] = useState(false)
-  const [actionError, setActionError] = useState(false) // Stripe handoff failed (was invisible)
-  const [changingTo, setChangingTo] = useState<string | null>(null) // price id mid-change
 
   /**
    * Plan CHANGE (Start ⇄ Grow ⇄ Scale) for an active TSP subscriber — the Stripe Customer Portal
@@ -64,10 +122,30 @@ export function BillingPage() {
    * via the sales CTA above, and a lapsed one repairs payment in the portal.
    */
   const canChangePlan = b?.active === true && b.planPriceId !== null && !showPicker && user !== null && !isDirectPlan(user.plan)
-  const changePlans = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: canChangePlan, staleTime: 5 * 60 * 1000 })
-  const otherTspPlans = (changePlans.data ?? [])
-    // the switch targets: TSP base prices (a monthly amount) other than the current one
-    .filter((p) => /TSP/i.test(p.productName) && p.amount !== null && p.priceId !== b?.planPriceId)
+
+  // ONE catalog query drives both the subscribe picker and the change grid (same cache key).
+  const catalog = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker || canChangePlan, staleTime: 5 * 60 * 1000 })
+  const plans = useMemo(() => catalog.data ?? [], [catalog.data])
+
+  const qc = useQueryClient()
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState(false) // Stripe handoff failed (was invisible)
+  const [changingTo, setChangingTo] = useState<string | null>(null) // price id mid-change
+
+  // which billing interval the grids show. Default to the interval the tenant is ALREADY on (so a
+  // monthly subscriber sees monthly targets), else monthly.
+  const currentPrice = plans.find((p) => p.priceId === b?.planPriceId)
+  const [termSel, setTermSel] = useState<Interval | null>(null)
+  const selInterval: Interval = termSel ?? (currentPrice?.interval === 'year' ? 'year' : 'month')
+  // only offer the monthly/annual toggle when BOTH terms actually exist in the catalog
+  const hasBothIntervals = plans.some((p) => p.interval === 'month') && plans.some((p) => p.interval === 'year')
+
+  const includedLabelFor = (plan: TenantPlan | null): string | null => {
+    const n = includedDevices(plan)
+    return n !== null ? t('billing.includedDevices', { n }) : null
+  }
+  const intervalLabel = (iv: string | null): string | null => (iv !== null ? t(`billing.interval.${iv}`, iv) : null)
+
   const doChange = (priceId: string) => {
     setChangingTo(priceId)
     setActionError(false)
@@ -86,6 +164,20 @@ export function BillingPage() {
       .catch(() => { setBusy(false); setActionError(true) }) // 500/429/misconfig — tell the user instead of nothing
   }
 
+  // the OTHER TSP tiers, at the selected interval — grouped by plan KEY (not a fragile name parse),
+  // current tier excluded. This is what removes the "two TSP Grow cards / €1490 per month" confusion.
+  const changeTargets = plans
+    .filter((p): p is BillingPlanView & { plan: TenantPlan } =>
+      p.plan !== null && !isDirectPlan(p.plan) && p.plan !== user?.plan && p.interval === selInterval && p.amount !== null)
+    .sort((a, b2) => (a.amount ?? 0) - (b2.amount ?? 0))
+
+  // subscribe picker: one card per plan at the selected interval (no monthly+annual duplicates).
+  const pickerPlans = plans
+    .filter((p) => p.interval === selInterval && p.amount !== null)
+    .sort((a, b2) => (a.amount ?? 0) - (b2.amount ?? 0))
+
+  const currentIncluded = includedDevices(user?.plan ?? null)
+
   // Stripe's machine status (mirrors subscription.status) → catalog label; the raw value is the
   // defaultValue fallback so an unmapped future status still renders instead of a literal key
   const statusLabel = b?.status != null ? t(`billing.st.${b.status}`, b.status) : t('billing.none')
@@ -97,6 +189,25 @@ export function BillingPage() {
       : b?.status === 'canceled'
         ? t('billing.ends')
         : t('billing.renews')
+
+  const IntervalToggle = hasBothIntervals ? (
+    <div className="inline-flex rounded-md p-0.5" style={{ background: 'var(--admin-surface-2, var(--admin-surface))', border: '1px solid var(--admin-hairline)' }} data-testid="billing-interval-toggle">
+      {(['month', 'year'] as const).map((iv) => (
+        <button
+          key={iv}
+          type="button"
+          onClick={() => setTermSel(iv)}
+          data-testid={`interval-${iv}`}
+          className="rounded px-3 py-1 text-xs font-medium transition-colors"
+          style={selInterval === iv
+            ? { background: 'var(--admin-brand)', color: '#fff' }
+            : { background: 'transparent', color: 'var(--admin-ink-soft)' }}
+        >
+          {t(`billing.intervalToggle.${iv}`)}
+        </button>
+      ))}
+    </div>
+  ) : null
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
@@ -172,6 +283,16 @@ export function BillingPage() {
               )}
             </div>
             <div className="flex flex-col gap-4 p-4">
+              {/* the concrete current plan — a reseller steering their bill wants "which plan am I on"
+                  answered in one line, not inferred from the grid below */}
+              {canChangePlan && user !== null && (
+                <p className="text-sm" style={{ color: 'var(--admin-ink)' }} data-testid="billing-current-plan">
+                  {t('billing.currentPlan')}: <span className="font-semibold">{t(`plan.${user.plan}`, user.plan)}</span>
+                  {currentIncluded !== null && (
+                    <span style={{ color: 'var(--admin-ink-soft)' }}> · {t('billing.includedDevices', { n: currentIncluded })}</span>
+                  )}
+                </p>
+              )}
               <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.pricingNote')}</p>
               {b?.currentPeriodEnd != null && (
                 <p className="text-sm" style={{ color: 'var(--admin-ink)' }} data-testid="billing-period">
@@ -188,59 +309,78 @@ export function BillingPage() {
             </div>
           </div>
 
-          {canChangePlan && otherTspPlans.length > 0 && (
-            <div className="space-y-2" data-testid="billing-change-plan">
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('billing.changePlanTitle')}</h2>
-              <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.changePlanNote')}</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {otherTspPlans.map((p) => (
-                  <div key={p.priceId} className="admin-card flex flex-col gap-3 p-5" data-testid={`change-plan-${p.priceId}`}>
-                    <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{p.productName}</div>
-                    <p className="display text-2xl font-semibold tracking-tight" style={{ color: 'var(--admin-ink)' }}>
-                      {fmtPlanAmount(p.amount, p.currency)}
-                      {p.amount !== null && p.interval !== null && (
-                        <span className="text-sm font-normal" style={{ color: 'var(--admin-ink-soft)' }}> / {t(`billing.interval.${p.interval}`, p.interval)}</span>
-                      )}
-                    </p>
-                    <div>
-                      <AdminButton size="sm" variant="secondary" disabled={changingTo !== null} data-testid={`switch-${p.priceId}`} onClick={() => doChange(p.priceId)}>
-                        {changingTo === p.priceId ? t('billing.switching') : t('billing.switchTo')}
-                      </AdminButton>
-                    </div>
-                  </div>
-                ))}
+          {canChangePlan && (
+            <div className="space-y-3" data-testid="billing-change-plan">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('billing.changePlanTitle')}</h2>
+                  <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.changePlanNote')}</p>
+                </div>
+                {IntervalToggle}
               </div>
+              {catalog.isLoading ? (
+                <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="change-plan-loading">{t('billing.loading')}</p>
+              ) : changeTargets.length === 0 ? (
+                <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="change-plan-empty">{t('billing.noOtherPlans')}</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {changeTargets.map((p) => {
+                    const targetIncluded = includedDevices(p.plan)
+                    const isUpgrade = currentIncluded !== null && targetIncluded !== null && targetIncluded > currentIncluded
+                    return (
+                      <PlanCard
+                        key={p.priceId}
+                        testId={`change-plan-${p.priceId}`}
+                        ctaTestId={`switch-${p.priceId}`}
+                        name={p.productName}
+                        amount={p.amount}
+                        currency={p.currency}
+                        intervalLabel={intervalLabel(p.interval)}
+                        includedLabel={includedLabelFor(p.plan)}
+                        badge={currentIncluded !== null && targetIncluded !== null
+                          ? (isUpgrade ? { label: t('billing.upgradeChip'), tone: 'brand' } : { label: t('billing.downgradeChip'), tone: 'neutral' })
+                          : undefined}
+                        highlight={isUpgrade}
+                        ctaDisabled={changingTo !== null}
+                        ctaLabel={changingTo === p.priceId ? t('billing.switching') : t('billing.switchTo')}
+                        onCta={() => doChange(p.priceId)}
+                      />
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           {showPicker && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="billing-plans">
-              {(plans.data ?? []).map((p) => (
-                <div key={p.priceId} className="admin-card flex flex-col gap-3 p-5" style={{ borderColor: 'var(--admin-brand)' }} data-testid={`plan-${p.priceId}`}>
-                  <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{p.productName}</div>
-                  <p className="display text-2xl font-semibold tracking-tight" style={{ color: 'var(--admin-ink)' }}>
-                    {fmtPlanAmount(p.amount, p.currency)}
-                    {/* no dangling "/ mo" on a metered (amount-less) price; raw interval is the
-                        defaultValue fallback should Stripe send one outside the catalog */}
-                    {p.amount !== null && p.interval !== null && (
-                      <span className="text-sm font-normal" style={{ color: 'var(--admin-ink-soft)' }}> / {t(`billing.interval.${p.interval}`, p.interval)}</span>
-                    )}
-                  </p>
-                  <div>
-                    <AdminButton size="sm" disabled={busy} data-testid={`subscribe-${p.priceId}`} onClick={() => go(() => startCheckout(p.priceId))}>
-                      {t('billing.subscribe')}
-                    </AdminButton>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-3" data-testid="billing-plans">
+              {hasBothIntervals && <div className="flex justify-end">{IntervalToggle}</div>}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {pickerPlans.map((p) => (
+                  <PlanCard
+                    key={p.priceId}
+                    testId={`plan-${p.priceId}`}
+                    ctaTestId={`subscribe-${p.priceId}`}
+                    name={p.productName}
+                    amount={p.amount}
+                    currency={p.currency}
+                    intervalLabel={intervalLabel(p.interval)}
+                    includedLabel={includedLabelFor(p.plan)}
+                    highlight
+                    ctaDisabled={busy}
+                    ctaLabel={t('billing.subscribe')}
+                    onCta={() => go(() => startCheckout(p.priceId))}
+                  />
+                ))}
+              </div>
               {/* the catalog is a live Stripe lookup — don't flash the empty state while it loads */}
-              {plans.isLoading ? (
+              {catalog.isLoading ? (
                 <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="plans-loading">{t('billing.loading')}</p>
-              ) : plans.isError ? (
+              ) : catalog.isError ? (
                 /* a live Stripe lookup that fails is not "no plans configured" */
                 <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }} data-testid="plans-error">{t('admin.loadError')}</p>
               ) : (
-                (plans.data ?? []).length === 0 && (
+                pickerPlans.length === 0 && (
                   <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="plans-empty">{t('billing.noPlans')}</p>
                 )
               )}
