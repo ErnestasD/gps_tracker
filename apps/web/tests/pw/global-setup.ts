@@ -4,6 +4,7 @@ import {
   API_PORT,
   BASE_IMEI,
   E2E_EMAIL,
+  E2E_EDGE_HOSTNAME,
   E2E_JWT_SECRET,
   E2E_PASSWORD,
   INGEST_PORT,
@@ -67,7 +68,17 @@ async function setup(): Promise<void> {
     ['apps/api/src/main.ts'],
     // the SPA is served on WEB_PORT and its /v1 calls are proxied to the API on API_PORT, so the
     // browser Origin (WEB_PORT) differs from the API Host (API_PORT) — trust it for the CSRF guard
-    { ...env, API_PORT: String(API_PORT), JWT_SECRET: E2E_JWT_SECRET, COOKIE_SECURE: '0', AUTH_TRUSTED_ORIGINS: `127.0.0.1:${WEB_PORT},localhost:${WEB_PORT}` },
+    {
+      ...env,
+      API_PORT: String(API_PORT),
+      JWT_SECRET: E2E_JWT_SECRET,
+      COOKIE_SECURE: '0',
+      AUTH_TRUSTED_ORIGINS: `127.0.0.1:${WEB_PORT},localhost:${WEB_PORT}`,
+      // The CNAME target a tenant is told to point their domain at. Unset, the branding page
+      // omits the CNAME row entirely — correct behaviour (never invent a target) but it meant the
+      // e2e stack exercised a ONE-record setup while every real deployment hands out two.
+      EDGE_HOSTNAME: E2E_EDGE_HOSTNAME,
+    },
     'api',
   )
   await Promise.all([waitTcp(INGEST_PORT), waitHttp(`http://127.0.0.1:${API_PORT}/healthz`)])

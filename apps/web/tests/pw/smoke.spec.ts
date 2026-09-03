@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { BASE_IMEI, DEVICES, E2E_EMAIL, E2E_PASSWORD, INGEST_PORT, PLATFORM_EMAIL, PLATFORM_PASSWORD, TRAIL_IMEI, TSX_BIN, UNKNOWN_IMEI, runToExit } from './stack'
+import { BASE_IMEI, DEVICES, E2E_EDGE_HOSTNAME, E2E_EMAIL, E2E_PASSWORD, INGEST_PORT, PLATFORM_EMAIL, PLATFORM_PASSWORD, TRAIL_IMEI, TSX_BIN, UNKNOWN_IMEI, runToExit } from './stack'
 
 /**
  * E02-6 smoke (story AC + the full-chain <2 s assertion E02-4 deferred here):
@@ -409,6 +409,7 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   await expect(dns).not.toContainText('orbetra-verify=')
   // and the CNAME beside it, on a DIFFERENT name — the two cannot share one (RFC 1034 §3.6.2)
   await expect(dns.getByTestId('dns-row-CNAME')).toContainText('fleet.acme-e2e.test')
+  await expect(dns.getByTestId('dns-row-CNAME')).toContainText(E2E_EDGE_HOSTNAME)
 
   await expect(page.getByTestId('domain-fleet.acme-e2e.test')).toBeVisible()
   // unverified until DNS TXT is present (no real DNS in CI) → shows Verify affordance
