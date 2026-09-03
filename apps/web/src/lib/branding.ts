@@ -259,3 +259,11 @@ export const addDomain = (domain: string) =>
   mutate<TenantDomain & { txtRecord: string | null; dnsTarget: string | null }>('POST', '/v1/tenant/domains', { domain })
 export const removeDomain = (id: string) => mutate<{ ok: boolean }>('DELETE', `/v1/tenant/domains/${id}`)
 export const verifyDomain = (id: string) => mutate<TenantDomain>('POST', `/v1/tenant/domains/${id}/verify`)
+
+/** What each record looks like in live DNS — see the API's checkDomainDns. */
+export type DomainDns = {
+  txt: { ok: boolean; found: string[] }
+  route: { ok: boolean; found: string[]; expected: string | null }
+}
+
+export const getDomainDns = (id: string) => getJson<DomainDns>(`/v1/tenant/domains/${id}/dns`)

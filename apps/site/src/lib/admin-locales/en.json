@@ -208,7 +208,13 @@
     "dnsApex": "Most providers cannot put a CNAME on a domain root. Use their ALIAS or ANAME record instead, or point a subdomain (such as “fleet.”) at us.",
     "dnsKeepTxt": "You can leave the TXT record published after verification.",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "dnsStatus": "Status",
+    "dnsFound": "Found",
+    "dnsMissing": "Not found",
+    "dnsChecking": "Checking…",
+    "dnsGoesTo": "This name currently resolves to {{where}}.",
+    "dnsRecheck": "Check DNS"
   },
   "audit": {
     "title": "Audit log",

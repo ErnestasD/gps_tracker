@@ -212,7 +212,13 @@
     "dnsApex": "Dauguma tiekėjų negali uždėti CNAME ant domeno šaknies. Naudokite jų ALIAS arba ANAME įrašą arba nukreipkite į mus subdomeną (pvz. „fleet.“).",
     "dnsKeepTxt": "Patvirtinus TXT įrašą galite palikti — jo trinti nereikia.",
     "copy": "Kopijuoti",
-    "copied": "Nukopijuota"
+    "copied": "Nukopijuota",
+    "dnsStatus": "Būsena",
+    "dnsFound": "Rasta",
+    "dnsMissing": "Nerasta",
+    "dnsChecking": "Tikrinama…",
+    "dnsGoesTo": "Šis vardas šiuo metu nukreipia į {{where}}.",
+    "dnsRecheck": "Tikrinti DNS"
   },
   "audit": {
     "title": "Audito žurnalas",

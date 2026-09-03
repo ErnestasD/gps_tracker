@@ -212,7 +212,13 @@
     "dnsApex": "Die meisten Anbieter können auf der Domain-Wurzel kein CNAME setzen. Nutzen Sie deren ALIAS- oder ANAME-Eintrag, oder richten Sie eine Subdomain (etwa „fleet.“) auf uns.",
     "dnsKeepTxt": "Nach der Prüfung können Sie den TXT-Eintrag stehen lassen.",
     "copy": "Kopieren",
-    "copied": "Kopiert"
+    "copied": "Kopiert",
+    "dnsStatus": "Status",
+    "dnsFound": "Gefunden",
+    "dnsMissing": "Nicht gefunden",
+    "dnsChecking": "Wird geprüft…",
+    "dnsGoesTo": "Dieser Name verweist derzeit auf {{where}}.",
+    "dnsRecheck": "DNS prüfen"
   },
   "audit": {
     "title": "Audit-Log",

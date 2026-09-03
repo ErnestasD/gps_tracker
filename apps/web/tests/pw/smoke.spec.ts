@@ -414,6 +414,12 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   await expect(dns.getByTestId('dns-row-CNAME')).toContainText('fleet.acme-e2e.test')
   await expect(dns.getByTestId('dns-row-CNAME')).toContainText(E2E_EDGE_HOSTNAME)
 
+  // per-record status: nothing is published in CI, so both rows report "not found" rather than
+  // the page saying nothing at all about which half is missing
+  await expect(dns.getByTestId('dns-row-TXT')).toContainText(/not found/i)
+  await expect(dns.getByTestId('dns-row-CNAME')).toContainText(/not found/i)
+  await expect(page.getByTestId('dns-recheck-fleet.acme-e2e.test')).toBeVisible()
+
   await expect(page.getByTestId('domain-fleet.acme-e2e.test')).toBeVisible()
   // unverified until DNS TXT is present (no real DNS in CI) → shows Verify affordance
   await expect(page.getByTestId('verify-fleet.acme-e2e.test')).toBeVisible()

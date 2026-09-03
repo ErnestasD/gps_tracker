@@ -1,10 +1,16 @@
 import { randomBytes } from 'node:crypto'
-import { resolveTxt as dnsResolveTxt } from 'node:dns/promises'
+import { resolve4 as dnsResolve4, resolveCname as dnsResolveCname, resolveTxt as dnsResolveTxt } from 'node:dns/promises'
 
 /** DNS TXT resolver — injectable so tests don't hit real DNS. */
 export type TxtResolver = (hostname: string) => Promise<string[][]>
 
 export const defaultTxtResolver: TxtResolver = dnsResolveTxt
+
+/** CNAME and A resolvers, for the routing half of the check. Injectable for the same reason. */
+export type NameResolver = (hostname: string) => Promise<string[]>
+
+export const defaultCnameResolver: NameResolver = dnsResolveCname
+export const defaultAddressResolver: NameResolver = dnsResolve4
 
 /**
  * Where the ownership record goes: a DEDICATED name, `_orbetra-verify.<domain>`, carrying the bare
@@ -168,4 +174,80 @@ async function txtHas(resolver: TxtResolver, hostname: string, want: string): Pr
 export async function verifyDomainTxt(resolver: TxtResolver, domain: string, txtToken: string): Promise<boolean> {
   if (await txtHas(resolver, verifyHost(domain), txtToken)) return true
   return txtHas(resolver, domain, expectedTxt(txtToken))
+}
+
+
+/** A hostname with its trailing dot removed and lowercased — DNS is case-insensitive and a
+ *  provider may hand back either form. */
+function canon(host: string): string {
+  return host.trim().toLowerCase().replace(/\.$/, '')
+}
+
+/** What we found when we looked, and whether it is what we asked for. */
+export type DnsCheck = { ok: boolean; found: string[] }
+
+export type DomainDns = {
+  /** the ownership TXT — the thing /verify reads */
+  txt: DnsCheck
+  /** does the name actually REACH us: the CNAME, or an address that matches the edge host */
+  route: DnsCheck & { expected: string | null }
+}
+
+/**
+ * Look at a domain's live DNS and report each record separately.
+ *
+ * Verification used to be one button with two outcomes, so a domain that proved ownership and went
+ * nowhere looked exactly like a domain that was finished. That is not hypothetical: a CNAME on a
+ * name that already holds A, MX and TXT records is silently dropped by the zone (RFC 1034 §3.6.2),
+ * which is a failure with no error anywhere — the panel accepts the record, the zone never serves
+ * it, and the tenant is left with a verified badge above a domain that resolves to their old
+ * website.
+ *
+ * The routing half deliberately does NOT insist on a CNAME. A domain root cannot hold one, so an
+ * apex has to use ALIAS/ANAME flattening — which publishes an ADDRESS, not a CNAME. What matters
+ * is whether the name arrives here, so an address matching the edge host's own counts as reaching
+ * us, and `found` carries what was actually seen so the panel can say where it goes instead.
+ */
+export async function checkDomainDns(
+  resolvers: { txt: TxtResolver; cname: NameResolver; address: NameResolver },
+  domain: string,
+  txtToken: string,
+  edgeHostname: string | undefined,
+): Promise<DomainDns> {
+  const txtFound: string[] = []
+  for (const host of [verifyHost(domain), domain]) {
+    try {
+      for (const chunks of await resolvers.txt(host)) txtFound.push(chunks.join(''))
+    } catch {
+      // NXDOMAIN / no TXT — a name nobody has configured yet is the normal case here
+    }
+  }
+  const txtOk = txtFound.includes(txtToken) || txtFound.includes(expectedTxt(txtToken))
+
+  const expected = edgeHostname === undefined || edgeHostname.trim() === '' ? null : canon(edgeHostname)
+  const routeFound: string[] = []
+  let routeOk = false
+  if (expected !== null) {
+    try {
+      const cnames = (await resolvers.cname(domain)).map(canon)
+      routeFound.push(...cnames)
+      routeOk = cnames.includes(expected)
+    } catch {
+      /* no CNAME — an apex cannot have one; fall through to addresses */
+    }
+    if (!routeOk) {
+      const [ours, theirs] = await Promise.all([addrs(resolvers.address, expected), addrs(resolvers.address, domain)])
+      routeFound.push(...theirs)
+      routeOk = theirs.length > 0 && theirs.some((a) => ours.includes(a))
+    }
+  }
+  return { txt: { ok: txtOk, found: txtFound }, route: { ok: routeOk, found: [...new Set(routeFound)], expected } }
+}
+
+async function addrs(resolve: NameResolver, hostname: string): Promise<string[]> {
+  try {
+    return await resolve(hostname)
+  } catch {
+    return []
+  }
 }

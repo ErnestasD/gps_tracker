@@ -12,6 +12,7 @@ import {
   applyBranding,
   dnsRecordsFor,
   emitBrandingChange,
+  getDomainDns,
   getBranding,
   listDomains,
   removeDomain,
@@ -221,7 +222,7 @@ export function BrandingPage() {
                       returning user who navigated away can still publish them and Verify (was
                       reachable only in the transient add-response) */}
                   {!d.verified && (
-                    <DnsRecords domain={d.domain} txtToken={d.txtToken} dnsTarget={current.data?.dnsTarget ?? null} />
+                    <DnsRecords id={d.id} domain={d.domain} txtToken={d.txtToken} dnsTarget={current.data?.dnsTarget ?? null} />
                   )}
                 </li>
               ))}
@@ -389,10 +390,22 @@ function AddDomain({ count, platformDomain, onAdded }: { count: number; platform
  * pointing the domain at us are two records, and a page that mentions them a screen apart teaches
  * a one-record setup.
  */
-function DnsRecords({ domain, txtToken, dnsTarget }: { domain: string; txtToken: string; dnsTarget: string | null }) {
+function DnsRecords({ id, domain, txtToken, dnsTarget }: { id: string; domain: string; txtToken: string; dnsTarget: string | null }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState<string | null>(null)
   const records = dnsRecordsFor(domain, txtToken, dnsTarget)
+  /**
+   * What each record looks like in live DNS.
+   *
+   * A single Verify button could only say yes or no to the pair, so "ownership proved, routing
+   * silently dropped" looked exactly like "not done yet" — and that state is reachable without any
+   * mistake on the tenant's part: a CNAME on a name that already holds A/MX/TXT is discarded by
+   * the zone with no error anywhere (RFC 1034 §3.6.2). Per-record status is what turns that into
+   * something a person can act on.
+   */
+  const dns = useQuery({ queryKey: ['domain-dns', id], queryFn: () => getDomainDns(id), refetchOnWindowFocus: false })
+  const stateOf = (type: 'TXT' | 'CNAME'): { ok: boolean; found: string[] } | undefined =>
+    dns.data === undefined ? undefined : type === 'TXT' ? dns.data.txt : dns.data.route
 
   const copy = (text: string, key: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
@@ -417,7 +430,7 @@ function DnsRecords({ domain, txtToken, dnsTarget }: { domain: string; txtToken:
               <th className="pr-3 font-medium">{t('branding.dnsType')}</th>
               <th className="pr-3 font-medium">{t('branding.dnsName')}</th>
               <th className="pr-3 font-medium">{t('branding.dnsValue')}</th>
-              <th />
+              <th className="font-medium">{t('branding.dnsStatus')}</th>
             </tr>
           </thead>
           <tbody>
@@ -433,11 +446,34 @@ function DnsRecords({ domain, txtToken, dnsTarget }: { domain: string; txtToken:
                 <td className="pr-3 align-top">
                   <Field text={r.value} copied={copied === `${r.type}-value`} onCopy={() => copy(r.value, `${r.type}-value`)} />
                 </td>
-                <td className="align-top" />
+                <td className="align-top">
+                  {dns.isLoading ? (
+                    <span style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsChecking')}</span>
+                  ) : (
+                    <Badge tone={stateOf(r.type)?.ok === true ? 'success' : 'warning'}>
+                      {stateOf(r.type)?.ok === true ? t('branding.dnsFound') : t('branding.dnsMissing')}
+                    </Badge>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Where it goes instead. "Not found" alone leaves the reader guessing; naming the address
+          it resolves to is usually the whole diagnosis — an old web host, or a wildcard record
+          quietly answering for a name nobody defined. */}
+      {dns.data !== undefined && !dns.data.route.ok && dns.data.route.found.length > 0 && (
+        <p className="mt-2" style={{ color: 'var(--admin-warning)' }} data-testid={`dns-goes-to-${domain}`}>
+          {t('branding.dnsGoesTo', { where: dns.data.route.found.join(', ') })}
+        </p>
+      )}
+
+      <div className="mt-2">
+        <AdminButton variant="secondary" size="sm" onClick={() => void dns.refetch()} data-testid={`dns-recheck-${domain}`}>
+          {t('branding.dnsRecheck')}
+        </AdminButton>
       </div>
 
       <ul className="mt-2 flex flex-col gap-1" style={{ color: 'var(--admin-ink-soft)' }}>

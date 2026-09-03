@@ -31,6 +31,8 @@ let t1Token: string
 let t2Token: string
 // injected DNS resolver — tests set the record content per domain
 const txtRecords = new Map<string, string[][]>()
+const cnameRecords = new Map<string, string[]>()
+const addressRecords = new Map<string, string[]>()
 
 const base = () => `http://127.0.0.1:${port}`
 const req = (path: string, token: string, method = 'GET', bodyObj?: unknown, headers: Record<string, string> = {}) =>
@@ -75,6 +77,14 @@ beforeAll(async () => {
       const rec = txtRecords.get(host)
       return rec ? Promise.resolve(rec) : Promise.reject(new Error('ENOTFOUND'))
     },
+    resolveCname: (host) => {
+      const rec = cnameRecords.get(host)
+      return rec ? Promise.resolve(rec) : Promise.reject(new Error('ENOTFOUND'))
+    },
+    resolveAddress: (host) => {
+      const rec = addressRecords.get(host)
+      return rec ? Promise.resolve(rec) : Promise.reject(new Error('ENOTFOUND'))
+    },
     askRateLimit: { max: 5, windowS: 60 },
     platformDomain: 'orbetra.test',
     edgeHostname: 'dash.orbetra.test',
@@ -95,6 +105,8 @@ afterAll(async () => {
 beforeEach(async () => {
   await redis.flushall()
   txtRecords.clear()
+  cnameRecords.clear()
+  addressRecords.clear()
 })
 
 describe('E03-5 tenant branding (self, scoped)', () => {
@@ -175,6 +187,65 @@ describe('E03-5 domains + DNS verify', () => {
     const half = Math.ceil(created.txtToken.length / 2)
     txtRecords.set('_orbetra-verify.chunk.t1.test', [[created.txtToken.slice(0, half), created.txtToken.slice(half)]])
     expect((await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')).status).toBe(200)
+  })
+
+  /**
+   * Each record reported separately.
+   *
+   * One button with two outcomes could not distinguish "proved ownership, goes nowhere" from
+   * "finished" — and the first is what a tenant gets when the CNAME they added was silently
+   * dropped by the zone for colliding with an existing A/MX/TXT (RFC 1034 §3.6.2). It is the
+   * founder's own domain, right now.
+   */
+  it('reports the TXT and the ROUTE separately, so a half-configured domain says which half', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'half.t1.test' })).json()) as { id: string; txtToken: string }
+
+    const dnsOf = async () =>
+      (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as {
+        txt: { ok: boolean; found: string[] }
+        route: { ok: boolean; found: string[]; expected: string | null }
+      }
+
+    // nothing published at all
+    let d = await dnsOf()
+    expect(d.txt.ok).toBe(false)
+    expect(d.route.ok).toBe(false)
+    expect(d.route.expected).toBe('dash.orbetra.test')
+
+    // ownership proved, routing absent — the state a verified badge used to hide
+    txtRecords.set('_orbetra-verify.half.t1.test', [[created.txtToken]])
+    d = await dnsOf()
+    expect(d.txt.ok).toBe(true)
+    expect(d.route.ok).toBe(false)
+
+    // pointed at somebody ELSE: `found` must say where it goes, or the reader cannot act
+    addressRecords.set('half.t1.test', ['185.80.128.45'])
+    addressRecords.set('dash.orbetra.test', ['185.80.129.33'])
+    d = await dnsOf()
+    expect(d.route.ok).toBe(false)
+    expect(d.route.found).toContain('185.80.128.45')
+
+    // the CNAME lands → both halves green
+    cnameRecords.set('half.t1.test', ['dash.orbetra.test.'])
+    d = await dnsOf()
+    expect(d.route.ok).toBe(true)
+  })
+
+  it('counts an ADDRESS matching the edge host as reaching us — an apex cannot hold a CNAME', () => {
+    // ALIAS/ANAME flattening publishes an A, not a CNAME. Insisting on a CNAME would mark every
+    // correctly-configured domain root as broken.
+    return (async () => {
+      const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'apex.t1.test' })).json()) as { id: string }
+      addressRecords.set('dash.orbetra.test', ['203.0.113.7'])
+      addressRecords.set('apex.t1.test', ['203.0.113.7'])
+      const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { ok: boolean } }
+      expect(d.route.ok).toBe(true)
+    })()
+  })
+
+  it('another tenant cannot read a domain’s DNS state → 404', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'peek.t1.test' })).json()) as { id: string }
+    expect((await req(`/v1/tenant/domains/${created.id}/dns`, t2Token)).status).toBe(404)
   })
 
   it('a tenant cannot verify/delete ANOTHER tenant’s domain → 404', async () => {
