@@ -367,7 +367,11 @@ export function DevicesPage() {
       {/* key remounts the panel per device — armed/text state must NEVER survive a device
           switch (a confirm armed for device A must not send with one click on device B).
           panelRef anchors the scroll-into-view so an opened panel is never off-screen. */}
-      <div ref={panelRef} className="scroll-mt-4">
+      {/* `space-y` and not a margin on the cards themselves: SEVERAL panels can be open at once
+          (tracking settings above CAN settings, health above its engine card), and each card is
+          also rendered elsewhere — the gap belongs to this stack, not to the card. Without it the
+          panels butt together into one seamless slab with no seam to read (founder screenshot). */}
+      <div ref={panelRef} className="scroll-mt-4 space-y-4">
         {/* keys are PREFIXED per panel type: several panels can be open at once, and two
             siblings sharing the bare device id (health "1" + share "1") is duplicate-key
             territory — React's reconciler then duplicates/retains cards at random (founder
