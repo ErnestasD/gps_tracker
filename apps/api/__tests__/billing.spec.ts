@@ -162,9 +162,10 @@ beforeAll(async () => {
   // convenience above — so it lives on its own app/port with a two-price fake.
   const fakeStripeMulti: StripeGateway = {
     ...fakeStripe,
-    prices: ['price_ts', 'price_tg'],
+    prices: ['price_ts', 'price_tg', 'price_direct'],
+    // price_direct is allowlisted + maps to a Direct plan but has NO overage — the change-plan guard must refuse it
     overageFor: (b) => (b === 'price_ts' ? 'price_ts_over' : b === 'price_tg' ? 'price_tg_over' : undefined),
-    planFor: (b) => (b === 'price_ts' ? 'tsp_start' : b === 'price_tg' ? 'tsp_grow' : undefined),
+    planFor: (b) => (b === 'price_ts' ? 'tsp_start' : b === 'price_tg' ? 'tsp_grow' : b === 'price_direct' ? 'direct_10' : undefined),
     changePlan: (o) => { calls.changePlan.push(o); return Promise.resolve() },
   }
   appMulti = createApp({ ...common, stripe: fakeStripeMulti })
@@ -694,10 +695,13 @@ describe('billing lifecycle (ADR-024)', () => {
     await req(portMulti, '/v1/webhooks/stripe', null, 'POST', sub2, { 'stripe-signature': 'valid' })
     const view = (await (await req(portMulti, '/v1/billing', token)).json()) as BillingView
     expect(view.active).toBe(true)
+    // the persisted plan is now the target — the webhook carried the new base price through
+    expect(view.planPriceId).toBe('price_tg')
   })
 
   it('change-plan refuses an off-allowlist price, a Direct/non-TSP price, and a missing subscription', async () => {
     const { token, cus } = await freshTenant('BadChange')
+    calls.changePlan.length = 0 // shared across tests — assert THIS test reached Stripe zero times
     // no subscription yet → 409
     expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_tg' })).status).toBe(409)
 
@@ -710,8 +714,13 @@ describe('billing lifecycle (ADR-024)', () => {
 
     // off the allowlist → 400, never reaches Stripe
     expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_bogus' })).status).toBe(400)
+    // an allowlisted DIRECT price (no overage, not a reseller path) → 400, never builds a malformed sub
+    const direct = await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_direct' })
+    expect(direct.status).toBe(400)
     // the plan they are already on → 409 (no wasted Stripe call, no proration surprise)
     expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_ts' })).status).toBe(409)
+    // nothing above reached Stripe
+    expect(calls.changePlan).toHaveLength(0)
   })
 
   it('portal 409s before a customer exists, then returns a url', async () => {
