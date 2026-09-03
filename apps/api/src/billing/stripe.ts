@@ -64,6 +64,20 @@ export interface StripeConfig {
   /** base price id → entitlement plan (TenantPlan). Only valid plans land here (garbage dropped);
    *  the webhook persists this as the tenant's tier. */
   planMap: Record<string, TenantPlan>
+  /**
+   * Let Stripe Tax compute VAT on top of the listed price (`STRIPE_TAX_ENABLED`).
+   *
+   * OFF today, and correctly so: MB Dokigo is not VAT-registered yet, so charging the bare amount is
+   * what the law wants. It becomes registered on crossing the revenue threshold, and that day must
+   * not need a code deploy — hence a flag rather than a hard-coded `automatic_tax`.
+   *
+   * Every Price already carries `tax_behavior: exclusive`, set 2026-09-02 while the catalogue had no
+   * subscribers. That field is a ONE-WAY transition (`unspecified` → `exclusive`, never back), so
+   * doing it early is the difference between flipping a switch and rewriting a live catalogue.
+   * Verified against Stripe: with tax off, `exclusive` and `unspecified` both charge exactly the
+   * listed amount, so setting it changed nothing for a customer.
+   */
+  taxEnabled: boolean
 }
 
 /** Parse a `a:b,c:d` env pair-map (base price → overage price). */
@@ -102,6 +116,9 @@ export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Strip
     priceIds,
     overageMap: parsePairMap(env['STRIPE_OVERAGE_MAP']),
     planMap: parsePlanMap(env['STRIPE_PLAN_MAP']),
+    // absent/'0'/'false' → off. Only an explicit truthy value turns VAT on, because the failure
+    // direction matters: charging VAT we are not registered to collect is worse than not charging it.
+    taxEnabled: ['1', 'true', 'yes'].includes((env['STRIPE_TAX_ENABLED'] ?? '').trim().toLowerCase()),
   }
 }
 
@@ -149,6 +166,16 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
           cancel_url: cancelUrl,
           client_reference_id: tenantId,
           subscription_data: { metadata: { tenantId } },
+          ...(cfg.taxEnabled
+            ? {
+                automatic_tax: { enabled: true },
+                // EU B2B reverse charge only works if the buyer can hand over a VAT ID
+                tax_id_collection: { enabled: true },
+                // Stripe Tax needs an address to pick a jurisdiction; an EXISTING customer without
+                // one makes the session fail outright, so let Checkout collect and save it
+                customer_update: { address: 'auto', name: 'auto' },
+              }
+            : {}),
         },
         // Stripe dedupes identical creates under the same key (audit LOW double-subscribe guard)
         ...(idempotencyKey !== undefined ? [{ idempotencyKey }] : []),

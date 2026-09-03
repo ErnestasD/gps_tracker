@@ -37,10 +37,41 @@ Note: smallest tier is 5 devices (mirrors GpsGate's 5-unit floor; deliberately n
 
 | Plan | Base €/mo | Included devices | €/device base | Overage/device | €/yr (2 mo free) |
 |---|---|---|---|---|---|
-| TSP Start | €149 | 200 | €0.75 | €0.60 | €1,490 |
-| **TSP Grow** ⭐ | €399 | 750 | €0.53 | €0.40 | €3,990 |
-| TSP Scale | €899 | 2,500 | €0.36 | €0.35 | €8,990 |
-| TSP Enterprise | contact | 2,500+ | custom | custom | custom |
+| TSP Start | €149 | 300 | €0.50 | €0.60 | €1,490 |
+| **TSP Grow** ⭐ | €399 | 1,000 | €0.40 | €0.50 | €3,990 |
+| TSP Scale | €899 | 3,500 | €0.26 | €0.35 | €8,990 |
+| TSP Enterprise | contact | 3,500+ | custom | custom | custom |
+
+**Revised 2026-09-02 — allowances up, Grow overage up.** Bases and annual prices are unchanged
+(€1,490 / €3,990 / €8,990, still exactly 2 months free).
+
+**The rule this enforces: overage must sit ABOVE the effective base rate.** Otherwise a customer is
+better off staying under-provisioned and paying overage than moving up a tier, and every device past
+the allowance earns less than the ones inside it.
+
+| Plan | Effective base €/device | Overage | Margin over base |
+|---|---|---|---|
+| TSP Start | €149 ÷ 300 = **€0.497** | €0.60 | 1.21× ✓ |
+| TSP Grow | €399 ÷ 1,000 = **€0.399** | €0.50 | 1.25× ✓ |
+| TSP Scale | €899 ÷ 3,500 = **€0.257** | €0.35 | 1.36× ✓ |
+
+Grow's overage moved €0.40 → €0.50 because the new allowance drops its effective base to €0.40 —
+exactly the old overage, i.e. neutral, which is the one thing an overage rate must never be.
+
+**Worth recording: under the OLD allowances all three were inverted**, not just Grow — €0.60 < €0.745,
+€0.40 < €0.532, €0.35 < €0.3596. Overage was cheaper per device than the plan itself across the whole
+of Track B, so the allowance increase is what fixes the inversion; the Grow rate change is what keeps
+it fixed.
+
+**Tier crossovers** (where base+overage on the lower tier equals the next base):
+
+| From → to | Crossover | Was |
+|---|---|---|
+| Start → Grow | **717 devices** (149 + 417×0.60 = €399.20) | 617 |
+| Grow → Scale | **2,000 devices** (399 + 1,000×0.50 = €899) | 2,000 |
+
+A prospect between 300 and ~717 devices is genuinely cheaper on Start with overage — that is the
+ladder working, not a leak, but sales should quote it deliberately rather than default to Grow.
 
 Included: everything in Direct **+ white-label domain & logo, sub-tenants (Accounts), REST API + webhooks, priority support**. Scale adds: SSO, regional data residency, SLA 99.9%, named contact. Sales-led ("Request a pilot"), not self-service.
 
@@ -52,8 +83,9 @@ Included: everything in Direct **+ white-label domain & logo, sub-tenants (Accou
 | 50 | €65 | €149 | **Direct** |
 | 100 | €119 | €149 | **Direct** |
 | 150 | — (no tier) | €149 | **TSP** |
-| 300 | — | €399 (Grow) | **TSP** |
-| 1,000 | — | €399 + 250×€0.40 = €499 | **TSP** |
+| 300 | — | €149 (Start, now included) | **TSP** |
+| 1,000 | — | €399 (Grow, now included) | **TSP** |
+| 2,500 | — | €399 + 1,500×€0.50 = €1,149 vs €899 (Scale) | **TSP — Scale** |
 
 Crossover ~120–150 devices. Below: Direct is cheaper AND simpler (self-service). Above: only TSP has tiers, plus white-label/sub-tenants. The €149 TSP base is high enough that a small fleet never "drops down" into TSP to save money. Defensive mechanism holds.
 
@@ -66,8 +98,8 @@ Crossover ~120–150 devices. Below: Direct is cheaper AND simpler (self-service
 
 ## 6. Why these numbers (validation trail, 2026)
 - **GpsGate** publishes from **$1.5/device** with a **5-unit minimum** → Direct €1.19–1.80 sits at/below a 15-year incumbent; the 5-tier floor mirrors GpsGate's. ✓
-- **Wialon wholesale** ~€0.30–0.60/device + ~€300–500/mo partner minimum → TSP €0.35–0.75 is competitive; the €149 base undercuts Wialon's minimum dramatically (the real wedge). ✓
-- **SIM cost negligible:** 1NCE €10–12 for **10 years** ≈ €0.10/mo/device → software is the dominant TSP cost; TSP margin is healthy (~71% at 300 devices on Grow: €1,500 retail − €399 − €30 SIM = €1,071). ✓
+- **Wialon wholesale** ~€0.30–0.60/device + ~€300–500/mo partner minimum → TSP effective €0.26–0.50 (overage €0.35–0.60) is competitive; the €149 base undercuts Wialon's minimum dramatically (the real wedge). ✓
+- **SIM cost negligible:** 1NCE €10–12 for **10 years** ≈ €0.10/mo/device → software is the dominant TSP cost; TSP margin is healthy (~78% at 300 devices on **Start**, which now includes them: €1,500 retail − €149 − €30 SIM = €1,321; the same fleet on Grow was ~71%). ✓
 - TSP Scale overage set to **€0.35** (not €0.28) — still clearly below Wialon wholesale, +25% margin at high volume vs the earlier draft.
 
 ## 7. Stripe setup (Products & Prices)
@@ -86,11 +118,11 @@ All `recurring`, currency EUR, tax_behavior = exclusive (Stripe Tax adds VAT / a
 **Track B — 3 Products (TSP), each with base (monthly+yearly) + metered overage:**
 ```
 Product "TSP Start" → base_monthly €149, base_yearly €1490
-                    → overage: metered price €0.60/unit (usage reported monthly = devices over 200)
+                    → overage: metered price €0.60/unit (usage reported daily = devices over 300)
 Product "TSP Grow"  → base_monthly €399, base_yearly €3990
-                    → overage: metered €0.40/unit (over 750)
+                    → overage: metered €0.50/unit (over 1000)   ← raised 2026-09-02 from €0.40
 Product "TSP Scale" → base_monthly €899, base_yearly €8990
-                    → overage: metered €0.35/unit (over 2500)
+                    → overage: metered €0.35/unit (over 3500)
 TSP Enterprise      → no Stripe product; custom quote/invoice
 ```
 Metering: report `active_devices − included` to the metered subscription item at month close (ties to `usage_daily` from IMPLEMENTATION_PLAN E07-4 / affiliate month-close E09-2). If active ≤ included, report 0.
@@ -101,6 +133,6 @@ Metering: report `active_devices − included` to the metered subscription item 
 Everything above is validated against the *market average*. The one input that would sharpen it into channel-optimal: **what the friend's PL/DE channel customers actually pay Wialon/competitors per device, and what minimum squeezes them.** One conversation converts "market-correct" → "channel-optimal." As a launch baseline, these numbers are validated and can ship to the site.
 
 Adjust triggers after first real data:
-- If TSP prospects say "our Wialon is €X/device" and €X < €0.75 → revisit TSP base/overage down.
+- If TSP prospects say "our Wialon is €X/device" and €X < €0.50 (Start's effective rate; was €0.75) → revisit TSP base/overage down.
 - If Direct self-serve converts poorly at €1.19–1.80 → the friction is likely product/trust, not price (don't cut first; investigate).
 - If nobody uses the 5-device Direct tier or it only draws hobbyists → drop it, start Direct at 10.
