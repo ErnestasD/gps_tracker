@@ -135,6 +135,29 @@ export function applySign(entry: AvlDictionaryEntry | undefined, value: bigint):
 }
 
 /** Validation is separate from loading so malformed shapes are unit-testable. */
+/**
+ * The wiki's Multiplier cell as a NUMBER, or null when it is not one. The single place that
+ * conversion happens (parse.ts has warned for months that it must be exactly one place).
+ *
+ * The cell is written in two decimal conventions, sometimes inside one file — `0.1` ×468 next to
+ * `0,1` ×215 — and 393 of 1335 cells are not a number at all: `0.01*` ×56, `acc and braking: 0.01`
+ * ×17. A bare `Number()` returns NaN for 29% of them, and a NaN that reaches a formatter silently
+ * drops the scaling on a customer-visible number: 490 stays "490" where it means 49.0 °C.
+ *
+ * Comma is accepted because it is the same number written the other way. Everything else is
+ * REFUSED rather than salvaged — `0.01*` carries a footnote this code cannot read, and guessing
+ * that the asterisk is decoration is how a tank reads 10× wrong. A refused cell means the value is
+ * shown exactly as the device sent it, which is what happens today.
+ * https://wiki.teltonika-gps.com/view/FMC150_Teltonika_Data_Sending_Parameters_ID
+ */
+export function parseMultiplier(raw: string | undefined): number | null {
+  if (raw === undefined) return null
+  const t = raw.trim().replace(',', '.')
+  if (!/^\d+(\.\d+)?$/.test(t)) return null
+  const n = Number(t)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 export function buildDictionary(file: DictionaryFile): Map<number, AvlDictionaryEntry> {
   // provenance is mandatory (CLAUDE.md rule 8) — a dictionary without it must not load
   if (!file.source_url.startsWith('https://wiki.teltonika-gps.com/')) {

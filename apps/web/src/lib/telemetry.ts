@@ -41,7 +41,9 @@ export interface LatestTelemetry {
 export interface AttrLabel {
   name: string
   units?: string
-  multiplier?: string
+  /** Already a number: the server parses the wiki's cell (two decimal conventions, 29% non-numeric)
+   *  in ONE place and omits the field rather than sending something the browser must guess at. */
+  multiplier?: number
 }
 
 export const getTelemetry = (deviceId: string, at?: string | null) =>
@@ -99,13 +101,22 @@ const NAMED_UNITS: Record<string, (v: number) => string> = {
 export const fmtAttrValue = (key: string, v: unknown, label?: AttrLabel): string => {
   if (typeof v === 'number') {
     /**
-     * A labelled id-key is formatted from the DICTIONARY, not from this file's name table: the
-     * entry carries the wiki's own multiplier and units, so AVL 84 (×0.1, litres) reads "18.0 l"
-     * instead of "180" — the number the founder was shown for a tank that is 18 litres full.
+     * The DICTIONARY wins over this file's name table, for named elements as well as id-keys: the
+     * entry carries the wiki's own multiplier and units. AVL 84 (×0.1, litres) reads "18.0 l"
+     * rather than "180", and `Engine Total Hours (counted)` reads "47 min" rather than a bare "47"
+     * that every reader takes for hours. NAMED_UNITS below is now only the fallback for an API
+     * older than this deploy, which sends no labels at all.
      */
     if (label !== undefined) {
-      const mult = label.multiplier === undefined ? 1 : Number(label.multiplier)
-      const scaled = Number.isFinite(mult) && mult !== 1 ? v * mult : v
+      const mult = label.multiplier ?? 1
+      const scaled = mult !== 1 ? v * mult : v
+      /**
+       * Metres are the wiki's unit and nobody's reading unit: every element this table declares in
+       * metres is an odometer (87 Total Mileage, 105 counted, 199 Trip Odometer, the two tachograph
+       * distances), and "362730000 m" is a number a person has to count digits in. The dictionary
+       * decides the SCALE; this decides how a human reads it.
+       */
+      if (label.units === 'm') return `${(scaled / 1000).toFixed(2)} km`
       // a multiplied value is fractional by construction; an unmultiplied one is shown as sent
       const shown = mult !== 1 ? scaled.toFixed(1) : String(scaled)
       return label.units === undefined ? shown : `${shown} ${label.units}`
@@ -123,6 +134,20 @@ export const fmtAttrValue = (key: string, v: unknown, label?: AttrLabel): string
  * either the wiki page is incomplete for that model, or the name was ambiguous within the table and
  * the id was kept deliberately. Both are worth seeing.
  */
+/**
+ * The element name as a reader should see it.
+ *
+ * Teltonika spells one concept two ways in the same table — `Engine Total Hours (counted)` next to
+ * `Fuel Consumed Counted` — and side by side in one list that reads as two different kinds of
+ * thing. The dictionary keeps their spelling untouched (it is the authority, and the string people
+ * search the wiki with); only this label is normalised. The unit is appended because the raw name
+ * hides it: "Engine Total Hours" is reported in MINUTES.
+ */
+function displayName(label: AttrLabel): string {
+  const name = label.name.replace(/\s*\(?counted\)?$/i, ' (counted)')
+  return label.units === undefined ? name : `${name} (${label.units})`
+}
+
 export function telemetryRows(
   attrs: Record<string, unknown>,
   labels: Record<string, AttrLabel> = {},
@@ -132,8 +157,7 @@ export function telemetryRows(
     const label = labels[key]
     // "Fuel Level (l)" and "Fuel Level (%)" are two rows of the same name — the unit is the
     // whole point of keeping them apart, so it belongs in the label, not only in the value
-    const named =
-      label === undefined ? undefined : label.units === undefined ? label.name : `${label.name} (${label.units})`
+    const named = label === undefined ? undefined : displayName(label)
     return {
       key,
       label: named ?? (raw !== null ? `AVL ${raw[1]}` : key),
@@ -229,7 +253,7 @@ export function highlightRows(
       }
       out.push({
         key: cand.key,
-        label: cand.label === undefined ? cand.key : units === undefined ? cand.label.name : `${cand.label.name} (${units})`,
+        label: cand.label === undefined ? cand.key : displayName(cand.label),
         value: fmtAttrValue(cand.key, raw, cand.label),
         pct,
         tone,

@@ -4,7 +4,7 @@ import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
 import { z } from 'zod'
 
-import { loadDictionary } from '@orbetra/codec'
+import { loadDictionary, parseMultiplier } from '@orbetra/codec'
 import { AccountHasUsersError, AffiliateConflictError, clampTripsTake, DealDomainTakenError, TenantHasCommissionsError, DomainConflictError, DomainDuplicateError, DomainLimitError, DriverIbuttonConflictError, DriverNotInScopeError, DuplicateImeiError, GeofenceInvalidError, GeofenceTooLargeError, GeofenceTooComplexError, GeofenceLimitError, MAX_DOMAINS_PER_TENANT, readCanLatest, readFuelSeries, readHealthSeries, readOdometersKm, readLatestTelemetry, readPositions, toDeviceId, type Db, type Pool } from '@orbetra/db'
 import {
   ROLES,
@@ -885,27 +885,40 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // a device that has never reported is a real answer, not a 404: the UI says "nothing yet"
         if (latest === null) return json(c, { empty: true })
         /**
-         * Name the `io_<id>` keys — here, where the device's TABLE is known.
+         * Describe EVERY element from this device's own table — here, where the table is known.
          *
-         * The pipeline keeps an id-key whenever the dictionary name is ambiguous within the table
-         * (37 and 81 are both "Vehicle Speed"; 48, 84 and 89 are all "Fuel Level"), so the stored
-         * key stays unit-unambiguous. That is right for storage and wrong for reading: an operator
-         * saw "AVL 84 — 180" for what is 18.0 litres of fuel. The browser cannot do this lookup,
-         * because the same id is a fuel level on one table and an axle weight on another; the
-         * server knows which table this device speaks, so it answers with the labels.
+         * Two problems, one lookup. The pipeline keeps an id-key whenever the dictionary name is
+         * ambiguous within the table (37 and 81 are both "Vehicle Speed"; 48, 84 and 89 are all
+         * "Fuel Level"), so an operator read "AVL 84 — 180" for 18.0 litres of fuel. And a NAMED
+         * key is no better off: the value is stored raw, so `Engine Total Hours (counted)` showed a
+         * bare "47" for 47 MINUTES (the wiki's unit for that element is minutes, whatever the name
+         * says) and `Fuel Consumed Counted` showed "10" for 1.0 litre (multiplier 0.1). Both read
+         * as plain, wrong numbers.
+         *
+         * So the units and multiplier travel with every element, named or not. The browser cannot
+         * do this lookup: the same id is a fuel level on one table and an axle weight on another,
+         * and only the server knows which table this device speaks.
          */
         const profile = await db.profiles.get(device.profileId)
         const dict = profile === null ? undefined : loadDictionary(profile.avlTable)
-        const attrLabels: Record<string, { name: string; units?: string; multiplier?: string }> = {}
+        const attrLabels: Record<string, { name: string; units?: string; multiplier?: number }> = {}
         if (dict !== undefined) {
+          // name → entry, for the keys the pipeline stored under their name. A name that is
+          // ambiguous in the table was never stored as a name (it became `io_<id>`), so the last
+          // writer winning here cannot mislabel anything the pipeline actually produces.
+          const byName = new Map([...dict.values()].map((e) => [e.name, e]))
           for (const key of Object.keys(latest.attrs)) {
             const m = /^io_(\d+)$/.exec(key)
-            const entry = m === null ? undefined : dict.get(Number(m[1]))
+            const entry = m === null ? byName.get(key) : dict.get(Number(m[1]))
             if (entry === undefined) continue
+            // the wiki writes the multiplier in two decimal conventions and 29% of cells are not
+            // numbers at all; `parseMultiplier` is the one place that is decided, and it refuses
+            // rather than guesses. A refused cell means the value is shown exactly as sent.
+            const mult = parseMultiplier(entry.multiplier)
             attrLabels[key] = {
               name: entry.name,
               ...(entry.units !== undefined ? { units: entry.units } : {}),
-              ...(entry.multiplier !== undefined ? { multiplier: entry.multiplier } : {}),
+              ...(mult !== null ? { multiplier: mult } : {}),
             }
           }
         }

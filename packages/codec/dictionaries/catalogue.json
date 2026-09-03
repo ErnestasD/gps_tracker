@@ -1,5 +1,5 @@
 {
- "retrieved_at": "2026-08-12",
+ "retrieved_at": "2026-09-03",
  "models": [
   {
    "model": "ATC700",
@@ -11,7 +11,7 @@
   },
   {
    "model": "ATC774",
-   "dictionary": "atc774"
+   "dictionary": "atc700"
   },
   {
    "model": "ATM700",
@@ -319,11 +319,11 @@
   },
   {
    "model": "FTC880",
-   "dictionary": "atc774"
+   "dictionary": "ftc880"
   },
   {
    "model": "FTC881",
-   "dictionary": "atc774"
+   "dictionary": "ftc880"
   },
   {
    "model": "FTC887",
@@ -335,7 +335,7 @@
   },
   {
    "model": "FTC921",
-   "dictionary": "ftc920"
+   "dictionary": "ftc921"
   },
   {
    "model": "FTC924",
@@ -347,11 +347,11 @@
   },
   {
    "model": "FTC961",
-   "dictionary": "ftc920"
+   "dictionary": "ftc921"
   },
   {
    "model": "FTC965",
-   "dictionary": "ftc924"
+   "dictionary": "ftc965"
   },
   {
    "model": "FTM134",
@@ -371,7 +371,7 @@
   },
   {
    "model": "FTM880",
-   "dictionary": "atc774"
+   "dictionary": "ftc880"
   },
   {
    "model": "FTM887",

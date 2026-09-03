@@ -82,10 +82,18 @@ interface Group { models: string[]; page: string; elements: Record<string, AvlEn
  *   reads "FMC650, FMM650" — the CAN adapter block, the iCam states, `449 Ignition On Counter` —
  *   are documented for FMM650 on one page and missing from its own. FMB641: 298. FMC640: 27.
  *
- * Nothing is copied across: the wiki is the authority (CLAUDE.md) and inferring an element onto a
- * model from a HW Support string is exactly the inference rule 8 forbids. What we CAN do is stop it
- * being invisible — a support question of the form "why does my FMM650 not report ground speed?"
- * should land on a recorded fact, not on a shrug. One summary line per table, not one per element.
+ * These are ADOPTED, and the reason is that HW Support is not our inference — it is Teltonika
+ * naming this exact model. Id 90 is "Door Status" on the FMB120 page whose HW Support column reads
+ * "… FMB150 FMC150 FMM150", and it is absent from FMC150's own page. A customer who switches Door
+ * Status on through our CAN settings then reads "AVL 90 — 0": we offered a parameter and could not
+ * name the answer. Refusing to adopt made that permanent for 36 elements on this table alone.
+ *
+ * The bar is deliberately narrow, because the danger is real and this repo has already been bitten
+ * by it: id 90 is "Axle weight 2" on fm6300 and id 123 is "Tachograph Performance" there. So an
+ * element is adopted ONLY when the source entry's own HW Support column contains this table's
+ * model as an exact token — never on a family wildcard (FMBXXX), never on the id alone. Adoption is
+ * recorded per element (`adoptedFrom`) so any name in a dictionary can be traced to the page that
+ * asserted it, and a summary warning still says how many arrived that way.
  */
 function crossPageGaps(groups: Group[]): (string | undefined)[] {
   const tokens = (hw: string | undefined): Set<string> => new Set((hw ?? '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean))
@@ -93,18 +101,22 @@ function crossPageGaps(groups: Group[]): (string | undefined)[] {
     // exact model tokens only — HW Support also carries family wildcards like FMBXXX/FMX6XX, and
     // "this table's models appear in that wildcard" is a guess, not a claim the wiki made
     const mine = g.models.map((m) => m.toUpperCase())
-    const missing = new Map<string, string>()
+    const adopted = new Map<string, string>()
     for (const other of groups) {
       if (other === g) continue
       for (const [id, e] of Object.entries(other.elements)) {
-        if (id in g.elements || missing.has(id)) continue
+        if (id in g.elements || adopted.has(id)) continue
         const hw = tokens(e.hwSupport)
-        if (mine.some((m) => hw.has(m))) missing.set(id, e.name)
+        if (!mine.some((m) => hw.has(m))) continue
+        // carry the entry verbatim — units, multiplier, sign range and all. A name without its
+        // multiplier is how "490" gets shown for 49.0 °C.
+        g.elements[id] = { ...e, adoptedFrom: other.page }
+        adopted.set(id, e.name)
       }
     }
-    if (missing.size === 0) return undefined
-    const eg = [...missing.entries()].slice(0, 3).map(([id, n]) => `${id} "${n}"`).join(', ')
-    return `source: ${missing.size} element(s) are documented on another Teltonika page whose HW Support column names a model of this table, yet are absent from this table's own page (e.g. ${eg}). Teltonika's page is the authority, so nothing is copied across — this records the gap rather than hiding it.`
+    if (adopted.size === 0) return undefined
+    const eg = [...adopted.entries()].slice(0, 3).map(([id, n]) => `${id} "${n}"`).join(', ')
+    return `source: ${adopted.size} element(s) adopted from another Teltonika page whose HW Support column names a model of this table, while this table's own page omits them (e.g. ${eg}). Each carries \`adoptedFrom\` naming that page. Adoption requires an EXACT model token in HW Support — never a family wildcard, never the id alone (id 90 is "Door Status" here and "Axle weight 2" on fm6300).`
   })
 }
 

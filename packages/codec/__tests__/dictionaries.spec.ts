@@ -89,7 +89,13 @@ describe('AVL dictionaries (wiki-generated, PROJECT_PLAN §3.7)', () => {
       fmc150: 379, fmb150: 378, fmm150: 378, fmb001: 313, fmc250: 309, tst100: 265, ftc305: 244, fm6300: 238,
       gh5200: 231, tat100: 216, fmc880: 214, fmm880: 213, ftc308: 191, ftc164: 189, fmb010: 187, ftc134: 186,
       fmm80a: 185, ftc927: 176, ftc924: 173, ftc887: 171, fm36: 123, ftc920: 72, atc704: 69, ftm927: 68,
-      atc774: 67, atc700: 36,
+      atc700: 36,
+      // 2026-09-03: Teltonika's pages regrouped and `atc774` stopped being a table of its own —
+      // ATC774 now matches atc700's content, while FTC880/FTC881/FTM880 split off into `ftc880`
+      // and FTC921/FTC965 out of their old families. Verified against the pages before accepting
+      // the remap: each parses fully (40/75/81/193 elements), none is a truncation. The three new
+      // floors are 90% of the count at that capture, like every other entry here.
+      ftc880: 67, ftc921: 72, ftc965: 173,
     }
     // …and the map must COVER the catalogue. Without this a new table added with a truncated parse
     // gets no floor at all and the loop above waves it through — which is exactly the case the
@@ -348,6 +354,17 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
       'fm36#77 Dallas Temperature Sensor ID3',
       'fm36#78 iButton ID',
       'fmc650#13378 Sensor 7 Unit',
+      // 2026-09-03: six more of the same shape. Cross-page ADOPTION (an element is now taken from
+      // another Teltonika page when that page's HW Support column names this exact model) brought
+      // the DDI block onto fmc650, and these six declare a negative minimum on a width that cannot
+      // carry it — the identical reason `13378 Sensor 7 Unit` above is refused. Refusing is the
+      // point: the alternative is a rewritten byte width on a number a customer reads.
+      'fmc650#14332 DDI Setpoint Mass Per Area Application Rate',
+      'fmc650#14333 DDI Actual Mass Per Area Application Rate',
+      'fmc650#14334 DDI Setpoint Volume Content',
+      'fmc650#14335 DDI Actual Volume Content',
+      'fmc650#14336 DDI Actual Volume Per Area Application Rate ml m2',
+      'fmc650#14337 DDI Actual Working Length',
       'fmm650#13378 Sensor 7 Unit',
       'ftc134#1474 Beacon Presence',
       'ftc164#1474 Beacon Presence',
@@ -356,6 +373,10 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
       'ftc887#1474 Beacon Presence',
       'ftc924#1474 Beacon Presence',
       'ftc927#1474 Beacon Presence',
+      // `ftc965` is a table that did not exist before the regrouping and `ftm927` gained 1474 by
+      // adoption — the same Beacon Presence refusal as the seven lines above, not a new class.
+      'ftc965#1474 Beacon Presence',
+      'ftm927#1474 Beacon Presence',
     ])
     // …and the genuine SAE J1939 offset encodings: −40…210 on a byte whose wire range is 0…250
     expect(offsetEncoded.sort()).toEqual([
@@ -363,6 +384,9 @@ describe('applySign refuses what it cannot honestly reinterpret', () => {
       'fmb640#127 Engine Coolant Temperature',
       'fmb641#10893 High Voltage Battery Temperature',
       'fmb641#127 Engine Coolant Temperature',
+      // 2026-09-03: cross-page adoption brought 10893 onto fmc640 as well — the same −40…210 J1939
+      // offset already listed for fmb641/fmc650/fmm650, on the same element, not a new shape.
+      'fmc640#10893 High Voltage Battery Temperature',
       'fmc640#127 Engine Coolant Temperature',
       'fmc650#10893 High Voltage Battery Temperature',
       'fmc650#127 Engine Coolant Temperature',

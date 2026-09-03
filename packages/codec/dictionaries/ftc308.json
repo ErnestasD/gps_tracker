@@ -1,7 +1,7 @@
 {
  "table": "ftc308",
  "source_url": "https://wiki.teltonika-gps.com/view/FTC308_Teltonika_Data_Sending_Parameters_ID",
- "retrieved_at": "2026-08-12",
+ "retrieved_at": "2026-09-03",
  "models": [
   "FTC308",
   "FTM308"
@@ -11,7 +11,6 @@
  "elements": {
   "1": {"name":"Digital Input 1","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","group":"Permanent I/O elements"},
   "2": {"name":"Digital Input 2","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","group":"Permanent I/O elements"},
-  "3": {"name":"Digital Input 3","bytes":"1","type":"Unsigned","min":"0","max":"1","description":"Logic: 0/1","group":"Permanent I/O elements"},
   "4": {"name":"Pulse counter DIN1","bytes":"1","type":"Unsigned","min":"0","description":"Pulse counts between records on DIN1","group":"Permanent I/O elements"},
   "5": {"name":"Pulse counter DIN2","bytes":"1","type":"Unsigned","min":"0","description":"Pulse counts between records on DIN2","group":"Permanent I/O elements"},
   "6": {"name":"Analog Input 2","bytes":"2","type":"Unsigned","min":"0","max":"65535","multiplier":"0.001","units":"V","description":"Voltage","group":"Permanent I/O elements"},

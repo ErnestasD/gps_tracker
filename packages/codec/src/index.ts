@@ -11,7 +11,7 @@ export { encodeCodec12, decodeCodec12 } from './codec12.js'
 export { walkRecords, extractNx8e } from './walk.js'
 export { encodeAvlPacket, type EncodableRecord } from './encode.js'
 export { decodeUdpHeader, parseUdpAvl, decodeUdpPacket, encodeUdpAck, type UdpHeader, type UdpPacket } from './udp.js'
-export { applySign, avlTables, loadDictionary, tableForModel, type AvlDictionaryEntry, type AvlTable } from './dictionaries.js'
+export { applySign, avlTables, loadDictionary, parseMultiplier, tableForModel, type AvlDictionaryEntry, type AvlTable } from './dictionaries.js'
 export type { AvlRecord, Frame, ParsedPacket, TeltonikaCodec } from './types.js'
 
 /** One instance per TCP connection (framer is stateful). Appendix A contract. */
