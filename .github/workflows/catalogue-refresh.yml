@@ -1,0 +1,77 @@
+name: Catalogue refresh
+
+# Teltonika edits the AVL and parameter wiki pages without announcing it, and both feed customer-
+# facing surfaces: the names on every telemetry row, the bounds on every settings slider, and the
+# CAN element list a customer toggles. Re-read them nightly and open a PR when they moved.
+#
+# A PR rather than a push to main: this data decides what we tell a customer their hardware can do,
+# and a diff nobody read is how a wrong claim ships. The generators already refuse to write a run
+# that loses entries, so a red job here means Teltonika removed something — worth a human, not an
+# automatic accept.
+on:
+  schedule:
+    - cron: '17 2 * * *' # 02:17 UTC — off the hour, so it does not queue behind everyone else's cron
+  workflow_dispatch: # so it can be run by hand after a Teltonika announcement
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # version comes from package.json "packageManager"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Re-read Teltonika
+        run: pnpm catalogue:refresh
+
+      - name: What moved
+        id: diff
+        run: |
+          if git diff --quiet -- packages/codec/dictionaries packages/shared/params; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Catalogue unchanged." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo '## Teltonika changed the catalogue'
+              echo '```'
+              git diff --stat -- packages/codec/dictionaries packages/shared/params
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # The gates run BEFORE the PR is opened: a catalogue change can break a typecheck (a removed
+      # parameter is a removed key) and a PR that cannot go green is noise on a Monday morning.
+      - name: Gates
+        if: steps.diff.outputs.changed == 'true'
+        run: pnpm turbo run typecheck lint test --filter=@orbetra/shared --filter=@orbetra/codec --filter=@orbetra/web --filter=@orbetra/api
+
+      - name: Open / update the PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/catalogue-refresh
+          title: 'chore(catalogue): Teltonika changed the device catalogue'
+          commit-message: 'chore(catalogue): refresh AVL dictionaries and device parameters'
+          body: |
+            Nightly re-read of Teltonika's AVL and Parameter_List pages.
+
+            Both generators refuse to write a run that loses models or parameters, so this diff is
+            additive or a deliberate change on their side. Read it before merging: these files
+            decide the names on telemetry rows, the bounds on settings sliders, and which CAN
+            elements a customer can switch on.
+
+            Ran by `.github/workflows/catalogue-refresh.yml`.
+          labels: catalogue
+          delete-branch: true
