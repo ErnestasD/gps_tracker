@@ -6,10 +6,12 @@ import { useTranslation } from 'react-i18next'
 import { AdminButton, AdminInput, Badge as AdminBadge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
+import { OverviewNotice } from '@/components/admin/OverviewNotice'
 import { DataTable, type Column } from '@/components/admin/DataTable'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAccountContext } from '@/lib/accountContext'
 import { getCurrentUser } from '@/lib/auth'
 import { listAccounts } from '@/lib/devices'
 import { useUnits } from '@/lib/units'
@@ -58,7 +60,8 @@ export function DriversPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleteForId, setDeleteForId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState(false) // a failed delete was swallowed
-  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
+  const { ctx, canOperate } = useAccountContext()
+  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '') && canOperate
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['drivers'] })
     // the scores table joins driverName server-side — a rename must not leave it stale
@@ -166,6 +169,7 @@ export function DriversPage() {
               {/* key remounts the form per target — edit state must never leak across drivers */}
               <DriverForm
                 key={editing?.id ?? 'new'}
+                contextAccountId={ctx}
                 accounts={accounts.data ?? []}
                 editing={editing}
                 onDone={() => {
@@ -178,6 +182,7 @@ export function DriversPage() {
           </Sheet>
         )}
       </PageHeader>
+      <OverviewNotice />
 
       {drivers.isLoading ? (
         <div className="admin-card space-y-2 p-4">
@@ -194,7 +199,7 @@ export function DriversPage() {
         )}
         <DataTable
           data-testid="drivers-table"
-          data={drivers.data ?? []}
+          data={(drivers.data ?? []).filter((d) => ctx === '' || d.accountId === ctx)}
           columns={columns}
           searchKeys={['name', 'licenseNo', 'ibutton', 'phone']}
           pageSize={10}
@@ -374,7 +379,8 @@ function FieldLabel({ label, children }: { label: string; children: React.ReactN
   )
 }
 
-function DriverForm({ accounts, editing, onDone, onCancel }: {
+function DriverForm({ accounts, contextAccountId, editing, onDone, onCancel }: {
+  contextAccountId?: string
   accounts: { id: string; name: string }[]
   editing: Driver | null
   onDone: () => void
@@ -405,7 +411,7 @@ function DriverForm({ accounts, editing, onDone, onCancel }: {
       // accounts at submit time so a slow accounts query can't leave it empty. Account-scoped
       // users are unaffected (the API takes the account from their token and ignores this field).
       else {
-        const acc = accountId !== '' ? accountId : (accounts[0]?.id ?? '')
+        const acc = (contextAccountId ?? '') !== '' ? contextAccountId! : accountId !== '' ? accountId : (accounts[0]?.id ?? '')
         await createDriver({ ...payload, ...(acc !== '' ? { accountId: acc } : {}) })
       }
       onDone()

@@ -167,6 +167,24 @@ export const PLAN_MONTHLY_EUR: Record<TenantPlan, number | null> = {
   tsp_enterprise: null, // quoted per deal
 }
 
+/**
+ * Included-device allowances per TSP plan — PRODUCT truth (PRICING_STRATEGY.md §3, revised
+ * 2026-09-02: 300 / 1,000 / 3,500). The BILLING truth lives worker-side in STRIPE_INCLUDED
+ * (price id → count); if pricing changes, both move in the same commit — the runbook says so.
+ * null = quoted per deal (enterprise). Used by the reseller dashboard's allowance meter.
+ */
+export const TSP_INCLUDED_DEVICES: Record<TenantPlan, number | null> = {
+  direct_5: 5,
+  direct_10: 10,
+  direct_25: 25,
+  direct_50: 50,
+  direct_100: 100,
+  tsp_start: 300,
+  tsp_grow: 1_000,
+  tsp_scale: 3_500,
+  tsp_enterprise: null,
+}
+
 /** True for the self-service Track A plans (`direct_*`), false for every `tsp_*` plan. */
 export function isDirectPlan(p: TenantPlan): boolean {
   return p.startsWith('direct_')

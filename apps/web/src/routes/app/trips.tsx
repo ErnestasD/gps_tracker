@@ -7,6 +7,7 @@ import { PlaybackMap } from '@/components/PlaybackMap'
 import { Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
+import { useAccountContext } from '@/lib/accountContext'
 import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { listDevices } from '@/lib/devices'
@@ -66,6 +67,7 @@ export function TripsPage() {
   // date-only pickers → full-day ISO bounds in the display-prefs zone (stable query-key form)
   const fromIso = dayStartIso(range.from, tz)
   const toIso = dayEndIso(range.to, tz)
+  const { ctx } = useAccountContext()
   const trips = useQuery({
     queryKey: ['trips', deviceId, fromIso, toIso],
     queryFn: () => listTrips({ ...(deviceId ? { deviceId } : {}), from: fromIso, to: toIso, limit: 500 }),
@@ -86,7 +88,10 @@ export function TripsPage() {
   const rows = useMemo(() => {
     const now = Date.now()
     const ql = driverQ.trim().toLowerCase()
-    const list = (trips.data ?? []).filter((tr) => ql === '' || (tr.driverName ?? '').toLowerCase().includes(ql))
+    const byDev = new Map((devices.data ?? []).map((d) => [d.id, d.accountId]))
+    const list = (trips.data ?? [])
+      .filter((tr) => ctx === '' || byDev.get(tr.deviceId) === ctx)
+      .filter((tr) => ql === '' || (tr.driverName ?? '').toLowerCase().includes(ql))
     const val = (tr: TripView): number | string => {
       switch (sort.key) {
         case 'start': return Date.parse(tr.startTime)
@@ -102,7 +107,7 @@ export function TripsPage() {
       const cmp = va < vb ? -1 : va > vb ? 1 : 0
       return sort.dir === 'asc' ? cmp : -cmp
     })
-  }, [trips.data, sort, driverQ, devices.data]) // devices.data: deviceLabel input for 'device' sort
+  }, [trips.data, sort, driverQ, devices.data, ctx]) // devices.data: deviceLabel input for 'device' sort
 
   const sortTh = (key: SortKey, label: string, opts: { align?: 'right'; hide?: boolean } = {}) => (
     <th

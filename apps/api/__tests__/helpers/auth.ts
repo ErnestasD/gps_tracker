@@ -82,7 +82,7 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     platform: { overview: notImpl, users: notImpl, setUserDisabled: notImpl, touchLogin: notImpl, billing: notImpl, lapses: notImpl, failures: notImpl },
     webhookDeliveries: { list: notImpl, pruneOlderThan: notImpl },
     rawRejects: { insertMany: notImpl, pruneOlderThan: notImpl },
-    usage: { platformSummary: notImpl, tenantSummary: notImpl, reportedOverage: notImpl, recordOverageReport: notImpl },
+    usage: { platformSummary: notImpl, tenantSummary: notImpl, accountSummary: notImpl, reportedOverage: notImpl, recordOverageReport: notImpl },
     events: { list: notImpl, get: notImpl, pruneOlderThan: notImpl },
     serviceLog: { list: notImpl, create: notImpl, remove: notImpl },
     vehicleDocuments: { list: notImpl, get: notImpl, create: notImpl, update: notImpl, remove: notImpl },

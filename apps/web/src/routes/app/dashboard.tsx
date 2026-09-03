@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { Activity, AlertTriangle, Bell } from 'lucide-react'
 
 import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/AdminKit'
+import { ResellerDashboard } from '@/components/admin/ResellerDashboard'
+import { getCurrentUser } from '@/lib/auth'
 import { AreaChartSvg, DonutSvg, HourlyBarsSvg, kindColor } from '@/components/admin/Charts'
 import { getLastPositions } from '@/lib/api'
 import { countDelta, dailyActiveDevices, dailyCounts, dailyKmSeries, dayStrInTz, fleetCounts, hourInTz, hourlyBuckets, kindBreakdown, pctDelta } from '@/lib/dashboard'
@@ -27,7 +29,17 @@ const EVENTS_CAP = 300
 const RANGES = [7, 30, 90] as const
 type RangeDays = (typeof RANGES)[number]
 
+/** The overseer gets the reseller home; every other viewer keeps the operator dashboard.
+ *  A thin branch here rather than a second route: same URL, same nav entry, right content. */
 export function DashboardPage() {
+  const u = getCurrentUser()
+  if ((u?.role === 'tsp_admin' || u?.role === 'platform_admin') && u.accountId === null && u.entitlements.subAccounts) {
+    return <ResellerDashboard />
+  }
+  return <OperatorDashboard />
+}
+
+function OperatorDashboard() {
   const { t } = useTranslation()
   const { dt } = useFmt()
   const u = useUnits()

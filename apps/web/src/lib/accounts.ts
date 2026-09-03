@@ -34,3 +34,12 @@ export const createUser = (data: { email: string; password: string; role: 'accou
   mutate<UserView>('POST', '/v1/users', data)
 export const deleteUser = (id: string) =>
   mutate<{ ok: boolean }>('DELETE', `/v1/users/${encodeURIComponent(id)}`)
+
+/** Per-account device-days + distinct active devices for a date range (tenant-wide only). */
+export interface AccountUsageRow {
+  accountId: string
+  deviceDays: number
+  activeDevices: number
+}
+export const listAccountUsage = (from: string) =>
+  getJson<AccountUsageRow[]>(`/v1/usage/accounts?from=${encodeURIComponent(from)}`)
