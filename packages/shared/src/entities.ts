@@ -338,6 +338,23 @@ export const deviceSettingsWriteSchema = z.object({
 })
 export type DeviceSettingsWriteInput = z.infer<typeof deviceSettingsWriteSchema>
 
+/**
+ * CAN element write — which vehicle-bus values the device should send, and at what priority.
+ *
+ * Keyed by RAW Teltonika parameter id rather than a name, because unlike the six tracking settings
+ * these are per-model lists of up to 83 ids that no hand-written key map could stay honest about.
+ * The id must be one of THIS model's CAN elements and the value a priority it accepts; both are
+ * checked in the handler (`isCanElementOfModel` / `isCanPriority`), which is the only place that
+ * knows which device this is for. The regex here is a shape gate, not a membership one — it keeps
+ * `setparam` free of anything that is not an id, and an unknown id is still a 400, never ignored.
+ */
+export const deviceCanWriteSchema = z.object({
+  changes: z
+    .record(z.string().regex(/^\d{1,7}$/, 'parameter id'), z.number().int())
+    .refine((r) => Object.keys(r).length > 0, 'no changes'),
+})
+export type DeviceCanWriteInput = z.infer<typeof deviceCanWriteSchema>
+
 /** Non-idempotent commands that must NOT be auto-retried on timeout (a cpureset causes the
  * >30 s silence that looks like a timeout — retrying resets the just-rebooted device). */
 export function isRetryableCommand(text: string): boolean {

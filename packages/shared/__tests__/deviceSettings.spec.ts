@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  canElementsForModel,
   estimateDataBytesPerHour,
   estimateDataUsage,
+  isCanElementOfModel,
+  isCanPriority,
   isSettingInRange,
   recordsPerHour,
   settingsForModel,
@@ -168,5 +171,50 @@ describe('estimateDataUsage', () => {
     expect(estimateDataBytesPerHour({ byTimeSeconds: Number.NaN, sendEverySeconds: 30 })).toBe(0)
     expect(estimateDataUsage({ byTimeSeconds: 2, sendEverySeconds: 2 }, -8).perMonthMB).toBe(0)
     expect(estimateDataUsage({ byTimeSeconds: 2, sendEverySeconds: 2 }, Infinity).perMonthMB).toBe(0)
+  })
+})
+
+/**
+ * The vehicle-bus elements, and the one parameter that decides whether the device sends them.
+ *
+ * Every CAN element ships with its priority at 0 — "do not send" — which is why a customer with a
+ * working CAN bus still sees only the handful of GPS/IO elements a bus-less vehicle produces.
+ * https://wiki.teltonika-gps.com/view/FMC150_Parameter_list (LVCAN section)
+ */
+describe('canElementsForModel', () => {
+  it('lists a CAN model\u2019s elements, in the order its own parameter page lists them', () => {
+    const els = canElementsForModel('FMC150')
+    expect(els.length).toBeGreaterThan(50)
+    expect(els[0]).toEqual({ param: '45100', name: 'Vehicle Speed' })
+    const ids = els.map((e) => Number(e.param))
+    expect(ids).toEqual([...ids].sort((a, b) => a - b))
+    // only the FIRST id of each six-id block — the priority. The operand/high/low/event-only/
+    // avg-const ids that follow it configure event generation and are a different feature.
+    expect(ids).not.toContain(45101)
+  })
+
+  it('is empty for a model whose page has no CAN block \u2014 and that is not "all switched off"', () => {
+    expect(canElementsForModel('ATC700')).toEqual([])
+    expect(canElementsForModel('FMB640')).toEqual([])
+  })
+
+  it('answers empty rather than throwing for a missing, blank or prototype-shaped model', () => {
+    for (const model of [null, undefined, '', '  ', 'constructor', 'toString', 'NOSUCHMODEL']) {
+      expect(canElementsForModel(model), String(model)).toEqual([])
+      expect(isCanElementOfModel(model, '45100'), String(model)).toBe(false)
+    }
+  })
+
+  it('membership is per MODEL \u2014 an id the model does not implement is never sent to it', () => {
+    expect(isCanElementOfModel('FMC150', '45100')).toBe(true)
+    expect(isCanElementOfModel('fmc150', '45100')).toBe(true) // the profile key is lower-cased
+    expect(isCanElementOfModel('FMC150', '45101')).toBe(false) // an operand id in the same block
+    expect(isCanElementOfModel('FMC150', '10055')).toBe(false) // a tracking setting, not CAN
+    expect(isCanElementOfModel('ATC700', '45100')).toBe(false)
+  })
+
+  it('accepts only the four priorities the parameter takes', () => {
+    for (const v of [0, 1, 2, 3]) expect(isCanPriority(v), String(v)).toBe(true)
+    for (const v of [-1, 4, 1.5, Number.NaN, Infinity]) expect(isCanPriority(v), String(v)).toBe(false)
   })
 })

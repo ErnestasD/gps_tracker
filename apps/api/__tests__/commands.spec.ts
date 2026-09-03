@@ -28,6 +28,8 @@ let t2Token: string
 let viewerToken: string
 let deviceId: string
 let retiredId: string
+/** A model whose wiki page has NO CAN block — the `supported:false` case. */
+let noCanDeviceId: string
 
 const base = () => `http://127.0.0.1:${port}`
 const req = (path: string, token: string, method = 'GET', bodyObj?: unknown) =>
@@ -57,6 +59,11 @@ beforeAll(async () => {
   const rdev = await db.devices.create(scope1, { userId: s1.userId }, { imei: '356307042440011', name: 'Old', profileId: profile.id, accountId: acct1 })
   retiredId = rdev.id.toString()
   await db.devices.retire(scope1, { userId: s1.userId }, retiredId)
+  // ATC700's parameter page carries no CAN block at all (66 of the 105 models we hold pages for
+  // do not) — a device the CAN panel must answer "not supported" for, not "everything is off".
+  const noCanProfile = (await db.profiles.list()).find((p) => p.key === 'atc700')!
+  const noCanDev = await db.devices.create(scope1, { userId: s1.userId }, { imei: '356307042440012', name: 'Asset', profileId: noCanProfile.id, accountId: acct1 })
+  noCanDeviceId = noCanDev.id.toString()
 
   t1Token = await mintTestToken({ userId: s1.userId, tenantId: s1.tenantId, role: 'tsp_admin' })
   t2Token = await mintTestToken({ userId: s2.userId, tenantId: s2.tenantId, role: 'tsp_admin' })
@@ -252,5 +259,135 @@ describe('device tracking settings', () => {
   it('a viewer may look but not write — changing tracking density is a write', async () => {
     expect((await req(`/v1/devices/${deviceId}/settings`, viewerToken)).status).toBe(200)
     expect((await req(`/v1/devices/${deviceId}/settings`, viewerToken, 'POST', { changes: { movingSendPeriod: 30 } })).status).toBe(403)
+  })
+})
+
+/**
+ * CAN element priorities — the reason a wired-up vehicle still shows six parameters.
+ *
+ * Every CAN element ships with its priority parameter at 0 ("do not send"), so a customer with a
+ * working bus sees exactly what a customer with no bus sees, and nothing on the screen tells them
+ * which of those two they are. The route's job is to name the elements the MODEL has, report what
+ * the DEVICE last said about them, and queue a change with the same guarantees as a settings write.
+ * https://wiki.teltonika-gps.com/view/FMC150_Parameter_list (LVCAN section)
+ */
+describe('device CAN element priorities', () => {
+  it('GET lists the model\u2019s elements, all off, and says nothing has been read off the device', async () => {
+    const res = await req(`/v1/devices/${deviceId}/can`, t1Token)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      supported: boolean
+      elements: { param: string; name: string; enabled: boolean; priority: number; checkedAt: string | null }[]
+    }
+    expect(body.supported).toBe(true)
+    expect(body.elements.length).toBeGreaterThan(50)
+    const speed = body.elements.find((e) => e.param === '45100')!
+    expect(speed.name).toBe('Vehicle Speed')
+    // 0 is what the element ships as — but `checkedAt` is null, so a client can tell that from
+    // "the device told us 0". This is the whole premise of the feature.
+    expect(speed).toMatchObject({ enabled: false, priority: 0, checkedAt: null })
+  })
+
+  it('a model with no CAN block answers supported:false \u2014 not an empty list that reads as "all off"', async () => {
+    const res = await req(`/v1/devices/${noCanDeviceId}/can`, t1Token)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { supported: boolean; elements: unknown[]; reason: string }
+    expect(body.supported).toBe(false)
+    expect(body.elements).toEqual([])
+    // "buy a different tracker" and "click the toggles" are opposite actions; say which one it is
+    expect(body.reason).toMatch(/no CAN parameter list/i)
+    // …and a write is refused rather than sent to a device that has no such parameter
+    const write = await req(`/v1/devices/${noCanDeviceId}/can`, t1Token, 'POST', { changes: { '45100': 2 } })
+    expect(write.status).toBe(400)
+  })
+
+  it('POST queues ONE setparam with every change, then the getparam that verifies it', async () => {
+    await redis.del(`cmd:pending:${deviceId}`)
+    const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': 2, '45140': 1 } })
+    expect(res.status).toBe(202) // the tracker has not seen this yet
+    const body = (await res.json()) as { queued: boolean; commandId: string; verifyCommandId: string; text: string }
+    expect(body.queued).toBe(true)
+    expect(body.text).toBe('setparam 45100:2;45140:1')
+    expect(body.commandId).not.toBe(body.verifyCommandId)
+
+    const texts = (await redis.lrange(`cmd:pending:${deviceId}`, 0, -1)).map((j) => (JSON.parse(j) as { text: string }).text)
+    const setAt = texts.findIndex((t) => t.startsWith('setparam 45100:2'))
+    const getAt = texts.findIndex((t) => t.startsWith('getparam 45100'))
+    expect(setAt).toBeGreaterThanOrEqual(0)
+    expect(getAt).toBeGreaterThan(setAt) // FIFO: the write drains before its verification
+    expect(await redis.sismember('cmd:active', deviceId)).toBe(1)
+  })
+
+  it('the queued change is visible before the device answers, so a toggle does not snap back', async () => {
+    const body = (await (await req(`/v1/devices/${deviceId}/can`, t1Token)).json()) as {
+      elements: { param: string; priority: number; requested: number | null; state: string | null }[]
+    }
+    const speed = body.elements.find((e) => e.param === '45100')!
+    expect(speed.requested).toBe(2)
+    expect(speed.state).toBe('waiting')
+    expect(speed.priority).toBe(0) // the tracker still has not confirmed anything
+  })
+
+  it('a NEW write drops a queued one for the same element \u2014 the last instruction wins', async () => {
+    await redis.del(`cmd:pending:${deviceId}`)
+    const first = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': 1 } })
+    const firstId = ((await first.json()) as { commandId: string }).commandId
+    expect((await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': 3 } })).status).toBe(202)
+
+    const texts = (await redis.lrange(`cmd:pending:${deviceId}`, 0, -1)).map((j) => (JSON.parse(j) as { text: string }).text)
+    expect(texts.filter((t) => t.startsWith('setparam'))).toEqual(['setparam 45100:3'])
+    // …and the superseded row must not sit "waiting" for 24 h either
+    expect(((await (await req(`/v1/commands/${firstId}`, t1Token)).json()) as { status: string }).status).toBe('expired')
+  })
+
+  it('refuses a parameter this model does not carry, rather than sending it to the device', async () => {
+    const before = await redis.llen(`cmd:pending:${deviceId}`)
+    for (const param of ['45101', '99999', '10055']) {
+      // 45101 is the OPERAND id inside 45100's own six-id block — adjacent, and not ours to write
+      const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { [param]: 2 } })
+      expect(res.status, param).toBe(400)
+      expect((await res.json() as { detail?: string }).detail).toMatch(/unknown CAN element/)
+    }
+    expect(await redis.llen(`cmd:pending:${deviceId}`)).toBe(before)
+  })
+
+  it('refuses a priority outside 0..3, and names the bound', async () => {
+    for (const value of [-1, 4, 255]) {
+      const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': value } })
+      expect(res.status, String(value)).toBe(400)
+      expect((await res.json() as { detail?: string }).detail).toMatch(/priority must be an integer between 0 and 3/)
+    }
+    // a non-integer and an empty change set never reach the model check
+    for (const changes of [{ '45100': 1.5 }, {}, { notAnId: 2 }]) {
+      expect((await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes })).status, JSON.stringify(changes)).toBe(400)
+    }
+  })
+
+  it('rejects the whole request when ANY change is invalid \u2014 no partial application', async () => {
+    const before = await redis.llen(`cmd:pending:${deviceId}`)
+    const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: { '45100': 2, '45140': 9 } })
+    expect(res.status).toBe(400)
+    expect(await redis.llen(`cmd:pending:${deviceId}`)).toBe(before)
+  })
+
+  it('refuses to build a command longer than we send anywhere else', async () => {
+    // 83 elements in one setparam would overrun the 512 characters this repo caps a command at;
+    // the caller splits the request rather than getting a truncated command the device half-applies
+    const all = (await (await req(`/v1/devices/${deviceId}/can`, t1Token)).json()) as { elements: { param: string }[] }
+    const changes = Object.fromEntries(all.elements.map((e) => [e.param, 1]))
+    const res = await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes })
+    expect(res.status).toBe(400)
+    expect((await res.json() as { detail?: string }).detail).toMatch(/too many elements/)
+    // …but a batch that fits is accepted
+    const half = Object.fromEntries(all.elements.slice(0, 40).map((e) => [e.param, 1]))
+    expect((await req(`/v1/devices/${deviceId}/can`, t1Token, 'POST', { changes: half })).status).toBe(202)
+  })
+
+  it('a retired device is refused, another tenant sees 404, and a viewer may look but not write', async () => {
+    expect((await req(`/v1/devices/${retiredId}/can`, t1Token, 'POST', { changes: { '45100': 2 } })).status).toBe(400)
+    expect((await req(`/v1/devices/${deviceId}/can`, t2Token)).status).toBe(404)
+    expect((await req(`/v1/devices/${deviceId}/can`, t2Token, 'POST', { changes: { '45100': 2 } })).status).toBe(404)
+    expect((await req(`/v1/devices/${deviceId}/can`, viewerToken)).status).toBe(200)
+    expect((await req(`/v1/devices/${deviceId}/can`, viewerToken, 'POST', { changes: { '45100': 2 } })).status).toBe(403)
   })
 })

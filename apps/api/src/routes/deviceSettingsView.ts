@@ -1,4 +1,4 @@
-import { parseGetparamReply, requestedIds, type AvailableSetting } from '@orbetra/shared'
+import { parseGetparamReply, requestedIds } from '@orbetra/shared'
 
 /**
  * What a device ACTUALLY holds, derived from its own `getparam` replies.
@@ -14,7 +14,23 @@ import { parseGetparamReply, requestedIds, type AvailableSetting } from '@orbetr
  * as device state, which is the specific lie this feature exists to stop telling.
  */
 
-interface CommandRow {
+/**
+ * What this reconstruction needs to know about a parameter: the id the device answers about, and
+ * the key to file the answer under.
+ *
+ * Deliberately structural rather than `AvailableSetting`. Nothing below reads a bound, a unit or a
+ * factory value, and the CAN route has none of those to offer — its "key" IS the parameter id. Two
+ * copies of this walk over the command history would be two places for the newest-reply-wins and
+ * first-read-after-a-write rules to drift, and those rules were bought with a day of hardware time.
+ */
+export interface ReadableParam {
+  /** Teltonika parameter id, as it appears in `getparam`/`setparam`. */
+  param: string
+  /** The name this parameter is reported under. */
+  key: string
+}
+
+export interface CommandRow {
   text: string
   status: string
   response: string | null
@@ -60,7 +76,7 @@ const TERMINAL_UNDELIVERED = new Set(['failed', 'expired'])
 const IN_FLIGHT = new Set(['queued', 'sent'])
 
 export function currentSettings(
-  available: readonly AvailableSetting[],
+  available: readonly ReadableParam[],
   history: readonly CommandRow[],
 ): { current: Record<string, CurrentSetting> } {
   const wanted = new Map(available.map((s) => [s.param, s.key]))

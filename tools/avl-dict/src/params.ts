@@ -74,7 +74,7 @@ async function main(): Promise<void> {
       warnings.push(`${model}: page fetched but no editable parameter matched — layout drift?`)
       continue
     }
-    out[model] = { sourceUrl: WIKI + page, params: parsed.params }
+    out[model] = { sourceUrl: WIKI + page, params: parsed.params, canElements: parsed.canElements }
     for (const w of parsed.warnings) warnings.push(`${model}: ${w}`)
   }
 

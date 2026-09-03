@@ -87,7 +87,12 @@ export interface AvailableSetting extends SettingDef {
 }
 
 interface CatalogueParam { default: string; min: string; max: string; name: string; value: string }
-interface CatalogueModel { sourceUrl: string; params: Record<string, CatalogueParam> }
+interface CatalogueModel {
+  sourceUrl: string
+  params: Record<string, CatalogueParam>
+  /** id → element name, present only on models whose wiki page carries an LVCAN/CAN block. */
+  canElements?: Record<string, string>
+}
 const MODELS = (catalogue as { models: Record<string, CatalogueModel> }).models
 
 /** `MODELS` is a plain object literal from JSON, so `settingsForModel('constructor')` would other-
@@ -135,6 +140,67 @@ export function isSettingInRange(model: string | null | undefined, key: SettingK
   const s = settingsForModel(model).find((x) => x.key === key)
   if (s === undefined) return false
   return Number.isInteger(value) && value >= s.min && value <= s.max
+}
+
+// ── CAN (LVCAN / vehicle bus) elements ───────────────────────────────────────
+/**
+ * The vehicle-bus values a model can report, and the one parameter that decides whether it does.
+ *
+ * Why this exists: every CAN element on a Teltonika tracker ships with its priority parameter at 0,
+ * which means "do not send". A customer can wire a working CAN bus, see the device online, and
+ * still get the same ~6 GPS/IO elements a device with no bus at all produces — because nothing in
+ * onboarding ever raised one of these. The dashboard then looks broken for a reason no amount of
+ * re-checking the wiring can find.
+ *
+ * Each element occupies a SIX-id block on the model's parameter page — priority, then the
+ * operand/high/low/event-only/avg-const quartet that shapes an event — and the FIRST id of the
+ * block is the priority: 0 = not sent, 1 = low, 2 = high, 3 = panic. This module offers ONLY that
+ * first id. The other five configure event generation, which is a different feature with different
+ * bounds, and writing one by accident while trying to turn a value on would arm an alert nobody
+ * asked for. https://wiki.teltonika-gps.com/view/FMC150_Parameter_list (LVCAN section)
+ *
+ * The ids are per MODEL, taken from that model's own page, exactly as `settingsForModel` takes
+ * ranges: 39 of the 105 models we hold pages for have a CAN block and 66 do not, and an id a model
+ * does not implement must never be sent to it.
+ */
+export interface CanElementDef {
+  /** Teltonika parameter id — the element's PRIORITY parameter (first id of its 6-id block). */
+  param: string
+  /** The element's name from the model's own parameter page, e.g. "Vehicle Speed". */
+  name: string
+}
+
+/** Priority values the priority parameter accepts. 0 is the shipped default and means "not sent". */
+export const CAN_PRIORITY_MIN = 0
+export const CAN_PRIORITY_MAX = 3
+
+/** Is `value` a priority this parameter accepts? Fixed by the protocol, so not per-model. */
+export const isCanPriority = (value: number): boolean =>
+  Number.isInteger(value) && value >= CAN_PRIORITY_MIN && value <= CAN_PRIORITY_MAX
+
+/**
+ * The CAN elements a model can report, or an empty list when its page has no CAN block.
+ *
+ * Empty means "this model has no vehicle-bus support we can cite", NOT "everything is switched
+ * off" — the API says which of those it is, because they call for opposite actions from the person
+ * reading the screen.
+ */
+export function canElementsForModel(model: string | null | undefined): CanElementDef[] {
+  if (typeof model !== 'string' || model.trim() === '') return []
+  const elements = modelEntry(model)?.canElements
+  if (elements === undefined) return []
+  return Object.entries(elements)
+    .map(([param, name]) => ({ param, name }))
+    // by id, which is the order the wiki page lists them in — the UI shows the page's own grouping
+    .sort((a, b) => Number(a.param) - Number(b.param))
+}
+
+/** Does THIS model carry this CAN priority parameter? The write path's membership gate. */
+export function isCanElementOfModel(model: string | null | undefined, param: string): boolean {
+  if (typeof model !== 'string' || model.trim() === '') return false
+  const elements = modelEntry(model)?.canElements
+  // `canElements` is a plain object from JSON: `Object.hasOwn`, never `in`, or 'constructor' passes.
+  return elements !== undefined && Object.hasOwn(elements, param)
 }
 
 /**

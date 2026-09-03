@@ -28,6 +28,19 @@ export interface ParamRange {
 export interface ModelParams {
   sourceUrl: string
   params: Record<string, ParamRange>
+  /**
+   * CAN elements this model can be told to send, as `<first id of the block> → element name`.
+   *
+   * Separate from `params` because they are a different KIND of setting. A CAN element is not one
+   * parameter but a block of six consecutive ids — priority, operand, high level, low level, event
+   * only, avg const — laid out every ten from 45100. Only the first (priority) decides whether the
+   * element is transmitted at all: 0 sends nothing, 1–3 send it. Blocks are the unit a customer
+   * thinks in ("send me the fuel level"), so blocks are what we store.
+   *
+   * This is the answer to "why does a working CAN bus report six parameters": the device ships with
+   * every block at 0, and nothing in our onboarding ever raised one.
+   */
+  canElements: Record<string, string>
 }
 
 /**
@@ -96,10 +109,13 @@ const stripTags = (html: string): string =>
 /** A bound is only usable if it is a plain integer — `""` (a string parameter) or a footnote is not. */
 const isInteger = (s: string): boolean => /^-?\d+$/.test(s)
 
-export function parseParameterList(html: string): { params: Record<string, ParamRange>; warnings: string[] } {
+export function parseParameterList(
+  html: string,
+): { params: Record<string, ParamRange>; canElements: Record<string, string>; warnings: string[] } {
   const params: Record<string, ParamRange> = {}
   const warnings: string[] = []
   const body = html.slice(Math.max(0, html.indexOf('mw-parser-output')))
+  const canElements = parseCanElements(body)
 
   for (const row of body.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) ?? []) {
     const cells = (row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) ?? []).map(stripTags)
@@ -135,5 +151,40 @@ export function parseParameterList(html: string): { params: Record<string, Param
     }
     params[id] = { default: dflt, min, max, name, value }
   }
-  return { params, warnings }
+  return { params, canElements, warnings }
+}
+
+/**
+ * CAN element blocks, read from the LVCAN section's own layout rather than from a hand-written list.
+ *
+ * The page renders each element as its NAME followed by the block's six ids. Matching that shape —
+ * a `45<block>0` id whose next five cells are also 45xxx — is what makes this survive Teltonika
+ * renaming or reordering elements: a hardcoded id list would silently stop matching and we would
+ * ship a settings screen missing whatever they moved.
+ *
+ * The block ids advance by TEN while a block spans six, so 45106..45109 are unused padding. Only
+ * `45<block>0` is collected: it is the priority, and the priority is the on/off switch.
+ * https://wiki.teltonika-gps.com/view/FMC150_Parameter_list (LVCAN section)
+ */
+function parseCanElements(body: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  // tags become SEPARATORS here, unlike `stripTags` which deletes them: this parser reads the
+  // sequence of cells, so "</td><td>" has to end one cell and start the next rather than glue them
+  const cells = body
+    .replace(/<[^>]+>/g, '\n')
+    .replace(/&#160;|&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
+  for (const [i, cell] of cells.entries()) {
+    if (!/^45[1-9]\d0$/.test(cell) || Object.hasOwn(out, cell)) continue
+    const rest = cells.slice(i + 1, i + 6)
+    if (rest.length < 5 || !rest.every((x) => /^45\d{3}$/.test(x))) continue
+    const name = cells[i - 1]
+    // a name that is itself an id means we matched a bare id column, not an element row
+    if (name === undefined || /^45\d{3}$/.test(name)) continue
+    out[cell] = name
+  }
+  return out
 }

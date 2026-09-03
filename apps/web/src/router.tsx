@@ -187,6 +187,17 @@ const mapRoute = createRoute({
 const devicesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/devices',
+  /**
+   * `?can=<deviceId>` opens that device's CAN-parameter panel on arrival.
+   *
+   * The live map's parameters tab has a gear pointing here, and a deep link is the only way it can
+   * work: the devices page opens its per-device panels from local state, so a plain navigation
+   * would land the operator on a list with nothing selected — a button that appears to do nothing.
+   * Validated rather than free-form, because an unvalidated search param typechecks and then never
+   * arrives, which is the same silent failure wearing a different hat.
+   */
+  validateSearch: (search: Record<string, unknown>): { can?: string } =>
+    typeof search.can === 'string' && search.can !== '' ? { can: search.can } : {},
   component: DevicesPage,
 })
 
