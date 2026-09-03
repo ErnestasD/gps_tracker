@@ -39,17 +39,20 @@
     "label": "Naujas slaptažodis"
   },
   "verify": {
-    "title": "Aktyvuojame paskyrą",
-    "working": "Tvirtiname jūsų adresą…",
-    "done": "Paskyra aktyvi. Prisijunkite ir pradėkite.",
-    "toLogin": "Eiti prisijungti",
+    "title": {
+      "working": "Aktyvuojame paskyrą…",
+      "done": "Paskyra aktyvuota",
+      "invalid": "Nuoroda nebeveikia"
+    },
+    "toLogin": "Prisijunkite",
     "invalid": "Ši aktyvavimo nuoroda netinkama, jau panaudota arba nebegalioja.",
     "resend": "Atsiųsti naują nuorodą",
     "resendSent": "Jei tas adresas laukia aktyvavimo, nauja nuoroda jau pakeliui.",
     "resendEmail": "Jūsų el. paštas",
     "resendSubmit": "Siųsti nuorodą",
     "noToken": "Ši aktyvavimo nuoroda nepilna. Paprašykite naujos žemiau.",
-    "label": "Aktyvavimas"
+    "label": "Aktyvavimas",
+    "working": "Tvirtiname jūsų adresą…"
   },
   "shell": {
     "live": "Sekimas",

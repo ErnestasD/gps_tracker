@@ -39,17 +39,20 @@
     "label": "Neues Passwort"
   },
   "verify": {
-    "title": "Konto wird aktiviert",
-    "working": "Adresse wird bestätigt…",
-    "done": "Ihr Konto ist aktiv. Melden Sie sich an, um zu starten.",
-    "toLogin": "Zur Anmeldung",
+    "title": {
+      "working": "Konto wird aktiviert…",
+      "done": "Konto aktiviert",
+      "invalid": "Der Link funktioniert nicht"
+    },
+    "toLogin": "Anmelden",
     "invalid": "Dieser Aktivierungslink ist ungültig, bereits verwendet oder abgelaufen.",
     "resend": "Neuen Link senden",
     "resendSent": "Falls diese Adresse aktiviert werden muss, ist ein neuer Link unterwegs.",
     "resendEmail": "Ihre E-Mail-Adresse",
     "resendSubmit": "Link senden",
     "noToken": "Dieser Aktivierungslink ist unvollständig. Fordern Sie unten einen neuen an.",
-    "label": "Aktivierung"
+    "label": "Aktivierung",
+    "working": "Adresse wird bestätigt…"
   },
   "shell": {
     "live": "Live",

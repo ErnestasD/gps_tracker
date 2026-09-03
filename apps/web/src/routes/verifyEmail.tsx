@@ -46,15 +46,19 @@ export function VerifyEmailPage() {
     })
   }
 
+  // The H1 answers "what happened", PER STATE — one fixed title read "Activating your account"
+  // over a success card and over a dead-link card alike, so the page's own heading contradicted its
+  // content in two of three states (founder report: the done state also restated itself — "account
+  // active, sign in and start" under a title already about activation).
   return (
-    <AuthShell label={t('verify.label')} title={t('verify.title')}>
+    <AuthShell label={t('verify.label')} title={t(`verify.title.${state}`)}>
       {state === 'working' ? (
         <p className="text-center text-sm text-muted" data-testid="verify-working">
           {t('verify.working')}
         </p>
       ) : state === 'done' ? (
         <div className="space-y-4 text-center" data-testid="verify-done">
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>{t('verify.done')}</p>
+          {/* no body sentence: the heading already says it — the button is the content */}
           <button className="auth-submit" onClick={() => void navigate({ to: '/login' })} data-testid="verify-to-login">
             {t('verify.toLogin')}
           </button>
