@@ -388,10 +388,26 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   await page.reload()
   await expect(page.getByTestId('branding-productName')).toHaveValue('Acme Fleet')
 
-  // add a custom domain → server returns a TXT token → instructions render
+  /**
+   * Add a custom domain → the two DNS records render as a table.
+   *
+   * This asserted `toContainText('orbetra-verify=')` against a single string, which is exactly the
+   * shape that misled the founder: a Name and a Value fused by an `=` sign, in a panel whose
+   * fields are separate. The record is a TXT on `_orbetra-verify.<domain>` whose value is the
+   * token ALONE, and the assertion now says so — including that the fused form is gone.
+   */
   await page.getByTestId('domain-input').fill('fleet.acme-e2e.test')
   await page.getByTestId('domain-add').click()
-  await expect(page.getByTestId('txt-instructions')).toContainText('orbetra-verify=')
+
+  const dns = page.getByTestId('domain-dns-fleet.acme-e2e.test')
+  await expect(dns).toBeVisible()
+  await expect(dns.getByTestId('dns-row-TXT')).toContainText('_orbetra-verify.fleet.acme-e2e.test')
+  // the value is the bare token: 32 hex characters, and no `orbetra-verify=` prefix anywhere
+  await expect(dns.getByTestId('dns-row-TXT')).toContainText(/\b[0-9a-f]{32}\b/)
+  await expect(dns).not.toContainText('orbetra-verify=')
+  // and the CNAME beside it, on a DIFFERENT name — the two cannot share one (RFC 1034 §3.6.2)
+  await expect(dns.getByTestId('dns-row-CNAME')).toContainText('fleet.acme-e2e.test')
+
   await expect(page.getByTestId('domain-fleet.acme-e2e.test')).toBeVisible()
   // unverified until DNS TXT is present (no real DNS in CI) → shows Verify affordance
   await expect(page.getByTestId('verify-fleet.acme-e2e.test')).toBeVisible()

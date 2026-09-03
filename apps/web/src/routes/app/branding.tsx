@@ -166,7 +166,6 @@ export function BrandingPage() {
         <div className="space-y-3">
           <AddDomain
             count={(domains.data ?? []).length}
-            dnsTarget={current.data?.dnsTarget ?? null}
             platformDomain={current.data?.platformDomain ?? null}
             onAdded={() => void qc.invalidateQueries({ queryKey: ['domains'] })}
           />
@@ -290,12 +289,11 @@ function HexInput({ value, onCommit, testid, label }: { value: string; onCommit:
  * second step was documented NOWHERE — not in the UI, not in the README — so the honest outcome of
  * following the instructions was a verified badge above a domain that resolved nowhere.
  */
-function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: number; dnsTarget: string | null; platformDomain: string | null; onAdded: () => void }) {
+function AddDomain({ count, platformDomain, onAdded }: { count: number; platformDomain: string | null; onAdded: () => void }) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<'own' | 'sub'>(platformDomain !== null ? 'sub' : 'own')
   const [domain, setDomain] = useState('')
   const [slug, setSlug] = useState('')
-  const [txt, setTxt] = useState<{ domain: string; token: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   // the server 409s BOTH the cap and a duplicate — the client can't tell them apart from status
   // alone, so guard the cap here and show the correct message instead of a false "already registered"
@@ -310,11 +308,11 @@ function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: numbe
     }
     const wanted = mode === 'sub' && platformDomain !== null ? `${slug.trim().toLowerCase()}.${platformDomain}` : domain.trim().toLowerCase()
     addDomain(wanted)
-      .then((d) => {
-        // a platform subdomain returns verified with no record to publish — showing an empty TXT
-        // box would invent a step that does not exist
-        // a PLATFORM SUBDOMAIN comes back verified with nothing to publish — txtRecord null
-        setTxt(d.txtRecord !== null ? { domain: d.domain, token: d.txtToken } : null)
+      .then(() => {
+        // The records are shown on the domain's ROW, not here. They used to be shown in both
+        // places at once — the founder's screenshot has the same TXT block twice on one screen,
+        // which reads as two different records to publish. The row is the durable one: it survives
+        // a reload, and the add-form's copy vanished the moment you navigated away.
         setDomain('')
         setSlug('')
         onAdded()
@@ -340,7 +338,7 @@ function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: numbe
         <div className="flex gap-4 text-sm">
           {(['sub', 'own'] as const).map((m) => (
             <label key={m} className="flex cursor-pointer items-center gap-1.5" style={{ color: 'var(--admin-ink-soft)' }}>
-              <input type="radio" name="domain-mode" checked={mode === m} onChange={() => { setMode(m); setError(null); setTxt(null) }} data-testid={`domain-mode-${m}`} />
+              <input type="radio" name="domain-mode" checked={mode === m} onChange={() => { setMode(m); setError(null) }} data-testid={`domain-mode-${m}`} />
               {m === 'sub' ? t('branding.modeSub', { domain: platformDomain }) : t('branding.modeOwn')}
             </label>
           ))}
@@ -373,7 +371,6 @@ function AddDomain({ count, dnsTarget, platformDomain, onAdded }: { count: numbe
       {error !== null && (
         <p role="alert" className="text-sm" style={{ color: 'var(--admin-danger)' }}>{error}</p>
       )}
-      {txt !== null && <DnsRecords domain={txt.domain} txtToken={txt.token} dnsTarget={dnsTarget} />}
     </div>
   )
 }
