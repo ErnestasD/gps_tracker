@@ -475,6 +475,7 @@
       "acknowledged": "Patvirtinta",
       "fencesHint": "Pasirinkite, kurias geozonas piešti žemėlapyje.",
       "tabs": "Įrenginio skydeliai",
+      "resize": "Tempkite, kad pakeistumėte skydelio aukštį",
       "historyAt": "Istorija: rodoma {{when}} būsena"
     },
     "title": "Žemėlapis realiuoju laiku",

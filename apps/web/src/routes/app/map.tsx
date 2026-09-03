@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { DeviceList } from '@/components/DeviceList'
 import { Inspector } from '@/components/Inspector'
+import { SheetGrip, useSheet } from '@/components/SheetGrip'
 import { Timeline, type TimelineEvent } from '@/components/Timeline'
 import { LiveMap } from '@/components/LiveMap'
 import { Badge } from '@/components/admin/AdminKit'
@@ -122,6 +123,10 @@ export function MapPage() {
   )
   // device writes require account_manager+ (WRITE_POLICY.device), same rule as the devices table
   const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
+
+  /** The inspector sheet's height below xl — the reader's, remembered, clamped to the map area. */
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const { sheet, container: sheetContainer, toggle: toggleSheet, gripProps } = useSheet(bodyRef, true)
 
   // Active devices the live set has never heard from. The registry list is already fetched above
   // (it bounds the live set); the panel used to ignore it, so a fleet of eight read "3 of 3" and
@@ -480,7 +485,7 @@ export function MapPage() {
       </div>
 
       {/* ── body: fleet | map | inspector ───────────────────────────────────── */}
-      <div className="relative flex min-h-0 flex-1">
+      <div ref={bodyRef} className="relative flex min-h-0 flex-1">
         {listOpen && (
           /* Below lg the fleet list and the inspector share the bottom sheet: you pick a vehicle
              from the list, and the vehicle replaces it. Hiding the list outright — as a bare
@@ -570,10 +575,18 @@ export function MapPage() {
           <aside
             /* A rail from xl, a bottom sheet below it. Docking at lg made the map column ~164px on
                a 1024px screen — narrower than either panel, on the very breakpoint where docking
-               first engages. The sheet keeps the device reachable at every width. */
-            className="absolute inset-x-0 bottom-0 z-20 flex max-h-[60%] flex-col overflow-hidden border-t border-line bg-surface xl:static xl:inset-auto xl:z-auto xl:max-h-none xl:w-[360px] xl:shrink-0 xl:border-l xl:border-t-0"
+               first engages. The sheet keeps the device reachable at every width.
+               Its HEIGHT is the reader's: see SheetGrip. A fixed 60% covers most of a 1024–1279px
+               laptop, so reading a vehicle's parameters hid the vehicle.
+               The height rides a CSS VARIABLE, not an inline `height`. An inline height beats every
+               class, so `xl:h-auto` could not have undone it and the rail would have inherited the
+               sheet's pixels — the panel sized for a phone, applied to a desktop column. */
+            className="absolute inset-x-0 bottom-0 z-20 flex h-[var(--sheet-h,60%)] flex-col overflow-hidden border-t border-line bg-surface xl:static xl:inset-auto xl:z-auto xl:h-auto xl:w-[360px] xl:shrink-0 xl:border-l xl:border-t-0"
+            style={sheet.heightPx > 0 ? ({ '--sheet-h': `${sheet.heightPx}px` } as React.CSSProperties) : undefined}
+            data-sheet-peek={sheet.peek ? 'true' : 'false'}
             data-testid="inspector-rail"
           >
+            <SheetGrip sheet={sheet} container={sheetContainer} gripProps={gripProps} onToggle={toggleSheet} />
             <Inspector
               live={selected}
               device={registryRow}

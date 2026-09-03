@@ -9,6 +9,7 @@ import { DemoMap, type DemoMapControls, type DemoRoute, type DemoVehicle, type D
 import { cityFor, routeSlice, type DemoCity, type LngLat } from "@/lib/demo-geo";
 import { demoZones } from "@/lib/demo-zones";
 import { contentFor } from "@/lib/demo-content";
+import { SheetGrip, useSheet } from "@/components/admin/SheetGrip";
 import {
   PanelLeft, Pause, Layers, Maximize2, Satellite, Power, Clock, ChevronRight,
   Activity, Radio, Signal, Play, ZoomIn, ZoomOut, Crosshair, MapPin, LocateFixed, Route as RouteIcon,
@@ -256,6 +257,9 @@ function MapPage() {
   const [layers, setLayers] = React.useState<LayerState>({ geofences: true, trails: true, labels: true, heat: false });
   const mapWrapRef = React.useRef<HTMLDivElement | null>(null);
   const mapControls = React.useRef<DemoMapControls | null>(null);
+  /** the inspector sheet's height below xl — dragged, remembered, clamped to the map area */
+  const bodyRef = React.useRef<HTMLDivElement | null>(null);
+  const { sheet, container: sheetContainer, toggle: toggleSheet, gripProps } = useSheet(bodyRef, true);
 
   const toggleFence = React.useCallback((id: string) => {
     setHiddenFences((cur) => {
@@ -361,7 +365,7 @@ function MapPage() {
         </AdminButton>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      <div ref={bodyRef} className="relative flex min-h-0 flex-1">
         {/* fleet list */}
         <aside className="admin-hairline-r flex w-[21rem] shrink-0 flex-col" style={{ background: "var(--admin-surface)" }}>
           <div className="space-y-2 p-3">
@@ -501,10 +505,20 @@ function MapPage() {
           */}
         {active && (
           <aside
-            className="absolute inset-x-0 bottom-0 z-20 flex max-h-[60%] flex-col overflow-hidden border-t xl:static xl:inset-auto xl:z-auto xl:max-h-none xl:w-[23rem] xl:shrink-0 xl:border-l xl:border-t-0"
-            style={{ background: "var(--admin-surface)", borderColor: "var(--admin-hairline)" }}
+            /* The height below xl is the reader's — a fixed 60 % covers most of a 1024–1279 px
+               laptop, so reading a vehicle's parameters hid the vehicle. It rides a CSS VARIABLE
+               rather than an inline `height`: an inline height beats every class, so `xl:h-auto`
+               could not undo it and the desktop rail would inherit the sheet's pixels. */
+            className="absolute inset-x-0 bottom-0 z-20 flex h-[var(--sheet-h,60%)] flex-col overflow-hidden border-t xl:static xl:inset-auto xl:z-auto xl:h-auto xl:w-[23rem] xl:shrink-0 xl:border-l xl:border-t-0"
+            style={{
+              background: "var(--admin-surface)",
+              borderColor: "var(--admin-hairline)",
+              ...(sheet.heightPx > 0 ? ({ "--sheet-h": `${sheet.heightPx}px` } as React.CSSProperties) : {}),
+            }}
+            data-sheet-peek={sheet.peek ? "true" : "false"}
             data-testid="inspector-rail"
           >
+            <SheetGrip sheet={sheet} container={sheetContainer} gripProps={gripProps} onToggle={toggleSheet} />
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
