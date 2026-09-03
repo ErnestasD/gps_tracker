@@ -279,3 +279,23 @@ async function addrs(resolve: NameResolver, hostname: string): Promise<string[]>
     return []
   }
 }
+
+
+/**
+ * The addresses the edge host answers with — what an APEX must be pointed at.
+ *
+ * A zone root can never hold a CNAME. Not "when other records are in the way": the apex always
+ * carries SOA and NS, and RFC 1034 §3.6.2 forbids a CNAME beside any other data, so the record is
+ * invalid there by construction. Telling a white-label customer to CNAME their own domain is
+ * telling them to do something that cannot be done — and their domain is exactly what they bought
+ * white-label for.
+ *
+ * So the apex gets an A record instead, resolved from the edge host at the moment we hand it over
+ * rather than hardcoded. That pins the customer to our address, which is the cost; the alternative
+ * every provider that offers it should prefer is ALIAS/ANAME, which flattens a CNAME server-side
+ * and keeps the indirection. Both are stated.
+ */
+export async function edgeAddresses(resolve: NameResolver, edgeHostname: string | undefined): Promise<string[]> {
+  if (edgeHostname === undefined || edgeHostname.trim() === '') return []
+  return addrs(resolve, canon(edgeHostname))
+}

@@ -198,7 +198,7 @@
     "actionError": "Veiksmas nepavyko — bandykite dar kartą.",
     "limitDomain": "Pasiekėte {{max}} nuosavų domenų ribą.",
     "dnsTitle": "DNS įrašai",
-    "dnsIntro": "Pridėkite abu įrašus savo DNS tiekėjo valdymo skydelyje (eiliškumas nesvarbus) ir spauskite Patvirtinti.",
+    "dnsIntro": "Pridėkite TXT įrašą ir VIENĄ iš nukreipimo įrašų, tada spauskite Patvirtinti. CNAME ir A daro tą patį — skelbkite tą, kurį leidžia jūsų DNS.",
     "dnsType": "Tipas",
     "dnsName": "Vardas",
     "dnsValue": "Reikšmė",
@@ -216,7 +216,11 @@
     "dnsGoesTo": "Šis vardas šiuo metu nukreipia į {{where}}.",
     "dnsRecheck": "Tikrinti DNS",
     "dnsOccupied": "Šis vardas jau atsako A arba MX įrašu, todėl kartu turėti CNAME negali — tiekėjas jį priima, o zona niekada neatiduoda. Nukreipkite į mus subdomeną (pvz. „fleet.{{domain}}“) arba, jei visas šis domenas turi tapti skydeliu, keiskite jo A įrašą į mūsų adresą, o ne pridėkite CNAME.",
-    "dnsAbsent": "Šiam vardui dar nieko nepaskelbta."
+    "dnsAbsent": "Šiam vardui dar nieko nepaskelbta.",
+    "dnsPurposeA": "nukreipia domeną į mus — naudokite VIETOJ CNAME, jei tai domeno šaknis",
+    "dnsOr": "arba",
+    "dnsApexChoice": "Domeno ŠAKNIS (pvz. example.com) CNAME turėti negali niekada — šaknyje visada yra jos pačios SOA ir NS įrašai, o CNAME negali stovėti šalia jokių kitų duomenų. Ten naudokite A įrašą. Subdomenui (fleet.example.com) geriau CNAME: jis seka paskui mus, jei mūsų adresas pasikeis, o A įrašą tektų taisyti ranka. Jei jūsų tiekėjas siūlo ALIAS arba ANAME — šaknyje tai geriausias variantas.",
+    "dnsMailSafe": "Domeno nukreipimas į mus paštui įtakos neturi — MX įrašai atskiri ir lieka kaip buvę."
   },
   "audit": {
     "title": "Audito žurnalas",

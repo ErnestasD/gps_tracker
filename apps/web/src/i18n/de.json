@@ -215,7 +215,7 @@
     "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen.",
     "limitDomain": "Sie haben die maximale Anzahl von {{max}} benutzerdefinierten Domains erreicht.",
     "dnsTitle": "DNS-Einträge",
-    "dnsIntro": "Legen Sie beide Einträge bei Ihrem DNS-Anbieter an — die Reihenfolge ist beliebig — und klicken Sie dann auf Prüfen.",
+    "dnsIntro": "Legen Sie den TXT-Eintrag und EINEN der weiterleitenden Einträge an, und klicken Sie dann auf Prüfen. CNAME und A tun dasselbe — veröffentlichen Sie den, den Ihr DNS zulässt.",
     "dnsType": "Typ",
     "dnsName": "Name",
     "dnsValue": "Wert",
@@ -233,7 +233,11 @@
     "dnsGoesTo": "Dieser Name verweist derzeit auf {{where}}.",
     "dnsRecheck": "DNS prüfen",
     "dnsOccupied": "Dieser Name antwortet bereits mit einem A- oder MX-Eintrag und kann deshalb kein CNAME zusätzlich führen — der Anbieter nimmt es an, die Zone liefert es nie aus. Richten Sie stattdessen eine Subdomain auf uns (etwa „fleet.{{domain}}“), oder ändern Sie, wenn diese ganze Domain das Dashboard werden soll, ihren A-Eintrag auf unsere Adresse statt ein CNAME anzulegen.",
-    "dnsAbsent": "Für diesen Namen ist noch nichts veröffentlicht."
+    "dnsAbsent": "Für diesen Namen ist noch nichts veröffentlicht.",
+    "dnsPurposeA": "leitet die Domain zu uns — auf einer Domain-Wurzel STATT des CNAME zu verwenden",
+    "dnsOr": "oder",
+    "dnsApexChoice": "Eine Domain-WURZEL (etwa example.com) kann niemals ein CNAME führen — die Wurzel trägt immer ihre eigenen SOA- und NS-Einträge, und ein CNAME darf neben keinen anderen Daten stehen. Nutzen Sie dort den A-Eintrag. Für eine Subdomain (fleet.example.com) ist das CNAME besser: es folgt uns, falls sich unsere Adresse ändert, während ein A-Eintrag von Hand nachgezogen werden muss. Bietet Ihr Anbieter ALIAS oder ANAME an, ist das auf einer Wurzel die beste Lösung.",
+    "dnsMailSafe": "Die Domain auf uns zu richten wirkt sich nicht auf E-Mail aus — MX-Einträge sind getrennt und bleiben unverändert."
   },
   "audit": {
     "title": "Audit-Log",

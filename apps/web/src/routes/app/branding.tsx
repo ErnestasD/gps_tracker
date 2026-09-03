@@ -19,6 +19,7 @@ import {
   saveBranding,
   verifyDomain,
   type Branding,
+  type DnsRecord,
 } from '@/lib/branding'
 
 /** Branding page (E03-5): edit colors/logo/name with a live preview, and manage
@@ -222,7 +223,7 @@ export function BrandingPage() {
                       returning user who navigated away can still publish them and Verify (was
                       reachable only in the transient add-response) */}
                   {!d.verified && (
-                    <DnsRecords id={d.id} domain={d.domain} txtToken={d.txtToken} dnsTarget={current.data?.dnsTarget ?? null} />
+                    <DnsRecords id={d.id} domain={d.domain} txtToken={d.txtToken} dnsTarget={current.data?.dnsTarget ?? null} dnsAddresses={current.data?.dnsAddresses ?? []} />
                   )}
                 </li>
               ))}
@@ -390,10 +391,10 @@ function AddDomain({ count, platformDomain, onAdded }: { count: number; platform
  * pointing the domain at us are two records, and a page that mentions them a screen apart teaches
  * a one-record setup.
  */
-function DnsRecords({ id, domain, txtToken, dnsTarget }: { id: string; domain: string; txtToken: string; dnsTarget: string | null }) {
+function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: string; domain: string; txtToken: string; dnsTarget: string | null; dnsAddresses: string[] }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState<string | null>(null)
-  const records = dnsRecordsFor(domain, txtToken, dnsTarget)
+  const records = dnsRecordsFor(domain, txtToken, dnsTarget, dnsAddresses)
   /**
    * What each record looks like in live DNS.
    *
@@ -404,7 +405,7 @@ function DnsRecords({ id, domain, txtToken, dnsTarget }: { id: string; domain: s
    * something a person can act on.
    */
   const dns = useQuery({ queryKey: ['domain-dns', id], queryFn: () => getDomainDns(id), refetchOnWindowFocus: false })
-  const stateOf = (type: 'TXT' | 'CNAME'): { ok: boolean; found: string[] } | undefined =>
+  const stateOf = (type: DnsRecord['type']): { ok: boolean; found: string[] } | undefined =>
     dns.data === undefined ? undefined : type === 'TXT' ? dns.data.txt : dns.data.route
 
   const copy = (text: string, key: string) => {
@@ -435,9 +436,14 @@ function DnsRecords({ id, domain, txtToken, dnsTarget }: { id: string; domain: s
           </thead>
           <tbody>
             {records.map((r) => (
-              <tr key={r.type} data-testid={`dns-row-${r.type}`}>
+              <tr key={`${r.type}-${r.value}`} data-testid={`dns-row-${r.type}`}>
                 <td className="pr-3 align-top">
-                  <span className="mono font-semibold" style={{ color: 'var(--admin-ink)' }}>{r.type}</span>
+                  <span className="mono font-semibold" style={{ color: 'var(--admin-ink)' }}>
+                    {/* "or" carries the whole meaning of this row: it is not a third record to
+                        publish, it is the other way of doing the second one */}
+                    {r.alternative === true && <span className="mr-1 font-normal" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsOr')}</span>}
+                    {r.type}
+                  </span>
                   <div style={{ color: 'var(--admin-ink-soft)' }}>{t(r.purposeKey)}</div>
                 </td>
                 <td className="pr-3 align-top">
@@ -481,10 +487,8 @@ function DnsRecords({ id, domain, txtToken, dnsTarget }: { id: string; domain: s
 
       <ul className="mt-2 flex flex-col gap-1" style={{ color: 'var(--admin-ink-soft)' }}>
         <li>{t('branding.dnsRelative', { domain })}</li>
-        {/* Only where it can apply. A domain with a subdomain part takes a CNAME everywhere, so
-            the note is noise there — and it used to interpolate the domain into its own example,
-            producing "add a subdomain such as fleet.fleet.example.com". */}
-        {isApexLike(domain) && <li>{t('branding.dnsApex')}</li>}
+        <li>{t('branding.dnsApexChoice')}</li>
+        <li>{t('branding.dnsMailSafe')}</li>
         <li>{t('branding.dnsKeepTxt')}</li>
       </ul>
     </div>
@@ -520,16 +524,4 @@ function clean(b: Branding): Branding {
   if (b.accent) out.accent = b.accent
   if (b.logoUrl) out.logoUrl = b.logoUrl
   return out
-}
-
-/**
- * Could this name be a zone root, where a CNAME is usually impossible?
- *
- * Two labels ('dokigo.lt') is a root; three or more ('fleet.example.com') takes a CNAME at every
- * provider. A multi-label public suffix like 'example.co.uk' is a root we will not warn about —
- * a missing note is a far smaller harm than a note shown against a name it cannot apply to, and
- * getting this exactly right needs the public-suffix list, which is not worth a hint.
- */
-function isApexLike(domain: string): boolean {
-  return domain.split('.').length <= 2
 }
