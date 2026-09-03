@@ -21,6 +21,12 @@ export interface TenantUsageRow {
   day: string // YYYY-MM-DD
   deviceDays: number
 }
+/** Per-ACCOUNT rollup for the reseller dashboard (TSP UX audit): who is using how much. */
+export interface AccountUsageRow {
+  accountId: string
+  deviceDays: number
+  activeDevices: number
+}
 /** What Stripe has been told for one tenant-day. `reported` is CUMULATIVE, not the last delta. */
 export interface OverageReport {
   reported: number
@@ -38,6 +44,9 @@ export interface UsageRangeOpts {
 export interface UsageRepo {
   platformSummary(opts?: UsageRangeOpts): Promise<PlatformUsageRow[]>
   tenantSummary(scope: Scope, opts?: UsageRangeOpts): Promise<TenantUsageRow[]>
+  /** Tenant-scoped per-account rollup — the reseller's "who uses how much". Route must stay
+   *  tenant-wide-gated like /v1/usage (an account-pinned admin must not read siblings). */
+  accountSummary(scope: Scope, opts?: UsageRangeOpts): Promise<AccountUsageRow[]>
   /**
    * What has ALREADY been reported to Stripe's overage meter for a tenant, per day → the CUMULATIVE
    * value, so the reporter can submit only the delta. UNSCOPED BY DESIGN: the caller is the billing
@@ -68,6 +77,19 @@ export function createUsageRepo(prisma: PrismaClient): UsageRepo {
       for (const d of devices) distinctByTenant.set(d.tenantId, (distinctByTenant.get(d.tenantId) ?? 0) + 1)
       return days
         .map((g) => ({ tenantId: g.tenantId, deviceDays: g._count._all, activeDevices: distinctByTenant.get(g.tenantId) ?? 0 }))
+        .sort((a, b) => b.deviceDays - a.deviceDays)
+    },
+    accountSummary: async (scope, opts = {}) => {
+      const day = dayWhere(opts)
+      const where = { tenantId: scope.tenantId, ...(Object.keys(day).length > 0 ? { day } : {}) }
+      const [days, devices] = await Promise.all([
+        prisma.usageDaily.groupBy({ by: ['accountId'], where, _count: { _all: true } }),
+        prisma.usageDaily.findMany({ where, distinct: ['accountId', 'deviceId'], select: { accountId: true } }),
+      ])
+      const distinctByAccount = new Map<string, number>()
+      for (const d of devices) distinctByAccount.set(d.accountId, (distinctByAccount.get(d.accountId) ?? 0) + 1)
+      return days
+        .map((g) => ({ accountId: g.accountId, deviceDays: g._count._all, activeDevices: distinctByAccount.get(g.accountId) ?? 0 }))
         .sort((a, b) => b.deviceDays - a.deviceDays)
     },
     tenantSummary: async (scope, opts = {}) => {

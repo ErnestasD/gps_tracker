@@ -1780,5 +1780,28 @@
     "passwordShort": "Slaptažodis — bent 8 simboliai.",
     "userSaveError": "Nepavyko sukurti. Gal šis adresas jau užimtas?",
     "actFor": "Veikti šio kliento vardu"
+  },
+  "reseller": {
+    "title": "Jūsų klientai",
+    "desc": "Paskyros, įrenginiai ir naudojimas pagal klientą.",
+    "customer": "Klientas",
+    "devices": "Įrenginiai",
+    "activeMtd": "Aktyvūs",
+    "deviceDays": "Įreng. dienos",
+    "logins": "Prisijungimai",
+    "open": "Atidaryti",
+    "customers": "Klientai",
+    "devicesTotal": "Įrenginiai / limitas",
+    "activeMtdLong": "Aktyvūs įrenginiai",
+    "deviceDaysLong": "Įrenginių dienos",
+    "mtd": "Nuo mėnesio pradžios",
+    "allowanceHint": "Įskaičiuota į planą",
+    "overAllowance": "{{n}} virš limito — skaičiuojamas viršijimas",
+    "manageAccounts": "Valdyti paskyras",
+    "toDevices": "Įrenginiai",
+    "loadError": "Nepavyko įkelti.",
+    "emptyBadge": "Pradžia",
+    "emptyBody": "Sukurkite pirmąją kliento paskyrą — su jos prisijungimu klientas matys savo įrenginius.",
+    "firstAccount": "Sukurti pirmą paskyrą"
   }
 }

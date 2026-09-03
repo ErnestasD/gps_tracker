@@ -2179,6 +2179,17 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         }))
       } },
 
+    { method: 'get', path: '/v1/usage/accounts', scopeClass: 'tenant', entity: 'usage', shape: 'collection',
+      handler: async (c) => {
+        // the reseller dashboard's per-customer rollup — same tenant-wide gate and for the same
+        // reason as /v1/usage: an account-pinned admin must not read sibling accounts' fleet sizes
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'usage is tenant-wide')
+        return json(c, await db.usage.accountSummary(scopeOf(auth(c)), {
+          ...(c.req.query('from') !== undefined ? { from: c.req.query('from')! } : {}),
+          ...(c.req.query('to') !== undefined ? { to: c.req.query('to')! } : {}),
+        }))
+      } },
+
     // ── webhook deliveries (tenant, read-only log — E06-4b) ───────────────────
     { method: 'get', path: '/v1/webhook-deliveries', scopeClass: 'tenant', entity: 'webhookDelivery', shape: 'collection', entitlement: 'webhooks',
       handler: async (c) => json(c, await db.webhookDeliveries.list(scopeOf(auth(c)), {

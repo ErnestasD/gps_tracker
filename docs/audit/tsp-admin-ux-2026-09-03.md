@@ -55,11 +55,15 @@ between acting deliberately and acting by accident. Server-side scoping stays on
 - Reports API (`apps/api/src/routes/reports.ts:64`) requires ONE account for a tenant-wide caller —
   already compatible with "reports are per customer, chosen from the overview".
 
-## Delivery
+## Delivery (landed as one PR, #262)
 
-- **PR A** — the spine: account context + topbar switcher; geofence create carries the context's
-  accountId (leak closed) and the merged view withholds operational writes (geofences, rules,
-  drivers, maintenance); devices/drivers/rules create pre-scoped from context; map/events/trips get
-  the context filter.
-- **PR B** — the overseer landing: customers overview dashboard (per-account devices, activity,
-  logins), allowance usage vs plan, quick actions; `/app` routes there for overseers only.
+- **The spine** — account context + topbar switcher; geofence create carries the context's
+  accountId (leak closed); merged view withholds operational writes (geofences, rules, drivers)
+  with a notice naming the rule; devices/drivers/rules create pre-scoped from context;
+  map (inside liveStore), events (device→account join), trips, devices get the context filter.
+- **The overseer home** — the reseller dashboard at /app/dashboard: customers table (devices,
+  MTD activity, device-days, logins, "Open" → act-for + map), allowance meter vs plan
+  (`TSP_INCLUDED_DEVICES`, PRICING_STRATEGY §3), `GET /v1/usage/accounts` (tenant-wide-gated).
+  The LANDING decision lives in login (overseer → dashboard, everyone else → the map at /app):
+  /app/map already redirects to /app, so a landing redirect at /app would have made the live map
+  unreachable for the overseer — caught by the full e2e suite before push.

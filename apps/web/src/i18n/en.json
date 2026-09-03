@@ -1770,5 +1770,28 @@
     "passwordShort": "Password must be at least 8 characters.",
     "userSaveError": "Couldn’t create. Is that address already taken?",
     "actFor": "Act for this customer"
+  },
+  "reseller": {
+    "title": "Your customers",
+    "desc": "Accounts, devices and usage per customer.",
+    "customer": "Customer",
+    "devices": "Devices",
+    "activeMtd": "Active",
+    "deviceDays": "Device-days",
+    "logins": "Logins",
+    "open": "Open",
+    "customers": "Customers",
+    "devicesTotal": "Devices / allowance",
+    "activeMtdLong": "Active devices",
+    "deviceDaysLong": "Device-days",
+    "mtd": "Month to date",
+    "allowanceHint": "Included in your plan",
+    "overAllowance": "{{n}} over allowance — overage billing applies",
+    "manageAccounts": "Manage accounts",
+    "toDevices": "Devices",
+    "loadError": "Couldn’t load.",
+    "emptyBadge": "Getting started",
+    "emptyBody": "Create your first customer account — with its login your customer sees their own devices.",
+    "firstAccount": "Create the first account"
   }
 }

@@ -66,7 +66,12 @@ export function LoginPage() {
         // misleading credentials/network error — the user is already authenticated, and the WS
         // delivers positions anyway (map.tsx treats the same call as best-effort)
         liveStore.seed(await getLastPositions().catch(() => []))
-        void navigate({ to: '/app' })
+        // TSP UX audit: the overseer lands on THEIR business (customers, allowance), not on
+        // somebody's vans. The map stays at /app one click away; everyone else lands there as
+        // always. Decided HERE, not by a redirect at /app — /app/map already redirects to /app
+        // (the map IS /app), so a landing redirect at /app made the map unreachable for them.
+        const overseer = (user.role === 'tsp_admin') && user.accountId === null && user.entitlements.subAccounts
+        void navigate({ to: overseer ? '/app/dashboard' : '/app' })
       })
       .catch((err: unknown) => setError(t(errorKey(err))))
       .finally(() => setBusy(false))
