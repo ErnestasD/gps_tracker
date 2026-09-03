@@ -126,6 +126,35 @@ const safeHref = (u: string): string => {
   }
 }
 
+/**
+ * The one heading style, exported so seven templates cannot drift.
+ *
+ * They already had: the account/auth mails rendered a 21 px <h1>, while alert and report mails
+ * rendered a 16 px <h2> — two products in the same inbox. Every template now calls this.
+ */
+export function emailHeading(text: string): string {
+  return `<h1 style="margin:0 0 12px;font-size:21px;font-weight:700;letter-spacing:-0.01em;color:${INK}">${escapeHtml(text)}</h1>`
+}
+
+/** The standard body paragraph under a heading. */
+export function emailText(text: string): string {
+  return `<p style="margin:0 0 24px;color:${INK_SOFT};font-size:15px;line-height:1.6">${escapeHtml(text)}</p>`
+}
+
+/**
+ * Label/value rows as a proper two-column table — for alert mails, which used to print
+ * `<strong>Label:</strong> value` paragraphs and looked like debug output.
+ */
+export function emailKeyValue(rows: readonly (readonly [string, string])[]): string {
+  const tr = rows
+    .map(
+      ([k, v]) =>
+        `<tr><td style="padding:6px 16px 6px 0;color:${INK_FAINT};font-size:12px;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;vertical-align:top">${escapeHtml(k)}</td><td style="padding:6px 0;color:${INK};font-size:14px;line-height:1.5">${escapeHtml(v)}</td></tr>`,
+    )
+    .join('')
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-collapse:collapse">${tr}</table>`
+}
+
 export function emailButton(href: string, label: string, accent?: string): string {
   const url = escapeHtml(safeHref(href))
   const bg = safeColor(accent)
@@ -175,9 +204,15 @@ export function renderBrandedEmail(branding: Branding, tenantName: string, conte
   // name as text otherwise. The `alt` is always the product name, which is the whole reason an image
   // is safe here: most clients block remote images by default, and a blocked logo then renders as
   // the name rather than as an empty box on the one line that has to say who this is from.
+  // The img carries the WORDMARK'S text styles. That is not decoration: most corporate clients
+  // block remote images outright, and an unstyled blocked <img> renders as a broken-image box —
+  // which is exactly what the founder saw on our own activation mail. Alt text inherits the img
+  // element's font styles in every major client, so a blocked logo now reads as the styled product
+  // name instead of a "?" tile. (The docblock here used to CLAIM that happened by itself. It did
+  // not: alt without font styles renders as small default-font text beside the broken-image icon.)
   const header =
     logo !== undefined
-      ? `<img src="${escapeHtml(logo)}" alt="${product}" height="28" style="height:28px;display:block;border:0" />`
+      ? `<img src="${escapeHtml(logo)}" alt="${product}" height="28" style="height:28px;display:block;border:0;font-size:19px;font-weight:700;letter-spacing:-0.01em;color:${accent};line-height:28px" />`
       : `<span style="font-size:19px;font-weight:700;letter-spacing:-0.01em;color:${accent}">${product}</span>`
   const support =
     supportEmail !== undefined
