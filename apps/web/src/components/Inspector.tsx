@@ -57,6 +57,7 @@ export function Inspector({
   onTrail,
   onClose,
   scrubAt = null,
+  peek = false,
 }: {
   live: DeviceLive
   /** The registry row, when we have it. Absent ⇒ only the overview is meaningful. */
@@ -73,6 +74,8 @@ export function Inspector({
   onFollow: (v: boolean) => void
   onTrail: (v: boolean) => void
   onClose: () => void
+  /** collapsed to the header strip: the body is not rendered and the header goes single-line */
+  peek?: boolean
   /** ISO instant the timeline scrubber points at, or null when live. Non-null switches the
    *  telemetry query to "the newest report at-or-before this moment" — the panel becomes history. */
   scrubAt?: string | null
@@ -145,8 +148,12 @@ export function Inspector({
         latest={latest}
         scrubbed={scrubAt != null}
         onClose={onClose}
+        peek={peek}
       />
-      <TabStrip tabs={tabs} active={effective} onSelect={setTab} />
+      {/* Collapsed, only the header exists. Rendering the tabs and body into a clipped strip left
+          them focusable and scrollable behind an edge nobody can see — Tab moved the cursor into
+          invisible content. */}
+      {!peek && <TabStrip tabs={tabs} active={effective} onSelect={setTab} />}
       {/* the panel is showing the PAST — without this line a scrubbed overview reads as a live
           vehicle that has quietly stopped updating */}
       {scrubAt != null && (
@@ -158,7 +165,7 @@ export function Inspector({
           {t('map.inspector.historyAt', { when: dtFmt(scrubAt) })}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className={cn('min-h-0 flex-1 overflow-y-auto p-3', peek && 'hidden')}>
         {effective === 'overview' && (
           <OverviewTab
             live={live}
@@ -206,6 +213,7 @@ function Header({
   latest,
   scrubbed = false,
   onClose,
+  peek = false,
 }: {
   live: DeviceLive
   device: Device | undefined
@@ -215,6 +223,8 @@ function Header({
   /** Scrubbed ⇒ the glance tiles quote the historical row, not the live event. */
   scrubbed?: boolean
   onClose: () => void
+  /** collapsed: one line carrying the whole identity, no stacked sub-line to slice */
+  peek?: boolean
 }) {
   const { t } = useTranslation()
   const { speed, distanceM } = useUnits()
@@ -268,6 +278,51 @@ function Header({
     (x): x is string => typeof x === 'string' && x !== '',
   )
 
+  /**
+   * Collapsed, everything the header says has to fit ONE line.
+   *
+   * Stacked, the second line (plate · driver · IMEI) was sliced through the middle by the strip's
+   * bottom edge — the founder's screenshot shows "HUN719 · IMEI 861076…" cut in half, which reads
+   * as a rendering fault rather than a deliberately small panel. Collapsed is the state in which
+   * the identity matters MOST: it is all that is left of the vehicle on screen.
+   */
+  const badges = (
+    <>
+      <Badge variant={status === 'online' ? 'success' : status === 'stale' ? 'warn' : 'default'}>
+        {t(`status.${status}`)}
+      </Badge>
+      {/* the CLIENT's verdict, not the row's: for a stored 0/0 the row still says valid, and
+          the badge stayed hidden beside a marker the map was refusing to move — "online, valid
+          fix", frozen, no reason given */}
+      {!placeableFix(ev) && <Badge variant="warn">{t('info.invalidFix')}</Badge>}
+    </>
+  )
+
+  if (peek) {
+    return (
+      <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2" data-testid="inspector-peek">
+        <StatusDot status={status} />
+        <span className="shrink-0 truncate text-sm font-semibold text-text">{name ?? ev.deviceId}</span>
+        {badges}
+        {sub.length > 0 && (
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted" data-testid="inspector-sub">
+            {sub.join(' · ')}
+          </span>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ml-auto h-7 w-7 shrink-0"
+          onClick={onClose}
+          aria-label={t('info.close')}
+          data-testid="inspector-close"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="shrink-0 border-b border-line p-3">
       <div className="flex items-start justify-between gap-2">
@@ -275,13 +330,7 @@ function Header({
           <div className="flex items-center gap-2">
             <StatusDot status={status} />
             <span className="truncate text-sm font-semibold text-text">{name ?? ev.deviceId}</span>
-            <Badge variant={status === 'online' ? 'success' : status === 'stale' ? 'warn' : 'default'}>
-              {t(`status.${status}`)}
-            </Badge>
-            {/* the CLIENT's verdict, not the row's: for a stored 0/0 the row still says valid, and
-                the badge stayed hidden beside a marker the map was refusing to move — "online, valid
-                fix", frozen, no reason given */}
-            {!placeableFix(ev) && <Badge variant="warn">{t('info.invalidFix')}</Badge>}
+            {badges}
           </div>
           {sub.length > 0 && (
             <div className="mt-0.5 truncate font-mono text-[11px] text-muted" data-testid="inspector-sub">

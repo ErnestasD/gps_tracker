@@ -1309,3 +1309,53 @@ test('inspector sheet: drag to resize, drag away to a peek, rail above xl', asyn
   await expect(grip).toBeHidden()
   expect(await heightOf()).toBeGreaterThan(chosen + 50)
 })
+
+/**
+ * The timeline dock fits inside the frame, at every width the map is used at.
+ *
+ * It was one unwrappable row of fixed-width controls with the graph as the only flexible item, so
+ * the graph paid for all of them: on a 1100px window with the sidebar and the inspector rail it
+ * collapsed to about fifteen pixels, and the last chip hung off the right edge — the founder's
+ * "'now' lipa iš rėmų". Asserted at real widths because it is a layout fact: no unit test can see
+ * a chip that has left the viewport.
+ */
+test('timeline dock: nothing escapes the frame, the graph keeps its width', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL(/\/app\/?$/)
+
+  const exit = await runToExit(
+    TSX_BIN,
+    ['tools/simulator/src/main.ts', '--scenario', 'liveDrive', '--devices', '1', '--count', '5', '--hz', '5', '--port', String(INGEST_PORT), '--imei', BASE_IMEI],
+    {},
+  )
+  expect(exit).toBe(0)
+  await expect(page.getByTestId(`device-row-${BASE_IMEI}`)).toBeVisible({ timeout: 30_000 })
+
+  for (const width of [1024, 1100, 1279, 1440]) {
+    await page.setViewportSize({ width, height: 800 })
+    await page.waitForTimeout(250)
+
+    // with a vehicle selected the inspector takes its share, which is the tight case
+    await page.getByTestId(`device-row-${BASE_IMEI}`).click()
+    await page.waitForTimeout(250)
+
+    const escaped = await page.getByTestId('timeline').evaluate((dock, vw) => {
+      const out: string[] = []
+      for (const el of dock.querySelectorAll('*')) {
+        const r = el.getBoundingClientRect()
+        if (r.width > 0 && r.height > 0 && (r.right > vw + 1 || r.left < -1)) {
+          out.push(`${el.tagName}.${String((el as HTMLElement).className).slice(0, 20)}`)
+        }
+      }
+      return [...new Set(out)]
+    }, width)
+    expect(escaped, `dock overflows at ${width}px`).toEqual([])
+
+    // the graph is the point of the dock: it must not be squeezed to a sliver by its own controls
+    const wave = await page.getByTestId('timeline-wave').boundingBox()
+    expect(wave?.width ?? 0, `waveform collapsed at ${width}px`).toBeGreaterThan(180)
+  }
+})

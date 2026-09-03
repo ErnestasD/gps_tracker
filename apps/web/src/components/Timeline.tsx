@@ -477,7 +477,17 @@ export function Timeline({
       className="shrink-0 border-t border-line bg-surface px-3 py-2 md:px-4"
       data-testid="timeline"
     >
-      <div className="flex items-center gap-2 md:gap-3">
+      {/*
+        * The dock WRAPS rather than overflowing.
+        *
+        * It was one unwrappable row of fixed-width controls — play, speed, day picker (168px), pan,
+        * zoom, span, and a 21rem block of quick jumps — with the graph as the only flexible item.
+        * So the graph paid for all of them: on a 1100px window with the sidebar and the inspector
+        * rail, it collapsed to about fifteen pixels, and the last chip pushed out past the frame
+        * ("now" hanging off the right edge). Wrapping moves the surplus controls onto a second line
+        * instead, and the graph keeps a floor it cannot be squeezed below.
+        */}
+      <div className="flex flex-wrap items-center gap-2 md:gap-3">
         <button
           type="button"
           // Nothing to replay when the only placeable row is inside the last minute — a tracker
@@ -526,7 +536,7 @@ export function Timeline({
           {(REPLAY_SPEEDS[speedIdx] ?? REPLAY_SPEEDS[DEFAULT_SPEED]).label}
         </button>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[16rem] flex-1 basis-[16rem]">
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] text-muted">
               <RouteIcon className="h-3 w-3 shrink-0" aria-hidden />
@@ -873,8 +883,10 @@ export function Timeline({
 
         {/* FIXED-width slots, right-aligned: the jump set changes with the span (labels and even
             the count), and letting the block reflow resized the flex-1 waveform beside it — the
-            founder's "grafikas šokinėja per plotį". The graph must not move when time is re-scaled. */}
-        <div className="hidden shrink-0 items-center justify-end gap-1 md:flex md:min-w-[21rem]">
+            founder's "grafikas šokinėja per plotį". The graph must not move when time is re-scaled.
+            The reservation is `min-w` on the BLOCK, which the wrap can move to the next line whole;
+            what it must not do is change width as the labels change. */}
+        <div className="ml-auto hidden shrink-0 items-center justify-end gap-1 md:flex md:min-w-[21rem]">
           {quick.map((q) => (
             <button
               key={q.m}
