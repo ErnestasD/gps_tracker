@@ -203,7 +203,7 @@ describe('E03-5 domains + DNS verify', () => {
     const dnsOf = async () =>
       (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as {
         txt: { ok: boolean; found: string[] }
-        route: { ok: boolean; found: string[]; expected: string | null }
+        route: { ok: boolean; found: string[]; expected: string | null; reason: string | null }
       }
 
     // nothing published at all
@@ -224,11 +224,32 @@ describe('E03-5 domains + DNS verify', () => {
     d = await dnsOf()
     expect(d.route.ok).toBe(false)
     expect(d.route.found).toContain('185.80.128.45')
+    /**
+     * And WHY. A name already answering with an address cannot also hold a CNAME, so telling the
+     * reader only "not found" sends them to re-add the record the zone will drop again — which is
+     * the loop the founder was in.
+     */
+    expect(d.route.reason).toBe('occupied')
 
     // the CNAME lands → both halves green
     cnameRecords.set('half.t1.test', ['dash.orbetra.test.'])
     d = await dnsOf()
     expect(d.route.ok).toBe(true)
+  })
+
+  it('calls a name with nothing published ABSENT, not occupied', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'empty.t1.test' })).json()) as { id: string }
+    const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { reason: string | null; found: string[] } }
+    expect(d.route.reason).toBe('absent')
+    expect(d.route.found).toEqual([])
+  })
+
+  it('calls a CNAME pointing at the WRONG host elsewhere, not occupied — the record does exist', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'wrong.t1.test' })).json()) as { id: string }
+    cnameRecords.set('wrong.t1.test', ['some-other-platform.example.'])
+    const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { reason: string | null; found: string[] } }
+    expect(d.route.reason).toBe('elsewhere')
+    expect(d.route.found).toContain('some-other-platform.example')
   })
 
   it('counts an ADDRESS matching the edge host as reaching us — an apex cannot hold a CNAME', () => {

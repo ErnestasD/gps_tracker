@@ -214,7 +214,9 @@
     "dnsMissing": "Nicht gefunden",
     "dnsChecking": "Wird geprüft…",
     "dnsGoesTo": "Dieser Name verweist derzeit auf {{where}}.",
-    "dnsRecheck": "DNS prüfen"
+    "dnsRecheck": "DNS prüfen",
+    "dnsOccupied": "Dieser Name antwortet bereits mit einem A- oder MX-Eintrag und kann deshalb kein CNAME zusätzlich führen — der Anbieter nimmt es an, die Zone liefert es nie aus. Richten Sie stattdessen eine Subdomain auf uns (etwa „fleet.{{domain}}“), oder ändern Sie, wenn diese ganze Domain das Dashboard werden soll, ihren A-Eintrag auf unsere Adresse statt ein CNAME anzulegen.",
+    "dnsAbsent": "Für diesen Namen ist noch nichts veröffentlicht."
   },
   "audit": {
     "title": "Audit-Log",

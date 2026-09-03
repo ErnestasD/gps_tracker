@@ -214,7 +214,9 @@
     "dnsMissing": "Not found",
     "dnsChecking": "Checking…",
     "dnsGoesTo": "This name currently resolves to {{where}}.",
-    "dnsRecheck": "Check DNS"
+    "dnsRecheck": "Check DNS",
+    "dnsOccupied": "This name already answers with an A or MX record, so it cannot also hold a CNAME — the provider accepts one and the zone never serves it. Point a subdomain at us instead (for example “fleet.{{domain}}”), or, if this whole domain should become the dashboard, change its A record to our address rather than adding a CNAME.",
+    "dnsAbsent": "Nothing is published for this name yet."
   },
   "audit": {
     "title": "Audit log",

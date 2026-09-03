@@ -461,13 +461,16 @@ function DnsRecords({ id, domain, txtToken, dnsTarget }: { id: string; domain: s
         </table>
       </div>
 
-      {/* Where it goes instead. "Not found" alone leaves the reader guessing; naming the address
-          it resolves to is usually the whole diagnosis — an old web host, or a wildcard record
-          quietly answering for a name nobody defined. */}
-      {dns.data !== undefined && !dns.data.route.ok && dns.data.route.found.length > 0 && (
-        <p className="mt-2" style={{ color: 'var(--admin-warning)' }} data-testid={`dns-goes-to-${domain}`}>
-          {t('branding.dnsGoesTo', { where: dns.data.route.found.join(', ') })}
-        </p>
+      {/* WHY it fails, when DNS can tell us. "Not found" alone leaves the reader guessing, and the
+          obvious next move — add the record again — is the one that cannot work when the name is
+          already occupied. Naming the address it resolves to is usually the rest of the diagnosis:
+          an old web host, or a wildcard record quietly answering for a name nobody defined. */}
+      {dns.data !== undefined && !dns.data.route.ok && (
+        <div className="mt-2 flex flex-col gap-1" style={{ color: 'var(--admin-warning)' }} data-testid={`dns-why-${domain}`}>
+          {dns.data.route.reason === 'occupied' && <p>{t('branding.dnsOccupied', { domain })}</p>}
+          {dns.data.route.reason === 'absent' && <p>{t('branding.dnsAbsent')}</p>}
+          {dns.data.route.found.length > 0 && <p>{t('branding.dnsGoesTo', { where: dns.data.route.found.join(', ') })}</p>}
+        </div>
       )}
 
       <div className="mt-2">
