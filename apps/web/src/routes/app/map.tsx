@@ -141,9 +141,14 @@ export function MapPage() {
   const silent = useMemo(() => {
     const live = new Set(snap.devices.map((d) => d.ev.deviceId))
     return (devices.data ?? [])
-      .filter((d) => d.retiredAt === null && !live.has(d.id))
+      // the account context, same as the markers: `silent` comes from the FULL roster (listDevices),
+      // not from liveStore, so it is not narrowed by the store's account filter. Without this line an
+      // overseer switching to one customer still saw every OTHER customer's never-reported devices in
+      // the fleet panel — the exact "the map doesn't change when I switch account" the founder hit,
+      // because a virtual device that hasn't started yet has no marker and lives only in this list.
+      .filter((d) => d.retiredAt === null && !live.has(d.id) && (accountCtx === '' || d.accountId === accountCtx))
       .map((d) => ({ id: d.id, name: d.name }))
-  }, [devices.data, snap.devices])
+  }, [devices.data, snap.devices, accountCtx])
 
   const counts = useMemo(() => fleetPanelCounts(snap.devices, silent), [snap.devices, silent])
 
