@@ -135,6 +135,30 @@ price_1TtAmYDn0hX6WL8d8xxAMGq1,price_1TtAmZDn0hX6WL8d4qBJ1GgM,price_1TtAmaDn0hX6
 ```
 Overage prices are added as a **2nd subscription line item** in PR B (a metered price is not a standalone subscription target), not in this allowlist.
 
+## Webhook endpoint — the events it MUST subscribe to
+
+`https://dash.orbetra.com/v1/webhooks/stripe` needs **five** enabled events, and the handler's
+reach is wider than the obvious three:
+
+```
+customer.subscription.created / updated / deleted   → tenant plan + entitlements + lapse
+invoice.payment_succeeded                           → affiliate commission accrual
+charge.refunded                                     → affiliate commission clawback
+```
+
+Found 2026-09-03: the endpoint carried ONLY the three subscription events, so both affiliate money
+paths were dead — `billing.ts` handles the invoice and refund events, Stripe simply never sent
+them. Nothing errors when an event type is not subscribed; the code path just never runs. Fixed on
+the TEST endpoint the same day. **When creating the LIVE endpoint, copy the list above, not the
+dashboard's suggestion.**
+
+Verified the same day, full self-checkout flow live on staging (TEST mode): public signup →
+unverified login refused as bad password (the oracle) → verify → login → 16 plans listed →
+Direct checkout = 1 licensed line, TSP checkout = base + metered overage line, both
+`tax_behavior: exclusive`, both returning to `/app/billing` — then subscription created with a test
+card: webhook wrote `tsp_grow`/`active`, `canSubscribe` flipped false, and `/v1/api-keys` went
+403 `plan_upgrade_required` → 200. Entitlements unlock end-to-end.
+
 ## Still needed to go live on staging (founder / follow-up)
 1. A **webhook endpoint** in Stripe → `https://<staging>/v1/webhooks/stripe`, subscribed to
    `customer.subscription.*`, `invoice.payment_succeeded` and `charge.refunded`; copy its `whsec_…`
