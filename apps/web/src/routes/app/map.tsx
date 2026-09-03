@@ -126,7 +126,7 @@ export function MapPage() {
 
   /** The inspector sheet's height below xl — the reader's, remembered, clamped to the map area. */
   const bodyRef = useRef<HTMLDivElement | null>(null)
-  const { sheet, container: sheetContainer, toggle: toggleSheet, gripProps } = useSheet(bodyRef, true)
+  const { sheet, container: sheetContainer, dragging: sheetDragging, toggle: toggleSheet, gripProps } = useSheet(bodyRef, true)
 
   // Active devices the live set has never heard from. The registry list is already fetched above
   // (it bounds the live set); the panel used to ignore it, so a fleet of eight read "3 of 3" and
@@ -581,13 +581,19 @@ export function MapPage() {
                The height rides a CSS VARIABLE, not an inline `height`. An inline height beats every
                class, so `xl:h-auto` could not have undone it and the rail would have inherited the
                sheet's pixels — the panel sized for a phone, applied to a desktop column. */
-            className="absolute inset-x-0 bottom-0 z-20 flex h-[var(--sheet-h,60%)] flex-col overflow-hidden border-t border-line bg-surface xl:static xl:inset-auto xl:z-auto xl:h-auto xl:w-[360px] xl:shrink-0 xl:border-l xl:border-t-0"
+            className={cn(
+              'absolute inset-x-0 bottom-0 z-20 flex h-[var(--sheet-h,60%)] flex-col overflow-hidden border-t border-line bg-surface',
+              'xl:static xl:inset-auto xl:z-auto xl:h-auto xl:w-[360px] xl:shrink-0 xl:border-l xl:border-t-0',
+              // animate between resting heights, never under the finger
+              !sheetDragging && 'transition-[height] duration-200 ease-out motion-reduce:transition-none',
+            )}
             style={sheet.heightPx > 0 ? ({ '--sheet-h': `${sheet.heightPx}px` } as React.CSSProperties) : undefined}
             data-sheet-peek={sheet.peek ? 'true' : 'false'}
             data-testid="inspector-rail"
           >
             <SheetGrip sheet={sheet} container={sheetContainer} gripProps={gripProps} onToggle={toggleSheet} />
             <Inspector
+              peek={sheet.peek}
               live={selected}
               device={registryRow}
               name={nameOf(selected.ev.deviceId)}

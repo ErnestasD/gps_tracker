@@ -66,10 +66,14 @@ export function useSheet(containerRef: React.RefObject<HTMLElement | null>, enab
   )
 
   const dragRef = useRef<{ startY: number; startPx: number } | null>(null)
+  /** the sheet animates between resting heights, but NOT under the finger — a transition during a
+   *  drag makes the panel lag the pointer, which reads as the gesture being unresponsive */
+  const [dragging, setDragging] = useState(false)
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!enabled) return
     dragRef.current = { startY: e.clientY, startPx: sheet.peek ? SHEET_PEEK_PX : sheet.heightPx }
+    setDragging(true)
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
@@ -83,6 +87,7 @@ export function useSheet(containerRef: React.RefObject<HTMLElement | null>, enab
   const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragRef.current === null) return
     dragRef.current = null
+    setDragging(false)
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     commit(sheet)
   }
@@ -110,6 +115,7 @@ export function useSheet(containerRef: React.RefObject<HTMLElement | null>, enab
   return {
     sheet,
     container,
+    dragging,
     toggle,
     gripProps: { onPointerDown, onPointerMove, onPointerUp: endDrag, onPointerCancel: endDrag, onKeyDown },
   }

@@ -9,6 +9,7 @@ import { DemoMap, type DemoMapControls, type DemoRoute, type DemoVehicle, type D
 import { cityFor, routeSlice, type DemoCity, type LngLat } from "@/lib/demo-geo";
 import { demoZones } from "@/lib/demo-zones";
 import { contentFor } from "@/lib/demo-content";
+import { cn } from "@/lib/utils";
 import { SheetGrip, useSheet } from "@/components/admin/SheetGrip";
 import {
   PanelLeft, Pause, Layers, Maximize2, Satellite, Power, Clock, ChevronRight,
@@ -259,7 +260,7 @@ function MapPage() {
   const mapControls = React.useRef<DemoMapControls | null>(null);
   /** the inspector sheet's height below xl — dragged, remembered, clamped to the map area */
   const bodyRef = React.useRef<HTMLDivElement | null>(null);
-  const { sheet, container: sheetContainer, toggle: toggleSheet, gripProps } = useSheet(bodyRef, true);
+  const { sheet, container: sheetContainer, dragging: sheetDragging, toggle: toggleSheet, gripProps } = useSheet(bodyRef, true);
 
   const toggleFence = React.useCallback((id: string) => {
     setHiddenFences((cur) => {
@@ -509,7 +510,12 @@ function MapPage() {
                laptop, so reading a vehicle's parameters hid the vehicle. It rides a CSS VARIABLE
                rather than an inline `height`: an inline height beats every class, so `xl:h-auto`
                could not undo it and the desktop rail would inherit the sheet's pixels. */
-            className="absolute inset-x-0 bottom-0 z-20 flex h-[var(--sheet-h,60%)] flex-col overflow-hidden border-t xl:static xl:inset-auto xl:z-auto xl:h-auto xl:w-[23rem] xl:shrink-0 xl:border-l xl:border-t-0"
+            className={cn(
+              "absolute inset-x-0 bottom-0 z-20 flex h-[var(--sheet-h,60%)] flex-col overflow-hidden border-t",
+              "xl:static xl:inset-auto xl:z-auto xl:h-auto xl:w-[23rem] xl:shrink-0 xl:border-l xl:border-t-0",
+              // animate between resting heights, never under the finger
+              !sheetDragging && "transition-[height] duration-200 ease-out motion-reduce:transition-none",
+            )}
             style={{
               background: "var(--admin-surface)",
               borderColor: "var(--admin-hairline)",
@@ -519,7 +525,32 @@ function MapPage() {
             data-testid="inspector-rail"
           >
             <SheetGrip sheet={sheet} container={sheetContainer} gripProps={gripProps} onToggle={toggleSheet} />
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+
+            {/* Collapsed, everything the header says has to fit ONE line. Stacked, the plate/IMEI
+                line was sliced through the middle by the strip's edge — which reads as a rendering
+                fault rather than a deliberately small panel. Collapsed is also the state in which
+                the identity matters most: it is all that is left of the vehicle on screen. */}
+            {sheet.peek && (
+              <div className="flex shrink-0 items-center gap-2 px-4 py-2" data-testid="inspector-peek">
+                <StatusDot status={active.status} />
+                <span className="shrink-0 truncate font-semibold" style={{ color: "var(--admin-ink)" }}>{active.name}</span>
+                <Badge tone={active.status === "offline" ? "neutral" : "success"}>{t(STATUS_KEY[active.status])}</Badge>
+                <span className="mono min-w-0 flex-1 truncate text-[11px]" style={{ color: "var(--admin-ink-soft)" }}>
+                  {active.plate} · IMEI {active.imei}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelected(null)}
+                  aria-label={t("info.close")}
+                  className="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--admin-hairline)]"
+                  style={{ color: "var(--admin-ink-soft)" }}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </div>
+            )}
+
+            <div className={cn("min-h-0 flex-1 overflow-y-auto p-4", sheet.peek && "hidden")}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <StatusDot status={active.status} />
@@ -717,7 +748,7 @@ function MapPage() {
       <div className="admin-hairline-t flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 md:flex-nowrap md:px-6" style={{ background: "var(--admin-surface)" }}>
         <AdminButton variant="secondary" size="sm" aria-label={t("playback.play")}><Play className="h-3.5 w-3.5" /></AdminButton>
         <span className="mono rounded border px-1.5 py-0.5 text-[11px]" style={{ borderColor: "var(--admin-hairline)", color: "var(--admin-ink-soft)" }}>60×</span>
-        <div ref={trackRef} className="relative h-8 min-w-0 flex-1">
+        <div ref={trackRef} className="relative h-8 min-w-[16rem] flex-1 basis-[16rem]">
           <div className="absolute inset-x-0 top-1/2 h-px" style={{ background: "var(--admin-hairline)" }} />
           {AXIS_HOURS.filter((_, i) => i % labelEvery === 0).map((h) => (
             <span
