@@ -94,7 +94,10 @@
     "paletteDevices": "Geräte",
     "paletteEmpty": "Keine Treffer",
     "console": "Plattform-Konsole",
-    "accounts": "Konten"
+    "accounts": "Konten",
+    "accountContext": "Kundenkontext",
+    "allAccounts": "Alle Konten",
+    "overviewNotice": "Übersichtsmodus: Sie sehen die Daten aller Kunden. Zum Bearbeiten oben einen Kunden wählen."
   },
   "routing": {
     "title": "Routenplaner",
@@ -1765,6 +1768,30 @@
     "deleteUserSure": "{{email}} entfernen? Diese Person kann sich nicht mehr anmelden.",
     "emailRequired": "E-Mail eingeben.",
     "passwordShort": "Passwort: mindestens 8 Zeichen.",
-    "userSaveError": "Anlegen fehlgeschlagen. Ist die Adresse schon vergeben?"
+    "userSaveError": "Anlegen fehlgeschlagen. Ist die Adresse schon vergeben?",
+    "actFor": "Für diesen Kunden handeln"
+  },
+  "reseller": {
+    "title": "Ihre Kunden",
+    "desc": "Konten, Geräte und Nutzung je Kunde.",
+    "customer": "Kunde",
+    "devices": "Geräte",
+    "activeMtd": "Aktiv",
+    "deviceDays": "Gerätetage",
+    "logins": "Logins",
+    "open": "Öffnen",
+    "customers": "Kunden",
+    "devicesTotal": "Geräte / Kontingent",
+    "activeMtdLong": "Aktive Geräte",
+    "deviceDaysLong": "Gerätetage",
+    "mtd": "Seit Monatsbeginn",
+    "allowanceHint": "Im Plan enthalten",
+    "overAllowance": "{{n}} über dem Kontingent — Mehrverbrauch wird berechnet",
+    "manageAccounts": "Konten verwalten",
+    "toDevices": "Geräte",
+    "loadError": "Laden fehlgeschlagen.",
+    "emptyBadge": "Erste Schritte",
+    "emptyBody": "Legen Sie das erste Kundenkonto an — mit dessen Login sieht Ihr Kunde seine Geräte.",
+    "firstAccount": "Erstes Konto anlegen"
   }
 }

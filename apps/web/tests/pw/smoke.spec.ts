@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import { BASE_IMEI, DEVICES, E2E_EMAIL, E2E_PASSWORD, INGEST_PORT, PLATFORM_EMAIL, PLATFORM_PASSWORD, TRAIL_IMEI, TSX_BIN, UNKNOWN_IMEI, runToExit } from './stack'
 
@@ -24,12 +24,14 @@ test('login → map: Mapbox mark visible, WS live, simulator devices appear', as
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   // E03-1: session survives reload — access token is memory-only, the httpOnly
   // refresh cookie + router guard restore it without bouncing to /login
   await page.reload()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
+  // this test is about the MAP; the overseer's landing is the reseller dashboard now, so go there
+  await page.goto('/app') // the map lives at /app (/app/map redirects here)
 
   // AC[2]/ADR-030: the Mapbox mark stays visible on every map view (TOS). The offline
   // e2e style has no tile sources, so the TEXT attribution is empty here — but mapbox-gl
@@ -81,7 +83,8 @@ test('invalid-fix: no-fix stretch renders a dashed trail gap (I5, E02-7 AC[2])',
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
+  await page.goto('/app') // the overseer lands on the dashboard; this test needs the map (which lives at /app)
   await expect(page.getByTestId('conn-badge')).toHaveText(/Live/i, { timeout: 15_000 })
 
   // make the trail device exist in the panel (one clean liveDrive record)
@@ -137,7 +140,7 @@ test('settings: theme toggle + password change → re-login with the new passwor
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/settings')
   await expect(page.getByTestId('settings-page')).toBeVisible()
@@ -168,7 +171,7 @@ test('settings: theme toggle + password change → re-login with the new passwor
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(NEW_PW)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   // restore the original password so later serial tests can still log in
   await page.goto('/app/settings')
@@ -185,7 +188,7 @@ test('devices: create in UI → appears → retire → ingest rejects that IMEI 
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/devices')
   // design round 2: the create form lives in a right Sheet behind "Add device"
@@ -225,7 +228,7 @@ test('devices: CSV import dry-run shows per-row errors then applies (E03-3 AC[1]
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
   await page.goto('/app/devices')
 
   // a tenant-wide caller must name the account per row — read it from the create form
@@ -258,7 +261,7 @@ test('commands: preset queues in history; destructive needs a second confirming 
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/devices')
   for (const [imei, name] of [[IMEI, 'E2E Cmd Van'], [IMEI2, 'E2E Cmd Van 2']] as const) {
@@ -355,7 +358,7 @@ test('quarantine: a tenant admin does NOT see the quarantine section (E03-4 AC[2
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
   await page.goto('/app/devices')
   await expect(page.getByTestId('devices-table').or(page.getByText(/No devices/i))).toBeVisible()
   await expect(page.getByTestId('quarantine-card')).toHaveCount(0)
@@ -366,7 +369,7 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/branding')
   await expect(page.getByTestId('branding-productName')).toBeVisible()
@@ -402,7 +405,7 @@ test('audit: an admin sees the mutation trail, filters it, and expands a snapsho
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   // cause a fresh, findable mutation (branding update → a branding:update audit row)
   await page.goto('/app/branding')
@@ -429,7 +432,7 @@ test('playback: history page loads a device trail with a scrubbable speed chart 
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   // drive the base device so it has fresh positions in the last-24h default range
   expect(
@@ -475,7 +478,7 @@ test('trips: the trips page lists trips (or empty) and a row opens its route det
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/trips')
   await expect(page.getByTestId('trips-device')).toBeVisible()
@@ -490,16 +493,27 @@ test('trips: the trips page lists trips (or empty) and a row opens its route det
   }
 })
 
+/**
+ * The e2e admin is a tenant-wide overseer, and since the TSP UX audit the all-accounts overview is
+ * read-only — write affordances exist only inside a customer context. Write-flow tests enter the
+ * seeded account first, the same way an operator would via the topbar switcher.
+ */
+async function enterFleetContext(page: Page): Promise<void> {
+  await page.getByTestId('account-context').click()
+  await page.getByRole('option', { name: 'E2E Fleet' }).click()
+}
+
 test('geofences: the drawing editor mounts on the map and the list renders (E05-1)', async ({ page }) => {
   await page.goto('/login')
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/geofences')
   // the map + in-house drawing editor initialise without crashing (real Mapbox GL)
   await expect(page.getByTestId('geofence-map')).toBeVisible()
+  await enterFleetContext(page) // the overview is read-only for the overseer since the TSP UX audit
   await expect(page.getByTestId('gf-mode-polygon')).toBeVisible()
   await expect(page.getByTestId('gf-mode-circle')).toBeVisible()
   // list is present (empty for a fresh tenant, or shows rows) — checked BEFORE drafting,
@@ -517,9 +531,10 @@ test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', as
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/rules')
+  await enterFleetContext(page) // write-flow: the overseer's overview offers no create/edit
   // design round 2: the create form lives in a right Sheet behind "Add rule"
   await page.getByTestId('rule-add-open').click()
   await expect(page.getByTestId('rule-kind')).toBeVisible()
@@ -556,7 +571,7 @@ test('events: timeline page loads with filters (E05-6)', async ({ page }) => {
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/events')
   // filters are present; the list is either a table or the empty state (no events required)
@@ -575,7 +590,7 @@ test('reports: run a report over a range (E06-2)', async ({ page }) => {
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/reports')
   await expect(page.getByTestId('report-type')).toBeVisible()
@@ -603,7 +618,7 @@ test('api keys: create shows the plaintext once, then revoke (E06-3 UI)', async 
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/api-keys')
   // design round 2: the create form lives in a right Sheet behind "Create a key"
@@ -633,7 +648,7 @@ test('webhooks: create (secret shown once) → toggle → delete (E06-4 UI)', as
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 
   await page.goto('/app/webhooks')
   // design round 2: the create form lives in a right Sheet behind "Add a webhook"
@@ -692,7 +707,7 @@ test('affiliates: a tenant admin cannot reach the affiliates panel (platform gat
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
   // nav link is platform-only; direct URL renders the in-page denied notice (server also 403s the API)
   await page.goto('/app/affiliates')
   await expect(page.getByTestId('affiliates-denied')).toBeVisible()
@@ -704,33 +719,37 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
 }
 
-test('dashboard: stat cards, 7/30/90 range toggle, charts and lists render (PR #100)', async ({ page }) => {
+test('dashboard: the overseer sees the reseller home — allowance, customers, and Open enters the context', async ({ page }) => {
+  /**
+   * This used to assert the OPERATOR dashboard (stat cards, 7/30/90 toggle). Since the TSP UX
+   * audit the e2e admin — a tenant-wide tsp_admin on a sub-account plan — gets the RESELLER home
+   * on /app/dashboard instead, and lands there after login. The operator dashboard still exists
+   * for Direct tenants and account users; this stack seeds neither, so it is covered at the
+   * component level while the overseer variant carries the e2e.
+   */
   await login(page)
   await page.goto('/app/dashboard')
-  // the four stat cards render from real seeded data (devices/positions/events/mileage)
-  await expect(page.getByTestId('dash-devices')).toBeVisible()
-  await expect(page.getByTestId('dash-online')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByTestId('dash-today')).toBeVisible()
-  await expect(page.getByTestId('dash-events')).toBeVisible()
-  await expect(page.getByTestId('dash-critical')).toBeVisible()
+  await expect(page.getByTestId('reseller-dashboard')).toBeVisible({ timeout: 15_000 })
 
-  // the 7/30/90 d range toggle: 7 d is active by default; clicking 30 d moves the active state
-  await expect(page.getByTestId('dash-range-7d')).toHaveAttribute('aria-pressed', 'true')
-  await page.getByTestId('dash-range-30d').click()
-  await expect(page.getByTestId('dash-range-30d')).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByTestId('dash-range-7d')).toHaveAttribute('aria-pressed', 'false')
+  // the allowance meter reads the PLAN's included devices (tsp_grow → 1 000, PRICING_STRATEGY §3)
+  await expect(page.getByText('/ 1,000').or(page.getByText('/ 1000')).or(page.getByText('/ 1 000'))).toBeVisible()
 
-  // fleet-activity area resolves to the chart or its explicit empty state (both have testids)
-  await expect(page.getByTestId('dash-mileage-chart').or(page.getByTestId('dash-mileage-empty'))).toBeVisible({ timeout: 20_000 })
-  // the donut + hourly widgets mount (headings are data-independent; the seeded stack fires no
-  // rule events, so the charts themselves may show their "No data yet" state — the section
-  // rendering is what regresses silently). The recent-events list always renders.
-  await expect(page.getByRole('heading', { name: 'Events (7 d)' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Activity by time of day' })).toBeVisible()
-  await expect(page.getByTestId('dash-recent')).toBeVisible()
+  // the customers table lists the seeded account…
+  const row = page.locator('[data-testid^="reseller-account-"]').filter({ hasText: 'E2E Fleet' }).first()
+  await expect(row).toBeVisible({ timeout: 15_000 })
+  const accId = (await row.getAttribute('data-testid'))!.replace('reseller-account-', '')
+
+  // …and Open enters that customer's context and lands on the map
+  await page.getByTestId(`reseller-actfor-${accId}`).click()
+  await page.waitForURL(/\/app\/?$/)
+  await expect(page.getByTestId('account-context')).toContainText('E2E Fleet')
+
+  // back to the overview so later tests start from the default context
+  await page.getByTestId('account-context').click()
+  await page.getByRole('option', { name: /Visos paskyros|All accounts/ }).click()
 })
 
 /**
@@ -791,6 +810,7 @@ test('accounts: a TSP creates a customer account + login, and that login signs i
 test('drivers: full CRUD — add sheet → row → edit → delete via ConfirmDialog', async ({ page }) => {
   await login(page)
   await page.goto('/app/drivers')
+  await enterFleetContext(page) // write-flow: the overseer's overview offers no create/edit
 
   // create through the right Sheet
   await page.getByTestId('driver-add-open').click()
@@ -886,9 +906,64 @@ test('routing planner: page renders, parse errors surface, optimize degrades gra
  * "covered only up to editor-mount". It is not flaky when every wait is a CONDITION rather than a
  * duration — no `waitForTimeout` here, deliberately.
  */
+/**
+ * The overseer contract (TSP UX audit 2026-09-03): the all-accounts overview is read-only, acting
+ * for a customer restores editing — and, the part that was a real data leak, a zone created while
+ * acting for a customer carries THAT customer's accountId. Before this, an overseer's geofence
+ * landed accountId:null = tenant-shared, i.e. on EVERY customer's map.
+ */
+test('overseer: read-only overview, act-for-customer editing, and the zone lands in the right account', async ({ page }) => {
+  let bearer = ''
+  page.on('request', (req) => {
+    const a = req.headers()['authorization']
+    if (a?.startsWith('Bearer ') === true) bearer = a
+  })
+  await login(page)
+
+  // "all accounts": the geofence toolbar offers NO drawing, and says why
+  await page.goto('/app/geofences')
+  await expect(page.getByTestId('geofence-map')).toBeVisible()
+  await expect(page.getByTestId('overview-notice')).toBeVisible()
+  await expect(page.getByTestId('gf-mode-polygon')).toHaveCount(0)
+
+  // switch to the seeded customer account via the topbar switcher
+  await expect.poll(() => bearer).not.toBe('')
+  const accounts = (await (await page.request.get('/v1/accounts', { headers: { authorization: bearer } })).json()) as { id: string; name: string }[]
+  const fleet = accounts.find((a) => a.name === 'E2E Fleet')!
+  await page.getByTestId('account-context').click()
+  await page.getByRole('option', { name: 'E2E Fleet' }).click()
+
+  // acting for the customer: drawing is back, the notice is gone
+  await expect(page.getByTestId('gf-mode-polygon')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('overview-notice')).toHaveCount(0)
+
+  // draw a triangle and save — then read it back over the API: it must belong to the CUSTOMER
+  await page.getByTestId('gf-mode-polygon').click()
+  const box = (await page.getByTestId('geofence-map').boundingBox())!
+  const triangle: [number, number][] = [[box.x + 240, box.y + 160], [box.x + 380, box.y + 180], [box.x + 300, box.y + 300]]
+  for (const [x, y] of triangle) {
+    await page.mouse.click(x, y)
+    await page.waitForTimeout(150)
+  }
+  await page.mouse.dblclick(box.x + 300, box.y + 300)
+  await page.getByTestId('gf-name').fill('E2E Overseer Zone')
+  await page.getByTestId('gf-save').click()
+  await expect(page.getByTestId('gf-draft-panel')).toBeHidden({ timeout: 60_000 })
+
+  const zones = (await (await page.request.get('/v1/geofences', { headers: { authorization: bearer } })).json()) as { id: string; name: string; accountId: string | null }[]
+  const mine = zones.find((g) => g.name === 'E2E Overseer Zone')!
+  expect(mine.accountId).toBe(fleet.id) // NOT null — the leak this guards against
+
+  // cleanup: zone + context back to overview
+  await page.request.delete(`/v1/geofences/${mine.id}`, { headers: { authorization: bearer } })
+  await page.getByTestId('account-context').click()
+  await page.getByRole('option', { name: /Visos paskyros|All accounts/ }).click()
+})
+
 test('geofences: the vertex that closes the polygon is marked, and only that one', async ({ page }) => {
   await login(page)
   await page.goto('/app/geofences')
+  await enterFleetContext(page)
   const canvas = page.getByTestId('geofence-map')
   await expect(canvas).toBeVisible()
 
@@ -953,6 +1028,7 @@ test('geofences: editing a zone brings back its vertices, and dragging one chang
   })
   await login(page)
   await page.goto('/app/geofences')
+  await enterFleetContext(page)
   await expect(page.getByTestId('geofence-map')).toBeVisible()
   await expect.poll(() => bearer).not.toBe('')
 
@@ -1057,6 +1133,7 @@ test('geofences: editing a circle gives a centre and a radius grip, not 64 ring 
   })
   await login(page)
   await page.goto('/app/geofences')
+  await enterFleetContext(page)
   await expect(page.getByTestId('geofence-map')).toBeVisible()
   await expect.poll(() => bearer).not.toBe('')
 
@@ -1131,6 +1208,7 @@ test('geofences: create → list → delete+confirm round-trip', async ({ page }
     if (a?.startsWith('Bearer ') === true) bearer = a
   })
   await page.goto('/app/geofences')
+  await enterFleetContext(page) // the delete affordance is context-gated for the overseer
   await expect(page.getByTestId('geofence-map')).toBeVisible()
   await expect.poll(() => bearer).not.toBe('')
 
@@ -1218,7 +1296,8 @@ test('scrubbing the 24 h timeline draws the vehicle where it WAS (founder report
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
+  await page.goto('/app') // the overseer lands on the dashboard; this test needs the map (which lives at /app)
   await expect(page.getByTestId('conn-badge')).toHaveText(/Live/i, { timeout: 15_000 })
 
   /**
@@ -1296,7 +1375,8 @@ test('inspector sheet: drag to resize, drag away to a peek, rail above xl', asyn
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
+  await page.goto('/app') // the overseer lands on the dashboard; this test needs the map (which lives at /app)
 
   const exit = await runToExit(
     TSX_BIN,
@@ -1379,7 +1459,8 @@ test('timeline dock: nothing escapes the frame, the graph keeps its width', asyn
   await page.getByTestId('email-input').fill(E2E_EMAIL)
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
-  await page.waitForURL(/\/app\/?$/)
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
+  await page.goto('/app') // the overseer lands on the dashboard; this test needs the map (which lives at /app)
 
   const exit = await runToExit(
     TSX_BIN,

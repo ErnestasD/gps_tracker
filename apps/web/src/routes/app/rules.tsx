@@ -6,8 +6,10 @@ import { useTranslation } from 'react-i18next'
 import { AdminButton, AdminInput, AdminSwitch, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
+import { OverviewNotice } from '@/components/admin/OverviewNotice'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { useAccountContext } from '@/lib/accountContext'
 import { getCurrentUser } from '@/lib/auth'
 import { listAccounts } from '@/lib/devices'
 import { listGeofences } from '@/lib/geofences'
@@ -25,7 +27,8 @@ export function RulesPage() {
   const qc = useQueryClient()
   // rule writes require account_manager+ (WRITE_POLICY.rule) — viewers get 403s, so hide the
   // write affordances (drivers/maintenance canWrite precedent). Reads stay open to all roles.
-  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
+  const { ctx, canOperate } = useAccountContext()
+  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '') && canOperate
   const rules = useQuery({ queryKey: ['rules'], queryFn: listRules })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts })
   const geofences = useQuery({ queryKey: ['geofences'], queryFn: listGeofences })
@@ -62,6 +65,7 @@ export function RulesPage() {
             </SheetHeader>
             {/* closing the sheet unmounts the form, so each open starts a fresh draft */}
             <RuleForm
+              contextAccountId={ctx}
               accounts={accounts.data ?? []}
               geofences={geofences.data ?? []}
               onCreated={() => {
@@ -74,6 +78,7 @@ export function RulesPage() {
         </Sheet>
         )}
       </PageHeader>
+      <OverviewNotice />
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('rules.list')}</h2>
@@ -92,7 +97,7 @@ export function RulesPage() {
           </div>
         ) : (
           <ul className="flex flex-col gap-2" data-testid="rules-list">
-            {(rules.data ?? []).map((r) => (
+            {(rules.data ?? []).filter((r) => ctx === '' || r.accountId === ctx).map((r) => (
               <li key={r.id} className="admin-card flex flex-wrap items-center gap-3 p-3 md:p-4" data-testid={`rule-${r.id}`}>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -220,7 +225,8 @@ function RuleRowMenu({ rule, onEditChannels }: { rule: Rule; onEditChannels: () 
 /** Create form inside the header Sheet (devices precedent): vertical fields, all rule-* testids
  * kept (selects became Comboboxes in the round-2 control sweep — testids sit on the triggers);
  * Cancel/Create sit in the SheetFooter. */
-function RuleForm({ accounts, geofences, onCreated, onCancel }: {
+function RuleForm({ accounts, geofences, contextAccountId, onCreated, onCancel }: {
+  contextAccountId?: string
   accounts: { id: string; name: string }[]
   geofences: { id: string; name: string }[]
   onCreated: () => void
@@ -237,7 +243,8 @@ function RuleForm({ accounts, geofences, onCreated, onCancel }: {
   const [busy, setBusy] = useState(false)
 
   const fields = useMemo(() => configFields(kind), [kind])
-  const acc = accountId || accounts[0]?.id || ''
+  // an overseer acting for a customer creates in THAT account — no picker to get wrong
+  const acc = (contextAccountId ?? '') !== '' ? contextAccountId! : accountId || accounts[0]?.id || ''
   // a geofence rule needs a target fence — else it can never fire (review MED)
   const missingGeofence = kind === 'geofence' && !cfg['geofenceId']
 

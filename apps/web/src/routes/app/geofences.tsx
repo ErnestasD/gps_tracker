@@ -7,7 +7,9 @@ import { useTranslation } from 'react-i18next'
 
 import { AdminButton, AdminInput, AdminLabel, AdminRadio, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
+import { OverviewNotice } from '@/components/admin/OverviewNotice'
 import { MapErrorOverlay } from '@/components/MapErrorOverlay'
+import { useAccountContext } from '@/lib/accountContext'
 import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { ApiError } from '@/lib/http'
@@ -145,7 +147,10 @@ export function GeofencesPage() {
   const qc = useQueryClient()
   // geofence writes require account_manager+ (WRITE_POLICY.geofence) — hide draw/save/delete from
   // viewers (reads stay open); matches the drivers/maintenance canWrite precedent
-  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '')
+  const { ctx, overseer, canOperate } = useAccountContext()
+  // role AND context: an overseer in the all-accounts overview looks, compares, drills — and does
+  // not draw. Acting for one customer restores exactly the customer's own capabilities.
+  const canWrite = ['platform_admin', 'tsp_admin', 'account_manager'].includes(getCurrentUser()?.role ?? '') && canOperate
   const geofences = useQuery({ queryKey: ['geofences'], queryFn: listGeofences })
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MbMap | null>(null)
@@ -622,8 +627,11 @@ export function GeofencesPage() {
             : {}),
         })
       : drawn!.kind === 'corridor'
-        ? createGeofence({ name: name.trim(), kind: 'corridor', color, line: drawn!.geometry, bufferM })
-        : createGeofence({ name: name.trim(), kind: drawn!.kind, color, geometry: drawn!.geometry })
+        ? createGeofence({ name: name.trim(), kind: 'corridor', color, line: drawn!.geometry, bufferM, ...(overseer && ctx !== '' ? { accountId: ctx } : {}) })
+        : createGeofence({ name: name.trim(), kind: drawn!.kind, color, geometry: drawn!.geometry, ...(overseer && ctx !== '' ? { accountId: ctx } : {}) })
+      // ^ TSP UX audit: with no accountId an overseer's zone landed accountId:null = tenant-shared,
+      //   i.e. it appeared on EVERY customer's map. Acting-for-a-customer now stamps their account;
+      //   a deliberately shared zone remains possible from the customer-less overview only via API.
     req
       .then(() => {
         setName(''); armTool(null); setDraftKind(null); setEditingId(null)
@@ -633,7 +641,9 @@ export function GeofencesPage() {
       .finally(() => setSaving(false))
   }
 
-  const list = geofences.data ?? []
+  // context filter mirrors what the CUSTOMER sees: their zones plus the tenant-shared ones.
+  // '' (overview) shows everything.
+  const list = (geofences.data ?? []).filter((g) => ctx === '' || g.accountId === ctx || g.accountId === null)
   const filtered = list.filter((g) => q.trim() === '' || g.name.toLowerCase().includes(q.trim().toLowerCase()))
   const drafting = draftKind !== null
 
@@ -662,6 +672,7 @@ export function GeofencesPage() {
           </div>
         ))}
       </PageHeader>
+      <OverviewNotice />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,22rem)_1fr]">
         {/* aside (design split view): DraftPanel while drafting, else search + list */}

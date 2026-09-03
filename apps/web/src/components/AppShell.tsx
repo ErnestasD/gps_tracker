@@ -1,5 +1,5 @@
 import { type EntitlementKey } from '@orbetra/shared'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { Briefcase,
   BarChart3,
@@ -31,17 +31,20 @@ import { Briefcase,
   Wrench,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Combobox } from '@/components/admin/Combobox'
 import { CommandPalette } from '@/components/admin/CommandPalette'
 import { NotificationsBell } from '@/components/admin/NotificationsBell'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { getAccountContext, isOverseer, onAccountContextChange, setAccountContext } from '@/lib/accountContext'
 import { getCurrentUser, logout as authLogout } from '@/lib/auth'
 import { applyBranding, getBranding, onBrandingChange, PLATFORM_NAME, type Branding } from '@/lib/branding'
 import { usePublicBranding } from '@/lib/publicBranding'
+import { listAccounts } from '@/lib/devices'
 import { liveStore } from '@/lib/liveStore'
 import { isPaletteShortcut, shortcutLabel } from '@/lib/palette'
 import { getTheme, onThemeChange, setTheme, type Theme } from '@/lib/prefs'
@@ -109,6 +112,44 @@ const SECTIONS: NavSection[] = [
 
 /** route → nav i18n key, for the topbar breadcrumb */
 const CRUMBS = new Map<string, string>(SECTIONS.flatMap((s) => s.items.filter((i) => i.to !== undefined).map((i) => [i.to!, i.key] as const)))
+
+
+/**
+ * The overseer's customer switcher (TSP UX audit 2026-09-03) — the spine of the reseller view.
+ *
+ * "Visos paskyros" is the read-only overview: every page filters to everything and operational
+ * writes are withheld. Picking a customer means ACTING FOR them — pages narrow to that account and
+ * editing works exactly as it does for the customer. Only tenant-wide admins of a sub-account plan
+ * ever see this control; a customer's token pins them server-side and no client control can widen it.
+ */
+function AccountContextSwitcher() {
+  const { t } = useTranslation()
+  const qc = useQueryClient()
+  const user = getCurrentUser()
+  const show = isOverseer() && user?.entitlements?.subAccounts === true
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: listAccounts, enabled: show })
+  const ctx = useSyncExternalStore(
+    (cb) => onAccountContextChange(cb),
+    getAccountContext,
+    getAccountContext,
+  )
+  if (!show || (accounts.data ?? []).length === 0) return null
+  return (
+    <div className="hidden md:block">
+      <Combobox
+        value={ctx}
+        onChange={(v) => {
+          setAccountContext(v)
+          // every page's data is context-shaped — refetch rather than trust caches keyed without it
+          void qc.invalidateQueries()
+        }}
+        data-testid="account-context"
+        aria-label={t('shell.accountContext')}
+        options={[{ value: '', label: t('shell.allAccounts') }, ...(accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))]}
+      />
+    </div>
+  )
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
@@ -410,6 +451,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button type="button" onClick={() => setPaletteOpen(true)} className="grid h-8 w-8 place-items-center rounded-md md:hidden" style={{ color: 'var(--admin-ink)' }} aria-label={t('shell.search')} data-testid="topbar-search-mobile">
               <Search className="h-4 w-4" aria-hidden />
             </button>
+            <AccountContextSwitcher />
             <NotificationsBell />
             <LanguageSwitcher />
             <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t('shell.theme')} data-testid="topbar-theme">

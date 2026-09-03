@@ -1,13 +1,14 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useSearch } from '@tanstack/react-router'
 import { Activity, AlertOctagon, TrendingUp } from 'lucide-react'
-import { Fragment, useState, useSyncExternalStore } from 'react'
+import { useMemo, Fragment, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader, StatCard } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
 import { useFmt } from '@/lib/datetime'
+import { useAccountContext } from '@/lib/accountContext'
 import { listDevices } from '@/lib/devices'
 import { EVENT_KINDS, eventFacts, eventSeverity, listEvents, localizedEventSummary, type EventRow, type EventSeverity } from '@/lib/events'
 import { dayEndIso, dayStartIso } from '@/lib/playback'
@@ -78,7 +79,10 @@ export function EventsPage() {
     },
   })
 
-  const rows = (query.data?.pages ?? []).flat()
+  const { ctx } = useAccountContext()
+  const deviceAccount = useMemo(() => new Map((devices.data ?? []).map((d) => [d.id, d.accountId])), [devices.data])
+  // EventView carries no accountId — the device→account join is the account filter
+  const rows = (query.data?.pages ?? []).flat().filter((e) => ctx === '' || deviceAccount.get(e.deviceId) === ctx)
   // severity is a client-side lens over the LOADED rows only — the cursor query is untouched
   // (severity is derived from kind, so the server cannot filter it)
   const shown = severity === '' ? rows : rows.filter((r) => severityOf(r.kind) === severity)
