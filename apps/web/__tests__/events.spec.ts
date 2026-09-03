@@ -208,6 +208,35 @@ describe('eventFacts — the details panel, in parts', () => {
     expect(f[3]!.value).toBe('Greičio viršijimas 90')
   })
 
+  /**
+   * "How far over" is measured from the PEAK, not from the speed that tripped the rule.
+   *
+   * It read `speedKmh - limitKmh`, which was right while an overspeed was a single instant. Once
+   * events became intervals carrying a peak, the panel contradicted itself in front of the founder:
+   * peak 97, limit 90, "over by 3". The reader can subtract two rows above for themselves — the
+   * number worth stating is the one they act on.
+   */
+  it('measures how far over from the peak, not from the speed that tripped the rule', () => {
+    const f = eventFacts(row('overspeed', { rule: 'r', speedKmh: 93, maxSpeedKmh: 97, limitKmh: 90 }))
+    expect(f.map((x) => x.key)).toEqual(['events.f.speed', 'events.f.peak', 'events.f.limit', 'events.f.over', 'events.f.rule'])
+    expect(f[1]!.value).toContain('97')
+    expect(f[3]!.value).toContain('7')
+    expect(f[3]!.value).not.toContain('3 ')
+  })
+
+  it('falls back to the tripping speed when the interval recorded no higher peak', () => {
+    // a breach that never got worse than the moment it started: peak is not shown, and "over by"
+    // is the only excess there is
+    const f = eventFacts(row('overspeed', { rule: 'r', speedKmh: 93, maxSpeedKmh: 93, limitKmh: 90 }))
+    expect(f.map((x) => x.key)).not.toContain('events.f.peak')
+    expect(f.find((x) => x.key === 'events.f.over')!.value).toContain('3')
+  })
+
+  it('states an excess even when the payload carries only a peak worth reporting', () => {
+    const f = eventFacts(row('overspeed', { rule: 'r', speedKmh: 91, maxSpeedKmh: 140, limitKmh: 90 }))
+    expect(f.find((x) => x.key === 'events.f.over')!.value).toContain('50')
+  })
+
   it('never leaves a label without a value — a lone heading reads as data that failed to load', () => {
     for (const [kind, payload] of [
       ['geofence', { name: 'Depot', transition: 'enter' }],

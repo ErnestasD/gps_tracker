@@ -221,7 +221,7 @@ function FilterLabel({ label, children }: { label: string; children: React.React
  */
 function DemoEventDetails({ row }: { row: DemoEvent }) {
   const { t, i18n } = useTranslation("admin");
-  const p = row.payload as { name?: string; transition?: "enter" | "exit"; speedKmh?: number; limitKmh?: number; lat?: number; lon?: number };
+  const p = row.payload as { name?: string; transition?: "enter" | "exit"; speedKmh?: number; maxSpeedKmh?: number; limitKmh?: number; lat?: number; lon?: number };
   const facts: { label: string; value: string }[] = [
     { label: t("events.f.when"), value: new Date(row.at).toLocaleString(i18n.language) },
     { label: t("events.f.device"), value: deviceName(row.deviceId) },
@@ -234,10 +234,15 @@ function DemoEventDetails({ row }: { row: DemoEvent }) {
     facts.push({ label: t("events.f.direction"), value: t(`events.f.transition_${p.transition}`) });
   }
   if (p.speedKmh !== undefined) facts.push({ label: t("events.f.speed"), value: `${p.speedKmh} ${t("units.kmh")}` });
+  // the worst moment of the breach, when the interval recorded one
+  const peakKmh = p.maxSpeedKmh !== undefined && p.maxSpeedKmh > (p.speedKmh ?? 0) ? p.maxSpeedKmh : undefined;
+  if (peakKmh !== undefined) facts.push({ label: t("events.f.peak"), value: `${peakKmh} ${t("units.kmh")}` });
   if (p.limitKmh !== undefined) facts.push({ label: t("events.f.limit"), value: `${p.limitKmh} ${t("units.kmh")}` });
   if (p.speedKmh !== undefined && p.limitKmh !== undefined) {
-    // the number an operator acts on, and the one the payload never carried
-    facts.push({ label: t("events.f.over"), value: `${p.speedKmh - p.limitKmh} ${t("units.kmh")}` });
+    // Measured from the WORST moment, not from the speed that tripped the rule — otherwise the
+    // panel contradicts itself ("peak 97, limit 90, over by 3"). Same rule as the dashboard's
+    // eventFacts; the two must agree, because the demo is a claim about the product.
+    facts.push({ label: t("events.f.over"), value: `${(peakKmh ?? p.speedKmh) - p.limitKmh} ${t("units.kmh")}` });
   }
 
   return (
