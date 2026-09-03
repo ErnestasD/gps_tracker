@@ -123,8 +123,13 @@ export function TspPricing() {
                 </li>
               ))}
             </ul>
+            {/* Same destination as the Direct cards: sign up, then pick the plan on the in-app
+                billing page. Every TSP price is already in the server's STRIPE_PRICES allowlist and
+                /v1/billing/checkout does not distinguish Direct from TSP — it adds the metered
+                overage line itself — so this link was the ONLY thing making white-label sales-led.
+                Enterprise below still points at /pilot: it has no price to check out. */}
             <Link
-              to="/pilot"
+              to="/signup"
               className={
                 "mt-6 " +
                 (p.highlight
