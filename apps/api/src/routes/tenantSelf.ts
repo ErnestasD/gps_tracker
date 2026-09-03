@@ -186,11 +186,21 @@ function canon(host: string): string {
 /** What we found when we looked, and whether it is what we asked for. */
 export type DnsCheck = { ok: boolean; found: string[] }
 
+/**
+ * Why the routing half failed, when we can tell from DNS alone.
+ *
+ * `occupied` is the one worth naming: the name already answers with an A or an MX, so it CANNOT
+ * hold a CNAME (RFC 1034 §3.6.2) — a CNAME added there is accepted by the provider's panel and
+ * silently never served. Without this the panel can only say "not found", and the reader's next
+ * move is to re-add the record that was never going to work.
+ */
+export type RouteReason = 'occupied' | 'elsewhere' | 'absent'
+
 export type DomainDns = {
   /** the ownership TXT — the thing /verify reads */
   txt: DnsCheck
   /** does the name actually REACH us: the CNAME, or an address that matches the edge host */
-  route: DnsCheck & { expected: string | null }
+  route: DnsCheck & { expected: string | null; reason: RouteReason | null }
 }
 
 /**
@@ -227,9 +237,12 @@ export async function checkDomainDns(
   const expected = edgeHostname === undefined || edgeHostname.trim() === '' ? null : canon(edgeHostname)
   const routeFound: string[] = []
   let routeOk = false
+  let hasCname = false
+  let theirAddrs: string[] = []
   if (expected !== null) {
     try {
       const cnames = (await resolvers.cname(domain)).map(canon)
+      hasCname = cnames.length > 0
       routeFound.push(...cnames)
       routeOk = cnames.includes(expected)
     } catch {
@@ -237,11 +250,26 @@ export async function checkDomainDns(
     }
     if (!routeOk) {
       const [ours, theirs] = await Promise.all([addrs(resolvers.address, expected), addrs(resolvers.address, domain)])
+      theirAddrs = theirs
       routeFound.push(...theirs)
       routeOk = theirs.length > 0 && theirs.some((a) => ours.includes(a))
     }
   }
-  return { txt: { ok: txtOk, found: txtFound }, route: { ok: routeOk, found: [...new Set(routeFound)], expected } }
+
+  /**
+   * A name that already answers with an address cannot ALSO hold a CNAME, so if there is no CNAME
+   * and there are addresses, that is the diagnosis — not "you forgot to add it". Adding it again
+   * is what a reader does when told only "not found", and it will be dropped again.
+   */
+  let reason: RouteReason | null = null
+  if (expected !== null && !routeOk) {
+    reason = theirAddrs.length > 0 && !hasCname ? 'occupied' : routeFound.length > 0 ? 'elsewhere' : 'absent'
+  }
+
+  return {
+    txt: { ok: txtOk, found: txtFound },
+    route: { ok: routeOk, found: [...new Set(routeFound)], expected, reason },
+  }
 }
 
 async function addrs(resolve: NameResolver, hostname: string): Promise<string[]> {

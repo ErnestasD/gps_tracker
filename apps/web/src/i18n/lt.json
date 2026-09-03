@@ -222,7 +222,9 @@
     "dnsMissing": "Nerasta",
     "dnsChecking": "Tikrinama…",
     "dnsGoesTo": "Šis vardas šiuo metu nukreipia į {{where}}.",
-    "dnsRecheck": "Tikrinti DNS"
+    "dnsRecheck": "Tikrinti DNS",
+    "dnsOccupied": "Šis vardas jau atsako A arba MX įrašu, todėl kartu turėti CNAME negali — tiekėjas jį priima, o zona niekada neatiduoda. Nukreipkite į mus subdomeną (pvz. „fleet.{{domain}}“) arba, jei visas šis domenas turi tapti skydeliu, keiskite jo A įrašą į mūsų adresą, o ne pridėkite CNAME.",
+    "dnsAbsent": "Šiam vardui dar nieko nepaskelbta."
   },
   "audit": {
     "title": "Audito žurnalas",
