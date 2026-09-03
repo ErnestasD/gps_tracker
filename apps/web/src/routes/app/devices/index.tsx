@@ -12,6 +12,7 @@ import { getLastPositions } from '@/lib/api'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAccountContext } from '@/lib/accountContext'
 import { getCurrentUser } from '@/lib/auth'
 import { ApiError } from '@/lib/http'
 import { eraseDevice } from '@/lib/gdpr'
@@ -72,6 +73,7 @@ const statusOf = (d: Device, everSeen: ReadonlySet<string>): 'active' | 'waiting
 export function DevicesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const { ctx } = useAccountContext()
   const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
   // which devices have EVER reported — the same snapshot the live map seeds from, so the two
   // surfaces can no longer disagree about one tracker
@@ -335,7 +337,7 @@ export function DevicesPage() {
       ) : (
         <DataTable
           data-testid="devices-table"
-          data={devices.data ?? []}
+          data={(devices.data ?? []).filter((d) => ctx === '' || d.accountId === ctx)}
           columns={columns}
           searchKeys={['name', 'plate', 'imei']}
           pageSize={12}

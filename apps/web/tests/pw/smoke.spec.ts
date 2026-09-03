@@ -886,6 +886,59 @@ test('routing planner: page renders, parse errors surface, optimize degrades gra
  * "covered only up to editor-mount". It is not flaky when every wait is a CONDITION rather than a
  * duration — no `waitForTimeout` here, deliberately.
  */
+/**
+ * The overseer contract (TSP UX audit 2026-09-03): the all-accounts overview is read-only, acting
+ * for a customer restores editing — and, the part that was a real data leak, a zone created while
+ * acting for a customer carries THAT customer's accountId. Before this, an overseer's geofence
+ * landed accountId:null = tenant-shared, i.e. on EVERY customer's map.
+ */
+test('overseer: read-only overview, act-for-customer editing, and the zone lands in the right account', async ({ page }) => {
+  let bearer = ''
+  page.on('request', (req) => {
+    const a = req.headers()['authorization']
+    if (a?.startsWith('Bearer ') === true) bearer = a
+  })
+  await login(page)
+
+  // "all accounts": the geofence toolbar offers NO drawing, and says why
+  await page.goto('/app/geofences')
+  await expect(page.getByTestId('geofence-map')).toBeVisible()
+  await expect(page.getByTestId('overview-notice')).toBeVisible()
+  await expect(page.getByTestId('gf-mode-polygon')).toHaveCount(0)
+
+  // switch to the seeded customer account via the topbar switcher
+  await expect.poll(() => bearer).not.toBe('')
+  const accounts = (await (await page.request.get('/v1/accounts', { headers: { authorization: bearer } })).json()) as { id: string; name: string }[]
+  const fleet = accounts.find((a) => a.name === 'E2E Fleet')!
+  await page.getByTestId('account-context').click()
+  await page.getByRole('option', { name: 'E2E Fleet' }).click()
+
+  // acting for the customer: drawing is back, the notice is gone
+  await expect(page.getByTestId('gf-mode-polygon')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('overview-notice')).toHaveCount(0)
+
+  // draw a triangle and save — then read it back over the API: it must belong to the CUSTOMER
+  await page.getByTestId('gf-mode-polygon').click()
+  const box = (await page.getByTestId('geofence-map').boundingBox())!
+  for (const [x, y] of [[box.x + 240, box.y + 160], [box.x + 380, box.y + 180], [box.x + 300, box.y + 300]]) {
+    await page.mouse.click(x, y)
+    await page.waitForTimeout(150)
+  }
+  await page.mouse.dblclick(box.x + 300, box.y + 300)
+  await page.getByTestId('gf-name').fill('E2E Overseer Zone')
+  await page.getByTestId('gf-save').click()
+  await expect(page.getByTestId('gf-draft-panel')).toBeHidden({ timeout: 60_000 })
+
+  const zones = (await (await page.request.get('/v1/geofences', { headers: { authorization: bearer } })).json()) as { id: string; name: string; accountId: string | null }[]
+  const mine = zones.find((g) => g.name === 'E2E Overseer Zone')!
+  expect(mine.accountId).toBe(fleet.id) // NOT null — the leak this guards against
+
+  // cleanup: zone + context back to overview
+  await page.request.delete(`/v1/geofences/${mine.id}`, { headers: { authorization: bearer } })
+  await page.getByTestId('account-context').click()
+  await page.getByRole('option', { name: /Visos paskyros|All accounts/ }).click()
+})
+
 test('geofences: the vertex that closes the polygon is marked, and only that one', async ({ page }) => {
   await login(page)
   await page.goto('/app/geofences')

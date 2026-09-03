@@ -532,6 +532,21 @@ export class LiveStore {
 
   /** Rebuild snapshot + map frame. Statuses are time-based, so flush re-evaluates
    * them even without new data; unchanged devices keep their object identity. */
+  /**
+   * TSP UX audit: the reseller's account context, applied at the SNAPSHOT boundary.
+   *
+   * The WS stream sends a tenant-wide admin every customer's vehicles, and the store keeps them all
+   * (switching context must not drop state or re-handshake). Only what leaves the store — the list
+   * snapshot and the map frames, both built from `next` — is narrowed. '' = no filter.
+   */
+  private accountFilter = ''
+
+  setAccountFilter(accountId: string): void {
+    if (this.accountFilter === accountId) return
+    this.accountFilter = accountId
+    this.flush(true)
+  }
+
   flush(force = false): void {
     const now = this.now()
     let changed = this.dirty || force
@@ -544,7 +559,10 @@ export class LiveStore {
       }
     }
     if (!changed) return
-    for (const [, dev] of this.byId) next.push(dev)
+    for (const [, dev] of this.byId) {
+      if (this.accountFilter !== '' && dev.ev.accountId !== this.accountFilter) continue
+      next.push(dev)
+    }
     next.sort((a, b) => a.ev.deviceId.localeCompare(b.ev.deviceId, undefined, { numeric: true }))
     this.dirty = false
     this.snapshot = { ...this.snapshot, devices: next }

@@ -19,6 +19,7 @@ import {
   renameAccount,
   type UserView,
 } from '@/lib/accounts'
+import { setAccountContext } from '@/lib/accountContext'
 import { getCurrentUser } from '@/lib/auth'
 import { listAccounts, type Account } from '@/lib/devices'
 
@@ -341,6 +342,7 @@ function AccountRowMenu({ account, onEdit, onAddUser, onDelete }: { account: Acc
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-52 p-1">
+        {item(`account-actfor-${account.id}`, t('accounts.actFor'), () => setAccountContext(account.id))}
         {item(`account-adduser-${account.id}`, (
           <span className="flex items-center gap-2"><UserPlus className="h-3.5 w-3.5" aria-hidden />{t('accounts.addUser')}</span>
         ), onAddUser)}

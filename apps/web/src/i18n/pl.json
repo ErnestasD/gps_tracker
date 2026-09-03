@@ -94,7 +94,10 @@
     "paletteDevices": "Urządzenia",
     "paletteEmpty": "Brak wyników",
     "console": "Konsola platformy",
-    "accounts": "Konta"
+    "accounts": "Konta",
+    "accountContext": "Kontekst klienta",
+    "allAccounts": "Wszystkie konta",
+    "overviewNotice": "Tryb podglądu: widzisz dane wszystkich klientów. Aby edytować, wybierz klienta u góry."
   },
   "routing": {
     "title": "Planer tras",
@@ -1785,6 +1788,7 @@
     "deleteUserSure": "Usunąć {{email}}? Ta osoba nie będzie mogła się zalogować.",
     "emailRequired": "Podaj e-mail.",
     "passwordShort": "Hasło musi mieć co najmniej 8 znaków.",
-    "userSaveError": "Nie udało się utworzyć. Może ten adres jest już zajęty?"
+    "userSaveError": "Nie udało się utworzyć. Może ten adres jest już zajęty?",
+    "actFor": "Działaj w imieniu klienta"
   }
 }

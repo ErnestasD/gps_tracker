@@ -94,7 +94,10 @@
     "paletteDevices": "Devices",
     "paletteEmpty": "No results",
     "console": "Platform console",
-    "accounts": "Accounts"
+    "accounts": "Accounts",
+    "accountContext": "Customer context",
+    "allAccounts": "All accounts",
+    "overviewNotice": "Overview mode: you are viewing every customer’s data. Pick a customer at the top to make changes."
   },
   "routing": {
     "title": "Route planner",
@@ -1765,6 +1768,7 @@
     "deleteUserSure": "Remove {{email}}? They will no longer be able to sign in.",
     "emailRequired": "Enter an email.",
     "passwordShort": "Password must be at least 8 characters.",
-    "userSaveError": "Couldn’t create. Is that address already taken?"
+    "userSaveError": "Couldn’t create. Is that address already taken?",
+    "actFor": "Act for this customer"
   }
 }

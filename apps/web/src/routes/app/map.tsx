@@ -17,6 +17,7 @@ import { listDrivers } from '@/lib/drivers'
 import { eventDetail, eventTone, listEvents } from '@/lib/events'
 import { fleetPanelCounts, type FleetFilter } from '@/lib/fleetFilter'
 import { geofenceFeatures, listGeofences } from '@/lib/geofences'
+import { useAccountContext } from '@/lib/accountContext'
 import { buildTrailFeatures, liveStore, type ScrubState } from '@/lib/liveStore'
 import { DEFAULT_LAYERS, loadLayers, saveLayers, type MapLayers } from '@/lib/mapLayers'
 import { getTrack, placeableFix, trackTimes } from '@/lib/telemetry'
@@ -41,6 +42,12 @@ const socket = new LiveSocket({
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
 export function MapPage() {
+  // TSP UX audit: the overseer's customer context narrows the fleet list, markers and trails.
+  // Applied inside the store (setAccountFilter) so every consumer of the snapshot agrees.
+  const { ctx: accountCtx } = useAccountContext()
+  useEffect(() => {
+    liveStore.setAccountFilter(accountCtx)
+  }, [accountCtx])
   const { t } = useTranslation()
   const { dt } = useFmt()
   const units = useUnits()
