@@ -1,5 +1,5 @@
 import { runReport, type Db, type Pool, type ReportResult, type ReportType } from '@orbetra/db'
-import { brandingReadSchema, escapeHtml, renderBrandedEmail, sanitizeUnits, METRIC_UNITS, type Branding, type DisplayUnits } from '@orbetra/shared'
+import { brandingReadSchema, emailHeading, escapeHtml, METRIC_UNITS, renderBrandedEmail, sanitizeUnits, type Branding, type DisplayUnits } from '@orbetra/shared'
 
 import { renderReportTable, renderReportTableHtml, reportTitle } from '../format/report.js'
 import { stringsFor } from '../format/strings.js'
@@ -123,9 +123,9 @@ function renderReportHtml(
     const s = stringsFor(opts.locale)
     const table = renderReportTableHtml(type, rows, opts.timezone, { locale: opts.locale, units: opts.units })
     const bodyHtml = [
-      `<h2 style="margin:0 0 12px;font-size:16px">${escapeHtml(s.reportHeading(title))}</h2>`,
+      emailHeading(s.reportHeading(title)),
       table,
-      `<p style="margin:12px 0 0;color:#93a1b7;font-size:12px">${escapeHtml(s.reportFooter(opts.timezone, opts.brand))}</p>`,
+      `<p style="margin:12px 0 0;color:#94a3b8;font-size:12px">${escapeHtml(s.reportFooter(opts.timezone, opts.brand))}</p>`,
     ].join('')
     const tenantName = opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand
     return renderBrandedEmail(opts.branding ?? {}, tenantName, { subject, bodyHtml, locale: opts.locale })

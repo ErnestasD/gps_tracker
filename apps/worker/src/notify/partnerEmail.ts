@@ -1,4 +1,4 @@
-import { emailButton, emailFallbackLink, emailNote, escapeHtml, renderBrandedEmail } from '@orbetra/shared'
+import { emailButton, emailFallbackLink, emailHeading, emailNote, emailText, renderBrandedEmail } from '@orbetra/shared'
 
 /**
  * The mail a partner gets when something happens on their referral link.
@@ -110,8 +110,8 @@ export function renderPartnerEmail(opts: PartnerEmailOpts): { subject: string; t
     const intro = `${who} has asked to be paid. Outstanding balance at the time of the request: ${amount}.`
     const note = 'Open Admin → Affiliates to review the lines and mark them paid once the transfer is out.'
     const bodyHtml = [
-      `<h1 style="margin:0 0 12px;font-size:21px;font-weight:700;letter-spacing:-0.01em;color:#0f172a">${escapeHtml('Payout requested')}</h1>`,
-      `<p style="margin:0 0 24px;color:#334155;font-size:15px;line-height:1.6">${escapeHtml(intro)}</p>`,
+      emailHeading('Payout requested'),
+      emailText(intro),
       emailNote(note),
     ].join('')
     return {
@@ -130,8 +130,8 @@ export function renderPartnerEmail(opts: PartnerEmailOpts): { subject: string; t
   const note = isCommission && amount !== '' ? s.commissionNote : s.referralNote
 
   const bodyHtml = [
-    `<h1 style="margin:0 0 12px;font-size:21px;font-weight:700;letter-spacing:-0.01em;color:#0f172a">${escapeHtml(heading)}</h1>`,
-    `<p style="margin:0 0 24px;color:#334155;font-size:15px;line-height:1.6">${escapeHtml(intro)}</p>`,
+    emailHeading(heading),
+    emailText(intro),
     emailButton(opts.portalUrl, s.button),
     emailNote(note),
     emailFallbackLink(s.fallback, opts.portalUrl),

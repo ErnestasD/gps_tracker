@@ -1,4 +1,4 @@
-import { emailButton, emailFallbackLink, emailNote, escapeHtml, renderBrandedEmail, type Branding } from '@orbetra/shared'
+import { emailButton, emailFallbackLink, emailHeading, emailNote, emailText, renderBrandedEmail, type Branding } from '@orbetra/shared'
 
 /**
  * Password-reset email template (ADR-031). Renders a tenant-branded HTML message + a plain-text
@@ -69,8 +69,8 @@ export function renderResetEmail(opts: ResetEmailOpts): { subject: string; text:
   const s = LOCALES[opts.locale] ?? LOCALES['en']!
   const accent = opts.branding?.primary
   const bodyHtml = [
-    `<h1 style="margin:0 0 12px;font-size:21px;font-weight:700;letter-spacing:-0.01em;color:#0f172a">${escapeHtml(s.heading)}</h1>`,
-    `<p style="margin:0 0 24px;color:#334155;font-size:15px;line-height:1.6">${escapeHtml(s.intro)}</p>`,
+    emailHeading(s.heading),
+    emailText(s.intro),
     emailButton(opts.resetUrl, s.button, accent),
     emailNote(s.expires(opts.expiresMinutes)),
     emailNote(s.ignore),

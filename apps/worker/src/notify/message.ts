@@ -8,7 +8,7 @@
  * ACCOUNT zone (rule 7), the speeds in the units that account chose, all in its language, under the
  * tenant's white-label brand.
  */
-import { escapeHtml, renderBrandedEmail, METRIC_UNITS, type Branding, type DisplayUnits } from '@orbetra/shared'
+import { emailHeading, emailKeyValue, emailText, METRIC_UNITS, renderBrandedEmail, type Branding, type DisplayUnits } from '@orbetra/shared'
 
 import { formatWithZone, speedPair, volumeL } from '../format/localize.js'
 import { stringsFor, unitLabels, type WorkerStrings } from '../format/strings.js'
@@ -73,13 +73,16 @@ export function notificationMessage(kind: string, deviceId: string, payload: Rec
  */
 function renderAlertHtml(subject: string, heading: string, device: string, when: string, detail: string, s: WorkerStrings, ctx: NotifyContext): string | undefined {
   try {
-    const p = (label: string, value: string): string =>
-      `<p style="margin:0 0 8px"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`
+    // emailHeading + emailKeyValue, not hand-rolled markup: the alert used to render a 16 px <h2>
+    // over `<strong>Label:</strong> value` paragraphs while the account mails rendered a 21 px <h1>
+    // — two products in one inbox, and the alert half looked like debug output (founder report).
     const bodyHtml = [
-      `<h2 style="margin:0 0 12px;font-size:16px">${escapeHtml(heading)}</h2>`,
-      p(s.labelDevice, device),
-      p(s.labelWhen, when),
-      ...(detail ? [`<p style="margin:0 0 8px">${escapeHtml(detail)}</p>`] : []),
+      emailHeading(heading),
+      ...(detail ? [emailText(detail)] : []),
+      emailKeyValue([
+        [s.labelDevice, device],
+        [s.labelWhen, when],
+      ]),
     ].join('')
     const tenantName = ctx.tenantName && ctx.tenantName.trim() !== '' ? ctx.tenantName : brandName(ctx)
     // the footer ("you received this because…") follows the same language as the body
