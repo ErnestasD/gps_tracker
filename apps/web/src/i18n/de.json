@@ -472,6 +472,7 @@
       "acknowledged": "Bestätigt",
       "fencesHint": "Wählen Sie, welche Zonen die Karte zeichnet.",
       "tabs": "Geräte-Panels",
+      "resize": "Ziehen, um die Höhe des Panels zu ändern",
       "historyAt": "Verlauf: Zustand um {{when}}"
     },
     "title": "Live-Karte",

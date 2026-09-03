@@ -472,6 +472,7 @@
       "acknowledged": "Potwierdzone",
       "fencesHint": "Wybierz, które strefy rysuje mapa.",
       "tabs": "Panele urządzenia",
+      "resize": "Przeciągnij, aby zmienić wysokość panelu",
       "historyAt": "Historia: stan z {{when}}"
     },
     "title": "Mapa na żywo",

@@ -475,6 +475,7 @@
       "acknowledged": "Acknowledged",
       "fencesHint": "Choose which zones the map draws.",
       "tabs": "Device panels",
+      "resize": "Drag to resize the panel",
       "historyAt": "History: showing the state at {{when}}"
     },
     "title": "Live map",
