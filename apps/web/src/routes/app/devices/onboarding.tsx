@@ -106,10 +106,17 @@ export function OnboardingCard({ device, initialApn }: { device: Device; initial
               {t('devices.onb.sim.msisdn')}
               <Input value={msisdn} onChange={(e) => setMsisdn(e.target.value)} placeholder="+37060000000" data-testid="onb-sim-msisdn" className="w-48" maxLength={20} inputMode="tel" />
             </label>
-            <Button variant="secondary" size="sm" onClick={saveSim} disabled={simSaving} data-testid="onb-sim-save">
-              {t('devices.onb.sim.save')}
-            </Button>
-            {simSaved && <span className="text-xs text-success">{t('devices.onb.sim.saved')}</span>}
+            {/* the button and its status are their OWN centred row: the outer row is `items-end` so
+                the button lines up with the input's bottom edge, and a bare text node in that row
+                gets its BASELINE dropped to the same edge — the confirmation sat visibly below the
+                button it belongs to (founder screenshot). Nested, the status centres on the button
+                and the pair still sits on the input's baseline. */}
+            <div className="flex items-center gap-3">
+              <Button variant="secondary" size="sm" onClick={saveSim} disabled={simSaving} data-testid="onb-sim-save">
+                {t('devices.onb.sim.save')}
+              </Button>
+              {simSaved && <span className="text-xs text-success">{t('devices.onb.sim.saved')}</span>}
+            </div>
           </div>
           {simError && <p role="alert" className="text-xs text-danger" data-testid="onb-sim-error">{t('devices.onb.sim.error')}</p>}
         </div>
