@@ -90,7 +90,8 @@
     "palettePages": "Seiten",
     "paletteDevices": "Geräte",
     "paletteEmpty": "Keine Treffer",
-    "console": "Plattform-Konsole"
+    "console": "Plattform-Konsole",
+    "accounts": "Konten"
   },
   "routing": {
     "title": "Routenplaner",
@@ -1717,5 +1718,50 @@
   },
   "common": {
     "saving": "Speichern…"
+  },
+  "accounts": {
+    "title": "Kundenkonten",
+    "desc": "Ein eigenes Konto je Kunde — mit eigenen Geräten und Logins.",
+    "name": "Name",
+    "timezone": "Zeitzone",
+    "logins": "Logins",
+    "account": "Konto",
+    "add": "Neues Konto",
+    "addTitle": "Neues Kundenkonto",
+    "editTitle": "Konto umbenennen",
+    "edit": "Umbenennen",
+    "delete": "Konto löschen",
+    "deleteSure": "„{{name}}“ löschen? Logins und Zuordnungen gehen mit.",
+    "deleteError": "Fehlgeschlagen. Prüfen Sie, ob noch Geräte im Konto sind.",
+    "actions": "Aktionen",
+    "empty": "Noch keine Konten — legen Sie das erste für Ihren Kunden an.",
+    "loadError": "Laden fehlgeschlagen.",
+    "loading": "Lädt…",
+    "saveError": "Speichern fehlgeschlagen.",
+    "nameRequired": "Namen eingeben.",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "create": "Anlegen",
+    "usersTitle": "Logins",
+    "usersEmpty": "Noch keine Logins.",
+    "tenantWide": "Alle Konten",
+    "addUser": "Login hinzufügen",
+    "addUserTitle": "Neuer Login",
+    "createUser": "Login anlegen",
+    "userEmail": "E-Mail",
+    "userPassword": "Passwort",
+    "passwordHint": "Geben Sie es dem Kunden — nach der Anmeldung kann es geändert werden.",
+    "role": "Rolle",
+    "roles": {
+      "platform_admin": "Plattform-Admin",
+      "tsp_admin": "Organisations-Admin",
+      "account_manager": "Kontoverwalter",
+      "viewer": "Beobachter"
+    },
+    "deleteUser": "Login entfernen",
+    "deleteUserSure": "{{email}} entfernen? Diese Person kann sich nicht mehr anmelden.",
+    "emailRequired": "E-Mail eingeben.",
+    "passwordShort": "Passwort: mindestens 8 Zeichen.",
+    "userSaveError": "Anlegen fehlgeschlagen. Ist die Adresse schon vergeben?"
   }
 }

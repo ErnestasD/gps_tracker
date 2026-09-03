@@ -37,6 +37,7 @@ import { ReportsPage } from '@/routes/app/reports'
 import { RulesPage } from '@/routes/app/rules'
 import { WebhooksPage } from '@/routes/app/webhooks'
 import { DevicesPage } from '@/routes/app/devices/index'
+import { AccountsPage } from '@/routes/app/accounts'
 import { DriversPage } from '@/routes/app/drivers'
 import { MaintenancePage } from '@/routes/app/maintenance'
 import { SettingsPage } from '@/routes/app/settings'
@@ -199,6 +200,12 @@ const devicesRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { can?: string } =>
     typeof search.can === 'string' && search.can !== '' ? { can: search.can } : {},
   component: DevicesPage,
+})
+
+const accountsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/accounts',
+  component: AccountsPage,
 })
 
 const driversRoute = createRoute({
@@ -364,7 +371,7 @@ const routeTree = rootRoute.addChildren([
   verifyEmailRoute,
   shareRoute,
   consoleRoute.addChildren([consoleIndexRoute, consoleTenantsRoute, consoleUsersRoute, consoleBillingRoute, consoleLapsesRoute, consolePartnersRoute, consoleErrorsRoute]),
-  appRoute.addChildren([appIndexRoute, dashboardRoute, mapRoute, devicesRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
+  appRoute.addChildren([appIndexRoute, dashboardRoute, mapRoute, devicesRoute, accountsRoute, driversRoute, maintenanceRoute, tripsRoute, routingRoute, playbackRoute, geofencesRoute, rulesRoute, eventsRoute, reportsRoute, apiKeysRoute, webhooksRoute, platformRoute, affiliatesRoute, brandingRoute, billingRoute, auditRoute, settingsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

@@ -1,7 +1,7 @@
 import { type EntitlementKey } from '@orbetra/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import {
+import { Briefcase,
   BarChart3,
   Bell,
   Building2,
@@ -88,6 +88,10 @@ const SECTIONS: NavSection[] = [
   {
     key: 'shell.admin',
     items: [
+      // the reseller's PRIMARY admin object — the customer accounts everything else scopes to.
+      // First in the section: a TSP who has just paid lands here to create their first customer
+      // (founder found the API had no door minutes after the first real TSP checkout).
+      { key: 'shell.accounts', icon: Briefcase, to: '/app/accounts', adminOnly: true, entitlement: 'subAccounts' },
       { key: 'shell.branding', icon: Palette, to: '/app/branding', adminOnly: true, entitlement: 'whiteLabel' },
       { key: 'shell.billing', icon: CreditCard, to: '/app/billing', adminOnly: true },
       { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true, entitlement: 'apiAccess' },

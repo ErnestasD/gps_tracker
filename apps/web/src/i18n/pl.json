@@ -90,7 +90,8 @@
     "palettePages": "Strony",
     "paletteDevices": "Urządzenia",
     "paletteEmpty": "Brak wyników",
-    "console": "Konsola platformy"
+    "console": "Konsola platformy",
+    "accounts": "Konta"
   },
   "routing": {
     "title": "Planer tras",
@@ -1737,5 +1738,50 @@
   },
   "common": {
     "saving": "Zapisywanie…"
+  },
+  "accounts": {
+    "title": "Konta klientów",
+    "desc": "Osobne konto dla każdego klienta — z własnymi urządzeniami i loginami.",
+    "name": "Nazwa",
+    "timezone": "Strefa czasowa",
+    "logins": "Loginy",
+    "account": "Konto",
+    "add": "Nowe konto",
+    "addTitle": "Nowe konto klienta",
+    "editTitle": "Zmień nazwę konta",
+    "edit": "Zmień nazwę",
+    "delete": "Usuń konto",
+    "deleteSure": "Usunąć „{{name}}”? Zaginą też loginy i przypisania.",
+    "deleteError": "Nie udało się. Sprawdź, czy w koncie nie zostały urządzenia.",
+    "actions": "Akcje",
+    "empty": "Brak kont — utwórz pierwsze dla swojego klienta.",
+    "loadError": "Nie udało się wczytać.",
+    "loading": "Wczytywanie…",
+    "saveError": "Nie udało się zapisać.",
+    "nameRequired": "Podaj nazwę.",
+    "cancel": "Anuluj",
+    "save": "Zapisz",
+    "create": "Utwórz",
+    "usersTitle": "Loginy",
+    "usersEmpty": "Brak loginów.",
+    "tenantWide": "Wszystkie konta",
+    "addUser": "Dodaj login",
+    "addUserTitle": "Nowy login",
+    "createUser": "Utwórz login",
+    "userEmail": "E-mail",
+    "userPassword": "Hasło",
+    "passwordHint": "Przekaż je klientowi — po zalogowaniu może je zmienić.",
+    "role": "Rola",
+    "roles": {
+      "platform_admin": "Admin platformy",
+      "tsp_admin": "Admin organizacji",
+      "account_manager": "Menedżer konta",
+      "viewer": "Obserwator"
+    },
+    "deleteUser": "Usuń login",
+    "deleteUserSure": "Usunąć {{email}}? Ta osoba nie będzie mogła się zalogować.",
+    "emailRequired": "Podaj e-mail.",
+    "passwordShort": "Hasło musi mieć co najmniej 8 znaków.",
+    "userSaveError": "Nie udało się utworzyć. Może ten adres jest już zajęty?"
   }
 }
