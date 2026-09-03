@@ -39,17 +39,20 @@
     "label": "Nowe hasło"
   },
   "verify": {
-    "title": "Aktywujemy konto",
-    "working": "Potwierdzamy adres…",
-    "done": "Konto jest aktywne. Zaloguj się, aby zacząć.",
-    "toLogin": "Przejdź do logowania",
+    "title": {
+      "working": "Aktywujemy konto…",
+      "done": "Konto aktywowane",
+      "invalid": "Link nie działa"
+    },
+    "toLogin": "Zaloguj się",
     "invalid": "Ten link aktywacyjny jest nieprawidłowy, już użyty lub wygasł.",
     "resend": "Wyślij nowy link",
     "resendSent": "Jeśli ten adres wymaga aktywacji, nowy link jest w drodze.",
     "resendEmail": "Twój adres e-mail",
     "resendSubmit": "Wyślij link",
     "noToken": "Ten link aktywacyjny jest niepełny. Poproś o nowy poniżej.",
-    "label": "Aktywacja"
+    "label": "Aktywacja",
+    "working": "Potwierdzamy adres…"
   },
   "shell": {
     "live": "Na żywo",

@@ -39,17 +39,20 @@
     "label": "New password"
   },
   "verify": {
-    "title": "Activating your account",
-    "working": "Confirming your address…",
-    "done": "Your account is active. Sign in to get started.",
-    "toLogin": "Go to sign in",
+    "title": {
+      "working": "Activating your account…",
+      "done": "Account activated",
+      "invalid": "That link didn’t work"
+    },
+    "toLogin": "Sign in",
     "invalid": "This activation link is invalid, already used, or has expired.",
     "resend": "Send me a new link",
     "resendSent": "If that address needs activating, a new link is on its way.",
     "resendEmail": "Your email address",
     "resendSubmit": "Send link",
     "noToken": "This activation link is incomplete. Request a new one below.",
-    "label": "Activation"
+    "label": "Activation",
+    "working": "Confirming your address…"
   },
   "shell": {
     "live": "Live",
