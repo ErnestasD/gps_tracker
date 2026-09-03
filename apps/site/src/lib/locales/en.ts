@@ -389,7 +389,7 @@ export const en = {
     perDevice: " · {{price}}/device",
     overage: "Overage {{price}} / device",
     yearly: "€{{total}} yearly (2 months free)",
-    cta: "Request pilot",
+    cta: "START TRIAL",
     everythingIn: "Everything in {{plan}}",
     start: {
       f1: "White-label domain & logo",
@@ -409,7 +409,7 @@ export const en = {
     },
     enterprise: {
       label: "— TSP ENTERPRISE",
-      title: "2,500+ devices · custom terms",
+      title: "3,500+ devices · custom terms",
       body: "Dedicated infrastructure, custom SLA, negotiated terms.",
       cta: "Contact sales",
     },

@@ -11,7 +11,7 @@
 ---
 
 **Status:** market-validated (2026), baseline for launch · **Companion to:** PROJECT_PLAN.md §7
-**One-line:** two tracks — self-service **Direct** for small fleets, sales-led **White-label/TSP** for resellers. Monthly + annual (2 months free). Per-device economics validated against GpsGate ($1.5/device), Wialon wholesale (~€0.30–0.60), gps-server (~€0.45–1.25), 1NCE SIM (~€0.10/mo).
+**One-line:** two tracks — **Direct** for small fleets, **White-label/TSP** for resellers. **Both are self-service** (founder decision 2026-09-03; TSP was sales-led until then — see §3). Monthly + annual (2 months free). Per-device economics validated against GpsGate ($1.5/device), Wialon wholesale (~€0.30–0.60), gps-server (~€0.45–1.25), 1NCE SIM (~€0.10/mo).
 
 ---
 
@@ -33,7 +33,7 @@ Not "cheapest per device" — **"no minimum pain."** Wialon pushes TSPs to a ~�
 Included: live map, trips & playback, geofences & alerts, reports (CSV/XLSX), email support. Single account, **no white-label, no sub-tenants**. Self-service Stripe Checkout, no sales call.
 Note: smallest tier is 5 devices (mirrors GpsGate's 5-unit floor; deliberately no 1-device tier to avoid hobbyists eating support). Optional: drop the 5 tier and start at 10 if hobbyist load appears.
 
-## 3. TRACK B — White-label / TSP (resellers, sales-led, own brand + sub-tenants)
+## 3. TRACK B — White-label / TSP (resellers, self-service, own brand + sub-tenants)
 
 | Plan | Base €/mo | Included devices | €/device base | Overage/device | €/yr (2 mo free) |
 |---|---|---|---|---|---|
@@ -73,7 +73,21 @@ it fixed.
 A prospect between 300 and ~717 devices is genuinely cheaper on Start with overage — that is the
 ladder working, not a leak, but sales should quote it deliberately rather than default to Grow.
 
-Included: everything in Direct **+ white-label domain & logo, sub-tenants (Accounts), REST API + webhooks, priority support**. Scale adds: SSO, regional data residency, SLA 99.9%, named contact. Sales-led ("Request a pilot"), not self-service.
+Included: everything in Direct **+ white-label domain & logo, sub-tenants (Accounts), REST API + webhooks, priority support**. Scale adds: SSO, regional data residency, SLA 99.9%, named contact.
+
+**Self-service since 2026-09-03** — same flow as Direct: sign up, pick the plan on the in-app billing
+page, pay by card. It was "Request a pilot" before, which turned out to be a *link*, not a mechanism:
+every TSP price was already in the server's `STRIPE_PRICES` allowlist, `/v1/billing/checkout` never
+distinguished Direct from TSP, and the metered overage line was attached automatically. The pricing
+page simply pointed the TSP cards somewhere else.
+
+**Enterprise stays sales-led** — it has no price to check out. Its card still routes to `/pilot`, so
+a prospect who wants a conversation before committing has one on the same page.
+
+A note for whoever revisits this: white-label onboarding (custom domain, logo, sub-accounts) is still
+setup work. Self-service checkout means the *money* is self-service; it does not mean a TSP customer
+lands fully configured. The entitlements unlock immediately on the webhook, which is the part that
+matters for them to start.
 
 ## 4. Break-even between tracks (no cannibalization)
 
