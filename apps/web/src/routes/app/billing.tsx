@@ -1,12 +1,12 @@
 import { isDirectPlan } from '@orbetra/shared'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { getCurrentUser } from '@/lib/auth'
 import { usePublicBranding } from '@/lib/publicBranding'
-import { fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from '@/lib/billing'
+import { changePlan, fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from '@/lib/billing'
 import { useFmt } from '@/lib/datetime'
 
 /**
@@ -52,8 +52,31 @@ export function BillingPage() {
   // only fetch the catalog when the picker is shown (each plan is a live Stripe price lookup);
   // catalog data is near-static, so cache it for the session
   const plans = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker, staleTime: 5 * 60 * 1000 })
+  const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState(false) // Stripe handoff failed (was invisible)
+  const [changingTo, setChangingTo] = useState<string | null>(null) // price id mid-change
+
+  /**
+   * Plan CHANGE (Start ⇄ Grow ⇄ Scale) for an active TSP subscriber — the Stripe Customer Portal
+   * cannot do it for us (our subscriptions carry a paired metered overage item its switcher ignores;
+   * see the server route). Only when actively subscribed AND on a TSP plan; a Direct tenant upgrades
+   * via the sales CTA above, and a lapsed one repairs payment in the portal.
+   */
+  const canChangePlan = b?.active === true && b.planPriceId !== null && !showPicker && user !== null && !isDirectPlan(user.plan)
+  const changePlans = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: canChangePlan, staleTime: 5 * 60 * 1000 })
+  const otherTspPlans = (changePlans.data ?? [])
+    // the switch targets: TSP base prices (a monthly amount) other than the current one
+    .filter((p) => /TSP/i.test(p.productName) && p.amount !== null && p.priceId !== b?.planPriceId)
+  const doChange = (priceId: string) => {
+    setChangingTo(priceId)
+    setActionError(false)
+    changePlan(priceId)
+      // the webhook writes the new plan; re-read billing + the session (entitlements) shortly after
+      .then(() => qc.invalidateQueries())
+      .catch(() => setActionError(true))
+      .finally(() => setChangingTo(null))
+  }
 
   const go = (fn: () => Promise<{ url: string }>) => {
     setBusy(true)
@@ -164,6 +187,31 @@ export function BillingPage() {
               )}
             </div>
           </div>
+
+          {canChangePlan && otherTspPlans.length > 0 && (
+            <div className="space-y-2" data-testid="billing-change-plan">
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('billing.changePlanTitle')}</h2>
+              <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.changePlanNote')}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {otherTspPlans.map((p) => (
+                  <div key={p.priceId} className="admin-card flex flex-col gap-3 p-5" data-testid={`change-plan-${p.priceId}`}>
+                    <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{p.productName}</div>
+                    <p className="display text-2xl font-semibold tracking-tight" style={{ color: 'var(--admin-ink)' }}>
+                      {fmtPlanAmount(p.amount, p.currency)}
+                      {p.amount !== null && p.interval !== null && (
+                        <span className="text-sm font-normal" style={{ color: 'var(--admin-ink-soft)' }}> / {t(`billing.interval.${p.interval}`, p.interval)}</span>
+                      )}
+                    </p>
+                    <div>
+                      <AdminButton size="sm" variant="secondary" disabled={changingTo !== null} data-testid={`switch-${p.priceId}`} onClick={() => doChange(p.priceId)}>
+                        {changingTo === p.priceId ? t('billing.switching') : t('billing.switchTo')}
+                      </AdminButton>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {showPicker && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="billing-plans">
