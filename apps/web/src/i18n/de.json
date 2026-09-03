@@ -170,7 +170,16 @@
     "changePlanTitle": "Plan ändern",
     "changePlanNote": "Der Wechsel wird anteilig berechnet: ein Upgrade sofort, ein Downgrade auf der nächsten Rechnung gutgeschrieben.",
     "switchTo": "Wechseln",
-    "switching": "Wechsel…"
+    "switching": "Wechsel…",
+    "includedDevices": "{{n}} Geräte inklusive",
+    "currentPlan": "Aktueller Tarif",
+    "upgradeChip": "Upgrade",
+    "downgradeChip": "Downgrade",
+    "noOtherPlans": "Keine weiteren Tarife",
+    "intervalToggle": {
+      "month": "Monatlich",
+      "year": "Jährlich"
+    }
   },
   "branding": {
     "title": "Branding",
@@ -1813,5 +1822,16 @@
     "emptyBadge": "Erste Schritte",
     "emptyBody": "Legen Sie das erste Kundenkonto an — mit dessen Login sieht Ihr Kunde seine Geräte.",
     "firstAccount": "Erstes Konto anlegen"
+  },
+  "plan": {
+    "tsp_start": "TSP Start",
+    "tsp_grow": "TSP Grow",
+    "tsp_scale": "TSP Scale",
+    "tsp_enterprise": "TSP Enterprise",
+    "direct_5": "Direct 5",
+    "direct_10": "Direct 10",
+    "direct_25": "Direct 25",
+    "direct_50": "Direct 50",
+    "direct_100": "Direct 100"
   }
 }

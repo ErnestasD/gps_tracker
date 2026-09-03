@@ -170,7 +170,16 @@
     "changePlanTitle": "Zmień plan",
     "changePlanNote": "Zmiana jest proporcjonalna: wyższy plan naliczany od razu, niższy zaliczany na kolejnej fakturze.",
     "switchTo": "Przełącz",
-    "switching": "Zmiana…"
+    "switching": "Zmiana…",
+    "includedDevices": "{{n}} urządzeń w pakiecie",
+    "currentPlan": "Bieżący plan",
+    "upgradeChip": "Wyższy plan",
+    "downgradeChip": "Niższy plan",
+    "noOtherPlans": "Brak innych planów",
+    "intervalToggle": {
+      "month": "Miesięcznie",
+      "year": "Rocznie"
+    }
   },
   "branding": {
     "title": "Marka",
@@ -1833,5 +1842,16 @@
     "emptyBadge": "Start",
     "emptyBody": "Utwórz pierwsze konto klienta — z loginem klient zobaczy swoje urządzenia.",
     "firstAccount": "Utwórz pierwsze konto"
+  },
+  "plan": {
+    "tsp_start": "TSP Start",
+    "tsp_grow": "TSP Grow",
+    "tsp_scale": "TSP Scale",
+    "tsp_enterprise": "TSP Enterprise",
+    "direct_5": "Direct 5",
+    "direct_10": "Direct 10",
+    "direct_25": "Direct 25",
+    "direct_50": "Direct 50",
+    "direct_100": "Direct 100"
   }
 }

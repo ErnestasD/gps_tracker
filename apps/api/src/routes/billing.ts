@@ -240,7 +240,16 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     // no-op if they picked the plan they are already on (the UI hides it, but never trust the client)
     if (b.subscriptionPriceId === priceId) return problem(c, 409, 'Conflict', 'already_on_plan')
 
-    await deps.stripe.changePlan({ subscriptionId: b.stripeSubscriptionId, newBasePriceId: priceId, newOveragePriceId: overagePrice })
+    try {
+      await deps.stripe.changePlan({ subscriptionId: b.stripeSubscriptionId, newBasePriceId: priceId, newOveragePriceId: overagePrice })
+    } catch (err) {
+      // a Stripe-side failure (rejected proration, a subscription in a state the swap can't touch,
+      // an API blip) used to become a bare 500 with nothing logged — the user saw "couldn't reach
+      // Stripe" and we had no trace of why. Name it: this is money, and a silent failure here is the
+      // difference between "the button is flaky" and a real diagnosis.
+      console.error('billing change-plan failed', { tenantId: auth.tenantId, subscriptionId: b.stripeSubscriptionId, priceId, error: err instanceof Error ? err.message : String(err) })
+      return problem(c, 502, 'Bad Gateway', 'change_plan_failed')
+    }
     // the webhook writes the new plan; report success and let the client re-read GET /v1/billing
     return c.json({ ok: true })
   })

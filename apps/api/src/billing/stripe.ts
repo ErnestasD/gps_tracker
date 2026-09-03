@@ -28,6 +28,8 @@ export interface StripePlan {
   currency: string
   /** 'month' | 'year' for a recurring price */
   interval: string | null
+  /** the TenantPlan key this base price maps to (planMap), or null if unmapped */
+  plan: TenantPlan | null
 }
 
 export interface StripeGateway {
@@ -150,6 +152,7 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
           amount: p.unit_amount ?? null,
           currency: p.currency,
           interval: p.recurring?.interval ?? null,
+          plan: cfg.planMap[p.id] ?? null,
         })
       }
       return plans

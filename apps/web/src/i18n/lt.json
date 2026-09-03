@@ -131,7 +131,7 @@
     "noPlans": "Planų kol kas nesukonfigūruota.",
     "interval": {
       "month": "mėn.",
-      "year": "m.",
+      "year": "metai",
       "week": "sav.",
       "day": "d."
     },
@@ -170,7 +170,16 @@
     "changePlanTitle": "Keisti planą",
     "changePlanNote": "Persijungus skirtumas paskaičiuojamas proporcingai. Aukštesnis planas — apmokestinamas iškart, žemesnis — įskaitomas kitoje sąskaitoje.",
     "switchTo": "Persijungti",
-    "switching": "Keičiama…"
+    "switching": "Keičiama…",
+    "includedDevices": "{{n}} įrenginių imtinai",
+    "currentPlan": "Dabartinis planas",
+    "upgradeChip": "Aukštinimas",
+    "downgradeChip": "Žeminimas",
+    "noOtherPlans": "Kitų planų šiuo metu nėra",
+    "intervalToggle": {
+      "month": "Mėnesinis",
+      "year": "Metinis"
+    }
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -1823,5 +1832,16 @@
     "emptyBadge": "Pradžia",
     "emptyBody": "Sukurkite pirmąją kliento paskyrą — su jos prisijungimu klientas matys savo įrenginius.",
     "firstAccount": "Sukurti pirmą paskyrą"
+  },
+  "plan": {
+    "tsp_start": "TSP Start",
+    "tsp_grow": "TSP Grow",
+    "tsp_scale": "TSP Scale",
+    "tsp_enterprise": "TSP Enterprise",
+    "direct_5": "Direct 5",
+    "direct_10": "Direct 10",
+    "direct_25": "Direct 25",
+    "direct_50": "Direct 50",
+    "direct_100": "Direct 100"
   }
 }

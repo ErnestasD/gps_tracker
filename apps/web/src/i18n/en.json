@@ -170,7 +170,16 @@
     "changePlanTitle": "Change plan",
     "changePlanNote": "Switching is prorated: an upgrade is charged now, a downgrade is credited against your next invoice.",
     "switchTo": "Switch",
-    "switching": "Switching…"
+    "switching": "Switching…",
+    "includedDevices": "{{n}} devices included",
+    "currentPlan": "Current plan",
+    "upgradeChip": "Upgrade",
+    "downgradeChip": "Downgrade",
+    "noOtherPlans": "No other plans available",
+    "intervalToggle": {
+      "month": "Monthly",
+      "year": "Annual"
+    }
   },
   "branding": {
     "title": "Branding",
@@ -1813,5 +1822,16 @@
     "emptyBadge": "Getting started",
     "emptyBody": "Create your first customer account — with its login your customer sees their own devices.",
     "firstAccount": "Create the first account"
+  },
+  "plan": {
+    "tsp_start": "TSP Start",
+    "tsp_grow": "TSP Grow",
+    "tsp_scale": "TSP Scale",
+    "tsp_enterprise": "TSP Enterprise",
+    "direct_5": "Direct 5",
+    "direct_10": "Direct 10",
+    "direct_25": "Direct 25",
+    "direct_50": "Direct 50",
+    "direct_100": "Direct 100"
   }
 }
