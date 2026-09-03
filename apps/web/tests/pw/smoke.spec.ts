@@ -1225,3 +1225,87 @@ test('scrubbing the 24 h timeline draws the vehicle where it WAS (founder report
   await page.getByTestId('timeline-quick-0').click()
   await expect.poll(ghostCount, { timeout: 15_000 }).toBe(0)
 })
+
+/**
+ * The inspector sheet is the reader's height (PR #253).
+ *
+ * Below `xl` the panel is a sheet over the map, and it took a fixed 60 % of the viewport — on the
+ * 1024–1279 px band that is most of the screen, so reading a vehicle's parameters hid the vehicle.
+ * Driven here rather than asserted in a unit test because the parts that break are the ones only a
+ * real layout has: whether the grip is reachable, whether a drag moves the panel, and whether the
+ * desktop RAIL accidentally inherits the sheet's pixels.
+ */
+test('inspector sheet: drag to resize, drag away to a peek, rail above xl', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 })
+  await page.goto('/login')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL(/\/app\/?$/)
+
+  const exit = await runToExit(
+    TSX_BIN,
+    ['tools/simulator/src/main.ts', '--scenario', 'liveDrive', '--devices', '1', '--count', '5', '--hz', '5', '--port', String(INGEST_PORT), '--imei', BASE_IMEI],
+    {},
+  )
+  expect(exit).toBe(0)
+  await page.getByTestId(`device-row-${BASE_IMEI}`).click({ timeout: 30_000 })
+
+  const rail = page.getByTestId('inspector-rail')
+  const grip = page.getByTestId('sheet-grip')
+  await expect(rail).toBeVisible()
+  await expect(grip).toBeVisible()
+
+  const heightOf = async () => (await rail.boundingBox())?.height ?? 0
+  const dragBy = async (dy: number) => {
+    const g = await grip.boundingBox()
+    if (g === null) throw new Error('no grip')
+    await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2 + dy, { steps: 10 })
+    await page.mouse.up()
+    await page.waitForTimeout(150)
+  }
+
+  const opened = await heightOf()
+  expect(opened).toBeGreaterThan(200)
+
+  // down shrinks
+  await dragBy(160)
+  const smaller = await heightOf()
+  expect(smaller).toBeLessThan(opened)
+
+  // up grows, and never swallows the map: a strip of it stays
+  await dragBy(-400)
+  const bigger = await heightOf()
+  expect(bigger).toBeGreaterThan(smaller)
+  const body = await rail.evaluate((el) => el.parentElement?.getBoundingClientRect().height ?? 0)
+  expect(bigger).toBeLessThan(body)
+
+  // a long drag down puts it away, and the vehicle's close button survives the collapse — a strip
+  // you can neither dismiss nor re-open is worse than no strip
+  await dragBy(900)
+  await expect(rail).toHaveAttribute('data-sheet-peek', 'true')
+  expect(await heightOf()).toBeLessThan(100)
+  await expect(page.getByTestId('inspector-close')).toBeVisible()
+
+  // double-clicking the grip brings it back
+  await grip.dblclick()
+  await page.waitForTimeout(200)
+  await expect(rail).toHaveAttribute('data-sheet-peek', 'false')
+  const chosen = await heightOf()
+  expect(chosen).toBeGreaterThan(150)
+
+  // the choice is remembered across a reload
+  await page.reload()
+  await page.getByTestId(`device-row-${BASE_IMEI}`).click({ timeout: 30_000 })
+  expect(Math.abs((await heightOf()) - chosen)).toBeLessThan(4)
+
+  // From xl the panel is a RAIL: no grip, and the remembered sheet height must not size it. The
+  // height rides a CSS variable precisely so `xl:h-auto` can win; an inline height could not be
+  // overridden and the rail would be sized by whatever somebody last dragged on a laptop.
+  await page.setViewportSize({ width: 1380, height: 800 })
+  await page.waitForTimeout(300)
+  await expect(grip).toBeHidden()
+  expect(await heightOf()).toBeGreaterThan(chosen + 50)
+})
