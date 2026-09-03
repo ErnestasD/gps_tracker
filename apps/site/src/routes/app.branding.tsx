@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { Check, Copy } from "lucide-react";
 import { contentFor } from "@/lib/demo-content";
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from "@/components/admin/AdminKit";
 
@@ -16,7 +17,14 @@ export const Route = createFileRoute("/app/branding")({
 type DemoDomain = { id: string; domain: string; verified: boolean; txtToken: string | null };
 
 const PLATFORM_DOMAIN = "orbetra.com";
-const DNS_TARGET = "edge.orbetra.com";
+/**
+ * The CNAME target the product hands out — `EDGE_HOSTNAME` on the server, `dash.orbetra.com` today.
+ *
+ * The demo said `edge.orbetra.com`, a host that does not exist: a prospect copying it out of the
+ * demo would point their domain at nothing. A demo may simplify; it may not hand over a value that
+ * is wrong.
+ */
+const DNS_TARGET = "dash.orbetra.com";
 
 function BrandingPage() {
   const { t, i18n } = useTranslation("admin");
@@ -149,19 +157,7 @@ function BrandingPage() {
                     {t("branding.remove")}
                   </AdminButton>
                 </div>
-                {!d.verified && d.txtToken !== null && (
-                  <div
-                    className="w-full rounded-md border p-2 text-xs"
-                    style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface-sunken)" }}
-                  >
-                    <p style={{ color: "var(--admin-ink-soft)" }}>
-                      {t("branding.txtInstruction", { domain: d.domain })}
-                    </p>
-                    <code className="mono mt-1 block break-all" style={{ color: "var(--admin-ink)" }}>
-                      orbetra-verify={d.txtToken}
-                    </code>
-                  </div>
-                )}
+                {!d.verified && d.txtToken !== null && <DnsRecords domain={d.domain} txtToken={d.txtToken} />}
               </li>
             ))}
           </ul>
@@ -246,12 +242,102 @@ function AddDomain({ onAdded }: { onAdded: (d: DemoDomain) => void }) {
             <AdminInput aria-label={t("branding.domainLabel")} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="fleet.example.com" className="max-w-xs" />
             <AdminButton type="submit" disabled={domain.trim() === ""}>{t("branding.addDomain")}</AdminButton>
           </form>
-          <p className="text-xs" style={{ color: "var(--admin-ink-soft)" }}>
-            {t("branding.dnsInstruction")}{" "}
-            <code className="mono" style={{ color: "var(--admin-ink)" }}>{DNS_TARGET}</code>
-          </p>
+          {/* Nothing about DNS before a domain exists: naming the CNAME target above an empty form
+              is an instruction with no subject, and it taught a one-record setup when there are
+              two. The table appears WITH the domain — see DnsRecords. */}
         </>
       )}
     </div>
   );
+}
+
+/**
+ * The DNS records a pending domain needs, as a table — Type, Name, Value, each copyable.
+ *
+ * The dashboard's own panel, mirrored: what was here printed the single string
+ * `orbetra-verify=<token>` under "add this TXT record", which reads as a record NAMED
+ * `orbetra-verify` with that value. It is not — it is a TXT on `_orbetra-verify.<domain>` whose
+ * value is the token alone. A demo that teaches the wrong shape is worse than one that says
+ * nothing, because a prospect will try it.
+ */
+function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) {
+  const { t } = useTranslation("admin");
+  const [copied, setCopied] = React.useState<string | null>(null);
+  const rows = [
+    { type: "TXT", name: `_orbetra-verify.${domain}`, value: txtToken, purpose: t("branding.dnsPurposeTxt") },
+    { type: "CNAME", name: domain, value: DNS_TARGET, purpose: t("branding.dnsPurposeCname") },
+  ];
+  const copy = (text: string, key: string) => {
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
+    }).catch(() => undefined);
+  };
+  const Field = ({ text, k }: { text: string; k: string }) => (
+    <span className="flex items-start gap-1">
+      <code className="mono break-all" style={{ color: "var(--admin-ink)" }}>{text}</code>
+      <button
+        type="button"
+        onClick={() => copy(text, k)}
+        aria-label={`${t("branding.copy")}: ${text}`}
+        title={copied === k ? t("branding.copied") : t("branding.copy")}
+        className="shrink-0 rounded p-0.5"
+        style={{ color: copied === k ? "var(--admin-success)" : "var(--admin-ink-soft)" }}
+      >
+        {copied === k ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+      </button>
+    </span>
+  );
+  return (
+    <div
+      className="w-full rounded-md border p-3 text-xs"
+      style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface-sunken)" }}
+    >
+      <p className="font-semibold" style={{ color: "var(--admin-ink)" }}>{t("branding.dnsTitle")}</p>
+      <p className="mt-0.5" style={{ color: "var(--admin-ink-soft)" }}>{t("branding.dnsIntro")}</p>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full min-w-[34rem] border-separate border-spacing-y-1">
+          <thead>
+            <tr className="text-left" style={{ color: "var(--admin-ink-soft)" }}>
+              <th className="pr-3 font-medium">{t("branding.dnsType")}</th>
+              <th className="pr-3 font-medium">{t("branding.dnsName")}</th>
+              <th className="pr-3 font-medium">{t("branding.dnsValue")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.type}>
+                <td className="pr-3 align-top">
+                  <span className="mono font-semibold" style={{ color: "var(--admin-ink)" }}>{r.type}</span>
+                  <div style={{ color: "var(--admin-ink-soft)" }}>{r.purpose}</div>
+                </td>
+                <td className="pr-3 align-top"><Field text={r.name} k={`${r.type}-name`} /></td>
+                <td className="pr-3 align-top"><Field text={r.value} k={`${r.type}-value`} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ul className="mt-2 flex flex-col gap-1" style={{ color: "var(--admin-ink-soft)" }}>
+        <li>{t("branding.dnsRelative", { domain })}</li>
+        {/* Only where it can apply. A domain with a subdomain part takes a CNAME everywhere, so
+            the note is noise there — and it used to interpolate the domain into its own example,
+            producing "add a subdomain such as fleet.fleet.example.com". */}
+        {isApexLike(domain) && <li>{t("branding.dnsApex")}</li>}
+        <li>{t("branding.dnsKeepTxt")}</li>
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Could this name be a zone root, where a CNAME is usually impossible?
+ *
+ * Two labels ("dokigo.lt") is a root; three or more ("fleet.example.com") takes a CNAME at every
+ * provider. A multi-label public suffix like "example.co.uk" is a root we will not warn about —
+ * a missing note is a far smaller harm than a note shown against a name it cannot apply to, and
+ * getting this exactly right needs the public-suffix list, which is not worth a hint.
+ */
+function isApexLike(domain: string): boolean {
+  return domain.split(".").length <= 2
 }

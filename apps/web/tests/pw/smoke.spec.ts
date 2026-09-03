@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { BASE_IMEI, DEVICES, E2E_EMAIL, E2E_PASSWORD, INGEST_PORT, PLATFORM_EMAIL, PLATFORM_PASSWORD, TRAIL_IMEI, TSX_BIN, UNKNOWN_IMEI, runToExit } from './stack'
+import { BASE_IMEI, DEVICES, E2E_EDGE_HOSTNAME, E2E_EMAIL, E2E_PASSWORD, INGEST_PORT, PLATFORM_EMAIL, PLATFORM_PASSWORD, TRAIL_IMEI, TSX_BIN, UNKNOWN_IMEI, runToExit } from './stack'
 
 /**
  * E02-6 smoke (story AC + the full-chain <2 s assertion E02-4 deferred here):
@@ -391,10 +391,29 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   await page.reload()
   await expect(page.getByTestId('branding-productName')).toHaveValue('Acme Fleet')
 
-  // add a custom domain → server returns a TXT token → instructions render
+  /**
+   * Add a custom domain → the two DNS records render as a table.
+   *
+   * This asserted `toContainText('orbetra-verify=')` against a single string, which is exactly the
+   * shape that misled the founder: a Name and a Value fused by an `=` sign, in a panel whose
+   * fields are separate. The record is a TXT on `_orbetra-verify.<domain>` whose value is the
+   * token ALONE, and the assertion now says so — including that the fused form is gone.
+   */
   await page.getByTestId('domain-input').fill('fleet.acme-e2e.test')
   await page.getByTestId('domain-add').click()
-  await expect(page.getByTestId('txt-instructions')).toContainText('orbetra-verify=')
+
+  const dns = page.getByTestId('domain-dns-fleet.acme-e2e.test')
+  await expect(dns).toBeVisible()
+  await expect(dns.getByTestId('dns-row-TXT')).toContainText('_orbetra-verify.fleet.acme-e2e.test')
+  // The value is the bare token: 32 hex characters, and no `orbetra-verify=` prefix anywhere.
+  // No `\b` anchors — innerText concatenates the cells, so the token follows "…test" with no
+  // separator and a word boundary never appears before it.
+  await expect(dns.getByTestId('dns-row-TXT')).toContainText(/[0-9a-f]{32}/)
+  await expect(dns).not.toContainText('orbetra-verify=')
+  // and the CNAME beside it, on a DIFFERENT name — the two cannot share one (RFC 1034 §3.6.2)
+  await expect(dns.getByTestId('dns-row-CNAME')).toContainText('fleet.acme-e2e.test')
+  await expect(dns.getByTestId('dns-row-CNAME')).toContainText(E2E_EDGE_HOSTNAME)
+
   await expect(page.getByTestId('domain-fleet.acme-e2e.test')).toBeVisible()
   // unverified until DNS TXT is present (no real DNS in CI) → shows Verify affordance
   await expect(page.getByTestId('verify-fleet.acme-e2e.test')).toBeVisible()

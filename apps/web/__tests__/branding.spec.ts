@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, contrast, ensureContrast, faviconLinks } from '../src/lib/branding.js'
+import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks } from '../src/lib/branding.js'
 
 /**
  * White-label theming math (E03-5). No DOM: we test the pure WCAG contrast
@@ -108,5 +108,58 @@ describe('faviconLinks on a WHITE-LABEL host', () => {
 
   it('OUR hosts keep the platform icons', () => {
     expect(faviconLinks(undefined, false).map((l) => l.href)).toContain('/platform-icon.ico')
+  })
+})
+
+/**
+ * The DNS records a pending domain needs.
+ *
+ * The page used to print one string, `orbetra-verify=2a129…`, under "Add this TXT record to
+ * dokigo.lt". Every DNS panel asks for a Type, a Name and a Value, so a single string with an `=`
+ * in it reads as a name and a value — the founder read it exactly that way, and a record NAMED
+ * `orbetra-verify` never verifies, with nothing to say why.
+ */
+describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () => {
+  const TOKEN = '2a129fdfb3fcf34ae2ebcb3b1f020087'
+
+  it('puts the ownership TXT on its own name, with the bare token as the value', () => {
+    const [txt] = dnsRecordsFor('dokigo.lt', TOKEN, 'dash.orbetra.com')
+    expect(txt).toEqual({
+      type: 'TXT',
+      name: '_orbetra-verify.dokigo.lt',
+      value: TOKEN,
+      purposeKey: 'branding.dnsPurposeTxt',
+    })
+    // the value is the token ALONE — the prefix belongs to the legacy apex form, not here
+    expect(txt!.value).not.toContain('orbetra-verify=')
+  })
+
+  it('points the CNAME at the edge from the domain itself', () => {
+    const cname = dnsRecordsFor('fleet.example.com', TOKEN, 'dash.orbetra.com')[1]
+    expect(cname).toEqual({
+      type: 'CNAME',
+      name: 'fleet.example.com',
+      value: 'dash.orbetra.com',
+      purposeKey: 'branding.dnsPurposeCname',
+    })
+    // no trailing dot: provider panels reject it, and it belongs only in a raw zone file
+    expect(cname!.value.endsWith('.')).toBe(false)
+    expect(cname!.name.endsWith('.')).toBe(false)
+  })
+
+  it('keeps the TXT and the CNAME on DIFFERENT names, which is the point', () => {
+    // RFC 1034 §3.6.2: a CNAME cannot coexist with any other record on the same owner name, and
+    // Cloudflare and Route 53 enforce it. The old apex TXT made the two records mutually exclusive.
+    const [txt, cname] = dnsRecordsFor('dokigo.lt', TOKEN, 'dash.orbetra.com')
+    expect(txt!.name).not.toBe(cname!.name)
+  })
+
+  it('omits the CNAME rather than inventing a target when the edge host is unknown', () => {
+    const rows = dnsRecordsFor('dokigo.lt', TOKEN, null)
+    expect(rows.map((r) => r.type)).toEqual(['TXT'])
+  })
+
+  it('mirrors the legacy apex form the server still accepts', () => {
+    expect(expectedTxt(TOKEN)).toBe(`orbetra-verify=${TOKEN}`)
   })
 })

@@ -90,7 +90,7 @@ import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
 import { restoreTenantDevices } from '@orbetra/registry'
 
-import { checkPlatformSubdomain, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, type TxtResolver } from './tenantSelf.js'
+import { checkPlatformSubdomain, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type TxtResolver } from './tenantSelf.js'
 
 // Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
 // truth and is already committed, so a Redis blip must NOT 500 the request (a 500 → client
@@ -2337,7 +2337,20 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           // we hold the DNS. The slug check above plus the global partial-unique index below ARE the
           // ownership model, which is why neither may be skipped.
           const row = await db.tenantDomains.create(scopeOf(a), { userId: a.userId }, domain, newTxtToken(), ownZone ? { verified: true } : {})
-          return json(c, { ...row, txtRecord: ownZone ? null : expectedTxt(row.txtToken), dnsTarget: ownZone ? null : deps.edgeHostname ?? null }, 201)
+          /**
+           * `txtHost` + `txtValue` describe the record we ASK for: a TXT on
+           * `_orbetra-verify.<domain>` whose value is the bare token. `txtRecord` is the LEGACY
+           * apex form, still accepted by /verify and still returned so an existing API consumer
+           * does not break — but a consumer reading only it would be taught a record that cannot
+           * coexist with the CNAME the same domain needs (see tenantSelf.ts TXT_HOST_LABEL).
+           */
+          return json(c, {
+            ...row,
+            txtHost: ownZone ? null : verifyHost(row.domain),
+            txtValue: ownZone ? null : row.txtToken,
+            txtRecord: ownZone ? null : expectedTxt(row.txtToken),
+            dnsTarget: ownZone ? null : deps.edgeHostname ?? null,
+          }, 201)
         } catch (err) {
           if (err instanceof DomainLimitError) return problem(c, 409, 'Conflict', `domain limit reached (max ${MAX_DOMAINS_PER_TENANT})`)
           if (err instanceof DomainConflictError) return problem(c, 409, 'Conflict', 'that name is already taken')
