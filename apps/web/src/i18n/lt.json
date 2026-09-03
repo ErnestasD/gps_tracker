@@ -90,7 +90,8 @@
     "palettePages": "Puslapiai",
     "paletteDevices": "Įrenginiai",
     "paletteEmpty": "Nieko nerasta",
-    "console": "Platformos pultas"
+    "console": "Platformos pultas",
+    "accounts": "Paskyros"
   },
   "routing": {
     "title": "Maršrutų planuoklė",
@@ -1727,5 +1728,50 @@
   },
   "common": {
     "saving": "Saugoma…"
+  },
+  "accounts": {
+    "title": "Klientų paskyros",
+    "desc": "Kiekvienam jūsų klientui — atskira paskyra su savo įrenginiais ir prisijungimais.",
+    "name": "Pavadinimas",
+    "timezone": "Laiko juosta",
+    "logins": "Prisijungimai",
+    "account": "Paskyra",
+    "add": "Nauja paskyra",
+    "addTitle": "Nauja kliento paskyra",
+    "editTitle": "Pervadinti paskyrą",
+    "edit": "Pervadinti",
+    "delete": "Ištrinti paskyrą",
+    "deleteSure": "Ištrinti „{{name}}“? Kartu dings jos prisijungimai ir priskyrimai.",
+    "deleteError": "Nepavyko. Patikrinkite, ar paskyroje neliko įrenginių.",
+    "actions": "Veiksmai",
+    "empty": "Paskyrų dar nėra — sukurkite pirmąją savo klientui.",
+    "loadError": "Nepavyko įkelti.",
+    "loading": "Įkeliama…",
+    "saveError": "Nepavyko išsaugoti.",
+    "nameRequired": "Įveskite pavadinimą.",
+    "cancel": "Atšaukti",
+    "save": "Išsaugoti",
+    "create": "Sukurti",
+    "usersTitle": "Prisijungimai",
+    "usersEmpty": "Prisijungimų dar nėra.",
+    "tenantWide": "Visos paskyros",
+    "addUser": "Pridėti prisijungimą",
+    "addUserTitle": "Naujas prisijungimas",
+    "createUser": "Sukurti prisijungimą",
+    "userEmail": "El. paštas",
+    "userPassword": "Slaptažodis",
+    "passwordHint": "Perduokite jį klientui — prisijungęs galės pasikeisti.",
+    "role": "Rolė",
+    "roles": {
+      "platform_admin": "Platformos admin.",
+      "tsp_admin": "Organizacijos admin.",
+      "account_manager": "Paskyros valdytojas",
+      "viewer": "Stebėtojas"
+    },
+    "deleteUser": "Pašalinti prisijungimą",
+    "deleteUserSure": "Pašalinti {{email}}? Šis žmogus nebeprisijungs.",
+    "emailRequired": "Įveskite el. paštą.",
+    "passwordShort": "Slaptažodis — bent 8 simboliai.",
+    "userSaveError": "Nepavyko sukurti. Gal šis adresas jau užimtas?"
   }
 }

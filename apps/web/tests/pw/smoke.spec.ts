@@ -733,6 +733,61 @@ test('dashboard: stat cards, 7/30/90 range toggle, charts and lists render (PR #
   await expect(page.getByTestId('dash-recent')).toBeVisible()
 })
 
+/**
+ * The reseller round-trip: create a customer ACCOUNT, mint a LOGIN for it, and prove the login
+ * works by signing in with it. The API for all of this existed since E03 — the founder discovered
+ * minutes after the first real TSP checkout that no page ever called it. The sign-in leg is the
+ * point: a created row is a claim, a customer who can actually log in is the product.
+ */
+test('accounts: a TSP creates a customer account + login, and that login signs in', async ({ page, browser }) => {
+  await login(page)
+  await page.goto('/app/accounts')
+  await expect(page.getByTestId('accounts-table')).toBeVisible({ timeout: 15_000 })
+
+  // create the customer account
+  await page.getByTestId('account-add-open').click()
+  await page.getByTestId('account-name').fill('E2E Klientas UAB')
+  await page.getByTestId('account-save').click()
+  const row = page.locator('[data-testid^="account-"]').filter({ hasText: 'E2E Klientas UAB' }).first()
+  await expect(row).toBeVisible({ timeout: 15_000 })
+  const accId = (await row.getAttribute('data-testid'))!.replace('account-', '')
+
+  // mint a login inside it
+  await page.getByTestId(`account-menu-${accId}`).click()
+  await page.getByTestId(`account-adduser-${accId}`).click()
+  await page.getByTestId('account-user-email').fill('customer-e2e@orbetra.test')
+  await page.getByTestId('account-user-password').fill('customer-pass-123')
+  await page.getByTestId('account-user-save').click()
+  const userRow = page.locator('[data-testid^="account-user-"]').filter({ hasText: 'customer-e2e@orbetra.test' }).first()
+  await expect(userRow).toBeVisible({ timeout: 15_000 })
+  const userId = (await userRow.getAttribute('data-testid'))!.replace('account-user-', '')
+
+  // the login WORKS — in a fresh context, as the customer would use it
+  const ctx = await browser.newContext({ baseURL: 'http://127.0.0.1:4173' })
+  const cust = await ctx.newPage()
+  await cust.goto('/login')
+  await cust.getByTestId('email-input').fill('customer-e2e@orbetra.test')
+  await cust.getByTestId('password-input').fill('customer-pass-123')
+  await cust.getByTestId('login-submit').click()
+  await cust.waitForURL(/\/app\/?$/, { timeout: 15_000 })
+  // …and is account-scoped: navigating to the reseller surface directly must not offer the
+  // create button (the nav carries no per-item testids, so assert on the PAGE's affordance —
+  // and the admin context above proves the same button IS there for the right role)
+  await cust.goto('/app/accounts')
+  await expect(cust.getByTestId('accounts-table')).toBeVisible({ timeout: 15_000 })
+  await expect(cust.getByTestId('account-add-open')).toHaveCount(0)
+  await ctx.close()
+
+  // cleanup exercises both deletes
+  await page.getByTestId(`account-user-delete-${userId}`).click()
+  await page.getByTestId('confirm-ok').click()
+  await expect(page.locator(`[data-testid="account-user-${userId}"]`)).toHaveCount(0, { timeout: 15_000 })
+  await page.getByTestId(`account-menu-${accId}`).click()
+  await page.getByTestId(`account-delete-${accId}`).click()
+  await page.getByTestId('confirm-ok').click()
+  await expect(page.locator(`[data-testid="account-${accId}"]`)).toHaveCount(0, { timeout: 15_000 })
+})
+
 test('drivers: full CRUD — add sheet → row → edit → delete via ConfirmDialog', async ({ page }) => {
   await login(page)
   await page.goto('/app/drivers')
