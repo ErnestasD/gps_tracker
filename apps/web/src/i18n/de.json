@@ -197,7 +197,8 @@
     "nextInvoiceNote": "Enthält die Grundgebühr sowie aufgelaufene Mehrnutzung oder anteilige Beträge.",
     "noUpcoming": "Keine bevorstehende Rechnung.",
     "confirmChargeDetail": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort. Eine Differenz von {{net}} (Gutschrift für ungenutzte Zeit bereits berücksichtigt) wird der nächsten Rechnung am {{date}} hinzugefügt. Jetzt wird nichts abgebucht.",
-    "confirmCreditDetail": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort. Auf der nächsten Rechnung am {{date}} erhalten Sie {{amount}} gutgeschrieben. Jetzt wird nichts abgebucht."
+    "confirmCreditDetail": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort. Auf der nächsten Rechnung am {{date}} erhalten Sie {{amount}} gutgeschrieben. Jetzt wird nichts abgebucht.",
+    "confirmChargeNow": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort, und eine Differenz von {{net}} (Gutschrift für ungenutzte Zeit bereits berücksichtigt) wird sofort von Ihrer Karte abgebucht."
   },
   "branding": {
     "title": "Branding",

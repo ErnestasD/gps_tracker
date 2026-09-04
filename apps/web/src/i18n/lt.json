@@ -197,7 +197,8 @@
     "nextInvoiceNote": "Įskaičiuota bazė ir bet koks susikaupęs viršijimas ar proporcinis skirtumas.",
     "noUpcoming": "Artimiausios sąskaitos nėra.",
     "confirmChargeDetail": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto. Skirtumas {{net}} (kreditas už nepanaudotą laiką jau įskaičiuotas) bus pridėtas prie kitos sąskaitos {{date}}. Iš karto niekas nenuskaitoma.",
-    "confirmCreditDetail": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto. Kitoje sąskaitoje {{date}} gausite {{amount}} kreditą už nepanaudotą laiką. Iš karto niekas nenuskaitoma."
+    "confirmCreditDetail": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto. Kitoje sąskaitoje {{date}} gausite {{amount}} kreditą už nepanaudotą laiką. Iš karto niekas nenuskaitoma.",
+    "confirmChargeNow": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto, o skirtumas {{net}} (kreditas už nepanaudotą laiką jau įskaičiuotas) bus nuskaitytas iš karto nuo jūsų kortelės."
   },
   "branding": {
     "title": "Prekės ženklas",

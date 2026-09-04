@@ -41,7 +41,9 @@ export interface PlanChangePreview {
   /** credit + charge: > 0 the customer pays extra, < 0 they are credited */
   net: number
   currency: string
-  /** ISO instant the net settles onto the next invoice (renewal), or null */
+  /** true when net > 0 — an upgrade, invoiced IMMEDIATELY (not deferred to the next invoice) */
+  chargeImmediately: boolean
+  /** ISO instant the next regular invoice / renewal falls, or null */
   nextInvoiceDate: string | null
 }
 
@@ -86,8 +88,8 @@ export interface StripeGateway {
    * Preview the money impact of a plan change WITHOUT applying it (Stripe invoice preview). Returns
    * the prorated credit (unused time on the current plan, ≤ 0), the prorated charge (remaining time
    * on the target plan, ≥ 0), their net, and the date it settles — so the confirm dialog shows real
-   * numbers, not a vague promise. The new plan takes effect immediately; the net lands on the next
-   * invoice at `nextInvoiceDate` (renewal), nothing is charged now.
+   * numbers, not a vague promise. `chargeImmediately` reflects what changePlan will do: an upgrade
+   * (net > 0) is invoiced immediately; a downgrade credits the next invoice.
    */
   previewChange(opts: { subscriptionId: string; newBasePriceId: string; newOveragePriceId: string }): Promise<PlanChangePreview>
   /**
@@ -203,6 +205,33 @@ function cardOf(pm: string | Stripe.PaymentMethod | null | undefined): { brand: 
   return { brand: c.brand, last4: c.last4, expMonth: c.exp_month, expYear: c.exp_year }
 }
 
+/**
+ * Sum THIS change's proration by previewing the swap. Only the lines whose period starts at our
+ * `prorationDate` anchor count — the "unused time on <old>" credit and "remaining time on <new>"
+ * charge — so pending proration from an earlier change (a different anchor) and the next period's
+ * regular charge (starts at period_end) are excluded. Shared by previewChange (to show numbers) and
+ * changePlan (to decide whether to invoice now).
+ */
+async function previewSwapNet(
+  stripe: Stripe,
+  subscriptionId: string,
+  items: Stripe.InvoiceCreatePreviewParams.SubscriptionDetails.Item[],
+  prorationDate: number,
+): Promise<{ credit: number; charge: number; currency: string }> {
+  const preview = await stripe.invoices.createPreview({
+    subscription: subscriptionId,
+    subscription_details: { items, proration_behavior: 'create_prorations', proration_date: prorationDate },
+  })
+  let credit = 0
+  let charge = 0
+  for (const line of preview.lines.data) {
+    if (line.period?.start !== prorationDate) continue
+    if (line.amount < 0) credit += line.amount
+    else charge += line.amount
+  }
+  return { credit, charge, currency: preview.currency }
+}
+
 export function createStripeGateway(cfg: StripeConfig): StripeGateway {
   const stripe = new Stripe(cfg.secretKey)
   return {
@@ -276,14 +305,25 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
       const baseItem = sub.items.data.find((i) => i.price.recurring?.usage_type === 'licensed')
       const overageItem = sub.items.data.find((i) => i.price.recurring?.usage_type === 'metered')
       if (baseItem === undefined) throw new Error('subscription has no licensed base item')
-      const items: Stripe.SubscriptionUpdateParams.Item[] = [{ id: baseItem.id, price: newBasePriceId }]
+      const swap: { id: string; price: string }[] = [{ id: baseItem.id, price: newBasePriceId }]
       // a subscription created via our checkout always has the overage item; guard anyway so a
       // hand-made subscription without one changes the base rather than throwing
-      if (overageItem !== undefined) items.push({ id: overageItem.id, price: newOveragePriceId })
+      if (overageItem !== undefined) swap.push({ id: overageItem.id, price: newOveragePriceId })
+
+      // Decide charge TIMING by the prorated net (standard SaaS): an UPGRADE — where the customer
+      // owes money — invoices immediately (`always_invoice`), so the extra is charged now, not
+      // extended on credit until renewal. A DOWNGRADE credits the next invoice (`create_prorations`)
+      // — never a surprise mid-cycle charge, never an immediate cash refund.
+      const prorationDate = Math.floor(Date.now() / 1000)
+      const { credit, charge } = await previewSwapNet(stripe, subscriptionId, swap, prorationDate)
+      const chargeNow = credit + charge > 0
+
       await stripe.subscriptions.update(subscriptionId, {
-        items,
-        // upgrade charges the prorated difference now; downgrade credits it against the next invoice
-        proration_behavior: 'create_prorations',
+        items: swap,
+        proration_behavior: chargeNow ? 'always_invoice' : 'create_prorations',
+        // anchor the applied proration to the same instant we just previewed, so what the customer
+        // was shown in the confirm dialog is exactly what they are billed
+        proration_date: prorationDate,
         // the webhook (customer.subscription.updated) carries the new base price → the tenant's plan
         // and entitlements are persisted there, the same path a checkout uses
       })
@@ -295,31 +335,16 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
       if (baseItem === undefined) throw new Error('subscription has no licensed base item')
       const items: Stripe.InvoiceCreatePreviewParams.SubscriptionDetails.Item[] = [{ id: baseItem.id, price: newBasePriceId }]
       if (overageItem !== undefined) items.push({ id: overageItem.id, price: newOveragePriceId })
-      // proration_date = now anchors THIS change's proration lines to a known period.start, so we can
-      // isolate them from any proration already pending on the upcoming invoice.
       const prorationDate = Math.floor(Date.now() / 1000)
-      const preview = await stripe.invoices.createPreview({
-        subscription: subscriptionId,
-        subscription_details: { items, proration_behavior: 'create_prorations', proration_date: prorationDate },
-      })
-      let credit = 0
-      let charge = 0
-      for (const line of preview.lines.data) {
-        // THIS change's proration lines are exactly the ones whose period starts at our anchor: the
-        // "unused time on <old>" credit and the "remaining time on <new>" charge. The next period's
-        // regular charge starts at period_end, and pending proration from an earlier change starts at
-        // its own (earlier) anchor — both excluded. Any €0 same-anchor segment line adds nothing.
-        // (The API moved the boolean to line.parent.subscription_item_details.proration; the anchor
-        // filter alone is sufficient and type-stable, so we key on period.start.)
-        if (line.period?.start !== prorationDate) continue
-        if (line.amount < 0) credit += line.amount
-        else charge += line.amount
-      }
+      const { credit, charge, currency } = await previewSwapNet(stripe, subscriptionId, items, prorationDate)
+      const net = credit + charge
       return {
         credit,
         charge,
-        net: credit + charge,
-        currency: preview.currency,
+        net,
+        currency,
+        // net > 0 ⇒ an upgrade: changePlan will invoice it immediately, so the dialog must say so
+        chargeImmediately: net > 0,
         nextInvoiceDate: instantOf(periodEndSecondsOf(sub)),
       }
     },

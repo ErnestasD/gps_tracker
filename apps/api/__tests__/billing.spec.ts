@@ -71,7 +71,7 @@ const fakeStripe: StripeGateway = {
   createCheckoutSession: ({ customerId }) => { calls.checkout++; return Promise.resolve(`https://checkout.test/${customerId}`) },
   createPortalSession: ({ customerId }) => { calls.portal++; return Promise.resolve(`https://portal.test/${customerId}`) },
   changePlan: (o) => { calls.changePlan.push(o); return Promise.resolve() },
-  previewChange: (o) => { calls.preview.push(o.newBasePriceId); return Promise.resolve({ credit: -5000, charge: 12000, net: 7000, currency: 'eur', nextInvoiceDate: '2026-10-03T00:00:00.000Z' }) },
+  previewChange: (o) => { calls.preview.push(o.newBasePriceId); return Promise.resolve({ credit: -5000, charge: 12000, net: 7000, currency: 'eur', chargeImmediately: true, nextInvoiceDate: '2026-10-03T00:00:00.000Z' }) },
   billingDetails: () => { calls.details++; return Promise.resolve({ periodStart: '2026-09-03T00:00:00.000Z', periodEnd: '2026-10-03T00:00:00.000Z', upcomingTotal: 16234, currency: 'eur', paymentMethod: { brand: 'visa', last4: '4242', expMonth: 9, expYear: 2028 }, overagePerDeviceDay: 2 }) },
   constructEvent: (raw, sig): StripeEvent => {
     if (sig !== 'valid') throw new Error('invalid signature')
@@ -740,7 +740,7 @@ describe('billing lifecycle (ADR-024)', () => {
     const res = await req(portMulti, '/v1/billing/change-preview?priceId=price_tg', token)
     expect(res.status).toBe(200)
     const preview = (await res.json()) as PlanChangePreviewView
-    expect(preview).toMatchObject({ credit: -5000, charge: 12000, net: 7000, currency: 'eur' })
+    expect(preview).toMatchObject({ credit: -5000, charge: 12000, net: 7000, currency: 'eur', chargeImmediately: true })
     expect(preview.nextInvoiceDate).toBe('2026-10-03T00:00:00.000Z')
     expect(calls.preview).toEqual(['price_tg']) // the RIGHT target was previewed
 
