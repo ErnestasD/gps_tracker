@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks, hasPrefix } from '../src/lib/branding.js'
+import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks, fqdn, hasPrefix, relativeName } from '../src/lib/branding.js'
 
 /**
  * White-label theming math (E03-5). No DOM: we test the pure WCAG contrast
@@ -126,7 +126,7 @@ describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () 
     const [txt] = dnsRecordsFor('dokigo.lt', TOKEN, 'dash.orbetra.com')
     expect(txt).toEqual({
       type: 'TXT',
-      name: '_orbetra-verify.dokigo.lt',
+      name: '_orbetra-verify.dokigo.lt.',
       value: TOKEN,
       purposeKey: 'branding.dnsPurposeTxt',
     })
@@ -138,15 +138,12 @@ describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () 
     const cname = dnsRecordsFor('fleet.example.com', TOKEN, 'dash.orbetra.com')[1]
     expect(cname).toEqual({
       type: 'CNAME',
-      name: 'fleet.example.com',
-      value: 'dash.orbetra.com',
+      name: 'fleet.example.com.',
+      value: 'dash.orbetra.com.',
       purposeKey: 'branding.dnsPurposeCname',
       // a word in front of the domain, so this is the row to use
       choice: 'use',
     })
-    // no trailing dot: provider panels reject it, and it belongs only in a raw zone file
-    expect(cname!.value.endsWith('.')).toBe(false)
-    expect(cname!.name.endsWith('.')).toBe(false)
   })
 
   it('keeps the TXT and the CNAME on DIFFERENT names, which is the point', () => {
@@ -168,7 +165,7 @@ describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () 
     const rows = dnsRecordsFor('dokigo.lt', TOKEN, 'dash.orbetra.com', ['185.80.129.33'])
     expect(rows.map((r) => r.type)).toEqual(['TXT', 'CNAME', 'A'])
     const a = rows[2]!
-    expect(a.name).toBe('dokigo.lt')
+    expect(a.name).toBe('dokigo.lt.')
     expect(a.value).toBe('185.80.129.33')
     // on a bare domain the A row is the answer and the CNAME is the one to skip
     expect(a.choice).toBe('use')
@@ -225,5 +222,50 @@ describe('hasPrefix — has this address a word in front of the domain?', () => 
   it('leaves the TXT row unmarked — it is not one of the two choices', () => {
     const rows = dnsRecordsFor('dokigo.lt', '2a129fdfb3fcf34ae2ebcb3b1f020087', 'dash.orbetra.com', ['185.80.129.33'])
     expect(rows.find((r) => r.type === 'TXT')!.choice).toBeUndefined()
+  })
+})
+
+
+/**
+ * The trailing dot, which decides whether the record lands where the customer thinks it does.
+ *
+ * The panel used to say "never add a trailing dot". A control panel that follows zone-file rules —
+ * the founder's Lithuanian registrar is one — then treats the pasted full name as RELATIVE and
+ * appends the zone: `fleet.dokigo.lt` was filed at `fleet.dokigo.lt.dokigo.lt`, the record list
+ * looked perfect, and the browser said the site does not exist. The proof was in the same zone:
+ * the TXT entered WITH a dot resolved, the CNAME entered without one did not.
+ */
+describe('trailing dot — absolute names', () => {
+  const TOKEN2 = '4b967040e5a9670cf204733bfad9a8d2'
+
+  it('ends every NAME with a dot, so no panel can append the zone twice', () => {
+    for (const rec of dnsRecordsFor('fleet.dokigo.lt', TOKEN2, 'dash.orbetra.com', ['185.80.129.33'])) {
+      expect(rec.name.endsWith('.'), `${rec.type} name`).toBe(true)
+    }
+  })
+
+  it('ends a hostname VALUE with a dot too — a bare target gets the zone appended just the same', () => {
+    const cname = dnsRecordsFor('fleet.dokigo.lt', TOKEN2, 'dash.orbetra.com', [])[1]!
+    expect(cname.value).toBe('dash.orbetra.com.')
+  })
+
+  it('leaves values that are NOT names alone — a token and an address take no dot', () => {
+    const rows = dnsRecordsFor('fleet.dokigo.lt', TOKEN2, 'dash.orbetra.com', ['185.80.129.33'])
+    expect(rows.find((r) => r.type === 'TXT')!.value).toBe(TOKEN2)
+    expect(rows.find((r) => r.type === 'A')!.value).toBe('185.80.129.33')
+  })
+
+  it('does not double the dot when one is already there', () => {
+    expect(fqdn('dash.orbetra.com.')).toBe('dash.orbetra.com.')
+    expect(fqdn('dash.orbetra.com')).toBe('dash.orbetra.com.')
+  })
+
+  it('offers the relative form for a panel that wants only the part before the domain', () => {
+    expect(relativeName('_orbetra-verify.fleet.dokigo.lt.', 'dokigo.lt')).toBe('_orbetra-verify.fleet')
+    expect(relativeName('fleet.dokigo.lt.', 'dokigo.lt')).toBe('fleet')
+    // the zone itself is written `@` in every zone-file panel
+    expect(relativeName('dokigo.lt.', 'dokigo.lt')).toBe('@')
+    // a name outside the zone is left whole rather than mangled
+    expect(relativeName('other.example.com.', 'dokigo.lt')).toBe('other.example.com')
   })
 })

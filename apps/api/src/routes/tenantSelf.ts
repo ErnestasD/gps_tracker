@@ -194,7 +194,7 @@ export type DnsCheck = { ok: boolean; found: string[] }
  * silently never served. Without this the panel can only say "not found", and the reader's next
  * move is to re-add the record that was never going to work.
  */
-export type RouteReason = 'occupied' | 'elsewhere' | 'absent'
+export type RouteReason = 'occupied' | 'elsewhere' | 'absent' | 'doubled'
 
 export type DomainDns = {
   /** the ownership TXT — the thing /verify reads */
@@ -263,7 +263,10 @@ export async function checkDomainDns(
    */
   let reason: RouteReason | null = null
   if (expected !== null && !routeOk) {
-    reason = theirAddrs.length > 0 && !hasCname ? 'occupied' : routeFound.length > 0 ? 'elsewhere' : 'absent'
+    if (await isDoubled(resolvers.cname, domain, expected)) reason = 'doubled'
+    else if (theirAddrs.length > 0 && !hasCname) reason = 'occupied'
+    else if (routeFound.length > 0) reason = 'elsewhere'
+    else reason = 'absent'
   }
 
   return {
@@ -298,4 +301,31 @@ async function addrs(resolve: NameResolver, hostname: string): Promise<string[]>
 export async function edgeAddresses(resolve: NameResolver, edgeHostname: string | undefined): Promise<string[]> {
   if (edgeHostname === undefined || edgeHostname.trim() === '') return []
   return addrs(resolve, canon(edgeHostname))
+}
+
+
+/**
+ * Did the provider append the zone to a name that already carried it?
+ *
+ * A control panel that follows zone-file rules treats a name WITHOUT a trailing dot as relative,
+ * so pasting the full `fleet.dokigo.lt` into a `dokigo.lt` zone files the record at
+ * `fleet.dokigo.lt.dokigo.lt`. The panel then lists it looking exactly right, DNS answers NODATA
+ * for the name the customer actually typed into their browser, and nothing anywhere connects the
+ * two. It is the single most common way this setup fails, and it is invisible from the record list.
+ *
+ * We do not know which zone they manage, so every suffix of the name is tried: for
+ * `fleet.dokigo.lt` that is `fleet.dokigo.lt.dokigo.lt` and `fleet.dokigo.lt.lt`. A hit is proof —
+ * a CNAME to OUR edge under a doubled name did not get there by chance.
+ */
+async function isDoubled(resolve: NameResolver, domain: string, expected: string): Promise<boolean> {
+  const labels = domain.split('.')
+  for (let i = 1; i < labels.length; i++) {
+    const doubled = `${domain}.${labels.slice(i).join('.')}`
+    try {
+      if ((await resolve(doubled)).map(canon).includes(expected)) return true
+    } catch {
+      /* not there — try the next suffix */
+    }
+  }
+  return false
 }

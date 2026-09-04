@@ -478,6 +478,11 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
           an old web host, or a wildcard record quietly answering for a name nobody defined. */}
       {dns.data !== undefined && !dns.data.route.ok && (
         <div className="mt-2 flex flex-col gap-1" style={{ color: 'var(--admin-warning)' }} data-testid={`dns-why-${domain}`}>
+          {/* the doubled name comes FIRST: it is the failure that looks most like success, and the
+              record list the reader is staring at shows it as perfectly correct */}
+          {dns.data.route.reason === 'doubled' && (
+            <p>{t('branding.dnsDoubled', { domain, where: `${domain}.${domain.split('.').slice(1).join('.')}` })}</p>
+          )}
           {dns.data.route.reason === 'occupied' && <p>{t('branding.dnsOccupied', { domain })}</p>}
           {dns.data.route.reason === 'absent' && <p>{t('branding.dnsAbsent')}</p>}
           {dns.data.route.found.length > 0 && <p>{t('branding.dnsGoesTo', { where: dns.data.route.found.join(', ') })}</p>}

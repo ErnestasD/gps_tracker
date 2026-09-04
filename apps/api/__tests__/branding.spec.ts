@@ -251,6 +251,30 @@ describe('E03-5 domains + DNS verify', () => {
     expect(d.route.ok).toBe(true)
   })
 
+  /**
+   * The failure that looks like success.
+   *
+   * A panel following zone-file rules treats a name without a trailing dot as relative, so a
+   * pasted `fleet.dokigo.lt` in a `dokigo.lt` zone is filed at `fleet.dokigo.lt.dokigo.lt`. The
+   * record list shows it looking perfect and the browser says the site does not exist. It is the
+   * most common way this setup fails and the least visible.
+   */
+  it('spots a name the provider doubled, and says so instead of "not found"', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'fleet.dbl.t1.test' })).json()) as { id: string }
+    cnameRecords.set('fleet.dbl.t1.test.dbl.t1.test', ['dash.orbetra.test.'])
+    const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { ok: boolean; reason: string | null } }
+    expect(d.route.ok).toBe(false)
+    expect(d.route.reason).toBe('doubled')
+  })
+
+  it('does not cry "doubled" at a CNAME under a doubled name pointing somewhere ELSE', async () => {
+    // only OUR edge under a doubled name is proof; anything else is somebody's unrelated record
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'fleet.other.t1.test' })).json()) as { id: string }
+    cnameRecords.set('fleet.other.t1.test.other.t1.test', ['unrelated.example.'])
+    const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { reason: string | null } }
+    expect(d.route.reason).not.toBe('doubled')
+  })
+
   it('calls a name with nothing published ABSENT, not occupied', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'empty.t1.test' })).json()) as { id: string }
     const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { reason: string | null; found: string[] } }

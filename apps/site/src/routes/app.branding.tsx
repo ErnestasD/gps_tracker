@@ -276,9 +276,11 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
   // does this address have a word in front of the domain? a bare one cannot take a CNAME
   const prefixed = domain.split(".").length > 2;
   const rows = [
-    { type: "TXT", name: `_orbetra-verify.${domain}`, value: txtToken, purpose: t("branding.dnsPurposeTxt"), ok: true, choice: "" },
-    { type: "CNAME", name: domain, value: DNS_TARGET, purpose: t("branding.dnsPurposeCname"), ok: false, choice: prefixed ? "use" : "other" },
-    { type: "A", name: domain, value: DNS_ADDRESS, purpose: t("branding.dnsPurposeA"), ok: false, choice: prefixed ? "other" : "use" },
+    // names (and hostname VALUES) carry the trailing dot: without it a zone-file panel appends the
+    // zone again and the record lands at fleet.example.com.example.com — see apps/web branding.ts
+    { type: "TXT", name: `_orbetra-verify.${domain}.`, value: txtToken, purpose: t("branding.dnsPurposeTxt"), ok: true, choice: "" },
+    { type: "CNAME", name: `${domain}.`, value: `${DNS_TARGET}.`, purpose: t("branding.dnsPurposeCname"), ok: false, choice: prefixed ? "use" : "other" },
+    { type: "A", name: `${domain}.`, value: DNS_ADDRESS, purpose: t("branding.dnsPurposeA"), ok: false, choice: prefixed ? "other" : "use" },
   ];
   const copy = (text: string, key: string) => {
     void navigator.clipboard?.writeText(text).then(() => {

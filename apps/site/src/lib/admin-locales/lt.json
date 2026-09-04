@@ -204,7 +204,7 @@
     "dnsValue": "Reikšmė",
     "dnsPurposeTxt": "patvirtina, kad domenas jūsų",
     "dnsPurposeCname": "atveda lankytojus pas mus",
-    "dnsRelative": "Vardai parašyti pilni. Jei jūsų tiekėjas prašo tik dalies prieš „{{domain}}“ — įrašykite tik ją. Taško gale niekada nedėkite.",
+    "dnsRelative": "Vardai parašyti su tašku gale — jis reiškia „šis vardas jau pilnas\". Jei jūsų tiekėjas taško nepriima arba prašo tik dalies prieš „{{domain}}“, tašką nuimkite ir įrašykite tik tą dalį. Svarbiausia: nerašykite pilno vardo BE taško gale — dauguma tiekėjų tada dar kartą pridės jūsų domeną.",
     "dnsKeepTxt": "TXT įrašą po patvirtinimo galite palikti.",
     "copy": "Kopijuoti",
     "copied": "Nukopijuota",
@@ -221,7 +221,8 @@
     "dnsUseThis": "naudokite šį",
     "dnsAltRow": "šiuo atveju nereikia",
     "dnsWhyCname": "Jūsų adresas turi žodį prieš domeną ({{domain}}), todėl tinka CNAME. Jis geresnis: jei mūsų adresas kada pasikeis, jūsų nieko keisti nereikės.",
-    "dnsWhyA": "Jūsų adresas yra pats domenas, be žodžio priekyje. Tokiam CNAME uždėti neįmanoma — beveik nė vienas tiekėjas to neleidžia. Naudokite A įrašą. Jei jūsų tiekėjas siūlo ALIAS arba ANAME — jie čia dar geresni."
+    "dnsWhyA": "Jūsų adresas yra pats domenas, be žodžio priekyje. Tokiam CNAME uždėti neįmanoma — beveik nė vienas tiekėjas to neleidžia. Naudokite A įrašą. Jei jūsų tiekėjas siūlo ALIAS arba ANAME — jie čia dar geresni.",
+    "dnsDoubled": "Jūsų tiekėjas prie vardo dar kartą pridėjo jūsų domeną — įrašas atsidūrė ties „{{where}}“. Pataisykite vardą: arba palikite tašką gale, arba įrašykite tik dalį prieš „{{domain}}“."
   },
   "audit": {
     "title": "Audito žurnalas",
