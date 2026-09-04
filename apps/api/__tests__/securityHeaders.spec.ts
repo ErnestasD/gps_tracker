@@ -44,6 +44,25 @@ describe('E07-5 security headers', () => {
     for (const [h, v] of Object.entries(EXPECTED)) expect(res.headers.get(h), h).toBe(v)
   })
 
+  it('relax CORP for brand images ONLY — everything else stays same-origin', async () => {
+    // A tenant's logo is fetched from origins other than the one serving it: their sign-in page,
+    // our dashboard while they edit it, and a mail client rendering the header. `same-origin` blocks
+    // all three. The exception lives in the middleware because it runs AFTER the handler, so a route
+    // cannot loosen this for itself — and it is pinned here so it can never widen unnoticed.
+    // A malformed hash, so the route answers from the path alone with no database behind it — which
+    // is also the assertion: the header is decided by WHERE the request went, not by what was found.
+    const brand = await makeApp().request('/v1/public/brand/zzz.png')
+    expect(brand.status).toBe(404)
+    expect(brand.headers.get('cross-origin-resource-policy')).toBe('cross-origin')
+    for (const [h, v] of Object.entries(EXPECTED)) {
+      if (h !== 'cross-origin-resource-policy') expect(brand.headers.get(h), h).toBe(v)
+    }
+    // a path that merely LOOKS close is not covered
+    for (const p of ['/v1/public/brandx', '/v1/public/manifest.webmanifest', '/healthz']) {
+      expect((await makeApp().request(p)).headers.get('cross-origin-resource-policy'), p).toBe('same-origin')
+    }
+  })
+
   it('are present on the public docs page and a 404', async () => {
     const docs = await makeApp().request('/v1/docs')
     expect(docs.status).toBe(200)

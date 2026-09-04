@@ -79,13 +79,24 @@ Settings → Branding.
 | Field | What it does | Advice |
 |---|---|---|
 | Product name | Replaces our name everywhere — screens, e-mail headers, page titles | Your product's name, not your legal entity |
-| Logo URL | Shown on the sign-in page, in the sidebar, in e-mails, and as the browser tab icon | Must be `https://`. A wide PNG or SVG about 200×50 px. Host it somewhere permanent |
+| Logo | Shown on the sign-in page, in the sidebar and in e-mails | A wide mark, roughly 200×50 px. Upload a PNG or SVG, or link one you already host over `https://` |
+| Favicon | The browser tab icon, and the icon if someone adds your app to a phone home screen | A **square** mark. Upload a PNG or SVG, or link one. Leave it empty and we use your logo |
 | Primary colour | Buttons, links, highlights | `#rrggbb`. We automatically lighten or darken it if it would be unreadable on the background |
 | Accent colour | Secondary highlights | Optional |
 | Support e-mail | Shown in the footer of every e-mail we send for you | Your support address — this is who your customers will reply to |
 
-Your logo doubles as the browser tab icon, so a square-ish mark reads better there than a long
-wordmark. If you have both, use the wordmark.
+**Uploading vs linking.** Either works, and you can mix them. Uploading is the simpler path if you
+have no permanent place to host a file: press *upload a file* under the field, pick a PNG or SVG up
+to 512 KB, and we store and serve it. Files we serve for you are always delivered from **your own
+domain**, so nothing your customers load ever mentions us.
+
+**Use two images, not one.** A wide wordmark is right for the sign-in page and unreadable as a 16px
+tab icon; a square mark is the reverse. Until recently one field did both jobs and something always
+lost. If you only have a wordmark, upload it as the logo and leave the favicon empty — that is
+exactly what happened before, and nothing changes for you.
+
+For the home-screen icon to work everywhere, make the favicon a PNG of at least 192×192. Phones will
+not offer to install an app whose icon they cannot size.
 
 ---
 
@@ -131,10 +142,12 @@ lose an alert because a DNS record is still propagating.
 
 1. Open your address in a **private/incognito window**. You should see your logo and colours on the
    sign-in page, your name in the browser tab, and no mention of us anywhere.
-2. Use **Forgot password** with your own address. The mail should carry your logo and its link
+2. Look at the **tab icon** specifically — it is the one thing people miss, because it is small and
+   it is the last thing to change. It should be your favicon (or your logo, if you left that empty).
+3. Use **Forgot password** with your own address. The mail should carry your logo and its link
    should point back at *your* domain — not ours. Pressing Reply should reach your support address.
    (The "From" line still shows ours until Part 3 ships.)
-3. Open the site on a phone. Add it to the home screen; the icon and name should be yours.
+4. Open the site on a phone. Add it to the home screen; the icon and name should be yours.
 
 If any of those still shows our name, tell us — it is a bug on our side, not a setting you missed.
 

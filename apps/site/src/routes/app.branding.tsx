@@ -37,6 +37,7 @@ function BrandingPage() {
   const [primary, setPrimary] = React.useState("#7c7df5");
   const [accent, setAccent] = React.useState("#7c5cfc");
   const [logoUrl, setLogoUrl] = React.useState("");
+  const [faviconUrl, setFaviconUrl] = React.useState("");
   const [saved, setSaved] = React.useState(false);
   const [domains, setDomains] = React.useState<DemoDomain[]>([
     { id: "d-1", domain: `${c.domain.split(".")[0]}.orbetra.com`, verified: true, txtToken: null },
@@ -98,9 +99,18 @@ function BrandingPage() {
                 <HexInput value={accent} onCommit={setAccent} label={t("branding.accent")} />
               </div>
             </div>
+            {/* The demo shows BOTH image fields because the product has both. It does not offer the
+                upload button: this page writes to nothing, and a file picker that silently discards
+                the file is a worse promise than no file picker at all. */}
             <div className="md:col-span-2">
               <AdminLabel htmlFor="branding-logoUrl">{t("branding.logoUrl")}</AdminLabel>
               <AdminInput id="branding-logoUrl" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…" />
+              <p className="mt-1 text-xs" style={{ color: "var(--admin-ink-faint)" }}>{t("branding.logoHint")}</p>
+            </div>
+            <div className="md:col-span-2">
+              <AdminLabel htmlFor="branding-faviconUrl">{t("branding.faviconUrl")}</AdminLabel>
+              <AdminInput id="branding-faviconUrl" value={faviconUrl} onChange={(e) => setFaviconUrl(e.target.value)} placeholder="https://…" />
+              <p className="mt-1 text-xs" style={{ color: "var(--admin-ink-faint)" }}>{t("branding.faviconHint")}</p>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">

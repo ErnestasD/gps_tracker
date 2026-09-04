@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 
 import type { Context } from 'hono'
 import type { Redis } from 'ioredis'
@@ -16,6 +16,9 @@ import {
   dealDecisionSchema,
   commissionStatusUpdateSchema,
   brandingSchema,
+  brandAssetSlotSchema,
+  brandAssetUploadSchema,
+  inspectBrandAsset,
   canGrantRole,
   canManageUser,
   deviceCreateSchema,
@@ -2307,6 +2310,10 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         return json(c, {
           branding: tenant?.branding ?? {},
           name: tenant?.name,
+          // What the tenant has UPLOADED, as opposed to what branding points at — the two differ
+          // when they typed their own URL over an upload, and the page has to show both truthfully
+          // ("your file is still here, it just isn't the one in use").
+          assets: await db.tenantAssets.meta(scopeOf(auth(c))),
           dnsTarget: deps.edgeHostname ?? null,
           dnsAddresses: await edgeAddresses(deps.resolveAddress, deps.edgeHostname),
           platformDomain: deps.platformDomain ?? null,
@@ -2320,6 +2327,53 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         const a = auth(c)
         const tenant = await db.tenants.updateBranding({ userId: a.userId }, a.tenantId, data)
         return json(c, { branding: tenant.branding, name: tenant.name })
+      } },
+    // ── uploaded brand images (W10) ──────────────────────────────────────────────
+    // `:slot` is 'logo' or 'favicon' — a fixed enum, not a resource id, which is why these are
+    // declared shape:'collection'. There is no foreign tenant's slot to address: the tenant comes
+    // from the JWT and the slot names WHICH of this tenant's two images is meant.
+    //
+    // POST rather than PUT only because the route registry speaks four methods, and POST is the one
+    // that carries the entitlement gate. Semantically it is an upsert: a tenant has at most one logo.
+    { method: 'post', path: '/v1/tenant/branding/asset/:slot', scopeClass: 'tenant', entity: 'branding', shape: 'collection', entitlement: 'whiteLabel',
+      handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'branding is tenant-wide')
+        const slot = brandAssetSlotSchema.safeParse(c.req.param('slot'))
+        if (!slot.success) return problem(c, 404, 'Not Found')
+        const data = await body(c, brandAssetUploadSchema)
+        if (data === null) return problem(c, 400, 'Bad Request')
+        // The uploader's `mime` is a claim; inspectBrandAsset re-derives the truth from the bytes and
+        // is the only thing that decides what gets stored — and therefore what Content-Type is later
+        // served. A PNG header wrapping SVG markup, or the reverse, fails here.
+        const bytes = Buffer.from(data.data, 'base64')
+        const seen = inspectBrandAsset(bytes, data.mime)
+        if (!seen.ok) return problem(c, 400, 'Bad Request', seen.reason)
+        const a = auth(c)
+        const asset = await db.tenantAssets.put(scopeOf(a), { userId: a.userId }, slot.data, {
+          bytes,
+          mime: seen.value.mime,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          width: seen.value.width,
+          height: seen.value.height,
+        })
+        // The WHOLE branding object comes back, not just the asset. PATCH /v1/tenant/branding
+        // replaces the jsonb wholesale from the form's state, so a client that did not refresh after
+        // uploading would wipe this path on its next save. Returning the merged object is what lets
+        // the page reseat both its form state and its saved baseline in one step.
+        const tenant = await db.tenants.get(a.tenantId)
+        return json(c, { branding: tenant?.branding ?? {}, asset }, 201)
+      } },
+    // NOT entitlement-gated, by the rule in RouteDef.entitlement: a tenant whose plan lapsed must
+    // still be able to take their own image down.
+    { method: 'delete', path: '/v1/tenant/branding/asset/:slot', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
+      handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'branding is tenant-wide')
+        const slot = brandAssetSlotSchema.safeParse(c.req.param('slot'))
+        if (!slot.success) return problem(c, 404, 'Not Found')
+        const a = auth(c)
+        if (!await db.tenantAssets.remove(scopeOf(a), { userId: a.userId }, slot.data)) return problem(c, 404, 'Not Found')
+        const tenant = await db.tenants.get(a.tenantId)
+        return json(c, { branding: tenant?.branding ?? {} })
       } },
     // NOTE: stays a bare ARRAY. The UI also needs `dnsTarget` + `platformDomain`, and wrapping them
     // in here would have been the obvious place — but the isolation suite's collection sweep reads

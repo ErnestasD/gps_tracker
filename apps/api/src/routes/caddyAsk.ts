@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Redis } from 'ioredis'
 
 import { hashShareToken, readLatestValidPosition, type Db, type Pool } from '@orbetra/db'
-import { brandingReadSchema, type PublicShareView } from '@orbetra/shared'
+import { brandingReadSchema, isBrandAssetPath, parseAssetPath, type PublicShareView } from '@orbetra/shared'
 
 import { problem } from '../auth/middleware.js'
 import { clientIp } from '../net.js'
@@ -159,19 +159,93 @@ export function createPublicRoutes(deps: PublicDeps): Hono {
     // A tenant with no product name gets their HOST as the app name — never ours, and never their
     // internal company name (which this endpoint deliberately does not return anywhere else).
     const name = branding.productName ?? (isTenant ? host : PLATFORM_MANIFEST.name)
-    // ONE entry with `sizes: 'any'`: the logo is pinned to https and nothing else, so declaring it
-    // a 512×512 PNG would be a guess — an SVG or a 32px favicon advertised as a large raster is
-    // skipped or upscaled by the engine. `any` is the honest declaration for an unknown asset.
-    // A tenant with NO logo gets none, which does mean their app is not installable (Chrome wants
-    // an icon ≥192px) — an install prompt carrying OUR mark is the worse outcome, and the setup
-    // guide asks them for a logo precisely here.
-    const icons = typeof branding.logoUrl === 'string' && branding.logoUrl.startsWith('https://')
-      ? [{ src: branding.logoUrl, sizes: 'any' }]
-      : isTenant
-        ? []
-        : PLATFORM_MANIFEST.icons
+    // The home-screen icon is the FAVICON's job where one is set, falling back to the logo — the
+    // same precedence the browser tab uses, so what a tenant sees in the tab is what they get on a
+    // phone. Before faviconUrl existed this could only ever be the logo.
+    const src = branding.faviconUrl ?? branding.logoUrl
+    // An UPLOADED asset is the one case where we know the file: its mime and, for PNG, its real
+    // pixel size. Declaring those is what lets Chrome accept the app as installable (it wants an
+    // icon ≥192px and skips one whose declaration it cannot trust). A linked https URL is still an
+    // unknown — `sizes: 'any'` remains the honest declaration for it, since advertising a guess as
+    // a 512×512 PNG gets an SVG or a 32px favicon upscaled or dropped.
+    //
+    // A tenant with NO image still gets none, which does mean no install prompt — an install prompt
+    // carrying OUR mark is the worse outcome, and the setup guide asks for an image precisely here.
+    // Only an asset path can BE an upload, so a tenant using their own https URL costs no query on
+    // a route the browser fetches on first paint of every page.
+    const uploaded = src === undefined || tenantId === null || !isBrandAssetPath(src)
+      ? undefined
+      : (await deps.db.tenantAssets.meta({ tenantId })).find((a) => a.path === src)
+    const icons = uploaded !== undefined
+      ? [{
+          src: uploaded.path,
+          type: uploaded.mime,
+          sizes: uploaded.width !== null && uploaded.height !== null ? `${uploaded.width}x${uploaded.height}` : 'any',
+        }]
+      : typeof src === 'string' && src.startsWith('https://')
+        ? [{ src, sizes: 'any' }]
+        : isTenant
+          ? []
+          : PLATFORM_MANIFEST.icons
     const theme = typeof branding.primary === 'string' && /^#[0-9a-fA-F]{6}$/.test(branding.primary) ? branding.primary : PLATFORM_MANIFEST.theme_color
     return c.body(JSON.stringify({ ...PLATFORM_MANIFEST, name, short_name: [...name].slice(0, 24).join(''), theme_color: theme, background_color: theme, icons }))
+  })
+
+  /**
+   * An uploaded brand image (W10).
+   *
+   * This is the route that makes uploads possible at all without leaking us. The stored branding
+   * value is a RELATIVE path, so the browser asks whatever host the page is on — the reseller's own
+   * domain, or `<slug>.orbetra.com` — and Caddy already proxies /v1/* on both. No bucket, no CDN
+   * hostname, nothing for a customer to read and recognise.
+   *
+   * Resolution is by content hash ALONE, with no tenant lookup. That is deliberate: a route that
+   * resolved by Host could not serve the dashboard on our own app host, where a reseller admin is
+   * editing their brand. Serving a public logo to whoever asks costs nothing — it is already on
+   * their sign-in page — provided the response can never be active content, which is what the CSP
+   * below guarantees.
+   */
+  app.get('/v1/public/brand/:file', async (c) => {
+    // Default the miss case to uncacheable, and let only a HIT opt into the long life below. A 404
+    // is not permanent here: deleting an image and re-uploading the same file reproduces the same
+    // digest, so a cached negative would hide the restored logo for as long as it was held.
+    c.header('Cache-Control', 'no-store')
+    const parsed = parseAssetPath(`/v1/public/brand/${c.req.param('file')}`)
+    if (parsed === null) return problem(c, 404, 'Not Found')
+    // Fail OPEN, like the caddy-ask throttle above and for the same reason: the guard rail must
+    // never become the outage. A Redis blip that turned this into a 500 would blank the logo on
+    // every white-label sign-in page at once — far worse than an unthrottled minute of image serving.
+    let rl = 0
+    try {
+      rl = (await deps.redis.eval(RL_SCRIPT, 1, `rl:brand:${clientIp(c.req.header('x-forwarded-for'), deps.getRemoteAddr(c), deps.trustProxy)}`, String(deps.shareRateLimit.windowS))) as number
+    } catch {
+      /* throttle unavailable — serve the image */
+    }
+    if (rl > deps.shareRateLimit.max) return problem(c, 429, 'Too Many Requests')
+    // The extension is part of the LOOKUP, so the same bytes can never be fetched as `.svg` and
+    // served as `image/svg+xml` unless that is how they were actually stored.
+    const asset = await deps.db.tenantAssets.byHash(parsed.hash, parsed.mime)
+    if (asset === null) return problem(c, 404, 'Not Found')
+    // A year, immutable — safe precisely because the URL is the content's digest. Replacing an image
+    // yields a different path, so there is no such thing as a stale copy, only an unreferenced one.
+    c.header('Cache-Control', 'public, max-age=31536000, immutable')
+    // NO `Vary` here, and that is not the oversight it resembles. /v1/branding and the manifest above
+    // MUST carry it because their bodies differ by Host; this body is a function of the path alone,
+    // so a shared cache keyed on the URL is already correct.
+    c.header('Content-Type', asset.mime)
+    c.header('Content-Length', String(asset.bytes.length))
+    if (asset.mime === 'image/svg+xml') {
+      // THE control on uploaded SVG, not the markup screening in inspectBrandAsset. An SVG is a
+      // document: opened directly it runs script in the origin serving it, which on a tenant host is
+      // the origin holding their session. `sandbox` with no `allow-scripts` stops that outright, and
+      // `default-src 'none'` stops the file from fetching anything. There is no global CSP on this
+      // API (see security.ts), so nothing here is being overridden.
+      c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+    }
+    // ONE copy, not two: the driver's Uint8Array may be a view into a pooled buffer, so the offsets
+    // are load-bearing — but re-wrapping it in a Buffer first only bought an extra 512 KB memcpy.
+    const b = asset.bytes
+    return c.body(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer)
   })
 
   // PUBLIC temporary share link (V1-nice): resolve an opaque token → ONE device's latest valid
