@@ -399,6 +399,9 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
    * fields are separate. The record is a TXT on `_orbetra-verify.<domain>` whose value is the
    * token ALONE, and the assertion now says so — including that the fused form is gone.
    */
+  // with a PLATFORM_DOMAIN configured the form opens on the zero-setup `<slug>.` mode; this test
+  // is about a tenant's OWN domain, which is the mode that needs DNS records at all
+  await page.getByTestId('domain-mode-own').click()
   await page.getByTestId('domain-input').fill('fleet.acme-e2e.test')
   await page.getByTestId('domain-add').click()
 
@@ -418,7 +421,12 @@ test('branding: edit color + name → live preview updates; add domain → TXT i
   // the page saying nothing at all about which half is missing
   await expect(dns.getByTestId('dns-row-TXT')).toContainText(/not found/i)
   await expect(dns.getByTestId('dns-row-CNAME')).toContainText(/not found/i)
-  await expect(page.getByTestId('dns-recheck-fleet.acme-e2e.test')).toBeVisible()
+  // no "check DNS" button any more: the panel watches on its own and says so
+  await expect(page.getByTestId('dns-watching-fleet.acme-e2e.test')).toBeVisible()
+  await expect(page.getByTestId('dns-recheck-fleet.acme-e2e.test')).toHaveCount(0)
+  // each row carries its ⓘ and its ↗ into the public docs
+  await expect(dns.getByTestId('dns-hint-TXT')).toBeVisible()
+  await expect(dns.getByTestId('dns-doc-TXT')).toHaveAttribute('href', /\/docs#dns-what$/)
 
   await expect(page.getByTestId('domain-fleet.acme-e2e.test')).toBeVisible()
   // unverified until DNS TXT is present (no real DNS in CI) → shows Verify affordance

@@ -20,6 +20,8 @@ export const PLATFORM_PASSWORD = 'platform-correct-horse-battery'
 export const E2E_JWT_SECRET = 'e2e-jwt-secret-e2e-jwt-secret-e2e!' // ≥32 chars
 /** The edge host custom domains are pointed at — `EDGE_HOSTNAME` in a real deployment. */
 export const E2E_EDGE_HOSTNAME = 'dash.e2e.test'
+/** The platform's own domain — where the public docs live, and what `<slug>.` subdomains hang off. */
+export const E2E_PLATFORM_DOMAIN = 'e2e.test'
 /** An IMEI outside the seeded fleet — drives quarantine (unknown to ingest). */
 export const UNKNOWN_IMEI = '356307042449500'
 export const BASE_IMEI = '356307042441013'
