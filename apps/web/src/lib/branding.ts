@@ -47,7 +47,18 @@ export function verifyHost(domain: string): string {
 
 export type DnsRecord = {
   type: 'TXT' | 'CNAME' | 'A'
-  /** fully-qualified owner name — see branding.dnsRelative for why it is not shown relative */
+  /**
+   * The owner name, fully qualified and WITH the trailing dot.
+   *
+   * The dot is what makes it absolute. A panel that follows zone-file rules — and the Lithuanian
+   * registrar the founder uses is one — treats a name without it as relative and appends the zone,
+   * so a pasted `fleet.dokigo.lt` is filed at `fleet.dokigo.lt.dokigo.lt`. The record list then
+   * looks perfectly right while the name the customer types into a browser answers nothing.
+   *
+   * This panel used to say "never add a trailing dot", which is what produced exactly that. The
+   * evidence was in the founder's own zone: the TXT they entered WITH a dot resolved, the CNAME
+   * they entered without one did not.
+   */
   name: string
   value: string
   /** which of the jobs this record does, for the row's one-line explanation */
@@ -91,6 +102,19 @@ export function hasPrefix(domain: string): boolean {
   return domain.split('.').length > 2
 }
 
+/** A hostname in its absolute form — the trailing dot is the part that carries the meaning. */
+export function fqdn(host: string): string {
+  return host.endsWith('.') ? host : `${host}.`
+}
+
+/** The same name relative to `zone`, for a panel that wants only the part before the domain. */
+export function relativeName(host: string, zone: string): string {
+  const h = host.replace(/\.$/, '')
+  const z = zone.replace(/\.$/, '')
+  if (h === z) return '@'
+  return h.endsWith(`.${z}`) ? h.slice(0, -(z.length + 1)) : h
+}
+
 export function dnsRecordsFor(
   domain: string,
   txtToken: string,
@@ -98,14 +122,16 @@ export function dnsRecordsFor(
   dnsAddresses: string[] = [],
 ): DnsRecord[] {
   const out: DnsRecord[] = [
-    { type: 'TXT', name: verifyHost(domain), value: txtToken, purposeKey: 'branding.dnsPurposeTxt' },
+    { type: 'TXT', name: fqdn(verifyHost(domain)), value: txtToken, purposeKey: 'branding.dnsPurposeTxt' },
   ]
   const prefixed = hasPrefix(domain)
   if (dnsTarget !== null && dnsTarget !== '') {
     out.push({
       type: 'CNAME',
-      name: domain,
-      value: dnsTarget,
+      name: fqdn(domain),
+      // the TARGET needs the dot for the same reason the name does: a bare `dash.orbetra.com` in a
+      // zone-file panel becomes `dash.orbetra.com.dokigo.lt`
+      value: fqdn(dnsTarget),
       purposeKey: 'branding.dnsPurposeCname',
       choice: prefixed ? 'use' : 'other',
     })
@@ -125,7 +151,8 @@ export function dnsRecordsFor(
   for (const address of dnsAddresses) {
     out.push({
       type: 'A',
-      name: domain,
+      name: fqdn(domain),
+      // an ADDRESS is not a name — a dot here would be nonsense
       value: address,
       purposeKey: 'branding.dnsPurposeA',
       choice: prefixed ? 'other' : 'use',
@@ -320,7 +347,7 @@ export const verifyDomain = (id: string) => mutate<TenantDomain>('POST', `/v1/te
 /** What each record looks like in live DNS — see the API's checkDomainDns. */
 export type DomainDns = {
   txt: { ok: boolean; found: string[] }
-  route: { ok: boolean; found: string[]; expected: string | null; reason: 'occupied' | 'elsewhere' | 'absent' | null }
+  route: { ok: boolean; found: string[]; expected: string | null; reason: 'occupied' | 'elsewhere' | 'absent' | 'doubled' | null }
 }
 
 export const getDomainDns = (id: string) => getJson<DomainDns>(`/v1/tenant/domains/${id}/dns`)

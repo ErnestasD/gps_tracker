@@ -204,7 +204,7 @@
     "dnsValue": "Wert",
     "dnsPurposeTxt": "belegt, dass die Domain Ihnen gehört",
     "dnsPurposeCname": "bringt Besucher zu uns",
-    "dnsRelative": "Namen sind vollständig ausgeschrieben. Fragt Ihr Anbieter nur nach dem Teil vor „{{domain}}“, tragen Sie nur diesen ein. Setzen Sie nie einen Punkt ans Ende.",
+    "dnsRelative": "Die Namen sind mit einem Punkt am Ende geschrieben — dieser Punkt bedeutet „dieser Name ist bereits vollständig“. Nimmt Ihr Anbieter ihn nicht an oder fragt nur nach dem Teil vor „{{domain}}“, lassen Sie den Punkt weg und tragen nur diesen Teil ein. Zu vermeiden ist der vollständige Name OHNE den Punkt — die meisten Anbieter hängen dann Ihre Domain ein zweites Mal an.",
     "dnsKeepTxt": "Nach der Prüfung können Sie den TXT-Eintrag stehen lassen.",
     "copy": "Kopieren",
     "copied": "Kopiert",
@@ -221,7 +221,8 @@
     "dnsUseThis": "diesen verwenden",
     "dnsAltRow": "hier nicht nötig",
     "dnsWhyCname": "Ihre Adresse hat ein Wort vor der Domain ({{domain}}), daher funktioniert ein CNAME. Er ist der bessere: Ändert sich unsere Adresse einmal, müssen Sie nichts anpassen.",
-    "dnsWhyA": "Ihre Adresse ist die Domain selbst, ohne Wort davor. Dort lässt sich kein CNAME setzen — nahezu kein Anbieter erlaubt das. Verwenden Sie den A-Eintrag. Bietet Ihr Anbieter ALIAS oder ANAME an, sind diese noch besser."
+    "dnsWhyA": "Ihre Adresse ist die Domain selbst, ohne Wort davor. Dort lässt sich kein CNAME setzen — nahezu kein Anbieter erlaubt das. Verwenden Sie den A-Eintrag. Bietet Ihr Anbieter ALIAS oder ANAME an, sind diese noch besser.",
+    "dnsDoubled": "Ihr Anbieter hat Ihre Domain ein zweites Mal an den Namen gehängt — der Eintrag landete unter „{{where}}“. Korrigieren Sie den Namen: entweder den Punkt am Ende behalten oder nur den Teil vor „{{domain}}“ eintragen."
   },
   "audit": {
     "title": "Audit-Log",

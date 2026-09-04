@@ -224,7 +224,7 @@
     "dnsValue": "Wartość",
     "dnsPurposeTxt": "potwierdza, że domena jest Twoja",
     "dnsPurposeCname": "prowadzi odwiedzających do nas",
-    "dnsRelative": "Nazwy są podane w pełnej formie. Jeśli dostawca prosi tylko o część przed „{{domain}}”, wpisz tylko ją. Nigdy nie dodawaj kropki na końcu.",
+    "dnsRelative": "Nazwy są zapisane z kropką na końcu — ta kropka oznacza „ta nazwa jest już pełna”. Jeśli Twój dostawca jej nie przyjmuje albo prosi tylko o część przed „{{domain}}”, usuń kropkę i wpisz tylko tę część. Czego unikać: pełnej nazwy BEZ kropki — większość dostawców doklei wtedy Twoją domenę drugi raz.",
     "dnsKeepTxt": "Po weryfikacji rekord TXT możesz zostawić.",
     "copy": "Kopiuj",
     "copied": "Skopiowano",
@@ -241,7 +241,8 @@
     "dnsUseThis": "użyj tego",
     "dnsAltRow": "tutaj niepotrzebny",
     "dnsWhyCname": "Twój adres ma słowo przed domeną ({{domain}}), więc CNAME zadziała. Jest lepszy: jeśli nasz adres kiedyś się zmieni, Ty nie będziesz musiał nic zmieniać.",
-    "dnsWhyA": "Twój adres to sama domena, bez słowa z przodu. CNAME nie da się tam ustawić — prawie żaden dostawca na to nie pozwala. Użyj rekordu A. Jeśli dostawca oferuje ALIAS albo ANAME, są jeszcze lepsze."
+    "dnsWhyA": "Twój adres to sama domena, bez słowa z przodu. CNAME nie da się tam ustawić — prawie żaden dostawca na to nie pozwala. Użyj rekordu A. Jeśli dostawca oferuje ALIAS albo ANAME, są jeszcze lepsze.",
+    "dnsDoubled": "Twój dostawca dokleił Twoją domenę do nazwy drugi raz — rekord trafił pod „{{where}}”. Popraw nazwę: albo zostaw kropkę na końcu, albo wpisz tylko część przed „{{domain}}”."
   },
   "audit": {
     "title": "Dziennik audytu",

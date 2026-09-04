@@ -224,7 +224,7 @@
     "dnsValue": "Value",
     "dnsPurposeTxt": "proves the domain is yours",
     "dnsPurposeCname": "brings visitors to us",
-    "dnsRelative": "Names are written out in full. If your provider asks only for the part before “{{domain}}”, enter just that. Never put a dot at the end.",
+    "dnsRelative": "Names are written with a dot at the end — that dot means “this name is already complete”. If your provider will not accept it, or asks only for the part before “{{domain}}”, drop the dot and enter just that part. The one thing to avoid: the full name WITHOUT the dot — most providers will then add your domain a second time.",
     "dnsKeepTxt": "You can leave the TXT record in place after verification.",
     "copy": "Copy",
     "copied": "Copied",
@@ -241,7 +241,8 @@
     "dnsUseThis": "use this one",
     "dnsAltRow": "not needed here",
     "dnsWhyCname": "Your address has a word in front of the domain ({{domain}}), so a CNAME works. It is the better one: if our address ever changes, you will not have to change anything.",
-    "dnsWhyA": "Your address is the domain itself, with no word in front. A CNAME cannot be used there — almost no provider allows it. Use the A record. If your provider offers ALIAS or ANAME, those are better still."
+    "dnsWhyA": "Your address is the domain itself, with no word in front. A CNAME cannot be used there — almost no provider allows it. Use the A record. If your provider offers ALIAS or ANAME, those are better still.",
+    "dnsDoubled": "Your provider added your domain to the name a second time — the record ended up at “{{where}}”. Fix the name: either keep the dot at the end, or enter only the part before “{{domain}}”."
   },
   "audit": {
     "title": "Audit log",
