@@ -427,7 +427,7 @@ export const verifyDomain = (id: string) => mutate<TenantDomain>('POST', `/v1/te
 
 /** What each record looks like in live DNS — see the API's checkDomainDns. */
 export type DomainDns = {
-  txt: { ok: boolean; found: string[] }
+  txt: { ok: boolean; found: string[]; reason: 'stale' | 'absent' | null }
   route: { ok: boolean; found: string[]; expected: string | null; reason: 'occupied' | 'elsewhere' | 'absent' | 'doubled' | null }
 }
 

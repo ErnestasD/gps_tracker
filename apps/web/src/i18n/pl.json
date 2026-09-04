@@ -266,7 +266,8 @@
     "dnsWhatIs": "Co robi ten rekord",
     "dnsLearn": "Przeczytaj dokumentację",
     "dnsWatching": "Sprawdzamy automatycznie…",
-    "dnsAutoVerified": "Rekordy znalezione — domena zweryfikowana."
+    "dnsAutoVerified": "Rekordy znalezione — domena zweryfikowana.",
+    "dnsStale": "Pod tą nazwą istnieje już rekord weryfikacyjny, ale zawiera stary token. Dzieje się tak po usunięciu i ponownym dodaniu domeny — wydawany jest nowy token. Zastąp wartość rekordu tą z tabeli."
   },
   "audit": {
     "title": "Dziennik audytu",
