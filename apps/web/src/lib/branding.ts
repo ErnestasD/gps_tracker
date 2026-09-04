@@ -61,16 +61,8 @@ export type DnsRecord = {
    */
   name: string
   value: string
-  /** which of the jobs this record does, for the row's one-line explanation */
-  purposeKey: 'branding.dnsPurposeTxt' | 'branding.dnsPurposeCname' | 'branding.dnsPurposeA'
-  /**
-   * For the two routing rows: which one THIS address can actually use.
-   *
-   * Both are shown — a reader who disagrees with our guess must still be able to see the other —
-   * but one of them is the answer, and leaving the reader to work out which was the whole
-   * complaint. `undefined` on the TXT row, which is not a choice.
-   */
-  choice?: 'use' | 'other'
+  /** the explanation behind this row's ⓘ — never printed inline; see the panel */
+  hintKey: 'branding.dnsHintTxt' | 'branding.dnsHintCname' | 'branding.dnsHintA'
 }
 
 /**
@@ -115,49 +107,54 @@ export function relativeName(host: string, zone: string): string {
   return h.endsWith(`.${z}`) ? h.slice(0, -(z.length + 1)) : h
 }
 
+/**
+ * Which record actually routes THIS address to us.
+ *
+ * An address with a word in front takes a CNAME; a bare domain cannot hold one and needs the
+ * address. The panel shows ONE of them. It used to show both, tagged "use this one" and "not
+ * needed here" — the founder's verdict was that it looked cheap, and he was right: a setup panel
+ * that lists a record you must not create is asking the reader to do the product's thinking.
+ */
+export function routingKind(domain: string, override?: 'cname' | 'a'): 'cname' | 'a' {
+  return override ?? (hasPrefix(domain) ? 'cname' : 'a')
+}
+
 export function dnsRecordsFor(
   domain: string,
   txtToken: string,
   dnsTarget: string | null,
   dnsAddresses: string[] = [],
+  /** forced by live DNS when the guess is wrong — see the panel's use of the `occupied` reason */
+  override?: 'cname' | 'a',
 ): DnsRecord[] {
   const out: DnsRecord[] = [
-    { type: 'TXT', name: fqdn(verifyHost(domain)), value: txtToken, purposeKey: 'branding.dnsPurposeTxt' },
+    { type: 'TXT', name: fqdn(verifyHost(domain)), value: txtToken, hintKey: 'branding.dnsHintTxt' },
   ]
-  const prefixed = hasPrefix(domain)
-  if (dnsTarget !== null && dnsTarget !== '') {
+  /**
+   * Exactly one routing record. If the preferred kind has nothing behind it in this deployment —
+   * no edge host, or an edge host that does not resolve — the other is used rather than leaving
+   * the reader with a verification record and no way to be reached.
+   */
+  const wantCname = routingKind(domain, override) === 'cname'
+  const canCname = dnsTarget !== null && dnsTarget !== ''
+  if (wantCname && canCname) {
     out.push({
       type: 'CNAME',
       name: fqdn(domain),
       // the TARGET needs the dot for the same reason the name does: a bare `dash.orbetra.com` in a
       // zone-file panel becomes `dash.orbetra.com.dokigo.lt`
       value: fqdn(dnsTarget),
-      purposeKey: 'branding.dnsPurposeCname',
-      choice: prefixed ? 'use' : 'other',
+      hintKey: 'branding.dnsHintCname',
     })
-  }
-  /**
-   * The APEX alternative.
-   *
-   * A zone root can never hold a CNAME — not "when other records are in the way": the apex always
-   * carries SOA and NS, and RFC 1034 §3.6.2 forbids a CNAME beside any other data. So a white-label
-   * customer who wants THEIR OWN domain to be the dashboard — which is the whole thing they bought
-   * — cannot follow a CNAME instruction at all. Offering only one was the product refusing the
-   * case it exists to serve.
-   *
-   * Both rows are shown for every domain — hiding one would mean a wrong guess leaves the reader
-   * with no working record at all — but one carries the "use this one" mark. See hasPrefix.
-   */
-  for (const address of dnsAddresses) {
-    out.push({
-      type: 'A',
-      name: fqdn(domain),
+  } else if (dnsAddresses.length > 0) {
+    for (const address of dnsAddresses) {
       // an ADDRESS is not a name — a dot here would be nonsense
-      value: address,
-      purposeKey: 'branding.dnsPurposeA',
-      choice: prefixed ? 'other' : 'use',
-    })
+      out.push({ type: 'A', name: fqdn(domain), value: address, hintKey: 'branding.dnsHintA' })
+    }
+  } else if (canCname) {
+    out.push({ type: 'CNAME', name: fqdn(domain), value: fqdn(dnsTarget), hintKey: 'branding.dnsHintCname' })
   }
+
   return out
 }
 
