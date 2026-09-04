@@ -179,7 +179,10 @@
     "intervalToggle": {
       "month": "Monthly",
       "year": "Annual"
-    }
+    },
+    "confirmChangeTitle": "Switch to {{plan}}?",
+    "confirmChangeUp": "You'll switch to {{plan}} ({{price}}). The prorated difference is added to your next invoice — nothing is charged now.",
+    "confirmChangeDown": "You'll switch to {{plan}} ({{price}}). The unused amount is credited to your next invoice — nothing is charged now."
   },
   "branding": {
     "title": "Branding",
