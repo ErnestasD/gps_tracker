@@ -7,7 +7,7 @@ import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainer
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { createDb, type Db } from '@orbetra/db'
-import type { BillingView } from '@orbetra/shared'
+import type { BillingDetailsView, BillingView, PlanChangePreviewView } from '@orbetra/shared'
 
 import { seedUser } from '../../../packages/db/seed/users.js'
 import { createApp } from '../src/app.js'
@@ -62,7 +62,7 @@ async function freshTenant(name: string) {
 }
 
 // a fake Stripe gateway: deterministic customer ids, records checkout/portal calls
-const calls: { checkout: number; portal: number; changePlan: { subscriptionId: string; newBasePriceId: string; newOveragePriceId: string }[] } = { checkout: 0, portal: 0, changePlan: [] }
+const calls: { checkout: number; portal: number; changePlan: { subscriptionId: string; newBasePriceId: string; newOveragePriceId: string }[]; preview: string[]; details: number } = { checkout: 0, portal: 0, changePlan: [], preview: [], details: 0 }
 // 'price_test' behaves like a TSP plan (maps to an overage price) so checkout adds the 2nd line item
 const fakeStripe: StripeGateway = {
   prices: ['price_test'],
@@ -71,6 +71,8 @@ const fakeStripe: StripeGateway = {
   createCheckoutSession: ({ customerId }) => { calls.checkout++; return Promise.resolve(`https://checkout.test/${customerId}`) },
   createPortalSession: ({ customerId }) => { calls.portal++; return Promise.resolve(`https://portal.test/${customerId}`) },
   changePlan: (o) => { calls.changePlan.push(o); return Promise.resolve() },
+  previewChange: (o) => { calls.preview.push(o.newBasePriceId); return Promise.resolve({ credit: -5000, charge: 12000, net: 7000, currency: 'eur', nextInvoiceDate: '2026-10-03T00:00:00.000Z' }) },
+  billingDetails: () => { calls.details++; return Promise.resolve({ periodStart: '2026-09-03T00:00:00.000Z', periodEnd: '2026-10-03T00:00:00.000Z', upcomingTotal: 16234, currency: 'eur', paymentMethod: { brand: 'visa', last4: '4242', expMonth: 9, expYear: 2028 }, overagePerDeviceDay: 2 }) },
   constructEvent: (raw, sig): StripeEvent => {
     if (sig !== 'valid') throw new Error('invalid signature')
     return JSON.parse(raw) as StripeEvent
@@ -721,6 +723,52 @@ describe('billing lifecycle (ADR-024)', () => {
     expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_ts' })).status).toBe(409)
     // nothing above reached Stripe
     expect(calls.changePlan).toHaveLength(0)
+  })
+
+  it('change-preview returns the prorated credit/charge/net for a valid target, and refuses like change-plan', async () => {
+    const { token, cus } = await freshTenant('Preview')
+    // no subscription yet → 409
+    expect((await req(portMulti, '/v1/billing/change-preview?priceId=price_tg', token)).status).toBe(409)
+    await req(portMulti, '/v1/billing/checkout', token, 'POST', { priceId: 'price_ts' })
+    const sub: StripeEvent = {
+      id: 'evt_pv', type: 'customer.subscription.updated', created: 100,
+      data: { object: { id: `sub_${cus}`, customer: cus, status: 'active', current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_ts' } }] } } },
+    }
+    await req(portMulti, '/v1/webhooks/stripe', null, 'POST', sub, { 'stripe-signature': 'valid' })
+    calls.preview.length = 0
+
+    const res = await req(portMulti, '/v1/billing/change-preview?priceId=price_tg', token)
+    expect(res.status).toBe(200)
+    const preview = (await res.json()) as PlanChangePreviewView
+    expect(preview).toMatchObject({ credit: -5000, charge: 12000, net: 7000, currency: 'eur' })
+    expect(preview.nextInvoiceDate).toBe('2026-10-03T00:00:00.000Z')
+    expect(calls.preview).toEqual(['price_tg']) // the RIGHT target was previewed
+
+    // off the allowlist → 400; the plan already on → 409 — never a wasted preview call
+    calls.preview.length = 0
+    expect((await req(portMulti, '/v1/billing/change-preview?priceId=price_bogus', token)).status).toBe(400)
+    expect((await req(portMulti, '/v1/billing/change-preview?priceId=price_ts', token)).status).toBe(409)
+    expect(calls.preview).toHaveLength(0)
+  })
+
+  it('details returns live period/upcoming/card for a subscriber, and empties when unconfigured', async () => {
+    const { token, cus } = await freshTenant('Details')
+    await req(portMulti, '/v1/billing/checkout', token, 'POST', { priceId: 'price_ts' })
+    const sub: StripeEvent = {
+      id: 'evt_dt', type: 'customer.subscription.updated', created: 100,
+      data: { object: { id: `sub_${cus}`, customer: cus, status: 'active', current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_ts' } }] } } },
+    }
+    await req(portMulti, '/v1/webhooks/stripe', null, 'POST', sub, { 'stripe-signature': 'valid' })
+
+    const details = (await (await req(portMulti, '/v1/billing/details', token)).json()) as BillingDetailsView
+    expect(details.paymentMethod).toEqual({ brand: 'visa', last4: '4242', expMonth: 9, expYear: 2028 })
+    expect(details.upcomingTotal).toBe(16234)
+    expect(details.overagePerDeviceDay).toBe(2)
+    expect(details.periodEnd).toBe('2026-10-03T00:00:00.000Z')
+
+    // a keyless server never calls Stripe — every field is null, no error
+    const empty = (await (await req(portOff, '/v1/billing/details', t1Token)).json()) as BillingDetailsView
+    expect(empty).toEqual({ periodStart: null, periodEnd: null, upcomingTotal: null, currency: null, paymentMethod: null, overagePerDeviceDay: null })
   })
 
   it('portal 409s before a customer exists, then returns a url', async () => {

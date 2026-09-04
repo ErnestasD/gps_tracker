@@ -1213,3 +1213,34 @@ export interface BillingPlanView {
    *  billing UI group by TIER and interval reliably instead of parsing the product name. */
   plan: TenantPlan | null
 }
+
+/**
+ * Live billing details for the advanced billing page (Stripe reads). Every field is null when the
+ * tenant has no active subscription or the piece is unavailable.
+ */
+export interface BillingDetailsView {
+  /** current billing period bounds (ISO) */
+  periodStart: string | null
+  periodEnd: string | null
+  /** the forthcoming invoice's total in minor units (cents) + currency — base + any pending
+   *  overage/proration, i.e. what the customer will actually be billed next */
+  upcomingTotal: number | null
+  currency: string | null
+  /** the default card on file */
+  paymentMethod: { brand: string; last4: string; expMonth: number; expYear: number } | null
+  /** overage price per device-day in minor units (cents), for the usage projection */
+  overagePerDeviceDay: number | null
+}
+
+/** The prorated money impact of a plan change, previewed BEFORE it is applied (minor units). */
+export interface PlanChangePreviewView {
+  /** credit for unused time on the current plan (≤ 0) */
+  credit: number
+  /** charge for remaining time on the target plan (≥ 0) */
+  charge: number
+  /** net: > 0 the customer pays extra on the next invoice, < 0 they are credited */
+  net: number
+  currency: string
+  /** ISO instant the net settles (next invoice / renewal), or null */
+  nextInvoiceDate: string | null
+}

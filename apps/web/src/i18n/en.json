@@ -182,7 +182,22 @@
     },
     "confirmChangeTitle": "Switch to {{plan}}?",
     "confirmChangeUp": "You'll switch to {{plan}} ({{price}}). The prorated difference is added to your next invoice — nothing is charged now.",
-    "confirmChangeDown": "You'll switch to {{plan}} ({{price}}). The unused amount is credited to your next invoice — nothing is charged now."
+    "confirmChangeDown": "You'll switch to {{plan}} ({{price}}). The unused amount is credited to your next invoice — nothing is charged now.",
+    "paymentMethod": "Payment method",
+    "expires": "expires",
+    "usageTitle": "Usage this period",
+    "activeDevices": "active devices",
+    "peakDevices": "Peak per day",
+    "deviceDays": "Device-days",
+    "overageDeviceDays": "Overage device-days",
+    "overageNote": "Overage is billed at the metered rate on your next invoice.",
+    "withinAllowance": "You're within your plan's allowance.",
+    "nextInvoiceTitle": "Next invoice",
+    "on": "On",
+    "nextInvoiceNote": "Includes the base plus any accrued overage or proration.",
+    "noUpcoming": "No upcoming invoice.",
+    "confirmChargeDetail": "Switch to {{plan}} ({{price}}). The new plan takes effect immediately. A {{net}} difference (credit for unused time already applied) is added to your next invoice on {{date}}. Nothing is charged now.",
+    "confirmCreditDetail": "Switch to {{plan}} ({{price}}). The new plan takes effect immediately. You'll be credited {{amount}} on your next invoice on {{date}}. Nothing is charged now."
   },
   "branding": {
     "title": "Branding",

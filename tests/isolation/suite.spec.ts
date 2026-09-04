@@ -50,6 +50,8 @@ const EXEMPT_ROUTES: Record<string, string> = {
   'POST /v1/billing/checkout': 'tenant-wide Stripe state — billing.spec.ts',
   'POST /v1/billing/portal': 'tenant-wide Stripe state — billing.spec.ts',
   'POST /v1/billing/change-plan': 'tenant-wide Stripe state — billing.spec.ts',
+  'GET /v1/billing/change-preview': 'tenant-wide Stripe state — billing.spec.ts',
+  'GET /v1/billing/details': 'tenant-wide Stripe state — billing.spec.ts',
   'GET /v1/push/vapid-key': 'the public VAPID key is the same for every tenant',
   'POST /v1/push/subscribe': 'scope comes from the JWT only — push.spec.ts',
   'POST /v1/push/unsubscribe': 'scope comes from the JWT only — push.spec.ts',
@@ -86,6 +88,8 @@ const TENANT_WIDE_ONLY: readonly (readonly [string, string, string?])[] = [
   ['POST', '/v1/billing/checkout'],
   ['POST', '/v1/billing/portal'],
   ['POST', '/v1/billing/change-plan'],
+  ['GET', '/v1/billing/change-preview'],
+  ['GET', '/v1/billing/details'],
   ['PATCH', '/v1/tenant/branding'],
   // Concrete slots, not the `:slot` template: the slot is an enum the handler validates, so sending
   // the literal ":slot" would 404 on shape and hide whether the tenant pin was ever checked. An

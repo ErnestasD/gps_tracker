@@ -182,7 +182,22 @@
     },
     "confirmChangeTitle": "Zu {{plan}} wechseln?",
     "confirmChangeUp": "Sie wechseln zu {{plan}} ({{price}}). Die anteilige Differenz wird der nächsten Rechnung hinzugefügt — jetzt wird nichts abgebucht.",
-    "confirmChangeDown": "Sie wechseln zu {{plan}} ({{price}}). Der ungenutzte Betrag wird auf der nächsten Rechnung gutgeschrieben — jetzt wird nichts abgebucht."
+    "confirmChangeDown": "Sie wechseln zu {{plan}} ({{price}}). Der ungenutzte Betrag wird auf der nächsten Rechnung gutgeschrieben — jetzt wird nichts abgebucht.",
+    "paymentMethod": "Zahlungsmethode",
+    "expires": "gültig bis",
+    "usageTitle": "Nutzung in diesem Zeitraum",
+    "activeDevices": "aktive Geräte",
+    "peakDevices": "Spitze pro Tag",
+    "deviceDays": "Gerätetage",
+    "overageDeviceDays": "Mehrnutzung (Gerätetage)",
+    "overageNote": "Mehrnutzung wird zum metered-Tarif auf der nächsten Rechnung berechnet.",
+    "withinAllowance": "Sie liegen im Rahmen Ihres Tarifs.",
+    "nextInvoiceTitle": "Nächste Rechnung",
+    "on": "Am",
+    "nextInvoiceNote": "Enthält die Grundgebühr sowie aufgelaufene Mehrnutzung oder anteilige Beträge.",
+    "noUpcoming": "Keine bevorstehende Rechnung.",
+    "confirmChargeDetail": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort. Eine Differenz von {{net}} (Gutschrift für ungenutzte Zeit bereits berücksichtigt) wird der nächsten Rechnung am {{date}} hinzugefügt. Jetzt wird nichts abgebucht.",
+    "confirmCreditDetail": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort. Auf der nächsten Rechnung am {{date}} erhalten Sie {{amount}} gutgeschrieben. Jetzt wird nichts abgebucht."
   },
   "branding": {
     "title": "Branding",
