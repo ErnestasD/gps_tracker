@@ -1238,9 +1238,11 @@ export interface PlanChangePreviewView {
   credit: number
   /** charge for remaining time on the target plan (≥ 0) */
   charge: number
-  /** net: > 0 the customer pays extra on the next invoice, < 0 they are credited */
+  /** net: > 0 the customer pays extra (an UPGRADE, charged immediately), < 0 they are credited */
   net: number
   currency: string
-  /** ISO instant the net settles (next invoice / renewal), or null */
+  /** true when net > 0 — an upgrade, charged to the card immediately; false ⇒ credited to the next invoice */
+  chargeImmediately: boolean
+  /** ISO instant the next regular invoice / renewal falls, or null */
   nextInvoiceDate: string | null
 }

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { useConfirm } from '@/components/admin/ConfirmDialog'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, refreshSession } from '@/lib/auth'
 import { usePublicBranding } from '@/lib/publicBranding'
 import { changePlan, fmtPlanAmount, getBilling, getBillingDetails, getChangePreview, listPlans, openPortal, startCheckout } from '@/lib/billing'
 import { tenantUsage } from '@/lib/usage'
@@ -189,13 +189,14 @@ export function BillingPage() {
     setChangingTo(null)
 
     let description: string
-    if (preview !== null && preview.nextInvoiceDate !== null) {
-      const date = d(preview.nextInvoiceDate)
-      description =
-        preview.net < 0
-          ? t('billing.confirmCreditDetail', { plan: p.productName, price: priceStr, amount: fmtMoney(Math.abs(preview.net), preview.currency), date })
-          : t('billing.confirmChargeDetail', { plan: p.productName, price: priceStr, net: fmtMoney(preview.net, preview.currency), date })
+    if (preview !== null && preview.chargeImmediately) {
+      // an UPGRADE: the prorated difference is charged to the card NOW (server uses always_invoice)
+      description = t('billing.confirmChargeNow', { plan: p.productName, price: priceStr, net: fmtMoney(preview.net, preview.currency) })
+    } else if (preview !== null && preview.net < 0 && preview.nextInvoiceDate !== null) {
+      // a DOWNGRADE: the unused amount is credited to the next invoice, nothing charged now
+      description = t('billing.confirmCreditDetail', { plan: p.productName, price: priceStr, amount: fmtMoney(Math.abs(preview.net), preview.currency), date: d(preview.nextInvoiceDate) })
     } else {
+      // no computable money impact (net 0, or the preview failed) — the plain, still-accurate copy
       description = t(isUpgrade ? 'billing.confirmChangeUp' : 'billing.confirmChangeDown', { plan: p.productName, price: priceStr })
     }
 
@@ -214,14 +215,19 @@ export function BillingPage() {
     setActionError(false)
     changePlan(priceId)
       .then(() => {
-        // The change is DONE the moment changePlan resolves (200). Refreshing billing afterwards is
+        // The change is DONE the moment changePlan resolves (200). Refreshing afterwards is
         // best-effort and MUST NOT feed the error branch: invalidateQueries() rejects if any active
         // refetch fails, and chaining it into .then made a fully-successful switch report
         // "couldn't reach Stripe". So fire-and-forget (void), never return its promise here.
-        // The webhook persists the new plan a beat after Stripe returns, so refetch once now and once
-        // shortly after, so the grid + status reflect the new tier without a manual reload.
-        void qc.invalidateQueries({ queryKey: ['billing'] })
-        window.setTimeout(() => { void qc.invalidateQueries({ queryKey: ['billing'] }) }, 2500)
+        //
+        // The new plan is persisted by the webhook a beat after Stripe returns, and it lives on the
+        // SESSION (user.plan / entitlements), not just the billing query — the upgrade/downgrade
+        // chips are computed from user.plan, so a plain billing refetch left them stale until a full
+        // reload. So refresh the SESSION (POST /v1/auth/refresh → new plan), THEN invalidate billing
+        // to force a re-render that reads the fresh user. Do it now and again after the webhook lands.
+        const refresh = () => { void refreshSession().then(() => qc.invalidateQueries({ queryKey: ['billing'] })) }
+        refresh()
+        window.setTimeout(refresh, 2500)
       })
       .catch(() => setActionError(true)) // only a real change-plan failure (non-2xx) shows the error
       .finally(() => setChangingTo(null))
