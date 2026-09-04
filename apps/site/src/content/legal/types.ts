@@ -13,6 +13,14 @@ import type { Lang } from "@/lib/i18n";
 export interface DocBlock {
   /** section heading (rendered as <h2>) */
   h2?: string;
+  /**
+   * Stable anchor for this heading, so a product screen can deep-link into the docs.
+   *
+   * Authored rather than slugified from the text: the heading is translated, and an anchor that
+   * changes with the reader's language is a link that works in English and 404s the fragment in
+   * Lithuanian. Language-independent by construction.
+   */
+  id?: string;
   /** paragraph — inline markup allowed */
   p?: string;
   /** bulleted list — each item allows inline markup */

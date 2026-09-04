@@ -80,6 +80,8 @@ export type DnsRecord = {
   value: string
   /** the explanation behind this row's ⓘ — never printed inline; see the panel */
   hintKey: 'branding.dnsHintTxt' | 'branding.dnsHintCname' | 'branding.dnsHintA'
+  /** anchor in the public docs this row's ↗ opens */
+  docAnchor: 'dns-what' | 'dns-cname-a'
 }
 
 /**
@@ -145,7 +147,7 @@ export function dnsRecordsFor(
   override?: 'cname' | 'a',
 ): DnsRecord[] {
   const out: DnsRecord[] = [
-    { type: 'TXT', name: fqdn(verifyHost(domain)), value: txtToken, hintKey: 'branding.dnsHintTxt' },
+    { type: 'TXT', name: fqdn(verifyHost(domain)), value: txtToken, hintKey: 'branding.dnsHintTxt', docAnchor: 'dns-what' },
   ]
   /**
    * Exactly one routing record. If the preferred kind has nothing behind it in this deployment —
@@ -162,14 +164,15 @@ export function dnsRecordsFor(
       // zone-file panel becomes `dash.orbetra.com.dokigo.lt`
       value: fqdn(dnsTarget),
       hintKey: 'branding.dnsHintCname',
+      docAnchor: 'dns-cname-a',
     })
   } else if (dnsAddresses.length > 0) {
     for (const address of dnsAddresses) {
       // an ADDRESS is not a name — a dot here would be nonsense
-      out.push({ type: 'A', name: fqdn(domain), value: address, hintKey: 'branding.dnsHintA' })
+      out.push({ type: 'A', name: fqdn(domain), value: address, hintKey: 'branding.dnsHintA', docAnchor: 'dns-cname-a' })
     }
   } else if (canCname) {
-    out.push({ type: 'CNAME', name: fqdn(domain), value: fqdn(dnsTarget), hintKey: 'branding.dnsHintCname' })
+    out.push({ type: 'CNAME', name: fqdn(domain), value: fqdn(dnsTarget), hintKey: 'branding.dnsHintCname', docAnchor: 'dns-cname-a' })
   }
 
   return out
@@ -429,3 +432,16 @@ export type DomainDns = {
 }
 
 export const getDomainDns = (id: string) => getJson<DomainDns>(`/v1/tenant/domains/${id}/dns`)
+
+/**
+ * Where the ⓘ rows' ↗ links point.
+ *
+ * Built from the deployment's OWN platform domain rather than hardcoded: this dashboard is
+ * white-labelled, and a link to a competitor-shaped brand in a reseller's admin is exactly the
+ * leak the branding feature exists to prevent. No platform domain configured ⇒ no link, rather
+ * than a link to somewhere that may not be ours.
+ */
+export function docsLink(platformDomain: string | null, anchor: string): string | null {
+  const d = platformDomain?.trim()
+  return d === undefined || d === '' ? null : `https://${d}/docs#${anchor}`
+}

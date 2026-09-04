@@ -243,7 +243,7 @@
     "actionError": "Action failed — try again.",
     "limitDomain": "You've reached the maximum of {{max}} custom domains.",
     "dnsTitle": "DNS records",
-    "dnsIntro": "Add both records at your DNS provider, then press Verify.",
+    "dnsIntro": "Add both records at your DNS provider. The domain verifies itself as soon as we can see them.",
     "dnsType": "Type",
     "dnsName": "Name",
     "dnsValue": "Value",
@@ -254,7 +254,6 @@
     "dnsMissing": "Not found",
     "dnsChecking": "Checking…",
     "dnsGoesTo": "This name currently resolves to {{where}}.",
-    "dnsRecheck": "Check DNS",
     "dnsOccupied": "This name already has other records, so a CNAME will not take effect here — your provider accepts it but never serves it. Use the A record below, or choose an address with a word in front (for example fleet.{{domain}}).",
     "dnsAbsent": "Nothing is published for this name yet.",
     "dnsDoubled": "Your provider added your domain to the name a second time — the record ended up at “{{where}}”. Fix the name: either keep the dot at the end, or enter only the part before “{{domain}}”.",
@@ -263,7 +262,10 @@
     "dnsHintA": "Your address is the domain itself, with no word in front. A CNAME cannot be used there — almost no provider allows it. If your provider offers ALIAS or ANAME, those are better still: they work like an A record but follow us.",
     "dnsHelp": "Names are written with a dot at the end — that dot means “this name is already complete”. If your provider will not accept it, or asks only for the part before “{{domain}}”, drop the dot and enter just that part. Do not enter the full name WITHOUT the dot — most providers will then add your domain a second time.\\n\\nThis does not affect e-mail: mail records (MX) are separate and stay as they are.\\n\\nDNS changes take a few minutes to spread. If you have just added these, wait a moment and press “Check DNS”.",
     "dnsHelpTitle": "How to add these records",
-    "dnsWhatIs": "What this record does"
+    "dnsWhatIs": "What this record does",
+    "dnsLearn": "Read the docs",
+    "dnsWatching": "Checking automatically…",
+    "dnsAutoVerified": "Records found — domain verified."
   },
   "audit": {
     "title": "Audit log",

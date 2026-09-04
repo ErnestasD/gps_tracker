@@ -41,7 +41,8 @@ function renderInline(text: string): ReactNode {
 }
 
 function Block({ b }: { b: DocBlock }) {
-  if (b.h2 !== undefined) return <h2 className="display mt-12 mb-3 text-2xl font-semibold text-ink first:mt-2">{b.h2}</h2>;
+  // scroll-mt clears the sticky header when arriving via a #fragment from the app
+  if (b.h2 !== undefined) return <h2 id={b.id} className="display mt-12 mb-3 scroll-mt-24 text-2xl font-semibold text-ink first:mt-2">{b.h2}</h2>;
   if (b.p !== undefined) return <p className="mt-4 leading-relaxed text-ink/80">{renderInline(b.p)}</p>;
   if (b.ul !== undefined) return <ul className="mt-4 list-disc space-y-2 pl-5 leading-relaxed text-ink/80 marker:text-[var(--brand-blue)]">{b.ul.map((it, i) => <li key={i}>{renderInline(it)}</li>)}</ul>;
   if (b.ol !== undefined) return <ol className="mt-4 list-decimal space-y-2 pl-5 leading-relaxed text-ink/80 marker:text-muted-foreground">{b.ol.map((it, i) => <li key={i}>{renderInline(it)}</li>)}</ol>;

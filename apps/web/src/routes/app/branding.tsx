@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Copy, Info } from 'lucide-react'
+import { ArrowUpRight, Check, Copy, Info, Loader2 } from 'lucide-react'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
@@ -13,6 +13,7 @@ import {
   applyBranding,
   clean,
   dnsRecordsFor,
+  docsLink,
   emitBrandingChange,
   getDomainDns,
   getBranding,
@@ -285,7 +286,15 @@ export function BrandingPage() {
                       returning user who navigated away can still publish them and Verify (was
                       reachable only in the transient add-response) */}
                   {!d.verified && (
-                    <DnsRecords id={d.id} domain={d.domain} txtToken={d.txtToken} dnsTarget={current.data?.dnsTarget ?? null} dnsAddresses={current.data?.dnsAddresses ?? []} />
+                    <DnsRecords
+                      id={d.id}
+                      domain={d.domain}
+                      txtToken={d.txtToken}
+                      dnsTarget={current.data?.dnsTarget ?? null}
+                      dnsAddresses={current.data?.dnsAddresses ?? []}
+                      platformDomain={current.data?.platformDomain ?? null}
+                      onVerified={() => void qc.invalidateQueries({ queryKey: ['domains'] })}
+                    />
                   )}
                 </li>
               ))}
@@ -453,7 +462,7 @@ function AddDomain({ count, platformDomain, onAdded }: { count: number; platform
  * pointing the domain at us are two records, and a page that mentions them a screen apart teaches
  * a one-record setup.
  */
-function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: string; domain: string; txtToken: string; dnsTarget: string | null; dnsAddresses: string[] }) {
+function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses, platformDomain, onVerified }: { id: string; domain: string; txtToken: string; dnsTarget: string | null; dnsAddresses: string[]; platformDomain: string | null; onVerified: () => void }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState<string | null>(null)
 
@@ -464,7 +473,36 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
    * silently dropped" looked exactly like "not done yet" — and that state is reachable without any
    * mistake on the tenant's part.
    */
-  const dns = useQuery({ queryKey: ['domain-dns', id], queryFn: () => getDomainDns(id), refetchOnWindowFocus: false })
+  /**
+   * Polled, not asked for.
+   *
+   * There was a "Check DNS" button, which makes the reader responsible for knowing when their
+   * provider has finished propagating — a thing they cannot know. It watches on its own now, and
+   * when both records land it verifies the domain without a click: the status simply becomes
+   * Verified while they are looking at it.
+   *
+   * Paused in a hidden tab. A setup panel left open in a background window for a day should not
+   * be a stream of DNS lookups nobody is waiting on.
+   */
+  const dns = useQuery({
+    queryKey: ['domain-dns', id],
+    queryFn: () => getDomainDns(id),
+    refetchOnWindowFocus: true,
+    refetchInterval: DNS_POLL_MS,
+    refetchIntervalInBackground: false,
+  })
+
+  const verifying = useRef(false)
+  useEffect(() => {
+    if (dns.data === undefined || !dns.data.txt.ok || !dns.data.route.ok) return
+    // once — the poll keeps firing, and a verify per tick would be a mutation storm
+    if (verifying.current) return
+    verifying.current = true
+    verifyDomain(id).then(onVerified).catch(() => {
+      // the server re-checks DNS itself and may still disagree; let the next poll try again
+      verifying.current = false
+    })
+  }, [dns.data, id, onVerified])
 
   /**
    * Which routing record to show — ONE, not both.
@@ -515,6 +553,7 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
                   <span className="inline-flex items-center gap-1">
                     <span className="mono font-semibold" style={{ color: 'var(--admin-ink)' }}>{r.type}</span>
                     <Hint label={t('branding.dnsWhatIs')} body={t(r.hintKey)} testId={`dns-hint-${r.type}`} />
+                    <DocLink href={docsLink(platformDomain, r.docAnchor)} label={t('branding.dnsLearn')} testId={`dns-doc-${r.type}`} />
                   </span>
                 </td>
                 <td className="pr-3 align-top">
@@ -550,12 +589,35 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
         </div>
       )}
 
-      <div className="mt-2">
-        <AdminButton variant="secondary" size="sm" onClick={() => void dns.refetch()} data-testid={`dns-recheck-${domain}`}>
-          {t('branding.dnsRecheck')}
-        </AdminButton>
+      {/* the panel is watching — said plainly, because a screen that changes on its own without
+          saying it is doing so reads as a screen that has frozen */}
+      <div className="mt-2 flex items-center gap-1.5" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`dns-watching-${domain}`}>
+        <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden />
+        {t('branding.dnsWatching')}
       </div>
     </div>
+  )
+}
+
+/** How often the panel looks at DNS while a domain is still pending. A provider takes minutes. */
+const DNS_POLL_MS = 20_000
+
+/** The ↗ beside a record: the same explanation, at length, on the public docs page. */
+function DocLink({ href, label, testId }: { href: string | null; label: string; testId: string }) {
+  if (href === null) return null
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+      className="grid h-4 w-4 shrink-0 place-items-center rounded transition-colors hover:bg-[var(--admin-hairline)]"
+      style={{ color: 'var(--admin-ink-soft)' }}
+    >
+      <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+    </a>
   )
 }
 

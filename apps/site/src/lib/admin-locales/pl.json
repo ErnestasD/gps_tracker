@@ -201,7 +201,7 @@
     "actionError": "Akcja nie powiodła się — spróbuj ponownie.",
     "limitDomain": "Osiągnięto maksymalną liczbę {{max}} domen niestandardowych.",
     "dnsTitle": "Rekordy DNS",
-    "dnsIntro": "Dodaj oba rekordy u swojego dostawcy DNS, a potem kliknij Weryfikuj.",
+    "dnsIntro": "Dodaj oba rekordy u swojego dostawcy DNS. Domena zweryfikuje się sama, gdy tylko je zobaczymy.",
     "dnsType": "Typ",
     "dnsName": "Nazwa",
     "dnsValue": "Wartość",
@@ -212,7 +212,6 @@
     "dnsMissing": "Nie znaleziono",
     "dnsChecking": "Sprawdzanie…",
     "dnsGoesTo": "Ta nazwa kieruje obecnie do {{where}}.",
-    "dnsRecheck": "Sprawdź DNS",
     "dnsOccupied": "Ta nazwa ma już inne rekordy, więc CNAME tu nie zadziała — dostawca go przyjmuje, ale nigdy nie podaje. Użyj rekordu A poniżej albo wybierz adres ze słowem z przodu (np. fleet.{{domain}}).",
     "dnsAbsent": "Dla tej nazwy nic jeszcze nie opublikowano.",
     "dnsDoubled": "Twój dostawca dokleił Twoją domenę do nazwy drugi raz — rekord trafił pod „{{where}}”. Popraw nazwę: albo zostaw kropkę na końcu, albo wpisz tylko część przed „{{domain}}”.",
@@ -221,7 +220,10 @@
     "dnsHintA": "Twój adres to sama domena, bez słowa z przodu. CNAME nie da się tam ustawić — prawie żaden dostawca na to nie pozwala. Jeśli dostawca oferuje ALIAS albo ANAME, są jeszcze lepsze: działają jak A, ale podążają za nami.",
     "dnsHelp": "Nazwy są zapisane z kropką na końcu — ta kropka oznacza „ta nazwa jest już pełna”. Jeśli Twój dostawca jej nie przyjmuje albo prosi tylko o część przed „{{domain}}”, usuń kropkę i wpisz tylko tę część. Nie wpisuj pełnej nazwy BEZ kropki — większość dostawców doklei wtedy Twoją domenę drugi raz.\\n\\nNie wpływa to na pocztę: rekordy MX są osobne i pozostają bez zmian.\\n\\nZmiany w DNS rozchodzą się kilka minut. Jeśli właśnie je dodałeś, poczekaj chwilę i kliknij „Sprawdź DNS”.",
     "dnsHelpTitle": "Jak dodać te rekordy",
-    "dnsWhatIs": "Co robi ten rekord"
+    "dnsWhatIs": "Co robi ten rekord",
+    "dnsLearn": "Przeczytaj dokumentację",
+    "dnsWatching": "Sprawdzamy automatycznie…",
+    "dnsAutoVerified": "Rekordy znalezione — domena zweryfikowana."
   },
   "audit": {
     "title": "Dziennik audytu",
