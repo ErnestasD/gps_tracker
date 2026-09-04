@@ -4,7 +4,7 @@ import type { Redis } from 'ioredis'
 import type { Db, PaidInvoice, SubscriptionUpdate } from '@orbetra/db'
 import type { TenantDeviceRow } from '@orbetra/registry'
 import { isDirectPlan } from '@orbetra/shared'
-import type { BillingPlanView, BillingView, Role } from '@orbetra/shared'
+import type { BillingDetailsView, BillingPlanView, BillingView, PlanChangePreviewView, Role } from '@orbetra/shared'
 
 import type { StripeGateway } from '../billing/stripe.js'
 import { problem, type AuthContext, type AuthEnv } from '../auth/middleware.js'
@@ -252,6 +252,63 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     }
     // the webhook writes the new plan; report success and let the client re-read GET /v1/billing
     return c.json({ ok: true })
+  })
+
+  /**
+   * Preview the money impact of a plan change WITHOUT applying it — real prorated credit/charge/net
+   * and the date they settle, so the confirm dialog shows numbers, not a promise. Same validation as
+   * change-plan (allowlisted TSP price with a paired overage, an active subscription, not the current
+   * plan); a preview that Stripe can't compute is a soft failure, not a 500.
+   */
+  app.get('/v1/billing/change-preview', async (c) => {
+    const auth = c.get('auth')
+    if (!isTenantWideAdmin(auth)) return problem(c, 403, 'Forbidden')
+    if (deps.stripe === undefined) return problem(c, 503, 'Service Unavailable', 'billing_not_configured')
+
+    const priceId = c.req.query('priceId')
+    if (priceId === undefined || !deps.stripe.prices.includes(priceId)) return problem(c, 400, 'Bad Request', 'invalid_price')
+    const targetPlan = deps.stripe.planFor(priceId)
+    const overagePrice = deps.stripe.overageFor(priceId)
+    if (targetPlan === undefined || isDirectPlan(targetPlan) || overagePrice === undefined) return problem(c, 400, 'Bad Request', 'not_a_tsp_plan')
+
+    const b = await deps.db.tenants.getBilling(auth.tenantId)
+    if (b?.stripeSubscriptionId == null) return problem(c, 409, 'Conflict', 'no_subscription')
+    if (b.subscriptionPriceId === priceId) return problem(c, 409, 'Conflict', 'already_on_plan')
+
+    try {
+      const preview = await deps.stripe.previewChange({ subscriptionId: b.stripeSubscriptionId, newBasePriceId: priceId, newOveragePriceId: overagePrice })
+      return c.json(preview satisfies PlanChangePreviewView)
+    } catch (err) {
+      console.error('billing change-preview failed', { tenantId: auth.tenantId, priceId, error: err instanceof Error ? err.message : String(err) })
+      return problem(c, 502, 'Bad Gateway', 'preview_failed')
+    }
+  })
+
+  /**
+   * Live billing details for the advanced page: current period, upcoming invoice total, the card on
+   * file, and the overage rate. Everything is null when there is no active subscription, so the page
+   * degrades cleanly rather than erroring.
+   */
+  app.get('/v1/billing/details', async (c) => {
+    const auth = c.get('auth')
+    if (!isTenantWideAdmin(auth)) return problem(c, 403, 'Forbidden')
+    c.header('Cache-Control', 'no-store')
+    const empty: BillingDetailsView = { periodStart: null, periodEnd: null, upcomingTotal: null, currency: null, paymentMethod: null, overagePerDeviceDay: null }
+    if (deps.stripe === undefined) return c.json(empty)
+    const b = await deps.db.tenants.getBilling(auth.tenantId)
+    if (b?.stripeSubscriptionId == null || b.stripeCustomerId == null) return c.json(empty)
+    try {
+      const details = await deps.stripe.billingDetails({
+        subscriptionId: b.stripeSubscriptionId,
+        customerId: b.stripeCustomerId,
+        overagePriceId: b.subscriptionPriceId != null ? deps.stripe.overageFor(b.subscriptionPriceId) : undefined,
+      })
+      return c.json(details satisfies BillingDetailsView)
+    } catch (err) {
+      // a live-Stripe read failing must not blank the whole billing page — degrade to empties
+      console.error('billing details failed', { tenantId: auth.tenantId, error: err instanceof Error ? err.message : String(err) })
+      return c.json(empty)
+    }
   })
 }
 
