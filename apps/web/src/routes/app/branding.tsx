@@ -11,18 +11,24 @@ import {
   MAX_DOMAINS_PER_TENANT,
   addDomain,
   applyBranding,
+  clean,
   dnsRecordsFor,
   emitBrandingChange,
   getDomainDns,
   getBranding,
   listDomains,
+  removeBrandAsset,
   removeDomain,
   saveBranding,
+  stripDataUrl,
+  uploadBrandAsset,
   verifyDomain,
+  type BrandAsset,
   type Branding,
   type DnsRecord,
   type DomainDns,
 } from '@/lib/branding'
+import { MAX_BRAND_ASSET_BYTES, type BrandAssetRejection } from '@orbetra/shared'
 
 /** Branding page (E03-5): edit colors/logo/name with a live preview, and manage
  * custom domains (DNS TXT verify). tsp_admin edits their own tenant only (API-scoped).
@@ -37,6 +43,12 @@ export function BrandingPage() {
   const [form, setForm] = useState<Branding>({})
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false) // in-flight guard: no double-submit of the branding POST
+  // Uploads run in the image fields, and a save started while one is in flight can undo it — so the
+  // page owns the count and Save is disabled for the whole of it. A count, not a flag: there are two
+  // image fields and either can be busy.
+  const [assetBusy, setAssetBusy] = useState(0)
+  const busyAll = busy || assetBusy > 0
+  const onAssetBusy = (b: boolean) => setAssetBusy((n) => Math.max(0, n + (b ? 1 : -1)))
   const [error, setError] = useState<string | null>(null)
   const [domainError, setDomainError] = useState(false) // verify/remove failures were swallowed
   // remove target resolves against the LIVE list (devices precedent)
@@ -45,12 +57,21 @@ export function BrandingPage() {
 
   // latest SAVED branding, kept for the leave-without-saving revert below
   const savedRef = useRef<Branding | null>(null)
+  // Has the user typed since the last load/save? An upload invalidates the branding query to refresh
+  // the asset list, and without this the refetch that follows overwrote whatever they had typed in
+  // the meantime with server state — silently, mid-edit.
+  const dirtyRef = useRef(false)
   useEffect(() => {
     if (current.data) {
-      setForm(current.data.branding)
       savedRef.current = current.data.branding
+      if (!dirtyRef.current) setForm(current.data.branding)
     }
   }, [current.data])
+  /** Every field edit goes through this, so `dirty` cannot fall out of step with the form. */
+  const edit = (patch: Partial<Branding>) => {
+    dirtyRef.current = true
+    setForm((f) => ({ ...f, ...patch }))
+  }
 
   // live preview: apply as you type (validated inside applyBranding).
   // `whiteLabel` is TRUE here by definition — this page only renders for a tenant editing its own
@@ -68,15 +89,37 @@ export function BrandingPage() {
     [],
   )
 
+  /**
+   * Adopt branding the SERVER just wrote (an upload or a removal).
+   *
+   * Both the form and the saved baseline are reseated, and that pair is the point: PATCH replaces
+   * the whole branding object from `form`, so leaving a stale `form` here would make the very next
+   * Save undo the upload. Reseating `savedRef` too keeps the leave-the-page revert honest — the
+   * upload IS saved, and reverting to a baseline taken before it would put the old image back.
+   */
+  const applySaved = (b: Branding) => {
+    setForm(b)
+    savedRef.current = b
+    dirtyRef.current = false
+    void qc.invalidateQueries({ queryKey: ['branding'] })
+    emitBrandingChange()
+  }
+
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (busy) return // in-flight guard: no double-submit
+    // Covers uploads too, not just a double-click on Save. An upload writes branding server-side;
+    // a PATCH racing it would send a `form` that predates the new path and — because PATCH replaces
+    // the whole jsonb — delete the image that had just been stored, and report success.
+    if (busyAll) return
     setError(null)
     setSaved(false)
     setBusy(true)
     saveBranding(clean(form))
       .then(() => {
         setSaved(true)
+        // the form now matches the server, so let a refetch reseat it again — otherwise the page
+        // would stay "dirty" for the rest of the session and ignore every later load.
+        dirtyRef.current = false
         void qc.invalidateQueries({ queryKey: ['branding'] })
         emitBrandingChange() // refresh the always-mounted sidebar brand block (name/logo) without a reload
       })
@@ -96,11 +139,11 @@ export function BrandingPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <AdminLabel htmlFor="branding-productName">{t('branding.productName')}</AdminLabel>
-              <AdminInput id="branding-productName" value={form.productName ?? ''} onChange={(e) => setForm((f) => ({ ...f, productName: e.target.value }))} data-testid="branding-productName" />
+              <AdminInput id="branding-productName" value={form.productName ?? ''} onChange={(e) => edit({ productName: e.target.value })} data-testid="branding-productName" />
             </div>
             <div>
               <AdminLabel htmlFor="branding-supportEmail">{t('branding.supportEmail')}</AdminLabel>
-              <AdminInput id="branding-supportEmail" type="email" value={form.supportEmail ?? ''} onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))} data-testid="branding-supportEmail" />
+              <AdminInput id="branding-supportEmail" type="email" value={form.supportEmail ?? ''} onChange={(e) => edit({ supportEmail: e.target.value })} data-testid="branding-supportEmail" />
             </div>
             {/* native color inputs are the Lovable idiom here (OS pickers; e2e fills them) —
                 each is paired with an EDITABLE mono hex field (reference app.branding) that
@@ -112,12 +155,12 @@ export function BrandingPage() {
                   id="branding-primary"
                   type="color"
                   value={form.primary ?? '#7c7df5'}
-                  onChange={(e) => setForm((f) => ({ ...f, primary: e.target.value }))}
+                  onChange={(e) => edit({ primary: e.target.value })}
                   className="h-9 w-14 cursor-pointer rounded-md border"
                   style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)' }}
                   data-testid="branding-primary"
                 />
-                <HexInput value={form.primary ?? '#7c7df5'} onCommit={(v) => setForm((f) => ({ ...f, primary: v }))} testid="branding-primary-hex" label={t('branding.primary')} />
+                <HexInput value={form.primary ?? '#7c7df5'} onCommit={(v) => edit({ primary: v })} testid="branding-primary-hex" label={t('branding.primary')} />
               </div>
             </div>
             <div>
@@ -127,21 +170,38 @@ export function BrandingPage() {
                   id="branding-accent"
                   type="color"
                   value={form.accent ?? '#7c5cfc'}
-                  onChange={(e) => setForm((f) => ({ ...f, accent: e.target.value }))}
+                  onChange={(e) => edit({ accent: e.target.value })}
                   className="h-9 w-14 cursor-pointer rounded-md border"
                   style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface)' }}
                   data-testid="branding-accent"
                 />
-                <HexInput value={form.accent ?? '#7c5cfc'} onCommit={(v) => setForm((f) => ({ ...f, accent: v }))} testid="branding-accent-hex" label={t('branding.accent')} />
+                <HexInput value={form.accent ?? '#7c5cfc'} onCommit={(v) => edit({ accent: v })} testid="branding-accent-hex" label={t('branding.accent')} />
               </div>
             </div>
-            <div className="md:col-span-2">
-              <AdminLabel htmlFor="branding-logoUrl">{t('branding.logoUrl')}</AdminLabel>
-              <AdminInput id="branding-logoUrl" value={form.logoUrl ?? ''} onChange={(e) => setForm((f) => ({ ...f, logoUrl: e.target.value }))} placeholder="https://…" data-testid="branding-logoUrl" />
-            </div>
+            <BrandImageField
+              slot="logo"
+              label={t('branding.logoUrl')}
+              hint={t('branding.logoHint')}
+              value={form.logoUrl ?? ''}
+              asset={(current.data?.assets ?? []).find((a) => a.slot === 'logo')}
+              onChange={(v) => edit({ logoUrl: v })}
+              onStored={applySaved}
+              onBusyChange={onAssetBusy}
+            />
+            <BrandImageField
+              slot="favicon"
+              label={t('branding.faviconUrl')}
+              hint={t('branding.faviconHint')}
+              value={form.faviconUrl ?? ''}
+              placeholderValue={form.logoUrl ?? ''}
+              asset={(current.data?.assets ?? []).find((a) => a.slot === 'favicon')}
+              onChange={(v) => edit({ faviconUrl: v })}
+              onStored={applySaved}
+              onBusyChange={onAssetBusy}
+            />
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <AdminButton type="submit" disabled={busy} data-testid="branding-save">{t('branding.save')}</AdminButton>
+            <AdminButton type="submit" disabled={busyAll} data-testid="branding-save">{t('branding.save')}</AdminButton>
             {saved && (
               <span role="status" className="text-sm" style={{ color: 'var(--admin-success)' }} data-testid="branding-saved">
                 {t('branding.savedMsg')}
@@ -556,13 +616,139 @@ function Field({ text, copied, onCopy }: { text: string; copied: boolean; onCopy
   )
 }
 
-/** Drop empty strings so a blank field doesn't fail the strict server schema. */
-function clean(b: Branding): Branding {
-  const out: Branding = {}
-  if (b.productName) out.productName = b.productName
-  if (b.supportEmail) out.supportEmail = b.supportEmail
-  if (b.primary) out.primary = b.primary
-  if (b.accent) out.accent = b.accent
-  if (b.logoUrl) out.logoUrl = b.logoUrl
-  return out
+/**
+ * One brand image: a URL to type, a file to upload, or both.
+ *
+ * The two coexist because they answer different situations. A tenant with a CDN already hosting
+ * their assets types a URL and is done; one without anywhere to put a file — which is most
+ * resellers — uploads it here. Uploading writes the served path into the same field, so everything
+ * downstream (favicon, sidebar, manifest, mail) reads ONE value and never has to ask where it came
+ * from.
+ */
+/**
+ * Which message each server-side refusal gets. Exhaustive by type: a new `BrandAssetRejection` in
+ * @orbetra/shared fails this build until it is given a message, which is the point of the union.
+ *
+ * Grouped rather than one string per reason — a reseller uploading a wordmark does not need to be
+ * told which of nine SVG constructs we objected to, only that the file is not one we can serve. The
+ * distinctions that matter to them are: too big, wrong format, unsafe.
+ */
+const UPLOAD_ERROR: Record<BrandAssetRejection, string> = {
+  too_large: 'branding.tooLarge',
+  too_many_pixels: 'branding.tooManyPixels',
+  empty: 'branding.badFormat',
+  mime_mismatch: 'branding.badFormat',
+  not_svg: 'branding.badFormat',
+  script: 'branding.unsafeFile',
+  event_handler: 'branding.unsafeFile',
+  javascript_url: 'branding.unsafeFile',
+  foreign_object: 'branding.unsafeFile',
+  embedded_content: 'branding.unsafeFile',
+  entity: 'branding.unsafeFile',
+  doctype_subset: 'branding.unsafeFile',
+  remote_reference: 'branding.unsafeFile',
 }
+
+/** The server's `detail` IS the reason — it is one of the union's values. Anything else (a network
+ *  fault, a 500, a future reason this build predates) falls back to the generic message. */
+function uploadErrorKey(e: unknown): string {
+  const detail = e instanceof ApiError ? e.detail : undefined
+  return (detail !== undefined && UPLOAD_ERROR[detail as BrandAssetRejection]) || 'branding.uploadError'
+}
+
+function BrandImageField({ slot, label, hint, value, placeholderValue, asset, onChange, onStored, onBusyChange }: {
+  slot: 'logo' | 'favicon'
+  label: string
+  hint: string
+  value: string
+  /** shown greyed when this field is empty and something else supplies the image (favicon → logo) */
+  placeholderValue?: string
+  asset: BrandAsset | undefined
+  onChange: (v: string) => void
+  onStored: (b: Branding) => void
+  /** the page disables Save while this is true — an upload and a save must never overlap */
+  onBusyChange: (busy: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const [busy, setBusyLocal] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const shown = value !== '' ? value : (placeholderValue ?? '')
+  const setBusy = (b: boolean) => {
+    setBusyLocal(b)
+    onBusyChange(b)
+  }
+
+  const upload = (file: File) => {
+    setErr(null)
+    // Checked here as well as on the server so the common mistakes cost nothing and read clearly.
+    // The server's answer is still the authority — it re-derives the type from the bytes, which a
+    // browser's `file.type` (taken from the extension) does not.
+    if (file.type !== 'image/png' && file.type !== 'image/svg+xml') return setErr(t('branding.badFormat'))
+    if (file.size > MAX_BRAND_ASSET_BYTES) return setErr(t('branding.tooLarge'))
+    setBusy(true)
+    const reader = new FileReader()
+    reader.onerror = () => { setErr(t('branding.uploadError')); setBusy(false) }
+    reader.onload = () => {
+      // readAsDataURL always resolves to a string; the union is the API's, not a real case.
+      if (typeof reader.result !== 'string') { setErr(t('branding.uploadError')); setBusy(false); return }
+      uploadBrandAsset(slot, file.type, stripDataUrl(reader.result))
+        .then((r) => onStored(r.branding))
+        .catch((e: unknown) => setErr(t(uploadErrorKey(e))))
+        .finally(() => setBusy(false))
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const drop = () => {
+    setErr(null)
+    setBusy(true)
+    removeBrandAsset(slot)
+      .then((r) => onStored(r.branding))
+      .catch(() => setErr(t('branding.uploadError')))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="md:col-span-2">
+      <AdminLabel htmlFor={`branding-${slot}Url`}>{label}</AdminLabel>
+      <AdminInput
+        id={`branding-${slot}Url`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="https://…"
+        data-testid={`branding-${slot}Url`}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        {shown !== '' && (
+          <img
+            src={shown}
+            alt=""
+            className="h-8 w-auto max-w-[8rem] rounded border object-contain"
+            style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)', opacity: value === '' ? 0.5 : 1 }}
+            data-testid={`branding-${slot}-preview`}
+          />
+        )}
+        <input
+          type="file"
+          accept="image/png,image/svg+xml"
+          disabled={busy}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = '' }}
+          aria-label={`${label}: ${t('branding.upload')}`}
+          data-testid={`branding-${slot}-upload`}
+          className="text-xs"
+          style={{ color: 'var(--admin-ink-soft)' }}
+        />
+        {asset !== undefined && (
+          <button type="button" onClick={drop} disabled={busy} className="text-xs underline" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`branding-${slot}-remove`}>
+            {t('branding.removeUpload')}
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-xs" style={{ color: 'var(--admin-ink-faint)' }}>{hint}</p>
+      {err !== null && (
+        <span role="alert" className="text-xs" style={{ color: 'var(--admin-danger)' }}>{err}</span>
+      )}
+    </div>
+  )
+}
+

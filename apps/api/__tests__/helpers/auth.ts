@@ -63,6 +63,10 @@ export function fakeDb(users: AuthUserRow[] = []): Db {
     suppressions: { suppress: notImpl, isSuppressed: notImpl, suppressedAmong: notImpl, get: notImpl, release: notImpl, list: notImpl },
     affiliates: { list: notImpl, listWithStats: notImpl, get: notImpl, getActiveByCode: notImpl, create: notImpl, update: notImpl, accrueCommission: notImpl, accrueForPaidInvoice: notImpl, recordClick: notImpl, funnelFor: notImpl, createDeal: notImpl, countPendingDeals: notImpl, domainStanding: notImpl, listDealsForPartner: notImpl, listDeals: notImpl, decideDeal: notImpl, claimFor: notImpl, markDealConverted: notImpl, listCommissions: notImpl, voidCommissionForRefund: notImpl, listCommissionsForPartner: notImpl, listReferredCustomers: notImpl, setCommissionStatus: notImpl, findByEmailForAuth: notImpl, setPassword: notImpl, createPwToken: notImpl, replacePwToken: notImpl, consumePwToken: notImpl, invalidatePwTokens: notImpl },
     tenantDomains: { list: notImpl, get: notImpl, create: notImpl, remove: notImpl, setVerified: notImpl, isVerifiedDomain: notImpl, tenantIdForDomain: notImpl },
+    // `meta` answers instead of throwing: GET /v1/tenant/branding reads it on every load, and "this
+    // fake holds no uploads" is an honest answer to that — unlike the write paths, which have no
+    // sensible inert result and must stay unavailable here.
+    tenantAssets: { meta: () => Promise.resolve([]), byHash: notImpl, put: notImpl, remove: notImpl },
     accounts: { ...repo, updatePreferences: notImpl },
     users: repo,
     devices: { list: notImpl, countActive: notImpl, listAllForRegistry: notImpl, imeisIn: notImpl, get: notImpl, getByImei: notImpl, create: notImpl, update: notImpl, retire: notImpl },

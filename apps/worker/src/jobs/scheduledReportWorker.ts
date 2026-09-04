@@ -16,7 +16,14 @@ export function startScheduledReportWorker(deps: ScheduledReportWorkerDeps): Wor
     SCHEDULED_REPORT_QUEUE,
     async () => {
       try {
-        const r = await runDueSchedules({ db: deps.db, pool: deps.pool, transport: deps.transport })
+        // Rebuilt field by field rather than spread, so `now` stays out — which means every field
+        // added to ScheduledReporterDeps must be repeated HERE or it silently never arrives.
+        const r = await runDueSchedules({
+          db: deps.db,
+          pool: deps.pool,
+          transport: deps.transport,
+          ...(deps.appBaseUrl !== undefined ? { appBaseUrl: deps.appBaseUrl } : {}),
+        })
         deps.onRun?.(r)
       } catch (err) {
         // report the failure BEFORE rethrowing — BullMQ's own retry is invisible to Prometheus,

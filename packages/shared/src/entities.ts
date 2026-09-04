@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { BRAND_ASSET_PATH_RE } from './brandAsset.js'
 import { tenantPlanSchema, type TenantPlan } from './plans.js'
 import { roleSchema } from './roles.js'
 import { distanceUnitSchema, speedUnitSchema, volumeUnitSchema } from './units.js'
@@ -634,10 +635,35 @@ export const tenantUpdateSchema = tenantCreateSchema.partial()
 /** Hex color — STRICT so a value can't break out of `setProperty('--accent', v)`
  * into arbitrary CSS (XSS/style injection). */
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a #rrggbb hex color')
+
+/**
+ * A brand image: either a URL the tenant hosts themselves, or a path to one they uploaded to us.
+ *
+ * The uploaded form is RELATIVE (`/v1/public/brand/<hash>.png`) and that is the point — it resolves
+ * against whatever host the page is on, so one stored string is correct on the tenant's own domain,
+ * on `<slug>.orbetra.com`, and in the dashboard, without anyone computing a per-tenant origin. An
+ * absolute URL here would have to name SOME host, and every host we could name is one a reseller's
+ * customer must not see.
+ *
+ * Both forms are rendered as an `<img src>` / `<link href>`, never innerHTML. The https pin on the
+ * external form stays: an `http:` logo is a mixed-content warning in every browser and mail client.
+ */
+const brandImageRef = z.union([
+  z.string().url().startsWith('https://').max(2048),
+  z.string().regex(BRAND_ASSET_PATH_RE, 'must be an uploaded asset path'),
+])
+
 export const brandingSchema = z
   .object({
-    // https-only URL, rendered as an <img src> (never innerHTML)
-    logoUrl: z.string().url().startsWith('https://').max(2048),
+    logoUrl: brandImageRef,
+    /**
+     * The browser-tab icon, separate from the logo since W10.
+     *
+     * These were one field, and the setup guide asked the same file to be a wide 200×50 wordmark AND
+     * a square mark that reads at 16px — which no file is. Unset still falls back to logoUrl, so
+     * every tenant who configured one before this existed keeps exactly the icon they had.
+     */
+    faviconUrl: brandImageRef,
     primary: hexColor,
     accent: hexColor,
     productName: z.string().min(1).max(60),
@@ -659,7 +685,8 @@ export type Branding = z.infer<typeof brandingSchema>
  */
 export const brandingReadSchema = z
   .object({
-    logoUrl: z.string().url().startsWith('https://').max(2048).optional().catch(undefined),
+    logoUrl: brandImageRef.optional().catch(undefined),
+    faviconUrl: brandImageRef.optional().catch(undefined),
     primary: hexColor.optional().catch(undefined),
     accent: hexColor.optional().catch(undefined),
     productName: z.string().min(1).max(60).optional().catch(undefined),
@@ -667,6 +694,27 @@ export const brandingReadSchema = z
   })
   // drop the keys that failed, so `Object.keys(branding).length` stays an honest "what is set"
   .transform((b) => Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined)) as Branding)
+
+/**
+ * Brand asset upload body — base64 in JSON, not multipart.
+ *
+ * The repo parses no multipart anywhere, and `deviceImportSchema` above is the standing precedent
+ * for "a big blob arrives as a string in a JSON body". Adding a multipart parser to accept a 20 KB
+ * favicon would be a new dependency and a second body-handling path for one field.
+ *
+ * `data`'s cap bounds the TRANSFER; the size that matters is the decoded byte count, checked against
+ * MAX_BRAND_ASSET_BYTES by `inspectBrandAsset` once the string is decoded. Both bounds are needed —
+ * one caps what we read, the other what we store.
+ */
+export const brandAssetUploadSchema = z.object({
+  mime: z.enum(['image/png', 'image/svg+xml']),
+  data: z
+    .string()
+    .min(1)
+    .max(700_000) // 512 KB of bytes is ~683 KB of base64; the rest is margin for padding/whitespace
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/, 'must be base64'),
+})
+export const brandAssetSlotSchema = z.enum(['logo', 'favicon'])
 
 export const domainCreateSchema = z.object({
   // hostname: labels of a-z0-9-, dots; no scheme/path

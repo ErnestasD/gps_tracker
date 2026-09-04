@@ -107,7 +107,9 @@ enum VehicleDocumentKind {
 model Tenant {
   id                    String     @id @default(uuid()) @db.Uuid
   name                  String
-  /// white-label: { logoUrl, primary, accent, productName, supportEmail } (E03-5)
+  /// white-label: { logoUrl, faviconUrl, primary, accent, productName, supportEmail } (E03-5, W10)
+  /// logoUrl/faviconUrl are EITHER an https URL the tenant hosts, or `/v1/public/brand/<hash>.<ext>`
+  /// pointing at a {@link TenantAsset} they uploaded — see packages/shared/src/brandAsset.ts.
   branding              Json       @default("{}")
   /// tenant plan / entitlement tier (founder decision 2026-07-20). Existing tenants default to
   /// tsp_grow (preserves all current behavior). Set by the signature-verified Stripe webhook for
@@ -159,6 +161,7 @@ model Tenant {
   accounts            Account[]
   users               User[]
   domains             TenantDomain[]
+  brandAssets         TenantAsset[]
   scheduledReports    ScheduledReport[]
   pushSubscriptions   PushSubscription[]
   /// affiliate attribution (W9): the partner who referred this tenant, set once at signup from ?ref
@@ -385,6 +388,40 @@ model TenantDomain {
   @@unique([tenantId, domain])
   @@index([tenantId])
   @@map("tenant_domains")
+}
+
+/// An uploaded white-label brand image (W10). Two slots per tenant, 'logo' and 'favicon', enforced
+/// by the composite primary key — so the per-tenant storage budget is structural (2 rows × 512 KB)
+/// and needs no counting. The bytes live here rather than in object storage on purpose: every
+/// bucket has a hostname, and every hostname we could give a reseller's customer is one of OURS.
+/// Served from the tenant's own domain by the API at /v1/public/brand/<sha256[0:32]>.<ext>.
+/// See docs/adr/041-brand-asset-storage.md.
+model TenantAsset {
+  tenantId  String   @db.Uuid
+  /// 'logo' | 'favicon'. A string rather than an enum: adding a third slot must not need a
+  /// migration on a table this small, and the API validates it against brandAssetSlotSchema.
+  slot      String
+  bytes     Bytes
+  /// 'image/png' | 'image/svg+xml' — as VERIFIED from the magic bytes, never as the uploader claimed.
+  mime      String
+  /// full hex digest of `bytes`; the served path carries the first 32 chars. Content-addressed, so a
+  /// replaced image gets a new URL and the old one can never be served stale.
+  sha256    String
+  /// PNG only — null for SVG, which has no intrinsic pixel size. Lets the web manifest declare a
+  /// real `sizes` instead of guessing `any`, which is what makes a tenant's PWA installable.
+  width     Int?
+  height    Int?
+  sizeBytes Int
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, slot])
+  /// the public serving route looks an asset up by hash alone (it has no tenant context — that is
+  /// what makes one relative path work on every host), so this index is the hot path, not a nicety.
+  @@index([sha256])
+  @@map("tenant_assets")
 }
 
 model Account {

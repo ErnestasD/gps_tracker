@@ -25,6 +25,7 @@ import { createProfileRepo, type ProfileRepo } from './repos/profiles.js'
 import { createRuleRepo, type RuleRepo } from './repos/rules.js'
 import { createShareLinkRepo, type ShareLinkRepo } from './repos/shareLinks.js'
 import { createSmsDeliveryRepo, type SmsDeliveryRepo } from './repos/smsDeliveries.js'
+import { createTenantAssetRepo, type TenantAssetRepo } from './repos/tenantAssets.js'
 import { createTenantDomainRepo, type TenantDomainRepo } from './repos/tenantDomains.js'
 import { createAffiliateRepo, type AffiliateRepo } from './repos/affiliates.js'
 import { createSuppressionRepo, type SuppressionRepo } from './repos/suppressions.js'
@@ -51,6 +52,7 @@ export interface Db {
   /** addresses SES told us to stop mailing (bounce/complaint) */
   suppressions: SuppressionRepo
   tenantDomains: TenantDomainRepo
+  tenantAssets: TenantAssetRepo
   accounts: AccountRepo
   users: UserRepo
   devices: DeviceRepo
@@ -94,6 +96,7 @@ export function createDb(databaseUrl: string): Db {
     affiliates: createAffiliateRepo(prisma, audit),
     suppressions: createSuppressionRepo(prisma),
     tenantDomains: createTenantDomainRepo(prisma, audit),
+    tenantAssets: createTenantAssetRepo(prisma, audit),
     accounts: createAccountRepo(prisma, audit),
     users: createUserRepo(prisma, audit),
     devices: createDeviceRepo(prisma, audit, shareLinksRepo),
