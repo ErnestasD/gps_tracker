@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { serve } from '@hono/node-server'
 import { Redis } from 'ioredis'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { createDb, type Db } from '@orbetra/db'
 import { MAX_BRAND_ASSET_BYTES } from '@orbetra/shared'
@@ -130,6 +130,18 @@ describe('E03-5 tenant branding (self, scoped)', () => {
 })
 
 describe('E03-5 domains + DNS verify', () => {
+  /**
+   * Domains created by the DNS-diagnosis tests, removed after each one.
+   *
+   * The per-tenant cap is 25 and each diagnosis needs its own name; without cleanup they fill the
+   * quota and the LATER tests — duplicates, squatting — fail on a limit they are not about. A test
+   * that breaks its neighbours is worse than no test.
+   */
+  const afterEachCleanup: string[] = []
+  afterEach(async () => {
+    for (const id of afterEachCleanup.splice(0)) await req(`/v1/tenant/domains/${id}`, t1Token, 'DELETE')
+  })
+
   it('add domain returns a TXT record; verify succeeds only when the TXT matches', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'fleet.t1.test' })).json()) as { id: string; txtToken: string; txtRecord: string; txtHost: string; txtValue: string }
     // the record we ASK for, described in the shape a DNS panel wants: a name and a value
@@ -161,6 +173,7 @@ describe('E03-5 domains + DNS verify', () => {
    */
   it('verifies from the dedicated _orbetra-verify name, with the bare token as the value', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'sub.t1.test' })).json()) as { id: string; txtToken: string }
+    afterEachCleanup.push(created.id)
 
     // the token on the WRONG name (the domain itself, bare) is not a match either way
     txtRecords.set('sub.t1.test', [[created.txtToken]])
@@ -178,6 +191,7 @@ describe('E03-5 domains + DNS verify', () => {
 
   it('still accepts the LEGACY apex form, so a setup already underway is not broken', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'legacy.t1.test' })).json()) as { id: string; txtToken: string }
+    afterEachCleanup.push(created.id)
     // nothing on the new name; only the old one published
     txtRecords.set('legacy.t1.test', [[expectedTxt(created.txtToken)]])
     expect((await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')).status).toBe(200)
@@ -185,6 +199,7 @@ describe('E03-5 domains + DNS verify', () => {
 
   it('joins a chunked TXT value before comparing — a long record arrives split', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'chunk.t1.test' })).json()) as { id: string; txtToken: string }
+    afterEachCleanup.push(created.id)
     const half = Math.ceil(created.txtToken.length / 2)
     txtRecords.set('_orbetra-verify.chunk.t1.test', [[created.txtToken.slice(0, half), created.txtToken.slice(half)]])
     expect((await req(`/v1/tenant/domains/${created.id}/verify`, t1Token, 'POST')).status).toBe(200)
@@ -214,6 +229,7 @@ describe('E03-5 domains + DNS verify', () => {
 
   it('reports the TXT and the ROUTE separately, so a half-configured domain says which half', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'half.t1.test' })).json()) as { id: string; txtToken: string }
+    afterEachCleanup.push(created.id)
 
     const dnsOf = async () =>
       (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as {
@@ -260,8 +276,42 @@ describe('E03-5 domains + DNS verify', () => {
    * record list shows it looking perfect and the browser says the site does not exist. It is the
    * most common way this setup fails and the least visible.
    */
+  /**
+   * A verification record IS published, carrying a token from an earlier attempt.
+   *
+   * Removing and re-adding a domain mints a new token, which silently invalidates the record the
+   * customer already published — and it still sits in their zone under the right name, looking
+   * exactly right. "Not found" is the cruellest possible answer: they are staring at the record it
+   * says is missing. The founder hit this four times in one afternoon.
+   */
+  it('says a published token is STALE rather than missing', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'stale.t1.test' })).json()) as { id: string }
+    afterEachCleanup.push(created.id)
+    txtRecords.set('_orbetra-verify.stale.t1.test', [['0000000000000000000000000000dead']])
+    const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { txt: { ok: boolean; reason: string | null } }
+    expect(d.txt.ok).toBe(false)
+    expect(d.txt.reason).toBe('stale')
+  })
+
+  it('does not call an ordinary apex TXT stale — SPF and DMARC are not failed attempts at ours', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'spf.t1.test' })).json()) as { id: string }
+    afterEachCleanup.push(created.id)
+    txtRecords.set('spf.t1.test', [['v=spf1 a mx ~all'], ['v=DMARC1; p=none;']])
+    const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { txt: { reason: string | null } }
+    expect(d.txt.reason).toBe('absent')
+  })
+
+  it('calls the LEGACY apex form stale when it carries an old token — it is ours by its prefix', async () => {
+    const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'old.t1.test' })).json()) as { id: string }
+    afterEachCleanup.push(created.id)
+    txtRecords.set('old.t1.test', [['orbetra-verify=0000000000000000000000000000dead'], ['v=spf1 ~all']])
+    const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { txt: { reason: string | null } }
+    expect(d.txt.reason).toBe('stale')
+  })
+
   it('spots a name the provider doubled, and says so instead of "not found"', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'fleet.dbl.t1.test' })).json()) as { id: string }
+    afterEachCleanup.push(created.id)
     cnameRecords.set('fleet.dbl.t1.test.dbl.t1.test', ['dash.orbetra.test.'])
     const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { ok: boolean; reason: string | null } }
     expect(d.route.ok).toBe(false)
@@ -271,6 +321,7 @@ describe('E03-5 domains + DNS verify', () => {
   it('does not cry "doubled" at a CNAME under a doubled name pointing somewhere ELSE', async () => {
     // only OUR edge under a doubled name is proof; anything else is somebody's unrelated record
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'fleet.other.t1.test' })).json()) as { id: string }
+    afterEachCleanup.push(created.id)
     cnameRecords.set('fleet.other.t1.test.other.t1.test', ['unrelated.example.'])
     const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { reason: string | null } }
     expect(d.route.reason).not.toBe('doubled')
@@ -278,6 +329,7 @@ describe('E03-5 domains + DNS verify', () => {
 
   it('calls a name with nothing published ABSENT, not occupied', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'empty.t1.test' })).json()) as { id: string }
+    afterEachCleanup.push(created.id)
     const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { reason: string | null; found: string[] } }
     expect(d.route.reason).toBe('absent')
     expect(d.route.found).toEqual([])
@@ -285,6 +337,7 @@ describe('E03-5 domains + DNS verify', () => {
 
   it('calls a CNAME pointing at the WRONG host elsewhere, not occupied — the record does exist', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'wrong.t1.test' })).json()) as { id: string }
+    afterEachCleanup.push(created.id)
     cnameRecords.set('wrong.t1.test', ['some-other-platform.example.'])
     const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { reason: string | null; found: string[] } }
     expect(d.route.reason).toBe('elsewhere')
@@ -296,6 +349,7 @@ describe('E03-5 domains + DNS verify', () => {
     // correctly-configured domain root as broken.
     return (async () => {
       const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'apex.t1.test' })).json()) as { id: string }
+    afterEachCleanup.push(created.id)
       addressRecords.set('dash.orbetra.test', ['203.0.113.7'])
       addressRecords.set('apex.t1.test', ['203.0.113.7'])
       const d = (await (await req(`/v1/tenant/domains/${created.id}/dns`, t1Token)).json()) as { route: { ok: boolean } }
@@ -305,6 +359,7 @@ describe('E03-5 domains + DNS verify', () => {
 
   it('another tenant cannot read a domain’s DNS state → 404', async () => {
     const created = (await (await req('/v1/tenant/domains', t1Token, 'POST', { domain: 'peek.t1.test' })).json()) as { id: string }
+    afterEachCleanup.push(created.id)
     expect((await req(`/v1/tenant/domains/${created.id}/dns`, t2Token)).status).toBe(404)
   })
 

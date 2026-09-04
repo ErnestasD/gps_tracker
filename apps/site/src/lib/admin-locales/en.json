@@ -223,7 +223,8 @@
     "dnsWhatIs": "What this record does",
     "dnsLearn": "Read the docs",
     "dnsWatching": "Checking automatically…",
-    "dnsAutoVerified": "Records found — domain verified."
+    "dnsAutoVerified": "Records found — domain verified.",
+    "dnsStale": "A verification record already exists under this name, but it holds an old token. That happens when a domain is removed and added again — a new token is issued. Replace the record’s value with the one shown in the table."
   },
   "audit": {
     "title": "Audit log",

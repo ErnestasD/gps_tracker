@@ -579,13 +579,18 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses, platformDom
 
       {/* WHY it fails, when DNS can tell us — the only prose left, and it appears only when there
           is something wrong to say. */}
-      {dns.data !== undefined && !dns.data.route.ok && (
+      {dns.data !== undefined && (dns.data.txt.reason === 'stale' || !dns.data.route.ok) && (
         <div className="mt-2 flex flex-col gap-1" style={{ color: 'var(--admin-warning)' }} data-testid={`dns-why-${domain}`}>
-          {dns.data.route.reason === 'doubled' && (
+          {/* the record is THERE and holds an old token — "not found" beside it is the cruellest
+              answer we could give, because the reader is looking straight at it */}
+          {dns.data.txt.reason === 'stale' && <p>{t('branding.dnsStale')}</p>}
+          {dns.data.route.ok === false && dns.data.route.reason === 'doubled' && (
             <p>{t('branding.dnsDoubled', { domain, where: `${domain}.${domain.split('.').slice(1).join('.')}` })}</p>
           )}
-          {dns.data.route.reason === 'absent' && <p>{t('branding.dnsAbsent')}</p>}
-          {dns.data.route.found.length > 0 && <p>{t('branding.dnsGoesTo', { where: dns.data.route.found.join(', ') })}</p>}
+          {dns.data.route.ok === false && dns.data.route.reason === 'absent' && <p>{t('branding.dnsAbsent')}</p>}
+          {dns.data.route.ok === false && dns.data.route.found.length > 0 && (
+            <p>{t('branding.dnsGoesTo', { where: dns.data.route.found.join(', ') })}</p>
+          )}
         </div>
       )}
 

@@ -266,7 +266,8 @@
     "dnsWhatIs": "Ką šis įrašas daro",
     "dnsLearn": "Skaityti dokumentacijoje",
     "dnsWatching": "Tikriname automatiškai…",
-    "dnsAutoVerified": "Įrašai rasti — domenas patvirtintas."
+    "dnsAutoVerified": "Įrašai rasti — domenas patvirtintas.",
+    "dnsStale": "Šiuo vardu jau yra patvirtinimo įrašas, bet jame senas raktas. Taip nutinka pašalinus ir vėl pridėjus domeną — tada sukuriamas naujas raktas. Pakeiskite įrašo reikšmę į tą, kuri parodyta lentelėje."
   },
   "audit": {
     "title": "Audito žurnalas",

@@ -196,9 +196,19 @@ export type DnsCheck = { ok: boolean; found: string[] }
  */
 export type RouteReason = 'occupied' | 'elsewhere' | 'absent' | 'doubled'
 
+/**
+ * Why the ownership check failed, when DNS can tell us.
+ *
+ * `stale` is the one that needed a name. Removing and re-adding a domain mints a NEW token, which
+ * silently invalidates the record the customer already published — and the record still sits in
+ * their zone under the right name, looking exactly right. "Not found" is then the cruellest
+ * possible answer: they are staring at the record it says is missing.
+ */
+export type TxtReason = 'stale' | 'absent'
+
 export type DomainDns = {
   /** the ownership TXT — the thing /verify reads */
-  txt: DnsCheck
+  txt: DnsCheck & { reason: TxtReason | null }
   /** does the name actually REACH us: the CNAME, or an address that matches the edge host */
   route: DnsCheck & { expected: string | null; reason: RouteReason | null }
 }
@@ -225,14 +235,27 @@ export async function checkDomainDns(
   edgeHostname: string | undefined,
 ): Promise<DomainDns> {
   const txtFound: string[] = []
+  /** Values published under OUR dedicated name — the only ones that can be a stale token of ours. */
+  const oursFound: string[] = []
   for (const host of [verifyHost(domain), domain]) {
     try {
-      for (const chunks of await resolvers.txt(host)) txtFound.push(chunks.join(''))
+      for (const chunks of await resolvers.txt(host)) {
+        const value = chunks.join('')
+        txtFound.push(value)
+        // a value at our own name, or one carrying our legacy prefix. The apex carries SPF, DMARC
+        // and whatever else the customer runs — none of that is a failed attempt at our record.
+        if (host !== domain || value.startsWith(TXT_PREFIX)) oursFound.push(value)
+      }
     } catch {
       // NXDOMAIN / no TXT — a name nobody has configured yet is the normal case here
     }
   }
   const txtOk = txtFound.includes(txtToken) || txtFound.includes(expectedTxt(txtToken))
+  /**
+   * A record IS published under our name, carrying something else. Almost always a token from an
+   * earlier attempt: the value shape is ours, the value is not.
+   */
+  const txtReason: TxtReason | null = txtOk ? null : oursFound.length > 0 ? 'stale' : 'absent'
 
   const expected = edgeHostname === undefined || edgeHostname.trim() === '' ? null : canon(edgeHostname)
   const routeFound: string[] = []
@@ -270,7 +293,7 @@ export async function checkDomainDns(
   }
 
   return {
-    txt: { ok: txtOk, found: txtFound },
+    txt: { ok: txtOk, found: txtFound, reason: txtReason },
     route: { ok: routeOk, found: [...new Set(routeFound)], expected, reason },
   }
 }
