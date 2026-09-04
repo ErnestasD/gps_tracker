@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUpRight, Check, Copy, Info, Loader2 } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronRight, Copy, Info, Loader2 } from 'lucide-react'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ApiError } from '@/lib/http'
+import { cn } from '@/lib/utils'
 import {
   MAX_DOMAINS_PER_TENANT,
   addDomain,
@@ -282,20 +283,22 @@ export function BrandingPage() {
                       {t('branding.remove')}
                     </AdminButton>
                   </div>
-                  {/* pending domains keep their DNS records visible (derived from txtToken) so a
-                      returning user who navigated away can still publish them and Verify (was
-                      reachable only in the transient add-response) */}
-                  {!d.verified && (
-                    <DnsRecords
-                      id={d.id}
-                      domain={d.domain}
-                      txtToken={d.txtToken}
-                      dnsTarget={current.data?.dnsTarget ?? null}
-                      dnsAddresses={current.data?.dnsAddresses ?? []}
-                      platformDomain={current.data?.platformDomain ?? null}
-                      onVerified={() => void qc.invalidateQueries({ queryKey: ['domains'] })}
-                    />
-                  )}
+                  {/* The records stay after verification, folded away.
+                      They used to vanish the moment a domain went green, which is roughly when
+                      somebody needs them: moving DNS provider, auditing what is configured, or
+                      checking that the CNAME a colleague "tidied up" is still there. And because
+                      verification is one-shot, a domain can read Verified for months while its DNS
+                      has been deleted — folded open, the live status says so. */}
+                  <DnsRecords
+                    id={d.id}
+                    domain={d.domain}
+                    txtToken={d.txtToken}
+                    verified={d.verified}
+                    dnsTarget={current.data?.dnsTarget ?? null}
+                    dnsAddresses={current.data?.dnsAddresses ?? []}
+                    platformDomain={current.data?.platformDomain ?? null}
+                    onVerified={() => void qc.invalidateQueries({ queryKey: ['domains'] })}
+                  />
                 </li>
               ))}
             </ul>
@@ -462,9 +465,11 @@ function AddDomain({ count, platformDomain, onAdded }: { count: number; platform
  * pointing the domain at us are two records, and a page that mentions them a screen apart teaches
  * a one-record setup.
  */
-function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses, platformDomain, onVerified }: { id: string; domain: string; txtToken: string; dnsTarget: string | null; dnsAddresses: string[]; platformDomain: string | null; onVerified: () => void }) {
+function DnsRecords({ id, domain, txtToken, verified, dnsTarget, dnsAddresses, platformDomain, onVerified }: { id: string; domain: string; txtToken: string; verified: boolean; dnsTarget: string | null; dnsAddresses: string[]; platformDomain: string | null; onVerified: () => void }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState<string | null>(null)
+  /** A finished domain folds away; one still being set up is the thing the page is FOR. */
+  const [open, setOpen] = useState(!verified)
 
   /**
    * What each record looks like in live DNS.
@@ -487,13 +492,17 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses, platformDom
   const dns = useQuery({
     queryKey: ['domain-dns', id],
     queryFn: () => getDomainDns(id),
-    refetchOnWindowFocus: true,
-    refetchInterval: DNS_POLL_MS,
+    // a verified domain is looked at once, when somebody opens the section — polling a finished
+    // setup forever is a DNS lookup every twenty seconds for an answer nobody is waiting on
+    enabled: open,
+    refetchOnWindowFocus: !verified,
+    refetchInterval: verified ? false : DNS_POLL_MS,
     refetchIntervalInBackground: false,
   })
 
   const verifying = useRef(false)
   useEffect(() => {
+    if (verified) return
     if (dns.data === undefined || !dns.data.txt.ok || !dns.data.route.ok) return
     // once — the poll keeps firing, and a verify per tick would be a mutation storm
     if (verifying.current) return
@@ -529,12 +538,28 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses, platformDom
       data-testid={`domain-dns-${domain}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('branding.dnsTitle')}</span>
+        {verified ? (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            data-testid={`dns-toggle-${domain}`}
+            className="inline-flex items-center gap-1 font-semibold"
+            style={{ color: 'var(--admin-ink)' }}
+          >
+            <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-90')} aria-hidden />
+            {t('branding.dnsTitle')}
+          </button>
+        ) : (
+          <span className="font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('branding.dnsTitle')}</span>
+        )}
         {/* Every general explanation lives here rather than under the table. A setup panel that
             ends in five paragraphs reads as an apology for itself; the reader wants the values. */}
         <Hint label={t('branding.dnsHelpTitle')} body={t('branding.dnsHelp', { domain })} testId={`dns-help-${domain}`} />
       </div>
-      <p className="mt-0.5" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsIntro')}</p>
+      {!open ? null : (
+        <>
+      {!verified && <p className="mt-0.5" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsIntro')}</p>}
 
       <div className="mt-2 overflow-x-auto">
         <table className="w-full min-w-[34rem] border-separate border-spacing-y-1">
@@ -596,10 +621,14 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses, platformDom
 
       {/* the panel is watching — said plainly, because a screen that changes on its own without
           saying it is doing so reads as a screen that has frozen */}
-      <div className="mt-2 flex items-center gap-1.5" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`dns-watching-${domain}`}>
-        <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden />
-        {t('branding.dnsWatching')}
-      </div>
+      {!verified && (
+        <div className="mt-2 flex items-center gap-1.5" style={{ color: 'var(--admin-ink-soft)' }} data-testid={`dns-watching-${domain}`}>
+          <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden />
+          {t('branding.dnsWatching')}
+        </div>
+      )}
+        </>
+      )}
     </div>
   )
 }
