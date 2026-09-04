@@ -546,7 +546,16 @@
       "fencesHint": "Wybierz, które strefy rysuje mapa.",
       "tabs": "Panele urządzenia",
       "resize": "Przeciągnij, aby zmienić wysokość panelu",
-      "historyAt": "Historia: stan z {{when}}"
+      "historyAt": "Historia: stan z {{when}}",
+      "sectionVehicle": "Pojazd",
+      "sectionDevice": "Urządzenie",
+      "opening": {
+        "doors": "Drzwi",
+        "trunk": "Bagażnik",
+        "hood": "Maska",
+        "open": "Otwarte",
+        "closed": "Zamknięte"
+      }
     },
     "title": "Mapa na żywo",
     "toggleList": "Pokaż lub ukryj listę pojazdów",

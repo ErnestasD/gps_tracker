@@ -13,7 +13,7 @@ import type { GeofenceView } from '@orbetra/shared'
 import type { DeviceLive } from '@/lib/liveStore'
 import { cn } from '@/lib/utils'
 import { useFmt } from '@/lib/datetime'
-import { getTelemetry, hasTelemetry, highlightRows, placeableFix, telemetryRows, type LatestTelemetry, fmtAttrValue } from '@/lib/telemetry'
+import { getTelemetry, hasTelemetry, highlightRows, placeableFix, telemetryRows, type LatestTelemetry, type TelemetryRow, fmtAttrValue } from '@/lib/telemetry'
 import { fmtKm, listTrips } from '@/lib/trips'
 import { useUnits } from '@/lib/units'
 import { CommandsCard } from '@/routes/app/devices/commands'
@@ -640,7 +640,17 @@ function ParamsTab({
   ].filter((r) => r.value !== null && r.value !== undefined)
 
   const term = q.trim().toLowerCase()
-  const rows = telemetryRows(d.attrs, d.attrLabels ?? {}).filter((r) => term === '' || r.label.toLowerCase().includes(term) || r.key.toLowerCase().includes(term))
+  /**
+   * A decoded door row's label is a translation key, so it has to be resolved BEFORE the search
+   * filter — otherwise typing "durys" would match nothing while the row sits in plain sight.
+   */
+  const labelOf = (r: TelemetryRow): string => (r.binary === undefined ? r.label : t(`map.inspector.opening.${r.binary.labelKey}`))
+  const matches = (label: string, key: string): boolean =>
+    term === '' || label.toLowerCase().includes(term) || key.toLowerCase().includes(term)
+  const all = telemetryRows(d.attrs, d.attrLabels ?? {}).filter((r) => matches(labelOf(r), r.key))
+  const vehicleRows = all.filter((r) => r.section === 'vehicle')
+  const deviceRows = all.filter((r) => r.section === 'device')
+  const promotedShown = promoted.filter((r) => matches(r.label, r.key))
   return (
     <div data-testid="params-tab">
       {/* Age, always. A device that died three days ago would otherwise render a full, confident,
@@ -672,32 +682,52 @@ function ParamsTab({
           <Settings className="h-4 w-4" />
         </Button>
       </div>
-      {promoted.length > 0 && (
-        <dl className="divide-y divide-line border-b border-line text-xs">
-          {promoted.map((r) => (
-            <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">
-              <dt className="min-w-0 truncate text-muted">{r.label}</dt>
-              <dd className="shrink-0 tabular-nums text-text">
-                {typeof r.value === 'boolean' ? (r.value ? t('info.on') : t('info.off')) : String(r.value)}
-              </dd>
-            </div>
-          ))}
-        </dl>
+      {/* What the VEHICLE reports leads — fuel, doors, engine are what an operator opens this tab
+          for. The tracker's own supply voltage and satellite count follow underneath. */}
+      {vehicleRows.length > 0 && (
+        <section data-testid="params-vehicle">
+          <h4 className="pt-1 text-[10px] font-medium uppercase tracking-wide text-muted">{t('map.inspector.sectionVehicle')}</h4>
+          <dl className="divide-y divide-line text-xs">
+            {vehicleRows.map((r) => (
+              <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className={cn('min-w-0 truncate', r.documented ? 'text-muted' : 'text-muted italic')} title={r.key}>
+                  {labelOf(r)}
+                </dt>
+                <dd className="shrink-0 tabular-nums text-text">
+                  {r.binary === undefined ? r.value : t(r.binary.open ? 'map.inspector.opening.open' : 'map.inspector.opening.closed')}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       )}
-      <dl className="divide-y divide-line text-xs">
-        {rows.map((r) => (
-          <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">
-            <dt className={cn('min-w-0 truncate', r.documented ? 'text-muted' : 'text-muted italic')} title={r.key}>
-              {r.label}
-            </dt>
-            <dd className="shrink-0 tabular-nums text-text">{r.value}</dd>
-          </div>
-        ))}
-      </dl>
-      {rows.length === 0 && <p className="p-2 text-xs text-muted">{t('map.inspector.paramsEmpty')}</p>}
+      {(promotedShown.length > 0 || deviceRows.length > 0) && (
+        <section data-testid="params-device">
+          <h4 className="pt-3 text-[10px] font-medium uppercase tracking-wide text-muted">{t('map.inspector.sectionDevice')}</h4>
+          <dl className="divide-y divide-line text-xs">
+            {promotedShown.map((r) => (
+              <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className="min-w-0 truncate text-muted">{r.label}</dt>
+                <dd className="shrink-0 tabular-nums text-text">
+                  {typeof r.value === 'boolean' ? (r.value ? t('info.on') : t('info.off')) : String(r.value)}
+                </dd>
+              </div>
+            ))}
+            {deviceRows.map((r) => (
+              <div key={r.key} className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className={cn('min-w-0 truncate', r.documented ? 'text-muted' : 'text-muted italic')} title={r.key}>
+                  {labelOf(r)}
+                </dt>
+                <dd className="shrink-0 tabular-nums text-text">{r.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+      {all.length === 0 && promotedShown.length === 0 && <p className="p-2 text-xs text-muted">{t('map.inspector.paramsEmpty')}</p>}
       {/* An `io_<id>` row means this model's own wiki page does not document that element — a fact
           about Teltonika's documentation, not a gap in ours, and worth naming as such. */}
-      {rows.some((r) => !r.documented) && (
+      {all.some((r) => !r.documented) && (
         <p className="pt-2 text-[11px] text-muted">{t('map.inspector.paramsUndocumented')}</p>
       )}
     </div>

@@ -546,7 +546,16 @@
       "fencesHint": "Pasirinkite, kurias geozonas piešti žemėlapyje.",
       "tabs": "Įrenginio skydeliai",
       "resize": "Tempkite, kad pakeistumėte skydelio aukštį",
-      "historyAt": "Istorija: rodoma {{when}} būsena"
+      "historyAt": "Istorija: rodoma {{when}} būsena",
+      "sectionVehicle": "Automobilis",
+      "sectionDevice": "Įrenginys",
+      "opening": {
+        "doors": "Durys",
+        "trunk": "Bagažinė",
+        "hood": "Variklio dangtis",
+        "open": "Atidaryta",
+        "closed": "Uždaryta"
+      }
     },
     "title": "Žemėlapis realiuoju laiku",
     "toggleList": "Rodyti arba slėpti įrenginių sąrašą",

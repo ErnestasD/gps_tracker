@@ -44,7 +44,58 @@ export interface AttrLabel {
   /** Already a number: the server parses the wiki's cell (two decimal conventions, 29% non-numeric)
    *  in ONE place and omits the field rather than sending something the browser must guess at. */
   multiplier?: number
+  /** The wiki's "Parameter Group" cell verbatim, e.g. "CAN Chip", "Permanent I/O elements". */
+  group?: string
+  /** The wiki's "Max" cell verbatim — identifies a documented bitmask; see `DOOR_BITMASK_MAX`. */
+  max?: string
 }
+
+/**
+ * Which side of the list an element belongs on: what the VEHICLE reports, or what the TRACKER does.
+ *
+ * Decided from Teltonika's own "Parameter Group" column rather than from the element names, because
+ * the names are not a classification and we would be maintaining a keyword list against several
+ * thousand of them.
+ *
+ * The word boundaries matter: `Euroscan IO` and `Transcan IO` both contain the letters "can" and
+ * are neither — they are trailer refrigeration recorders, cargo equipment rather than the vehicle.
+ * `ALLCAN300`, `LVCAN200` and `CANCONTROL` are Teltonika's CAN adapters and are matched by name.
+ * Beyond the car buses, the truck ones are here too (tachograph, FMS, J1939, ISOBUS, TPMS): the
+ * founder asked for one consistent order across every vehicle, not only the ones on OBD.
+ */
+const VEHICLE_GROUP =
+  /(^|[^a-z])(can|obd|tacho\w*|fms|j1939|isobus|tpms)([^a-z]|$)|allcan|lvcan|cancontrol|tachograph/i
+
+export type TelemetrySection = 'vehicle' | 'device'
+
+/** An element with no group cell stays with the tracker's own readings — the conservative side:
+ *  it keeps an unclassified element visible in the place the list has always shown it. */
+const sectionOf = (label: AttrLabel | undefined): TelemetrySection =>
+  label?.group !== undefined && VEHICLE_GROUP.test(label.group) ? 'vehicle' : 'device'
+
+/**
+ * "Door Status" is a bitmask, and an operator reads open/closed — not 256.
+ *
+ * Teltonika documents six openings in one 2-byte value (0 = everything closed, 0x3F00 = everything
+ * open). The founder needs the four DOORS as one state and the boot as its own, so the single
+ * element is expanded into separate rows rather than shown as a decimal an operator has to convert.
+ * The engine cover gets its own row for the same reason: folding it into "doors" would make an open
+ * bonnet raise a doors-open alert, and folding it into the boot would name it wrongly.
+ *
+ * Gated on the wiki's own MAX cell, never on the name: `Door Status` is this bitmask on fmc150 (id
+ * 90, 2 bytes, max 16128) and a 1-byte Reefer IO element on fmb640 (id 10355, max 255), where these
+ * bits mean nothing. An entry that does not declare the documented ceiling is left as a number.
+ * https://wiki.teltonika-gps.com/view/FMC150_Teltonika_Data_Sending_Parameters_ID
+ */
+const DOOR_BITMASK_MAX = '16128' // 0x3F00 — bits 8..13, the six documented openings
+const DOOR_PARTS = [
+  { labelKey: 'doors', mask: 0x0f00 }, // 0x100 front-left, 0x200 front-right, 0x400/0x800 rear
+  { labelKey: 'trunk', mask: 0x2000 },
+  { labelKey: 'hood', mask: 0x1000 },
+] as const
+
+const isDoorBitmask = (label: AttrLabel | undefined): boolean =>
+  label !== undefined && label.name.trim().toLowerCase() === 'door status' && label.max === DOOR_BITMASK_MAX
 
 export const getTelemetry = (deviceId: string, at?: string | null) =>
   getJson<LatestTelemetry | { empty: true }>(
@@ -61,6 +112,14 @@ export interface TelemetryRow {
   label: string
   value: string
   documented: boolean
+  /** What the vehicle reports leads; what the tracker reports about itself follows. */
+  section: TelemetrySection
+  /**
+   * Set on a row decoded to a state rather than a number (the door bitmask). The words are the
+   * CALLER's: this module has no translator, and "open"/"closed" is the one thing here that must
+   * be read in the operator's own language.
+   */
+  binary?: { labelKey: (typeof DOOR_PARTS)[number]['labelKey']; open: boolean }
 }
 
 /** `attrs` is jsonb, so a value can be any JSON. Anything that is not a scalar is shown as JSON
@@ -152,23 +211,45 @@ export function telemetryRows(
   attrs: Record<string, unknown>,
   labels: Record<string, AttrLabel> = {},
 ): TelemetryRow[] {
-  const rows = Object.entries(attrs).map(([key, value]) => {
+  const rows = Object.entries(attrs).flatMap<TelemetryRow>(([key, value]) => {
     const raw = /^io_(\d+)$/.exec(key)
     const label = labels[key]
+    const section = sectionOf(label)
+    // one bitmask, three states an operator actually reads — see DOOR_PARTS
+    if (isDoorBitmask(label) && typeof value === 'number') {
+      return DOOR_PARTS.map((part) => ({
+        key: `${key}#${part.labelKey}`,
+        label: part.labelKey,
+        value: String((value & part.mask) !== 0),
+        documented: true,
+        section,
+        binary: { labelKey: part.labelKey, open: (value & part.mask) !== 0 },
+      }))
+    }
     // "Fuel Level (l)" and "Fuel Level (%)" are two rows of the same name — the unit is the
     // whole point of keeping them apart, so it belongs in the label, not only in the value
     const named = label === undefined ? undefined : displayName(label)
-    return {
-      key,
-      label: named ?? (raw !== null ? `AVL ${raw[1]}` : key),
-      value: fmtAttrValue(key, value, label),
-      // an id-key we can name is not an undocumented element; only an unnamed one is
-      documented: raw === null || label !== undefined,
-    }
+    return [
+      {
+        key,
+        label: named ?? (raw !== null ? `AVL ${raw[1]}` : key),
+        value: fmtAttrValue(key, value, label),
+        // an id-key we can name is not an undocumented element; only an unnamed one is
+        documented: raw === null || label !== undefined,
+        section,
+      },
+    ]
   })
-  return rows.sort((a, b) =>
-    a.documented === b.documented ? a.label.localeCompare(b.label, undefined, { numeric: true }) : a.documented ? -1 : 1,
-  )
+  /**
+   * Vehicle before device, then named before unnamed, then alphabetically. The founder reads fuel
+   * and doors first and the tracker's own supply voltage second — the previous list interleaved
+   * them by name alone, so "Battery Voltage" sat above "Fuel Level" for no reason a reader could see.
+   */
+  return rows.sort((a, b) => {
+    if (a.section !== b.section) return a.section === 'vehicle' ? -1 : 1
+    if (a.documented !== b.documented) return a.documented ? -1 : 1
+    return a.label.localeCompare(b.label, undefined, { numeric: true })
+  })
 }
 
 /**
