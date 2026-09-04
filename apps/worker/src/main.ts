@@ -215,6 +215,7 @@ async function main(): Promise<void> {
     onSent: (ch) => prom.notificationSent.inc({ channel: ch }),
     onFailed: (ch) => prom.notificationFailed.inc({ channel: ch }),
     onSkipped: (reason) => prom.notificationSkipped.inc({ reason }),
+    ...(process.env['APP_BASE_URL']?.trim() ? { appBaseUrl: process.env['APP_BASE_URL'].trim() } : {}),
   })
   // ADR-031: transactional auth emails (password-reset) — the API enqueues, the worker renders the
   // tenant-branded message and sends it via the SAME transport. Env-gated: no transport ⇒ no-op.
@@ -368,7 +369,7 @@ async function main(): Promise<void> {
   // email is configured (no transport ⇒ nothing to send); reuses the same SES SMTP as notifications.
   const scheduledReportQueue = emailTransport !== undefined ? createScheduledReportQueue(recomputeConn) : null
   const scheduledReportWorker = emailTransport !== undefined
-    ? startScheduledReportWorker({ connection: recomputeConn, db, pool, transport: emailTransport, onRun: (r) => prom.scheduledReportsSent.inc(r.emailed), onFailed: () => prom.jobFailed.inc({ job: 'scheduled_reports' }) })
+    ? startScheduledReportWorker({ connection: recomputeConn, db, pool, transport: emailTransport, ...(process.env['APP_BASE_URL']?.trim() ? { appBaseUrl: process.env['APP_BASE_URL'].trim() } : {}), onRun: (r) => prom.scheduledReportsSent.inc(r.emailed), onFailed: () => prom.jobFailed.inc({ job: 'scheduled_reports' }) })
     : null
   if (scheduledReportQueue !== null) await scheduleScheduledReports(scheduledReportQueue)
   // Data retention: daily prune of the webhook delivery-log (operational, grows unbounded)

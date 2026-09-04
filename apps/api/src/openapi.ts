@@ -98,6 +98,8 @@ const SUMMARY_OVERRIDES: Record<string, string> = {
   'POST /v1/quarantine/{imei}/claim': 'Claim a quarantined IMEI into the fleet',
   'GET /v1/tenant/branding': "Get this tenant's white-label branding",
   'PATCH /v1/tenant/branding': "Update this tenant's white-label branding",
+  'POST /v1/tenant/branding/asset/:slot': 'Upload a brand image (slot: logo|favicon; base64 PNG or SVG)',
+  'DELETE /v1/tenant/branding/asset/:slot': 'Remove an uploaded brand image',
   'POST /v1/tenant/domains': 'Add a custom domain',
   'POST /v1/tenant/domains/{id}/verify': 'Trigger DNS verification for a domain',
   'GET /v1/tenants/{id}/accounts': 'List accounts inside a tenant',
@@ -481,6 +483,17 @@ export function buildOpenApi(manifest: ManifestEntry[], serverUrl = '/'): object
   add('get', '/v1/push/vapid-key', { tags: ['push'], summary: 'VAPID public key for PushManager.subscribe', security: READ_SEC, responses: RESPONSES.readCollection })
   add('post', '/v1/push/subscribe', { tags: ['push'], summary: 'Register a browser push subscription', security: WRITE_SEC, responses: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden } })
   add('post', '/v1/push/unsubscribe', { tags: ['push'], summary: 'Remove a browser push subscription', security: WRITE_SEC, responses: { ...R.ok, ...R.badRequest, ...R.unauth, ...R.forbidden } })
+
+  // PUBLIC brand image (W10). Unauthenticated on purpose: it is the tenant's logo, already on their
+  // sign-in page, and the path is a content hash so there is nothing to enumerate. Served from
+  // whatever host asked, which is what keeps our domain out of a reseller's pages and mail.
+  add('get', '/v1/public/brand/{file}', {
+    tags: ['public'],
+    summary: 'Fetch an uploaded brand image (<sha256[0:32]>.png|svg)',
+    security: [],
+    parameters: pathParams(['file']),
+    responses: { '200': { description: 'The image' }, '404': { description: 'Not found' }, '429': { description: 'Rate limited' } },
+  })
 
   // PUBLIC temporary share-link resolver (E03-5) — the token IS the capability; no auth.
   add('get', '/v1/public/share/{token}', {

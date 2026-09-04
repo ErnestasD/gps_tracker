@@ -87,6 +87,12 @@ const TENANT_WIDE_ONLY: readonly (readonly [string, string, string?])[] = [
   ['POST', '/v1/billing/portal'],
   ['POST', '/v1/billing/change-plan'],
   ['PATCH', '/v1/tenant/branding'],
+  // Concrete slots, not the `:slot` template: the slot is an enum the handler validates, so sending
+  // the literal ":slot" would 404 on shape and hide whether the tenant pin was ever checked. An
+  // uploaded logo is the same blast radius as PATCH above — it is what every sibling account's
+  // users see on the sign-in page and in branded mail.
+  ['POST', '/v1/tenant/branding/asset/logo'],
+  ['DELETE', '/v1/tenant/branding/asset/logo'],
   ['GET', '/v1/tenant/domains'],
   ['POST', '/v1/tenant/domains'],
   // the ITEM routes matter as much as the collection ones and were the first thing left out: the

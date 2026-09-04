@@ -189,9 +189,20 @@ Every new variable must be added to the table here AND match the `.env` contract
   /v1/tenant/branding` edits the tenant's own logo/colors/product name/support email
   (tenant taken from the JWT — **never** a path param). Colors are validated `#rrggbb`
   server-side (`brandingSchema`) so they can only reach the browser as a CSS custom
-  property, never as arbitrary style; `logoUrl` is https-only. The web app applies them
-  live (`--accent` / `--accent-2`, with a WCAG-AA auto-lighten fallback so a near-black
-  accent can't vanish on the dark surface) and after login.
+  property, never as arbitrary style. The web app applies them live (`--accent` /
+  `--accent-2`, with a WCAG-AA auto-lighten fallback so a near-black accent can't vanish
+  on the dark surface) and after login.
+- **Brand images** (`logoUrl`, `faviconUrl`) are EITHER an `https://` URL the tenant hosts,
+  or `/v1/public/brand/<sha256[0:32]>.<png|svg>` for a file they uploaded (ADR-041).
+  `POST/DELETE /v1/tenant/branding/asset/:slot` (`logo`|`favicon`) takes base64 PNG/SVG,
+  ≤512 KB, with the type re-derived from the bytes; the file is stored in `tenant_assets`
+  and served by the API. The stored value is a **relative path on purpose** — it resolves
+  against whatever host the page is on, so nothing a reseller's customer loads names a
+  domain of ours. Uploaded SVG is served with a `sandbox` CSP (that, not the markup
+  screening, is the control), and `/v1/public/brand/` is the one path where the global
+  `Cross-Origin-Resource-Policy` relaxes to `cross-origin` so mail clients can render it.
+  `faviconUrl` falls back to `logoUrl`, so tenants configured before it existed are
+  unaffected. **No new env vars.**
 - **Custom domains**: `GET/POST/DELETE /v1/tenant/domains` + `POST
   /v1/tenant/domains/:id/verify`. Adding a domain returns a DNS TXT token
   (`orbetra-verify=<token>`); the verify route confirms it via a DNS resolver

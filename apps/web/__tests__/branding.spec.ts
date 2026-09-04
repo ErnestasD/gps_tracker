@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks, fqdn, hasPrefix, relativeName } from '../src/lib/branding.js'
+import { brandingSchema } from '@orbetra/shared'
+
+import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, clean, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks, fqdn, hasPrefix, iconFor, relativeName } from '../src/lib/branding.js'
 
 /**
  * White-label theming math (E03-5). No DOM: we test the pure WCAG contrast
@@ -108,6 +110,73 @@ describe('faviconLinks on a WHITE-LABEL host', () => {
 
   it('OUR hosts keep the platform icons', () => {
     expect(faviconLinks(undefined, false).map((l) => l.href)).toContain('/platform-icon.ico')
+  })
+})
+
+/**
+ * The favicon became its own field in W10. Before it, `logoUrl` was the tab icon too, and the setup
+ * guide asked one file to be a wide 200×50 wordmark AND legible at 16px. What must not change is
+ * what an existing tenant sees: they set a logo and no favicon, and their tab icon is still that logo.
+ */
+describe('favicon field precedence (W10)', () => {
+  const asset = `/v1/public/brand/${'a'.repeat(32)}.svg`
+
+  it('prefers the favicon, falls back to the logo, and treats a CLEARED field as unset', () => {
+    expect(iconFor({ logoUrl: 'https://x.test/l.png', faviconUrl: 'https://x.test/f.png' })).toBe('https://x.test/f.png')
+    expect(iconFor({ logoUrl: 'https://x.test/l.png' })).toBe('https://x.test/l.png')
+    expect(iconFor({})).toBeUndefined()
+    // '' is what the settings form holds for a field the user cleared. `??` alone would treat it as
+    // a value and blank the tab icon, while the field's own preview and the saved result (clean()
+    // drops empty strings) both fall back — three views of one setting, disagreeing.
+    expect(iconFor({ logoUrl: 'https://x.test/l.png', faviconUrl: '' })).toBe('https://x.test/l.png')
+    expect(iconFor({ logoUrl: '', faviconUrl: '' })).toBeUndefined()
+  })
+
+  it('declares image/svg+xml for an uploaded SVG, so a browser picks the vector knowingly', () => {
+    expect(faviconLinks(asset, true)).toEqual([
+      { rel: 'icon', href: asset, type: 'image/svg+xml' },
+      { rel: 'apple-touch-icon', href: asset },
+    ])
+  })
+
+  it('states NO type for an uploaded PNG or a tenant URL that merely ends in .svg', () => {
+    // an external URL's extension is not evidence of anything — only our own served paths are.
+    expect(faviconLinks(`/v1/public/brand/${'b'.repeat(32)}.png`, true)[0]).toEqual({ rel: 'icon', href: `/v1/public/brand/${'b'.repeat(32)}.png` })
+    expect(faviconLinks('https://cdn.example.com/logo.svg', true)[0]).toEqual({ rel: 'icon', href: 'https://cdn.example.com/logo.svg' })
+  })
+
+  it('an uploaded icon is a RELATIVE path — that is what keeps our domain off a reseller page', () => {
+    expect(faviconLinks(asset, true).every((l) => l.href.startsWith('/'))).toBe(true)
+    expect(JSON.stringify(faviconLinks(asset, true))).not.toContain('orbetra')
+  })
+})
+
+/**
+ * `clean()` builds the PATCH body, and PATCH REPLACES the whole branding jsonb. A key missing from
+ * it is therefore not "left unchanged" — it is deleted on the next save, from a field the user never
+ * touched. That is a silent data loss with no error anywhere, so the guard is derived from the
+ * schema rather than written by hand: add a branding field without adding it here and this fails.
+ */
+describe('clean() must carry EVERY branding key', () => {
+  const keys = Object.keys(brandingSchema.shape) as (keyof typeof brandingSchema.shape)[]
+
+  it('round-trips a fully populated brand with nothing dropped', () => {
+    const full: Record<string, string> = {
+      productName: 'VrummTrack',
+      supportEmail: 'help@vrumm.test',
+      primary: '#112233',
+      accent: '#445566',
+      logoUrl: 'https://cdn.vrumm.test/logo.png',
+      faviconUrl: `/v1/public/brand/${'c'.repeat(32)}.png`,
+    }
+    // every schema key must have a fixture above — otherwise this test would silently stop covering it
+    expect(Object.keys(full).sort()).toEqual([...keys].sort())
+    expect(clean(full)).toEqual(full)
+  })
+
+  it('drops blanks, so clearing a field is a removal rather than a 400', () => {
+    expect(clean({ productName: '', logoUrl: '', primary: '#112233' })).toEqual({ primary: '#112233' })
+    expect(clean({})).toEqual({})
   })
 })
 

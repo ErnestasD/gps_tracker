@@ -1,3 +1,5 @@
+import { parseAssetPath } from '@orbetra/shared'
+
 import { getJson, mutate } from './client'
 import { getTheme, onThemeChange, type Theme } from './prefs'
 
@@ -11,11 +13,26 @@ import { getTheme, onThemeChange, type Theme } from './prefs'
  * via onThemeChange (prefs.ts).
  */
 export interface Branding {
+  /** an https URL the tenant hosts, or `/v1/public/brand/<hash>.<ext>` for one they uploaded */
   logoUrl?: string
+  /** the browser-tab icon (W10). Unset falls back to logoUrl — see faviconLinks. */
+  faviconUrl?: string
   primary?: string
   accent?: string
   productName?: string
   supportEmail?: string
+}
+
+/** One uploaded image, as GET /v1/tenant/branding reports it. Mirrors BrandAssetMeta in packages/db. */
+export interface BrandAsset {
+  slot: 'logo' | 'favicon'
+  mime: string
+  sha256: string
+  width: number | null
+  height: number | null
+  sizeBytes: number
+  path: string
+  updatedAt: string
 }
 
 export interface TenantDomain {
@@ -260,9 +277,27 @@ export function applyBranding(branding: Branding, whiteLabel: boolean): void {
   // whatever was there, so one call with whiteLabel=false (AppShell's effect at mount, before the
   // host is known) wrote "Orbetra" into a tenant's tab and nothing ever took it out again.
   document.title = branding.productName ?? (whiteLabel ? '' : PLATFORM_NAME)
-  // white-label favicon: a tenant's logo IS their favicon — no separate input, reuse logoUrl
-  // (brandingSchema pins it to an https URL).
-  applyFavicon(branding.logoUrl, whiteLabel)
+  // The tab icon prefers `faviconUrl` and falls back to the logo. It used to BE the logo, with no
+  // separate input, which asked one file to be a wide wordmark in the sidebar and a legible mark at
+  // 16px — so the fallback is not politeness, it is what keeps every tenant who configured a logo
+  // before faviconUrl existed showing exactly the icon they already had.
+  // `??` alone is wrong here: the settings form holds a CLEARED field as '', not undefined, so
+  // clearing the favicon made the tab icon vanish in the live preview while the field's own preview
+  // and the eventual saved result both fell back to the logo (clean() drops empty strings). Three
+  // views of one setting, disagreeing.
+  applyFavicon(iconFor(branding), whiteLabel)
+}
+
+/**
+ * Which image is the tab icon: the favicon if they set one, else the logo. Pure and exported so the
+ * settings preview, the live preview and the manifest all answer this the same way.
+ *
+ * Treats '' as unset, because a form field the user cleared is an empty string and every reader has
+ * to agree that means "fall back", not "no icon".
+ */
+export function iconFor(branding: Pick<Branding, 'logoUrl' | 'faviconUrl'>): string | undefined {
+  const pick = (v: string | undefined): string | undefined => (v !== undefined && v !== '' ? v : undefined)
+  return pick(branding.faviconUrl) ?? pick(branding.logoUrl)
 }
 
 export interface FaviconLink {
@@ -285,20 +320,30 @@ const DEFAULT_ICONS: FaviconLink[] = [
 /**
  * Which <link> icons to render. Pure — tested.
  *
- * A white-label host with no logo gets NONE, which renders as the browser's blank page icon. That is
+ * A white-label host with no icon gets NONE, which renders as the browser's blank page icon. That is
  * the whole point: the previous fallback put the platform's mark in a reseller's customers' tabs and
  * left it there, because "no logo configured" is not "show someone else's logo".
+ *
+ * `iconUrl` is already resolved by the caller (faviconUrl, else logoUrl) — this function decides
+ * what to render, not which field wins.
  */
-export function faviconLinks(logoUrl: string | undefined, whiteLabel = false): FaviconLink[] {
-  if (logoUrl !== undefined && logoUrl !== '') return [{ rel: 'icon', href: logoUrl }, { rel: 'apple-touch-icon', href: logoUrl }]
+export function faviconLinks(iconUrl: string | undefined, whiteLabel = false): FaviconLink[] {
+  if (iconUrl !== undefined && iconUrl !== '') {
+    // Declare the type for an SVG so a browser that prefers vector picks it knowingly. Only our own
+    // uploads carry a trustworthy extension; a tenant's external URL may end in anything, so the
+    // type is stated only when the path is one we serve — decided by the shared parser, not by a
+    // second copy of its regex that could drift from it.
+    const type = parseAssetPath(iconUrl)?.mime === 'image/svg+xml' ? { type: 'image/svg+xml' } : {}
+    return [{ rel: 'icon', href: iconUrl, ...type }, { rel: 'apple-touch-icon', href: iconUrl }]
+  }
   return whiteLabel ? [] : DEFAULT_ICONS
 }
 
-/** Point the browser-tab icon at `logoUrl` (tenant white-label) or restore the Orbetra defaults. */
-function applyFavicon(logoUrl: string | undefined, whiteLabel = false): void {
+/** Point the browser-tab icon at `iconUrl` (tenant white-label) or restore the Orbetra defaults. */
+function applyFavicon(iconUrl: string | undefined, whiteLabel = false): void {
   const head = document.head
   head.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]').forEach((el) => el.remove())
-  for (const l of faviconLinks(logoUrl, whiteLabel)) {
+  for (const l of faviconLinks(iconUrl, whiteLabel)) {
     const link = document.createElement('link')
     link.rel = l.rel
     link.href = l.href
@@ -334,8 +379,44 @@ export function onBrandingChange(cb: () => void): () => void {
  *  where a tenant points their own domain's CNAME, and whether `<slug>.<platformDomain>` is on
  *  offer at all (it needs a wildcard DNS record to exist). Either may be null. */
 export const getBranding = () =>
-  getJson<{ branding: Branding; name: string; dnsTarget: string | null; dnsAddresses: string[]; platformDomain: string | null }>('/v1/tenant/branding')
+  getJson<{ branding: Branding; name: string; assets: BrandAsset[]; dnsTarget: string | null; dnsAddresses: string[]; platformDomain: string | null }>('/v1/tenant/branding')
 export const saveBranding = (b: Branding) => mutate<{ branding: Branding; name: string }>('PATCH', '/v1/tenant/branding', b)
+
+/**
+ * Upload one brand image.
+ *
+ * The response carries the WHOLE merged branding object, and the caller must reseat both its form
+ * state and its saved baseline from it. PATCH /v1/tenant/branding replaces the jsonb from whatever
+ * the form holds, so a page that uploaded and then saved a stale form would erase the upload it had
+ * just made — silently, since the request succeeds.
+ */
+export const uploadBrandAsset = (slot: 'logo' | 'favicon', mime: string, base64: string) =>
+  mutate<{ branding: Branding; asset: BrandAsset }>('POST', `/v1/tenant/branding/asset/${slot}`, { mime, data: base64 })
+export const removeBrandAsset = (slot: 'logo' | 'favicon') =>
+  mutate<{ branding: Branding }>('DELETE', `/v1/tenant/branding/asset/${slot}`)
+
+/** Strip the `data:<mime>;base64,` prefix a FileReader produces — the API wants the payload alone. */
+export const stripDataUrl = (dataUrl: string): string => dataUrl.slice(dataUrl.indexOf(',') + 1)
+
+/**
+ * The settings form's state → the body `PATCH /v1/tenant/branding` receives. Drops empty strings so
+ * a blank field doesn't fail the strict server schema.
+ *
+ * EVERY branding key must be listed here, which is why it lives beside the type rather than in the
+ * page: PATCH replaces the whole jsonb with what this returns, so a key left out is not "unchanged",
+ * it is deleted on the next save — from a form the user never touched. Tested against
+ * `brandingSchema`'s own key list so a new field cannot be added without landing here.
+ */
+export function clean(b: Branding): Branding {
+  const out: Branding = {}
+  if (b.productName) out.productName = b.productName
+  if (b.supportEmail) out.supportEmail = b.supportEmail
+  if (b.primary) out.primary = b.primary
+  if (b.accent) out.accent = b.accent
+  if (b.logoUrl) out.logoUrl = b.logoUrl
+  if (b.faviconUrl) out.faviconUrl = b.faviconUrl
+  return out
+}
 export const listDomains = () => getJson<TenantDomain[]>('/v1/tenant/domains')
 /** `txtRecord`/`dnsTarget` are null for a PLATFORM SUBDOMAIN — it comes back already verified,
  *  with nothing for the tenant to publish and nowhere for them to point anything. */

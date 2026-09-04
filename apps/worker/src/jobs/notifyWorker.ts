@@ -2,10 +2,11 @@ import { Worker, type ConnectionOptions, type Job } from 'bullmq'
 import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 
-import { brandingReadSchema, notificationChannelSchema, sanitizeUnits, type Branding, type NotificationChannel } from '@orbetra/shared'
+import { absolutizeBrandAssets, brandingReadSchema, hasBrandAsset, notificationChannelSchema, sanitizeUnits, type Branding, type NotificationChannel } from '@orbetra/shared'
 
 import { dispatchEvent } from '../notify/dispatch.js'
 import type { Drivers } from '../notify/drivers.js'
+import { brandAssetOrigin } from '../notify/tenantOrigin.js'
 import { notificationMessage, type NotifyContext } from '../notify/message.js'
 import { NOTIFY_QUEUE, type NotifyJob } from './notifyQueue.js'
 
@@ -20,6 +21,9 @@ export interface NotifyWorkerDeps {
   onSent?: (channel: string) => void
   onFailed?: (channel: string) => void
   onSkipped?: (reason: string) => void
+  /** platform origin, used only to absolutize an UPLOADED brand logo for a tenant that has no
+   *  verified domain of their own. Absent ⇒ such a tenant's mail shows the product name as text. */
+  appBaseUrl?: string | undefined
 }
 
 /** Read a rule's channels from the DB (raw SQL — the worker has no repo layer). An absent or
@@ -44,10 +48,11 @@ export async function loadRuleChannels(pool: Pool, ruleId: string): Promise<Noti
  * tenant/account source), scoped by the device id — never a guessed scope. A lookup miss
  * (retired/unknown device) yields safe defaults so a notification is never dropped.
  */
-export async function resolveNotifyContext(pool: Pool, deviceId: string): Promise<NotifyContext> {
+export async function resolveNotifyContext(pool: Pool, deviceId: string, appBaseUrl?: string): Promise<NotifyContext> {
   if (!/^\d+$/.test(deviceId)) return {}
   try {
     const res = await pool.query<{
+      tenant_id: string
       device_name: string | null
       device_plate: string | null
       timezone: string | null
@@ -58,7 +63,7 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string): Promis
       tenant_name: string | null
       branding: unknown
     }>(
-      `SELECT d.name AS device_name, d.plate AS device_plate,
+      `SELECT d."tenantId" AS tenant_id, d.name AS device_name, d.plate AS device_plate,
               a.timezone AS timezone, a.locale AS locale,
               a."unitSpeed", a."unitDistance", a."unitVolume",
               t.name AS tenant_name, t.branding AS branding
@@ -70,7 +75,14 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string): Promis
     if (row === undefined) return {}
     // parse the untrusted branding jsonb defensively — a malformed value must never crash the
     // send path; a parse failure simply yields no branding (renderBrandedEmail then uses the name)
-    const branding = safeBranding(row.branding)
+    // An uploaded logo is a relative path; a mail client cannot resolve one, so it is stamped with
+    // the tenant's own origin here — the same rule the auth mails use (notify/tenantOrigin.ts).
+    const parsedBranding = safeBranding(row.branding)
+    // Only an asset path needs an origin, so a tenant linking their own https logo — or none at all
+    // — pays no extra query on a path that runs once per notification. Same guard the manifest uses.
+    const branding = parsedBranding === undefined || !hasBrandAsset(parsedBranding)
+      ? parsedBranding
+      : absolutizeBrandAssets(parsedBranding, await brandAssetOrigin(pool, row.tenant_id, appBaseUrl))
     const product = branding?.productName
     const brand = typeof product === 'string' && product.trim() !== '' ? product : row.tenant_name ?? undefined
     return {
@@ -114,7 +126,7 @@ export async function runNotify(deps: NotifyWorkerDeps, job: Job<NotifyJob>): Pr
   const [tenantId, accountId, notifyCtx] = await Promise.all([
     deps.redis.hget('device:tenant', deviceId),
     deps.redis.hget('device:account', deviceId),
-    resolveNotifyContext(deps.pool, deviceId),
+    resolveNotifyContext(deps.pool, deviceId, deps.appBaseUrl),
   ])
   const msg = notificationMessage(kind, deviceId, payload, new Date(at), notifyCtx)
   const sentKey = `notify:sent:${job.id ?? `${ruleId}:${deviceId}:${at}`}`

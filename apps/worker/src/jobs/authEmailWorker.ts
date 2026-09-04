@@ -1,9 +1,10 @@
 import { Worker, type ConnectionOptions } from 'bullmq'
 import type { Pool } from 'pg'
 
-import { brandingReadSchema, type Branding } from '@orbetra/shared'
+import { absolutizeBrandAssets, brandingReadSchema, type Branding } from '@orbetra/shared'
 
 import type { EmailTransport } from '../notify/drivers.js'
+import { primaryDomain } from '../notify/tenantOrigin.js'
 import { renderResetEmail } from '../notify/passwordResetEmail.js'
 import { renderSignupExistsEmail } from '../notify/signupExistsEmail.js'
 import { renderVerifyEmail } from '../notify/verifyEmail.js'
@@ -97,16 +98,20 @@ export function onTenantHost(url: string, domain: string | null): string {
   }
 }
 
-/** The tenant's own login host: the OLDEST verified domain, so the choice is stable as they add
- *  more. Null when they have none, when the id is not a uuid, or on any fault. */
-async function primaryDomain(pool: Pool, tenantId: string): Promise<string | null> {
-  if (tenantId === '') return null
+/** Whichever link this job carries. Used only to recover the PLATFORM origin the API built it from,
+ *  for a tenant with no domain of their own — the API's APP_BASE_URL, without a second config knob
+ *  here that could drift from it. */
+function linkOf(job: AuthEmailJob): string {
+  if (job.kind === 'signup-exists') return job.loginUrl
+  if (job.kind === 'lapse') return job.billingUrl
+  if (job.kind === 'verify-email') return job.verifyUrl
+  // 'partner' never reaches here — it returns above, on the platform's own branding.
+  return job.kind === 'password-reset' ? job.resetUrl : ''
+}
+
+const originOf = (url: string): string | null => {
   try {
-    const res = await pool.query<{ domain: string }>(
-      'SELECT domain FROM tenant_domains WHERE "tenantId" = $1 AND verified = true ORDER BY "createdAt" ASC LIMIT 1',
-      [tenantId],
-    )
-    return res.rows[0]?.domain ?? null
+    return new URL(url).origin
   } catch {
     return null
   }
@@ -183,14 +188,19 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   // Stripe portal/checkout return that only makes sense on the platform host.
   const host = await primaryDomain(deps.pool, tenantId)
   const on = (url: string): string => onTenantHost(url, host)
+  // An UPLOADED logo is stored as a path, not a URL, because every page that renders it can resolve
+  // it against its own host. A mail client cannot — it fetches the `src` verbatim — so the same
+  // origin the links just moved to is stamped onto the image too. Without this a tenant who uploaded
+  // their logo would keep it everywhere except in mail, which is precisely where nobody would notice.
+  const branded = branding === undefined ? undefined : absolutizeBrandAssets(branding, host !== null ? `https://${host}` : originOf(linkOf(job)))
   const { subject, text, html } =
     job.kind === 'signup-exists'
-      ? renderSignupExistsEmail({ loginUrl: on(job.loginUrl), resetUrl: on(job.resetUrl), locale: job.locale, brand, branding, tenantName })
+      ? renderSignupExistsEmail({ loginUrl: on(job.loginUrl), resetUrl: on(job.resetUrl), locale: job.locale, brand, branding: branded, tenantName })
       : job.kind === 'lapse'
-        ? renderLapseEmail({ billingUrl: job.billingUrl, daysLeft: job.daysLeft, locale: job.locale, brand, branding, tenantName })
+        ? renderLapseEmail({ billingUrl: job.billingUrl, daysLeft: job.daysLeft, locale: job.locale, brand, branding: branded, tenantName })
         : job.kind === 'verify-email'
-        ? renderVerifyEmail({ verifyUrl: on(job.verifyUrl), expiresHours: job.expiresHours, locale: job.locale, brand, branding, tenantName: shellName })
-        : renderResetEmail({ resetUrl: on(job.resetUrl), expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding, tenantName })
+        ? renderVerifyEmail({ verifyUrl: on(job.verifyUrl), expiresHours: job.expiresHours, locale: job.locale, brand, branding: branded, tenantName: shellName })
+        : renderResetEmail({ resetUrl: on(job.resetUrl), expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding: branded, tenantName })
   await deps.transport.send(job.email, subject, text, html, branding?.supportEmail)
   return true
 }

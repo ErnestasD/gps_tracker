@@ -19,7 +19,24 @@ import type { MiddlewareHandler } from 'hono'
  * NO global Content-Security-Policy: every /v1 response is JSON except /v1/docs, whose
  * self-contained inline script would need a nonce/hash — tracked in the security-pass
  * audit (docs/audit/security-pass-2026-07.md), revisit if the docs page grows.
+ * (Uploaded brand SVGs DO set their own per-response CSP — see caddyAsk.ts. Nothing is
+ * overridden there precisely because there is no global one.)
  */
+
+/**
+ * The one path prefix whose responses are meant to be loaded cross-origin.
+ *
+ * `Cross-Origin-Resource-Policy: same-origin` is right for an API of JSON, and wrong for the one
+ * route that answers with a picture: a tenant's brand image is fetched by their sign-in page, by the
+ * dashboard on our app host, and by mail clients rendering their logo — all different origins from
+ * the one that served it. Because these headers are applied AFTER the handler, a route cannot
+ * loosen this for itself; the exception has to live here.
+ *
+ * Nothing is given away by it. The bytes are a public logo, already on an unauthenticated login
+ * page, and an SVG among them carries its own `sandbox` CSP.
+ */
+const CROSS_ORIGIN_PREFIX = '/v1/public/brand/'
+
 export function securityHeaders(opts: { hsts: boolean }): MiddlewareHandler {
   const hstsValue = 'max-age=15552000; includeSubDomains' // 180 days
   return async (c, next) => {
@@ -28,7 +45,7 @@ export function securityHeaders(opts: { hsts: boolean }): MiddlewareHandler {
     c.header('X-Frame-Options', 'DENY')
     c.header('Referrer-Policy', 'no-referrer')
     c.header('Cross-Origin-Opener-Policy', 'same-origin')
-    c.header('Cross-Origin-Resource-Policy', 'same-origin')
+    c.header('Cross-Origin-Resource-Policy', c.req.path.startsWith(CROSS_ORIGIN_PREFIX) ? 'cross-origin' : 'same-origin')
     c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
     if (opts.hsts) c.header('Strict-Transport-Security', hstsValue)
   }

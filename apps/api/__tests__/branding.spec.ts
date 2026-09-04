@@ -7,6 +7,7 @@ import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainer
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { createDb, type Db } from '@orbetra/db'
+import { MAX_BRAND_ASSET_BYTES } from '@orbetra/shared'
 
 import { seedUser } from '../../../packages/db/seed/users.js'
 import { createApp } from '../src/app.js'
@@ -513,6 +514,200 @@ describe('the manifest is branded by Host — the leak that outlives every other
 
     const b = (await (await fetch(`${base()}/v1/branding`, { headers: { 'x-forwarded-host': 'bare.t2.test' } })).json()) as { whiteLabel: boolean }
     expect(b.whiteLabel).toBe(true) // …and the SERVER says so, so the client never has to guess
+  })
+})
+
+/**
+ * Uploaded brand images (W10).
+ *
+ * The whole feature exists to answer one question — where do the bytes live so that a reseller's
+ * customer never sees our domain — so most of these assert the ABSENCE of something rather than the
+ * presence of it.
+ */
+describe('W10 uploaded brand assets', () => {
+  /** A PNG with real IHDR dimensions. The route reads these bytes, so a stub would prove nothing. */
+  const png = (w: number, h: number): Buffer => {
+    const b = Buffer.alloc(24)
+    b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0)
+    b.set([0, 0, 0, 13], 8)
+    b.write('IHDR', 12, 'ascii')
+    b.writeUInt32BE(w, 16)
+    b.writeUInt32BE(h, 20)
+    return b
+  }
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#123456"/></svg>'
+  const upload = (token: string, slot: string, mime: string, bytes: Buffer | string) =>
+    req(`/v1/tenant/branding/asset/${slot}`, token, 'POST', { mime, data: Buffer.from(bytes).toString('base64') })
+  /** Tenant fixtures persist across this file, so assertions are per-SLOT, never "no assets at all". */
+  const assetsOf = async (token: string): Promise<{ slot: string; path: string }[]> =>
+    ((await (await req('/v1/tenant/branding', token)).json()) as { assets: { slot: string; path: string }[] }).assets
+  const verified = async (token: string, domain: string): Promise<void> => {
+    const created = (await (await req('/v1/tenant/domains', token, 'POST', { domain })).json()) as { id: string; txtToken: string }
+    txtRecords.set(domain, [['orbetra-verify=' + created.txtToken]])
+    await req(`/v1/tenant/domains/${created.id}/verify`, token, 'POST')
+  }
+
+  it('stores the file, points branding at it, and serves the SAME bytes back', async () => {
+    const bytes = png(192, 192)
+    const res = await upload(t1Token, 'favicon', 'image/png', bytes)
+    expect(res.status).toBe(201)
+    const { branding, asset } = (await res.json()) as { branding: { faviconUrl: string }; asset: { path: string; width: number; height: number; sizeBytes: number } }
+
+    expect(branding.faviconUrl).toBe(asset.path)
+    expect(asset.path).toMatch(/^\/v1\/public\/brand\/[0-9a-f]{32}\.png$/)
+    expect([asset.width, asset.height, asset.sizeBytes]).toEqual([192, 192, bytes.length])
+
+    const served = await fetch(`${base()}${asset.path}`)
+    expect(served.status).toBe(200)
+    expect(served.headers.get('content-type')).toBe('image/png')
+    expect(Buffer.from(await served.arrayBuffer()).equals(bytes)).toBe(true)
+  })
+
+  it('the served path is RELATIVE and names no host of ours — the point of the whole design', async () => {
+    const { asset, branding } = (await (await upload(t1Token, 'logo', 'image/png', png(200, 50))).json()) as { asset: { path: string }; branding: unknown }
+    expect(asset.path.startsWith('/')).toBe(true)
+    expect(JSON.stringify(branding)).not.toContain('orbetra')
+    expect(JSON.stringify(branding)).not.toMatch(/https?:\/\//)
+  })
+
+  it('resolves on ANY host — a tenant domain, an unknown one, and our own dashboard', async () => {
+    const { asset } = (await (await upload(t1Token, 'logo', 'image/png', png(64, 64))).json()) as { asset: { path: string } }
+    await verified(t2Token, 'other.t2.test')
+    // Host-independence is deliberate: a route that resolved by Host could not serve the dashboard,
+    // where a reseller admin edits their own brand. The sandbox CSP is what makes it safe.
+    for (const host of ['app.t1.test', 'other.t2.test', 'dash.orbetra.test']) {
+      const r = await fetch(`${base()}${asset.path}`, { headers: { 'x-forwarded-host': host } })
+      expect(r.status, host).toBe(200)
+    }
+  })
+
+  it('is cacheable forever because the URL is the content hash, and a new file gets a new URL', async () => {
+    const first = (await (await upload(t1Token, 'logo', 'image/png', png(100, 20))).json()) as { asset: { path: string } }
+    const second = (await (await upload(t1Token, 'logo', 'image/png', png(101, 20))).json()) as { asset: { path: string } }
+    expect(second.asset.path).not.toBe(first.asset.path)
+
+    const r = await fetch(`${base()}${second.asset.path}`)
+    expect(r.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+    // No Vary: unlike /v1/branding and the manifest, this body does not depend on the Host.
+    expect(r.headers.get('vary')).toBeNull()
+    // …but a MISS is not cacheable: deleting and re-uploading the same file reproduces the digest,
+    // so a held 404 would hide the restored image.
+    const miss = await fetch(`${base()}/v1/public/brand/${'9'.repeat(32)}.png`)
+    expect(miss.status).toBe(404)
+    expect(miss.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('an SVG is served sandboxed, which is what stops it running script in a tenant origin', async () => {
+    const { asset } = (await (await upload(t1Token, 'logo', 'image/svg+xml', SVG)).json()) as { asset: { path: string } }
+    const r = await fetch(`${base()}${asset.path}`)
+    expect(r.headers.get('content-type')).toBe('image/svg+xml')
+    const csp = r.headers.get('content-security-policy') ?? ''
+    expect(csp).toContain('sandbox')
+    expect(csp).toContain("default-src 'none'")
+    expect(csp).not.toContain('allow-scripts')
+  })
+
+  it('is loadable cross-origin — a mail client fetching the logo is not same-origin', async () => {
+    const { asset } = (await (await upload(t1Token, 'logo', 'image/png', png(32, 32))).json()) as { asset: { path: string } }
+    expect((await fetch(`${base()}${asset.path}`)).headers.get('cross-origin-resource-policy')).toBe('cross-origin')
+    // …and every other route keeps the strict value.
+    expect((await fetch(`${base()}/v1/branding`)).headers.get('cross-origin-resource-policy')).toBe('same-origin')
+  })
+
+  it('refuses hostile and malformed uploads, by reason', async () => {
+    const cases: [string, string, Buffer | string, string][] = [
+      ['a script-bearing SVG', 'image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', 'script'],
+      ['an event handler', 'image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>', 'event_handler'],
+      ['SVG markup declared as PNG', 'image/png', SVG, 'mime_mismatch'],
+      ['PNG bytes declared as SVG', 'image/svg+xml', png(8, 8), 'not_svg'],
+      ['an absurd pixel count in a tiny file', 'image/png', png(20_000, 20_000), 'too_many_pixels'],
+    ]
+    for (const [label, mime, bytes, reason] of cases) {
+      const r = await upload(t1Token, 'logo', mime, bytes)
+      expect(r.status, label).toBe(400)
+      expect(JSON.stringify(await r.json()), label).toContain(reason)
+    }
+    // over the byte cap
+    const huge = Buffer.concat([png(8, 8), Buffer.alloc(512 * 1024)])
+    expect((await upload(t1Token, 'logo', 'image/png', huge)).status).toBe(400)
+  })
+
+  it('accepts a file at EXACTLY the cap — three limits have to line up for that to work', async () => {
+    // 512 KB of bytes is 699 052 base64 chars, which must clear the schema's 700 000 cap AND the
+    // 1 MB global body limit. Any of the three moving independently turns a legal upload into an
+    // unexplained 400 or 413, and only the boundary shows it.
+    const atCap = Buffer.concat([png(64, 64), Buffer.alloc(MAX_BRAND_ASSET_BYTES - 24)])
+    expect(atCap.length).toBe(MAX_BRAND_ASSET_BYTES)
+    expect((await upload(t1Token, 'logo', 'image/png', atCap)).status).toBe(201)
+    const overByOne = Buffer.concat([atCap, Buffer.alloc(1)])
+    expect((await upload(t1Token, 'logo', 'image/png', overByOne)).status).toBe(400)
+    // an unknown slot is not a resource we have
+    expect((await upload(t1Token, 'banner', 'image/png', png(8, 8))).status).toBe(404)
+  })
+
+  it('never serves bytes under a mime they are not — the extension must match what was stored', async () => {
+    const { asset } = (await (await upload(t1Token, 'logo', 'image/png', png(24, 24))).json()) as { asset: { path: string } }
+    // same hash, wrong extension: without this an uploader could pick the Content-Type after the fact
+    expect((await fetch(`${base()}${asset.path.replace(/\.png$/, '.svg')}`)).status).toBe(404)
+    expect((await fetch(`${base()}/v1/public/brand/${'0'.repeat(32)}.png`)).status).toBe(404)
+    expect((await fetch(`${base()}/v1/public/brand/not-a-hash.png`)).status).toBe(404)
+  })
+
+  it('REGRESSION: a save after an upload must not wipe it — the response carries the merged brand', async () => {
+    // PATCH replaces the whole jsonb from the form's state. The upload response returns the FULL
+    // merged branding precisely so the page can reseat its form before the user's next Save; a
+    // client that saved a stale form would erase the image it had just uploaded, and succeed.
+    await req('/v1/tenant/branding', t1Token, 'PATCH', { productName: 'Keep Me', primary: '#abcdef' })
+    const { branding } = (await (await upload(t1Token, 'logo', 'image/png', png(40, 40))).json()) as { branding: Record<string, string> }
+    expect(branding.productName).toBe('Keep Me') // the upload merged, it did not replace
+    expect(branding.primary).toBe('#abcdef')
+
+    const saved = await req('/v1/tenant/branding', t1Token, 'PATCH', branding)
+    expect(saved.status).toBe(200)
+    const after = (await (await req('/v1/tenant/branding', t1Token)).json()) as { branding: Record<string, string> }
+    expect(after.branding.logoUrl).toBe(branding.logoUrl)
+  })
+
+  it('removal clears the branding key, but only while it still points at that file', async () => {
+    const { asset } = (await (await upload(t1Token, 'logo', 'image/png', png(48, 48))).json()) as { asset: { path: string } }
+    // the tenant then types their own URL over the upload
+    await req('/v1/tenant/branding', t1Token, 'PATCH', { logoUrl: 'https://cdn.t1.test/own.png' })
+    expect((await req('/v1/tenant/branding/asset/logo', t1Token, 'DELETE')).status).toBe(200)
+    const kept = (await (await req('/v1/tenant/branding', t1Token)).json()) as { branding: { logoUrl?: string } }
+    expect(kept.branding.logoUrl).toBe('https://cdn.t1.test/own.png') // tidying up the file is not a request to drop their URL
+    expect((await assetsOf(t1Token)).some((a) => a.slot === 'logo')).toBe(false)
+    expect((await fetch(`${base()}${asset.path}`)).status).toBe(404)
+
+    // …and when branding DOES still point at it, the key goes too, rather than leaving a dead image
+    const again = (await (await upload(t1Token, 'logo', 'image/png', png(50, 50))).json()) as { branding: { logoUrl: string } }
+    expect(again.branding.logoUrl).toMatch(/^\/v1\/public\/brand\//)
+    await req('/v1/tenant/branding/asset/logo', t1Token, 'DELETE')
+    const gone = (await (await req('/v1/tenant/branding', t1Token)).json()) as { branding: { logoUrl?: string } }
+    expect(gone.branding.logoUrl).toBeUndefined()
+    expect((await req('/v1/tenant/branding/asset/logo', t1Token, 'DELETE')).status).toBe(404)
+  })
+
+  it('gives the manifest a real icon declaration, which is what makes the PWA installable', async () => {
+    await verified(t1Token, 'pwa.t1.test')
+    const { asset } = (await (await upload(t1Token, 'favicon', 'image/png', png(192, 192))).json()) as { asset: { path: string } }
+    const m = (await (await fetch(`${base()}/v1/public/manifest.webmanifest`, { headers: { 'x-forwarded-host': 'pwa.t1.test' } })).json()) as
+      { icons: { src: string; sizes: string; type: string }[] }
+    // before this, an icon could only ever be declared `sizes: 'any'` — a guess Chrome will not
+    // accept as install-worthy. An uploaded file is the one case where we KNOW.
+    expect(m.icons[0]).toEqual({ src: asset.path, sizes: '192x192', type: 'image/png' })
+    expect(JSON.stringify(m)).not.toContain('orbetra')
+  })
+
+  it('one tenant cannot upload into another, and a viewer cannot upload at all', async () => {
+    const before = await assetsOf(t2Token)
+    const { asset } = (await (await upload(t1Token, 'logo', 'image/png', png(60, 60))).json()) as { asset: { path: string } }
+    const after = await assetsOf(t2Token)
+    expect(after).toEqual(before) // T1's upload is invisible in T2's own settings
+    expect(after.some((a) => a.path === asset.path)).toBe(false)
+
+    const viewer = await mintTestToken({ userId: '00000000-0000-0000-0000-0000000000aa', tenantId: t1, role: 'viewer' })
+    expect((await upload(viewer, 'logo', 'image/png', png(8, 8))).status).toBe(403)
+    expect((await req('/v1/tenant/branding/asset/logo', viewer, 'DELETE')).status).toBe(403)
   })
 })
 
