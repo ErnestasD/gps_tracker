@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
+import { useConfirm } from '@/components/admin/ConfirmDialog'
 import { getCurrentUser } from '@/lib/auth'
 import { usePublicBranding } from '@/lib/publicBranding'
 import { changePlan, fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from '@/lib/billing'
@@ -128,6 +129,7 @@ export function BillingPage() {
   const plans = useMemo(() => catalog.data ?? [], [catalog.data])
 
   const qc = useQueryClient()
+  const { confirm, element: confirmElement } = useConfirm()
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState(false) // Stripe handoff failed (was invisible)
   const [changingTo, setChangingTo] = useState<string | null>(null) // price id mid-change
@@ -145,6 +147,25 @@ export function BillingPage() {
     return n !== null ? t('billing.includedDevices', { n }) : null
   }
   const intervalLabel = (iv: string | null): string | null => (iv !== null ? t(`billing.interval.${iv}`, iv) : null)
+
+  /**
+   * Confirm THEN switch. A plan change moves money — an accidental click must not silently re-bill a
+   * reseller — so it goes through a modal that names the target plan, its price, and (verified against
+   * Stripe) what actually happens to the money: with proration_behavior 'create_prorations' NOTHING is
+   * charged now; the prorated difference (an upgrade's extra, a downgrade's credit) lands on the next
+   * invoice at renewal.
+   */
+  const askAndChange = async (p: BillingPlanView & { plan: TenantPlan }, isUpgrade: boolean) => {
+    const priceStr = `${fmtPlanAmount(p.amount, p.currency)}${p.interval !== null ? ` / ${intervalLabel(p.interval) ?? p.interval}` : ''}`
+    const ok = await confirm({
+      title: t('billing.confirmChangeTitle', { plan: p.productName }),
+      description: t(isUpgrade ? 'billing.confirmChangeUp' : 'billing.confirmChangeDown', { plan: p.productName, price: priceStr }),
+      confirmLabel: t('billing.switchTo'),
+      confirmTestId: `confirm-switch-${p.priceId}`,
+    })
+    if (!ok) return
+    doChange(p.priceId)
+  }
 
   const doChange = (priceId: string) => {
     setChangingTo(priceId)
@@ -219,6 +240,7 @@ export function BillingPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
+      {confirmElement}
       <PageHeader className="mb-0" title={t('billing.title')} description={t('billing.desc')} />
 
       {showUpgrade && (
@@ -351,7 +373,7 @@ export function BillingPage() {
                         highlight={isUpgrade}
                         ctaDisabled={changingTo !== null}
                         ctaLabel={changingTo === p.priceId ? t('billing.switching') : t('billing.switchTo')}
-                        onCta={() => doChange(p.priceId)}
+                        onCta={() => void askAndChange(p, isUpgrade)}
                       />
                     )
                   })}

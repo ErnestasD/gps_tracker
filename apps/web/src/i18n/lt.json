@@ -179,7 +179,10 @@
     "intervalToggle": {
       "month": "Mėnesinis",
       "year": "Metinis"
-    }
+    },
+    "confirmChangeTitle": "Keisti planą į {{plan}}?",
+    "confirmChangeUp": "Perjungsite į {{plan}} ({{price}}). Skirtumas bus proporcingai paskaičiuotas ir pridėtas prie kitos sąskaitos — iš karto niekas nenuskaitoma.",
+    "confirmChangeDown": "Perjungsite į {{plan}} ({{price}}). Nepanaudota suma bus proporcingai įskaityta kaip kreditas kitoje sąskaitoje — iš karto niekas nenuskaitoma."
   },
   "branding": {
     "title": "Prekės ženklas",

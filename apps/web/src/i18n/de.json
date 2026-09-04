@@ -179,7 +179,10 @@
     "intervalToggle": {
       "month": "Monatlich",
       "year": "Jährlich"
-    }
+    },
+    "confirmChangeTitle": "Zu {{plan}} wechseln?",
+    "confirmChangeUp": "Sie wechseln zu {{plan}} ({{price}}). Die anteilige Differenz wird der nächsten Rechnung hinzugefügt — jetzt wird nichts abgebucht.",
+    "confirmChangeDown": "Sie wechseln zu {{plan}} ({{price}}). Der ungenutzte Betrag wird auf der nächsten Rechnung gutgeschrieben — jetzt wird nichts abgebucht."
   },
   "branding": {
     "title": "Branding",
