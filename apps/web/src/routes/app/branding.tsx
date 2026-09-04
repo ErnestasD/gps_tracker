@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, Info } from 'lucide-react'
 
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ApiError } from '@/lib/http'
 import {
   MAX_DOMAINS_PER_TENANT,
@@ -13,7 +14,6 @@ import {
   clean,
   dnsRecordsFor,
   emitBrandingChange,
-  hasPrefix,
   getDomainDns,
   getBranding,
   listDomains,
@@ -26,6 +26,7 @@ import {
   type BrandAsset,
   type Branding,
   type DnsRecord,
+  type DomainDns,
 } from '@/lib/branding'
 import { MAX_BRAND_ASSET_BYTES, type BrandAssetRejection } from '@orbetra/shared'
 
@@ -455,19 +456,26 @@ function AddDomain({ count, platformDomain, onAdded }: { count: number; platform
 function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: string; domain: string; txtToken: string; dnsTarget: string | null; dnsAddresses: string[] }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState<string | null>(null)
-  const records = dnsRecordsFor(domain, txtToken, dnsTarget, dnsAddresses)
+
   /**
    * What each record looks like in live DNS.
    *
    * A single Verify button could only say yes or no to the pair, so "ownership proved, routing
    * silently dropped" looked exactly like "not done yet" — and that state is reachable without any
-   * mistake on the tenant's part: a CNAME on a name that already holds A/MX/TXT is discarded by
-   * the zone with no error anywhere (RFC 1034 §3.6.2). Per-record status is what turns that into
-   * something a person can act on.
+   * mistake on the tenant's part.
    */
   const dns = useQuery({ queryKey: ['domain-dns', id], queryFn: () => getDomainDns(id), refetchOnWindowFocus: false })
-  const stateOf = (type: DnsRecord['type']): { ok: boolean; found: string[] } | undefined =>
-    dns.data === undefined ? undefined : type === 'TXT' ? dns.data.txt : dns.data.route
+
+  /**
+   * Which routing record to show — ONE, not both.
+   *
+   * The guess is the shape of the address, and live DNS corrects it: `occupied` means the name
+   * already answers with an A or MX, which is proof a CNAME cannot go there whatever the name
+   * looks like. That covers the case dot-counting gets wrong (`example.co.uk`) without any
+   * public-suffix machinery, and it corrects itself the first time the check runs.
+   */
+  const override = dns.data?.route.reason === 'occupied' ? ('a' as const) : undefined
+  const records = dnsRecordsFor(domain, txtToken, dnsTarget, dnsAddresses, override)
 
   const copy = (text: string, key: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
@@ -482,7 +490,12 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
       style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }}
       data-testid={`domain-dns-${domain}`}
     >
-      <p className="font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('branding.dnsTitle')}</p>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('branding.dnsTitle')}</span>
+        {/* Every general explanation lives here rather than under the table. A setup panel that
+            ends in five paragraphs reads as an apology for itself; the reader wants the values. */}
+        <Hint label={t('branding.dnsHelpTitle')} body={t('branding.dnsHelp', { domain })} testId={`dns-help-${domain}`} />
+      </div>
       <p className="mt-0.5" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsIntro')}</p>
 
       <div className="mt-2 overflow-x-auto">
@@ -499,17 +512,10 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
             {records.map((r) => (
               <tr key={`${r.type}-${r.value}`} data-testid={`dns-row-${r.type}`}>
                 <td className="pr-3 align-top">
-                  <span className="mono font-semibold" style={{ color: 'var(--admin-ink)' }}>{r.type}</span>
-                  <div style={{ color: 'var(--admin-ink-soft)' }}>{t(r.purposeKey)}</div>
-                  {/* Which of the two routing rows this address can actually use. Both are shown —
-                      a reader who disagrees must be able to see the other — but leaving them to
-                      work out which one applies was the whole complaint. */}
-                  {r.choice === 'use' && (
-                    <Badge tone="success" className="mt-1">{t('branding.dnsUseThis')}</Badge>
-                  )}
-                  {r.choice === 'other' && (
-                    <div className="mt-0.5" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsAltRow')}</div>
-                  )}
+                  <span className="inline-flex items-center gap-1">
+                    <span className="mono font-semibold" style={{ color: 'var(--admin-ink)' }}>{r.type}</span>
+                    <Hint label={t('branding.dnsWhatIs')} body={t(r.hintKey)} testId={`dns-hint-${r.type}`} />
+                  </span>
                 </td>
                 <td className="pr-3 align-top">
                   <Field text={r.name} copied={copied === `${r.type}-name`} onCopy={() => copy(r.name, `${r.type}-name`)} />
@@ -521,8 +527,8 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
                   {dns.isLoading ? (
                     <span style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsChecking')}</span>
                   ) : (
-                    <Badge tone={stateOf(r.type)?.ok === true ? 'success' : 'warning'}>
-                      {stateOf(r.type)?.ok === true ? t('branding.dnsFound') : t('branding.dnsMissing')}
+                    <Badge tone={statusOf(dns.data, r.type) ? 'success' : 'warning'}>
+                      {statusOf(dns.data, r.type) ? t('branding.dnsFound') : t('branding.dnsMissing')}
                     </Badge>
                   )}
                 </td>
@@ -532,18 +538,13 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
         </table>
       </div>
 
-      {/* WHY it fails, when DNS can tell us. "Not found" alone leaves the reader guessing, and the
-          obvious next move — add the record again — is the one that cannot work when the name is
-          already occupied. Naming the address it resolves to is usually the rest of the diagnosis:
-          an old web host, or a wildcard record quietly answering for a name nobody defined. */}
+      {/* WHY it fails, when DNS can tell us — the only prose left, and it appears only when there
+          is something wrong to say. */}
       {dns.data !== undefined && !dns.data.route.ok && (
         <div className="mt-2 flex flex-col gap-1" style={{ color: 'var(--admin-warning)' }} data-testid={`dns-why-${domain}`}>
-          {/* the doubled name comes FIRST: it is the failure that looks most like success, and the
-              record list the reader is staring at shows it as perfectly correct */}
           {dns.data.route.reason === 'doubled' && (
             <p>{t('branding.dnsDoubled', { domain, where: `${domain}.${domain.split('.').slice(1).join('.')}` })}</p>
           )}
-          {dns.data.route.reason === 'occupied' && <p>{t('branding.dnsOccupied', { domain })}</p>}
           {dns.data.route.reason === 'absent' && <p>{t('branding.dnsAbsent')}</p>}
           {dns.data.route.found.length > 0 && <p>{t('branding.dnsGoesTo', { where: dns.data.route.found.join(', ') })}</p>}
         </div>
@@ -554,17 +555,44 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
           {t('branding.dnsRecheck')}
         </AdminButton>
       </div>
-
-      <ul className="mt-2 flex flex-col gap-1" style={{ color: 'var(--admin-ink-soft)' }}>
-        {/* WHY that row and not the other, in the reader's own terms — "a word in front of the
-            domain", not "apex", "zone" or "SOA". The panel is read by fleet operators opening
-            their registrar for the first time, not by people who know what a zone root is. */}
-        <li>{hasPrefix(domain) ? t('branding.dnsWhyCname', { domain }) : t('branding.dnsWhyA')}</li>
-        <li>{t('branding.dnsRelative', { domain })}</li>
-        <li>{t('branding.dnsMailSafe')}</li>
-        <li>{t('branding.dnsKeepTxt')}</li>
-      </ul>
     </div>
+  )
+}
+
+/** TXT reads the ownership check; anything else is the routing check. */
+function statusOf(dns: DomainDns | undefined, type: DnsRecord['type']): boolean {
+  if (dns === undefined) return false
+  return type === 'TXT' ? dns.txt.ok : dns.route.ok
+}
+
+/**
+ * An ⓘ that opens its explanation.
+ *
+ * A Popover rather than a tooltip: this text is the difference between a working setup and a
+ * broken one, and hover is not a gesture a phone has.
+ */
+function Hint({ label, body, testId }: { label: string; body: string; testId: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          data-testid={testId}
+          className="grid h-4 w-4 shrink-0 place-items-center rounded-full transition-colors hover:bg-[var(--admin-hairline)]"
+          style={{ color: 'var(--admin-ink-soft)' }}
+        >
+          <Info className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 text-xs">
+        <div className="mb-1 font-semibold" style={{ color: 'var(--admin-ink)' }}>{label}</div>
+        {/* the copy carries its own paragraph breaks — rendering them keeps the popover readable */}
+        {body.split('\n\n').map((para) => (
+          <p key={para.slice(0, 24)} className="mt-1 first:mt-0" style={{ color: 'var(--admin-ink-soft)' }}>{para}</p>
+        ))}
+      </PopoverContent>
+    </Popover>
   )
 }
 

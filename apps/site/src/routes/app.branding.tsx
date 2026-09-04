@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Info } from "lucide-react";
 import { contentFor } from "@/lib/demo-content";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from "@/components/admin/AdminKit";
 
 export const Route = createFileRoute("/app/branding")({
@@ -288,9 +289,11 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
   const rows = [
     // names (and hostname VALUES) carry the trailing dot: without it a zone-file panel appends the
     // zone again and the record lands at fleet.example.com.example.com — see apps/web branding.ts
-    { type: "TXT", name: `_orbetra-verify.${domain}.`, value: txtToken, purpose: t("branding.dnsPurposeTxt"), ok: true, choice: "" },
-    { type: "CNAME", name: `${domain}.`, value: `${DNS_TARGET}.`, purpose: t("branding.dnsPurposeCname"), ok: false, choice: prefixed ? "use" : "other" },
-    { type: "A", name: `${domain}.`, value: DNS_ADDRESS, purpose: t("branding.dnsPurposeA"), ok: false, choice: prefixed ? "other" : "use" },
+    { type: "TXT", name: `_orbetra-verify.${domain}.`, value: txtToken, hint: t("branding.dnsHintTxt"), ok: true },
+    // ONE routing record, chosen by the shape of the address — never both with labels on them
+    prefixed
+      ? { type: "CNAME", name: `${domain}.`, value: `${DNS_TARGET}.`, hint: t("branding.dnsHintCname"), ok: false }
+      : { type: "A", name: `${domain}.`, value: DNS_ADDRESS, hint: t("branding.dnsHintA"), ok: false },
   ];
   const copy = (text: string, key: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
@@ -318,7 +321,10 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
       className="w-full rounded-md border p-3 text-xs"
       style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface-sunken)" }}
     >
-      <p className="font-semibold" style={{ color: "var(--admin-ink)" }}>{t("branding.dnsTitle")}</p>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold" style={{ color: "var(--admin-ink)" }}>{t("branding.dnsTitle")}</span>
+        <Hint label={t("branding.dnsHelpTitle")} body={t("branding.dnsHelp", { domain })} />
+      </div>
       <p className="mt-0.5" style={{ color: "var(--admin-ink-soft)" }}>{t("branding.dnsIntro")}</p>
       <div className="mt-2 overflow-x-auto">
         <table className="w-full min-w-[34rem] border-separate border-spacing-y-1">
@@ -334,10 +340,10 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
             {rows.map((r) => (
               <tr key={`${r.type}-${r.value}`}>
                 <td className="pr-3 align-top">
-                  <span className="mono font-semibold" style={{ color: "var(--admin-ink)" }}>{r.type}</span>
-                  <div style={{ color: "var(--admin-ink-soft)" }}>{r.purpose}</div>
-                  {r.choice === "use" && <Badge tone="success" className="mt-1">{t("branding.dnsUseThis")}</Badge>}
-                  {r.choice === "other" && <div className="mt-0.5" style={{ color: "var(--admin-ink-soft)" }}>{t("branding.dnsAltRow")}</div>}
+                  <span className="inline-flex items-center gap-1">
+                    <span className="mono font-semibold" style={{ color: "var(--admin-ink)" }}>{r.type}</span>
+                    <Hint label={t("branding.dnsWhatIs")} body={r.hint} />
+                  </span>
                 </td>
                 <td className="pr-3 align-top"><Field text={r.name} k={`${r.type}-name`} /></td>
                 <td className="pr-3 align-top"><Field text={r.value} k={`${r.type}-value`} /></td>
@@ -349,12 +355,30 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
           </tbody>
         </table>
       </div>
-      <ul className="mt-2 flex flex-col gap-1" style={{ color: "var(--admin-ink-soft)" }}>
-        <li>{prefixed ? t("branding.dnsWhyCname", { domain }) : t("branding.dnsWhyA")}</li>
-        <li>{t("branding.dnsRelative", { domain })}</li>
-        <li>{t("branding.dnsMailSafe")}</li>
-        <li>{t("branding.dnsKeepTxt")}</li>
-      </ul>
     </div>
+  );
+}
+
+/** An ⓘ that opens its explanation — the demo's copy of the dashboard's. */
+function Hint({ label, body }: { label: string; body: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className="grid h-4 w-4 shrink-0 place-items-center rounded-full transition-colors hover:bg-[var(--admin-hairline)]"
+          style={{ color: "var(--admin-ink-soft)" }}
+        >
+          <Info className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 text-xs">
+        <div className="mb-1 font-semibold" style={{ color: "var(--admin-ink)" }}>{label}</div>
+        {body.split("\n\n").map((para) => (
+          <p key={para.slice(0, 24)} className="mt-1 first:mt-0" style={{ color: "var(--admin-ink-soft)" }}>{para}</p>
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 }
