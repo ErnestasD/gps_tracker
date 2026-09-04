@@ -173,8 +173,8 @@
     "switching": "Keičiama…",
     "includedDevices": "{{n}} įrenginių imtinai",
     "currentPlan": "Dabartinis planas",
-    "upgradeChip": "Aukštinimas",
-    "downgradeChip": "Žeminimas",
+    "upgradeChip": "Aukštesnis",
+    "downgradeChip": "Žemesnis",
     "noOtherPlans": "Kitų planų šiuo metu nėra",
     "intervalToggle": {
       "month": "Mėnesinis",
