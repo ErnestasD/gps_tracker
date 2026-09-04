@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks } from '../src/lib/branding.js'
+import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks, hasPrefix } from '../src/lib/branding.js'
 
 /**
  * White-label theming math (E03-5). No DOM: we test the pure WCAG contrast
@@ -141,6 +141,8 @@ describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () 
       name: 'fleet.example.com',
       value: 'dash.orbetra.com',
       purposeKey: 'branding.dnsPurposeCname',
+      // a word in front of the domain, so this is the row to use
+      choice: 'use',
     })
     // no trailing dot: provider panels reject it, and it belongs only in a raw zone file
     expect(cname!.value.endsWith('.')).toBe(false)
@@ -168,9 +170,9 @@ describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () 
     const a = rows[2]!
     expect(a.name).toBe('dokigo.lt')
     expect(a.value).toBe('185.80.129.33')
-    // marked as an alternative: it replaces the CNAME, it is not a third record to publish
-    expect(a.alternative).toBe(true)
-    expect(rows[1]!.alternative).toBeUndefined()
+    // on a bare domain the A row is the answer and the CNAME is the one to skip
+    expect(a.choice).toBe('use')
+    expect(rows[1]!.choice).toBe('other')
   })
 
   it('lists every edge address, so a multi-homed edge does not silently hand over one of them', () => {
@@ -189,5 +191,39 @@ describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () 
 
   it('mirrors the legacy apex form the server still accepts', () => {
     expect(expectedTxt(TOKEN)).toBe(`orbetra-verify=${TOKEN}`)
+  })
+})
+
+
+/**
+ * Which routing record this address can actually use.
+ *
+ * Showing both and leaving the reader to work out which applies is what the founder pushed back
+ * on — a programmer could not tell, so a fleet operator certainly cannot.
+ */
+describe('hasPrefix — has this address a word in front of the domain?', () => {
+  it('is true for an address with something in front', () => {
+    expect(hasPrefix('fleet.dokigo.lt')).toBe(true)
+    expect(hasPrefix('track.acme.example.com')).toBe(true)
+  })
+
+  it('is false for the bare domain, which cannot take a CNAME', () => {
+    expect(hasPrefix('dokigo.lt')).toBe(false)
+    expect(hasPrefix('acme.com')).toBe(false)
+  })
+
+  it('marks the CNAME on a prefixed address and the A on a bare one', () => {
+    const sub = dnsRecordsFor('fleet.dokigo.lt', '2a129fdfb3fcf34ae2ebcb3b1f020087', 'dash.orbetra.com', ['185.80.129.33'])
+    expect(sub.find((r) => r.type === 'CNAME')!.choice).toBe('use')
+    expect(sub.find((r) => r.type === 'A')!.choice).toBe('other')
+
+    const bare = dnsRecordsFor('dokigo.lt', '2a129fdfb3fcf34ae2ebcb3b1f020087', 'dash.orbetra.com', ['185.80.129.33'])
+    expect(bare.find((r) => r.type === 'CNAME')!.choice).toBe('other')
+    expect(bare.find((r) => r.type === 'A')!.choice).toBe('use')
+  })
+
+  it('leaves the TXT row unmarked — it is not one of the two choices', () => {
+    const rows = dnsRecordsFor('dokigo.lt', '2a129fdfb3fcf34ae2ebcb3b1f020087', 'dash.orbetra.com', ['185.80.129.33'])
+    expect(rows.find((r) => r.type === 'TXT')!.choice).toBeUndefined()
   })
 })

@@ -52,8 +52,14 @@ export type DnsRecord = {
   value: string
   /** which of the jobs this record does, for the row's one-line explanation */
   purposeKey: 'branding.dnsPurposeTxt' | 'branding.dnsPurposeCname' | 'branding.dnsPurposeA'
-  /** this row and the one before it are ALTERNATIVES — publish one, not both */
-  alternative?: boolean
+  /**
+   * For the two routing rows: which one THIS address can actually use.
+   *
+   * Both are shown — a reader who disagrees with our guess must still be able to see the other —
+   * but one of them is the answer, and leaving the reader to work out which was the whole
+   * complaint. `undefined` on the TXT row, which is not a choice.
+   */
+  choice?: 'use' | 'other'
 }
 
 /**
@@ -69,6 +75,22 @@ export type DnsRecord = {
  * add-response. `dnsTarget` comes from GET /v1/tenant/branding; without it the CNAME row is
  * omitted rather than invented.
  */
+/**
+ * Does this address have a word in front of the domain?
+ *
+ * `fleet.dokigo.lt` does; `dokigo.lt` does not, and a bare domain cannot take a CNAME — the name
+ * already carries the records that make it a domain at all, and a CNAME may not sit beside them.
+ *
+ * Counting dots gets `example.co.uk` wrong (it is bare, and this calls it prefixed). That costs a
+ * misplaced "use this one" hint on one row of a table that shows both records with both values, on
+ * a page whose live status check then says which one actually took. Getting it exactly right needs
+ * the public-suffix list — a downloadable, expiring dataset — which is a great deal of machinery
+ * for a hint.
+ */
+export function hasPrefix(domain: string): boolean {
+  return domain.split('.').length > 2
+}
+
 export function dnsRecordsFor(
   domain: string,
   txtToken: string,
@@ -78,8 +100,15 @@ export function dnsRecordsFor(
   const out: DnsRecord[] = [
     { type: 'TXT', name: verifyHost(domain), value: txtToken, purposeKey: 'branding.dnsPurposeTxt' },
   ]
+  const prefixed = hasPrefix(domain)
   if (dnsTarget !== null && dnsTarget !== '') {
-    out.push({ type: 'CNAME', name: domain, value: dnsTarget, purposeKey: 'branding.dnsPurposeCname' })
+    out.push({
+      type: 'CNAME',
+      name: domain,
+      value: dnsTarget,
+      purposeKey: 'branding.dnsPurposeCname',
+      choice: prefixed ? 'use' : 'other',
+    })
   }
   /**
    * The APEX alternative.
@@ -90,11 +119,17 @@ export function dnsRecordsFor(
    * — cannot follow a CNAME instruction at all. Offering only one was the product refusing the
    * case it exists to serve.
    *
-   * Shown for every domain rather than only for apex-looking ones: telling a root from a subdomain
-   * needs the public-suffix list, and being wrong would hide the only record that can work.
+   * Both rows are shown for every domain — hiding one would mean a wrong guess leaves the reader
+   * with no working record at all — but one carries the "use this one" mark. See hasPrefix.
    */
   for (const address of dnsAddresses) {
-    out.push({ type: 'A', name: domain, value: address, purposeKey: 'branding.dnsPurposeA', alternative: true })
+    out.push({
+      type: 'A',
+      name: domain,
+      value: address,
+      purposeKey: 'branding.dnsPurposeA',
+      choice: prefixed ? 'other' : 'use',
+    })
   }
   return out
 }

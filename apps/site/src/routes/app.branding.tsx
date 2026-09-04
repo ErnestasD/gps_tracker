@@ -273,11 +273,12 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
    * the one a single Verify button could not describe. Inventing a "both green" demo would make
    * the column look decorative, which is the opposite of its point.
    */
+  // does this address have a word in front of the domain? a bare one cannot take a CNAME
+  const prefixed = domain.split(".").length > 2;
   const rows = [
-    { type: "TXT", name: `_orbetra-verify.${domain}`, value: txtToken, purpose: t("branding.dnsPurposeTxt"), ok: true, alt: false },
-    { type: "CNAME", name: domain, value: DNS_TARGET, purpose: t("branding.dnsPurposeCname"), ok: false, alt: false },
-    // the apex alternative: a zone root always carries SOA and NS, so it can never hold a CNAME
-    { type: "A", name: domain, value: DNS_ADDRESS, purpose: t("branding.dnsPurposeA"), ok: false, alt: true },
+    { type: "TXT", name: `_orbetra-verify.${domain}`, value: txtToken, purpose: t("branding.dnsPurposeTxt"), ok: true, choice: "" },
+    { type: "CNAME", name: domain, value: DNS_TARGET, purpose: t("branding.dnsPurposeCname"), ok: false, choice: prefixed ? "use" : "other" },
+    { type: "A", name: domain, value: DNS_ADDRESS, purpose: t("branding.dnsPurposeA"), ok: false, choice: prefixed ? "other" : "use" },
   ];
   const copy = (text: string, key: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
@@ -321,11 +322,10 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
             {rows.map((r) => (
               <tr key={`${r.type}-${r.value}`}>
                 <td className="pr-3 align-top">
-                  <span className="mono font-semibold" style={{ color: "var(--admin-ink)" }}>
-                    {r.alt && <span className="mr-1 font-normal" style={{ color: "var(--admin-ink-soft)" }}>{t("branding.dnsOr")}</span>}
-                    {r.type}
-                  </span>
+                  <span className="mono font-semibold" style={{ color: "var(--admin-ink)" }}>{r.type}</span>
                   <div style={{ color: "var(--admin-ink-soft)" }}>{r.purpose}</div>
+                  {r.choice === "use" && <Badge tone="success" className="mt-1">{t("branding.dnsUseThis")}</Badge>}
+                  {r.choice === "other" && <div className="mt-0.5" style={{ color: "var(--admin-ink-soft)" }}>{t("branding.dnsAltRow")}</div>}
                 </td>
                 <td className="pr-3 align-top"><Field text={r.name} k={`${r.type}-name`} /></td>
                 <td className="pr-3 align-top"><Field text={r.value} k={`${r.type}-value`} /></td>
@@ -338,8 +338,8 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
         </table>
       </div>
       <ul className="mt-2 flex flex-col gap-1" style={{ color: "var(--admin-ink-soft)" }}>
+        <li>{prefixed ? t("branding.dnsWhyCname", { domain }) : t("branding.dnsWhyA")}</li>
         <li>{t("branding.dnsRelative", { domain })}</li>
-        <li>{t("branding.dnsApexChoice")}</li>
         <li>{t("branding.dnsMailSafe")}</li>
         <li>{t("branding.dnsKeepTxt")}</li>
       </ul>

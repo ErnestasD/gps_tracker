@@ -12,6 +12,7 @@ import {
   applyBranding,
   dnsRecordsFor,
   emitBrandingChange,
+  hasPrefix,
   getDomainDns,
   getBranding,
   listDomains,
@@ -438,13 +439,17 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
             {records.map((r) => (
               <tr key={`${r.type}-${r.value}`} data-testid={`dns-row-${r.type}`}>
                 <td className="pr-3 align-top">
-                  <span className="mono font-semibold" style={{ color: 'var(--admin-ink)' }}>
-                    {/* "or" carries the whole meaning of this row: it is not a third record to
-                        publish, it is the other way of doing the second one */}
-                    {r.alternative === true && <span className="mr-1 font-normal" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsOr')}</span>}
-                    {r.type}
-                  </span>
+                  <span className="mono font-semibold" style={{ color: 'var(--admin-ink)' }}>{r.type}</span>
                   <div style={{ color: 'var(--admin-ink-soft)' }}>{t(r.purposeKey)}</div>
+                  {/* Which of the two routing rows this address can actually use. Both are shown —
+                      a reader who disagrees must be able to see the other — but leaving them to
+                      work out which one applies was the whole complaint. */}
+                  {r.choice === 'use' && (
+                    <Badge tone="success" className="mt-1">{t('branding.dnsUseThis')}</Badge>
+                  )}
+                  {r.choice === 'other' && (
+                    <div className="mt-0.5" style={{ color: 'var(--admin-ink-soft)' }}>{t('branding.dnsAltRow')}</div>
+                  )}
                 </td>
                 <td className="pr-3 align-top">
                   <Field text={r.name} copied={copied === `${r.type}-name`} onCopy={() => copy(r.name, `${r.type}-name`)} />
@@ -486,8 +491,11 @@ function DnsRecords({ id, domain, txtToken, dnsTarget, dnsAddresses }: { id: str
       </div>
 
       <ul className="mt-2 flex flex-col gap-1" style={{ color: 'var(--admin-ink-soft)' }}>
+        {/* WHY that row and not the other, in the reader's own terms — "a word in front of the
+            domain", not "apex", "zone" or "SOA". The panel is read by fleet operators opening
+            their registrar for the first time, not by people who know what a zone root is. */}
+        <li>{hasPrefix(domain) ? t('branding.dnsWhyCname', { domain }) : t('branding.dnsWhyA')}</li>
         <li>{t('branding.dnsRelative', { domain })}</li>
-        <li>{t('branding.dnsApexChoice')}</li>
         <li>{t('branding.dnsMailSafe')}</li>
         <li>{t('branding.dnsKeepTxt')}</li>
       </ul>
