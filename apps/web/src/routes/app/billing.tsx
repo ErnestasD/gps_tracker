@@ -7,8 +7,16 @@ import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { useConfirm } from '@/components/admin/ConfirmDialog'
 import { getCurrentUser } from '@/lib/auth'
 import { usePublicBranding } from '@/lib/publicBranding'
-import { changePlan, fmtPlanAmount, getBilling, listPlans, openPortal, startCheckout } from '@/lib/billing'
+import { changePlan, fmtPlanAmount, getBilling, getBillingDetails, getChangePreview, listPlans, openPortal, startCheckout } from '@/lib/billing'
+import { tenantUsage } from '@/lib/usage'
 import { useFmt } from '@/lib/datetime'
+
+/** Minor units (cents) → localized money with sign, e.g. -5000,'eur' → "−€50.00". */
+function fmtMoney(cents: number, currency: string): string {
+  const symbol = currency.toLowerCase() === 'eur' ? '€' : `${currency.toUpperCase()} `
+  const abs = Math.abs(cents) / 100
+  return `${cents < 0 ? '−' : ''}${symbol}${abs.toFixed(2)}`
+}
 
 /**
  * Billing (Stripe, ADR-024). Shows the subscription status and hands off to Stripe-hosted
@@ -128,6 +136,18 @@ export function BillingPage() {
   const catalog = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker || canChangePlan, staleTime: 5 * 60 * 1000 })
   const plans = useMemo(() => catalog.data ?? [], [catalog.data])
 
+  // Live Stripe details (period, upcoming invoice, card, overage rate) for the advanced panels —
+  // only when there IS an active subscription to describe.
+  const details = useQuery({ queryKey: ['billing', 'details'], queryFn: getBillingDetails, enabled: b?.active === true, staleTime: 60 * 1000 })
+  const periodStart = details.data?.periodStart ?? null
+  // this-period device-day usage, bounded to the current billing period (once we know when it began).
+  const usage = useQuery({
+    queryKey: ['billing', 'usage', periodStart],
+    queryFn: () => tenantUsage(periodStart!.slice(0, 10)),
+    enabled: b?.active === true && periodStart !== null,
+    staleTime: 60 * 1000,
+  })
+
   const qc = useQueryClient()
   const { confirm, element: confirmElement } = useConfirm()
   const [busy, setBusy] = useState(false)
@@ -157,9 +177,31 @@ export function BillingPage() {
    */
   const askAndChange = async (p: BillingPlanView & { plan: TenantPlan }, isUpgrade: boolean) => {
     const priceStr = `${fmtPlanAmount(p.amount, p.currency)}${p.interval !== null ? ` / ${intervalLabel(p.interval) ?? p.interval}` : ''}`
+    // fetch the REAL prorated impact from Stripe before asking — spinner on the button meanwhile. A
+    // preview that can't be computed falls back to the plain (still accurate) copy rather than blocking.
+    setChangingTo(p.priceId)
+    let preview: Awaited<ReturnType<typeof getChangePreview>> | null = null
+    try {
+      preview = await getChangePreview(p.priceId)
+    } catch {
+      preview = null
+    }
+    setChangingTo(null)
+
+    let description: string
+    if (preview !== null && preview.nextInvoiceDate !== null) {
+      const date = d(preview.nextInvoiceDate)
+      description =
+        preview.net < 0
+          ? t('billing.confirmCreditDetail', { plan: p.productName, price: priceStr, amount: fmtMoney(Math.abs(preview.net), preview.currency), date })
+          : t('billing.confirmChargeDetail', { plan: p.productName, price: priceStr, net: fmtMoney(preview.net, preview.currency), date })
+    } else {
+      description = t(isUpgrade ? 'billing.confirmChangeUp' : 'billing.confirmChangeDown', { plan: p.productName, price: priceStr })
+    }
+
     const ok = await confirm({
       title: t('billing.confirmChangeTitle', { plan: p.productName }),
-      description: t(isUpgrade ? 'billing.confirmChangeUp' : 'billing.confirmChangeDown', { plan: p.productName, price: priceStr }),
+      description,
       confirmLabel: t('billing.switchTo'),
       confirmTestId: `confirm-switch-${p.priceId}`,
     })
@@ -206,6 +248,19 @@ export function BillingPage() {
     .sort((a, b2) => (a.amount ?? 0) - (b2.amount ?? 0))
 
   const currentIncluded = includedDevices(user?.plan ?? null)
+
+  // Usage this period. usage_daily has one row per device per UTC day it reported, so a day's
+  // deviceDays IS that day's active-device count. Overage = the device-days beyond the allowance,
+  // summed over the period — exactly what the worker bills to the metered price (per device-day).
+  const usageRows = [...(usage.data ?? [])].sort((r1, r2) => r1.day.localeCompare(r2.day))
+  const deviceDaysTotal = usageRows.reduce((s, r) => s + r.deviceDays, 0)
+  const currentActive = usageRows.length > 0 ? usageRows[usageRows.length - 1]!.deviceDays : 0
+  const peakActive = usageRows.reduce((m, r) => Math.max(m, r.deviceDays), 0)
+  const overageDeviceDays = currentIncluded !== null ? usageRows.reduce((s, r) => s + Math.max(0, r.deviceDays - currentIncluded), 0) : 0
+  const overageRate = details.data?.overagePerDeviceDay ?? null // cents / device-day
+  const overageCurrency = details.data?.currency ?? 'eur'
+  const projectedOverage = overageRate !== null ? Math.round(overageDeviceDays * overageRate) : null
+  const usagePct = currentIncluded !== null && currentIncluded > 0 ? Math.min(100, Math.round((currentActive / currentIncluded) * 100)) : 0
 
   // Stripe's machine status (mirrors subscription.status) → catalog label; the raw value is the
   // defaultValue fallback so an unmapped future status still renders instead of a literal key
@@ -329,6 +384,13 @@ export function BillingPage() {
                   {periodLabel}: {d(b.currentPeriodEnd)}
                 </p>
               )}
+              {details.data?.paymentMethod != null && (
+                <p className="text-sm capitalize" style={{ color: 'var(--admin-ink)' }} data-testid="billing-payment-method">
+                  <span style={{ color: 'var(--admin-ink-soft)' }} className="normal-case">{t('billing.paymentMethod')}: </span>
+                  {details.data.paymentMethod.brand} ···· {details.data.paymentMethod.last4}
+                  <span className="normal-case" style={{ color: 'var(--admin-ink-soft)' }}> · {t('billing.expires')} {String(details.data.paymentMethod.expMonth).padStart(2, '0')}/{details.data.paymentMethod.expYear}</span>
+                </p>
+              )}
               {b?.hasCustomer === true && (
                 <div>
                   <AdminButton variant={b.active ? 'primary' : recoverable ? 'primary' : 'secondary'} disabled={busy} data-testid="billing-manage" onClick={() => go(openPortal)}>
@@ -338,6 +400,70 @@ export function BillingPage() {
               )}
             </div>
           </div>
+
+          {/* Advanced panels: usage against the allowance, and what the next invoice will look like.
+              Shown only for an active subscriber on a metered (TSP) allowance plan. */}
+          {b?.active === true && currentIncluded !== null && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="admin-card" data-testid="billing-usage">
+                <div className="admin-hairline-b px-4 py-3">
+                  <span className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('billing.usageTitle')}</span>
+                </div>
+                <div className="flex flex-col gap-3 p-4">
+                  <div className="flex items-baseline justify-between">
+                    <span className="display text-2xl font-semibold tracking-tight" style={{ color: 'var(--admin-ink)' }}>
+                      {currentActive} <span className="text-sm font-normal" style={{ color: 'var(--admin-ink-soft)' }}>/ {currentIncluded}</span>
+                    </span>
+                    <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.activeDevices')}</span>
+                  </div>
+                  {/* allowance meter */}
+                  <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: 'var(--admin-hairline)' }}>
+                    <div className="h-full rounded-full" style={{ width: `${usagePct}%`, background: overageDeviceDays > 0 ? 'var(--admin-danger)' : 'var(--admin-brand)' }} />
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <dt style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.peakDevices')}</dt>
+                    <dd className="text-right" style={{ color: 'var(--admin-ink)' }}>{peakActive}</dd>
+                    <dt style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.deviceDays')}</dt>
+                    <dd className="text-right" style={{ color: 'var(--admin-ink)' }}>{deviceDaysTotal}</dd>
+                    {overageDeviceDays > 0 && (
+                      <>
+                        <dt style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.overageDeviceDays')}</dt>
+                        <dd className="text-right font-medium" style={{ color: 'var(--admin-danger)' }}>
+                          {overageDeviceDays}{projectedOverage !== null && <> · ≈ {fmtMoney(projectedOverage, overageCurrency)}</>}
+                        </dd>
+                      </>
+                    )}
+                  </dl>
+                  <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+                    {overageDeviceDays > 0 ? t('billing.overageNote') : t('billing.withinAllowance')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="admin-card" data-testid="billing-next-invoice">
+                <div className="admin-hairline-b px-4 py-3">
+                  <span className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('billing.nextInvoiceTitle')}</span>
+                </div>
+                <div className="flex flex-col gap-2 p-4">
+                  {details.isLoading ? (
+                    <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('admin.loading')}</p>
+                  ) : details.data?.upcomingTotal != null ? (
+                    <>
+                      <span className="display text-2xl font-semibold tracking-tight" style={{ color: 'var(--admin-ink)' }} data-testid="next-invoice-amount">
+                        {fmtMoney(details.data.upcomingTotal, details.data.currency ?? 'eur')}
+                      </span>
+                      {details.data.periodEnd != null && (
+                        <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.on')} {d(details.data.periodEnd)}</p>
+                      )}
+                      <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.nextInvoiceNote')}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('billing.noUpcoming')}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {canChangePlan && (
             <div className="space-y-3" data-testid="billing-change-plan">

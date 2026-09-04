@@ -182,7 +182,22 @@
     },
     "confirmChangeTitle": "Przełączyć na {{plan}}?",
     "confirmChangeUp": "Przełączysz na {{plan}} ({{price}}). Proporcjonalna różnica zostanie doliczona do kolejnej faktury — teraz nic nie jest pobierane.",
-    "confirmChangeDown": "Przełączysz na {{plan}} ({{price}}). Niewykorzystana kwota zostanie zaliczona na kolejnej fakturze — teraz nic nie jest pobierane."
+    "confirmChangeDown": "Przełączysz na {{plan}} ({{price}}). Niewykorzystana kwota zostanie zaliczona na kolejnej fakturze — teraz nic nie jest pobierane.",
+    "paymentMethod": "Metoda płatności",
+    "expires": "ważna do",
+    "usageTitle": "Wykorzystanie w tym okresie",
+    "activeDevices": "aktywne urządzenia",
+    "peakDevices": "Szczyt dzienny",
+    "deviceDays": "Urządzenio-dni",
+    "overageDeviceDays": "Przekroczenie (urz.-dni)",
+    "overageNote": "Przekroczenie jest rozliczane według stawki metered na kolejnej fakturze.",
+    "withinAllowance": "Mieścisz się w limicie planu.",
+    "nextInvoiceTitle": "Kolejna faktura",
+    "on": "Data:",
+    "nextInvoiceNote": "Zawiera opłatę bazową oraz naliczone przekroczenie lub proratę.",
+    "noUpcoming": "Brak nadchodzącej faktury.",
+    "confirmChargeDetail": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu. Różnica {{net}} (kredyt za niewykorzystany czas już uwzględniony) zostanie doliczona do kolejnej faktury {{date}}. Teraz nic nie jest pobierane.",
+    "confirmCreditDetail": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu. Na kolejnej fakturze {{date}} otrzymasz {{amount}} kredytu za niewykorzystany czas. Teraz nic nie jest pobierane."
   },
   "branding": {
     "title": "Marka",

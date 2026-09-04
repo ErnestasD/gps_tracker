@@ -32,6 +32,33 @@ export interface StripePlan {
   plan: TenantPlan | null
 }
 
+/** The prorated money impact of a plan change (all amounts in minor units / cents). */
+export interface PlanChangePreview {
+  /** unused time on the current plan, credited back — ≤ 0 */
+  credit: number
+  /** remaining time on the target plan — ≥ 0 */
+  charge: number
+  /** credit + charge: > 0 the customer pays extra, < 0 they are credited */
+  net: number
+  currency: string
+  /** ISO instant the net settles onto the next invoice (renewal), or null */
+  nextInvoiceDate: string | null
+}
+
+/** Live Stripe reads for the advanced billing page. */
+export interface BillingLiveDetails {
+  /** current billing period bounds (ISO), from the subscription item */
+  periodStart: string | null
+  periodEnd: string | null
+  /** the forthcoming invoice's total in minor units + its currency, or null if none */
+  upcomingTotal: number | null
+  currency: string | null
+  /** the default card on file, or null */
+  paymentMethod: { brand: string; last4: string; expMonth: number; expYear: number } | null
+  /** the overage price per device-day in minor units (unit_amount_decimal), or null */
+  overagePerDeviceDay: number | null
+}
+
 export interface StripeGateway {
   /** The server-configured allowlist of subscribable price ids (a client may only check out one of these). */
   readonly prices: readonly string[]
@@ -55,6 +82,20 @@ export interface StripeGateway {
    * So the swap is done here, atomically, over both items.
    */
   changePlan(opts: { subscriptionId: string; newBasePriceId: string; newOveragePriceId: string }): Promise<void>
+  /**
+   * Preview the money impact of a plan change WITHOUT applying it (Stripe invoice preview). Returns
+   * the prorated credit (unused time on the current plan, ≤ 0), the prorated charge (remaining time
+   * on the target plan, ≥ 0), their net, and the date it settles — so the confirm dialog shows real
+   * numbers, not a vague promise. The new plan takes effect immediately; the net lands on the next
+   * invoice at `nextInvoiceDate` (renewal), nothing is charged now.
+   */
+  previewChange(opts: { subscriptionId: string; newBasePriceId: string; newOveragePriceId: string }): Promise<PlanChangePreview>
+  /**
+   * Live billing details for the advanced page: the current period bounds, the upcoming invoice
+   * total (base + any pending overage/proration), the default card, and the overage per-device-day
+   * rate. One Stripe round-trip's worth of reads; absent pieces come back null.
+   */
+  billingDetails(opts: { subscriptionId: string; customerId: string; overagePriceId?: string | undefined }): Promise<BillingLiveDetails>
   /** Verify the webhook signature and parse the event. THROWS on an invalid signature. */
   constructEvent(rawBody: string, signature: string): StripeEvent
   /** The metered overage price id for a base plan (TSP), added as a 2nd checkout line item;
@@ -132,6 +173,34 @@ export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Strip
     // direction matters: charging VAT we are not registered to collect is worse than not charging it.
     taxEnabled: ['1', 'true', 'yes'].includes((env['STRIPE_TAX_ENABLED'] ?? '').trim().toLowerCase()),
   }
+}
+
+/** A finite number, or null. */
+function numOf(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+/** Unix seconds → ISO instant, or null. */
+function instantOf(sec: number | null): string | null {
+  return sec !== null ? new Date(sec * 1000).toISOString() : null
+}
+
+/** The max item-level current_period_end (Stripe flexible billing puts the period on items). */
+function periodEndSecondsOf(sub: Stripe.Subscription): number | null {
+  let max = 0
+  for (const it of sub.items.data) {
+    const v = it.current_period_end
+    if (typeof v === 'number' && v > max) max = v
+  }
+  return max > 0 ? max : null
+}
+
+/** Extract the card summary from an expanded PaymentMethod (or null for a string id / no card). */
+function cardOf(pm: string | Stripe.PaymentMethod | null | undefined): { brand: string; last4: string; expMonth: number; expYear: number } | null {
+  if (pm === null || pm === undefined || typeof pm === 'string') return null
+  const c = pm.card
+  if (c == null) return null
+  return { brand: c.brand, last4: c.last4, expMonth: c.exp_month, expYear: c.exp_year }
 }
 
 export function createStripeGateway(cfg: StripeConfig): StripeGateway {
@@ -218,6 +287,72 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
         // the webhook (customer.subscription.updated) carries the new base price → the tenant's plan
         // and entitlements are persisted there, the same path a checkout uses
       })
+    },
+    previewChange: async ({ subscriptionId, newBasePriceId, newOveragePriceId }) => {
+      const sub = await stripe.subscriptions.retrieve(subscriptionId)
+      const baseItem = sub.items.data.find((i) => i.price.recurring?.usage_type === 'licensed')
+      const overageItem = sub.items.data.find((i) => i.price.recurring?.usage_type === 'metered')
+      if (baseItem === undefined) throw new Error('subscription has no licensed base item')
+      const items: Stripe.InvoiceCreatePreviewParams.SubscriptionDetails.Item[] = [{ id: baseItem.id, price: newBasePriceId }]
+      if (overageItem !== undefined) items.push({ id: overageItem.id, price: newOveragePriceId })
+      // proration_date = now anchors THIS change's proration lines to a known period.start, so we can
+      // isolate them from any proration already pending on the upcoming invoice.
+      const prorationDate = Math.floor(Date.now() / 1000)
+      const preview = await stripe.invoices.createPreview({
+        subscription: subscriptionId,
+        subscription_details: { items, proration_behavior: 'create_prorations', proration_date: prorationDate },
+      })
+      let credit = 0
+      let charge = 0
+      for (const line of preview.lines.data) {
+        // THIS change's proration lines are exactly the ones whose period starts at our anchor: the
+        // "unused time on <old>" credit and the "remaining time on <new>" charge. The next period's
+        // regular charge starts at period_end, and pending proration from an earlier change starts at
+        // its own (earlier) anchor — both excluded. Any €0 same-anchor segment line adds nothing.
+        // (The API moved the boolean to line.parent.subscription_item_details.proration; the anchor
+        // filter alone is sufficient and type-stable, so we key on period.start.)
+        if (line.period?.start !== prorationDate) continue
+        if (line.amount < 0) credit += line.amount
+        else charge += line.amount
+      }
+      return {
+        credit,
+        charge,
+        net: credit + charge,
+        currency: preview.currency,
+        nextInvoiceDate: instantOf(periodEndSecondsOf(sub)),
+      }
+    },
+    billingDetails: async ({ subscriptionId, customerId, overagePriceId }) => {
+      const [sub, overagePrice] = await Promise.all([
+        stripe.subscriptions.retrieve(subscriptionId, { expand: ['default_payment_method'] }),
+        overagePriceId !== undefined ? stripe.prices.retrieve(overagePriceId) : Promise.resolve(null),
+      ])
+      const item = sub.items.data[0]
+      // the default card: the subscription's own, else the customer's invoice-settings default
+      let pm = cardOf(sub.default_payment_method)
+      if (pm === null) {
+        const cust = await stripe.customers.retrieve(customerId, { expand: ['invoice_settings.default_payment_method'] })
+        if (!('deleted' in cust && cust.deleted)) pm = cardOf(cust.invoice_settings?.default_payment_method)
+      }
+      let upcomingTotal: number | null = null
+      let currency: string | null = overagePrice?.currency ?? null
+      try {
+        const preview = await stripe.invoices.createPreview({ subscription: subscriptionId })
+        upcomingTotal = preview.total
+        currency = preview.currency
+      } catch {
+        // a subscription with no forthcoming invoice (e.g. canceling) — leave the estimate null
+      }
+      const overageDecimal = overagePrice?.unit_amount_decimal
+      return {
+        periodStart: instantOf(numOf(item?.current_period_start)),
+        periodEnd: instantOf(numOf(item?.current_period_end)),
+        upcomingTotal,
+        currency,
+        paymentMethod: pm,
+        overagePerDeviceDay: overageDecimal != null ? Number(overageDecimal) : null,
+      }
     },
     constructEvent: (rawBody, signature) =>
       stripe.webhooks.constructEvent(rawBody, signature, cfg.webhookSecret) as unknown as StripeEvent,

@@ -182,7 +182,22 @@
     },
     "confirmChangeTitle": "Keisti planą į {{plan}}?",
     "confirmChangeUp": "Perjungsite į {{plan}} ({{price}}). Skirtumas bus proporcingai paskaičiuotas ir pridėtas prie kitos sąskaitos — iš karto niekas nenuskaitoma.",
-    "confirmChangeDown": "Perjungsite į {{plan}} ({{price}}). Nepanaudota suma bus proporcingai įskaityta kaip kreditas kitoje sąskaitoje — iš karto niekas nenuskaitoma."
+    "confirmChangeDown": "Perjungsite į {{plan}} ({{price}}). Nepanaudota suma bus proporcingai įskaityta kaip kreditas kitoje sąskaitoje — iš karto niekas nenuskaitoma.",
+    "paymentMethod": "Mokėjimo būdas",
+    "expires": "galioja iki",
+    "usageTitle": "Naudojimas šį laikotarpį",
+    "activeDevices": "aktyvūs įrenginiai",
+    "peakDevices": "Daugiausiai per dieną",
+    "deviceDays": "Įrenginių-dienos",
+    "overageDeviceDays": "Viršyta įreng.-dienų",
+    "overageNote": "Viršijimas apmokestinamas metered tarifu kitoje sąskaitoje.",
+    "withinAllowance": "Neviršijate plano imties.",
+    "nextInvoiceTitle": "Kita sąskaita",
+    "on": "Data:",
+    "nextInvoiceNote": "Įskaičiuota bazė ir bet koks susikaupęs viršijimas ar proporcinis skirtumas.",
+    "noUpcoming": "Artimiausios sąskaitos nėra.",
+    "confirmChargeDetail": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto. Skirtumas {{net}} (kreditas už nepanaudotą laiką jau įskaičiuotas) bus pridėtas prie kitos sąskaitos {{date}}. Iš karto niekas nenuskaitoma.",
+    "confirmCreditDetail": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto. Kitoje sąskaitoje {{date}} gausite {{amount}} kreditą už nepanaudotą laiką. Iš karto niekas nenuskaitoma."
   },
   "branding": {
     "title": "Prekės ženklas",
