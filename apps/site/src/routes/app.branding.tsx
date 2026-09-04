@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Copy, Info } from "lucide-react";
+import { ArrowUpRight, Check, Copy, Info, Loader2 } from "lucide-react";
 import { contentFor } from "@/lib/demo-content";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from "@/components/admin/AdminKit";
@@ -289,11 +289,11 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
   const rows = [
     // names (and hostname VALUES) carry the trailing dot: without it a zone-file panel appends the
     // zone again and the record lands at fleet.example.com.example.com — see apps/web branding.ts
-    { type: "TXT", name: `_orbetra-verify.${domain}.`, value: txtToken, hint: t("branding.dnsHintTxt"), ok: true },
+    { type: "TXT", name: `_orbetra-verify.${domain}.`, value: txtToken, hint: t("branding.dnsHintTxt"), ok: true, anchor: "dns-what" },
     // ONE routing record, chosen by the shape of the address — never both with labels on them
     prefixed
-      ? { type: "CNAME", name: `${domain}.`, value: `${DNS_TARGET}.`, hint: t("branding.dnsHintCname"), ok: false }
-      : { type: "A", name: `${domain}.`, value: DNS_ADDRESS, hint: t("branding.dnsHintA"), ok: false },
+      ? { type: "CNAME", name: `${domain}.`, value: `${DNS_TARGET}.`, hint: t("branding.dnsHintCname"), ok: false, anchor: "dns-cname-a" }
+      : { type: "A", name: `${domain}.`, value: DNS_ADDRESS, hint: t("branding.dnsHintA"), ok: false, anchor: "dns-cname-a" },
   ];
   const copy = (text: string, key: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
@@ -343,6 +343,17 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
                   <span className="inline-flex items-center gap-1">
                     <span className="mono font-semibold" style={{ color: "var(--admin-ink)" }}>{r.type}</span>
                     <Hint label={t("branding.dnsWhatIs")} body={r.hint} />
+                    <a
+                      href={`/docs#${r.anchor}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={t("branding.dnsLearn")}
+                      title={t("branding.dnsLearn")}
+                      className="grid h-4 w-4 shrink-0 place-items-center rounded transition-colors hover:bg-[var(--admin-hairline)]"
+                      style={{ color: "var(--admin-ink-soft)" }}
+                    >
+                      <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                    </a>
                   </span>
                 </td>
                 <td className="pr-3 align-top"><Field text={r.name} k={`${r.type}-name`} /></td>
@@ -354,6 +365,10 @@ function DnsRecords({ domain, txtToken }: { domain: string; txtToken: string }) 
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="mt-2 flex items-center gap-1.5" style={{ color: "var(--admin-ink-soft)" }}>
+        <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden />
+        {t("branding.dnsWatching")}
       </div>
     </div>
   );

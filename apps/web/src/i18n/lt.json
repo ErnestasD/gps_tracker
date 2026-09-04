@@ -244,7 +244,7 @@
     "actionError": "Veiksmas nepavyko — bandykite dar kartą.",
     "limitDomain": "Pasiekėte {{max}} nuosavų domenų ribą.",
     "dnsTitle": "DNS įrašai",
-    "dnsIntro": "Pridėkite abu įrašus savo DNS tiekėjo skydelyje, tada spauskite Patvirtinti.",
+    "dnsIntro": "Pridėkite abu įrašus savo DNS tiekėjo skydelyje. Kai juos pamatysime, domenas bus patvirtintas automatiškai.",
     "dnsType": "Tipas",
     "dnsName": "Vardas",
     "dnsValue": "Reikšmė",
@@ -255,7 +255,6 @@
     "dnsMissing": "Nerasta",
     "dnsChecking": "Tikrinama…",
     "dnsGoesTo": "Šis vardas šiuo metu nukreipia į {{where}}.",
-    "dnsRecheck": "Tikrinti DNS",
     "dnsOccupied": "Šis vardas jau turi kitų įrašų, todėl CNAME čia neįsigalios — tiekėjas jį priima, bet niekada neatiduoda. Naudokite žemiau esantį A įrašą arba pasirinkite adresą su žodžiu priekyje (pvz. fleet.{{domain}}).",
     "dnsAbsent": "Šiam vardui dar nieko nepaskelbta.",
     "dnsDoubled": "Jūsų tiekėjas prie vardo dar kartą pridėjo jūsų domeną — įrašas atsidūrė ties „{{where}}“. Pataisykite vardą: arba palikite tašką gale, arba įrašykite tik dalį prieš „{{domain}}“.",
@@ -264,7 +263,10 @@
     "dnsHintA": "Jūsų adresas yra pats domenas, be žodžio priekyje. Tokiam CNAME uždėti neįmanoma — beveik nė vienas tiekėjas to neleidžia. Jei jūsų tiekėjas siūlo ALIAS arba ANAME, jie čia dar geresni: veikia kaip A, bet seka paskui mus.",
     "dnsHelp": "Vardai parašyti su tašku gale — jis reiškia „šis vardas jau pilnas\". Jei jūsų tiekėjas taško nepriima arba prašo tik dalies prieš „{{domain}}“, tašką nuimkite ir įrašykite tik tą dalį. Nerašykite pilno vardo BE taško gale — dauguma tiekėjų tada dar kartą pridės jūsų domeną.\\n\\nPaštui tai įtakos neturi: el. pašto įrašai (MX) atskiri ir lieka kaip buvę.\\n\\nPakeitimai DNS sistemoje pasklinda ne akimirksniu — jei ką tik pridėjote, palaukite kelias minutes ir spauskite „Tikrinti DNS\".",
     "dnsHelpTitle": "Kaip pridėti šiuos įrašus",
-    "dnsWhatIs": "Ką šis įrašas daro"
+    "dnsWhatIs": "Ką šis įrašas daro",
+    "dnsLearn": "Skaityti dokumentacijoje",
+    "dnsWatching": "Tikriname automatiškai…",
+    "dnsAutoVerified": "Įrašai rasti — domenas patvirtintas."
   },
   "audit": {
     "title": "Audito žurnalas",

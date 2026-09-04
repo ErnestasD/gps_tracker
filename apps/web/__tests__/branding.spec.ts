@@ -4,7 +4,7 @@ import { brandingSchema } from '@orbetra/shared'
 
 // both sides of the merge: the colleague's `clean`/`iconFor` (favicon + brand assets, #273) and
 // this branch's `routingKind` — the union, not a choice
-import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, clean, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks, fqdn, hasPrefix, iconFor, relativeName, routingKind } from '../src/lib/branding.js'
+import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, clean, contrast, dnsRecordsFor, docsLink, ensureContrast, expectedTxt, faviconLinks, fqdn, hasPrefix, iconFor, relativeName, routingKind } from '../src/lib/branding.js'
 
 /**
  * White-label theming math (E03-5). No DOM: we test the pure WCAG contrast
@@ -200,6 +200,7 @@ describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () 
       name: '_orbetra-verify.dokigo.lt.',
       value: TOKEN,
       hintKey: 'branding.dnsHintTxt',
+      docAnchor: 'dns-what',
     })
     // the value is the token ALONE — the prefix belongs to the legacy apex form, not here
     expect(txt!.value).not.toContain('orbetra-verify=')
@@ -212,6 +213,7 @@ describe('dnsRecordsFor — the records, in the shape a DNS panel asks for', () 
       name: 'fleet.example.com.',
       value: 'dash.orbetra.com.',
       hintKey: 'branding.dnsHintCname',
+      docAnchor: 'dns-cname-a',
     })
   })
 
@@ -351,5 +353,25 @@ describe('trailing dot — absolute names', () => {
     expect(relativeName('dokigo.lt.', 'dokigo.lt')).toBe('@')
     // a name outside the zone is left whole rather than mangled
     expect(relativeName('other.example.com.', 'dokigo.lt')).toBe('other.example.com')
+  })
+})
+
+
+/**
+ * Where the ⓘ rows' ↗ points.
+ *
+ * The dashboard is white-labelled, so the docs host comes from the deployment's own platform
+ * domain. A hardcoded orbetra.com would put OUR brand in a reseller's admin — the exact leak the
+ * branding feature exists to prevent.
+ */
+describe('docsLink', () => {
+  it('builds the anchor on the deployment’s own platform domain', () => {
+    expect(docsLink('orbetra.com', 'dns-cname-a')).toBe('https://orbetra.com/docs#dns-cname-a')
+  })
+
+  it('gives no link at all rather than one to somewhere that may not be ours', () => {
+    expect(docsLink(null, 'dns-what')).toBeNull()
+    expect(docsLink('', 'dns-what')).toBeNull()
+    expect(docsLink('   ', 'dns-what')).toBeNull()
   })
 })

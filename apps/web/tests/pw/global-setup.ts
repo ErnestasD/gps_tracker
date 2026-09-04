@@ -5,6 +5,7 @@ import {
   BASE_IMEI,
   E2E_EMAIL,
   E2E_EDGE_HOSTNAME,
+  E2E_PLATFORM_DOMAIN,
   E2E_JWT_SECRET,
   E2E_PASSWORD,
   INGEST_PORT,
@@ -78,6 +79,8 @@ async function setup(): Promise<void> {
       // omits the CNAME row entirely — correct behaviour (never invent a target) but it meant the
       // e2e stack exercised a ONE-record setup while every real deployment hands out two.
       EDGE_HOSTNAME: E2E_EDGE_HOSTNAME,
+      // the docs host the branding panel's ↗ links point at; unset, there are no links to assert
+      PLATFORM_DOMAIN: E2E_PLATFORM_DOMAIN,
     },
     'api',
   )

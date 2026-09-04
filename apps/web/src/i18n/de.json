@@ -244,7 +244,7 @@
     "actionError": "Aktion fehlgeschlagen — bitte erneut versuchen.",
     "limitDomain": "Sie haben die maximale Anzahl von {{max}} benutzerdefinierten Domains erreicht.",
     "dnsTitle": "DNS-Einträge",
-    "dnsIntro": "Legen Sie beide Einträge bei Ihrem DNS-Anbieter an und klicken Sie dann auf Prüfen.",
+    "dnsIntro": "Legen Sie beide Einträge bei Ihrem DNS-Anbieter an. Die Domain verifiziert sich selbst, sobald wir sie sehen.",
     "dnsType": "Typ",
     "dnsName": "Name",
     "dnsValue": "Wert",
@@ -255,7 +255,6 @@
     "dnsMissing": "Nicht gefunden",
     "dnsChecking": "Wird geprüft…",
     "dnsGoesTo": "Dieser Name verweist derzeit auf {{where}}.",
-    "dnsRecheck": "DNS prüfen",
     "dnsOccupied": "Dieser Name hat bereits andere Einträge, daher greift hier kein CNAME — Ihr Anbieter nimmt es an, liefert es aber nie aus. Verwenden Sie den A-Eintrag unten, oder wählen Sie eine Adresse mit einem Wort davor (etwa fleet.{{domain}}).",
     "dnsAbsent": "Für diesen Namen ist noch nichts veröffentlicht.",
     "dnsDoubled": "Ihr Anbieter hat Ihre Domain ein zweites Mal an den Namen gehängt — der Eintrag landete unter „{{where}}“. Korrigieren Sie den Namen: entweder den Punkt am Ende behalten oder nur den Teil vor „{{domain}}“ eintragen.",
@@ -264,7 +263,10 @@
     "dnsHintA": "Ihre Adresse ist die Domain selbst, ohne Wort davor. Dort lässt sich kein CNAME setzen — nahezu kein Anbieter erlaubt das. Bietet Ihr Anbieter ALIAS oder ANAME an, sind diese noch besser: Sie wirken wie ein A-Eintrag, folgen uns aber.",
     "dnsHelp": "Die Namen sind mit einem Punkt am Ende geschrieben — dieser Punkt bedeutet „dieser Name ist bereits vollständig“. Nimmt Ihr Anbieter ihn nicht an oder fragt nur nach dem Teil vor „{{domain}}“, lassen Sie den Punkt weg und tragen nur diesen Teil ein. Tragen Sie den vollständigen Namen nicht OHNE den Punkt ein — die meisten Anbieter hängen dann Ihre Domain ein zweites Mal an.\\n\\nAuf E-Mail wirkt sich das nicht aus: MX-Einträge sind getrennt und bleiben unverändert.\\n\\nDNS-Änderungen brauchen einige Minuten. Haben Sie sie gerade angelegt, warten Sie kurz und klicken Sie auf „DNS prüfen“.",
     "dnsHelpTitle": "So legen Sie diese Einträge an",
-    "dnsWhatIs": "Was dieser Eintrag bewirkt"
+    "dnsWhatIs": "Was dieser Eintrag bewirkt",
+    "dnsLearn": "Zur Dokumentation",
+    "dnsWatching": "Wird automatisch geprüft…",
+    "dnsAutoVerified": "Einträge gefunden — Domain verifiziert."
   },
   "audit": {
     "title": "Audit-Log",
