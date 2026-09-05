@@ -23,7 +23,9 @@ import { closeTrip, openTrip } from './writer.js'
  * open rows per device); and `closeOrphans()` sweeps rows whose device never came back.
  */
 export class TripPersister {
-  private readonly openIds = new Map<string, { id: string; tenantId: string; accountId: string }>() // deviceId → open trip id + its scope (for iButton→driver resolution at close)
+  // deviceId → open trip id, its scope (for iButton→driver resolution at close) and its START,
+  // which a force-close needs to reconstruct the journey from `positions` rather than zero it.
+  private readonly openIds = new Map<string, { id: string; tenantId: string; accountId: string; startTime: Date }>()
   /** deviceId → the shard its open trip belongs to, so a shard handed to a peer can be forgotten.
    *  Written by BOTH warmStart and the open path — writing it in only one of them made forgetShard
    *  a no-op for every trip the running process had opened. */
@@ -42,14 +44,14 @@ export class TripPersister {
    * would have two workers each believing they own the same open trip.
    */
   async warmStart(shards: readonly number[], shardCount: number): Promise<number> {
-    const res = await this.pool.query<{ id: string; deviceId: string; tenantId: string; accountId: string; shard: number }>(
-      `SELECT t."id", t."deviceId", t."tenantId", t."accountId", (d."imei"::numeric % $2)::int AS shard
+    const res = await this.pool.query<{ id: string; deviceId: string; tenantId: string; accountId: string; startTime: Date; shard: number }>(
+      `SELECT t."id", t."deviceId", t."tenantId", t."accountId", t."startTime", (d."imei"::numeric % $2)::int AS shard
          FROM trips t JOIN devices d ON d."id" = t."deviceId"::bigint
         WHERE t."status"='open' AND d."imei" ~ '^[0-9]+$' AND (d."imei"::numeric % $2) = ANY($1::numeric[])`,
       [shards, shardCount],
     )
     for (const r of res.rows) {
-      this.openIds.set(r.deviceId, { id: r.id, tenantId: r.tenantId, accountId: r.accountId })
+      this.openIds.set(r.deviceId, { id: r.id, tenantId: r.tenantId, accountId: r.accountId, startTime: r.startTime })
       this.shardOf.set(r.deviceId, Number(r.shard))
     }
     return res.rows.length
@@ -157,9 +159,30 @@ export class TripPersister {
         // start rather than leaving TWO open rows for one device, which reports would double-count
         const stale = this.openIds.get(key)
         if (stale !== undefined) {
+          /**
+           * The stale row is a REAL journey, and it used to be written off as zeros.
+           *
+           * This is the restart case: the engine's state lives in memory, so a worker that
+           * redeploys mid-drive comes back with no open trip while the ROW is still open. The next
+           * journey force-closes it here — and closing it with `distanceM: 0, maxSpeed: 0` recorded
+           * "0 km, 0 km/h" for a drive whose positions are sitting in the database, durable and
+           * complete (founder, 2026-09-04: two of three trips that day, 499 positions at up to
+           * 100 km/h between them). It also ended the trip at the NEXT one's start, so the parked
+           * hours in between were billed to it as duration.
+           *
+           * Everything needed is in `positions` — the orphan sweep below has always reconstructed
+           * exactly this way. There is no reason for the two paths to disagree.
+           */
+          const end = await this.reconstruct(key, stale.startTime, ev.startTime)
           await closeTrip(this.pool, stale.id, {
-            endTime: ev.startTime, endLat: ev.startLat, endLon: ev.startLon,
-            distanceM: 0, distanceSource: 'gps', maxSpeed: 0, idleS: 0, driverId: null,
+            endTime: end?.endTime ?? ev.startTime,
+            endLat: end?.endLat ?? ev.startLat,
+            endLon: end?.endLon ?? ev.startLon,
+            distanceM: end?.distanceM ?? 0,
+            distanceSource: 'gps',
+            maxSpeed: end?.maxSpeed ?? 0,
+            idleS: 0, // not reconstructible without replaying the state machine; 0 is honest
+            driverId: null,
           })
           this.openIds.delete(key)
         }
@@ -171,7 +194,7 @@ export class TripPersister {
           startLat: ev.startLat,
           startLon: ev.startLon,
         })
-        this.openIds.set(key, { id, tenantId: scope.tenantId, accountId: scope.accountId })
+        this.openIds.set(key, { id, tenantId: scope.tenantId, accountId: scope.accountId, startTime: ev.startTime })
         this.shardOf.set(key, shard)
         opened++
       } else {
@@ -218,6 +241,51 @@ export class TripPersister {
   }
 
   /** Great-circle length of the trip's fix_valid track — the same measure the engine accumulates. */
+  /**
+   * Rebuild a force-closed trip's ending from its own positions: where it really stopped, how far
+   * it went, how fast it got.
+   *
+   * `before` is EXCLUSIVE — it is the next trip's start, and that record belongs to the next trip.
+   * Ending at the last valid fix instead of at `before` also stops the parked hours between the two
+   * journeys being reported as this one's duration.
+   *
+   * Null when the window holds no valid fix: there is nothing to reconstruct, and the caller keeps
+   * its honest fallback rather than inventing a shape. I5 throughout — an invalid fix places
+   * nothing and measures nothing.
+   *
+   * The orphan sweep above does the same reconstruction inline rather than calling this: it decides
+   * WHETHER a row is orphaned from the same aggregates, so they have to be in its WHERE clause.
+   */
+  private async reconstruct(
+    deviceId: string,
+    startTime: Date,
+    before: Date,
+  ): Promise<{ endTime: Date; endLat: number; endLon: number; distanceM: number; maxSpeed: number } | null> {
+    const res = await this.pool.query<{ fix_time: Date; lat: number; lon: number; max_speed: number | null; m: string | null }>(
+      `SELECT last.fix_time, last.lat, last.lon, agg.max_speed, agg.m
+         FROM (SELECT max(speed) AS max_speed,
+                      ST_Length(ST_MakeLine(ST_MakePoint(lon, lat) ORDER BY fix_time)::geography) AS m
+                 FROM positions
+                WHERE device_id = $1::bigint AND fix_time >= $2 AND fix_time < $3 AND fix_valid) agg
+         CROSS JOIN LATERAL (
+           SELECT fix_time, lat, lon FROM positions
+            WHERE device_id = $1::bigint AND fix_time >= $2 AND fix_time < $3 AND fix_valid
+            ORDER BY fix_time DESC LIMIT 1
+         ) last`,
+      [deviceId, startTime, before],
+    )
+    const r = res.rows[0]
+    if (r === undefined) return null
+    const m = Number(r.m ?? 0)
+    return {
+      endTime: r.fix_time,
+      endLat: r.lat,
+      endLon: r.lon,
+      distanceM: Number.isFinite(m) ? Math.round(m) : 0,
+      maxSpeed: r.max_speed ?? 0,
+    }
+  }
+
   private async tripDistanceM(deviceId: string, from: Date, to: Date): Promise<number> {
     const res = await this.pool.query<{ m: string | null }>(
       `SELECT ST_Length(ST_MakeLine(ST_MakePoint(lon, lat) ORDER BY fix_time)::geography) AS m
