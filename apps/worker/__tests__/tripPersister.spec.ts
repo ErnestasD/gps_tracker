@@ -100,12 +100,15 @@ describe('E04-1 TripPersister', () => {
 
 describe('E04-1 TripPersister crash posture (audit high)', () => {
   /** Fake pool that answers the warm-start / orphan-sweep SELECTs with fixed rows. */
-  const poolWith = (openRows: Record<string, unknown>[], orphanRows: Record<string, unknown>[]) => {
+  const poolWith = (openRows: Record<string, unknown>[], orphanRows: Record<string, unknown>[], reconstructRows: Record<string, unknown>[] = []) => {
     const calls: { sql: string; params: unknown[] }[] = []
     const query = vi.fn((sql: string, params: unknown[] = []) => {
       calls.push({ sql, params })
       if (/JOIN devices/.test(sql) && !/LEFT JOIN LATERAL/.test(sql)) return Promise.resolve({ rows: openRows, rowCount: openRows.length })
-      if (/ST_Length/.test(sql)) return Promise.resolve({ rows: [{ m: '4321.6' }], rowCount: 1 })
+      // the force-close reconstruction: last valid fix + distance + peak, in one round trip.
+      // Matched BEFORE the bare ST_Length branch, which it also contains.
+      if (/CROSS JOIN LATERAL/.test(sql))
+        return Promise.resolve({ rows: reconstructRows, rowCount: reconstructRows.length })
       if (/ST_Length/.test(sql)) return Promise.resolve({ rows: [{ m: '4321.6' }], rowCount: 1 })
       if (/LEFT JOIN LATERAL/.test(sql)) return Promise.resolve({ rows: orphanRows, rowCount: orphanRows.length })
       if (/^INSERT INTO trips/.test(sql)) return Promise.resolve({ rows: [{ id: 900 }], rowCount: 1 })
@@ -139,6 +142,44 @@ describe('E04-1 TripPersister crash posture (audit high)', () => {
     expect(closes).toHaveLength(1)
     expect(closes[0]!.params[0]).toBe('77')
     expect(calls.filter((c) => /^INSERT INTO trips/.test(c.sql))).toHaveLength(1) // and one fresh open
+  })
+
+  it('…and that stale row keeps the journey it actually drove, not zeros', async () => {
+    // The restart case is a REAL trip: the row is open, the engine's memory is gone, and the next
+    // journey force-closes it. Writing distanceM: 0 / maxSpeed: 0 reported "0 km, 0 km/h" for a
+    // drive whose positions are durable and complete (founder, 2026-09-04: two of three trips that
+    // day showed zeros against 499 positions at up to 100 km/h). It also ended the trip at the NEXT
+    // one's start, billing the hours parked in between to it as duration.
+    const lastFix = new Date(5_000)
+    const { pool, calls } = poolWith(
+      [{ id: '77', deviceId: '42', tenantId: 't1', accountId: 'a1', startTime: new Date(500) }],
+      [],
+      [{ fix_time: lastFix, lat: 54.9, lon: 25.9, max_speed: 102, m: '31166.4' }],
+    )
+    const p = new TripPersister(pool, fakeRedis({ '42': { t: 't1', a: 'a1' } }))
+    await p.warmStart([0, 1], 16)
+    await p.apply([openEv(42n)], 0) // openEv starts at 1_000 — the next journey
+
+    const close = calls.find((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))!
+    expect(close.params).toContain(31166) // ST_Length over its own positions, rounded
+    expect(close.params).toContain(102) // and the peak it actually reached
+    expect(close.params[1]).toEqual(lastFix) // ends where it stopped, not at the next trip's start
+    expect(close.params[2]).toBe(54.9)
+    // the reconstruction window is the stale trip's OWN span, upper bound exclusive: the next
+    // trip's first record belongs to the next trip
+    const read = calls.find((c) => /CROSS JOIN LATERAL/.test(c.sql))!
+    expect(read.params.slice(1)).toEqual([new Date(500), new Date(1_000)])
+    expect(read.sql).toContain('fix_valid') // I5: an invalid fix measures nothing
+  })
+
+  it('a stale row with no valid fix of its own is closed honestly, not invented', async () => {
+    const { pool, calls } = poolWith([{ id: '77', deviceId: '42', tenantId: 't1', accountId: 'a1', startTime: new Date(500) }], [], [])
+    const p = new TripPersister(pool, fakeRedis({ '42': { t: 't1', a: 'a1' } }))
+    await p.warmStart([0, 1], 16)
+    await p.apply([openEv(42n)], 0)
+    const close = calls.find((c) => /UPDATE trips SET "status"='closed'/.test(c.sql))!
+    expect(close.params[1]).toEqual(new Date(1_000)) // falls back to the next trip's start
+    expect(close.params).toContain(0)
   })
 
   it("closeOrphans finalizes with REAL figures from the trip's own positions, not placeholders", async () => {

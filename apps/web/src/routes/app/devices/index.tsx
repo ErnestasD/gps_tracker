@@ -62,6 +62,9 @@ const selectStyle: React.CSSProperties = {
  * been registered and is not talking yet — and it is exactly the moment when the operator needs to
  * know whether the problem is theirs (wrong IMEI, no APN, no SIM credit) or simply time.
  */
+/** How long to keep watching for a queued erase to land before letting the note speak for itself. */
+const ERASE_POLL_MS = 120_000
+
 const statusOf = (d: Device, everSeen: ReadonlySet<string>): 'active' | 'waiting' | 'retired' =>
   d.retiredAt !== null ? 'retired' : everSeen.has(d.id) ? 'active' : 'waiting'
 
@@ -74,7 +77,26 @@ export function DevicesPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const { ctx } = useAccountContext()
-  const devices = useQuery({ queryKey: ['devices'], queryFn: listDevices })
+  /**
+   * A GDPR erase is a QUEUED job (202 + BullMQ), not a delete that has happened by the time the
+   * response lands. The one immediate invalidation the confirm handler fires therefore re-read the
+   * table BEFORE the worker touched it, so the row sat there looking undeleted until the operator
+   * refreshed by hand (founder, 2026-09-04). Poll until the row is actually gone.
+   *
+   * Bounded, because a failed job would otherwise poll for the life of the tab: after
+   * ERASE_POLL_MS the interval stops and the queued note stands on its own.
+   */
+  const [erasingSince, setErasingSince] = useState<{ id: string; at: number } | null>(null)
+  const devices = useQuery({
+    queryKey: ['devices'],
+    queryFn: listDevices,
+    refetchInterval: (q) =>
+      erasingSince !== null &&
+      Date.now() - erasingSince.at < ERASE_POLL_MS &&
+      (q.state.data ?? []).some((d) => d.id === erasingSince.id)
+        ? 2_000
+        : false,
+  })
   // which devices have EVER reported — the same snapshot the live map seeds from, so the two
   // surfaces can no longer disagree about one tracker
   const lastSeen = useQuery({ queryKey: ['devices-last'], queryFn: getLastPositions })
@@ -460,6 +482,7 @@ export function DevicesPage() {
             .then(() => {
               liveStore.evict(d.id) // erased device leaves the live map at once
               setEraseQueued(true)
+              setErasingSince({ id: d.id, at: Date.now() }) // …and keep looking until the row is gone
               refresh() // ...and the table — the retire path refreshes, this one silently didn't
             })
             .catch(() => setEraseError(true))
