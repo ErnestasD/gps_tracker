@@ -906,7 +906,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
          */
         const profile = await db.profiles.get(device.profileId)
         const dict = profile === null ? undefined : loadDictionary(profile.avlTable)
-        const attrLabels: Record<string, { name: string; units?: string; multiplier?: number }> = {}
+        const attrLabels: Record<string, { name: string; units?: string; multiplier?: number; group?: string; max?: string }> = {}
         if (dict !== undefined) {
           // name → entry, for the keys the pipeline stored under their name. A name that is
           // ambiguous in the table was never stored as a name (it became `io_<id>`), so the last
@@ -924,6 +924,20 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
               name: entry.name,
               ...(entry.units !== undefined ? { units: entry.units } : {}),
               ...(mult !== null ? { multiplier: mult } : {}),
+              /**
+               * The wiki's own "Parameter Group" and "Max" cells, passed through UNINTERPRETED.
+               *
+               * `group` is how the list is split into what the VEHICLE reports (CAN/OBD/tachograph)
+               * and what the TRACKER reports about itself — Teltonika's own classification, which
+               * beats any keyword list we would maintain against the element names.
+               *
+               * `max` is the discriminator for decoding a bitmask, and it has to travel because the
+               * name alone is not enough to identify one: "Door Status" is a 2-byte, max-16128 door
+               * bitmask on fmc150 (id 90) AND a 1-byte, max-255 Reefer IO element on fmb640 (id
+               * 10355). Decoding the second with the first's layout would invent a reading.
+               */
+              ...(entry.group !== undefined ? { group: entry.group } : {}),
+              ...(entry.max !== undefined ? { max: entry.max } : {}),
             }
           }
         }

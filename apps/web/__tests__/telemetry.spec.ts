@@ -189,3 +189,74 @@ describe('pre-parsed timestamps', () => {
     }
   })
 })
+
+/**
+ * Door Status is a bitmask, and the founder reads open/closed — not 256.
+ * https://wiki.teltonika-gps.com/view/FMC150_Teltonika_Data_Sending_Parameters_ID
+ */
+describe('door status', () => {
+  const door = { name: 'Door Status', max: '16128', group: 'LVCAN200, ALLCAN300, CANCONTROL' }
+  const parts = (v: number): Record<string, boolean> => {
+    const out: Record<string, boolean> = {}
+    for (const r of telemetryRows({ 'Door Status': v }, { 'Door Status': door })) {
+      if (r.binary !== undefined) out[r.binary.labelKey] = r.binary.open
+    }
+    return out
+  }
+
+  it('one element becomes doors, boot and bonnet — each its own state', () => {
+    // 256 = 0x100, the driver's door: what the founder measured on LDZ246 (2026-09-04)
+    expect(parts(256)).toEqual({ doors: true, trunk: false, hood: false })
+    expect(parts(0)).toEqual({ doors: false, trunk: false, hood: false })
+  })
+
+  it('any of the four doors reads as open, and the boot never does', () => {
+    for (const bit of [0x100, 0x200, 0x400, 0x800]) expect(parts(bit).doors).toBe(true)
+    // an open boot must not raise a doors-open alert — that is why it is a separate row
+    expect(parts(0x2000)).toEqual({ doors: false, trunk: true, hood: false })
+    expect(parts(0x1000)).toEqual({ doors: false, trunk: false, hood: true })
+    expect(parts(16128)).toEqual({ doors: true, trunk: true, hood: true }) // 0x3F00, everything open
+  })
+
+  it('an element merely NAMED "Door Status" is left as a number', () => {
+    // fmb640 id 10355 is a 1-byte Reefer IO element with max 255 — the same name, none of these
+    // bits. Decoding it with this layout would invent a reading, so the max cell is the gate.
+    const reefer = { name: 'Door Status', max: '255', group: 'Reefer IO' }
+    const rows = telemetryRows({ 'Door Status': 1 }, { 'Door Status': reefer })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.binary).toBeUndefined()
+    expect(rows[0]?.value).toBe('1')
+  })
+})
+
+describe('vehicle before device', () => {
+  it("what the car reports leads, ordered by Teltonika's own parameter group", () => {
+    const rows = telemetryRows(
+      { 'Battery Voltage': 3900, 'Fuel Level': 180, 'GSM Signal': 5, 'Engine RPM': 801 },
+      {
+        'Battery Voltage': { name: 'Battery Voltage', group: 'Permanent I/O elements' },
+        'Fuel Level': { name: 'Fuel Level', group: 'CAN Chip', units: 'l', multiplier: 0.1 },
+        'GSM Signal': { name: 'GSM Signal', group: 'Permanent I/O Elements' },
+        'Engine RPM': { name: 'Engine RPM', group: 'OBD elements' },
+      },
+    )
+    expect(rows.map((r) => r.section)).toEqual(['vehicle', 'vehicle', 'device', 'device'])
+    // fuel is what the tab is opened for; it used to sit below Battery Voltage on name order alone
+    expect(rows[0]?.label).toBe('Engine RPM')
+    expect(rows[1]?.value).toBe('18.0 l')
+  })
+
+  it('a trailer fridge is not the vehicle, however its group is spelled', () => {
+    // "Euroscan IO" and "Transcan IO" contain the letters "can" and are cargo equipment, not the bus
+    for (const group of ['Euroscan IO', 'Transcan IO', 'Reefer IO', 'Bluetooth®Low Energy']) {
+      expect(telemetryRows({ x: 1 }, { x: { name: 'x', group } })[0]?.section).toBe('device')
+    }
+    for (const group of ['CAN Chip', 'OBD elements', 'ALLCAN300', 'LV-CAN200 + DTC', 'TACHO', 'Manual CAN elements']) {
+      expect(telemetryRows({ x: 1 }, { x: { name: 'x', group } })[0]?.section).toBe('vehicle')
+    }
+  })
+
+  it('an element with no group stays with the tracker, where the list has always shown it', () => {
+    expect(telemetryRows({ io_9999: 1 })[0]?.section).toBe('device')
+  })
+})

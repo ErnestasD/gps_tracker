@@ -546,7 +546,16 @@
       "fencesHint": "Wählen Sie, welche Zonen die Karte zeichnet.",
       "tabs": "Geräte-Panels",
       "resize": "Ziehen, um die Höhe des Panels zu ändern",
-      "historyAt": "Verlauf: Zustand um {{when}}"
+      "historyAt": "Verlauf: Zustand um {{when}}",
+      "sectionVehicle": "Fahrzeug",
+      "sectionDevice": "Gerät",
+      "opening": {
+        "doors": "Türen",
+        "trunk": "Kofferraum",
+        "hood": "Motorhaube",
+        "open": "Offen",
+        "closed": "Geschlossen"
+      }
     },
     "title": "Live-Karte",
     "toggleList": "Fahrzeugliste ein- oder ausblenden",

@@ -546,7 +546,16 @@
       "fencesHint": "Choose which zones the map draws.",
       "tabs": "Device panels",
       "resize": "Drag to resize the panel",
-      "historyAt": "History: showing the state at {{when}}"
+      "historyAt": "History: showing the state at {{when}}",
+      "sectionVehicle": "Vehicle",
+      "sectionDevice": "Device",
+      "opening": {
+        "doors": "Doors",
+        "trunk": "Boot",
+        "hood": "Bonnet",
+        "open": "Open",
+        "closed": "Closed"
+      }
     },
     "title": "Live map",
     "toggleList": "Show or hide the fleet list",
