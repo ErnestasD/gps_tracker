@@ -163,7 +163,13 @@ export function SharePage({ token }: { token: string }) {
       </header>
 
       <div className="relative flex-1">
-        <div ref={containerRef} className="absolute inset-0" data-testid="share-map" />
+        {/* h/w, NOT absolute+inset: mapbox-gl.css stamps `.mapboxgl-map{position:relative}` onto
+            this div, and that rule is UNLAYERED while Tailwind's `.absolute` lives in
+            `@layer utilities` — unlayered always wins the cascade, whatever the source order. With
+            position:relative, `inset-0` sizes nothing and the empty div collapses (found live on
+            this page: header fine, canvas 2906×600, container 1453×0, no tile request ever made).
+            LiveMap hit exactly this and was fixed; the public share page kept the old markup. */}
+        <div ref={containerRef} className="h-full w-full" data-testid="share-map" />
         <MapErrorOverlay show={mapError} testId="share-map-error" variant="shell" />
         {state === 'gone' && (
           <div className="absolute inset-0 flex items-center justify-center bg-bg/80" data-testid="share-gone">
