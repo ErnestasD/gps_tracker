@@ -267,6 +267,9 @@ export async function setup(): Promise<Fixtures> {
     secureCookies: false,
     trustProxy: false,
     getRemoteAddr: () => '127.0.0.1',
+    // Stubbed rather than omitted: unconfigured, the route 503s, and the collection sweep would
+    // then be asserting the shape of a missing dependency instead of the handler's own answer.
+    mapToken: () => Promise.resolve({ token: 'tk.isolation', expiresAt: '2099-01-01T00:00:00.000Z' }),
   })
   const server = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   const port = await new Promise<number>((r) => server.on('listening', () => r((server.address() as { port: number }).port)))

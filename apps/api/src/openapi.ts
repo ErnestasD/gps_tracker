@@ -69,6 +69,7 @@ const SUMMARY_OVERRIDES: Record<string, string> = {
   'PATCH /v1/deals/{id}': 'Approve or reject a deal registration',
   'POST /v1/devices/import': 'Bulk-import devices from CSV',
   'POST /v1/devices/import/preview': 'Validate a CSV import without applying it',
+  'GET /v1/map/token': 'Mint a short-lived Mapbox token for the browser',
   'GET /v1/devices/{id}/can': 'Read CAN-bus data for a device',
   'GET /v1/devices/{id}/commands': 'List commands sent to a device',
   'POST /v1/devices/{id}/commands': 'Send a GPRS command to a device',

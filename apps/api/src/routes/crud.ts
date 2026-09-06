@@ -2326,7 +2326,7 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
      * returns can only read styles and glyphs. 503 when the deployment has not configured minting,
      * so the client can fall back to the build-time token rather than render nothing.
      */
-    { method: 'get', path: '/v1/map/token', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
+    { method: 'get', path: '/v1/map/token', scopeClass: 'tenant', entity: 'mapToken', shape: 'collection',
       handler: async (c) => {
         if (deps.mapToken === undefined) return problem(c, 503, 'Service Unavailable', 'map token minting is not configured')
         try {
