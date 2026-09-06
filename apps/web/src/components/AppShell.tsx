@@ -291,8 +291,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       // …and the BRAND. Signing out returns to a page this tenant does not own: on our host that is
       // the shared login form, which must wear ours. `host` is what this DOMAIN resolved to, so
       // applying it is right on a white-label domain too — there it simply re-applies their own.
+      //
+      // An UNRESOLVED host leaves the document alone (audit W-2). `host?.whiteLabel === true` read
+      // `null` as `false`, i.e. as "this is the platform", so a failed `GET /v1/branding` — cached
+      // module-wide for the life of the page — made Sign out replace the tenant's tab title and
+      // favicon with OURS on their own domain, visibly, and leave them there: the login page that
+      // follows renders nothing brand-specific for an unresolved brand, so our mark was the only
+      // one on it until a manual reload. Same rule as the effect at the top of this file, and the
+      // same one publicBranding states: null means UNKNOWN, never "ours".
       forgetSessionBrand()
-      applyBranding(host?.branding ?? {}, host?.whiteLabel === true, false)
+      if (host !== null) applyBranding(host.branding, host.whiteLabel, false)
       // same leak class for the TanStack Query cache (R4 HIGH): devices/events/trips/
       // geofences/billing/audit/bell rows would otherwise be served to the next user who
       // logs in on this tab (default 5-min gcTime) — clear it so nothing crosses tenants

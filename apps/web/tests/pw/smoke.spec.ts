@@ -751,9 +751,30 @@ test('affiliates: a tenant admin cannot reach the affiliates panel (platform gat
   await page.getByTestId('password-input').fill(E2E_PASSWORD)
   await page.getByTestId('login-submit').click()
   await page.waitForURL(/\/app(\/dashboard)?\/?$/) // overseer lands on the reseller dashboard
-  // nav link is platform-only; direct URL renders the in-page denied notice (server also 403s the API)
+  // The direct URL used to render the in-page denied notice — INSIDE the platform console shell,
+  // which carries our name and our back-office nav. On a reseller's own domain that showed their
+  // customer an unmistakable vendor back-office (audit W-1). They are now bounced out of the tree
+  // entirely, so there is nothing to read: to /app, not /login, because they ARE signed in.
   await page.goto('/app/affiliates')
-  await expect(page.getByTestId('affiliates-denied')).toBeVisible()
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/)
+  await expect(page.getByTestId('affiliates-denied')).toHaveCount(0)
+  await expect(page.getByText('Platform console', { exact: false })).toHaveCount(0)
+
+  // …and the same for the console root, which is what `?redirect=` can aim at
+  await page.goto('/platform')
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/)
+})
+
+test('the console is unreachable via ?redirect= on the login form (audit W-1)', async ({ page }) => {
+  // An explicit ?redirect wins over the role-based landing, so a pasted
+  // `…/login?redirect=/platform` delivered an ordinary customer, signing in with ordinary
+  // credentials, straight into our back-office chrome. The route guard now outranks it.
+  await page.goto('/login?redirect=%2Fplatform')
+  await page.getByTestId('email-input').fill(E2E_EMAIL)
+  await page.getByTestId('password-input').fill(E2E_PASSWORD)
+  await page.getByTestId('login-submit').click()
+  await page.waitForURL(/\/app(\/dashboard)?\/?$/)
+  await expect(page.getByText('Platform console', { exact: false })).toHaveCount(0)
 })
 
 /** Shared login step for the coverage-gap tests below (mirrors the E2E flow above). */

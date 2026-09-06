@@ -14,6 +14,8 @@ import { useTranslation } from 'react-i18next'
 
 import { getCurrentUser, logout } from '@/lib/auth'
 import { liveStore } from '@/lib/liveStore'
+import { PLATFORM_NAME } from '@/lib/branding'
+import { usePublicBranding } from '@/lib/publicBranding'
 
 /**
  * The platform console shell — a SEPARATE panel, not a tab inside the customer dashboard.
@@ -47,6 +49,7 @@ const NAV: NavItem[] = [
 
 export function ConsoleShell({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
+  const host = usePublicBranding()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -68,8 +71,12 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
     <div className="admin-root flex min-h-screen">
       <aside className="admin-hairline-r hidden w-60 shrink-0 flex-col p-4 md:flex" style={{ background: 'var(--admin-surface)' }}>
         <div className="mb-6 px-2">
+          {/* Belt to the route guard's braces (audit W-1). The role gate in `consoleRoute` is what
+              keeps a reseller's customer out; this is what makes a FUTURE routing regression cost
+              nothing. Same rule as AppShell: our name only on our own hosts, and BLANK while the
+              host is still unknown — an unresolved brand is not permission to print ours. */}
           <div className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
-            Orbetra
+            {host?.whiteLabel === false ? PLATFORM_NAME : ''}
           </div>
           <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--admin-ink-soft)' }}>
             {t('console.title')}
