@@ -147,7 +147,7 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       <div ref={langRef} className="relative hidden md:block">
         <button
           onClick={() => setLangOpen((v) => !v)}
-          className="grid h-9 w-9 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          className="grid h-9 w-9 cursor-pointer place-items-center rounded-md admin-ghost"
           aria-label={t("settings.locale")}
           aria-expanded={langOpen}
           title={t("settings.locale")}
@@ -188,7 +188,7 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       <button
         type="button"
         onClick={toggle}
-        className="grid h-9 w-9 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+        className="grid h-9 w-9 cursor-pointer place-items-center rounded-md admin-ghost"
         aria-label={t("shell.theme")}
         title={t("shell.theme")}
       >
@@ -197,7 +197,7 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
       <Link
         to="/"
-        className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-3 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-text"
+        className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-3 text-xs admin-ghost"
       >
         <LogOut className="h-4 w-4" aria-hidden />
         {t("shell.logout")}
@@ -218,7 +218,7 @@ function NotificationsBell() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className="relative grid h-8 w-8 cursor-pointer place-items-center rounded-md transition-colors hover:bg-surface-2"
+          className="relative grid h-8 w-8 cursor-pointer place-items-center rounded-md admin-ghost"
           style={{ color: "var(--admin-ink)" }}
           aria-label={t("bell.title")}
         >

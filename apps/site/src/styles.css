@@ -485,3 +485,26 @@
 .scroll-strip::-webkit-scrollbar {
   display: none; /* Chrome, Safari */
 }
+
+/**
+ * apps/web's `ui/button` ghost variant, expressed in the ADMIN tokens.
+ *
+ * That variant is `text-muted hover:bg-surface-2 hover:text-text`, and copying those class names
+ * across is a trap: the utilities exist in BOTH apps and mean different things. In apps/web
+ * `--muted` is a text grey (#8b93a7); here it is a SURFACE (#1A1F2C), so the header's language,
+ * theme and log-out controls came out painted in almost exactly the background colour (founder,
+ * 2026-09-06: "kas per spalvos"). `--admin-ink-soft` is this app's #8B93A7 — the same grey the real
+ * shell actually renders — so the tokens are what travel, never the utility names.
+ */
+[data-admin-theme] .admin-ghost {
+  color: var(--admin-ink-soft);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+[data-admin-theme] .admin-ghost:hover {
+  background: var(--admin-surface-2);
+  color: var(--admin-ink);
+}
+/** The nav row's hover, same reasoning: `hover:bg-surface-2` is not this app's surface. */
+[data-admin-theme] .admin-row:hover {
+  background: var(--admin-surface-2);
+}
