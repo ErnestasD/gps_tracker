@@ -46,7 +46,7 @@ function AdminLayout() {
                 >
                   <X className="h-4 w-4" />
                 </button>
-                <AdminSidebar onNavigate={() => setMobileOpen(false)} />
+                <AdminSidebar onNavigate={() => setMobileOpen(false)} withCollapse={false} />
               </div>
             </div>
           </div>

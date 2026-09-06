@@ -82,7 +82,7 @@ function ApiKeysPage() {
   };
 
   return (
-    <div className="space-y-4 p-4 md:p-8">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t("apiKeys.title")} description={t("apiKeys.desc")}>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>

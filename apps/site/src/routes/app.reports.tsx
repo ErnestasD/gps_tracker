@@ -88,7 +88,7 @@ function ReportsPage() {
     : RESULT_ROWS.filter((r) => r[1] === DEVICES.find((d) => d.value === deviceId)?.label);
 
   return (
-    <div className="space-y-4 p-4 md:p-8">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader title={t("reports.title")} description={t("reports.desc")} className="mb-0" />
 
       {/* generator card — run/export actions live in the card header (mirrors the real ReportsPage) */}
