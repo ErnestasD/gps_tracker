@@ -1104,7 +1104,17 @@ export const BERLIN_LOOP: LngLat[] = [
  * it is in — the property the Vilnius and Kaunas loops were built for in the first place.
  */
 export interface DemoCity {
-  /** the primary loop, and a second one so the fleet is not all on one circuit */
+  /**
+   * The primary loop, and a second one so the fleet is not all on one circuit — both in the SAME
+   * city.
+   *
+   * `lt` used the Kaunas loop as its second, 91 km from the Vilnius one. The live map fits the
+   * camera to all 24 vehicles, so it had to zoom out until both cities were on screen, and at that
+   * scale a city fleet collapses into an unreadable pile of overlapping labels (founder,
+   * 2026-09-06: 15 of 24 markers overlapping, against 7 for Warsaw). Every other city already
+   * repeated its own loop; the different phase of `(i * 17) % length` is what keeps the two groups
+   * apart, not a different city.
+   */
   loops: [LngLat[], LngLat[]]
   center: LngLat
   /** shown wherever the demo names the place it is showing */
@@ -1112,10 +1122,31 @@ export interface DemoCity {
 }
 
 export const DEMO_CITIES: Record<string, DemoCity> = {
-  lt: { loops: [VILNIUS_LOOP, KAUNAS_LOOP], center: [25.2797, 54.6872], label: 'Vilnius' },
+  lt: { loops: [VILNIUS_LOOP, VILNIUS_LOOP], center: [25.2797, 54.6872], label: 'Vilnius' },
   pl: { loops: [WARSAW_LOOP, WARSAW_LOOP], center: [21.0122, 52.2297], label: 'Warszawa' },
   en: { loops: [WARSAW_LOOP, WARSAW_LOOP], center: [21.0122, 52.2297], label: 'Warsaw' },
   de: { loops: [BERLIN_LOOP, BERLIN_LOOP], center: [13.3888, 52.517], label: 'Berlin' },
+}
+
+/**
+ * WHERE each demo vehicle sits on its city's circuits — the one definition, shared by the live map
+ * and the test that guards it.
+ *
+ * The first sixteen ride the first loop, the rest the second. Both are the SAME city (see
+ * DemoCity.loops), so the two groups are told apart by their PHASE, and that is the whole subtlety:
+ * the old rule was `(i * 17) % length`, and 17 divides 306 exactly, so on the Warsaw and Berlin
+ * loops six of the second group landed on points the first group already occupied — two vehicles,
+ * one dot, in the demo's most-looked-at screen. Spacing each group evenly around its circuit and
+ * offsetting the second by a QUARTER of its step keeps every vehicle on its own piece of road,
+ * whatever the loop's length happens to be. `demoFleetFits.spec` asserts both properties.
+ */
+export function fleetPlacement(city: DemoCity, i: number, groupSize = 16): { at: LngLat; loop: LngLat[]; idx: number } {
+  const second = i >= groupSize
+  const loop = city.loops[second ? 1 : 0]
+  const n = second ? 8 : groupSize
+  const k = second ? i - groupSize : i
+  const idx = Math.round(((k + (second ? 0.25 : 0)) * loop.length) / n) % loop.length
+  return { at: loop[idx], loop, idx }
 }
 
 /** The city for a language, falling back to the English default rather than throwing. */
