@@ -75,10 +75,14 @@ with the same anchors; the helper is gone.
 
 - `packages/kb` joins the monorepo map. No runtime dependencies — it is data and pure functions.
 - The public site gains `/learn` and `/learn/$slug`; the article chunk is ~148 KB gzipped and loads
-  only on those routes. The site's main bundle grows by ~4 KB gzipped for the metadata used by the
-  home page's knowledge-base band.
+  only on those routes. Both are thin route shells around `React.lazy` components — a route module
+  is eager, and the first version's `loader` put the whole knowledge base in the entry chunk. The
+  entry chunk grows only by `KB_META` (~40 KB raw), which the home page's band and every help link
+  read.
 - The dashboard gains `/app/learn` and `/app/learn/$slug`, lazily loaded, plus a `HelpLink` used
   across the product and a `help` prop on `PageHeader`.
+- The sitemap is generated at build from the same metadata. Fifty article URLs kept by hand is the
+  list that silently stops being complete, and a sitemap is worth exactly its completeness.
 - Articles are prose in a repo, so they age. The package's tests catch structural rot (dead links,
   missing translations, drifting anchors, a `screen` that no route serves) but not stale facts. A
   feature change that contradicts an article is a change that should edit the article — the `screen`

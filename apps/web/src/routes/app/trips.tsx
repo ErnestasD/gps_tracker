@@ -250,9 +250,9 @@ export function TripsPage() {
                 </div>
                 <div className="grid grid-cols-4 gap-2 text-center text-xs">
                   <Stat label={t('trips.duration')} value={fmtDuration(tripDurationMs(selected, Date.now()))} />
-                  <Stat label={t('trips.distance')} value={u.distanceM(selected.distanceM)} help={KB.distanceAndOdometer} />
+                  <Stat label={t('trips.distance')} value={u.distanceM(selected.distanceM)} help={KB.distanceAndOdometer} helpTestId="help-trip-distance" />
                   <Stat label={t('trips.maxSpeed')} value={u.speed(selected.maxSpeed)} />
-                  <Stat label={t('trips.idle')} value={fmtDuration(selected.idleS * 1000)} help={KB.howTripsAreDetected} />
+                  <Stat label={t('trips.idle')} value={fmtDuration(selected.idleS * 1000)} help={KB.howTripsAreDetected} helpTestId="help-trip-idle" />
                 </div>
                 <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
                   {t('trips.driver')}:
@@ -288,12 +288,12 @@ function FilterLabel({ label, children }: { label: string; children: React.React
   )
 }
 
-function Stat({ label, value, help }: { label: string; value: string; help?: KbSlug }) {
+function Stat({ label, value, help, helpTestId }: { label: string; value: string; help?: KbSlug; helpTestId?: string }) {
   return (
     <div className="rounded-md border p-2" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }}>
       <div className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider" style={{ color: 'var(--admin-ink-soft)' }}>
         {label}
-        {help !== undefined && <HelpLink slug={help} />}
+        {help !== undefined && <HelpLink slug={help} {...(helpTestId !== undefined ? { testId: helpTestId } : {})} />}
       </div>
       <div className="tabular-nums font-medium" style={{ color: 'var(--admin-ink)' }}>{value}</div>
     </div>

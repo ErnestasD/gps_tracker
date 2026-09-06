@@ -356,12 +356,12 @@ function AccountRowMenu({ account, onEdit, onAddUser, onDelete }: { account: Acc
   )
 }
 
-function FieldLabel({ label, help, children }: { label: string; help?: KbSlug; children: ReactNode }) {
+function FieldLabel({ label, help, helpTestId, children }: { label: string; help?: KbSlug; helpTestId?: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
       <span className="inline-flex items-center gap-1">
         {label}
-        {help !== undefined && <HelpLink slug={help} />}
+        {help !== undefined && <HelpLink slug={help} {...(helpTestId !== undefined ? { testId: helpTestId } : {})} />}
       </span>
       {children}
     </label>
@@ -458,7 +458,7 @@ function UserForm({ accounts, initialAccountId, onDone, onCancel }: {
         <AdminInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={200} data-testid="account-user-password" />
       </FieldLabel>
       <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('accounts.passwordHint')}</p>
-      <FieldLabel label={t('accounts.role')} help={KB.loginsAndRoles}>
+      <FieldLabel label={t('accounts.role')} help={KB.loginsAndRoles} helpTestId="help-account-role">
         <Combobox
           value={role}
           onChange={(v) => setRole(v === 'viewer' ? 'viewer' : 'account_manager')}

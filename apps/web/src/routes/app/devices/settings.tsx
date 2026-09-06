@@ -103,7 +103,7 @@ export function SettingsCard({ device, canWrite }: { device: Device; canWrite: b
       <CardHeader>
         <div className="flex items-center gap-1.5">
           <CardTitle className="text-base">{t('devices.settings.title', { name: device.name })}</CardTitle>
-          <HelpLink slug={KB.reportingIntervals} />
+          <HelpLink slug={KB.reportingIntervals} testId="help-device-settings" />
         </div>
       </CardHeader>
       <CardContent className="space-y-6">

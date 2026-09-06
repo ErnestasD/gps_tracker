@@ -271,7 +271,7 @@ function RuleForm({ accounts, geofences, contextAccountId, onCreated, onCancel }
 
   return (
     <form onSubmit={submit} className="mt-2 flex flex-col gap-3">
-      <Field label={t('rules.kindLabel')} help={KB.eventTypes}>
+      <Field label={t('rules.kindLabel')} help={KB.eventTypes} helpTestId="help-rule-kind">
         <Combobox
           value={kind}
           onChange={(v) => { setKind(v as RuleKind); setCfg({}) }}
@@ -318,7 +318,7 @@ function RuleForm({ accounts, geofences, contextAccountId, onCreated, onCancel }
           )}
         </Field>
       ))}
-      <Field label={t('rules.cooldown')} help={KB.rulesAndAlerts} helpAnchor="cooldown">
+      <Field label={t('rules.cooldown')} help={KB.rulesAndAlerts} helpAnchor="cooldown" helpTestId="help-rule-cooldown">
         <AdminInput type="number" min={0} max={86_400} value={cooldownS} onChange={(e) => setCooldownS(Number(e.target.value))} data-testid="rule-cooldown" className="w-24" />
       </Field>
       {/* notification channels (E05-5) — email needs SES configured on the worker; telegram
@@ -334,12 +334,12 @@ function RuleForm({ accounts, geofences, contextAccountId, onCreated, onCancel }
   )
 }
 
-function Field({ label, help, helpAnchor, children }: { label: string; help?: KbSlug; helpAnchor?: string; children: React.ReactNode }) {
+function Field({ label, help, helpAnchor, helpTestId, children }: { label: string; help?: KbSlug; helpAnchor?: string; helpTestId?: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
       <span className="inline-flex items-center gap-1">
         {label}
-        {help !== undefined && <HelpLink slug={help} {...(helpAnchor !== undefined ? { anchor: helpAnchor } : {})} />}
+        {help !== undefined && <HelpLink slug={help} {...(helpAnchor !== undefined ? { anchor: helpAnchor } : {})} {...(helpTestId !== undefined ? { testId: helpTestId } : {})} />}
       </span>
       {children}
     </label>
@@ -368,7 +368,7 @@ function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[
     <div className="flex w-full flex-col gap-1">
       <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
         {t('rules.channels.label')}
-        <HelpLink slug={KB.notificationChannels} />
+        <HelpLink slug={KB.notificationChannels} testId="help-rule-channels" />
       </span>
       <div className="flex flex-wrap items-end gap-2">
         <div className="w-36">

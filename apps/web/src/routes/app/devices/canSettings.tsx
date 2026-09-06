@@ -105,7 +105,7 @@ export function CanSettingsCard({ device, canWrite }: { device: Device; canWrite
       <CardHeader>
         <div className="flex items-center gap-1.5">
           <CardTitle className="text-base">{t('devices.canSettings.title', { name: device.name })}</CardTitle>
-          <HelpLink slug={KB.canAndObd} />
+          <HelpLink slug={KB.canAndObd} testId="help-can-params" />
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

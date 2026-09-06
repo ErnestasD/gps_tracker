@@ -78,7 +78,7 @@ export function ShareCard({ device }: { device: Device }) {
       <CardHeader>
         <div className="flex items-center gap-1.5">
           <CardTitle className="text-base">{t('devices.share.title', { name: device.name })}</CardTitle>
-          <HelpLink slug={KB.shareALiveLink} />
+          <HelpLink slug={KB.shareALiveLink} testId="help-share-link" />
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

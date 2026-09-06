@@ -56,10 +56,10 @@ export const unpaidWhatHappens: KbArticle = {
           ['Sekliai toliau įrašinėja į savo atmintį.', 'Sekliai nekonfigūruojami iš naujo, neatstatomi ir apskritai neliečiami.'],
         ] } },
         { h2: '5 žingsnis — sumokėjus viskas atstatoma', id: 'restore' },
-        { p: 'Apmokėkite sąskaitą, ir paskyra atkuriama per kitą patikrą, niekam neprašant. Paskutinė žinoma kiekvieno automobilio pozicija tebėra vietoje, tad žemėlapis grįžęs iškart užpildytas, o ne tuščias.' },
+        { p: 'Apmokėkite sąskaitą, ir paskyra atkuriama per kitą patikrą – nieko prašyti nereikia. Paskutinė žinoma kiekvieno automobilio pozicija tebėra vietoje, tad žemėlapis grįžęs iškart užpildytas, o ne tuščias.' },
         { p: 'Tada patys sekliai pristato tai, ką įrašė būdami atmetami, tiek, kiek siekia jų pačių atmintis. Kiek to bus, priklauso nuo įrenginio ir jo siuntimo nustatymų – tikėkitės dalinio, o ne visiško pasivijimo.' },
         { h2: 'Jei norėjote atšaukti', id: 'cancel' },
-        { p: 'Atšaukite sąmoningai Stripe portale, o ne leisdami sąskaitai neapmokėtai. Atšaukimas švariai sustabdo mokėjimus; leidus nutrūkti, pirma ateis trys įspėjamieji laiškai, o po dviejų savaičių atsidursite ten pat. Prieš išeidami eksportuokite tai, ką norite pasilikti – žr. [Duomenų eksportas ir ištrynimas](kb:export-and-erase-data).' },
+        { p: 'Atšaukite sąmoningai Stripe portale, o ne palikdami sąskaitą neapmokėtą. Atšaukimas švariai sustabdo mokėjimus; palikus neapmokėtą, pirma ateis trys įspėjamieji laiškai, o po dviejų savaičių atsidursite ten pat. Prieš išeidami eksportuokite tai, ką norite pasilikti – žr. [Duomenų eksportas ir ištrynimas](kb:export-and-erase-data).' },
       ],
     },
     pl: {

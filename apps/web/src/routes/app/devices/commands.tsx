@@ -135,7 +135,7 @@ export function CommandsCard({ device }: { device: Device }) {
       <CardHeader>
         <div className="flex items-center gap-1.5">
           <CardTitle className="text-base">{t('devices.cmd.title', { name: device.name })}</CardTitle>
-          <HelpLink slug={KB.commands} />
+          <HelpLink slug={KB.commands} testId="help-device-commands" />
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

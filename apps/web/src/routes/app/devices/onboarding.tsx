@@ -91,7 +91,7 @@ export function OnboardingCard({ device, initialApn }: { device: Device; initial
       <CardHeader>
         <div className="flex items-center gap-1.5">
           <CardTitle className="text-base">{t('devices.onb.title', { name: device.name })}</CardTitle>
-          <HelpLink slug={KB.connectATracker} />
+          <HelpLink slug={KB.connectATracker} testId="help-onboarding" />
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

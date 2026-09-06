@@ -70,20 +70,20 @@ export function LearnIndexPage() {
           {results.length === 0 ? (
             <p className="mt-2 text-sm" style={{ color: 'var(--admin-ink-soft)' }}>{t('learn.noResults')}</p>
           ) : (
-            <CardGrid items={results.map((a) => ({ slug: a.slug, title: a.doc[lang].title, summary: a.doc[lang].summary }))} />
+            <CardGrid prefix="learn-result" items={results.map((a) => ({ slug: a.slug, title: a.doc[lang].title, summary: a.doc[lang].summary }))} />
           )}
         </section>
       ) : (
         <>
           <section>
             <SectionLabel>{t('learn.startHere')}</SectionLabel>
-            <CardGrid items={starters.map((a) => ({ slug: a.slug, title: a.doc[lang].title, summary: a.doc[lang].summary }))} />
+            <CardGrid prefix="learn-start" items={starters.map((a) => ({ slug: a.slug, title: a.doc[lang].title, summary: a.doc[lang].summary }))} />
           </section>
 
           {groups.map(({ category, articles: inCategory }) => (
             <section key={category}>
               <CategoryHeading id={category} lang={lang} />
-              <CardGrid items={inCategory.map((a) => ({ slug: a.slug, title: a.doc[lang].title, summary: a.doc[lang].summary }))} />
+              <CardGrid prefix="learn-card" items={inCategory.map((a) => ({ slug: a.slug, title: a.doc[lang].title, summary: a.doc[lang].summary }))} />
             </section>
           ))}
         </>
@@ -112,14 +112,19 @@ function CategoryHeading({ id, lang }: { id: KbCategoryId; lang: 'en' | 'lt' | '
   )
 }
 
-function CardGrid({ items }: { items: { slug: string; title: string; summary: string }[] }) {
+/**
+ * `prefix` exists because an article can legitimately appear twice on this page — once under
+ * "Start here" and again on its own shelf. One test id for both is ambiguous to anything that has
+ * to point at a specific card, so each section names its own.
+ */
+function CardGrid({ items, prefix }: { items: { slug: string; title: string; summary: string }[]; prefix: string }) {
   return (
     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
       {items.map((it) => (
         <Link
           key={it.slug}
           to={kbPath(it.slug)}
-          data-testid={`learn-card-${it.slug}`}
+          data-testid={`${prefix}-${it.slug}`}
           className="admin-card group flex flex-col gap-1 p-3 transition-colors hover:border-[var(--admin-brand)]"
         >
           <span className="display flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>

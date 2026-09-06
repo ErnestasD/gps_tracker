@@ -367,7 +367,7 @@ function AccountDefaultsSection() {
     <div className="admin-hairline-t space-y-3 pt-4" data-testid="account-tz">
       <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
         {t('settings.accountTz.title')}
-        <HelpLink slug={KB.timeZonesAndUnits} anchor="account" />
+        <HelpLink slug={KB.timeZonesAndUnits} anchor="account" testId="help-account-tz" />
       </div>
       <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.accountTz.hint')}</p>
       <div className="space-y-3 text-sm">
@@ -448,7 +448,7 @@ function DisplayPrefsSection() {
     <div className="admin-hairline-t space-y-4 pt-4">
       <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }} data-testid="display-prefs">
         {t('settings.display.title')}
-        <HelpLink slug={KB.timeZonesAndUnits} anchor="display" />
+        <HelpLink slug={KB.timeZonesAndUnits} anchor="display" testId="help-display-prefs" />
       </div>
       <p className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('settings.display.browserNote')}</p>
       {row(t('settings.display.timeFormat'), 'pref-timeformat', prefs.timeFormat, set('timeFormat'), [

@@ -466,6 +466,11 @@ behind `@orbetra/kb/content` and are imported only by the two lazily-loaded help
 carrying six help links ships no prose, and an operator who never opens the help never downloads it.
 `KB_META` is generated from the articles and asserted equal to them by the tests.
 
+**Discoverability on the public side:** the Resources menu, the footer, a band on the home page, and
+contextual links from `/tsp`, `/compatibility` and `/docs`. `sitemap.xml` is generated at build
+(`apps/site/vite.config.ts`) from `KB_META`, so every article is in it without anyone maintaining a
+list, and `robots.txt` names it.
+
 **Finding help in the product:** a `Help` entry at the foot of the sidebar, a book icon in the
 topbar, the command palette, and contextual `?` links — the `help` prop on `PageHeader` for a whole
 screen, `HelpLink` beside the individual controls that earn one (rule kind and cooldown, notification
