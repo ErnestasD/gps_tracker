@@ -199,7 +199,7 @@ function DevicesPage() {
   ];
 
   return (
-    <div className="space-y-4 p-4 md:p-8">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-2" title={t("devices.title")} description={t("devices.desc")}>
         <AdminButton variant="secondary" onClick={() => toast(t("devices.import.title"), { description: l.demoImport })}>
           <Upload className="h-4 w-4" aria-hidden />

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Sun, Moon, Search, Bell, Menu, ChevronRight, CheckCheck, Languages, LogOut, Check } from "lucide-react";
+import { Sun, Moon, Search, Bell, Menu, CheckCheck, Languages, LogOut, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { demoDetail, deviceName } from "@/lib/demo-events";
@@ -76,28 +76,28 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   }, []);
 
   return (
-    <header
-      className="admin-hairline-b sticky top-0 z-30 flex h-14 items-center gap-3 px-4 md:px-6"
-      style={{ background: "color-mix(in oklab, var(--admin-surface) 92%, transparent)", backdropFilter: "blur(10px)" }}
-    >
+    /* Mirrors apps/web AppShell's header EXACTLY — same height, gap, padding and surface. The demo
+       exists to show the real product, so any drift here is the demo lying about it. */
+    <header className="admin-hairline-b flex h-14 shrink-0 items-center gap-2 bg-surface/80 px-4 backdrop-blur">
       <button
         onClick={onOpenSidebar}
-        className="grid h-9 w-9 cursor-pointer place-items-center rounded-md md:hidden"
+        className="cursor-pointer p-1 md:hidden"
         style={{ color: "var(--admin-ink)" }}
-        aria-label="Meniu"
+        aria-label={t("shell.menu")}
       >
-        <Menu className="h-5 w-5" />
+        <Menu className="h-4 w-4" />
       </button>
 
-      <nav className="hidden items-center gap-1.5 text-sm md:flex" style={{ color: "var(--admin-ink-soft)" }}>
-        <Link to="/app" className="hover:text-[var(--admin-ink)]">{t("shell.admin")}</Link>
+      <div className="min-w-0 truncate text-sm" style={{ color: "var(--admin-ink-soft)" }}>
+        <Link to="/app" className="transition-colors hover:text-[var(--admin-ink)]">{t("shell.admin")}</Link>
         {pathname !== "/app" && (
           <>
-            <ChevronRight className="h-3.5 w-3.5" />
-            <span style={{ color: "var(--admin-ink)" }} className="font-medium">{title}</span>
+            {" "}
+            <span className="opacity-50">›</span>{" "}
+            <span style={{ color: "var(--admin-ink)" }}>{title}</span>
           </>
         )}
-      </nav>
+      </div>
 
       <span
         className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider"
@@ -117,20 +117,15 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       <button
         type="button"
         onClick={() => setPaletteOpen(true)}
-        className="hidden cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm transition-colors hover:border-[var(--admin-ink-soft)] md:inline-flex"
-        style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
-        aria-label="Atverti paiešką"
+        className="hidden cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm md:flex md:w-64"
+        style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface-sunken)", color: "var(--admin-ink-soft)" }}
+        aria-label={t("shell.search")}
       >
-        <Search className="h-3.5 w-3.5 opacity-70" />
-        <span>{t("shell.search").replace("…", "")}</span>
-        <span className="mx-1 h-3 w-px" style={{ background: "var(--admin-hairline)" }} />
+        <Search className="h-3.5 w-3.5" aria-hidden />
+        <span className="flex-1 truncate text-left">{t("shell.search")}</span>
         <kbd
-          className="mono inline-flex h-4 items-center rounded px-1 text-[10px] font-medium leading-none tracking-tight"
-          style={{
-            background: "var(--admin-surface-sunken)",
-            color: "var(--admin-ink-soft)",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-          }}
+          className="mono inline-flex h-5 min-w-[20px] items-center justify-center rounded border px-1 text-[10px] font-medium leading-none tracking-tight"
+          style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink-soft)" }}
         >
           ⌘K
         </kbd>
@@ -139,9 +134,9 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       <button
         type="button"
         onClick={() => setPaletteOpen(true)}
-        className="grid h-9 w-9 cursor-pointer place-items-center rounded-md border md:hidden"
-        style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
-        aria-label={t("admin.search")}
+        className="grid h-8 w-8 cursor-pointer place-items-center rounded-md md:hidden"
+        style={{ color: "var(--admin-ink)" }}
+        aria-label={t("shell.search")}
       >
         <Search className="h-4 w-4" />
       </button>
@@ -149,21 +144,10 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       <NotificationsBell />
 
 
-      <button
-        onClick={toggle}
-        className="grid h-9 w-9 cursor-pointer place-items-center rounded-md border transition-colors"
-        style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
-        aria-label={t("shell.theme")}
-        title={t("shell.theme")}
-      >
-        {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-      </button>
-
       <div ref={langRef} className="relative hidden md:block">
         <button
           onClick={() => setLangOpen((v) => !v)}
-          className="grid h-9 w-9 cursor-pointer place-items-center rounded-md border"
-          style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
+          className="grid h-9 w-9 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
           aria-label={t("settings.locale")}
           aria-expanded={langOpen}
           title={t("settings.locale")}
@@ -201,12 +185,21 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         )}
       </div>
 
+      <button
+        type="button"
+        onClick={toggle}
+        className="grid h-9 w-9 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+        aria-label={t("shell.theme")}
+        title={t("shell.theme")}
+      >
+        {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+      </button>
+
       <Link
         to="/"
-        className="hidden items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm md:inline-flex"
-        style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
+        className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md px-3 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-text"
       >
-        <LogOut className="h-3.5 w-3.5 opacity-70" />
+        <LogOut className="h-4 w-4" aria-hidden />
         {t("shell.logout")}
       </Link>
 
@@ -225,14 +218,14 @@ function NotificationsBell() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className="relative grid h-9 w-9 cursor-pointer place-items-center rounded-md border"
-          style={{ borderColor: "var(--admin-hairline)", background: "var(--admin-surface)", color: "var(--admin-ink)" }}
+          className="relative grid h-8 w-8 cursor-pointer place-items-center rounded-md transition-colors hover:bg-surface-2"
+          style={{ color: "var(--admin-ink)" }}
           aria-label={t("bell.title")}
         >
-          <Bell className="h-4 w-4" />
+          <Bell className="h-4 w-4" aria-hidden />
           {unread > 0 && (
             <span
-              className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold"
+              className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold leading-none"
               style={{ background: "var(--admin-danger)", color: "#fff" }}
             >
               {unread > 99 ? "99+" : unread}

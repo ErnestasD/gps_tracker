@@ -96,7 +96,7 @@ function SettingsPage() {
   const [locale, setLocale] = React.useState("lt");
 
   return (
-    <div className="space-y-4 p-4 md:p-8">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t("settings.title")} />
 
       {/* tab bar: active tab gets the brand underline, like the real dashboard */}

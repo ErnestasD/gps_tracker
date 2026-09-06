@@ -113,7 +113,7 @@ function RoutingPage() {
   // than the fixed "1 h 52 min" the page used to print beside any geometry at all
   const minutes = Math.max(15, Math.round((plan.km / 24) * 60));
   return (
-    <div className="p-4 md:p-8">
+    <div className="w-full p-4 md:p-6">
       <PageHeader title={t("routing.title")} description={t("routing.desc")} />
       <div className="mt-6 grid gap-4 lg:grid-cols-[24rem_1fr]">
         <div className="admin-card flex flex-col">

@@ -23,7 +23,7 @@ const PLANS = [
 function BillingPage() {
   const { t } = useTranslation("admin");
   return (
-    <div className="space-y-4 p-4 md:p-8">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t("billing.title")} description={t("billing.desc")} />
 
       <div className="admin-card overflow-hidden">

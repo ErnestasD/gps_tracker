@@ -151,7 +151,7 @@ function NotificationsPage() {
   const info = DATA.length - critical - warning;
 
   return (
-    <div className="space-y-4 p-4 md:p-8">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader title={t("bell.title")} description={ui.desc} className="mb-0">
         <FilterLabel label={t("events.kind")}>
           <div className="w-40">

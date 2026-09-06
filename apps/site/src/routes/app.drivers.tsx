@@ -221,7 +221,7 @@ function DriversPage() {
   ];
 
   return (
-    <div className="space-y-4 p-4 md:p-8">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader className="mb-0" title={t("drivers.title")} description={t("drivers.desc")}>
         <Sheet
           open={formOpen}

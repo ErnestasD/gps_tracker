@@ -77,7 +77,7 @@ function RulesPage() {
   const channelLabel = (c: string): string => (c === "webpush" ? t("rules.channels.webpush") : c);
 
   return (
-    <div className="space-y-4 p-4 md:p-8">
+    <div className="w-full space-y-4 p-4 md:p-6">
       <PageHeader title={t("rules.title")} description={t("rules.desc")} className="mb-0">
         <AdminButton>
           <Plus className="h-4 w-4" aria-hidden />
