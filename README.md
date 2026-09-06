@@ -105,6 +105,8 @@ Every new variable must be added to the table here AND match the `.env` contract
 | `ORBETRA_APP_HOST` | infra/caddy/Caddyfile | dashboard host (dash.<domain>) for the app SPA |
 | `PLATFORM_DOMAIN` | apps/api | our own domain (`orbetra.com`). Lets a tenant claim `<slug>.<domain>` as a white-label host with NO DNS work — created already verified, since we hold the zone. **Requires a `*.<domain>` A record**; unset ⇒ the option is not offered and every domain goes through DNS TXT |
 | `EDGE_HOSTNAME` | apps/api | where a tenant CNAMEs their OWN domain (`dash.orbetra.com`). Shown in the Domains card — a hostname, not an IP, so the address stays ours to change |
+| `MAPBOX_USERNAME` | apps/api | Mapbox account the temporary map tokens are minted under |
+| `MAPBOX_SECRET_TOKEN` | apps/api | `sk.` token with `tokens:write`, server-side only. Unset ⇒ the browser uses the bundled `pk.` token, which is URL-restricted to our own hosts and 403s every tile on a **tenant's own domain** — the map renders black. Never in the web bundle |
 | `VITE_SITE_URL` | apps/web (build) | marketing site the pre-auth pages link back to; default `https://orbetra.com`. Never rendered on a tenant's custom domain |
 | `EMAIL_LOGO_URL` | apps/worker | public https URL of OUR logo for mail that is not white-labelled (`https://orbetra.com/email-logo.png`, served by apps/site). Unset ⇒ the header stays the product name as text — a broken image is worse than none on the line that says who sent this |
 | `VITE_DASH_URL` | apps/site (build-time) | dashboard URL the site's Sign-in links point to, default `https://dash.orbetra.com` |

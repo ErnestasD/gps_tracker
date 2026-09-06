@@ -11,7 +11,43 @@ import { getDisplayPrefs, getTheme, onPrefsChange, onThemeChange, type Theme } f
 // pk. tokens are public by design — they ship in the client bundle (config, not a
 // secret; rule 12 unaffected). URL-restricted in the Mapbox dashboard (ADR-030).
 // Lives in the UNTRACKED apps/web/.env (GitHub push protection blocks Mapbox tokens).
-mapboxgl.accessToken = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined) ?? ''
+/**
+ * The token the bundle ships with — URL-restricted to OUR hosts, and therefore useless on a
+ * white-label tenant's own domain. It stays as the fallback: on `dash.orbetra.com` it works, and a
+ * deployment that has not configured minting still gets a map. `primeMapToken` replaces it with a
+ * short-lived one before any map is built.
+ */
+const BUNDLED_TOKEN = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined) ?? ''
+mapboxgl.accessToken = BUNDLED_TOKEN
+
+let tokenExpiryMs = 0
+
+/**
+ * Fetch a short-lived Mapbox token for THIS session, if the server mints them.
+ *
+ * Called from the /app route guard, so it lands before any map surface is constructed: a map built
+ * with the restricted token on a tenant domain 403s its first tile batch, and mapbox-gl does not
+ * re-request those tiles until the viewport moves — the user would be looking at a black map that
+ * fixes itself only if they happen to pan.
+ *
+ * Never throws and never leaves the token empty. A failure here means the map falls back to the
+ * bundled token, which is exactly the behaviour every deployment had before minting existed.
+ */
+export async function primeMapToken(): Promise<void> {
+  if (Date.now() < tokenExpiryMs) return
+  try {
+    const res = await fetch('/v1/map/token', { credentials: 'include' })
+    if (!res.ok) return
+    const body = (await res.json()) as { token?: unknown; expiresAt?: unknown }
+    if (typeof body.token !== 'string' || body.token === '') return
+    mapboxgl.accessToken = body.token
+    const expiry = typeof body.expiresAt === 'string' ? Date.parse(body.expiresAt) : Number.NaN
+    // re-prime a little before it dies; a token that expires under a pan turns the map black
+    tokenExpiryMs = Number.isFinite(expiry) ? expiry - 5 * 60_000 : Date.now() + 30 * 60_000
+  } catch {
+    // offline, or the endpoint is not there — the bundled token stays in place
+  }
+}
 
 /**
  * Premium Mapbox style per theme (ADR-030 "premium in both themes"). Env overrides let

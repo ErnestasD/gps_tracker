@@ -173,6 +173,12 @@ services:
       # offered — silent by design, which is exactly why they must be listed here.
       PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
       EDGE_HOSTNAME: ${EDGE_HOSTNAME:-}
+      # Short-lived Mapbox tokens, minted per API process. WITHOUT these the browser falls back to
+      # the URL-restricted token baked into the bundle, which works on our own hosts and 403s every
+      # tile on a tenant's own domain — a black map under a working interface. The secret needs
+      # `tokens:write` and nothing else; it never reaches a browser.
+      MAPBOX_USERNAME: ${MAPBOX_USERNAME:-}
+      MAPBOX_SECRET_TOKEN: ${MAPBOX_SECRET_TOKEN:-}
       # The hostname trackers are told to dial, shown in the onboarding sheet and pasted into the
       # config SMS. Absent from this file until now, so the API served its hard-coded default — our
       # own domain — to resellers configuring their customers' hardware.

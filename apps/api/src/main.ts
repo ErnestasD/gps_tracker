@@ -1,3 +1,4 @@
+import { mapboxConfig, mintTemporaryToken, needsRefresh, type MintedToken } from './lib/mapboxToken.js'
 import { writeSync } from 'node:fs'
 import { inspect } from 'node:util'
 import { createServer } from 'node:http'
@@ -156,6 +157,33 @@ if (!process.env['SES_SNS_TOPIC_ARN']) {
   console.error('SES_SNS_TOPIC_ARN is NOT set — POST /v1/webhooks/ses will refuse EVERY message (403), including AWS retries. The bounce/complaint feed is off until this is set in /opt/orbetra/.env and the api restarted. See docs/runbooks/ses-bounce-feedback.md.')
 }
 
+/**
+ * One minted Mapbox token per API process, re-minted at 80 % of its life.
+ *
+ * Mapbox rate-limits token creation, and every browser tab asks for one on load; minting per
+ * request would take the map out for everyone the first time a fleet logs in at 08:00. In-process
+ * rather than Redis on purpose — a handful of API instances each holding one token is a handful of
+ * mints an hour, and it keeps a cache miss from depending on Redis being up.
+ */
+const mapboxCfg = mapboxConfig(process.env)
+let cachedMapToken: MintedToken | null = null
+let mapTokenInFlight: Promise<MintedToken> | null = null
+const mintCached = async (): Promise<MintedToken> => {
+  if (mapboxCfg === null) throw new Error('mapbox not configured')
+  const fresh = cachedMapToken
+  if (fresh !== null && !needsRefresh(fresh, Date.now())) return fresh
+  // one mint at a time: a cold start with twenty tabs open should ask Mapbox once, not twenty times
+  mapTokenInFlight ??= mintTemporaryToken(fetch, mapboxCfg, Date.now())
+    .then((t) => {
+      cachedMapToken = t
+      return t
+    })
+    .finally(() => {
+      mapTokenInFlight = null
+    })
+  return mapTokenInFlight
+}
+
 const deps = {
   redis,
   // The hostname a TRACKER is configured to dial, printed in the onboarding sheet and pasted into
@@ -180,6 +208,15 @@ const deps = {
   // the corresponding half of the setup instructions is not offered rather than shown wrong.
   ...(process.env['PLATFORM_DOMAIN'] ? { platformDomain: process.env['PLATFORM_DOMAIN'] } : {}),
   ...(process.env['EDGE_HOSTNAME'] ? { edgeHostname: process.env['EDGE_HOSTNAME'] } : {}),
+  /**
+   * One minted token per API process, re-minted at 80 % of its life.
+   *
+   * Mapbox rate-limits token creation, and every browser tab asks for one on load; minting per
+   * request would take the map out for everyone the first time a fleet logs in at 8am. In-process
+   * rather than Redis on purpose — a handful of API instances each holding one token is a handful
+   * of mints an hour, and it keeps a cache miss from depending on Redis being up.
+   */
+  ...(mapboxCfg === null ? {} : { mapToken: mintCached }),
   ...(process.env['VAPID_PUBLIC_KEY'] ? { vapidPublicKey: process.env['VAPID_PUBLIC_KEY'] } : {}),
   // Alertmanager feed for the platform console's infrastructure panel. Unset ⇒ the panel reports
   // "not configured" rather than an error: a deploy without Prometheus is a supported shape.
