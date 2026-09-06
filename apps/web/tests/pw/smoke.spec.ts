@@ -591,7 +591,12 @@ test('rules: create an overspeed rule → appears, toggles, deletes (E05-3)', as
   await page.getByTestId('rule-kind').click()
   await page.getByRole('option', { name: 'Geofence', exact: true }).click()
   await expect(page.getByTestId('rule-cfg-on')).toBeVisible()
-  await page.keyboard.press('Escape') // close the sheet to uncover the list
+  // close the sheet to uncover the list — and WAIT for it, rather than racing it. Escape and the
+  // next click were unordered, so when the dismissal had not settled the click landed on the sheet
+  // and the test spent its whole 120 s budget retrying against "subtree intercepts pointer events".
+  // Asserting the dismissal makes a sheet that genuinely refuses to close fail HERE, saying so.
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toBeHidden()
 
   // delete is gated by a danger ConfirmDialog (round 2)
   await row.getByTestId(/rule-del-/).click()
