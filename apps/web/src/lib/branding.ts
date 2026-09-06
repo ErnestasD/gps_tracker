@@ -263,18 +263,42 @@ let themeSubscribed = false
  */
 const BRAND_CACHE_KEY = 'orbetra.brand'
 
+/**
+ * WHERE a remembered brand came from, which decides where it may be replayed.
+ *
+ * 'host'    — `/v1/branding` answered for this Host: the brand this DOMAIN wears, logged in or not.
+ * 'session' — the tenant of whoever was signed in. On a white-label domain that is the same brand;
+ *             on `dash.orbetra.com` it is a customer's, and the pre-auth pages there are OURS.
+ */
+type BrandSource = 'host' | 'session'
+
 interface CachedBrand {
   h: string
   w: boolean
   b: Branding
+  s: BrandSource
 }
 
-function rememberBrand(branding: Branding, whiteLabel: boolean): void {
+function rememberBrand(branding: Branding, whiteLabel: boolean, source: BrandSource): void {
   try {
-    const entry: CachedBrand = { h: window.location.host, w: whiteLabel, b: branding }
+    const entry: CachedBrand = { h: window.location.host, w: whiteLabel, b: branding, s: source }
     localStorage.setItem(BRAND_CACHE_KEY, JSON.stringify(entry))
   } catch {
     /* storage disabled, or no window (node unit tests) — the fetch still applies the brand */
+  }
+}
+
+/** Routes that are reachable WITHOUT a session. Whoever is standing here is not yet anybody, so the
+ *  brand they see is the domain's — never the last tenant signed in on this browser. */
+const PRE_AUTH = /^\/(login|forgot-password|reset-password|verify-email|s\/)/
+
+/** Drop a session-sourced entry (logout). A host-sourced one is a property of the DOMAIN and stays:
+ *  it is what the login page should wear. */
+export function forgetSessionBrand(): void {
+  try {
+    if (readBrandCache()?.s === 'session') localStorage.removeItem(BRAND_CACHE_KEY)
+  } catch {
+    /* storage disabled — nothing to forget */
   }
 }
 
@@ -285,9 +309,10 @@ function readBrandCache(): CachedBrand | null {
     if (raw === null) return null
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return null
-    const { h, w, b } = parsed as Partial<CachedBrand>
+    const { h, w, b, s } = parsed as Partial<CachedBrand>
     if (h !== window.location.host || typeof w !== 'boolean' || typeof b !== 'object' || b === null) return null
-    return { h, w, b }
+    if (s !== 'host' && s !== 'session') return null // pre-source shape: it cannot say where it may be shown
+    return { h, w, b, s }
   } catch {
     return null
   }
@@ -299,7 +324,10 @@ function readBrandCache(): CachedBrand | null {
  */
 export function primeBrandingFromCache(): void {
   const c = readBrandCache()
-  if (c !== null) applyBranding(c.b, c.w)
+  if (c === null) return
+  // a customer's brand must never pre-paint the shared login form on our own host
+  if (c.s === 'session' && PRE_AUTH.test(window.location.pathname)) return
+  applyBranding(c.b, c.w, false)
 }
 
 /**
@@ -319,26 +347,35 @@ export function cachedBranding(): Branding | null {
  * logo means NO icon — the browser's blank default — because our purple mark beside their product
  * name is worse than no mark at all. On our own host the platform defaults are correct.
  */
-export function applyBranding(branding: Branding, whiteLabel: boolean, persist = true): void {
+export function applyBranding(branding: Branding, whiteLabel: boolean, remember: BrandSource | false = 'session'): void {
   appliedBranding = branding
   appliedWhiteLabel = whiteLabel
-  // `persist: false` is the Branding page's per-keystroke live preview — a draft nobody saved must
-  // never become what the next page load paints.
-  if (persist) rememberBrand(branding, whiteLabel)
+  // `false` is the Branding page's per-keystroke live preview and the cache replay itself — a draft
+  // nobody saved, and a value that came OUT of the cache, must not be written back into it.
+  if (remember !== false) rememberBrand(branding, whiteLabel, remember)
   if (!themeSubscribed) {
     themeSubscribed = true
     onThemeChange(() => {
-      if (appliedBranding) applyBranding(appliedBranding, appliedWhiteLabel)
+      if (appliedBranding) applyBranding(appliedBranding, appliedWhiteLabel, false)
     })
   }
   const theme = getTheme()
   const root = document.documentElement
-  if (branding.primary !== undefined && HEX.test(branding.primary)) {
-    root.style.setProperty('--accent', clampForTheme(branding.primary, theme))
+  /**
+   * SET or CLEAR — never "set if present".
+   *
+   * These are inline custom properties on <html>, so leaving one in place is not neutral: it keeps
+   * overriding the stylesheet until the document is thrown away. Applying a brand with no colours
+   * (the platform's) therefore did not restore OUR accent, it just declined to change the tenant's.
+   * Signing out of a TSP account handed the shared login form that tenant's colours, and only a
+   * reload — a new document — put them back (founder, 2026-09-06).
+   */
+  const paint = (prop: string, hex: string | undefined) => {
+    if (hex !== undefined && HEX.test(hex)) root.style.setProperty(prop, clampForTheme(hex, theme))
+    else root.style.removeProperty(prop)
   }
-  if (branding.accent !== undefined && HEX.test(branding.accent)) {
-    root.style.setProperty('--accent-2', clampForTheme(branding.accent, theme))
-  }
+  paint('--accent', branding.primary)
+  paint('--accent-2', branding.accent)
   // ALWAYS set the title. Guarding on productName left `index.html`'s value in the tab, which used
   // to be "Orbetra" — so a tenant who set colours but no name kept ours for good. index.html now
   // ships no title at all, so an unnamed tenant shows the browser's URL, which is their own domain.

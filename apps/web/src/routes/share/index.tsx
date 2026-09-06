@@ -44,7 +44,7 @@ export function SharePage({ token }: { token: string }) {
       const b = brandFromResponse(res)
       if (b === null) return // failed: stay unknown, show neither brand
       setIsPlatform(!b.whiteLabel)
-      applyBranding({ ...b.branding, ...(b.productName !== undefined ? { productName: b.productName } : {}) }, b.whiteLabel) // accents + title
+      applyBranding({ ...b.branding, ...(b.productName !== undefined ? { productName: b.productName } : {}) }, b.whiteLabel, 'host') // accents + title
       setBranding(b.branding)
       setProductName(b.productName ?? b.branding.productName ?? null)
     })

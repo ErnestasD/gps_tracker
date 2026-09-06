@@ -86,7 +86,7 @@ export function usePublicBranding(): PublicBrand | null {
     void resolveOnce().then((res) => {
       if (!live) return
       if (res !== null) {
-        applyBranding({ ...res.branding, ...(res.productName !== undefined ? { productName: res.productName } : {}) }, res.whiteLabel)
+        applyBranding({ ...res.branding, ...(res.productName !== undefined ? { productName: res.productName } : {}) }, res.whiteLabel, 'host')
       }
       setBrand(res)
     })
