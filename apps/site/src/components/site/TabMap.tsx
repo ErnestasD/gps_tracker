@@ -289,7 +289,7 @@ export function TabMap({
         staticElsRef.current = {};
         markers.forEach((m) => {
           const el = document.createElement("div");
-          el.style.cssText = `position:relative;width:0;height:0;overflow:visible;line-height:1;`;
+          el.style.cssText = `width:0;height:0;overflow:visible;line-height:1;`; // see DemoMap: never set `position` inline on a MapLibre marker
           renderChip(el, { color: m.color, label: m.label, highlighted: m.highlighted, ringSize: 44 });
           staticElsRef.current[m.label] = el;
           new maplibregl.Marker({ element: el, anchor: "center" })
@@ -362,7 +362,7 @@ export function TabMap({
             const initialPosition = pointAtDistance(v.path, segLens, initialDist);
             const offset = sClamp(total > 0 ? (initialDist / total) * 0.5 : 0, 0, 0.5);
             const el = document.createElement("div");
-            el.style.cssText = `position:relative;width:0;height:0;overflow:visible;line-height:1;`;
+            el.style.cssText = `width:0;height:0;overflow:visible;line-height:1;`; // see DemoMap: never set `position` inline on a MapLibre marker
             renderChip(el, { color: v.color, label: v.label, highlighted: v.highlighted, ringSize: 48 });
             animElsRef.current[v.id] = el;
             const marker = new maplibregl.Marker({ element: el, anchor: "center" })

@@ -381,7 +381,8 @@ export function DemoMap({
       let marker = markersRef.current.get(v.id);
       if (!marker) {
         const el = document.createElement("div");
-        el.style.cssText = "width:26px;height:26px;cursor:pointer;display:grid;place-items:center;position:relative;";
+        /* NO inline `position` here. MapLibre positions a marker with `.maplibregl-marker { position: absolute }`, and an inline style beats any stylesheet — so declaring `position:relative` dropped every marker back into normal document FLOW, stacked one under the next, with the map's own transform merely nudging each from that wrong origin. It read as a plausible scatter at city zoom and as a vertical column of 24 vans across the Baltics when zoomed out (founder, 2026-09-06). The absolutely positioned label inside still anchors correctly: `absolute` establishes a containing block exactly as `relative` does. */
+        el.style.cssText = "width:26px;height:26px;cursor:pointer;display:grid;place-items:center;";
         el.innerHTML =
           '<svg width="26" height="26" viewBox="-13 -13 26 26" style="overflow:visible"><g class="demo-arrow"><path d="M 0 -9 L 6.5 8 L 0 4.5 L -6.5 8 Z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></g></svg>' +
           '<span class="demo-label" style="position:absolute;top:22px;left:50%;transform:translateX(-50%);white-space:nowrap;font:600 10px Inter,sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.9);pointer-events:none"></span>';
