@@ -204,6 +204,29 @@ export function isDirectPlan(p: TenantPlan): boolean {
  * an explicit line rather than being folded into some "basic features" default so that reversing it
  * is one edit and one decision.
  */
+/**
+ * Is this tenant a reseller, from an UNVALIDATED plan string (a raw DB column, a job payload)?
+ *
+ * Exists because "is this white-label?" was previously answered by counting branding keys, which is
+ * wrong for a `tsp_*` tenant who has not filled the form yet — their first customer's very first
+ * mail then carried OUR identity (audit W-4). Every renderer that has a tenant should ask this.
+ *
+ * **Returns `undefined`, not `false`, for a plan it cannot read.** The two are not interchangeable
+ * here: `false` asserts "this tenant is ours", which is precisely the claim that puts our wordmark
+ * in front of a reseller's customers. An unreadable plan — a column the query forgot, a value from
+ * a newer build, a schema skew mid-deploy — is an absence of knowledge, and the caller should fall
+ * back to the older branding-key heuristic rather than have us claim the tenant.
+ *
+ * Deliberately `planEntitlements`, NOT `effectiveEntitlements`: the latter floors a lapsed
+ * subscription's entitlements to false, which here would put our wordmark into a lapsed reseller's
+ * mail to their own customers — at the exact moment they are most likely to be shopping around.
+ * Lapsing gates what a tenant may DO; it does not make them ours.
+ */
+export function whiteLabelFromPlan(plan: string | null | undefined): boolean | undefined {
+  const parsed = tenantPlanSchema.safeParse(plan)
+  return parsed.success ? planEntitlements(parsed.data).whiteLabel : undefined
+}
+
 export function planEntitlements(plan: TenantPlan): Entitlements {
   const tsp = !isDirectPlan(plan)
   const scalePlus = plan === 'tsp_scale' || plan === 'tsp_enterprise'

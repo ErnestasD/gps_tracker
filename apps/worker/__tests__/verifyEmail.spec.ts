@@ -62,7 +62,7 @@ describe('the activation mail is OURS, not the recipient’s own company', () =>
     const { sendAuthEmail } = await import('../src/jobs/authEmailWorker.js')
     const sent: { subject: string; html: string }[] = []
     const pool = { query: () => Promise.resolve({ rows: [{ name: "Jonas's fleet", branding: {} }] }) } as unknown as Parameters<typeof sendAuthEmail>[0]['pool']
-    const transport = { send: (_to: string, subject: string, _text: string, html: string) => { sent.push({ subject, html }); return Promise.resolve() } }
+    const transport = { send: ({ subject, html = '' }: { subject: string; html?: string }) => { sent.push({ subject, html }); return Promise.resolve() } }
     await sendAuthEmail({ pool, transport }, {
       kind: 'verify-email',
       email: 'jonas@fleet.test',
@@ -79,7 +79,7 @@ describe('the activation mail is OURS, not the recipient’s own company', () =>
     const { sendAuthEmail } = await import('../src/jobs/authEmailWorker.js')
     const sent: { html: string }[] = []
     const pool = { query: () => Promise.resolve({ rows: [{ name: 'Reseller UAB', branding: { productName: 'FleetPro' } }] }) } as unknown as Parameters<typeof sendAuthEmail>[0]['pool']
-    const transport = { send: (_to: string, _s: string, _t: string, html: string) => { sent.push({ html }); return Promise.resolve() } }
+    const transport = { send: ({ html = '' }: { html?: string }) => { sent.push({ html }); return Promise.resolve() } }
     await sendAuthEmail({ pool, transport }, {
       kind: 'verify-email',
       email: 'end@user.test',
@@ -110,7 +110,7 @@ describe('auth links land on the TENANT\u2019s host when it has one', () => {
   const send = async (pool: unknown, verifyUrl: string) => {
     const { sendAuthEmail } = await import('../src/jobs/authEmailWorker.js')
     const sent: string[] = []
-    const transport = { send: (_to: string, _s: string, text: string) => { sent.push(text); return Promise.resolve() } }
+    const transport = { send: ({ text }: { text: string }) => { sent.push(text); return Promise.resolve() } }
     await sendAuthEmail({ pool: pool as never, transport }, {
       kind: 'verify-email', email: 'end@user.test', tenantId: '00000000-0000-0000-0000-0000000000bb',
       locale: 'en', verifyUrl, expiresHours: 48,

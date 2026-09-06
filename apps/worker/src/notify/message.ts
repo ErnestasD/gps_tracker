@@ -21,6 +21,9 @@ export interface NotifyMessage {
   html?: string | undefined
   /** the tenant's support address, so Reply reaches them and not the platform */
   replyTo?: string | undefined
+  /** display name for `From:` on a white-label tenant's mail — the inbox row is read before the
+   *  message is opened, so this is the most visible identity we control (audit W-3) */
+  fromName?: string | undefined
 }
 
 /** Per-message context resolved by the worker from the device/account/tenant registry. */
@@ -33,8 +36,11 @@ export interface NotifyContext {
   locale?: string | undefined
   /** account display units; metric when unknown */
   units?: DisplayUnits | undefined
-  /** tenant product brand for the subject (white-label); 'Orbetra' when unknown */
+  /** tenant product brand for the subject (white-label). Unknown ⇒ the subject carries NO brand
+   *  prefix at all — see the note at its use. */
   brand?: string | undefined
+  /** the tenant PLAN says they are a reseller (audit W-4) — decides whose identity the shell wears */
+  whiteLabel?: boolean | undefined
   /** full tenant branding (logo/color/productName/supportEmail) for the branded HTML email body.
    *  Absent/blank ⇒ renderBrandedEmail falls back to `tenantName` + the default accent. */
   branding?: Branding | undefined
@@ -52,16 +58,25 @@ function humanize(kind: string): string {
 export function notificationMessage(kind: string, deviceId: string, payload: Record<string, unknown>, at: Date, ctx: NotifyContext = {}): NotifyMessage {
   const s = stringsFor(ctx.locale)
   const units = ctx.units ?? METRIC_UNITS
-  const brand = ctx.brand && ctx.brand.trim() !== '' ? ctx.brand : 'Orbetra'
+  // NO 'Orbetra' fallback (audit W-7). This subject is also the web-push TITLE, so it lands on a
+  // reseller's customer's LOCK SCREEN — and it reached that screen reading `[Orbetra]` whenever the
+  // notify-context lookup failed, which is a failure path the code otherwise handles by degrading
+  // quietly (notifyWorker catches and returns `{}` so the alert still goes out). Degrading to
+  // someone else's brand is not degrading quietly. An unknown brand now prints no prefix at all:
+  // the alert still says what happened and to which vehicle, which is the part that matters.
+  const brand = ctx.brand && ctx.brand.trim() !== '' ? ctx.brand : undefined
   const device = ctx.deviceLabel && ctx.deviceLabel.trim() !== '' ? ctx.deviceLabel : deviceId
   const title = s.alertTitle[kind] ?? humanize(kind)
   const detail = summarize(kind, payload, s, units)
-  const subject = `[${brand}] ${title} — ${device}`
+  const subject = `${brand !== undefined ? `[${brand}] ` : ''}${title} — ${device}`
   const when = formatWithZone(at, ctx.timezone)
   const heading = s.alertHeading(title)
   const text = [heading, `${s.labelDevice}: ${device}`, `${s.labelWhen}: ${when}`, ...(detail ? [detail] : [])].join('\n')
   const html = renderAlertHtml(subject, heading, device, when, detail, s, ctx)
-  return { subject, text, html, replyTo: ctx.branding?.supportEmail }
+  // Same tri-state resolution as the auth path: an unreadable plan falls back to "has any branding",
+  // because leaving the sender name to MAIL_FROM would put OUR name on a reseller's alert.
+  const isWhiteLabel = ctx.whiteLabel ?? (ctx.branding !== undefined && Object.keys(ctx.branding).length > 0)
+  return { subject, text, html, replyTo: ctx.branding?.supportEmail, ...(isWhiteLabel && brand !== undefined ? { fromName: brand } : {}) }
 }
 
 /**
@@ -86,15 +101,23 @@ function renderAlertHtml(subject: string, heading: string, device: string, when:
     ].join('')
     const tenantName = ctx.tenantName && ctx.tenantName.trim() !== '' ? ctx.tenantName : brandName(ctx)
     // the footer ("you received this because…") follows the same language as the body
-    return renderBrandedEmail(ctx.branding ?? {}, tenantName, { subject, bodyHtml, locale: ctx.locale })
+    return renderBrandedEmail(ctx.branding ?? {}, tenantName, { subject, bodyHtml, locale: ctx.locale }, { whiteLabel: ctx.whiteLabel })
   } catch {
     return undefined // never let a template fault drop the email — fall back to plain text
   }
 }
 
-/** Product/tenant name for the branded shell fallback (mirrors the subject brand). */
+/**
+ * Product/tenant name for the branded shell fallback (mirrors the subject brand).
+ *
+ * Empty, not 'Orbetra' (audit W-7). This is only reached when BOTH the brand and the tenant name are
+ * blank — we know nothing about whose alert this is — and on the white-label branch the platform
+ * name there would have been printed as the reseller's own product. A header that names nobody is
+ * the honest rendering of "we could not establish whose this is"; the platform branch still prints
+ * our name from `platform.name`, which is correct for a tenant that genuinely is ours.
+ */
 function brandName(ctx: NotifyContext): string {
-  return ctx.brand && ctx.brand.trim() !== '' ? ctx.brand : 'Orbetra'
+  return ctx.brand && ctx.brand.trim() !== '' ? ctx.brand : ''
 }
 
 /** One-line, human-readable detail per kind (mirrors the web eventSummary), in the account's

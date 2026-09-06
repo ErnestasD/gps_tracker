@@ -89,13 +89,13 @@ describe('E05-5 emailDriver + driversFromEnv', () => {
     const send = vi.fn(() => Promise.resolve())
     const transport: EmailTransport = { send }
     await emailDriver(transport).send(email('x@y.co'), { subject: 'S', text: 'B', html: '<p>H</p>' })
-    expect(send).toHaveBeenCalledWith('x@y.co', 'S', 'B', '<p>H</p>', undefined)
+    expect(send).toHaveBeenCalledWith({ to: 'x@y.co', subject: 'S', text: 'B', html: '<p>H</p>', replyTo: undefined, fromName: undefined })
   })
 
   it('emailDriver passes html=undefined when a message has no html (plain-text only)', async () => {
     const send = vi.fn(() => Promise.resolve())
     await emailDriver({ send }).send(email('x@y.co'), { subject: 'S', text: 'B' })
-    expect(send).toHaveBeenCalledWith('x@y.co', 'S', 'B', undefined, undefined)
+    expect(send).toHaveBeenCalledWith({ to: 'x@y.co', subject: 'S', text: 'B', html: undefined, replyTo: undefined, fromName: undefined })
   })
 
   it('driversFromEnv exposes telegram only when the token is set', () => {
@@ -190,9 +190,13 @@ describe('ADR-026 webPushDriver.send (fan-out + prune)', () => {
 })
 
 describe('E05-5 notificationMessage', () => {
-  it('builds a subject + multi-line body with a kind-specific detail (defaults: id, UTC, Orbetra)', () => {
+  it('builds a subject + multi-line body with a kind-specific detail (defaults: id, UTC, NO brand)', () => {
     const m = notificationMessage('overspeed', '42', { speedKmh: 95, limitKmh: 90 }, new Date('2026-07-09T00:00:00Z'))
-    expect(m.subject).toBe('[Orbetra] Overspeed — 42')
+    // NO brand prefix when the context did not resolve (audit W-7). This subject is also the
+    // web-push TITLE, so `[Orbetra]` here landed on a reseller's customer's lock screen every time
+    // the notify-context query failed — a path the code otherwise degrades through quietly.
+    expect(m.subject).toBe('Overspeed — 42')
+    expect(m.fromName).toBeUndefined() // …and nothing claims the sender either
     expect(m.text).toContain('Speed 95 km/h over limit 90 km/h')
     expect(m.text).toContain('Device: 42')
     expect(m.text).toContain('When: 2026-07-09 00:00 (UTC)')
@@ -280,7 +284,7 @@ describe('notificationMessage in the account language + units (account-settings 
 
   it('writes the whole alert in the account language', () => {
     const m = notificationMessage('overspeed', '42', { speedKmh: 95, limitKmh: 90 }, at, { locale: 'lt', deviceLabel: 'Van 1' })
-    expect(m.subject).toBe('[Orbetra] Greičio viršijimas — Van 1')
+    expect(m.subject).toBe('Greičio viršijimas — Van 1')
     expect(m.text).toContain('Pranešimas: Greičio viršijimas')
     expect(m.text).toContain('Įrenginys: Van 1')
     expect(m.text).toContain('Kada: 2026-07-09 00:00 (UTC)')

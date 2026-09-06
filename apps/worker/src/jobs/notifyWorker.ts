@@ -2,7 +2,7 @@ import { Worker, type ConnectionOptions, type Job } from 'bullmq'
 import type { Redis } from 'ioredis'
 import type { Pool } from 'pg'
 
-import { absolutizeBrandAssets, brandingReadSchema, hasBrandAsset, notificationChannelSchema, sanitizeUnits, type Branding, type NotificationChannel } from '@orbetra/shared'
+import { absolutizeBrandAssets, brandingReadSchema, hasBrandAsset, whiteLabelFromPlan, notificationChannelSchema, sanitizeUnits, type Branding, type NotificationChannel } from '@orbetra/shared'
 
 import { dispatchEvent } from '../notify/dispatch.js'
 import type { Drivers } from '../notify/drivers.js'
@@ -62,11 +62,12 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string, appBase
       unitVolume: string | null
       tenant_name: string | null
       branding: unknown
+      plan: string | null
     }>(
       `SELECT d."tenantId" AS tenant_id, d.name AS device_name, d.plate AS device_plate,
               a.timezone AS timezone, a.locale AS locale,
               a."unitSpeed", a."unitDistance", a."unitVolume",
-              t.name AS tenant_name, t.branding AS branding
+              t.name AS tenant_name, t.branding AS branding, t.plan AS plan
          FROM devices d JOIN accounts a ON a.id = d."accountId" JOIN tenants t ON t.id = d."tenantId"
         WHERE d.id = $1`,
       [deviceId],
@@ -94,13 +95,17 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string, appBase
       units: sanitizeUnits(row),
       brand: brand ?? undefined,
       branding,
+      // the PLAN decides whose identity the mail wears, not whether the form is filled (audit W-4)
+      whiteLabel: whiteLabelFromPlan(row.plan),
       tenantName: row.tenant_name ?? undefined,
     }
   } catch (err) {
     // The alert still goes out — a context lookup must never suppress one — but it goes out NAKED:
-    // the raw device id instead of the vehicle, UTC instead of the fleet's zone, and 'Orbetra'
-    // instead of the tenant's white-label brand. That is a visible regression for the customer and
-    // was previously silent, which matters most in exactly the window that causes it: a deploy that
+    // the raw device id instead of the vehicle, UTC instead of the fleet's zone, and no brand at all
+    // rather than the tenant's. (It used to substitute 'Orbetra' here, which put our name on a
+    // reseller's customer's lock screen every time this query failed — audit W-7.) That is a visible
+    // regression for the customer and was previously silent, which matters most in exactly the
+    // window that causes it: a deploy that
     // starts the new worker before `migrate deploy` adds these columns fails EVERY lookup with
     // 42703 and un-brands every alert until someone happens to notice.
     console.error('notify context lookup failed', deviceId, err instanceof Error ? err.message : String(err))

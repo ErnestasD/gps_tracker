@@ -14,6 +14,8 @@ export interface ResetEmailOpts {
   brand: string
   branding?: Branding | undefined
   tenantName?: string | undefined
+  /** the tenant PLAN says they are a reseller — decides whose identity the shell wears (audit W-4) */
+  whiteLabel?: boolean | undefined
 }
 
 interface Strings {
@@ -76,7 +78,7 @@ export function renderResetEmail(opts: ResetEmailOpts): { subject: string; text:
     emailNote(s.ignore),
     emailFallbackLink(s.fallback, opts.resetUrl, accent),
   ].join('')
-  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject: s.subject, bodyHtml, preheader: s.intro, locale: opts.locale })
+  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject: s.subject, bodyHtml, preheader: s.intro, locale: opts.locale }, { whiteLabel: opts.whiteLabel })
   const text = [
     s.heading,
     '',

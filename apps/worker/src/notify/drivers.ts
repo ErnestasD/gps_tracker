@@ -41,13 +41,38 @@ export interface Drivers {
   webpush?: Driver
 }
 
-/** Injected email transport — the real one (nodemailer/SES) lands with SES creds (ADR-023).
- *  `html` is the white-label branded body (E05-4); `text` is the always-present plain-text
- *  fallback for clients that don't render HTML. `html` is optional → backwards-compatible. */
+/**
+ * One outgoing message.
+ *
+ * An object rather than positional arguments because the SENDER is part of a message, not part of
+ * the transport. It used to be closure state — one process-wide `MAIL_FROM` — which made a
+ * per-tenant sender not merely unconfigured but **unrepresentable** (audit W-3), while
+ * PROJECT_PLAN §6.2 lists "email display-name per tenant on shared sending domain" as a V1
+ * requirement. ADR-036 will add the sending ADDRESS here the same way.
+ */
+export interface OutgoingEmail {
+  to: string
+  subject: string
+  text: string
+  /** the white-label branded body (E05-4); `text` is the always-present fallback for clients that
+   *  do not render HTML */
+  html?: string | undefined
+  /** the TENANT's support address when they have one — the footer has always printed it while
+   *  Reply composed to the platform's mailbox instead. */
+  replyTo?: string | undefined
+  /**
+   * Display name for `From:` — the reseller's product name on white-label mail.
+   *
+   * This is the line an inbox shows BEFORE the message is opened, so it is the most visible piece
+   * of identity we control. The address beside it stays ours until ADR-036 lands; a display name is
+   * legitimate on a shared sending domain and needs no DNS from the tenant.
+   */
+  fromName?: string | undefined
+}
+
+/** Injected email transport — the real one (nodemailer/SES) lands with SES creds (ADR-023). */
 export interface EmailTransport {
-  /** `replyTo` is the TENANT's support address when they have one — the footer has always printed
-   *  it while Reply composed to the platform's mailbox instead. */
-  send(to: string, subject: string, text: string, html?: string, replyTo?: string): Promise<void>
+  send(msg: OutgoingEmail): Promise<void>
 }
 
 export function emailDriver(transport: EmailTransport): Driver {
@@ -55,7 +80,14 @@ export function emailDriver(transport: EmailTransport): Driver {
     send: async (channel, msg) => {
       if (channel.type !== 'email') return
       // msg.html is the branded HTML (built by notificationMessage); msg.text is the fallback.
-      await transport.send(channel.to, msg.subject, msg.text, msg.html, msg.replyTo)
+      await transport.send({
+        to: channel.to,
+        subject: msg.subject,
+        text: msg.text,
+        html: msg.html,
+        replyTo: msg.replyTo,
+        fromName: msg.fromName,
+      })
     },
   }
 }

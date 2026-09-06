@@ -107,6 +107,18 @@ export interface EmailContent {
 }
 
 /**
+ * Who this mail is FROM, decided by the caller rather than guessed from the branding object.
+ *
+ * `whiteLabel` is the tenant's entitlement — the fact the renderer actually needs and could never
+ * derive. Omitted, the renderer falls back to "has this tenant saved any branding at all", which is
+ * the historical proxy and is still correct for the one caller with no tenant behind it (partner
+ * notices are ours by design).
+ */
+export interface EmailBrandOptions {
+  whiteLabel?: boolean | undefined
+}
+
+/**
  * A call-to-action button that survives Outlook.
  *
  * Exported so every template renders the SAME button: three templates hand-rolling an anchor is how
@@ -183,19 +195,26 @@ export function emailFallbackLink(intro: string, href: string, accent?: string):
   ].join('')
 }
 
-export function renderBrandedEmail(branding: Branding, tenantName: string, content: EmailContent): string {
+export function renderBrandedEmail(
+  branding: Branding,
+  tenantName: string,
+  content: EmailContent,
+  opts: EmailBrandOptions = {},
+): string {
   /**
-   * WHOSE mail is this? A tenant that has configured any white-label branding owns the header
-   * outright — their logo, or their product name as text, and never ours. A tenant that has
-   * configured none is not a reseller: they are a customer of OURS, and the mail should look like
-   * it comes from the product they signed up to. That case used to render the tenant's own company
-   * name in the header, which is a strange thing for a password-reset mail to be signed by.
+   * WHOSE mail is this? A tenant that IS a reseller owns the header outright — their logo, or their
+   * product name as text, and never ours. A tenant that is not one is a customer of OURS, and the
+   * mail should look like it comes from the product they signed up to.
    */
-  // ANY branding field, not just a logo or a product name. Keying on those two classified a
-  // reseller who had set only their colours and support address as "not white-label" and shipped
-  // OUR logo to their customers with THEIR support address beside it — a regression on the exact
-  // promise this change exists to keep, for a tenant who paid for the entitlement and used it.
-  const whiteLabel = Object.keys(branding).length > 0
+  // The honest answer is the ENTITLEMENT; counting branding keys was only ever a proxy for it, and
+  // the proxy is wrong in the one direction that costs us (audit W-4). A `tsp_*` tenant who has not
+  // yet saved a single field took the platform branch — so our wordmark, our logo and our footer
+  // went out in mail to THEIR customers, at exactly the moment they onboard their first one, which
+  // is the first message those customers ever receive from the product.
+  //
+  // The key count survives as the fallback, because it is still right for the one caller with no
+  // tenant behind it: partner/affiliate notices are ours by design and must stay ours.
+  const whiteLabel = opts.whiteLabel ?? Object.keys(branding).length > 0
   const product = escapeHtml(whiteLabel ? branding.productName ?? tenantName : platform.name)
   const accent = safeColor(branding.primary)
   const logo = whiteLabel ? safeHttpsUrl(branding.logoUrl) : safeHttpsUrl(platform.logoUrl)
