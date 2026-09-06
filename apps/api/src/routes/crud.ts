@@ -2344,7 +2344,17 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // and they ride here because the Branding page loads this alongside the domain list and has
         // to state every remaining setup step: where to point a CNAME, what to point an APEX at
         // (which can never be a CNAME — see edgeAddresses), and whether the zero-setup
-        // `<slug>.orbetra.com` option exists at all (it needs a wildcard record to).
+        // `<slug>.<platformDomain>` option exists at all (it needs a wildcard record to).
+        //
+        // …but ONLY for the caller who can act on them (audit W-9). This route is deliberately
+        // every-role — `READ_POLICY.branding = [...ROLES]`, "viewers see the theme" — and AppShell
+        // fetches it on mount for EVERY authenticated page, so `dash.orbetra.com` and `orbetra.com`
+        // were delivered into a reseller's end customer's browser on every login. Nothing renders
+        // them there; they are simply in the response, and an `orb_live_` key reaches the same
+        // documented endpoint. The reasoning that exempted this route from the tenant-wide guard
+        // ("the response carries no per-account data") is about TENANT data and overlooks VENDOR
+        // identity. A viewer needs the theme; they never need the CNAME target.
+        const setup = tenantWide(c) && TENANT_ADMINS.includes(auth(c).role)
         return json(c, {
           branding: tenant?.branding ?? {},
           name: tenant?.name,
@@ -2352,9 +2362,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           // when they typed their own URL over an upload, and the page has to show both truthfully
           // ("your file is still here, it just isn't the one in use").
           assets: await db.tenantAssets.meta(scopeOf(auth(c))),
-          dnsTarget: deps.edgeHostname ?? null,
-          dnsAddresses: await edgeAddresses(deps.resolveAddress, deps.edgeHostname),
-          platformDomain: deps.platformDomain ?? null,
+          ...(setup
+            ? {
+                dnsTarget: deps.edgeHostname ?? null,
+                dnsAddresses: await edgeAddresses(deps.resolveAddress, deps.edgeHostname),
+                platformDomain: deps.platformDomain ?? null,
+              }
+            : {}),
         })
       } },
     { method: 'patch', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection', entitlement: 'whiteLabel',
