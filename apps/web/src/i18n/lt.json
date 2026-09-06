@@ -623,7 +623,8 @@
       "profile": "Profilis",
       "security": "Sauga",
       "notifications": "Pranešimai",
-      "data": "Duomenys"
+      "data": "Duomenys",
+      "billing": "Atsiskaitymai"
     },
     "profile": "Profilis",
     "email": "El. paštas",

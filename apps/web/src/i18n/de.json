@@ -623,7 +623,8 @@
       "profile": "Profil",
       "security": "Sicherheit",
       "notifications": "Benachrichtigungen",
-      "data": "Daten"
+      "data": "Daten",
+      "billing": "Abrechnung"
     },
     "profile": "Profil",
     "email": "E-Mail",

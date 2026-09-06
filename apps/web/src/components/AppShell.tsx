@@ -8,7 +8,6 @@ import { Briefcase,
   Car,
   ChevronsLeft,
   ChevronsRight,
-  CreditCard,
   FileText,
   Hexagon,
   IdCard,
@@ -96,7 +95,6 @@ const SECTIONS: NavSection[] = [
       // (founder found the API had no door minutes after the first real TSP checkout).
       { key: 'shell.accounts', icon: Briefcase, to: '/app/accounts', adminOnly: true, entitlement: 'subAccounts' },
       { key: 'shell.branding', icon: Palette, to: '/app/branding', adminOnly: true, entitlement: 'whiteLabel' },
-      { key: 'shell.billing', icon: CreditCard, to: '/app/billing', adminOnly: true },
       { key: 'shell.apiKeys', icon: KeyRound, to: '/app/api-keys', adminOnly: true, entitlement: 'apiAccess' },
       { key: 'shell.webhooks', icon: Webhook, to: '/app/webhooks', adminOnly: true, entitlement: 'webhooks' },
       // ONE way back to the console, not two links into copies of its pages. The customer app and
