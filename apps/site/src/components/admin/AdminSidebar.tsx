@@ -114,7 +114,7 @@ export function AdminSidebar({ onNavigate, withCollapse = true }: { onNavigate?:
                   to={item.to}
                   onClick={onNavigate}
                   aria-current={active ? "page" : undefined}
-                  className={`mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${mini ? "justify-center" : ""} ${active ? "" : "hover:bg-surface-2"}`}
+                  className={`mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${mini ? "justify-center" : ""} ${active ? "" : "admin-row"}`}
                   style={
                     active
                       ? { background: "var(--admin-brand-soft)", color: "var(--admin-brand)", fontWeight: 600 }
@@ -150,7 +150,7 @@ export function AdminSidebar({ onNavigate, withCollapse = true }: { onNavigate?:
             type="button"
             onClick={() => setCollapsed((c) => !c)}
             aria-label={t(collapsed ? "shell.expand" : "shell.collapse")}
-            className="inline-flex h-8 w-full cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+            className="inline-flex h-8 w-full cursor-pointer items-center justify-center rounded-md admin-ghost"
           >
             {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
           </button>
