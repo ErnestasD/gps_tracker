@@ -301,6 +301,22 @@ export interface TenantRepo {
  */
 export type SubscriptionApplyResult = 'applied' | 'stale' | 'no_tenant'
 
+/**
+ * What a tenant's OWN audit trail may carry.
+ *
+ * These four calls used to snapshot the whole `Tenant` row, and `GET /v1/audit` hands a tenant's
+ * trail to any of its admins: that put `stripeCustomerId`, `stripeSubscriptionId`,
+ * `subscriptionPriceId`, the applied-billing-event cursor and — the expensive one —
+ * `referredByAffiliateId` in front of every tenant admin, on every branding save. The partner money
+ * trail is deliberately kept out of tenant-readable audit (see `recordPlatform` in repos/audit.ts);
+ * a logo upload was quietly handing out the pointer into it.
+ *
+ * So: snapshot what these actions can actually change. Suspension, subscription state and commission
+ * anchors are written by other paths, and none of them is a tenant EDIT.
+ */
+const auditView = (t: Tenant): Pick<Tenant, 'id' | 'name' | 'plan' | 'branding'> =>
+  ({ id: t.id, name: t.name, plan: t.plan, branding: t.branding })
+
 /** Same lapse episode? Both null counts as the same (an unknown date is not a new lapse). */
 const sameEpisode = (recordedFor: Date | null, lapsedAt: Date | null): boolean =>
   recordedFor === null || lapsedAt === null ? recordedFor === lapsedAt : recordedFor.getTime() === lapsedAt.getTime()
@@ -374,7 +390,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           ...(data.referredByAffiliateId != null ? { referredByAffiliateId: data.referredByAffiliateId } : {}),
         },
       })
-      await audit.record({ tenantId: row.id }, actor, { action: 'create', entity: 'tenant', entityId: row.id, after: row })
+      await audit.record({ tenantId: row.id }, actor, { action: 'create', entity: 'tenant', entityId: row.id, after: auditView(row) })
       return row
     },
     update: async (actor, id, data) => {
@@ -388,7 +404,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           ...(data.plan !== undefined ? { plan: data.plan } : {}),
         },
       })
-      await audit.record({ tenantId: id }, actor, { action: 'update', entity: 'tenant', entityId: id, before, after: row })
+      await audit.record({ tenantId: id }, actor, { action: 'update', entity: 'tenant', entityId: id, before: auditView(before), after: auditView(row) })
       return row
     },
     remove: async (actor, id) => {
@@ -399,13 +415,13 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       const commissionCount = await prisma.commission.count({ where: { tenantId: id } })
       if (commissionCount > 0) throw new TenantHasCommissionsError(commissionCount)
       await prisma.tenant.delete({ where: { id } })
-      await audit.record({ tenantId: id }, actor, { action: 'delete', entity: 'tenant', entityId: id, before })
+      await audit.record({ tenantId: id }, actor, { action: 'delete', entity: 'tenant', entityId: id, before: auditView(before) })
       return true
     },
     updateBranding: async (actor, tenantId, branding) => {
       const before = await prisma.tenant.findUnique({ where: { id: tenantId } })
       const row = await prisma.tenant.update({ where: { id: tenantId }, data: { branding: branding as never } })
-      await audit.record({ tenantId }, actor, { action: 'update', entity: 'branding', entityId: tenantId, before, after: row })
+      await audit.record({ tenantId }, actor, { action: 'update', entity: 'branding', entityId: tenantId, before: before === null ? null : auditView(before), after: auditView(row) })
       return row
     },
     getBilling: async (tenantId) => {

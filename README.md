@@ -648,11 +648,23 @@ only (rule 12). Env: `DATABASE_URL` (required), `REDIS_URL`, `INGEST_HOST`/`INGE
   drives **every** mutating repo through create/update/delete and fails if a row is
   missing (so a new repo that forgets `audit.record` turns the build red). Secrets are
   redacted in snapshots (webhook `secret` → `***`; user `passwordHash` never selected).
+- **A snapshot carries the subject, not the record.** `tenant`/`branding` rows used to
+  snapshot the whole `Tenant`, which put `stripeCustomerId`, the applied-billing-event
+  cursor and `referredByAffiliateId` — the partner earning on the account — in front of
+  every tenant admin on every branding save. They snapshot `{name, plan, branding}` now;
+  the partner money trail stays where `recordPlatform` files it (tenantId NULL).
 - **Read**: `GET /v1/audit` (+ `GET /v1/audit/:id`) — tenant-scoped, **admin-only**
   (`TENANT_ADMINS`; viewer/account_manager → 403). Filters `entity`, `action`,
   `from`/`to`, cursor pagination (`limit`/`cursor`, id desc). Append-only — no write API.
-- **Web**: Admin → Audit (nav shown only to admins) — filterable table with expandable
-  before/after snapshots; timestamps render in the browser's locale/timezone.
+- **Web**: Admin → Audit (nav shown only to admins) — filterable table; a row names its
+  subject (product name, e-mail, device name, brand-image slot) instead of its UUID, and
+  names its actor by e-mail (`/v1/users`; `null` = System, unresolvable = short id).
+  Expanding a row shows the FIELD-LEVEL diff — labelled per field (`audit.f.*` in all four
+  locales), only what changed, ids resolved to names, timestamps in the browser's
+  locale/timezone. No raw JSON pane: identifiers and billing internals are dropped
+  (`HIDDEN_FIELDS` in `lib/auditView.ts`), everything else is rendered, unknown fields
+  included. `apps/web/__tests__/audit.spec.ts` derives the entity set from the db repos, so
+  a new audited entity fails the build until it has a label in EN/LT/PL/DE.
 
 ## Web app (E02-6)
 

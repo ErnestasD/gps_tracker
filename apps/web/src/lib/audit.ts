@@ -27,9 +27,13 @@ export interface AuditFilters {
 }
 
 /** The entities/actions the UI offers as filter options — the full set the server's repos write
- * via audit.record (packages/db/src/repos), each with an audit.e.* label in all locales. */
+ * via audit.record (packages/db/src/repos), each with an audit.e.* label in all locales, MINUS the
+ * platform-only ones (affiliate, commission, deal_registration) which `recordPlatform` files with a
+ * NULL tenantId and no tenant trail can contain. `audit.spec.ts` derives both halves from the repo
+ * sources and fails when a new entity appears in neither list — which is how `branding_asset`
+ * shipped unlabelled and unfilterable. */
 export const AUDIT_ENTITIES = [
-  'account', 'accountPrefs', 'user', 'device', 'rule', 'webhook', 'domain', 'branding', 'tenant',
+  'account', 'accountPrefs', 'user', 'device', 'rule', 'webhook', 'domain', 'branding', 'branding_asset', 'tenant',
   'geofence', 'trip', 'apiKey', 'command', 'driver', 'export', 'maintenance', 'maintenancePlan', 'serviceLog', 'document', 'scheduledReport', 'shareLink',
 ] as const
 export const AUDIT_ACTIONS = ['create', 'update', 'delete'] as const

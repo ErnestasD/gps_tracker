@@ -450,14 +450,19 @@ test('audit: an admin sees the mutation trail, filters it, and expands a snapsho
   await page.goto('/app/audit')
   await expect(page.getByTestId('audit-table')).toBeVisible({ timeout: 15_000 })
 
-  // filter to branding entries and expand the newest one → before/after snapshot
+  // filter to branding entries and expand the newest one → the field-level diff
   // (entity filter is a Combobox: open the trigger, click the option)
   await page.getByTestId('audit-entity').click()
   await page.getByRole('option', { name: 'Branding', exact: true }).click()
   const firstRow = page.getByTestId('audit-table').locator('tbody tr[data-testid^="audit-row-"]').first()
   await expect(firstRow).toBeVisible({ timeout: 15_000 })
+  // the row names its subject instead of printing the tenant UUID
+  await expect(firstRow).toContainText('Audit Probe Co')
   await firstRow.getByRole('button').click()
-  await expect(page.getByText('"productName": "Audit Probe Co"')).toBeVisible()
+  // …and the detail is a labelled field row, not two JSON blobs
+  const detail = page.locator('tr[data-testid^="audit-detail-"]')
+  await expect(detail).toContainText('Product name')
+  await expect(detail).toContainText('Audit Probe Co')
 })
 
 test('playback: history page loads a device trail with a scrubbable speed chart (E04-3)', async ({ page }) => {
