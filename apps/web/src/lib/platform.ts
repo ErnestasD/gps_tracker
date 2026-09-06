@@ -54,6 +54,10 @@ export interface PlatformAuditEntry {
    *  wrong renders every row's timestamp as '—' with no error anywhere, because `getJson` is an
    *  unchecked cast and `fmt.dt(undefined)` degrades quietly. */
   at: string
+  /** the snapshots the route has always returned, declared so the trail can name its subject
+   *  (`auditSubjectLabel`) instead of printing a UUID at a human. */
+  before?: unknown
+  after?: unknown
 }
 
 export const getTenant = (id: string) => getJson<PlatformTenant>(`/v1/tenants/${encodeURIComponent(id)}`)

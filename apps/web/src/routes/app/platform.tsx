@@ -7,6 +7,7 @@ import { TENANT_PLANS, type TenantPlan } from '@orbetra/shared'
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
+import { auditSubjectLabel, shortId, type FormatCtx } from '@/lib/auditView'
 import { getCurrentUser } from '@/lib/auth'
 import { useFmt } from '@/lib/datetime'
 import { listTenants } from '@/lib/devices'
@@ -336,12 +337,19 @@ function LeadsTab() {
   )
 }
 
-/** The platform trail: partner terms, commission decisions, and now hand-restored fleets. */
+/**
+ * The platform trail: partner terms, commission decisions, and now hand-restored fleets.
+ *
+ * Same readability rules as the tenant page (`routes/app/audit.tsx`) minus the id → name lookups:
+ * the subjects here belong to OTHER tenants, so the only names available are the ones the snapshot
+ * itself carries. An unresolvable id is shortened, never expanded into a guess.
+ */
 function AuditTab() {
   const { t } = useTranslation()
   const fmt = useFmt()
   const entries = useQuery({ queryKey: ['platform-audit'], queryFn: () => platformAudit(100) })
   const rows = entries.data ?? []
+  const ctx: FormatCtx = { t: (key, fallback) => t(key, fallback), dt: fmt.dt, resolveId: () => null }
   if (entries.isError) return <p role="alert" className="admin-card p-4 text-sm" style={{ color: 'var(--admin-danger)' }}>{t('platform.actionError')}</p>
   if (rows.length === 0) return <p className="admin-card p-4 text-sm" style={{ color: 'var(--admin-ink-soft)' }} data-testid="platform-no-audit">{t('audit.empty')}</p>
   return (
@@ -352,7 +360,6 @@ function AuditTab() {
             <th className={th} style={thStyle}>{t('platform.when')}</th>
             <th className={th} style={thStyle}>{t('audit.action')}</th>
             <th className={th} style={thStyle}>{t('audit.entity')}</th>
-            <th className={th} style={thStyle}>{t('audit.entityId')}</th>
             <th className={th} style={thStyle}>{t('audit.who')}</th>
           </tr>
         </thead>
@@ -361,9 +368,15 @@ function AuditTab() {
             <tr key={e.id} className="admin-hairline-b">
               <td className={td} style={{ color: 'var(--admin-ink-soft)' }}>{fmt.dt(e.at)}</td>
               <td className={td} style={{ color: 'var(--admin-ink)' }}>{t(`audit.a.${e.action}`, e.action)}</td>
-              <td className={td} style={{ color: 'var(--admin-ink)' }}>{t(`audit.e.${e.entity}`, e.entity)}</td>
-              <td className={td}><span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{e.entityId}</span></td>
-              <td className={td}><span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{e.userId ?? '—'}</span></td>
+              <td className={td}>
+                <div style={{ color: 'var(--admin-ink)' }}>{t(`audit.e.${e.entity}`, e.entity)}</div>
+                <div className="text-xs" style={{ color: 'var(--admin-ink-soft)' }} title={e.entityId}>{auditSubjectLabel(e, ctx)}</div>
+              </td>
+              <td className={td}>
+                <span className="mono text-xs" style={{ color: 'var(--admin-ink-soft)' }} {...(e.userId !== null ? { title: e.userId } : {})}>
+                  {e.userId === null ? t('audit.system') : shortId(e.userId)}
+                </span>
+              </td>
             </tr>
           ))}
         </tbody>
