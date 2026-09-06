@@ -52,8 +52,9 @@ tools/replay    real-log replayer for load tests.
 14. **Knowledge base (ADR-042).** Articles live in `packages/kb`, in ALL FOUR languages or not at
     all. Prose says `{product}`, never a product name; links use `kb:` / `app:` / `site:`, never a
     bare URL. An article marked `surfaces.app` is rendered inside a RESELLER's dashboard — naming
-    the platform there is a white-label leak and the package's own test fails on it. Content that
-    must name us (plans, invoices, the lapse ladder) is marked `audience.platformOnly`. Contextual
+    the platform there is a white-label leak and the package's own test fails on it. Content about OUR
+    commercial relationship (plans, invoices, the lapse ladder) is marked `audience.platformOnly` —
+    hidden on a white-label host from everyone but the tenant admin, who is the reseller. Contextual
     help links import from the package ROOT only; `@orbetra/kb/content` belongs to the lazy help
     routes and nowhere else.
 15. **Scope discipline:** implement the story's AC, nothing more. Features not in PROJECT_PLAN §4 V1-MUST require human approval first (say so, don't build "while you're there").

@@ -35,8 +35,9 @@ Two constraints shaped the answer:
   `site:` (a public page) — resolved per surface. `site:` renders as plain text inside the app,
   so **there is no href to leak**: our pricing page cannot appear in a reseller's dashboard because
   the app never renders one.
-- Each article declares an audience: `adminOnly`, `platformOnly` (withheld on a white-label host —
-  our plans, invoices and programme are not that reader's business) and an `entitlement` gate.
+- Each article declares an audience: `adminOnly`, `platformOnly` (withheld on a white-label host
+  from everyone but a tenant admin — our plans and invoices are not a reseller's CUSTOMER's
+  business, and are very much the reseller's own) and an `entitlement` gate.
   `isVisible` is the single predicate; the index, the article route and every contextual link use it,
   so a help icon is shown exactly when the page behind it is reachable.
 

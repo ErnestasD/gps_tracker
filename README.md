@@ -452,8 +452,9 @@ How the one source stays safe on both surfaces:
   noun on a white-label host with no name set).
 - Links are `kb:` (article), `app:` (product screen) or `site:` (public page), resolved per surface.
   `site:` renders as **plain text** inside the app: there is no href to leak.
-- Each article declares an audience — `adminOnly`, `platformOnly` (withheld on a white-label host:
-  our plans and invoices are not that reader's business) and an `entitlement` gate. `isVisible` is
+- Each article declares an audience — `adminOnly`, `platformOnly` (withheld on a white-label host
+  from everyone but a tenant admin: our plans and invoices are not a reseller's CUSTOMER's business,
+  but they are the reseller's own) and an `entitlement` gate. `isVisible` is
   the single predicate, so a help icon appears exactly when the page behind it is reachable.
 - `packages/kb`'s own tests enforce it: every article in every language, anchors identical across
   languages, code blocks byte-identical, every `kb:` link resolving, every `screen` naming a real

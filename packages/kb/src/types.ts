@@ -70,7 +70,17 @@ export interface KbSurfaces {
 export interface KbAudience {
   /** hide unless the reader is a tenant admin (matches the routes' TENANT_ADMINS gate) */
   adminOnly?: boolean
-  /** hide on a white-label host — the article talks about the platform's own business */
+  /**
+   * The article talks about the PLATFORM's own business — our plans, our invoices, what happens
+   * when one goes unpaid.
+   *
+   * Withheld on a white-label host from everyone except a tenant admin. The distinction matters:
+   * on a reseller's domain the reader is usually that reseller's CUSTOMER, to whom our commercial
+   * relationship is both confusing and none of their business — but the reseller themselves is our
+   * customer, pays our invoices, and would otherwise have no help for the one subject they most
+   * need it on. A reseller can only grant their customers `account_manager` and `viewer`, so
+   * "tenant admin on a white-label host" is the reseller and nobody else.
+   */
   platformOnly?: boolean
   /**
    * Hide unless the tenant's plan grants this entitlement. String rather than the imported
@@ -141,4 +151,10 @@ export interface KbArticleMeta {
   audience?: KbAudience
   screen?: string
   title: Record<KbLang, string>
+  /**
+   * The one-line summary. Here as well as in the article because a route's `head` — the page title
+   * and meta description a search engine reads — is resolved before the component loads, and
+   * reading it from the article would put every article in the eager bundle.
+   */
+  summary: Record<KbLang, string>
 }

@@ -133,10 +133,10 @@ export function CommandsCard({ device }: { device: Device }) {
   return (
     <Card data-testid="commands-card">
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-1.5">
-          {t('devices.cmd.title', { name: device.name })}
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-base">{t('devices.cmd.title', { name: device.name })}</CardTitle>
           <HelpLink slug={KB.commands} />
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">

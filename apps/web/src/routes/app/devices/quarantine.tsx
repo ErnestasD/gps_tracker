@@ -34,10 +34,10 @@ export function QuarantineSection() {
   return (
     <Card data-testid="quarantine-card">
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-1.5">
-          {t('quarantine.title')}
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-base">{t('quarantine.title')}</CardTitle>
           <HelpLink slug={KB.imei} anchor="quarantine" />
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent>
         {quarantine.isLoading ? (

@@ -33,10 +33,10 @@ export function ScheduledReportsCard({ accountId }: { accountId?: string }) {
   return (
     <div className="admin-card space-y-3 p-4 md:p-5" data-testid="scheduled-reports-card">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 font-semibold" style={{ color: 'var(--admin-ink)' }}>
-          {t('scheduled.title')}
+        <span className="flex items-center gap-1.5">
+          <h2 className="font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('scheduled.title')}</h2>
           <HelpLink slug={KB.scheduledReports} anchor="utc" />
-        </h2>
+        </span>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton size="sm" variant="secondary" data-testid="sr-add-open">

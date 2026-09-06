@@ -89,10 +89,10 @@ export function OnboardingCard({ device, initialApn }: { device: Device; initial
   return (
     <Card data-testid="onboarding-card">
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-1.5">
-          {t('devices.onb.title', { name: device.name })}
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-base">{t('devices.onb.title', { name: device.name })}</CardTitle>
           <HelpLink slug={KB.connectATracker} />
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {sheet.isError ? (

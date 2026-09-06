@@ -101,10 +101,10 @@ export function SettingsCard({ device, canWrite }: { device: Device; canWrite: b
   return (
     <Card data-testid="settings-card">
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-1.5">
-          {t('devices.settings.title', { name: device.name })}
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-base">{t('devices.settings.title', { name: device.name })}</CardTitle>
           <HelpLink slug={KB.reportingIntervals} />
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {q.isLoading && <p className="text-sm text-muted" data-testid="settings-loading">{t('admin.loading')}</p>}

@@ -102,10 +102,11 @@ export function isVisible(article: KbArticle | KbArticleMeta, viewer: KbViewer):
   if (viewer.surface === 'site') return true
   const a = article.audience
   if (a === undefined) return true
-  // A reseller's customer must never be sent to an article about OUR plans, invoices or programme —
-  // it names a commercial relationship they are not in and a company they have not heard of.
-  if (a.platformOnly === true && viewer.whiteLabel === true) return false
   if (a.adminOnly === true && viewer.isAdmin !== true) return false
+  // A reseller's CUSTOMER must never be sent to an article about our plans or invoices — it is a
+  // commercial relationship they are not in. The reseller themselves is the exception, and the
+  // reason the admin check above comes first: they are the one paying those invoices.
+  if (a.platformOnly === true && viewer.whiteLabel === true && viewer.isAdmin !== true) return false
   if (a.entitlement !== undefined && viewer.entitlements?.[a.entitlement] !== true) return false
   return true
 }

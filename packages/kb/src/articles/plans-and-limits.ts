@@ -28,7 +28,7 @@ export const plansAndLimits: KbArticle = {
         { h2: 'Changing plan', id: 'change' },
         { p: 'You can switch at any time from the billing screen. An upgrade takes effect immediately; a downgrade too, with the unused portion credited against the next invoice. Nothing is charged in the moment of switching — the difference lands on the next invoice as proration. See [Billing and invoices](kb:billing-and-invoices).' },
         { h2: 'When a feature is not there', id: 'missing' },
-        { p: 'Screens your plan does not include are not shown at all, rather than shown and refusing. If you expected a screen to be there — branding, API keys, webhooks, customer accounts — the plan is the reason. The current prices and what each tier contains are on the pricing page: [see pricing](site:/pricing).' },
+        { p: 'Screens your plan does not include are not shown at all, rather than shown and refusing. If you expected a screen to be there — branding, API keys, webhooks, customer accounts — the plan is the reason. The current prices and what each tier contains are on the [pricing page](site:/pricing).' },
       ],
     },
     lt: {
@@ -52,7 +52,7 @@ export const plansAndLimits: KbArticle = {
         { h2: 'Plano keitimas', id: 'change' },
         { p: 'Persijungti galima bet kada mokėjimų ekrane. Aukštesnis planas įsigalioja iškart; žemesnis irgi, o nepanaudota dalis įskaitoma į kitą sąskaitą. Persijungimo akimirką niekas nenuskaitoma – skirtumas atsiduria kitoje sąskaitoje kaip proporcinis perskaičiavimas. Žr. [Mokėjimai ir sąskaitos](kb:billing-and-invoices).' },
         { h2: 'Kai funkcijos nėra', id: 'missing' },
-        { p: 'Ekranai, kurių jūsų planas neapima, išvis nerodomi, o ne rodomi ir atsisako veikti. Jei tikėjotės, kad ekranas bus – prekės ženklas, API raktai, webhook\'ai, klientų paskyros – priežastis yra planas. Dabartinės kainos ir kas įeina į kiekvieną pakopą – kainodaros puslapyje: [žiūrėti kainas](site:/pricing).' },
+        { p: 'Ekranai, kurių jūsų planas neapima, išvis nerodomi, o ne rodomi ir atsisako veikti. Jei tikėjotės, kad ekranas bus – prekės ženklas, API raktai, webhook\'ai, klientų paskyros – priežastis yra planas. Dabartinės kainos ir kas įeina į kiekvieną pakopą surašytos [kainodaros puslapyje](site:/pricing).' },
       ],
     },
     pl: {
@@ -76,7 +76,7 @@ export const plansAndLimits: KbArticle = {
         { h2: 'Zmiana planu', id: 'change' },
         { p: 'Przełączyć się można w każdej chwili z ekranu płatności. Wyższy plan działa od razu; niższy też, a niewykorzystana część zostaje zaliczona na poczet następnej faktury. W chwili przełączenia nic nie jest pobierane — różnica trafia na następną fakturę jako proporcjonalne rozliczenie. Zobacz [Płatności i faktury](kb:billing-and-invoices).' },
         { h2: 'Gdy funkcji nie ma', id: 'missing' },
-        { p: 'Ekrany nieobjęte planem nie są pokazywane w ogóle, zamiast być pokazywane i odmawiać działania. Jeśli spodziewałeś się ekranu — marka, klucze API, webhooki, konta klientów — powodem jest plan. Aktualne ceny i zawartość każdego poziomu są na stronie cennika: [zobacz cennik](site:/pricing).' },
+        { p: 'Ekrany nieobjęte planem nie są pokazywane w ogóle, zamiast być pokazywane i odmawiać działania. Jeśli spodziewałeś się ekranu — marka, klucze API, webhooki, konta klientów — powodem jest plan. Aktualne ceny i zawartość każdego poziomu są na [stronie cennika](site:/pricing).' },
       ],
     },
     de: {
@@ -100,7 +100,7 @@ export const plansAndLimits: KbArticle = {
         { h2: 'Tarif wechseln', id: 'change' },
         { p: 'Der Wechsel ist jederzeit im Abrechnungsbildschirm möglich. Ein Upgrade wirkt sofort; ein Downgrade auch, wobei der ungenutzte Teil auf die nächste Rechnung gutgeschrieben wird. Im Moment des Wechsels wird nichts abgebucht — die Differenz erscheint anteilig auf der nächsten Rechnung. Siehe [Abrechnung und Rechnungen](kb:billing-and-invoices).' },
         { h2: 'Wenn eine Funktion fehlt', id: 'missing' },
-        { p: 'Bildschirme, die Ihr Tarif nicht enthält, werden gar nicht erst angezeigt, statt angezeigt zu werden und dann abzulehnen. Wenn Sie einen Bildschirm erwartet haben — Branding, API-Schlüssel, Webhooks, Kundenkonten — ist der Tarif der Grund. Die aktuellen Preise und der Inhalt jeder Stufe stehen auf der Preisseite: [Preise ansehen](site:/pricing).' },
+        { p: 'Bildschirme, die Ihr Tarif nicht enthält, werden gar nicht erst angezeigt, statt angezeigt zu werden und dann abzulehnen. Wenn Sie einen Bildschirm erwartet haben — Branding, API-Schlüssel, Webhooks, Kundenkonten — ist der Tarif der Grund. Die aktuellen Preise und der Inhalt jeder Stufe stehen auf der [Preisseite](site:/pricing).' },
       ],
     },
   },

@@ -103,10 +103,10 @@ export function CanSettingsCard({ device, canWrite }: { device: Device; canWrite
   return (
     <Card data-testid="can-settings-card">
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-1.5">
-          {t('devices.canSettings.title', { name: device.name })}
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-base">{t('devices.canSettings.title', { name: device.name })}</CardTitle>
           <HelpLink slug={KB.canAndObd} />
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {q.isLoading && <p className="text-sm text-muted" data-testid="can-settings-loading">{t('admin.loading')}</p>}

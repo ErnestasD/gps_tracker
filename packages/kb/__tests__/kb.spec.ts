@@ -224,12 +224,19 @@ describe('audience gating', () => {
     expect(shown).toEqual(KB_ARTICLES.filter((a) => a.surfaces.site))
   })
 
-  it('withholds platform-business articles on a white-label host', () => {
-    const viewer = { surface: 'app' as const, whiteLabel: true, isAdmin: true, entitlements: { whiteLabel: true, customDomains: true, subAccounts: true, apiAccess: true, webhooks: true, smsGateway: true } }
-    const shown = visibleArticles(KB_ARTICLES, viewer)
-    expect(shown.some((a) => a.audience?.platformOnly === true)).toBe(false)
-    // …and shows them on our own host
-    expect(visibleArticles(KB_ARTICLES, { ...viewer, whiteLabel: false }).some((a) => a.audience?.platformOnly === true)).toBe(true)
+  it('withholds platform-business articles from a reseller\'s CUSTOMER', () => {
+    const customer = { surface: 'app' as const, whiteLabel: true, isAdmin: false }
+    expect(visibleArticles(KB_ARTICLES, customer).some((a) => a.audience?.platformOnly === true)).toBe(false)
+  })
+
+  it('still shows them to the reseller — they are the one paying those invoices', () => {
+    const all = { whiteLabel: true, customDomains: true, subAccounts: true, apiAccess: true, webhooks: true, smsGateway: true }
+    const reseller = { surface: 'app' as const, whiteLabel: true, isAdmin: true, entitlements: all }
+    const shown = visibleArticles(KB_ARTICLES, reseller).map((a) => a.slug)
+    expect(shown).toContain(KB.billingAndInvoices)
+    expect(shown).toContain(KB.unpaidWhatHappens)
+    // …as does an admin on our own host
+    expect(visibleArticles(KB_ARTICLES, { ...reseller, whiteLabel: false }).map((a) => a.slug)).toContain(KB.plansAndLimits)
   })
 
   it('withholds admin-only and entitlement-gated articles from an ordinary operator', () => {
@@ -302,7 +309,10 @@ describe('metadata mirror', () => {
       expect(m!.surfaces, a.slug).toEqual(a.surfaces)
       expect(m!.audience, a.slug).toEqual(a.audience)
       expect(m!.screen, a.slug).toBe(a.screen)
-      for (const lang of KB_LANGS) expect(m!.title[lang], `${a.slug}/${lang}`).toBe(a.doc[lang].title)
+      for (const lang of KB_LANGS) {
+        expect(m!.title[lang], `${a.slug}/${lang} title`).toBe(a.doc[lang].title)
+        expect(m!.summary[lang], `${a.slug}/${lang} summary`).toBe(a.doc[lang].summary)
+      }
     }
   })
 

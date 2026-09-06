@@ -53,6 +53,10 @@ export function HelpLink({
       title={t('learn.openHelp', { title })}
       aria-label={t('learn.openHelp', { title })}
       data-testid={testId ?? `help-${slug}`}
+      // several of these sit inside a <label> that wraps its own control. A click there is
+      // forwarded to the control by the browser, so opening the help would also drop a select
+      // open behind the new tab. Stopping the event at the anchor is what keeps the two apart.
+      onClick={(e) => e.stopPropagation()}
       className={cn('inline-flex shrink-0 items-center gap-1 rounded text-xs transition-opacity hover:opacity-70', className)}
       style={{ color: 'var(--admin-ink-soft)' }}
     >

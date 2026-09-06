@@ -122,17 +122,23 @@ describe('what a reseller\'s customer may be shown', () => {
    * about OUR plans, OUR invoices and what happens when OUR invoice goes unpaid name a commercial
    * relationship they are not in, with a company they have never heard of.
    */
-  it('withholds every platform-business article on a white-label host', () => {
-    currentUser = { role: 'tsp_admin', entitlements: ALL_ENTITLEMENTS }
-    const viewer = kbViewer(true)
-    const shown = KB_META.filter((m) => isVisible(m, viewer)).map((m) => m.slug)
-    for (const slug of [KB.plansAndLimits, KB.billingAndInvoices, KB.unpaidWhatHappens]) {
+  it('withholds every platform-business article from a customer on a reseller\'s host', () => {
+    currentUser = { role: 'account_manager', entitlements: ALL_ENTITLEMENTS }
+    const shown = KB_META.filter((m) => isVisible(m, kbViewer(true))).map((m) => m.slug)
+    for (const slug of [KB.plansAndLimits, KB.unpaidWhatHappens]) {
       expect(shown, slug).not.toContain(slug)
     }
     // …and the operational half is still there. A customer on a reseller's domain gets the manual.
     for (const slug of [KB.howTrackingWorks, KB.geofences, KB.deviceNotReporting, KB.glossary]) {
       expect(shown, slug).toContain(slug)
     }
+  })
+
+  it('still shows them to the RESELLER on their own host — they pay those invoices', () => {
+    currentUser = { role: 'tsp_admin', entitlements: ALL_ENTITLEMENTS }
+    const shown = KB_META.filter((m) => isVisible(m, kbViewer(true))).map((m) => m.slug)
+    expect(shown).toContain(KB.billingAndInvoices)
+    expect(shown).toContain(KB.unpaidWhatHappens)
   })
 
   it('shows them on our own host', () => {

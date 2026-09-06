@@ -76,10 +76,10 @@ export function ShareCard({ device }: { device: Device }) {
   return (
     <Card data-testid={`share-card-${device.imei}`}>
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-1.5">
-          {t('devices.share.title', { name: device.name })}
+        <div className="flex items-center gap-1.5">
+          <CardTitle className="text-base">{t('devices.share.title', { name: device.name })}</CardTitle>
           <HelpLink slug={KB.shareALiveLink} />
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted">{t('devices.share.blurb')}</p>

@@ -33,10 +33,15 @@ export function PageHeader({
   return (
     <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-4 pb-2', className)}>
       <div className="min-w-0">
-        <h1 className="display flex items-center gap-2 text-2xl font-semibold" style={{ color: 'var(--admin-ink)' }}>
-          {title}
-          {help !== undefined && <HelpLink slug={help} className="translate-y-px" />}
-        </h1>
+        {/* the link is a SIBLING of the heading, never inside it: an anchor within an <h1> joins
+            that heading's accessible name, so every screen reader announcing the page would read
+            "Devices, open help: connecting a tracker for the first time" */}
+        <div className="flex items-center gap-2">
+          <h1 className="display text-2xl font-semibold" style={{ color: 'var(--admin-ink)' }}>
+            {title}
+          </h1>
+          {help !== undefined && <HelpLink slug={help} />}
+        </div>
         {description !== undefined && (
           <p className="mt-1 text-sm" style={{ color: 'var(--admin-ink-soft)' }}>
             {description}

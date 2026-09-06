@@ -5,9 +5,10 @@ import type { KbArticleMeta } from './types.js'
  * and asserted identical to them by the package's own tests. Edit an article, run the tests, and a
  * stale entry here fails rather than silently mislabelling a help link.
  *
- * It exists so the ROOT entry point can answer "may this reader open that article, and what is it
- * called" without loading a single article body. Titles only, deliberately: summaries are four
- * times the bytes and every surface that wants one is already reading the article.
+ * It exists so the ROOT entry point can answer "may this reader open that article, what is it
+ * called, and what is it about" without loading a single article body. Titles and summaries only —
+ * enough for a help link's label and for a route's `head`, which are the two things that must be
+ * resolvable before the bodies are.
  */
 export const KB_META: readonly KbArticleMeta[] = [
   {
@@ -15,6 +16,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     category: 'start',
     surfaces: { site: true, app: true },
     title: { en: 'How GPS tracking actually works', lt: 'Kaip iš tikrųjų veikia GPS sekimas', pl: 'Jak naprawdę działa lokalizacja GPS', de: 'Wie GPS-Ortung wirklich funktioniert' },
+    summary: {
+      en: 'The four steps between a vehicle moving and a dot moving on your screen — and what can go wrong at each one.',
+      lt: 'Keturi žingsniai nuo judančio automobilio iki judančio taško ekrane — ir kas kiekviename gali sugesti.',
+      pl: 'Cztery kroki od jadącego pojazdu do poruszającej się kropki na ekranie — i co może się zepsuć na każdym z nich.',
+      de: 'Die vier Schritte zwischen einem fahrenden Fahrzeug und einem wandernden Punkt auf dem Bildschirm — und was bei jedem schiefgehen kann.',
+    },
   },
   {
     slug: 'first-steps',
@@ -22,6 +29,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app',
     title: { en: 'Your first hour', lt: 'Pirmoji jūsų valanda', pl: 'Twoja pierwsza godzina', de: 'Ihre erste Stunde' },
+    summary: {
+      en: 'A checklist that takes a brand-new account to a live map, a working alert and a report you can hand to someone.',
+      lt: 'Sąrašas, per kurį visiškai nauja paskyra virsta gyvu žemėlapiu, veikiančiu pranešimu ir ataskaita, kurią jau galima kam nors paduoti.',
+      pl: 'Lista kroków, która prowadzi od zupełnie nowego konta do mapy na żywo, działającego alertu i raportu, który można komuś przekazać.',
+      de: 'Eine Checkliste, die ein brandneues Konto zu einer Live-Karte, einem funktionierenden Alarm und einem vorzeigbaren Bericht führt.',
+    },
   },
   {
     slug: 'logins-and-roles',
@@ -29,18 +42,36 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/settings',
     title: { en: 'Logins, roles and accounts', lt: 'Prisijungimai, rolės ir paskyros', pl: 'Loginy, role i konta', de: 'Zugänge, Rollen und Konten' },
+    summary: {
+      en: 'Who can see which vehicles, who can change things, and how to give someone access without giving them everything.',
+      lt: 'Kas kokius automobilius mato, kas gali ką keisti ir kaip duoti prieigą, neatiduodant visko.',
+      pl: 'Kto widzi które pojazdy, kto może coś zmienić i jak dać dostęp, nie oddając wszystkiego.',
+      de: 'Wer welche Fahrzeuge sieht, wer etwas ändern darf, und wie man Zugriff gibt, ohne alles zu geben.',
+    },
   },
   {
     slug: 'glossary',
     category: 'start',
     surfaces: { site: true, app: true },
     title: { en: 'Glossary — every term in one place', lt: 'Žodynėlis — visos sąvokos vienoje vietoje', pl: 'Słowniczek — wszystkie pojęcia w jednym miejscu', de: 'Glossar — alle Begriffe an einem Ort' },
+    summary: {
+      en: 'Plain-language definitions of the words this product and the tracking industry use, from APN to geofence.',
+      lt: 'Paprasta kalba paaiškinti žodžiai, kuriuos vartoja šis produktas ir visa sekimo pramonė – nuo APN iki geozonos.',
+      pl: 'Wyjaśnienia prostym językiem słów używanych przez ten produkt i całą branżę lokalizacji — od APN po geostrefę.',
+      de: 'Klartext-Definitionen der Wörter, die dieses Produkt und die Ortungsbranche verwenden — von APN bis Geozone.',
+    },
   },
   {
     slug: 'choose-a-tracker',
     category: 'devices',
     surfaces: { site: true, app: true },
     title: { en: 'Choosing a tracker', lt: 'Kaip pasirinkti seklį', pl: 'Wybór lokalizatora', de: 'Den passenden Tracker wählen' },
+    summary: {
+      en: 'Wired, OBD or battery — what each type can and cannot tell you, and which questions decide the choice.',
+      lt: 'Laidinis, OBD ar baterinis – ką kiekvienas tipas gali ir ko negali pasakyti, ir kurie klausimai nulemia pasirinkimą.',
+      pl: 'Przewodowy, OBD czy bateryjny — co każdy typ może i czego nie powie, i które pytania rozstrzygają wybór.',
+      de: 'Verkabelt, OBD oder batteriebetrieben — was jeder Typ leisten kann und was nicht, und welche Fragen die Wahl entscheiden.',
+    },
   },
   {
     slug: 'imei',
@@ -48,12 +79,24 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/devices',
     title: { en: 'What an IMEI is, and why it matters here', lt: 'Kas yra IMEI ir kodėl jis čia svarbus', pl: 'Czym jest IMEI i dlaczego jest tu ważny', de: 'Was eine IMEI ist — und warum sie hier zählt' },
+    summary: {
+      en: 'The 15-digit number that is the tracker\'s identity — where to find it, and what happens when it is wrong.',
+      lt: '15 skaitmenų numeris, kuris yra seklio tapatybė – kur jį rasti ir kas nutinka, kai jis neteisingas.',
+      pl: '15-cyfrowy numer będący tożsamością lokalizatora — gdzie go znaleźć i co się dzieje, gdy jest błędny.',
+      de: 'Die 15-stellige Nummer, die die Identität des Trackers ist — wo sie steht und was passiert, wenn sie falsch ist.',
+    },
   },
   {
     slug: 'sim-and-apn',
     category: 'devices',
     surfaces: { site: true, app: true },
     title: { en: 'SIM cards, APN and mobile data', lt: 'SIM kortelės, APN ir mobilieji duomenys', pl: 'Karty SIM, APN i transmisja danych', de: 'SIM-Karten, APN und Mobilfunkdaten' },
+    summary: {
+      en: 'What kind of SIM a tracker needs, what an APN is, how much data tracking really uses, and what roaming costs you.',
+      lt: 'Kokios SIM reikia sekliui, kas yra APN, kiek duomenų iš tiesų suvartoja sekimas ir kiek kainuoja tarptinklinis ryšys.',
+      pl: 'Jakiej karty SIM potrzebuje lokalizator, czym jest APN, ile danych naprawdę zużywa monitoring i ile kosztuje roaming.',
+      de: 'Welche SIM ein Tracker braucht, was ein APN ist, wie viel Daten Ortung wirklich verbraucht und was Roaming kostet.',
+    },
   },
   {
     slug: 'connect-a-tracker',
@@ -61,12 +104,24 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/devices',
     title: { en: 'Connecting a tracker for the first time', lt: 'Seklio prijungimas pirmą kartą', pl: 'Pierwsze podłączenie lokalizatora', de: 'Einen Tracker zum ersten Mal anschließen' },
+    summary: {
+      en: 'The three things a tracker needs to know, the two ways to tell it, and how to confirm it worked.',
+      lt: 'Trys dalykai, kuriuos seklys turi sužinoti, du būdai jam tai pasakyti ir kaip įsitikinti, kad pavyko.',
+      pl: 'Trzy rzeczy, które lokalizator musi wiedzieć, dwa sposoby, żeby mu je przekazać, i jak potwierdzić, że zadziałało.',
+      de: 'Die drei Angaben, die ein Tracker braucht, die zwei Wege sie ihm zu geben, und wie Sie den Erfolg prüfen.',
+    },
   },
   {
     slug: 'config-sms',
     category: 'devices',
     surfaces: { site: true, app: true },
     title: { en: 'The configuration SMS explained', lt: 'Konfigūracijos SMS paaiškinta', pl: 'SMS konfiguracyjny wyjaśniony', de: 'Die Konfigurations-SMS erklärt' },
+    summary: {
+      en: 'What that odd-looking text message actually says to the tracker, why the leading spaces matter, and why it sometimes changes nothing.',
+      lt: 'Ką iš tikrųjų ta keista žinutė sako sekliui, kodėl svarbūs tarpai pradžioje ir kodėl kartais ji nieko nepakeičia.',
+      pl: 'Co ta dziwnie wyglądająca wiadomość naprawdę mówi lokalizatorowi, dlaczego liczą się wiodące spacje i dlaczego czasem nic nie zmienia.',
+      de: 'Was diese seltsam aussehende Nachricht dem Tracker wirklich sagt, warum die führenden Leerzeichen zählen und warum sie manchmal nichts bewirkt.',
+    },
   },
   {
     slug: 'reporting-intervals',
@@ -74,6 +129,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/devices',
     title: { en: 'Reporting intervals — how often the tracker speaks', lt: 'Siuntimo intervalai — kaip dažnai seklys prabyla', pl: 'Częstotliwość raportowania — jak często lokalizator się odzywa', de: 'Sendeintervalle — wie oft der Tracker spricht' },
+    summary: {
+      en: 'The six sliders that decide map freshness, data cost and battery life, and the trap of the roaming profile.',
+      lt: 'Šeši slankikliai, lemiantys žemėlapio šviežumą, duomenų kainą ir baterijos tarnavimą, ir tarptinklinio profilio spąstai.',
+      pl: 'Sześć suwaków decydujących o świeżości mapy, koszcie danych i żywotności baterii, oraz pułapka profilu roamingowego.',
+      de: 'Die sechs Regler, die Kartenaktualität, Datenkosten und Akkulaufzeit bestimmen — und die Falle des Roaming-Profils.',
+    },
   },
   {
     slug: 'commands',
@@ -81,6 +142,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/devices',
     title: { en: 'Sending commands to a tracker', lt: 'Komandų siuntimas sekliui', pl: 'Wysyłanie komend do lokalizatora', de: 'Befehle an einen Tracker senden' },
+    summary: {
+      en: 'The command console: what you can ask a device, what the statuses mean, and why a queued command still runs an hour later.',
+      lt: 'Komandų konsolė: ko galima paklausti įrenginio, ką reiškia būsenos ir kodėl eilėje laukusi komanda įvykdoma net po valandos.',
+      pl: 'Konsola komend: o co można zapytać urządzenie, co znaczą statusy i dlaczego komenda z kolejki wykonuje się także godzinę później.',
+      de: 'Die Befehlskonsole: was Sie ein Gerät fragen können, was die Status bedeuten und warum ein eingereihter Befehl auch eine Stunde später noch läuft.',
+    },
   },
   {
     slug: 'can-and-obd',
@@ -88,6 +155,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/devices',
     title: { en: 'CAN and OBD data — fuel, mileage and the engine', lt: 'CAN ir OBD duomenys — kuras, rida ir variklis', pl: 'Dane CAN i OBD — paliwo, przebieg i silnik', de: 'CAN- und OBD-Daten — Kraftstoff, Kilometer und Motor' },
+    summary: {
+      en: 'Where fuel level and factory mileage actually come from, why a working CAN bus still shows nothing, and how to switch the parameters on.',
+      lt: 'Iš kur iš tikrųjų ateina kuro lygis ir gamyklinė rida, kodėl veikianti CAN magistralė vis tiek nieko nerodo ir kaip įjungti parametrus.',
+      pl: 'Skąd naprawdę bierze się poziom paliwa i fabryczny przebieg, dlaczego działająca magistrala CAN i tak nic nie pokazuje i jak włączyć parametry.',
+      de: 'Woher Tankfüllstand und Werkskilometer wirklich kommen, warum ein funktionierender CAN-Bus trotzdem nichts zeigt und wie man die Parameter einschaltet.',
+    },
   },
   {
     slug: 'device-lifecycle',
@@ -95,6 +168,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/devices',
     title: { en: 'Retiring, moving and erasing a device', lt: 'Įrenginio nurašymas, perkėlimas ir duomenų ištrynimas', pl: 'Wycofywanie, przenoszenie i kasowanie urządzenia', de: 'Gerät stilllegen, umsetzen und löschen' },
+    summary: {
+      en: 'What to do when a tracker changes vehicle, leaves the fleet, or has to be wiped — and what each action is irreversible about.',
+      lt: 'Ką daryti, kai seklys keičia automobilį, palieka parką arba turi būti išvalytas – ir kas kiekviename veiksme yra negrįžtama.',
+      pl: 'Co zrobić, gdy lokalizator zmienia pojazd, opuszcza flotę albo musi zostać wyczyszczony — i co w każdej akcji jest nieodwracalne.',
+      de: 'Was zu tun ist, wenn ein Tracker das Fahrzeug wechselt, die Flotte verlässt oder gelöscht werden muss — und was an jeder Aktion unumkehrbar ist.',
+    },
   },
   {
     slug: 'map-basics',
@@ -102,18 +181,36 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app',
     title: { en: 'Reading the live map', lt: 'Kaip skaityti gyvą žemėlapį', pl: 'Jak czytać mapę na żywo', de: 'Die Live-Karte lesen' },
+    summary: {
+      en: 'Markers, trails, layers, the 24-hour timeline and the panels behind a selected vehicle.',
+      lt: 'Žymekliai, pėdsakai, sluoksniai, 24 valandų juosta ir skydeliai už pasirinkto automobilio.',
+      pl: 'Znaczniki, ślady, warstwy, oś 24 godzin i panele wybranego pojazdu.',
+      de: 'Marker, Spuren, Ebenen, die 24-Stunden-Leiste und die Panels hinter einem ausgewählten Fahrzeug.',
+    },
   },
   {
     slug: 'position-accuracy',
     category: 'map',
     surfaces: { site: true, app: true },
     title: { en: 'Position accuracy, drift and positions we throw away', lt: 'Pozicijos tikslumas, dreifas ir pozicijos, kurias išmetame', pl: 'Dokładność pozycji, dryf i pozycje, które odrzucamy', de: 'Positionsgenauigkeit, Drift und verworfene Positionen' },
+    summary: {
+      en: 'Why a parked vehicle appears to wander, what makes a fix untrustworthy, and the rule that keeps bad positions out of your numbers.',
+      lt: 'Kodėl stovintis automobilis atrodo klaidžiojantis, kas daro fiksaciją nepatikimą ir kokia taisyklė neleidžia blogoms pozicijoms patekti į jūsų skaičius.',
+      pl: 'Dlaczego zaparkowany pojazd wydaje się wędrować, co czyni fixa niewiarygodnym i jaka reguła trzyma złe pozycje z dala od Twoich liczb.',
+      de: 'Warum ein geparktes Fahrzeug zu wandern scheint, was einen Fix unglaubwürdig macht und welche Regel schlechte Positionen aus Ihren Zahlen hält.',
+    },
   },
   {
     slug: 'device-status',
     category: 'map',
     surfaces: { site: true, app: true },
     title: { en: 'Device status — the two things "inactive" could mean', lt: 'Įrenginio būsena — du dalykai, kuriuos galėtų reikšti „neaktyvus"', pl: 'Status urządzenia — dwie rzeczy, które mogłoby znaczyć „nieaktywne"', de: 'Gerätestatus — die zwei Dinge, die „inaktiv" heißen könnte' },
+    summary: {
+      en: 'Online, Offline, No contact, Never reported, Active and Retired are two different scales. Mixing them up costs an afternoon.',
+      lt: 'Prisijungęs, Neprisijungęs, Nėra ryšio, Niekada nesiuntė, Aktyvus ir Nurašytas – tai dvi skirtingos skalės. Jas supainiojus prarandama popietė.',
+      pl: 'Online, Offline, Brak kontaktu, Nigdy nie raportowało, Aktywne i Wycofane to dwie różne skale. Pomylenie ich kosztuje popołudnie.',
+      de: 'Online, Offline, Kein Kontakt, Nie gemeldet, Aktiv und Stillgelegt sind zwei verschiedene Skalen. Sie zu verwechseln kostet einen Nachmittag.',
+    },
   },
   {
     slug: 'share-a-live-link',
@@ -121,6 +218,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app',
     title: { en: 'Sharing a vehicle with someone who has no login', lt: 'Kaip parodyti automobilį tam, kas neturi prisijungimo', pl: 'Udostępnianie pojazdu komuś bez loginu', de: 'Ein Fahrzeug mit jemandem ohne Zugang teilen' },
+    summary: {
+      en: 'Expiring public tracking links: what the recipient sees, what they cannot see, and how to take it back.',
+      lt: 'Ribotos trukmės viešos sekimo nuorodos: ką gavėjas mato, ko nemato ir kaip nuorodą atsiimti.',
+      pl: 'Wygasające publiczne linki śledzenia: co widzi odbiorca, czego nie widzi i jak link odebrać.',
+      de: 'Ablaufende öffentliche Tracking-Links: was der Empfänger sieht, was nicht, und wie Sie den Link zurücknehmen.',
+    },
   },
   {
     slug: 'how-trips-are-detected',
@@ -128,6 +231,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/trips',
     title: { en: 'How a trip is decided', lt: 'Kaip nusprendžiama, kad tai kelionė', pl: 'Jak rozstrzyga się, że to trasa', de: 'Wie eine Fahrt entschieden wird' },
+    summary: {
+      en: 'What starts a trip, what ends it, what counts as idling, and why a short shuffle around the yard is not a journey.',
+      lt: 'Kas pradeda kelionę, kas ją baigia, kas laikoma tuščiąja eiga ir kodėl trumpas pasistumdymas kieme nėra reisas.',
+      pl: 'Co zaczyna trasę, co ją kończy, co liczy się jako praca na postoju i dlaczego krótkie manewrowanie po placu to nie przejazd.',
+      de: 'Was eine Fahrt beginnt, was sie beendet, was als Leerlauf zählt und warum ein kurzes Rangieren auf dem Hof keine Fahrt ist.',
+    },
   },
   {
     slug: 'distance-and-odometer',
@@ -135,6 +244,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/trips',
     title: { en: 'Distance and the odometer', lt: 'Atstumas ir odometras', pl: 'Dystans a licznik', de: 'Strecke und Kilometerstand' },
+    summary: {
+      en: 'Three different numbers can all be called "kilometres driven". Which one you are looking at, and which one to bill from.',
+      lt: 'Trys skirtingi skaičiai gali vadintis „nuvažiuoti kilometrai". Į kurį žiūrite ir pagal kurį išrašyti sąskaitą.',
+      pl: 'Trzy różne liczby mogą nazywać się „przejechane kilometry". Na którą patrzysz i z której fakturować.',
+      de: 'Drei verschiedene Zahlen können „gefahrene Kilometer" heißen. Welche Sie ansehen — und aus welcher Sie abrechnen.',
+    },
   },
   {
     slug: 'playback',
@@ -142,6 +257,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/playback',
     title: { en: 'Replaying a day', lt: 'Dienos peržaidimas', pl: 'Odtwarzanie dnia', de: 'Einen Tag noch einmal abspielen' },
+    summary: {
+      en: 'History playback: watching a route back with speed and fuel beside it, and what the gaps in the line mean.',
+      lt: 'Istorijos peržaidimas: maršruto peržiūra su greičio ir kuro grafikais šalia, ir ką reiškia tarpai linijoje.',
+      pl: 'Odtwarzanie historii: przejazd trasy od nowa z wykresami prędkości i paliwa obok, i co znaczą przerwy w linii.',
+      de: 'Historien-Replay: eine Strecke zurückverfolgen, mit Geschwindigkeit und Tankfüllstand daneben — und was Lücken in der Linie bedeuten.',
+    },
   },
   {
     slug: 'geofences',
@@ -149,6 +270,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/geofences',
     title: { en: 'Geofences — drawing places that matter', lt: 'Geozonos — kaip apibrėžti svarbias vietas', pl: 'Geostrefy — rysowanie miejsc, które mają znaczenie', de: 'Geozonen — Orte zeichnen, auf die es ankommt' },
+    summary: {
+      en: 'Polygons, circles and corridors, what crossing an edge means, and how to keep a hundred zones from becoming noise.',
+      lt: 'Daugiakampiai, apskritimai ir koridoriai, ką reiškia kirsti ribą ir kaip neleisti šimtui zonų virsti triukšmu.',
+      pl: 'Wielokąty, okręgi i korytarze, co znaczy przecięcie granicy i jak sprawić, by sto stref nie stało się szumem.',
+      de: 'Polygone, Kreise und Korridore, was das Überqueren einer Kante bedeutet und wie hundert Zonen nicht zu Lärm werden.',
+    },
   },
   {
     slug: 'rules-and-alerts',
@@ -156,6 +283,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/rules',
     title: { en: 'Rules — being told instead of looking', lt: 'Taisyklės — kai pranešama jums, o ne jūs tikrinate', pl: 'Reguły — być informowanym zamiast sprawdzać', de: 'Regeln — informiert werden statt nachsehen' },
+    summary: {
+      en: 'How a rule is built, what the cooldown protects you from, and why one long problem should be one message.',
+      lt: 'Kaip sudaryta taisyklė, nuo ko saugo atvėsimo laikas ir kodėl viena ilga problema turi būti viena žinutė.',
+      pl: 'Z czego składa się reguła, przed czym chroni cooldown i dlaczego jeden długi problem powinien być jedną wiadomością.',
+      de: 'Woraus eine Regel besteht, wovor der Cooldown schützt und warum ein langes Problem eine Nachricht sein sollte.',
+    },
   },
   {
     slug: 'event-types',
@@ -163,6 +296,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/events',
     title: { en: 'Every event type, in plain words', lt: 'Visi įvykių tipai paprastais žodžiais', pl: 'Wszystkie rodzaje zdarzeń, prostymi słowami', de: 'Alle Ereignistypen, in Klartext' },
+    summary: {
+      en: 'The nine things a rule can watch for, what each one actually detects, and what it needs from the hardware.',
+      lt: 'Devyni dalykai, kurių gali tykoti taisyklė, ką kiekvienas iš tikrųjų aptinka ir ko jam reikia iš įrangos.',
+      pl: 'Dziewięć rzeczy, których może pilnować reguła, co każda naprawdę wykrywa i czego wymaga od sprzętu.',
+      de: 'Die neun Dinge, auf die eine Regel achten kann, was jedes wirklich erkennt und was es von der Hardware braucht.',
+    },
   },
   {
     slug: 'notification-channels',
@@ -170,6 +309,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/rules',
     title: { en: 'Where alerts are delivered', lt: 'Kur pristatomi pranešimai', pl: 'Dokąd trafiają alerty', de: 'Wohin Alarme zugestellt werden' },
+    summary: {
+      en: 'E-mail, Telegram, browser push and webhooks — what each is good for, and the language an alert is written in.',
+      lt: 'El. paštas, Telegram, naršyklės pranešimai ir webhook\'ai – kam kiekvienas tinka ir kokia kalba parašytas pranešimas.',
+      pl: 'E-mail, Telegram, powiadomienia przeglądarki i webhooki — do czego się nadają i w jakim języku pisany jest alert.',
+      de: 'E-Mail, Telegram, Browser-Push und Webhooks — wofür sich welcher eignet und in welcher Sprache ein Alarm geschrieben ist.',
+    },
   },
   {
     slug: 'report-types',
@@ -177,6 +322,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/reports',
     title: { en: 'Which report answers which question', lt: 'Kuri ataskaita atsako į kurį klausimą', pl: 'Który raport odpowiada na które pytanie', de: 'Welcher Bericht welche Frage beantwortet' },
+    summary: {
+      en: 'Six reports, the question each one is for, and how to export the answer as CSV or PDF.',
+      lt: 'Šešios ataskaitos, kokiam klausimui kiekviena skirta ir kaip atsakymą eksportuoti į CSV ar PDF.',
+      pl: 'Sześć raportów, pytanie, do którego każdy służy, i jak wyeksportować odpowiedź do CSV lub PDF.',
+      de: 'Sechs Berichte, die Frage hinter jedem, und wie Sie die Antwort als CSV oder PDF exportieren.',
+    },
   },
   {
     slug: 'scheduled-reports',
@@ -184,6 +335,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/reports',
     title: { en: 'Reports that arrive on their own', lt: 'Ataskaitos, kurios atkeliauja pačios', pl: 'Raporty, które przychodzą same', de: 'Berichte, die von selbst kommen' },
+    summary: {
+      en: 'Setting up a recurring report, choosing recipients, and the one thing about the hour that catches people out.',
+      lt: 'Kaip nustatyti pasikartojančią ataskaitą, kaip parinkti gavėjus ir vienas dalykas apie valandą, ant kurio žmonės užkliūva.',
+      pl: 'Jak ustawić raport cykliczny, jak wybrać odbiorców i jedna rzecz o godzinie, na której ludzie się potykają.',
+      de: 'Einen wiederkehrenden Bericht einrichten, Empfänger wählen — und die eine Sache mit der Uhrzeit, über die alle stolpern.',
+    },
   },
   {
     slug: 'time-zones-and-units',
@@ -191,6 +348,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/settings',
     title: { en: 'Time zones, language and units — two settings, not one', lt: 'Laiko juostos, kalba ir vienetai — du nustatymai, ne vienas', pl: 'Strefy czasowe, język i jednostki — dwa ustawienia, nie jedno', de: 'Zeitzonen, Sprache und Einheiten — zwei Einstellungen, nicht eine' },
+    summary: {
+      en: 'Why your screen and your colleague\'s e-mail can disagree, and which of the two settings controls which.',
+      lt: 'Kodėl jūsų ekranas ir kolegos laiškas gali nesutapti ir kuris iš dviejų nustatymų ką valdo.',
+      pl: 'Dlaczego Twój ekran i e-mail współpracownika mogą się różnić i które z dwóch ustawień czym steruje.',
+      de: 'Warum Ihr Bildschirm und die E-Mail Ihrer Kollegin auseinandergehen können — und welche der beiden Einstellungen was steuert.',
+    },
   },
   {
     slug: 'drivers',
@@ -198,6 +361,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/drivers',
     title: { en: 'Drivers and who was behind the wheel', lt: 'Vairuotojai ir kas sėdėjo prie vairo', pl: 'Kierowcy i kto siedział za kierownicą', de: 'Fahrer — und wer am Steuer saß' },
+    summary: {
+      en: 'The driver roster, identifying drivers with an iButton or RFID card, and assigning a driver to a trip after the fact.',
+      lt: 'Vairuotojų sąrašas, atpažinimas iButton ar RFID kortele ir vairuotojo priskyrimas kelionei atgaline data.',
+      pl: 'Lista kierowców, identyfikacja iButtonem lub kartą RFID i przypisanie kierowcy do trasy po fakcie.',
+      de: 'Der Fahrerstamm, Fahrererkennung per iButton oder RFID-Karte und das nachträgliche Zuordnen eines Fahrers zu einer Fahrt.',
+    },
   },
   {
     slug: 'vehicle-card',
@@ -205,6 +374,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/devices',
     title: { en: 'The vehicle card: profile, documents and service history', lt: 'Automobilio kortelė: profilis, dokumentai ir serviso istorija', pl: 'Karta pojazdu: profil, dokumenty i historia serwisowa', de: 'Die Fahrzeugkarte: Profil, Dokumente und Servicehistorie' },
+    summary: {
+      en: 'Where the facts about a vehicle live — make, VIN, purchase, papers with expiry dates, and everything that has been done to it.',
+      lt: 'Kur gyvena faktai apie automobilį – markė, VIN, pirkimas, dokumentai su galiojimo datomis ir viskas, kas su juo padaryta.',
+      pl: 'Gdzie mieszkają fakty o pojeździe — marka, VIN, zakup, dokumenty z terminami ważności i wszystko, co przy nim zrobiono.',
+      de: 'Wo die Fakten zu einem Fahrzeug liegen — Marke, FIN, Anschaffung, Papiere mit Ablaufdatum und alles, was daran gemacht wurde.',
+    },
   },
   {
     slug: 'maintenance',
@@ -212,6 +387,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/maintenance',
     title: { en: 'Maintenance reminders', lt: 'Priežiūros priminimai', pl: 'Przypomnienia serwisowe', de: 'Wartungserinnerungen' },
+    summary: {
+      en: 'Servicing by kilometres, days or engine hours; applying one interval set to a whole fleet; and what "mark as serviced" does.',
+      lt: 'Priežiūra pagal kilometrus, dienas ar variklio valandas; vieno intervalų rinkinio pritaikymas visam parkui; ir ką daro „pažymėti atliktu".',
+      pl: 'Serwis według kilometrów, dni albo motogodzin; zastosowanie jednego zestawu interwałów do całej floty; i co robi „oznacz jako wykonane".',
+      de: 'Service nach Kilometern, Tagen oder Motorstunden; einen Intervallsatz auf die ganze Flotte anwenden; und was „als erledigt markieren" bewirkt.',
+    },
   },
   {
     slug: 'plans-and-limits',
@@ -220,6 +401,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     audience: { platformOnly: true },
     screen: '/app/settings',
     title: { en: 'What your plan includes', lt: 'Kas įeina į jūsų planą', pl: 'Co obejmuje Twój plan', de: 'Was Ihr Tarif enthält' },
+    summary: {
+      en: 'How plans are structured, what the device limit counts, and which features are tied to which track.',
+      lt: 'Kaip sudaryti planai, ką skaičiuoja įrenginių limitas ir kurios funkcijos susietos su kuria kryptimi.',
+      pl: 'Jak zbudowane są plany, co liczy limit urządzeń i które funkcje są przypisane do której ścieżki.',
+      de: 'Wie die Tarife aufgebaut sind, was das Gerätelimit zählt und welche Funktionen an welche Schiene gebunden sind.',
+    },
   },
   {
     slug: 'billing-and-invoices',
@@ -228,6 +415,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     audience: { platformOnly: true, adminOnly: true },
     screen: '/app/settings',
     title: { en: 'Billing, invoices and usage', lt: 'Mokėjimai, sąskaitos ir naudojimas', pl: 'Płatności, faktury i zużycie', de: 'Abrechnung, Rechnungen und Verbrauch' },
+    summary: {
+      en: 'Where the invoices are, how a mid-month plan change is charged, and how device-days and overage are counted.',
+      lt: 'Kur yra sąskaitos, kaip apmokestinamas plano keitimas mėnesio viduryje ir kaip skaičiuojamos įrenginių dienos bei viršijimas.',
+      pl: 'Gdzie są faktury, jak rozliczana jest zmiana planu w połowie miesiąca i jak liczy się dni urządzeń oraz nadwyżkę.',
+      de: 'Wo die Rechnungen liegen, wie ein Tarifwechsel mitten im Monat berechnet wird und wie Gerätetage und Mehrverbrauch gezählt werden.',
+    },
   },
   {
     slug: 'unpaid-what-happens',
@@ -235,6 +428,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     audience: { platformOnly: true },
     title: { en: 'What happens if an invoice goes unpaid', lt: 'Kas nutinka neapmokėjus sąskaitos', pl: 'Co się dzieje przy braku płatności', de: 'Was bei einer unbezahlten Rechnung passiert' },
+    summary: {
+      en: 'The full sequence — grace period, three warnings, then the fleet stops reporting — and exactly what is and is not lost.',
+      lt: 'Visa seka – atidėjimo laikotarpis, trys įspėjimai, tada parkas nustoja siųsti duomenis – ir tiksliai, kas prarandama, o kas ne.',
+      pl: 'Pełna sekwencja — okres karencji, trzy ostrzeżenia, potem flota przestaje raportować — i dokładnie, co jest, a co nie jest tracone.',
+      de: 'Die vollständige Abfolge — Kulanzfrist, drei Warnungen, dann meldet die Flotte nicht mehr — und was genau verloren geht und was nicht.',
+    },
   },
   {
     slug: 'white-label-explained',
@@ -242,6 +441,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     audience: { adminOnly: true },
     title: { en: 'What white-label actually means here', lt: 'Ką čia iš tikrųjų reiškia white-label', pl: 'Co tak naprawdę znaczy tu white-label', de: 'Was White-Label hier wirklich bedeutet' },
+    summary: {
+      en: 'Which parts of the product carry your brand, which parts your customers never see, and what you are responsible for.',
+      lt: 'Kurios produkto dalys nešioja jūsų prekės ženklą, ko jūsų klientai niekada nemato ir už ką atsakote jūs.',
+      pl: 'Które części produktu noszą Twoją markę, czego Twoi klienci nigdy nie widzą i za co odpowiadasz.',
+      de: 'Welche Teile des Produkts Ihre Marke tragen, was Ihre Kunden nie sehen und wofür Sie verantwortlich sind.',
+    },
   },
   {
     slug: 'customer-accounts',
@@ -250,6 +455,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     audience: { adminOnly: true, entitlement: 'subAccounts' },
     screen: '/app/accounts',
     title: { en: 'Customer accounts — one per customer', lt: 'Klientų paskyros — po vieną kiekvienam klientui', pl: 'Konta klientów — po jednym na klienta', de: 'Kundenkonten — eines je Kunde' },
+    summary: {
+      en: 'Creating accounts and logins, switching between "all customers" and acting for one, and the boundary that keeps them apart.',
+      lt: 'Paskyrų ir prisijungimų kūrimas, perjungimas tarp „visų klientų" ir darbo vieno vardu, ir riba, kuri juos laiko atskirai.',
+      pl: 'Tworzenie kont i loginów, przełączanie między „wszystkimi klientami" a działaniem w imieniu jednego, i granica, która ich rozdziela.',
+      de: 'Konten und Zugänge anlegen, zwischen „alle Kunden" und dem Handeln für einen wechseln, und die Grenze, die sie trennt.',
+    },
   },
   {
     slug: 'branding',
@@ -258,6 +469,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     audience: { adminOnly: true, entitlement: 'whiteLabel' },
     screen: '/app/branding',
     title: { en: 'Branding your dashboard', lt: 'Skydelio ženklinimas', pl: 'Marka Twojego panelu', de: 'Ihr Dashboard branden' },
+    summary: {
+      en: 'Product name, colours, logo, favicon and support address — the five fields your customers actually notice.',
+      lt: 'Produkto pavadinimas, spalvos, logotipas, piktograma ir pagalbos adresas – penki laukai, kuriuos klientai iš tikrųjų pastebi.',
+      pl: 'Nazwa produktu, kolory, logo, favikona i adres wsparcia — pięć pól, które klienci naprawdę zauważają.',
+      de: 'Produktname, Farben, Logo, Favicon und Support-Adresse — die fünf Felder, die Ihre Kunden wirklich bemerken.',
+    },
   },
   {
     slug: 'custom-domain',
@@ -266,6 +483,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     audience: { adminOnly: true, entitlement: 'customDomains' },
     screen: '/app/branding',
     title: { en: 'Your own domain', lt: 'Nuosavas domenas', pl: 'Własna domena', de: 'Eigene Domain' },
+    summary: {
+      en: 'Two DNS records, what each one does, the trailing dot that quietly breaks setups, and what the statuses mean.',
+      lt: 'Du DNS įrašai, ką kiekvienas daro, taškas gale, kuris tyliai griauna nustatymus, ir ką reiškia būsenos.',
+      pl: 'Dwa rekordy DNS, co robi każdy z nich, kropka na końcu, która po cichu psuje konfiguracje, i co znaczą statusy.',
+      de: 'Zwei DNS-Einträge, was jeder tut, der Punkt am Ende, der Einrichtungen still zerstört, und was die Status bedeuten.',
+    },
   },
   {
     slug: 'emails-to-your-customers',
@@ -274,6 +497,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     audience: { adminOnly: true, entitlement: 'whiteLabel' },
     screen: '/app/branding',
     title: { en: 'E-mail your customers receive', lt: 'Laiškai, kuriuos gauna jūsų klientai', pl: 'E-maile, które dostają Twoi klienci', de: 'E-Mails, die Ihre Kunden erhalten' },
+    summary: {
+      en: 'Exactly which parts of a message carry your brand today, which part does not yet, and how to keep messages arriving.',
+      lt: 'Tiksliai, kurios žinutės dalys šiandien nešioja jūsų prekės ženklą, kuri dar ne, ir kaip pasirūpinti, kad laiškai pasiektų.',
+      pl: 'Dokładnie które części wiadomości niosą dziś Twoją markę, która jeszcze nie, i jak zadbać, by wiadomości docierały.',
+      de: 'Genau welche Teile einer Nachricht heute Ihre Marke tragen, welcher noch nicht, und wie Sie dafür sorgen, dass Post ankommt.',
+    },
   },
   {
     slug: 'api-quickstart',
@@ -282,6 +511,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     audience: { adminOnly: true, entitlement: 'apiAccess' },
     screen: '/app/api-keys',
     title: { en: 'API quick start', lt: 'API pradžia', pl: 'Szybki start API', de: 'API-Schnellstart' },
+    summary: {
+      en: 'Create a key, make your first call, and understand what a key can and cannot do.',
+      lt: 'Sukurkite raktą, atlikite pirmą užklausą ir supraskite, ką raktas gali ir ko negali.',
+      pl: 'Utwórz klucz, wykonaj pierwsze wywołanie i zrozum, co klucz może, a czego nie.',
+      de: 'Einen Schlüssel anlegen, den ersten Aufruf machen und verstehen, was ein Schlüssel darf und was nicht.',
+    },
   },
   {
     slug: 'webhooks',
@@ -290,18 +525,36 @@ export const KB_META: readonly KbArticleMeta[] = [
     audience: { adminOnly: true, entitlement: 'webhooks' },
     screen: '/app/webhooks',
     title: { en: 'Webhooks — events pushed to your system', lt: 'Webhook\'ai — įvykiai, siunčiami į jūsų sistemą', pl: 'Webhooki — zdarzenia wypychane do Twojego systemu', de: 'Webhooks — Ereignisse in Ihr System geschoben' },
+    summary: {
+      en: 'Registering an endpoint, verifying the signature, handling retries, and why you must not trust an unverified payload.',
+      lt: 'Adreso registravimas, parašo tikrinimas, kartojimų tvarkymas ir kodėl nepatikrintu turiniu pasitikėti negalima.',
+      pl: 'Rejestracja endpointu, weryfikacja podpisu, obsługa ponowień i dlaczego nie wolno ufać niezweryfikowanej treści.',
+      de: 'Endpunkt registrieren, Signatur prüfen, Wiederholungen behandeln — und warum Sie einer ungeprüften Nutzlast nicht trauen dürfen.',
+    },
   },
   {
     slug: 'where-your-data-lives',
     category: 'trust',
     surfaces: { site: true, app: true },
     title: { en: 'Where your data lives and how long it stays', lt: 'Kur laikomi jūsų duomenys ir kiek laiko', pl: 'Gdzie są Twoje dane i jak długo tam zostają', de: 'Wo Ihre Daten liegen und wie lange sie bleiben' },
+    summary: {
+      en: 'Storage location, retention windows, who can reach your data, and the separation between accounts.',
+      lt: 'Saugojimo vieta, saugojimo terminai, kas gali duomenis pasiekti ir kaip atskiriamos paskyros.',
+      pl: 'Miejsce przechowywania, okresy retencji, kto ma dostęp i jak rozdzielone są konta.',
+      de: 'Speicherort, Aufbewahrungsfristen, wer Zugriff hat und wie Konten getrennt sind.',
+    },
   },
   {
     slug: 'tracking-employees-lawfully',
     category: 'trust',
     surfaces: { site: true, app: true },
     title: { en: 'Tracking employees lawfully', lt: 'Teisėtas darbuotojų sekimas', pl: 'Legalne monitorowanie pracowników', de: 'Mitarbeiter rechtmäßig orten' },
+    summary: {
+      en: 'A practical checklist for tracking vehicles driven by staff in the EU: what to tell them, what to write down, and what not to do.',
+      lt: 'Praktinis sąrašas sekant automobilius, kuriuos vairuoja darbuotojai ES: ką jiems pasakyti, ką surašyti ir ko nedaryti.',
+      pl: 'Praktyczna lista dla monitoringu pojazdów prowadzonych przez pracowników w UE: co im powiedzieć, co spisać i czego nie robić.',
+      de: 'Eine praktische Checkliste für die Ortung von Dienstfahrzeugen in der EU: was Sie sagen, was Sie aufschreiben und was Sie lassen sollten.',
+    },
   },
   {
     slug: 'export-and-erase-data',
@@ -310,6 +563,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     audience: { adminOnly: true },
     screen: '/app/settings',
     title: { en: 'Exporting and erasing your data', lt: 'Duomenų eksportas ir ištrynimas', pl: 'Eksport i usuwanie danych', de: 'Daten exportieren und löschen' },
+    summary: {
+      en: 'Taking a full copy of an account, answering a data request, and permanently removing what should no longer exist.',
+      lt: 'Kaip pasiimti visą paskyros kopiją, atsakyti į duomenų prašymą ir negrįžtamai pašalinti tai, ko nebeturi būti.',
+      pl: 'Pobranie pełnej kopii konta, odpowiedź na wniosek o dane i trwałe usunięcie tego, czego nie powinno już być.',
+      de: 'Eine vollständige Kopie eines Kontos ziehen, eine Datenanfrage beantworten und dauerhaft entfernen, was nicht mehr existieren soll.',
+    },
   },
   {
     slug: 'device-not-reporting',
@@ -317,6 +576,12 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app/devices',
     title: { en: 'A device is not reporting', lt: 'Įrenginys nesiunčia duomenų', pl: 'Urządzenie nie raportuje', de: 'Ein Gerät meldet sich nicht' },
+    summary: {
+      en: 'A decision tree ordered by how often each cause turns out to be the real one — start at the top and stop when it works.',
+      lt: 'Sprendimų medis, surikiuotas pagal tai, kaip dažnai kiekviena priežastis pasirodo esanti tikroji – pradėkite nuo viršaus ir sustokite, kai suveiks.',
+      pl: 'Drzewo decyzyjne uporządkowane według tego, jak często dana przyczyna okazuje się prawdziwa — zacznij od góry i przestań, gdy zadziała.',
+      de: 'Ein Entscheidungsbaum, geordnet danach, wie oft sich die jeweilige Ursache als die echte erweist — oben anfangen und aufhören, wenn es läuft.',
+    },
   },
   {
     slug: 'map-wont-load',
@@ -324,11 +589,23 @@ export const KB_META: readonly KbArticleMeta[] = [
     surfaces: { site: true, app: true },
     screen: '/app',
     title: { en: 'The map is blank, black or will not load', lt: 'Žemėlapis tuščias, juodas arba neįsikelia', pl: 'Mapa jest pusta, czarna albo się nie ładuje', de: 'Die Karte ist leer, schwarz oder lädt nicht' },
+    summary: {
+      en: 'Almost always a network blocking the map tiles. How to confirm it in a minute and what to ask IT for.',
+      lt: 'Beveik visada tai tinklas, blokuojantis žemėlapio plyteles. Kaip per minutę tuo įsitikinti ir ko paprašyti IT.',
+      pl: 'Prawie zawsze to sieć blokująca kafelki mapy. Jak potwierdzić to w minutę i o co poprosić IT.',
+      de: 'Fast immer ein Netzwerk, das die Kartenkacheln blockiert. Wie Sie das in einer Minute bestätigen und was Sie von der IT brauchen.',
+    },
   },
   {
     slug: 'not-getting-emails',
     category: 'troubleshooting',
     surfaces: { site: true, app: true },
     title: { en: 'Not receiving e-mails', lt: 'Negaunu laiškų', pl: 'Nie dostaję e-maili', de: 'Keine E-Mails erhalten' },
+    summary: {
+      en: 'Alerts, reports, password resets and activation links — where they go missing and how to get them arriving again.',
+      lt: 'Pranešimai, ataskaitos, slaptažodžio atstatymai ir aktyvavimo nuorodos – kur jie pradingsta ir kaip padaryti, kad vėl ateitų.',
+      pl: 'Alerty, raporty, resety haseł i linki aktywacyjne — gdzie giną i jak sprawić, by znów docierały.',
+      de: 'Alarme, Berichte, Passwort-Resets und Aktivierungslinks — wo sie verloren gehen und wie sie wieder ankommen.',
+    },
   },
 ]
