@@ -39,9 +39,13 @@ export class MotionFeed {
     insideFor?: (deviceId: bigint, geofenceId: string) => boolean,
   ): MotionResult {
     const valid = motionRecords(records)
-    if (valid.length === 0) return { tripEvents: [], transitions: [] }
+    // The TRIP engine takes the full batch and applies I5 itself: an invalid fix cannot place a
+    // vehicle, but it can still say the ignition is off, and that is how a parked car under a roof
+    // ends its trip (see TripEngine.observeStopWithoutFix). A batch of ONLY invalid fixes is
+    // therefore no longer a no-op — it is exactly the batch that closes a trip.
+    if (records.length === 0) return { tripEvents: [], transitions: [] }
     return {
-      tripEvents: this.tripEngine.feed(valid, configFor),
+      tripEvents: this.tripEngine.feed(records, configFor),
       transitions: geofencesFor ? this.geofenceEngine.feed(valid, geofencesFor, insideFor) : [],
     }
   }

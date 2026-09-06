@@ -202,7 +202,6 @@ export class TripEngine {
   }
 
   private step(r: NormalizedRecord, out: TripEvent[], configFor?: (deviceId: bigint) => DeviceTripConfig | undefined): void {
-    if (!r.fixValid) return // defensive: I5 — engine must never let an invalid fix count
     // Same seam for a device clock running AHEAD (audit high): `lastSeen` is a max, so one
     // future-dated fix makes every REAL record afterwards look out-of-order — the engine drops them
     // all into `late` and enqueues a recompute per batch, producing no live trips for the whole
@@ -229,6 +228,32 @@ export class TripEngine {
     if (st.phase === 'parked' && st.cand === null && st.trip === null) {
       st.config = configFor?.(r.deviceId) ?? this.defaultConfig
     }
+    /**
+     * AN INVALID FIX STILL KNOWS WHETHER THE ENGINE IS RUNNING.
+     *
+     * I5 says an invalid fix must never affect trip distance or state, and this used to be read as
+     * "drop the record". But "the ignition is off" is not a claim about WHERE the vehicle is, and a
+     * device parked under a roof reports satellites=0 with a perfectly trustworthy ignition line.
+     * Dropping those records meant the engine could not see the vehicle stop at all: on the
+     * founder's FMC150 (2026-09-04) it saw ONE valid ignition-off sample, then an hour of
+     * satellites=0 rows that were filtered away, then ignition back on — so the 180 s of sustained
+     * ignition-off a close requires could never accumulate, and NO trip that day was ever closed by
+     * this engine. They survived only because the persister force-closes a stale row when the next
+     * journey opens, which is a repair, not a design.
+     *
+     * The rules engine already draws exactly this line and says so in its own header: IO events are
+     * allowed on invalid-fix records (§3.4) while position-derived ones self-guard on `fixValid`.
+     *
+     * I5 is kept by CONSTRUCTION rather than by discarding the record: the branch below can only
+     * close a trip, it can never open one, never accumulates distance or speed, and never moves the
+     * position. A closed trip still ends at the last VALID fix (`lastLat`/`lastLon`), because only a
+     * valid fix ever wrote those.
+     */
+    if (!r.fixValid) {
+      this.observeStopWithoutFix(r, st, out)
+      return
+    }
+
     const speed = r.speed ?? 0
     const t = st.config.thresholds
 
@@ -307,6 +332,27 @@ export class TripEngine {
     } else {
       trip.stopSince = null
     }
+  }
+
+  /**
+   * The ignition line of a record we cannot place. Closes an open trip; does nothing else.
+   *
+   * `noIgnition` profiles are deliberately excluded: that profile decides a stop from DISPLACEMENT,
+   * which is exactly the thing an invalid fix cannot tell us. A null ignition is no statement at
+   * all and leaves the timer untouched — the same carry-forward rule the IO state uses.
+   */
+  private observeStopWithoutFix(r: NormalizedRecord, st: DeviceState, out: TripEvent[]): void {
+    const trip = st.trip
+    if (trip === null || st.phase !== 'moving') return // never opens a trip, only ends one
+    const t = st.config.thresholds
+    if (t.noIgnition) return
+    if (r.ignition === true) {
+      trip.stopSince = null // running again: whatever stop was accruing did not happen
+      return
+    }
+    if (r.ignition !== false) return
+    if (trip.stopSince === null) trip.stopSince = r.fixTime
+    if (secs(r.fixTime, trip.stopSince) >= t.parkedIgnitionOffS) this.close(r.deviceId, st, trip.stopSince, out)
   }
 
   /** Distance/speed accumulation for one in-trip record. */
