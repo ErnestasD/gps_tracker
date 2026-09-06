@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { sendAuthEmail } from '../src/jobs/authEmailWorker.js'
 import type { AuthEmailJob, PasswordResetEmailJob } from '../src/jobs/authEmailQueue.js'
 import { renderResetEmail } from '../src/notify/passwordResetEmail.js'
+import type { OutgoingEmail } from '../src/notify/drivers.js'
 
 const job = (over: Partial<PasswordResetEmailJob> = {}): AuthEmailJob => ({
   kind: 'password-reset',
@@ -61,22 +62,22 @@ describe('sendAuthEmail', () => {
   it('never mails an address SES told us is dead', async () => {
     // the whole point of the bounce feedback loop: one send path, checked once, so no producer can
     // forget. A suppressed address is a no-op — not a retry, and not a bounce we pay for again.
-    const send = vi.fn<(to: string, subject: string, text: string, html?: string) => Promise<void>>(() => Promise.resolve())
+    const send = vi.fn<(msg: OutgoingEmail) => Promise<void>>(() => Promise.resolve())
     const sent = await sendAuthEmail({ pool: fakePool(null, true), transport: { send } }, job())
     expect(sent).toBe(false)
     expect(send).not.toHaveBeenCalled()
   })
 
   it('renders the branded message and sends it via the transport', async () => {
-    const send = vi.fn<(to: string, subject: string, text: string, html?: string) => Promise<void>>(() => Promise.resolve())
+    const send = vi.fn<(msg: OutgoingEmail) => Promise<void>>(() => Promise.resolve())
     const sent = await sendAuthEmail({ pool: fakePool({ productName: 'AcmeTrack', primary: '#112233' }), transport: { send } }, job())
     expect(sent).toBe(true)
     expect(send).toHaveBeenCalledOnce()
-    const [to, subject, text, html] = send.mock.calls[0]!
-    expect(to).toBe('u@orbetra.test')
-    expect(subject).toBe('Reset your password')
-    expect(text).toContain('AcmeTrack') // white-label brand in the plain-text footer
-    expect(html).toContain('AcmeTrack')
+    const [msg] = send.mock.calls[0]!
+    expect(msg.to).toBe('u@orbetra.test')
+    expect(msg.subject).toBe('Reset your password')
+    expect(msg.text).toContain('AcmeTrack') // white-label brand in the plain-text footer
+    expect(msg.html).toContain('AcmeTrack')
   })
 
   it('is a no-op (no throw) when the transport is not configured', async () => {

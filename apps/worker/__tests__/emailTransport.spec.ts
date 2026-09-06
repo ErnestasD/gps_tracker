@@ -54,7 +54,7 @@ describe('E05-5 buildEmailTransport', () => {
   it('sends with MAIL_FROM as the sender and passes subject/text through', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create)!
-    await t.send('driver@fleet.co', 'Panic alert', 'Device 42 pressed panic.')
+    await t.send({ to: 'driver@fleet.co', subject: 'Panic alert', text: 'Device 42 pressed panic.' })
     expect(f.calls[0]).toMatchObject({ from: 'alerts@orbetra.com', to: 'driver@fleet.co', subject: 'Panic alert', text: 'Device 42 pressed panic.' })
     expect(f.calls[0]!.headers).toBeUndefined() // no config set → no header
   })
@@ -62,14 +62,14 @@ describe('E05-5 buildEmailTransport', () => {
   it('passes the branded html body through to sendMail alongside the text fallback (multipart)', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create)!
-    await t.send('driver@fleet.co', 'Panic alert', 'Device 42 pressed panic.', '<p>Device 42 pressed panic.</p>')
+    await t.send({ to: 'driver@fleet.co', subject: 'Panic alert', text: 'Device 42 pressed panic.', html: '<p>Device 42 pressed panic.</p>' })
     expect(f.calls[0]).toMatchObject({ text: 'Device 42 pressed panic.', html: '<p>Device 42 pressed panic.</p>' })
   })
 
   it('omits html entirely when none is supplied (plain-text only, backwards-compatible)', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create)!
-    await t.send('driver@fleet.co', 's', 'b')
+    await t.send({ to: 'driver@fleet.co', subject: 's', text: 'b' })
     expect(f.calls[0]!).not.toHaveProperty('html')
   })
 
@@ -82,21 +82,21 @@ describe('E05-5 buildEmailTransport', () => {
   it('adds the SES config-set header for bounce/complaint routing when configured', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL, SES_CONFIG_SET: 'orbetra-notifications' }, f.create)!
-    await t.send('driver@fleet.co', 's', 'b')
+    await t.send({ to: 'driver@fleet.co', subject: 's', text: 'b' })
     expect(f.calls[0]!.headers).toEqual({ 'X-SES-CONFIGURATION-SET': 'orbetra-notifications' })
   })
 
   it('never sends to a reserved-use TLD (bounce-reputation guard) — .test/.invalid/.localhost skipped', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create)!
-    await t.send('demo-admin@orbetra.test', 'Trips report', 'body') // the daily-bounce culprit
+    await t.send({ to: 'demo-admin@orbetra.test', subject: 'Trips report', text: 'body' }) // the daily-bounce culprit
     expect(f.calls).toHaveLength(0) // no SES attempt at all
   })
 
   it('filters a mixed recipient list to only the deliverable addresses', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create)!
-    await t.send('real@fleet.co, demo-admin@orbetra.test', 's', 'b')
+    await t.send({ to: 'real@fleet.co, demo-admin@orbetra.test', subject: 's', text: 'b' })
     expect(f.calls[0]!.to).toBe('real@fleet.co') // the .test recipient dropped, the real one kept
   })
 })
@@ -123,10 +123,10 @@ describe('suppressed recipients (SES bounce/complaint feedback)', () => {
     const dead = new Set(['dead@example.lt'])
     const t = buildEmailTransport({ ...FULL }, f.create, (addrs) => Promise.resolve(new Set(addrs.filter((a) => dead.has(a)))))!
 
-    await t.send('live@example.lt, dead@example.lt', 'Panic', 'text')
+    await t.send({ to: 'live@example.lt, dead@example.lt', subject: 'Panic', text: 'text' })
     expect(f.calls[0]!.to).toBe('live@example.lt')
 
-    await t.send('dead@example.lt', 'Panic', 'text')
+    await t.send({ to: 'dead@example.lt', subject: 'Panic', text: 'text' })
     expect(f.calls).toHaveLength(1) // no second send at all
   })
 
@@ -140,7 +140,7 @@ describe('suppressed recipients (SES bounce/complaint feedback)', () => {
 
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create, suppressionLookup(brokenRepo))!
-    await t.send('live@example.lt', 'Panic', 'text')
+    await t.send({ to: 'live@example.lt', subject: 'Panic', text: 'text' })
     expect(f.calls.at(-1)!.to).toBe('live@example.lt')
   })
 
@@ -157,7 +157,7 @@ describe('suppressed recipients (SES bounce/complaint feedback)', () => {
   it('with no lookup injected, behaviour is exactly as before', async () => {
     const f = fakeMailer()
     const t = buildEmailTransport({ ...FULL }, f.create)!
-    await t.send('anyone@example.lt', 'Panic', 'text')
+    await t.send({ to: 'anyone@example.lt', subject: 'Panic', text: 'text' })
     expect(f.calls[0]!.to).toBe('anyone@example.lt')
   })
 })

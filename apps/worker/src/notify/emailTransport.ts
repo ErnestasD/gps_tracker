@@ -56,6 +56,32 @@ export function isDeliverableAddress(addr: string): boolean {
 export type SuppressionLookup = (addresses: readonly string[]) => Promise<ReadonlySet<string>>
 
 /**
+ * `From:` carrying a display name the TENANT chose, over the address WE own.
+ *
+ * This is the line an inbox shows before the message is opened, so for a reseller it is the most
+ * visible piece of identity in the whole message — and until now it read as ours on every mail they
+ * sent (audit W-3). PROJECT_PLAN §6.2 lists this as a V1 requirement; only the ADDRESS needs
+ * ADR-036, because a display name over a shared sending domain requires nothing from the tenant's
+ * DNS and breaks no DMARC alignment.
+ *
+ * The name is tenant-controlled text going into a mail HEADER, so ALL whitespace — CR and LF among
+ * it — is collapsed to single spaces first and unconditionally.
+ * A newline here would let a product name append headers of its own — Bcc, Content-Type — which is
+ * the classic injection hole. nodemailer would probably catch it; a sanitiser that relies on a
+ * library's internals is not a sanitiser. Then RFC 5322 quoting: inside a quoted-string everything
+ * survives except `"` and `\`, which are escaped. Non-ASCII is left for nodemailer to RFC 2047-encode.
+ */
+export function senderWithName(configured: string, name?: string): string {
+  // Bound the length too: `productName` is capped at 60 by brandingSchema, but this function is the
+  // last thing between arbitrary text and a header line, and it should hold on its own.
+  const clean = (name ?? '').replace(/\s+/g, ' ').trim().slice(0, 78)
+  if (clean === '') return configured
+  // MAIL_FROM may already be `Name <addr>` — the address is the part we keep, the name is replaced.
+  const address = (/<([^>]+)>/.exec(configured)?.[1] ?? configured).trim()
+  return `"${clean.replace(/[\\"]/g, (c) => `\\${c}`)}" <${address}>`
+}
+
+/**
  * Read the suppression list on the SEND path. Fails OPEN, deliberately: a lookup fault must never
  * silence a live customer — the worst case of sending one extra message to a dead address is one
  * bounce; the worst case of the opposite is an owner who never learns their vehicle was stolen.
@@ -124,7 +150,7 @@ export function buildEmailTransport(
     return undefined
   }
   return {
-    send: async (to, subject, text, html, replyTo) => {
+    send: async ({ to, subject, text, html, replyTo, fromName }) => {
       // A MISSING RECIPIENT IS A NO-OP, NOT A CRASH. `to` is typed `string`, and a job whose payload
       // lost its `email` field made this throw `Cannot read properties of undefined (reading
       // 'split')` — which BullMQ retried five times and then dead-lettered. That is the worst
@@ -148,7 +174,7 @@ export function buildEmailTransport(
         return
       }
       await mailer.sendMail({
-        from,
+        from: senderWithName(from, fromName),
         // The tenant's own support address, so hitting Reply reaches THEM. Their address was
         // already printed in the footer of every message while the reply went to us — which is
         // both a brand leak and a customer trying to get help from the wrong company.

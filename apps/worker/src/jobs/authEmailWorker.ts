@@ -1,7 +1,7 @@
 import { Worker, type ConnectionOptions } from 'bullmq'
 import type { Pool } from 'pg'
 
-import { absolutizeBrandAssets, brandingReadSchema, type Branding } from '@orbetra/shared'
+import { absolutizeBrandAssets, brandingReadSchema, whiteLabelFromPlan, type Branding } from '@orbetra/shared'
 
 import type { EmailTransport } from '../notify/drivers.js'
 import { primaryDomain } from '../notify/tenantOrigin.js'
@@ -51,22 +51,35 @@ async function tenantIdForEmail(pool: Pool, email: string): Promise<string> {
 /** The tenant's white-label identity for a transactional email (mirrors scheduledReporter): the
  *  outgoing `brand` string plus the full branding + tenant name for the branded shell. Any
  *  lookup/parse failure defaults gracefully so a missing brand never suppresses delivery. */
-async function resolveBranding(pool: Pool, tenantId: string): Promise<{ brand: string; branding: Branding | undefined; tenantName: string | undefined }> {
+interface ResolvedBrand {
+  brand: string
+  branding: Branding | undefined
+  tenantName: string | undefined
+  /** the tenant's PLAN says whether they are a reseller; `undefined` = the plan could not be read,
+   *  and the caller falls back to the older branding-key heuristic rather than claiming the tenant */
+  whiteLabel: boolean | undefined
+}
+const PLATFORM_BRAND: ResolvedBrand = { brand: 'Orbetra', branding: undefined, tenantName: undefined, whiteLabel: false }
+
+async function resolveBranding(pool: Pool, tenantId: string): Promise<ResolvedBrand> {
   try {
     // `id = ''` is a 22P02 (invalid uuid), not an empty result — cheaper and clearer to skip the
     // query than to catch a syntax error on every default-branded send
-    if (tenantId === '') return { brand: 'Orbetra', branding: undefined, tenantName: undefined }
-    const res = await pool.query<{ name: string; branding: unknown }>('SELECT name, branding FROM tenants WHERE id = $1::uuid', [tenantId])
+    if (tenantId === '') return PLATFORM_BRAND
+    const res = await pool.query<{ name: string; branding: unknown; plan: string }>(
+      'SELECT name, branding, plan FROM tenants WHERE id = $1::uuid',
+      [tenantId],
+    )
     const row = res.rows[0]
-    if (row === undefined) return { brand: 'Orbetra', branding: undefined, tenantName: undefined }
+    if (row === undefined) return PLATFORM_BRAND
     const tenantName = row.name && row.name.trim() !== '' ? row.name : undefined
     const parsed = row.branding && typeof row.branding === 'object' ? brandingReadSchema.safeParse(row.branding) : undefined
     const branding = parsed?.success ? parsed.data : undefined
     const product = branding?.productName
     const brand = typeof product === 'string' && product.trim() !== '' ? product : tenantName ?? 'Orbetra'
-    return { brand, branding, tenantName }
+    return { brand, branding, tenantName, whiteLabel: whiteLabelFromPlan(row.plan) }
   } catch {
-    return { brand: 'Orbetra', branding: undefined, tenantName: undefined }
+    return PLATFORM_BRAND
   }
 }
 
@@ -163,8 +176,10 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
       portalUrl: job.portalUrl,
       locale: job.locale,
     })
-    // no supportEmail override either: replies come to us, not to a reseller's support desk
-    await deps.transport.send(job.email, subject, text, html)
+    // No supportEmail override, and NO fromName either: replies come to us, not to a reseller's
+    // support desk, and an affiliate notice dressed in a reseller's name would both misattribute
+    // our own message and tell the partner which tenant it concerns (audit W-3 carve-out).
+    await deps.transport.send({ to: job.email, subject, text, html })
     return true
   }
   const tenantId = job.tenantId !== '' ? job.tenantId : await tenantIdForEmail(deps.pool, job.email)
@@ -175,12 +190,14 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   // like phishing. A real white-label TSP sets `productName`, and that must still win (their end
   // users must never see ours); absent one, this mail is from Orbetra.
   const { branding, tenantName } = resolved
-  // WHITE-LABEL means any branding at all, and then the platform name must not appear even as a
-  // last resort: a tenant with colours and a logo but no product name was getting `alt="Orbetra"`
-  // on the header image — which is what most clients SHOW, since remote images are blocked by
-  // default — a footer reading `Orbetra · help@reseller.lt`, and a plain-text part signed `— Orbetra`.
-  // Their own name is the correct fallback; ours is only correct when nothing is configured at all.
-  const whiteLabel = branding !== undefined && Object.keys(branding).length > 0
+  // WHITE-LABEL is the tenant's PLAN, not "have they filled the form yet" (audit W-4). The old test
+  // — any branding key at all — classified a brand-new reseller as one of OUR customers, so their
+  // very first customer's activation mail carried our wordmark, our footer and a plain-text part
+  // signed `— Orbetra`. Their own name is the correct fallback; ours is only correct for a tenant
+  // who is genuinely ours.
+  // Resolve the tri-state to a definite answer HERE, once: a plan we could not read falls back to
+  // the old "has any branding" heuristic, which is wrong less often than asserting the tenant is ours.
+  const whiteLabel = resolved.whiteLabel ?? (branding !== undefined && Object.keys(branding).length > 0)
   const ownName = (branding?.productName?.trim() ?? '') || (whiteLabel ? tenantName : undefined)
   const brand = job.kind === 'verify-email' ? ownName ?? 'Orbetra' : resolved.brand
   const shellName = job.kind === 'verify-email' ? ownName : tenantName
@@ -195,13 +212,23 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   const branded = branding === undefined ? undefined : absolutizeBrandAssets(branding, host !== null ? `https://${host}` : originOf(linkOf(job)))
   const { subject, text, html } =
     job.kind === 'signup-exists'
-      ? renderSignupExistsEmail({ loginUrl: on(job.loginUrl), resetUrl: on(job.resetUrl), locale: job.locale, brand, branding: branded, tenantName })
+      ? renderSignupExistsEmail({ loginUrl: on(job.loginUrl), resetUrl: on(job.resetUrl), locale: job.locale, brand, branding: branded, tenantName, whiteLabel })
       : job.kind === 'lapse'
-        ? renderLapseEmail({ billingUrl: job.billingUrl, daysLeft: job.daysLeft, locale: job.locale, brand, branding: branded, tenantName })
+        ? renderLapseEmail({ billingUrl: job.billingUrl, daysLeft: job.daysLeft, locale: job.locale, brand, branding: branded, tenantName, whiteLabel })
         : job.kind === 'verify-email'
-        ? renderVerifyEmail({ verifyUrl: on(job.verifyUrl), expiresHours: job.expiresHours, locale: job.locale, brand, branding: branded, tenantName: shellName })
-        : renderResetEmail({ resetUrl: on(job.resetUrl), expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding: branded, tenantName })
-  await deps.transport.send(job.email, subject, text, html, branding?.supportEmail)
+        ? renderVerifyEmail({ verifyUrl: on(job.verifyUrl), expiresHours: job.expiresHours, locale: job.locale, brand, branding: branded, tenantName: shellName, whiteLabel })
+        : renderResetEmail({ resetUrl: on(job.resetUrl), expiresMinutes: job.expiresMinutes, locale: job.locale, brand, branding: branded, tenantName, whiteLabel })
+  await deps.transport.send({
+    to: job.email,
+    subject,
+    text,
+    html,
+    replyTo: branding?.supportEmail,
+    // The inbox row is the first thing the recipient reads, and until now it said Orbetra on every
+    // reseller's mail. `ownName` and not `brand`: `brand` falls back to the platform name, which is
+    // right inside a message we own and wrong as the sender of a reseller's.
+    fromName: whiteLabel ? ownName : undefined,
+  })
   return true
 }
 

@@ -164,7 +164,7 @@ describe('formatReport', () => {
 // fake pool: every query returns no rows → runReport yields an empty result (orchestration test)
 const fakePool = { query: () => Promise.resolve({ rows: [], rowCount: 0 }) } as unknown as Pool
 const transport = (sent: { to: string; subject: string }[]): EmailTransport => ({
-  send: (to, subject) => { sent.push({ to, subject }); return Promise.resolve() },
+  send: ({ to, subject }) => { sent.push({ to, subject }); return Promise.resolve() },
 })
 // claimed set models the atomic claim: the first claim for an id wins, later claims lose
 function fakeDb(schedules: Schedule[], claimed: Set<string>): Db {
@@ -211,7 +211,7 @@ describe('runDueSchedules', () => {
   it('one bad recipient address does not suppress the others', async () => {
     const claimed = new Set<string>()
     const failing: EmailTransport = {
-      send: (to) => (to === 'bad@x.test' ? Promise.reject(new Error('550 no such user')) : Promise.resolve()),
+      send: ({ to }) => (to === 'bad@x.test' ? Promise.reject(new Error('550 no such user')) : Promise.resolve()),
     }
     const db = fakeDb([sched({ recipients: ['ok1@x.test', 'bad@x.test', 'ok2@x.test'] })], claimed)
     const r = await runDueSchedules({ db, pool: fakePool, transport: failing, now: () => NOW })

@@ -15,6 +15,8 @@ export interface VerifyEmailOpts {
   brand: string
   branding?: Branding | undefined
   tenantName?: string | undefined
+  /** the tenant PLAN says they are a reseller — decides whose identity the shell wears (audit W-4) */
+  whiteLabel?: boolean | undefined
 }
 
 interface Strings {
@@ -77,7 +79,7 @@ export function renderVerifyEmail(opts: VerifyEmailOpts): { subject: string; tex
     emailNote(s.ignore),
     emailFallbackLink(s.fallback, opts.verifyUrl, accent),
   ].join('')
-  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject: s.subject, bodyHtml, preheader: s.intro, locale: opts.locale })
+  const html = renderBrandedEmail(opts.branding ?? {}, opts.tenantName && opts.tenantName.trim() !== '' ? opts.tenantName : opts.brand, { subject: s.subject, bodyHtml, preheader: s.intro, locale: opts.locale }, { whiteLabel: opts.whiteLabel })
   const text = [s.heading, '', s.intro, '', `${s.button}: ${opts.verifyUrl}`, '', s.expires(opts.expiresHours), s.ignore, '', `— ${opts.brand}`].join('\n')
   return { subject: s.subject, text, html }
 }

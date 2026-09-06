@@ -45,7 +45,7 @@ describe('renderPartnerEmail', () => {
 
 describe('a partner mail is never dressed in a tenant’s brand', () => {
   it('short-circuits branding resolution — no tenant lookup, no white label, no support-email swap', async () => {
-    const sent: { to: string; subject: string; html: string; support?: string | undefined }[] = []
+    const sent: { to: string; subject: string; html: string; support?: string | undefined; fromName?: string | undefined }[] = []
     // If branding resolution ran, it would query this pool. A query is therefore a FAILURE: the
     // partner's address may also belong to a tenant user, and resolving it would both sign our
     // partner notice with a reseller's name and tell the partner which tenant that is.
@@ -55,8 +55,8 @@ describe('a partner mail is never dressed in a tenant’s brand', () => {
       },
     } as never
     const transport = {
-      send: (to: string, subject: string, _text: string, html: string, support?: string) => {
-        sent.push({ to, subject, html, support })
+      send: ({ to, subject, html = '', replyTo: support, fromName }: { to: string; subject: string; html?: string; replyTo?: string; fromName?: string }) => {
+        sent.push({ to, subject, html, support, fromName })
         return Promise.resolve()
       },
     }
@@ -75,6 +75,9 @@ describe('a partner mail is never dressed in a tenant’s brand', () => {
     expect(ok).toBe(true)
     expect(sent).toHaveLength(1)
     expect(sent[0]?.support).toBeUndefined() // replies come to us, not a reseller's support desk
+    // …and no sender NAME either (audit W-3 carve-out): an affiliate notice dressed in a reseller's
+    // brand would misattribute our own message and tell the partner which tenant it concerns.
+    expect(sent[0]?.fromName).toBeUndefined()
     expect(sent[0]?.html).toContain('Orbetra')
     expect(sent[0]?.subject).toContain('90,00 €')
   })
@@ -85,7 +88,7 @@ describe('a partner mail is never dressed in a tenant’s brand', () => {
     // staging queue for three days before an audit found it.
     let sent = 0
     const transport = {
-      send: (to: string) => {
+      send: ({ to }: { to: string }) => {
         sent += 1
         void to
         return Promise.resolve()
