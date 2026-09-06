@@ -338,8 +338,10 @@ export class TripEngine {
    * The ignition line of a record we cannot place. Closes an open trip; does nothing else.
    *
    * `noIgnition` profiles are deliberately excluded: that profile decides a stop from DISPLACEMENT,
-   * which is exactly the thing an invalid fix cannot tell us. A null ignition is no statement at
-   * all and leaves the timer untouched — the same carry-forward rule the IO state uses.
+   * which is exactly the thing an invalid fix cannot tell us. AVL 240 "Movement" would close that
+   * gap on the same grounds an accelerometer does not need the sky — deferred while the platform has
+   * one such device; see docs/roadmap/asset-tracker-trip-close.md. A null ignition is no statement
+   * at all and leaves the timer untouched — the same carry-forward rule the IO state uses.
    */
   private observeStopWithoutFix(r: NormalizedRecord, st: DeviceState, out: TripEvent[]): void {
     const trip = st.trip
