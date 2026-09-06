@@ -1,7 +1,6 @@
 import type { NormalizedRecord } from '@orbetra/shared'
 import type { Pool, PoolClient } from 'pg'
 
-import { motionRecords } from '../motion.js'
 import { DEFAULT_THRESHOLDS, TripEngine, type DeviceTripConfig } from './engine.js'
 import { clampInt4 } from './writer.js'
 
@@ -197,7 +196,7 @@ export async function recomputeTrips(
   // …with the same rejection hook. A late buffered flood carrying the bad reading lands HERE, not
   // on the stream, so a counter blind to the rebuild is blind to the common case.
   const engine = new TripEngine(thresholds, onOdometerRejected)
-  const events = engine.feed(motionRecords(records), () => config) // I5: invalid fixes filtered; per-device config (H2)
+  const events = engine.feed(records, () => config) // I5 applied INSIDE the engine (invalid fixes still carry ignition); per-device config (H2)
 
   // keep only CLOSED trips that START within the core span. A trailing open snapshot is
   // deliberately dropped — a trip still moving at readTo is either the live trip (owned by

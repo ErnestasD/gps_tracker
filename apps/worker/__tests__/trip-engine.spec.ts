@@ -480,3 +480,117 @@ describe('E04-1 trip state machine (§6.4)', () => {
     }
   })
 })
+
+/**
+ * A parked vehicle the tracker cannot PLACE (founder's FMC150, 2026-09-04).
+ *
+ * I5 says an invalid fix must never affect trip distance or state, and the engine used to honour it
+ * by dropping the record. But "the ignition is off" is not a claim about WHERE the vehicle is: a car
+ * parked under a roof reports satellites=0 with a perfectly good ignition line. Dropping those rows
+ * meant the engine saw ONE valid ignition-off sample, then an hour of unplaceable ones, then
+ * ignition back on — so the 180 s of sustained ignition-off a close needs could never accumulate,
+ * and not one trip that day was closed by this engine. They existed only because the persister
+ * force-closes a stale row when the next journey opens.
+ *
+ * Replayed against the real 926-record day, this turns 0 closed trips into the correct 3.
+ */
+describe('an unplaceable record can END a trip, and nothing else', () => {
+  const cfg = (): DeviceTripConfig => ({ thresholds: DEFAULT_THRESHOLDS, odometerSource: 'auto' })
+
+  it('closes on sustained ignition-off seen only through invalid fixes', () => {
+    const engine = new TripEngine()
+    const ev = engine.feed(
+      [
+        rec(0, { ign: true, speed: 50, lat: 54.0, lon: 25.0 }),
+        rec(120, { ign: true, speed: 50, lat: 54.02, lon: 25.0 }), // sustained ⇒ trip opens
+        rec(180, { ign: false, speed: 0, lat: 54.03, lon: 25.0 }), // parked, still placeable
+        rec(3600, { ign: false, speed: 0, fixValid: false }), // an hour later, no sky
+      ],
+      cfg,
+    )
+    const c = closes(ev)
+    expect(c).toHaveLength(1)
+    // ends WHEN the ignition went off, and WHERE the last valid fix put it — never at 0,0
+    expect(c[0]!.endTime.getTime()).toBe(T0 + 180 * 1000)
+    expect(c[0]!.endLat).toBeCloseTo(54.03, 5)
+    expect(c[0]!.endLon).toBeCloseTo(25.0, 5)
+  })
+
+  it('never OPENS a trip — an unplaceable vehicle has not gone anywhere', () => {
+    const engine = new TripEngine()
+    const ev = engine.feed(
+      [
+        rec(0, { ign: true, speed: 90, fixValid: false }),
+        rec(300, { ign: true, speed: 90, fixValid: false }),
+        rec(600, { ign: true, speed: 90, fixValid: false }),
+      ],
+      cfg,
+    )
+    expect(ev).toHaveLength(0)
+  })
+
+  it('never adds distance or speed — I5 on the measurement, not just the placement', () => {
+    const engine = new TripEngine()
+    const ev = engine.feed(
+      [
+        rec(0, { ign: true, speed: 50, lat: 54.0, lon: 25.0 }),
+        rec(120, { ign: true, speed: 50, lat: 54.02, lon: 25.0 }),
+        // a wild unplaceable reading in the middle: far away and much faster
+        rec(150, { ign: true, speed: 250, lat: 10.0, lon: 10.0, fixValid: false }),
+        rec(180, { ign: false, speed: 0, lat: 54.03, lon: 25.0 }),
+        rec(3600, { ign: false, speed: 0, fixValid: false }),
+      ],
+      cfg,
+    )
+    const c = closes(ev)[0]!
+    expect(c.maxSpeed).toBe(50) // not 250
+    // 54.00→54.03 is ~3.3 km; the excursion to 10,10 would be thousands
+    expect(c.distanceM).toBeLessThan(5_000)
+  })
+
+  it('ignition back on cancels a stop that was accruing unseen', () => {
+    const engine = new TripEngine()
+    const ev = engine.feed(
+      [
+        rec(0, { ign: true, speed: 50, lat: 54.0, lon: 25.0 }),
+        rec(120, { ign: true, speed: 50, lat: 54.02, lon: 25.0 }),
+        rec(180, { ign: false, speed: 0, lat: 54.03, lon: 25.0 }), // stop starts
+        rec(240, { ign: true, speed: 0, fixValid: false }), // …driver restarted; unplaceable
+        rec(300, { ign: false, speed: 0, fixValid: false }), // stop starts AGAIN, from here
+        rec(400, { ign: false, speed: 0, fixValid: false }), // only 100 s — not yet 180
+      ],
+      cfg,
+    )
+    expect(closes(ev)).toHaveLength(0)
+  })
+
+  it('a null ignition is no statement, and leaves the timer alone', () => {
+    const engine = new TripEngine()
+    const ev = engine.feed(
+      [
+        rec(0, { ign: true, speed: 50, lat: 54.0, lon: 25.0 }),
+        rec(120, { ign: true, speed: 50, lat: 54.02, lon: 25.0 }),
+        rec(180, { ign: false, speed: 0, lat: 54.03, lon: 25.0 }),
+        rec(240, { ign: null, speed: 0, fixValid: false }), // says nothing either way
+        rec(3600, { ign: false, speed: 0, fixValid: false }),
+      ],
+      cfg,
+    )
+    // the stop still runs from 180, so this closes exactly as it would have without that record
+    expect(closes(ev)[0]!.endTime.getTime()).toBe(T0 + 180 * 1000)
+  })
+
+  it('a noIgnition asset tracker is untouched — it decides stops by displacement, which needs a fix', () => {
+    const engine = new TripEngine()
+    const noIgn: DeviceTripConfig = { thresholds: { ...DEFAULT_THRESHOLDS, noIgnition: true }, odometerSource: 'auto' }
+    const ev = engine.feed(
+      [
+        rec(0, { speed: 50, lat: 54.0, lon: 25.0 }),
+        rec(120, { speed: 50, lat: 54.02, lon: 25.0 }),
+        rec(3600, { ign: false, speed: 0, fixValid: false }),
+      ],
+      () => noIgn,
+    )
+    expect(closes(ev)).toHaveLength(0)
+  })
+})
