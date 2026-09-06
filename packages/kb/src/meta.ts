@@ -265,6 +265,19 @@ export const KB_META: readonly KbArticleMeta[] = [
     },
   },
   {
+    slug: 'route-planner',
+    category: 'trips',
+    surfaces: { site: true, app: true },
+    screen: '/app/routing',
+    title: { en: 'Planning the order of a day\'s stops', lt: 'Dienos sustojimų eilės planavimas', pl: 'Planowanie kolejności przystanków', de: 'Die Reihenfolge der Stopps eines Tages planen' },
+    summary: {
+      en: 'Give the planner your stops and it returns the shortest visiting order over real roads — and the two things it deliberately does not do.',
+      lt: 'Nurodykite sustojimus, ir planuoklis grąžins trumpiausią aplankymo tvarką tikrais keliais – ir du dalykus, kurių jis sąmoningai nedaro.',
+      pl: 'Podaj przystanki, a planer zwróci najkrótszą kolejność objazdu po realnych drogach — oraz dwie rzeczy, których celowo nie robi.',
+      de: 'Geben Sie dem Planer Ihre Stopps, und er liefert die kürzeste Besuchsreihenfolge über echte Straßen — und zwei Dinge, die er bewusst nicht tut.',
+    },
+  },
+  {
     slug: 'geofences',
     category: 'alerts',
     surfaces: { site: true, app: true },
@@ -568,6 +581,20 @@ export const KB_META: readonly KbArticleMeta[] = [
       lt: 'Kaip pasiimti visą paskyros kopiją, atsakyti į duomenų prašymą ir negrįžtamai pašalinti tai, ko nebeturi būti.',
       pl: 'Pobranie pełnej kopii konta, odpowiedź na wniosek o dane i trwałe usunięcie tego, czego nie powinno już być.',
       de: 'Eine vollständige Kopie eines Kontos ziehen, eine Datenanfrage beantworten und dauerhaft entfernen, was nicht mehr existieren soll.',
+    },
+  },
+  {
+    slug: 'audit-log',
+    category: 'trust',
+    surfaces: { site: true, app: true },
+    audience: { adminOnly: true },
+    screen: '/app/audit',
+    title: { en: 'The audit log — who changed what', lt: 'Audito žurnalas — kas ką pakeitė', pl: 'Dziennik audytu — kto co zmienił', de: 'Das Audit-Log — wer was geändert hat' },
+    summary: {
+      en: 'Every change anyone made, with the values before and after. What it records, what it deliberately does not, and the questions it settles.',
+      lt: 'Kiekvienas kieno nors atliktas pakeitimas su reikšmėmis prieš ir po. Ką jis įrašo, ko sąmoningai neįrašo ir kokius klausimus išsprendžia.',
+      pl: 'Każda zmiana wprowadzona przez kogokolwiek, z wartościami przed i po. Co zapisuje, czego celowo nie zapisuje i jakie pytania rozstrzyga.',
+      de: 'Jede Änderung, die jemand gemacht hat, mit den Werten davor und danach. Was es festhält, was bewusst nicht, und welche Fragen es klärt.',
     },
   },
   {

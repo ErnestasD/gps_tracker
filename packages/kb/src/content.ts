@@ -20,6 +20,7 @@ import { shareALiveLink } from './articles/share-a-live-link.js'
 import { howTripsAreDetected } from './articles/how-trips-are-detected.js'
 import { distanceAndOdometer } from './articles/distance-and-odometer.js'
 import { playback } from './articles/playback.js'
+import { routePlanner } from './articles/route-planner.js'
 import { geofences } from './articles/geofences.js'
 import { rulesAndAlerts } from './articles/rules-and-alerts.js'
 import { eventTypes } from './articles/event-types.js'
@@ -43,6 +44,7 @@ import { webhooks } from './articles/webhooks.js'
 import { whereYourDataLives } from './articles/where-your-data-lives.js'
 import { trackingEmployeesLawfully } from './articles/tracking-employees-lawfully.js'
 import { exportAndEraseData } from './articles/export-and-erase-data.js'
+import { auditLog } from './articles/audit-log.js'
 import { deviceNotReporting } from './articles/device-not-reporting.js'
 import { mapWontLoad } from './articles/map-wont-load.js'
 import { notGettingEmails } from './articles/not-getting-emails.js'
@@ -78,6 +80,7 @@ export const KB_ARTICLES: readonly KbArticle[] = [
   howTripsAreDetected,
   distanceAndOdometer,
   playback,
+  routePlanner,
   geofences,
   rulesAndAlerts,
   eventTypes,
@@ -101,6 +104,7 @@ export const KB_ARTICLES: readonly KbArticle[] = [
   whereYourDataLives,
   trackingEmployeesLawfully,
   exportAndEraseData,
+  auditLog,
   deviceNotReporting,
   mapWontLoad,
   notGettingEmails,

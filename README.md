@@ -432,7 +432,7 @@ with a working language switcher; legal pages and the mock-admin demo stay Engli
 
 ## Knowledge base / "Learn" (ADR-042, `packages/kb`)
 
-Articles in **EN/LT/PL/DE** (46 at the time of writing; the home page interpolates the live count), from "what a GPS fix is" to the DNS records behind a custom
+Articles in **EN/LT/PL/DE** (48 at the time of writing; the home page interpolates the live count), from "what a GPS fix is" to the DNS records behind a custom
 domain — written for the person who bought a tracker, not for an engineer. One source, two
 renderers:
 
