@@ -76,6 +76,12 @@ services:
       # one variable whose absence turns enforcement off silently, so it is passed explicitly here
       # rather than inherited by luck.
       APP_BASE_URL: ${APP_BASE_URL:-}
+      # Ranks a tenant's OWN domain above their `<slug>.<domain>` one when we pick the host their
+      # mail points at. Absent ⇒ the old oldest-verified rule, under which the zero-setup subdomain
+      # is ALWAYS oldest (it is created already verified) and therefore wins forever — see the
+      # W-5 note in docs/audit/tsp-whitelabel-2026-09.md. Listed here because `--env-file` only
+      # feeds compose interpolation, so an unlisted variable never reaches the process.
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
       SITE_BASE_URL: ${SITE_BASE_URL:-}
       # OUR logo on mail that is not white-labelled (apps/site serves /email-logo.png). Absent ⇒ the
       # header stays the product name as text — a broken image is worse than none on the line that

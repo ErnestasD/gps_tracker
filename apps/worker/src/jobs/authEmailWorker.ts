@@ -30,6 +30,9 @@ export interface AuthEmailWorkerDeps {
    * it from them.
    */
   onFailed?: (kind: string) => void
+  /** PLATFORM_DOMAIN — ranks a tenant's OWN domain above their `<slug>.<platform>` one, so the
+   *  zero-setup subdomain stops being their permanent mail host (audit W-5). */
+  platformDomain?: string | undefined
 }
 
 /**
@@ -148,7 +151,7 @@ async function isSuppressed(pool: Pool, email: string): Promise<boolean> {
 }
 
 /** Render + send one auth email. Exported for unit testing without a live queue. */
-export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'transport'>, job: AuthEmailJob): Promise<boolean> {
+export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'transport' | 'platformDomain'>, job: AuthEmailJob): Promise<boolean> {
   if (deps.transport === undefined) {
     console.warn('auth-email skipped: email transport not configured') // no address in the log (PII)
     return false
@@ -203,7 +206,7 @@ export async function sendAuthEmail(deps: Pick<AuthEmailWorkerDeps, 'pool' | 'tr
   const shellName = job.kind === 'verify-email' ? ownName : tenantName
   // …and send them to THEIR host, not ours. The billing link is deliberately excluded: it is a
   // Stripe portal/checkout return that only makes sense on the platform host.
-  const host = await primaryDomain(deps.pool, tenantId)
+  const host = await primaryDomain(deps.pool, tenantId, deps.platformDomain)
   const on = (url: string): string => onTenantHost(url, host)
   // An UPLOADED logo is stored as a path, not a URL, because every page that renders it can resolve
   // it against its own host. A mail client cannot — it fetches the `src` verbatim — so the same

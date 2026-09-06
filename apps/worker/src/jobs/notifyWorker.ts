@@ -21,9 +21,9 @@ export interface NotifyWorkerDeps {
   onSent?: (channel: string) => void
   onFailed?: (channel: string) => void
   onSkipped?: (reason: string) => void
-  /** platform origin, used only to absolutize an UPLOADED brand logo for a tenant that has no
-   *  verified domain of their own. Absent ⇒ such a tenant's mail shows the product name as text. */
-  appBaseUrl?: string | undefined
+  /** PLATFORM_DOMAIN — used to rank a tenant's OWN domain above their `<slug>.<platform>` one when
+   *  choosing the host an uploaded logo is served from (audit W-5). Absent ⇒ oldest-verified wins. */
+  platformDomain?: string | undefined
 }
 
 /** Read a rule's channels from the DB (raw SQL — the worker has no repo layer). An absent or
@@ -48,7 +48,7 @@ export async function loadRuleChannels(pool: Pool, ruleId: string): Promise<Noti
  * tenant/account source), scoped by the device id — never a guessed scope. A lookup miss
  * (retired/unknown device) yields safe defaults so a notification is never dropped.
  */
-export async function resolveNotifyContext(pool: Pool, deviceId: string, appBaseUrl?: string): Promise<NotifyContext> {
+export async function resolveNotifyContext(pool: Pool, deviceId: string, platformDomain?: string): Promise<NotifyContext> {
   if (!/^\d+$/.test(deviceId)) return {}
   try {
     const res = await pool.query<{
@@ -83,7 +83,9 @@ export async function resolveNotifyContext(pool: Pool, deviceId: string, appBase
     // — pays no extra query on a path that runs once per notification. Same guard the manifest uses.
     const branding = parsedBranding === undefined || !hasBrandAsset(parsedBranding)
       ? parsedBranding
-      : absolutizeBrandAssets(parsedBranding, await brandAssetOrigin(pool, row.tenant_id, appBaseUrl))
+      // NO platformOrigin: an alert carries no URL, so the image src would be the only thing
+      // naming us (audit W-6). No tenant domain ⇒ no logo, and the header renders their name as text.
+      : absolutizeBrandAssets(parsedBranding, await brandAssetOrigin(pool, row.tenant_id, { platformDomain }))
     const product = branding?.productName
     const brand = typeof product === 'string' && product.trim() !== '' ? product : row.tenant_name ?? undefined
     return {
@@ -131,7 +133,7 @@ export async function runNotify(deps: NotifyWorkerDeps, job: Job<NotifyJob>): Pr
   const [tenantId, accountId, notifyCtx] = await Promise.all([
     deps.redis.hget('device:tenant', deviceId),
     deps.redis.hget('device:account', deviceId),
-    resolveNotifyContext(deps.pool, deviceId, deps.appBaseUrl),
+    resolveNotifyContext(deps.pool, deviceId, deps.platformDomain),
   ])
   const msg = notificationMessage(kind, deviceId, payload, new Date(at), notifyCtx)
   const sentKey = `notify:sent:${job.id ?? `${ruleId}:${deviceId}:${at}`}`
