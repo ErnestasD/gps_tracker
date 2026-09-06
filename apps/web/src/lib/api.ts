@@ -24,6 +24,30 @@ async function apiFetch(path: string, retried = false): Promise<Response> {
   return res
 }
 
+/**
+ * GET /v1/map/token — the short-lived Mapbox token for this session (ADR-030).
+ *
+ * `null` when the deployment does not mint (503), when Mapbox refuses, or when the session is
+ * gone: the caller keeps the token the bundle shipped with, which is what every deployment used
+ * before minting existed.
+ *
+ * Through `apiFetch` for one reason: the bearer. The first version of this called `fetch` directly
+ * with `credentials: 'include'`, and the API reads the `authorization` header ONLY — cookies carry
+ * the refresh token, not the access token. So it 401'd on every load, swallowed it as "not
+ * configured", and left the white-label domain with the black map the whole change was written to
+ * fix. It looked like it worked, because falling back is indistinguishable from never trying.
+ */
+export async function fetchMapToken(): Promise<{ token: string; expiresAt: string } | null> {
+  try {
+    const res = await apiFetch('/v1/map/token')
+    const body = (await res.json()) as { token?: unknown; expiresAt?: unknown }
+    if (typeof body.token !== 'string' || body.token === '') return null
+    return { token: body.token, expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : '' }
+  } catch {
+    return null
+  }
+}
+
 export async function getWsTicket(): Promise<string> {
   const res = await apiFetch('/v1/ws-ticket')
   const body = (await res.json()) as { ticket: string }

@@ -6,6 +6,7 @@
 import mapboxgl, { type MapOptions, type StyleSpecification } from 'mapbox-gl'
 
 // relative (not '@/') so the vitest suite can import this module without alias config
+import { fetchMapToken } from './api'
 import { getDisplayPrefs, getTheme, onPrefsChange, onThemeChange, type Theme } from './prefs'
 
 // pk. tokens are public by design — they ship in the client bundle (config, not a
@@ -31,22 +32,18 @@ let tokenExpiryMs = 0
  * fixes itself only if they happen to pan.
  *
  * Never throws and never leaves the token empty. A failure here means the map falls back to the
- * bundled token, which is exactly the behaviour every deployment had before minting existed.
+ * bundled token, which is exactly the behaviour every deployment had before minting existed —
+ * which is also why a silent bug here is invisible: falling back looks identical to never trying.
+ * `fetchMapToken` carries the bearer; without it the API answers 401 and this returns quietly.
  */
 export async function primeMapToken(): Promise<void> {
   if (Date.now() < tokenExpiryMs) return
-  try {
-    const res = await fetch('/v1/map/token', { credentials: 'include' })
-    if (!res.ok) return
-    const body = (await res.json()) as { token?: unknown; expiresAt?: unknown }
-    if (typeof body.token !== 'string' || body.token === '') return
-    mapboxgl.accessToken = body.token
-    const expiry = typeof body.expiresAt === 'string' ? Date.parse(body.expiresAt) : Number.NaN
-    // re-prime a little before it dies; a token that expires under a pan turns the map black
-    tokenExpiryMs = Number.isFinite(expiry) ? expiry - 5 * 60_000 : Date.now() + 30 * 60_000
-  } catch {
-    // offline, or the endpoint is not there — the bundled token stays in place
-  }
+  const minted = await fetchMapToken()
+  if (minted === null) return
+  mapboxgl.accessToken = minted.token
+  const expiry = Date.parse(minted.expiresAt)
+  // re-prime a little before it dies; a token that expires under a pan turns the map black
+  tokenExpiryMs = Number.isFinite(expiry) ? expiry - 5 * 60_000 : Date.now() + 30 * 60_000
 }
 
 /**
