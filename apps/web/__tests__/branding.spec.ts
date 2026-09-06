@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brandingSchema } from '@orbetra/shared'
 
-import { applyBranding } from '../src/lib/branding'
+import { applyBranding, beginBrandPreview } from '../src/lib/branding'
 
 // both sides of the merge: the colleague's `clean`/`iconFor` (favicon + brand assets, #273) and
 // this branch's `routingKind` — the union, not a choice
@@ -422,5 +422,55 @@ describe('applyBranding paints and UNPAINTS', () => {
     applyBranding({ primary: '#FF0000' }, true, false)
     applyBranding({ primary: 'red' }, true, false)
     expect(root.style.has('--accent')).toBe(false)
+  })
+})
+
+/**
+ * Who owns the document while somebody is editing.
+ *
+ * Clearing an unset colour made a previously harmless race harmful: a `/v1/branding` response
+ * landing a moment after a keystroke used to leave the preview's accent alone (it had no value for
+ * it), and now takes it off. The E03-5 smoke test caught the wiped preview; nobody would have,
+ * because it needs the fetch to land in the gap between two keystrokes.
+ */
+describe('a live preview outranks a background fetch', () => {
+  const root = { style: new Map<string, string>() }
+  const el = {
+    style: {
+      setProperty: (k: string, v: string) => void root.style.set(k, v),
+      removeProperty: (k: string) => void root.style.delete(k),
+    },
+  }
+
+  beforeEach(() => {
+    root.style.clear()
+    vi.stubGlobal('document', { documentElement: el, title: '', head: { querySelectorAll: () => [], appendChild: () => undefined }, createElement: () => ({ setAttribute: () => undefined, remove: () => undefined }) })
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined })
+    vi.stubGlobal('window', Object.assign(new EventTarget(), { location: { host: 'dash.example', pathname: '/app/branding' }, matchMedia: () => ({ matches: false }) }))
+  })
+
+  it('a host/session apply cannot wipe the colour being typed', () => {
+    const release = beginBrandPreview()
+    applyBranding({ primary: '#FF3B30' }, true, false) // the operator picks a colour
+    applyBranding({}, false, 'host') // …and the host resolves a moment later, with none
+    expect(root.style.get('--accent')).toBeDefined()
+    release()
+  })
+
+  it('…and once the page is closed, the background owns it again', () => {
+    const release = beginBrandPreview()
+    applyBranding({ primary: '#FF3B30' }, true, false)
+    release()
+    applyBranding({}, false, 'host')
+    expect(root.style.has('--accent')).toBe(false)
+  })
+
+  it('the preview itself still applies every keystroke', () => {
+    const release = beginBrandPreview()
+    applyBranding({ primary: '#FF3B30' }, true, false)
+    applyBranding({ primary: '#00A0FF' }, true, false)
+    expect(root.style.get('--accent')).not.toBe(root.style.get('--accent-2'))
+    expect(root.style.get('--accent')).toBeDefined()
+    release()
   })
 })

@@ -12,6 +12,7 @@ import {
   MAX_DOMAINS_PER_TENANT,
   addDomain,
   applyBranding,
+  beginBrandPreview,
   clean,
   dnsRecordsFor,
   docsLink,
@@ -81,6 +82,10 @@ export function BrandingPage() {
   useEffect(() => {
     applyBranding(form, true, false)
   }, [form])
+
+  // …and hold the document for as long as this page is open, so a `/v1/branding` response landing
+  // between keystrokes cannot clear the accent the operator just picked
+  useEffect(() => beginBrandPreview(), [])
 
   // unmount = leaving the page: revert any unsaved preview so a red draft accent (and the tab
   // title) doesn't leak app-wide for the rest of the session (a full reload was the only escape)
