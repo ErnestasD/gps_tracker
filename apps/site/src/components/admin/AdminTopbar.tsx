@@ -78,7 +78,13 @@ export function AdminTopbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   return (
     /* Mirrors apps/web AppShell's header EXACTLY — same height, gap, padding and surface. The demo
        exists to show the real product, so any drift here is the demo lying about it. */
-    <header className="admin-hairline-b flex h-14 shrink-0 items-center gap-2 bg-surface/80 px-4 backdrop-blur">
+    <header
+      className="admin-hairline-b flex h-14 shrink-0 items-center gap-2 px-4 backdrop-blur"
+      /* apps/web writes this as `bg-surface/80`, and that class does NOT exist here: the two apps
+         have different Tailwind palettes, so it produced no background at all and the demo header
+         was transparent. The admin tokens are what the two share. */
+      style={{ background: "color-mix(in oklab, var(--admin-surface) 80%, transparent)" }}
+    >
       <button
         onClick={onOpenSidebar}
         className="cursor-pointer p-1 md:hidden"
