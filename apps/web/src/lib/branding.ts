@@ -347,7 +347,30 @@ export function cachedBranding(): Branding | null {
  * logo means NO icon — the browser's blank default — because our purple mark beside their product
  * name is worse than no mark at all. On our own host the platform defaults are correct.
  */
+/**
+ * While the Branding page is open, the DOCUMENT belongs to its live preview.
+ *
+ * Two writers race there: the operator typing a colour, and the background fetches that resolve the
+ * host's and the tenant's saved brand. Before colours were CLEARED as well as set, a late fetch was
+ * harmless — it simply did not touch an accent it had no value for. Now it takes one off, so a
+ * `/v1/branding` response landing a moment after a keystroke wiped the preview the operator was
+ * looking at (caught by the E03-5 smoke test, not by a person, which is the only reason it did not
+ * ship). A user's keystroke outranks a fetch nobody asked for.
+ */
+let previewOwner = 0
+
+/** Take the document for a live preview; call the returned function on unmount. */
+export function beginBrandPreview(): () => void {
+  const token = ++previewOwner
+  return () => {
+    if (previewOwner === token) previewOwner = 0
+  }
+}
+
 export function applyBranding(branding: Branding, whiteLabel: boolean, remember: BrandSource | false = 'session'): void {
+  // A background apply (host or session) never overrides a preview in progress. The preview itself
+  // passes `false` and always wins, as does the cache replay, which runs before any page mounts.
+  if (previewOwner !== 0 && remember !== false) return
   appliedBranding = branding
   appliedWhiteLabel = whiteLabel
   // `false` is the Branding page's per-keystroke live preview and the cache replay itself — a draft
