@@ -205,6 +205,11 @@ async function main(): Promise<void> {
     name: 'Orbetra',
     ...(process.env['EMAIL_LOGO_URL'] ? { logoUrl: process.env['EMAIL_LOGO_URL'] } : {}),
   })
+  // PLATFORM_DOMAIN ranks a tenant's OWN domain above their `<slug>.<platform>` one when we pick the
+  // host their mail points at (audit W-5). It must be listed in the worker's compose environment —
+  // `--env-file` only feeds compose interpolation — or every tenant silently keeps the old
+  // oldest-verified rule, which is the exact shape of bug this repo has paid for before.
+  const platformDomain = process.env['PLATFORM_DOMAIN']?.trim()
   const emailTransport = buildEmailTransport(process.env, undefined, suppressionLookup(db.suppressions))
   const drivers = driversFromEnv(process.env, { emailTransport, subscriptions: db.pushSubscriptions })
   const notifyWorker = startNotifyWorker({
@@ -215,7 +220,7 @@ async function main(): Promise<void> {
     onSent: (ch) => prom.notificationSent.inc({ channel: ch }),
     onFailed: (ch) => prom.notificationFailed.inc({ channel: ch }),
     onSkipped: (reason) => prom.notificationSkipped.inc({ reason }),
-    ...(process.env['APP_BASE_URL']?.trim() ? { appBaseUrl: process.env['APP_BASE_URL'].trim() } : {}),
+    ...(platformDomain ? { platformDomain } : {}),
   })
   // ADR-031: transactional auth emails (password-reset) — the API enqueues, the worker renders the
   // tenant-branded message and sends it via the SAME transport. Env-gated: no transport ⇒ no-op.
@@ -223,6 +228,7 @@ async function main(): Promise<void> {
     connection: recomputeConn,
     pool,
     transport: emailTransport,
+    ...(platformDomain ? { platformDomain } : {}),
     // `auth_email` joins retention / scheduled_reports / stripe_usage / lapse_sweep on the one
     // alert that watches background jobs. Without it, a permanently failing activation mail was
     // invisible — and one dead-lettered job proved it by sitting unnoticed for three days.
@@ -369,7 +375,7 @@ async function main(): Promise<void> {
   // email is configured (no transport ⇒ nothing to send); reuses the same SES SMTP as notifications.
   const scheduledReportQueue = emailTransport !== undefined ? createScheduledReportQueue(recomputeConn) : null
   const scheduledReportWorker = emailTransport !== undefined
-    ? startScheduledReportWorker({ connection: recomputeConn, db, pool, transport: emailTransport, ...(process.env['APP_BASE_URL']?.trim() ? { appBaseUrl: process.env['APP_BASE_URL'].trim() } : {}), onRun: (r) => prom.scheduledReportsSent.inc(r.emailed), onFailed: () => prom.jobFailed.inc({ job: 'scheduled_reports' }) })
+    ? startScheduledReportWorker({ connection: recomputeConn, db, pool, transport: emailTransport, ...(platformDomain ? { platformDomain } : {}), onRun: (r) => prom.scheduledReportsSent.inc(r.emailed), onFailed: () => prom.jobFailed.inc({ job: 'scheduled_reports' }) })
     : null
   if (scheduledReportQueue !== null) await scheduleScheduledReports(scheduledReportQueue)
   // Data retention: daily prune of the webhook delivery-log (operational, grows unbounded)

@@ -164,7 +164,7 @@ const DEFAULT_RECIPIENT: RecipientContext = { brand: '', branding: undefined, te
 /** One lookup for both. Any failure defaults gracefully — a missing brand must never suppress report
  *  delivery, a malformed branding jsonb simply falls back to the name, and an unrecognised unit or
  *  locale renders metric English rather than throwing inside the cron. */
-async function resolveRecipient(pool: Pool, tenantId: string, accountId: string, appBaseUrl?: string): Promise<RecipientContext> {
+async function resolveRecipient(pool: Pool, tenantId: string, accountId: string, platformDomain?: string): Promise<RecipientContext> {
   try {
     const res = await pool.query<{ name: string; branding: unknown; plan: string | null; locale: string | null; unitSpeed: string | null; unitDistance: string | null; unitVolume: string | null }>(
       `SELECT t.name, t.branding, t.plan, a.locale, a."unitSpeed", a."unitDistance", a."unitVolume"
@@ -181,7 +181,9 @@ async function resolveRecipient(pool: Pool, tenantId: string, accountId: string,
     const branding = !parsed?.success
       ? undefined
       : hasBrandAsset(parsed.data)
-        ? absolutizeBrandAssets(parsed.data, await brandAssetOrigin(pool, tenantId, appBaseUrl))
+        // NO platformOrigin: a scheduled report carries no URL, and its recipients are a free-text
+        // address list, so a recipient may have no other sight of our host at all (audit W-6).
+        ? absolutizeBrandAssets(parsed.data, await brandAssetOrigin(pool, tenantId, { platformDomain }))
         : parsed.data
     const product = branding?.productName
     const brand = typeof product === 'string' && product.trim() !== '' ? product : tenantName ?? ''
@@ -201,9 +203,9 @@ export interface ScheduledReporterDeps {
   pool: Pool
   transport: EmailTransport // captures MAIL_FROM + the SES config-set header internally
   now?: () => number
-  /** platform origin, used only to absolutize an UPLOADED brand logo for a tenant with no verified
-   *  domain of their own. Absent ⇒ such a tenant's report shows the product name as text. */
-  appBaseUrl?: string | undefined
+  /** PLATFORM_DOMAIN — ranks a tenant's OWN domain above their `<slug>.<platform>` one when choosing
+   *  the host an uploaded logo is served from (audit W-5). Absent ⇒ oldest-verified wins. */
+  platformDomain?: string | undefined
 }
 
 /** Run all DUE schedules once (the hourly cron body). Returns counts for observability. */
@@ -221,7 +223,7 @@ export async function runDueSchedules(deps: ScheduledReporterDeps): Promise<{ du
     try {
       const window = reportWindow(s, nowMs, s.lastRunAt ? s.lastRunAt.getTime() : null)
       const result = await runReport(deps.pool, s.reportType as ReportType, { tenantId: s.tenantId, accountId: s.accountId }, { ...window, timezone: s.timezone })
-      const { brand, branding, tenantName, locale, units, whiteLabel } = await resolveRecipient(deps.pool, s.tenantId, s.accountId, deps.appBaseUrl)
+      const { brand, branding, tenantName, locale, units, whiteLabel } = await resolveRecipient(deps.pool, s.tenantId, s.accountId, deps.platformDomain)
       const { subject, text, html } = formatReport(result, window, { timezone: s.timezone, brand, branding, tenantName, locale, units, whiteLabel })
       // each recipient independently: one bad address must NOT suppress the others
       for (const to of s.recipients) {
