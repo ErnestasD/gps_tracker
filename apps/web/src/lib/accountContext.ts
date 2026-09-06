@@ -24,21 +24,60 @@ import { getCurrentUser } from './auth'
 const KEY = 'orbetra.accountContext'
 const EVENT = 'orbetra:account-context'
 
+/**
+ * The stored context carries WHOSE it is, and is ignored for anybody else.
+ *
+ * It used to be a bare accountId, and localStorage outlives a session: log out while acting for
+ * one customer, log in as someone else, and the new session opened still filtered to the previous
+ * customer's account — the founder saw the prior account's vehicle on the map for a moment
+ * (2026-09-06). Clearing it on the logout button alone would not be enough, because a session can
+ * also end by expiry, by `clearSession()` on a failed refresh, or in another tab.
+ *
+ * Binding it to the user id closes every one of those paths at the READ, and keeps the property
+ * that makes the context useful: it survives a refresh for the person who chose it.
+ */
+interface StoredContext {
+  /** the user who chose this context */
+  u: string
+  /** the accountId being acted for */
+  a: string
+}
+
 /** '' = all accounts (overview). Otherwise the accountId being acted for. */
 export function getAccountContext(): string {
+  const me = getCurrentUser()
+  if (me === null) return ''
   try {
-    return localStorage.getItem(KEY) ?? ''
+    const raw = localStorage.getItem(KEY)
+    if (raw === null) return ''
+    // a bare string is the pre-2026-09-06 shape: it names no owner, so it belongs to nobody
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return ''
+    const { u, a } = parsed as Partial<StoredContext>
+    return typeof u === 'string' && typeof a === 'string' && u === me.id ? a : ''
   } catch {
     return ''
   }
 }
 
 export function setAccountContext(accountId: string): void {
+  const me = getCurrentUser()
   try {
-    if (accountId === '') localStorage.removeItem(KEY)
-    else localStorage.setItem(KEY, accountId)
+    if (accountId === '' || me === null) localStorage.removeItem(KEY)
+    else localStorage.setItem(KEY, JSON.stringify({ u: me.id, a: accountId } satisfies StoredContext))
   } catch {
     /* storage disabled — context still applies for this render via the event */
+  }
+  window.dispatchEvent(new Event(EVENT))
+}
+
+/** Drop the stored context outright (logout). The read is already owner-checked; this keeps another
+ *  tenant's accountId from simply SITTING in a shared browser's storage after someone signs out. */
+export function clearAccountContext(): void {
+  try {
+    localStorage.removeItem(KEY)
+  } catch {
+    /* storage disabled — nothing to clear */
   }
   window.dispatchEvent(new Event(EVENT))
 }

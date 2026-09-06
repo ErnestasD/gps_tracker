@@ -260,3 +260,41 @@ describe('vehicle before device', () => {
     expect(telemetryRows({ io_9999: 1 })[0]?.section).toBe('device')
   })
 })
+
+/**
+ * The label and the value must name the SAME unit (founder, 2026-09-06: "matmenys visur turi but
+ * logiski"). "Total Mileage (m)" beside "362852.00 km" was the label printing the wiki's storage
+ * cell while the value printed the reader's unit — two answers to one question, in one row.
+ */
+describe('display units', () => {
+  const row = (name: string, v: number, units?: string, multiplier?: number) =>
+    telemetryRows({ [name]: v }, { [name]: { name, ...(units !== undefined ? { units } : {}), ...(multiplier !== undefined ? { multiplier } : {}) } })[0]
+
+  it('an odometer reads in kilometres, and says so in both places', () => {
+    const r = row('Total Mileage', 362852000, 'm')
+    expect(r?.value).toBe('362852.00 km')
+    expect(r?.label).toBe('Total Mileage (km)')
+  })
+
+  it('an hour-meter reported in minutes reads in hours', () => {
+    // AVL 103 is named "Engine Total Hours" and its wiki unit is MINUTES. 217 was shown raw, then
+    // as "217 min"; an hour-meter is read in decimal hours, and this one only grows.
+    const r = row('Engine Total Hours (counted)', 217, 'min')
+    expect(r?.value).toBe('3.6 h')
+    expect(r?.label).toBe('Engine Total Hours (counted) (h)')
+  })
+
+  it('a unit that IS the reader unit passes straight through', () => {
+    expect(row('Fuel Level', 101, 'l', 0.1)?.value).toBe('10.1 l')
+    expect(row('Fuel Level', 101, 'l', 0.1)?.label).toBe('Fuel Level (l)')
+    expect(row('Engine Coolant Temperature', 870, '°C', 0.1)?.value).toBe('87.0 °C')
+  })
+
+  it('a bitfield reads as bits, not as a decimal nobody can parse', () => {
+    // AVL 132 arrived as 36028797018963969. The name is Teltonika's own statement that it is a
+    // bitfield; what each BIT means is documented on the adapter pages, not here, so nothing is
+    // decoded — only the base is honest.
+    expect(row('Security State Flags', 1048576)?.value).toBe('0x100000')
+    expect(row('Control State Flags', 1048576)?.label).toBe('Control State Flags')
+  })
+})

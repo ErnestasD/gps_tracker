@@ -246,6 +246,72 @@ let appliedWhiteLabel = false
 let themeSubscribed = false
 
 /**
+ * The brand this browser last SAW on this host, replayed before the first paint.
+ *
+ * Both brand sources are fetches — `/v1/branding` by Host, and `/v1/…/branding` once authenticated —
+ * so until one lands the page paints the CSS defaults, which are OURS. A tenant admin who saved
+ * their colours and hit refresh watched the Orbetra accent and logo appear and then swap to theirs
+ * (founder, 2026-09-06). On a reseller's own domain that is our brand on their screen, briefly, on
+ * every single load.
+ *
+ * Same shape as the theme, which has always been applied from storage before render for exactly
+ * this reason (main.tsx). The cache is only ever a HEAD START: whatever the fetch says still wins a
+ * moment later, so a brand changed elsewhere self-corrects on the next load.
+ *
+ * Keyed by HOST. A reseller's domain and ours are different brands, and a shared browser must never
+ * paint one tenant's colours onto another's login page.
+ */
+const BRAND_CACHE_KEY = 'orbetra.brand'
+
+interface CachedBrand {
+  h: string
+  w: boolean
+  b: Branding
+}
+
+function rememberBrand(branding: Branding, whiteLabel: boolean): void {
+  try {
+    const entry: CachedBrand = { h: window.location.host, w: whiteLabel, b: branding }
+    localStorage.setItem(BRAND_CACHE_KEY, JSON.stringify(entry))
+  } catch {
+    /* storage disabled, or no window (node unit tests) — the fetch still applies the brand */
+  }
+}
+
+/** The cached entry for THIS host, or null. Any missing, malformed or foreign-host value is null. */
+function readBrandCache(): CachedBrand | null {
+  try {
+    const raw = localStorage.getItem(BRAND_CACHE_KEY)
+    if (raw === null) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const { h, w, b } = parsed as Partial<CachedBrand>
+    if (h !== window.location.host || typeof w !== 'boolean' || typeof b !== 'object' || b === null) return null
+    return { h, w, b }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Paint the cached brand for THIS host, if there is one. Call once at startup, before render.
+ * Silent and total: no cache means the page renders exactly as it did before.
+ */
+export function primeBrandingFromCache(): void {
+  const c = readBrandCache()
+  if (c !== null) applyBranding(c.b, c.w)
+}
+
+/**
+ * The cached brand as a starting VALUE, for the parts of the shell that are React state rather than
+ * CSS custom properties — the sidebar logo and product name. `primeBrandingFromCache` covers the
+ * accents, the title and the favicon; without this the mark and the name still flashed ours.
+ */
+export function cachedBranding(): Branding | null {
+  return readBrandCache()?.b ?? null
+}
+
+/**
  * Apply a resolved brand to the document.
  *
  * `whiteLabel` decides what happens to the parts a tenant left blank, and getting that wrong is how
@@ -253,9 +319,12 @@ let themeSubscribed = false
  * logo means NO icon — the browser's blank default — because our purple mark beside their product
  * name is worse than no mark at all. On our own host the platform defaults are correct.
  */
-export function applyBranding(branding: Branding, whiteLabel: boolean): void {
+export function applyBranding(branding: Branding, whiteLabel: boolean, persist = true): void {
   appliedBranding = branding
   appliedWhiteLabel = whiteLabel
+  // `persist: false` is the Branding page's per-keystroke live preview — a draft nobody saved must
+  // never become what the next page load paints.
+  if (persist) rememberBrand(branding, whiteLabel)
   if (!themeSubscribed) {
     themeSubscribed = true
     onThemeChange(() => {
