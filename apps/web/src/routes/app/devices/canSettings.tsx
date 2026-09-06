@@ -2,7 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { AdminSwitch } from '@/components/admin/AdminKit'
+import { HelpLink } from '@/components/kb/HelpLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -100,7 +103,10 @@ export function CanSettingsCard({ device, canWrite }: { device: Device; canWrite
   return (
     <Card data-testid="can-settings-card">
       <CardHeader>
-        <CardTitle className="text-base">{t('devices.canSettings.title', { name: device.name })}</CardTitle>
+        <CardTitle className="text-base flex items-center gap-1.5">
+          {t('devices.canSettings.title', { name: device.name })}
+          <HelpLink slug={KB.canAndObd} />
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {q.isLoading && <p className="text-sm text-muted" data-testid="can-settings-loading">{t('admin.loading')}</p>}

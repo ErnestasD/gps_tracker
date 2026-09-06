@@ -20,6 +20,9 @@ apps/site       public marketing SPA (Vite, static; ADR-022/W9-S1) — orbetra.c
 packages/codec  parser wrapper + AVL dictionaries (JSON, with source_url) + golden fixtures.
 packages/db     Prisma (relational) + raw SQL layer for positions (batched INSERT ON CONFLICT — NOT COPY) + SCOPED REPOSITORIES (the only DB API).
 packages/shared zod schemas — the single source of types for api/web/worker; also the branded email shell.
+packages/kb    knowledge base ("Learn") — articles in EN/LT/PL/DE, type-enforced, zero deps (ADR-042).
+                TWO entry points: root = types + KB_META + gates (cheap, safe anywhere);
+                `/content` = the article bodies, imported ONLY by the two lazy help routes.
 packages/registry Redis device-registry contract (registry:imei, device:tenant/account/config, per-tenant index).
                 ONE owner, two writers: device CRUD (api) and billing suspension (worker).
 tools/simulator device emulator (scenarios: live-drive, buffered-flood, panic, invalid-fix, corrupt-crc, oversize, slow-loris).
@@ -46,7 +49,14 @@ tools/replay    real-log replayer for load tests.
 11. **Migrations are append-only.** New numbered file; never rewrite history.
 12. **Secrets never in code or fixtures.** Real IMEIs in captures are redacted by `tools/redact` before commit.
 13. **Geo stack (amended 2026-07-17, ADR-030).** Maps = **Mapbox GL JS** with the founder's `pk.` public token via env `VITE_MAPBOX_TOKEN` (never hardcoded and NEVER committed — GitHub push protection blocks Mapbox tokens; it lives in the untracked `apps/web/.env`, see the README env table; URL-restrict the token in the Mapbox dashboard). Styles are theme-reactive via `VITE_MAPBOX_STYLE_DARK`/`VITE_MAPBOX_STYLE_LIGHT` (defaults `mapbox://styles/mapbox/dark-v11`/`light-v11`). Mapbox attribution stays visible on every map view (TOS). Reverse geocoding remains self-hosted Photon (`GEOCODER_URL`); routing remains self-hosted OSRM (ADR-029). Never introduce Google Maps or any OTHER paid geo API without an ADR. History: the original free-stack mandate (MapLibre + OpenFreeMap) was replaced by founder decision; Mapbox free tier is 50k loads/mo — monitor usage.
-14. **Scope discipline:** implement the story's AC, nothing more. Features not in PROJECT_PLAN §4 V1-MUST require human approval first (say so, don't build "while you're there").
+14. **Knowledge base (ADR-042).** Articles live in `packages/kb`, in ALL FOUR languages or not at
+    all. Prose says `{product}`, never a product name; links use `kb:` / `app:` / `site:`, never a
+    bare URL. An article marked `surfaces.app` is rendered inside a RESELLER's dashboard — naming
+    the platform there is a white-label leak and the package's own test fails on it. Content that
+    must name us (plans, invoices, the lapse ladder) is marked `audience.platformOnly`. Contextual
+    help links import from the package ROOT only; `@orbetra/kb/content` belongs to the lazy help
+    routes and nowhere else.
+15. **Scope discipline:** implement the story's AC, nothing more. Features not in PROJECT_PLAN §4 V1-MUST require human approval first (say so, don't build "while you're there").
 
 ## Workflow per story
 1. Read epic plan + story AC. If AC is ambiguous, ask BEFORE coding — one clarifying question beats a wrong afternoon.

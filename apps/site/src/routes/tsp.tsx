@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { KB } from "@orbetra/kb";
+import { LearnLink } from "@/components/site/LearnLink";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { FAQAccordion } from "@/components/site/FAQAccordion";
 import { WhiteLabelDiagram } from "@/components/site/WhiteLabelDiagram";
@@ -46,6 +48,10 @@ function TspPage() {
         <p className="mt-6 text-lg text-muted-foreground max-w-2xl">
           {t("tsp.sub")}
         </p>
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <LearnLink slug={KB.whiteLabelExplained} />
+          <LearnLink slug={KB.customerAccounts} />
+        </div>
         <div className="mt-8 flex flex-wrap gap-3">
           <a href="#tsp-pricing" className="pill-primary hover:pill-primary-hover">
             {t("tsp.cta1")} <ArrowRight className="h-4 w-4" />

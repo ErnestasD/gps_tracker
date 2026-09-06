@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { KB } from "@orbetra/kb";
 import { AdminButton, AdminInput, AdminLabel, Badge, EmptyState, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -83,7 +84,7 @@ function ApiKeysPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t("apiKeys.title")} description={t("apiKeys.desc")}>
+      <PageHeader className="mb-0" title={t("apiKeys.title")} description={t("apiKeys.desc")} help={KB.apiQuickstart}>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton>

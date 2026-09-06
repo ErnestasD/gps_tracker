@@ -97,7 +97,9 @@
     "accounts": "Paskyros",
     "accountContext": "Kliento kontekstas",
     "allAccounts": "Visos paskyros",
-    "overviewNotice": "Peržiūros režimas: matote visų klientų duomenis. Redagavimui viršuje pasirinkite klientą."
+    "overviewNotice": "Peržiūros režimas: matote visų klientų duomenis. Redagavimui viršuje pasirinkite klientą.",
+    "support": "Pagalba",
+    "help": "Žinių bazė"
   },
   "routing": {
     "title": "Maršrutų planuoklė",
@@ -2019,5 +2021,25 @@
     "direct_25": "Direct 25",
     "direct_50": "Direct 50",
     "direct_100": "Direct 100"
+  },
+  "learn": {
+    "title": "Pagalba",
+    "desc": "Vadovai apie kiekvieną produkto dalį, paprastais žodžiais.",
+    "searchPlaceholder": "Ieškoti pagalboje…",
+    "searchAria": "Ieškoti pagalbos straipsniuose",
+    "clear": "Išvalyti paiešką",
+    "results": "Rasta: {{count}}",
+    "noResults": "Nieko neatitinka. Pabandykite trumpesnį žodį arba naršykite temas žemiau.",
+    "startHere": "Pradėkite nuo šių",
+    "onThisPage": "Šiame puslapyje",
+    "inThisSection": "Daugiau šioje skiltyje",
+    "prev": "Ankstesnis",
+    "next": "Kitas",
+    "backToIndex": "Visi straipsniai",
+    "notFound": "Tokio straipsnio nėra",
+    "notFoundBody": "Galbūt jis pervadintas arba netaikomas šiai paskyrai. Viskas, kas jums prieinama, yra pagalbos sąraše.",
+    "openHelp": "Atverti pagalbą: {{title}}",
+    "readAbout": "Skaityti apie: {{title}}",
+    "neutralProduct": "platforma"
   }
 }

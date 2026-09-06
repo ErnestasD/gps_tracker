@@ -1,8 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUpRight, Check, ChevronRight, Copy, Info, Loader2 } from 'lucide-react'
+import { Check, ChevronRight, Copy, Info, Loader2 } from 'lucide-react'
 
+import { KB } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { AdminButton, AdminInput, AdminLabel, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -15,7 +18,6 @@ import {
   beginBrandPreview,
   clean,
   dnsRecordsFor,
-  docsLink,
   emitBrandingChange,
   getDomainDns,
   getBranding,
@@ -136,7 +138,7 @@ export function BrandingPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t('branding.title')} description={t('branding.desc')} />
+      <PageHeader className="mb-0" title={t('branding.title')} description={t('branding.desc')} help={KB.branding} />
 
       <div className="admin-card p-5">
         <h3 className="mb-4 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
@@ -301,7 +303,6 @@ export function BrandingPage() {
                     verified={d.verified}
                     dnsTarget={current.data?.dnsTarget ?? null}
                     dnsAddresses={current.data?.dnsAddresses ?? []}
-                    platformDomain={current.data?.platformDomain ?? null}
                     onVerified={() => void qc.invalidateQueries({ queryKey: ['domains'] })}
                   />
                 </li>
@@ -470,7 +471,7 @@ function AddDomain({ count, platformDomain, onAdded }: { count: number; platform
  * pointing the domain at us are two records, and a page that mentions them a screen apart teaches
  * a one-record setup.
  */
-function DnsRecords({ id, domain, txtToken, verified, dnsTarget, dnsAddresses, platformDomain, onVerified }: { id: string; domain: string; txtToken: string; verified: boolean; dnsTarget: string | null; dnsAddresses: string[]; platformDomain: string | null; onVerified: () => void }) {
+function DnsRecords({ id, domain, txtToken, verified, dnsTarget, dnsAddresses, onVerified }: { id: string; domain: string; txtToken: string; verified: boolean; dnsTarget: string | null; dnsAddresses: string[]; onVerified: () => void }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState<string | null>(null)
   /** A finished domain folds away; one still being set up is the thing the page is FOR. */
@@ -560,7 +561,10 @@ function DnsRecords({ id, domain, txtToken, verified, dnsTarget, dnsAddresses, p
         )}
         {/* Every general explanation lives here rather than under the table. A setup panel that
             ends in five paragraphs reads as an apology for itself; the reader wants the values. */}
-        <Hint label={t('branding.dnsHelpTitle')} body={t('branding.dnsHelp', { domain })} testId={`dns-help-${domain}`} />
+        <span className="inline-flex items-center gap-1">
+          <Hint label={t('branding.dnsHelpTitle')} body={t('branding.dnsHelp', { domain })} testId={`dns-help-${domain}`} />
+          <HelpLink slug={KB.customDomain} anchor="dns-dot" testId={`dns-doc-help-${domain}`} />
+        </span>
       </div>
       {!open ? null : (
         <>
@@ -583,7 +587,10 @@ function DnsRecords({ id, domain, txtToken, verified, dnsTarget, dnsAddresses, p
                   <span className="inline-flex items-center gap-1">
                     <span className="mono font-semibold" style={{ color: 'var(--admin-ink)' }}>{r.type}</span>
                     <Hint label={t('branding.dnsWhatIs')} body={t(r.hintKey)} testId={`dns-hint-${r.type}`} />
-                    <DocLink href={docsLink(platformDomain, r.docAnchor)} label={t('branding.dnsLearn')} testId={`dns-doc-${r.type}`} />
+                    {/* the same explanation at length — IN the product, on this deployment's own
+                        domain. It used to be an outbound link to the public documentation site,
+                        which on a reseller's host is our brand one click from their operator. */}
+                    <HelpLink slug={KB.customDomain} anchor={r.docAnchor} testId={`dns-doc-${r.type}`} />
                   </span>
                 </td>
                 <td className="pr-3 align-top">
@@ -640,25 +647,6 @@ function DnsRecords({ id, domain, txtToken, verified, dnsTarget, dnsAddresses, p
 
 /** How often the panel looks at DNS while a domain is still pending. A provider takes minutes. */
 const DNS_POLL_MS = 20_000
-
-/** The ↗ beside a record: the same explanation, at length, on the public docs page. */
-function DocLink({ href, label, testId }: { href: string | null; label: string; testId: string }) {
-  if (href === null) return null
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      aria-label={label}
-      title={label}
-      data-testid={testId}
-      className="grid h-4 w-4 shrink-0 place-items-center rounded transition-colors hover:bg-[var(--admin-hairline)]"
-      style={{ color: 'var(--admin-ink-soft)' }}
-    >
-      <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
-    </a>
-  )
-}
 
 /** TXT reads the ownership check; anything else is the routing check. */
 function statusOf(dns: DomainDns | undefined, type: DnsRecord['type']): boolean {

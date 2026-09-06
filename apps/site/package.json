@@ -15,6 +15,7 @@
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.10",
     "@number-flow/react": "^0.6.1",
+    "@orbetra/kb": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-tabs": "^1.1.13",

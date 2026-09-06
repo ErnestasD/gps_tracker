@@ -97,7 +97,9 @@
     "accounts": "Konta",
     "accountContext": "Kontekst klienta",
     "allAccounts": "Wszystkie konta",
-    "overviewNotice": "Tryb podglądu: widzisz dane wszystkich klientów. Aby edytować, wybierz klienta u góry."
+    "overviewNotice": "Tryb podglądu: widzisz dane wszystkich klientów. Aby edytować, wybierz klienta u góry.",
+    "support": "Wsparcie",
+    "help": "Pomoc"
   },
   "routing": {
     "title": "Planer tras",
@@ -2029,5 +2031,25 @@
     "direct_25": "Direct 25",
     "direct_50": "Direct 50",
     "direct_100": "Direct 100"
+  },
+  "learn": {
+    "title": "Pomoc",
+    "desc": "Poradniki do każdej części produktu, prostym językiem.",
+    "searchPlaceholder": "Szukaj w pomocy…",
+    "searchAria": "Szukaj w artykułach pomocy",
+    "clear": "Wyczyść wyszukiwanie",
+    "results": "Znaleziono: {{count}}",
+    "noResults": "Nic nie pasuje. Spróbuj krótszego słowa albo przejrzyj tematy poniżej.",
+    "startHere": "Zacznij tutaj",
+    "onThisPage": "Na tej stronie",
+    "inThisSection": "Więcej w tej sekcji",
+    "prev": "Poprzedni",
+    "next": "Następny",
+    "backToIndex": "Wszystkie artykuły",
+    "notFound": "Taki artykuł nie istnieje",
+    "notFoundBody": "Mógł zostać przemianowany albo nie dotyczy tego konta. Wszystko, co jest dla Ciebie dostępne, znajdziesz w spisie pomocy.",
+    "openHelp": "Otwórz pomoc: {{title}}",
+    "readAbout": "Przeczytaj o: {{title}}",
+    "neutralProduct": "platforma"
   }
 }

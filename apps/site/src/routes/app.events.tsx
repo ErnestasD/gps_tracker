@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { KB } from "@orbetra/kb";
 import { DEVICES, demoDetail, deviceName, localizeEvents, type DemoEvent, type Kind } from "@/lib/demo-events";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -94,7 +95,7 @@ function EventsPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader title={t("events.title")} description={t("events.desc")} className="mb-0">
+      <PageHeader title={t("events.title")} description={t("events.desc")} help={KB.eventTypes} className="mb-0">
         <FilterLabel label={t("events.kind")}>
           <div className="w-40">
             <Combobox value={kind} onChange={(v) => { setKind(v); resetPage(); }}

@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ChevronDown, Menu, X, ArrowRight, Map as MapIcon, Store, PlayCircle, Code2, Cpu, Handshake, Mail,
+  ChevronDown, Menu, X, ArrowRight, Map as MapIcon, Store, PlayCircle, Code2, Cpu, Handshake, Mail, BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -25,7 +25,7 @@ type NavItem = {
   descKey: string;
   icon: LucideIcon;
   /** router path (Link) … */
-  to?: "/" | "/tsp" | "/partners" | "/pilot" | "/pricing";
+  to?: "/" | "/tsp" | "/partners" | "/pilot" | "/pricing" | "/learn";
   /** …or a hard href (external docs, cross-bundle-safe pages, the demo) */
   href?: string;
 };
@@ -43,8 +43,11 @@ const GROUPS: NavGroup[] = [
   },
   {
     labelKey: "nav.g.resources",
-    paths: ["/compatibility"],
+    paths: ["/learn", "/compatibility"],
     items: [
+      // first in the group on purpose: the knowledge base is the answer to most of the questions
+      // that bring somebody to "Resources" at all, and the API reference is the answer to few.
+      { labelKey: "learn.nav", descKey: "learn.navDesc", icon: BookOpen, to: "/learn" },
       { labelKey: "nav.apiDocs", descKey: "nav.d.apiDocs", icon: Code2, href: DOCS_URL },
       { labelKey: "nav.compat", descKey: "nav.d.compat", icon: Cpu, href: "/compatibility" },
     ],

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Plus, Trash2, Webhook as WebhookIcon } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { KB } from "@orbetra/kb";
 import { contentFor } from "@/lib/demo-content";
 import { AdminButton, AdminCheckbox, AdminInput, AdminLabel, AdminSwitch, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -84,7 +85,7 @@ function WebhooksPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t("webhooks.title")} description={t("webhooks.desc")}>
+      <PageHeader className="mb-0" title={t("webhooks.title")} description={t("webhooks.desc")} help={KB.webhooks}>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton>

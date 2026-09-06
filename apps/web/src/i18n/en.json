@@ -97,7 +97,9 @@
     "accounts": "Accounts",
     "accountContext": "Customer context",
     "allAccounts": "All accounts",
-    "overviewNotice": "Overview mode: you are viewing every customer’s data. Pick a customer at the top to make changes."
+    "overviewNotice": "Overview mode: you are viewing every customer’s data. Pick a customer at the top to make changes.",
+    "support": "Support",
+    "help": "Help"
   },
   "routing": {
     "title": "Route planner",
@@ -2009,5 +2011,25 @@
     "direct_25": "Direct 25",
     "direct_50": "Direct 50",
     "direct_100": "Direct 100"
+  },
+  "learn": {
+    "title": "Help",
+    "desc": "Guides to every part of the product, in plain words.",
+    "searchPlaceholder": "Search help…",
+    "searchAria": "Search the help articles",
+    "clear": "Clear search",
+    "results": "Found: {{count}}",
+    "noResults": "Nothing matches that. Try a shorter word, or browse the topics below.",
+    "startHere": "Start here",
+    "onThisPage": "On this page",
+    "inThisSection": "More in this section",
+    "prev": "Previous",
+    "next": "Next",
+    "backToIndex": "All articles",
+    "notFound": "That article does not exist",
+    "notFoundBody": "It may have been renamed, or it may not apply to this account. Everything available to you is on the help index.",
+    "openHelp": "Open help: {{title}}",
+    "readAbout": "Read about {{title}}",
+    "neutralProduct": "the platform"
   }
 }

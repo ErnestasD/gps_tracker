@@ -2,6 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,7 +34,10 @@ export function QuarantineSection() {
   return (
     <Card data-testid="quarantine-card">
       <CardHeader>
-        <CardTitle className="text-base">{t('quarantine.title')}</CardTitle>
+        <CardTitle className="text-base flex items-center gap-1.5">
+          {t('quarantine.title')}
+          <HelpLink slug={KB.imei} anchor="quarantine" />
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {quarantine.isLoading ? (

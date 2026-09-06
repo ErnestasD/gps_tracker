@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { KB } from "@orbetra/kb";
 import { contentFor } from "@/lib/demo-content";
 import { AlertTriangle, CheckCircle2, MoreHorizontal, Plus, Trash2, Wrench } from "lucide-react";
 import { fmtDate } from "@/lib/admin-format";
@@ -266,7 +267,7 @@ function MaintenancePage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t("maint.title")} description={t("maint.desc")}>
+      <PageHeader className="mb-0" title={t("maint.title")} description={t("maint.desc")} help={KB.maintenance}>
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
             <AdminButton>

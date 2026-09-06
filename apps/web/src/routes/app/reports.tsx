@@ -2,6 +2,8 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { AdminButton, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { DatePicker } from '@/components/admin/DatePicker'
@@ -99,7 +101,7 @@ export function ReportsPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader title={t('reports.title')} description={t('reports.desc')} className="mb-0" />
+      <PageHeader title={t('reports.title')} description={t('reports.desc')} help={KB.reportTypes} className="mb-0" />
 
       {/* generator card — run/export actions live in the card header */}
       <div className="admin-card p-4 md:p-5">

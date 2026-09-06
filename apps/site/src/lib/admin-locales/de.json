@@ -93,7 +93,9 @@
     "paletteEmpty": "Keine Treffer",
     "paletteSearch": "Seite, Gerät, Fahrer oder Ereignis suchen…",
     "paletteNoMatch": "Nichts gefunden für „{{q}}“",
-    "console": "Plattform-Konsole"
+    "console": "Plattform-Konsole",
+    "support": "Support",
+    "help": "Hilfe"
   },
   "routing": {
     "title": "Routenplaner",

@@ -3,6 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
+import { HelpCard, HelpLink } from '@/components/kb/HelpLink'
 import { AdminButton, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { useConfirm } from '@/components/admin/ConfirmDialog'
 import { getCurrentUser, refreshSession } from '@/lib/auth'
@@ -345,6 +348,9 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
         <div role="alert" className="admin-card p-4 text-sm" style={{ borderColor: 'var(--admin-danger)', color: 'var(--admin-ink)' }} data-testid="billing-suspended">
           <p className="font-semibold" style={{ color: 'var(--admin-danger)' }}>{t('billing.suspendedTitle')}</p>
           <p className="mt-1 text-muted">{t('billing.suspendedBody')}</p>
+          {/* the one screen where a reader most needs the full sequence spelled out: what stopped,
+              what did NOT, and what paying restores */}
+          <HelpCard slug={KB.unpaidWhatHappens} className="mt-3" />
         </div>
       )}
 
@@ -415,7 +421,10 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="admin-card" data-testid="billing-usage">
                 <div className="admin-hairline-b px-4 py-3">
-                  <span className="text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>{t('billing.usageTitle')}</span>
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--admin-ink)' }}>
+                    {t('billing.usageTitle')}
+                    <HelpLink slug={KB.billingAndInvoices} anchor="usage" />
+                  </span>
                 </div>
                 <div className="flex flex-col gap-3 p-4">
                   <div className="flex items-baseline justify-between">

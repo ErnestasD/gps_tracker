@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { MoreHorizontal, Plus, Upload } from "lucide-react";
+import { KB } from "@orbetra/kb";
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { AdminButton, AdminInput, Badge, PageHeader } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
@@ -200,7 +201,7 @@ function DevicesPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-2" title={t("devices.title")} description={t("devices.desc")}>
+      <PageHeader className="mb-2" title={t("devices.title")} description={t("devices.desc")} help={KB.connectATracker}>
         <AdminButton variant="secondary" onClick={() => toast(t("devices.import.title"), { description: l.demoImport })}>
           <Upload className="h-4 w-4" aria-hidden />
           {t("devices.import.open")}

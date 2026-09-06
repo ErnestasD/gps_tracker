@@ -2,6 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -86,7 +89,10 @@ export function OnboardingCard({ device, initialApn }: { device: Device; initial
   return (
     <Card data-testid="onboarding-card">
       <CardHeader>
-        <CardTitle className="text-base">{t('devices.onb.title', { name: device.name })}</CardTitle>
+        <CardTitle className="text-base flex items-center gap-1.5">
+          {t('devices.onb.title', { name: device.name })}
+          <HelpLink slug={KB.connectATracker} />
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {sheet.isError ? (

@@ -3,6 +3,8 @@ import { MoreHorizontal, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { AdminButton, AdminInput, Badge as AdminBadge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
@@ -16,6 +18,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { listAccounts } from '@/lib/devices'
 import { useUnits } from '@/lib/units'
 import {
+
   createDriver,
   deleteDriver,
   isIbuttonConflict,
@@ -147,7 +150,7 @@ export function DriversPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t('drivers.title')} description={t('drivers.desc')}>
+      <PageHeader className="mb-0" title={t('drivers.title')} description={t('drivers.desc')} help={KB.drivers}>
         {canWrite && (
           <Sheet
             open={formOpen}

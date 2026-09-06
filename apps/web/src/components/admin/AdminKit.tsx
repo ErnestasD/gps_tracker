@@ -1,5 +1,8 @@
 import * as React from 'react'
 
+import { type KbSlug } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { cn } from '@/lib/utils'
 
 /**
@@ -12,19 +15,27 @@ import { cn } from '@/lib/utils'
 export function PageHeader({
   title,
   description,
+  help,
   children,
   className,
 }: {
   title: string
   description?: string
+  /**
+   * The article that explains this screen, as a `KB.*` slug — rendered as a small `?` beside the
+   * title. One prop rather than a component per page: the help belongs to the screen, and a page
+   * that grows a second action button should not be able to push it off the row.
+   */
+  help?: KbSlug
   children?: React.ReactNode
   className?: string
 }) {
   return (
     <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-4 pb-2', className)}>
       <div className="min-w-0">
-        <h1 className="display text-2xl font-semibold" style={{ color: 'var(--admin-ink)' }}>
+        <h1 className="display flex items-center gap-2 text-2xl font-semibold" style={{ color: 'var(--admin-ink)' }}>
           {title}
+          {help !== undefined && <HelpLink slug={help} className="translate-y-px" />}
         </h1>
         {description !== undefined && (
           <p className="mt-1 text-sm" style={{ color: 'var(--admin-ink-soft)' }}>

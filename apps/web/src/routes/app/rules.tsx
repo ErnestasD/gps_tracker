@@ -3,6 +3,9 @@ import { MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB, type KbSlug } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { AdminButton, AdminInput, AdminSwitch, Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
@@ -50,7 +53,7 @@ export function RulesPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader title={t('rules.title')} description={t('rules.desc')} className="mb-0">
+      <PageHeader title={t('rules.title')} description={t('rules.desc')} help={KB.rulesAndAlerts} className="mb-0">
         {canWrite && (
         <Sheet open={addOpen} onOpenChange={setAddOpen}>
           <SheetTrigger asChild>
@@ -268,7 +271,7 @@ function RuleForm({ accounts, geofences, contextAccountId, onCreated, onCancel }
 
   return (
     <form onSubmit={submit} className="mt-2 flex flex-col gap-3">
-      <Field label={t('rules.kindLabel')}>
+      <Field label={t('rules.kindLabel')} help={KB.eventTypes}>
         <Combobox
           value={kind}
           onChange={(v) => { setKind(v as RuleKind); setCfg({}) }}
@@ -315,7 +318,7 @@ function RuleForm({ accounts, geofences, contextAccountId, onCreated, onCancel }
           )}
         </Field>
       ))}
-      <Field label={t('rules.cooldown')}>
+      <Field label={t('rules.cooldown')} help={KB.rulesAndAlerts} helpAnchor="cooldown">
         <AdminInput type="number" min={0} max={86_400} value={cooldownS} onChange={(e) => setCooldownS(Number(e.target.value))} data-testid="rule-cooldown" className="w-24" />
       </Field>
       {/* notification channels (E05-5) — email needs SES configured on the worker; telegram
@@ -331,8 +334,16 @@ function RuleForm({ accounts, geofences, contextAccountId, onCreated, onCancel }
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{label}{children}</label>
+function Field({ label, help, helpAnchor, children }: { label: string; help?: KbSlug; helpAnchor?: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {help !== undefined && <HelpLink slug={help} {...(helpAnchor !== undefined ? { anchor: helpAnchor } : {})} />}
+      </span>
+      {children}
+    </label>
+  )
 }
 
 /** Reusable notification-channel editor (E05-5): add/remove email/telegram targets. Owns its draft
@@ -355,7 +366,10 @@ function ChannelsEditor({ channels, onChange }: { channels: NotificationChannel[
 
   return (
     <div className="flex w-full flex-col gap-1">
-      <span className="text-xs" style={{ color: 'var(--admin-ink-soft)' }}>{t('rules.channels.label')}</span>
+      <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--admin-ink-soft)' }}>
+        {t('rules.channels.label')}
+        <HelpLink slug={KB.notificationChannels} />
+      </span>
       <div className="flex flex-wrap items-end gap-2">
         <div className="w-36">
           <Combobox

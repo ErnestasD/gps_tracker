@@ -1,22 +1,28 @@
 import * as React from "react";
+import type { KbSlug } from "@orbetra/kb";
+import { LearnLink } from "@/components/site/LearnLink";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({
   title,
   description,
+  help,
   children,
   className,
 }: {
   title: string;
   description?: string;
+  /** the knowledge-base article for this screen — mirrors apps/web's PageHeader `help` prop */
+  help?: KbSlug;
   children?: React.ReactNode;
   className?: string;
 }) {
   return (
     <div className={cn("mb-6 flex flex-wrap items-start justify-between gap-4 pb-2", className)}>
       <div className="min-w-0">
-        <h1 className="display text-2xl font-semibold" style={{ color: "var(--admin-ink)" }}>
+        <h1 className="display flex items-center gap-2 text-2xl font-semibold" style={{ color: "var(--admin-ink)" }}>
           {title}
+          {help !== undefined && <LearnLink slug={help} iconOnly className="translate-y-px" />}
         </h1>
         {description && (
           <p className="mt-1 text-sm" style={{ color: "var(--admin-ink-soft)" }}>

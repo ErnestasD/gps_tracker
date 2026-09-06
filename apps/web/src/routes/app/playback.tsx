@@ -3,6 +3,8 @@ import { Fuel, Gauge, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { FuelChart } from '@/components/FuelChart'
 import { PlaybackMap } from '@/components/PlaybackMap'
 import { SpeedChart } from '@/components/SpeedChart'
@@ -87,7 +89,7 @@ export function PlaybackPage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader title={t('playback.title')} description={t('playback.desc')}>
+      <PageHeader title={t('playback.title')} description={t('playback.desc')} help={KB.playback}>
         <div className="w-56">
           <Combobox
             value={deviceId}

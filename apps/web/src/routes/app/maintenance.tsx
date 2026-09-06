@@ -3,6 +3,8 @@ import { AlertTriangle, CheckCircle2, MoreHorizontal, Plus, Trash2, Wrench } fro
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB } from '@orbetra/kb'
+
 import { AdminButton, AdminInput, PageHeader, StatCard } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
@@ -128,7 +130,7 @@ export function MaintenancePage() {
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t('maint.title')} description={t('maint.desc')}>
+      <PageHeader className="mb-0" title={t('maint.title')} description={t('maint.desc')} help={KB.maintenance}>
         {canWrite && (
           <Sheet open={addOpen} onOpenChange={setAddOpen}>
             <SheetTrigger asChild>

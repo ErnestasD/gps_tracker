@@ -3,6 +3,9 @@ import { ArrowDown, ArrowUp, ChevronsUpDown, Search } from 'lucide-react'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { KB, type KbSlug } from '@orbetra/kb'
+
+import { HelpLink } from '@/components/kb/HelpLink'
 import { PlaybackMap } from '@/components/PlaybackMap'
 import { Badge, PageHeader } from '@/components/admin/AdminKit'
 import { Combobox } from '@/components/admin/Combobox'
@@ -133,7 +136,7 @@ export function TripsPage() {
 
   return (
     <div className="flex h-full w-full flex-col gap-4 p-4 md:p-6">
-      <PageHeader className="mb-0" title={t('trips.title')} description={t('trips.desc')}>
+      <PageHeader className="mb-0" title={t('trips.title')} description={t('trips.desc')} help={KB.howTripsAreDetected}>
         <FilterLabel label={t('trips.device')}>
           <div className="w-44">
             <Combobox
@@ -247,9 +250,9 @@ export function TripsPage() {
                 </div>
                 <div className="grid grid-cols-4 gap-2 text-center text-xs">
                   <Stat label={t('trips.duration')} value={fmtDuration(tripDurationMs(selected, Date.now()))} />
-                  <Stat label={t('trips.distance')} value={u.distanceM(selected.distanceM)} />
+                  <Stat label={t('trips.distance')} value={u.distanceM(selected.distanceM)} help={KB.distanceAndOdometer} />
                   <Stat label={t('trips.maxSpeed')} value={u.speed(selected.maxSpeed)} />
-                  <Stat label={t('trips.idle')} value={fmtDuration(selected.idleS * 1000)} />
+                  <Stat label={t('trips.idle')} value={fmtDuration(selected.idleS * 1000)} help={KB.howTripsAreDetected} />
                 </div>
                 <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--admin-ink-soft)' }}>
                   {t('trips.driver')}:
@@ -285,10 +288,13 @@ function FilterLabel({ label, children }: { label: string; children: React.React
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, help }: { label: string; value: string; help?: KbSlug }) {
   return (
     <div className="rounded-md border p-2" style={{ borderColor: 'var(--admin-hairline)', background: 'var(--admin-surface-sunken)' }}>
-      <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--admin-ink-soft)' }}>{label}</div>
+      <div className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider" style={{ color: 'var(--admin-ink-soft)' }}>
+        {label}
+        {help !== undefined && <HelpLink slug={help} />}
+      </div>
       <div className="tabular-nums font-medium" style={{ color: 'var(--admin-ink)' }}>{value}</div>
     </div>
   )

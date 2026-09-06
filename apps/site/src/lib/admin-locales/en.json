@@ -93,7 +93,9 @@
     "paletteEmpty": "No results",
     "paletteSearch": "Search a page, device, driver, event…",
     "paletteNoMatch": "Nothing found for “{{q}}”",
-    "console": "Platform console"
+    "console": "Platform console",
+    "support": "Support",
+    "help": "Help"
   },
   "routing": {
     "title": "Route planner",

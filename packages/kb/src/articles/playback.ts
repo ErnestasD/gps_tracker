@@ -1,0 +1,90 @@
+import type { KbArticle } from '../types.js'
+
+export const playback: KbArticle = {
+  slug: 'playback',
+  category: 'trips',
+  surfaces: { site: true, app: true },
+  screen: '/app/playback',
+  doc: {
+    en: {
+      title: 'Replaying a day',
+      summary: 'History playback: watching a route back with speed and fuel beside it, and what the gaps in the line mean.',
+      keywords: ['playback', 'history', 'replay', 'route', 'speed chart', 'fuel chart', 'evidence', 'dispute'],
+      blocks: [
+        { p: 'Playback answers the questions a list of trips cannot: how fast was it going there, how long did it actually stand at that address, and did the fuel level change while it stood.' },
+        { h2: 'Running one', id: 'run' },
+        { p: 'Choose a vehicle and a date range, and the page loads every position in it. Press play and the vehicle drives the period back; the scrubber jumps to any moment, and the counters show which sample you are looking at out of how many.' },
+        { callout: 'tip', p: 'For a quick "where was it at 14:30", use the 24-hour timeline on the live map instead — same idea, no date to choose. Playback is for a specific window you already have in mind.' },
+        { h2: 'The charts beneath', id: 'charts' },
+        { ul: [
+          '**Speed** — the whole period as a curve. Sustained speeding looks like a plateau; a bad fix looks like a single spike with normal values on either side.',
+          '**Fuel level** — where the vehicle reports it. A steady fall while driving is consumption; a step down while parked is worth a question. Needs CAN or a fuel sensor — see [CAN and OBD data](kb:can-and-obd).',
+        ] },
+        { h2: 'Reading the line honestly', id: 'gaps' },
+        { p: 'The route is drawn through the positions we actually received and trusted. Two things it will not do: it will not invent a straight line across a stretch where nothing arrived, and it will not include positions that failed the validity checks. A gap is information — it usually marks a tunnel, an underground car park or a coverage hole.' },
+        { h2: 'Using it as evidence', id: 'evidence' },
+        { p: 'Playback is the usual answer to a customer complaint about a missed slot, a driver dispute about a route, or an insurance question about an incident. Two habits make it stand up: quote the time window and the vehicle exactly, and mention the reporting interval — a route recorded every few seconds is a far stronger record than one recorded every two minutes, and being upfront about which one you have is what makes the rest credible.' },
+      ],
+    },
+    lt: {
+      title: 'Dienos peržaidimas',
+      summary: 'Istorijos peržaidimas: maršruto peržiūra su greičio ir kuro grafikais šalia, ir ką reiškia tarpai linijoje.',
+      keywords: ['peržaidimas', 'istorija', 'maršrutas', 'greičio grafikas', 'kuro grafikas', 'įrodymas', 'ginčas'],
+      blocks: [
+        { p: 'Peržaidimas atsako į klausimus, kurių kelionių sąrašas atsakyti negali: kaip greitai ten važiavo, kiek iš tikrųjų stovėjo prie to adreso ir ar stovint pasikeitė kuro lygis.' },
+        { h2: 'Kaip paleisti', id: 'run' },
+        { p: 'Pasirinkite automobilį ir datų intervalą – puslapis įkelia kiekvieną jame esančią poziciją. Paspaudus paleidimą automobilis pravažiuoja laikotarpį iš naujo; slankiklis peršoka į bet kurią akimirką, o skaitikliai rodo, į kurį iš kelių taškų žiūrite.' },
+        { callout: 'tip', p: 'Greitam „kur jis buvo 14:30" geriau tinka 24 valandų juosta gyvame žemėlapyje – ta pati idėja, tik nereikia rinkti datos. Peržaidimas skirtas konkrečiam langui, kurį jau turite galvoje.' },
+        { h2: 'Grafikai apačioje', id: 'charts' },
+        { ul: [
+          '**Greitis** – visas laikotarpis kaip kreivė. Ilgas greičio viršijimas atrodo kaip plokščiakalnis; bloga fiksacija – kaip vienas smaigalys su normaliomis reikšmėmis iš abiejų pusių.',
+          '**Kuro lygis** – ten, kur automobilis jį praneša. Tolygus kritimas važiuojant yra sunaudojimas; laiptelis žemyn stovint vertas klausimo. Reikia CAN arba kuro daviklio – žr. [CAN ir OBD duomenys](kb:can-and-obd).',
+        ] },
+        { h2: 'Kaip sąžiningai skaityti liniją', id: 'gaps' },
+        { p: 'Maršrutas braižomas per tas pozicijas, kurias iš tikrųjų gavome ir kuriomis pasitikėjome. Dviejų dalykų jis nedaro: neprasimano tiesios linijos per ruožą, iš kurio nieko neatkeliavo, ir neįtraukia pozicijų, neišlaikiusių galiojimo patikrų. Tarpas yra informacija – dažniausiai jis žymi tunelį, požeminę aikštelę ar ryšio duobę.' },
+        { h2: 'Kaip naudoti kaip įrodymą', id: 'evidence' },
+        { p: 'Peržaidimas – įprastas atsakymas į kliento skundą dėl praleisto laiko lango, vairuotojo ginčą dėl maršruto ar draudimo klausimą dėl įvykio. Du įpročiai daro jį tvirtą: tiksliai nurodykite laiko langą ir automobilį bei paminėkite įrašymo intervalą – kas kelias sekundes įrašytas maršrutas yra kur kas stipresnis įrašas nei kas dvi minutes, o atvirumas dėl to, kurį iš jų turite, ir daro visa kita patikima.' },
+      ],
+    },
+    pl: {
+      title: 'Odtwarzanie dnia',
+      summary: 'Odtwarzanie historii: przejazd trasy od nowa z wykresami prędkości i paliwa obok, i co znaczą przerwy w linii.',
+      keywords: ['odtwarzanie', 'historia', 'trasa', 'wykres prędkości', 'wykres paliwa', 'dowód', 'spór'],
+      blocks: [
+        { p: 'Odtwarzanie odpowiada na pytania, na które lista tras odpowiedzieć nie może: jak szybko tam jechał, ile naprawdę stał pod tym adresem i czy poziom paliwa zmienił się podczas postoju.' },
+        { h2: 'Uruchomienie', id: 'run' },
+        { p: 'Wybierz pojazd i zakres dat, a strona wczyta każdą pozycję z tego okresu. Naciśnij odtwarzanie, a pojazd przejedzie okres od nowa; suwak przeskakuje w dowolny moment, a liczniki pokazują, którą próbkę z ilu oglądasz.' },
+        { callout: 'tip', p: 'Do szybkiego „gdzie był o 14:30" użyj raczej osi 24 godzin na mapie na żywo — ta sama idea, bez wybierania daty. Odtwarzanie jest do konkretnego okna, które już masz na myśli.' },
+        { h2: 'Wykresy poniżej', id: 'charts' },
+        { ul: [
+          '**Prędkość** — cały okres jako krzywa. Utrzymujące się przekroczenie wygląda jak płaskowyż; zły fix wygląda jak pojedynczy szpic z normalnymi wartościami po bokach.',
+          '**Poziom paliwa** — tam, gdzie pojazd go raportuje. Równomierny spadek w czasie jazdy to zużycie; skok w dół na postoju wart jest pytania. Wymaga CAN albo sondy paliwa — zobacz [Dane CAN i OBD](kb:can-and-obd).',
+        ] },
+        { h2: 'Uczciwe czytanie linii', id: 'gaps' },
+        { p: 'Trasa rysowana jest przez pozycje, które faktycznie otrzymaliśmy i którym zaufaliśmy. Dwóch rzeczy nie zrobi: nie wymyśli prostej linii przez odcinek, z którego nic nie dotarło, i nie uwzględni pozycji, które nie przeszły kontroli poprawności. Przerwa to informacja — zwykle oznacza tunel, garaż podziemny albo dziurę w zasięgu.' },
+        { h2: 'Użycie jako dowodu', id: 'evidence' },
+        { p: 'Odtwarzanie to typowa odpowiedź na reklamację klienta o przegapione okno, spór z kierowcą o trasę albo pytanie ubezpieczyciela o zdarzenie. Dwa nawyki czynią je mocnym: podaj dokładnie okno czasowe i pojazd oraz wspomnij o częstotliwości zapisu — trasa zapisywana co kilka sekund to znacznie mocniejszy zapis niż zapisywana co dwie minuty, a otwartość co do tego, którą masz, uwiarygadnia całą resztę.' },
+      ],
+    },
+    de: {
+      title: 'Einen Tag noch einmal abspielen',
+      summary: 'Historien-Replay: eine Strecke zurückverfolgen, mit Geschwindigkeit und Tankfüllstand daneben — und was Lücken in der Linie bedeuten.',
+      keywords: ['replay', 'historie', 'route', 'geschwindigkeitsdiagramm', 'kraftstoffdiagramm', 'beweis', 'streit'],
+      blocks: [
+        { p: 'Das Replay beantwortet die Fragen, die eine Fahrtenliste nicht kann: wie schnell war es dort, wie lange stand es wirklich an dieser Adresse, und hat sich der Tankfüllstand im Stand verändert.' },
+        { h2: 'Starten', id: 'run' },
+        { p: 'Wählen Sie ein Fahrzeug und einen Zeitraum, und die Seite lädt jede Position darin. Auf Play fährt das Fahrzeug den Zeitraum noch einmal ab; der Regler springt zu jedem Moment, und die Zähler zeigen, welchen Messpunkt von wie vielen Sie ansehen.' },
+        { callout: 'tip', p: 'Für ein schnelles „wo war es um 14:30" nehmen Sie besser die 24-Stunden-Leiste auf der Live-Karte — dieselbe Idee, ohne Datumsauswahl. Das Replay ist für ein bestimmtes Fenster, das Sie schon im Kopf haben.' },
+        { h2: 'Die Diagramme darunter', id: 'charts' },
+        { ul: [
+          '**Geschwindigkeit** — der gesamte Zeitraum als Kurve. Anhaltendes Zuschnellfahren sieht aus wie ein Plateau; ein schlechter Fix wie eine einzelne Spitze mit normalen Werten davor und danach.',
+          '**Tankfüllstand** — wo das Fahrzeug ihn meldet. Ein gleichmäßiges Fallen während der Fahrt ist Verbrauch; eine Stufe nach unten im Stand ist eine Frage wert. Braucht CAN oder einen Kraftstoffsensor — siehe [CAN- und OBD-Daten](kb:can-and-obd).',
+        ] },
+        { h2: 'Die Linie ehrlich lesen', id: 'gaps' },
+        { p: 'Die Route wird durch die Positionen gezeichnet, die wir tatsächlich erhalten und denen wir vertraut haben. Zwei Dinge tut sie nicht: sie erfindet keine gerade Linie über einen Abschnitt, aus dem nichts kam, und sie nimmt keine Positionen auf, die die Gültigkeitsprüfung nicht bestanden haben. Eine Lücke ist Information — meist Tunnel, Tiefgarage oder Funkloch.' },
+        { h2: 'Als Nachweis verwenden', id: 'evidence' },
+        { p: 'Das Replay ist die übliche Antwort auf eine Kundenbeschwerde über ein verpasstes Zeitfenster, einen Fahrerstreit über eine Route oder eine Versicherungsfrage zu einem Vorfall. Zwei Gewohnheiten machen es belastbar: nennen Sie Zeitfenster und Fahrzeug exakt, und erwähnen Sie das Aufzeichnungsintervall — eine alle paar Sekunden aufgezeichnete Route ist ein weit stärkerer Beleg als eine alle zwei Minuten, und offen zu sagen, welche Sie haben, macht den Rest erst glaubwürdig.' },
+      ],
+    },
+  },
+}
