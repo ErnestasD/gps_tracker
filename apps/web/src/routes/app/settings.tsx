@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import type { AccountPreferences } from '@orbetra/shared'
@@ -8,6 +9,7 @@ import { AdminButton, Badge, AdminInput, PageHeader } from '@/components/admin/A
 import { Combobox } from '@/components/admin/Combobox'
 import { changePassword } from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
+import { BillingPage } from '@/routes/app/billing'
 import { useFmt } from '@/lib/datetime'
 import { listAccounts, updateAccountPreferences, updateAccountTimezone, type Account } from '@/lib/devices'
 import { downloadExport, hasPendingExport, listExports, requestExport } from '@/lib/gdpr'
@@ -73,7 +75,7 @@ const COMMON_TIMEZONES = [
 const th = 'py-2 pr-4 text-left text-[11px] font-semibold uppercase tracking-wider'
 const thStyle: React.CSSProperties = { color: 'var(--admin-ink-soft)' }
 
-const TAB_IDS = ['profile', 'security', 'notifications', 'data'] as const
+const TAB_IDS = ['profile', 'security', 'notifications', 'billing', 'data'] as const
 type TabId = (typeof TAB_IDS)[number]
 
 /** Settings/Profile (E03-2, DASHBOARD_UI_SPEC §4): locale, theme, password change, push, export.
@@ -94,10 +96,12 @@ export function SettingsPage() {
   const [pwMsg, setPwMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const [activeTab, setActiveTab] = useState<TabId>('profile')
+  const { tab } = useSearch({ from: '/app/settings' })
+  const initialTab: TabId = (TAB_IDS as readonly string[]).includes(tab ?? '') ? (tab as TabId) : 'profile'
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab)
   const sectionRefs = useRef<Partial<Record<TabId, HTMLDivElement | null>>>({})
   const goTo = (id: TabId) => setActiveTab(id)
-  const tabs = TAB_IDS.filter((id) => id !== 'data' || isAdmin)
+  const tabs = TAB_IDS.filter((id) => (id !== 'data' && id !== 'billing') || isAdmin)
 
   const onTheme = (value: Theme) => {
     setThemeState(value)
@@ -245,6 +249,14 @@ export function SettingsPage() {
       <div ref={(el) => { sectionRefs.current.notifications = el }} role="tabpanel" id="settings-panel-notifications" hidden={activeTab !== 'notifications'} aria-labelledby="settings-tab-notifications" className="scroll-mt-4">
         <PushSection />
       </div>
+
+      {/* Billing: the subscription, usage and plan changes (admins only). Mounted only while active
+          so its live Stripe reads don't fire on every Settings visit. */}
+      {isAdmin && (
+        <div role="tabpanel" id="settings-panel-billing" hidden={activeTab !== 'billing'} aria-labelledby="settings-tab-billing" className="scroll-mt-4">
+          {activeTab === 'billing' && <BillingPage embedded />}
+        </div>
+      )}
 
       {/* Data: GDPR export (admins only — the server enforces it too) */}
       {isAdmin && (

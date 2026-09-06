@@ -90,7 +90,9 @@ function PlanCard(props: {
   )
 }
 
-export function BillingPage() {
+/** `embedded` renders the billing content inside the Settings > Billing tab: no page chrome of
+ *  its own (Settings owns the header + padding), just the sections. */
+export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation()
   const { d } = useFmt()
   // WP3: a Direct-plan tenant has the TSP-plus nav (branding/api-keys/webhooks) hidden entirely —
@@ -300,9 +302,9 @@ export function BillingPage() {
   ) : null
 
   return (
-    <div className="w-full space-y-4 p-4 md:p-6">
+    <div className={embedded ? 'w-full space-y-4' : 'w-full space-y-4 p-4 md:p-6'}>
       {confirmElement}
-      <PageHeader className="mb-0" title={t('billing.title')} description={t('billing.desc')} />
+      {!embedded && <PageHeader className="mb-0" title={t('billing.title')} description={t('billing.desc')} />}
 
       {showUpgrade && (
         <div className="admin-card overflow-hidden" data-testid="billing-upgrade">

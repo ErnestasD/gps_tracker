@@ -17,7 +17,6 @@ import { VerifyEmailPage } from '@/routes/verifyEmail'
 import { MapPage } from '@/routes/app/map'
 import { DashboardPage } from './routes/app/dashboard'
 import { AuditPage } from '@/routes/app/audit'
-import { BillingPage } from '@/routes/app/billing'
 import { BrandingPage } from '@/routes/app/branding'
 import { PlaybackPage } from '@/routes/app/playback'
 import { TripsPage } from '@/routes/app/trips'
@@ -227,10 +226,13 @@ const brandingRoute = createRoute({
   component: BrandingPage,
 })
 
+// Billing moved INTO Settings (a tab) to keep the sidebar lean — this path stays as a redirect so
+// old bookmarks and in-app links land on the Settings > Billing tab.
 const billingRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/billing',
-  component: BillingPage,
+  // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+  beforeLoad: () => { throw redirect({ to: '/app/settings', search: { tab: 'billing' } }) },
 })
 
 const playbackRoute = createRoute({
@@ -325,6 +327,9 @@ const auditRoute = createRoute({
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/settings',
+  // `?tab=` deep-links a specific settings tab (e.g. the Billing redirect); unknown/absent ⇒ default
+  validateSearch: (search: Record<string, unknown>): { tab?: string } =>
+    typeof search['tab'] === 'string' ? { tab: search['tab'] } : {},
   component: SettingsPage,
 })
 
