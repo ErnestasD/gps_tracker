@@ -102,6 +102,37 @@ function baseUrl(configured: string | undefined, origin: string | undefined): st
   }
 }
 
+/** Resolved, validated target for a plan change/preview — everything the caller needs, all non-null. */
+type ChangeTarget =
+  | { ok: true; stripe: StripeGateway; subscriptionId: string; priceId: string; overagePrice: string | undefined }
+  | { ok: false; status: 400 | 409 | 503; title: string; code: string }
+
+/**
+ * The ONE validation both change-plan and change-preview enforce, so they can never disagree.
+ * Handles BOTH tracks (audit M1): a Direct price is a legitimate target (Direct→Direct), a TSP price
+ * must carry its paired overage (a missing one is a catalogue misconfig). Refuses a CROSS-track change
+ * (Direct↔TSP) — that would add/remove the metered item and swing the entitlement model, so it stays
+ * a sales path. Refuses a non-live subscription (audit L3) and the plan already on.
+ */
+async function resolveChangeTarget(deps: BillingDeps, tenantId: string, priceId: string | undefined): Promise<ChangeTarget> {
+  if (deps.stripe === undefined) return { ok: false, status: 503, title: 'Service Unavailable', code: 'billing_not_configured' }
+  if (priceId === undefined || !deps.stripe.prices.includes(priceId)) return { ok: false, status: 400, title: 'Bad Request', code: 'invalid_price' }
+  const targetPlan = deps.stripe.planFor(priceId)
+  if (targetPlan === undefined) return { ok: false, status: 400, title: 'Bad Request', code: 'invalid_price' }
+  const overagePrice = deps.stripe.overageFor(priceId)
+  // a TSP price MUST carry a paired overage; a Direct price has none by design
+  if (!isDirectPlan(targetPlan) && overagePrice === undefined) return { ok: false, status: 400, title: 'Bad Request', code: 'not_a_tsp_plan' }
+  const b = await deps.db.tenants.getBilling(tenantId)
+  if (b?.stripeSubscriptionId == null) return { ok: false, status: 409, title: 'Conflict', code: 'no_subscription' }
+  // L3: only a LIVE subscription may be changed (the UI only offers it for active/trialing)
+  if (b.subscriptionStatus == null || !ACTIVE.has(b.subscriptionStatus)) return { ok: false, status: 409, title: 'Conflict', code: 'not_active' }
+  if (b.subscriptionPriceId === priceId) return { ok: false, status: 409, title: 'Conflict', code: 'already_on_plan' }
+  // M1: same TRACK only — within Direct or within TSP
+  const currentPlan = b.subscriptionPriceId != null ? deps.stripe.planFor(b.subscriptionPriceId) : undefined
+  if (currentPlan === undefined || isDirectPlan(currentPlan) !== isDirectPlan(targetPlan)) return { ok: false, status: 400, title: 'Bad Request', code: 'cross_track_change' }
+  return { ok: true, stripe: deps.stripe, subscriptionId: b.stripeSubscriptionId, priceId, overagePrice }
+}
+
 export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
   app.get('/v1/billing', async (c) => {
     const auth = c.get('auth')
@@ -220,34 +251,18 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
   app.post('/v1/billing/change-plan', async (c) => {
     const auth = c.get('auth')
     if (!isTenantWideAdmin(auth)) return problem(c, 403, 'Forbidden')
-    if (deps.stripe === undefined) return problem(c, 503, 'Service Unavailable', 'billing_not_configured')
 
     const body = (await c.req.json().catch(() => ({}))) as { priceId?: unknown }
     const priceId = typeof body.priceId === 'string' ? body.priceId : undefined
-    // allowlisted base price, and one we can map to a plan AND a paired overage — an off-list or
-    // Direct-only price never reaches Stripe (never trust the client)
-    if (priceId === undefined || !deps.stripe.prices.includes(priceId)) return problem(c, 400, 'Bad Request', 'invalid_price')
-    const targetPlan = deps.stripe.planFor(priceId)
-    const overagePrice = deps.stripe.overageFor(priceId)
-    if (targetPlan === undefined || isDirectPlan(targetPlan) || overagePrice === undefined) {
-      // Direct plans have no metered overage and are not a reseller upgrade path; refuse rather
-      // than build a malformed subscription
-      return problem(c, 400, 'Bad Request', 'not_a_tsp_plan')
-    }
-
-    const b = await deps.db.tenants.getBilling(auth.tenantId)
-    if (b?.stripeSubscriptionId == null) return problem(c, 409, 'Conflict', 'no_subscription')
-    // no-op if they picked the plan they are already on (the UI hides it, but never trust the client)
-    if (b.subscriptionPriceId === priceId) return problem(c, 409, 'Conflict', 'already_on_plan')
+    const t = await resolveChangeTarget(deps, auth.tenantId, priceId)
+    if (!t.ok) return problem(c, t.status, t.title, t.code)
 
     try {
-      await deps.stripe.changePlan({ subscriptionId: b.stripeSubscriptionId, newBasePriceId: priceId, newOveragePriceId: overagePrice })
+      await t.stripe.changePlan({ subscriptionId: t.subscriptionId, newBasePriceId: t.priceId, newOveragePriceId: t.overagePrice })
     } catch (err) {
-      // a Stripe-side failure (rejected proration, a subscription in a state the swap can't touch,
-      // an API blip) used to become a bare 500 with nothing logged — the user saw "couldn't reach
-      // Stripe" and we had no trace of why. Name it: this is money, and a silent failure here is the
-      // difference between "the button is flaky" and a real diagnosis.
-      console.error('billing change-plan failed', { tenantId: auth.tenantId, subscriptionId: b.stripeSubscriptionId, priceId, error: err instanceof Error ? err.message : String(err) })
+      // a Stripe-side failure (rejected proration, a declined immediate upgrade charge under
+      // error_if_incomplete, an API blip) — logged and surfaced as a specific 502, never a bare 500.
+      console.error('billing change-plan failed', { tenantId: auth.tenantId, subscriptionId: t.subscriptionId, priceId, error: err instanceof Error ? err.message : String(err) })
       return problem(c, 502, 'Bad Gateway', 'change_plan_failed')
     }
     // the webhook writes the new plan; report success and let the client re-read GET /v1/billing
@@ -266,17 +281,11 @@ export function mountBilling(app: Hono<AuthEnv>, deps: BillingDeps): void {
     if (deps.stripe === undefined) return problem(c, 503, 'Service Unavailable', 'billing_not_configured')
 
     const priceId = c.req.query('priceId')
-    if (priceId === undefined || !deps.stripe.prices.includes(priceId)) return problem(c, 400, 'Bad Request', 'invalid_price')
-    const targetPlan = deps.stripe.planFor(priceId)
-    const overagePrice = deps.stripe.overageFor(priceId)
-    if (targetPlan === undefined || isDirectPlan(targetPlan) || overagePrice === undefined) return problem(c, 400, 'Bad Request', 'not_a_tsp_plan')
-
-    const b = await deps.db.tenants.getBilling(auth.tenantId)
-    if (b?.stripeSubscriptionId == null) return problem(c, 409, 'Conflict', 'no_subscription')
-    if (b.subscriptionPriceId === priceId) return problem(c, 409, 'Conflict', 'already_on_plan')
+    const t = await resolveChangeTarget(deps, auth.tenantId, priceId)
+    if (!t.ok) return problem(c, t.status, t.title, t.code)
 
     try {
-      const preview = await deps.stripe.previewChange({ subscriptionId: b.stripeSubscriptionId, newBasePriceId: priceId, newOveragePriceId: overagePrice })
+      const preview = await t.stripe.previewChange({ subscriptionId: t.subscriptionId, newBasePriceId: t.priceId, newOveragePriceId: t.overagePrice })
       return c.json(preview satisfies PlanChangePreviewView)
     } catch (err) {
       console.error('billing change-preview failed', { tenantId: auth.tenantId, priceId, error: err instanceof Error ? err.message : String(err) })

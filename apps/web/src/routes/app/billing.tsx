@@ -132,7 +132,10 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
    * see the server route). Only when actively subscribed AND on a TSP plan; a Direct tenant upgrades
    * via the sales CTA above, and a lapsed one repairs payment in the portal.
    */
-  const canChangePlan = b?.active === true && b.planPriceId !== null && !showPicker && user !== null && !isDirectPlan(user.plan)
+  // audit M1: BOTH tracks change plans in-app now (the Stripe portal has plan-switching disabled, and
+  // its generic switcher can't handle our paired overage anyway). A Direct customer switches within
+  // Direct, a TSP within TSP — the grid below filters to the caller's own track and the server enforces it.
+  const canChangePlan = b?.active === true && b.planPriceId !== null && !showPicker && user !== null
 
   // ONE catalog query drives both the subscribe picker and the change grid (same cache key).
   const catalog = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker || canChangePlan, staleTime: 5 * 60 * 1000 })
@@ -243,11 +246,12 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
       .catch(() => { setBusy(false); setActionError(true) }) // 500/429/misconfig — tell the user instead of nothing
   }
 
-  // the OTHER TSP tiers, at the selected interval — grouped by plan KEY (not a fragile name parse),
-  // current tier excluded. This is what removes the "two TSP Grow cards / €1490 per month" confusion.
+  // the other tiers ON THE CALLER'S OWN TRACK, at the selected interval — grouped by plan KEY (not a
+  // fragile name parse), current tier excluded. Same-track only (M1): a Direct customer sees Direct
+  // tiers, a TSP sees TSP tiers; cross-track is a sales path, and the server refuses it regardless.
   const changeTargets = plans
     .filter((p): p is BillingPlanView & { plan: TenantPlan } =>
-      p.plan !== null && !isDirectPlan(p.plan) && p.plan !== user?.plan && p.interval === selInterval && p.amount !== null)
+      p.plan !== null && user !== null && isDirectPlan(p.plan) === isDirectPlan(user.plan) && p.plan !== user.plan && p.interval === selInterval && p.amount !== null)
     .sort((a, b2) => (a.amount ?? 0) - (b2.amount ?? 0))
 
   // subscribe picker: one card per plan at the selected interval (no monthly+annual duplicates).
