@@ -6,7 +6,7 @@ import { LANGUAGES, type Lang } from "@/lib/i18n";
 import { Badge, AdminInput, AdminButton } from "@/components/admin/AdminKit";
 import { Combobox } from "@/components/admin/Combobox";
 import { DemoMap, type DemoMapControls, type DemoRoute, type DemoVehicle, type DemoZone } from "@/components/admin/DemoMap";
-import { cityFor, routeSlice, type DemoCity, type LngLat } from "@/lib/demo-geo";
+import { cityFor, routeSlice, type DemoCity, type LngLat, fleetPlacement } from "@/lib/demo-geo";
 import { demoZones } from "@/lib/demo-zones";
 import { contentFor } from "@/lib/demo-content";
 import { cn } from "@/lib/utils";
@@ -34,7 +34,8 @@ function bearingDeg(a: LngLat, b: LngLat): number {
 }
 
 /** Deterministic on-road placement: mock lat/lng is ignored — every device sits on a real
- * street of VILNIUS_LOOP (first 16) or KAUNAS_LOOP, heading toward the next route point. */
+ * street of the city's first loop (first 16) or its second, heading toward the next route point.
+ * Both loops belong to the SAME city — see DemoCity.loops for why. */
 type Placement = { at: LngLat; headingDeg: number; loop: LngLat[]; idx: number };
 
 /**
@@ -47,9 +48,7 @@ type Placement = { at: LngLat; headingDeg: number; loop: LngLat[]; idx: number }
 function placementsFor(city: DemoCity, devices: Device[]): Map<string, Placement> {
   return new Map<string, Placement>(
     devices.map((d, i) => {
-      const loop = city.loops[i < 16 ? 0 : 1];
-      const idx = (i * 17) % loop.length;
-      const at = loop[idx];
+      const { at, loop, idx } = fleetPlacement(city, i);
       return [d.id, { at, headingDeg: bearingDeg(at, loop[(idx + 1) % loop.length]), loop, idx }];
     }),
   );
