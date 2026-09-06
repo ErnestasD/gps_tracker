@@ -8,6 +8,7 @@ import {
 
 import { type EntitlementKey } from '@orbetra/shared'
 
+import { primeMapToken } from '@/lib/map'
 import { AppShell } from '@/components/AppShell'
 import { getAccessToken, getCurrentUser, refreshSession } from '@/lib/auth'
 import { LoginPage } from '@/routes/login'
@@ -139,6 +140,18 @@ const appRoute = createRoute({
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
+    /**
+     * The map token, before any map exists.
+     *
+     * The bundled token is URL-restricted to our own hosts, so on a white-label tenant's domain
+     * every tile 403s — and mapbox-gl does not re-request a failed tile until the viewport moves,
+     * so the map stays black until the user happens to pan. Priming here, in the guard that every
+     * /app route passes through, means the map is built with a token that works.
+     *
+     * Awaited, not fired-and-forgotten: the landing route IS the map. It never rejects, and on
+     * failure it leaves the bundled token in place.
+     */
+    await primeMapToken()
   },
   component: () => (
     <AppShell>
@@ -352,6 +365,18 @@ const consoleRoute = createRoute({
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
+    /**
+     * The map token, before any map exists.
+     *
+     * The bundled token is URL-restricted to our own hosts, so on a white-label tenant's domain
+     * every tile 403s — and mapbox-gl does not re-request a failed tile until the viewport moves,
+     * so the map stays black until the user happens to pan. Priming here, in the guard that every
+     * /app route passes through, means the map is built with a token that works.
+     *
+     * Awaited, not fired-and-forgotten: the landing route IS the map. It never rejects, and on
+     * failure it leaves the bundled token in place.
+     */
+    await primeMapToken()
   },
   component: () => (
     <ConsoleShell>

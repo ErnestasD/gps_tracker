@@ -93,6 +93,7 @@ import { claimDevice, listQuarantine } from './quarantine.js'
 import { scopeOf, type RouteDef } from './registry.js'
 import { restoreTenantDevices } from '@orbetra/registry'
 
+import type { MintedToken } from '../lib/mapboxToken.js'
 import { checkDomainDns, checkPlatformSubdomain, edgeAddresses, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type NameResolver, type TxtResolver } from './tenantSelf.js'
 
 // Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
@@ -200,6 +201,8 @@ export interface CrudDeps {
   resolveTxt: TxtResolver
   resolveCname: NameResolver
   resolveAddress: NameResolver
+  /** Mints the short-lived Mapbox token the browser uses; null when the deployment has none. */
+  mapToken?: () => Promise<MintedToken>
   /**
    * Our own domain (`PLATFORM_DOMAIN`, e.g. `orbetra.com`). A tenant may claim `<slug>` under it and
    * be live in a minute with no DNS work at all — the zero-setup half of white-label. Unset ⇒ the
@@ -2313,6 +2316,27 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
 
     // ── tenant-self branding + domains (E03-5) — tenant from auth, never a param ─
+    /**
+     * The Mapbox token this browser session should use.
+     *
+     * Not the one in the bundle. That one is URL-restricted to our own hosts, so a white-label
+     * dashboard served from the tenant's domain got 403 on every tile — see lib/mapboxToken.
+     *
+     * Any signed-in user may ask: everyone who can open the app can see a map, and the token it
+     * returns can only read styles and glyphs. 503 when the deployment has not configured minting,
+     * so the client can fall back to the build-time token rather than render nothing.
+     */
+    { method: 'get', path: '/v1/map/token', scopeClass: 'tenant', entity: 'mapToken', shape: 'collection',
+      handler: async (c) => {
+        if (deps.mapToken === undefined) return problem(c, 503, 'Service Unavailable', 'map token minting is not configured')
+        try {
+          return json(c, await deps.mapToken())
+        } catch {
+          // Mapbox down, rate limited, or a rotated secret — the client keeps the bundle token,
+          // which still works on our own domains. A 503 says "use your fallback", a 500 would not.
+          return problem(c, 503, 'Service Unavailable', 'could not mint a map token')
+        }
+      } },
     { method: 'get', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
       handler: async (c) => {
         const tenant = await db.tenants.get(auth(c).tenantId)

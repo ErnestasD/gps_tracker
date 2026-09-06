@@ -235,6 +235,7 @@ const paramEntity = (m: { method: string; path: string; entity: string }): strin
  */
 const COLLECTIONS_WITHOUT_ID: Record<string, string> = {
   branding: 'GET /v1/tenant/branding returns a single object, and its scope is the JWT tenant — there is no foreign id it could contain. branding.spec.ts:112 covers it',
+  mapToken: 'GET /v1/map/token returns one deployment-wide Mapbox credential, identical for every tenant — there are no rows and no foreign id. It is in the manifest for the AUTH sweep: minting costs us money, so it must never answer without a session (mapboxToken.spec.ts, branding.spec.ts)',
   usage: 'daily aggregate rows carry no id; the tenant predicate is asserted directly below',
   webhookDelivery: 'covered by webhooks.spec.ts:142, which seeds a delivery in each tenant and compares the lists',
 }

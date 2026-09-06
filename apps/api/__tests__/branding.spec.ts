@@ -87,6 +87,7 @@ beforeAll(async () => {
       return rec ? Promise.resolve(rec) : Promise.reject(new Error('ENOTFOUND'))
     },
     askRateLimit: { max: 5, windowS: 60 },
+    mapToken: () => Promise.resolve({ token: 'tk.temp', expiresAt: '2026-09-06T11:00:00.000Z' }),
     platformDomain: 'orbetra.test',
     edgeHostname: 'dash.orbetra.test',
   })
@@ -126,6 +127,24 @@ describe('E03-5 tenant branding (self, scoped)', () => {
     await req('/v1/tenant/branding', t1Token, 'PATCH', { productName: 'ONLY T1' })
     const t2got = (await (await req('/v1/tenant/branding', t2Token)).json()) as { branding: Record<string, unknown> }
     expect(t2got.branding['productName']).toBeUndefined()
+  })
+})
+
+/**
+ * The token a browser session uses for map tiles.
+ *
+ * The bundled one is URL-restricted to our own hosts, so on a white-label tenant's domain every
+ * tile came back 403 and the map was a black rectangle under a working interface.
+ */
+describe('map token', () => {
+  it('hands a signed-in user a short-lived token', async () => {
+    const res = await req('/v1/map/token', t1Token)
+    expect(res.status).toBe(200)
+    expect((await res.json()) as { token: string }).toEqual({ token: 'tk.temp', expiresAt: '2026-09-06T11:00:00.000Z' })
+  })
+
+  it('refuses a caller with no valid session — it is cheap, but it is ours to spend', async () => {
+    expect((await req('/v1/map/token', 'not-a-token')).status).toBe(401)
   })
 })
 
@@ -500,6 +519,7 @@ describe('E03-5 public branding by Host + Caddy ask', () => {
       lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: false,
       getRemoteAddr: () => '127.0.0.1',
       askRateLimit: { max: 5, windowS: 60 },
+    mapToken: () => Promise.resolve({ token: 'tk.temp', expiresAt: '2026-09-06T11:00:00.000Z' }),
     })
     const srv = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
     const p = await new Promise<number>((r) => srv.on('listening', () => r((srv.address() as { port: number }).port)))
