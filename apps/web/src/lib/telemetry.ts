@@ -156,6 +156,35 @@ const NAMED_UNITS: Record<string, (v: number) => string> = {
   // "%" suffix would be a claim about the vehicle (see telemetry.spec's out-of-range case)
 }
 
+/**
+ * An element whose NAME says it is a bitfield. Teltonika writes "…Flags" when the value packs
+ * independent bits (AVL 123 Control State Flags, 132 Security State Flags), and a bitfield printed
+ * in base 10 is unreadable: 36028797018963969 tells an operator nothing, while 0x80000000000001
+ * at least shows which bits are set.
+ *
+ * This makes NO claim about what any bit MEANS — the data-sending table documents these two as
+ * nothing more than "Control state flags", and the per-bit tables live on the LV-CAN200/ALL-CAN300
+ * adapter pages. Guessing them would be inventing byte semantics (CLAUDE.md rule 8).
+ */
+const isFlags = (label: AttrLabel): boolean => /\bflags$/i.test(label.name.trim())
+
+/**
+ * The unit a READER is shown — not always the unit the wiki stores.
+ *
+ * The label and the value MUST agree, and they did not: "Total Mileage (m)" sat beside
+ * "362852.00 km", because the value converted metres to kilometres and the label printed the
+ * dictionary's cell. One function now answers the question for both, so they cannot drift again.
+ *
+ * Metres are an odometer's storage unit, minutes are an hour-meter's (AVL 103 is literally named
+ * "Engine Total Hours" and counts minutes) — neither is what the reader wants.
+ */
+function displayUnit(label: AttrLabel): string | undefined {
+  if (isFlags(label)) return undefined
+  if (label.units === 'm') return 'km'
+  if (label.units === 'min') return 'h'
+  return label.units
+}
+
 /** Value formatter that knows the element's unit when the NAME is a documented one. */
 export const fmtAttrValue = (key: string, v: unknown, label?: AttrLabel): string => {
   if (typeof v === 'number') {
@@ -175,10 +204,15 @@ export const fmtAttrValue = (key: string, v: unknown, label?: AttrLabel): string
        * distances), and "362730000 m" is a number a person has to count digits in. The dictionary
        * decides the SCALE; this decides how a human reads it.
        */
+      // a bitfield is a pattern of bits, not a quantity — base 10 hides that entirely
+      if (isFlags(label)) return `0x${(scaled >>> 0 === scaled ? scaled : Math.trunc(scaled)).toString(16).toUpperCase()}`
+      const unit = displayUnit(label)
       if (label.units === 'm') return `${(scaled / 1000).toFixed(2)} km`
+      // an hour-meter reported in minutes: decimal hours is how every hour-meter is read
+      if (label.units === 'min') return `${(scaled / 60).toFixed(1)} h`
       // a multiplied value is fractional by construction; an unmultiplied one is shown as sent
       const shown = mult !== 1 ? scaled.toFixed(1) : String(scaled)
-      return label.units === undefined ? shown : `${shown} ${label.units}`
+      return unit === undefined ? shown : `${shown} ${unit}`
     }
     const unit = NAMED_UNITS[key.toLowerCase()]
     if (unit !== undefined) return unit(v)
@@ -204,7 +238,8 @@ export const fmtAttrValue = (key: string, v: unknown, label?: AttrLabel): string
  */
 function displayName(label: AttrLabel): string {
   const name = label.name.replace(/\s*\(?counted\)?$/i, ' (counted)')
-  return label.units === undefined ? name : `${name} (${label.units})`
+  const unit = displayUnit(label)
+  return unit === undefined ? name : `${name} (${unit})`
 }
 
 export function telemetryRows(

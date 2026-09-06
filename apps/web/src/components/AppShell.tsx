@@ -40,9 +40,9 @@ import { NotificationsBell } from '@/components/admin/NotificationsBell'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { getAccountContext, isOverseer, onAccountContextChange, setAccountContext } from '@/lib/accountContext'
+import { clearAccountContext, getAccountContext, isOverseer, onAccountContextChange, setAccountContext } from '@/lib/accountContext'
 import { getCurrentUser, logout as authLogout } from '@/lib/auth'
-import { applyBranding, getBranding, onBrandingChange, PLATFORM_NAME, type Branding } from '@/lib/branding'
+import { applyBranding, cachedBranding, getBranding, onBrandingChange, PLATFORM_NAME, type Branding } from '@/lib/branding'
 import { usePublicBranding } from '@/lib/publicBranding'
 import { listAccounts } from '@/lib/devices'
 import { liveStore } from '@/lib/liveStore'
@@ -176,7 +176,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // literal "Orbetra" until the fetch landed, and kept them for good for a tenant with colours but
   // no product name, or on any fetch failure (the catch below).
   const host = usePublicBranding()
-  const [branding, setBranding] = useState<Branding | null>(null)
+  // seeded from the cache so the sidebar mark and name do not start as OURS on a tenant's screen;
+  // the fetch below still overwrites it a moment later (see primeBrandingFromCache)
+  const [branding, setBranding] = useState<Branding | null>(cachedBranding)
 
   // apply the tenant's white-label theme once authenticated (E03-5)
   useEffect(() => {
@@ -285,6 +287,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       // without this, tenant A's markers survive into tenant B's session
       // (byId never evicts) — a client-side cross-tenant position leak
       liveStore.reset()
+      // and the account context: it is owner-checked on read, but another tenant's accountId has
+      // no business sitting in a shared browser's storage after someone signs out
+      clearAccountContext()
       // same leak class for the TanStack Query cache (R4 HIGH): devices/events/trips/
       // geofences/billing/audit/bell rows would otherwise be served to the next user who
       // logs in on this tab (default 5-min gcTime) — clear it so nothing crosses tenants
@@ -464,7 +469,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           </header>
           {/* no sonner <Toaster/> here (reference app.tsx mounts one): ADR-028 deliberately
               excludes sonner — success/error feedback stays inline and testid-pinned */}
-          <main className="relative min-h-0 flex-1">{children}</main>
+          {/* MAIN is the scroller, not the document.
+              The shell is `h-full`, i.e. exactly the viewport, so a page taller than the fold used
+              to overflow and scroll the BODY — and the sidebar, stretched only to the shell, ended
+              where the fold was while the content kept going (founder, 2026-09-06, on Settings).
+              Scrolling here keeps the document at viewport height, so the sidebar always reaches
+              the bottom. Page roots of both shapes still work: the `h-full` layouts (map,
+              geofences) fill this box exactly and never overflow it, and the `space-y` pages scroll
+              inside it. Nothing in the app reads window.scrollY. */}
+          <main className="relative min-h-0 flex-1 overflow-y-auto">{children}</main>
         </div>
 
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} nav={paletteNav} onNavigate={(to) => void navigate({ to })} />

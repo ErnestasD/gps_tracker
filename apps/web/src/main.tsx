@@ -8,11 +8,14 @@ import './styles/index.css'
 import { setUnauthorizedHandler } from './lib/client'
 import { SUPPORTED_LOCALES } from '@orbetra/shared'
 
+import { primeBrandingFromCache } from './lib/branding'
 import { applyTheme, getStoredLocale, getTheme, setStoredLocale } from './lib/prefs'
 import { router } from './router'
 
 // apply device-local prefs before first paint (E03-2 Settings)
 applyTheme(getTheme())
+// …and the brand this host wore last time, so a tenant never watches OUR colours load first
+primeBrandingFromCache()
 /**
  * `?lng` BEATS the stored preference, and is then stored itself.
  *
