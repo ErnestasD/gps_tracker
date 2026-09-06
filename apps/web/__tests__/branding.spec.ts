@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brandingSchema } from '@orbetra/shared'
+
+import { applyBranding } from '../src/lib/branding'
 
 // both sides of the merge: the colleague's `clean`/`iconFor` (favicon + brand assets, #273) and
 // this branch's `routingKind` — the union, not a choice
@@ -373,5 +375,52 @@ describe('docsLink', () => {
     expect(docsLink(null, 'dns-what')).toBeNull()
     expect(docsLink('', 'dns-what')).toBeNull()
     expect(docsLink('   ', 'dns-what')).toBeNull()
+  })
+})
+
+/**
+ * The colours are inline custom properties on <html>, which is why "set if present" was not a
+ * neutral choice: an applied tenant accent kept overriding the stylesheet until the document was
+ * thrown away, so applying the platform's colourless brand did not restore ours — it just declined
+ * to change theirs. Signing out of a TSP account handed the shared login form that tenant's
+ * colours, and only a reload put them back (founder, 2026-09-06).
+ */
+describe('applyBranding paints and UNPAINTS', () => {
+  const root = { style: new Map<string, string>() }
+  const el = {
+    style: {
+      setProperty: (k: string, v: string) => void root.style.set(k, v),
+      removeProperty: (k: string) => void root.style.delete(k),
+    },
+  }
+
+  beforeEach(() => {
+    root.style.clear()
+    vi.stubGlobal('document', { documentElement: el, title: '', head: { querySelectorAll: () => [], appendChild: () => undefined }, createElement: () => ({ setAttribute: () => undefined, remove: () => undefined }) })
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined })
+    vi.stubGlobal('window', Object.assign(new EventTarget(), { location: { host: 'dash.example', pathname: '/app' }, matchMedia: () => ({ matches: false }) }))
+  })
+
+  it('a tenant colour is applied, and the platform brand takes it back off', () => {
+    applyBranding({ primary: '#FF0000', accent: '#00FF00' }, true, false)
+    expect(root.style.has('--accent')).toBe(true)
+    expect(root.style.has('--accent-2')).toBe(true)
+
+    applyBranding({}, false, false) // the platform: no colours of its own, the stylesheet's win
+    expect(root.style.has('--accent')).toBe(false)
+    expect(root.style.has('--accent-2')).toBe(false)
+  })
+
+  it('a brand that sets only one colour clears the other', () => {
+    applyBranding({ primary: '#FF0000', accent: '#00FF00' }, true, false)
+    applyBranding({ primary: '#0000FF' }, true, false)
+    expect(root.style.get('--accent')).toBeDefined()
+    expect(root.style.has('--accent-2')).toBe(false)
+  })
+
+  it('an invalid hex clears rather than sticks — a typo must not freeze the last good colour', () => {
+    applyBranding({ primary: '#FF0000' }, true, false)
+    applyBranding({ primary: 'red' }, true, false)
+    expect(root.style.has('--accent')).toBe(false)
   })
 })

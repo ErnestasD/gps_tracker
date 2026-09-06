@@ -42,7 +42,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { clearAccountContext, getAccountContext, isOverseer, onAccountContextChange, setAccountContext } from '@/lib/accountContext'
 import { getCurrentUser, logout as authLogout } from '@/lib/auth'
-import { applyBranding, cachedBranding, getBranding, onBrandingChange, PLATFORM_NAME, type Branding } from '@/lib/branding'
+import { applyBranding, cachedBranding, forgetSessionBrand, getBranding, onBrandingChange, PLATFORM_NAME, type Branding } from '@/lib/branding'
 import { usePublicBranding } from '@/lib/publicBranding'
 import { listAccounts } from '@/lib/devices'
 import { liveStore } from '@/lib/liveStore'
@@ -290,6 +290,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       // and the account context: it is owner-checked on read, but another tenant's accountId has
       // no business sitting in a shared browser's storage after someone signs out
       clearAccountContext()
+      // …and the BRAND. Signing out returns to a page this tenant does not own: on our host that is
+      // the shared login form, which must wear ours. `host` is what this DOMAIN resolved to, so
+      // applying it is right on a white-label domain too — there it simply re-applies their own.
+      forgetSessionBrand()
+      applyBranding(host?.branding ?? {}, host?.whiteLabel === true, false)
       // same leak class for the TanStack Query cache (R4 HIGH): devices/events/trips/
       // geofences/billing/audit/bell rows would otherwise be served to the next user who
       // logs in on this tab (default 5-min gcTime) — clear it so nothing crosses tenants
