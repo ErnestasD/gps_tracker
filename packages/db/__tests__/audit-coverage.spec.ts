@@ -166,6 +166,58 @@ describe('E03-6 audit coverage — every mutation writes an audit row', () => {
     expect(raw[0]!.secret).toBe('signing-secret-abcdef123')
   })
 
+  it('a save that changes nothing writes no row, and a real change still does', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-000000000002' }
+    const tenant = await db.tenants.create(actor, { name: 'No-op Co' })
+    const brandingRows = async () =>
+      (await q<{ n: string }>(`SELECT count(*) n FROM audit_log WHERE entity='branding' AND "tenantId"=$1`, [tenant.id]))[0]!.n
+
+    await db.tenants.updateBranding(actor, tenant.id, { productName: 'Acme' })
+    expect(await brandingRows()).toBe('1')
+    // the Branding page PATCHes the whole object on every click; clicking Save twice is not a change
+    await db.tenants.updateBranding(actor, tenant.id, { productName: 'Acme' })
+    expect(await brandingRows()).toBe('1')
+    await db.tenants.updateBranding(actor, tenant.id, { productName: 'Acme Fleet' })
+    expect(await brandingRows()).toBe('2')
+
+    // …and the same rule for a tenant PATCH that sets what is already set
+    const before = (await q<{ n: string }>(`SELECT count(*) n FROM audit_log WHERE entity='tenant' AND action='update' AND "tenantId"=$1`, [tenant.id]))[0]!.n
+    await db.tenants.update(actor, tenant.id, { name: 'No-op Co' })
+    expect((await q<{ n: string }>(`SELECT count(*) n FROM audit_log WHERE entity='tenant' AND action='update' AND "tenantId"=$1`, [tenant.id]))[0]!.n).toBe(before)
+  })
+
+  it('a no-op PATCH on a BIGINT-keyed row does not throw (JSON.stringify(1n) does)', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-000000000005' }
+    const tenant = await db.tenants.create(actor, { name: 'Bigint Co' })
+    const account = await db.accounts.create({ tenantId: tenant.id }, actor, { name: 'Bigint Fleet' })
+    const scope = { tenantId: tenant.id, accountId: account.id }
+    const [profile] = await q<{ id: string }>(`INSERT INTO device_profiles(id,key,name) VALUES (gen_random_uuid(),'bigint-k','P') RETURNING id`)
+    const device = await db.devices.create(scope, actor, { accountId: account.id, profileId: profile!.id, imei: '356307042440085', name: 'Van' })
+    const rowsFor = async () =>
+      (await q<{ n: string }>(`SELECT count(*) n FROM audit_log WHERE entity='device' AND action='update' AND "entityId"=$1`, [String(device.id)]))[0]!.n
+
+    await db.devices.update(scope, actor, String(device.id), { name: 'Van' }) // same name = no change
+    expect(await rowsFor()).toBe('0')
+    await db.devices.update(scope, actor, String(device.id), { name: 'Van 2' })
+    expect(await rowsFor()).toBe('1')
+  })
+
+  it('a password reset IS recorded — the one change the user snapshot cannot show', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-000000000003' }
+    const tenant = await db.tenants.create(actor, { name: 'Reset Co' })
+    const scope = { tenantId: tenant.id }
+    const user = await db.users.create(scope, actor, { email: 'reset@audit.test', passwordHash: 'argon2-old', role: 'viewer', accountId: null })
+    await db.users.update(scope, actor, user.id, { passwordHash: 'argon2-new' })
+
+    const rows = await q<{ before: Record<string, unknown>; after: Record<string, unknown> }>(
+      `SELECT before, after FROM audit_log WHERE entity='user' AND action='update' AND "entityId"=$1`, [user.id],
+    )
+    expect(rows.length).toBe(1)
+    expect(rows[0]!.after['passwordChanged']).toBe(true)
+    // the fact, never the secret
+    expect(JSON.stringify(rows[0])).not.toContain('argon2')
+  })
+
   it('user audit snapshots never contain a password hash', async () => {
     const rows = await q<{ after: Record<string, unknown> | null; before: Record<string, unknown> | null }>(
       `SELECT before, after FROM audit_log WHERE entity = 'user'`,
