@@ -504,11 +504,25 @@ export function onBrandingChange(cb: () => void): () => void {
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
-/** Branding plus the two pieces of DEPLOYMENT config the Domains card needs and cannot infer:
- *  where a tenant points their own domain's CNAME, and whether `<slug>.<platformDomain>` is on
- *  offer at all (it needs a wildcard DNS record to exist). Either may be null. */
+/**
+ * Branding plus the DEPLOYMENT config the Domains card needs and cannot infer: where a tenant points
+ * their own domain's CNAME, what an apex points at, and whether `<slug>.<platformDomain>` is on
+ * offer at all (it needs a wildcard DNS record to exist).
+ *
+ * The config fields are OPTIONAL, not merely nullable: the server sends them only to a tenant-wide
+ * admin (audit W-9). Everyone else — the viewers and account users this route serves the theme to on
+ * every page load — gets branding without our hostnames in it. Absent and null both mean "no row to
+ * show", which is what `dnsRecordsFor` already handles.
+ */
 export const getBranding = () =>
-  getJson<{ branding: Branding; name: string; assets: BrandAsset[]; dnsTarget: string | null; dnsAddresses: string[]; platformDomain: string | null }>('/v1/tenant/branding')
+  getJson<{
+    branding: Branding
+    name: string
+    assets: BrandAsset[]
+    dnsTarget?: string | null
+    dnsAddresses?: string[]
+    platformDomain?: string | null
+  }>('/v1/tenant/branding')
 export const saveBranding = (b: Branding) => mutate<{ branding: Branding; name: string }>('PATCH', '/v1/tenant/branding', b)
 
 /**

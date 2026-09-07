@@ -123,6 +123,31 @@ describe('E03-5 tenant branding (self, scoped)', () => {
     expect((await req('/v1/tenant/branding', t1Token, 'PATCH', { logoUrl: 'http://x/logo.png' })).status).toBe(400)
   })
 
+  it('the DEPLOYMENT config rides only to a tenant-wide admin, never to a viewer', async () => {
+    // READ_POLICY.branding is every role on purpose ("viewers see the theme"), and AppShell fetches
+    // this on mount for EVERY authenticated page — so `dash.orbetra.test` and `orbetra.test` were
+    // delivered into a reseller's end customer's browser on every login (audit W-9). Nothing renders
+    // them there, but they are in the response, and an `orb_live_` key reaches the same endpoint.
+    const admin = (await (await req('/v1/tenant/branding', t1Token)).json()) as Record<string, unknown>
+    expect(admin['dnsTarget']).toBe('dash.orbetra.test')
+    expect(admin['platformDomain']).toBe('orbetra.test')
+
+    const viewerToken = await mintTestToken({ userId: '00000000-0000-0000-0000-0000000000ab', tenantId: t1, role: 'viewer' })
+    const viewer = (await (await req('/v1/tenant/branding', viewerToken)).json()) as Record<string, unknown>
+    expect(viewer['branding']).toBeDefined() // they still get the theme, which is the point of the route
+    expect(viewer['dnsTarget']).toBeUndefined()
+    expect(viewer['dnsAddresses']).toBeUndefined()
+    expect(viewer['platformDomain']).toBeUndefined()
+    expect(JSON.stringify(viewer)).not.toMatch(/orbetra/i)
+  })
+
+  it('…and not to an ACCOUNT-PINNED admin either — the setup steps are tenant-wide', async () => {
+    const pinned = await mintTestToken({ userId: '00000000-0000-0000-0000-0000000000ac', tenantId: t1, accountId: '00000000-0000-0000-0000-0000000000ad', role: 'tsp_admin' })
+    const got = (await (await req('/v1/tenant/branding', pinned)).json()) as Record<string, unknown>
+    expect(got['branding']).toBeDefined()
+    expect(got['dnsTarget']).toBeUndefined()
+  })
+
   it('branding is per-tenant — T2 never sees T1 branding', async () => {
     await req('/v1/tenant/branding', t1Token, 'PATCH', { productName: 'ONLY T1' })
     const t2got = (await (await req('/v1/tenant/branding', t2Token)).json()) as { branding: Record<string, unknown> }

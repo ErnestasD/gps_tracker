@@ -363,7 +363,11 @@ export function createAuthRoutes(deps: AuthRouteDeps, getRemoteAddr: (c: unknown
       // same email+password verifying in MULTIPLE tenants (founder decision
       // 2026-07-07): never guess the tenant. E03-5 host-based tenant resolution
       // deletes this branch. Only a valid credential holder can see this.
-      return problem(c, 409, 'Ambiguous Identity', 'contact your administrator', 'https://orbetra.dev/problems/ambiguous-identity')
+      // A URN, not `https://orbetra.dev/…` (audit W-11). This was the ONLY non-`about:blank` type in
+      // the whole API, so it was also the only error body naming the vendor — returned on a
+      // reseller's own domain, to a customer whose client may read it programmatically with an
+      // `orb_live_` key. A URN identifies the problem exactly as well and dereferences to nothing.
+      return problem(c, 409, 'Ambiguous Identity', 'contact your administrator', 'urn:problem:ambiguous-identity')
     }
 
     // Success clears the per-credential counter outright. The per-IP FAILURE budget is only
