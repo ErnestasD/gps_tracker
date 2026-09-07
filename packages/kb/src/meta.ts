@@ -512,10 +512,10 @@ export const KB_META: readonly KbArticleMeta[] = [
     screen: '/app/branding',
     title: { en: 'The e-mail your customers receive', lt: 'Laiškai, kuriuos gauna jūsų klientai', pl: 'E-maile, które dostają Twoi klienci', de: 'E-Mails, die Ihre Kunden erhalten' },
     summary: {
-      en: 'Exactly which parts of a message carry your brand today, which part does not yet, and how to keep messages arriving.',
-      lt: 'Kurios žinutės dalys šiandien jau su jūsų prekės ženklu, kuri dar ne ir kaip pasirūpinti, kad laiškai pasiektų gavėjus.',
-      pl: 'Dokładnie które części wiadomości mają dziś Twoją markę, która jeszcze nie, i jak zadbać, by wiadomości docierały.',
-      de: 'Genau welche Teile einer Nachricht heute Ihre Marke tragen, welcher noch nicht, und wie Sie dafür sorgen, dass Post ankommt.',
+      en: 'Which parts of a message carry your brand, how to make the sending address yours too, and how to keep messages arriving.',
+      lt: 'Kurios žinutės dalys su jūsų prekės ženklu, kaip ir siuntimo adresą padaryti savą ir kaip pasirūpinti, kad laiškai pasiektų gavėjus.',
+      pl: 'Które części wiadomości mają Twoją markę, jak sprawić, by adres wysyłki też był Twój, i jak zadbać, by wiadomości docierały.',
+      de: 'Welche Teile einer Nachricht Ihre Marke tragen, wie auch die Absenderadresse Ihre wird, und wie Sie dafür sorgen, dass Post ankommt.',
     },
   },
   {
