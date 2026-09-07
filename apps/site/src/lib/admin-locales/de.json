@@ -424,7 +424,7 @@
     "drawnTitle": "Form gezeichnet",
     "drawnNeedName": "Jetzt einen Namen eingeben und Speichern klicken.",
     "drawnReady": "Bereit — zum Erstellen Speichern klicken.",
-    "deleteError": "Geofence konnte nicht gelöscht werden — bitte erneut versuchen.",
+    "deleteError": "Geozone konnte nicht gelöscht werden — bitte erneut versuchen.",
     "edit": "Bearbeiten",
     "editTitle": "Geozone bearbeiten",
     "editHint": "Name oder Farbe ändern. Ein Korridor lässt sich nur durch Neuzeichnen umformen — seine Mittellinie wird nicht gespeichert.",
@@ -931,7 +931,7 @@
     "statScope": "Die Zahlen beziehen sich auf die {{n}} geladenen Ereignisse.",
     "loadMore": "Mehr laden",
     "k": {
-      "geofence": "Geofence",
+      "geofence": "Geozone",
       "overspeed": "Geschwindigkeit",
       "ignition": "Zündung",
       "din_change": "Eingangswechsel",
@@ -1016,7 +1016,7 @@
       "trips": "Fahrten",
       "stops": "Stopps",
       "overspeed": "Tempo",
-      "geofence": "Geofence",
+      "geofence": "Geozone",
       "engine_hours": "Motorstunden"
     },
     "col": {

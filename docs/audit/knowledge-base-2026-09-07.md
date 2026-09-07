@@ -89,13 +89,53 @@ Recorded because the next reader deserves to know the reviewers were not always 
   product, but the reviewer had not checked which of `rules.kind.*` vs `events.k.*` the article's
   table was quoting; two of the proposed replacements would have introduced a new mismatch.
 
-## 6. Not done — the remaining prose tail
+## 6. Round two — the prose pass (same day)
 
-The per-language reviewers also returned roughly 600 style-level findings: calqued idiom, awkward
-government and word order, and ad-hoc compounds. None of them state anything false and none name a
-wrong button; they read as translated rather than written. They are catalogued in the reviewers'
-reports and are a separate editing pass, ideally by a native speaker per language.
+Six more reviewers read every article again, this time for fluency alone, and returned exact
+old→new pairs: **EN 253, LT 535, PL ~190, DE ~200** — about 1 180 edits, all applied. Nothing was
+deferred.
 
-One item is outside this package and needs a decision: `apps/site/src/content/legal/subprocessors.ts`
-names **Postmark** while the product sends through **AWS SES**, and **Twilio** is absent entirely.
-That is a DPA-level mismatch, not a knowledge-base one.
+Three of those "style" findings turned out to be factual, which is why the pass was worth running:
+
+- **`commands`** told the reader to "deal with it before the device reconnects". There is no cancel
+  route and no cancel control — a queued command cannot be recalled. The article now says so.
+- **`drivers`** told the reader to read an iButton id "from the vehicle panel". No screen shows an
+  unregistered fob's id; the sentence now points only at the fob itself.
+- **`scheduled-reports` (LT only)** had the UTC offsets for Lithuania swapped — "two hours in summer
+  and three in winter" against a correct worked example in the same sentence. EN, PL and DE state
+  Central Europe correctly and were untouched.
+
+And one more retention claim did not survive checking: `where-your-data-lives` gave the audit log's
+retention as "kept as the record of who changed what", which is not a duration. `audit_log` is
+append-only and appears in no sweep, so it is kept for the life of the account — now stated. The
+same table said trips and events follow their positions; true for events and for a trip's route,
+but a trip's SUMMARY outlives both, which matters to anyone planning year-on-year reporting.
+
+The recurring patterns, which are the same in all four languages and worth remembering: English
+idiom carried over intact (`sėdi ant vardo`, `gyvena Stripe portale`, `mieszka w portalu`,
+`Historie`, `a blank is a blank`); objects and head nouns dropped where English may elide and the
+other three languages may not; and list or table columns whose grammatical shape changes row to row.
+
+## 7. Product changes this audit forced
+
+- **`webhookCreateSchema.url` now pins `https://`** (`packages/shared/src/entities.ts`), on create and
+  on update, with a test in `apps/api/__tests__/webhooks.spec.ts`. The article had claimed this was
+  already true; rather than weaken the article, the schema was made to match it.
+- **`apps/site/src/content/legal/subprocessors.ts` and `privacy.ts`** named **Postmark**, which the
+  codebase does not use anywhere. Transactional mail goes through **Amazon SES**
+  (`email-smtp.eu-central-1.amazonaws.com`) and the onboarding configuration SMS through **Twilio**,
+  which was absent from the list entirely. Both documents corrected in all four languages.
+  **The legal entity names and transfer bases still need checking against the signed DPAs** — the
+  service and the data flow are now right, the contracting entity is stated generically.
+
+## 8. Still open
+
+- **Fixed, in the product rather than the articles:** three locale keys disagreed with the rest of
+  their own language. German said **Geofence** in `reports.t.geofence`, `events.k.geofence` and
+  `geofences.deleteError` while everything else said **Geozone**; Polish said **Komendy** in
+  `shell.commands` alone against **Polecenia** on four other screens; English said
+  **Organization admin** in `roles.tsp_admin` against **Organisation admin** two keys away, in a
+  product that is British throughout. All three corrected in `apps/web/src/i18n/` and in the site's
+  `admin-locales/` mirror, and the German report table in the KB follows the corrected label.
+- The KB narrates as `{product}`, "the platform" and "we" — sometimes within one article. Harmless,
+  but a single voice would read better.

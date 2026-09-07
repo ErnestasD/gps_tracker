@@ -77,7 +77,7 @@ with the same anchors; the helper is gone.
 ## Consequences
 
 - `packages/kb` joins the monorepo map. No runtime dependencies — it is data and pure functions.
-- The public site gains `/learn` and `/learn/$slug`; the article chunk is ~590 KB raw / ~227 KB
+- The public site gains `/learn` and `/learn/$slug`; the article chunk is ~600 KB raw / ~230 KB
   gzipped and loads
   only on those routes. Both are thin route shells around `React.lazy` components — a route module
   is eager, and the first version's `loader` put the whole knowledge base in the entry chunk. The

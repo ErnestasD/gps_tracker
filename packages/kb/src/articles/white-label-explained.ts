@@ -11,7 +11,7 @@ export const whiteLabelExplained: KbArticle = {
       summary: 'Which parts of the product carry your brand, which parts your customers never see, and what you are responsible for.',
       keywords: ['white label', 'reseller', 'tsp', 'brand', 'own product', 'customers', 'partner'],
       blocks: [
-        { p: 'White-label means your customers use this platform as **your** product. They sign in on your domain, see your name and colours, receive mail with your name on it, and never encounter the platform behind it.' },
+        { p: 'White-label means your customers use this platform as **your** product. They sign in on your domain, see your name and colours, receive mail that comes from you, and never encounter the platform behind it.' },
         { h2: 'What your customers see', id: 'see' },
         { ul: [
           'Your domain in the address bar, with its own certificate — see [Your own domain](kb:custom-domain).',
@@ -20,8 +20,8 @@ export const whiteLabelExplained: KbArticle = {
           'Your support address as the reply address on every notification.',
         ] },
         { h2: 'What they never see', id: 'hidden' },
-        { p: 'The platform\'s own name, marks and pages are absent from a branded deployment — not hidden behind a setting, but not rendered at all. Where a piece of branding is not configured, the space stays empty rather than falling back to ours. An unset logo shows no logo.' },
-        { callout: 'note', p: 'This is why the branding screen is worth ten minutes of care: on your own domain, a blank is a blank. Filling it in is what makes the product look finished to your customer.' },
+        { p: 'The platform\'s own name, marks and pages are absent from a branded deployment — not hidden behind a setting, simply never rendered. Where a piece of branding is not configured, the space stays empty rather than falling back to ours. An unset logo shows no logo.' },
+        { callout: 'note', p: 'This is why the branding screen is worth ten minutes of care: on your own domain, anything you leave empty simply looks empty. Filling it in is what makes the product look finished to your customer.' },
         { h2: 'How the accounts fit together', id: 'structure' },
         { p: 'You have one organisation. Inside it, each of your customers gets an **account**: their own vehicles, zones, rules, reports and logins, with nothing crossing between them. You see across all of them; each customer sees only their own. See [Customer accounts](kb:customer-accounts).' },
         { h2: 'Who does what', id: 'responsibility' },
@@ -29,7 +29,7 @@ export const whiteLabelExplained: KbArticle = {
           ['Sell, price and invoice your customers however you like.', 'Bills you once, for the whole organisation.'],
           ['Support your customers as their supplier.', 'Supports you.'],
           ['Choose, install and configure the hardware.', 'Speaks the trackers\' protocol and stores the data.'],
-          ['Own the customer relationship and the contract.', 'Stays out of it — we never contact your customers.'],
+          ['Own the customer relationship and the contract.', 'Stays out of it and never contacts your customers.'],
         ] } },
         { h2: 'The first hour as a reseller', id: 'start' },
         { ol: [
@@ -42,10 +42,10 @@ export const whiteLabelExplained: KbArticle = {
     },
     lt: {
       title: 'Ką čia iš tikrųjų reiškia white-label',
-      summary: 'Kurios produkto dalys nešioja jūsų prekės ženklą, ko jūsų klientai niekada nemato ir už ką atsakote jūs.',
+      summary: 'Kurios produkto dalys žymimos jūsų prekės ženklu, ko jūsų klientai niekada nemato ir už ką atsakote jūs.',
       keywords: ['white label', 'perpardavėjas', 'tsp', 'prekės ženklas', 'savo produktas', 'klientai', 'partneris'],
       blocks: [
-        { p: 'White-label reiškia, kad jūsų klientai naudoja šią platformą kaip **jūsų** produktą. Jie prisijungia jūsų domene, mato jūsų pavadinimą ir spalvas, gauna laiškus su jūsų vardu ir su platforma už jų niekada nesusiduria.' },
+        { p: 'White-label reiškia, kad jūsų klientai naudoja šią platformą kaip **jūsų** produktą. Jie prisijungia jūsų domene, mato jūsų pavadinimą ir spalvas, gauna laiškus su jūsų vardu ir niekada nesusiduria su platforma, kuri stovi už viso to.' },
         { h2: 'Ką mato jūsų klientai', id: 'see' },
         { ul: [
           'Jūsų domeną adreso juostoje su savo sertifikatu – žr. [Nuosavas domenas](kb:custom-domain).',
@@ -54,13 +54,13 @@ export const whiteLabelExplained: KbArticle = {
           'Jūsų pagalbos adresą kaip atsakymo adresą kiekviename pranešime.',
         ] },
         { h2: 'Ko jie nemato niekada', id: 'hidden' },
-        { p: 'Pačios platformos pavadinimo, ženklų ir puslapių prekės ženklu pažymėtame diegime nėra – ne paslėpti už nustatymo, o išvis nepiešiami. Kur prekės ženklo dalis nesukonfigūruota, vieta lieka tuščia, o ne užpildoma mūsų. Nenustatytas logotipas reiškia jokio logotipo.' },
-        { callout: 'note', p: 'Kaip tik todėl prekės ženklo ekranas vertas dešimties minučių dėmesio: savame domene tuščia vieta lieka tuščia. Ją užpildžius produktas jūsų klientui atrodo baigtas.' },
+        { p: 'Pačios platformos pavadinimo, ženklų ir puslapių prekės ženklu pažymėtame diegime nėra – jie ne paslėpti už nustatymo, o apskritai nerodomi. Jei kuri nors prekės ženklo dalis nesukonfigūruota, vieta lieka tuščia, o ne užpildoma mūsiške. Nenustatytas logotipas reiškia, kad logotipo nebus.' },
+        { callout: 'note', p: 'Kaip tik todėl prekės ženklo ekranas vertas dešimties minučių dėmesio: savame domene tuščia vieta lieka tuščia. Ją užpildžius, produktas jūsų klientui atrodo baigtas.' },
         { h2: 'Kaip susidėlioja paskyros', id: 'structure' },
         { p: 'Jūs turite vieną organizaciją. Joje kiekvienas jūsų klientas gauna **paskyrą**: savo automobilius, zonas, taisykles, ataskaitas ir prisijungimus, ir niekas tarp jų nepersilieja. Jūs matote visas; kiekvienas klientas – tik savo. Žr. [Klientų paskyros](kb:customer-accounts).' },
         { h2: 'Kas už ką atsako', id: 'responsibility' },
         { table: { head: ['Jūs', 'Platforma'], rows: [
-          ['Parduodate, kainuojate ir sąskaitas savo klientams rašote kaip norite.', 'Sąskaitą rašo jums vieną, už visą organizaciją.'],
+          ['Parduodate, nustatote kainas ir sąskaitas savo klientams rašote, kaip norite.', 'Jums rašo vieną sąskaitą už visą organizaciją.'],
           ['Aptarnaujate savo klientus kaip jų tiekėjas.', 'Aptarnauja jus.'],
           ['Renkatės, montuojate ir konfigūruojate įrangą.', 'Kalba sekiklių protokolu ir saugo duomenis.'],
           ['Valdote santykį su klientu ir sutartį.', 'Į tai nesikiša – su jūsų klientais niekada nesusisiekiame.'],
@@ -79,7 +79,7 @@ export const whiteLabelExplained: KbArticle = {
       summary: 'Które części produktu noszą Twoją markę, czego Twoi klienci nigdy nie widzą i za co odpowiadasz.',
       keywords: ['white label', 'reseller', 'tsp', 'marka', 'własny produkt', 'klienci', 'partner'],
       blocks: [
-        { p: 'White-label znaczy, że Twoi klienci używają tej platformy jako **Twojego** produktu. Logują się w Twojej domenie, widzą Twoją nazwę i kolory, dostają maile z Twoim nazwiskiem i nigdy nie natrafiają na platformę stojącą z tyłu.' },
+        { p: 'White-label znaczy, że Twoi klienci używają tej platformy jako **Twojego** produktu. Logują się w Twojej domenie, widzą Twoją nazwę i kolory, dostają maile z Twoją nazwą i nigdy nie natrafiają na platformę, która za tym stoi.' },
         { h2: 'Co widzą Twoi klienci', id: 'see' },
         { ul: [
           'Twoją domenę w pasku adresu, z własnym certyfikatem — zobacz [Własna domena](kb:custom-domain).',
@@ -88,7 +88,7 @@ export const whiteLabelExplained: KbArticle = {
           'Twój adres wsparcia jako adres odpowiedzi w każdym powiadomieniu.',
         ] },
         { h2: 'Czego nigdy nie widzą', id: 'hidden' },
-        { p: 'Własna nazwa, znaki i strony platformy są w brandowanej instalacji nieobecne — nie schowane za ustawieniem, tylko w ogóle nierysowane. Tam, gdzie element marki nie jest skonfigurowany, miejsce zostaje puste, a nie wypełnione naszym. Nieustawione logo oznacza brak logo.' },
+        { p: 'Nazwa, znaki i strony samej platformy są w brandowanej instalacji nieobecne — nie schowane za ustawieniem, tylko w ogóle nierysowane. Tam, gdzie element marki nie jest skonfigurowany, miejsce zostaje puste, a nie wypełnione naszymi elementami. Nieustawione logo oznacza brak logo.' },
         { callout: 'note', p: 'Dlatego ekran marki wart jest dziesięciu minut uwagi: we własnej domenie pustka zostaje pustką. Wypełnienie jej sprawia, że produkt wygląda dla klienta na skończony.' },
         { h2: 'Jak układają się konta', id: 'structure' },
         { p: 'Masz jedną organizację. Wewnątrz niej każdy Twój klient dostaje **konto**: własne pojazdy, strefy, reguły, raporty i loginy, bez żadnego przenikania między nimi. Ty widzisz wszystkie; każdy klient tylko swoje. Zobacz [Konta klientów](kb:customer-accounts).' },
@@ -96,8 +96,8 @@ export const whiteLabelExplained: KbArticle = {
         { table: { head: ['Ty', 'Platforma'], rows: [
           ['Sprzedajesz, wyceniasz i fakturujesz swoich klientów, jak chcesz.', 'Wystawia jedną fakturę Tobie, za całą organizację.'],
           ['Obsługujesz swoich klientów jako ich dostawca.', 'Obsługuje Ciebie.'],
-          ['Wybierasz, montujesz i konfigurujesz sprzęt.', 'Mówi protokołem lokalizatorów i przechowuje dane.'],
-          ['Prowadzisz relację z klientem i umowę.', 'Trzyma się z boku — nigdy nie kontaktujemy się z Twoimi klientami.'],
+          ['Wybierasz, montujesz i konfigurujesz sprzęt.', 'Obsługuje protokół lokalizatorów i przechowuje dane.'],
+          ['Prowadzisz relację z klientem i umowę.', 'Trzyma się z boku — nigdy nie kontaktuje się z Twoimi klientami.'],
         ] } },
         { h2: 'Pierwsza godzina resellera', id: 'start' },
         { ol: [
@@ -113,7 +113,7 @@ export const whiteLabelExplained: KbArticle = {
       summary: 'Welche Teile des Produkts Ihre Marke tragen, was Ihre Kunden nie sehen und wofür Sie verantwortlich sind.',
       keywords: ['white label', 'reseller', 'tsp', 'marke', 'eigenes produkt', 'kunden', 'partner'],
       blocks: [
-        { p: 'White-Label heißt: Ihre Kunden nutzen diese Plattform als **Ihr** Produkt. Sie melden sich auf Ihrer Domain an, sehen Ihren Namen und Ihre Farben, erhalten Post mit Ihrem Namen und begegnen der Plattform dahinter nie.' },
+        { p: 'White-Label heißt: Ihre Kunden nutzen diese Plattform als **Ihr** Produkt. Sie melden sich auf Ihrer Domain an, sehen Ihren Namen und Ihre Farben, erhalten E-Mails mit Ihrem Namen und begegnen der Plattform dahinter nie.' },
         { h2: 'Was Ihre Kunden sehen', id: 'see' },
         { ul: [
           'Ihre Domain in der Adressleiste, mit eigenem Zertifikat — siehe [Eigene Domain](kb:custom-domain).',
@@ -122,10 +122,10 @@ export const whiteLabelExplained: KbArticle = {
           'Ihre Support-Adresse als Antwortadresse jeder Benachrichtigung.',
         ] },
         { h2: 'Was sie nie sehen', id: 'hidden' },
-        { p: 'Der eigene Name, die Marken und die Seiten der Plattform fehlen in einer gebrandeten Installation — nicht hinter einer Einstellung versteckt, sondern gar nicht gerendert. Wo ein Brandingelement nicht gesetzt ist, bleibt der Platz leer statt auf unseres zurückzufallen. Kein Logo gesetzt heißt kein Logo.' },
+        { p: 'Der eigene Name, die Marken und die Seiten der Plattform fehlen in einer Installation mit Ihrer Marke — nicht hinter einer Einstellung versteckt, sondern gar nicht gerendert. Wo ein Element Ihrer Marke nicht gesetzt ist, bleibt der Platz leer, statt auf unseres zurückzufallen. Kein Logo gesetzt heißt kein Logo.' },
         { callout: 'note', p: 'Deshalb sind zehn sorgfältige Minuten auf der Branding-Seite gut investiert: Auf Ihrer eigenen Domain bleibt eine Lücke eine Lücke. Sie zu füllen lässt das Produkt für Ihren Kunden fertig wirken.' },
         { h2: 'Wie die Konten zusammenpassen', id: 'structure' },
-        { p: 'Sie haben eine Organisation. Darin bekommt jeder Ihrer Kunden ein **Konto**: eigene Fahrzeuge, Zonen, Regeln, Berichte und Zugänge, ohne dass etwas übergreift. Sie sehen über alle hinweg; jeder Kunde nur sein eigenes. Siehe [Kundenkonten](kb:customer-accounts).' },
+        { p: 'Sie haben eine Organisation. Darin bekommt jeder Ihrer Kunden ein **Konto**: eigene Fahrzeuge, Zonen, Regeln, Berichte und Zugänge, ohne dass etwas übergreift. Sie sehen alle Konten; jeder Kunde sieht nur sein eigenes. Siehe [Kundenkonten](kb:customer-accounts).' },
         { h2: 'Wer was macht', id: 'responsibility' },
         { table: { head: ['Sie', 'Die Plattform'], rows: [
           ['Verkaufen, bepreisen und fakturieren Ihre Kunden, wie Sie wollen.', 'Rechnet einmal mit Ihnen ab, für die ganze Organisation.'],
@@ -135,7 +135,7 @@ export const whiteLabelExplained: KbArticle = {
         ] } },
         { h2: 'Die erste Stunde als Reseller', id: 'start' },
         { ol: [
-          'Marke setzen: Name, Farben, Logo, Favicon, Support-Adresse — [Ihr Dashboard branden](kb:branding).',
+          'Marke setzen: Name, Farben, Logo, Favicon, Support-Adresse — [Ihr Dashboard mit Ihrer Marke versehen](kb:branding).',
           'Domain hinzufügen und zwei DNS-Einträge veröffentlichen — [Eigene Domain](kb:custom-domain).',
           'Erstes Kundenkonto samt Zugang anlegen — [Kundenkonten](kb:customer-accounts).',
           'Deren Tracker hinzufügen und den Zugang übergeben — [Tracker anschließen](kb:connect-a-tracker).',
