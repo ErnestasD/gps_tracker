@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { createApp } from '@orbetra/api'
 
-import { setup, type Fixtures, type TenantFixture } from './fixtures.js'
+import { setup, VENDOR, type Fixtures, type TenantFixture } from './fixtures.js'
 
 /**
  * Cross-tenant isolation suite (E03-2, PROJECT_PLAN §6.2 / §10 #7). Manifest-driven:
@@ -639,5 +639,63 @@ describe('E03-2 meta-test: manifest completeness (AC[3])', () => {
       'GET /v1/push/broadcast',
       'GET /v1/driver-scores/:id',
     ])
+  })
+})
+
+/**
+ * THE VENDOR SWEEP — no response a reseller's customer can reach may carry the platform's identity.
+ *
+ * Manifest-driven for the same reason the isolation sweeps are: a new route is covered the day it is
+ * added, by nobody remembering anything. This is the guard the white-label audit
+ * (`docs/audit/tsp-whitelabel-2026-09.md`) asked for, and it is written to catch the finding that
+ * motivated it — W-9, where `GET /v1/tenant/branding` returned `dnsTarget` and `platformDomain` to
+ * EVERY role, on a route AppShell fetches on every authenticated page load.
+ *
+ * The caller is the VIEWER, pinned to one account: the least-privileged principal in the product and
+ * the shape a reseller's own end customer actually has. A route that answers 403 or 404 to them
+ * proves nothing here and is skipped — this asks "what does a customer receive", not "who may call".
+ *
+ * The fixtures ARM the app with `edgeHostname` / `platformDomain` sentinels. Unset, every handler
+ * would serialise `null` and this whole sweep would pass against a live leak.
+ */
+const VENDOR_STRINGS = [VENDOR.edgeHostname, VENDOR.platformDomain, VENDOR.name]
+
+/** Routes whose response may legitimately name the platform, with the reason. */
+const VENDOR_ALLOWED: Record<string, string> = {
+  // (empty on purpose — every entry added here is a decision to show a reseller's customer who we
+  // are, and should be argued in the PR that adds it)
+}
+
+describe('white-label: no customer-reachable response names the vendor', () => {
+  it('sweeps every GET a viewer can reach', async () => {
+    const gets = fx.manifest.filter((m) => m.method === 'get' && m.scopeClass !== 'platform')
+    expect(gets.length).toBeGreaterThan(0)
+
+    const leaked: string[] = []
+    for (const m of gets) {
+      const key = `GET ${m.path}`
+      if (VENDOR_ALLOWED[key] !== undefined) continue
+      const path = m.shape === 'item' ? itemPath(m.path, idFor(fx.t1, paramEntity(m))) : m.path
+      if (path.includes(':')) continue // no fixture id for this param shape — the item sweep above owns that gap
+      const res = await req(path, fx.t1.tokenViewerA1)
+      if (res.status !== 200) continue // 403/404 answers nothing about what a customer RECEIVES
+      const body = await res.text()
+      for (const needle of VENDOR_STRINGS) {
+        if (body.toLowerCase().includes(needle.toLowerCase())) leaked.push(`${key} → ${needle}`)
+      }
+    }
+    // collected, not asserted per-route: when this list grows the useful output is every surface at
+    // once, not whichever one happens to sort first
+    expect(leaked, 'these responses carry the platform identity to a customer-shaped caller').toEqual([])
+  })
+
+  it('POSITIVE CONTROL: the sweep can actually see a vendor string', async () => {
+    // Without this, a sweep that silently stopped matching — a changed sentinel, a body read as the
+    // wrong type, a filter that skipped everything — would report a clean bill of health forever.
+    const res = await req('/v1/tenant/branding', fx.t1.tokenTenant)
+    expect(res.status).toBe(200)
+    const body = await res.text()
+    // the tenant-wide ADMIN still gets the setup config, which is exactly what the sweep looks for
+    expect(VENDOR_STRINGS.some((n) => body.toLowerCase().includes(n.toLowerCase()))).toBe(true)
   })
 })
