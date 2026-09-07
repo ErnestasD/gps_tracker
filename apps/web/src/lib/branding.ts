@@ -1,4 +1,4 @@
-import { parseAssetPath } from '@orbetra/shared'
+import { parseAssetPath, type Readiness } from '@orbetra/shared'
 
 import { getJson, mutate } from './client'
 import { getTheme, onThemeChange, type Theme } from './prefs'
@@ -561,6 +561,30 @@ export function clean(b: Branding): Branding {
   return out
 }
 export const listDomains = () => getJson<TenantDomain[]>('/v1/tenant/domains')
+
+/**
+ * Whether this reseller may create customer-facing accounts yet, and what is missing (plan W2).
+ *
+ * The same value the SERVER enforces with, so the card and the 403 can never disagree — a button
+ * that looks enabled and then refuses is worse than one that explains itself first.
+ */
+export const getReadiness = () => getJson<Readiness>('/v1/tenant/readiness')
+
+/**
+ * Who may be shown the readiness card — the RESELLER, and nobody else in their tenant.
+ *
+ * A predicate rather than an inline condition because the card first shipped on the operator
+ * dashboard, which is the page the reseller's own CUSTOMERS see. Every line of that card is written
+ * in the second person to the reseller, and one of them says their customers can see our hostname:
+ * a sentence that only parses if you know there is a platform behind the product, delivered to the
+ * one audience that must never learn it. The server refuses the same readers (`/v1/tenant/readiness`
+ * is tenant-admin only), so this is the second lock, not the only one.
+ *
+ * `accountId === null` is the tenant-wide test: an admin PINNED to one account administers that
+ * customer, not the workspace, and cannot press any of the gated buttons anyway.
+ */
+export const mayReadReadiness = (u: { role: string; accountId: string | null } | null): boolean =>
+  u !== null && u.accountId === null && (u.role === 'tsp_admin' || u.role === 'platform_admin')
 /** `txtRecord`/`dnsTarget` are null for a PLATFORM SUBDOMAIN — it comes back already verified,
  *  with nothing for the tenant to publish and nowhere for them to point anything. */
 export const addDomain = (domain: string) =>

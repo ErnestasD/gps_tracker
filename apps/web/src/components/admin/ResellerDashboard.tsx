@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { AdminButton, Badge as AdminBadge, PageHeader, StatCard } from '@/components/admin/AdminKit'
 import { DataTable, type Column } from '@/components/admin/DataTable'
+import { ReadinessCard } from '@/components/admin/ReadinessCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { listAccountUsage, listUsers } from '@/lib/accounts'
 import { setAccountContext } from '@/lib/accountContext'
@@ -109,6 +110,8 @@ export function ResellerDashboard() {
         </AdminButton>
         <AdminButton onClick={() => void navigate({ to: '/app/devices' })}>{t('reseller.toDevices')}</AdminButton>
       </PageHeader>
+
+      <ReadinessCard />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label={t('reseller.customers')} value={accounts.data?.length ?? '—'} />

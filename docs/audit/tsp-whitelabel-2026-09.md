@@ -59,6 +59,41 @@ into a vendor hostname. The code itself was already right: no vendor string, fai
 PR #298; W-5 and W-6 in the canonical-domain PR. **W-3 stays OPEN as partial** — the sending address
 needs ADR-036 and is not shipped. Still open: W-1, W-2, W-9, W-10, W-11, W-12, W-13.
 
+**Remediation, 2026-09-07.** W-1 and W-2 closed in #301, W-9/W-10/W-11 in #303, and #305 added the
+vendor sweep that keeps them closed.
+
+**Ten of the thirteen are fully closed** (W-1, W-2, W-4, W-5, W-6, W-7, W-8, W-9, W-10, W-11). W-3
+stays partial until ADR-036 is implemented — the display name ships, the sending address does not.
+W-12 and W-13 cannot be closed by code at all: both are our name published in the reseller's own DNS
+zone (`dash.orbetra.com` as their CNAME target, `_orbetra-verify` as a label they must keep
+published), and only a neutral platform domain removes them. That purchase is the founder's, and it
+is the single blocking item on this audit.
+
+### The readiness model (PR #306) — the source, not another instance
+
+The thirteen findings share one cause, which none of them names: a tenant could be half-configured
+and the platform would quietly supply the missing halves from its own identity. W2 makes that state
+explicit — a reseller may not create a sub-account, a seat or a share link until their customers have
+somewhere to arrive.
+
+A hostile pass on that PR found eight issues; six were real and are fixed in the same PR:
+
+| # | what | outcome |
+|---|---|---|
+| 1 | the readiness card rendered on the **operator** dashboard — the page the reseller's own customers see — and not on the reseller's, so it was simultaneously a leak of second-person setup copy ("on ours, your customers see our hostname") and dead where it was needed | fixed: own component, self-guarded on tenant-wide admin, rendered in `ResellerDashboard` |
+| 2 | `GET /v1/tenant/readiness` was readable by every role in the tenant | fixed: tenant-wide admins only |
+| 3 | the fixtures that gave every seeded tenant a verified host made the share-gate ordering test vacuous — the bug it caught could return unseen | fixed: a third, deliberately unconfigured tenant pins both the 403 and the cross-tenant 404 |
+| 4 | the Direct-customer exemption was asserted on a route the entitlement gate refuses first, so it passed against unchanged code | fixed: asserted on `POST /v1/users`, which carries no entitlement |
+| 5 | `underPlatform` was a second copy of `isUnderPlatformDomain` and had dropped its `.trim()`; `apps/api/src/main.ts` passes `PLATFORM_DOMAIN` untrimmed, so one stray space would classify a tenant on OUR hostname as being on their own | fixed: one function in `@orbetra/shared`, and both `main.ts` reads trimmed |
+| 6 | readiness refusals ran before scope/role decisions on two routes, replacing what authorization would have said | fixed: every call site runs last; account-scoped callers get the refusal without the reseller's reasons |
+
+Two were refuted. **Mail destinations** (a rule's e-mail channel, a scheduled report's recipients) are
+deliberately ungated: neither message carries a URL and neither passes a platform origin, so an
+unready tenant's mail degrades to their product name as text and never names us — and the `From:`
+line, the one vendor-named thing left, is ours for a fully-configured reseller too until ADR-036.
+**Re-pointing a seat via `PATCH /v1/users/:id`** is impossible: `userUpdateSchema` has no `email`
+field, so there is no new human to reach.
+
 ---
 
 ## W-1 — the platform console renders `Orbetra` on every reseller's domain

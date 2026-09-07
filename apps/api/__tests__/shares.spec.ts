@@ -31,6 +31,9 @@ let httpServer: ReturnType<typeof createServer>
 
 let t1Token: string
 let t2Token: string
+/** a third tenant deliberately left UNCONFIGURED — no verified host — plus a device of its own */
+let t3Token: string
+let t3DevId: string
 let devId: string
 const T0 = new Date('2026-07-01T06:00:00Z')
 
@@ -65,10 +68,29 @@ beforeAll(async () => {
   t1Token = await mintTestToken({ userId: s1.userId, tenantId: s1.tenantId, role: 'tsp_admin' })
   t2Token = await mintTestToken({ userId: s2.userId, tenantId: s2.tenantId, role: 'tsp_admin' })
 
+  // A share link is handed to somebody OUTSIDE the workspace and opens an unauthenticated page whose
+  // branding resolves by Host — so a reseller who has configured nothing would be showing OUR brand
+  // to their customer's customer. Minting one is therefore behind the readiness gate (plan W2), and
+  // these fixtures give both tenants a verified host so the suite tests SHARES rather than the gate.
+  // Written straight through the repo, `verified: true`, the same way a platform subdomain is
+  // created — there is no DNS to prove in a fixture.
+  await db.tenantDomains.create({ tenantId: s1.tenantId }, { userId: s1.userId }, 'fleet.s1.test', 'tok-s1', { verified: true })
+  await db.tenantDomains.create({ tenantId: s2.tenantId }, { userId: s2.userId }, 'fleet.s2.test', 'tok-s2', { verified: true })
+
   const acct = (await db.accounts.list({ tenantId: s1.tenantId }))[0]!
   const [prof] = await pool.query<{ id: string }>(`INSERT INTO device_profiles(id,key,name) VALUES (gen_random_uuid(),'sk','P') RETURNING id`).then((r) => r.rows)
   const dev = await db.devices.create({ tenantId: s1.tenantId, accountId: acct.id }, { userId: s1.userId }, { accountId: acct.id, profileId: prof!.id, imei: '356307042449010', name: 'Courier Van' })
   devId = dev.id.toString()
+
+  // …and one tenant with NO domain at all, so the readiness gate is reachable in this suite. Giving
+  // S1 and S2 a verified host was necessary for the tests above, but it also made the gate invisible
+  // everywhere — including to the cross-tenant 404 sweep that caught the ordering bug in the first
+  // place. Without an unready tenant, moving requireReady back above the scope check would pass.
+  const s3 = await seedUser({ databaseUrl, email: 'a@s3.test', password: 'password12', role: 'tsp_admin', tenantName: 'S3Unready', accountName: 'Fleet3' })
+  t3Token = await mintTestToken({ userId: s3.userId, tenantId: s3.tenantId, role: 'tsp_admin' })
+  const acct3 = (await db.accounts.list({ tenantId: s3.tenantId }))[0]!
+  const dev3 = await db.devices.create({ tenantId: s3.tenantId, accountId: acct3.id }, { userId: s3.userId }, { accountId: acct3.id, profileId: prof!.id, imei: '356307042449028', name: 'Unready Van' })
+  t3DevId = dev3.id.toString()
 
   // positions where the NEWEST fix is INVALID (satellites==0) — the public view must show the
   // latest VALID one (sec 30), never the invalid newest (sec 40)
@@ -122,6 +144,29 @@ describe('V1-nice share links — management', () => {
     expect((await postJson(`/v1/devices/${devId}/shares`, t1Token, { ttlHours: 100000 })).status).toBe(400)
     // T2 cannot create a share for T1's device — scope gate before body validation
     expect((await postJson(`/v1/devices/${devId}/shares`, t2Token, { ttlHours: 24 })).status).toBe(404)
+  })
+})
+
+/**
+ * A share link is the purest audience-creating action there is: it is handed to somebody outside the
+ * workspace entirely and opens an unauthenticated page whose branding resolves by Host. A reseller
+ * who has configured nothing would be showing OUR brand to their customer's customer.
+ *
+ * Both halves matter, and the second is the one that decays silently.
+ */
+describe('W2 readiness gates share links, and does not speak before authorization does', () => {
+  it('an unconfigured reseller is refused, and told what is missing', async () => {
+    const res = await postJson(`/v1/devices/${t3DevId}/shares`, t3Token, { ttlHours: 24, label: 'Too early' })
+    expect(res.status).toBe(403)
+    expect(JSON.stringify(await res.json())).toContain('no_verified_domain')
+  })
+
+  it('★ but a FOREIGN device is still 404 to them — the gate never answers before the scope check', async () => {
+    // Placed above `db.devices.get`, requireReady turned this 404 into a 403: a different sentence,
+    // about a device in somebody else's tenant, telling the caller it exists. The 403 above proves
+    // the gate is live for this tenant, so a 404 here can only mean the ordering held.
+    const res = await postJson(`/v1/devices/${devId}/shares`, t3Token, { ttlHours: 24 })
+    expect(res.status).toBe(404)
   })
 })
 

@@ -2035,5 +2035,23 @@
     "direct_25": "Direct 25",
     "direct_50": "Direct 50",
     "direct_100": "Direct 100"
+  },
+  "readiness": {
+    "blockedTitle": "Twoja przestrzeń nie jest jeszcze aktywna",
+    "blockedDesc": "Twoi klienci nie mają gdzie się zalogować, więc tworzenie kont, zapraszanie użytkowników i linki udostępniania są wstrzymane.",
+    "hintsTitle": "Dokończ konfigurację marki",
+    "hintsDesc": "Wszystko działa. Te elementy sprawiłyby, że system byłby w pełni Twój.",
+    "cta": "Otwórz ustawienia marki",
+    "blocker": {
+      "no_verified_domain": "Dodaj domenę i zweryfikuj ją — własną albo natychmiastową subdomenę u nas"
+    },
+    "hint": {
+      "product_name": "Dodaj nazwę produktu — zastąpi naszą na ekranach i w e-mailach",
+      "logo": "Dodaj logo — bez niego pokazujemy Twoją nazwę tekstem",
+      "favicon": "Dodaj faviconę — ikonę karty przeglądarki i ekranu głównego",
+      "support_email": "Dodaj adres pomocy — tam trafią klienci po kliknięciu Odpowiedz",
+      "colors": "Wybierz kolor podstawowy",
+      "own_domain": "Przejdź na własną domenę — na naszej klienci widzą naszą nazwę hosta"
+    }
   }
 }

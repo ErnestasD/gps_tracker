@@ -2025,5 +2025,23 @@
     "direct_25": "Direct 25",
     "direct_50": "Direct 50",
     "direct_100": "Direct 100"
+  },
+  "readiness": {
+    "blockedTitle": "Jūsų darbo sritis dar neveikia klientams",
+    "blockedDesc": "Jūsų klientai neturi kur prisijungti, todėl paskyrų kūrimas, vartotojų kvietimas ir dalinimosi nuorodos sustabdyti, kol tai bus padaryta.",
+    "hintsTitle": "Užbaikite prekės ženklo nustatymą",
+    "hintsDesc": "Viskas veikia. Šitie dalykai padarytų sistemą visiškai jūsų.",
+    "cta": "Atidaryti prekės ženklo nustatymus",
+    "blocker": {
+      "no_verified_domain": "Pridėkite domeną ir patvirtinkite jį — savo arba mūsų talpinamą subdomeną, kuris veikia iškart"
+    },
+    "hint": {
+      "product_name": "Pridėkite produkto pavadinimą — jis pakeis mūsiškį ekranuose ir laiškuose",
+      "logo": "Pridėkite logotipą — be jo rodome jūsų pavadinimą tekstu",
+      "favicon": "Pridėkite favicon — naršyklės kortelės ir pagrindinio ekrano ikoną",
+      "support_email": "Pridėkite pagalbos adresą — į jį klientai pateks paspaudę „Atsakyti\"",
+      "colors": "Pasirinkite pagrindinę spalvą",
+      "own_domain": "Pereikite prie savo domeno — mūsiškiame jūsų klientai mato mūsų hostą"
+    }
   }
 }

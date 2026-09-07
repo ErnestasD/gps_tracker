@@ -846,3 +846,129 @@ describe('E03-5 hardening (adversarial review)', () => {
     }
   })
 })
+
+/**
+ * Readiness gating (plan W2) — a reseller may not create an AUDIENCE before their customers have
+ * somewhere to arrive. The founder's framing: a TSP account is set up only once the customer has
+ * finished configuring it, and until this existed a half-configured one served customers while the
+ * platform quietly supplied the missing halves from its own identity.
+ */
+describe('W2 readiness gates the first action that creates an audience', () => {
+  const verified = async (token: string, domain: string): Promise<void> => {
+    const created = (await (await req('/v1/tenant/domains', token, 'POST', { domain })).json()) as { id: string; txtToken: string }
+    txtRecords.set(domain, [['orbetra-verify=' + created.txtToken]])
+    await req(`/v1/tenant/domains/${created.id}/verify`, token, 'POST')
+  }
+
+  it('a reseller with no verified host cannot create a sub-account, and is told why', async () => {
+    const s = await seedUser({ databaseUrl, email: 'ready-a@t.test', password: 'password12', role: 'tsp_admin', tenantName: 'NotReady' })
+    const token = await mintTestToken({ userId: s.userId, tenantId: s.tenantId, role: 'tsp_admin' })
+
+    const r = (await (await req('/v1/tenant/readiness', token)).json()) as { mode: string; ready: boolean; hardBlockers: string[] }
+    expect(r).toMatchObject({ mode: 'unconfigured', ready: false, hardBlockers: ['no_verified_domain'] })
+
+    const res = await req('/v1/accounts', token, 'POST', { name: 'First customer' })
+    expect(res.status).toBe(403)
+    // the refusal NAMES what is missing — a bare 403 would leave the operator guessing
+    expect(JSON.stringify(await res.json())).toContain('no_verified_domain')
+
+    // …and the same for a seat, which carries no entitlement of its own — so the 403 here can ONLY
+    // be readiness, and the body has to say so or the assertion would accept any refusal at all
+    const seat = await req('/v1/users', token, 'POST', { email: 'x@t.test', password: 'password12', role: 'viewer', accountId: null })
+    expect(seat.status).toBe(403)
+    expect(JSON.stringify(await seat.json())).toContain('no_verified_domain')
+  })
+
+  it('verifying a host unlocks it — the gate is the configuration, not a flag someone flips', async () => {
+    const s = await seedUser({ databaseUrl, email: 'ready-b@t.test', password: 'password12', role: 'tsp_admin', tenantName: 'GetsReady' })
+    const token = await mintTestToken({ userId: s.userId, tenantId: s.tenantId, role: 'tsp_admin' })
+    expect((await req('/v1/accounts', token, 'POST', { name: 'Too early' })).status).toBe(403)
+
+    await verified(token, 'fleet.getsready.test')
+
+    const r = (await (await req('/v1/tenant/readiness', token)).json()) as { mode: string; ready: boolean }
+    expect(r).toMatchObject({ mode: 'own_domain', ready: true })
+    expect((await req('/v1/accounts', token, 'POST', { name: 'Now fine' })).status).toBe(201)
+  })
+
+  it('★ a platform_admin is never gated — our own operators are not a reseller', async () => {
+    // Our own tenant is a tsp_* row with no verified domain, so without the role exemption the gate
+    // would refuse OUR operators the moment they created a user. What readiness protects — a
+    // reseller's customers seeing our brand — cannot happen when we ARE the brand.
+    const s = await seedUser({ databaseUrl, email: 'ready-d@t.test', password: 'password12', role: 'tsp_admin', tenantName: 'PlatformSide' })
+    const pa = await mintTestToken({ userId: s.userId, tenantId: s.tenantId, role: 'platform_admin' })
+    const tspToken = await mintTestToken({ userId: s.userId, tenantId: s.tenantId, role: 'tsp_admin' })
+
+    // same unready tenant, two roles: the reseller is refused, our operator is not
+    expect((await req('/v1/accounts', tspToken, 'POST', { name: 'Blocked' })).status).toBe(403)
+    const asPlatform = await req('/v1/accounts', pa, 'POST', { name: 'Allowed' })
+    expect(asPlatform.status).toBe(201)
+  })
+
+  it('★ a DIRECT customer is never gated — our brand is the correct brand for them', async () => {
+    // Without the entitlement check this would lock paying Direct customers out of creating accounts,
+    // which is a far worse outcome than the leak it guards against.
+    const s = await seedUser({ databaseUrl, email: 'ready-c@t.test', password: 'password12', role: 'tsp_admin', tenantName: 'DirectCo', plan: 'direct_10' })
+    const token = await mintTestToken({ userId: s.userId, tenantId: s.tenantId, role: 'tsp_admin' })
+
+    const r = (await (await req('/v1/tenant/readiness', token)).json()) as { mode: string; ready: boolean }
+    expect(r).toMatchObject({ mode: 'not_white_label', ready: true })
+
+    // Asserted on /v1/users, NOT /v1/accounts. A Direct plan has no `subAccounts` entitlement, so a
+    // create there is refused by the plan gate BEFORE requireReady ever runs — an assertion on it
+    // passes with the exemption removed and therefore proves nothing. A seat carries no entitlement,
+    // which makes it the only route where a Direct tenant actually meets the readiness gate. This
+    // tenant has no verified domain either, so a 201 can only mean the exemption held.
+    const seat = await req('/v1/users', token, 'POST', { email: 'direct-seat@t.test', password: 'password12', role: 'viewer', accountId: null })
+    expect(seat.status).toBe(201)
+  })
+
+  it('a seat cannot be re-pointed at a new person, so PATCH needs no gate of its own', async () => {
+    // The obvious escape from a POST-only gate: every tsp_* tenant owns at least its own admin seat,
+    // so PATCHing that seat's address would hand the workspace to a human who has never seen it.
+    // It is closed by the SCHEMA — userUpdateSchema has no `email` — not by a check, which is why
+    // this asserts the shape rather than a 403. If `email` is ever added there, this test fails and
+    // the gate goes in with it.
+    const s = await seedUser({ databaseUrl, email: 'ready-e@t.test', password: 'password12', role: 'tsp_admin', tenantName: 'PatchEscape' })
+    const token = await mintTestToken({ userId: s.userId, tenantId: s.tenantId, role: 'tsp_admin' })
+
+    await req(`/v1/users/${s.userId}`, token, 'PATCH', { email: 'somebody-else@t.test' })
+    const after = (await (await req(`/v1/users/${s.userId}`, token)).json()) as { email: string }
+    expect(after.email).toBe('ready-e@t.test')
+  })
+
+  it('★ only the reseller may read their own setup state', async () => {
+    // The answer describes the RESELLER's configuration — "no verified domain", "on ours your
+    // customers see our hostname" — in sentences that only parse if you know a platform exists
+    // behind the product. An account-scoped reader is their customer's staff.
+    const s = await seedUser({ databaseUrl, email: 'ready-f@t.test', password: 'password12', role: 'tsp_admin', tenantName: 'WhoAsks', accountName: 'Cust' })
+    const admin = await mintTestToken({ userId: s.userId, tenantId: s.tenantId, role: 'tsp_admin' })
+    expect((await req('/v1/tenant/readiness', admin)).status).toBe(200)
+
+    for (const tok of [
+      await mintTestToken({ userId: 'v1', tenantId: s.tenantId, role: 'viewer' }),
+      await mintTestToken({ userId: 'm1', tenantId: s.tenantId, role: 'account_manager', accountId: 'acc-x' }),
+      await mintTestToken({ userId: 'a1', tenantId: s.tenantId, role: 'tsp_admin', accountId: 'acc-x' }),
+    ]) {
+      expect((await req('/v1/tenant/readiness', tok)).status).toBe(403)
+    }
+  })
+
+  it('★ an account-scoped caller hears the refusal, never the reseller’s reasons', async () => {
+    // An admin PINNED to one account administers that customer, not the workspace — in a reseller's
+    // tenant that is the customer's own administrator. They meet the gate (creating users is a
+    // tenant-admin action, and the pin does not change the role), and what they must not receive is
+    // the blocker list: that is a fact about the RESELLER's setup, one layer above anything they are
+    // supposed to know exists.
+    const s = await seedUser({ databaseUrl, email: 'ready-g@t.test', password: 'password12', role: 'tsp_admin', tenantName: 'QuietRefusal', accountName: 'Cust' })
+    const acct = (await db.accounts.list({ tenantId: s.tenantId }))[0]!
+    const pinned = await mintTestToken({ userId: 'm2', tenantId: s.tenantId, role: 'tsp_admin', accountId: acct.id })
+
+    const res = await req('/v1/users', pinned, 'POST', { email: 'seat@t.test', password: 'password12', role: 'viewer', accountId: acct.id })
+    expect(res.status).toBe(403)
+    const bodyText = JSON.stringify(await res.json())
+    expect(bodyText).toContain('not_ready')
+    // …the reason is withheld: the unpinned reseller above gets it, this reader does not
+    expect(bodyText).not.toContain('no_verified_domain')
+  })
+})

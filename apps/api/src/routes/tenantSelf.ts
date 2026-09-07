@@ -137,12 +137,11 @@ export function checkPlatformSubdomain(domain: string, platformDomain: string | 
 
 /** True when this domain is under the platform's own zone at all — claimable or not. Used to route
  *  a request to the subdomain path so a RESERVED name is refused rather than sent off to publish a
- *  TXT record in a zone they do not control (which would never verify, with no explanation). */
-export function isUnderPlatformDomain(domain: string, platformDomain: string | undefined): boolean {
-  if (platformDomain === undefined || platformDomain.trim() === '') return false
-  const root = platformDomain.trim().toLowerCase()
-  return domain === root || domain.endsWith(`.${root}`)
-}
+ *  TXT record in a zone they do not control (which would never verify, with no explanation).
+ *
+ *  Re-exported rather than defined here: readiness needs the same answer, and when each side had its
+ *  own copy they drifted. @orbetra/shared owns it. */
+export { isUnderPlatformDomain } from '@orbetra/shared'
 
 /**
  * Does `hostname` publish a TXT record whose value is exactly `want`?
