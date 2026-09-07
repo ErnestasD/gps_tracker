@@ -363,7 +363,14 @@ function subscriptionFrom(obj: Record<string, unknown>, allowlist: readonly stri
 const SUBSCRIPTION_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted'])
 
 /** Map a Stripe Invoice resource → the fields the affiliate accrual needs. Null when any required
- *  field is missing/zero (a $0 invoice owes no commission) so we never accrue on garbage. */
+ *  field is missing/zero (a $0 invoice owes no commission) so we never accrue on garbage.
+ *
+ *  DELIBERATELY NOT filtered by `billing_reason` (founder decision 2026-09-07, billing audit): the
+ *  commission is a percentage of EVERYTHING the referred customer pays, which is the fairest deal to
+ *  the partner. So it accrues on `subscription_create`, `subscription_cycle` AND `subscription_update`
+ *  (a mid-cycle upgrade's prorated invoice) alike. If the model is ever narrowed to the recurring base
+ *  only, filter here on `billing_reason` — do not re-audit this as a leak; it is intended. Accrual
+ *  stays idempotent on the invoice id, so each invoice earns its commission exactly once. */
 function paidInvoiceFrom(obj: Record<string, unknown>, paidAt: Date): PaidInvoice | null {
   const stripeCustomerId = typeof obj['customer'] === 'string' && obj['customer'] !== '' ? obj['customer'] : null
   const invoiceId = typeof obj['id'] === 'string' && obj['id'] !== '' ? obj['id'] : null
