@@ -270,7 +270,8 @@
     "dnsLearn": "Zur Dokumentation",
     "dnsWatching": "Wird automatisch geprüft…",
     "dnsAutoVerified": "Einträge gefunden — Domain verifiziert.",
-    "dnsStale": "Unter diesem Namen existiert bereits ein Prüfeintrag, er trägt aber ein altes Token. Das passiert, wenn eine Domain entfernt und neu angelegt wird — dann wird ein neues Token erzeugt. Ersetzen Sie den Wert des Eintrags durch den aus der Tabelle."
+    "dnsStale": "Unter diesem Namen existiert bereits ein Prüfeintrag, er trägt aber ein altes Token. Das passiert, wenn eine Domain entfernt und neu angelegt wird — dann wird ein neues Token erzeugt. Ersetzen Sie den Wert des Eintrags durch den aus der Tabelle.",
+    "dnsUnknown": "Nicht prüfbar"
   },
   "audit": {
     "title": "Audit-Log",

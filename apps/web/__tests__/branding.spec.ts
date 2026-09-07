@@ -6,7 +6,7 @@ import { applyBranding, beginBrandPreview } from '../src/lib/branding'
 
 // both sides of the merge: the colleague's `clean`/`iconFor` (favicon + brand assets, #273) and
 // this branch's `routingKind` — the union, not a choice
-import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, clean, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks, fqdn, hasPrefix, iconFor, mayReadReadiness, relativeName, routingKind } from '../src/lib/branding.js'
+import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, clean, contrast, dnsRecordsFor, ensureContrast, expectedTxt, faviconLinks, fqdn, hasPrefix, iconFor, mayReadReadiness, relativeName, routingKind, shouldAttemptVerify } from '../src/lib/branding.js'
 
 /**
  * White-label theming math (E03-5). No DOM: we test the pure WCAG contrast
@@ -482,5 +482,51 @@ describe('the readiness card is for the reseller, not for their customers', () =
 
   it('and not a signed-out reader', () => {
     expect(mayReadReadiness(null)).toBe(false)
+  })
+})
+
+/**
+ * When the sending-domain panel asks the server to advance (ADR-036).
+ *
+ * The riskiest logic on that screen, and it had no test at all. The first version derived its
+ * trigger from the DNS PAYLOAD and released its guard on success — but `POST /verify` answers 200
+ * while still pending, so success was not terminal, and its success handler invalidated the very
+ * query the trigger read. The only thing between that and a request loop was TanStack preserving
+ * object identity across a deeply-equal refetch, which the apex's rotating TXT records break.
+ */
+const base = { configured: true, status: 'pending' as const, ownershipOk: true, fetchedAt: 100, lastAttemptFor: 0 }
+
+describe('shouldAttemptVerify', () => {
+  it('asks once ownership has resolved', () => {
+    expect(shouldAttemptVerify(base)).toBe(true)
+  })
+
+  it('★ at most ONCE per completed fetch, however often the component re-renders', () => {
+    // the loop this replaced: a re-render with the same data must not be a second POST
+    expect(shouldAttemptVerify({ ...base, lastAttemptFor: 100 })).toBe(false)
+    // …and the next poll, which is a NEW fetch, may ask again
+    expect(shouldAttemptVerify({ ...base, fetchedAt: 120, lastAttemptFor: 100 })).toBe(true)
+  })
+
+  it('★ verified is terminal — nothing left to ask', () => {
+    expect(shouldAttemptVerify({ ...base, status: 'verified' })).toBe(false)
+  })
+
+  it('a FAILED status still asks: SES retries, and the tenant can fix their records', () => {
+    // `failed` is what the tenant sees, not a decision about whether to keep looking
+    expect(shouldAttemptVerify({ ...base, status: 'failed' })).toBe(true)
+  })
+
+  it('never before the ownership record resolves — /verify would 400', () => {
+    expect(shouldAttemptVerify({ ...base, ownershipOk: false })).toBe(false)
+  })
+
+  it('★ never when the platform cannot manage identities at all', () => {
+    // the card renders only a sentence in that state; an invisible panel must not poll or POST
+    expect(shouldAttemptVerify({ ...base, configured: false })).toBe(false)
+  })
+
+  it('not before the first fetch has completed', () => {
+    expect(shouldAttemptVerify({ ...base, fetchedAt: 0 })).toBe(false)
   })
 })

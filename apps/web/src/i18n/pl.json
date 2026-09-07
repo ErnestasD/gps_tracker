@@ -270,7 +270,8 @@
     "dnsLearn": "Przeczytaj dokumentację",
     "dnsWatching": "Sprawdzamy automatycznie…",
     "dnsAutoVerified": "Rekordy znalezione — domena zweryfikowana.",
-    "dnsStale": "Pod tą nazwą istnieje już rekord weryfikacyjny, ale zawiera stary token. Dzieje się tak po usunięciu i ponownym dodaniu domeny — wydawany jest nowy token. Zastąp wartość rekordu tą z tabeli."
+    "dnsStale": "Pod tą nazwą istnieje już rekord weryfikacyjny, ale zawiera stary token. Dzieje się tak po usunięciu i ponownym dodaniu domeny — wydawany jest nowy token. Zastąp wartość rekordu tą z tabeli.",
+    "dnsUnknown": "Nie udało się sprawdzić"
   },
   "audit": {
     "title": "Dziennik audytu",

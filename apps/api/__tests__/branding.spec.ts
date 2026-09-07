@@ -1237,11 +1237,72 @@ describe('W3 tenant sending domain', () => {
     expect(stale.txt).toMatchObject({ ok: false, reason: 'stale' })
   })
 
-  it('the DNS view needs no SES credentials — it reads DNS, not AWS', async () => {
-    // a deployment that cannot manage identities can still tell a tenant whether their records
-    // resolve; going blind here for a reason unrelated to DNS would be the wrong refusal
+  it('★ on a deployment with NO SES credentials: /dns still answers, the write routes 503', async () => {
+    // The app under test is built once WITH a fake gateway, so asserting 200 against it proved only
+    // that the route exists — adding the very `deps.ses === undefined` guard this test names would
+    // have left it green. A second app without `ses` is the only thing that can fail here.
     await setup(t1Token, 'klientas.lt', 'alertai')
-    expect((await req('/v1/tenant/sending-domain/dns', t1Token)).status).toBe(200)
+    const bare = createApp({
+      redis, redisSub, db,
+      jwtSecret: TEST_JWT_SECRET, jwtTtlS: 900, refreshTtlS: 3600, ticketTtlS: 30,
+      lockout: { maxFails: 100, windowS: 900 }, secureCookies: false, trustProxy: true,
+      getRemoteAddr: () => '127.0.0.1',
+      resolveTxt: (host) => {
+        const rec = txtRecords.get(host)
+        return rec ? Promise.resolve(rec) : Promise.reject(new Error('ENOTFOUND'))
+      },
+      resolveCname: () => Promise.reject(new Error('ENOTFOUND')),
+      resolveAddress: () => Promise.reject(new Error('ENOTFOUND')),
+      platformDomain: 'orbetra.test',
+      // no `ses` — the state every deployment is in until the founder provisions the IAM user
+    })
+    const hit = (path: string, method = 'GET') =>
+      bare.request(path, { method, headers: { authorization: `Bearer ${t1Token}` } })
+
+    // reading DNS needs no AWS, so the panel does not go blind for a reason unrelated to it
+    expect((await hit('/v1/tenant/sending-domain/dns')).status).toBe(200)
+    // …and the load says so, BEFORE the reseller fills in a form
+    expect(((await (await hit('/v1/tenant/sending-domain')).json()) as { configured: boolean }).configured).toBe(false)
+    // …while everything that would reach AWS refuses
+    for (const [path, method] of [['/v1/tenant/sending-domain', 'POST'], ['/v1/tenant/sending-domain/verify', 'POST'], ['/v1/tenant/sending-domain', 'DELETE']] as const) {
+      expect((await hit(path, method)).status, `${method} ${path}`).toBe(503)
+    }
+  })
+
+  it('★ /dns agrees with /verify about WHICH TXT shapes count', async () => {
+    // The two used to disagree. `/dns` flattened both hosts into one list and asked "is the token
+    // anywhere in it", so the bare token at the APEX — a record /verify refuses — showed a green
+    // Found. Green badge, 400 on verify, spinner for ever: the panel telling the reader a record is
+    // correct while the server refuses it.
+    const created = (await (await req('/v1/tenant/sending-domain', t1Token, 'POST', { domain: 'klientas.lt', mailbox: 'alertai' })).json()) as { ownershipRecord: { value: string } }
+    const token = created.ownershipRecord.value
+    const txtOk = async (): Promise<boolean> =>
+      ((await (await req('/v1/tenant/sending-domain/dns', t1Token)).json()) as { txt: { ok: boolean } }).txt.ok
+
+    // the bare token at the APEX is not the record we asked for
+    txtRecords.set('klientas.lt', [[token]])
+    expect(await txtOk()).toBe(false)
+    // …nor is the prefixed form under our own dedicated name
+    txtRecords.clear()
+    txtRecords.set('_orbetra-verify.klientas.lt', [[`orbetra-verify=${token}`]])
+    expect(await txtOk()).toBe(false)
+    // the two shapes that ARE accepted, each at its own host
+    txtRecords.clear()
+    txtRecords.set('_orbetra-verify.klientas.lt', [[token]])
+    expect(await txtOk()).toBe(true)
+    txtRecords.clear()
+    txtRecords.set('klientas.lt', [[`orbetra-verify=${token}`]])
+    expect(await txtOk()).toBe(true)
+  })
+
+  it('a trailing dot or capitals in a published DKIM target still counts', async () => {
+    // DNS is case-insensitive and providers hand back either form; comparing raw strings would
+    // report a correctly-published selector as missing
+    await setup(t1Token, 'klientas.lt', 'alertai')
+    await req('/v1/tenant/sending-domain/verify', t1Token, 'POST')
+    cnameRecords.set('tok1._domainkey.klientas.lt', ['TOK1.dkim.amazonses.com.'])
+    const dns = (await (await req('/v1/tenant/sending-domain/dns', t1Token)).json()) as { dkim: { ok: boolean }[] }
+    expect(dns.dkim[0]?.ok).toBe(true)
   })
 
   it('is admin-only, and tenant-wide on every one of the four routes', async () => {

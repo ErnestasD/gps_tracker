@@ -270,7 +270,8 @@
     "dnsLearn": "Skaityti dokumentacijoje",
     "dnsWatching": "Tikriname automatiškai…",
     "dnsAutoVerified": "Įrašai rasti — domenas patvirtintas.",
-    "dnsStale": "Šiuo vardu jau yra patvirtinimo įrašas, bet jame senas raktas. Taip nutinka pašalinus ir vėl pridėjus domeną — tada sukuriamas naujas raktas. Pakeiskite įrašo reikšmę į tą, kuri parodyta lentelėje."
+    "dnsStale": "Šiuo vardu jau yra patvirtinimo įrašas, bet jame senas raktas. Taip nutinka pašalinus ir vėl pridėjus domeną — tada sukuriamas naujas raktas. Pakeiskite įrašo reikšmę į tą, kuri parodyta lentelėje.",
+    "dnsUnknown": "Nepavyko patikrinti"
   },
   "audit": {
     "title": "Audito žurnalas",
