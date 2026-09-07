@@ -106,6 +106,7 @@ const SUMMARY_OVERRIDES: Record<string, string> = {
   'POST /v1/tenant/domains/{id}/verify': 'Trigger DNS verification for a domain',
   'GET /v1/tenant/sending-domain': "The domain this tenant's mail is sent from, and its DKIM records",
   'POST /v1/tenant/sending-domain': 'Set the sending domain and create its SES DKIM identity',
+  'GET /v1/tenant/sending-domain/dns': "Live DNS state of the sending domain's ownership and DKIM records",
   'POST /v1/tenant/sending-domain/verify': 'Check DKIM verification and start sending as this domain',
   'DELETE /v1/tenant/sending-domain': 'Stop sending as this domain and remove the identity',
   'GET /v1/tenants/{id}/accounts': 'List accounts inside a tenant',

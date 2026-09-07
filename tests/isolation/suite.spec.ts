@@ -114,6 +114,7 @@ const TENANT_WIDE_ONLY: readonly (readonly [string, string, string?])[] = [
   ['GET', '/v1/tenant/sending-domain'],
   ['POST', '/v1/tenant/sending-domain'],
   ['POST', '/v1/tenant/sending-domain/verify'],
+  ['GET', '/v1/tenant/sending-domain/dns'],
   ['DELETE', '/v1/tenant/sending-domain'],
   // create is the one account method that ignores the pin — list/get/update/remove all honour it
   ['POST', '/v1/accounts'],
@@ -276,7 +277,7 @@ describe('E03-2 tenant isolation (manifest-driven)', () => {
     const collections = fx.manifest.filter((m) => m.shape === 'collection' && m.method === 'get' && m.scopeClass !== 'platform')
     for (const m of collections) {
       const res = await req(m.path, fx.t1.tokenTenant)
-      expect(res.status).toBe(200)
+      expect(res.status, `${m.path} as T1`).toBe(200)
       // The item loop guards against a missing fixture id; this loop did not, and the same vacuity
       // applies with none of the noise: `idFor` returns '', no row has an id of '', the assertion
       // passes, and a whole collection route is untested while showing green.

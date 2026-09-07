@@ -102,7 +102,8 @@ import { restoreTenantDevices } from '@orbetra/registry'
 
 import type { MintedToken } from '../lib/mapboxToken.js'
 import type { SesIdentityGateway } from '../email/sesIdentities.js'
-import { checkDomainDns, checkPlatformSubdomain, edgeAddresses, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type NameResolver, type TxtResolver } from './tenantSelf.js'
+import { fixedWindowCount } from '../security.js'
+import { checkDomainDns, checkSendingDomainDns, checkPlatformSubdomain, edgeAddresses, expectedTxt, isUnderPlatformDomain, newTxtToken, verifyDomainTxt, verifyHost, type NameResolver, type TxtResolver } from './tenantSelf.js'
 
 // Geofence Redis sync is BEST-EFFORT (E05-2 review MED-3): the DB row is the source of
 // truth and is already committed, so a Redis blip must NOT 500 the request (a 500 → client
@@ -200,6 +201,30 @@ function sendingDomainView(row: TenantSendingDomain): SendingDomainRead {
   }
 }
 
+/**
+ * Throttle the two routes that make US resolve a name the TENANT chose.
+ *
+ * Each call is up to five live DNS lookups against nameservers we do not control, and the settings
+ * panels now poll three times a minute per open tab. A domain delegated to a black hole is the cheap
+ * version of the problem; pointing us at somebody else's authoritative servers and holding the tab
+ * open is the interesting one. Neither route stores anything, so the ceiling can be generous — this
+ * bounds a runaway client and an amplification attempt, not ordinary use.
+ *
+ * Keyed per USER rather than per tenant: two admins of one reseller watching their own setup are not
+ * each other's problem. Fails OPEN, like every other limiter here — a Redis blip must not make a
+ * setup panel go blind.
+ */
+async function dnsLookupThrottled(c: Context<AuthEnv>, deps: CrudDeps): Promise<Response | null> {
+  const rl = deps.dnsCheckRateLimit ?? DEFAULT_DNS_CHECK_LIMIT
+  const n = await fixedWindowCount(deps.redis, `dnscheck:rl:${c.get('auth').userId}`, rl.windowS, () => undefined)
+  if (n <= rl.max) return null
+  c.header('Retry-After', String(rl.windowS)) // a throttled client needs a basis for backoff
+  return problem(c, 429, 'Too Many Requests')
+}
+
+/** 30/min — well above the 3/min two open panels produce, well below what a loop would. */
+export const DEFAULT_DNS_CHECK_LIMIT = { max: 30, windowS: 60 }
+
 export interface CrudDeps {
   db: Db
   /** self-hosted OSRM base URL (ADR-029) — powers virtual-device route generation (vsim);
@@ -211,6 +236,8 @@ export interface CrudDeps {
   onSmsQuotaRejected?: (scope: 'device' | 'tenant' | 'global') => void
   /** Per-tenant device-creation ceiling; defaults to DEFAULT_DEVICE_CREATE_LIMIT. */
   deviceCreateLimit?: { max: number; windowS: number }
+  /** Ceiling on the DNS-checking routes; defaults to DEFAULT_DNS_CHECK_LIMIT. */
+  dnsCheckRateLimit?: { max: number; windowS: number }
   /**
    * Fired when a tenant hits the device-creation ceiling (`limit`), when Redis could not be
    * consulted and the create was let through (`degraded`), or when a reservation could not be handed
@@ -2654,6 +2681,8 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
     { method: 'get', path: '/v1/tenant/domains/:id/dns', scopeClass: 'tenant', entity: 'domain', shape: 'item', entitlement: 'customDomains',
       handler: async (c) => {
         if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'domains are tenant-wide')
+        const throttled = await dnsLookupThrottled(c, deps)
+        if (throttled !== null) return throttled
         const row = await db.tenantDomains.get(scopeOf(auth(c)), id(c))
         if (row === null) return problem(c, 404, 'Not Found')
         return json(c, await checkDomainDns(
@@ -2752,6 +2781,32 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           }
         }
         return json(c, sendingDomainView(row), 201)
+      } },
+    /**
+     * What the sending domain's DNS looks like RIGHT NOW, record by record.
+     *
+     * The same answer the app-domain panel gives, for the same reason and more sharply: a single
+     * Verify button can only say yes or no to four records at once, so "ownership proved, one DKIM
+     * selector mistyped" reads as "nothing done yet". The three selectors are near-identical
+     * 32-character strings a human is transcribing, which makes a per-record answer the difference
+     * between a fix and a support thread.
+     */
+    { method: 'get', path: '/v1/tenant/sending-domain/dns', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
+      handler: async (c) => {
+        if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'the sending domain is tenant-wide')
+        const throttled = await dnsLookupThrottled(c, deps)
+        if (throttled !== null) return throttled
+        const row = await db.tenantSendingDomains.get(scopeOf(auth(c)))
+        if (row === null) return problem(c, 404, 'Not Found')
+        // No `deps.ses` guard: this reads DNS, not AWS. A deployment that cannot manage identities
+        // can still tell a tenant whether their records resolve, and refusing here would make the
+        // panel go blind for a reason that has nothing to do with it.
+        return json(c, await checkSendingDomainDns(
+          { txt: deps.resolveTxt, cname: deps.resolveCname },
+          row.domain,
+          row.txtToken,
+          row.dkimTokens,
+        ))
       } },
     { method: 'post', path: '/v1/tenant/sending-domain/verify', scopeClass: 'tenant', entity: 'sendingDomain', shape: 'collection', entitlement: 'customDomains',
       handler: async (c) => {

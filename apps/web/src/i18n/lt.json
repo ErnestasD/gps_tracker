@@ -270,7 +270,8 @@
     "dnsLearn": "Skaityti dokumentacijoje",
     "dnsWatching": "Tikriname automatiškai…",
     "dnsAutoVerified": "Įrašai rasti — domenas patvirtintas.",
-    "dnsStale": "Šiuo vardu jau yra patvirtinimo įrašas, bet jame senas raktas. Taip nutinka pašalinus ir vėl pridėjus domeną — tada sukuriamas naujas raktas. Pakeiskite įrašo reikšmę į tą, kuri parodyta lentelėje."
+    "dnsStale": "Šiuo vardu jau yra patvirtinimo įrašas, bet jame senas raktas. Taip nutinka pašalinus ir vėl pridėjus domeną — tada sukuriamas naujas raktas. Pakeiskite įrašo reikšmę į tą, kuri parodyta lentelėje.",
+    "dnsUnknown": "Nepavyko patikrinti"
   },
   "audit": {
     "title": "Audito žurnalas",
@@ -2090,6 +2091,8 @@
       "verified": "Patvirtinta",
       "failed": "Nepatvirtinta"
     },
-    "ownershipNote": "Įrašykite šį TXT įrašą į savo DNS ir spauskite Tikrinti. Jis įrodo, kad domenas jūsų – kol jis neatsiranda, jūsų vardu nieko nesukuriama. Laiškai visą tą laiką toliau siunčiami mūsų adresu."
+    "ownershipNote": "Įrašykite šį TXT įrašą į savo DNS ir spauskite Tikrinti. Jis įrodo, kad domenas jūsų – kol jis neatsiranda, jūsų vardu nieko nesukuriama. Laiškai visą tą laiką toliau siunčiami mūsų adresu.",
+    "hintTxt": "Šis įrašas tik įrodo, kad domenas jūsų — jis nieko nesiunčia ir lankytojų niekur neveda. Kol jis neatsiranda, jūsų vardu nieko nesukuriama; būtent tai neleidžia niekam kitam čia įvardyti jūsų domeno.\n\nPatvirtinus jį palikite; trinti nereikia.",
+    "hintDkim": "DKIM raktas. Jis leidžia gaunantiems pašto serveriams įsitikinti, kad žinutė tikrai iš jūsų domeno — dėl to ji nepatenka į šlamštą.\n\nTrys beveik vienodi įrašai, o reikšmė nuo vardo skiriasi keliais simboliais — kopijuokite, o ne perrašinėkite. Reikia visų trijų; du iš trijų nėra „beveik pavyko\", tai domenas, kuris negali pasirašyti."
   }
 }

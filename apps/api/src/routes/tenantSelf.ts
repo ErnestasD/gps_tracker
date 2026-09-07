@@ -1,16 +1,29 @@
 import { randomBytes } from 'node:crypto'
-import { resolve4 as dnsResolve4, resolveCname as dnsResolveCname, resolveTxt as dnsResolveTxt } from 'node:dns/promises'
+
+import { dkimRecords } from '@orbetra/shared'
+import { Resolver as DnsResolver } from 'node:dns/promises'
+
+/**
+ * Our own resolver, with a bound.
+ *
+ * The default `node:dns/promises` functions inherit c-ares' retry policy — roughly 5 s × 4 tries —
+ * and the hostname being looked up is one a TENANT typed. A domain delegated to nameservers that
+ * simply never answer therefore held an API request for the better part of a minute, with nothing
+ * capping how many could be in flight. Two seconds and two tries is generous for a record that is
+ * either published or not.
+ */
+const boundResolver = new DnsResolver({ timeout: 2_000, tries: 2 })
 
 /** DNS TXT resolver — injectable so tests don't hit real DNS. */
 export type TxtResolver = (hostname: string) => Promise<string[][]>
 
-export const defaultTxtResolver: TxtResolver = dnsResolveTxt
+export const defaultTxtResolver: TxtResolver = (h) => boundResolver.resolveTxt(h)
 
 /** CNAME and A resolvers, for the routing half of the check. Injectable for the same reason. */
 export type NameResolver = (hostname: string) => Promise<string[]>
 
-export const defaultCnameResolver: NameResolver = dnsResolveCname
-export const defaultAddressResolver: NameResolver = dnsResolve4
+export const defaultCnameResolver: NameResolver = (h) => boundResolver.resolveCname(h)
+export const defaultAddressResolver: NameResolver = (h) => boundResolver.resolve4(h)
 
 /**
  * Where the ownership record goes: a DEDICATED name, `_orbetra-verify.<domain>`, carrying the bare
@@ -227,34 +240,47 @@ export type DomainDns = {
  * is whether the name arrives here, so an address matching the edge host's own counts as reaching
  * us, and `found` carries what was actually seen so the panel can say where it goes instead.
  */
+/**
+ * The ownership TXT, read the way `verifyDomainTxt` reads it.
+ *
+ * The host and the FORM are a pair, and a flat list of everything found loses that: the bare token
+ * belongs at `_orbetra-verify.<domain>`, the `orbetra-verify=` prefixed form belongs at the apex,
+ * and any other combination is a record `/verify` will refuse. Reporting those as "Found" is worse
+ * than reporting nothing — the panel shows a green badge, the verify 400s, and the reader is left
+ * looking at a record the product told them was correct.
+ *
+ * `found` is deduped and SORTED, which is not cosmetic: the apex of a sending domain carries SPF and
+ * whatever else the customer runs, recursive resolvers rotate multi-record RRsets, and a client that
+ * re-renders on payload identity would otherwise see this object change on every poll for no reason.
+ */
+async function readOwnershipTxt(resolver: TxtResolver, domain: string, txtToken: string): Promise<DnsCheck & { reason: TxtReason | null }> {
+  const at = async (host: string): Promise<string[]> => {
+    try {
+      return (await resolver(host)).map((chunks) => chunks.join(''))
+    } catch {
+      // NXDOMAIN / no TXT — a name nobody has configured yet is the normal case here
+      return []
+    }
+  }
+  const [dedicated, apex] = await Promise.all([at(verifyHost(domain)), at(domain)])
+  const ok = dedicated.includes(txtToken) || apex.includes(expectedTxt(txtToken))
+  // a value under OUR OWN name, or one carrying our prefix at the apex — the only ones that can be
+  // a stale token of ours. The apex's SPF and DMARC are not failed attempts at our record.
+  const ours = [...dedicated, ...apex.filter((v) => v.startsWith(TXT_PREFIX))]
+  return {
+    ok,
+    found: [...new Set([...dedicated, ...apex])].sort(),
+    reason: ok ? null : ours.length > 0 ? 'stale' : 'absent',
+  }
+}
+
 export async function checkDomainDns(
   resolvers: { txt: TxtResolver; cname: NameResolver; address: NameResolver },
   domain: string,
   txtToken: string,
   edgeHostname: string | undefined,
 ): Promise<DomainDns> {
-  const txtFound: string[] = []
-  /** Values published under OUR dedicated name — the only ones that can be a stale token of ours. */
-  const oursFound: string[] = []
-  for (const host of [verifyHost(domain), domain]) {
-    try {
-      for (const chunks of await resolvers.txt(host)) {
-        const value = chunks.join('')
-        txtFound.push(value)
-        // a value at our own name, or one carrying our legacy prefix. The apex carries SPF, DMARC
-        // and whatever else the customer runs — none of that is a failed attempt at our record.
-        if (host !== domain || value.startsWith(TXT_PREFIX)) oursFound.push(value)
-      }
-    } catch {
-      // NXDOMAIN / no TXT — a name nobody has configured yet is the normal case here
-    }
-  }
-  const txtOk = txtFound.includes(txtToken) || txtFound.includes(expectedTxt(txtToken))
-  /**
-   * A record IS published under our name, carrying something else. Almost always a token from an
-   * earlier attempt: the value shape is ours, the value is not.
-   */
-  const txtReason: TxtReason | null = txtOk ? null : oursFound.length > 0 ? 'stale' : 'absent'
+  const txt = await readOwnershipTxt(resolvers.txt, domain, txtToken)
 
   const expected = edgeHostname === undefined || edgeHostname.trim() === '' ? null : canon(edgeHostname)
   const routeFound: string[] = []
@@ -292,9 +318,55 @@ export async function checkDomainDns(
   }
 
   return {
-    txt: { ok: txtOk, found: txtFound, reason: txtReason },
+    txt,
     route: { ok: routeOk, found: [...new Set(routeFound)], expected, reason },
   }
+}
+
+/** One DKIM selector's live state: is the CNAME published, and does it point where SES asked. */
+export type DkimRecordDns = { name: string; expected: string; ok: boolean; found: string[] }
+
+export type SendingDomainDns = {
+  /** the ownership TXT — the record `/verify` reads BEFORE it asks SES anything */
+  txt: DnsCheck & { reason: TxtReason | null }
+  /** the three DKIM CNAMEs; EMPTY until ownership is proved, because SES has not minted them yet */
+  dkim: DkimRecordDns[]
+}
+
+/**
+ * Look at a SENDING domain's live DNS and report each record separately (ADR-036).
+ *
+ * The same reasoning as `checkDomainDns` one section up, for the same reason: a single Verify button
+ * can only say yes or no to four records at once, so "ownership proved, one DKIM selector
+ * mistyped" looks exactly like "nothing done yet". Here it is worse than for an app domain, because
+ * the three selectors are near-identical 32-character strings and the panel is asking a human to
+ * transcribe them — the failure this reports is the one most likely to actually happen.
+ *
+ * DKIM is checked by CNAME only, unlike the app domain's routing half. `<token>._domainkey.<domain>`
+ * is never an apex, so the ALIAS/ANAME flattening that forces an address check there cannot apply,
+ * and an address published at a `_domainkey` name would not be a DKIM record at all.
+ */
+export async function checkSendingDomainDns(
+  resolvers: { txt: TxtResolver; cname: NameResolver },
+  domain: string,
+  txtToken: string,
+  dkimTokens: readonly string[],
+): Promise<SendingDomainDns> {
+  const [txt, dkim] = await Promise.all([
+    readOwnershipTxt(resolvers.txt, domain, txtToken),
+    Promise.all(
+    dkimRecords(domain, dkimTokens).map(async (r) => {
+      const expected = canon(r.value)
+      try {
+        const found = (await resolvers.cname(r.name)).map(canon)
+        return { name: r.name, expected, ok: found.includes(expected), found }
+      } catch {
+        return { name: r.name, expected, ok: false, found: [] }
+      }
+    })),
+  ])
+
+  return { txt, dkim }
 }
 
 async function addrs(resolve: NameResolver, hostname: string): Promise<string[]> {

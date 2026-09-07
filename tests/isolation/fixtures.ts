@@ -151,6 +151,13 @@ async function seedTenant(
   // Written straight through the repo, the same way a platform subdomain is created — there is no
   // DNS to prove in a fixture.
   await db.tenantDomains.create(scope, actor, `fleet.${name}.test`, `tok-${name}`, { verified: true })
+  // …and a SENDING identity, for the same reason plus one more: `/v1/tenant/sending-domain/dns`
+  // answers 404 until a tenant has one, and a collection route that 404s on every sweep run is a
+  // route the sweep is not testing. Seeding it here is what keeps it swept, rather than exempting
+  // it from the assertion.
+  await db.tenantSendingDomains.put(scope, actor, {
+    domain: `mail.${name}.test`, mailbox: 'alerts', txtToken: `send-tok-${name}`, dkimTokens: [], sesIdentity: null,
+  })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
   const commandId = await poolInsertCommand(tenant.id, a1.id, device.id.toString())
   const exportId = await poolInsertExport(tenant.id, a1.id)

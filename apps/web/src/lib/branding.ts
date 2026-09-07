@@ -607,6 +607,48 @@ export const getDomainDns = (id: string) => getJson<DomainDns>(`/v1/tenant/domai
  * on the platform address until SES has verified theirs. The screen has to render that state calmly.
  */
 export const getSendingDomain = () => getJson<SendingDomainState>('/v1/tenant/sending-domain')
+
+/** What each sending-domain record looks like in live DNS — the sibling of getDomainDns. */
+export type SendingDomainDns = {
+  txt: { ok: boolean; found: string[]; reason: 'stale' | 'absent' | null }
+  dkim: { name: string; expected: string; ok: boolean; found: string[] }[]
+}
+export const getSendingDomainDns = () => getJson<SendingDomainDns>('/v1/tenant/sending-domain/dns')
+
+/**
+ * Should the panel ask the server to advance the sending-domain setup on this poll tick?
+ *
+ * A predicate rather than a condition buried in an effect, because the effect is the riskiest thing
+ * on that screen and this is the part worth pinning. The first version derived its trigger from the
+ * DNS PAYLOAD and reset its guard on success — and `POST /verify` answers 200 while still pending,
+ * so success was not terminal, while the success handler invalidated the very query the effect read.
+ * The only thing standing between that and a request loop was TanStack preserving object identity
+ * when a refetch happened to be deeply equal, which the apex's rotating TXT records break.
+ *
+ * So the trigger is the FETCH, not its contents: one attempt per completed poll, at most.
+ *
+ * ── Why it does not wait for our own DKIM opinion ────────────────────────────────────────────────
+ * Once ownership resolves, every tick asks. We deliberately do not require all three selectors to
+ * look right to us first: SES follows CNAME chains and we compare only the immediate target, so a
+ * tenant whose provider flattens through an intermediate would have been correct, signed, and
+ * reported Missing here for ever — with the spinner telling them not to press the button that would
+ * have worked. The server asks SES, which is the only opinion that decides anything.
+ */
+export function shouldAttemptVerify(input: {
+  configured: boolean
+  status: 'pending' | 'verified' | 'failed'
+  ownershipOk: boolean
+  /** `dataUpdatedAt` of the DNS query — changes once per completed fetch, whatever came back */
+  fetchedAt: number
+  /** the `fetchedAt` an attempt was last made for, or 0 */
+  lastAttemptFor: number
+}): boolean {
+  if (!input.configured) return false // an unavailable feature must not poll or POST
+  if (input.status === 'verified') return false // terminal; nothing left to ask
+  if (!input.ownershipOk) return false // /verify would 400, and the reader can see why
+  if (input.fetchedAt === 0) return false // no fetch has completed yet
+  return input.fetchedAt !== input.lastAttemptFor
+}
 export const setSendingDomain = (domain: string, mailbox: string) =>
   mutate<SendingDomainRead>('POST', '/v1/tenant/sending-domain', { domain, mailbox })
 /** Ask SES whether the DKIM records have appeared. Returns the row either way — a still-pending
