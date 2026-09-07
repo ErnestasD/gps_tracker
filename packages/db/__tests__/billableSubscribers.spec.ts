@@ -49,14 +49,19 @@ describe('overage metering follows entitlements (audit high)', () => {
   })
 
   it('"entitled" and "metered" are the SAME set — asserted as literals, not re-derived', () => {
-    // spelled out on purpose: `expect(f(s)).toBe(!LAPSED.has(s))` just re-implements the function
-    // body and cannot fail. These are the statuses as a human reads Stripe's docs.
-    for (const billable of ['active', 'trialing', 'past_due', 'incomplete']) {
+    // spelled out on purpose: `expect(f(s)).toBe(PAID.has(s))` just re-implements the function body
+    // and cannot fail. These are the statuses as a human reads Stripe's docs.
+    // Audit F3: `incomplete` (first invoice NEVER paid) is NOT billable — it moved to the not-metered
+    // side when entitlements became a positive allowlist, so a never-paid card is not billed or entitled.
+    for (const billable of ['active', 'trialing', 'past_due']) {
       expect(isBillableSubscription(billable), billable).toBe(true)
     }
+    for (const notPaid of ['incomplete', 'canceled', 'unpaid', 'incomplete_expired', 'paused', 'some_new_stripe_status']) {
+      expect(isBillableSubscription(notPaid), notPaid).toBe(false)
+    }
+    // the SUSPENSION sweep set stays a denylist (a mid-3DS `incomplete` is floored but not chased)
     for (const lapsed of ['canceled', 'unpaid', 'incomplete_expired', 'paused']) {
-      expect(isBillableSubscription(lapsed), lapsed).toBe(false)
-      expect(LAPSED_SUBSCRIPTION_STATUSES.has(lapsed), lapsed).toBe(true) // and entitlements agree
+      expect(LAPSED_SUBSCRIPTION_STATUSES.has(lapsed), lapsed).toBe(true)
     }
     expect(isBillableSubscription(null)).toBe(false) // admin-granted: nothing to bill
   })

@@ -3,7 +3,7 @@ import type { Redis } from 'ioredis'
 
 import type { Db, PaidInvoice, SubscriptionUpdate } from '@orbetra/db'
 import type { TenantDeviceRow } from '@orbetra/registry'
-import { isDirectPlan } from '@orbetra/shared'
+import { isDirectPlan, planEntitlements } from '@orbetra/shared'
 import type { BillingDetailsView, BillingPlanView, BillingView, PlanChangePreviewView, Role } from '@orbetra/shared'
 
 import type { StripeGateway } from '../billing/stripe.js'
@@ -130,6 +130,17 @@ async function resolveChangeTarget(deps: BillingDeps, tenantId: string, priceId:
   // M1: same TRACK only — within Direct or within TSP
   const currentPlan = b.subscriptionPriceId != null ? deps.stripe.planFor(b.subscriptionPriceId) : undefined
   if (currentPlan === undefined || isDirectPlan(currentPlan) !== isDirectPlan(targetPlan)) return { ok: false, status: 400, title: 'Bad Request', code: 'cross_track_change' }
+  // F5 (audit): a DOWNGRADE to a smaller DIRECT plan must not strand the fleet above the new cap
+  // tracking for free. Direct has NO overage meter and the cap is enforced only at device-ADD time,
+  // so moving to a tier whose cap is below the current active fleet would silently grant paid device
+  // capacity with no matching tier — indefinitely, from one self-serve click. Refuse; the tenant
+  // retires devices first. (TSP targets are uncapped + metered, so the excess is billed, not free.)
+  if (isDirectPlan(targetPlan)) {
+    const cap = planEntitlements(targetPlan).deviceLimit
+    if (cap !== null && (await deps.db.devices.countActive({ tenantId })) > cap) {
+      return { ok: false, status: 409, title: 'Conflict', code: 'device_count_exceeds_plan' }
+    }
+  }
   return { ok: true, stripe: deps.stripe, subscriptionId: b.stripeSubscriptionId, priceId, overagePrice }
 }
 
@@ -564,6 +575,34 @@ export function mountStripeWebhook(app: Hono<AuthEnv>, deps: BillingDeps): void 
           // idempotent, so the retry is safe.
           console.error('commission reversal failed', invoiceId, err)
           return c.text('reversal failed', 500)
+        }
+      }
+    } else if (event.type === 'charge.dispute.closed') {
+      // A LOST dispute (chargeback) is economically a FULL clawback but arrives as a different event
+      // family than charge.refunded (audit F4) — without this a partner keeps a cut of card funds the
+      // platform was forced to return. Only status 'lost' reverses; 'won' / other closures keep the
+      // commission. The dispute carries the CHARGE id, not the invoice, so resolve it first, then run
+      // the SAME idempotent void as a refund (tombstone / alreadyPaid-alert behaviour reused).
+      const obj = event.data.object
+      const status = typeof obj['status'] === 'string' ? obj['status'] : null
+      const chargeId = typeof obj['charge'] === 'string' && obj['charge'] !== '' ? obj['charge'] : null
+      if (status === 'lost' && chargeId !== null) {
+        try {
+          const invoiceId = await deps.stripe.invoiceIdForCharge(chargeId)
+          if (invoiceId === null) {
+            // a disputed one-off / manual charge with no invoice → no subscription commission to reverse
+            console.warn('charge.dispute.closed lost: charge has no invoice, nothing to reverse', chargeId)
+          } else {
+            const customerId = typeof obj['customer'] === 'string' ? obj['customer'] : ''
+            const outcome = await deps.db.affiliates.voidCommissionForRefund(invoiceId, customerId)
+            if (outcome === 'alreadyPaid') console.warn('commission already PAID OUT on a LOST dispute — manual clawback', invoiceId)
+            else if (outcome === 'tombstoned') console.warn('lost dispute arrived before accrual — commission blocked for invoice', invoiceId)
+          }
+        } catch (err) {
+          // same contract as the refund branch: a real fault returns non-2xx so Stripe retries; the
+          // charge-lookup + void are idempotent, so the retry is safe.
+          console.error('commission dispute-reversal failed', chargeId, err)
+          return c.text('dispute reversal failed', 500)
         }
       }
     }

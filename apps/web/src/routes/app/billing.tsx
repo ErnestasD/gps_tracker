@@ -1,4 +1,4 @@
-import { isDirectPlan, TSP_INCLUDED_DEVICES, type BillingPlanView, type TenantPlan } from '@orbetra/shared'
+import { isDirectPlan, planEntitlements, TSP_INCLUDED_DEVICES, type BillingPlanView, type TenantPlan } from '@orbetra/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -53,6 +53,8 @@ function PlanCard(props: {
   onCta: () => void
   testId: string
   ctaTestId: string
+  /** a short reason shown under a DISABLED cta (e.g. too many devices for a downgrade target) */
+  note?: string
 }) {
   return (
     <div
@@ -85,6 +87,9 @@ function PlanCard(props: {
         >
           {props.ctaLabel}
         </AdminButton>
+        {props.note !== undefined && (
+          <p className="mt-2 text-xs" style={{ color: 'var(--admin-danger)' }}>{props.note}</p>
+        )}
       </div>
     </div>
   )
@@ -495,6 +500,10 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
                   {changeTargets.map((p) => {
                     const targetIncluded = includedDevices(p.plan)
                     const isUpgrade = currentIncluded !== null && targetIncluded !== null && targetIncluded > currentIncluded
+                    // F5 (audit): a Direct downgrade to a cap below the current active fleet is refused
+                    // server-side; surface it BEFORE the click. Direct caps are a hard number; TSP is null.
+                    const targetCap = planEntitlements(p.plan).deviceLimit
+                    const overCap = targetCap !== null && currentActive > targetCap
                     return (
                       <PlanCard
                         key={p.priceId}
@@ -508,9 +517,10 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
                         badge={currentIncluded !== null && targetIncluded !== null
                           ? (isUpgrade ? { label: t('billing.upgradeChip'), tone: 'brand' } : { label: t('billing.downgradeChip'), tone: 'neutral' })
                           : undefined}
-                        highlight={isUpgrade}
-                        ctaDisabled={changingTo !== null}
+                        highlight={isUpgrade && !overCap}
+                        ctaDisabled={changingTo !== null || overCap}
                         ctaLabel={changingTo === p.priceId ? t('billing.switching') : t('billing.switchTo')}
+                        note={overCap ? t('billing.tooManyDevices', { active: currentActive, cap: targetCap }) : undefined}
                         onCta={() => void askAndChange(p, isUpgrade)}
                       />
                     )

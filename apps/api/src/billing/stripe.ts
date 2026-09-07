@@ -100,6 +100,9 @@ export interface StripeGateway {
   billingDetails(opts: { subscriptionId: string; customerId: string; overagePriceId?: string | undefined }): Promise<BillingLiveDetails>
   /** Verify the webhook signature and parse the event. THROWS on an invalid signature. */
   constructEvent(rawBody: string, signature: string): StripeEvent
+  /** The invoice id a charge settled, or null — needed to reverse a commission on a LOST DISPUTE
+   *  (audit F4), whose event carries the charge id but not the invoice. */
+  invoiceIdForCharge(chargeId: string): Promise<string | null>
   /** The metered overage price id for a base plan (TSP), added as a 2nd checkout line item;
    *  undefined for a Direct plan. (The daily usage push itself lives in the worker.) */
   overageFor(basePriceId: string): string | undefined
@@ -386,6 +389,13 @@ export function createStripeGateway(cfg: StripeConfig): StripeGateway {
         paymentMethod: pm,
         overagePerDeviceDay: overageDecimal != null ? Number(overageDecimal) : null,
       }
+    },
+    invoiceIdForCharge: async (chargeId) => {
+      const charge = await stripe.charges.retrieve(chargeId)
+      // `invoice` is present at runtime on a charge that settled an invoice, but the pinned SDK's
+      // Charge type no longer declares it — read it defensively (string id or expanded object).
+      const inv = (charge as { invoice?: string | { id?: string } | null }).invoice
+      return typeof inv === 'string' ? inv : (inv?.id ?? null)
     },
     constructEvent: (rawBody, signature) =>
       stripe.webhooks.constructEvent(rawBody, signature, cfg.webhookSecret) as unknown as StripeEvent,

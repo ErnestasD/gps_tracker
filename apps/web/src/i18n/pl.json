@@ -198,7 +198,8 @@
     "noUpcoming": "Brak nadchodzącej faktury.",
     "confirmChargeDetail": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu. Różnica {{net}} (kredyt za niewykorzystany czas już uwzględniony) zostanie doliczona do kolejnej faktury {{date}}. Teraz nic nie jest pobierane.",
     "confirmCreditDetail": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu. Na kolejnej fakturze {{date}} otrzymasz {{amount}} kredytu za niewykorzystany czas. Teraz nic nie jest pobierane.",
-    "confirmChargeNow": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu, a różnica {{net}} (kredyt za niewykorzystany czas już uwzględniony) zostanie od razu pobrana z karty."
+    "confirmChargeNow": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu, a różnica {{net}} (kredyt za niewykorzystany czas już uwzględniony) zostanie od razu pobrana z karty.",
+    "tooManyDevices": "Za dużo urządzeń ({{active}}) dla tego planu (maks. {{cap}}). Najpierw usuń urządzenia."
   },
   "branding": {
     "title": "Marka",

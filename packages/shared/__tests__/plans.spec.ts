@@ -6,6 +6,7 @@ import {
   FLOOR_ENTITLEMENTS,
   TENANT_PLANS,
   effectiveEntitlements,
+  isBillableSubscription,
   effectiveEntitlementsAt,
   isDirectPlan,
   planEntitlements,
@@ -121,6 +122,26 @@ describe('effectiveEntitlements — subscription-status gating (revenue-leak fix
 
   it('flooring is plan-independent — a lapsed direct_50 also gets nothing', () => {
     expect(effectiveEntitlements('direct_50', 'canceled')).toEqual(FLOOR_ENTITLEMENTS)
+  })
+
+  it('audit F3: a never-paid `incomplete` subscription floors — no free paid features on an unpaid card', () => {
+    const e = effectiveEntitlements('tsp_scale', 'incomplete')
+    expect(e).toEqual(FLOOR_ENTITLEMENTS)
+    expect(e.whiteLabel).toBe(false)
+    expect(e.apiAccess).toBe(false)
+    expect(e.deviceLimit).toBe(0)
+  })
+
+  it('audit F3: an UNKNOWN/future status fails CLOSED to the floor (allowlist, not denylist)', () => {
+    expect(effectiveEntitlements('tsp_grow', 'some_new_stripe_status')).toEqual(FLOOR_ENTITLEMENTS)
+  })
+
+  it('audit F3: metering (isBillableSubscription) tracks the SAME allowlist — incomplete/unknown are not metered', () => {
+    for (const s of ['active', 'trialing', 'past_due']) expect(isBillableSubscription(s), s).toBe(true)
+    for (const s of ['incomplete', 'canceled', 'unpaid', 'incomplete_expired', 'paused', 'some_new_stripe_status']) {
+      expect(isBillableSubscription(s), s).toBe(false)
+    }
+    expect(isBillableSubscription(null)).toBe(false) // admin-granted: nothing to meter
   })
 })
 
