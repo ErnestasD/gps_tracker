@@ -20,6 +20,8 @@ export interface StripeUsageWorkerDeps {
   onUnmappedPrice?: (info: { tenantId: string; priceId: string; plan: string }) => void
   /** a day left as billed because the plan's allowance changed under it */
   onAllowanceSkip?: (info: { tenantId: string; day: string; was: number; now: number }) => void
+  /** F2: a no-row day before a plan change was FROZEN — a possible lost-revenue drop to reconcile */
+  onFrozenNoRow?: (info: { tenantId: string; day: string; deviceDays: number; allowance: number }) => void
 }
 
 /**
@@ -48,6 +50,7 @@ export function createStripeUsageWorker(deps: StripeUsageWorkerDeps): Worker {
             stripe: deps.stripe,
             ...(deps.onUnmappedPrice ? { onUnmappedPrice: deps.onUnmappedPrice } : {}),
             ...(deps.onAllowanceSkip ? { onAllowanceSkip: deps.onAllowanceSkip } : {}),
+            ...(deps.onFrozenNoRow ? { onFrozenNoRow: deps.onFrozenNoRow } : {}),
           },
           days,
         )

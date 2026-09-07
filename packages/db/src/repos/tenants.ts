@@ -138,6 +138,11 @@ export interface ActiveSubscriber {
    * incentive to bill is highest, and precisely the days a missed run was supposed to recover.
    */
   billableUntil: Date | null
+  /** audit F2: when the current base price took effect (a plan change). A window day whose usage
+   *  predates this and has NO usage_reports row is FROZEN — recomputing it against the current
+   *  allowance would re-bill (downgrade) or drop (upgrade) a day the old plan covered. Null = never
+   *  changed / pre-migration. */
+  priceEffectiveAt: Date | null
 }
 
 /**
@@ -458,6 +463,13 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       // later event moved it. Verified against a real database before this table existed.
       const claimed = await tx.billingEvent.createMany({ data: { eventId, type: eventType, eventAt }, skipDuplicates: true })
       if (claimed.count === 0) return 'stale'
+      // F2: detect a base-PRICE change to stamp when the new price took effect (so the reporter can
+      // freeze a no-row day that predates a plan change). Read the current price inside the txn,
+      // BEFORE the guarded write; the stamp rides in the same `data`, so it lands ONLY if the
+      // monotonic/per-sub guards let the write apply — a stale/no-op event never moves it.
+      const priceChanged =
+        data.subscriptionPriceId !== null &&
+        data.subscriptionPriceId !== ((await tx.tenant.findFirst({ where: { stripeCustomerId }, select: { subscriptionPriceId: true } }))?.subscriptionPriceId ?? null)
       // Atomic monotonic guard: match the customer AND only when this event is newer than the last
       // applied one. A reordered stale event (older `eventAt`) matches zero rows → no-op. An unknown
       // customer id also matches zero rows.
@@ -573,6 +585,9 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
           // only overwrite the base price when this event actually carried one (expanded items ∩
           // allowlist) — a malformed/unexpanded event must not null out a good plan → drop from billing
           ...(data.subscriptionPriceId !== null ? { subscriptionPriceId: data.subscriptionPriceId } : {}),
+          // F2: stamp the price's effective start ONLY when it actually changed (a status-only event
+          // must not move it, or it would over-freeze every day before the last event)
+          ...(priceChanged ? { subscriptionPriceEffectiveAt: eventAt } : {}),
           // the entitlement tier rides the SAME guard as the price: written only when the caller
           // resolved a plan for this event; a missing/unmapped plan leaves the existing tier intact
           ...(data.plan != null ? { plan: data.plan } : {}),
@@ -609,7 +624,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
       const rows = (
         await prisma.tenant.findMany({
           where: { stripeCustomerId: { not: null }, subscriptionStatus: { not: null } },
-          select: { id: true, stripeCustomerId: true, subscriptionPriceId: true, subscriptionStatus: true, plan: true, lastBillingEventAt: true },
+          select: { id: true, stripeCustomerId: true, subscriptionPriceId: true, subscriptionStatus: true, plan: true, lastBillingEventAt: true, subscriptionPriceEffectiveAt: true },
         })
       ).filter((r) => {
         if (isBillableSubscription(r.subscriptionStatus)) return true
@@ -626,6 +641,7 @@ export function createTenantRepo(prisma: PrismaClient, audit: AuditRepo): Tenant
         subscriptionPriceId: r.subscriptionPriceId,
         plan: r.plan,
         billableUntil: isBillableSubscription(r.subscriptionStatus) ? null : r.lastBillingEventAt,
+        priceEffectiveAt: r.subscriptionPriceEffectiveAt,
       }))
     },
     tenantIdForCustomer: async (stripeCustomerId) => (await prisma.tenant.findFirst({ where: { stripeCustomerId }, select: { id: true } }))?.id ?? null,

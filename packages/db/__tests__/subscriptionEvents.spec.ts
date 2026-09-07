@@ -100,6 +100,26 @@ describe('applySubscriptionEvent ordering', () => {
     expect(await statusOf(id)).toBe('active')
   })
 
+  it('audit F2: a base-PRICE change stamps subscriptionPriceEffectiveAt; a status-only event does not move it', async () => {
+    const id = await tenantWithCustomer('PriceEffective', 'cus_pe')
+    const effAt = async (): Promise<Date | null> =>
+      (await db.tenants.listActiveSubscribers()).find((s) => s.stripeCustomerId === 'cus_pe')?.priceEffectiveAt ?? null
+    // the first event carries a price (null → price) → stamps the effective start at the event time
+    expect(await apply('cus_pe', T, 'evt_pe1', CREATED, update('active', 'sub_A'))).toBe('applied')
+    expect((await effAt())?.getTime(), 'stamped on first price').toBe(T.getTime())
+    // a later STATUS-ONLY event (same price) must NOT move it — else it would over-freeze every prior day
+    expect(await apply('cus_pe', LATER, 'evt_pe2', UPDATED, update('past_due', 'sub_A'))).toBe('applied')
+    expect((await effAt())?.getTime(), 'unchanged on a status-only event').toBe(T.getTime())
+    // an actual PRICE change moves it to the change instant
+    const changeAt = new Date('2026-08-05T10:00:05.000Z')
+    expect(await apply('cus_pe', changeAt, 'evt_pe3', UPDATED, { ...update('active', 'sub_A'), subscriptionPriceId: 'price_tsp_scale' })).toBe('applied')
+    expect((await effAt())?.getTime(), 'moved on a real price change').toBe(changeAt.getTime())
+    // a STALE (older) price-carrying event must not stamp — it rides the same monotonic guard
+    expect(await apply('cus_pe', EARLIER, 'evt_pe4', UPDATED, { ...update('active', 'sub_A'), subscriptionPriceId: 'price_tsp_grow' })).toBe('stale')
+    expect((await effAt())?.getTime(), 'stale event does not move it').toBe(changeAt.getTime())
+    expect(id).toBeTruthy()
+  })
+
   it('a REORDERED same-second .updated cannot undo a .deleted', async () => {
     // Stripe does not guarantee delivery order, so the cancel can arrive FIRST. Ordering by arrival
     // would then leave a canceled customer `active`, entitled and unbilled — the expensive direction
