@@ -168,6 +168,19 @@ services:
       # It must be listed here or it never reaches the process (`--env-file` only feeds compose
       # interpolation), and the bounce feed would refuse even the subscription handshake for ever.
       SES_SNS_TOPIC_ARN: ${SES_SNS_TOPIC_ARN:-}
+      # Tenant sending identities (ADR-036). SEPARATE from the SMTP credentials above: those send
+      # mail and cannot manage identities, so this is its own IAM user limited to the four
+      # ses:*EmailIdentity* actions. All three absent ⇒ the /v1/tenant/sending-domain routes answer
+      # 503 and the branding card reports the feature unavailable, which is a supported shape —
+      # every tenant's mail keeps going out on MAIL_FROM exactly as before.
+      # Listed here for the same reason SES_SNS_TOPIC_ARN is: `--env-file` only feeds compose
+      # INTERPOLATION, so a variable missing from this map never reaches the process. That is how
+      # STRIPE_PLAN_MAP sat silently unset for weeks (PR #202), and the failure here would look
+      # identical — the founder sets three keys, deploys, and the feature stays 503 with nothing
+      # anywhere to say why.
+      AWS_REGION: ${AWS_REGION:-}
+      SES_ADMIN_ACCESS_KEY_ID: ${SES_ADMIN_ACCESS_KEY_ID:-}
+      SES_ADMIN_SECRET_ACCESS_KEY: ${SES_ADMIN_SECRET_ACCESS_KEY:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
       SITE_BASE_URL: ${SITE_BASE_URL:-}
       # Where a partner's payout request is mailed. Absent ⇒ the request is still RECORDED but
