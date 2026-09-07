@@ -98,6 +98,7 @@ const SUMMARY_OVERRIDES: Record<string, string> = {
   'GET /v1/quarantine': 'List unclaimed IMEIs in quarantine',
   'POST /v1/quarantine/{imei}/claim': 'Claim a quarantined IMEI into the fleet',
   'GET /v1/tenant/branding': "Get this tenant's white-label branding",
+  'GET /v1/tenant/readiness': 'Whether this reseller may create customer-facing accounts, and what is missing',
   'PATCH /v1/tenant/branding': "Update this tenant's white-label branding",
   'POST /v1/tenant/branding/asset/:slot': 'Upload a brand image (slot: logo|favicon; base64 PNG or SVG)',
   'DELETE /v1/tenant/branding/asset/:slot': 'Remove an uploaded brand image',

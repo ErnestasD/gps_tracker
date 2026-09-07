@@ -129,6 +129,12 @@ export function createGenericRepo<Row extends { [k: string]: unknown }, CreateDa
       if (updated.count === 0) return null
       const row = await delegate.findFirst({ where: mutateScopedById(scope, id) })
       if (row === null) return null
+      // NOTE for whoever makes a redacted field updatable: `redact` writes `***` on BOTH sides, so
+      // the row would be two identical snapshots — "webhook updated", nothing shown, which is the
+      // defect this file's sibling repos were just fixed for. Record the FACT then, the way
+      // `users.update` records `passwordChanged`. Today no such field is updatable
+      // (`WebhookUpdate` has no `secret`, and the zod schema strips one), so there is nothing to
+      // guard yet and no way to test a guard.
       await audit.record(scope, actor, {
         action: 'update',
         entity: cfg.entity,

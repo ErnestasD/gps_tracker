@@ -62,7 +62,7 @@ async function freshTenant(name: string) {
 }
 
 // a fake Stripe gateway: deterministic customer ids, records checkout/portal calls
-const calls: { checkout: number; portal: number; changePlan: { subscriptionId: string; newBasePriceId: string; newOveragePriceId: string }[]; preview: string[]; details: number } = { checkout: 0, portal: 0, changePlan: [], preview: [], details: 0 }
+const calls: { checkout: number; portal: number; changePlan: { subscriptionId: string; newBasePriceId: string; newOveragePriceId?: string | undefined }[]; preview: string[]; details: number } = { checkout: 0, portal: 0, changePlan: [], preview: [], details: 0 }
 // 'price_test' behaves like a TSP plan (maps to an overage price) so checkout adds the 2nd line item
 const fakeStripe: StripeGateway = {
   prices: ['price_test'],
@@ -77,6 +77,8 @@ const fakeStripe: StripeGateway = {
     if (sig !== 'valid') throw new Error('invalid signature')
     return JSON.parse(raw) as StripeEvent
   },
+  // fake charge->invoice: our test charge ids are `ch_<invoiceId>` (see refundEvent), so strip the prefix
+  invoiceIdForCharge: (chargeId) => Promise.resolve(chargeId.startsWith('ch_') ? chargeId.slice(3) : null),
   overageFor: (b) => (b === 'price_test' ? 'price_over' : undefined),
   // 'price_test' grants the direct_10 tier (≠ the seed default tsp_grow, so a write is observable)
   planFor: (b) => (b === 'price_test' ? 'direct_10' : undefined),
@@ -101,6 +103,13 @@ const subEvent = (id: string, customer: string, type: string, status: string, cr
 const invoiceEvent = (id: string, customer: string, invoiceId: string, amountPaid: number, created = 1_700_000_000): StripeEvent => ({
   id, type: 'invoice.payment_succeeded', created,
   data: { object: { id: invoiceId, customer, amount_paid: amountPaid, currency: 'eur' } },
+})
+
+// a charge.dispute.closed event (audit F4): status 'lost' = chargeback we lost = full clawback.
+// the charge id is `ch_<invoiceId>` so the fake invoiceIdForCharge resolves it back to the invoice.
+const disputeEvent = (id: string, invoiceId: string, status: string, customer = 'cus_disp', created = 1_700_000_200): StripeEvent => ({
+  id, type: 'charge.dispute.closed', created,
+  data: { object: { id: `dp_${invoiceId}`, charge: `ch_${invoiceId}`, status, customer } },
 })
 
 // a charge.refunded event: `refunded: true` means the customer got the WHOLE payment back
@@ -164,10 +173,11 @@ beforeAll(async () => {
   // convenience above — so it lives on its own app/port with a two-price fake.
   const fakeStripeMulti: StripeGateway = {
     ...fakeStripe,
-    prices: ['price_ts', 'price_tg', 'price_direct'],
-    // price_direct is allowlisted + maps to a Direct plan but has NO overage — the change-plan guard must refuse it
+    prices: ['price_ts', 'price_tg', 'price_direct', 'price_direct2', 'price_direct_small'],
+    // price_direct/2 are Direct plans (no overage) — Direct→Direct changes are allowed (M1); a
+    // Direct↔TSP change is cross-track and refused
     overageFor: (b) => (b === 'price_ts' ? 'price_ts_over' : b === 'price_tg' ? 'price_tg_over' : undefined),
-    planFor: (b) => (b === 'price_ts' ? 'tsp_start' : b === 'price_tg' ? 'tsp_grow' : b === 'price_direct' ? 'direct_10' : undefined),
+    planFor: (b) => (b === 'price_ts' ? 'tsp_start' : b === 'price_tg' ? 'tsp_grow' : b === 'price_direct' ? 'direct_10' : b === 'price_direct2' ? 'direct_25' : b === 'price_direct_small' ? 'direct_5' : undefined),
     changePlan: (o) => { calls.changePlan.push(o); return Promise.resolve() },
   }
   appMulti = createApp({ ...common, stripe: fakeStripeMulti })
@@ -636,6 +646,27 @@ describe('billing lifecycle (ADR-024)', () => {
     expect((await byInvoice('in_rf_3'))?.status).toBe('paid')
   })
 
+  it('audit F4: a LOST dispute (chargeback) reverses the commission like a full refund; a WON dispute does not', async () => {
+    const actor = { userId: '00000000-0000-0000-0000-0000000000fa' }
+    const aff = await db.affiliates.create(actor, { name: 'Dispute Partner', email: 'dp@partner.co', code: 'DISP1', commissionPct: 20, commissionMonths: 12 })
+    await db.affiliates.update(actor, aff.id, { status: 'active' })
+    const tenant = await db.tenants.create(actor, { name: 'Disputed customer', referredByAffiliateId: aff.id })
+    await db.tenants.setStripeCustomer(tenant.id, 'cus_disp')
+    const byInvoice = async (inv: string) => (await db.affiliates.listCommissions(aff.id)).find((c) => c.sourceInvoiceId === inv)
+
+    // two paid invoices → two pending commissions
+    await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_dp_i1', 'cus_disp', 'in_dp_1', 5_000), { 'stripe-signature': 'valid' })
+    await req(port, '/v1/webhooks/stripe', null, 'POST', invoiceEvent('evt_dp_i2', 'cus_disp', 'in_dp_2', 5_000), { 'stripe-signature': 'valid' })
+    expect((await byInvoice('in_dp_1'))?.status).toBe('pending')
+
+    // a LOST dispute on invoice 1's charge → the commission is voided (same as a full refund)
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', disputeEvent('evt_dp_lost', 'in_dp_1', 'lost'), { 'stripe-signature': 'valid' })).status).toBe(200)
+    expect((await byInvoice('in_dp_1'))?.status).toBe('void')
+    // a WON dispute on invoice 2 leaves the commission standing — we kept the money
+    expect((await req(port, '/v1/webhooks/stripe', null, 'POST', disputeEvent('evt_dp_won', 'in_dp_2', 'won'), { 'stripe-signature': 'valid' })).status).toBe(200)
+    expect((await byInvoice('in_dp_2'))?.status).toBe('pending')
+  })
+
   it('a refund that OVERTAKES its own accrual still blocks the commission', async () => {
     const actor = { userId: '00000000-0000-0000-0000-0000000000f9' }
     const aff = await db.affiliates.create(actor, { name: 'Race Partner', email: 'race@partner.co', code: 'RACE1', commissionPct: 20, commissionMonths: 12 })
@@ -716,13 +747,75 @@ describe('billing lifecycle (ADR-024)', () => {
 
     // off the allowlist → 400, never reaches Stripe
     expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_bogus' })).status).toBe(400)
-    // an allowlisted DIRECT price (no overage, not a reseller path) → 400, never builds a malformed sub
+    // a Direct price while ON a TSP plan is a CROSS-TRACK change → 400, never builds a malformed sub
     const direct = await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_direct' })
     expect(direct.status).toBe(400)
     // the plan they are already on → 409 (no wasted Stripe call, no proration surprise)
     expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_ts' })).status).toBe(409)
     // nothing above reached Stripe
     expect(calls.changePlan).toHaveLength(0)
+  })
+
+  it('a Direct customer changes within the Direct track (M1) — base swapped, no overage; cross-track refused', async () => {
+    const { token, cus } = await freshTenant('DirectChange')
+    await req(portMulti, '/v1/billing/checkout', token, 'POST', { priceId: 'price_direct' })
+    const sub: StripeEvent = {
+      id: 'evt_dc', type: 'customer.subscription.updated', created: 100,
+      data: { object: { id: `sub_${cus}`, customer: cus, status: 'active', current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_direct' } }] } } },
+    }
+    await req(portMulti, '/v1/webhooks/stripe', null, 'POST', sub, { 'stripe-signature': 'valid' })
+    calls.changePlan.length = 0
+
+    const res = await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_direct2' })
+    expect(res.status).toBe(200)
+    // Direct→Direct swaps ONLY the base — no overage price passed (a Direct plan has none)
+    expect(calls.changePlan).toEqual([{ subscriptionId: `sub_${cus}`, newBasePriceId: 'price_direct2', newOveragePriceId: undefined }])
+
+    // the mirror: a TSP price while ON Direct is cross-track → 400, never reaches Stripe
+    calls.changePlan.length = 0
+    expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_tg' })).status).toBe(400)
+    expect(calls.changePlan).toHaveLength(0)
+  })
+
+  it('change-plan refuses a non-active (past_due) subscription — a payment problem is not a plan change (L3)', async () => {
+    const { token, cus } = await freshTenant('PastDue')
+    await req(portMulti, '/v1/billing/checkout', token, 'POST', { priceId: 'price_ts' })
+    const sub: StripeEvent = {
+      id: 'evt_pd', type: 'customer.subscription.updated', created: 100,
+      data: { object: { id: `sub_${cus}`, customer: cus, status: 'past_due', current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_ts' } }] } } },
+    }
+    await req(portMulti, '/v1/webhooks/stripe', null, 'POST', sub, { 'stripe-signature': 'valid' })
+    calls.changePlan.length = 0
+    expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_tg' })).status).toBe(409)
+    expect(calls.changePlan).toHaveLength(0)
+  })
+
+  it('audit F5: a Direct downgrade below the active fleet is refused (device_count_exceeds_plan); change-preview mirrors it', async () => {
+    const { token, cus, tenantId } = await freshTenant('OverCap')
+    await req(portMulti, '/v1/billing/checkout', token, 'POST', { priceId: 'price_direct' }) // direct_10
+    const sub: StripeEvent = {
+      id: 'evt_oc', type: 'customer.subscription.updated', created: 100,
+      data: { object: { id: `sub_${cus}`, customer: cus, status: 'active', current_period_end: 1_800_000_000, items: { data: [{ price: { id: 'price_direct' } }] } } },
+    }
+    await req(portMulti, '/v1/webhooks/stripe', null, 'POST', sub, { 'stripe-signature': 'valid' })
+
+    // 6 active devices — over the direct_5 cap (5), within direct_10 and direct_25
+    const account = await db.accounts.create({ tenantId }, { userId: randomUUID() }, { name: 'Ops' })
+    const profiles = await seedProfiles(databaseUrl)
+    for (let i = 0; i < 6; i++) {
+      await db.devices.create({ tenantId }, { userId: randomUUID() }, {
+        accountId: account.id, imei: String(359000000000000 + i), name: `D${i}`, profileId: profiles['fmb1xx']!, odometerSource: 'device',
+      })
+    }
+    calls.changePlan.length = 0
+
+    // downgrade direct_10 → direct_5 (cap 5) with 6 active devices → 409, never reaches Stripe
+    expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_direct_small' })).status).toBe(409)
+    expect(calls.changePlan).toHaveLength(0)
+    // the preview surfaces the SAME refusal so the UI can warn before the click
+    expect((await req(portMulti, '/v1/billing/change-preview?priceId=price_direct_small', token)).status).toBe(409)
+    // an UPGRADE to direct_25 (cap 25) is unaffected — the fleet fits
+    expect((await req(portMulti, '/v1/billing/change-plan', token, 'POST', { priceId: 'price_direct2' })).status).toBe(200)
   })
 
   it('change-preview returns the prorated credit/charge/net for a valid target, and refuses like change-plan', async () => {

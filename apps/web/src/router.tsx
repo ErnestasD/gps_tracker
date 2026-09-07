@@ -397,9 +397,19 @@ const settingsRoute = createRoute({
  * on, and their home should be that business. Signing in used to land them on an ordinary fleet
  * dashboard belonging to whichever tenant their user row happened to live in.
  *
- * The route only checks for a session; the ROLE gate is the server's. Every endpoint behind these
- * pages is `scopeClass: 'platform'` and answers 403 to anyone else, so a non-admin who types the
- * URL gets a console full of refusals rather than data — the boundary is where it can be enforced.
+ * The server owns the DATA boundary: every endpoint behind these pages is `scopeClass: 'platform'`
+ * and answers 403 to anyone else. That was once the whole guard here, on the argument that a
+ * non-admin would get "a console full of refusals rather than data".
+ *
+ * It protected the data and leaked the BRAND (audit W-1). The refusals render INSIDE ConsoleShell,
+ * and four of these pages print their PageHeader regardless of the 403 — so a reseller's own
+ * customer saw not a stray word but an unmistakable vendor back-office and its vocabulary
+ * ("Overdue — customers behind on payment"), on the reseller's own domain. Nothing links here, but
+ * `/login?redirect=/platform` is a link anyone can paste: an explicit `?redirect` wins over the
+ * role-based landing, so an ordinary customer signing in with ordinary credentials arrives.
+ *
+ * So the role is checked here too. Not as a security boundary — the server keeps that — but as a
+ * BRAND boundary, which has to live on the client because the shell is rendered on the client.
  */
 const consoleRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -408,6 +418,12 @@ const consoleRoute = createRoute({
     if (!(await hasSession())) {
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
       throw redirect({ to: '/login', search: { redirect: location.href } })
+    }
+    // …to `/app`, not `/login`: this user IS signed in, they simply have no business here. Bouncing
+    // them to a login screen would read as "your session broke" and send them to support.
+    if (getCurrentUser()?.role !== 'platform_admin') {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect idiom
+      throw redirect({ to: '/app' })
     }
     /**
      * The map token, before any map exists.

@@ -521,7 +521,7 @@ export function createApp(deps: ApiDeps, prom?: ApiProm): Hono<AuthEnv> {
   // everything below /v1/* requires a valid access JWT (registration order — Hono
   // middleware applies only to handlers registered after it)
   // PUBLIC API docs (E06-5) — the OpenAPI document + docs page, before the /v1/* auth guard.
-  mountDocs(app, { manifest: apiManifest(), ...(process.env['PUBLIC_API_URL'] ? { serverUrl: process.env['PUBLIC_API_URL'] } : {}) })
+  mountDocs(app, { manifest: apiManifest(), db: deps.db, trustProxy: deps.trustProxy, ...(process.env['PUBLIC_API_URL'] ? { serverUrl: process.env['PUBLIC_API_URL'] } : {}) })
 
   // PARTNER (affiliate) self-service (F5) — a SEPARATE auth surface, mounted before the tenant /v1/*
   // guard: login/set-password are public, me/commissions carry their OWN partner-token guard. A

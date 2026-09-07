@@ -1,4 +1,4 @@
-import { isDirectPlan, TSP_INCLUDED_DEVICES, type BillingPlanView, type TenantPlan } from '@orbetra/shared'
+import { isDirectPlan, planEntitlements, TSP_INCLUDED_DEVICES, type BillingPlanView, type TenantPlan } from '@orbetra/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -56,6 +56,8 @@ function PlanCard(props: {
   onCta: () => void
   testId: string
   ctaTestId: string
+  /** a short reason shown under a DISABLED cta (e.g. too many devices for a downgrade target) */
+  note?: string
 }) {
   return (
     <div
@@ -88,6 +90,9 @@ function PlanCard(props: {
         >
           {props.ctaLabel}
         </AdminButton>
+        {props.note !== undefined && (
+          <p className="mt-2 text-xs" style={{ color: 'var(--admin-danger)' }}>{props.note}</p>
+        )}
       </div>
     </div>
   )
@@ -135,7 +140,10 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
    * see the server route). Only when actively subscribed AND on a TSP plan; a Direct tenant upgrades
    * via the sales CTA above, and a lapsed one repairs payment in the portal.
    */
-  const canChangePlan = b?.active === true && b.planPriceId !== null && !showPicker && user !== null && !isDirectPlan(user.plan)
+  // audit M1: BOTH tracks change plans in-app now (the Stripe portal has plan-switching disabled, and
+  // its generic switcher can't handle our paired overage anyway). A Direct customer switches within
+  // Direct, a TSP within TSP — the grid below filters to the caller's own track and the server enforces it.
+  const canChangePlan = b?.active === true && b.planPriceId !== null && !showPicker && user !== null
 
   // ONE catalog query drives both the subscribe picker and the change grid (same cache key).
   const catalog = useQuery({ queryKey: ['billing', 'plans'], queryFn: listPlans, enabled: showPicker || canChangePlan, staleTime: 5 * 60 * 1000 })
@@ -246,11 +254,12 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
       .catch(() => { setBusy(false); setActionError(true) }) // 500/429/misconfig — tell the user instead of nothing
   }
 
-  // the OTHER TSP tiers, at the selected interval — grouped by plan KEY (not a fragile name parse),
-  // current tier excluded. This is what removes the "two TSP Grow cards / €1490 per month" confusion.
+  // the other tiers ON THE CALLER'S OWN TRACK, at the selected interval — grouped by plan KEY (not a
+  // fragile name parse), current tier excluded. Same-track only (M1): a Direct customer sees Direct
+  // tiers, a TSP sees TSP tiers; cross-track is a sales path, and the server refuses it regardless.
   const changeTargets = plans
     .filter((p): p is BillingPlanView & { plan: TenantPlan } =>
-      p.plan !== null && !isDirectPlan(p.plan) && p.plan !== user?.plan && p.interval === selInterval && p.amount !== null)
+      p.plan !== null && user !== null && isDirectPlan(p.plan) === isDirectPlan(user.plan) && p.plan !== user.plan && p.interval === selInterval && p.amount !== null)
     .sort((a, b2) => (a.amount ?? 0) - (b2.amount ?? 0))
 
   // subscribe picker: one card per plan at the selected interval (no monthly+annual duplicates).
@@ -500,6 +509,10 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
                   {changeTargets.map((p) => {
                     const targetIncluded = includedDevices(p.plan)
                     const isUpgrade = currentIncluded !== null && targetIncluded !== null && targetIncluded > currentIncluded
+                    // F5 (audit): a Direct downgrade to a cap below the current active fleet is refused
+                    // server-side; surface it BEFORE the click. Direct caps are a hard number; TSP is null.
+                    const targetCap = planEntitlements(p.plan).deviceLimit
+                    const overCap = targetCap !== null && currentActive > targetCap
                     return (
                       <PlanCard
                         key={p.priceId}
@@ -513,9 +526,10 @@ export function BillingPage({ embedded = false }: { embedded?: boolean } = {}) {
                         badge={currentIncluded !== null && targetIncluded !== null
                           ? (isUpgrade ? { label: t('billing.upgradeChip'), tone: 'brand' } : { label: t('billing.downgradeChip'), tone: 'neutral' })
                           : undefined}
-                        highlight={isUpgrade}
-                        ctaDisabled={changingTo !== null}
+                        highlight={isUpgrade && !overCap}
+                        ctaDisabled={changingTo !== null || overCap}
                         ctaLabel={changingTo === p.priceId ? t('billing.switching') : t('billing.switchTo')}
+                        note={overCap ? t('billing.tooManyDevices', { active: currentActive, cap: targetCap }) : undefined}
                         onCta={() => void askAndChange(p, isUpgrade)}
                       />
                     )

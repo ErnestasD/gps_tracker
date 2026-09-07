@@ -200,7 +200,8 @@
     "noUpcoming": "Artimiausios sąskaitos nėra.",
     "confirmChargeDetail": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto. Skirtumas {{net}} (kreditas už nepanaudotą laiką jau įskaičiuotas) bus pridėtas prie kitos sąskaitos {{date}}. Iš karto niekas nenuskaitoma.",
     "confirmCreditDetail": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto. Kitoje sąskaitoje {{date}} gausite {{amount}} kreditą už nepanaudotą laiką. Iš karto niekas nenuskaitoma.",
-    "confirmChargeNow": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto, o skirtumas {{net}} (kreditas už nepanaudotą laiką jau įskaičiuotas) bus nuskaitytas iš karto nuo jūsų kortelės."
+    "confirmChargeNow": "Perjungsite į {{plan}} ({{price}}). Naujas planas įsigalioja iš karto, o skirtumas {{net}} (kreditas už nepanaudotą laiką jau įskaičiuotas) bus nuskaitytas iš karto nuo jūsų kortelės.",
+    "tooManyDevices": "Per daug įrenginių ({{active}}) šiam planui (iki {{cap}}). Pirma pašalinkite įrenginius."
   },
   "branding": {
     "title": "Prekės ženklas",
@@ -365,11 +366,14 @@
       "expiresAt": "Galioja iki",
       "faviconUrl": "Piktograma",
       "fuelType": "Kuras",
+      "gdprErase": "BDAR ištrynimas",
+      "geometryChanged": "Forma perbraižyta",
       "groupName": "Grupė",
       "height": "Aukštis",
       "hourUtc": "Valanda (UTC)",
       "ibutton": "iButton",
       "imei": "IMEI",
+      "imeiHold": "IMEI rezervacija",
       "intervalDays": "Intervalas (d.)",
       "intervalEngineH": "Intervalas (variklio val.)",
       "intervalKm": "Intervalas (km)",
@@ -394,6 +398,7 @@
       "number": "Numeris",
       "odoKm": "Rida (km)",
       "odometerSource": "Ridos šaltinis",
+      "passwordChanged": "Slaptažodis pakeistas",
       "phone": "Telefonas",
       "plan": "Planas",
       "plate": "Valst. numeris",
@@ -403,6 +408,7 @@
       "profileId": "Įrenginio modelis",
       "purchaseDate": "Pirkimo data",
       "purchasePriceCents": "Pirkimo kaina (centais)",
+      "reason": "Priežastis",
       "recipients": "Gavėjai",
       "reportType": "Ataskaita",
       "response": "Atsakas",
@@ -412,6 +418,7 @@
       "scope": "Apimtis",
       "scopes": "Teisės",
       "secret": "Pasirašymo raktas",
+      "secretChanged": "Pasirašymo raktas pakeistas",
       "sentAt": "Išsiųsta",
       "simMsisdn": "SIM numeris",
       "sizeBytes": "Dydis",
@@ -2041,5 +2048,23 @@
     "openHelp": "Atverti pagalbą: {{title}}",
     "readAbout": "Skaityti apie: {{title}}",
     "neutralProduct": "platforma"
+  },
+  "readiness": {
+    "blockedTitle": "Jūsų darbo sritis dar neveikia klientams",
+    "blockedDesc": "Jūsų klientai neturi kur prisijungti, todėl paskyrų kūrimas, vartotojų kvietimas ir dalinimosi nuorodos sustabdyti, kol tai bus padaryta.",
+    "hintsTitle": "Užbaikite prekės ženklo nustatymą",
+    "hintsDesc": "Viskas veikia. Šitie dalykai padarytų sistemą visiškai jūsų.",
+    "cta": "Atidaryti prekės ženklo nustatymus",
+    "blocker": {
+      "no_verified_domain": "Pridėkite domeną ir patvirtinkite jį — savo arba mūsų talpinamą subdomeną, kuris veikia iškart"
+    },
+    "hint": {
+      "product_name": "Pridėkite produkto pavadinimą — jis pakeis mūsiškį ekranuose ir laiškuose",
+      "logo": "Pridėkite logotipą — be jo rodome jūsų pavadinimą tekstu",
+      "favicon": "Pridėkite favicon — naršyklės kortelės ir pagrindinio ekrano ikoną",
+      "support_email": "Pridėkite pagalbos adresą — į jį klientai pateks paspaudę „Atsakyti\"",
+      "colors": "Pasirinkite pagrindinę spalvą",
+      "own_domain": "Pereikite prie savo domeno — mūsiškiame jūsų klientai mato mūsų hostą"
+    }
   }
 }

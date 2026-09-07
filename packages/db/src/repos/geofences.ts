@@ -255,7 +255,18 @@ export function createGeofenceRepo(prisma: PrismaClient, audit: AuditRepo): Geof
       // clean 404 (null) instead of dereferencing undefined into a TypeError → 500 (review LOW)
       if (rows[0] === undefined) return null
       const view = toView(rows[0])
-      await audit.record(scope, actor, { action: 'update', entity: 'geofence', entityId: id, before: { name: before.name, kind: before.kind }, after: { name: view.name, kind: view.kind } })
+      // The GEOMETRY is what this call mostly changes, and it is the one thing the snapshot could
+      // never carry: `geom` is a PostGIS column Prisma types as Unsupported, and dumping a polygon
+      // into the trail would be unreadable anyway. Recording {name, kind} alone made every redraw
+      // an audit row with two identical sides — "geofence updated", nothing shown, 9 of them on the
+      // founder's tenant. The fact is what a reviewer needs: the shape moved, and who moved it.
+      await audit.record(scope, actor, {
+        action: 'update',
+        entity: 'geofence',
+        entityId: id,
+        before: { name: before.name, kind: before.kind, color: before.color },
+        after: { name: view.name, kind: view.kind, color: view.color, ...(geomExpr !== null ? { geometryChanged: true } : {}) },
+      })
       return view
     },
     remove: async (scope, actor, id) => {

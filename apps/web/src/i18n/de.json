@@ -200,7 +200,8 @@
     "noUpcoming": "Keine bevorstehende Rechnung.",
     "confirmChargeDetail": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort. Eine Differenz von {{net}} (Gutschrift für ungenutzte Zeit bereits berücksichtigt) wird der nächsten Rechnung am {{date}} hinzugefügt. Jetzt wird nichts abgebucht.",
     "confirmCreditDetail": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort. Auf der nächsten Rechnung am {{date}} erhalten Sie {{amount}} gutgeschrieben. Jetzt wird nichts abgebucht.",
-    "confirmChargeNow": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort, und eine Differenz von {{net}} (Gutschrift für ungenutzte Zeit bereits berücksichtigt) wird sofort von Ihrer Karte abgebucht."
+    "confirmChargeNow": "Wechsel zu {{plan}} ({{price}}). Der neue Tarif gilt sofort, und eine Differenz von {{net}} (Gutschrift für ungenutzte Zeit bereits berücksichtigt) wird sofort von Ihrer Karte abgebucht.",
+    "tooManyDevices": "Zu viele Geräte ({{active}}) für diesen Tarif (max. {{cap}}). Entfernen Sie zuerst Geräte."
   },
   "branding": {
     "title": "Branding",
@@ -365,11 +366,14 @@
       "expiresAt": "Läuft ab",
       "faviconUrl": "Favicon",
       "fuelType": "Kraftstoff",
+      "gdprErase": "DSGVO-Löschung",
+      "geometryChanged": "Form neu gezeichnet",
       "groupName": "Gruppe",
       "height": "Höhe",
       "hourUtc": "Stunde (UTC)",
       "ibutton": "iButton",
       "imei": "IMEI",
+      "imeiHold": "IMEI-Reservierung",
       "intervalDays": "Intervall (Tage)",
       "intervalEngineH": "Intervall (Betriebsstunden)",
       "intervalKm": "Intervall (km)",
@@ -394,6 +398,7 @@
       "number": "Nummer",
       "odoKm": "Kilometerstand (km)",
       "odometerSource": "Kilometerstand-Quelle",
+      "passwordChanged": "Passwort geändert",
       "phone": "Telefon",
       "plan": "Tarif",
       "plate": "Kennzeichen",
@@ -403,6 +408,7 @@
       "profileId": "Gerätemodell",
       "purchaseDate": "Kaufdatum",
       "purchasePriceCents": "Kaufpreis (Cent)",
+      "reason": "Grund",
       "recipients": "Empfänger",
       "reportType": "Bericht",
       "response": "Antwort",
@@ -412,6 +418,7 @@
       "scope": "Geltungsbereich",
       "scopes": "Berechtigungen",
       "secret": "Signaturschlüssel",
+      "secretChanged": "Signaturschlüssel gewechselt",
       "sentAt": "Gesendet",
       "simMsisdn": "SIM-Nummer",
       "sizeBytes": "Größe",
@@ -2031,5 +2038,23 @@
     "openHelp": "Hilfe öffnen: {{title}}",
     "readAbout": "Mehr zu: {{title}}",
     "neutralProduct": "die Plattform"
+  },
+  "readiness": {
+    "blockedTitle": "Ihr Arbeitsbereich ist noch nicht live",
+    "blockedDesc": "Ihre Kunden haben keine Anmeldeadresse, daher sind das Anlegen von Konten, Einladungen und Freigabelinks pausiert, bis dies erledigt ist.",
+    "hintsTitle": "Markeneinrichtung abschließen",
+    "hintsDesc": "Alles funktioniert. Diese Punkte würden es vollständig zu Ihrem machen.",
+    "cta": "Branding-Einstellungen öffnen",
+    "blocker": {
+      "no_verified_domain": "Domain hinzufügen und verifizieren — Ihre eigene oder die sofort verfügbare Subdomain von uns"
+    },
+    "hint": {
+      "product_name": "Produktnamen hinzufügen — er ersetzt unseren auf Bildschirmen und in E-Mails",
+      "logo": "Logo hinzufügen — ohne eines zeigen wir Ihren Namen als Text",
+      "favicon": "Favicon hinzufügen — das Symbol für Browser-Tab und Startbildschirm",
+      "support_email": "Support-Adresse hinzufügen — dorthin gelangen Kunden beim Antworten",
+      "colors": "Primärfarbe wählen",
+      "own_domain": "Auf Ihre eigene Domain wechseln — auf unserer sehen Ihre Kunden unseren Hostnamen"
+    }
   }
 }

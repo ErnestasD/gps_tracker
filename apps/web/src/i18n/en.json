@@ -200,7 +200,8 @@
     "noUpcoming": "No upcoming invoice.",
     "confirmChargeDetail": "Switch to {{plan}} ({{price}}). The new plan takes effect immediately. A {{net}} difference (credit for unused time already applied) is added to your next invoice on {{date}}. Nothing is charged now.",
     "confirmCreditDetail": "Switch to {{plan}} ({{price}}). The new plan takes effect immediately. You'll be credited {{amount}} on your next invoice on {{date}}. Nothing is charged now.",
-    "confirmChargeNow": "Switch to {{plan}} ({{price}}). The new plan takes effect immediately, and a {{net}} difference (credit for unused time already applied) is charged to your card now."
+    "confirmChargeNow": "Switch to {{plan}} ({{price}}). The new plan takes effect immediately, and a {{net}} difference (credit for unused time already applied) is charged to your card now.",
+    "tooManyDevices": "Too many devices ({{active}}) for this plan (max {{cap}}). Retire devices first."
   },
   "branding": {
     "title": "Branding",
@@ -365,11 +366,14 @@
       "expiresAt": "Expires",
       "faviconUrl": "Favicon",
       "fuelType": "Fuel",
+      "gdprErase": "GDPR erase",
+      "geometryChanged": "Shape redrawn",
       "groupName": "Group",
       "height": "Height",
       "hourUtc": "Hour (UTC)",
       "ibutton": "iButton",
       "imei": "IMEI",
+      "imeiHold": "IMEI hold",
       "intervalDays": "Interval (days)",
       "intervalEngineH": "Interval (engine h)",
       "intervalKm": "Interval (km)",
@@ -394,6 +398,7 @@
       "number": "Number",
       "odoKm": "Odometer (km)",
       "odometerSource": "Odometer source",
+      "passwordChanged": "Password changed",
       "phone": "Phone",
       "plan": "Plan",
       "plate": "Plate",
@@ -403,6 +408,7 @@
       "profileId": "Device model",
       "purchaseDate": "Purchase date",
       "purchasePriceCents": "Purchase price (cents)",
+      "reason": "Reason",
       "recipients": "Recipients",
       "reportType": "Report",
       "response": "Response",
@@ -412,6 +418,7 @@
       "scope": "Scope",
       "scopes": "Permissions",
       "secret": "Signing secret",
+      "secretChanged": "Signing secret rotated",
       "sentAt": "Sent",
       "simMsisdn": "SIM number",
       "sizeBytes": "Size",
@@ -2031,5 +2038,23 @@
     "openHelp": "Open help: {{title}}",
     "readAbout": "Read about {{title}}",
     "neutralProduct": "the platform"
+  },
+  "readiness": {
+    "blockedTitle": "Your workspace is not live yet",
+    "blockedDesc": "Your customers have nowhere to sign in, so creating accounts, inviting users and sharing links are paused until this is done.",
+    "hintsTitle": "Finish setting up your brand",
+    "hintsDesc": "Everything works. These are the pieces that would make it fully yours.",
+    "cta": "Open branding settings",
+    "blocker": {
+      "no_verified_domain": "Add a domain and verify it — either your own, or the instant subdomain we host"
+    },
+    "hint": {
+      "product_name": "Add your product name — it replaces ours on screens and in e-mail",
+      "logo": "Add a logo — without one we show your name as text",
+      "favicon": "Add a favicon — the browser-tab and home-screen icon",
+      "support_email": "Add a support address — it is who your customers reach when they reply",
+      "colors": "Pick your primary colour",
+      "own_domain": "Move to your own domain — on ours, your customers see our hostname"
+    }
   }
 }

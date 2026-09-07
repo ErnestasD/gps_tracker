@@ -211,6 +211,18 @@ https:// {
 	handle /r/* {
 		respond 404
 	}
+	# The PLATFORM CONSOLE. Not an API path, so it fell through to the SPA below and was served on
+	# every reseller's domain: `/login?redirect=/platform` is a link anyone can paste, and an
+	# explicit ?redirect wins over the role-based landing, so an ordinary customer signing in with
+	# ordinary credentials was shown our back-office chrome (audit W-1).
+	#
+	# This is the OUTER of three layers, and on its own it is not enough — the SPA resolves routes
+	# client-side, so a soft navigation never reaches Caddy at all. The route guard in router.tsx is
+	# what actually keeps them out; this closes the hard-navigation door, and ConsoleShell prints no
+	# name on a tenant host so a regression in either costs nothing.
+	handle /platform* {
+		respond 404
+	}
 	# API + realtime first (longest-prefix wins in Caddy route ordering).
 	# /v1/* includes the WS upgrade at /v1/stream — the API rejects any other /ws path.
 	handle /v1/* {

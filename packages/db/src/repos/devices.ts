@@ -324,7 +324,9 @@ export function createDeviceRepo(prisma: PrismaClient, audit: AuditRepo, shareLi
       const before = await scopedById(scope, id)
       if (before === null) return null
       const row = await prisma.device.update({ where: { id: before.id }, data })
-      await audit.record(scope, actor, { action: 'update', entity: 'device', entityId: String(row.id), before, after: row })
+      // the row is the whole record this call can touch, so identical snapshots mean the PATCH
+      // changed nothing — see AuditRepo.recordIfChanged for why that is not the global default
+      await audit.recordIfChanged(scope, actor, { entity: 'device', entityId: String(row.id), before, after: row })
       return row
     },
     retire: async (scope, actor, id) => {

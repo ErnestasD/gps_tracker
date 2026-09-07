@@ -200,7 +200,8 @@
     "noUpcoming": "Brak nadchodzącej faktury.",
     "confirmChargeDetail": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu. Różnica {{net}} (kredyt za niewykorzystany czas już uwzględniony) zostanie doliczona do kolejnej faktury {{date}}. Teraz nic nie jest pobierane.",
     "confirmCreditDetail": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu. Na kolejnej fakturze {{date}} otrzymasz {{amount}} kredytu za niewykorzystany czas. Teraz nic nie jest pobierane.",
-    "confirmChargeNow": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu, a różnica {{net}} (kredyt za niewykorzystany czas już uwzględniony) zostanie od razu pobrana z karty."
+    "confirmChargeNow": "Przełączysz na {{plan}} ({{price}}). Nowy plan działa od razu, a różnica {{net}} (kredyt za niewykorzystany czas już uwzględniony) zostanie od razu pobrana z karty.",
+    "tooManyDevices": "Za dużo urządzeń ({{active}}) dla tego planu (maks. {{cap}}). Najpierw usuń urządzenia."
   },
   "branding": {
     "title": "Marka",
@@ -365,11 +366,14 @@
       "expiresAt": "Wygasa",
       "faviconUrl": "Favicon",
       "fuelType": "Paliwo",
+      "gdprErase": "Usunięcie RODO",
+      "geometryChanged": "Kształt przerysowany",
       "groupName": "Grupa",
       "height": "Wysokość",
       "hourUtc": "Godzina (UTC)",
       "ibutton": "iButton",
       "imei": "IMEI",
+      "imeiHold": "Rezerwacja IMEI",
       "intervalDays": "Interwał (dni)",
       "intervalEngineH": "Interwał (mth)",
       "intervalKm": "Interwał (km)",
@@ -394,6 +398,7 @@
       "number": "Numer",
       "odoKm": "Licznik (km)",
       "odometerSource": "Źródło licznika",
+      "passwordChanged": "Hasło zmienione",
       "phone": "Telefon",
       "plan": "Plan",
       "plate": "Nr rejestracyjny",
@@ -403,6 +408,7 @@
       "profileId": "Model urządzenia",
       "purchaseDate": "Data zakupu",
       "purchasePriceCents": "Cena zakupu (grosze)",
+      "reason": "Powód",
       "recipients": "Odbiorcy",
       "reportType": "Raport",
       "response": "Odpowiedź",
@@ -412,6 +418,7 @@
       "scope": "Zakres",
       "scopes": "Uprawnienia",
       "secret": "Klucz podpisu",
+      "secretChanged": "Klucz podpisu zmieniony",
       "sentAt": "Wysłano",
       "simMsisdn": "Numer SIM",
       "sizeBytes": "Rozmiar",
@@ -2051,5 +2058,23 @@
     "openHelp": "Otwórz pomoc: {{title}}",
     "readAbout": "Przeczytaj o: {{title}}",
     "neutralProduct": "platforma"
+  },
+  "readiness": {
+    "blockedTitle": "Twoja przestrzeń nie jest jeszcze aktywna",
+    "blockedDesc": "Twoi klienci nie mają gdzie się zalogować, więc tworzenie kont, zapraszanie użytkowników i linki udostępniania są wstrzymane.",
+    "hintsTitle": "Dokończ konfigurację marki",
+    "hintsDesc": "Wszystko działa. Te elementy sprawiłyby, że system byłby w pełni Twój.",
+    "cta": "Otwórz ustawienia marki",
+    "blocker": {
+      "no_verified_domain": "Dodaj domenę i zweryfikuj ją — własną albo natychmiastową subdomenę u nas"
+    },
+    "hint": {
+      "product_name": "Dodaj nazwę produktu — zastąpi naszą na ekranach i w e-mailach",
+      "logo": "Dodaj logo — bez niego pokazujemy Twoją nazwę tekstem",
+      "favicon": "Dodaj faviconę — ikonę karty przeglądarki i ekranu głównego",
+      "support_email": "Dodaj adres pomocy — tam trafią klienci po kliknięciu Odpowiedz",
+      "colors": "Wybierz kolor podstawowy",
+      "own_domain": "Przejdź na własną domenę — na naszej klienci widzą naszą nazwę hosta"
+    }
   }
 }

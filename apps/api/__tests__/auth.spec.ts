@@ -241,7 +241,13 @@ describe('E03-1 login', () => {
     await seedUser({ databaseUrl, email: 'ambig@orbetra.test', password: PW, role: 'tsp_admin', tenantName: 'T2' })
     const res = await login('ambig@orbetra.test', PW)
     expect(res.status).toBe(409)
-    expect(((await res.json()) as { type: string }).type).toContain('ambiguous-identity')
+    const { type } = (await res.json()) as { type: string }
+    expect(type).toContain('ambiguous-identity')
+    // …and names no vendor (audit W-11). This was the ONLY non-`about:blank` problem type in the
+    // API, so it was also the only error body carrying our domain — returned on a reseller's own
+    // host, to a client that may read it programmatically with an `orb_live_` key.
+    expect(type).not.toMatch(/orbetra/i)
+    expect(type).not.toMatch(/^https?:/)
   })
 })
 

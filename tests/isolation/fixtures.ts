@@ -19,6 +19,19 @@ const PG_IMAGE = 'timescale/timescaledb-ha:pg16'
 const DB_PKG = resolve(import.meta.dirname, '../../packages/db')
 export const JWT_SECRET = 'isolation-suite-secret-isolation-suite!' // ≥32
 
+/**
+ * The platform's identity, as this harness deploys it.
+ *
+ * Deliberately NOT 'orbetra': the sweep greps response bodies, and the real name appears in package
+ * specifiers, container names and connection strings all over this file. A sentinel makes a hit mean
+ * exactly one thing — a handler put the VENDOR's deployment identity into a customer's response.
+ */
+export const VENDOR = {
+  name: 'Orbetra',
+  edgeHostname: 'edge.vendor-sentinel.test',
+  platformDomain: 'vendor-sentinel.test',
+} as const
+
 export interface TenantFixture {
   id: string
   /** entitlement tier (WP5) — tsp_grow (full) or a direct_N plan (feature-gated + device cap). */
@@ -131,6 +144,13 @@ async function seedTenant(
   const am = await db.users.create(scope, actor, { email: `${name}-am@x.test`, passwordHash: pwHash, role: 'account_manager', accountId: a1.id })
   const vw = await db.users.create(scope, actor, { email: `${name}-vw@x.test`, passwordHash: pwHash, role: 'viewer', accountId: a1.id })
   const accountAdmin = await db.users.create(scope, actor, { email: `${name}-aa@x.test`, passwordHash: pwHash, role: 'tsp_admin', accountId: a1.id })
+
+  // A verified host, because these fixtures represent WORKING resellers and a working reseller has
+  // one. Without it the readiness gate (plan W2) refuses account creation and user invitations, and
+  // half the sweeps below would be testing that gate instead of the scope rules they exist for.
+  // Written straight through the repo, the same way a platform subdomain is created — there is no
+  // DNS to prove in a fixture.
+  await db.tenantDomains.create(scope, actor, `fleet.${name}.test`, `tok-${name}`, { verified: true })
   const eventId = await poolInsertEvent(tenant.id, a1.id, '1')
   const commandId = await poolInsertCommand(tenant.id, a1.id, device.id.toString())
   const exportId = await poolInsertExport(tenant.id, a1.id)
@@ -270,6 +290,12 @@ export async function setup(): Promise<Fixtures> {
     // Stubbed rather than omitted: unconfigured, the route 503s, and the collection sweep would
     // then be asserting the shape of a missing dependency instead of the handler's own answer.
     mapToken: () => Promise.resolve({ token: 'tk.isolation', expiresAt: '2099-01-01T00:00:00.000Z' }),
+    // ARMED, not omitted — for the same reason. The vendor sweep below asserts that no response a
+    // customer can reach carries the platform's identity, and with these unset every handler
+    // serialises `null` and the sweep passes against a leak (audit W-9 was exactly this field).
+    // Distinctive sentinels, so a hit is unambiguous and cannot be a package name or a fixture email.
+    edgeHostname: VENDOR.edgeHostname,
+    platformDomain: VENDOR.platformDomain,
   })
   const server = serve({ fetch: app.fetch, port: 0, createServer }) as ReturnType<typeof createServer>
   const port = await new Promise<number>((r) => server.on('listening', () => r((server.address() as { port: number }).port)))

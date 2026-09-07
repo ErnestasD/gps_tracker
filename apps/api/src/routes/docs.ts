@@ -1,5 +1,7 @@
 import type { Hono } from 'hono'
 
+import type { Db } from '@orbetra/db'
+
 import { buildOpenApi } from '../openapi.js'
 import type { AuthEnv } from '../auth/middleware.js'
 import type { ManifestEntry } from './registry.js'
@@ -15,16 +17,46 @@ import type { ManifestEntry } from './registry.js'
  * generated from the route manifest, so the CRUD half cannot drift from the live routes. The
  * curated half (auth, billing, push, reports, …) is hand-maintained and CAN drift — it is a
  * selection of the routes an integrator needs, not a mirror of every registered route.
+ *
+ * BOTH routes carry OUR name — `title: 'Orbetra API'`, "the REST API behind the Orbetra platform",
+ * a link to orbetra.com/docs — and both are registered BEFORE the /v1/* auth guard. Until now the
+ * only thing keeping them off a reseller's hostname was four `respond 404` lines in one Caddy site
+ * block (audit W-10). That is the same shape this codebase already decided was not enough for
+ * `/v1/internal/caddy-ask`, whose test says it outright: *"the Caddyfile 404s /v1/internal/* at
+ * every host block; this is the second lock, so a future host block that forgets it cannot silently
+ * re-open the door."* These routes get the same second lock.
  */
-export function mountDocs(app: Hono<AuthEnv>, opts: { manifest: ManifestEntry[]; serverUrl?: string }): void {
+export function mountDocs(app: Hono<AuthEnv>, opts: { manifest: ManifestEntry[]; serverUrl?: string; db?: Db; trustProxy?: boolean }): void {
   const spec = buildOpenApi(opts.manifest, opts.serverUrl ?? '/')
 
-  app.get('/v1/openapi.json', (c) => {
+  /**
+   * Is this request arriving on a hostname that belongs to a TENANT?
+   *
+   * Answered by the same predicate the whole white-label surface uses, so there is one definition of
+   * "this host is theirs". A hostname we cannot resolve to a tenant is ours (or a direct hit), and
+   * the docs are served — the fail direction is deliberate: an unreachable database must not take
+   * down our own API reference, and Caddy is still the outer lock.
+   */
+  const onTenantHost = async (c: { req: { header(n: string): string | undefined } }): Promise<boolean> => {
+    if (opts.db === undefined) return false
+    const raw = (opts.trustProxy === true ? c.req.header('x-forwarded-host') : undefined) ?? c.req.header('host') ?? ''
+    const host = raw.split(':')[0]!.toLowerCase()
+    if (!/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/.test(host)) return false
+    try {
+      return (await opts.db.tenantDomains.tenantIdForDomain(host)) !== null
+    } catch {
+      return false
+    }
+  }
+
+  app.get('/v1/openapi.json', async (c) => {
+    if (await onTenantHost(c)) return c.notFound()
     c.header('Cache-Control', 'public, max-age=300')
     return c.json(spec)
   })
 
-  app.get('/v1/docs', (c) => {
+  app.get('/v1/docs', async (c) => {
+    if (await onTenantHost(c)) return c.notFound()
     c.header('Content-Type', 'text/html; charset=utf-8')
     return c.body(DOCS_HTML)
   })

@@ -22,7 +22,7 @@ export function startScheduledReportWorker(deps: ScheduledReportWorkerDeps): Wor
           db: deps.db,
           pool: deps.pool,
           transport: deps.transport,
-          ...(deps.appBaseUrl !== undefined ? { appBaseUrl: deps.appBaseUrl } : {}),
+          ...(deps.platformDomain !== undefined ? { platformDomain: deps.platformDomain } : {}),
         })
         deps.onRun?.(r)
       } catch (err) {

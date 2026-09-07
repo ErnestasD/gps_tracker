@@ -69,7 +69,21 @@ export function createUserRepo(prisma: PrismaClient, audit: AuditRepo): UserRepo
       const before = await prisma.user.findFirst({ where: scopedById(scope, id), select: VIEW })
       if (before === null) return null
       const row = await prisma.user.update({ where: { id }, data, select: VIEW })
-      await audit.record(scope, actor, { action: 'update', entity: 'user', entityId: id, before, after: row })
+      // A PASSWORD RESET is the one change this snapshot cannot show. `VIEW` excludes
+      // `passwordHash` on purpose (rule 12 — a hash must never reach the trail), so an admin
+      // resetting a colleague's password wrote a row whose two sides were byte-identical: the
+      // audit log said "user updated", showed nothing, and the single most security-relevant thing
+      // an admin can do to another account left no readable trace. 18 such rows on the founder's
+      // own tenant. The FACT of the change is not a secret — record it, the way the GDPR device
+      // erase records `gdprErase: true`.
+      const changedPassword = data.passwordHash !== undefined
+      await audit.record(scope, actor, {
+        action: 'update',
+        entity: 'user',
+        entityId: id,
+        before,
+        after: changedPassword ? { ...row, passwordChanged: true } : row,
+      })
       return row
     },
     remove: async (scope, actor, id) => {

@@ -93,3 +93,32 @@ describe('geofence repo — corridor (V2)', () => {
     ).rejects.toBeInstanceOf(GeofenceInvalidError)
   })
 })
+
+/**
+ * The audit trail has to say WHICH change happened, and a redraw is the change this entity mostly
+ * gets. The snapshot used to be {name, kind} only, so moving a polygon wrote a row whose two sides
+ * were byte-identical — the page rendered "no field changes recorded" over a real edit (9 such rows
+ * on the founder's tenant, which is how this was found).
+ */
+describe('geofence audit — a redraw is a change the trail can see', () => {
+  const square = (x: number) => ({
+    type: 'Polygon',
+    coordinates: [[[x, 54.67], [x + 0.04, 54.67], [x + 0.04, 54.7], [x, 54.7], [x, 54.67]]],
+  })
+
+  it('records the redraw, the colour and the name — never two identical sides', async () => {
+    const { aScope, accountId } = await seedTenant('Redraw Co')
+    const gf = await db.geofences.create(aScope, actor, { name: 'yard', kind: 'polygon', accountId, geometry: square(25.26) })
+    await db.geofences.update(aScope, actor, gf.id, { geometry: square(25.4) }) // shape only
+    await db.geofences.update(aScope, actor, gf.id, { color: '#FF0000' }) // colour only
+
+    const rows = (await db.audit.list(aScope, { take: 50 })).filter((r) => r.entity === 'geofence' && r.action === 'update')
+    expect(rows.length).toBe(2)
+    for (const r of rows) expect(JSON.stringify(r.before)).not.toBe(JSON.stringify(r.after))
+    const [colourRow, shapeRow] = rows // list is id desc: colour is the newer one
+    expect((shapeRow!.after as { geometryChanged?: boolean }).geometryChanged).toBe(true)
+    expect((colourRow!.after as { color?: string }).color).toBe('#FF0000')
+    // the polygon itself never lands in the trail — it would be unreadable, and the fact is enough
+    expect(JSON.stringify(shapeRow!.after)).not.toContain('coordinates')
+  })
+})
