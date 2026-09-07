@@ -358,21 +358,49 @@ async function readinessOf(db: Db, deps: { platformDomain?: string | undefined }
   })
 }
 
-/** 403 with the exact list of what is missing — never a bare refusal the operator must guess at. */
+/**
+ * 403 with the exact list of what is missing — never a bare refusal the operator must guess at.
+ *
+ * ── Call it LAST ─────────────────────────────────────────────────────────────────────────────────
+ * Every call site runs this AFTER the route's scope, role and 404 decisions, never before. A
+ * readiness refusal placed first REPLACES the answer authorization would have given: on the share
+ * route it turned a cross-tenant 404 into a 403 — a different sentence about somebody else's tenant.
+ * Readiness asks who may be shown this workspace, which is only worth asking once the caller has
+ * been established as entitled to the thing at all.
+ *
+ * ── Who is told WHY ──────────────────────────────────────────────────────────────────────────────
+ * The blocker list is the reseller's own configuration state, so only a tenant-wide caller — the
+ * reseller — receives it. An account-scoped caller is the reseller's CUSTOMER's staff; they get the
+ * refusal without the reasons, because "your workspace has no verified domain" is a sentence about
+ * a party they are not supposed to know is separate from the product they bought.
+ *
+ * ── Why MAIL destinations are NOT gated ──────────────────────────────────────────────────────────
+ * A rule's e-mail channel and a scheduled report's recipient list also create an audience, and the
+ * obvious move is to gate them too. They are deliberately left open, because readiness cannot
+ * improve what those recipients see. Neither message carries a URL and neither passes a
+ * platformOrigin (notifyWorker.ts:86, scheduledReporter.ts:184), so an unready tenant's mail
+ * degrades to their product name as TEXT — plain, never ours. The one vendor-named thing left is the
+ * `From:` line, and that is ours for a fully-configured reseller too until ADR-036 ships tenant
+ * sending identity. Gating here would cost a working feature and close nothing; the sender joins the
+ * hard blockers when there is a sender to configure.
+ */
 async function requireReady(c: Context<AuthEnv>, db: Db, deps: { platformDomain?: string | undefined }): Promise<Response | null> {
   // A platform_admin acting is US, not a reseller. Our own tenant is a `tsp_*` row with no verified
   // domain, so without this the gate would refuse our own operators the moment they created a user —
   // and the thing readiness protects (a reseller's customers seeing our brand) cannot happen when we
   // ARE the brand.
-  if (c.get('auth').role === 'platform_admin') return null
+  const a = c.get('auth')
+  if (a.role === 'platform_admin') return null
   let r: Readiness
   try {
-    r = await readinessOf(db, deps, c.get('auth').tenantId)
+    r = await readinessOf(db, deps, a.tenantId)
   } catch {
     return null // fail ready — see readinessOf
   }
   if (r.ready) return null
-  return problem(c, 403, 'Forbidden', `not_ready: ${r.hardBlockers.join(',')}`)
+  return a.accountId === undefined
+    ? problem(c, 403, 'Forbidden', `not_ready: ${r.hardBlockers.join(',')}`)
+    : problem(c, 403, 'Forbidden', 'not_ready')
 }
 
 
@@ -631,11 +659,6 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'post', path: '/v1/accounts', scopeClass: 'tenant', entity: 'account', shape: 'collection', entitlement: 'subAccounts',
       handler: async (c) => {
-        // A sub-account is the first thing that creates an AUDIENCE, and a half-configured reseller
-        // has no host their customers can reach (plan W2). Gated here rather than at sign-in: the
-        // branding form lives inside the app, so locking them out would be circular.
-        const notReady = await requireReady(c, db, deps)
-        if (notReady !== null) return notReady
         // `accounts.create` is the ONE account method that does not honour the pin: list/get/update/
         // remove all go through listWhere/findScoped, while create writes `tenantId` from the scope
         // and ignores `scope.accountId` entirely. A pinned admin therefore added siblings to the
@@ -643,6 +666,13 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         // MAX_DOMAINS_PER_TENANT) and burning the reseller's `subAccounts` entitlement. Not privesc:
         // they can neither see nor manage what they created. Still theirs to answer for.
         if (!tenantWide(c)) return problem(c, 403, 'Forbidden', 'accounts are tenant-wide')
+        // A sub-account is the first thing that creates an AUDIENCE, and a half-configured reseller
+        // has no host their customers can reach (plan W2). Gated here rather than at sign-in: the
+        // branding form lives inside the app, so locking them out would be circular. AFTER the pin
+        // check, so a pinned caller still hears "accounts are tenant-wide" rather than a fact about
+        // the reseller's own setup — see requireReady.
+        const notReady = await requireReady(c, db, deps)
+        if (notReady !== null) return notReady
         const data = await body(c, accountCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         return json(c, await db.accounts.create(scopeOf(auth(c)), { userId: auth(c).userId }, data), 201)
@@ -694,10 +724,6 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
       } },
     { method: 'post', path: '/v1/users', scopeClass: 'tenant', entity: 'user', shape: 'collection',
       handler: async (c) => {
-        // Inviting a user creates an audience the same way a sub-account does — and this one gets an
-        // activation mail immediately, which is the single most brand-sensitive message we send.
-        const notReady = await requireReady(c, db, deps)
-        if (notReady !== null) return notReady
         const data = await body(c, userCreateSchema)
         if (data === null) return problem(c, 400, 'Bad Request')
         const a = auth(c)
@@ -709,6 +735,12 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
         if (accountId !== null && (await db.accounts.get(scopeOf(a), accountId)) === null) {
           return problem(c, 400, 'Bad Request', 'accountId not in scope')
         }
+        // A seat is a person who will sign in and see the workspace, so it creates an audience the
+        // same way a sub-account does (plan W2). It does NOT send mail — the caller sets the password
+        // here — so the reason is what the new human will LOOK at, not what lands in their inbox.
+        // Last, so it never speaks in place of the role or scope refusals above.
+        const notReady = await requireReady(c, db, deps)
+        if (notReady !== null) return notReady
         const created = await db.users.create(scopeOf(a), { userId: a.userId }, {
           email: data.email,
           passwordHash: await hashPassword(data.password),
@@ -745,6 +777,12 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
             return problem(c, 400, 'Bad Request', 'accountId not in scope')
           }
         }
+        // NO readiness gate here, and it is not an oversight. Re-pointing a seat at a different
+        // person WOULD create an audience the way POST does, but `userUpdateSchema` carries no
+        // `email` field at all (role, accountId, locale, password), so a seat's address cannot be
+        // changed on this route — there is no new human to reach. A review read the
+        // `const { password, ...rest }` below as passing an address through; the schema is what
+        // stops it, so if `email` is ever added there, this gate has to be added with it.
         // snapshot the PRE-update scope so the change check is correct even if the repo returns the
         // same row reference it then mutates (a role/account move must be measured against the OLD value)
         const prevRole = target.role
@@ -2395,10 +2433,21 @@ export function buildRoutes(deps: CrudDeps): RouteDef[] {
           return problem(c, 503, 'Service Unavailable', 'could not mint a map token')
         }
       } },
-    // Readiness is a READ every role may make: the dashboard card is what tells a reseller why a
-    // button is disabled, and an account_manager who cannot see the reason would simply be stuck.
+    /**
+     * The reseller's own setup state — for the reseller ONLY.
+     *
+     * It first shipped readable by every role, reasoning that an operator who cannot see why a
+     * button is disabled is simply stuck. That was the wrong audience: nobody but a tenant-wide
+     * admin can press any of the gated buttons, and the answer describes the RESELLER's
+     * configuration to a reader who may be their customer's staff — "no verified domain", "on ours
+     * your customers see our hostname". Those sentences only make sense if you know there is a
+     * platform behind the product, which is the one thing a reseller's customer must not learn.
+     */
     { method: 'get', path: '/v1/tenant/readiness', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
-      handler: async (c) => json(c, await readinessOf(db, deps, auth(c).tenantId)) },
+      handler: async (c) => {
+        if (!tenantWide(c) || !TENANT_ADMINS.includes(auth(c).role)) return problem(c, 403, 'Forbidden')
+        return json(c, await readinessOf(db, deps, auth(c).tenantId))
+      } },
     { method: 'get', path: '/v1/tenant/branding', scopeClass: 'tenant', entity: 'branding', shape: 'collection',
       handler: async (c) => {
         const tenant = await db.tenants.get(auth(c).tenantId)

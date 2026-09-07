@@ -70,6 +70,22 @@ describe('a reseller is ready once their customers have somewhere to arrive', ()
     const r = whiteLabelReadiness({ ...base, domains: [{ domain: 'notorbetra.com', verified: true }] })
     expect(r.mode).toBe('own_domain')
   })
+
+  it('★ a stray space in PLATFORM_DOMAIN does not turn our hostname into theirs', () => {
+    // PLATFORM_DOMAIN is an environment variable, and one trailing space in a compose file used to
+    // make `acme.orbetra.com` read as the tenant's OWN domain — so a reseller sitting on OUR
+    // hostname was never told to move off it. The API's copy of the suffix rule trimmed; this one
+    // did not. They are one function now.
+    for (const pd of ['orbetra.com ', ' orbetra.com', 'ORBETRA.com']) {
+      const r = whiteLabelReadiness({ ...base, platformDomain: pd, domains: [{ domain: 'dokigo.orbetra.com', verified: true }] })
+      expect(r.mode, pd).toBe('platform_subdomain')
+    }
+  })
+
+  it('the platform APEX itself is ours, not a tenant domain', () => {
+    const r = whiteLabelReadiness({ ...base, domains: [{ domain: 'orbetra.com', verified: true }] })
+    expect(r.mode).toBe('platform_subdomain')
+  })
 })
 
 describe('missing branding is a hint, never a blocker', () => {

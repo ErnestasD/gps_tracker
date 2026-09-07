@@ -60,9 +60,26 @@ export interface ReadinessInput {
   platformDomain?: string | undefined
 }
 
-/** Is `domain` a label under `platformDomain`? Mirrors the API's isUnderPlatformDomain. */
-const underPlatform = (domain: string, platformDomain: string | undefined): boolean =>
-  platformDomain !== undefined && platformDomain !== '' && domain.toLowerCase().endsWith(`.${platformDomain.toLowerCase()}`)
+/**
+ * Is `domain` inside the platform's own DNS zone — the apex itself, or any name under it?
+ *
+ * Two things need this answer and they must never disagree: the API, to route a domain to the
+ * subdomain path (we own the zone, so there is no TXT for the tenant to publish), and readiness, to
+ * tell a tenant sitting on OUR hostname apart from one on their own. It lived in both places for a
+ * while and the copies drifted — the readiness copy dropped the `.trim()`, and `main.ts` passes
+ * `process.env['PLATFORM_DOMAIN']` through untouched. One trailing space in the deployed environment
+ * and a tenant on `acme.orbetra.com` would have been classified as being on their own domain, and so
+ * never told to move off ours. One function, called from both.
+ *
+ * `.trim()` because it comes from an environment variable; both sides lowercased because DNS is
+ * case-insensitive and only one of the two call sites normalizes its input.
+ */
+export function isUnderPlatformDomain(domain: string, platformDomain: string | undefined): boolean {
+  if (platformDomain === undefined || platformDomain.trim() === '') return false
+  const root = platformDomain.trim().toLowerCase()
+  const d = domain.trim().toLowerCase()
+  return d === root || d.endsWith(`.${root}`)
+}
 
 const filled = (v: string | undefined): boolean => v !== undefined && v.trim() !== ''
 
@@ -77,7 +94,7 @@ export function whiteLabelReadiness(input: ReadinessInput): Readiness {
   }
 
   const verified = input.domains.filter((d) => d.verified)
-  const own = verified.filter((d) => !underPlatform(d.domain, input.platformDomain))
+  const own = verified.filter((d) => !isUnderPlatformDomain(d.domain, input.platformDomain))
   const b = input.branding
 
   const softHints: ReadinessHint[] = []

@@ -89,9 +89,12 @@ async function setup(): Promise<void> {
   // 4a. seed the e2e login user (E03-1) — its tenantId must reach device:tenant.
   // --account-name gives the tenant an account so the Devices create form (E03-3) has
   // one to target, and device profiles are seeded so the profile picker is populated.
+  // --verified-domain because this fixture stands in for a WORKING reseller: since plan W2 a tsp_*
+  // tenant with no verified host may not create customers, seats or share links at all, so without
+  // it the accounts round-trip below fails on the readiness gate rather than on its own subject.
   const seedUser = await runCapture(
     TSX_BIN,
-    ['packages/db/seed/users.ts', '--email', E2E_EMAIL, '--password', E2E_PASSWORD, '--role', 'tsp_admin', '--tenant-name', 'E2E', '--account-name', 'E2E Fleet'],
+    ['packages/db/seed/users.ts', '--email', E2E_EMAIL, '--password', E2E_PASSWORD, '--role', 'tsp_admin', '--tenant-name', 'E2E', '--account-name', 'E2E Fleet', '--verified-domain', 'fleet.e2e.test'],
     env,
   )
   if (seedUser.code !== 0) throw new Error('user seed failed')

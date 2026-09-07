@@ -3,8 +3,29 @@
 A guide for partners on a **TSP plan**. Everything here is done by you, in your own account and your
 own DNS. It takes about twenty minutes, plus however long your DNS provider takes to publish.
 
-By the end, your customers sign in at your address, see your logo and colours, and receive mail from
-you. Our name appears nowhere.
+By the end, your customers sign in at your address, see your logo and colours, and read mail written
+in your name. Our name appears nowhere they look — with one exception we are honest about in Part 3:
+the `From:` line of that mail is still ours today, with Reply-To pointing at you.
+
+---
+
+## What has to be done before you can add customers
+
+Adding your first customer, inviting a colleague and creating a public tracking link are held back
+until **one** thing is true: your workspace has a working address, either your own verified domain or
+a subdomain of ours. Everything else in this guide is a recommendation.
+
+The reason is narrow. Those three actions are the ones that put the product in front of somebody who
+is not you, and until there is an address for them to arrive at, we would have to supply one — ours.
+The rest of the platform is open the whole time: sign in, add devices, import a fleet, drive around
+the map. Only the moment an audience appears is held.
+
+If you try one early, you are told exactly what is missing. Your dashboard shows the same list, with
+a link to the setting that clears it.
+
+Your logo, colours and name are **never** blocking. Without a logo we render your product name as
+plain text — plainer than you want, but yours. We would rather you launch looking sparse than not
+launch at all.
 
 ---
 
@@ -43,9 +64,15 @@ customers will use, for example `fleet.yourcompany.com`. Press Add.
 | Field | Value |
 |---|---|
 | Type | `TXT` |
-| Name / Host | `fleet` — see the note on names below |
-| Value | `orbetra-verify=…` (copy it exactly from the screen) |
+| Name / Host | `_orbetra-verify.fleet` — see the note on names below |
+| Value | the token shown on screen, on its own (no prefix, no quotes) |
 | TTL | leave the default |
+
+> The name starts with an underscore on purpose. The next step puts a `CNAME` on `fleet`, and DNS
+> forbids a `CNAME` sharing a name with any other record — Cloudflare and Route 53 both refuse it. A
+> separate `_orbetra-verify` name sidesteps that entirely, the same way `_dmarc` and
+> `_acme-challenge` do. **Leave it published**: we re-check it periodically, and removing it later
+> will eventually mark the domain unverified.
 
 **Step 3 — point it at us.** This is a **separate record** and the step people miss. Proving you own
 the domain does not make it lead anywhere.
@@ -157,7 +184,12 @@ If any of those still shows our name, tell us — it is a bug on our side, not a
 
 **"TXT record not found" when I press Verify.**
 Almost always propagation — wait and retry. If it persists past an hour, check the record's name in
-your panel (see the note in Part 1) and that you copied the whole value including `orbetra-verify=`.
+your panel (see the note in Part 1): it must be `_orbetra-verify.fleet`, with the underscore, and the
+value is the token on its own with nothing added in front of it.
+
+**I cannot add my customer / invite a colleague / create a share link.**
+Your workspace has no verified address yet — see the top of this guide. Finish Part 1 and all three
+become available immediately. Nothing you have already set up is affected.
 
 **The badge says Verified but my address does not open.**
 The TXT record proves ownership; the CNAME routes the traffic. Step 3 in Part 1 is missing.

@@ -11,7 +11,7 @@ import { ARGON2ID_PARAMS, ROLES, TENANT_PLANS, type Role, type TenantPlan } from
  *
  * Usage:
  *   pnpm db:seed:user -- --email a@b.c --password '…' --role tsp_admin \
- *     --tenant-name "Demo TSP" [--account-name "Fleet A"] [--database-url …]
+ *     --tenant-name "Demo TSP" [--account-name "Fleet A"] [--verified-domain fleet.demo.test] [--database-url …]
  *
  * Prints {tenantId, accountId?, userId} JSON on stdout (consumed by Playwright
  * global-setup). NOT a production tool — real user CRUD arrives with E03-2.
@@ -36,6 +36,18 @@ export interface SeedUserOpts {
   /** entitlement tier for a NEWLY created tenant (default tsp_grow, preserving current behavior); lets the
    *  seeder stand up Direct demo tenants. An EXISTING tenant of the same name keeps its stored plan. */
   plan?: TenantPlan
+  /**
+   * Give the tenant an already-VERIFIED host.
+   *
+   * A `tsp_*` tenant with no verified domain is not "a tenant with one thing left to do" — since
+   * plan W2 it is a tenant that may not create customers, seats or share links at all, because its
+   * customers would have no address to arrive at. A fixture that means "a working reseller" has to
+   * say so, or every test built on it ends up testing the readiness gate instead of its own subject.
+   *
+   * Written straight in as verified, the way a platform subdomain is created: there is no DNS to
+   * prove in a fixture. Omit it to seed a deliberately UNCONFIGURED reseller.
+   */
+  verifiedDomain?: string
 }
 
 export async function seedUser(opts: SeedUserOpts): Promise<{ tenantId: string; accountId: string | null; userId: string }> {
@@ -61,6 +73,14 @@ export async function seedUser(opts: SeedUserOpts): Promise<{ tenantId: string; 
         (await prisma.account.findFirst({ where: { tenantId: tenant.id, name: opts.accountName } })) ??
         (await prisma.account.create({ data: { tenantId: tenant.id, name: opts.accountName, timezone: 'UTC' } }))
       createdAccountId = account.id
+    }
+    if (opts.verifiedDomain !== undefined && opts.verifiedDomain !== '') {
+      const domain = opts.verifiedDomain.trim().toLowerCase()
+      await prisma.tenantDomain.upsert({
+        where: { tenantId_domain: { tenantId: tenant.id, domain } },
+        create: { tenantId: tenant.id, domain, verified: true, txtToken: 'seeded-no-dns-to-prove' },
+        update: { verified: true },
+      })
     }
     const accountScoped = opts.role === 'account_manager' || opts.role === 'viewer'
     const userAccountId = accountScoped ? createdAccountId : null
@@ -97,6 +117,7 @@ async function main(): Promise<void> {
     process.exit(2)
   }
   const accountName = arg('account-name', '')
+  const verifiedDomain = arg('verified-domain', '')
   const result = await seedUser({
     databaseUrl: arg('database-url', process.env['DATABASE_URL'] ?? 'postgresql://postgres:orbetra_dev@127.0.0.1:5432/orbetra'),
     email: arg('email'),
@@ -105,6 +126,7 @@ async function main(): Promise<void> {
     tenantName: arg('tenant-name', 'Dev Tenant'),
     plan: planArg as TenantPlan,
     ...(accountName !== '' ? { accountName } : {}),
+    ...(verifiedDomain !== '' ? { verifiedDomain } : {}),
   })
   console.log(JSON.stringify(result))
 }

@@ -6,7 +6,7 @@ import { applyBranding, beginBrandPreview } from '../src/lib/branding'
 
 // both sides of the merge: the colleague's `clean`/`iconFor` (favicon + brand assets, #273) and
 // this branch's `routingKind` — the union, not a choice
-import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, clean, contrast, dnsRecordsFor, docsLink, ensureContrast, expectedTxt, faviconLinks, fqdn, hasPrefix, iconFor, relativeName, routingKind } from '../src/lib/branding.js'
+import { SURFACE_LIGHT_REF, SURFACE_REF, clampForTheme, clean, contrast, dnsRecordsFor, docsLink, ensureContrast, expectedTxt, faviconLinks, fqdn, hasPrefix, iconFor, mayReadReadiness, relativeName, routingKind } from '../src/lib/branding.js'
 
 /**
  * White-label theming math (E03-5). No DOM: we test the pure WCAG contrast
@@ -472,5 +472,35 @@ describe('a live preview outranks a background fetch', () => {
     expect(root.style.get('--accent')).not.toBe(root.style.get('--accent-2'))
     expect(root.style.get('--accent')).toBeDefined()
     release()
+  })
+})
+
+/**
+ * Who the readiness card is FOR (plan W2, hostile review finding 1).
+ *
+ * It first shipped on the operator dashboard — the page a reseller's own customers see — where its
+ * second-person setup copy told those customers that somebody else's hostname was involved. The
+ * placement bug is fixed by rendering it in ResellerDashboard, but a placement is exactly the kind
+ * of thing a later refactor moves, so the rule lives here as a predicate the component asks.
+ */
+describe('the readiness card is for the reseller, not for their customers', () => {
+  it('a tenant-wide reseller admin may read it', () => {
+    expect(mayReadReadiness({ role: 'tsp_admin', accountId: null })).toBe(true)
+    expect(mayReadReadiness({ role: 'platform_admin', accountId: null })).toBe(true)
+  })
+
+  it('nobody inside one of their CUSTOMER accounts may — that is the audience it would leak to', () => {
+    expect(mayReadReadiness({ role: 'tsp_admin', accountId: 'acc-1' })).toBe(false)
+    expect(mayReadReadiness({ role: 'account_manager', accountId: 'acc-1' })).toBe(false)
+    expect(mayReadReadiness({ role: 'viewer', accountId: 'acc-1' })).toBe(false)
+  })
+
+  it('nor a tenant-wide viewer, who can press none of the gated buttons anyway', () => {
+    expect(mayReadReadiness({ role: 'viewer', accountId: null })).toBe(false)
+    expect(mayReadReadiness({ role: 'account_manager', accountId: null })).toBe(false)
+  })
+
+  it('and not a signed-out reader', () => {
+    expect(mayReadReadiness(null)).toBe(false)
   })
 })

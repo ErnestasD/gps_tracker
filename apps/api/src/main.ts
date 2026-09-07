@@ -206,8 +206,10 @@ const deps = {
   // White-label hosting: PLATFORM_DOMAIN turns on `<slug>.orbetra.com` (needs the `*` A record),
   // EDGE_HOSTNAME is what a tenant CNAMEs their own domain to. Both optional — absent simply means
   // the corresponding half of the setup instructions is not offered rather than shown wrong.
-  ...(process.env['PLATFORM_DOMAIN'] ? { platformDomain: process.env['PLATFORM_DOMAIN'] } : {}),
-  ...(process.env['EDGE_HOSTNAME'] ? { edgeHostname: process.env['EDGE_HOSTNAME'] } : {}),
+  // trimmed: a stray space in a compose file or a `.env` line survives into every suffix comparison
+  // that decides whether a hostname is ours, and the failure is silent in both directions
+  ...(process.env['PLATFORM_DOMAIN']?.trim() ? { platformDomain: process.env['PLATFORM_DOMAIN'].trim() } : {}),
+  ...(process.env['EDGE_HOSTNAME']?.trim() ? { edgeHostname: process.env['EDGE_HOSTNAME'].trim() } : {}),
   /**
    * One minted token per API process, re-minted at 80 % of its life.
    *
